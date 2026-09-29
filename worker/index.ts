@@ -1,41 +1,64 @@
-import { Worker, type Processor } from "bullmq";
+import { Worker, type Processor, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
-import { QUEUE_NAMES, bullConnection } from "../src/lib/queue";
+import { QUEUE_MEDIA_PROCESS, QUEUE_STATS, bullConnection, getQueue } from "../src/lib/queue";
+import { flushStatsBuffer } from "../src/lib/stats/service";
 
-/**
- * BullMQ worker 进程独立入口(与 web 同镜像,SERVICE_ROLE=worker 启动,07 文档 §3)。
- * M1 仅骨架:建连 + 优雅退出;media-process 等处理器随 M5 媒体管线落地。
- */
-function main(): void {
+/** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
+const PROCESSORS: Record<string, Processor> = {
+  [QUEUE_MEDIA_PROCESS]: async (job) => {
+    // media 管线(sharp WebP/缩略图/宽高回填)随 M5 媒体库落地
+    throw new Error(`queue ${QUEUE_MEDIA_PROCESS} 的处理器尚未实现(job ${job.id},M5 交付)`);
+  },
+  [QUEUE_STATS]: async () => {
+    const summary = await flushStatsBuffer();
+    if (summary.keysFlushed > 0) {
+      console.log(JSON.stringify({ event: "stats.flush", ...summary }));
+    }
+    return summary;
+  },
+};
+
+/** 统计 flush 的调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
+const STATS_FLUSH_EVERY_MS = 60_000;
+
+async function scheduleStatsFlush(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "stats-flush",
+    { every: STATS_FLUSH_EVERY_MS },
+    {
+      name: "flush",
+      data: {},
+      opts: { removeOnComplete: 100 },
+    },
+  );
+}
+
+function logFailed(queue: string): (job: Job | undefined, err: Error) => void {
+  return (job, err) => {
+    console.error(
+      JSON.stringify({ event: "worker.job.failed", queue, jobId: job?.id, error: err.message }),
+    );
+  };
+}
+
+async function main(): Promise<void> {
   const connection = bullConnection();
   const workers: Array<Worker> = [];
 
-  for (const name of QUEUE_NAMES) {
-    const notImplemented: Processor = async (job) => {
-      // 各队列处理器在对应里程碑落地;当前到达任务记录后标记失败,避免静默吞任务
-      throw new Error(
-        `queue ${name} 的处理器尚未实现(job ${job.id},见 development-plan 对应里程碑)`,
-      );
-    };
-    const w = new Worker(name, notImplemented, { connection });
-    w.on("failed", (job, err) => {
-      console.error(
-        JSON.stringify({
-          event: "worker.job.failed",
-          queue: name,
-          jobId: job?.id,
-          error: err.message,
-        }),
-      );
-    });
+  for (const name of Object.keys(PROCESSORS)) {
+    const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2 });
+    w.on("failed", logFailed(name));
     workers.push(w);
   }
+
+  await scheduleStatsFlush();
 
   console.log(
     JSON.stringify({
       event: "worker.started",
-      queues: QUEUE_NAMES,
+      queues: Object.keys(PROCESSORS),
       redis: env.REDIS_URL.replace(/\/\/.*@/, "//***@"),
     }),
   );
@@ -53,4 +76,4 @@ function main(): void {
   process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
-main();
+void main();
