@@ -1,0 +1,489 @@
+<h2>前言</h2>
+<p>由于接下来的课程内容将围绕计算机视觉展开，其中接触最多的内容是卷积、卷积神经网络等...因此，本篇内容将从卷积入手，梳理理解：卷积的意义、卷积在图像处理中的作用以及卷积神经网络的概念，最后利用pytorch搭建一个神经网络。</p>
+<h2>卷积的理解</h2>
+<h3>卷积其实是一个数学概念</h3>
+<p>在第一次接触到&quot;卷积&quot;的概念时，我与大多数人的想法类似，首先想的问题是，&quot;卷积&quot;到底是怎样的一个&quot;卷&quot;？</p>
+<p>在网上搜索卷积的概念之后，我初步了解到卷积本质上是一个数学问题，它的表示如下：</p>
+<p><code class="katex-inline">(f * g)(t) = \int_{-\infty}^{\infty} f(\tau)g(t-\tau) d\tau</code></p>
+<p>以上的表示过于抽象，所以通过搜索B站的视频，找到了介绍卷积较为形象的示例。</p>
+<h3>卷积的理解示例(吃饭问题)</h3>
+<p>示例：如果用图示来表示一个人的吃饭情况，那么他进食的过程和消化的过程可以用如下图来分别表示</p>
+<p><strong>进食过程</strong>：用f函数来表示进食，横坐标是时间，纵坐标是进食(也就是吃东西)了多少。</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620135503904.png" alt="" /></p>
+<p><strong>消化过程</strong>：消化的过程与进食是独立，吃的东西进入胃里面会进行消化，这个过程可以用g函数来表示。横坐标是时间，纵坐标是剩余食物的比例。</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620135612532.png" alt="" /></p>
+<p>此时，如果我们想知道这个人在<strong>下午2点</strong>时，胃里还<strong>剩多少</strong>食物。这个问题如果直接求解是不好求解的，但是如果借助上面的两个函数，就比较容易可以求得，具体如下：</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620140314004.png" alt="" /></p>
+<ul>
+<li>首先，通过f函数求积分，可以得到14点之前所有吃的东西；</li>
+<li>其次，假设该人在12点吃了一碗米饭，那么通过g函数可以求得：14点~12点时，米饭还剩余的比率；</li>
+<li>然后：将12点吃的米饭f(12) 与 14点米饭剩余的比率g(14-12)相乘，就可以得到米饭在14点时还剩余多少。</li>
+<li>依次类推，如果吃了多个食物，那么在14点食物剩余的比例就可以如下表示</li>
+</ul>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620140931863.png" alt="" /></p>
+<p>由此，推导得到这个人在t时刻，胃里剩余食物的比例可以用如下的公式表示：</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620140953643.png" alt="" /></p>
+<p>上面的公式因为是求吃饭问题场景下的食物剩余比例，所以积分上下限是0~t；如果是将此问题场景换成其他场景，只需要把公式中做微调如下，即可求更加广泛的问题：</p>
+<p><code class="katex-inline">(f * g)(t) = \int_{-\infty}^{\infty} f(\tau)g(t-\tau) d\tau</code></p>
+<p>卷积：在一个系统中，输入不稳定、输出稳定的情况下，可以用卷积求系统的存量。</p>
+<blockquote>
+<p>例如：</p>
+<p>在一个热力系统中，可以利用卷积计算：燃料持续添加<code class="katex-inline">f(\tau)</code>和燃料持续燃烧<code class="katex-inline">g(t-\tau)</code>下，燃烧过程中产生的总热量。</p>
+<p>在一个信号系统中，信号持续输入<code class="katex-inline">f(\tau)</code>和系统的响应<code class="katex-inline">g(t-\tau)</code>下，信号对系统产生影响的累积效果。</p>
+</blockquote>
+<p>上述对卷积的理解，还可以换一种角度(例如：蝴蝶效应)来理解：</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620145610305.png" alt="" /></p>
+<blockquote>
+<p>在t时刻发生了一件事，t时刻之前很多事情都会产生影响，而其中x时刻对t时刻的影响(g函数)是随着时间逐步减弱的。</p>
+</blockquote>
+<h3>卷积是如何卷的</h3>
+<p>对于上述的f函数和g函数在t时刻的对应关系，可以用如下图表示：</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620142446676.png" alt="" /></p>
+<ul>
+<li>
+<p>在t时刻进食的食物f(t)，此时在消化过程g(t)时刚开始，所以对应g(t)函数图的最左侧；</p>
+</li>
+<li>
+<p>在t时刻之前时刻进食的食物f(t)，则对应对应消化过程g(t)的第二个点(从左向右)。</p>
+<p>备注：此处对于上图其他点的理解，得用逆转的思想来理解。</p>
+</li>
+</ul>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620143058083.png" alt="" /></p>
+<p>将上图的g函数做翻转，上下两图的对应关系就更加清晰。因为这个翻转，所以称之为&quot;卷积&quot;。</p>
+<h3>卷积在图像处理中的作用</h3>
+<p>在<a href="https://17aitech.com/?p=2217">《【课程总结】Day8（下）：计算机视觉基础入门》</a>中，我们学习了解过：</p>
+<ul>
+<li>图片本质上就是一个二维的矩阵；</li>
+<li>通过一个3×3的矩阵与原图进行相乘再相加的计算，可以得到一个新的图片。</li>
+<li>通过设计不同的3×3矩阵内容，可以得到不同的新图片。</li>
+</ul>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620143320531.png" alt="" /></p>
+<p>在上图这个计算过程中，其与卷积有着相同之处：</p>
+<ul>
+<li>计算过程相同：先相乘再相加(计算周围像素点与中间像素点)</li>
+<li>计算整体情况相同：对源像素依次扫一遍，得到一个结果</li>
+</ul>
+<p>上图计算过程，本质上是计算<strong>周围像素点</strong>对<strong>中间像素点</strong>的影响，因此套用吃饭问题可以如下图来理解：
+<img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620145054524.png" alt="" /></p>
+<blockquote>
+<p>上图中左下角的点对中心点的影响，可以换做是x时刻的事件对t时刻的影响，以此来理解图像中卷积的意义。</p>
+</blockquote>
+<p>至此，在图像处理中：</p>
+<ul>
+<li>卷积过程：计算周围像素点对中心点像素的影响</li>
+<li>f函数：即为输入的原图片</li>
+<li>g函数：即为卷积核，其规定了要对原图片如何影响</li>
+</ul>
+<h3>卷积神经网络的理解</h3>
+<p>卷积神经网络一般是用来做图像识别的，通过卷积神经网络可以将下面的图片中的X分别识别出来。</p>
+<ul>
+<li>通过对图片进行特征提取，可以得到图像中的像素情况</li>
+<li>但实际场景中X一般不是规规整整的写的(如下图)，这种情况人是可以一眼识别都是X，但是计算机在像素计算时，由于下面两个像素点不同，是无法识别两个表示的是一个东西。</li>
+</ul>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620150300485.png" alt="" /></p>
+<p>虽然上述图片的整体像素不同，但是仔细看，可以看到局部是相同的：</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620150830912.png" alt="" /></p>
+<p>所以，如果利用之前学习的机器学习思想：</p>
+<ul>
+<li>将图片(本质是矩阵)作为输入</li>
+<li>将卷积核作为待调整的参数</li>
+<li>让卷积运算作为机器学习的一部分</li>
+<li>让机器学习寻找特征，寻找过程中：
+<ul>
+<li>可以将一个卷积的操作，作为另外一个卷积的输入</li>
+<li>对于一个特征矩阵，可以利用不同的卷积核，生成不同的特征矩阵</li>
+<li>将这些输入输出全部连接到一起</li>
+</ul></li>
+</ul>
+<p>由此，我们得到一个与人体神经系统类似的网络，卷积神经网络。</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620151022100.png" alt="" /></p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620151211994.png" alt="" /></p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620152016262.png" alt="" /></p>
+<h2>卷积网络组件</h2>
+<h3>BatchNorm层</h3>
+<h4>定义</h4>
+<p>Batch Normalization是一种用于神经网络的技术，通过在神经网络的每一层对输入进行归一化处理，即将每个特征维度的数据归一化为均值为0、方差为1的分布，以减少内部协变量转移（Internal Covariate Shift）。</p>
+<h4><strong>作用</strong>：</h4>
+<ul>
+<li><strong>加速收敛</strong>：Batch Normalization有助于加速神经网络的收敛速度，减少训练时间。</li>
+<li><strong>减少梯度消失/爆炸</strong>：通过归一化输入，可以减少梯度消失或爆炸的问题。</li>
+<li><strong>正则化效果</strong>：Batch Normalization在一定程度上具有正则化的效果，有助于防止过拟合。</li>
+</ul>
+<h4>计算公式</h4>
+<p>对于输入 (x)，Batch Normalization的计算公式如下：
+<code class="katex-inline">\hat{x} = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}}</code></p>
+<p><code class="katex-inline">y = \gamma \hat{x} + \beta</code></p>
+<p>其中:</p>
+<ul>
+<li><code class="katex-inline">\mu</code> 是均值</li>
+<li><code class="katex-inline">sigma^2</code> 是方差</li>
+<li><code class="katex-inline">\gamma</code> 和 <code class="katex-inline">\beta</code> 是可学习的缩放和偏移参数</li>
+<li><code class="katex-inline">\epsilon</code> 是一个很小的数，用于避免除以零</li>
+</ul>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620153045445.png" alt="" /></p>
+<h3>ReLU层</h3>
+<h4>定义</h4>
+<p>ReLU是一种简单而有效的激活函数，其数学表达式为 $f(x) = \max(0, x)$，即当输入 (x) 大于零时输出为 (x)，否则输出为零。</p>
+<h4>作用</h4>
+<ul>
+<li><strong>非线性</strong>：ReLU引入了非线性，有助于神经网络学习复杂的模式和特征。</li>
+<li><strong>稀疏性</strong>：ReLU的输出在负值部分为零，可以使网络更加稀疏，减少参数之间的相关性，有助于防止过拟合。</li>
+<li><strong>计算速度</strong>：ReLU的计算速度快，且不存在复杂的指数运算，适合大规模深度学习模型。</li>
+</ul>
+<h3>线性层</h3>
+<h4>定义</h4>
+<p>线性层是神经网络中的基本层之一，其输出是输入特征的线性组合。在线性层中，每个输入特征与对应的权重相乘，然后将所有结果相加得到输出。</p>
+<h4>作用</h4>
+<p>线性层的计算公式为：output = input * weight + bias，其中weight是权重矩阵，bias是偏置项。线性层的作用是对输入进行线性变换。</p>
+<h3>Dropout层</h3>
+<h4>定义</h4>
+<p>Dropout是一种在神经网络训练过程中随机丢弃一部分神经元的技术。在每次训练迭代中，随机选择一部分神经元不参与前向传播和反向传播，从而减少神经网络的复杂度和提高泛化能力。</p>
+<h4>作用</h4>
+<ul>
+<li><strong>减少过拟合</strong>：Dropout有助于减少神经网络的过拟合风险，提高模型的泛化能力。</li>
+<li><strong>增加模型鲁棒性</strong>：通过随机丢弃神经元，使得模型对输入数据的扰动更加稳健。</li>
+<li><strong>避免协同适应</strong>：Dropout可以减少神经元之间的协同适应，提高模型的鲁棒性。</li>
+</ul>
+<blockquote>
+<p>其思想非常类似于集成学习，在训练(正向传播)的时候，随机进行失活(让一部分参数置为0)，相当于训练了多个弱分类器；在预测的时候，dropout层失效(由于数学期望是一样的)</p>
+</blockquote>
+<h4>试验代码</h4>
+<pre><code class="language-python">import torch
+from torch import nn
+
+dropout = nn.Dropout(p=0.5)
+X = torch.randn(10)</code></pre>
+<p>运行结果：</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/image-20240620154542416.png" alt="" /></p>
+<p>右上可以看到，dropout会50%概率将X中的值置为0。</p>
+<h2>卷积网络搭建</h2>
+<h3>LeNet简介</h3>
+<p>LeNet5诞生于1994年，是最早的卷积<a href="https://so.csdn.net/so/search?q=神经网络&amp;spm=1001.2101.3001.7020">神经网络</a>之一，其作用主要用来进行手写字符的识别与分类。由于LeNet网络结构比较简单，但是刚好适合神经网络的入门学习。</p>
+<h3>LeNet结构</h3>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/LeNet.png" alt="" /></p>
+<p>如图所示，LeNet共分为7层，分别是：</p>
+<ul>
+<li>C1，卷积层</li>
+<li>S2，池化层</li>
+<li>C3，卷积层</li>
+<li>S4，池化层</li>
+<li>C5，卷积层</li>
+<li>F6，全连接层</li>
+<li>OUTPUT，全连接层</li>
+</ul>
+<h4>输入层</h4>
+<ul>
+<li>
+<p>定义：LeNet的输入层接受原始图像数据，并将每个像素的灰度值作为输入信号传递给下一层的卷积层。输入层的作用是将原始数据转换为神经网络可以理解和处理的格式，为后续的特征提取和分类任务奠定基础。</p>
+</li>
+<li>
+<p>参数：输入层为尺寸32 × 32的图片。</p>
+</li>
+</ul>
+<blockquote>
+<p>一般来说不将输入层视为网络层次结构之一，上面讲的&quot;7层&quot;也不包括输入层。</p>
+</blockquote>
+<h4>卷积层C1</h4>
+<ul>
+<li>
+<p><strong>定义</strong>：卷积层C1是LeNet模型中的第一个卷积层，用于提取输入图像的特征。</p>
+</li>
+<li>
+<p><strong>功能</strong>：卷积层C1的主要特点和功能如下：</p>
+<ul>
+<li><strong>卷积操作</strong>：卷积层C1使用多个卷积核（也称为滤波器）对输入图像进行卷积操作。每个卷积核都是一个小的二维矩阵，通过在输入图像上滑动并与局部区域进行点乘操作，从而提取特定的特征。</li>
+<li><strong>特征映射</strong>：每个卷积核在卷积操作后会生成一个特征映射（feature map），表示了输入图像中某种特定特征的分布情况。通过使用多个卷积核，卷积层C1可以同时提取多种特征。</li>
+<li><strong>非线性激活函数</strong>：在卷积操作后，通常会应用非线性激活函数（如ReLU）来引入非线性性，帮助网络学习更复杂的特征。</li>
+</ul>
+</li>
+<li>
+<p><strong>主要参数</strong>：</p>
+<ul>
+<li>
+<p><strong>输入：</strong> <code>32 × 32的图像</code></p>
+</li>
+<li>
+<p><strong>卷积核种类：</strong> <code>6</code></p>
+</li>
+<li>
+<p><strong>卷积核大小：</strong> <code>5 × 5</code></p>
+</li>
+<li>
+<p><strong>输出特征图数量：</strong> <code>6</code></p>
+<blockquote>
+<p>每个卷积核分别与输入图像进行卷积运算，共得到6份输出 </p>
+</blockquote>
+</li>
+<li>
+<p><strong>输出特征图大小：</strong> <code>28 × 28</code></p>
+</li>
+</ul>
+<blockquote>
+<p>输出图大小的计算方法：原图片的大小 - 卷积核大小 + 1 = 输出图片大小</p>
+<p>如图所示：5(原图) - 3(卷积核) + 1 = 3(输出图)</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/卷积核.gif" alt="" /></p>
+</blockquote>
+</li>
+</ul>
+<h4>池化层S2</h4>
+<ul>
+<li>
+<p><strong>定义</strong>：池化层（Pooling Layer）是深度学习神经网络中常用的一种层类型，用于减少特征图的空间维度，从而降低模型复杂度、减少参数数量，并且有助于防止过拟合。</p>
+</li>
+<li>
+<p><strong>作用</strong>：</p>
+<ul>
+<li>减少特征图的空间尺寸：通过池化操作（如最大池化、平均池化等），将特征图的某个区域（池化窗口）内的值进行汇总，从而降低特征图的空间维度。这有助于减少后续层的计算量，提高计算效率。</li>
+<li>提取特征：池化层可以帮助网络提取特征的不变性，即使输入图像发生轻微平移、旋转或缩放，提取到的特征仍然具有稳定性。</li>
+</ul>
+</li>
+<li>
+<p>常见池化操作有两种：<strong>最大池化</strong>（Max Pooling）和 <strong>平均池化</strong>（Average Pooling）</p>
+</li>
+</ul>
+<blockquote>
+<p>以最大池化为例：采用2 × 2的<strong>滤波器(filter)</strong>，最大池化的结果如上，即对每个2 × 2的区域取最大值。</p>
+</blockquote>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/Maxpool.jpg" alt="" /></p>
+<ul>
+<li>主要参数：
+<ul>
+<li><strong>输入：</strong> <code>28 × 28的特征图(6张)</code></li>
+<li><strong>采样区域：</strong> <code>2 × 2</code></li>
+<li><strong>输出特征图大小：</strong> <code>14 × 14</code></li>
+<li><strong>输出特征图数量：</strong> <code>6</code></li>
+</ul></li>
+</ul>
+<h4>卷积层C3</h4>
+<ul>
+<li>
+<p><strong>定义</strong>：卷积层C3是LeNet模型中的第三个卷积层，用于进一步提取输入特征图的更高级别特征。其输出将作为下一层的输入，经过池化层等操作逐步提取更加抽象和高级的特征。</p>
+</li>
+<li>
+<p><strong>主要功能和作用</strong>：</p>
+<ul>
+<li><strong>多通道卷积</strong>：卷积层C3通常会使用多个卷积核对前一层（一般是池化层S2）的特征图进行卷积操作。每个卷积核对应一个输出特征图，通过多通道卷积操作实现对不同特征的提取。</li>
+<li><strong>局部连接</strong>：与全连接层不同，卷积层C3中的神经元只与输入图像的局部区域连接，这样可以减少参数数量和计算复杂度。</li>
+</ul>
+</li>
+<li>
+<p><strong>主要参数</strong>：</p>
+<ul>
+<li>
+<p><strong>输入：</strong> <code>14 × 14的特征图(6张)</code></p>
+</li>
+<li>
+<p><strong>卷积核种类：</strong> <code>16</code></p>
+<blockquote>
+<p>因此卷积层C3能够提取出更多细微的特征</p>
+</blockquote>
+</li>
+<li>
+<p><strong>卷积核大小：</strong> <code>5 × 5</code></p>
+</li>
+<li>
+<p><strong>输出特征图数量：</strong> <code>16</code></p>
+</li>
+<li>
+<p><strong>输出特征图大小：</strong> <code>10 × 10</code></p>
+<blockquote>
+<p>输出特征图的边长为14 - 5 + 1 = 10 </p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h4>池化层S4</h4>
+<ul>
+<li><strong>定义</strong>：池化层S4通常紧跟在卷积层C3之后，用于对卷积层提取的特征图进行下采样和降维，以减少计算量、提高计算效率，并增强模型的鲁棒性。</li>
+<li><strong>主要功能和作用</strong>：
+<ul>
+<li><strong>下采样</strong>：池化层S4通过对输入特征图的局部区域进行池化操作（如最大池化、平均池化），将每个池化窗口内的值进行汇总，从而减少特征图的空间维度。</li>
+<li><strong>降维</strong>：池化操作可以降低特征图的分辨率，减少参数数量，有助于防止过拟合，提高模型的泛化能力。</li>
+<li><strong>平移不变性</strong>：池化操作可以提高模型对输入数据的平移不变性，即输入数据发生轻微平移时，池化层的输出保持稳定。</li>
+</ul></li>
+<li>
+<p><strong>主要参数</strong>：</p>
+<ul>
+<li>
+<p><strong>输入：</strong> <code>10 × 10的特征图(16张)</code></p>
+</li>
+<li>
+<p><strong>采样区域：</strong> <code>2 × 2</code></p>
+<blockquote>
+<p>在这里，采样方式为4个输入相加，乘以一个可训练参数，再加上一个可训练偏置，并将结果通过sigmoid函数。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>输出特征图大小：</strong> <code>5 × 5</code></p>
+</li>
+<li>
+<p><strong>输出特征图数量：</strong> <code>16</code></p>
+</li>
+</ul>
+</li>
+</ul>
+<h4>卷积层C5</h4>
+<ul>
+<li>
+<p>定义：卷积层C5是LeNet模型中的第五个卷积层，也是整个网络中的最后一个卷积层。卷积层C5的主要作用是进一步提取输入特征图的高级别特征，并将这些特征用于后续的分类任务。</p>
+</li>
+<li>
+<p>主要作用：通过卷积层C5的特征提取操作，网络可以学习和理解输入数据的更加抽象和复杂的特征，从而提高模型对不同类别的区分能力。</p>
+</li>
+<li>
+<p>主要参数：</p>
+<ul>
+<li><strong>输入：</strong> <code>5 × 5的特征图(16张)</code></li>
+<li><strong>卷积核种类：</strong> <code>120</code></li>
+<li><strong>卷积核大小：</strong> <code>5 × 5</code></li>
+<li><strong>输出：</strong> <code>120维向量</code></li>
+</ul>
+</li>
+<li>
+<p><strong>算法：</strong>
+每个卷积核与16张特征图做卷积，得到的结果求和，再加上一个偏置，结果通过sigmoid函数输出。</p>
+</li>
+</ul>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/卷积核C5.png" alt="" /></p>
+<h4>全连接层F6</h4>
+<ul>
+<li>
+<p>定义：全连接层F6是LeNet模型中的最后一个层，用于将卷积层提取的特征进行分类和预测。</p>
+</li>
+<li>
+<p>主要功能：</p>
+<ul>
+<li>全连接层F6在LeNet模型中扮演着连接卷积层特征提取和最终分类预测的桥梁作用，负责将高级别的特征映射转换为最终的输出结果，实现对输入数据的分类和识别。</li>
+<li>全连接层F6的输出通常是一个向量，每个元素对应一个类别或回归值的预测结果。在分类任务中，通常会使用softmax函数对输出进行归一化，得到各个类别的概率分布，从而实现对输入数据的分类预测。</li>
+</ul>
+</li>
+<li>
+<p>主要参数：</p>
+<ul>
+<li><strong>输入：</strong> <code>120维向量</code></li>
+<li><strong>输出：</strong> <code>84维向量</code></li>
+</ul>
+</li>
+<li>
+<p><strong>算法：</strong> 计算输入向量和权重向量之间的点积，再加上一个偏置，结果通过sigmoid函数输出。</p>
+<blockquote>
+<p>F6层有84个结点，本质上对应一张7×12的比特图。实际上，ASCII码就可以用一张7×12的比特图来表示，每个像素若为-1则表示白色，1表示黑色。该全连接层的设计也是利用了这一思想。</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/全链接F6.png" alt="" /></p>
+</blockquote>
+</li>
+</ul>
+<h4>全连接层OUTPUT</h4>
+<ul>
+<li>
+<p><strong>输入：</strong> <code>84维向量</code></p>
+<blockquote>
+<p>本质上是一张7×12的比特图，表示经过我们多层处理最终得到的一张&quot;数字图像&quot;。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>输出：</strong> <code>10维向量</code>
+OUTPUT层共有10个结点y0、y1、…、y9，分别对应着数字0到9。</p>
+</li>
+</ul>
+<h4>LeNet整体工作示意图</h4>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/LeNet示意图.png" alt="" /></p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/06/卷积过程.webp" alt="" /></p>
+<h3>LeNet代码实现</h3>
+<pre><code class="language-python">import torch
+from torch import nn
+
+class ConvBlock(nn.Module):
+    &quot;&quot;&quot;
+    一层卷积块：
+        - 卷积层
+        - 批规范化层
+        - 激活层
+    &quot;&quot;&quot;
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
+                             kernel_size=kernel_size, stride=stride, padding=padding)
+        self.bn = nn.BatchNorm2d(num_features=out_channels)  # 批规范化层
+        self.relu = nn.ReLU()  # ReLU激活函数
+
+    def forward(self, x):
+        x = self.conv(x)  # 卷积操作
+        x = self.bn(x)  # 批规范化操作
+        x = self.relu(x)  # 激活操作
+
+class LeNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # 特征提取部分
+        self.feature_extractor = nn.Sequential(
+            # 第一层卷积块
+            ConvBlock(in_channels=1, out_channels=6, kernel_size=5, stride=1, padding=0),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),  # 最大池化层
+
+            # 第二层卷积块
+            ConvBlock(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=0),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0)  # 最大池化层
+        )
+
+        # 分类部分
+        self.classifier = nn.Sequential(
+            nn.Flatten(),  # 展平操作
+            nn.Linear(in_features=400, out_features=120),  # 第一个全连接层
+            nn.ReLU(),  # ReLU激活函数
+            nn.Linear(in_features=120, out_features=84),  # 第二个全连接层
+            nn.ReLU(),  # ReLU激活函数
+            nn.Linear(in_features=84, out_features=10)  # 输出层
+        )
+
+    def forward(self, x):
+        # 1. 特征提取
+        x = self.feature_extractor(x)
+        # 2. 分类
+        x = self.classifier(x)
+
+        return x
+
+model = LeNet()
+model</code></pre>
+<h2>可视化页面</h2>
+<iframe src="https://tensorspace.org/html/playground/lenet_zh.html" width="100%" height="800"></iframe>
+<h2>内容小结</h2>
+<ul>
+<li>
+<p>卷积神经网络</p>
+<ul>
+<li>卷积本质上是一个数学问题，表示方法为<code class="katex-inline">(f * g)(t) = \int_{-\infty}^{\infty} f(\tau)g(t-\tau) d\tau</code></li>
+<li>卷积可以理解为：在一个系统中，不稳定输入f和稳定输出g的情况下，用卷积求系统的存量。</li>
+<li>卷积还可以理解为：在t时刻发生一件事，用卷积求t时刻之前事情f(x)对t时刻的影响。</li>
+<li>图像的卷积是利用卷积核对原图片的二维矩阵进行相乘再相加的计算，本质上是计算<strong>周围像素点</strong>对<strong>中间像素点</strong>的影响。</li>
+<li>因为图像多种多样的形式存在，其整体显示不同，但是局部却是相同的；人是很容易看出来的，而让机器也像人一样识别出图像的话，就需要利用卷积进行局部特征提取。</li>
+<li>神经网络的学习过程就是将图片作为输入，将卷积核作为待调整的参数，通过机器学习的方式让机器在卷积运算中寻找特征，从而固定卷积核。</li>
+<li>神经网络的学习过程中，可以将有一个卷积的操作，作为另外一个卷积的输入；同时特征矩阵可以利用不同的卷积核生成不同的特征矩阵，这种输入输出全部连接在一起的形式与人体神经网络非常类似，因此叫卷积神经网络。</li>
+</ul>
+</li>
+<li>
+<p>卷积网络组件</p>
+<ul>
+<li>Batch Norm层：对每一层对输入进行归一化处理，即将每个特征维度的数据归一化为均值为0、方差为1的分布。</li>
+<li>ReLU层通过<code class="katex-inline">f(x) = \max(0, x)</code>引入了非线性，有助于神经网络学习复杂的模式和特征。</li>
+<li>Dropout层随机选择一部分神经元不参与前向传播和反向传播，从而减少神经网络的复杂度和提高泛化能力。</li>
+</ul>
+</li>
+<li>
+<p>LeNet</p>
+<ul>
+<li>LeNet共分为7层，3个卷积层、2个池化层、2个全链接层。</li>
+<li>LeNet的整体工作过程：通过2层卷积+池化对图片进行特征提取，然后展平再利用2个全连接层，将高级别的特征映射转换为最终的输出结果，实现对输入数据的分类和识别。</li>
+</ul>
+</li>
+</ul>
+<h2>参考资料</h2>
+<p><a href="https://www.bilibili.com/video/BV1Ys4y1M7W5?vd_source=f825e70d1502bfc21582d29e60d89bb5">B站：【卷积神经网络】为什么卷积哪儿都能用?</a></p>
+<p><a href="https://www.bilibili.com/video/BV1VV411478E?vd_source=f825e70d1502bfc21582d29e60d89bb5">B站：【从“卷积”、到“图像卷积操作”、再到“卷积神经网络”，“卷积”意义的3次改变】</a></p>
+<p><a href="https://blog.csdn.net/qq_40714949/article/details/109863595">CSDN：深度学习入门(一)：LeNet-5教程与详解</a></p>
+<p><a href="https://blog.csdn.net/m0_74055982/article/details/138568689">CSDN：LeNet讲解+代码实现，训练MNIST数据集</a></p>
+<p><a href="https://www.zhihu.com/question/39022858/answer/3077119787">知乎：能否对卷积神经网络工作原理做一个直观的解释？</a></p>
+<p align="center">欢迎关注公众号以获得最新的文章和新闻</p>
+<p><img src="https://17aitech.com/wp-content/uploads/2024/09/扫码_搜索联合传播样式-白色版.bmp" alt="" /></p>
