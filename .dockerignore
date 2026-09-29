@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+.secret/
+node_modules/
+.next/
+worker-dist/
+coverage/
+docs/
+e2e/
+media/
+scripts/migrate-wp/artifacts/
+*.log
+.DS_Store

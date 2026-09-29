@@ -1,0 +1,10 @@
+# 设计文档不做格式门禁(中文排版,历史内容勿动)
+docs/
+# AI 上下文文件逐字加载,防格式化扰动
+CLAUDE.md
+.secret/
+node_modules/
+.next/
+worker-dist/
+coverage/
+package-lock.json

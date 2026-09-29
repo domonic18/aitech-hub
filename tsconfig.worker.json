@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "outDir": "worker-dist",
+    "rootDir": ".",
+    "incremental": false,
+    "plugins": [],
+    "jsx": "react-jsx"
+  },
+  "include": ["worker/**/*.ts", "src/lib/env.ts", "src/lib/queue.ts", "src/lib/constants.ts"],
+  "exclude": ["node_modules", "**/*.test.ts"]
+}
