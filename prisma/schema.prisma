@@ -1,0 +1,225 @@
+// aitech-hub 数据模型(docs/arch/02-数据模型与迁移管理.md 为设计真相源)
+// 规则:模型 PascalCase + @@map snake 表名;字段 camelCase + @map snake 列名。
+// 禁止 prisma db push;schema 变更只经 prisma/migrations(forward-only)。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── content_(内容域)─────────────────────────────────────────────
+
+/// 文章主表;wpPostId 是与旧站的溯源锚点
+model Post {
+  id              BigInt        @id @default(autoincrement())
+  slug            String        @unique(map: "uq_content_post_slug") @db.VarChar(255) // WP 原始 post_name(percent-encoded 中文)
+  title           String        @db.VarChar(500)
+  excerpt         String?       @db.Text
+  contentHtml     String?       @map("content_html") @db.Text // 旧文正文(清洗后 HTML,只读保真)
+  contentMd       String?       @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
+  coverPath       String?       @map("cover_path") @db.VarChar(500)
+  categoryId      BigInt        @map("category_id")
+  status          String        @default("draft") @db.VarChar(20) // draft/published
+  isPinned        Boolean       @default(false) @map("is_pinned")
+  viewsCount      BigInt        @default(0) @map("views_count")
+  seoTitle        String?       @map("seo_title") @db.VarChar(255)
+  seoDescription  String?       @map("seo_description") @db.Text
+  publishedAt     DateTime?     @map("published_at") @db.Timestamptz(6)
+  wpPostId        BigInt?       @unique(map: "uq_content_post_wp_post_id") @map("wp_post_id")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  category Category            @relation(fields: [categoryId], references: [id])
+  tags     PostTag[]
+  viewDays StatsPostViewDaily[]
+  mediaRefs MediaRef[]
+
+  @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
+  @@index([categoryId], map: "idx_content_post_category")
+  @@map("content_post")
+}
+
+model Category {
+  id          BigInt   @id @default(autoincrement())
+  slug        String   @unique(map: "uq_content_category_slug") @db.VarChar(100) // blog / report / news / advertising
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  posts Post[]
+
+  @@map("content_category")
+}
+
+model Tag {
+  id        BigInt   @id @default(autoincrement())
+  slug      String   @unique(map: "uq_content_tag_slug") @db.VarChar(200)
+  name      String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  posts PostTag[]
+
+  @@map("content_tag")
+}
+
+/// 显式多对多(02 文档 §3:不用隐式 m2m,保 SQL 可控)
+model PostTag {
+  postId BigInt @map("post_id")
+  tagId  BigInt @map("tag_id")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@map("content_post_tag")
+}
+
+/// 媒体统一资产(图片+视频+文件;kind 现在就位,二期视频零迁移)
+model Media {
+  id              BigInt   @id @default(autoincrement())
+  path            String   @unique(map: "uq_content_media_path") @db.VarChar(500) // URL 路径;/wp-content/uploads/... 或 /media/videos/...
+  filename        String   @db.VarChar(255)
+  kind            String   @default("image") @db.VarChar(20) // image/video/file
+  status          String   @default("active") @db.VarChar(20) // active/orphan/missing
+  sizeBytes       BigInt?  @map("size_bytes")
+  width           Int?
+  height          Int?
+  durationSeconds Int?     @map("duration_seconds") // 视频用;图片 NULL
+  thumbPath       String?  @map("thumb_path") @db.VarChar(500)
+  sha1            String?  @db.Char(40) // 重复检测与去重
+  storage         String   @default("local") @db.VarChar(20) // local/cos(08 文档演进)
+  wpAttachmentId  BigInt?  @map("wp_attachment_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([kind, status], map: "idx_content_media_kind_status")
+  @@map("content_media")
+}
+
+/// 媒体引用追踪:文章保存时解析正文/封面写入;孤儿/断链清洗的地基(08 文档 §3)
+model MediaRef {
+  mediaPath String @map("media_path") @db.VarChar(500)
+  postId    BigInt @map("post_id")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([mediaPath, postId])
+  @@index([postId], map: "idx_content_media_ref_post")
+  @@map("content_media_ref")
+}
+
+// ── user_(账号域)───────────────────────────────────────────────
+
+model UserAccount {
+  id             BigInt    @id @default(autoincrement())
+  phone          String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
+  nickname       String?   @db.VarChar(100)
+  avatarPath     String?   @map("avatar_path") @db.VarChar(500)
+  bio            String?   @db.VarChar(500)
+  role           String    @default("user") @db.VarChar(20) // user/admin
+  status         String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
+  passwordHash   String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
+  wpUserId       BigInt?   @unique(map: "uq_user_account_wp_user_id") @map("wp_user_id")
+  legacyUsername String?   @map("legacy_username") @db.VarChar(100)
+  legacyPhpass   String?   @map("legacy_phpass") @db.VarChar(255) // 仅审计留存,登录永不使用
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pats UserPat[]
+
+  @@index([status], map: "idx_user_account_status")
+  @@map("user_account")
+}
+
+/// 发布 API 个人访问令牌(requirement §3.6):库中只存 sha256 哈希,可吊销
+model UserPat {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  name       String    @db.VarChar(100) // 令牌备注(如 "claude-code-laptop")
+  tokenHash  String    @unique(map: "uq_user_pat_token_hash") @map("token_hash") @db.Char(64)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_pat_user")
+  @@map("user_pat")
+}
+
+// ── stats_(统计域)──────────────────────────────────────────────
+
+/// 文章阅读数日明细(迁移自 wp_post_views;新浏览 UPSERT 日行 + 累加 views_count)
+model StatsPostViewDaily {
+  postId   BigInt   @map("post_id")
+  viewDate DateTime @map("view_date") @db.Date
+  count    BigInt   @default(0)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([postId, viewDate])
+  @@map("stats_post_view_daily")
+}
+
+/// 站点总览:全站 PV/UV(requirement §3.5;beacon 上报 → Redis 缓冲 → worker 聚合)
+model StatsVisitDaily {
+  statDate DateTime @id @map("stat_date") @db.Date
+  pv       BigInt   @default(0)
+  uv       BigInt   @default(0)
+
+  @@map("stats_visit_daily")
+}
+
+/// 流量来源:direct/search/referral/ai 四类细分(requirement §3.5)
+model StatsReferrerDaily {
+  statDate    DateTime @map("stat_date") @db.Date
+  sourceClass String   @map("source_class") @db.VarChar(20) // direct/search/referral/ai
+  sourceName  String   @map("source_name") @db.VarChar(50) // direct 固定 'none';其余 google/bing/chatgpt…
+  pv          BigInt   @default(0)
+  uv          BigInt   @default(0)
+
+  @@id([statDate, sourceClass, sourceName])
+  @@map("stats_referrer_daily")
+}
+
+/// 热门页面:路径粒度(文章页同时累加 stats_post_view_daily)
+model StatsPageDaily {
+  statDate DateTime @map("stat_date") @db.Date
+  path     String   @db.VarChar(500)
+  pv       BigInt   @default(0)
+  uv       BigInt   @default(0)
+
+  @@id([statDate, path])
+  @@index([statDate, pv(sort: Desc)], map: "idx_stats_page_daily_date_pv")
+  @@map("stats_page_daily")
+}
+
+/// 访客环境(采集一期实现,展示可简版)
+model StatsClientDaily {
+  statDate   DateTime @map("stat_date") @db.Date
+  browser    String   @db.VarChar(50)
+  os         String   @db.VarChar(50)
+  deviceType String   @map("device_type") @db.VarChar(20) // desktop/mobile/tablet
+  pv         BigInt   @default(0)
+
+  @@id([statDate, browser, os, deviceType])
+  @@map("stats_client_daily")
+}
+
+// ── legacy_(旧站承接域)─────────────────────────────────────────
+
+/// 旧 URL 301 映射(迁移脚本灌入;legacy 路由 + Redis 缓存消费)
+model LegacyUrlMap {
+  oldPath    String   @id @map("old_path") @db.VarChar(500)
+  targetUrl  String?  @map("target_url") @db.VarChar(500) // NULL → 410
+  httpStatus Int      @default(301) @map("http_status") @db.SmallInt
+  note       String?  @db.VarChar(200)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("legacy_url_map")
+}
