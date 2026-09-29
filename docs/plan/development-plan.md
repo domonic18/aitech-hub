@@ -11,7 +11,7 @@
 
 | 里程碑 | 主题 | 内容概要 | 验收标准 | 状态 |
 |--------|------|----------|----------|------|
-| M1 | 骨架与基建 | 目录落盘(01 文档 §1 全树);根 CLAUDE.md;Makefile、.env.example(Zod env)、husky+lint-staged、compose(dev: pg5434/redis6380)、prisma/schema.prisma + 0000_init + seed.ts、GitHub Actions ci.yml(app 门禁 + 迁移重放守卫)、Dockerfile(web/worker 双角色)、README | `make check` 全绿;迁移重放守卫 CI 过;`make setup` 后空库可起、/api/health 通 | 未实现 |
+| M1 | 骨架与基建 | 目录落盘(01 文档 §1 全树);根 CLAUDE.md;Makefile、.env.example(Zod env)、husky+lint-staged、compose(dev: pg5434/redis6380)、prisma/schema.prisma + 0000_init + seed.ts、GitHub Actions ci.yml(app 门禁 + 迁移重放守卫)、Dockerfile(web/worker 双角色)、README | `make check` 全绿;迁移重放守卫 CI 过;`make setup` 后空库可起、/api/health 通 | 已完成(2026-09-29;本地 main 直提;基线含统计族与 user_pat 表,PK/FK 保留 Prisma 默认名见 02 文档 §3) |
 | M2 | 迁移脚本 | scripts/migrate-wp/(extract/transform/clean-html/media-manifest/load/verify/run,dry-run;TS,复用 src/lib/slug 与清洗规则);以本地 wp_mysql 为源全流程实跑;media 引用闭包落地 media/ + content_media_ref | verify 七条全 PASS(本地口径);migration_report 无未确认警告 | 未实现 |
 | M3 | 前台 | 布局/首页/文章详情(中文 slug)/列表/分类/标签/归档/搜索/关于/协议页;ISR + 保存时 revalidate;sitemap/robots/feed/JSON-LD;**llms.txt + 文章 md 直出(GEO,战略定稿必做)**;legacy 兜底路由 + legacy_url_map 301;ArticleBody 双模式渲染;**站点统计采集(2026-09-29 需求补充)**:全站 beacon 上报 API + 去 bot/去管理员 + IP+UA 哈希 UV + 日聚合落库,文章 PV 与站点统计同源 | 06 文档 E2E 前四条过;/llms.txt 与任一文章 .md 直出可访问;PSI 移动端 LCP<2.5s;上报接口可用且日聚合落库可见 | 未实现 |
 | M4 | 认证与用户中心 | sms-code/login/logout/session + 频控;jose Cookie 会话 + Redis 吊销;user_account 全量数据(M2 已迁);登录页、账号设置(昵称/头像/补设密码);pending_binding 绑定流程 | 集成测试过;老用户(含 pending_binding)登录闭环;安全事件日志可见 | 未实现 |
