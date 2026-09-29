@@ -17,3 +17,8 @@ coverage/
 # 系统与日志
 .DS_Store
 *.log
+
+# 迁移产物与媒体(不入库)
+/media/
+scripts/migrate-wp/artifacts/
+*.tsbuildinfo
