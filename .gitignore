@@ -22,3 +22,11 @@ coverage/
 /media/
 scripts/migrate-wp/artifacts/
 *.tsbuildinfo
+
+# Playwright 本地产物
+/test-results/
+/playwright-report/
+
+# App Router 字面段目录名含 .txt,被全局 gitignore *.txt 误伤,强制纳管
+!src/app/llms.txt/
+!src/app/llms-full.txt/
