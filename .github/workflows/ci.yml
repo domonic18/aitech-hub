@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  app:
+    name: app(格式/lint/类型/单测)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --check .
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+
+  migrate-replay:
+    name: 迁移重放守卫
+    runs-on: ubuntu-latest
+    if: hashFiles('prisma/migrations/**') != ''
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aitech_hub_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aitech_hub_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # 从零全量应用(06 文档 §5)
+      - run: npx prisma migrate deploy
+      # 第二次 deploy 必须无错(exactly-once 台账幂等)
+      - run: npx prisma migrate deploy
+      # introspect 断言:实际 schema 与 schema.prisma 一致(differ 有差异则非零退出)
+      - run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
