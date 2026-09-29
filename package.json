@@ -6,7 +6,7 @@
     "dev": "next dev --turbopack -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "worker": "tsx worker/index.ts",
+    "worker": "tsx --env-file=.env worker/index.ts",
     "worker:build": "tsc -p tsconfig.worker.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -43,10 +43,14 @@
     "pino": "^10.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22",
     "@types/pg": "^8.23.1",
