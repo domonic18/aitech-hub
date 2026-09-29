@@ -35,3 +35,26 @@ export function normalizeSlug(raw: string): string {
 
   return lowercasePercentEscapes(encodeURIComponent(decoded));
 }
+
+/**
+ * URL 路径归一化:与 normalizeSlug 同一 decode→encode→小写十六进制流程,
+ * 但用 encodeURI 保留 `/`(媒体路径如 `/wp-content/uploads/2024/04/图.png`
+ * 的归一化入口,03 文档 §5;slug 场景仍必须走 normalizeSlug)。
+ */
+export function normalizeUrlPath(raw: string): string {
+  if (!raw) return "";
+
+  let decoded = raw;
+  for (let i = 0; i < MAX_DECODE_ROUNDS; i++) {
+    let next: string;
+    try {
+      next = decodeURIComponent(decoded);
+    } catch {
+      break;
+    }
+    if (next === decoded) break;
+    decoded = next;
+  }
+
+  return lowercasePercentEscapes(encodeURI(decoded));
+}

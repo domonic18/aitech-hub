@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeSlug } from "./slug";
+import { normalizeSlug, normalizeUrlPath } from "./slug";
 
 /** WP 实库真实切片(post_name 为小写 percent-encoded) */
 const WP_SLUG = "2-pycharm%e5%ae%89%e8%a3%85%e9%85%8d%e7%bd%ae%e8%bf%87%e7%a8%8b";
@@ -54,5 +54,22 @@ describe("normalizeSlug", () => {
 
   it("数字纯 slug(WP 实库存在,如 post_name='7')原样保留", () => {
     expect(normalizeSlug("7")).toBe("7");
+  });
+});
+
+describe("normalizeUrlPath", () => {
+  const UPLOAD_URL = "/wp-content/uploads/2024/04/%e4%bb%a3%e7%a0%81%e8%87%aa%e5%8a%a8%e8%a1%a5%e5%85%a8.png";
+
+  it("已编码路径原样保留,路径分隔符不编码(媒体路径主路径)", () => {
+    expect(normalizeUrlPath(UPLOAD_URL)).toBe(UPLOAD_URL);
+  });
+
+  it("解码形态的中文路径 → 编码(与 WP attachments 的 _wp_attached_file 对应)", () => {
+    expect(normalizeUrlPath("/wp-content/uploads/2024/04/代码自动补全.png")).toBe(UPLOAD_URL);
+  });
+
+  it("幂等;与 normalizeSlug 的差异仅在斜杠保留", () => {
+    expect(normalizeUrlPath(normalizeUrlPath(UPLOAD_URL))).toBe(UPLOAD_URL);
+    expect(normalizeSlug("/2024/04/图.png")).toBe("%2f2024%2f04%2f%e5%9b%be.png");
   });
 });
