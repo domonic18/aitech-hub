@@ -1,0 +1,19 @@
+# 密钥与环境(严禁入库)
+.secret/
+.env
+.env.*
+!.env.example
+
+# 本仓库的 .md 是交付物(docs/ 设计文档、CLAUDE.md、README),覆盖全局 ~/.gitignore_global 的 *.md 规则
+!*.md
+
+# 依赖与构建产物
+node_modules/
+.next/
+dist/
+worker-dist/
+coverage/
+
+# 系统与日志
+.DS_Store
+*.log

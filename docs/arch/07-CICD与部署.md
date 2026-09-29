@@ -1,0 +1,97 @@
+# CICD 与部署
+
+> 参照 ai-invest-assisstant 的 GitHub Actions → 腾讯云 TCR → 服务器 compose 拉取模式;叠加本项目特有的"同服务器原位切换" runbook。单体架构:一个应用镜像(web + worker 两个服务共用)。
+
+## 1. 流水线总览(.github/workflows/ci.yml)
+
+```
+PR / push(develop, main)
+├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
+├── job migration [条件:prisma/** 变更] 起 postgres:16 → migrate deploy 全量 →
+│                 幂等重放 → db pull 一致性断言 → seed.ts 幂等断言(06 文档 §5)
+└── job build     [依赖 app] next build(standalone)+ tsc 编译 worker → 产物健康
+
+push(main)
+└── job release   全绿 → docker build 单镜像 → 推 TCR(tag = git 短 sha + latest)
+```
+
+- Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
+- husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
+- TCR 凭证走 repo secrets(`TCR_NAMESPACE`/`TCR_USER`/`TCR_PASSWORD`);镜像 `ccr.ccs.tencentyun.com/domonic18/aitech-hub`
+
+## 2. 本地开发链路
+
+```bash
+make setup     # cp .env.example .env → npm install → compose up pg(5434)/redis(6380) → migrate deploy → seed
+make dev       # next dev :3000(终端 2)
+make worker    # tsx worker/index.ts(终端 3;一期仅 media 任务,不跑也不阻塞页面)
+make check     # typecheck + lint + 单测
+make migrate   # npx prisma migrate deploy
+```
+
+- dev compose 只含基础设施;应用本地跑保热更;prod compose 全栈
+- pre-commit:lint-staged;pre-push:`make check`
+
+## 3. 镜像(docker/Dockerfile)
+
+- 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
+- 产物:`.next/standalone` + `.next/static` + `worker-dist/` + `prisma/`(migrate 需 schema);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
+- `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`
+- **媒体目录不打进镜像**:compose 卷挂载,独立于发版
+
+## 4. 生产拓扑与 Nginx(compose 服务)
+
+```
+nginx        80/443(唯一对外;SSL 终结,证书卷挂载 ./ssl)
+  ├── /wp-content/uploads/*  → 静态 media/ 卷(immutable 长缓存;二期切 COS 反代,URL 不变)
+  ├── /_next/*、页面          → web:3000(Next.js 单体)
+  ├── /feed/                  → 301 /feed.xml
+  └── try_files 兜底:未命中新站路由 → /legacy/<path>(查 legacy_url_map)
+web:3000     仅内网(Next.js;SSR + API)
+worker       仅内网(BullMQ;同镜像 command 覆盖)
+redis / postgres  仅内网
+```
+
+- compose prod:`mem_limit` 全线(web 768m / worker 512m / pg 512m / redis 128m / nginx 128m,2C4G 起步值)+ `restart: unless-stopped` + 日志轮转(json-file 10m×3,范例同款)+ healthcheck(web `/api/health`、pg `pg_isready`、redis `ping`)
+- 部署顺序纪律:**起库健康 → `prisma migrate deploy` → 再起 web/worker**(漏跑迁移应用会因缺表报错,与范例同款铁律)
+- 证书:沿用旧站 `./ssl` 目录,compose 卷挂载
+
+## 5. 同服务器原位切换 runbook(切换日执行)
+
+**前置(切换日前完成)**:生产库 mysqldump 备份;uploads 全量 tar 备份;迁移脚本以生产库为源对生产 PG 实跑且 verify 全绿;切换窗口选低峰(凌晨)。
+
+| # | 步骤 | 验证 |
+|---|------|------|
+| 1 | 服务器拉代码与镜像:`git pull && docker compose -f docker-compose.prod.yml pull` | 镜像 sha 与 CI 一致 |
+| 2 | 迁移:`npx prisma migrate deploy`;种子:`prisma/seed.ts`;建 admin:`npm run admin <phone>` | 台账到最新 |
+| 3 | `up -d` 全栈;`curl -H 'Host: 17aitech.com' http://127.0.0.1:3000/` 与 `/api/health` | 均 200 |
+| 4 | **入口切换**:443 流量从旧 Apache/WP 切到新 nginx(按生产现网入口形态:改宿主机反代 upstream 或停旧监听起新 nginx;执行前截图记录现网配置) | 见验收清单 |
+| 5 | 观察期(≥1 周):旧 WP 容器与 mysql 保持运行但不再对外 | 可随时回切 |
+| 6 | 下线:停 WP/Apache 容器;mysqldump 终版备份 + uploads 终版 tar 归档;compose 移除旧服务 | 备份异机存放 |
+
+**切换验收清单**(全部通过才算切完;任一失败 → 立即回滚):
+
+- [ ] 抽 30 篇旧文章 URL(中文编码 slug)→ 200 且正文/图片完整(qa/acceptance 脚本自动跑)
+- [ ] 抽 30 个资讯 slug → 301 /articles;`/feed/` → 301 `/feed.xml`
+- [ ] 首页/列表/归档/搜索/关于 200;sitemap.xml、robots.txt、feed.xml 内容正确
+- [ ] 手机号登录全流程(发码→登录→session);admin 后台登录可见
+- [ ] Google Search Console / 百度站长:sitemap 重新提交,无新增软 404
+- [ ] Core Web Vitals 抽测(PSI 移动端)LCP < 2.5s
+
+**回滚**:入口(反代/监听)切回旧栈 upstream(127.0.0.1:9000),分钟级;切换窗口为低峰,新 PG 侧增量(浏览计数)可忽略,记录在案即可。
+
+## 6. 备份与恢复
+
+| 对象 | 频率 | 方式 | 保留 |
+|------|------|------|------|
+| PostgreSQL | 每日 03:30(容器 cron) | `pg_dump -Fc` → `backups/` | 本地 14 天 + 每周一份拉回开发机 |
+| media/ | 每周日 | rsync 增量到备份盘 | 4 版本 |
+| .env / ssl | 变更时 | 手动归档(密钥不入 git) | 永久 |
+
+恢复演练:M6 前做一次"备份 → 空目录恢复 → verify 全绿"完整演练(含 `migrate deploy` 重放)。
+
+## 7. 观测(一期最小集)
+
+- 容器健康:compose healthcheck + 腾讯云轻量服务器自带告警(CPU/内存/磁盘)
+- 业务观测:后台 overview 页(文章/用户/浏览 Top);Search Console 与百度站长每周看一次索引/抓取错误
+- 日志:pino JSON,`docker compose logs --since` 排障;worker 任务失败有死信记录
