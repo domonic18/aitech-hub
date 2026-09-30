@@ -7,7 +7,7 @@ import { notFound } from "next/navigation";
 import PostEditor from "@/components/admin/PostEditor";
 import ArticleBody from "@/components/article/ArticleBody";
 import { postDisplayState } from "@/lib/content/post-schema";
-import { getPostForAdmin } from "@/lib/content/posts-admin";
+import { getPostForAdmin, parsePostId } from "@/lib/content/posts-admin";
 import { listCategories } from "@/lib/content/taxonomy";
 import { formatCnDateTime } from "@/lib/datetime";
 
@@ -19,8 +19,9 @@ interface PageProps {
 
 export default async function EditPostPage({ params }: PageProps): Promise<React.ReactElement> {
   const { id: raw } = await params;
-  if (!/^\d+$/.test(raw)) notFound();
-  const post = await getPostForAdmin(BigInt(raw));
+  const postId = parsePostId(raw);
+  if (postId === null) notFound();
+  const post = await getPostForAdmin(postId);
   if (!post) notFound();
   const categories = await listCategories();
 

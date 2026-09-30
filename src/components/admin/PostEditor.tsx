@@ -15,7 +15,13 @@ import PostMetaPanel, {
   type PostMetaValue,
 } from "@/components/admin/PostMetaPanel";
 import ArticleBody from "@/components/article/ArticleBody";
-import type { PostDisplayState } from "@/lib/content/post-schema";
+import {
+  POST_LIMITS,
+  postCreateSchema,
+  postUpdateSchema,
+  type PostDisplayState,
+} from "@/lib/content/post-schema";
+import { type ApiEnvelope } from "@/lib/http/response";
 import { normalizeSlug } from "@/lib/slug";
 
 import { INPUT } from "./editor-controls";
@@ -48,11 +54,8 @@ const BTN_SECONDARY =
 const BTN_PRIMARY =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60";
 
-interface SaveBody {
-  code?: number;
-  message?: string;
-  data?: { id?: string };
-}
+/** 服务端包络(形态引用 ApiEnvelope,评审 W3:客户端不手写同形接口) */
+type SaveBody = ApiEnvelope<{ id?: string } | null>;
 
 /** 标签输入按分隔符切分去重(与 service 的 slug 去重双保险) */
 function splitTags(text: string): string[] {
@@ -98,26 +101,13 @@ export default function PostEditor({
     [slugText, title],
   );
 
-  function validate(): string | null {
-    if (!title.trim()) return "标题不能为空";
-    if (!meta.categorySlug) return "请选择分类";
-    if (!contentMd.trim()) return "正文不能为空";
-    if (splitTags(meta.tagsText).length > 5) return "标签最多 5 个";
-    const cover = meta.coverPath.trim();
-    if (cover && !cover.startsWith("/")) return "封面须为 / 开头的站内路径";
-    return null;
-  }
-
   async function saveOnly(): Promise<string | null> {
-    const problem = validate();
-    if (problem) {
-      setError(problem);
-      return null;
-    }
     setBusy(true);
     setError(null);
     try {
-      const body = {
+      // 边界校验与服务端同源(评审 W2:复用 Zod schema 单轨,不另抄规则)
+      const schema = mode === "create" ? postCreateSchema : postUpdateSchema;
+      const parsed = schema.safeParse({
         title: title.trim(),
         categorySlug: meta.categorySlug,
         contentMd,
@@ -127,11 +117,15 @@ export default function PostEditor({
         seoTitle: meta.seoTitle,
         seoDescription: meta.seoDescription,
         ...(mode === "create" && slugText.trim() ? { slug: slugText.trim() } : {}),
-      };
+      });
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? "输入不合法");
+        return null;
+      }
       const res = await fetch(mode === "create" ? "/api/posts" : `/api/posts/${post!.id}`, {
         method: mode === "create" ? "POST" : "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(parsed.data),
       });
       const json = (await res.json().catch(() => null)) as SaveBody | null;
       if (!res.ok || json?.code !== 0) {
@@ -239,7 +233,7 @@ export default function PostEditor({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="文章标题…"
-        maxLength={500}
+        maxLength={POST_LIMITS.title}
         className={INPUT}
       />
 

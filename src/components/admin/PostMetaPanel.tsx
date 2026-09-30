@@ -4,6 +4,8 @@
  * 编辑器右侧元信息栏(原型 admin-editor meta panel):分类/标签/封面/摘要/SEO。
  * 纯受控组件(值上提,onChange 打补丁),不发请求;边界校验在 PostEditor.saveOnly。
  */
+import { POST_LIMITS } from "@/lib/content/post-schema";
+
 import { INPUT, LABEL } from "./editor-controls";
 
 export interface EditorCategory {
@@ -58,7 +60,7 @@ export default function PostMetaPanel({
 
       <div>
         <label className={LABEL} htmlFor="post-tags">
-          标签(逗号分隔,最多 5 个)
+          标签(逗号分隔,最多 {POST_LIMITS.tagsMax} 个)
         </label>
         <input
           id="post-tags"
@@ -67,7 +69,9 @@ export default function PostMetaPanel({
           placeholder="如:Claude Code、Next.js"
           className={INPUT}
         />
-        <div className="mt-1 font-mono text-[11px] text-text-3">{tagCount} / 5</div>
+        <div className="mt-1 font-mono text-[11px] text-text-3">
+          {tagCount} / {POST_LIMITS.tagsMax}
+        </div>
       </div>
 
       <div>
@@ -94,11 +98,13 @@ export default function PostMetaPanel({
           id="post-excerpt"
           value={value.excerpt}
           onChange={set("excerpt")}
-          maxLength={500}
+          maxLength={POST_LIMITS.excerpt}
           rows={3}
           className={`${INPUT} resize-y`}
         />
-        <div className="mt-1 font-mono text-[11px] text-text-3">{value.excerpt.length} / 500</div>
+        <div className="mt-1 font-mono text-[11px] text-text-3">
+          {value.excerpt.length} / {POST_LIMITS.excerpt}
+        </div>
       </div>
 
       <div>
@@ -109,7 +115,7 @@ export default function PostMetaPanel({
           id="post-seo-title"
           value={value.seoTitle}
           onChange={set("seoTitle")}
-          maxLength={255}
+          maxLength={POST_LIMITS.seoTitle}
           className={INPUT}
         />
       </div>
@@ -122,7 +128,7 @@ export default function PostMetaPanel({
           id="post-seo-desc"
           value={value.seoDescription}
           onChange={set("seoDescription")}
-          maxLength={500}
+          maxLength={POST_LIMITS.seoDescription}
           rows={3}
           className={`${INPUT} resize-y`}
         />

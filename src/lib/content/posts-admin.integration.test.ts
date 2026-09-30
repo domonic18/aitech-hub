@@ -19,6 +19,7 @@ const { revalidateMock } = vi.hoisted(() => ({ revalidateMock: vi.fn() }));
 vi.mock("@/lib/content/revalidate", () => ({ revalidatePostPaths: revalidateMock }));
 
 import { prisma } from "@/lib/db";
+import { type ApiEnvelope } from "@/lib/http/response";
 
 const { POST: loginPOST } = await import("@/app/api/auth/login/route");
 const { POST: createPOST } = await import("@/app/api/posts/route");
@@ -53,8 +54,8 @@ function req(
   }) as never;
 }
 
-async function envelope(res: Response): Promise<{ code: number; message: string; data: unknown }> {
-  return (await res.json()) as { code: number; message: string; data: unknown };
+async function envelope(res: Response): Promise<ApiEnvelope<unknown>> {
+  return (await res.json()) as ApiEnvelope<unknown>;
 }
 
 let cookie = "";

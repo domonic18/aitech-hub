@@ -7,7 +7,7 @@
 import { decodeJwt } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ACCESS_COOKIE_NAME, ADMIN_LOGIN_PATH } from "@/lib/auth/constants";
+import { ACCESS_COOKIE_NAME, ADMIN_LOGIN_PATH, ADMIN_PATH_PREFIX } from "@/lib/auth/constants";
 
 // 仅引用零依赖常量模块(auth/constants.ts 不 import env/jose,边缘环境安全);
 // 预检只做 Cookie 存在性 + exp 本地解读,防伪在 guard.ts
@@ -24,7 +24,7 @@ export function middleware(req: NextRequest): NextResponse {
   const pathname = req.nextUrl.pathname;
   const bare = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 
-  if (bare.startsWith("/admin") && bare !== ADMIN_LOGIN_PATH) {
+  if (bare.startsWith(ADMIN_PATH_PREFIX) && bare !== ADMIN_LOGIN_PATH) {
     let alive = false;
     const token = req.cookies.get(ACCESS_COOKIE_NAME)?.value;
     if (token) {

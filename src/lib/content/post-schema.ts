@@ -10,6 +10,22 @@ import { normalizeSlug } from "@/lib/slug";
 
 export const POST_STATUS_DELETED = "deleted";
 
+/**
+ * 文章字段边界数值唯一真相源(M5-a 评审 W1):Zod 边界与编辑器 UI(maxLength/计数)
+ * 共用同一组数字,改上限只动这里;客户端校验直接复用 schema,不另抄规则。
+ */
+export const POST_LIMITS = {
+  title: 500,
+  slug: 255,
+  tag: 100,
+  tagsMax: 5,
+  contentMd: 500_000,
+  excerpt: 500,
+  coverPath: 500,
+  seoTitle: 255,
+  seoDescription: 500,
+} as const;
+
 /** 展示态(原型 admin-posts 四分段映射:全部/已发布/草稿/已下架) */
 export type PostDisplayState = "published" | "draft" | "unpublished";
 
@@ -27,7 +43,7 @@ export type AdminListSegment = (typeof ADMIN_LIST_SEGMENTS)[number];
 /** slug 边界:先归一化(arch/07-frontend §2 红线,统一 percent-encoded 小写)再验空 */
 export const slugSchema = z
   .string()
-  .max(255, "slug 最长 255 字符")
+  .max(POST_LIMITS.slug, `slug 最长 ${POST_LIMITS.slug} 字符`)
   .transform((s) => s.trim())
   .transform((s) => normalizeSlug(s))
   .refine((s) => s.length > 0, "slug 归一化后为空");
@@ -43,26 +59,39 @@ const optionalText = (max: number) =>
 /** 封面 M5-a 为站内路径手填(上传工作流随 M5-b);空串归一为未设置 */
 export const coverPathSchema = z
   .string()
-  .max(500, "封面路径最长 500 字符")
+  .max(POST_LIMITS.coverPath, `封面路径最长 ${POST_LIMITS.coverPath} 字符`)
   .transform((s) => s.trim())
   .refine((s) => s === "" || s.startsWith("/"), "封面须为 / 开头的站内路径");
 
 export const postCreateSchema = z.object({
-  title: z.string().trim().min(1, "标题不能为空").max(500, "标题最长 500 字符"),
+  title: z
+    .string()
+    .trim()
+    .min(1, "标题不能为空")
+    .max(POST_LIMITS.title, `标题最长 ${POST_LIMITS.title} 字符`),
   /** 缺省时由 service 以标题派生(normalizeSlug) */
   slug: slugSchema.optional(),
   categorySlug: slugSchema,
   /** 按名自动建(原型 admin-editor:upsert_article 同规则),去重由 service 做 */
   tags: z
-    .array(z.string().trim().min(1, "标签不能为空").max(100, "单个标签最长 100 字符"))
-    .max(5, "标签最多 5 个")
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1, "标签不能为空")
+        .max(POST_LIMITS.tag, `单个标签最长 ${POST_LIMITS.tag} 字符`),
+    )
+    .max(POST_LIMITS.tagsMax, `标签最多 ${POST_LIMITS.tagsMax} 个`)
     .max(100) // 序列化护栏:5 个标签本身不会超,防异常请求
     .default([]),
-  contentMd: z.string().min(1, "正文不能为空").max(500_000, "正文过长(上限 50 万字符)"),
-  excerpt: optionalText(500),
+  contentMd: z
+    .string()
+    .min(1, "正文不能为空")
+    .max(POST_LIMITS.contentMd, `正文过长(上限 ${POST_LIMITS.contentMd / 10_000} 万字符)`),
+  excerpt: optionalText(POST_LIMITS.excerpt),
   coverPath: coverPathSchema.optional(),
-  seoTitle: optionalText(255),
-  seoDescription: optionalText(500),
+  seoTitle: optionalText(POST_LIMITS.seoTitle),
+  seoDescription: optionalText(POST_LIMITS.seoDescription),
 });
 
 /** 更新不含 slug:slug 创建时定死,发布后改 slug = 毁 URL(SEO 红线) */

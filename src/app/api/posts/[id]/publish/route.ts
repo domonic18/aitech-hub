@@ -4,11 +4,11 @@
  */
 import { type NextRequest } from "next/server";
 
-import { publishPost } from "@/lib/content/posts-admin";
+import { parsePostId, publishPost } from "@/lib/content/posts-admin";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
 
-import { parsePostId, postErrorResponse, requireAdminForMutation } from "../../shared";
+import { postErrorResponse, requireAdminForMutation } from "../../shared";
 
 export const dynamic = "force-dynamic";
 

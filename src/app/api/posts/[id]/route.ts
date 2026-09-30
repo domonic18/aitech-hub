@@ -5,11 +5,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { postUpdateSchema } from "@/lib/content/post-schema";
-import { softDeletePost, updatePost } from "@/lib/content/posts-admin";
+import { parsePostId, softDeletePost, updatePost } from "@/lib/content/posts-admin";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
 
-import { parsePostId, postErrorResponse, requireAdminForMutation } from "../shared";
+import { postErrorResponse, requireAdminForMutation } from "../shared";
 
 export const dynamic = "force-dynamic";
 

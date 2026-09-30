@@ -1,6 +1,7 @@
 /**
  * /api/posts 路由族共享协议层(arch/05-services §1:Handler 只做参数解析/鉴权/包络):
- * admin 鉴权(Origin + 会话)、路径 id 解析、PostAdminError → HTTP 映射。
+ * admin 鉴权(Origin + 会话)、PostAdminError → HTTP 映射。
+ * (路径 id 解析 parsePostId 在 service 层 posts-admin.ts,API 与编辑页共用)
  */
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -9,15 +10,6 @@ import { PostAdminError, type PostAdminErrorCode } from "@/lib/content/posts-adm
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
-
-export function parsePostId(raw: string): bigint | null {
-  if (!/^\d+$/.test(raw)) return null;
-  try {
-    return BigInt(raw);
-  } catch {
-    return null;
-  }
-}
 
 /** mutation 三关:Origin → 会话完整校验 → role(admin);失败返回响应,通过返回 null */
 export async function requireAdminForMutation(req: NextRequest): Promise<NextResponse | null> {

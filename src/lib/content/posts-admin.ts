@@ -11,6 +11,19 @@ import { POST_STATUS_DELETED, type PostCreateInput, type PostUpdateInput } from 
 
 export const ADMIN_PAGE_SIZE = 15;
 
+/**
+ * 路径/字符串 id → BigInt(管理 API 与编辑页共用,评审 W4 收口双轨):
+ * 非纯数字或溢出返回 null,由调用方决定 404/400 语义。
+ */
+export function parsePostId(raw: string): bigint | null {
+  if (!/^\d+$/.test(raw)) return null;
+  try {
+    return BigInt(raw);
+  } catch {
+    return null;
+  }
+}
+
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type PostAdminErrorCode =
   "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing";

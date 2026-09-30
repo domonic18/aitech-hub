@@ -9,5 +9,8 @@ export const ACCESS_COOKIE_NAME = "ah_at";
 /** admin 登录页路径(middleware 预检跳转、guard 守卫回跳、顶栏退出回跳共用) */
 export const ADMIN_LOGIN_PATH = "/admin/login";
 
+/** admin 路由前缀(middleware 保护分支判定;登录豁免 = 前缀命中且非 ADMIN_LOGIN_PATH) */
+export const ADMIN_PATH_PREFIX = "/admin";
+
 /** admin 角色标识(user_accounts.role 为 VarChar(20) 非 Prisma enum,字面量唯一出处在此) */
 export const ADMIN_ROLE = "admin";
