@@ -76,6 +76,8 @@ redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 
 **前置(切换日前完成)**:生产库 mysqldump 备份;uploads 全量 tar 备份;迁移脚本以生产库为源对生产 PG 实跑且 verify 全绿;切换窗口选低峰(凌晨)。
 
+迁移脚本生产 env 清单(密钥走 .env 不入 git):`MIGRATE_SOURCE_URL`(生产 WP MySQL 只读连接)、`MIGRATE_UPLOADS_DIR`(旧站 uploads 根目录)、`MIGRATE_TABLE_PREFIX`(默认 `wp_`,生产改过前缀才配);验收 `--phase=verify --http` 需新站服务已起(基准取 `NEXT_PUBLIC_SITE_URL`)。
+
 | # | 步骤 | 验证 |
 |---|------|------|
 | 1 | 服务器拉代码与镜像:`git pull && docker compose -f docker-compose.prod.yml pull` | 镜像 sha 与 CI 一致 |

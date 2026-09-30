@@ -17,14 +17,16 @@ function requireEnv(key: string): string {
 export const config = {
   /** mysql 源连接串:mysql://user:pass@127.0.0.1:13306/wordpress_db */
   sourceUrl: () => requireEnv("MIGRATE_SOURCE_URL"),
+  /** WP 表前缀(生产库若改过前缀则配 MIGRATE_TABLE_PREFIX) */
+  tablePrefix: () => process.env.MIGRATE_TABLE_PREFIX ?? "wp_",
   /** postgres 目标连接串(与主应用一致) */
   targetUrl: () => requireEnv("DATABASE_URL"),
   /** 源站 uploads 根目录(文件拷贝源) */
   uploadsDir: () =>
     process.env.MIGRATE_UPLOADS_DIR ??
     join(process.cwd(), "../17aitech/wordpress_data/wp-content/uploads"),
-  /** 媒体落盘根目录(URL /wp-content/uploads/X → media/X,03 §5) */
-  mediaDir: () => join(process.cwd(), "media"),
+  /** 媒体落盘根目录(URL /wp-content/uploads/X → workspace/media/X,03 §5);同 MEDIA_DIR 约定 */
+  mediaDir: () => join(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media"),
   artifactsDir: () => join(process.cwd(), "scripts/migrate-wp/artifacts"),
 } as const;
 

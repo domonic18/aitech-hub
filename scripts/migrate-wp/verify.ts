@@ -1,7 +1,7 @@
 /**
- * verify 阶段(03 文档 §11 七条验收,本地口径)。
+ * verify 阶段(03 文档 §11 七条验收)。
  * 全部落 artifacts/verify_report.json;任一 FAIL 退出码非 0,阻断切换(M6 前提)。
- * 第 4 条的 HTTP 抽样需前台路由(M3)落地后以 --http 启用,当前默认 SKIP 并记录原因。
+ * 第 4 条默认 DB 层抽样;--http 升级为 HTTP 实测(需服务已起,NEXT_PUBLIC_SITE_URL 为基准)。
  */
 import { access, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -31,12 +31,15 @@ function makeSampler(seed = 20260929): () => number {
 function sample<T>(arr: T[], n: number, rand: () => number): T[] {
   const pool = [...arr];
   const out: T[] = [];
-  while (out.length < n && pool.length > 0) out.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+  while (out.length < n && pool.length > 0)
+    out.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
   return out;
 }
 
 const fileExists = (p: string): Promise<boolean> =>
-  access(p).then(() => true).catch(() => false);
+  access(p)
+    .then(() => true)
+    .catch(() => false);
 
 export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckResult[]> {
   const result = JSON.parse(
@@ -55,15 +58,25 @@ export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckRes
   try {
     // ── 1. 计数对账 ──
     {
-      const [[{ posts }], [{ users }], [{ tag_links }], [{ media }], [{ legacy }], [{ view_rows }]] =
-        await Promise.all([
-          q<{ posts: string }>("SELECT count(*)::text AS posts FROM content_post WHERE wp_post_id IS NOT NULL"),
-          q<{ users: string }>("SELECT count(*)::text AS users FROM user_account WHERE wp_user_id IS NOT NULL"),
-          q<{ tag_links: string }>("SELECT count(*)::text AS tag_links FROM content_post_tag"),
-          q<{ media: string }>("SELECT count(*)::text AS media FROM content_media"),
-          q<{ legacy: string }>("SELECT count(*)::text AS legacy FROM legacy_url_map"),
-          q<{ view_rows: string }>("SELECT count(*)::text AS view_rows FROM stats_post_view_daily"),
-        ]);
+      const [
+        [{ posts }],
+        [{ users }],
+        [{ tag_links }],
+        [{ media }],
+        [{ legacy }],
+        [{ view_rows }],
+      ] = await Promise.all([
+        q<{ posts: string }>(
+          "SELECT count(*)::text AS posts FROM content_post WHERE wp_post_id IS NOT NULL",
+        ),
+        q<{ users: string }>(
+          "SELECT count(*)::text AS users FROM user_account WHERE wp_user_id IS NOT NULL",
+        ),
+        q<{ tag_links: string }>("SELECT count(*)::text AS tag_links FROM content_post_tag"),
+        q<{ media: string }>("SELECT count(*)::text AS media FROM content_media"),
+        q<{ legacy: string }>("SELECT count(*)::text AS legacy FROM legacy_url_map"),
+        q<{ view_rows: string }>("SELECT count(*)::text AS view_rows FROM stats_post_view_daily"),
+      ]);
       const tagLinks = tag_links;
       const viewRows = view_rows;
       const planTagLinks = result.posts.reduce((s, p) => s + p.tagSlugs.length, 0);
@@ -84,17 +97,31 @@ export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckRes
 
     // ── 2. 内容完整性(全量哈希)+ 抽样残留检查 ──
     {
-      const rows = await q<{ wp_post_id: string; title: string; content_html: string; published_at: Date }>(
+      const rows = await q<{
+        wp_post_id: string;
+        title: string;
+        content_html: string;
+        published_at: Date;
+      }>(
         "SELECT wp_post_id::text, title, content_html, published_at FROM content_post WHERE wp_post_id IS NOT NULL",
       );
       const byWpId = new Map(rows.map((r) => [Number(r.wp_post_id), r]));
       let mismatch = 0;
       for (const p of result.posts) {
         const row = byWpId.get(p.wpPostId);
-        const pgHash = row ? createHash("sha1").update(row.content_html ?? "").digest("hex") : "";
+        const pgHash = row
+          ? createHash("sha1")
+              .update(row.content_html ?? "")
+              .digest("hex")
+          : "";
         const planHash = createHash("sha1").update(p.contentHtml).digest("hex");
-        if (!row || row.title !== p.title || pgHash !== planHash ||
-            new Date(row.published_at).toISOString() !== p.publishedAt) mismatch++;
+        if (
+          !row ||
+          row.title !== p.title ||
+          pgHash !== planHash ||
+          new Date(row.published_at).toISOString() !== p.publishedAt
+        )
+          mismatch++;
       }
       const rand = makeSampler();
       let residue = 0;
@@ -123,7 +150,10 @@ export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckRes
       let bad = 0;
       const checked = new Set<string>();
       for (const row of rows) {
-        for (const p of [...extractUploadPaths(row.content_html ?? ""), ...(row.cover_path ? [row.cover_path] : [])]) {
+        for (const p of [
+          ...extractUploadPaths(row.content_html ?? ""),
+          ...(row.cover_path ? [row.cover_path] : []),
+        ]) {
           if (checked.has(p)) continue;
           checked.add(p);
           const rel = p.replace(/^\/wp-content\/uploads\//, "");
@@ -157,8 +187,59 @@ export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckRes
       );
       const okDb = mapped.length === newsEntries.length && slugsInDb.length === postSlugs.length;
       if (opts.http) {
-        // 前台路由(M3)落地后启用;路由未实现时该项 FAIL 属预期
-        add({ id: 4, name: "URL 抽样(HTTP 实测)", status: "SKIP", details: "--http 模式在 M3 前台落地后执行" });
+        // HTTP 实测(切换日验收口径,对齐 e2e test2/3):文章直开 200+标题命中;
+        // 资讯走 /legacy 路由层精确 301(单段直开的 308 永久类由 e2e 覆盖);/feed.xml 200
+        const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(
+          /\/+$/,
+          "",
+        );
+        const get = async (
+          p: string,
+        ): Promise<{ status: number; location: string; body: string }> => {
+          const res = await fetch(`${base}${p}`, {
+            redirect: "manual",
+            signal: AbortSignal.timeout(10_000),
+          });
+          return {
+            status: res.status,
+            location: res.headers.get("location") ?? "",
+            body: res.status === 200 ? await res.text() : "",
+          };
+        };
+        let badPost = 0;
+        for (const p of postSlugs) {
+          try {
+            const r = await get(`/${p.slug}/`);
+            if (r.status !== 200 || !r.body.includes(p.title)) badPost++;
+          } catch {
+            badPost++;
+          }
+        }
+        let badNews = 0;
+        for (const m of newsEntries) {
+          try {
+            const r = await get(`/legacy${m.oldPath}`);
+            // Next redirect 可能返回绝对 Location:统一解析 pathname 再比对
+            const loc = /^https?:\/\//.test(r.location) ? new URL(r.location).pathname : r.location;
+            if (r.status !== 301 || loc !== "/articles") badNews++;
+          } catch {
+            badNews++;
+          }
+        }
+        let feedOk = false;
+        try {
+          const r = await get("/feed.xml");
+          feedOk = r.status === 200 && r.body.includes("<item>");
+        } catch {
+          feedOk = false;
+        }
+        const okHttp = okDb && badPost === 0 && badNews === 0 && feedOk;
+        add({
+          id: 4,
+          name: "URL 抽样(HTTP 实测:文章 200+标题命中 / legacy 路由 301 / feed.xml 200)",
+          status: okHttp ? "PASS" : "FAIL",
+          details: `base=${base} posts=${postSlugs.length - badPost}/${postSlugs.length} news301=${newsEntries.length - badNews}/${newsEntries.length} feed=${feedOk ? 200 : "FAIL"}`,
+        });
       } else {
         add({
           id: 4,
@@ -204,7 +285,9 @@ export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckRes
         .sort((a, b) => b.viewsCount - a.viewsCount)
         .slice(0, 10)
         .map((p) => ({ slug: p.slug, views: p.viewsCount }));
-      const okOrder = top10Db.every((r, i) => r.slug === planTop10[i].slug && Number(r.views_count) === planTop10[i].views);
+      const okOrder = top10Db.every(
+        (r, i) => r.slug === planTop10[i].slug && Number(r.views_count) === planTop10[i].views,
+      );
       const [{ total_db }] = await q<{ total_db: string }>(
         "SELECT COALESCE(sum(views_count), 0)::text AS total_db FROM content_post WHERE wp_post_id IS NOT NULL",
       );
@@ -225,7 +308,8 @@ export async function runVerify(opts: { http?: boolean } = {}): Promise<CheckRes
         id: 7,
         name: "汇总(verify_report.json 落盘)",
         status: failed.length === 0 ? "PASS" : "FAIL",
-        details: failed.length === 0 ? "全部 PASS" : `FAIL 项:${failed.map((f) => f.name).join(";")}`,
+        details:
+          failed.length === 0 ? "全部 PASS" : `FAIL 项:${failed.map((f) => f.name).join(";")}`,
       });
       await writeFile(
         join(config.artifactsDir(), ARTIFACTS.verify),
