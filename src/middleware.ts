@@ -19,7 +19,12 @@ export const config = {
 export function middleware(req: NextRequest): NextResponse {
   const requestId = crypto.randomUUID();
 
-  if (req.nextUrl.pathname.startsWith("/admin") && req.nextUrl.pathname !== "/admin/login") {
+  // trailingSlash:true 下实际请求带尾斜杠(/admin/login/),豁免必须按去尾斜杠口径,
+  // 否则登录页自身进保护分支 → 重定向环(e2e 用例 6 发现的 M4 回归)
+  const pathname = req.nextUrl.pathname;
+  const bare = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+
+  if (bare.startsWith("/admin") && bare !== ADMIN_LOGIN_PATH) {
     let alive = false;
     const token = req.cookies.get(ACCESS_COOKIE_NAME)?.value;
     if (token) {
@@ -33,7 +38,7 @@ export function middleware(req: NextRequest): NextResponse {
       const url = req.nextUrl.clone();
       url.pathname = ADMIN_LOGIN_PATH;
       url.search = "";
-      url.searchParams.set("next", req.nextUrl.pathname);
+      url.searchParams.set("next", bare);
       const redirectRes = NextResponse.redirect(url);
       redirectRes.headers.set("X-Request-Id", requestId);
       return redirectRes;
