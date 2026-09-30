@@ -7,8 +7,8 @@ import { env } from "@/lib/env";
 import { normalizeUrlPath } from "@/lib/slug";
 
 /**
- * /wp-content/** 本地文件服务(生产由 Nginx 直接服务 media/ 卷,04 文档 §3,
- * 该路由仅本地开发与 E2E 兜底;URL 路径原样保留,03 文档 §5 零改写原则)。
+ * /wp-content/** 本地文件服务(生产由 Nginx 直接服务 media/ 卷,arch/07-frontend §3,
+ * 该路由仅本地开发与 E2E 兜底;URL 路径原样保留(媒体零改写原则,arch/08-media))。
  */
 export const dynamic = "force-dynamic";
 
@@ -41,7 +41,7 @@ export async function GET(
     return new NextResponse(null, { status: 404 }) as NextResponse;
   }
   const root = path.resolve(process.cwd(), env.MEDIA_DIR);
-  // 磁盘文件名保持 percent-encoded 形态(与 DB 路径一致);params 已解码,重编码后再查盘(03 文档 §5)
+  // 磁盘文件名保持 percent-encoded 形态(与 DB 路径一致);params 已解码,重编码后再查盘
   const filePath = path.resolve(root, normalizeUrlPath(joined).slice(UPLOADS_PREFIX.length));
   if (!filePath.startsWith(root + path.sep)) {
     return new NextResponse(null, { status: 404 }) as NextResponse;

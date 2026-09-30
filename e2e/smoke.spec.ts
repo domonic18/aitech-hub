@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * E2E 冒烟(06 文档 §4):首页/中文 slug 文章/legacy 301/登录(M4)/SEO 端点。
+ * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/登录(M4)/SEO 端点。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 const LEGACY_TO_ARTICLES =
@@ -59,7 +59,7 @@ test("1. 首页 200 且含最新文章卡", async ({ request }) => {
 test("2. 中文编码 slug 直开文章:200、标题、图片无 broken", async ({ request, browser }) => {
   const posts = await sitemapPostUrls(request);
   expect(posts.length).toBeGreaterThan(150);
-  // 04 文档 §2 规则 5:中文 URL 直开采样 10 篇
+  // arch/07-frontend §2 规则 5:中文 URL 直开采样 10 篇
   for (const path of posts.slice(0, 10)) {
     expect((await request.get(path)).status()).toBe(200);
   }
@@ -88,7 +88,7 @@ test("3. 弃用 slug:route 精确 301;单段直开永久重定向", async ({ req
   expect(viaRoute.status()).toBe(301);
   expect(viaRoute.headers().location).toMatch(/\/articles$/);
 
-  // 单段直开落 [slug] 页兜底:permanentRedirect(308,永久类);精确 301 由 route 层表达(04 文档 §6)
+  // 单段直开落 [slug] 页兜底:permanentRedirect(308,永久类);精确 301 由 route 层表达(arch/07-frontend §6)
   const direct = await request.get(LEGACY_TO_ARTICLES, { maxRedirects: 0 });
   expect([301, 307, 308]).toContain(direct.status());
   expect(direct.headers().location).toMatch(/\/articles$/);
@@ -101,7 +101,7 @@ test("3. 弃用 slug:route 精确 301;单段直开永久重定向", async ({ req
 });
 
 test("4. 登录流(依赖 M4 短信登录)", async () => {
-  test.skip(true, "M4 实现后补:集成环境注入 SMS_E2E_BYPASS_CODE(06 文档 §4)");
+  test.skip(true, "M4 实现后补:集成环境注入 SMS_E2E_BYPASS_CODE(standard/01-testing §4)");
 });
 
 test("5. SEO/GEO 端点:sitemap、feed、robots、llms.txt、文章 .md 直出", async ({ request }) => {

@@ -91,7 +91,8 @@ describe("transformPosts:范围与字段映射(03 §3)", () => {
   });
 
   it("base64 图:经回调落盘、URL 改写、同一次运行内跨篇按 sha1 去重", () => {
-    const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const b64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     const written: string[] = [];
     const onBase64 = (name: string): void => {
       written.push(name);
@@ -99,7 +100,13 @@ describe("transformPosts:范围与字段映射(03 §3)", () => {
     const input2 = input();
     input2.posts[0].post_content = `<p><img src="data:image/png;base64,${b64}" alt=""></p>`;
     // 第二篇引用同一张图(同一运行)
-    input2.posts.push(post({ ID: 105, post_type: "post", post_content: `<p><img src="data:image/png;base64,${b64}" alt=""></p>` }));
+    input2.posts.push(
+      post({
+        ID: 105,
+        post_type: "post",
+        post_content: `<p><img src="data:image/png;base64,${b64}" alt=""></p>`,
+      }),
+    );
     input2.rels.push({ object_id: 105, term_id: 28, taxonomy: "category" });
     const out = transformPosts({ ...input2, onBase64 });
     expect(written).toHaveLength(1);
@@ -174,10 +181,19 @@ describe("buildLegacyMap(03 §8)", () => {
       post({ ID: 201, post_name: "news-slug", post_type: "post" }),
       post({ ID: 202, post_name: "%e4%b8%bb%e9%a1%b5", post_title: "主页", post_type: "page" }),
       post({ ID: 203, post_name: "login", post_title: "登录页面", post_type: "page" }),
-      post({ ID: 204, post_name: "%e7%94%a8%e6%88%b7%e5%8d%8f%e8%ae%ae", post_title: "用户协议", post_type: "page" }),
+      post({
+        ID: 204,
+        post_name: "%e7%94%a8%e6%88%b7%e5%8d%8f%e8%ae%ae",
+        post_title: "用户协议",
+        post_type: "page",
+      }),
     ],
     legacyPosts: [{ ID: 301, post_name: "qa-1", post_type: "qa_post", post_title: "问" }],
-    terms: [term(27, "news", "category"), term(28, "blog", "category"), term(9, "python%e5%9f%ba%e7%a1%80", "post_tag")],
+    terms: [
+      term(27, "news", "category"),
+      term(28, "blog", "category"),
+      term(9, "python%e5%9f%ba%e7%a1%80", "post_tag"),
+    ],
     rels: [
       { object_id: 201, term_id: 27, taxonomy: "category" },
       { object_id: 999, term_id: 9, taxonomy: "post_tag" },
@@ -192,7 +208,9 @@ describe("buildLegacyMap(03 §8)", () => {
     expect(byPath.get("/news-slug/")).toMatchObject({ targetUrl: "/articles" });
     expect(byPath.get("/%e4%b8%bb%e9%a1%b5/")).toMatchObject({ targetUrl: "/" });
     expect(byPath.get("/login/")).toMatchObject({ targetUrl: "/login" });
-    expect(byPath.get("/%e7%94%a8%e6%88%b7%e5%8d%8f%e8%ae%ae/")).toMatchObject({ targetUrl: "/agreement" });
+    expect(byPath.get("/%e7%94%a8%e6%88%b7%e5%8d%8f%e8%ae%ae/")).toMatchObject({
+      targetUrl: "/agreement",
+    });
     expect(byPath.get("/qa-1/")).toMatchObject({ targetUrl: "/" });
     expect(byPath.get("/tag/python%e5%9f%ba%e7%a1%80/")).toMatchObject({ targetUrl: "/articles" });
     expect(byPath.get("/category/news/")).toMatchObject({ targetUrl: "/articles" });

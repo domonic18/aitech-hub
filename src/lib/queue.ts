@@ -5,7 +5,7 @@ import IORedis from "ioredis";
 import { env } from "./env";
 
 /**
- * BullMQ producer 侧封装(00 文档 §2:请求内只 enqueue,处理一律在 worker 进程)。
+ * BullMQ producer 侧封装(arch/00-overview §2:请求内只 enqueue,处理一律在 worker 进程)。
  * BullMQ 要求连接 maxRetriesPerRequest: null,与应用侧 lib/redis.ts 分开建连。
  */
 export const QUEUE_MEDIA_PROCESS = "media-process";

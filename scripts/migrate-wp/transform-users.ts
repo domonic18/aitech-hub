@@ -1,5 +1,5 @@
 /**
- * 用户映射(纯函数;03 文档 §6):296 全量,手机号校验/去重,
+ * 用户映射(纯函数):296 全量,手机号校验/去重,
  * administrator → admin,无有效手机号 → pending_binding。
  */
 import type { MigrationWarning, UserPlan, WpUserMetaRow, WpUserRow } from "./types";
@@ -41,7 +41,11 @@ export function transformUsers(
     if (rawPhone) {
       if (PHONE_RE.test(rawPhone)) phone = rawPhone;
       else {
-        warnings.push({ scope: "user.phone_invalid", wpId: u.ID, message: `手机号格式非法,按无手机号处理(${u.user_login})` });
+        warnings.push({
+          scope: "user.phone_invalid",
+          wpId: u.ID,
+          message: `手机号格式非法,按无手机号处理(${u.user_login})`,
+        });
       }
     }
     // user_login 为 11 位纯数字时回填(实库 0 例,防御性保留)

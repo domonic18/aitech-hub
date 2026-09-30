@@ -1,5 +1,5 @@
 /**
- * 会话读侧最小实现(05 文档 §3.2):jose 校验 access token,供统计去管理员
+ * 会话读侧最小实现(arch/05-services §3.2):jose 校验 access token,供统计去管理员
  * 口径(M3)与后续 admin 判定复用。签发/刷新/吊销随 M4 认证交付;
  * 本文件只读不写,不依赖 Redis。
  */

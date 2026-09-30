@@ -1,5 +1,5 @@
 /**
- * media-manifest 阶段(03 文档 §5):引用闭包 → media/ 落盘 + rsync 清单。
+ * media-manifest 阶段(引用闭包 → 落盘清单):引用闭包 → media/ 落盘 + rsync 清单。
  * - uploads 项:从源 uploads 树拷贝(URL /wp-content/uploads/X → media/X)
  * - extracted 项:transform 解码的 base64 产物从 artifacts 拷入
  * - 产出 media_files_from.txt(生产 rsync --files-from 用)与 copy-summary(load/verify 用)
@@ -62,7 +62,11 @@ export async function runMediaManifest(): Promise<CopyEntry[]> {
     }
   }
 
-  await writeFile(join(config.artifactsDir(), ARTIFACTS.manifest.filesFrom), rsyncLines.join("\n") + "\n", "utf8");
+  await writeFile(
+    join(config.artifactsDir(), ARTIFACTS.manifest.filesFrom),
+    rsyncLines.join("\n") + "\n",
+    "utf8",
+  );
   await writeFile(
     join(config.artifactsDir(), ARTIFACTS.manifest.copySummary),
     JSON.stringify({ entries, missing }, null, 2),

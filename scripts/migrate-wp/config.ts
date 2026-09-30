@@ -1,5 +1,5 @@
 /**
- * 迁移脚本配置(03 文档 §10):密钥仅 env,不落代码。
+ * 迁移脚本配置:密钥仅 env,不落代码。
  * 源库走 MIGRATE_SOURCE_URL(本地经 wp_mysql_fwd 容器 13306 端口转发,
  * 或生产只读隧道);目标库复用 .env 的 DATABASE_URL。
  */

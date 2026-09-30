@@ -15,15 +15,18 @@
 - `src/app/(site|user|admin)/` 页面;`src/app/api/` Route Handlers;`src/lib/` 业务库(按 domain 分包)
 - `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/migrate-wp/` WP 迁移
 - `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库
-- 文档:requirement/(需求基准)arch/(终态方案)plan/development-plan.md(状态真相源)
+- 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)plan/development-plan.md(状态真相源)
 
-| 主题               | 文档            |
-| ------------------ | --------------- |
-| 目录与规范细节     | docs/arch/01    |
-| 表结构/迁移纪律    | docs/arch/02    |
-| WP 迁移映射与红线  | docs/arch/03    |
-| 中文 slug 路由红线 | docs/arch/04 §3 |
-| 媒体/视频/清洗     | docs/arch/08    |
+| 主题                          | 文档                             |
+| ----------------------------- | -------------------------------- |
+| 数据源/采集/AI Agent(占位)   | docs/arch/01、02、04             |
+| 表结构/迁移纪律               | docs/arch/03-data-model          |
+| 服务分层/异步任务/接口清单    | docs/arch/05-services            |
+| 目录与规范细节                | docs/arch/06-project-structure   |
+| 中文 slug 路由红线            | docs/arch/07-frontend §2         |
+| 媒体/视频/清洗                | docs/arch/08-media               |
+| 测试规范                      | docs/standard/01-testing         |
+| CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 
 ## 3. 通用编码规范与 AI 指令
 
@@ -43,6 +46,7 @@
 1. `npm run typecheck && npm run lint && npm run test:unit`(一键 `make check`)
 2. schema 有变更:`npx prisma migrate dev --create-only` 评审 SQL;验证从零重放
 3. 行为变更同步 CLAUDE.md / docs 对应章节
+4. 提交遵循 §3 分支纪律:功能走 feature 分支 PR 合 develop;合并前 CI 绿
 
 # 重要指令提醒
 

@@ -7,7 +7,7 @@ import { isSameOrigin } from "@/lib/http/origin";
 import { ingestView } from "@/lib/stats/service";
 
 /**
- * 全站 beacon 上报(05 文档 §5 stats:POST /api/view;requirement §3.5)。
+ * 全站 beacon 上报(arch/05-services §5 stats:POST /api/view;requirement §3.5)。
  * 公开接口:去 bot/去管理员;UV 用 IP+UA 哈希(不存明文 IP);mutation 类需同源校验。
  */
 export const dynamic = "force-dynamic";

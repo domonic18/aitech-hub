@@ -1,4 +1,4 @@
-// aitech-hub 数据模型(docs/arch/02-数据模型与迁移管理.md 为设计真相源)
+// aitech-hub 数据模型(docs/arch/03-data-model.md 为设计真相源)
 // 规则:模型 PascalCase + @@map snake 表名;字段 camelCase + @map snake 列名。
 // 禁止 prisma db push;schema 变更只经 prisma/migrations(forward-only)。
 
@@ -68,7 +68,7 @@ model Tag {
   @@map("content_tag")
 }
 
-/// 显式多对多(02 文档 §3:不用隐式 m2m,保 SQL 可控)
+/// 显式多对多(arch/03-data-model §3:不用隐式 m2m,保 SQL 可控)
 model PostTag {
   postId BigInt @map("post_id")
   tagId  BigInt @map("tag_id")
@@ -93,7 +93,7 @@ model Media {
   durationSeconds Int?     @map("duration_seconds") // 视频用;图片 NULL
   thumbPath       String?  @map("thumb_path") @db.VarChar(500)
   sha1            String?  @db.Char(40) // 重复检测与去重
-  storage         String   @default("local") @db.VarChar(20) // local/cos(08 文档演进)
+  storage         String   @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
   wpAttachmentId  BigInt?  @map("wp_attachment_id")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -101,7 +101,7 @@ model Media {
   @@map("content_media")
 }
 
-/// 媒体引用追踪:文章保存时解析正文/封面写入;孤儿/断链清洗的地基(08 文档 §3)
+/// 媒体引用追踪:文章保存时解析正文/封面写入;孤儿/断链清洗的地基(arch/08-media §3)
 model MediaRef {
   mediaPath String @map("media_path") @db.VarChar(500)
   postId    BigInt @map("post_id")

@@ -4,7 +4,7 @@ import { buildLegacyPath, lookupLegacyPath } from "@/lib/content/legacy";
 import { absoluteUrl } from "@/lib/seo/site";
 
 /**
- * 旧 URL 兜底路由(04 文档 §6):Nginx 把新站未命中路径转发到 /legacy/<path>。
+ * 旧 URL 兜底路由(arch/07-frontend §6):Nginx 把新站未命中路径转发到 /legacy/<path>。
  * 命中 → 按表内 http_status 重定向;target_url 为 NULL → 410;未命中 → 404。
  * 单段 slug 的本地兜底由 /[slug] 页面同表完成(见 lib/content/legacy.ts)。
  */
@@ -24,7 +24,7 @@ export async function GET(
     );
   }
   if (lookup !== "miss") {
-    // 弃用内容:410 Gone(03 文档 §8)
+    // 弃用内容:410 Gone(弃用内容承接:资讯类 301 列表页,其余 410)
     return new NextResponse(null, { status: 410 }) as NextResponse;
   }
   return new NextResponse("Not Found", { status: 404 }) as NextResponse;

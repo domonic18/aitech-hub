@@ -1,5 +1,5 @@
 /**
- * load 阶段(03 文档 §10):裸 SQL 幂等 UPSERT 入 PG(不经 Prisma)。
+ * load 阶段:裸 SQL 幂等 UPSERT 入 PG(不经 Prisma)。
  * 业务键:wp_post_id / wp_user_id / slug / path / (post_id, view_date) / old_path。
  * 全程单事务:任一表失败整体回滚,重跑安全。
  */
@@ -23,7 +23,16 @@ async function upsertUsers(tx: pg.PoolClient, r: TransformResult): Promise<void>
          phone = EXCLUDED.phone, nickname = EXCLUDED.nickname, role = EXCLUDED.role,
          status = EXCLUDED.status, legacy_username = EXCLUDED.legacy_username,
          legacy_phpass = EXCLUDED.legacy_phpass, updated_at = now()`,
-      [u.phone, u.nickname, u.role, u.status, u.legacyUsername, u.legacyPhpass, u.wpUserId, u.createdAt],
+      [
+        u.phone,
+        u.nickname,
+        u.role,
+        u.status,
+        u.legacyUsername,
+        u.legacyPhpass,
+        u.wpUserId,
+        u.createdAt,
+      ],
     );
   }
 }
@@ -43,10 +52,7 @@ async function upsertTags(tx: pg.PoolClient, r: TransformResult): Promise<Map<st
   return new Map(rows.map((row) => [row.slug, row.id]));
 }
 
-async function upsertPosts(
-  tx: pg.PoolClient,
-  r: TransformResult,
-): Promise<Map<number, string>> {
+async function upsertPosts(tx: pg.PoolClient, r: TransformResult): Promise<Map<number, string>> {
   const { rows: catRows } = await tx.query<{ slug: string; id: string }>(
     `SELECT slug, id::text FROM content_category WHERE slug = ANY($1)`,
     [[...new Set(r.posts.map((p) => p.categorySlug))]],
@@ -69,8 +75,17 @@ async function upsertPosts(
          seo_description = EXCLUDED.seo_description, published_at = EXCLUDED.published_at,
          updated_at = now()`,
       [
-        p.slug, p.title, p.excerpt, p.contentHtml, p.coverPath, categoryId,
-        p.viewsCount, p.seoTitle, p.seoDescription, p.publishedAt, p.wpPostId,
+        p.slug,
+        p.title,
+        p.excerpt,
+        p.contentHtml,
+        p.coverPath,
+        categoryId,
+        p.viewsCount,
+        p.seoTitle,
+        p.seoDescription,
+        p.publishedAt,
+        p.wpPostId,
       ],
     );
   }
@@ -122,7 +137,15 @@ async function upsertMedia(
          filename = EXCLUDED.filename, kind = EXCLUDED.kind, status = EXCLUDED.status,
          size_bytes = EXCLUDED.size_bytes, sha1 = EXCLUDED.sha1,
          wp_attachment_id = EXCLUDED.wp_attachment_id`,
-      [m.path, m.filename, m.kind, status, copy?.sizeBytes ?? null, copy?.sha1 ?? null, m.wpAttachmentId],
+      [
+        m.path,
+        m.filename,
+        m.kind,
+        status,
+        copy?.sizeBytes ?? null,
+        copy?.sha1 ?? null,
+        m.wpAttachmentId,
+      ],
     );
   }
 }

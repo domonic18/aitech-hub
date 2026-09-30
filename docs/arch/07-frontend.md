@@ -1,6 +1,6 @@
 # 前端与 API 层设计(src/app/)
 
-> Next.js 15 App Router 单体:公开站 RSC/ISR 承载 SEO,`src/app/api/` Route Handlers 承载客户端交互与外部回调,两者同仓同进程。业务库层见 [05-服务与异步任务设计.md](05-服务与异步任务设计.md)。
+> Next.js 15 App Router 单体:公开站 RSC/ISR 承载 SEO,`src/app/api/` Route Handlers 承载客户端交互与外部回调,两者同仓同进程。业务库层见 [05-services.md](05-services.md)。
 
 ## 1. 渲染策略(按路由)
 
@@ -41,7 +41,7 @@
 - `robots.ts`:允许全部,`Sitemap` 指向本站;`/admin`、`/api` disallow
 - `llms.txt` / `llms-full.txt`(2026-09-29 战略定稿,智能体可见性):前者 = 站点结构 AI 目录(标题 + 链接 + 一句话摘要,分节同 sitemap);后者 = 全量文章 content_md 拼合(超长则分页 `llms-full-N.txt`);Route Handler 动态生成 + ISR 缓存,策略同 sitemap。**实现注**:分片对外 URL 为 `/llms-full-N.txt`,经 next.config rewrite 转 `/llms-full.txt/[part]` 路由(.md rewrite 同理,已实测与 trailingSlash 共存)
 - 文章 `.md` 直出:`GET /<slug>.md`(与 `/<slug>/` 同语义),`Content-Type: text/markdown`,输出 content_md,为 NULL 时(154 篇迁移文均如此)以 `htmlToMarkdown(content_html)` 兜底转换;同 ISR 缓存;不为 AI 爬虫设 disallow(robots 默认全允许已覆盖)
-- 图片:`/wp-content/**` 由 Nginx 直接服务,**不走 next/image 优化器**(文件不在 Next 侧,optimizer 会 404)——正文用原生 `<img loading="lazy">`(迁移清洗时统一补),封面 `next/image` + `unoptimized`;Nginx 对该前缀 immutable 长缓存。**本地兜底(实现注)**:`app/wp-content/[...path]/route.ts` 读 `MEDIA_DIR`(默认 `media/`)直出文件;catch-all params 不含 `wp-content` 前缀,磁盘文件名保持 percent-encoded 形态,params 已解码,须经 `normalizeUrlPath` 重编码后读盘(03 文档 §5)
+- 图片:`/wp-content/**` 由 Nginx 直接服务,**不走 next/image 优化器**(文件不在 Next 侧,optimizer 会 404)——正文用原生 `<img loading="lazy">`(迁移清洗时统一补),封面 `next/image` + `unoptimized`;Nginx 对该前缀 immutable 长缓存。**本地兜底(实现注)**:`app/wp-content/[...path]/route.ts` 读 `MEDIA_DIR`(默认 `workspace/media/`;生产容器由 compose x-app-env 钉为 `/app/media`)直出文件;catch-all params 不含 `wp-content` 前缀,磁盘文件名保持 percent-encoded 形态,params 已解码,须经 `normalizeUrlPath` 重编码后读盘(媒体零改写原则,arch/08-media)
 - 字体:中文走系统字体栈,不加载大 webfont;拉丁/代码 next/font(local) 子集
 
 ## 4. API 层约定(src/app/api/)
@@ -50,9 +50,9 @@
 - 输入校验:Zod schema(`src/lib/*/schemas.ts`,与类型同源 `z.infer`);错误 → 400 带明细
 - 状态码:400/401/403/404/409/429/500 语义化;统一错误包络
 - **mutation 类 Handler 必须做 Origin/Host 校验**(同源才放行)——Route Handlers 没有 Server Actions 的内建 CSRF 防护,这步是补位
-- 会话:读 httpOnly Cookie(§05 文档 §3),`getSessionUser()` helper;admin 端点一律叠加 `requireAdmin()`
+- 会话:读 httpOnly Cookie(arch/05-services §3),`getSessionUser()` helper;admin 端点一律叠加 `requireAdmin()`
 - 分页:`page`/`pageSize` + Zod 范围校验,默认值 `lib/constants.ts`
-- 涉及上传:`POST /api/media` 走 `request.formData()`,图片限 10MB、类型白名单;**视频不走此通道**(STS 直传 COS,08 文档)
+- 涉及上传:`POST /api/media` 走 `request.formData()`,图片限 10MB、类型白名单;**视频不走此通道**(STS 直传 COS,arch/08-media)
 
 ## 5. 客户端数据获取
 
@@ -66,7 +66,7 @@
 
 1. 入参经 `normalizeSlug` 还原完整路径,查 `legacy_url_map`(Redis 缓存 1h,miss 落库一次防穿透)
 2. 命中 → `NextResponse.redirect(target, status)`;`target_url` 为 NULL → 410;未命中 → `notFound()`
-3. Nginx 把新站未命中路由兜底转发到 `/legacy/<path>`(07 文档 §4),即"先新站路由、后映射表"
+3. Nginx 把新站未命中路由兜底转发到 `/legacy/<path>`(standard/02-cicd-deployment §4),即"先新站路由、后映射表"
 4. **双层兜底(实现注)**:`/[slug]`、`/category/[slug]`、`/tag/[slug]` 页面查无内容时同进程直查映射表(`lib/content/legacy.ts#legacyRedirectOrNotFound`),命中则 `permanentRedirect`——RSC 页面语境拿不到精确 301(固定 308,同为永久类),表内 `http_status` 的精确表达由本 route 层完成;E2E 断言精确 301 须打 `/legacy/<path>`
 
 ## 7. 管理后台(/admin)
@@ -77,11 +77,11 @@
   - Markdown 导入:「导入 .md / 粘贴」→ 解析全部图片引用 → 弹窗批量上传本地图片(选择文件夹/拖拽/zip,sha1 去重)+ 外链图调 `POST /api/media/import` 转存 → 以返回映射自动替换 md 中的引用为站内 URL → 进编辑器;编辑器内截图粘贴直接走上传管线
   - 封面工作流:本地上传/媒体库选用 + 内置裁剪器(react-easy-crop 等价方案),预设模板微信 2.35:1 / OG 1200×630 / CSDN 16:9,一次裁剪多尺寸导出(前端 canvas 裁剪 + 压缩后按 `cover` 变体上传);AI 文生图按钮一期置灰,二期点亮(混元生图)
 - 编辑旧文:content_html 只读展示(提示"旧文保真,如需改写请转 Markdown 重发布"),避免双向转换损毁
-- **媒体库页(重点,详见 08 文档)**:图片/视频/文件 Tab + 引用状态过滤(已引用/未引用孤儿/断链)+ 重复检测 + 批量操作 + 存储统计
+- **媒体库页(重点,详见 arch/08-media)**:图片/视频/文件 Tab + 引用状态过滤(已引用/未引用孤儿/断链)+ 重复检测 + 批量操作 + 存储统计
 - 用户/数据页:AntD Table + 服务端分页
 
 ## 8. 组件与样式
 
 - components 按 domain 分包:`site/`(Header/Footer/分页)、`article/`(卡片/正文渲染器/VideoPlayer)、`auth/`、`admin/`、`media/`
 - 正文渲染器 `ArticleBody`:content_md 走 react-markdown(+ rehype-highlight);content_html 走 `dangerouslySetInnerHTML`(入库前已清洗,前端不二次清洗)+ `styles/prose.css` 兜底
-- VideoPlayer 双模式:COS MP4(`<video>` 原生)/ B 站 iframe 嵌入(08 文档 §2)
+- VideoPlayer 双模式:COS MP4(`<video>` 原生)/ B 站 iframe 嵌入(arch/08-media §2)

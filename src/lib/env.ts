@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * 环境变量唯一出口(00 文档 §6):Zod 校验,缺项/非法启动即报。
+ * 环境变量唯一出口(arch/00-overview §6):Zod 校验,缺项/非法启动即报。
  * 仅服务端使用;客户端组件禁止 import(密钥不进 bundle)。
  */
 const serverEnvSchema = z.object({
@@ -15,7 +15,7 @@ const serverEnvSchema = z.object({
   /** 站点对外 URL(canonical/sitemap/metadataBase 基准) */
   NEXT_PUBLIC_SITE_URL: z.url().default("http://localhost:3000"),
 
-  /** 媒体目录(默认 workspace/media 宿主机持久化约定;生产容器由 compose x-app-env 钉死为挂载点;07 文档 §3 不打进镜像) */
+  /** 媒体目录(默认 workspace/media 宿主机持久化约定;生产容器由 compose x-app-env 钉死为挂载点;standard/02-cicd-deployment §3 不打进镜像) */
   MEDIA_DIR: z.string().default("workspace/media"),
 
   /** jose 会话签名密钥;setup 脚本自动生成,生产必配 */

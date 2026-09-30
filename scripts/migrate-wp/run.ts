@@ -1,5 +1,5 @@
 /**
- * 迁移编排入口(03 文档 §10):
+ * 迁移编排入口:
  *   npx tsx scripts/migrate-wp/run.ts                 # 全流程
  *   npx tsx scripts/migrate-wp/run.ts --dry-run       # extract+transform,不落库不拷媒体
  *   npx tsx scripts/migrate-wp/run.ts --phase=verify  # 单跑某阶段(extract/transform/media/load/verify)

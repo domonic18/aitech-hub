@@ -5,7 +5,7 @@ import { listAllPostsForSeo } from "@/lib/content/posts";
 import { excerptOf } from "@/lib/content/format";
 import { absoluteUrl, siteUrl } from "@/lib/seo/site";
 
-/** RSS 2.0(04 文档 §3:最新 20 篇;旧 /feed/ 由 Nginx 301 接入) */
+/** RSS 2.0(arch/07-frontend §3:最新 20 篇;旧 /feed/ 由 Nginx 301 接入) */
 export const revalidate = 3600;
 
 function escapeXml(s: string): string {
