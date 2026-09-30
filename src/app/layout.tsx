@@ -20,8 +20,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+    <html lang="zh-CN" data-theme="light">
+      <body className="antialiased">
+        {/* 主题预置(先于渲染执行防闪烁;DESIGN-SPEC §5 双主题,禁跟随系统) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.documentElement.dataset.theme=localStorage.getItem("ah-theme")||"light";`,
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
