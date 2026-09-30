@@ -7,8 +7,12 @@ import Link from "next/link";
 
 import MediaActions from "@/components/admin/MediaActions";
 import MediaGrid from "@/components/admin/MediaGrid";
+import { MEDIA_AUDIT_CRON } from "@/lib/queue";
 import {
+  type MediaKind,
+  type MediaRefFilter,
   MEDIA_KINDS,
+  MEDIA_LIMITS,
   MEDIA_REF_FILTERS,
   formatBytes,
   parseKind,
@@ -18,8 +22,13 @@ import { MEDIA_PAGE_SIZE, brokenRefs, listMediaAdmin, mediaStats } from "@/lib/m
 
 export const dynamic = "force-dynamic";
 
-const KIND_LABELS: Record<string, string> = { image: "图片", video: "视频", file: "文件" };
-const REF_LABELS: Record<string, string> = { all: "全部", referenced: "已引用", orphan: "未引用" };
+/** Record 全键标签表:域枚举扩项时编译期强制补文案(评审 W3) */
+const KIND_LABELS: Record<MediaKind, string> = { image: "图片", video: "视频", file: "文件" };
+const REF_LABELS: Record<MediaRefFilter, string> = {
+  all: "全部",
+  referenced: "已引用",
+  orphan: "未引用",
+};
 
 interface PageProps {
   searchParams: Promise<{ kind?: string; ref?: string; q?: string; page?: string }>;
@@ -160,8 +169,8 @@ export default async function AdminMediaPage({
             <use href="#i-warning" />
           </svg>
           <span>
-            未引用 = 无文章正文/封面引用;勾选后可批量删除(被引用的会自动跳过)。软删入回收站,7
-            天后物理清除。
+            未引用 = 无文章正文/封面引用;勾选后可批量删除(被引用的会自动跳过)。软删入回收站,
+            {MEDIA_LIMITS.trashDays} 天后物理清除。
           </span>
         </div>
       )}
@@ -223,7 +232,7 @@ export default async function AdminMediaPage({
 
       <div className="font-mono text-[11px] text-text-3">
         POST /api/media · GET/DELETE /api/media/[id] · POST /api/media/import|batch-delete|audit ·
-        audit 定时 03:41
+        audit cron {MEDIA_AUDIT_CRON}
       </div>
     </div>
   );

@@ -3,12 +3,13 @@
 /**
  * 媒体库工具条动作(原型 admin-media §2):上传图片(POST /api/media,sha1 去重)+
  * 体检(POST /api/media/audit → 202,扫描在 worker 执行,arch/00 §7 请求内禁秒级)。
- * 成功后 router.refresh 重拉本页 RSC;上传复用与失败逐条提示。
+ * 成功后 router.refresh 重拉本页 RSC;上传走 upload-client(评审 W4),反馈均为内联提示。
  */
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import { IMAGE_MIME_WHITELIST, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { uploadImageFile } from "@/lib/media/upload-client";
 
 export default function MediaActions(): React.ReactElement {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function MediaActions(): React.ReactElement {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [auditing, setAuditing] = useState(false);
+  const [auditMsg, setAuditMsg] = useState<string | null>(null);
 
   async function uploadFiles(files: FileList): Promise<void> {
     setUploading(true);
@@ -25,22 +27,15 @@ export default function MediaActions(): React.ReactElement {
     const failed: string[] = [];
     for (const file of files) {
       if (file.size > MEDIA_LIMITS.maxUploadBytes) {
-        failed.push(`${file.name}(超 10MB)`);
+        failed.push(`${file.name}(超 ${MEDIA_LIMITS.maxUploadBytes / 1024 / 1024}MB)`);
         continue;
       }
-      const fd = new FormData();
-      fd.set("file", file);
-      try {
-        const res = await fetch("/api/media", { method: "POST", body: fd });
-        const body = (await res.json().catch(() => null)) as { message?: string } | null;
-        if (res.ok) {
-          if (body?.message === "reused") reused += 1;
-          else ok += 1;
-        } else {
-          failed.push(`${file.name}(${body?.message ?? res.status})`);
-        }
-      } catch {
-        failed.push(`${file.name}(网络错误)`);
+      const r = await uploadImageFile(file, file.name);
+      if (r.ok) {
+        if (r.reused) reused += 1;
+        else ok += 1;
+      } else {
+        failed.push(`${file.name}(${r.error})`);
       }
     }
     setUploading(false);
@@ -54,22 +49,23 @@ export default function MediaActions(): React.ReactElement {
 
   async function triggerAudit(): Promise<void> {
     setAuditing(true);
+    setAuditMsg(null);
     try {
       const res = await fetch("/api/media/audit", { method: "POST" });
-      if (res.status === 202) {
-        window.alert("体检任务已提交,扫描在后台执行,稍后刷新查看结果。");
-      } else {
-        window.alert(`提交失败(${res.status})`);
-      }
+      setAuditMsg(
+        res.status === 202
+          ? "体检任务已提交,扫描在后台执行,稍后刷新查看结果。"
+          : `提交失败(${res.status})`,
+      );
     } catch {
-      window.alert("网络错误,请重试");
+      setAuditMsg("网络错误,请重试");
     } finally {
       setAuditing(false);
     }
   }
 
   return (
-    <span className="inline-flex items-center gap-3">
+    <span className="inline-flex flex-wrap items-center gap-3">
       <input
         ref={fileRef}
         type="file"
@@ -104,6 +100,7 @@ export default function MediaActions(): React.ReactElement {
         {auditing ? "提交中…" : "体检"}
       </button>
       {uploadMsg && <span className="text-xs text-text-2">{uploadMsg}</span>}
+      {auditMsg && <span className="text-xs text-text-2">{auditMsg}</span>}
     </span>
   );
 }

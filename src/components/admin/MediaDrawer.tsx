@@ -8,34 +8,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { formatBytes } from "@/lib/media/media-schema";
+import { type MediaDetailData, formatBytes, MEDIA_LIMITS } from "@/lib/media/media-schema";
 
-interface DetailRefs {
-  id: string;
-  slug: string;
-  title: string;
-  publishedAt: string | null;
-}
-
-export interface DetailMedia {
-  id: string;
-  path: string;
-  filename: string;
-  kind: string;
-  status: string;
-  storage: string;
-  sizeBytes: number | null;
-  width: number | null;
-  height: number | null;
-  sha1: string | null;
-  thumbPath: string | null;
-  createdAt: string;
-}
-
-interface Detail {
-  media: DetailMedia;
-  refs: DetailRefs[];
-}
+type Detail = MediaDetailData;
 
 export default function MediaDrawer({
   id,
@@ -79,7 +54,8 @@ export default function MediaDrawer({
 
   const remove = useCallback(async () => {
     if (!detail) return;
-    if (!window.confirm("确认删除该媒体?进入回收站,7 天后物理清除。")) return;
+    if (!window.confirm(`确认删除该媒体?进入回收站,${MEDIA_LIMITS.trashDays} 天后物理清除。`))
+      return;
     setBusy(true);
     setError(null);
     try {

@@ -8,12 +8,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { formatBytes, type MediaRefFilter } from "@/lib/media/media-schema";
+import { type ApiEnvelope } from "@/lib/http/response";
+import {
+  formatBytes,
+  type MediaRefFilter,
+  type MediaStatus,
+  type BatchDeleteResult,
+  MEDIA_LIMITS,
+} from "@/lib/media/media-schema";
 import type { MediaListItem } from "@/lib/media/queries";
 
 import MediaDrawer from "./MediaDrawer";
 
-const STATUS_LABELS: Record<string, { text: string; cls: string }> = {
+/** active 为常态不挂徽标;deleted 行不进列表(Partial = 其余状态显式挂徽标,评审 W3) */
+const STATUS_LABELS: Partial<Record<MediaStatus, { text: string; cls: string }>> = {
   processing: { text: "处理中", cls: "bg-panel-2 text-text-2" },
   error: { text: "处理失败", cls: "bg-red/10 text-red" },
   missing: { text: "文件丢失", cls: "bg-red/10 text-red" },
@@ -63,16 +71,15 @@ export default function MediaGrid({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [...selected] }),
       });
-      const body = (await res.json().catch(() => null)) as {
-        message?: string;
-        data?: { deleted: number; skipped: Array<{ filename: string; refCount: number }> };
-      } | null;
-      if (res.ok && body?.data) {
+      const body = (await res
+        .json()
+        .catch(() => null)) as ApiEnvelope<BatchDeleteResult | null> | null;
+      if (res.ok && body?.code === 0 && body.data) {
         const skipped = body.data.skipped
           .map((s) => `《${s.filename}》被引用 ${s.refCount} 篇`)
           .join("、");
         setBatchMsg(
-          `已删除 ${body.data.deleted} 项${skipped ? `;跳过:${skipped}` : ""}。回收站保留 7 天。`,
+          `已删除 ${body.data.deleted} 项${skipped ? `;跳过:${skipped}` : ""}。回收站保留 ${MEDIA_LIMITS.trashDays} 天。`,
         );
         setSelected(new Set());
         router.refresh();

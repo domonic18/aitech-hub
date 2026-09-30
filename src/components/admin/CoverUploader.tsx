@@ -8,6 +8,8 @@
  */
 import { useRef, useState } from "react";
 
+import { uploadImageFile } from "@/lib/media/upload-client";
+
 interface CoverTemplate {
   key: string;
   label: string;
@@ -24,12 +26,15 @@ const COVER_TEMPLATES: ReadonlyArray<CoverTemplate & { defaultOn?: boolean }> = 
 
 const OG_KEY = "og";
 
+/** canvas 导出质量(canvas 编码器,与 worker sharp 的 MEDIA_LIMITS.webpQuality 相互独立) */
+const CANVAS_WEBP_QUALITY = 0.85;
+
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("canvas toBlob failed"))),
       "image/webp",
-      0.85,
+      CANVAS_WEBP_QUALITY,
     );
   });
 }
@@ -47,12 +52,10 @@ function drawCover(bmp: ImageBitmap, canvas: HTMLCanvasElement, t: CoverTemplate
 }
 
 async function uploadBlob(blob: Blob, filename: string): Promise<string | null> {
-  const fd = new FormData();
-  fd.set("file", new File([blob], filename, { type: blob.type || "image/png" }));
-  const res = await fetch("/api/media", { method: "POST", body: fd });
-  if (!res.ok) return null;
-  const body = (await res.json().catch(() => null)) as { data?: { path?: string } } | null;
-  return body?.data?.path ?? null;
+  // File 包装保留 mime 兜底(blob.type 为空时按 png,服务端白名单显式拒绝)
+  const file = new File([blob], filename, { type: blob.type || "image/png" });
+  const r = await uploadImageFile(file, filename);
+  return r.ok ? r.path : null;
 }
 
 export default function CoverUploader({
@@ -68,7 +71,10 @@ export default function CoverUploader({
   );
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [results, setResults] = useState<Array<{ label: string; path: string | null }>>([]);
+  /** key 作身份(评审 W6:label 是展示文案,改文案不应影响逻辑匹配) */
+  const [results, setResults] = useState<
+    Array<{ key: string; label: string; path: string | null }>
+  >([]);
 
   function toggle(key: string): void {
     setChecked((prev) => {
@@ -91,17 +97,17 @@ export default function CoverUploader({
     try {
       const bmp = await createImageBitmap(file);
       const canvas = document.createElement("canvas");
-      const out: Array<{ label: string; path: string | null }> = [];
+      const out: Array<{ key: string; label: string; path: string | null }> = [];
       for (const t of templates) {
         drawCover(bmp, canvas, t);
         const blob = await canvasToBlob(canvas);
         const ext = blob.type === "image/webp" ? "webp" : "png";
         const path = await uploadBlob(blob, `cover-${t.key}.${ext}`);
-        out.push({ label: t.label, path });
+        out.push({ key: t.key, label: t.label, path });
         setResults([...out]);
       }
       bmp.close?.();
-      const og = out.find((r) => r.label === COVER_TEMPLATES.find((c) => c.key === OG_KEY)?.label);
+      const og = out.find((r) => r.key === OG_KEY);
       if (og?.path) {
         onChange(og.path);
         setNote(`完成 ${out.filter((r) => r.path).length}/${out.length} 张,封面已设为 OG 变体`);
@@ -188,7 +194,7 @@ export default function CoverUploader({
       {results.length > 0 && (
         <ul className="mt-1 space-y-0.5">
           {results.map((r) => (
-            <li key={r.label} className="truncate font-mono text-[10px]">
+            <li key={r.key} className="truncate font-mono text-[10px]">
               <span className={r.path ? "text-accent" : "text-red"}>{r.path ? "✓" : "✗"}</span>{" "}
               <span className="text-text-3" title={r.path ?? undefined}>
                 {r.path ?? `${r.label} 失败`}

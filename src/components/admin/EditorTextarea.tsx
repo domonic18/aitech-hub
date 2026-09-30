@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { IMPORT_MD_STORE_KEY } from "@/lib/media/import-md";
 import { MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { uploadImageFile } from "@/lib/media/upload-client";
 
 export default function EditorTextarea({
   value,
@@ -68,23 +69,12 @@ export default function EditorTextarea({
       return;
     }
     setNote("截图上传中…");
-    try {
-      const fd = new FormData();
-      fd.set("file", file, file.name || "paste.png");
-      const res = await fetch("/api/media", { method: "POST", body: fd });
-      const body = (await res.json().catch(() => null)) as {
-        message?: string;
-        data?: { path?: string };
-      } | null;
-      const path = body?.data?.path;
-      if (res.ok && path) {
-        insertAtCursor(`![截图](${path})`);
-        setNote("截图已插入");
-      } else {
-        setNote(`截图上传失败(${body?.message ?? res.status}),可在媒体库手动上传`);
-      }
-    } catch {
-      setNote("截图上传失败,请重试");
+    const r = await uploadImageFile(file, file.name || "paste.png");
+    if (r.ok) {
+      insertAtCursor(`![截图](${r.path})`);
+      setNote("截图已插入");
+    } else {
+      setNote(`截图上传失败(${r.error}),可在媒体库手动上传`);
     }
   }
 

@@ -9,6 +9,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
+import { type ApiEnvelope } from "@/lib/http/response";
 import {
   type ImportMapping,
   type MdImageRef,
@@ -17,9 +18,19 @@ import {
   refBasename,
   replaceImageRefs,
 } from "@/lib/media/import-md";
-import { MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { type TransferResult, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { uploadImageFile } from "@/lib/media/upload-client";
 
 type RefState = { status: "pending" | "uploading" | "done" | "failed"; target?: string };
+
+/** 轮询节奏 1.5s 一次;次数按最坏转存时长(单张超时 × 张数)+ 缓冲推导,
+ *  避免客户端先于 worker 放弃(评审 S2:30 张 × 15s 最坏 450s > 固定 180s 预算) */
+const POLL_INTERVAL_MS = 1_500;
+const POLL_BUFFER_MS = 30_000;
+
+function pollTriesFor(count: number): number {
+  return Math.ceil((count * MEDIA_LIMITS.fetchTimeoutMs + POLL_BUFFER_MS) / POLL_INTERVAL_MS);
+}
 
 export default function ImportPostsModal({ onClose }: { onClose: () => void }): React.ReactElement {
   const router = useRouter();
@@ -59,12 +70,8 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
 
   async function uploadOne(file: File): Promise<string | null> {
     if (file.size > MEDIA_LIMITS.maxUploadBytes) return null;
-    const fd = new FormData();
-    fd.set("file", file);
-    const res = await fetch("/api/media", { method: "POST", body: fd });
-    if (!res.ok) return null;
-    const body = (await res.json().catch(() => null)) as { data?: { path?: string } } | null;
-    return body?.data?.path ?? null;
+    const r = await uploadImageFile(file, file.name);
+    return r.ok ? r.path : null;
   }
 
   async function transferExternals(urls: string[]): Promise<ImportMapping> {
@@ -74,18 +81,21 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
       body: JSON.stringify({ urls }),
     });
     if (!post.ok) return Object.fromEntries(urls.map((u) => [u, null]));
-    const { jobId } =
-      ((await post.json().catch(() => null)) as { data?: { jobId?: string } } | null)?.data ?? {};
+    const postBody = (await post.json().catch(() => null)) as ApiEnvelope<{
+      jobId?: string;
+    } | null> | null;
+    const jobId = postBody?.data?.jobId;
     if (!jobId) return Object.fromEntries(urls.map((u) => [u, null]));
-    // 轮询直至完成(转存任务在 worker 执行;单批 ≤30 张,3 分钟锁足够)
-    for (let i = 0; i < 120; i += 1) {
-      await new Promise((r) => setTimeout(r, 1500));
+    // 轮询直至完成(转存任务在 worker 执行;超时预算按最坏抓取时长推导)
+    for (let i = 0; i < pollTriesFor(urls.length); i += 1) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       const poll = await fetch(`/api/media/import?job=${encodeURIComponent(jobId)}`);
       if (!poll.ok) continue;
-      const body = (await poll.json().catch(() => null)) as {
-        data?: { state?: string; result?: { mapping?: ImportMapping } };
-      } | null;
-      if (body?.data?.state === "completed" && body.data.result?.mapping) {
+      const body = (await poll.json().catch(() => null)) as ApiEnvelope<{
+        state?: string;
+        result?: TransferResult | null;
+      } | null> | null;
+      if (body?.data?.state === "completed" && body.data.result) {
         return body.data.result.mapping;
       }
       if (body?.data?.state === "failed") break;
