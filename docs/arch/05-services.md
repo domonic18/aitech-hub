@@ -21,27 +21,29 @@
 
 ## 3. 认证与会话(src/lib/auth/)
 
-### 3.1 短信验证码登录(唯一登录方式,一期)
+### 3.1 admin 密码登录(一期唯一鉴权;短信登录设计保留三期启用)
+
+> 2026-09-30 收缩:运营商个人签名资质停发,用户短信登录延后三期(requirement §3.3);一期鉴权仅服务后台 admin,前台无登录入口。
 
 ```
-POST /api/auth/sms-code { phone }   → 6 位码,Redis 存 5min TTL,腾讯云 SMS 下发
-POST /api/auth/login    { phone, code } → 校验(一次性,验后即删)→ 下发会话 Cookie
+POST /api/auth/login    { phone, password } → bcrypt.compare → 下发会话 Cookie
 POST /api/auth/logout                 → 吊销会话(Redis 删登记)
 GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 ```
 
-- 未注册手机号登录即自动注册(与旧站行为一致);`pending_binding` 用户登录成功后转 `active`
-- **频控**(参数进 env/Zod 配置,Redis 计数):同号 60s/次、同号日 10 条、同 IP 日 50 条;超限 429
-- **定时任务实现注(2026-09-29)**:BullMQ v6 移除了 `repeat` 作业选项,周期任务统一用 `queue.upsertJobScheduler(id, { every }, { name, data, opts })`(幂等,重启不重复);`stats.flush` 每 60s 即此实现
-- 日志安全:手机号掩码(`138****1234`);验证码永不落日志;登录成功/失败/频控记 `auth` 事件(pino)
+- admin 账号经 `npm run admin` 交互式创建/重置(手机号 + 密码,bcrypt 10 轮,`role=admin` upsert;重跑即改密);不预置 seed
+- **`legacy_phpass` 永不参与校验**(纯审计)
+- **爆破防护**(Redis 计数,阈值进 env):同账号连错 5 次锁 15min;同 IP 日失败上限 50 次;超限 429——失败提示不区分"锁定"与"密码错",不给人枚举面
+- 日志安全:手机号掩码(`138****1234`);密码/哈希永不落日志;登录成功/失败/锁定/登出记 `auth` 事件(pino,后台可视化属 M5+)
+- 三期启用短信登录时恢复原设计(sms-code 频控同号 60s/次日 10 条、腾讯云下发、未注册自动注册);BullMQ 周期任务实现注见 §4(upsertJobScheduler)
 
 ### 3.2 会话机制(httpOnly Cookie,单体自然形态)
 
-- **jose 签名 JWT 装入 httpOnly + SameSite=Lax Cookie**(`secure` 生产开启):
-  - `ah_at`:access,2h,载荷 `{ sub, role }`
-  - `ah_rt`:refresh,30d,jti 在 **Redis 会话登记表**(可吊销、登出即删);续期时轮换 jti
-- `middleware.ts`:/admin 与 /account 路径做 Cookie 存在性+有效期预检(完整校验仍在 service/Handler,防伪不靠 middleware)
-- 密码:用户中心自愿补设,bcrypt;**`legacy_phpass` 永不参与校验**(纯审计)
+- **单会话 Cookie(2026-09-30 定稿;双 token 方案移三期用户中心)**:jose 签名 JWT 装入 `ah_at` httpOnly + SameSite=Lax Cookie(`secure` 生产开启),有效期 7d,载荷 `{ sub, role }` + `jti`
+- `jti` 登记进 **Redis 会话表**(TTL 对齐 7d):登出即删、可单点吊销;校验 = JWT 本地验签 + `jti` 登记存在性双查(封住"签发后即吊销"窗口)
+- **滑动续期**:剩余有效期 <1d 时随响应下发新 Cookie(滚动 7d),连续活跃不掉线
+- `middleware.ts`:/admin 路径做 Cookie 存在性 + JWT 本地有效期预检(**不查 Redis**——middleware 运行环境约束;完整校验仍在 service/Handler,防伪不靠 middleware)
+- 并发登录共存:多处登录各持独立 jti,吊销互不影响(不做"单点踢下线",YAGNI)
 - admin 判定:`role==='admin'` + `requireAdmin()` 在 admin 端点逐个叠加(不信任 middleware)
 
 ### 3.3 安全红线
@@ -49,7 +51,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 - 外部输入一律 Zod 边界校验;上传类型+大小白名单,文件名重生成(sha1)
 - Origin/Host 校验:所有 mutation 类 Route Handler(arch/07-frontend §4)
 - CORS:Next 同源架构默认无跨域;若未来开放 API 再显式配置白名单
-- 安全事件记录:登录尝试/验证码频控/权限拒绝/上传拒绝
+- 安全事件记录:登录尝试/爆破锁定/权限拒绝/上传拒绝(pino `auth` 事件)
 
 ## 4. 异步任务(worker/ + BullMQ)
 
@@ -80,7 +82,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 
 | 域 | 端点 | 鉴权 |
 |----|------|------|
-| auth | sms-code / login / logout / session | 公开(频控) |
+| auth | login / logout / session | 公开(login 有爆破防护,§3.1) |
 | content | `GET /api/posts`(管理列表,草稿含)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish` | admin |
 | content | `GET /api/search?q=` | 公开 |
 | stats | `POST /api/view { path, referrer? }`(同源校验 + bot/管理员过滤) | 公开(IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,Redis 缓冲 60s 批量落库) |
