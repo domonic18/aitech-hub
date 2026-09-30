@@ -4,7 +4,8 @@ import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 
 /**
- * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/admin 登录(M4)/SEO 端点。
+ * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/admin 登录(M4)/
+ * SEO 端点/后台发布→前台闭环(M5-a)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -116,9 +117,9 @@ test("4. admin 登录流(M4:守卫预检/密码登录/爆破提示/会话吊销)
     },
   });
 
-  // 4.1 未登录访问 /admin → middleware 预检跳登录页
+  // 4.1 未登录访问 /admin → middleware 预检跳登录页(trailingSlash:true,路径带尾斜杠)
   await page.goto("/admin");
-  expect(new URL(page.url()).pathname).toBe("/admin/login");
+  expect(new URL(page.url()).pathname).toMatch(/^\/admin\/login\/?$/);
 
   // 4.2 错误密码 → 模糊提示(不区分账号锁定/密码错)
   await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
@@ -129,7 +130,7 @@ test("4. admin 登录流(M4:守卫预检/密码登录/爆破提示/会话吊销)
   // 4.3 正确密码 → 回跳 /admin(登录成功同时清空失败计数)
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
-  await page.waitForURL("**/admin");
+  await page.waitForURL(/\/admin\/?$/);
   await expect(page.getByText("站点统计").first()).toBeVisible();
 
   // 4.4 会话吊销:UI 登出后把旧 Cookie 复放回去,/admin 仍拒——
@@ -139,13 +140,13 @@ test("4. admin 登录流(M4:守卫预检/密码登录/爆破提示/会话吊销)
 
   await page.getByRole("button", { name: "e2e-admin" }).click();
   await page.getByRole("menuitem", { name: "退出登录" }).click();
-  await page.waitForURL("**/admin/login");
+  await page.waitForURL(/\/admin\/login\/?$/);
 
   await page
     .context()
     .addCookies([{ name: "ah_at", value: oldCookie!.value, domain: "localhost", path: "/" }]);
   await page.goto("/admin");
-  expect(new URL(page.url()).pathname).toBe("/admin/login");
+  expect(new URL(page.url()).pathname).toMatch(/^\/admin\/login\/?$/);
 });
 
 test("5. SEO/GEO 端点:sitemap、feed、robots、llms.txt、文章 .md 直出", async ({ request }) => {
@@ -166,4 +167,61 @@ test("5. SEO/GEO 端点:sitemap、feed、robots、llms.txt、文章 .md 直出",
   expect(md.status()).toBe(200);
   expect(md.headers()["content-type"]).toContain("text/markdown");
   expect((await md.text()).length).toBeGreaterThan(100);
+});
+
+test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand revalidate/软删)", async ({
+  page,
+  request,
+}) => {
+  const TITLE = "E2E 冒烟 M5a 发布闭环";
+  // 与库内残留隔离(重跑幂等;slug 由标题派生,同名硬删后派生结果一致)
+  await prisma.post.deleteMany({ where: { title: TITLE } });
+
+  // 登录(同用例 4 的 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 列表页 → 新建文章 → 填标题与正文 → 存草稿(地址切为编辑态)
+  await page.goto("/admin/posts/");
+  const newLink = page.getByRole("link", { name: "新建文章" });
+  await expect(newLink).toBeVisible();
+  await newLink.click();
+  await page.waitForURL(/\/admin\/posts\/new\/?$/);
+  await page.getByPlaceholder("文章标题…").fill(TITLE);
+  await page.getByPlaceholder(/正文\(Markdown/).fill("## E2E 正文\n\nM5a 发布闭环冒烟。");
+  await page.getByRole("button", { name: "存草稿" }).click();
+  await page.waitForURL(/\/admin\/posts\/\d+\/?$/);
+
+  // 发布 → 全页刷新后出现「下架」(展示态已发布)
+  await page.getByRole("button", { name: "发布", exact: true }).click();
+  await page.getByRole("button", { name: "下架" }).waitFor({ timeout: 10_000 });
+
+  const post = await prisma.post.findFirst({
+    where: { title: TITLE },
+    select: { id: true, slug: true },
+  });
+  expect(post).toBeTruthy();
+
+  // 前台闭环:/articles/ 出现标题;详情直开 200 且 h1 匹配(发布即 revalidate,不等 ISR)
+  expect(await (await request.get("/articles/")).text()).toContain(TITLE);
+  const detail = await page.goto(`/${post!.slug}/`);
+  expect(detail!.status()).toBe(200);
+  await expect(page.locator("h1")).toHaveText(TITLE);
+
+  // 软删:列表行内操作(原生 confirm)→ 行消失 → 前台 404
+  await page.goto("/admin/posts/");
+  const row = page.getByRole("row", { name: new RegExp(TITLE) });
+  page.once("dialog", (d) => d.accept());
+  await row.getByRole("button", { name: "删除" }).click();
+  await expect(row).toBeHidden({ timeout: 10_000 });
+  expect(
+    (await prisma.post.findUnique({ where: { id: post!.id }, select: { status: true } }))?.status,
+  ).toBe("deleted");
+  expect((await request.get(`/${post!.slug}/`)).status()).toBe(404);
+
+  // 清理本用例数据
+  await prisma.post.deleteMany({ where: { title: TITLE } });
 });
