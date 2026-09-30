@@ -9,12 +9,15 @@ import { type NextRequest } from "next/server";
 import { requireAdminRequest } from "@/lib/auth/guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
-import { mediaImportSchema } from "@/lib/media/media-schema";
+import { type TransferResult, mediaImportSchema } from "@/lib/media/media-schema";
 import { getQueue, QUEUE_MEDIA_TRANSFER } from "@/lib/queue";
 
 import { requireAdminForMutation } from "../shared";
 
 export const dynamic = "force-dynamic";
+
+/** 转存 job 保留数(轮询窗口内结果可查,过后随队列清理) */
+const TRANSFER_JOB_KEEP = 500;
 
 /** 单批 jobId(随机串即可:幂等由 sha1 入库去重兜底,批次不要求幂等) */
 function newBatchId(): string {
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
   await getQueue(QUEUE_MEDIA_TRANSFER).add(
     "transfer",
     { urls: parsed.data.urls },
-    { jobId, attempts: 1, removeOnComplete: 500, removeOnFail: 500 },
+    { jobId, attempts: 1, removeOnComplete: TRANSFER_JOB_KEEP, removeOnFail: TRANSFER_JOB_KEEP },
   );
   logger.info({ event: "media.import", jobId, total: parsed.data.urls.length });
   return apiEnvelope(0, "accepted", { jobId, total: parsed.data.urls.length }, 202);
@@ -57,10 +60,6 @@ export async function GET(req: NextRequest) {
   if (!job) return apiEnvelope(404, "任务不存在或已清理");
   const state = await job.getState();
   const progress = typeof job.progress === "number" ? job.progress : 0;
-  const result = (job.returnvalue ?? null) as {
-    mapping: Record<string, string | null>;
-    ok: number;
-    failed: number;
-  } | null;
+  const result = (job.returnvalue ?? null) as TransferResult | null;
   return apiEnvelope(0, "ok", { state, progress, result });
 }

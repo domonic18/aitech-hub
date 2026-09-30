@@ -8,6 +8,7 @@ import { type NextRequest } from "next/server";
 
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
+import { type MediaKind, type MediaStatus, type MediaDetailData } from "@/lib/media/media-schema";
 import { getMediaDetail } from "@/lib/media/queries";
 import { deleteMedia, parseMediaId } from "@/lib/media/service";
 
@@ -24,28 +25,29 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const detail = await getMediaDetail(id);
   if (!detail) return apiEnvelope(404, "媒体不存在");
   const m = detail.media;
-  return apiEnvelope(0, "ok", {
+  const body: MediaDetailData = {
     media: {
       id: m.id.toString(),
       path: m.path,
       filename: m.filename,
-      kind: m.kind,
-      status: m.status,
+      kind: m.kind as MediaKind,
+      status: m.status as MediaStatus,
       storage: m.storage,
       sizeBytes: m.sizeBytes === null ? null : Number(m.sizeBytes),
       width: m.width,
       height: m.height,
       sha1: m.sha1,
       thumbPath: m.thumbPath,
-      createdAt: m.createdAt,
+      createdAt: m.createdAt.toISOString(),
     },
     refs: detail.refs.map((p) => ({
       id: p.id.toString(),
       slug: p.slug,
       title: p.title,
-      publishedAt: p.publishedAt,
+      publishedAt: p.publishedAt === null ? null : p.publishedAt.toISOString(),
     })),
-  });
+  };
+  return apiEnvelope(0, "ok", body);
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

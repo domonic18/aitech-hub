@@ -8,6 +8,7 @@ import { type NextRequest } from "next/server";
 
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
+import { UPLOAD_FIELD } from "@/lib/media/media-schema";
 import { uploadMedia } from "@/lib/media/service";
 
 import { mediaErrorResponse, requireAdminForMutation } from "./shared";
@@ -19,9 +20,9 @@ export async function POST(req: NextRequest) {
   if (denied) return denied;
   try {
     const form = await req.formData();
-    const file = form.get("file");
+    const file = form.get(UPLOAD_FIELD);
     if (!(file instanceof File)) {
-      return apiEnvelope(400, "缺少文件字段 file");
+      return apiEnvelope(400, `缺少文件字段 ${UPLOAD_FIELD}`);
     }
     const data = new Uint8Array(await file.arrayBuffer());
     const saved = await uploadMedia({
