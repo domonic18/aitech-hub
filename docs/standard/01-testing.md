@@ -11,7 +11,7 @@
 | 集成/API | Vitest | 与单测同层 `src/**/*.integration.test.ts`(M4 引入;vitest include 天然覆盖,`test:unit` 按文件名排除) | dev compose 的 PG/Redis | 本地跑;CI 接入随 M4 |
 | E2E 冒烟 | Playwright | `e2e/` | 本地全栈(web+worker+pg+redis) | 本地 + 切换日前必跑;CI 接入随 M6 |
 | 迁移对账 | verify.ts | `scripts/migrate-wp/` | 源 WP 库 + 目标 PG | 切换日前必跑(人工触发) |
-| 迁移重放守卫 | CI job | `.github/workflows/ci.yml` | 临时 PG 容器 | 每次 prisma/migrations 变更 |
+| 迁移重放守卫 | CI job | `.github/workflows/ci.yml` | 临时 PG 容器 | 每次 push/PR(无条件,同范例 db-migration-guard) |
 
 ## 2. 单测(Vitest,质量红线,缺一不绿)
 

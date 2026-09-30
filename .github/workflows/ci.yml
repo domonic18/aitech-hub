@@ -25,7 +25,8 @@ jobs:
   migrate-replay:
     name: 迁移重放守卫
     runs-on: ubuntu-latest
-    if: hashFiles('prisma/migrations/**') != ''
+    # 无条件执行(承袭范例 db-migration-guard):hashFiles 不支持 job 级 if,
+    # 曾致 workflow 加载即失败;守卫本身仅 ~1 分钟,换取任何变更都能兜住 schema 漂移
     services:
       postgres:
         image: postgres:16
@@ -53,5 +54,5 @@ jobs:
       - run: npx prisma migrate deploy
       # 第二次 deploy 必须无错(exactly-once 台账幂等)
       - run: npx prisma migrate deploy
-      # introspect 断言:实际 schema 与 schema.prisma 一致(differ 有差异则非零退出)
+      # introspect 断言:实际 schema 与 schema.prisma 一致(有差异则非零退出)
       - run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code

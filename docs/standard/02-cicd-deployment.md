@@ -8,7 +8,7 @@
 ```
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
-├── job migration [条件:prisma/** 变更] 起 postgres:16 → migrate deploy 全量 →
+├── job migration 起 postgres:16 → migrate deploy 全量 →
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 └── job build     [依赖 app] next build(standalone)+ tsc 编译 worker → 产物健康
 
