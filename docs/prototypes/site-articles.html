@@ -1,22 +1,43 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 文章列表 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;  /* 封面占位渐变 */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-header-h: 64px; --site-max-w: 1200px;
 }
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+.avatar-svg { border-radius: 50%; flex: none; }
 body {
   background: var(--bg); color: var(--text-1);
   font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
@@ -28,7 +49,7 @@ img { display: block; }
 /* ==== 顶栏 ==== */
 .header {
   position: sticky; top: 0; z-index: 50; height: var(--site-header-h);
-  background: rgba(12,14,18,.82); backdrop-filter: blur(12px);
+  background: var(--header-bg); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .header-in {
@@ -38,7 +59,7 @@ img { display: block; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow);
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
@@ -47,6 +68,51 @@ img { display: block; }
 .nav a:hover { color: var(--text-1); background: var(--panel-2); }
 .nav a.active { color: var(--text-1); background: var(--accent-dim); }
 .nav a.mono { font-size: 13px; }
+
+/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
+.theme-toggle {
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
+}
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
+
+/* ==== 头像菜单(下拉:个人设置/退出登录) ==== */
+.nav a.nav-ic { display: inline-flex; align-items: center; padding: 8px 10px; }
+.nav a.nav-ic .ic { width: 15px; height: 15px; }
+.user-menu { position: relative; display: flex; align-items: center; }
+.avatar-btn {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+  border-radius: 999px; transition: color .15s;
+}
+.avatar-btn:hover { color: var(--text-1); }
+.avatar-btn .avatar-svg { width: 30px; height: 30px; --av-bg: var(--accent-dim); --av-fg: var(--accent); }
+.user-drop {
+  position: absolute; right: 0; top: calc(100% + 12px); min-width: 172px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 6px; z-index: 60;
+}
+.user-drop[hidden] { display: none; }
+.ud-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; flex-direction: column; }
+.ud-head b { font-size: 13.5px; }
+.ud-head span { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.user-drop a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); }
+.user-drop a:hover { background: var(--panel-2); color: var(--text-1); }
+.user-drop a.ud-danger { color: var(--red); }
+.user-drop a.ud-danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); }
 
 /* ==== 页头:标题 + 分类过滤 Tab ==== */
 .page-head { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 0; }
@@ -62,7 +128,7 @@ img { display: block; }
   border-radius: 999px; padding: 5px 14px; cursor: pointer;
   transition: all .15s;
 }
-.f-tab:hover { color: var(--text-1); border-color: #3d4260; }
+.f-tab:hover { color: var(--text-1); border-color: var(--border-hover); }
 .f-tab.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 .f-tab .n { opacity: .65; font-size: 12px; margin-left: 4px; }
 .f-sort { margin-left: auto; font-size: 13px; color: var(--text-3); display: flex; gap: 14px; align-items: center; }
@@ -75,8 +141,8 @@ img { display: block; }
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
   overflow: hidden; transition: border-color .2s, transform .2s;
 }
-.row-card:hover { border-color: #3d4260; transform: translateY(-1px); }
-.row-cover { position: relative; min-height: 148px; background: linear-gradient(135deg, #171a26, #20243c); }
+.row-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+.row-cover { position: relative; min-height: 148px; background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); }
 .row-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .row-body { padding: 18px 22px 18px 0; display: flex; flex-direction: column; gap: 9px; }
 .row-body h3 { font-size: 17px; line-height: 1.5; }
@@ -90,7 +156,7 @@ img { display: block; }
   color: var(--accent-hover); background: var(--accent-dim);
   border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px;
 }
-.tag.cat { color: #7ee2a0; background: rgba(46,160,67,.12); border-color: rgba(46,160,67,.3); }
+.tag.cat { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
 
 /* ==== 分页 ==== */
 .pager { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 40px 0 8px; }
@@ -99,7 +165,7 @@ img { display: block; }
   font-family: var(--font-mono); font-size: 13.5px; border-radius: var(--r-sm);
   border: 1px solid var(--border); color: var(--text-2); padding: 0 10px;
 }
-.pager a:hover { color: var(--text-1); border-color: #3d4260; background: var(--panel-2); }
+.pager a:hover { color: var(--text-1); border-color: var(--border-hover); background: var(--panel-2); }
 .pager span.cur { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .pager .ell { border: none; color: var(--text-3); }
 
@@ -114,10 +180,27 @@ img { display: block; }
   padding: 5px 10px; border-radius: 6px;
 }
 .proto-note a { color: var(--accent-hover); }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 @media (max-width: 800px) { .row-card { grid-template-columns: 1fr; } .row-body { padding: 0 20px 18px; } }
 </style>
 </head>
 <body>
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-search" viewBox="64 64 896 896"><path d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></symbol>
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+
+  <symbol id="i-caret-down" viewBox="64 64 896 896"><path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z"/></symbol>
+  <symbol id="i-user" viewBox="64 64 896 896"><path d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></symbol>
+  <symbol id="i-logout" viewBox="64 64 896 896"><path d="M868 732h-70.3c-4.8 0-9.3 2.1-12.3 5.8-7 8.5-14.5 16.7-22.4 24.5a353.84 353.84 0 01-112.7 75.9A352.8 352.8 0 01512.4 866c-47.9 0-94.3-9.4-137.9-27.8a353.84 353.84 0 01-112.7-75.9 353.28 353.28 0 01-76-112.5C167.3 606.2 158 559.9 158 512s9.4-94.2 27.8-137.8c17.8-42.1 43.4-80 76-112.5s70.5-58.1 112.7-75.9c43.6-18.4 90-27.8 137.9-27.8 47.9 0 94.3 9.3 137.9 27.8 42.2 17.8 80.1 43.4 112.7 75.9 7.9 7.9 15.3 16.1 22.4 24.5 3 3.7 7.6 5.8 12.3 5.8H868c6.3 0 10.2-7 6.7-12.3C798 160.5 663.8 81.6 511.3 82 271.7 82.6 79.6 277.1 82 516.4 84.4 751.9 276.2 942 512.4 942c152.1 0 285.7-78.8 362.3-197.7 3.4-5.3-.4-12.3-6.7-12.3zm88.9-226.3L815 393.7c-5.3-4.2-13-.4-13 6.3v76H488c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></symbol>
+  <symbol id="i-eye" viewBox="64 64 896 896"><path d="M942.2 486.2C847.4 286.5 704.1 186 512 186c-192.2 0-335.4 100.5-430.2 300.3a60.3 60.3 0 000 51.5C176.6 737.5 319.9 838 512 838c192.2 0 335.4-100.5 430.2-300.3 7.7-16.2 7.7-35 0-51.5zM512 766c-161.3 0-279.4-81.8-362.7-254C232.6 339.8 350.7 258 512 258c161.3 0 279.4 81.8 362.7 254C791.5 684.2 673.4 766 512 766zm-4-430c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176zm0 288c-61.9 0-112-50.1-112-112s50.1-112 112-112 112 50.1 112 112-50.1 112-112 112z"/></symbol>
+  <symbol id="i-avatar" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
+    <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
+    <path d="M512 628c-176 0-316 106-316 238v158h632v-158c0-132-140-238-316-238z" style="fill:var(--av-fg,#5e6ad2)"/>
+  </symbol>
+</svg>
 
 <header class="header">
   <div class="header-in">
@@ -126,11 +209,21 @@ img { display: block; }
     </a>
     <nav class="nav">
       <a href="site-home.html">首页</a>
-      <a href="site-articles.html" class="active">文章</a>
       <a href="site-telegram.html">电报流</a>
-      <a href="site-articles.html">归档</a>
-      <a href="#">关于</a>
-      <a href="site-search.html" class="mono">⌕ 搜索</a>
+      <a href="site-articles.html" class="active">文章</a>
+      <a href="site-search.html" class="nav-ic" title="Agent 搜索" aria-label="Agent 搜索"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
+      <div class="user-menu">
+        <button class="avatar-btn" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false" title="账号菜单">
+          <svg class="avatar-svg" aria-hidden="true"><use href="#i-avatar"/></svg>
+          <svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-down"/></svg>
+        </button>
+        <div class="user-drop" id="userDrop" hidden>
+          <div class="ud-head"><b>诸葛东明</b><span>admin · 站长</span></div>
+          <a href="account.html"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>个人设置</a>
+          <a href="login.html" class="ud-danger"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>退出登录</a>
+        </div>
+      </div>
     </nav>
   </div>
 </header>
@@ -160,7 +253,7 @@ img { display: block; }
       <h3><a href="site-article.html">用 Claude Code 重建我的博客:从 WordPress 到 Next.js 全栈单体</a></h3>
       <p>154 篇文章、296 个用户、3314 篇弃用资讯——一次 SEO 无损迁移的完整决策记录。中文 slug 如何原样保留?同服务器原位切换怎么做到分钟级回滚?</p>
       <div class="row-meta">
-        <span class="mono">2026-09-28</span><span class="mono">👁 12,408</span><span>≈ 28 min</span>
+        <span class="mono">2026-09-28</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 12,408</span><span>≈ 28 min</span>
       </div>
     </div>
   </article>
@@ -172,7 +265,7 @@ img { display: block; }
       <h3><a href="site-article.html">MCP 实战:从本地 Markdown 连图一键发布到线上站点</a></h3>
       <p>创作 MCP 的设计与实现:Bearer PAT 鉴权、slug 幂等 upsert、图片自动转存替换。让 Claude Code 成为你的发布前端。</p>
       <div class="row-meta">
-        <span class="mono">2026-09-21</span><span class="mono">👁 8,930</span><span>≈ 16 min</span>
+        <span class="mono">2026-09-21</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 8,930</span><span>≈ 16 min</span>
       </div>
     </div>
   </article>
@@ -184,7 +277,7 @@ img { display: block; }
       <h3><a href="site-article.html">智能体军团指挥手册:多 Agent 协作的拆解与编排</a></h3>
       <p>把一个模糊需求拆成多个 agent 的任务图:主从模式、流水线模式、评审环。附真实项目里的失败案例与复盘。</p>
       <div class="row-meta">
-        <span class="mono">2026-09-15</span><span class="mono">👁 6,214</span><span>≈ 18 min</span>
+        <span class="mono">2026-09-15</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 6,214</span><span>≈ 18 min</span>
       </div>
     </div>
   </article>
@@ -196,7 +289,7 @@ img { display: block; }
       <h3><a href="site-article.html">GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</a></h3>
       <p>ChatGPT、Perplexity 开始替 Google 分流流量。llms.txt、文章 .md 直出与站点内容 MCP,是一套完整的 GEO 打法。</p>
       <div class="row-meta">
-        <span class="mono">2026-09-08</span><span class="mono">👁 4,872</span><span>≈ 14 min</span>
+        <span class="mono">2026-09-08</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 4,872</span><span>≈ 14 min</span>
       </div>
     </div>
   </article>
@@ -208,7 +301,7 @@ img { display: block; }
       <h3><a href="site-article.html">博客视频方案:COS 直链 + B 站嵌入的混合策略</a></h3>
       <p>自托管视频的转码成本、COS 数据万象截帧、B 站 iframe 的播放体验——三种方案的取舍与实现细节。</p>
       <div class="row-meta">
-        <span class="mono">2026-08-30</span><span class="mono">👁 3,355</span><span>≈ 11 min</span>
+        <span class="mono">2026-08-30</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 3,355</span><span>≈ 11 min</span>
       </div>
     </div>
   </article>
@@ -220,7 +313,7 @@ img { display: block; }
       <h3><a href="site-article.html">Prisma Migrate 纪律:forward-only 与迁移重放守卫</a></h3>
       <p>禁止改已应用迁移、CI 里从零重放全部迁移做一致性断言——小团队也能有的数据库迁移纪律。</p>
       <div class="row-meta">
-        <span class="mono">2026-08-22</span><span class="mono">👁 5,109</span><span>≈ 9 min</span>
+        <span class="mono">2026-08-22</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 5,109</span><span>≈ 9 min</span>
       </div>
     </div>
   </article>
@@ -238,11 +331,38 @@ img { display: block; }
 
 <footer class="footer">
   <div class="footer-base">
-    © 2021-2026 17aitech.com · 一起AI技术 · <a href="site-home.html">返回首页</a>
+    © 2021-2026 17aitech.com · 一起AI技术 · <a href="site-article.html">关于</a> · <a href="site-articles.html">归档</a> · <a href="#" onclick="return false">协议</a> · <a href="#" onclick="return false">RSS</a> · <a href="site-home.html">返回首页</a>
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.4.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+
+/* ---- 用户菜单(点外关闭 + Esc) ---- */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const drop = document.getElementById("userDrop");
+  const btn = e.currentTarget;
+  if (drop.hasAttribute("hidden")) { drop.removeAttribute("hidden"); btn.setAttribute("aria-expanded", "true"); }
+  else { drop.setAttribute("hidden", ""); btn.setAttribute("aria-expanded", "false"); }
+}
+document.addEventListener("click", (e) => {
+  const drop = document.getElementById("userDrop");
+  if (drop && !drop.hasAttribute("hidden") && !e.target.closest(".user-menu")) {
+    drop.setAttribute("hidden", "");
+    document.querySelector(".avatar-btn")?.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.getElementById("userDrop")?.setAttribute("hidden", "");
+});
+</script>
 </body>
 </html>

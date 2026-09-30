@@ -1,23 +1,43 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 首页 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;  /* 封面占位渐变 */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-header-h: 64px; --site-max-w: 1200px;
 }
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+
+/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+.avatar-svg { border-radius: 50%; flex: none; }
 body {
   background: var(--bg); color: var(--text-1);
   font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
@@ -30,35 +50,76 @@ img { display: block; }
 /* ==== 顶栏 ==== */
 .header {
   position: sticky; top: 0; z-index: 50; height: var(--site-header-h);
-  background: rgba(12,14,18,.82); backdrop-filter: blur(12px);
+  background: var(--header-bg); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .header-in {
   max-width: var(--site-max-w); margin: 0 auto; height: 100%;
   padding: 0 24px; display: flex; align-items: center; gap: 40px;
 }
-.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: .01em; }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow);
 }
 @keyframes blink { 50% { opacity: .35; } }
-.logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; margin-left: 2px; }
-.nav { display: flex; gap: 8px; margin-left: auto; }
-.nav a {
-  padding: 8px 14px; border-radius: var(--r-sm); color: var(--text-2);
-  font-size: 14px; transition: color .15s, background .15s;
-}
+.logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
+.nav { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+.nav a { padding: 8px 14px; border-radius: var(--r-sm); color: var(--text-2); font-size: 14px; }
 .nav a:hover { color: var(--text-1); background: var(--panel-2); }
 .nav a.active { color: var(--text-1); background: var(--accent-dim); }
-.nav a.mono { font-size: 13px; }
+.nav a.nav-ic { display: inline-flex; align-items: center; padding: 8px 10px; }
+.nav a.nav-ic .ic { width: 15px; height: 15px; }
 
-/* ==== Hero:终端品牌语(Hub 化后压缩,给三区让位) ==== */
+/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
+.theme-toggle {
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
+}
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
+
+/* ==== 头像菜单(下拉:个人设置/退出登录) ==== */
+.user-menu { position: relative; display: flex; align-items: center; }
+.avatar-btn {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+  border-radius: 999px; transition: color .15s;
+}
+.avatar-btn:hover { color: var(--text-1); }
+.avatar-btn .avatar-svg { width: 30px; height: 30px; --av-bg: var(--accent-dim); --av-fg: var(--accent); }
+.user-drop {
+  position: absolute; right: 0; top: calc(100% + 12px); min-width: 172px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 6px; z-index: 60;
+}
+.user-drop[hidden] { display: none; }
+.ud-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; flex-direction: column; }
+.ud-head b { font-size: 13.5px; }
+.ud-head span { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.user-drop a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); }
+.user-drop a:hover { background: var(--panel-2); color: var(--text-1); }
+.user-drop a.ud-danger { color: var(--red); }
+.user-drop a.ud-danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); }
+
+/* ==== Hero:控制台(Hub 首屏;全内容宽 1152px,与电报流/双栏网格对齐) ==== */
 .hero { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 8px; }
 .term {
-  max-width: 860px; margin: 0 auto; background: var(--panel);
+  background: var(--panel);
   border: 1px solid var(--border); border-radius: var(--r-lg);
-  box-shadow: 0 24px 64px rgba(0,0,0,.45), 0 0 0 1px rgba(94,106,210,.08);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(94,106,210,.08);
   overflow: hidden;
 }
 .term-bar {
@@ -68,156 +129,181 @@ img { display: block; }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
 .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
 .term-title { margin-left: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
-.term-body { padding: 18px 32px 20px; font-family: var(--font-mono); font-size: 13.5px; line-height: 2; }
+.term-body { padding: 18px 32px 22px; font-family: var(--font-mono); font-size: 13.5px; line-height: 2; }
 .term-body .ln { white-space: pre-wrap; }
 .c-prompt { color: var(--green); }
 .c-cmd { color: var(--text-1); }
 .c-dim { color: var(--text-3); }
-.c-accent { color: #8b96e8; }
-.cursor-tail {
-  display: inline-block; width: 8px; height: 15px; background: var(--accent);
-  vertical-align: -2px; animation: blink 1.2s steps(1) infinite;
+.c-accent { color: var(--accent-hi, #8b96e8); }
+[data-theme="light"] .c-accent { color: var(--accent-hover); }
+/* Agent 搜索输入行:控制台核心交互(镜面光标:失焦时闪烁,聚焦交还原生 caret) */
+.console {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 12px; padding: 12px 16px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  transition: border-color .15s, box-shadow .15s;
 }
-.hero-sub {
-  max-width: 860px; margin: 14px auto 0; display: flex; gap: 12px; flex-wrap: wrap;
+.console:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.console .c-prompt { font-size: 16px; flex: none; }
+.q-wrap { position: relative; flex: 1; display: flex; align-items: center; min-width: 0; }
+.q-measure {
+  position: absolute; left: 0; visibility: hidden; white-space: pre;
+  font-family: var(--font-mono); font-size: 15px;
 }
+.q-caret {
+  position: absolute; left: 0; width: 9px; height: 17px; background: var(--accent);
+  box-shadow: 0 0 8px var(--glow); animation: blink 1.2s steps(1) infinite;
+  pointer-events: none;
+}
+.console input {
+  position: relative; z-index: 1; flex: 1; min-width: 0;
+  border: none; outline: none; background: transparent;
+  font-family: var(--font-mono); font-size: 15px; color: var(--text-1);
+  caret-color: var(--accent);
+}
+.console input::placeholder { color: var(--text-3); }
+.console .go {
+  flex: none; font-family: var(--font-mono); font-size: 12.5px; cursor: pointer;
+  color: #fff; background: var(--accent); border: 1px solid var(--accent);
+  padding: 6px 14px; border-radius: var(--r-sm);
+}
+.console .go:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* 建议词 chips */
+.hero-sub { margin: 14px 0 0; display: flex; gap: 10px; flex-wrap: wrap; }
 .hero-chip {
+  display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2);
   background: var(--panel); border: 1px solid var(--border);
-  padding: 5px 12px; border-radius: 999px;
+  padding: 5px 12px; border-radius: 999px; transition: color .15s, border-color .15s;
 }
+.hero-chip:hover { color: var(--text-1); border-color: var(--border-hover); }
 .hero-chip b { color: var(--text-1); font-weight: 600; }
 
-/* ==== 区块标题 ==== */
-.section { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 8px; }
-.sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
-.sec-head h2 { font-size: 21px; font-weight: 700; letter-spacing: .01em; }
-.sec-head .mono-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); letter-spacing: .04em; }
-.sec-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); }
-.sec-head .more:hover { color: var(--accent-hover); }
+/* ==== 双栏 Hub 仪表盘:左主轴电报流 + 右栏项目/博主文章/GEO ==== */
+.hub { max-width: var(--site-max-w); margin: 0 auto; padding: 28px 24px 8px; }
+.hub-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
 
-/* ==== ① 电报流 LIVE 带(Hub 第一区:实时感首屏元素) ==== */
+/* 渠道 chip(「博主个人」与外部渠道区分,与 site-telegram 同款) */
+.chip {
+  display: inline-block; font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+  padding: 0 8px; border-radius: 4px; border: 1px solid; vertical-align: 2px; white-space: nowrap;
+}
+.chip-blogger { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
+[data-theme="light"] .chip-blogger { color: var(--green); }
+.chip-douyin { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+.chip-xhs { color: var(--red-hi, var(--red)); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
+.chip-bili { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 32%, transparent); }
+
+/* ---- 左主轴:电报流 LIVE 带(文字资讯 + 短视频解读 混排) ---- */
 .tg-band {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
-  overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  overflow: hidden; box-shadow: var(--shadow-sm);
 }
 .tg-band-head {
   display: flex; align-items: center; gap: 12px; padding: 14px 20px;
   background: var(--panel-2); border-bottom: 1px solid var(--border); flex-wrap: wrap;
 }
-.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: #7ee2a0; background: rgba(46,160,67,.1); border: 1px solid rgba(46,160,67,.35); border-radius: 999px; padding: 3px 12px; }
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgba(46,160,67,.8); animation: pulse 1.6s ease-in-out infinite; }
+.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--green-hi); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 999px; padding: 3px 12px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px color-mix(in srgb, var(--green) 80%, transparent); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.8); } }
-.tg-band-head .bt { font-weight: 700; font-size: 15px; }
+.tg-band-head .bt { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 15px; }
 .tg-band-head .bd { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
-.tg-band-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); }
+.tg-band-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .tg-band-head .more:hover { color: var(--accent-hover); }
+/* 文字行 */
 .tg-row {
   display: grid; grid-template-columns: 74px 108px 1fr auto; gap: 14px; align-items: center;
-  padding: 11px 20px; border-bottom: 1px solid rgba(42,45,55,.55);
+  padding: 11px 20px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   transition: background .15s; position: relative;
 }
-.tg-row:last-child { border-bottom: none; }
 .tg-row:hover { background: var(--panel-2); }
 .tg-row .tm { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
-.tg-row .tm.fresh { color: #7ee2a0; }
+.tg-row .tm.fresh { color: var(--green-hi); }
 .tg-row .sr { font-family: var(--font-mono); font-size: 11px; padding: 1px 0; text-align: center; border-radius: 4px; border: 1px solid; white-space: nowrap; overflow: hidden; }
-.sr-rss { color: #8b96e8; background: var(--accent-dim); border-color: rgba(94,106,210,.3); }
-.sr-web { color: #7ec8e2; background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.3); }
-.sr-sns { color: #ecc06a; background: rgba(210,153,34,.08); border-color: rgba(210,153,34,.3); }
+.sr-rss { color: var(--accent-hi, #8b96e8); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+[data-theme="light"] .sr-rss { color: var(--accent-hover); }
+.sr-web { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, transparent); border-color: color-mix(in srgb, var(--blue) 30%, transparent); }
+.sr-sns { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 8%, transparent); border-color: color-mix(in srgb, var(--amber) 30%, transparent); }
 .tg-row .ti { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tg-row .ti a:hover { color: var(--accent-hover); }
 .tg-row .ti .ext { color: var(--text-3); font-size: 11px; margin-left: 4px; }
 .tg-row .ag { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
-.tg-row.fresh::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px rgba(94,106,210,.6); }
+.tg-row.fresh::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+/* 视频行:小竖版封面 + 平台徽标 + 博主 + 主题 + 时长 */
+.tg-row.video { grid-template-columns: 74px 54px 96px 1fr auto; padding: 12px 20px; }
+.tg-row.video .thumb {
+  position: relative; width: 54px; height: 95px; border-radius: 6px; overflow: hidden;
+  background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); border: 1px solid var(--border);
+}
+.tg-row.video .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tg-row.video .thumb .play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(12,14,18,.35);
+}
+.tg-row.video .thumb .dur {
+  position: absolute; left: 3px; bottom: 3px; right: 3px; text-align: center;
+  font-family: var(--font-mono); font-size: 9.5px; color: #fff; background: rgba(12,14,18,.72);
+  border-radius: 3px; padding: 0 2px;
+}
+.tg-row.video .pf { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tg-row.video .pf .who { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.tg-row.video .vt { min-width: 0; }
+.tg-row.video .vt .t { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tg-row.video .vt .t a:hover { color: var(--accent-hover); }
+.tg-row.video .vt .m { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tg-row.video .vt .m .ai { color: var(--accent-hi, #8b96e8); }
+[data-theme="light"] .tg-row.video .vt .m .ai { color: var(--accent-hover); }
 .tg-band-foot { padding: 10px 20px; background: var(--panel-2); text-align: center; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); border-top: 1px solid var(--border); }
 .tg-band-foot a:hover { color: var(--accent-hover); }
 
-/* ==== ② GitHub 项目展示(Hub 第二区:仓库给武器) ==== */
-.repo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.repo-card {
-  display: flex; flex-direction: column; gap: 10px;
+/* ---- 右栏:紧凑模块(开源项目 / 博主文章 / GEO) ---- */
+.rail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.rail-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
-  padding: 20px 22px; transition: transform .2s, border-color .2s;
+  overflow: hidden; box-shadow: var(--shadow-sm);
 }
-.repo-card:hover { transform: translateY(-2px); border-color: #3d4260; }
-.repo-head { display: flex; align-items: center; gap: 10px; }
-.repo-head .ic { font-size: 16px; }
-.repo-head h3 { font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
-.repo-head h3 a:hover { color: var(--accent-hover); }
-.repo-head .stars { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--amber); }
-.repo-card p { color: var(--text-2); font-size: 13.5px; flex: 1; }
-.repo-link { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-hover); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px; align-self: flex-start; }
-.repo-link:hover { border-color: var(--accent); }
-.repo-foot { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 2px; }
-.lang-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; vertical-align: -1px; margin-right: 5px; }
-
-/* ==== 精选大卡 ==== */
-.featured-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 20px; }
-.feat-card {
-  display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
-  overflow: hidden; transition: transform .2s, border-color .2s;
+.rail-head {
+  display: flex; align-items: center; gap: 8px; padding: 11px 16px;
+  background: var(--panel-2); border-bottom: 1px solid var(--border);
+  font-size: 13.5px; font-weight: 700;
 }
-.feat-card:hover { transform: translateY(-2px); border-color: #3d4260; }
-.feat-cover { position: relative; height: 210px; flex: none; background: linear-gradient(135deg, #1b1e2e, #232742 60%, #2c2f52); }
-.feat-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.feat-body { padding: 26px 28px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
-.feat-body h3 { font-size: 20px; line-height: 1.45; }
-.feat-body h3 a:hover { color: var(--accent-hover); }
-.feat-body p { color: var(--text-2); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.meta { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--text-3); margin-top: auto; }
-.meta .views { font-family: var(--font-mono); }
-
-/* ==== 标签 ==== */
+.rail-head .ic { color: var(--text-2); }
+.rail-head .mono-tag { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); font-weight: 400; margin-left: auto; letter-spacing: .04em; }
+.rail-item { display: block; padding: 10px 16px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.rail-item:last-of-type { border-bottom: none; }
+.rail-item:hover { background: var(--panel-2); }
+.rail-foot { display: block; padding: 9px 16px; background: var(--panel-2); border-top: 1px solid var(--border); text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); }
+a.rail-foot:hover { color: var(--accent-hover); }
+/* 开源项目紧凑行 */
+.repo-it .ri-head { display: flex; align-items: center; gap: 8px; }
+.repo-it .ri-head .ic { color: var(--text-2); }
+.repo-it .ri-head b { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+.repo-it .stars { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: 11.5px; color: var(--amber); }
+.repo-it .ri-desc { display: block; color: var(--text-2); font-size: 12px; margin-top: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.repo-it .ri-link { display: inline-block; font-family: var(--font-mono); font-size: 10.5px; color: var(--accent-hover); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 4px; padding: 0 6px; margin-top: 5px; }
+/* 博主文章紧凑行 */
+.post-it .pi-t { display: block; font-size: 13px; font-weight: 600; line-height: 1.5; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.post-it:hover .pi-t { color: var(--accent-hover); }
+.post-it .pi-m { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
+.post-it .pi-v { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; }
 .tag {
-  display: inline-block; font-family: var(--font-mono); font-size: 11.5px;
+  display: inline-block; font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
   color: var(--accent-hover); background: var(--accent-dim);
-  border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 4px; padding: 0 6px;
 }
-.tag.cat { color: #7ee2a0; background: rgba(46,160,67,.12); border-color: rgba(46,160,67,.3); }
-.tags { display: flex; gap: 6px; flex-wrap: wrap; }
-
-/* ==== 文章卡网格 ==== */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
-  overflow: hidden; display: flex; flex-direction: column;
-  transition: transform .2s, border-color .2s;
+.tag.cat { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
+[data-theme="light"] .tag.cat { color: var(--green); }
+/* GEO 小卡 */
+.geo-body { padding: 12px 16px 14px; }
+.geo-body b { font-size: 13px; }
+.geo-body p { color: var(--text-2); font-size: 12px; margin-top: 4px; line-height: 1.65; }
+.geo-body .g-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.geo-body .g-links a {
+  font-family: var(--font-mono); font-size: 11px; color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, transparent); border: 1px solid color-mix(in srgb, var(--blue) 25%, transparent);
+  padding: 2px 9px; border-radius: 4px;
 }
-.card:hover { transform: translateY(-2px); border-color: #3d4260; }
-.card-cover { position: relative; aspect-ratio: 16/9; background: linear-gradient(135deg, #171a26, #20243c); }
-.card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.card-cover .views-float {
-  position: absolute; right: 10px; bottom: 10px; font-family: var(--font-mono); font-size: 11px;
-  color: var(--text-1); background: rgba(12,14,18,.72); backdrop-filter: blur(4px);
-  padding: 2px 8px; border-radius: 4px;
-}
-.card-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
-.card-body h3 { font-size: 16px; line-height: 1.5; }
-.card-body h3 a:hover { color: var(--accent-hover); }
-.card-body p { color: var(--text-2); font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; font-size: 12px; color: var(--text-3); }
-.card-foot .date { font-family: var(--font-mono); }
-
-/* ==== GEO 条(llms/md 直出) ==== */
-.geo-band {
-  max-width: var(--site-max-w); margin: 48px auto 0; padding: 0 24px;
-}
-.geo-in {
-  background: var(--panel); border: 1px dashed #3d4260; border-radius: var(--r-md);
-  padding: 18px 22px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-}
-.geo-in .g-icon { font-size: 18px; }
-.geo-in .g-txt { font-size: 13.5px; color: var(--text-2); }
-.geo-in .g-txt b { color: var(--text-1); font-weight: 600; }
-.geo-in .g-links { margin-left: auto; display: flex; gap: 10px; }
-.geo-in .g-links a {
-  font-family: var(--font-mono); font-size: 12px; color: var(--blue);
-  background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25);
-  padding: 3px 10px; border-radius: 4px;
-}
-.geo-in .g-links a:hover { background: rgba(59,130,246,.18); }
+.geo-body .g-links a:hover { background: color-mix(in srgb, var(--blue) 18%, transparent); }
 
 /* ==== 页脚 ==== */
 .footer { margin-top: 72px; border-top: 1px solid var(--border); }
@@ -229,6 +315,7 @@ img { display: block; }
 .footer .col a { display: block; color: var(--text-2); font-size: 13.5px; padding: 4px 0; }
 .footer .col a:hover { color: var(--text-1); }
 .footer .brand-desc { color: var(--text-2); font-size: 13.5px; max-width: 360px; margin-top: 10px; }
+.footer .col .logo { font-size: 16px; }
 .footer-base {
   border-top: 1px solid var(--border); padding: 18px 24px; text-align: center;
   font-family: var(--font-mono); font-size: 12px; color: var(--text-3);
@@ -243,295 +330,348 @@ img { display: block; }
   padding: 5px 10px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .proto-note a { color: var(--accent-hover); }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 
 @media (max-width: 960px) {
-  .featured-grid { grid-template-columns: 1fr; }
-  .feat-cover { height: 180px; }
-  .grid { grid-template-columns: 1fr; }
-  .repo-grid { grid-template-columns: 1fr; }
+  .hub-grid { grid-template-columns: 1fr; }
   .tg-row { grid-template-columns: 64px 92px 1fr; }
   .tg-row .ag { display: none; }
+  .tg-row.video { grid-template-columns: 54px 1fr; }
+  .tg-row.video .tm, .tg-row.video .pf { display: none; }
+  .term-body { padding: 14px 18px 18px; }
   .footer-in { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 <body>
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-api" viewBox="64 64 896 896"><path d="M917.7 148.8l-42.4-42.4c-1.6-1.6-3.6-2.3-5.7-2.3s-4.1.8-5.7 2.3l-76.1 76.1a199.27 199.27 0 00-112.1-34.3c-51.2 0-102.4 19.5-141.5 58.6L432.3 308.7a8.03 8.03 0 000 11.3L704 591.7c1.6 1.6 3.6 2.3 5.7 2.3 2 0 4.1-.8 5.7-2.3l101.9-101.9c68.9-69 77-175.7 24.3-253.5l76.1-76.1c3.1-3.2 3.1-8.3 0-11.4zM769.1 441.7l-59.4 59.4-186.8-186.8 59.4-59.4c24.9-24.9 58.1-38.7 93.4-38.7 35.3 0 68.4 13.7 93.4 38.7 24.9 24.9 38.7 58.1 38.7 93.4 0 35.3-13.8 68.4-38.7 93.4zm-190.2 105a8.03 8.03 0 00-11.3 0L501 613.3 410.7 523l66.7-66.7c3.1-3.1 3.1-8.2 0-11.3L441 408.6a8.03 8.03 0 00-11.3 0L363 475.3l-43-43a7.85 7.85 0 00-5.7-2.3c-2 0-4.1.8-5.7 2.3L206.8 534.2c-68.9 69-77 175.7-24.3 253.5l-76.1 76.1a8.03 8.03 0 000 11.3l42.4 42.4c1.6 1.6 3.6 2.3 5.7 2.3s4.1-.8 5.7-2.3l76.1-76.1c33.7 22.9 72.9 34.3 112.1 34.3 51.2 0 102.4-19.5 141.5-58.6l101.9-101.9c3.1-3.1 3.1-8.2 0-11.3l-43-43 66.7-66.7c3.1-3.1 3.1-8.2 0-11.3l-36.6-36.2zM441.7 769.1a131.32 131.32 0 01-93.4 38.7c-35.3 0-68.4-13.7-93.4-38.7a131.32 131.32 0 01-38.7-93.4c0-35.3 13.7-68.4 38.7-93.4l59.4-59.4 186.8 186.8-59.4 59.4z"/></symbol>
+
+  <symbol id="i-book" viewBox="64 64 896 896"><path d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-260 72h96v209.9L621.5 312 572 347.4V136zm220 752H232V136h280v296.9c0 3.3 1 6.6 3 9.3a15.9 15.9 0 0022.3 3.7l83.8-59.9 81.4 59.4c2.7 2 6 3.1 9.4 3.1 8.8 0 16-7.2 16-16V136h64v752z"/></symbol>
+  <symbol id="i-caret-down" viewBox="64 64 896 896"><path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z"/></symbol>
+  <symbol id="i-caret-right-fill" viewBox="64 64 896 896"><path d="M715.8 493.5L335 165.1c-14.2-12.2-35-1.2-35 18.5v656.8c0 19.7 20.8 30.7 35 18.5l380.8-328.4c10.9-9.4 10.9-27.6 0-37z"/></symbol>
+  <symbol id="i-code" viewBox="64 64 896 896"><path d="M516 673c0 4.4 3.4 8 7.5 8h185c4.1 0 7.5-3.6 7.5-8v-48c0-4.4-3.4-8-7.5-8h-185c-4.1 0-7.5 3.6-7.5 8v48zm-194.9 6.1l192-161c3.8-3.2 3.8-9.1 0-12.3l-192-160.9A7.95 7.95 0 00308 351v62.7c0 2.4 1 4.6 2.9 6.1L420.7 512l-109.8 92.2a8.1 8.1 0 00-2.9 6.1V673c0 6.8 7.9 10.5 13.1 6.1zM880 112H144c-17.7 0-32 14.3-32 32v736c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V144c0-17.7-14.3-32-32-32zm-40 728H184V184h656v656z"/></symbol>
+  <symbol id="i-export" viewBox="64 64 896 896"><path d="M880 912H144c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32h360c4.4 0 8 3.6 8 8v56c0 4.4-3.6 8-8 8H184v656h656V520c0-4.4 3.6-8 8-8h56c4.4 0 8 3.6 8 8v360c0 17.7-14.3 32-32 32zM770.87 199.13l-52.2-52.2a8.01 8.01 0 014.7-13.6l179.4-21c5.1-.6 9.5 3.7 8.9 8.9l-21 179.4c-.8 6.6-8.9 9.4-13.6 4.7l-52.4-52.4-256.2 256.2a8.03 8.03 0 01-11.3 0l-42.4-42.4a8.03 8.03 0 010-11.3l256.1-256.3z"/></symbol>
+  <symbol id="i-eye" viewBox="64 64 896 896"><path d="M942.2 486.2C847.4 286.5 704.1 186 512 186c-192.2 0-335.4 100.5-430.2 300.3a60.3 60.3 0 000 51.5C176.6 737.5 319.9 838 512 838c192.2 0 335.4-100.5 430.2-300.3 7.7-16.2 7.7-35 0-51.5zM512 766c-161.3 0-279.4-81.8-362.7-254C232.6 339.8 350.7 258 512 258c161.3 0 279.4 81.8 362.7 254C791.5 684.2 673.4 766 512 766zm-4-430c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176zm0 288c-61.9 0-112-50.1-112-112s50.1-112 112-112 112 50.1 112 112-50.1 112-112 112z"/></symbol>
+  <symbol id="i-fire" viewBox="64 64 896 896"><path d="M834.1 469.2A347.49 347.49 0 00751.2 354l-29.1-26.7a8.09 8.09 0 00-13 3.3l-13 37.3c-8.1 23.4-23 47.3-44.1 70.8-1.4 1.5-3 1.9-4.1 2-1.1.1-2.8-.1-4.3-1.5-1.4-1.2-2.1-3-2-4.8 3.7-60.2-14.3-128.1-53.7-202C555.3 171 510 123.1 453.4 89.7l-41.3-24.3c-5.4-3.2-12.3 1-12 7.3l2.2 48c1.5 32.8-2.3 61.8-11.3 85.9-11 29.5-26.8 56.9-47 81.5a295.64 295.64 0 01-47.5 46.1 352.6 352.6 0 00-100.3 121.5A347.75 347.75 0 00160 610c0 47.2 9.3 92.9 27.7 136a349.4 349.4 0 0075.5 110.9c32.4 32 70 57.2 111.9 74.7C418.5 949.8 464.5 959 512 959s93.5-9.2 136.9-27.3A348.6 348.6 0 00760.8 857c32.4-32 57.8-69.4 75.5-110.9a344.2 344.2 0 0027.7-136c0-48.8-10-96.2-29.9-140.9zM713 808.5c-53.7 53.2-125 82.4-201 82.4s-147.3-29.2-201-82.4c-53.5-53.1-83-123.5-83-198.4 0-43.5 9.8-85.2 29.1-124 18.8-37.9 46.8-71.8 80.8-97.9a349.6 349.6 0 0058.6-56.8c25-30.5 44.6-64.5 58.2-101a240 240 0 0012.1-46.5c24.1 22.2 44.3 49 61.2 80.4 33.4 62.6 48.8 118.3 45.8 165.7a74.01 74.01 0 0024.4 59.8 73.36 73.36 0 0053.4 18.8c19.7-1 37.8-9.7 51-24.4 13.3-14.9 24.8-30.1 34.4-45.6 14 17.9 25.7 37.4 35 58.4 15.9 35.8 24 73.9 24 113.1 0 74.9-29.5 145.4-83 198.4z"/></symbol>
+  <symbol id="i-github" viewBox="64 64 896 896"><path d="M511.6 76.3C264.3 76.2 64 276.4 64 523.5 64 718.9 189.3 885 363.8 946c23.5 5.9 19.9-10.8 19.9-22.2v-77.5c-135.7 15.9-141.2-73.9-150.3-88.9C215 726 171.5 718 184.5 703c30.9-15.9 62.4 4 98.9 57.9 26.4 39.1 77.9 32.5 104 26 5.7-23.5 17.9-44.5 34.7-60.8-140.6-25.2-199.2-111-199.2-213 0-49.5 16.3-95 48.3-131.7-20.4-60.5 1.9-112.3 4.9-120 58.1-5.2 118.5 41.6 123.2 45.3 33-8.9 70.7-13.6 112.9-13.6 42.4 0 80.2 4.9 113.5 13.9 11.3-8.6 67.3-48.8 121.3-43.9 2.9 7.7 24.7 58.3 5.5 118 32.4 36.8 48.9 82.7 48.9 132.3 0 102.2-59 188.1-200 212.9a127.5 127.5 0 0138.1 91v112.5c.8 9 0 17.9 15 17.9 177.1-59.7 304.6-227 304.6-424.1 0-247.2-200.4-447.3-447.5-447.3z"/></symbol>
+  <symbol id="i-logout" viewBox="64 64 896 896"><path d="M868 732h-70.3c-4.8 0-9.3 2.1-12.3 5.8-7 8.5-14.5 16.7-22.4 24.5a353.84 353.84 0 01-112.7 75.9A352.8 352.8 0 01512.4 866c-47.9 0-94.3-9.4-137.9-27.8a353.84 353.84 0 01-112.7-75.9 353.28 353.28 0 01-76-112.5C167.3 606.2 158 559.9 158 512s9.4-94.2 27.8-137.8c17.8-42.1 43.4-80 76-112.5s70.5-58.1 112.7-75.9c43.6-18.4 90-27.8 137.9-27.8 47.9 0 94.3 9.3 137.9 27.8 42.2 17.8 80.1 43.4 112.7 75.9 7.9 7.9 15.3 16.1 22.4 24.5 3 3.7 7.6 5.8 12.3 5.8H868c6.3 0 10.2-7 6.7-12.3C798 160.5 663.8 81.6 511.3 82 271.7 82.6 79.6 277.1 82 516.4 84.4 751.9 276.2 942 512.4 942c152.1 0 285.7-78.8 362.3-197.7 3.4-5.3-.4-12.3-6.7-12.3zm88.9-226.3L815 393.7c-5.3-4.2-13-.4-13 6.3v76H488c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+  <symbol id="i-read" viewBox="64 64 896 896"><path d="M928 161H699.2c-49.1 0-97.1 14.1-138.4 40.7L512 233l-48.8-31.3A255.2 255.2 0 00324.8 161H96c-17.7 0-32 14.3-32 32v568c0 17.7 14.3 32 32 32h228.8c49.1 0 97.1 14.1 138.4 40.7l44.4 28.6c1.3.8 2.8 1.3 4.3 1.3s3-.4 4.3-1.3l44.4-28.6C602 807.1 650.1 793 699.2 793H928c17.7 0 32-14.3 32-32V193c0-17.7-14.3-32-32-32zM324.8 721H136V233h188.8c35.4 0 69.8 10.1 99.5 29.2l48.8 31.3 6.9 4.5v462c-47.6-25.6-100.8-39-155.2-39zm563.2 0H699.2c-54.4 0-107.6 13.4-155.2 39V298l6.9-4.5 48.8-31.3c29.7-19.1 64.1-29.2 99.5-29.2H888v488zM396.9 361H211.1c-3.9 0-7.1 3.4-7.1 7.5v45c0 4.1 3.2 7.5 7.1 7.5h185.7c3.9 0 7.1-3.4 7.1-7.5v-45c.1-4.1-3.1-7.5-7-7.5zm223.1 7.5v45c0 4.1 3.2 7.5 7.1 7.5h185.7c3.9 0 7.1-3.4 7.1-7.5v-45c0-4.1-3.2-7.5-7.1-7.5H627.1c-3.9 0-7.1 3.4-7.1 7.5zM396.9 501H211.1c-3.9 0-7.1 3.4-7.1 7.5v45c0 4.1 3.2 7.5 7.1 7.5h185.7c3.9 0 7.1-3.4 7.1-7.5v-45c.1-4.1-3.1-7.5-7-7.5zm416 0H627.1c-3.9 0-7.1 3.4-7.1 7.5v45c0 4.1 3.2 7.5 7.1 7.5h185.7c3.9 0 7.1-3.4 7.1-7.5v-45c.1-4.1-3.1-7.5-7-7.5z"/></symbol>
+  <symbol id="i-robot" viewBox="64 64 896 896"><path d="M300 328a60 60 0 10120 0 60 60 0 10-120 0zM852 64H172c-17.7 0-32 14.3-32 32v660c0 17.7 14.3 32 32 32h680c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-32 660H204V128h616v596zM604 328a60 60 0 10120 0 60 60 0 10-120 0zm250.2 556H169.8c-16.5 0-29.8 14.3-29.8 32v36c0 4.4 3.3 8 7.4 8h729.1c4.1 0 7.4-3.6 7.4-8v-36c.1-17.7-13.2-32-29.7-32zM664 508H360c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-search" viewBox="64 64 896 896"><path d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></symbol>
+  <symbol id="i-star" viewBox="64 64 896 896"><path d="M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 00.6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0046.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 4.4 20.3 3.2 17.4-3 29.1-19.5 26.1-36.9l-43.4-252.9 183.7-179.1c5-4.9 8.3-11.3 9.3-18.3 2.7-17.5-9.5-33.7-27-36.3zM664.8 561.6l36.1 210.3L512 672.7 323.1 772l36.1-210.3-152.8-149L417.6 382 512 190.7 606.4 382l211.2 30.7-152.8 148.9z"/></symbol>
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-thunderbolt" viewBox="64 64 896 896"><path d="M848 359.3H627.7L825.8 109c4.1-5.3.4-13-6.3-13H436c-2.8 0-5.5 1.5-6.9 4L170 547.5c-3.1 5.3.7 12 6.9 12h174.4l-89.4 357.6c-1.9 7.8 7.5 13.3 13.3 7.7L853.5 373c5.2-4.9 1.7-13.7-5.5-13.7zM378.2 732.5l60.3-241H281.1l189.6-327.4h224.6L487 427.4h211L378.2 732.5z"/></symbol>
+  <symbol id="i-tool" viewBox="64 64 896 896"><path d="M876.6 239.5c-.5-.9-1.2-1.8-2-2.5-5-5-13.1-5-18.1 0L684.2 409.3l-67.9-67.9L788.7 169c.8-.8 1.4-1.6 2-2.5 3.6-6.1 1.6-13.9-4.5-17.5-98.2-58-226.8-44.7-311.3 39.7-67 67-89.2 162-66.5 247.4l-293 293c-3 3-2.8 7.9.3 11l169.7 169.7c3.1 3.1 8.1 3.3 11 .3l292.9-292.9c85.5 22.8 180.5.7 247.6-66.4 84.4-84.5 97.7-213.1 39.7-311.3zM786 499.8c-58.1 58.1-145.3 69.3-214.6 33.6l-8.8 8.8-.1-.1-274 274.1-79.2-79.2 230.1-230.1s0 .1.1.1l52.8-52.8c-35.7-69.3-24.5-156.5 33.6-214.6a184.2 184.2 0 01144-53.5L537 318.9a32.05 32.05 0 000 45.3l124.5 124.5a32.05 32.05 0 0045.3 0l132.8-132.8c3.7 51.8-14.4 104.8-53.6 143.9z"/></symbol>
+  <symbol id="i-user" viewBox="64 64 896 896"><path d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></symbol>
+  <symbol id="i-avatar" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
+    <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
+    <path d="M512 628c-176 0-316 106-316 238v158h632v-158c0-132-140-238-316-238z" style="fill:var(--av-fg,#5e6ad2)"/>
+  </symbol>
+</svg>
 
 <!-- 顶栏 -->
 <header class="header">
   <div class="header-in">
     <a class="logo" href="site-home.html">
-      <span class="cursor-block"></span>
-      一起AI技术<span class="tld">17aitech.com</span>
+      <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
     </a>
     <nav class="nav">
       <a href="site-home.html" class="active">首页</a>
-      <a href="site-articles.html">文章</a>
       <a href="site-telegram.html">电报流</a>
-      <a href="site-articles.html">归档</a>
-      <a href="site-article.html">关于</a>
-      <a href="site-search.html" class="mono" title="搜索">⌕ 搜索</a>
+      <a href="site-articles.html">文章</a>
+      <a href="site-search.html" class="nav-ic" title="Agent 搜索" aria-label="Agent 搜索"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
+      <div class="user-menu">
+        <button class="avatar-btn" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false" title="账号菜单">
+          <svg class="avatar-svg" aria-hidden="true"><use href="#i-avatar"/></svg>
+          <svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-down"/></svg>
+        </button>
+        <div class="user-drop" id="userDrop" hidden>
+          <div class="ud-head"><b>诸葛东明</b><span>admin · 站长</span></div>
+          <a href="account.html"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>个人设置</a>
+          <a href="login.html" class="ud-danger"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>退出登录</a>
+        </div>
+      </div>
     </nav>
   </div>
 </header>
 
-<!-- Hero:终端品牌语(Hub 化后压缩) -->
+<!-- Hero:控制台(Hub 首屏:品牌语 + Agent 搜索输入框,回车进 site-search;全内容宽,与下方双栏对齐) -->
 <section class="hero">
   <div class="term">
     <div class="term-bar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="term-title">17aitech — zsh</span>
+      <span class="term-title">17aitech — hub console</span>
     </div>
     <div class="term-body">
       <div class="ln"><span class="c-prompt">➜</span> <span class="c-cmd">whoami</span></div>
-      <div class="ln c-dim"># 一起AI技术 · 一个人指挥智能体军团的公开实战档案</div>
-      <div class="ln"><span class="c-accent">agent.legion</span> <span class="c-dim">--status=</span><span class="c-prompt">active</span> <span class="c-dim">--since=</span>2021 <span class="cursor-tail"></span></div>
+      <div class="ln c-dim"># AI 信息 Hub — 资讯 · 教程 · 项目,连接人与快速变化的 AI</div>
+      <div class="ln"><span class="c-accent">agent.legion</span> <span class="c-dim">--status=</span><span class="c-prompt">active</span> <span class="c-dim">--channels=</span>13 <span class="c-dim">--since=</span>2021</div>
+      <form class="console" onsubmit="return goSearch(event)">
+        <span class="c-prompt">&gt;</span>
+        <span class="q-wrap">
+          <span class="q-measure" id="qMeasure" aria-hidden="true"></span>
+          <span class="q-caret" id="qCaret" aria-hidden="true"></span>
+          <input id="q" type="text" placeholder="问点什么,或搜索资讯 / 教程 / 项目…" autocomplete="off" aria-label="Agent 搜索">
+        </span>
+        <button type="submit" class="go">搜索 ⏎</button>
+      </form>
     </div>
   </div>
   <div class="hero-sub">
-    <span class="hero-chip">📄 <b>154</b> 篇原创实战文章</span>
-    <span class="hero-chip">📡 <b>13</b> 个渠道实时采集中</span>
-    <span class="hero-chip">⭐ 专注 <b>Claude Code / MCP / AI 落地</b></span>
+    <a class="hero-chip" href="site-search.html"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-fire"/></svg>本周 Agent 框架有什么新进展?</a>
+    <a class="hero-chip" href="site-search.html"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-book"/></svg>MCP 入门到实战</a>
+    <a class="hero-chip" href="site-search.html"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-tool"/></svg>能本地跑 LLM 的开源项目</a>
   </div>
 </section>
 
-<!-- ① 电报流 LIVE 带:实时感首屏元素 -->
-<section class="section" id="telegram">
-  <div class="tg-band">
-    <div class="tg-band-head">
-      <span class="live-chip"><span class="live-dot"></span>LIVE</span>
-      <span class="bt">⚡ 电报流</span>
-      <span class="bd">站内智能体正在巡检 13 个 AI 资讯渠道 · 今日已入库 47 条</span>
-      <a class="more" href="site-telegram.html">进入电报流 →</a>
+<!-- 双栏 Hub 仪表盘:左主轴电报流 LIVE(混排),右栏 开源项目 / 博主文章 / GEO -->
+<section class="hub">
+  <div class="hub-grid">
+
+    <!-- 左主轴:电报流 LIVE 带 -->
+    <div class="tg-band" id="telegram">
+      <div class="tg-band-head">
+        <span class="live-chip"><span class="live-dot"></span>LIVE</span>
+        <span class="bt"><svg class="ic" aria-hidden="true"><use href="#i-thunderbolt"/></svg>电报流</span>
+        <span class="bd">13 个渠道巡检中 · 文字资讯 + 短视频解读 · 今日已入库 47 条</span>
+        <a class="more" href="site-telegram.html">进入电报流 →</a>
+      </div>
+      <a class="tg-row fresh" href="site-telegram.html">
+        <span class="tm fresh">14:12</span>
+        <span class="sr sr-rss">机器之心</span>
+        <span class="ti">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">3 分钟前 · NEW</span>
+      </a>
+      <a class="tg-row video" href="site-telegram.html">
+        <span class="tm">13:58</span>
+        <span class="thumb"><img src="assets/video-cover-douyin.jpg" alt="" onerror="this.remove()"><span class="play"><svg class="ic" aria-hidden="true"><use href="#i-caret-right-fill"/></svg></span><span class="dur">03:12</span></span>
+        <span class="pf"><span class="chip chip-douyin">抖音</span><span class="who">@AI 前线老李</span></span>
+        <span class="vt">
+          <span class="t">3 分钟看懂 Claude Skills:把提示词升级为可复用技能包</span>
+          <span class="m"><span class="ai">AI 解读</span> · Skills 的加载时机与目录约定,附 2 个实战示例</span>
+        </span>
+        <span class="ag">37 分钟前</span>
+      </a>
+      <a class="tg-row" href="site-telegram.html">
+        <span class="tm">13:47</span>
+        <span class="sr sr-sns">X · 学者圈</span>
+        <span class="ti">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">48 分钟前</span>
+      </a>
+      <a class="tg-row video" href="site-telegram.html">
+        <span class="tm">13:20</span>
+        <span class="thumb"><img src="assets/video-cover-bili.jpg" alt="" onerror="this.remove()"><span class="play"><svg class="ic" aria-hidden="true"><use href="#i-caret-right-fill"/></svg></span><span class="dur">12:48</span></span>
+        <span class="pf"><span class="chip chip-bili">B站</span><span class="who">@AI 工坊 · 阿凯</span></span>
+        <span class="vt">
+          <span class="t">手把手:24G 显卡本地部署 Qwen3.5,量化方案与显存账</span>
+          <span class="m"><span class="ai">AI 解读</span> · GGUF Q4 与 AWQ 实测对比,长上下文显存占用清单</span>
+        </span>
+        <span class="ag">1 小时前</span>
+      </a>
+      <a class="tg-row" href="site-telegram.html">
+        <span class="tm">13:12</span>
+        <span class="sr sr-web">Hacker News</span>
+        <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">1 小时前</span>
+      </a>
+      <a class="tg-row" href="site-telegram.html">
+        <span class="tm">12:47</span>
+        <span class="sr sr-rss">机器之心</span>
+        <span class="ti">DeepSeek-V4 推理模型官宣:1M 上下文,API 价格下调 40% <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">2 小时前</span>
+      </a>
+      <a class="tg-row" href="site-telegram.html">
+        <span class="tm">12:05</span>
+        <span class="sr sr-web">GitHub Blog</span>
+        <span class="ti">Copilot Agent 正式 GA:仓库级任务委托与自治 PR 评审 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">3 小时前</span>
+      </a>
+      <a class="tg-row" href="site-telegram.html">
+        <span class="tm">11:32</span>
+        <span class="sr sr-sns">X · 学者圈</span>
+        <span class="ti">Sora 2 开放 API 首日:1080p 10s 成本降至 $0.2,创作者生态引爆 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">3 小时前</span>
+      </a>
+      <a class="tg-row" href="site-telegram.html">
+        <span class="tm">10:58</span>
+        <span class="sr sr-rss">量子位</span>
+        <span class="ti">智谱发布 GLM-5:开源权重即日可下,128K 上下文免费商用 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ag">4 小时前</span>
+      </a>
+      <div class="tg-band-foot">
+        <a href="site-telegram.html">tail -f /telegram — 查看完整混合电报流(30-60s 自动刷新)→</a>
+      </div>
     </div>
-    <a class="tg-row fresh" href="site-telegram.html">
-      <span class="tm fresh">14:12</span>
-      <span class="sr sr-rss">机器之心</span>
-      <span class="ti">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变 <span class="ext">↗</span></span>
-      <span class="ag">3 分钟前 · NEW</span>
-    </a>
-    <a class="tg-row" href="site-telegram.html">
-      <span class="tm">14:03</span>
-      <span class="sr sr-sns">X · 学者圈</span>
-      <span class="ti">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑 <span class="ext">↗</span></span>
-      <span class="ag">18 分钟前</span>
-    </a>
-    <a class="tg-row" href="site-telegram.html">
-      <span class="tm">13:47</span>
-      <span class="sr sr-web">Hacker News</span>
-      <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext">↗</span></span>
-      <span class="ag">41 分钟前</span>
-    </a>
-    <a class="tg-row" href="site-telegram.html">
-      <span class="tm">13:31</span>
-      <span class="sr sr-sns">Reddit</span>
-      <span class="ti">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平 <span class="ext">↗</span></span>
-      <span class="ag">1 小时前</span>
-    </a>
-    <a class="tg-row" href="site-telegram.html">
-      <span class="tm">13:12</span>
-      <span class="sr sr-rss">官方 Blog</span>
-      <span class="ti">OpenAI DevBlog:function calling 支持流式 JSON Schema 校验 <span class="ext">↗</span></span>
-      <span class="ag">1 小时前</span>
-    </a>
-    <div class="tg-band-foot">
-      <a href="site-telegram.html">tail -f /telegram — 查看完整电报流(30-60s 自动刷新)→</a>
-    </div>
-  </div>
-</section>
 
-<!-- ② GitHub 项目展示:仓库给武器 -->
-<section class="section" id="projects">
-  <div class="sec-head">
-    <h2>开源项目</h2>
-    <span class="mono-tag">[REPOS · domonic18]</span>
-    <span class="mono-tag">文章教用法,仓库给武器</span>
-    <a class="more" href="#" onclick="return false">github.com/domonic18 →</a>
-  </div>
-  <div class="repo-grid">
-    <article class="repo-card">
-      <div class="repo-head"><span class="ic">📦</span><h3><a href="#" onclick="return false">aitech-hub</a></h3><span class="stars">★ 1.2k</span></div>
-      <p>本站源码:Next.js 15 全栈单体 + Claude Code 全程人机协同开发。154 篇文章迁移、中文 slug 路由、GEO 直出全部开源,配套系列文章即建站实录。</p>
-      <span class="repo-link">配套文章 ×6</span>
-      <div class="repo-foot"><span><span class="lang-dot" style="background:#3178c6"></span>TypeScript</span><span>更新于 2 小时前</span></div>
-    </article>
-    <article class="repo-card">
-      <div class="repo-head"><span class="ic">🤖</span><h3><a href="#" onclick="return false">agent-legion-kit</a></h3><span class="stars">★ 3.4k</span></div>
-      <p>多 Agent 协作起步套件:主从 / 流水线 / 评审环三种编排模板,CLAUDE.md 与 skills 配置即拿即用,《智能体军团指挥手册》系列的全部可运行资产。</p>
-      <span class="repo-link">配套文章 ×4</span>
-      <div class="repo-foot"><span><span class="lang-dot" style="background:#89e051"></span>Shell</span><span>更新于 3 天前</span></div>
-    </article>
-    <article class="repo-card">
-      <div class="repo-head"><span class="ic">🔌</span><h3><a href="#" onclick="return false">mcp-publish-server</a></h3><span class="stars">★ 892</span></div>
-      <p>Claude Code 直发博客的 MCP server 参考实现:Bearer PAT、slug 幂等 upsert、图片随文转存。《MCP 实战》一文的配套仓库,5 分钟接入。</p>
-      <span class="repo-link">配套文章 ×2</span>
-      <div class="repo-foot"><span><span class="lang-dot" style="background:#3178c6"></span>TypeScript</span><span>更新于 1 周前</span></div>
-    </article>
-  </div>
-</section>
+    <!-- 右栏:开源项目 / 博主文章 / GEO -->
+    <aside class="rail">
+      <div class="rail-card" id="projects">
+        <div class="rail-head">
+          <svg class="ic" aria-hidden="true"><use href="#i-github"/></svg>开源项目
+          <span class="mono-tag">[REPOS]</span>
+        </div>
+        <a class="rail-item repo-it" href="#" onclick="return false">
+          <span class="ri-head">
+            <svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>
+            <b>aitech-hub</b>
+            <span class="stars"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-star"/></svg>1.2k</span>
+          </span>
+          <span class="ri-desc">本站源码:Next.js 15 全栈单体,Claude Code 全程人机协同开发</span>
+          <span class="ri-link">配套文章 ×6</span>
+        </a>
+        <a class="rail-item repo-it" href="#" onclick="return false">
+          <span class="ri-head">
+            <svg class="ic" aria-hidden="true"><use href="#i-robot"/></svg>
+            <b>agent-legion-kit</b>
+            <span class="stars"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-star"/></svg>3.4k</span>
+          </span>
+          <span class="ri-desc">多 Agent 协作起步套件:主从 / 流水线 / 评审环编排模板</span>
+          <span class="ri-link">配套文章 ×4</span>
+        </a>
+        <a class="rail-item repo-it" href="#" onclick="return false">
+          <span class="ri-head">
+            <svg class="ic" aria-hidden="true"><use href="#i-api"/></svg>
+            <b>mcp-publish-server</b>
+            <span class="stars"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-star"/></svg>892</span>
+          </span>
+          <span class="ri-desc">Claude Code 直发博客的 MCP server 参考实现,5 分钟接入</span>
+          <span class="ri-link">配套文章 ×2</span>
+        </a>
+        <a class="rail-foot" href="#" onclick="return false">github.com/domonic18 →</a>
+      </div>
 
-<!-- ③ 博客:精选 -->
-<section class="section" id="blog">
-  <div class="sec-head">
-    <h2>精选文章</h2>
-    <span class="mono-tag">[FEATURED]</span>
-    <a class="more" href="site-articles.html">全部文章 →</a>
-  </div>
-  <div class="featured-grid">
-    <article class="feat-card">
-      <div class="feat-cover"><img src="assets/cover-claude-code.jpg" alt="" onerror="this.remove()"></div>
-      <div class="feat-body">
-        <div class="tags"><span class="tag cat">AI 实战</span><span class="tag">Claude Code</span></div>
-        <h3><a href="site-article.html">用 Claude Code 重建我的博客:从 WordPress 到 Next.js 全栈单体</a></h3>
-        <p>154 篇文章、296 个用户、3314 篇弃用资讯——一次 SEO 无损迁移的完整决策记录。中文 percent-encoded slug 如何原样保留?同服务器原位切换怎么做到分钟级回滚?这篇讲透。</p>
-        <div class="meta">
-          <span class="date mono">2026-09-28</span>
-          <span class="views">👁 12,408</span>
-          <span>≈ 28 min</span>
+      <div class="rail-card" id="blog">
+        <div class="rail-head">
+          <svg class="ic" aria-hidden="true"><use href="#i-read"/></svg>博主文章
+          <span class="chip chip-blogger">博主个人</span>
+          <span class="mono-tag">[BLOG]</span>
+        </div>
+        <a class="rail-item post-it" href="site-article.html">
+          <span class="pi-t">用 Claude Code 重建我的博客:从 WordPress 到 Next.js 全栈单体</span>
+          <span class="pi-m"><span class="tag cat">AI 实战</span><span>09-28</span><span class="pi-v"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg>12,408</span></span>
+        </a>
+        <a class="rail-item post-it" href="site-article.html">
+          <span class="pi-t">MCP 实战:从本地 Markdown 连图一键发布到线上站点</span>
+          <span class="pi-m"><span class="tag cat">AI 实战</span><span>09-21</span><span class="pi-v"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg>8,930</span></span>
+        </a>
+        <a class="rail-item post-it" href="site-article.html">
+          <span class="pi-t">智能体军团指挥手册:多 Agent 协作的拆解与编排</span>
+          <span class="pi-m"><span class="tag cat">AI 实战</span><span>09-15</span><span class="pi-v"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg>6,214</span></span>
+        </a>
+        <a class="rail-item post-it" href="site-article.html">
+          <span class="pi-t">GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</span>
+          <span class="pi-m"><span class="tag cat">建站</span><span>09-08</span><span class="pi-v"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg>4,872</span></span>
+        </a>
+        <a class="rail-foot" href="site-articles.html">全部文章 →</a>
+      </div>
+
+      <div class="rail-card">
+        <div class="rail-head">
+          <svg class="ic" aria-hidden="true"><use href="#i-robot"/></svg>给人,也给智能体
+          <span class="mono-tag">[GEO]</span>
+        </div>
+        <div class="geo-body">
+          <p>全站内容对机器友好:llms.txt 索引、每篇文章 Markdown 直出、站点内容 MCP(二期)。AI 助手引用即流量。</p>
+          <div class="g-links">
+            <a href="#" onclick="return false">/llms.txt</a>
+            <a href="#" onclick="return false">/md/[slug]</a>
+            <a href="#" onclick="return false">/feed.xml</a>
+          </div>
         </div>
       </div>
-    </article>
-    <article class="feat-card">
-      <div class="feat-cover"><img src="assets/cover-mcp.jpg" alt="" onerror="this.remove()"></div>
-      <div class="feat-body">
-        <div class="tags"><span class="tag cat">AI 实战</span><span class="tag">MCP</span></div>
-        <h3><a href="site-article.html">MCP 实战:从本地 Markdown 连图一键发布到线上站点</a></h3>
-        <p>创作 MCP 的设计与实现:Bearer PAT 鉴权、slug 幂等 upsert、图片自动转存替换。让 Claude Code 成为你的发布前端。</p>
-        <div class="meta">
-          <span class="date mono">2026-09-21</span>
-          <span class="views">👁 8,930</span>
-        </div>
-      </div>
-    </article>
+    </aside>
+
   </div>
 </section>
 
-<!-- ③ 博客:最新 -->
-<section class="section">
-  <div class="sec-head">
-    <h2>最新文章</h2>
-    <span class="mono-tag">[LATEST]</span>
-    <a class="more" href="site-articles.html">更多 →</a>
-  </div>
-  <div class="grid">
-    <article class="card">
-      <div class="card-cover">
-        <img src="assets/cover-agent-legion.jpg" alt="" onerror="this.remove()">
-        <span class="views-float">👁 6,214</span>
-      </div>
-      <div class="card-body">
-        <div class="tags"><span class="tag cat">AI 实战</span><span class="tag">Agents</span></div>
-        <h3><a href="site-article.html">智能体军团指挥手册:多 Agent 协作的拆解与编排</a></h3>
-        <p>把一个模糊需求拆成多个 agent 的任务图:主从模式、流水线模式、评审环。附真实项目里的失败案例。</p>
-        <div class="card-foot"><span class="date">2026-09-15</span><span>18 min</span></div>
-      </div>
-    </article>
-    <article class="card">
-      <div class="card-cover">
-        <img src="assets/cover-seo.jpg" alt="" onerror="this.remove()">
-        <span class="views-float">👁 4,872</span>
-      </div>
-      <div class="card-body">
-        <div class="tags"><span class="tag cat">建站</span><span class="tag">SEO</span></div>
-        <h3><a href="site-article.html">GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</a></h3>
-        <p>ChatGPT、Perplexity 开始替 Google 分流流量。站点的 llms.txt、文章 .md 直出与站点内容 MCP,是一套完整的 GEO 打法。</p>
-        <div class="card-foot"><span class="date">2026-09-08</span><span>14 min</span></div>
-      </div>
-    </article>
-    <article class="card">
-      <div class="card-cover">
-        <img src="assets/cover-video.jpg" alt="" onerror="this.remove()">
-        <span class="views-float">👁 3,355</span>
-      </div>
-      <div class="card-body">
-        <div class="tags"><span class="tag cat">建站</span><span class="tag">媒体</span></div>
-        <h3><a href="site-article.html">博客视频方案:COS 直链 + B 站嵌入的混合策略</a></h3>
-        <p>自托管视频的转码成本、COS 数据万象截帧、B 站 iframe 的播放体验——三种方案的取舍与实现细节。</p>
-        <div class="card-foot"><span class="date">2026-08-30</span><span>11 min</span></div>
-      </div>
-    </article>
-    <article class="card">
-      <div class="card-cover">
-        <img src="assets/cover-migration.jpg" alt="" onerror="this.remove()">
-        <span class="views-float">👁 5,109</span>
-      </div>
-      <div class="card-body">
-        <div class="tags"><span class="tag cat">数据库</span><span class="tag">Prisma</span></div>
-        <h3><a href="site-article.html">Prisma Migrate 纪律:forward-only 与迁移重放守卫</a></h3>
-        <p>禁止改已应用迁移、CI 里从零重放全部迁移做一致性断言——小团队也能有的数据库迁移纪律。</p>
-        <div class="card-foot"><span class="date">2026-08-22</span><span>9 min</span></div>
-      </div>
-    </article>
-    <article class="card">
-      <div class="card-cover">
-        <img src="assets/cover-paywall.jpg" alt="" onerror="this.remove()">
-        <span class="views-float">👁 2,940</span>
-      </div>
-      <div class="card-body">
-        <div class="tags"><span class="tag cat">产品</span><span class="tag">付费</span></div>
-        <h3><a href="site-article.html">个人博客的付费阅读实践:虎皮椒接入与权益迁移</a></h3>
-        <p>从回调验签到对账设计,再到历史已购权益的导入策略。个人开发者的支付系统要简单,但不能将就。</p>
-        <div class="card-foot"><span class="date">2026-08-15</span><span>12 min</span></div>
-      </div>
-    </article>
-    <article class="card">
-      <div class="card-cover">
-        <img src="assets/cover-github.jpg" alt="" onerror="this.remove()">
-        <span class="views-float">👁 3,788</span>
-      </div>
-      <div class="card-body">
-        <div class="tags"><span class="tag cat">开源</span><span class="tag">GitHub</span></div>
-        <h3><a href="site-article.html">文章教用法,仓库给武器:博客与 GitHub 的联动设计</a></h3>
-        <p>每篇实战文章对应一个可运行仓库:README 渲染、进展动态同步、从文章到代码的一次点击直达。</p>
-        <div class="card-foot"><span class="date">2026-08-07</span><span>10 min</span></div>
-      </div>
-    </article>
-  </div>
-</section>
-
-<!-- GEO 带:给人也给智能体 -->
-<div class="geo-band">
-  <div class="geo-in">
-    <span class="g-icon">🤖</span>
-    <span class="g-txt"><b>给人,也给智能体。</b>全站内容对机器友好:llms.txt 索引、每篇文章 Markdown 直出、站点内容 MCP(二期)。</span>
-    <div class="g-links">
-      <a href="#" onclick="return false">/llms.txt</a>
-      <a href="#" onclick="return false">/md/[slug]</a>
-      <a href="#" onclick="return false">/feed.xml</a>
-    </div>
-  </div>
-</div>
-
-<!-- 页脚 -->
+<!-- 页脚(归档/关于/协议/RSS 收敛于此) -->
 <footer class="footer">
   <div class="footer-in">
     <div class="col">
-      <a class="logo" href="site-home.html" style="font-size:16px">
+      <a class="logo" href="site-home.html">
         <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
       </a>
-      <p class="brand-desc">一个人指挥智能体军团的公开实战档案。Claude Code、MCP、AI 落地实践,每篇文章附完整源码仓库。</p>
+      <p class="brand-desc">AI 信息 Hub:资讯、教程、开源项目与博主实战文章的聚合平台。博主亲自写,智能体军团帮跑——Claude Code、MCP、AI 落地实践,每篇文章附完整源码仓库。</p>
     </div>
     <div class="col">
       <h4>导航</h4>
       <a href="site-articles.html">全部文章</a>
       <a href="site-telegram.html">电报流</a>
-      <a href="site-articles.html">归档</a>
-      <a href="site-article.html">关于我</a>
+      <a href="site-search.html">Agent 搜索</a>
       <a href="login.html">登录 / 注册</a>
     </div>
     <div class="col">
-      <h4>协议</h4>
+      <h4>站点</h4>
+      <a href="site-article.html">关于</a>
+      <a href="site-articles.html">归档</a>
       <a href="#" onclick="return false">用户协议</a>
       <a href="#" onclick="return false">隐私政策(含统计采集说明)</a>
-      <a href="#" onclick="return false">免责声明</a>
     </div>
   </div>
   <div class="footer-base">
-    © 2021-2026 17aitech.com · 一起AI技术 · <a href="#" onclick="return false">粤ICP备XXXXXXXX号</a> · powered by Claude Code
+    © 2021-2026 17aitech.com · 一起AI技术 · <a href="site-article.html">关于</a> · <a href="site-articles.html">归档</a> · <a href="#" onclick="return false">协议</a> · <a href="#" onclick="return false">RSS</a> · 粤ICP备XXXXXXXX号
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · 二期 Hub 终态 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.4.0 · Hub 终态首页 · 双栏仪表盘(二期) · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+
+/* ---- 用户菜单(点外关闭 + Esc) ---- */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const drop = document.getElementById("userDrop");
+  const btn = e.currentTarget;
+  if (drop.hasAttribute("hidden")) { drop.removeAttribute("hidden"); btn.setAttribute("aria-expanded", "true"); }
+  else { drop.setAttribute("hidden", ""); btn.setAttribute("aria-expanded", "false"); }
+}
+document.addEventListener("click", (e) => {
+  const drop = document.getElementById("userDrop");
+  if (drop && !drop.hasAttribute("hidden") && !e.target.closest(".user-menu")) {
+    drop.setAttribute("hidden", "");
+    document.querySelector(".avatar-btn")?.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.getElementById("userDrop")?.setAttribute("hidden", "");
+});
+
+/* ---- Agent 搜索 ---- */
+function goSearch(e) {
+  e.preventDefault();
+  const q = document.getElementById("q").value.trim();
+  location.href = q ? "site-search.html?q=" + encodeURIComponent(q) : "site-search.html";
+  return false;
+}
+
+/* ---- 镜面光标:失焦时随文字移动并闪烁;聚焦时隐藏,交还原生 caret ---- */
+(function () {
+  const q = document.getElementById("q");
+  const caret = document.getElementById("qCaret");
+  const meas = document.getElementById("qMeasure");
+  if (!q || !caret || !meas) return;
+  const sync = () => {
+    const pos = q.selectionStart ?? q.value.length;
+    meas.textContent = q.value.slice(0, pos);
+    caret.style.left = meas.offsetWidth + "px";
+  };
+  q.addEventListener("input", sync);
+  q.addEventListener("keyup", sync);
+  q.addEventListener("focus", () => { caret.style.display = "none"; });
+  q.addEventListener("blur", () => { caret.style.display = "block"; sync(); });
+  sync();
+})();
+</script>
 </body>
 </html>

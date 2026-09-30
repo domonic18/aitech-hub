@@ -2,10 +2,11 @@
 
 ## 1. 项目概览
 
-- **愿景**:一起AI技术(17aitech.com)个人品牌内容站,替换旧 WordPress;SEO 是生命线
+- **愿景**:一起AI技术(17aitech.com)AI 信息 Hub(连接用户与快速变化的 AI 信息:资讯/教程/示例项目;
+  站长原创文章为核心渠道之一),替换旧 WordPress;SEO 是生命线
 - **架构**:Next.js 15 全栈单体(App Router RSC/ISR + Route Handlers)+ Prisma/PostgreSQL
   + Redis/BullMQ worker;公开品牌与域名沿用 17aitech
-- **关键约束**:旧文章 URL(中文 percent-encoded slug)原样可用;296 老用户短信登录继承;
+- **关键约束**:旧文章 URL(中文 percent-encoded slug)原样可用;296 老用户短信登录继承(三期开启——运营商个人签名资质停发,一期仅 admin 密码鉴权);
   154 篇原创文章及其引用图片全量迁移;3314 篇爬虫资讯弃用(301 承接)
 
 ## 2. 项目结构
@@ -26,6 +27,7 @@
 | 中文 slug 路由红线            | docs/arch/07-frontend §2         |
 | 媒体/视频/清洗                | docs/arch/08-media               |
 | UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
+| 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
 | 测试规范                      | docs/standard/01-testing         |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 
