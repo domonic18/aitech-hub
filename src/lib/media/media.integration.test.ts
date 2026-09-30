@@ -94,10 +94,21 @@ const ORIGIN_HEADERS: Record<string, string> = {
   "x-forwarded-host": "localhost:3000",
 };
 
-function jsonReq(url: string, method: string, cookie: string, body?: unknown): never {
+function jsonReq(
+  url: string,
+  method: string,
+  cookie: string,
+  body?: unknown,
+  origin?: string,
+): never {
   return new Request(`http://localhost:3000${url}`, {
     method,
-    headers: { ...ORIGIN_HEADERS, "content-type": "application/json", cookie },
+    headers: {
+      ...ORIGIN_HEADERS,
+      ...(origin ? { origin } : {}),
+      "content-type": "application/json",
+      cookie,
+    },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   }) as never;
 }
@@ -537,6 +548,25 @@ describe("外链转存与 import 路由", () => {
 });
 
 describe("统计侧翼与守卫", () => {
+  it("mediaStats:kind 聚合/孤儿口径/近 30 天直测(评审 S7)", async () => {
+    const stem = `2026/09/${crypto.randomUUID().replace(/-/g, "")}`;
+    const row = await prisma.media.create({
+      data: {
+        path: `/wp-content/uploads/${stem}.png`,
+        filename: "it-m5b-stat-orphan.png",
+        kind: "image",
+        status: "active",
+        sizeBytes: BigInt(123),
+      },
+    });
+    createdMedia.push(row.id);
+    const stats = await mediaStats();
+    expect(stats.kinds.image.count).toBeGreaterThan(0);
+    expect(stats.orphanCount).toBeGreaterThanOrEqual(1); // 本用例无引用行计入孤儿口径
+    expect(stats.last30d.count).toBeGreaterThan(0);
+    expect(stats.last30d.bytes).toBeGreaterThanOrEqual(123);
+  });
+
   it("brokenRefs:库中不存在的引用路径按篇数排序列出", async () => {
     const post = await prisma.post.create({
       data: {
@@ -560,7 +590,7 @@ describe("统计侧翼与守卫", () => {
     expect(queueState.added.at(-1)?.name).toBe("audit");
   });
 
-  it("守卫:跨 Origin 403;未登录 401;未登录详情 401", async () => {
+  it("守卫:跨 Origin 403;未登录 401;未登录详情 401;import POST 同规(评审 S7)", async () => {
     const fd = new FormData();
     fd.set("file", fileOf(png, "x.png", "image/png"));
     expect(
@@ -571,6 +601,26 @@ describe("统计侧翼与守卫", () => {
       params: Promise.resolve({ id: "1" }),
     });
     expect(anon.status).toBe(401);
+    expect(
+      (
+        await importPOST(
+          jsonReq(
+            "/api/media/import",
+            "POST",
+            cookie,
+            { urls: ["https://a.com/x.png"] },
+            "https://evil.example.com",
+          ),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await importPOST(
+          jsonReq("/api/media/import", "POST", "", { urls: ["https://a.com/x.png"] }),
+        )
+      ).status,
+    ).toBe(401);
   });
 
   it("管理详情 service:软删行不可见", async () => {

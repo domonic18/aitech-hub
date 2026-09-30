@@ -281,3 +281,51 @@ test("7. 媒体库闭环(M5b:上传/卡片/详情抽屉/软删)", async ({ page 
     await prisma.media.delete({ where: { id: row.id } });
   }
 });
+
+test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑器交接)", async ({ page }) => {
+  const IMG_NAME = "e2e-import-img.png";
+  await prisma.media.deleteMany({ where: { filename: IMG_NAME } });
+
+  // 登录(同用例 4/6 的 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 列表页 → 一键发文弹窗 → 选 md + 本地图(相对路径引用,按文件名匹配)
+  await page.goto("/admin/posts/");
+  await page.getByRole("button", { name: "一键发文(md 导入)" }).click();
+  const png = await sharp({
+    create: { width: 4, height: 3, channels: 3, background: { r: 20, g: 120, b: 200 } },
+  })
+    .png()
+    .toBuffer();
+  const md = `# E2E 导入\n\n![配图](./imgs/${IMG_NAME})\n`;
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "e2e-import.md", mimeType: "text/markdown", buffer: Buffer.from(md, "utf8") },
+    { name: IMG_NAME, mimeType: "image/png", buffer: png },
+  ]);
+  await expect(page.getByText("图片引用 1 处")).toBeVisible();
+  await page.getByRole("button", { name: "开始导入" }).click();
+
+  // 交接进编辑器:URL 带 import=1,正文引用已替换为站内路径
+  await page.waitForURL(/\/admin\/posts\/new\/\?import=1/);
+  const ta = page.getByPlaceholder(/正文\(Markdown/);
+  await expect(ta).toHaveValue(/!\[配图\]\(\/wp-content\/uploads\//);
+
+  // 清理:媒体行 + 盘上文件族(与用例 7 同款)
+  const row = await prisma.media.findFirst({ where: { filename: IMG_NAME } });
+  expect(row).toBeTruthy();
+  if (row) {
+    const rel = decodeURIComponent(row.path.replace("/wp-content/uploads/", ""));
+    const root = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+    const stem = rel.replace(/\.[a-z]+$/, "");
+    await Promise.all(
+      [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+        rm(path.join(root, f), { force: true }),
+      ),
+    );
+    await prisma.media.delete({ where: { id: row.id } });
+  }
+});
