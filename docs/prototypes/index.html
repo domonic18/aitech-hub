@@ -108,11 +108,11 @@ a { color: inherit; text-decoration: none; }
       <h1>aitech-hub 原型图<span class="tld">docs/prototypes</span></h1>
     </div>
     <div class="prompt">
-      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 14 screens · 3 groups · dark-terminal theme · <span class="a">v0.1.0</span>
+      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 17 screens · 3 groups · dark-terminal theme · <span class="a">v0.2.0</span>
     </div>
     <p class="desc">
       一起AI技术(17aitech.com)全站 UI 原型。深色终端风(2026-09-30 定稿):
-      覆盖<b>前台核心 4 屏(M3 已实现,视觉升级提案)</b>、<b>用户中心 3 屏(M4)</b>、<b>admin 后台 7 屏(M5)</b>。
+      覆盖<b>前台核心 5 屏(M3 已实现 + 二期电报流)</b>、<b>用户中心 3 屏(M4)</b>、<b>admin 后台 9 屏(M5 + 二期电报流治理/采集管理)</b>。
       每页为可独立打开的单文件 HTML(内联 token + 可交互),页面间可点击走通。
       需求基准见 <a href="../requirement/01-requirement.md">requirement/01-requirement.md</a>,
       设计 token 真相源见 <a href="common.css">common.css</a>。
@@ -123,15 +123,15 @@ a { color: inherit; text-decoration: none; }
   <section class="group">
     <div class="g-head">
       <h2>🖥 前台站点</h2>
-      <span class="mono-tag">[SITE · M3 已实现]</span>
-      <span class="g-desc">原型 = 视觉升级提案(深色终端风),实现按此演进</span>
+      <span class="mono-tag">[SITE · M3 已实现 + 二期]</span>
+      <span class="g-desc">原型 = 视觉升级提案(深色终端风);首页 Hub 与电报流为二期形态</span>
     </div>
     <div class="grid">
       <div class="card">
         <a class="card-link" href="site-home.html" aria-label="首页"></a>
-        <div class="top"><span class="ico">🏠</span><h3>首页</h3><span class="route">/</span></div>
-        <p>终端品牌语 hero(whoami / agent.legion)、精选大卡 ×2、最新文章网格、GEO 条(llms.txt / md 直出入口)。</p>
-        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
+        <div class="top"><span class="ico">🏠</span><h3>首页(Hub)</h3><span class="route">/</span></div>
+        <p>Hub 一体化终态(二期切换):终端 hero(压缩)+ ①电报流 LIVE 带(实时感首屏)→ ②GitHub 项目展示(仓库给武器)→ ③博客精选/最新 + GEO 条。三区可独立降级。</p>
+        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="badge b-plan">二期 Hub</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §4</a></span></div>
       </div>
       <div class="card">
         <a class="card-link" href="site-article.html" aria-label="文章详情"></a>
@@ -150,6 +150,12 @@ a { color: inherit; text-decoration: none; }
         <div class="top"><span class="ico">⌕</span><h3>搜索</h3><span class="route">/search?q=</span></div>
         <p>grep 隐喻搜索框、命中关键词高亮、结果计数与耗时、无结果空态(二态同页展示)。</p>
         <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="site-telegram.html" aria-label="电报流"></a>
+        <div class="top"><span class="ico">📡</span><h3>电报流</h3><span class="route">/telegram</span></div>
+        <p>站内 AI 资讯短讯流(二期):LIVE 指示、渠道过滤 chips、今天/昨天分组、相对时间 + NEW 徽标、新讯息浮条(轮询不打断浏览)、右栏采集概况/渠道健康。noindex,不进 sitemap。</p>
+        <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §6</a></span></div>
       </div>
     </div>
   </section>
@@ -233,6 +239,18 @@ a { color: inherit; text-decoration: none; }
         <p>Bearer PAT 管理(哈希入库/scope/调用计数/吊销)、新建弹窗明文一次性展示、/api/mcp 客户端接入配置示例。</p>
         <div class="foot"><span class="badge b-plan">M5 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.6</a></span></div>
       </div>
+      <div class="card">
+        <a class="card-link" href="admin-telegram.html" aria-label="电报流治理"></a>
+        <div class="top"><span class="ico">📋</span><h3>电报流治理</h3><span class="route">/admin/telegram</span></div>
+        <p>电报条目 CRUD(渠道/状态/日期筛选、编辑/隐藏/归档/删除)、广告过滤与屏蔽词命中留痕、屏蔽词管理(命中计数 + 回溯隐藏存量)、归档策略(visible>90d)与清理确认。</p>
+        <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §4</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-spider.html" aria-label="采集管理"></a>
+        <div class="top"><span class="ico">🕷</span><h3>采集管理</h3><span class="route">/admin/spider</span></div>
+        <p>采集后台(二期):worker 心跳 + BullMQ 队列深度可视化、各渠道 24h 采集条带、采集日历(月网格色阶 + 渠道分解)、渠道管理(interval/成功率/启停/立即重跑)、最近错误与处置建议。</p>
+        <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §5</a></span></div>
+      </div>
     </div>
   </section>
 
@@ -250,8 +268,8 @@ a { color: inherit; text-decoration: none; }
   </div>
 
   <footer class="base">
-    <span class="v">v0.1.0</span>
-    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30</span>
+    <span class="v">v0.2.0</span>
+    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30 · v0.2.0 增电报流三屏与首页 Hub</span>
     <a href="../README.md" style="margin-left:auto">← 文档中心</a>
     <a href="https://github.com/domonic18/aitech-hub" target="_blank">GitHub</a>
   </footer>

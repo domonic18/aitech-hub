@@ -53,8 +53,8 @@ img { display: block; }
 .nav a.active { color: var(--text-1); background: var(--accent-dim); }
 .nav a.mono { font-size: 13px; }
 
-/* ==== Hero:终端品牌语 ==== */
-.hero { max-width: var(--site-max-w); margin: 0 auto; padding: 72px 24px 56px; }
+/* ==== Hero:终端品牌语(Hub 化后压缩,给三区让位) ==== */
+.hero { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 8px; }
 .term {
   max-width: 860px; margin: 0 auto; background: var(--panel);
   border: 1px solid var(--border); border-radius: var(--r-lg);
@@ -62,29 +62,29 @@ img { display: block; }
   overflow: hidden;
 }
 .term-bar {
-  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
   background: var(--panel-2); border-bottom: 1px solid var(--border);
 }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
 .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
 .term-title { margin-left: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
-.term-body { padding: 28px 32px 32px; font-family: var(--font-mono); font-size: 14px; line-height: 2.1; }
+.term-body { padding: 18px 32px 20px; font-family: var(--font-mono); font-size: 13.5px; line-height: 2; }
 .term-body .ln { white-space: pre-wrap; }
 .c-prompt { color: var(--green); }
 .c-cmd { color: var(--text-1); }
 .c-dim { color: var(--text-3); }
 .c-accent { color: #8b96e8; }
 .cursor-tail {
-  display: inline-block; width: 8px; height: 16px; background: var(--accent);
+  display: inline-block; width: 8px; height: 15px; background: var(--accent);
   vertical-align: -2px; animation: blink 1.2s steps(1) infinite;
 }
 .hero-sub {
-  max-width: 860px; margin: 20px auto 0; display: flex; gap: 12px; flex-wrap: wrap;
+  max-width: 860px; margin: 14px auto 0; display: flex; gap: 12px; flex-wrap: wrap;
 }
 .hero-chip {
   font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2);
   background: var(--panel); border: 1px solid var(--border);
-  padding: 6px 12px; border-radius: 999px;
+  padding: 5px 12px; border-radius: 999px;
 }
 .hero-chip b { color: var(--text-1); font-weight: 600; }
 
@@ -95,6 +95,62 @@ img { display: block; }
 .sec-head .mono-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); letter-spacing: .04em; }
 .sec-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); }
 .sec-head .more:hover { color: var(--accent-hover); }
+
+/* ==== ① 电报流 LIVE 带(Hub 第一区:实时感首屏元素) ==== */
+.tg-band {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
+  overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+.tg-band-head {
+  display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+  background: var(--panel-2); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: #7ee2a0; background: rgba(46,160,67,.1); border: 1px solid rgba(46,160,67,.35); border-radius: 999px; padding: 3px 12px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgba(46,160,67,.8); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.8); } }
+.tg-band-head .bt { font-weight: 700; font-size: 15px; }
+.tg-band-head .bd { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.tg-band-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); }
+.tg-band-head .more:hover { color: var(--accent-hover); }
+.tg-row {
+  display: grid; grid-template-columns: 74px 108px 1fr auto; gap: 14px; align-items: center;
+  padding: 11px 20px; border-bottom: 1px solid rgba(42,45,55,.55);
+  transition: background .15s; position: relative;
+}
+.tg-row:last-child { border-bottom: none; }
+.tg-row:hover { background: var(--panel-2); }
+.tg-row .tm { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.tg-row .tm.fresh { color: #7ee2a0; }
+.tg-row .sr { font-family: var(--font-mono); font-size: 11px; padding: 1px 0; text-align: center; border-radius: 4px; border: 1px solid; white-space: nowrap; overflow: hidden; }
+.sr-rss { color: #8b96e8; background: var(--accent-dim); border-color: rgba(94,106,210,.3); }
+.sr-web { color: #7ec8e2; background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.3); }
+.sr-sns { color: #ecc06a; background: rgba(210,153,34,.08); border-color: rgba(210,153,34,.3); }
+.tg-row .ti { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tg-row .ti a:hover { color: var(--accent-hover); }
+.tg-row .ti .ext { color: var(--text-3); font-size: 11px; margin-left: 4px; }
+.tg-row .ag { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.tg-row.fresh::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px rgba(94,106,210,.6); }
+.tg-band-foot { padding: 10px 20px; background: var(--panel-2); text-align: center; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); border-top: 1px solid var(--border); }
+.tg-band-foot a:hover { color: var(--accent-hover); }
+
+/* ==== ② GitHub 项目展示(Hub 第二区:仓库给武器) ==== */
+.repo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.repo-card {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 20px 22px; transition: transform .2s, border-color .2s;
+}
+.repo-card:hover { transform: translateY(-2px); border-color: #3d4260; }
+.repo-head { display: flex; align-items: center; gap: 10px; }
+.repo-head .ic { font-size: 16px; }
+.repo-head h3 { font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
+.repo-head h3 a:hover { color: var(--accent-hover); }
+.repo-head .stars { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--amber); }
+.repo-card p { color: var(--text-2); font-size: 13.5px; flex: 1; }
+.repo-link { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-hover); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px; align-self: flex-start; }
+.repo-link:hover { border-color: var(--accent); }
+.repo-foot { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 2px; }
+.lang-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; vertical-align: -1px; margin-right: 5px; }
 
 /* ==== 精选大卡 ==== */
 .featured-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 20px; }
@@ -192,6 +248,9 @@ img { display: block; }
   .featured-grid { grid-template-columns: 1fr; }
   .feat-cover { height: 180px; }
   .grid { grid-template-columns: 1fr; }
+  .repo-grid { grid-template-columns: 1fr; }
+  .tg-row { grid-template-columns: 64px 92px 1fr; }
+  .tg-row .ag { display: none; }
   .footer-in { grid-template-columns: 1fr; }
 }
 </style>
@@ -208,6 +267,7 @@ img { display: block; }
     <nav class="nav">
       <a href="site-home.html" class="active">首页</a>
       <a href="site-articles.html">文章</a>
+      <a href="site-telegram.html">电报流</a>
       <a href="site-articles.html">归档</a>
       <a href="site-article.html">关于</a>
       <a href="site-search.html" class="mono" title="搜索">⌕ 搜索</a>
@@ -215,7 +275,7 @@ img { display: block; }
   </div>
 </header>
 
-<!-- Hero:终端品牌语 -->
+<!-- Hero:终端品牌语(Hub 化后压缩) -->
 <section class="hero">
   <div class="term">
     <div class="term-bar">
@@ -225,19 +285,93 @@ img { display: block; }
     <div class="term-body">
       <div class="ln"><span class="c-prompt">➜</span> <span class="c-cmd">whoami</span></div>
       <div class="ln c-dim"># 一起AI技术 · 一个人指挥智能体军团的公开实战档案</div>
-      <div class="ln"><span class="c-accent">agent.legion</span> <span class="c-dim">--status=</span><span class="c-prompt">active</span> <span class="c-dim">--since=</span>2021</div>
-      <div class="ln"><span class="c-prompt">➜</span> <span class="c-cmd">cat mission.txt</span><span class="cursor-tail"></span></div>
+      <div class="ln"><span class="c-accent">agent.legion</span> <span class="c-dim">--status=</span><span class="c-prompt">active</span> <span class="c-dim">--since=</span>2021 <span class="cursor-tail"></span></div>
     </div>
   </div>
   <div class="hero-sub">
     <span class="hero-chip">📄 <b>154</b> 篇原创实战文章</span>
-    <span class="hero-chip">🤖 每篇附 <b>Markdown 直出</b>,给人也给智能体</span>
+    <span class="hero-chip">📡 <b>13</b> 个渠道实时采集中</span>
     <span class="hero-chip">⭐ 专注 <b>Claude Code / MCP / AI 落地</b></span>
   </div>
 </section>
 
-<!-- 精选 -->
-<section class="section">
+<!-- ① 电报流 LIVE 带:实时感首屏元素 -->
+<section class="section" id="telegram">
+  <div class="tg-band">
+    <div class="tg-band-head">
+      <span class="live-chip"><span class="live-dot"></span>LIVE</span>
+      <span class="bt">⚡ 电报流</span>
+      <span class="bd">站内智能体正在巡检 13 个 AI 资讯渠道 · 今日已入库 47 条</span>
+      <a class="more" href="site-telegram.html">进入电报流 →</a>
+    </div>
+    <a class="tg-row fresh" href="site-telegram.html">
+      <span class="tm fresh">14:12</span>
+      <span class="sr sr-rss">机器之心</span>
+      <span class="ti">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变 <span class="ext">↗</span></span>
+      <span class="ag">3 分钟前 · NEW</span>
+    </a>
+    <a class="tg-row" href="site-telegram.html">
+      <span class="tm">14:03</span>
+      <span class="sr sr-sns">X · 学者圈</span>
+      <span class="ti">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑 <span class="ext">↗</span></span>
+      <span class="ag">18 分钟前</span>
+    </a>
+    <a class="tg-row" href="site-telegram.html">
+      <span class="tm">13:47</span>
+      <span class="sr sr-web">Hacker News</span>
+      <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext">↗</span></span>
+      <span class="ag">41 分钟前</span>
+    </a>
+    <a class="tg-row" href="site-telegram.html">
+      <span class="tm">13:31</span>
+      <span class="sr sr-sns">Reddit</span>
+      <span class="ti">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平 <span class="ext">↗</span></span>
+      <span class="ag">1 小时前</span>
+    </a>
+    <a class="tg-row" href="site-telegram.html">
+      <span class="tm">13:12</span>
+      <span class="sr sr-rss">官方 Blog</span>
+      <span class="ti">OpenAI DevBlog:function calling 支持流式 JSON Schema 校验 <span class="ext">↗</span></span>
+      <span class="ag">1 小时前</span>
+    </a>
+    <div class="tg-band-foot">
+      <a href="site-telegram.html">tail -f /telegram — 查看完整电报流(30-60s 自动刷新)→</a>
+    </div>
+  </div>
+</section>
+
+<!-- ② GitHub 项目展示:仓库给武器 -->
+<section class="section" id="projects">
+  <div class="sec-head">
+    <h2>开源项目</h2>
+    <span class="mono-tag">[REPOS · domonic18]</span>
+    <span class="mono-tag">文章教用法,仓库给武器</span>
+    <a class="more" href="#" onclick="return false">github.com/domonic18 →</a>
+  </div>
+  <div class="repo-grid">
+    <article class="repo-card">
+      <div class="repo-head"><span class="ic">📦</span><h3><a href="#" onclick="return false">aitech-hub</a></h3><span class="stars">★ 1.2k</span></div>
+      <p>本站源码:Next.js 15 全栈单体 + Claude Code 全程人机协同开发。154 篇文章迁移、中文 slug 路由、GEO 直出全部开源,配套系列文章即建站实录。</p>
+      <span class="repo-link">配套文章 ×6</span>
+      <div class="repo-foot"><span><span class="lang-dot" style="background:#3178c6"></span>TypeScript</span><span>更新于 2 小时前</span></div>
+    </article>
+    <article class="repo-card">
+      <div class="repo-head"><span class="ic">🤖</span><h3><a href="#" onclick="return false">agent-legion-kit</a></h3><span class="stars">★ 3.4k</span></div>
+      <p>多 Agent 协作起步套件:主从 / 流水线 / 评审环三种编排模板,CLAUDE.md 与 skills 配置即拿即用,《智能体军团指挥手册》系列的全部可运行资产。</p>
+      <span class="repo-link">配套文章 ×4</span>
+      <div class="repo-foot"><span><span class="lang-dot" style="background:#89e051"></span>Shell</span><span>更新于 3 天前</span></div>
+    </article>
+    <article class="repo-card">
+      <div class="repo-head"><span class="ic">🔌</span><h3><a href="#" onclick="return false">mcp-publish-server</a></h3><span class="stars">★ 892</span></div>
+      <p>Claude Code 直发博客的 MCP server 参考实现:Bearer PAT、slug 幂等 upsert、图片随文转存。《MCP 实战》一文的配套仓库,5 分钟接入。</p>
+      <span class="repo-link">配套文章 ×2</span>
+      <div class="repo-foot"><span><span class="lang-dot" style="background:#3178c6"></span>TypeScript</span><span>更新于 1 周前</span></div>
+    </article>
+  </div>
+</section>
+
+<!-- ③ 博客:精选 -->
+<section class="section" id="blog">
   <div class="sec-head">
     <h2>精选文章</h2>
     <span class="mono-tag">[FEATURED]</span>
@@ -272,7 +406,7 @@ img { display: block; }
   </div>
 </section>
 
-<!-- 最新文章 -->
+<!-- ③ 博客:最新 -->
 <section class="section">
   <div class="sec-head">
     <h2>最新文章</h2>
@@ -380,6 +514,7 @@ img { display: block; }
     <div class="col">
       <h4>导航</h4>
       <a href="site-articles.html">全部文章</a>
+      <a href="site-telegram.html">电报流</a>
       <a href="site-articles.html">归档</a>
       <a href="site-article.html">关于我</a>
       <a href="login.html">登录 / 注册</a>
@@ -396,7 +531,7 @@ img { display: block; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.1.0 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.2.0 · 二期 Hub 终态 · <a href="index.html">← 原型索引</a></div>
 
 </body>
 </html>

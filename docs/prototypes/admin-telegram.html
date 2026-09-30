@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · 电报流治理 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+img { display: block; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏(同款) */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item .tag-2 { margin-left: auto; font-family: var(--font-mono); font-size: 9.5px; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
+.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-body { padding: 20px 24px 40px; }
+
+/* 统计卡 */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+.stat-card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); padding: 16px 18px; }
+.stat-card .lb { font-size: 13px; color: var(--antd-t2); display: flex; align-items: center; gap: 8px; }
+.stat-card .v { font-size: 24px; font-weight: 700; font-family: var(--font-mono); margin-top: 6px; }
+.stat-card .sub { font-size: 12px; color: var(--antd-t3); margin-top: 4px; font-family: var(--font-mono); }
+.stat-card .v.ok { color: #389e0d; } .stat-card .v.warn { color: #d48806; } .stat-card .v.bad { color: #cf1322; }
+
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.seg { display: flex; border: 1px solid #d9d9d9; border-radius: var(--r-sm); overflow: hidden; }
+.seg button { border: none; background: #fff; padding: 8px 14px; font-size: 13.5px; color: var(--antd-t2); cursor: pointer; border-right: 1px solid #d9d9d9; }
+.seg button:last-child { border-right: none; }
+.seg button.on { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+.sel, .search-box { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #d9d9d9; border-radius: var(--r-sm); padding: 0 12px; height: 36px; font-size: 13.5px; color: var(--antd-t2); }
+.search-box { margin-left: auto; width: 260px; }
+.search-box input { flex: 1; border: none; outline: none; font-size: 13.5px; background: transparent; color: var(--antd-t1); }
+.search-box input::placeholder { color: #bbb; }
+
+.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.card-head { padding: 14px 18px; border-bottom: 1px solid var(--antd-border); font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.card-head .hint { font-weight: 400; font-size: 12px; color: var(--antd-t3); }
+.card-head .right { margin-left: auto; }
+
+.a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.a-table th { text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa; padding: 11px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap; }
+.a-table td { padding: 11px 16px; border-bottom: 1px solid var(--antd-border); vertical-align: middle; }
+.a-table tr:last-child td { border-bottom: none; }
+.a-table tr:hover td { background: #fafafa; }
+
+.tg-cell .ti { font-family: var(--font-mono); font-size: 12px; color: var(--antd-t3); }
+.tg-cell .tt { font-weight: 600; }
+.tg-cell .tt a:hover { color: var(--accent); }
+.tg-cell .hit { font-size: 11.5px; color: #cf1322; background: #fff1f0; border: 1px solid #ffa39e; border-radius: 3px; padding: 0 6px; margin-left: 8px; font-family: var(--font-mono); }
+
+.src-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 9px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+.src-rss { color: #5e6ad2; background: #f0f1fb; border-color: #c9cdf1; }
+.src-web { color: #1677ff; background: #e6f4ff; border-color: #91caff; }
+.src-sns { color: #d48806; background: #fffbe6; border-color: #ffe58f; }
+
+.status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 10px; border-radius: 999px; }
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.st-visible { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; } .st-visible::before { background: var(--green); }
+.st-hidden { color: #d48806; background: #fffbe6; border: 1px solid #ffe58f; } .st-hidden::before { background: var(--amber); }
+.st-archived { color: rgba(0,0,0,.45); background: #fafafa; border: 1px solid #d9d9d9; } .st-archived::before { background: #bbb; }
+
+.ops { display: flex; gap: 2px; justify-content: flex-end; }
+.op-link { border: none; background: transparent; font-size: 13px; color: var(--accent); cursor: pointer; padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+.op-link:hover { background: var(--accent-dim); }
+.op-link.danger { color: var(--red); }
+.op-link.danger:hover { background: rgba(248,81,73,.08); }
+
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 16px; }
+.pager .info { font-size: 13px; color: var(--antd-t3); margin-right: auto; }
+.pg-btn { min-width: 32px; height: 32px; border: 1px solid #d9d9d9; background: #fff; border-radius: var(--r-sm); font-size: 13px; color: var(--antd-t2); cursor: pointer; font-family: var(--font-mono); }
+.pg-btn.cur { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+/* 双栏治理区 */
+.gov-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; margin-top: 14px; }
+
+/* 屏蔽词 */
+.word-cloud { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 18px; }
+.word-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 999px; padding: 4px 12px; }
+.word-chip .n { font-family: var(--font-mono); font-size: 11px; color: #cf1322; }
+.word-chip .x { color: #bbb; cursor: pointer; }
+.word-chip .x:hover { color: var(--red); }
+.word-add { display: flex; gap: 8px; padding: 0 18px 16px; }
+.word-add input { flex: 1; height: 34px; border: 1px solid #d9d9d9; border-radius: var(--r-sm); padding: 0 12px; font-size: 13.5px; outline: none; }
+.word-add input:focus { border-color: var(--accent); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-radius: var(--r-sm); border: 1px solid #d9d9d9; background: #fff; font-size: 13.5px; color: var(--antd-t1); cursor: pointer; }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.accent:hover { color: #fff; background: var(--accent-hover); }
+.btn.danger { color: var(--red); border-color: #ffccc7; }
+.btn.danger:hover { border-color: var(--red); background: #fff1f0; color: var(--red); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 归档清理 */
+.arch-list { padding: 8px 18px 16px; }
+.arch-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px dashed var(--antd-border); font-size: 13.5px; }
+.arch-row:last-child { border-bottom: none; }
+.arch-row .ic { font-size: 16px; }
+.arch-row .tx b { display: block; }
+.arch-row .tx span { font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); }
+.arch-row .right { margin-left: auto; }
+.arch-row .right .btn { white-space: nowrap; }
+
+.endpoint-note { margin-top: 14px; font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); }
+
+.proto-note { position: fixed; left: 232px; bottom: 16px; z-index: 99; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: rgba(24,26,33,.92); border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px; }
+.proto-note a { color: var(--accent-hover); }
+
+@media (max-width: 1100px) { .stat-grid { grid-template-columns: 1fr 1fr; } .gov-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item active" href="admin-telegram.html"><span class="ico">📡</span>电报流治理<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-spider.html"><span class="ico">🕷</span>采集管理<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-telegram.html">↩ 前台电报流</a></div>
+</aside>
+
+<div class="content">
+  <header class="a-header">
+    <h1>电报流治理</h1>
+    <span class="crumb">/ 内容管理 · <b>可见 1,102 · 拦截 12/日 · 13 渠道</b></span>
+    <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+  </header>
+
+  <div class="a-body">
+
+    <!-- 治理统计 -->
+    <div class="stat-grid">
+      <div class="stat-card"><div class="lb">📥 今日进流</div><div class="v ok">47</div><div class="sub">昨日 52 · 7 日均值 44</div></div>
+      <div class="stat-card"><div class="lb">🧹 广告/低质过滤</div><div class="v warn">12</div><div class="sub">启发式规则 · 拦截率 20%</div></div>
+      <div class="stat-card"><div class="lb">🚫 屏蔽词命中</div><div class="v bad">3</div><div class="sub">命中词:带货 · 免费领取</div></div>
+      <div class="stat-card"><div class="lb">🗑 回收站</div><div class="v">12</div><div class="sub">软删 7 天后物理清理</div></div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="seg">
+        <button class="on">全部 1,248</button>
+        <button>✓ visible 1,102</button>
+        <button>⊘ hidden 89</button>
+        <button>📦 archived 57</button>
+      </div>
+      <div class="sel">渠道:全部 ▾</div>
+      <div class="sel mono">2026-09-30 ~ 09-30 ▾</div>
+      <div class="search-box">
+        <span style="color:#bbb">⌕</span>
+        <input placeholder="搜索标题 / 摘要 / 原文域名…">
+      </div>
+    </div>
+
+    <!-- 电报列表 -->
+    <div class="card">
+      <table class="a-table">
+        <thead>
+          <tr>
+            <th style="width:44px"><input type="checkbox"></th>
+            <th>电报</th>
+            <th>渠道</th>
+            <th>状态</th>
+            <th>采集时间</th>
+            <th style="text-align:right; width:190px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td class="tg-cell">
+              <div class="ti">09-30 14:12 · <span style="color:#cf1322">命中屏蔽词「带货」</span></div>
+              <div class="tt"><span class="hit">hidden 自动</span>Claude 5.1 官方周边上架:限量版终端贴纸免费领取</div>
+            </td>
+            <td><span class="src-tag src-sns">X · 学者圈</span></td>
+            <td><span class="status-badge st-hidden">hidden</span></td>
+            <td class="mono" style="font-size:12.5px">14:12</td>
+            <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">恢复</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td class="tg-cell">
+              <div class="ti">09-30 14:03 · hash 去重前 · 摘要 2 句</div>
+              <div class="tt">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变</div>
+            </td>
+            <td><span class="src-tag src-rss">机器之心</span></td>
+            <td><span class="status-badge st-visible">visible</span></td>
+            <td class="mono" style="font-size:12.5px">14:03</td>
+            <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">隐藏</button><button class="op-link">归档</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td class="tg-cell">
+              <div class="ti">09-30 13:47 · filter_hit=AD#2(促销话术特征)</div>
+              <div class="tt"><span class="hit">hidden 自动</span>【限时特惠】AI 训练营第 8 期招募,立减 2000 元</div>
+            </td>
+            <td><span class="src-tag src-web">RSS 聚合</span></td>
+            <td><span class="status-badge st-hidden">hidden</span></td>
+            <td class="mono" style="font-size:12.5px">13:47</td>
+            <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">恢复</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td class="tg-cell">
+              <div class="ti">09-30 13:31 · 站长手改摘要(原 3 句 → 1 句)</div>
+              <div class="tt">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平</div>
+            </td>
+            <td><span class="src-tag src-sns">Reddit</span></td>
+            <td><span class="status-badge st-visible">visible</span></td>
+            <td class="mono" style="font-size:12.5px">13:31</td>
+            <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">隐藏</button><button class="op-link">归档</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td class="tg-cell">
+              <div class="ti">09-14 08:20 · 超 90 天自动归档任务转出</div>
+              <div class="tt">GPT-5 泄露风波:OpenAI 内部邮件遭曝光(后续证伪)</div>
+            </td>
+            <td><span class="src-tag src-web">Hacker News</span></td>
+            <td><span class="status-badge st-archived">archived</span></td>
+            <td class="mono" style="font-size:12.5px">06-30</td>
+            <td><div class="ops"><button class="op-link">恢复</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager">
+        <span class="info">共 1,248 条 · 已选 0 条 · 批量:隐藏 / 归档 / 删除(选中后出现)</span>
+        <button class="pg-btn">‹</button>
+        <button class="pg-btn cur">1</button>
+        <button class="pg-btn">2</button>
+        <button class="pg-btn">3</button>
+        <span style="color:#bbb">…</span>
+        <button class="pg-btn">42</button>
+        <button class="pg-btn">›</button>
+      </div>
+    </div>
+
+    <!-- 治理双栏 -->
+    <div class="gov-grid">
+
+      <!-- 屏蔽词 -->
+      <div class="card">
+        <div class="card-head">🚫 屏蔽词管理 <span class="hint">命中即 hidden,可回溯存量</span>
+          <span class="right"><button class="btn">导出</button></span>
+        </div>
+        <div class="word-cloud">
+          <span class="word-chip">带货 <span class="n">×41</span><span class="x">✕</span></span>
+          <span class="word-chip">免费领取 <span class="n">×23</span><span class="x">✕</span></span>
+          <span class="word-chip">限时特惠 <span class="n">×18</span><span class="x">✕</span></span>
+          <span class="word-chip">加微信 <span class="n">×12</span><span class="x">✕</span></span>
+          <span class="word-chip">博彩 <span class="n">×4</span><span class="x">✕</span></span>
+          <span class="word-chip">代刷 <span class="n">×2</span><span class="x">✕</span></span>
+          <span class="word-chip" style="opacity:.5">_PRIVATE: 竞品词组 <span class="n">×1</span><span class="x">✕</span></span>
+        </div>
+        <div class="word-add">
+          <input placeholder="输入屏蔽词,回车添加(支持 /正则/)">
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--antd-t2)"><input type="checkbox">回溯隐藏存量</label>
+          <button class="btn accent">添加</button>
+        </div>
+      </div>
+
+      <!-- 归档与清理 -->
+      <div class="card">
+        <div class="card-head">📦 归档与清理 <span class="hint">BullMQ daily 任务 · 策略见 arch/02 §4</span></div>
+        <div class="arch-list">
+          <div class="arch-row">
+            <span class="ic">📦</span>
+            <span class="tx"><b>自动归档:visible 超 90 天 → archived</b><span>每日 03:30 运行 · 本季已归档 57 条 · 待归档 0 条</span></span>
+            <span class="right"><button class="btn" disabled>今日已执行</button></span>
+          </div>
+          <div class="arch-row">
+            <span class="ic">🧨</span>
+            <span class="tx"><b>物理清理:archived 超 180 天</b><span>当前满足条件 41 条 · 需手动确认</span></span>
+            <span class="right"><button class="btn danger">清理 41 条…</button></span>
+          </div>
+          <div class="arch-row">
+            <span class="ic">🗑</span>
+            <span class="tx"><b>回收站(软删)</b><span>12 条 · 7 天后自动物理清理</span></span>
+            <span class="right"><button class="btn">查看</button></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="endpoint-note">
+      GET /api/telegrams?status=&source=&q=&page= · PUT /api/telegrams/[id] · POST /api/telegrams/batch(hide|archive|delete) · GET/POST/DELETE /api/telegram-blocklist · POST /api/telegram-jobs/archive · 前台 GET /api/telegrams?since=(公开,短 TTL)
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · 二期 · <a href="index.html">← 原型索引</a></div>
+
+</body>
+</html>

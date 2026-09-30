@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · 采集管理 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+img { display: block; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏(同款) */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item .tag-2 { margin-left: auto; font-family: var(--font-mono); font-size: 9.5px; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
+.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-body { padding: 20px 24px 40px; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+.stat-card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); padding: 16px 18px; }
+.stat-card .lb { font-size: 13px; color: var(--antd-t2); }
+.stat-card .v { font-size: 24px; font-weight: 700; font-family: var(--font-mono); margin-top: 6px; }
+.stat-card .sub { font-size: 12px; color: var(--antd-t3); margin-top: 4px; font-family: var(--font-mono); }
+.stat-card .v.ok { color: #389e0d; } .stat-card .v.warn { color: #d48806; } .stat-card .v.bad { color: #cf1322; }
+
+.two-col { display: grid; grid-template-columns: 7fr 5fr; gap: 14px; margin-bottom: 14px; align-items: start; }
+.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.card-head { padding: 14px 18px; border-bottom: 1px solid var(--antd-border); font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.card-head .hint { font-weight: 400; font-size: 12px; color: var(--antd-t3); }
+.card-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* 采集日历 */
+.cal-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px 4px; }
+.cal-head .ym { font-family: var(--font-mono); font-size: 15px; font-weight: 700; }
+.cal-nav { width: 26px; height: 26px; border: 1px solid #d9d9d9; background: #fff; border-radius: 4px; cursor: pointer; color: var(--antd-t2); }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 10px 18px 14px; }
+.cal .dow { text-align: center; font-size: 11.5px; color: var(--antd-t3); padding: 2px 0; }
+.day { position: relative; border-radius: 6px; padding: 6px 8px 5px; min-height: 52px; background: #fafafa; border: 1px solid transparent; }
+.day .dn { font-family: var(--font-mono); font-size: 11.5px; color: var(--antd-t3); }
+.day .cnt { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--antd-t1); margin-top: 2px; }
+.day .cnt small { font-size: 10px; color: var(--antd-t3); font-weight: 400; }
+.day .err-dot { position: absolute; top: 7px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: #cf1322; }
+.day.q0 { background: #fafafa; } .day.q0 .cnt { color: #bbb; }
+.day.q1 { background: #f0f1fb; } .day.q2 { background: #e2e5f7; } .day.q3 { background: #cdd2f0; } .day.q4 { background: #b5bcE9; }
+.day.today { border: 2px solid var(--accent); }
+.day.has-err { border: 1.5px dashed #ff4d4f; }
+.day.empty { background: transparent; min-height: 0; }
+.cal-legend { display: flex; align-items: center; gap: 10px; padding: 0 18px 14px; font-size: 12px; color: var(--antd-t3); flex-wrap: wrap; }
+.cal-legend .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; vertical-align: -2px; }
+.day-detail { border-top: 1px solid var(--antd-border); padding: 12px 18px 16px; }
+.day-detail .dd-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.dd-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; font-size: 12.5px; }
+.dd-row .nm { width: 170px; color: var(--antd-t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-bar { flex: 1; height: 12px; background: #f5f5f5; border-radius: 3px; overflow: hidden; }
+.dd-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.dd-row .n { width: 52px; text-align: right; font-family: var(--font-mono); font-size: 12px; }
+
+/* worker / 队列可视化 */
+.wk-sec { padding: 12px 18px 16px; border-bottom: 1px solid var(--antd-border); }
+.wk-sec:last-child { border-bottom: none; }
+.wk-sec .st { font-size: 12px; font-family: var(--font-mono); color: var(--antd-t3); letter-spacing: .05em; margin-bottom: 10px; }
+.pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #389e0d; margin-right: 6px; animation: pulse 1.6s ease infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(56,158,13,.45); } 60% { box-shadow: 0 0 0 6px rgba(56,158,13,0); } }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kv .it { background: #fafafa; border: 1px solid var(--antd-border); border-radius: 6px; padding: 8px 12px; font-size: 12.5px; }
+.kv .it b { display: block; font-family: var(--font-mono); font-size: 14px; }
+.kv .it span { color: var(--antd-t3); font-size: 11.5px; }
+.run-task { display: flex; align-items: center; gap: 9px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px dashed var(--antd-border); }
+.run-task:last-child { border-bottom: none; }
+.run-task .nm { font-family: var(--font-mono); color: var(--antd-t1); }
+.run-task .ago { margin-left: auto; color: var(--antd-t3); font-family: var(--font-mono); font-size: 11.5px; }
+.spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--accent-dim); border-top-color: var(--accent); border-radius: 50%; animation: rot .9s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.q-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; font-size: 12.5px; }
+.q-bar .nm { width: 76px; color: var(--antd-t2); }
+.q-bar .track { flex: 1; height: 14px; background: #f5f5f5; border-radius: 3px; overflow: hidden; display: flex; }
+.q-bar .track i { height: 100%; }
+.q-bar .n { width: 46px; text-align: right; font-family: var(--font-mono); font-size: 12px; }
+.q-completed { background: #389e0d; } .q-active { background: var(--accent); } .q-delayed { background: #d48806; } .q-failed { background: #cf1322; }
+
+/* 24h 条带 */
+.band-wrap { overflow-x: auto; }
+.band { min-width: 520px; }
+.b-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.b-row .nm { width: 96px; font-size: 11.5px; color: var(--antd-t2); white-space: nowrap; }
+.cells { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; flex: 1; }
+.cell { height: 14px; border-radius: 2px; background: #f0f0f0; }
+.cell.ok { background: #b7eb8f; } .cell.ok2 { background: #73d13d; } .cell.bad { background: #ff7875; }
+.hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-left: 104px; font-family: var(--font-mono); font-size: 9px; color: var(--antd-t3); }
+.hours span { text-align: left; }
+
+/* 渠道表 */
+.a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.a-table th { text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa; padding: 11px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap; }
+.a-table td { padding: 11px 16px; border-bottom: 1px solid var(--antd-border); vertical-align: middle; }
+.a-table tr:last-child td { border-bottom: none; }
+.a-table tr:hover td { background: #fafafa; }
+.src-name { font-weight: 600; }
+.src-name small { display: block; font-weight: 400; font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); margin-top: 1px; }
+.src-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 9px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+.src-rss { color: #5e6ad2; background: #f0f1fb; border-color: #c9cdf1; }
+.src-web { color: #1677ff; background: #e6f4ff; border-color: #91caff; }
+.src-api { color: #13c2c2; background: #e6fffb; border-color: #87e8de; }
+.status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 10px; border-radius: 999px; }
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.st-healthy { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; } .st-healthy::before { background: var(--green); }
+.st-degraded { color: #d48806; background: #fffbe6; border: 1px solid #ffe58f; } .st-degraded::before { background: var(--amber); }
+.st-error { color: #cf1322; background: #fff1f0; border: 1px solid #ffa39e; } .st-error::before { background: #cf1322; }
+.rate-bar { display: flex; align-items: center; gap: 8px; }
+.rate-bar .track { width: 72px; height: 8px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
+.rate-bar .track i { display: block; height: 100%; border-radius: 3px; }
+.rate-bar .n { font-family: var(--font-mono); font-size: 12px; }
+.ops { display: flex; gap: 2px; justify-content: flex-end; }
+.op-link { border: none; background: transparent; font-size: 13px; color: var(--accent); cursor: pointer; padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+.op-link:hover { background: var(--accent-dim); }
+.op-link.danger { color: var(--red); }
+.op-link.danger:hover { background: rgba(248,81,73,.08); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid #d9d9d9; background: #fff; font-size: 13px; color: var(--antd-t1); cursor: pointer; }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.accent:hover { color: #fff; background: var(--accent-hover); }
+
+/* 最近错误 */
+.err-list { padding: 6px 18px 14px; }
+.err-row { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--antd-border); font-size: 12.5px; }
+.err-row:last-child { border-bottom: none; }
+.err-row .ic { color: #cf1322; }
+.err-row .msg b { font-family: var(--font-mono); font-size: 12px; }
+.err-row .msg span { display: block; color: var(--antd-t3); font-size: 11.5px; margin-top: 1px; }
+.err-row .ago { margin-left: auto; color: var(--antd-t3); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+
+.endpoint-note { margin-top: 14px; font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); }
+.proto-note { position: fixed; left: 232px; bottom: 16px; z-index: 99; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: rgba(24,26,33,.92); border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px; }
+.proto-note a { color: var(--accent-hover); }
+
+@media (max-width: 1100px) { .stat-grid { grid-template-columns: 1fr 1fr; } .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item" href="admin-telegram.html"><span class="ico">📡</span>电报流治理<span class="tag-2">二期</span></a>
+    <a class="sb-item active" href="admin-spider.html"><span class="ico">🕷</span>采集管理<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-telegram.html">↩ 前台电报流</a></div>
+</aside>
+
+<div class="content">
+  <header class="a-header">
+    <h1>采集管理</h1>
+    <span class="crumb">/ 内容管理 · <b>13 渠道 · worker 运行中 · 队列 active 2</b></span>
+    <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+  </header>
+
+  <div class="a-body">
+
+    <!-- 采集器总览 -->
+    <div class="stat-grid">
+      <div class="stat-card"><div class="lb"><span class="pulse-dot"></span>采集器状态</div><div class="v ok">运行中</div><div class="sub">worker-1 · 心跳 8s 前 · uptime 3d 14h</div></div>
+      <div class="stat-card"><div class="lb">⚙️ 队列深度(active)</div><div class="v">2 / 11</div><div class="sub">active 2 · delayed 11 · failed 22</div></div>
+      <div class="stat-card"><div class="lb">📥 今日采集入库</div><div class="v ok">47</div><div class="sub">拦截 12 · 去重 5 · 屏蔽 3</div></div>
+      <div class="stat-card"><div class="lb">📈 7 日成功率</div><div class="v ok">98.2%</div><div class="sub">失败 22 次 · 集中于 X·学者圈</div></div>
+    </div>
+
+    <div class="two-col">
+
+      <!-- 采集日历 -->
+      <div class="card">
+        <div class="card-head">📅 采集日历 <span class="hint">按日聚合入库量 · 点日查看渠道分解</span></div>
+        <div class="cal-head">
+          <button class="cal-nav">‹</button>
+          <span class="ym">2026-09</span>
+          <button class="cal-nav">›</button>
+          <span class="hint" style="margin-left:auto">今日 <b class="mono" style="color:var(--accent)">09-30</b></span>
+        </div>
+        <div class="cal">
+          <span class="dow">一</span><span class="dow">二</span><span class="dow">三</span><span class="dow">四</span><span class="dow">五</span><span class="dow">六</span><span class="dow">日</span>
+          <span class="day empty"></span>
+          <div class="day q1"><span class="dn">1</span><div class="cnt">31</div></div>
+          <div class="day q1"><span class="dn">2</span><div class="cnt">29</div></div>
+          <div class="day q0"><span class="dn">3</span><div class="cnt">0</div></div>
+          <div class="day q1"><span class="dn">4</span><div class="cnt">26</div></div>
+          <div class="day q2"><span class="dn">5</span><div class="cnt">52</div></div>
+          <div class="day q1"><span class="dn">6</span><div class="cnt">38</div></div>
+          <div class="day q0"><span class="dn">7</span><div class="cnt">0</div></div>
+          <div class="day q2"><span class="dn">8</span><div class="cnt">55</div></div>
+          <div class="day q1"><span class="dn">9</span><div class="cnt">33</div></div>
+          <div class="day q1"><span class="dn">10</span><div class="cnt">41</div></div>
+          <div class="day q2"><span class="dn">11</span><div class="cnt">49</div></div>
+          <div class="day q3"><span class="dn">12</span><div class="cnt">63</div></div>
+          <div class="day q1"><span class="dn">13</span><div class="cnt">30</div></div>
+          <div class="day has-err q0"><span class="dn">14</span><span class="err-dot" title="X·学者圈 连续失败"></span><div class="cnt">6</div></div>
+          <div class="day q1"><span class="dn">15</span><div class="cnt">27</div></div>
+          <div class="day q2"><span class="dn">16</span><div class="cnt">58</div></div>
+          <div class="day q1"><span class="dn">17</span><div class="cnt">35</div></div>
+          <div class="day q1"><span class="dn">18</span><div class="cnt">44</div></div>
+          <div class="day q2"><span class="dn">19</span><div class="cnt">51</div></div>
+          <div class="day q1"><span class="dn">20</span><div class="cnt">36</div></div>
+          <div class="day q1"><span class="dn">21</span><div class="cnt">39</div></div>
+          <div class="day q2"><span class="dn">22</span><div class="cnt">54</div></div>
+          <div class="day q1"><span class="dn">23</span><div class="cnt">28</div></div>
+          <div class="day q2"><span class="dn">24</span><div class="cnt">57</div></div>
+          <div class="day q3"><span class="dn">25</span><div class="cnt">66</div></div>
+          <div class="day q1"><span class="dn">26</span><div class="cnt">32</div></div>
+          <div class="day q1"><span class="dn">27</span><div class="cnt">43</div></div>
+          <div class="day q2"><span class="dn">28</span><div class="cnt">56</div></div>
+          <div class="day q1"><span class="dn">29</span><div class="cnt">34</div></div>
+          <div class="day today q1"><span class="dn">30</span><div class="cnt">47</div></div>
+        </div>
+        <div class="cal-legend">
+          <span>入库量色阶:</span>
+          <span class="sw" style="background:#fafafa"></span>0
+          <span class="sw" style="background:#f0f1fb"></span>1-29
+          <span class="sw" style="background:#e2e5f7"></span>30-49
+          <span class="sw" style="background:#cdd2f0"></span>50-69
+          <span class="sw" style="background:#b5bcE9"></span>70+
+          <span style="margin-left:8px"><span class="sw" style="background:transparent; border:1.5px dashed #ff4d4f"></span> 渠道异常日(09-14 X·学者圈 403×3)</span>
+        </div>
+        <div class="day-detail">
+          <div class="dd-title">09-30(今天)渠道分解 · 共入库 47 条</div>
+          <div class="dd-row"><span class="nm">X · 学者圈</span><div class="dd-bar"><i style="width:100%"></i></div><span class="n">11</span></div>
+          <div class="dd-row"><span class="nm">Hacker News</span><div class="dd-bar"><i style="width:73%"></i></div><span class="n">8</span></div>
+          <div class="dd-row"><span class="nm">机器之心</span><div class="dd-bar"><i style="width:82%"></i></div><span class="n">9</span></div>
+          <div class="dd-row"><span class="nm">量子位</span><div class="dd-bar"><i style="width:64%"></i></div><span class="n">7</span></div>
+          <div class="dd-row"><span class="nm">官方 Blog</span><div class="dd-bar"><i style="width:55%"></i></div><span class="n">6</span></div>
+          <div class="dd-row"><span class="nm">Reddit r/MachineLearning</span><div class="dd-bar"><i style="width:55%"></i></div><span class="n">6</span></div>
+        </div>
+      </div>
+
+      <!-- worker / 队列可视化 -->
+      <div class="card">
+        <div class="card-head">🩺 采集器状态 <span class="hint">BullMQ + worker 心跳,不引第三方监控</span></div>
+        <div class="wk-sec">
+          <div class="st"><span class="pulse-dot"></span>WORKER</div>
+          <div class="kv">
+            <div class="it"><b>worker-1</b><span>心跳 8s 前 · uptime 3d 14h</span></div>
+            <div class="it"><b>212 MB</b><span>内存 · 并发 4 · CPU 6%</span></div>
+          </div>
+          <div style="margin-top:10px">
+            <div class="run-task"><span class="spin"></span><span class="nm">crawl:x-scholars</span><span class="ago">运行 2m 14s</span></div>
+            <div class="run-task"><span class="spin"></span><span class="nm">crawl:hackernews</span><span class="ago">运行 41s</span></div>
+          </div>
+        </div>
+        <div class="wk-sec">
+          <div class="st">QUEUE · crawler(累计)</div>
+          <div class="q-bar"><span class="nm">completed</span><div class="track"><i class="q-completed" style="width:96%"></i></div><span class="n">1,204</span></div>
+          <div class="q-bar"><span class="nm">active</span><div class="track"><i class="q-active" style="width:3%"></i></div><span class="n">2</span></div>
+          <div class="q-bar"><span class="nm">delayed</span><div class="track"><i class="q-delayed" style="width:4%"></i></div><span class="n">11</span></div>
+          <div class="q-bar"><span class="nm">failed</span><div class="track"><i class="q-failed" style="width:2%"></i></div><span class="n">22</span></div>
+        </div>
+        <div class="wk-sec">
+          <div class="st">各渠道最近 24h 采集条带</div>
+          <div class="band-wrap"><div class="band">
+            <div class="b-row"><span class="nm">机器之心</span><div class="cells"><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i></div></div>
+            <div class="b-row"><span class="nm">量子位</span><div class="cells"><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i></div></div>
+            <div class="b-row"><span class="nm">Hacker News</span><div class="cells"><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i></div></div>
+            <div class="b-row"><span class="nm">Reddit</span><div class="cells"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+            <div class="b-row"><span class="nm">X · 学者圈</span><div class="cells"><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell bad"></i><i class="cell bad"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell ok2"></i><i class="cell"></i></div></div>
+            <div class="hours"><span>00</span><span></span><span>02</span><span></span><span>04</span><span></span><span>06</span><span></span><span>08</span><span></span><span>10</span><span></span><span>12</span><span></span><span>14</span><span></span><span>16</span><span></span><span>18</span><span></span><span>20</span><span></span><span>22</span><span></span></div>
+          </div></div>
+          <div class="cal-legend" style="padding:10px 0 0">
+            <span class="sw" style="background:#b7eb8f"></span>入库 1-5
+            <span class="sw" style="background:#73d13d"></span>入库 6+
+            <span class="sw" style="background:#ff7875"></span>失败
+            <span class="sw" style="background:#f0f0f0"></span>未调度
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 渠道管理 -->
+    <div class="card">
+      <div class="card-head">🗂 渠道管理 <span class="hint">crawl_source · interval ≥30min · 连续失败≥3 转标红</span>
+        <span class="right"><button class="btn accent">+ 新增渠道</button></span>
+      </div>
+      <table class="a-table">
+        <thead>
+          <tr>
+            <th>渠道</th>
+            <th>类型</th>
+            <th>频率</th>
+            <th>最近采集</th>
+            <th>下次调度</th>
+            <th>今日</th>
+            <th>7 日成功率</th>
+            <th>状态</th>
+            <th style="text-align:right; width:210px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="src-name">机器之心<small>jiqizhixin.com/rss</small></td>
+            <td><span class="src-tag src-rss">rss</span></td>
+            <td class="mono" style="font-size:12.5px">60 min</td>
+            <td class="mono" style="font-size:12.5px">14:03</td>
+            <td class="mono" style="font-size:12.5px">15:03</td>
+            <td class="mono" style="font-size:12.5px">9</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:#52c41a"></i></div><span class="n">100%</span></div></td>
+            <td><span class="status-badge st-healthy">healthy</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">量子位<small>qbitai.com/feed</small></td>
+            <td><span class="src-tag src-rss">rss</span></td>
+            <td class="mono" style="font-size:12.5px">60 min</td>
+            <td class="mono" style="font-size:12.5px">13:47</td>
+            <td class="mono" style="font-size:12.5px">14:47</td>
+            <td class="mono" style="font-size:12.5px">7</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:#52c41a"></i></div><span class="n">100%</span></div></td>
+            <td><span class="status-badge st-healthy">healthy</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">Hacker News<small>hn.algolia.com/api/v1</small></td>
+            <td><span class="src-tag src-api">api</span></td>
+            <td class="mono" style="font-size:12.5px">30 min</td>
+            <td class="mono" style="font-size:12.5px">14:19</td>
+            <td class="mono" style="font-size:12.5px">14:49</td>
+            <td class="mono" style="font-size:12.5px">8</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:99%; background:#52c41a"></i></div><span class="n">99%</span></div></td>
+            <td><span class="status-badge st-healthy">healthy</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">Reddit r/MachineLearning<small>reddit.com/r/MachineLearning</small></td>
+            <td><span class="src-tag src-api">api</span></td>
+            <td class="mono" style="font-size:12.5px">45 min</td>
+            <td class="mono" style="font-size:12.5px">13:58</td>
+            <td class="mono" style="font-size:12.5px">14:43</td>
+            <td class="mono" style="font-size:12.5px">6</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:97%; background:#52c41a"></i></div><span class="n">97%</span></div></td>
+            <td><span class="status-badge st-healthy">healthy</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">X · 学者圈<small>x.com Lists · 47 accounts</small></td>
+            <td><span class="src-tag src-sns" style="color:#d48806; background:#fffbe6; border-color:#ffe58f">web</span></td>
+            <td class="mono" style="font-size:12.5px">90 min</td>
+            <td class="mono" style="font-size:12.5px">14:12</td>
+            <td class="mono" style="font-size:12.5px">15:42</td>
+            <td class="mono" style="font-size:12.5px">11</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:88%; background:#faad14"></i></div><span class="n">88%</span></div></td>
+            <td><span class="status-badge st-degraded">degraded</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">RSS 聚合<small>feedly_mix.opml · 12 源</small></td>
+            <td><span class="src-tag src-rss">rss</span></td>
+            <td class="mono" style="font-size:12.5px">120 min</td>
+            <td class="mono" style="font-size:12.5px">12:20</td>
+            <td class="mono" style="font-size:12.5px">14:20</td>
+            <td class="mono" style="font-size:12.5px">6</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:64%; background:#ff4d4f"></i></div><span class="n">64%</span></div></td>
+            <td><span class="status-badge st-error">error ×3</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 最近错误 -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-head">🔥 最近错误 <span class="hint">crawler 队列 failed 任务 · 处置建议自动生成</span></div>
+      <div class="err-list">
+        <div class="err-row">
+          <span class="ic">✕</span>
+          <span class="msg"><b>RSS 聚合 · feed fetch timeout(30s)</b><span>连续失败 3 次 → source.status=error,已暂停调度 · 建议:检查 OPML 内失效源,拆分聚合渠道</span></span>
+          <span class="ago">13:20</span>
+        </div>
+        <div class="err-row">
+          <span class="ic">✕</span>
+          <span class="msg"><b>X · 学者圈 · HTTP 403(x2, 14:0x)</b><span>签名侧car失效自动轮换后恢复(degraded)· 建议:下调至 120min 或追加账号池</span></span>
+          <span class="ago">14:07</span>
+        </div>
+        <div class="err-row">
+          <span class="ic">✕</span>
+          <span class="msg"><b>量子位 · 摘要规则截断异常(length=0)</b><span>单条丢弃重试成功,不影响渠道健康 · 已在 filter_hit 留痕</span></span>
+          <span class="ago">13:47</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="endpoint-note">
+      GET /api/spider/sources · POST /api/spider/sources · PATCH /api/spider/sources/[id] · POST /api/spider/sources/[id]/run · GET /api/spider/calendar?month=2026-09 · GET /api/spider/status(worker 心跳 + BullMQ getJobCounts) · GET /api/spider/errors
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · 二期 · <a href="index.html">← 原型索引</a></div>
+
+</body>
+</html>
