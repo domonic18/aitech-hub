@@ -27,6 +27,7 @@
 | 中文 slug 路由红线            | docs/arch/07-frontend §2         |
 | 媒体/视频/清洗                | docs/arch/08-media               |
 | UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
+| 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
 | 测试规范                      | docs/standard/01-testing         |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 

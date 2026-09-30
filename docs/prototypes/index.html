@@ -364,6 +364,7 @@ a { color: inherit; text-decoration: none; }
     <h3>使用说明</h3>
     <ul>
       <li>直接双击任意 HTML 打开(单文件自包含,零外部依赖;素材仅相对路径 <span class="mono">assets/*.jpg</span>)</li>
+      <li><b>设计规范</b>:新增/修改任何原型屏前,先读 <a href="DESIGN-SPEC.md"><span class="mono">DESIGN-SPEC.md</span></a>(设计令牌 / SVG 图标体系 / 组件形态 / QA 门禁 / 红线清单,v1.0 起强制)</li>
       <li><b>主题切换(v0.4.0)</b>:每页顶栏 44×24 胶囊双图标滑块(左月右日,点击切换),记忆于 <span class="mono">localStorage("proto-theme")</span>,默认暗黑;前台与后台同一风格,明亮模式下代码块/终端窗保持深底(语法色为深底设计)</li>
       <li><b>图标系统(v0.4.0)</b>:全站 emoji 已替换为 SVG 矢量图标——每页 <body> 顶部内联隐藏 sprite(仅含该页用到的 symbol),正文 <span class="mono">&lt;svg class="ic"&gt;&lt;use href="#i-xxx"/&gt;&lt;/svg&gt;</span> 引用;图标源为 antd icons-svg(MIT,与范本项目同源),尺寸约定 .ic 14 / .ic-sm 12 / .ic-lg 18</li>
       <li>页面间通过 Header / 侧边栏互链,可点击走通整站流程(登录 → 个人中心 → 后台各页);首页控制台输入框回车可跳 Agent 搜索结果页</li>
@@ -378,6 +379,7 @@ a { color: inherit; text-decoration: none; }
   <footer class="base">
     <span class="v">v0.4.0</span>
     <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30 · v0.4.0 矢量图标体系 + 双栏 Hub 仪表盘 + 采集/AI 服务治理后台(23 屏)</span>
+    <a href="DESIGN-SPEC.md">设计规范</a>
     <a href="../README.md" style="margin-left:auto">← 文档中心</a>
     <a href="https://github.com/domonic18/aitech-hub" target="_blank">GitHub</a>
   </footer>
