@@ -6,15 +6,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { ADMIN_LOGIN_PATH, ADMIN_ROLE } from "./constants";
 import { readFullSessionUser, type FullClaims } from "./issuer";
 
-export const ADMIN_LOGIN_PATH = "/admin/login";
+export { ADMIN_LOGIN_PATH };
 
 /** admin 页面守卫:完整校验 + role 判定,不过则跳登录页(带 next 回跳) */
 export async function requireAdminPage(): Promise<FullClaims> {
   const store = await cookies();
   const claims = await readFullSessionUser(store.toString());
-  if (!claims || claims.role !== "admin") {
+  if (!claims || claims.role !== ADMIN_ROLE) {
     redirect(`${ADMIN_LOGIN_PATH}?next=/admin`);
   }
   return claims;
@@ -25,6 +26,6 @@ export async function requireAdminRequest(
   req: Pick<Request, "headers">,
 ): Promise<FullClaims | null> {
   const claims = await readFullSessionUser(req.headers.get("cookie"));
-  if (!claims || claims.role !== "admin") return null;
+  if (!claims || claims.role !== ADMIN_ROLE) return null;
   return claims;
 }

@@ -7,8 +7,10 @@
 import { decodeJwt } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
-// middleware 不 import src/lib(避免把 env 依赖带进边缘环境);常量以 session.ts 为真相源
-const ACCESS_COOKIE_NAME = "ah_at";
+import { ACCESS_COOKIE_NAME, ADMIN_LOGIN_PATH } from "@/lib/auth/constants";
+
+// 仅引用零依赖常量模块(auth/constants.ts 不 import env/jose,边缘环境安全);
+// 预检只做 Cookie 存在性 + exp 本地解读,防伪在 guard.ts
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|assets/).*)"],
@@ -29,7 +31,7 @@ export function middleware(req: NextRequest): NextResponse {
     }
     if (!alive) {
       const url = req.nextUrl.clone();
-      url.pathname = "/admin/login";
+      url.pathname = ADMIN_LOGIN_PATH;
       url.search = "";
       url.searchParams.set("next", req.nextUrl.pathname);
       const redirectRes = NextResponse.redirect(url);

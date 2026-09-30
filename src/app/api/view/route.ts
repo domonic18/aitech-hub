@@ -1,10 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { ADMIN_ROLE } from "@/lib/auth/constants";
 import { readSessionUser } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { isSameOrigin } from "@/lib/http/origin";
 import { clientIp } from "@/lib/http/request";
+import { apiEnvelope } from "@/lib/http/response";
 import { ingestView } from "@/lib/stats/service";
 
 /**
@@ -18,22 +20,18 @@ const bodySchema = z.object({
   referrer: z.string().max(2000).optional(),
 });
 
-function envelope(code: number, message: string): NextResponse {
-  return NextResponse.json({ code, message, data: null }, { status: code });
-}
-
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!isSameOrigin(req)) return envelope(403, "cross-origin forbidden");
+  if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
 
   let rawBody: unknown;
   try {
     rawBody = await req.json();
   } catch {
-    return envelope(400, "invalid json");
+    return apiEnvelope(400, "invalid json");
   }
   const parsed = bodySchema.safeParse(rawBody);
   if (!parsed.success) {
-    return envelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
+    return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }
 
   const session = await readSessionUser(req.headers.get("cookie"));
@@ -43,7 +41,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     ua: req.headers.get("user-agent") ?? "",
     ip: clientIp(req),
     salt: env.AUTH_SECRET,
-    isAdmin: session?.role === "admin",
+    isAdmin: session?.role === ADMIN_ROLE,
   });
   // 204 无包络:beacon 场景客户端不消费响应体
   return new NextResponse(null, { status: 204 }) as NextResponse;

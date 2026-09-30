@@ -12,8 +12,10 @@ export const PASSWORD_MAX_LENGTH = 72;
 
 /** 密码强度:≥8 位且同时含字母与数字;返回错误文案,null 表示通过 */
 export function validatePassword(pwd: string): string | null {
-  if (pwd.length < PASSWORD_MIN_LENGTH) return "密码至少 8 位";
-  if (pwd.length > PASSWORD_MAX_LENGTH) return "密码最长 72 字符(bcrypt 输入上限)";
+  if (pwd.length < PASSWORD_MIN_LENGTH) return `密码至少 ${PASSWORD_MIN_LENGTH} 位`;
+  if (pwd.length > PASSWORD_MAX_LENGTH) {
+    return `密码最长 ${PASSWORD_MAX_LENGTH} 字符(bcrypt 输入上限)`;
+  }
   if (!/[A-Za-z]/.test(pwd) || !/\d/.test(pwd)) return "密码须同时包含字母与数字";
   return null;
 }

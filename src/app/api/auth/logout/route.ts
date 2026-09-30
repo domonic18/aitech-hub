@@ -6,15 +6,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { readFullSessionUser, revokeSession, sessionCookie } from "@/lib/auth/issuer";
 import { logger } from "@/lib/logger";
 import { isSameOrigin } from "@/lib/http/origin";
+import { apiEnvelope } from "@/lib/http/response";
 
 export const dynamic = "force-dynamic";
 
-function envelope(code: number, message: string): NextResponse {
-  return NextResponse.json({ code, message, data: null }, { status: code === 0 ? 200 : code });
-}
-
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!isSameOrigin(req)) return envelope(403, "cross-origin forbidden");
+  if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
 
   const claims = await readFullSessionUser(req.headers.get("cookie"));
   if (claims) {
@@ -22,7 +19,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     logger.info({ event: "auth.logout", sub: claims.sub });
   }
 
-  const res = envelope(0, "ok");
+  const res = apiEnvelope(0, "ok");
   res.cookies.set(sessionCookie("")); // maxAge 0 清除
   return res;
 }
