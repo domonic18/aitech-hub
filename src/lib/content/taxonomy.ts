@@ -2,6 +2,7 @@
 import { PUBLISHED } from "@/lib/content/posts";
 import { prisma } from "@/lib/db";
 import { normalizeSlug } from "@/lib/slug";
+import { prerenderSafe } from "@/lib/prerender-safe";
 
 /** 已发布文章计数:Category→Post 直连;Tag→Post 经 PostTag 关联表(where 口径不同) */
 const publishedPostsCount = {
@@ -12,15 +13,19 @@ const publishedPostsCountViaTag = {
 };
 
 export async function listCategories() {
-  return prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
+  return prerenderSafe("taxonomy.categories", [], () =>
+    prisma.category.findMany({ orderBy: { sortOrder: "asc" } }),
+  );
 }
 
 /** 分类 + 已发布文章计数(导航/列表页头用) */
 export async function listCategoriesWithCount() {
-  return prisma.category.findMany({
-    orderBy: { sortOrder: "asc" },
-    select: { slug: true, name: true, ...publishedPostsCount },
-  });
+  return prerenderSafe("taxonomy.categoriesWithCount", [], () =>
+    prisma.category.findMany({
+      orderBy: { sortOrder: "asc" },
+      select: { slug: true, name: true, ...publishedPostsCount },
+    }),
+  );
 }
 
 export async function getCategoryBySlug(rawSlug: string) {
@@ -31,11 +36,13 @@ export async function getCategoryBySlug(rawSlug: string) {
 
 /** 有已发布文章的标签(空标签不展示,05 文档口径:仅保留文章关联的标签) */
 export async function listTagsWithCount() {
-  const rows = await prisma.tag.findMany({
-    select: { slug: true, name: true, ...publishedPostsCountViaTag },
-    orderBy: { name: "asc" },
+  return prerenderSafe("taxonomy.tagsWithCount", [], async () => {
+    const rows = await prisma.tag.findMany({
+      select: { slug: true, name: true, ...publishedPostsCountViaTag },
+      orderBy: { name: "asc" },
+    });
+    return rows.filter((t) => t._count.posts > 0);
   });
-  return rows.filter((t) => t._count.posts > 0);
 }
 
 export async function getTagBySlug(rawSlug: string) {

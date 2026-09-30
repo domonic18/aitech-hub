@@ -5,6 +5,7 @@
  */
 import { prisma } from "@/lib/db";
 import { normalizeSlug } from "@/lib/slug";
+import { prerenderSafe } from "@/lib/prerender-safe";
 
 /** 列表条目统一投影(卡片/sitemap/llms 共用;避免每处 select 漂移) */
 const LIST_SELECT = {
@@ -41,21 +42,25 @@ export async function getPostBySlug(rawSlug: string) {
 }
 
 export async function listLatestPosts(limit: number) {
-  return prisma.post.findMany({
-    where: PUBLISHED,
-    select: LIST_SELECT,
-    orderBy: [...ORDER],
-    take: limit,
-  });
+  return prerenderSafe("posts.latest", [], () =>
+    prisma.post.findMany({
+      where: PUBLISHED,
+      select: LIST_SELECT,
+      orderBy: [...ORDER],
+      take: limit,
+    }),
+  );
 }
 
 export async function listPinnedPosts(limit: number) {
-  return prisma.post.findMany({
-    where: { ...PUBLISHED, isPinned: true },
-    select: LIST_SELECT,
-    orderBy: [...ORDER],
-    take: limit,
-  });
+  return prerenderSafe("posts.pinned", [], () =>
+    prisma.post.findMany({
+      where: { ...PUBLISHED, isPinned: true },
+      select: LIST_SELECT,
+      orderBy: [...ORDER],
+      take: limit,
+    }),
+  );
 }
 
 export interface ListPageParams {
@@ -72,17 +77,19 @@ export async function listPostsPage({ page, pageSize, categorySlug, tagSlug }: L
     ...(categorySlug ? { category: { slug: categorySlug } } : {}),
     ...(tagSlug ? { tags: { some: { tag: { slug: tagSlug } } } } : {}),
   };
-  const [items, total] = await prisma.$transaction([
-    prisma.post.findMany({
-      where,
-      select: LIST_SELECT,
-      orderBy: [...ORDER],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.post.count({ where }),
-  ]);
-  return { items, total, page, pageSize };
+  return prerenderSafe("posts.page", { items: [], total: 0, page, pageSize }, async () => {
+    const [items, total] = await prisma.$transaction([
+      prisma.post.findMany({
+        where,
+        select: LIST_SELECT,
+        orderBy: [...ORDER],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.post.count({ where }),
+    ]);
+    return { items, total, page, pageSize };
+  });
 }
 
 /** 搜索(requirement §3.1:标题/摘要 LIKE,一期不引入 ES;/search 动态 SSR 用) */
@@ -115,12 +122,14 @@ export interface ArchivePost {
 
 /** 归档:全量已发布的轻投影(154 篇量级一次取回,页面分组) */
 export async function listArchivePosts(): Promise<ArchivePost[]> {
-  const rows = await prisma.post.findMany({
-    where: PUBLISHED,
-    select: { slug: true, title: true, publishedAt: true },
-    orderBy: [{ publishedAt: "desc" }],
+  return prerenderSafe("posts.archive", [], async () => {
+    const rows = await prisma.post.findMany({
+      where: PUBLISHED,
+      select: { slug: true, title: true, publishedAt: true },
+      orderBy: [{ publishedAt: "desc" }],
+    });
+    return rows.filter((r): r is ArchivePost & { publishedAt: Date } => r.publishedAt !== null);
   });
-  return rows.filter((r): r is ArchivePost & { publishedAt: Date } => r.publishedAt !== null);
 }
 
 /** generateStaticParams 数据源:返回 DB 原始(编码形态)slug;构建期无库时降级为按需 ISR(04 文档 §2 规则 5) */
@@ -136,18 +145,20 @@ export async function listPostSlugsForPrerender(): Promise<string[]> {
 
 /** sitemap/feed/llms 全量投影(轻字段;updatedAt 作 lastmod) */
 export async function listAllPostsForSeo() {
-  return prisma.post.findMany({
-    where: PUBLISHED,
-    select: {
-      slug: true,
-      title: true,
-      excerpt: true,
-      seoDescription: true,
-      contentMd: true,
-      contentHtml: true,
-      updatedAt: true,
-      publishedAt: true,
-    },
-    orderBy: [...ORDER],
-  });
+  return prerenderSafe("posts.allForSeo", [], () =>
+    prisma.post.findMany({
+      where: PUBLISHED,
+      select: {
+        slug: true,
+        title: true,
+        excerpt: true,
+        seoDescription: true,
+        contentMd: true,
+        contentHtml: true,
+        updatedAt: true,
+        publishedAt: true,
+      },
+      orderBy: [...ORDER],
+    }),
+  );
 }
