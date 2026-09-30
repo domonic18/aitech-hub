@@ -217,6 +217,12 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
     expect(admin?.title).toBe("M5a 集成测试文章(改)");
     expect(admin?.tags.map((t) => t.tag.slug)).toEqual(["it-m5a-tag-one"]);
     expect(await prisma.postTag.count({ where: { postId: post.id } })).toBe(1);
+    // M5-b:保存时同步媒体引用(封面入 media_ref)
+    expect(
+      await prisma.mediaRef.count({
+        where: { postId: post.id, mediaPath: "/wp-content/uploads/m5a.png" },
+      }),
+    ).toBe(1);
   });
 
   it("旧文保真:纯 HTML 正文 PUT → 409 legacy_readonly", async () => {
