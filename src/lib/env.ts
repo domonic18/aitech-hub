@@ -15,8 +15,8 @@ const serverEnvSchema = z.object({
   /** 站点对外 URL(canonical/sitemap/metadataBase 基准) */
   NEXT_PUBLIC_SITE_URL: z.url().default("http://localhost:3000"),
 
-  /** 媒体目录(迁移闭包落地位;生产 compose 卷挂载;07 文档 §3 不打进镜像) */
-  MEDIA_DIR: z.string().default("media"),
+  /** 媒体目录(默认 workspace/media 宿主机持久化约定;生产容器由 compose x-app-env 钉死为挂载点;07 文档 §3 不打进镜像) */
+  MEDIA_DIR: z.string().default("workspace/media"),
 
   /** jose 会话签名密钥;setup 脚本自动生成,生产必配 */
   AUTH_SECRET: z.string().min(16, "AUTH_SECRET 至少 16 字符"),
