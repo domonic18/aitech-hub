@@ -1,14 +1,13 @@
 /**
  * 会话读侧最小实现(arch/05-services §3.2):jose 校验 access token,供统计去管理员
- * 口径(M3)与后续 admin 判定复用。签发/刷新/吊销随 M4 认证交付;
- * 本文件只读不写,不依赖 Redis。
+ * 口径(M3)复用。签发/登记/吊销/续期在 issuer.ts(M4,含 Redis jti 双查);
+ * 本文件只读不写、不依赖 Redis——验签通过即认,完整校验不走这里。
  */
 import { jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
 
 export const ACCESS_COOKIE_NAME = "ah_at";
-export const REFRESH_COOKIE_NAME = "ah_rt";
 
 export interface AccessClaims {
   sub: string;

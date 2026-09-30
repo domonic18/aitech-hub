@@ -4,6 +4,7 @@ import { z } from "zod";
 import { readSessionUser } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { isSameOrigin } from "@/lib/http/origin";
+import { clientIp } from "@/lib/http/request";
 import { ingestView } from "@/lib/stats/service";
 
 /**
@@ -19,12 +20,6 @@ const bodySchema = z.object({
 
 function envelope(code: number, message: string): NextResponse {
   return NextResponse.json({ code, message, data: null }, { status: code });
-}
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const first = forwarded?.split(",")[0]?.trim();
-  return first || req.headers.get("x-real-ip") || "";
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {

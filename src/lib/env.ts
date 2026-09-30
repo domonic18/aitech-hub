@@ -21,7 +21,7 @@ const serverEnvSchema = z.object({
   /** jose 会话签名密钥;setup 脚本自动生成,生产必配 */
   AUTH_SECRET: z.string().min(16, "AUTH_SECRET 至少 16 字符"),
 
-  /** 腾讯云短信(M4 启用;缺省留空不阻塞启动) */
+  /** 腾讯云短信(三期用户短信登录;缺省留空不阻塞启动) */
   TENCENT_SMS_SECRET_ID: z.string().default(""),
   TENCENT_SMS_SECRET_KEY: z.string().default(""),
   TENCENT_SMS_SDK_APP_ID: z.string().default(""),

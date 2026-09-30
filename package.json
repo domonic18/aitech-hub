@@ -12,11 +12,13 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run integration.test",
     "test:e2e": "playwright test",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
+    "admin": "tsx scripts/admin.ts",
     "prepare": "husky"
   },
   "prisma": {
@@ -33,6 +35,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.10",
     "cheerio": "^1.2.0",
     "ioredis": "^6.0.0",
