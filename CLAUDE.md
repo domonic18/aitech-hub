@@ -6,7 +6,7 @@
   站长原创文章为核心渠道之一),替换旧 WordPress;SEO 是生命线
 - **架构**:Next.js 15 全栈单体(App Router RSC/ISR + Route Handlers)+ Prisma/PostgreSQL
   + Redis/BullMQ worker;公开品牌与域名沿用 17aitech
-- **关键约束**:旧文章 URL(中文 percent-encoded slug)原样可用;296 老用户短信登录继承;
+- **关键约束**:旧文章 URL(中文 percent-encoded slug)原样可用;296 老用户短信登录继承(三期开启——运营商个人签名资质停发,一期仅 admin 密码鉴权);
   154 篇原创文章及其引用图片全量迁移;3314 篇爬虫资讯弃用(301 承接)
 
 ## 2. 项目结构

@@ -199,7 +199,7 @@ CREATE TABLE legacy_url_map (
 
 ### 2.4 二期预留(到时增量迁移,不在基线)
 
-`pay_order` / `pay_order_item` / `content_post_purchase`(付费权益)、`github_repo` / `github_repo_activity`(项目展示)。命名已避让。
+`pay_order` / `pay_order_item` / `content_post_purchase`(付费权益)、`github_repo` / `github_repo_activity`(项目展示)、`crawl_source` / `social_account` / `telegram` / `blocklist`(电报流,字段草案见 [arch/02-data-collection §2](02-data-collection.md))。命名已避让。
 
 ## 3. Prisma 模型约定
 

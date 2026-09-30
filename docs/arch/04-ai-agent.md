@@ -1,6 +1,6 @@
 # AI Agent 体系设计(骨架 + Agent 搜索锚点)
 
-> 状态:占位骨架(2026-09-30 建立);同日补「Agent 搜索」需求锚点(§4),细化待二期立项。
+> 状态:占位骨架(2026-09-30 建立);同日补「Agent 搜索」需求锚点(§3)与「AI 服务治理后台」原型锚点(§4),细化待二期立项。
 
 ## 1. 定位
 
@@ -22,7 +22,15 @@
 - **展示**:分组命中列表(mark 高亮 + 渠道 chip + 命中度)+ 空态保留基础检索兜底;生成失败降级为纯检索结果页
 - **实现选项(立项评审)**:检索 = PG 全文(tsvector)起步 vs pgvector embedding 混合(多语言中文分行情待测);生成 = 直连 LLM API vs 经自有 MCP 端点复用;与 §2 站点内容 MCP 的关系 = 同检索层、不同鉴权与工具面
 
-## 4. 待明确(细化时回答)
+## 4. AI 服务治理后台(2026-09-30 原型 v0.4.0 锚点,二期)
+
+所有 LLM/ASR 生产任务(电报解读 / 文字摘要 / Agent 搜索 / 封面生图)共用的治理后台;原型 [admin-models](../prototypes/admin-models.html) / [admin-usage](../prototypes/admin-usage.html) / [admin-sessions](../prototypes/admin-sessions.html):
+
+- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图四角色槽的主力与备用);测试连通性入口
+- **用量统计(admin-usage)**:近 7/30/90 天 tokens 与估算费用 / ASR 时长 / 降级次数 KPI,日消耗趋势、按任务与按模型分布、按任务明细(含 CSS sparkline)——数据源为调用日志聚合,与成本护栏(arch/02 §3.2)共用口径
+- **会话管理(admin-sessions)**:按任务类型/状态/触发/日期筛选调用记录;详情抽屉展示入参出参 JSON 与垂直执行时间线(listing→下载→抽轨→ASR→LLM 解读→入库→转写即删,节点带耗时),失败记录可重跑
+
+## 5. 待明确(细化时回答)
 
 - agent 编排形态:单 agent 工具集 vs 多 agent 流水线
 - agent 身份与配额:复用 PAT 还是独立主体、计量口径
