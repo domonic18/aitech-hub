@@ -9,13 +9,14 @@
  * - 偏差声明:原型页为 docs 交付物,不受 src 代码「文件 ≤350 行」红线约束;
  *   单文件自包含优先于行数指标。
  *
- * 视觉方向(2026-09-30 用户定稿,同日 v0.3.0 扩双主题):
+ * 视觉方向(2026-09-30 用户定稿,同日 v0.3.0 扩双主题、v0.4.0 去 emoji 换矢量图标):
  * - 深色终端风为基底(深空三层底 + 靛蓝主色 + 等宽字体点缀;气质:终端、量化、智能体实战)
  * - 双主题:暗黑默认,明亮可选;页面 <html data-theme="dark|light">,
- *   切换按钮(☀/🌙)写 documentElement.dataset.theme 并记 localStorage("proto-theme");
+ *   主题胶囊(.theme-toggle)写 documentElement.dataset.theme 并记 localStorage("proto-theme");
  *   无存储默认 dark。前台与后台(admin)使用同一组 token,任何主题下同一风格。
+ * - 全站禁止 emoji 作图标;一律内联 SVG sprite(见 §图标系统)。
  *
- * 版本:v0.3.0(与 index.html 页脚一致)
+ * 版本:v0.4.0(与 index.html 页脚一致)
  */
 
 /* ==== 暗黑主题(默认) ==== */
@@ -111,13 +112,70 @@
   --admin-header-h: 56px;     /* admin 顶栏 */
 }
 
+/* ==== §图标系统(v0.4.0;全站禁 emoji 作图标) ====
+ * 来源:ai-invest-assisstant 同款 Ant Design Icons(MIT),1024 viewBox、fill 单色。
+ * 每页 <body> 起始处内联隐藏 sprite(仅本页用到的子集):
+ *   <svg xmlns="…" style="display:none" aria-hidden="true">
+ *     <symbol id="i-xxx" viewBox="64 64 896 896"><path d="…"/></symbol>…
+ *   </svg>
+ * 正文引用:<svg class="ic"><use href="#i-xxx"/></svg>(currentColor 继承文字色)。
+ * 常用符号速查(节选,全部 102 个见库):
+ *   主题 i-sun/i-moon · 搜索 i-search · 外链 i-export · 返回 i-arrow-left/i-rollback
+ *   播放 i-caret-right-fill · 视频 i-video · 浏览 i-eye · 点赞 i-like · 评论 i-comment
+ *   收藏 i-star · AI i-robot · 接口 i-api · 模型 i-robot · 会话 i-message · 用量 i-piechart
+ *   统计 i-dashboard/i-barchart/i-linechart/i-fund · 日历 i-calendar · 渠道 i-cloudserver
+ *   采集 i-send · 博主 i-aim · 用户 i-user/i-team · 令牌 i-key · 锁 i-lock · 手机 i-mobile
+ *   文档 i-filetext/i-read/i-book · 图片 i-picture/i-fileimage · 剪裁 i-scissor
+ *   复制 i-copy · 新增 i-plus · 编辑 i-edit · 删除 i-delete · 清理 i-clear · 归档 i-inbox
+ *   上传 i-cloudupload · 下载 i-clouddownload · 测试 i-experiment · 调试 i-tool
+ *   成功 i-check/i-checkcircle · 失败 i-close/i-closecircle · 警告 i-warning/i-infocircle
+ *   折叠 i-caret-down/i-up · 展开 i-down · 头像 i-avatar(自定义:var(--av-bg/--av-fg) 双色)
+ */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+
+/* ---- 默认头像(i-avatar,矢量;用户问题9) ----
+ * <svg class="avatar-svg"><use href="#i-avatar"/></svg>;
+ * 双色经 CSS 变量穿透 use:--av-bg(底圆)默认 accent-dim,--av-fg(人形)默认 accent。
+ * 尺寸随类:26/30/44/64/76px 圆形,各页按位定。UI 位一律不再引用位图 avatar.jpg
+ * (avatar.jpg 仅保留 admin-media 网格的「媒体素材」语义)。 */
+.avatar-svg { border-radius: 50%; flex: none; background: transparent; }
+
+/* ---- 主题切换胶囊(v0.4.0;44×24 分段滑块,用户问题5) ----
+ * <button class="theme-toggle" onclick="toggleTheme()" aria-pressed="…">
+ *   <span class="tt-track"><span class="tt-thumb"></span>
+ *     <svg class="ic tt-ic tt-moon"><use href="#i-moon"/></svg>
+ *     <svg class="ic tt-ic tt-sun"><use href="#i-sun"/></svg>
+ *   </span></button>
+ * 暗色=滑块压左(月亮亮白);亮色=滑块滑右(太阳亮白);滑块 .2s transform。 */
+.theme-toggle {
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color 0.15s;
+}
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px;
+  border-radius: 9px; background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+  transition: transform 0.2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color 0.2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #ffffff; }
+
 /* ---- 主题切换约定(各页内联实现) ----
  * 1. <html data-theme="dark"> 起始;头部内联脚本读 localStorage("proto-theme") 预设,
  *    防闪烁:<script>document.documentElement.dataset.theme=
  *      localStorage.getItem("proto-theme")||"dark"</script>
- * 2. 切换按钮(.theme-toggle,等宽 ☀/🌙 小圆钮,边框 var(--border)):
- *    点击取反 dataset.theme 并写 localStorage。
- * 3. 位置:前台 header nav 尾部 / admin 顶栏右侧(avatar 前)/ index 头部。
+ * 2. 切换按钮:.theme-toggle 主题胶囊(见上),点击取反 dataset.theme 并写 localStorage。
+ * 3. 位置:前台 header nav 尾部(搜索钮后)/ admin 顶栏右侧(头像菜单前)/ index 头部。
  * 4. 页面内的硬编码配色(徽标/横幅/语法高亮等)必须双主题可读:
  *    优先改用语义 token;确需固定色时用 [data-theme="light"] 覆写。
  * ---------------------------------------------------------- */
@@ -126,8 +184,13 @@
  * .prompt-line : "> agent.legion --status=active" 式装饰行,
  *                font: var(--font-mono), 色 var(--text-3), 其中命令词用 --green/--accent。
  * .mono-tag    : [COVER] / PV·UV 式等宽小标签,12px,letter-spacing 0.04em。
- * .theme-toggle: 主题切换圆钮(见上)。
- * logo         : 内联 SVG,「▮ + ai/tetch」或终端提示符形态,不用位图。
- * admin        : 与前台同一 token 体系(2026-09-30 起 AntD 亮色独立 token 退役),
- *                内容区 = --panel 卡 + --bg 页底;侧栏随主题(暗=深色现状,亮=浅色白侧栏)。
+ * logo         : 「▮ 色块 + 文字 + tld」形态;▮ = .cursor-block 静态色块(v0.4.0 起
+ *                不再闪烁——避免与可点暗示冲突,用户问题2),仅保留 --glow 微光。
+ * 控制台输入框 : 闪烁 caret 只出现在这里(site-home / site-search):
+ *                input caret-color: var(--accent);另加 .mirror-caret(▍,blink 1.2s)
+ *                在失焦态指示可输入,focus 后隐藏交还原生 caret。
+ * 头像菜单     : .user-menu(头像钮 + .user-drop 下拉:个人设置/退出登录),
+ *                JS toggle + 点外关闭 + Esc;admin 顶栏同构(.avatar-btn)。
+ * admin        : 与前台同一 token 体系;侧栏分组 OVERVIEW/内容管理/采集/AI 服务/用户/系统,
+ *                图标全 SVG(.sb-item .ic);顶栏 = 主题胶囊 + 头像菜单。
  * ---------------------------------------------------------- */

@@ -6,7 +6,7 @@
 <title>电报流 — 一起AI技术 · aitech-hub 原型</title>
 <script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;双主题) ==== */
 :root, [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
@@ -32,6 +32,12 @@
   --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+.avatar-svg { border-radius: 50%; flex: none; }
 body { background: var(--bg); color: var(--text-1); font-family: var(--font-sans); font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration: none; }
 img { display: block; }
@@ -39,28 +45,60 @@ img { display: block; }
 .wrap { max-width: var(--site-max-w); margin: 0 auto; padding: 0 24px; }
 
 /* Header(同前台各页) */
-.site-header { position: sticky; top: 0; z-index: 50; height: var(--site-header-h); background: var(--header-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.header { position: sticky; top: 0; z-index: 50; height: var(--site-header-h); background: var(--header-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
 .header-in { height: 100%; display: flex; align-items: center; gap: 28px; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
-.logo .cursor-block { width: 12px; height: 20px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite; }
+.logo .cursor-block { width: 12px; height: 20px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 12px var(--glow); }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 12px; }
 .nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
 .nav a { padding: 7px 14px; border-radius: var(--r-sm); color: var(--text-2); font-size: 14px; }
 .nav a:hover { color: var(--text-1); background: var(--panel); }
-.nav a.on { color: var(--text-1); background: var(--panel-2); }
-.nav .search-link { font-family: var(--font-mono); font-size: 13px; }
-
-/* 主题切换(约定见 common.css v0.3.0) */
+.nav a.active { color: var(--text-1); background: var(--panel-2); }
+/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
 .theme-toggle {
-  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
-  border: 1px solid var(--border); background: transparent; color: var(--text-2);
-  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
-  transition: color .15s, border-color .15s;
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
 }
-.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
-[data-theme="dark"] .tt-moon { display: none; }
-[data-theme="light"] .tt-sun { display: none; }
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
+
+/* ==== 头像菜单(下拉:个人设置/退出登录) ==== */
+.nav a.nav-ic { display: inline-flex; align-items: center; padding: 8px 10px; }
+.nav a.nav-ic .ic { width: 15px; height: 15px; }
+.user-menu { position: relative; display: flex; align-items: center; }
+.avatar-btn {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+  border-radius: 999px; transition: color .15s;
+}
+.avatar-btn:hover { color: var(--text-1); }
+.avatar-btn .avatar-svg { width: 30px; height: 30px; --av-bg: var(--accent-dim); --av-fg: var(--accent); }
+.user-drop {
+  position: absolute; right: 0; top: calc(100% + 12px); min-width: 172px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 6px; z-index: 60;
+}
+.user-drop[hidden] { display: none; }
+.ud-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; flex-direction: column; }
+.ud-head b { font-size: 13.5px; }
+.ud-head span { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.user-drop a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); }
+.user-drop a:hover { background: var(--panel-2); color: var(--text-1); }
+.user-drop a.ud-danger { color: var(--red); }
+.user-drop a.ud-danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); }
 [data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 
 /* 页头 */
@@ -196,18 +234,52 @@ img { display: block; }
 </style>
 </head>
 <body>
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
 
-<header class="site-header">
+  <symbol id="i-caret-down" viewBox="64 64 896 896"><path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z"/></symbol>
+  <symbol id="i-caret-right-fill" viewBox="64 64 896 896"><path d="M715.8 493.5L335 165.1c-14.2-12.2-35-1.2-35 18.5v656.8c0 19.7 20.8 30.7 35 18.5l380.8-328.4c10.9-9.4 10.9-27.6 0-37z"/></symbol>
+  <symbol id="i-clear" viewBox="64 64 896 896"><path d="M899.1 869.6l-53-305.6H864c14.4 0 26-11.6 26-26V346c0-14.4-11.6-26-26-26H618V138c0-14.4-11.6-26-26-26H432c-14.4 0-26 11.6-26 26v182H160c-14.4 0-26 11.6-26 26v192c0 14.4 11.6 26 26 26h17.9l-53 305.6a25.95 25.95 0 0025.6 30.4h723c1.5 0 3-.1 4.4-.4a25.88 25.88 0 0021.2-30zM204 390h272V182h72v208h272v104H204V390zm468 440V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H416V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H202.8l45.1-260H776l45.1 260H672z"/></symbol>
+  <symbol id="i-comment" viewBox="64 64 896 896"><path d="M464 512a48 48 0 1096 0 48 48 0 10-96 0zm200 0a48 48 0 1096 0 48 48 0 10-96 0zm-400 0a48 48 0 1096 0 48 48 0 10-96 0zm661.2-173.6c-22.6-53.7-55-101.9-96.3-143.3a444.35 444.35 0 00-143.3-96.3C630.6 75.7 572.2 64 512 64h-2c-60.6.3-119.3 12.3-174.5 35.9a445.35 445.35 0 00-142 96.5c-40.9 41.3-73 89.3-95.2 142.8-23 55.4-34.6 114.3-34.3 174.9A449.4 449.4 0 00112 714v152a46 46 0 0046 46h152.1A449.4 449.4 0 00510 960h2.1c59.9 0 118-11.6 172.7-34.3a444.48 444.48 0 00142.8-95.2c41.3-40.9 73.8-88.7 96.5-142 23.6-55.2 35.6-113.9 35.9-174.5.3-60.9-11.5-120-34.8-175.6zm-151.1 438C704 845.8 611 884 512 884h-1.7c-60.3-.3-120.2-15.3-173.1-43.5l-8.4-4.5H188V695.2l-4.5-8.4C155.3 633.9 140.3 574 140 513.7c-.4-99.7 37.7-193.3 107.6-263.8 69.8-70.5 163.1-109.5 262.8-109.9h1.7c50 0 98.5 9.7 144.2 28.9 44.6 18.7 84.6 45.6 119 80 34.3 34.3 61.3 74.4 80 119 19.4 46.2 29.1 95.2 28.9 145.8-.6 99.6-39.7 192.9-110.1 262.7z"/></symbol>
+  <symbol id="i-export" viewBox="64 64 896 896"><path d="M880 912H144c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32h360c4.4 0 8 3.6 8 8v56c0 4.4-3.6 8-8 8H184v656h656V520c0-4.4 3.6-8 8-8h56c4.4 0 8 3.6 8 8v360c0 17.7-14.3 32-32 32zM770.87 199.13l-52.2-52.2a8.01 8.01 0 014.7-13.6l179.4-21c5.1-.6 9.5 3.7 8.9 8.9l-21 179.4c-.8 6.6-8.9 9.4-13.6 4.7l-52.4-52.4-256.2 256.2a8.03 8.03 0 01-11.3 0l-42.4-42.4a8.03 8.03 0 010-11.3l256.1-256.3z"/></symbol>
+  <symbol id="i-heart" viewBox="64 64 896 896"><path d="M923 283.6a260.04 260.04 0 00-56.9-82.8 264.4 264.4 0 00-84-55.5A265.34 265.34 0 00679.7 125c-49.3 0-97.4 13.5-139.2 39-10 6.1-19.5 12.8-28.5 20.1-9-7.3-18.5-14-28.5-20.1-41.8-25.5-89.9-39-139.2-39-35.5 0-69.9 6.8-102.4 20.3-31.4 13-59.7 31.7-84 55.5a258.44 258.44 0 00-56.9 82.8c-13.9 32.3-21 66.6-21 101.9 0 33.3 6.8 68 20.3 103.3 11.3 29.5 27.5 60.1 48.2 91 32.8 48.9 77.9 99.9 133.9 151.6 92.8 85.7 184.7 144.9 188.6 147.3l23.7 15.2c10.5 6.7 24 6.7 34.5 0l23.7-15.2c3.9-2.5 95.7-61.6 188.6-147.3 56-51.7 101.1-102.7 133.9-151.6 20.7-30.9 37-61.5 48.2-91 13.5-35.3 20.3-70 20.3-103.3.1-35.3-7-69.6-20.9-101.9zM512 814.8S156 586.7 156 385.5C156 283.6 240.3 201 344.3 201c73.1 0 136.5 40.8 167.7 100.4C543.2 241.8 606.6 201 679.7 201c104 0 188.3 82.6 188.3 184.5 0 201.2-356 429.3-356 429.3z"/></symbol>
+  <symbol id="i-like" viewBox="64 64 896 896"><path d="M885.9 533.7c16.8-22.2 26.1-49.4 26.1-77.7 0-44.9-25.1-87.4-65.5-111.1a67.67 67.67 0 00-34.3-9.3H572.4l6-122.9c1.4-29.7-9.1-57.9-29.5-79.4A106.62 106.62 0 00471 99.9c-52 0-98 35-111.8 85.1l-85.9 311H144c-17.7 0-32 14.3-32 32v364c0 17.7 14.3 32 32 32h601.3c9.2 0 18.2-1.8 26.5-5.4 47.6-20.3 78.3-66.8 78.3-118.4 0-12.6-1.8-25-5.4-37 16.8-22.2 26.1-49.4 26.1-77.7 0-12.6-1.8-25-5.4-37 16.8-22.2 26.1-49.4 26.1-77.7-.2-12.6-2-25.1-5.6-37.1zM184 852V568h81v284h-81zm636.4-353l-21.9 19 13.9 25.4a56.2 56.2 0 016.9 27.3c0 16.5-7.2 32.2-19.6 43l-21.9 19 13.9 25.4a56.2 56.2 0 016.9 27.3c0 16.5-7.2 32.2-19.6 43l-21.9 19 13.9 25.4a56.2 56.2 0 016.9 27.3c0 22.4-13.2 42.6-33.6 51.8H329V564.8l99.5-360.5a44.1 44.1 0 0142.2-32.3c7.6 0 15.1 2.2 21.1 6.7 9.9 7.4 15.2 18.6 14.6 30.5l-9.6 198.4h314.4C829 418.5 840 436.9 840 456c0 16.5-7.2 32.1-19.6 43z"/></symbol>
+  <symbol id="i-lock" viewBox="64 64 896 896"><path d="M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304zM484 701v53c0 4.4 3.6 8 8 8h40c4.4 0 8-3.6 8-8v-53a48.01 48.01 0 10-56 0z"/></symbol>
+  <symbol id="i-logout" viewBox="64 64 896 896"><path d="M868 732h-70.3c-4.8 0-9.3 2.1-12.3 5.8-7 8.5-14.5 16.7-22.4 24.5a353.84 353.84 0 01-112.7 75.9A352.8 352.8 0 01512.4 866c-47.9 0-94.3-9.4-137.9-27.8a353.84 353.84 0 01-112.7-75.9 353.28 353.28 0 01-76-112.5C167.3 606.2 158 559.9 158 512s9.4-94.2 27.8-137.8c17.8-42.1 43.4-80 76-112.5s70.5-58.1 112.7-75.9c43.6-18.4 90-27.8 137.9-27.8 47.9 0 94.3 9.3 137.9 27.8 42.2 17.8 80.1 43.4 112.7 75.9 7.9 7.9 15.3 16.1 22.4 24.5 3 3.7 7.6 5.8 12.3 5.8H868c6.3 0 10.2-7 6.7-12.3C798 160.5 663.8 81.6 511.3 82 271.7 82.6 79.6 277.1 82 516.4 84.4 751.9 276.2 942 512.4 942c152.1 0 285.7-78.8 362.3-197.7 3.4-5.3-.4-12.3-6.7-12.3zm88.9-226.3L815 393.7c-5.3-4.2-13-.4-13 6.3v76H488c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+  <symbol id="i-robot" viewBox="64 64 896 896"><path d="M300 328a60 60 0 10120 0 60 60 0 10-120 0zM852 64H172c-17.7 0-32 14.3-32 32v660c0 17.7 14.3 32 32 32h680c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-32 660H204V128h616v596zM604 328a60 60 0 10120 0 60 60 0 10-120 0zm250.2 556H169.8c-16.5 0-29.8 14.3-29.8 32v36c0 4.4 3.3 8 7.4 8h729.1c4.1 0 7.4-3.6 7.4-8v-36c.1-17.7-13.2-32-29.7-32zM664 508H360c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-search" viewBox="64 64 896 896"><path d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></symbol>
+  <symbol id="i-star" viewBox="64 64 896 896"><path d="M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 00.6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0046.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 4.4 20.3 3.2 17.4-3 29.1-19.5 26.1-36.9l-43.4-252.9 183.7-179.1c5-4.9 8.3-11.3 9.3-18.3 2.7-17.5-9.5-33.7-27-36.3zM664.8 561.6l36.1 210.3L512 672.7 323.1 772l36.1-210.3-152.8-149L417.6 382 512 190.7 606.4 382l211.2 30.7-152.8 148.9z"/></symbol>
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-user" viewBox="64 64 896 896"><path d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></symbol>
+  <symbol id="i-eye" viewBox="64 64 896 896"><path d="M942.2 486.2C847.4 286.5 704.1 186 512 186c-192.2 0-335.4 100.5-430.2 300.3a60.3 60.3 0 000 51.5C176.6 737.5 319.9 838 512 838c192.2 0 335.4-100.5 430.2-300.3 7.7-16.2 7.7-35 0-51.5zM512 766c-161.3 0-279.4-81.8-362.7-254C232.6 339.8 350.7 258 512 258c161.3 0 279.4 81.8 362.7 254C791.5 684.2 673.4 766 512 766zm-4-430c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176zm0 288c-61.9 0-112-50.1-112-112s50.1-112 112-112 112 50.1 112 112-50.1 112-112 112z"/></symbol>
+  <symbol id="i-avatar" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
+    <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
+    <path d="M512 628c-176 0-316 106-316 238v158h632v-158c0-132-140-238-316-238z" style="fill:var(--av-fg,#5e6ad2)"/>
+  </symbol>
+</svg>
+
+<header class="header">
   <div class="wrap header-in">
     <a class="logo" href="site-home.html"><span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span></a>
     <nav class="nav">
       <a href="site-home.html">首页</a>
+      <a href="site-telegram.html" class="active">电报流</a>
       <a href="site-articles.html">文章</a>
-      <a class="on" href="site-telegram.html">电报流</a>
-      <a href="site-articles.html">归档</a>
-      <a href="#">关于</a>
-      <a class="search-link" href="site-search.html">⌕ 搜索</a>
-      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
+      <a href="site-search.html" class="nav-ic" title="Agent 搜索" aria-label="Agent 搜索"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
+      <div class="user-menu">
+        <button class="avatar-btn" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false" title="账号菜单">
+          <svg class="avatar-svg" aria-hidden="true"><use href="#i-avatar"/></svg>
+          <svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-down"/></svg>
+        </button>
+        <div class="user-drop" id="userDrop" hidden>
+          <div class="ud-head"><b>诸葛东明</b><span>admin · 站长</span></div>
+          <a href="account.html"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>个人设置</a>
+          <a href="login.html" class="ud-danger"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>退出登录</a>
+        </div>
+      </div>
     </nav>
   </div>
 </header>
@@ -234,7 +306,7 @@ img { display: block; }
         <span class="src-chip on">全部 <span class="n">47</span></span>
         <span class="src-chip">文字 <span class="n">38</span></span>
         <span class="src-chip">短视频 <span class="n">9</span></span>
-        <span class="src-chip disabled" title="多租户博主订阅 · 三期规划">🔒 我的关注 · 三期</span>
+        <span class="src-chip disabled" title="多租户博主订阅 · 三期规划"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-lock"/></svg> 我的关注 · 三期</span>
       </div>
       <div class="src-filter">
         <span class="grp-label">渠道</span>
@@ -259,16 +331,16 @@ img { display: block; }
           <span class="tg-ago">3 分钟前</span>
           <span class="tg-new">NEW</span>
         </div>
-        <h3><a href="#" onclick="return false">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>官方 blog 宣布,新增多智能体编排原语;SWE-bench Verified 74.2%。站长注:等实测,先跑一个 154 篇迁移回归。</p>
-        <div class="tg-meta"><span>mp.weixin.qq.com</span><a href="#" onclick="return false">原文 ↗</a><a href="#" onclick="return false">AI 摘要</a></div>
+        <div class="tg-meta"><span>mp.weixin.qq.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a><a href="#" onclick="return false">AI 摘要</a></div>
       </article>
 
       <!-- 短视频解读卡(抖音):AI 解读 + 原视频外链;版权边界见右栏 -->
       <article class="tg-item video">
         <a class="v-cover" href="#" onclick="return false" title="跳转原视频">
           <img src="assets/video-cover-douyin.jpg" alt="" onerror="this.remove()">
-          <span class="play">▶</span>
+          <span class="play"><svg class="ic" aria-hidden="true"><use href="#i-caret-right-fill"/></svg></span>
           <span class="plat">抖音</span>
           <span class="dur">03:12</span>
         </a>
@@ -290,9 +362,9 @@ img { display: block; }
             </ul>
           </details>
           <div class="tg-meta">
-            <span>▶ 2.1w · 👍 1,842 · 💬 316</span>
-            <a href="#" onclick="return false">原视频 ↗</a>
-            <span class="ai-gen">✦ AI 生成 · 摘要与要点,内容版权归原作者</span>
+            <span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-right-fill"/></svg> 2.1w · <svg class="ic ic-sm" aria-hidden="true"><use href="#i-like"/></svg> 1,842 · <svg class="ic ic-sm" aria-hidden="true"><use href="#i-comment"/></svg> 316</span>
+            <a href="#" onclick="return false">原视频 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a>
+            <span class="ai-gen"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-robot"/></svg> AI 生成 · 摘要与要点,内容版权归原作者</span>
           </div>
         </div>
       </article>
@@ -302,9 +374,9 @@ img { display: block; }
           <span class="src-tag src-sns">X · 学者圈</span>
           <span class="tg-ago">48 分钟前</span>
         </div>
-        <h3><a href="#" onclick="return false">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>HF 仓库已放出 bf16 权重;社区实测 GSM8K 91.3,代码能力接近闭源第一梯队。</p>
-        <div class="tg-meta"><span>x.com</span><a href="#" onclick="return false">原文 ↗</a></div>
+        <div class="tg-meta"><span>x.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a></div>
       </article>
 
       <article class="tg-item">
@@ -312,9 +384,9 @@ img { display: block; }
           <span class="src-tag src-web">Hacker News</span>
           <span class="tg-ago">1 小时前</span>
         </div>
-        <h3><a href="#" onclick="return false">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>作者把 cron 输出喂给 headless claude -p,生成每日变更电报;评论区讨论了 token 成本与安全边界。</p>
-        <div class="tg-meta"><span>news.ycombinator.com</span><a href="#" onclick="return false">原文 ↗</a><span>💬 128</span></div>
+        <div class="tg-meta"><span>news.ycombinator.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a><span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-comment"/></svg> 128</span></div>
       </article>
 
       <!-- 博主文章条目:渠道之一,绿色左边线 + 「博主个人」chip 与外部渠道区分 -->
@@ -325,14 +397,14 @@ img { display: block; }
         </div>
         <h3><a href="site-article.html">GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</a></h3>
         <p>ChatGPT、Perplexity 开始替 Google 分流流量。站点的 llms.txt、文章 .md 直出与站点内容 MCP,是一套完整的 GEO 打法。</p>
-        <div class="tg-meta"><span>17aitech.com · 站内</span><a href="site-article.html">阅读全文 →</a><span>👁 4,872</span></div>
+        <div class="tg-meta"><span>17aitech.com · 站内</span><a href="site-article.html">阅读全文 →</a><span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 4,872</span></div>
       </article>
 
       <!-- 短视频解读卡(B站) -->
       <article class="tg-item video">
         <a class="v-cover" href="#" onclick="return false" title="跳转原视频">
           <img src="assets/video-cover-bili.jpg" alt="" onerror="this.remove()">
-          <span class="play">▶</span>
+          <span class="play"><svg class="ic" aria-hidden="true"><use href="#i-caret-right-fill"/></svg></span>
           <span class="plat">B站</span>
           <span class="dur">12:48</span>
         </a>
@@ -353,9 +425,9 @@ img { display: block; }
             </ul>
           </details>
           <div class="tg-meta">
-            <span>▶ 8.7w · 👍 4,120 · 💬 892</span>
-            <a href="#" onclick="return false">原视频 ↗</a>
-            <span class="ai-gen">✦ AI 生成 · 摘要与要点,内容版权归原作者</span>
+            <span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-right-fill"/></svg> 8.7w · <svg class="ic ic-sm" aria-hidden="true"><use href="#i-like"/></svg> 4,120 · <svg class="ic ic-sm" aria-hidden="true"><use href="#i-comment"/></svg> 892</span>
+            <a href="#" onclick="return false">原视频 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a>
+            <span class="ai-gen"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-robot"/></svg> AI 生成 · 摘要与要点,内容版权归原作者</span>
           </div>
         </div>
       </article>
@@ -365,16 +437,16 @@ img { display: block; }
           <span class="src-tag src-sns">Reddit r/LocalLLaMA</span>
           <span class="tg-ago">3 小时前</span>
         </div>
-        <h3><a href="#" onclick="return false">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>实测 Llama-70B AWQ,TP=2 4090×2;batch=32 时 TTFT 从 840ms 降到 460ms。</p>
-        <div class="tg-meta"><span>reddit.com</span><a href="#" onclick="return false">原文 ↗</a><span>▲ 456</span></div>
+        <div class="tg-meta"><span>reddit.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a><span>▲ 456</span></div>
       </article>
 
       <!-- 短视频解读卡(小红书):仅内容解读 + 原文外链(版权红线) -->
       <article class="tg-item video">
         <a class="v-cover" href="#" onclick="return false" title="跳转原视频">
           <img src="assets/video-cover-xhs.jpg" alt="" onerror="this.remove()">
-          <span class="play">▶</span>
+          <span class="play"><svg class="ic" aria-hidden="true"><use href="#i-caret-right-fill"/></svg></span>
           <span class="plat">小红书</span>
           <span class="dur">01:47</span>
         </a>
@@ -387,9 +459,9 @@ img { display: block; }
           <h3><a href="#" onclick="return false">打工人的 AI 周报自动化:截图丢进去,周报自己写</a></h3>
           <p class="ai-sum"><span class="ai-badge">AI 解读</span>用多模态模型读取工作截图 → 汇总成本周纪要 → 按团队模板输出周报。作者附了提示词模板与两个翻车案例(敏感信息脱敏、数据口径)。</p>
           <div class="tg-meta">
-            <span>❤️ 5,632 · ⭐ 2,104 · 💬 447</span>
-            <a href="#" onclick="return false">原视频 ↗</a>
-            <span class="ai-gen">✦ AI 生成 · 摘要与要点,内容版权归原作者</span>
+            <span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-heart"/></svg> 5,632 · <svg class="ic ic-sm" aria-hidden="true"><use href="#i-star"/></svg> 2,104 · <svg class="ic ic-sm" aria-hidden="true"><use href="#i-comment"/></svg> 447</span>
+            <a href="#" onclick="return false">原视频 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a>
+            <span class="ai-gen"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-robot"/></svg> AI 生成 · 摘要与要点,内容版权归原作者</span>
           </div>
         </div>
       </article>
@@ -399,9 +471,9 @@ img { display: block; }
           <span class="src-tag src-rss">量子位</span>
           <span class="tg-ago">5 小时前</span>
         </div>
-        <h3><a href="#" onclick="return false">微信「灰度测试」AI 搜索入口:公众号生态内容权重显著提升</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">微信「灰度测试」AI 搜索入口:公众号生态内容权重显著提升</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>内测用户搜索框新增「AI 回答」;引用以公众号文章为主——对公众号分发(本站二期规划)是利好信号。</p>
-        <div class="tg-meta"><span>qbitai.com</span><a href="#" onclick="return false">原文 ↗</a></div>
+        <div class="tg-meta"><span>qbitai.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a></div>
       </article>
 
       <!-- 昨天 -->
@@ -412,9 +484,9 @@ img { display: block; }
           <span class="src-tag src-rss">机器之心</span>
           <span class="tg-ago">昨天 22:14</span>
         </div>
-        <h3><a href="#" onclick="return false">MIT 团队用图压缩方法把 100B 模型的 KV cache 压到 1/8</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">MIT 团队用图压缩方法把 100B 模型的 KV cache 压到 1/8</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>CBC(collapsed basis caching)方法,长上下文推理显存大幅下降;论文与代码已开源。</p>
-        <div class="tg-meta"><span>arxiv.org</span><a href="#" onclick="return false">原文 ↗</a></div>
+        <div class="tg-meta"><span>arxiv.org</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a></div>
       </article>
 
       <article class="tg-item">
@@ -422,13 +494,13 @@ img { display: block; }
           <span class="src-tag src-sns">X · 学者圈</span>
           <span class="tg-ago">昨天 19:02</span>
         </div>
-        <h3><a href="#" onclick="return false">「Agent 记忆」共识正在形成:分层摘要 + 向量召回 + 结构化状态三件套</a> <span class="ext">↗</span></h3>
+        <h3><a href="#" onclick="return false">「Agent 记忆」共识正在形成:分层摘要 + 向量召回 + 结构化状态三件套</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
         <p>多个团队独立收敛到相似架构;与本站站长《智能体军团指挥手册》中「指挥官读地图」的实践一致。</p>
-        <div class="tg-meta"><span>x.com</span><a href="#" onclick="return false">原文 ↗</a><a href="site-article.html">相关文章 →</a></div>
+        <div class="tg-meta"><span>x.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a><a href="site-article.html">相关文章 →</a></div>
       </article>
 
       <!-- 准入纪律可见性:被过滤内容计数注记 -->
-      <div class="filtered-note">🕘 已过滤 <b>12</b> 条无关内容(生活动态 / 广告 / 招聘)· 规则与拦截率见治理后台</div>
+      <div class="filtered-note"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-clear"/></svg> 已过滤 <b>12</b> 条无关内容(生活动态 / 广告 / 招聘)· 规则与拦截率见治理后台</div>
 
       <a class="more-btn" href="#" onclick="return false">加载更早的电报 · 共 1,102 条可见 ↓</a>
     </main>
@@ -489,9 +561,9 @@ img { display: block; }
         <h5>导航</h5>
         <ul>
           <li><a href="site-articles.html">全部文章</a></li>
-          <li><a href="site-telegram.html">电报流</a></li>
-          <li><a href="#">归档</a></li>
-          <li><a href="#">关于</a></li>
+          <li><a href="site-telegram.html" class="active">电报流</a></li>
+          <li><a href="site-articles.html">归档</a></li>
+          <li><a href="site-article.html">关于</a></li>
           <li><a href="login.html">登录 / 注册</a></li>
         </ul>
       </div>
@@ -508,7 +580,7 @@ img { display: block; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.3.0 · 二期 · 混合电报流 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.4.0 · 二期 · 混合电报流 · <a href="index.html">← 原型索引</a></div>
 
 <script>
 function toggleTheme() {
@@ -517,6 +589,25 @@ function toggleTheme() {
   el.dataset.theme = t;
   localStorage.setItem("proto-theme", t);
 }
+
+/* ---- 用户菜单(点外关闭 + Esc) ---- */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const drop = document.getElementById("userDrop");
+  const btn = e.currentTarget;
+  if (drop.hasAttribute("hidden")) { drop.removeAttribute("hidden"); btn.setAttribute("aria-expanded", "true"); }
+  else { drop.setAttribute("hidden", ""); btn.setAttribute("aria-expanded", "false"); }
+}
+document.addEventListener("click", (e) => {
+  const drop = document.getElementById("userDrop");
+  if (drop && !drop.hasAttribute("hidden") && !e.target.closest(".user-menu")) {
+    drop.setAttribute("hidden", "");
+    document.querySelector(".avatar-btn")?.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.getElementById("userDrop")?.setAttribute("hidden", "");
+});
 </script>
 </body>
 </html>

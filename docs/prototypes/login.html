@@ -6,7 +6,7 @@
 <title>一起AI技术 — 登录 · aitech-hub 原型</title>
 <script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;双主题) ==== */
 :root, [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
@@ -31,6 +31,11 @@
   --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.avatar-svg { border-radius: 50%; flex: none; }
 body {
   background: var(--bg); color: var(--text-1);
   font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
@@ -52,7 +57,7 @@ a { color: inherit; text-decoration: none; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow);
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
@@ -102,7 +107,7 @@ a { color: inherit; text-decoration: none; }
 }
 .input-wrap input::placeholder { color: var(--text-3); }
 .send-btn {
-  margin: 6px; height: 36px; padding: 0 14px; font-size: 13px; white-space: nowrap;
+  margin: 0 6px; height: 34px; padding: 0 14px; font-size: 13px; white-space: nowrap;
   color: var(--accent-hover); background: var(--accent-dim);
   border: 1px solid rgba(94,106,210,.35); border-radius: var(--r-sm); cursor: pointer;
 }
@@ -151,27 +156,44 @@ a { color: inherit; text-decoration: none; }
 }
 .proto-note a { color: var(--accent-hover); }
 
-/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
 .theme-toggle {
-  margin-left: auto; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
-  border: 1px solid var(--border); background: transparent; color: var(--text-2);
-  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
-  transition: color .15s, border-color .15s;
+  margin-left: auto;
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
 }
-.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
-[data-theme="dark"] .tt-moon { display: none; }
-[data-theme="light"] .tt-sun { display: none; }
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
 [data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+  <symbol id="i-warning" viewBox="64 64 896 896"><path d="M464 720a48 48 0 1096 0 48 48 0 10-96 0zm16-304v184c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V416c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8zm475.7 440l-416-720c-6.2-10.7-16.9-16-27.7-16s-21.6 5.3-27.7 16l-416 720C56 877.4 71.4 904 96 904h832c24.6 0 40-26.6 27.7-48zm-783.5-27.9L512 239.9l339.8 588.2H172.2z"/></symbol>
+  <symbol id="i-close" viewBox="64 64 896 896"><path d="M799.86 166.31c.02 0 .04.02.08.06l57.69 57.7c.04.03.05.05.06.08a.12.12 0 010 .06c0 .03-.02.05-.06.09L569.93 512l287.7 287.7c.04.04.05.06.06.09a.12.12 0 010 .07c0 .02-.02.04-.06.08l-57.7 57.69c-.03.04-.05.05-.07.06a.12.12 0 01-.07 0c-.03 0-.05-.02-.09-.06L512 569.93l-287.7 287.7c-.04.04-.06.05-.09.06a.12.12 0 01-.07 0c-.02 0-.04-.02-.08-.06l-57.69-57.7c-.04-.03-.05-.05-.06-.07a.12.12 0 010-.07c0-.03.02-.05.06-.09L454.07 512l-287.7-287.7c-.04-.04-.05-.06-.06-.09a.12.12 0 010-.07c0-.02.02-.04.06-.08l57.7-57.69c.03-.04.05-.05.07-.06a.12.12 0 01.07 0c.03 0 .05.02.09.06L512 454.07l287.7-287.7c.04-.04.06-.05.09-.06a.12.12 0 01.07 0z"/></symbol>
+</svg>
 
 <header class="header">
   <div class="header-in">
     <a class="logo" href="site-home.html">
       <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
     </a>
-    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
     <a class="back" href="site-home.html">返回首页 →</a>
   </div>
 </header>
@@ -186,7 +208,7 @@ a { color: inherit; text-decoration: none; }
 
     <!-- pending_binding 引导条:53 位老用户首次登录会看到(默认隐藏,演示可开) -->
     <div class="pb-band" id="pbBand">
-      ⚠ 检测到你是老站用户,尚未绑定手机号。验证通过后将自动完成绑定并激活账号。
+      <svg class="ic ic-sm" style="vertical-align:-1.5px" aria-hidden="true"><use href="#i-warning"/></svg> 检测到你是老站用户,尚未绑定手机号。验证通过后将自动完成绑定并激活账号。
       <a href="bind-phone.html">了解绑定流程 →</a>
     </div>
 
@@ -210,7 +232,7 @@ a { color: inherit; text-decoration: none; }
 
     <!-- 429 频控错误态(默认隐藏,演示可开) -->
     <div class="err-band" id="errBand">
-      ✕ 验证码发送过于频繁,请稍后再试。<br>
+      <svg class="ic ic-sm" style="vertical-align:-1.5px" aria-hidden="true"><use href="#i-close"/></svg> 验证码发送过于频繁,请稍后再试。<br>
       <span class="mono">HTTP 429 · 同号 60s/次 · 日 10 条 · 同 IP 日 50 条</span>
     </div>
 
@@ -227,7 +249,7 @@ a { color: inherit; text-decoration: none; }
 
 <footer class="footer">© 2021-2026 17aitech.com · 一起AI技术</footer>
 
-<div class="proto-note">PROTOTYPE v0.3.0 · M4 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.4.0 · M4 · <a href="index.html">← 原型索引</a></div>
 
 <script>
 // 60s 倒计时(同号 60s/次 频控的可视化)
