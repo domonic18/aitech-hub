@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · 站点统计 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本)
+ * admin 形态:AntD 5 亮色内容区 + 深色侧栏;primary 覆写为品牌靛蓝 ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+.mono { font-family: var(--font-mono); }
+
+/* ==== 深色侧栏 ==== */
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w);
+  background: var(--bg); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 100;
+}
+.sb-logo {
+  height: var(--admin-header-h); display: flex; align-items: center; gap: 9px;
+  padding: 0 18px; border-bottom: 1px solid var(--border);
+  color: var(--text-1); font-weight: 700; font-size: 15px;
+}
+.sb-logo .cursor-block {
+  width: 10px; height: 17px; background: var(--accent); border-radius: 2px;
+  box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; overflow-y: auto; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0;
+  border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px;
+}
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-item.active .ico { opacity: 1; }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link {
+  display: block; text-align: center; padding: 8px; border-radius: var(--r-sm);
+  border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono);
+}
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+/* ==== 亮色内容区 ==== */
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header {
+  height: var(--admin-header-h); background: var(--antd-card);
+  border-bottom: 1px solid var(--antd-border);
+  display: flex; align-items: center; padding: 0 24px; gap: 16px;
+  position: sticky; top: 0; z-index: 90;
+}
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
+.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.a-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.range-chip { font-family: var(--font-mono); font-size: 12px; color: var(--antd-t3); background: var(--antd-bg); border: 1px solid var(--antd-border); border-radius: 4px; padding: 3px 10px; }
+.avatar-sm { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+
+.a-body { padding: 20px 24px 40px; }
+.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.card-h { padding: 16px 20px 0; display: flex; align-items: center; gap: 10px; }
+.card-h h3 { font-size: 15px; font-weight: 600; }
+.card-h .mono-tag { font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); letter-spacing: .04em; }
+.card-b { padding: 16px 20px 20px; }
+
+/* ==== 总览卡 ==== */
+.ov-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.ov-card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); padding: 18px 20px 16px; }
+.ov-top { display: flex; align-items: center; justify-content: space-between; }
+.ov-lbl { font-size: 13px; color: var(--antd-t2); }
+.ov-ico { font-size: 16px; opacity: .8; }
+.ov-num { font-family: var(--font-mono); font-size: 28px; font-weight: 600; margin-top: 8px; letter-spacing: -.01em; }
+.ov-num small { font-size: 13px; color: var(--antd-t3); font-weight: 400; margin-left: 4px; }
+.ov-sub { margin-top: 6px; font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); }
+.up { color: var(--green); } .down { color: var(--red); }
+.pv-line { color: var(--accent); } .uv-line { color: var(--green); }
+
+/* ==== 趋势图 ==== */
+.trend-head { display: flex; align-items: center; padding: 16px 20px 0; gap: 12px; }
+.trend-head h3 { font-size: 15px; font-weight: 600; }
+.legend { display: flex; gap: 16px; margin-left: 18px; font-size: 12.5px; color: var(--antd-t2); }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.seg { margin-left: auto; display: flex; border: 1px solid #d9d9d9; border-radius: var(--r-sm); overflow: hidden; }
+.seg button {
+  border: none; background: #fff; padding: 5px 14px; font-size: 13px; color: var(--antd-t2);
+  cursor: pointer; font-family: var(--font-sans); border-right: 1px solid #d9d9d9;
+}
+.seg button:last-child { border-right: none; }
+.seg button.on { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+#trendBox svg { display: block; width: 100%; height: auto; }
+
+/* ==== 两栏区:来源 + 环境 ==== */
+.cols { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; margin-top: 16px; }
+
+/* 来源行 */
+.src-row { display: grid; grid-template-columns: 150px 1fr 92px; align-items: center; gap: 14px; padding: 8px 0; }
+.src-row .nm { font-size: 13.5px; color: var(--antd-t1); display: flex; align-items: center; gap: 8px; }
+.src-row .nm .ico { font-size: 14px; }
+.src-row .nm .cat {
+  font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 2px;
+}
+.cat-search { color: #3b82f6; background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.25); }
+.cat-ai { color: #8b5cf6; background: rgba(139,92,246,.08); border: 1px solid rgba(139,92,246,.3); }
+.cat-direct { color: #64748b; background: rgba(100,116,139,.08); border: 1px solid rgba(100,116,139,.25); }
+.cat-ref { color: #d29922; background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.3); }
+.bar-track { height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; }
+.src-row .pv { text-align: right; font-family: var(--font-mono); font-size: 12.5px; color: var(--antd-t2); }
+.src-row .pv b { color: var(--antd-t1); font-weight: 600; }
+.src-sep { border-top: 1px dashed var(--antd-border); margin: 8px 0; }
+
+/* 访客环境 */
+.env-block h4 { font-size: 13px; color: var(--antd-t2); font-weight: 600; margin: 4px 0 10px; }
+.env-block + .env-block { margin-top: 18px; }
+
+/* ==== 热门页面表 ==== */
+.top-card { margin-top: 16px; }
+.a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.a-table th {
+  text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa;
+  padding: 11px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap;
+}
+.a-table td { padding: 12px 16px; border-bottom: 1px solid var(--antd-border); color: var(--antd-t1); }
+.a-table tr:last-child td { border-bottom: none; }
+.a-table tr:hover td { background: #fafafa; }
+.a-table .num { font-family: var(--font-mono); font-size: 12.5px; }
+.a-table .path { font-family: var(--font-mono); font-size: 12.5px; color: var(--antd-t2); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-badge {
+  display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 12px; border-radius: 4px;
+  background: #f0f0f0; color: var(--antd-t2);
+}
+.rank-badge.g { background: rgba(94,106,210,.12); color: var(--accent); font-weight: 700; }
+.tag-mini { font-size: 11px; padding: 1px 8px; border-radius: 4px; }
+.tm-article { color: var(--accent); background: var(--accent-dim); }
+.tm-page { color: #64748b; background: rgba(100,116,139,.08); }
+
+/* 数据口径注 */
+.caliber-note {
+  margin-top: 14px; padding: 10px 14px; font-size: 12px; color: var(--antd-t3);
+  background: #fafafa; border: 1px dashed #d9d9d9; border-radius: var(--r-sm); line-height: 1.7;
+}
+.caliber-note .mono { font-size: 11px; }
+
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+@media (max-width: 1100px) { .ov-grid { grid-template-columns: repeat(2,1fr); } .cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- 深色侧栏 -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <span class="cursor-block"></span>一起AI技术<span class="tld">admin</span>
+  </div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item active" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+    <a class="sb-item" href="#" onclick="return false" style="opacity:.4; cursor:not-allowed"><span class="ico">⚙️</span>站点设置 <span style="font-size:10px; font-family:var(--font-mono)">二期</span></a>
+  </nav>
+  <div class="sb-foot">
+    <a class="sb-site-link" href="site-home.html">↩ 返回前台站点</a>
+  </div>
+</aside>
+
+<!-- 亮色内容区 -->
+<div class="content">
+  <header class="a-header">
+    <h1>站点统计</h1>
+    <span class="crumb">/ 数据看板 · <b>流量与内容观测</b></span>
+    <div class="a-right">
+      <span class="range-chip">📅 2026-09-30 14:30 更新 · 日聚合表实时汇总</span>
+      <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+    </div>
+  </header>
+
+  <div class="a-body">
+
+    <!-- 总览卡 -->
+    <div class="ov-grid">
+      <div class="ov-card">
+        <div class="ov-top"><span class="ov-lbl">今日 PV</span><span class="ov-ico">📈</span></div>
+        <div class="ov-num">1,284</div>
+        <div class="ov-sub"><span class="up">↑ 12.4%</span> vs 昨日 1,142</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-top"><span class="ov-lbl">今日 UV</span><span class="ov-ico">👤</span></div>
+        <div class="ov-num">642</div>
+        <div class="ov-sub"><span class="up">↑ 8.1%</span> vs 昨日 594 · IP+UA 哈希去重</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-top"><span class="ov-lbl">近 7 日 PV / UV</span><span class="ov-ico">🗓</span></div>
+        <div class="ov-num">8,930 <small>PV</small></div>
+        <div class="ov-sub">4,208 UV · 日均 1,276 PV</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-top"><span class="ov-lbl">近 30 日 PV / UV</span><span class="ov-ico">📆</span></div>
+        <div class="ov-num">36,412 <small>PV</small></div>
+        <div class="ov-sub">17,033 UV · 站龄 30 天(自上线起算)</div>
+      </div>
+    </div>
+
+    <!-- 趋势图 -->
+    <div class="card">
+      <div class="trend-head">
+        <h3>PV / UV 趋势</h3>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>PV(页面浏览)</span>
+          <span><i style="background:var(--green)"></i>UV(独立访客)</span>
+        </div>
+        <div class="seg" id="rangeSeg">
+          <button class="on" data-r="7">近 7 天</button>
+          <button data-r="30">近 30 天</button>
+          <button data-r="90">近 90 天</button>
+        </div>
+      </div>
+      <div class="card-b" id="trendBox"></div>
+    </div>
+
+    <div class="cols">
+      <!-- 流量来源 -->
+      <div class="card">
+        <div class="card-h"><h3>流量来源</h3><span class="mono-tag">[SOURCES · 近 7 日]</span></div>
+        <div class="card-b">
+          <div class="src-row">
+            <span class="nm"><span class="ico">🔗</span>直接访问<span class="cat cat-direct">DIRECT</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:38%; background:#64748b"></div></div>
+            <span class="pv"><b>3,393</b> · 38%</span>
+          </div>
+          <div class="src-sep"></div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">🔍</span>Google<span class="cat cat-search">SEARCH</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:21%; background:#3b82f6"></div></div>
+            <span class="pv"><b>1,875</b> · 21%</span>
+          </div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">🔍</span>百度<span class="cat cat-search">SEARCH</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:12%; background:#60a5fa"></div></div>
+            <span class="pv"><b>1,071</b> · 12%</span>
+          </div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">🔍</span>Bing<span class="cat cat-search">SEARCH</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:5%; background:#93c5fd"></div></div>
+            <span class="pv"><b>447</b> · 5%</span>
+          </div>
+          <div class="src-sep"></div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">🤖</span>ChatGPT<span class="cat cat-ai">AI 助手</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:9%; background:#8b5cf6"></div></div>
+            <span class="pv"><b>804</b> · 9%</span>
+          </div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">🤖</span>Perplexity<span class="cat cat-ai">AI 助手</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:4%; background:#a78bfa"></div></div>
+            <span class="pv"><b>357</b> · 4%</span>
+          </div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">🤖</span>Claude<span class="cat cat-ai">AI 助手</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:2%; background:#c4b5fd"></div></div>
+            <span class="pv"><b>179</b> · 2%</span>
+          </div>
+          <div class="src-sep"></div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">↗️</span>GitHub<span class="cat cat-ref">站外</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:5%; background:#d29922"></div></div>
+            <span class="pv"><b>447</b> · 5%</span>
+          </div>
+          <div class="src-row">
+            <span class="nm"><span class="ico">↗️</span>少数派 / 知乎<span class="cat cat-ref">站外</span></span>
+            <div class="bar-track"><div class="bar-fill" style="width:4%; background:#eab308"></div></div>
+            <span class="pv"><b>357</b> · 4%</span>
+          </div>
+          <div class="caliber-note">
+            💡 <b>AI 助手类目是 GEO 核心观测指标</b>(requirement §3.5):智能体引用带来的流量单列统计,验证「给人也给智能体」战略。
+            <span class="mono">referrer 分类规则:搜索引擎正则表 + AI 助手 UA/referrer 特征库,聚合于 visit_daily.sources</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 访客环境 -->
+      <div class="card env-block-wrap">
+        <div class="card-h"><h3>访客环境</h3><span class="mono-tag">[CLIENT · 近 7 日]</span></div>
+        <div class="card-b env-block">
+          <h4>浏览器</h4>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">Chrome</span>
+            <div class="bar-track"><div class="bar-fill" style="width:58%; background:var(--accent)"></div></div>
+            <span class="pv">58%</span>
+          </div>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">Safari</span>
+            <div class="bar-track"><div class="bar-fill" style="width:19%; background:#8b96e8"></div></div>
+            <span class="pv">19%</span>
+          </div>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">Edge</span>
+            <div class="bar-track"><div class="bar-fill" style="width:11%; background:#b3b9ee"></div></div>
+            <span class="pv">11%</span>
+          </div>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">其他</span>
+            <div class="bar-track"><div class="bar-fill" style="width:12%; background:#d9d9d9"></div></div>
+            <span class="pv">12%</span>
+          </div>
+        </div>
+        <div class="card-b env-block" style="padding-top:0">
+          <h4>设备类型</h4>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">💻 桌面</span>
+            <div class="bar-track"><div class="bar-fill" style="width:71%; background:var(--green)"></div></div>
+            <span class="pv">71%</span>
+          </div>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">📱 移动</span>
+            <div class="bar-track"><div class="bar-fill" style="width:26%; background:#52c47a"></div></div>
+            <span class="pv">26%</span>
+          </div>
+          <div class="src-row" style="grid-template-columns:90px 1fr 64px">
+            <span class="nm">🤖 爬虫/AI</span>
+            <div class="bar-track"><div class="bar-fill" style="width:3%; background:#a7d7b9"></div></div>
+            <span class="pv">3%</span>
+          </div>
+          <div class="caliber-note" style="margin-top:14px">
+            <span class="mono">bot 流量已从 PV/UV 剔除(visit 表 is_bot 过滤);管理员访问不计入</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 热门页面 -->
+    <div class="card top-card">
+      <div class="trend-head">
+        <h3>热门页面</h3>
+        <div class="seg" id="topSeg" style="margin-left:auto">
+          <button class="on" data-r="today">今日</button>
+          <button data-r="7d">近 7 天</button>
+          <button data-r="30d">近 30 天</button>
+          <button data-r="all">全部</button>
+        </div>
+      </div>
+      <table class="a-table">
+        <thead>
+          <tr><th style="width:56px">排名</th><th>页面</th><th>类型</th><th style="text-align:right">PV</th><th style="text-align:right">UV</th><th style="text-align:right">平均阅读时长</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="rank-badge g">1</span></td>
+            <td><div style="font-weight:600">用 Claude Code 重建我的博客:从 WordPress 到 Next.js 全栈单体</div><div class="path">/%E7%94%A8claude-code%E9%87%8D%E5%BB%BA%E6%88%91%E7%9A%84%E5%8D%9A%E5%AE%A2/</div></td>
+            <td><span class="tag-mini tm-article">文章</span></td>
+            <td class="num" style="text-align:right">2,418</td>
+            <td class="num" style="text-align:right">1,352</td>
+            <td class="num" style="text-align:right">11m 42s</td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge g">2</span></td>
+            <td><div style="font-weight:600">MCP 实战:从本地 Markdown 连图一键发布到线上站点</div><div class="path">/mcp%E5%AE%9E%E6%88%98%E4%B8%80%E9%94%AE%E5%8F%91%E5%B8%83/</div></td>
+            <td><span class="tag-mini tm-article">文章</span></td>
+            <td class="num" style="text-align:right">1,842</td>
+            <td class="num" style="text-align:right">1,104</td>
+            <td class="num" style="text-align:right">9m 18s</td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge">3</span></td>
+            <td><div style="font-weight:600">首页</div><div class="path">/</div></td>
+            <td><span class="tag-mini tm-page">页面</span></td>
+            <td class="num" style="text-align:right">1,284</td>
+            <td class="num" style="text-align:right">642</td>
+            <td class="num" style="text-align:right">1m 05s</td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge">4</span></td>
+            <td><div style="font-weight:600">智能体军团指挥手册:多 Agent 协作的拆解与编排</div><div class="path">/%E6%99%BA%E8%83%BD%E4%BD%93%E5%86%9B%E5%9B%A2%E6%8C%87%E6%8C%A5%E6%89%8B%E5%86%8C/</div></td>
+            <td><span class="tag-mini tm-article">文章</span></td>
+            <td class="num" style="text-align:right">986</td>
+            <td class="num" style="text-align:right">671</td>
+            <td class="num" style="text-align:right">13m 02s</td>
+          </tr>
+          <tr>
+            <td><span class="rank-badge">5</span></td>
+            <td><div style="font-weight:600">全部文章</div><div class="path">/articles/</div></td>
+            <td><span class="tag-mini tm-page">列表</span></td>
+            <td class="num" style="text-align:right">743</td>
+            <td class="num" style="text-align:right">518</td>
+            <td class="num" style="text-align:right">0m 48s</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="caliber-note" style="margin:0 20px 18px">
+        文章 PV 与前台文章页「阅读次数」同源(views_count 累加自 post_view_daily);<span class="mono">llms.txt / *.md 直出</span>路径的抓取不计入 PV,计入 AI 助手来源。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.1.0 · M5 · 图表数据为种子伪随机 mock · <a href="index.html">← 原型索引</a></div>
+
+<script>
+// 种子伪随机(mulberry32)—— 确定性 mock,每次打开图形一致
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function genSeries(days, seed, base, amp) {
+  var rnd = mulberry32(seed), out = [], v = base;
+  for (var i = 0; i < days; i++) {
+    v = Math.max(base * .4, v + (rnd() - .47) * amp);   // 轻微上涨趋势
+    var wk = (new Date(2026, 8, 30 - (days - 1 - i))).getDay();
+    var weekend = (wk === 0 || wk === 6) ? .78 : 1;      // 周末低谷
+    out.push(Math.round(v * weekend));
+  }
+  return out;
+}
+
+function renderTrend(days) {
+  var pv = genSeries(days, 42, 1250, 140);
+  var uv = genSeries(days, 7, 620, 80);
+  var W = 1040, H = 300, padL = 52, padR = 16, padT = 18, padB = 30;
+  var iw = W - padL - padR, ih = H - padT - padB;
+  var max = Math.max.apply(null, pv) * 1.15;
+  function pts(arr) {
+    return arr.map(function (v, i) {
+      var x = padL + (iw * i) / (arr.length - 1);
+      var y = padT + ih - (ih * v) / max;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+  }
+  var labels = '', grid = '';
+  var step = Math.ceil(days / 7);
+  for (var i = 0; i < days; i += step) {
+    var x = padL + (iw * i) / (days - 1);
+    var d = new Date(2026, 8, 30 - (days - 1 - i));
+    labels += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#999" font-family="SF Mono,monospace">' +
+      (d.getMonth() + 1) + '/' + d.getDate() + '</text>';
+  }
+  for (var g = 0; g <= 4; g++) {
+    var y = padT + (ih * g) / 4;
+    var val = Math.round(max * (1 - g / 4));
+    grid += '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="#f0f0f0"/>' +
+      '<text x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#bbb" font-family="SF Mono,monospace">' + val + '</text>';
+  }
+  // 面积渐变(PV 下方淡靛蓝)
+  var area = pts(pv).split(' ');
+  var areaPath = 'M' + padL + ',' + (padT + ih) + ' L' + area.join(' L') + ' L' + (W - padR) + ',' + (padT + ih) + ' Z';
+  document.getElementById('trendBox').innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs><linearGradient id="pvFill" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#5e6ad2" stop-opacity=".18"/><stop offset="1" stop-color="#5e6ad2" stop-opacity="0"/>' +
+    '</linearGradient></defs>' + grid +
+    '<path d="' + areaPath + '" fill="url(#pvFill)"/>' +
+    '<polyline points="' + pts(pv) + '" fill="none" stroke="#5e6ad2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<polyline points="' + pts(uv) + '" fill="none" stroke="#2ea043" stroke-width="2" stroke-dasharray="1 0" stroke-linejoin="round" stroke-linecap="round"/>' +
+    labels + '</svg>';
+}
+renderTrend(7);
+
+document.getElementById('rangeSeg').addEventListener('click', function (e) {
+  var btn = e.target.closest('button'); if (!btn) return;
+  this.querySelectorAll('button').forEach(function (b) { b.classList.remove('on'); });
+  btn.classList.add('on');
+  renderTrend(parseInt(btn.dataset.r, 10));
+});
+document.getElementById('topSeg').addEventListener('click', function (e) {
+  var btn = e.target.closest('button'); if (!btn) return;
+  this.querySelectorAll('button').forEach(function (b) { b.classList.remove('on'); });
+  btn.classList.add('on');
+  // 原型:时段切换仅示意,数据静态
+});
+</script>
+
+</body>
+</html>

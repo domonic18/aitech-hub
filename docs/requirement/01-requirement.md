@@ -1,6 +1,7 @@
 # aitech-hub 需求基准
 
 > 本文档是需求基准(真相源)。范围变更先改这里,再同步 development-plan.md 与相关 arch 文档。
+> UI 原型:[docs/prototypes/index.html](../prototypes/index.html)(深色终端风 v0.1.0;前台 4 屏为 M3 视觉升级提案,M4/M5 屏为对应章节的开发依据)。
 
 ## 1. 项目定位
 

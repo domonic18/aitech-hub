@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · 文章编辑器 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏 */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+/* ==== 编辑器布局:全高度三段 ==== */
+.content { margin-left: var(--admin-sidebar-w); height: 100vh; display: flex; flex-direction: column; }
+.ed-top {
+  height: 52px; background: var(--antd-card); border-bottom: 1px solid var(--antd-border);
+  display: flex; align-items: center; gap: 12px; padding: 0 20px; flex-shrink: 0;
+}
+.ed-top .back { font-size: 13px; color: var(--antd-t3); }
+.ed-top .back:hover { color: var(--accent); }
+.title-input {
+  flex: 1; max-width: 560px; height: 34px; border: 1px solid transparent; border-radius: var(--r-sm);
+  font-size: 15.5px; font-weight: 600; color: var(--antd-t1); background: transparent;
+  padding: 0 10px; outline: none; transition: all .15s;
+}
+.title-input:hover { border-color: #d9d9d9; }
+.title-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(94,106,210,.12); }
+.slug-chip { font-family: var(--font-mono); font-size: 11.5px; color: var(--antd-t3); background: var(--antd-bg); border: 1px solid var(--antd-border); padding: 3px 10px; border-radius: 4px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.btn-ghost-a { height: 34px; padding: 0 14px; font-size: 13.5px; color: var(--antd-t1); background: #fff; border: 1px solid #d9d9d9; border-radius: var(--r-sm); cursor: pointer; }
+.btn-ghost-a:hover { color: var(--accent); border-color: var(--accent); }
+.btn-ghost-a.accent { color: var(--accent); border-color: rgba(94,106,210,.5); background: var(--accent-dim); }
+.btn-primary-a { height: 34px; padding: 0 20px; font-size: 13.5px; font-weight: 600; color: #fff; background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; }
+.btn-primary-a:hover { background: var(--accent-hover); }
+
+.ed-main { flex: 1; display: flex; min-height: 0; }
+
+/* 编辑区 */
+.ed-pane { flex: 1.2; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--antd-border); }
+.pane-head {
+  height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 16px;
+  background: var(--antd-card); border-bottom: 1px solid var(--antd-border); flex-shrink: 0;
+}
+.pane-head .t { font-size: 13px; font-weight: 600; color: var(--antd-t2); }
+.pane-head .tools { margin-left: auto; display: flex; gap: 2px; }
+.tool-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: var(--antd-t2); font-size: 14px; }
+.tool-btn:hover { background: var(--antd-bg); color: var(--antd-t1); }
+.md-textarea {
+  flex: 1; width: 100%; border: none; outline: none; resize: none;
+  padding: 20px 22px; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.8;
+  color: #33394d; background: #fcfcfd;
+}
+.md-textarea::selection { background: rgba(94,106,210,.18); }
+.ed-foot {
+  display: flex; align-items: center; gap: 14px; padding: 8px 16px;
+  border-top: 1px solid var(--antd-border); background: var(--antd-card);
+  font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); flex-shrink: 0;
+}
+.paste-tip { color: var(--accent); cursor: pointer; }
+
+/* 预览区 */
+.pv-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--antd-card); }
+.pv-body { flex: 1; overflow-y: auto; padding: 26px 30px; }
+.pv-body h1.pv-title { font-size: 24px; margin-bottom: 8px; }
+.pv-meta { font-size: 12.5px; color: var(--antd-t3); padding-bottom: 16px; border-bottom: 1px solid var(--antd-border); margin-bottom: 20px; }
+.pv-body h2 { font-size: 19px; margin: 26px 0 12px; }
+.pv-body h3 { font-size: 16px; margin: 20px 0 10px; }
+.pv-body p { margin: 10px 0; line-height: 1.85; color: #444; }
+.pv-body blockquote { margin: 14px 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: #f7f7fd; color: var(--antd-t2); border-radius: 0 6px 6px 0; }
+.pv-body code.inline { font-family: var(--font-mono); font-size: .88em; background: #f2f3f8; border: 1px solid #e3e5ef; border-radius: 4px; padding: 1px 5px; color: #4a55b0; }
+.pv-body pre { background: #0c0e12; color: #d6d9e0; border-radius: var(--r-md); padding: 16px 18px; margin: 14px 0; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.75; }
+.pv-body .tk-kw { color: #c792ea; } .pv-body .tk-str { color: #7ee2a0; } .pv-body .tk-fn { color: #82aaff; } .pv-body .tk-cm { color: #6b7280; }
+.pv-body ul { padding-left: 22px; margin: 10px 0; }
+.pv-body li { margin: 4px 0; color: #444; }
+.pv-body img.pv-img { max-width: 100%; border-radius: var(--r-md); border: 1px solid var(--antd-border); }
+.pv-foot-note {
+  margin-top: 22px; padding: 10px 14px; font-size: 12px; color: var(--accent);
+  background: var(--accent-dim); border: 1px dashed rgba(94,106,210,.4); border-radius: var(--r-sm);
+  line-height: 1.7;
+}
+
+/* 右侧元信息栏 */
+.meta-pane { width: 300px; background: var(--antd-card); border-left: 1px solid var(--antd-border); overflow-y: auto; flex-shrink: 0; }
+.meta-sec { padding: 16px 18px; border-bottom: 1px solid var(--antd-border); }
+.meta-sec h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.meta-sec h4 .opt { font-size: 11px; color: var(--antd-t3); font-weight: 400; }
+.m-input, .m-select {
+  width: 100%; height: 34px; border: 1px solid #d9d9d9; border-radius: var(--r-sm);
+  padding: 0 10px; font-size: 13px; outline: none; background: #fff; color: var(--antd-t1);
+  font-family: var(--font-sans);
+}
+.m-input:focus, .m-select:focus, .tags-box:focus-within { border-color: var(--accent); }
+textarea.m-input { height: auto; min-height: 66px; padding: 8px 10px; resize: vertical; line-height: 1.6; }
+.m-hint { font-size: 11.5px; color: var(--antd-t3); margin-top: 5px; }
+.m-hint .mono { font-size: 11px; }
+.cover-pick {
+  border: 1px dashed #d9d9d9; border-radius: var(--r-sm); padding: 12px; text-align: center;
+  cursor: pointer; transition: all .15s;
+}
+.cover-pick:hover { border-color: var(--accent); background: #fafaff; }
+.cover-pick img { width: 100%; border-radius: 4px; display: block; }
+.cover-pick .cp-txt { font-size: 12.5px; color: var(--antd-t3); padding: 8px 0 2px; }
+.cover-pick.has img + .cp-txt { display: none; }
+.cover-ops { display: flex; gap: 8px; margin-top: 8px; }
+.cover-ops button { flex: 1; height: 28px; font-size: 12px; border: 1px solid #d9d9d9; background: #fff; border-radius: 4px; cursor: pointer; color: var(--antd-t2); }
+.cover-ops button:hover { color: var(--accent); border-color: var(--accent); }
+.tags-box { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; border: 1px solid #d9d9d9; border-radius: var(--r-sm); padding: 5px 8px; cursor: text; }
+.tag-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.3); border-radius: 4px; padding: 2px 8px; }
+.tag-chip i { cursor: pointer; font-style: normal; opacity: .6; }
+.tag-chip i:hover { opacity: 1; }
+.tags-box input { flex: 1; min-width: 90px; border: none; outline: none; font-size: 12.5px; height: 22px; }
+.seo-row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; color: var(--antd-t3); }
+.seo-row .mono { font-size: 11px; }
+
+/* ==== 一键发文弹窗(状态流:选文件 → 解析/上传 → 替换完成) ==== */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200;
+  display: none; align-items: center; justify-content: center;
+}
+.modal-mask.show { display: flex; }
+.modal {
+  width: 640px; max-height: 82vh; overflow-y: auto;
+  background: var(--antd-card); border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px rgba(0,0,0,.3);
+}
+.mo-head { display: flex; align-items: center; padding: 18px 22px 0; }
+.mo-head h3 { font-size: 16px; font-weight: 600; }
+.mo-head .x { margin-left: auto; border: none; background: transparent; font-size: 17px; color: var(--antd-t3); cursor: pointer; }
+.mo-steps { display: flex; align-items: center; gap: 6px; padding: 14px 22px 0; }
+.mo-step { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--antd-t3); }
+.mo-step .n {
+  width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-family: var(--font-mono); background: #f0f0f0; color: var(--antd-t3);
+  border: 1px solid #d9d9d9;
+}
+.mo-step.active { color: var(--accent); font-weight: 600; }
+.mo-step.active .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mo-step.done { color: var(--green); }
+.mo-step.done .n { background: rgba(46,160,67,.12); border-color: rgba(46,160,67,.5); color: var(--green); }
+.mo-step .arr { color: #d9d9d9; margin: 0 4px; }
+.mo-body { padding: 18px 22px 22px; }
+
+.drop-zone {
+  border: 2px dashed #d9d9d9; border-radius: var(--r-md); padding: 28px 20px;
+  text-align: center; cursor: pointer; transition: all .15s; margin-bottom: 14px;
+}
+.drop-zone:hover, .drop-zone.drag { border-color: var(--accent); background: #fafaff; }
+.drop-zone .dz-ico { font-size: 30px; }
+.drop-zone .dz-t { font-size: 14px; margin-top: 8px; color: var(--antd-t1); }
+.drop-zone .dz-s { font-size: 12px; color: var(--antd-t3); margin-top: 4px; }
+.drop-zone .mono { font-size: 11px; }
+
+.mo-file {
+  display: flex; align-items: center; gap: 10px; background: #fafafa;
+  border: 1px solid var(--antd-border); border-radius: var(--r-sm); padding: 10px 14px; margin-bottom: 14px;
+}
+.mo-file .f-ico { font-size: 17px; }
+.mo-file .f-nm { flex: 1; font-size: 13px; }
+.mo-file .f-nm small { display: block; font-size: 11px; color: var(--antd-t3); font-family: var(--font-mono); }
+.mo-file .f-ok { color: var(--green); font-size: 13px; }
+
+.up-item { display: grid; grid-template-columns: 26px 1fr 200px 84px; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--antd-border); }
+.up-item:last-child { border-bottom: none; }
+.up-item .u-ico { font-size: 15px; text-align: center; }
+.up-item .u-nm { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-item .u-nm .src { font-size: 10.5px; color: var(--antd-t3); font-family: var(--font-mono); display: block; }
+.prog-track { height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.prog-fill.local { background: var(--blue); }
+.prog-fill.remote { background: #8b5cf6; }
+.prog-fill.done { background: var(--green); }
+.up-st { font-size: 11.5px; font-family: var(--font-mono); color: var(--antd-t3); text-align: right; }
+.up-st.ok { color: var(--green); }
+.up-st.err { color: var(--red); }
+
+.mo-summary {
+  margin-top: 14px; padding: 12px 16px; background: #f6ffed; border: 1px solid #b7eb8f;
+  border-radius: var(--r-sm); font-size: 13px; color: #389e0d; line-height: 1.7;
+}
+.mo-summary b { font-weight: 700; }
+.mo-warn {
+  margin-top: 10px; padding: 10px 16px; background: #fffbe6; border: 1px solid #ffe58f;
+  border-radius: var(--r-sm); font-size: 12.5px; color: #d48806; line-height: 1.7;
+}
+.mo-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 0 22px 20px; }
+.btn-lg { height: 38px; padding: 0 22px; font-size: 14px; border-radius: var(--r-sm); cursor: pointer; }
+.btn-lg.ghost { background: #fff; border: 1px solid #d9d9d9; color: var(--antd-t1); }
+.btn-lg.primary { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+.btn-lg.primary:hover { background: var(--accent-hover); }
+
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 300;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item active" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-home.html">↩ 返回前台站点</a></div>
+</aside>
+
+<div class="content">
+  <!-- 顶栏 -->
+  <div class="ed-top">
+    <a class="back" href="admin-posts.html">← 文章管理</a>
+    <input class="title-input" value="智能体军团指挥手册:多 Agent 协作的拆解与编排" placeholder="输入文章标题…(自动生成 slug)">
+    <span class="slug-chip" title="由标题自动生成,可改">/agents-%E6%8C%87%E6%8C%A5%E6%89%8B%E5%86%8C</span>
+    <div class="ed-actions">
+      <span class="mono" style="font-size:12px; color:var(--antd-t3)">已自动保存 · 14:32</span>
+      <button class="btn-ghost-a accent" onclick="openModal()">⤒ 一键发文</button>
+      <button class="btn-ghost-a">存草稿</button>
+      <button class="btn-primary-a">发 布</button>
+    </div>
+  </div>
+
+  <div class="ed-main">
+    <!-- Markdown 编辑 -->
+    <div class="ed-pane">
+      <div class="pane-head">
+        <span class="t">✎ Markdown</span>
+        <div class="tools">
+          <button class="tool-btn" title="加粗">B</button>
+          <button class="tool-btn" title="斜体">I</button>
+          <button class="tool-btn" title="链接">🔗</button>
+          <button class="tool-btn" title="图片">🖼</button>
+          <button class="tool-btn" title="代码块">&lt;/&gt;</button>
+          <button class="tool-btn" title="表格">▦</button>
+        </div>
+      </div>
+      <textarea class="md-textarea" spellcheck="false">## 为什么要多 Agent
+
+单 agent 长上下文的三大痛点:**注意力稀释**、工具选择混乱、失败难定位。
+把任务拆给专职 agent,每个只带自己需要的工具集——
+
+> 指挥官不写代码,指挥官读地图。
+
+## 三种编排模式
+
+1. **主从模式**:一个 planner 拆任务,N 个 worker 领任务
+2. **流水线模式**:需求 → 实现 → 评审 → 修复,串行传递
+3. **评审环**:worker 产出,reviewer 打回,直到通过
+
+## 代码示例
+
+```typescript
+// planner 派发任务(节选)
+const tasks = await planner.split(requirement)
+const results = await Promise.allSettled(
+  tasks.map(t => workers.dispatch(t))
+)
+```
+
+## 失败案例
+
+第一次跑评审环时,reviewer 和 worker 用了同一个模型同一份系统提示,
+结果互相"客气"了三轮全过——**评审环必须信息不对称**。</textarea>
+      <div class="ed-foot">
+        <span>1,246 字 · 8,420 字符</span>
+        <span>Markdown · GFM</span>
+        <span class="paste-tip" title="截图后直接 Ctrl+V,自动上传替换为站内 URL">📋 支持截图粘贴直传</span>
+        <span style="margin-left:auto">Ln 24, Col 10</span>
+      </div>
+    </div>
+
+    <!-- 实时预览 -->
+    <div class="pv-pane">
+      <div class="pane-head"><span class="t">◉ 预览(前台渲染形态)</span></div>
+      <div class="pv-body">
+        <h1 class="pv-title">智能体军团指挥手册:多 Agent 协作的拆解与编排</h1>
+        <div class="pv-meta">AI 实战 · Agents · ≈ 18 min · 草稿预览</div>
+
+        <h2>为什么要多 Agent</h2>
+        <p>单 agent 长上下文的三大痛点:<b>注意力稀释</b>、工具选择混乱、失败难定位。把任务拆给专职 agent,每个只带自己需要的工具集——</p>
+        <blockquote><p>指挥官不写代码,指挥官读地图。</p></blockquote>
+
+        <h2>三种编排模式</h2>
+        <ul>
+          <li><b>主从模式</b>:一个 planner 拆任务,N 个 worker 领任务</li>
+          <li><b>流水线模式</b>:需求 → 实现 → 评审 → 修复,串行传递</li>
+          <li><b>评审环</b>:worker 产出,reviewer 打回,直到通过</li>
+        </ul>
+
+        <h2>代码示例</h2>
+        <pre><span class="tk-cm">// planner 派发任务(节选)</span>
+<span class="tk-kw">const</span> tasks = <span class="tk-kw">await</span> planner.<span class="tk-fn">split</span>(requirement)
+<span class="tk-kw">const</span> results = <span class="tk-kw">await</span> Promise.<span class="tk-fn">allSettled</span>(
+  tasks.<span class="tk-fn">map</span>(t => workers.<span class="tk-fn">dispatch</span>(t))
+)</pre>
+
+        <div class="pv-foot-note">
+          💡 发布后此预览即前台真实形态:代码高亮(rehype-highlight)、图片走 <code class="inline">/wp-content/uploads/</code> 同源路径、文末自动追加「智能体开放」条(见 site-article 原型)。
+        </div>
+      </div>
+    </div>
+
+    <!-- 元信息栏 -->
+    <aside class="meta-pane">
+      <div class="meta-sec">
+        <h4>分类 <span class="opt">必选 · 单选</span></h4>
+        <select class="m-select">
+          <option>AI 实战</option><option>建站</option><option>数据库</option>
+          <option>开源</option><option>产品</option><option>产品评测</option>
+        </select>
+        <div class="m-hint">按 slug 挂载;tags 按名自动建(<span class="mono">upsert_article</span> 同规则)</div>
+      </div>
+      <div class="meta-sec">
+        <h4>标签 <span class="opt">回车添加 · 最多 5 个</span></h4>
+        <div class="tags-box">
+          <span class="tag-chip">Agents <i>✕</i></span>
+          <span class="tag-chip">Claude Code <i>✕</i></span>
+          <span class="tag-chip">编排 <i>✕</i></span>
+          <input placeholder="添加标签…">
+        </div>
+      </div>
+      <div class="meta-sec">
+        <h4>封面 <span class="opt">必选</span></h4>
+        <div class="cover-pick has">
+          <img src="assets/cover-agent-legion.jpg" alt="" onerror="this.parentElement.classList.remove('has')">
+          <div class="cp-txt">拖拽 / 点击上传,或从媒体库选用</div>
+        </div>
+        <div class="cover-ops">
+          <button onclick="location.href='admin-cover.html'">✂ 裁剪工作流</button>
+          <button>🖼 媒体库选用</button>
+        </div>
+      </div>
+      <div class="meta-sec">
+        <h4>摘要 <span class="opt">SEO 与列表共用</span></h4>
+        <textarea class="m-input" maxlength="120">把一个模糊需求拆成多个 agent 的任务图:主从模式、流水线模式、评审环,附真实项目失败案例。</textarea>
+        <div class="seo-row"><span>0-120 字,超长截断</span><span class="mono">42/120</span></div>
+      </div>
+      <div class="meta-sec">
+        <h4>SEO <span class="opt">可选</span></h4>
+        <input class="m-input" placeholder="SEO 标题(默认用文章标题)" style="margin-bottom:8px">
+        <input class="m-input" placeholder="SEO 描述(默认用摘要)">
+        <div class="m-hint">留空自动回退;<span class="mono">canonical / OG / JSON-LD</span> 自动生成</div>
+      </div>
+      <div class="meta-sec" style="border-bottom:none">
+        <div class="m-hint" style="margin:0">
+          <span class="mono">POST /api/posts → 201(草稿)<br>POST /api/posts/[id]/publish → ISR revalidate,前台即时可见</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- 一键发文弹窗:状态流展示(默认停在「上传中」态,含完成汇总) -->
+<div class="modal-mask show" id="modal">
+  <div class="modal">
+    <div class="mo-head">
+      <h3>⤒ 一键发文 · 导入本地 Markdown</h3>
+      <button class="x" onclick="closeModal()">✕</button>
+    </div>
+    <div class="mo-steps">
+      <div class="mo-step done"><span class="n">✓</span>选择文件</div><span class="mo-step arr">›</span>
+      <div class="mo-step active"><span class="n">2</span>图片上传 / 外链转存</div><span class="mo-step arr">›</span>
+      <div class="mo-step"><span class="n">3</span>引用替换 · 进入编辑器</div>
+    </div>
+    <div class="mo-body">
+      <div class="mo-file">
+        <span class="f-ico">📄</span>
+        <div class="f-nm">agents-playbook.md<small>18.4 KB · 解析出图片引用 6 张(本地 4 / 外链 2)</small></div>
+        <span class="f-ok">✓ 解析完成</span>
+      </div>
+
+      <div class="up-item">
+        <span class="u-ico">🖼</span>
+        <div class="u-nm">cover-arch.png<span class="src">本地 · sha1 去重命中,复用已有</span></div>
+        <div class="prog-track"><div class="prog-fill done" style="width:100%"></div></div>
+        <span class="up-st ok">✓ 复用 100%</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico">🖼</span>
+        <div class="u-nm">seq-main-from-planner.png<span class="src">本地 · 新上传 → sharp WebP+缩略图</span></div>
+        <div class="prog-track"><div class="prog-fill local done" style="width:100%"></div></div>
+        <span class="up-st ok">✓ 已入库</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico">🖼</span>
+        <div class="u-nm">loop-reviewer.png<span class="src">本地 · 上传中</span></div>
+        <div class="prog-track"><div class="prog-fill local" style="width:64%"></div></div>
+        <span class="up-st">64%</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico">🌐</span>
+        <div class="u-nm">cdn.example.com/img/flow.png<span class="src">外链转存 · media.transfer 队列</span></div>
+        <div class="prog-track"><div class="prog-fill remote done" style="width:100%"></div></div>
+        <span class="up-st ok">✓ 已转存</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico">🌐</span>
+        <div class="u-nm">img.twitter.com/p/AbCdEf.png<span class="src">外链转存 · 排队中(jobId: mt:8842)</span></div>
+        <div class="prog-track"><div class="prog-fill remote" style="width:12%"></div></div>
+        <span class="up-st">12%</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico">⚠️</span>
+        <div class="u-nm">old-blog.net/pic.png<span class="src">外链转存 · 404</span></div>
+        <div class="prog-track"><div class="prog-fill" style="width:100%; background:var(--red)"></div></div>
+        <span class="up-st err">✕ 失败,保留原链</span>
+      </div>
+
+      <div class="mo-summary">
+        ✓ 完成 <b>4 / 6</b>:新建 2 · 复用 1 · 转存 1。全部成功后自动把 Markdown 内引用替换为站内 URL,并勾选封面候选。
+      </div>
+      <div class="mo-warn">
+        ⚠ 1 张外链转存失败(old-blog.net 404):进入编辑器后将保留原链并以断链标记提醒,可手动替换或移除。
+      </div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn-lg ghost" onclick="closeModal()">后台继续,先去编辑</button>
+      <button class="btn-lg primary">完成替换,进入编辑器 →</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.1.0 · M5 · 弹窗为「一键发文」上传中态 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+function openModal() { document.getElementById('modal').classList.add('show'); }
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+</script>
+
+</body>
+</html>

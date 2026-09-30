@@ -83,7 +83,7 @@ aitech-hub/
 │   ├── Dockerfile                # 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)
 │   ├── entrypoint.sh             # 容器入口:web 先 migrate deploy + ISR 预热;worker 直起
 │   └── nginx/                    # nginx.conf + conf.d/aitech-hub.conf(standard/02-cicd-deployment §4)
-├── docs/                         # 本文档体系(索引 docs/README.md)
+├── docs/                         # 本文档体系(索引 docs/README.md;UI 原型 docs/prototypes/index.html)
 ├── public/                       # 静态字节资源(favicon 等)
 │
 ├── docker-compose.yml            # dev:postgres(5434)/ redis(6380)

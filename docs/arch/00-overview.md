@@ -33,7 +33,7 @@ aitech-hub/                      # 一个 Next.js 应用 + 一个 BullMQ worker(
 ├── scripts/migrate-wp/          # WP→PG 一次性迁移(TS:cheerio + mysql2 + pg,与主应用共享 slug/清洗工具)
 ├── e2e/                         # Playwright
 ├── docker/                      # Dockerfile(多阶段)+ nginx/
-├── docs/                        # 本文档体系
+├── docs/                        # 本文档体系 + UI 原型(docs/prototypes/index.html)
 ├── docker-compose.yml           # dev:仅 pg(5434)/redis(6380),应用本地跑保热更
 └── docker-compose.prod.yml      # prod:nginx + web + worker + redis + pg
 ```

@@ -25,6 +25,7 @@
 | 目录与规范细节                | docs/arch/06-project-structure   |
 | 中文 slug 路由红线            | docs/arch/07-frontend §2         |
 | 媒体/视频/清洗                | docs/arch/08-media               |
+| UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
 | 测试规范                      | docs/standard/01-testing         |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 

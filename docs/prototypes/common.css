@@ -1,0 +1,75 @@
+/*
+ * aitech-hub 原型设计 token 真相源(docs/prototypes/common.css)
+ * ============================================================
+ * 用法约定(仿 ai-invest-assisstant docs/prototypes):
+ * - 本文件【不被任何页面 link】,是设计 token 的单一真相源文档;
+ *   每个原型页把下方 :root 块【内联复制】进自己的 <style>,
+ *   保证每页是可独立双击打开的单文件(离线可用、GitHub 可读)。
+ * - token 有调整时:先改这里,再同步各页内联副本(或整体重生成)。
+ * - 偏差声明:原型页为 docs 交付物,不受 src 代码「文件 ≤350 行」红线约束;
+ *   单文件自包含优先于行数指标。
+ *
+ * 视觉方向(2026-09-30 用户定稿):深色终端风。
+ * 深空三层底 + 靛蓝主色 + 等宽字体点缀;气质:终端、量化、智能体实战。
+ * admin 后台实装为 AntD 5(亮色内容区),primary 覆写为本主色,侧栏深色呼应。
+ *
+ * 版本:v0.1.0(与 index.html 页脚一致)
+ */
+
+:root {
+  /* ---- 背景三层(深空) ---- */
+  --bg: #0c0e12;          /* 页面底 */
+  --panel: #181a21;       /* 卡片/面板 */
+  --panel-2: #1f2229;     /* 卡片内再分层 / hover 面 */
+  --border: #2a2d37;      /* 描边 */
+
+  /* ---- 品牌主色(靛蓝) ---- */
+  --accent: #5e6ad2;
+  --accent-hover: #6e7ae2;
+  --accent-dim: rgba(94, 106, 210, 0.14);  /* 主色淡底(选中态/徽标底) */
+
+  /* ---- 语义色 ---- */
+  --green: #2ea043;       /* 成功 / 在线 / UV */
+  --red: #f85149;         /* 危险 / 删除 / 下架 */
+  --amber: #d29922;       /* 警告 / 草稿 */
+  --blue: #3b82f6;        /* 信息 / 链接 */
+
+  /* ---- 文本 ---- */
+  --text-1: #e6e8ee;      /* 主文本 */
+  --text-2: #9aa1ad;      /* 次文本 */
+  --text-3: #6b7280;      /* 弱文本 / 占位 */
+
+  /* ---- 字体 ---- */
+  /* 正文:Inter + 中文系统栈(实装同款,arch/07 §3 不加载大 webfont) */
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* 等宽点缀:数据 / 命令行装饰 / 标签 / 时间戳 */
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas,
+    "Liberation Mono", monospace;
+
+  /* ---- 圆角 ---- */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* ---- 布局常量 ---- */
+  --site-header-h: 64px;      /* 前台顶栏 */
+  --site-max-w: 1200px;       /* 前台内容最大宽 */
+  --admin-sidebar-w: 220px;   /* admin 侧边栏 */
+  --admin-header-h: 56px;     /* admin 顶栏(AntD 亮区) */
+
+  /* ---- admin 亮色区(AntD 5 语义) ---- */
+  --antd-bg: #f5f5f5;         /* 内容区底 */
+  --antd-card: #ffffff;
+  --antd-border: #f0f0f0;
+  --antd-text-1: rgba(0, 0, 0, 0.88);
+  --antd-text-2: rgba(0, 0, 0, 0.65);
+  --antd-text-3: rgba(0, 0, 0, 0.45);
+}
+
+/* ---- 终端风签名元素(各页内联复用的形态约定,非强制类) ----
+ * .prompt-line : "> agent.legion --status=active" 式装饰行,
+ *                font: var(--font-mono), 色 var(--text-3), 其中命令词用 --green/--accent。
+ * .mono-tag    : [COVER] / PV·UV 式等宽小标签,12px,letter-spacing 0.04em。
+ * logo         : 内联 SVG,「▮ + ai/tetch」或终端提示符形态,不用位图。
+ * ---------------------------------------------------------- */

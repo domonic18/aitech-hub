@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 原型图索引 · aitech-hub prototypes</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--text-1);
+  font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased; min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse 1000px 500px at 50% -10%, rgba(94,106,210,.14), transparent 60%),
+    radial-gradient(ellipse 700px 400px at 90% 110%, rgba(46,160,67,.04), transparent 60%);
+}
+a { color: inherit; text-decoration: none; }
+.mono { font-family: var(--font-mono); }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 56px 24px 60px; }
+
+/* 头部 */
+.head { margin-bottom: 12px; }
+.head .glyph { display: flex; align-items: center; gap: 12px; }
+.head .cursor-block {
+  width: 16px; height: 28px; background: var(--accent); border-radius: 3px;
+  box-shadow: 0 0 16px rgba(94,106,210,.6); animation: blink 1.2s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: .35; } }
+.head h1 { font-size: 30px; letter-spacing: .01em; }
+.head h1 .tld { color: var(--text-3); font-family: var(--font-mono); font-size: 16px; font-weight: 400; margin-left: 6px; }
+.head .prompt { margin-top: 14px; font-family: var(--font-mono); font-size: 13.5px; color: var(--text-3); }
+.head .prompt .c { color: var(--green); }
+.head .prompt .a { color: #8b96e8; }
+.head .desc { margin-top: 10px; color: var(--text-2); font-size: 14px; max-width: 780px; }
+.head .desc b { color: var(--text-1); }
+.head .desc a { color: var(--blue); border-bottom: 1px solid rgba(59,130,246,.35); }
+.head .desc a:hover { color: var(--accent-hover); }
+
+/* 分区 */
+.group { margin-top: 40px; }
+.g-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.g-head h2 { font-size: 19px; }
+.g-head .mono-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); letter-spacing: .05em; }
+.g-head .g-desc { margin-left: auto; font-size: 12.5px; color: var(--text-3); }
+
+/* 卡片网格(整卡可点:stretched-link,卡内 req 链接 z-index 更高) */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.card {
+  display: block; position: relative; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 20px 22px;
+  transition: transform .18s, border-color .18s, box-shadow .18s;
+}
+.card:hover { transform: translateY(-3px); border-color: #4a5079; box-shadow: 0 14px 36px rgba(0,0,0,.4); }
+.card-link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.card .top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.card .ico { font-size: 20px; }
+.card h3 { font-size: 15.5px; }
+.card .route { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 8px; margin-left: auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card p { font-size: 13px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 44px; }
+.card .foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+
+/* 状态标签 */
+.badge { font-family: var(--font-mono); font-size: 10.5px; padding: 2px 9px; border-radius: 999px; border: 1px solid; }
+.b-live { color: #7ee2a0; background: rgba(46,160,67,.1); border-color: rgba(46,160,67,.35); }
+.b-plan { color: #8b96e8; background: var(--accent-dim); border-color: rgba(94,106,210,.35); }
+.b-core { color: #ecc06a; background: rgba(210,153,34,.08); border-color: rgba(210,153,34,.35); }
+.b-ref { margin-left: auto; font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
+.b-ref a { color: var(--text-3); border-bottom: 1px dashed var(--text-3); position: relative; z-index: 2; }
+.b-ref a:hover { color: var(--accent-hover); border-color: var(--accent-hover); }
+
+/* 使用说明 */
+.usage {
+  margin-top: 44px; background: var(--panel); border: 1px dashed #3d4260;
+  border-radius: var(--r-md); padding: 20px 24px;
+}
+.usage h3 { font-size: 14.5px; margin-bottom: 10px; }
+.usage li { list-style: none; font-size: 13px; color: var(--text-2); padding: 3px 0 3px 20px; position: relative; }
+.usage li::before { content: '›'; position: absolute; left: 6px; color: var(--accent); font-family: var(--font-mono); }
+.usage .mono { font-size: 12px; }
+
+/* 页脚 */
+.base { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 16px; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.base .v { color: var(--accent-hover); }
+.base a { color: var(--text-2); }
+.base a:hover { color: var(--text-1); }
+
+@media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="head">
+    <div class="glyph">
+      <span class="cursor-block"></span>
+      <h1>aitech-hub 原型图<span class="tld">docs/prototypes</span></h1>
+    </div>
+    <div class="prompt">
+      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 14 screens · 3 groups · dark-terminal theme · <span class="a">v0.1.0</span>
+    </div>
+    <p class="desc">
+      一起AI技术(17aitech.com)全站 UI 原型。深色终端风(2026-09-30 定稿):
+      覆盖<b>前台核心 4 屏(M3 已实现,视觉升级提案)</b>、<b>用户中心 3 屏(M4)</b>、<b>admin 后台 7 屏(M5)</b>。
+      每页为可独立打开的单文件 HTML(内联 token + 可交互),页面间可点击走通。
+      需求基准见 <a href="../requirement/01-requirement.md">requirement/01-requirement.md</a>,
+      设计 token 真相源见 <a href="common.css">common.css</a>。
+    </p>
+  </header>
+
+  <!-- 前台 -->
+  <section class="group">
+    <div class="g-head">
+      <h2>🖥 前台站点</h2>
+      <span class="mono-tag">[SITE · M3 已实现]</span>
+      <span class="g-desc">原型 = 视觉升级提案(深色终端风),实现按此演进</span>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <a class="card-link" href="site-home.html" aria-label="首页"></a>
+        <div class="top"><span class="ico">🏠</span><h3>首页</h3><span class="route">/</span></div>
+        <p>终端品牌语 hero(whoami / agent.legion)、精选大卡 ×2、最新文章网格、GEO 条(llms.txt / md 直出入口)。</p>
+        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="site-article.html" aria-label="文章详情"></a>
+        <div class="top"><span class="ico">📄</span><h3>文章详情</h3><span class="route">/[slug]</span></div>
+        <p>中文编码 slug 展示条、阅读量/作者 meta、prose 正文(代码高亮/表格/图注)、文末「智能体开放」条、相关阅读、评论区(二期)。</p>
+        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1-3.2</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="site-articles.html" aria-label="文章列表"></a>
+        <div class="top"><span class="ico">📚</span><h3>文章列表</h3><span class="route">/articles · /category · /tag</span></div>
+        <p>分类 Tab 过滤、横条卡列表形态、排序切换、分页。一页覆盖列表/分类/标签三种路由形态。</p>
+        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="site-search.html" aria-label="搜索"></a>
+        <div class="top"><span class="ico">⌕</span><h3>搜索</h3><span class="route">/search?q=</span></div>
+        <p>grep 隐喻搜索框、命中关键词高亮、结果计数与耗时、无结果空态(二态同页展示)。</p>
+        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 用户中心 -->
+  <section class="group">
+    <div class="g-head">
+      <h2>👤 用户中心</h2>
+      <span class="mono-tag">[USER · M4 未实现]</span>
+      <span class="g-desc">短信验证码登录(唯一登录方式)· jose Cookie 会话</span>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <a class="card-link" href="login.html" aria-label="登录 / 注册"></a>
+        <div class="top"><span class="ico">📱</span><h3>登录 / 注册</h3><span class="route">/login</span></div>
+        <p>手机号+验证码合一、60s 倒计时(真跑)、429 频控提示态、pending_binding 老用户引导条(可切换演示)。</p>
+        <div class="foot"><span class="badge b-plan">M4 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.3</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="bind-phone.html" aria-label="绑定手机号"></a>
+        <div class="top"><span class="ico">🔗</span><h3>绑定手机号</h3><span class="route">/bind-phone</span></div>
+        <p>旧站 53 位 pending_binding 用户的绑定引导:三步流程、账号识别卡、验证并绑定、成功激活态(可演示切换)。</p>
+        <div class="foot"><span class="badge b-plan">M4 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.3</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="account.html" aria-label="个人中心"></a>
+        <div class="top"><span class="ico">⚙️</span><h3>个人中心</h3><span class="route">/account</span></div>
+        <p>基本资料(头像/昵称/签名)+ 账号安全(补设密码/强度条、登录会话管理与吊销、注销危险区)双 Tab。</p>
+        <div class="foot"><span class="badge b-plan">M4 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.3</a></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 后台 -->
+  <section class="group">
+    <div class="g-head">
+      <h2>🛠 管理后台</h2>
+      <span class="mono-tag">[ADMIN · M5 未实现]</span>
+      <span class="g-desc">AntD 5 亮内容 + 深色侧栏(品牌靛蓝)· role=admin 守卫</span>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <a class="card-link" href="admin-stats.html" aria-label="站点统计"></a>
+        <div class="top"><span class="ico">📊</span><h3>站点统计</h3><span class="route">/admin/stats ★旗舰</span></div>
+        <p>总览卡(今日/昨/7日/30日 PV·UV)、SVG 趋势图(7/30/90 切换、种子伪随机)、流量来源(搜索引擎细分 + AI 助手类目)、热门页面(时段筛选)、访客环境。</p>
+        <div class="foot"><span class="badge b-core">M5 核心</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.5</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-posts.html" aria-label="文章管理"></a>
+        <div class="top"><span class="ico">📝</span><h3>文章管理</h3><span class="route">/admin/posts</span></div>
+        <p>状态 Tab(含草稿)、搜索、旧文保真提示条(HTML 只读,转 MD 重发)、发布/下架操作、分页。</p>
+        <div class="foot"><span class="badge b-plan">M5 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.4</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-editor.html" aria-label="Markdown 编辑器"></a>
+        <div class="top"><span class="ico">✎</span><h3>Markdown 编辑器</h3><span class="route">/admin/posts/edit ★</span></div>
+        <p>编辑+实时预览双栏、元信息栏(标题→slug/分类/标签/封面/摘要/SEO);「一键发文」弹窗全状态流:解析 → 本地上传/外链转存(队列进度)→ 断链提醒 → 引用替换。</p>
+        <div class="foot"><span class="badge b-core">M5 核心</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.4/3.6</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-cover.html" aria-label="封面工作流"></a>
+        <div class="top"><span class="ico">✂️</span><h3>封面工作流</h3><span class="route">/admin/cover</span></div>
+        <p>九宫格裁剪器、四模板(微信 2.35:1 / OG 1200×630 / CSDN 16:9 / 列表缩略图)、一次裁剪多尺寸导出队列、AI 文生图置灰(二期混元)。</p>
+        <div class="foot"><span class="badge b-plan">M5 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.4</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-media.html" aria-label="媒体库"></a>
+        <div class="top"><span class="ico">🖼</span><h3>媒体库</h3><span class="route">/admin/media ★</span></div>
+        <p>图片/视频/文件 Tab × 引用状态过滤(已引用/孤儿/断链)、存储统计卡、缩略图网格、详情抽屉(引用方文章)、重复检测(sha1 分组合并)、软删回收站。</p>
+        <div class="foot"><span class="badge b-core">M5 核心</span><span class="b-ref"><a href="../arch/08-media.md">arch/08 §3</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-users.html" aria-label="用户管理"></a>
+        <div class="top"><span class="ico">👥</span><h3>用户管理</h3><span class="route">/admin/users</span></div>
+        <p>296 迁移用户总览(243 active / 53 pending_binding 提示条)、状态 Tab、禁用/启用、掩码手机号、服务端分页。</p>
+        <div class="foot"><span class="badge b-plan">M5 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.4</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-tokens.html" aria-label="PAT 令牌"></a>
+        <div class="top"><span class="ico">🔑</span><h3>PAT 令牌</h3><span class="route">/admin/tokens</span></div>
+        <p>Bearer PAT 管理(哈希入库/scope/调用计数/吊销)、新建弹窗明文一次性展示、/api/mcp 客户端接入配置示例。</p>
+        <div class="foot"><span class="badge b-plan">M5 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.6</a></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 使用说明 -->
+  <div class="usage">
+    <h3>使用说明</h3>
+    <ul>
+      <li>直接双击任意 HTML 打开(单文件自包含,零外部依赖;素材仅相对路径 <span class="mono">assets/*.jpg</span>)</li>
+      <li>页面间通过 Header / 侧边栏互链,可点击走通整站流程(登录 → 个人中心 → 后台各页)</li>
+      <li>状态演示:login 页可切换 pending_binding / 429 频控态;bind-phone 可切成功态;编辑器与令牌页弹窗默认展示关键状态</li>
+      <li>图表数据为种子伪随机(mulberry32)确定性 mock;所有接口端点标注在各页页脚,与 arch/05-services §5 清单对应</li>
+      <li>设计 token 真相源:<span class="mono">common.css</span>(不被 link,各页内联副本;改 token 先改它再同步)</li>
+      <li><b>待补充</b>:移动端适配页(一期响应式由 Tailwind 自然承载,暂不单独出原型)</li>
+    </ul>
+  </div>
+
+  <footer class="base">
+    <span class="v">v0.1.0</span>
+    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30</span>
+    <a href="../README.md" style="margin-left:auto">← 文档中心</a>
+    <a href="https://github.com/domonic18/aitech-hub" target="_blank">GitHub</a>
+  </footer>
+
+</div>
+
+</body>
+</html>
