@@ -6,6 +6,11 @@ export function formatCnDate(date: Date): string {
   return date.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
 
+/** 日期时间展示(后台列表用):YYYY-MM-DD HH:mm,北京时区,与 formatCnDate 同口径 */
+export function formatCnDateTime(date: Date): string {
+  return date.toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0, 16);
+}
+
 /** 当前统计日(YYYY-MM-DD,北京时区) */
 export function statsDay(now: Date = new Date()): string {
   return formatCnDate(now);

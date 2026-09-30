@@ -28,13 +28,14 @@
 - 覆盖:post service 保存钩子(slug 唯一冲突/引用解析/revalidate 触发——revalidatePath mock 断言调用参数)、媒体上传白名单、auth 全流程(sms-code 频控 → login → session → logout)、view 计数 UPSERT、legacy 路由查表
 - Route Handler 测试:构造 `NextRequest` 直调 handler 函数(不起服务器)
 
-## 4. E2E(Playwright,冒烟级,5 条以内)
+## 4. E2E(Playwright,冒烟级,6 条以内)
 
 1. 首页 200 且含最新文章卡
 2. 从 sitemap 取一个中文编码 slug 直开文章页:200、标题匹配、正文图片无 broken(naturalWidth>0 抽查)
 3. 弃用 slug → 301 到 /articles(route 截断断言 Location)
-4. 登录流:集成环境注入 `SMS_E2E_BYPASS_CODE`(env,仅 dev/test 构建可开,生产不含)
+4. 登录流:admin 密码登录(M4,UI 全流;含爆破模糊提示与会话吊销复放)
 5. sitemap.xml / feed.xml 可访问且含条目
+6. 后台发布 → 前台闭环(M5-a:新建/存草稿/发布/on-demand revalidate 列表与详情可见/软删 404)
 
 ## 5. 迁移重放守卫(CI)
 

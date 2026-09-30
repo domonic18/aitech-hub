@@ -11,9 +11,12 @@ import { ADMIN_LOGIN_PATH } from "@/lib/auth/constants";
 
 import ThemeToggle from "./ThemeToggle";
 
-/** 路径 → crumb 文案(M4 仅概览一层;M5 面板增多后换注册表映射) */
+/** 路径 → crumb 文案(M4/M5 两层;面板再增多后换注册表映射) */
 function crumbOf(pathname: string): string {
   if (pathname === "/admin") return "站点统计";
+  if (pathname === "/admin/posts") return "文章管理";
+  if (pathname === "/admin/posts/new") return "新建文章";
+  if (/^\/admin\/posts\/\d+$/.test(pathname)) return "编辑文章";
   return pathname.replace(/^\/admin\//, "").replace(/^\//, "");
 }
 
