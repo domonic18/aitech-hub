@@ -33,6 +33,13 @@
 | [01-testing.md](standard/01-testing.md) | 测试分层、单测红线清单、迁移重放守卫、发布门槛 | 写测试/发布前 |
 | [02-cicd-deployment.md](standard/02-cicd-deployment.md) | 分支模型(develop 主线/main 保护)、CI 流水线、镜像、同服务器切换 runbook、备份 | 部署/发版/开新分支时 |
 
+### prototypes/(UI 原型 · 可点击单文件 HTML)
+
+| 文档 | 说明 |
+|------|------|
+| [index.html](prototypes/index.html) | 原型索引:前台 4 屏(M3 已实现 · 深色终端风视觉升级提案)+ 用户中心 3 屏(M4)+ admin 后台 7 屏(M5),共 14 屏;单文件自包含、零依赖、离线可开,页面互链可走通整站流程 |
+| [common.css](prototypes/common.css) | 设计 token 真相源文档(深空 #0c0e12 / 靛蓝 #5e6ad2;不被 link,各页内联副本,改 token 先改它再同步) |
+
 ### research/(调研评估)
 
 | 文档 | 说明 |

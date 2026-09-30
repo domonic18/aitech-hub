@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 登录 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--text-1);
+  font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased; min-height: 100vh;
+  display: flex; flex-direction: column;
+  background-image:
+    radial-gradient(ellipse 900px 480px at 50% -8%, rgba(94,106,210,.16), transparent 62%),
+    radial-gradient(ellipse 700px 400px at 85% 108%, rgba(46,160,67,.05), transparent 60%);
+}
+a { color: inherit; text-decoration: none; }
+.mono { font-family: var(--font-mono); }
+
+/* 顶栏(精简) */
+.header { height: 64px; border-bottom: 1px solid var(--border); background: rgba(12,14,18,.7); }
+.header-in {
+  max-width: 1200px; margin: 0 auto; height: 100%; padding: 0 24px;
+  display: flex; align-items: center;
+}
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+.logo .cursor-block {
+  width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
+  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: .35; } }
+.logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
+.back { margin-left: auto; font-size: 13.5px; color: var(--text-2); }
+.back:hover { color: var(--text-1); }
+
+/* ==== 主体:居中卡 ==== */
+.main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.auth-card {
+  width: 420px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 36px 36px 30px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.45);
+}
+.auth-head { text-align: center; margin-bottom: 26px; }
+.auth-head .term-glyph {
+  width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 12px;
+  background: var(--accent-dim); border: 1px solid rgba(94,106,210,.35);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 20px; color: #8b96e8;
+}
+.auth-head h1 { font-size: 21px; }
+.auth-head p { font-size: 13px; color: var(--text-3); margin-top: 6px; }
+
+/* pending_binding 提示条(老用户绑定引导,形态预置) */
+.pb-band {
+  display: none; margin-bottom: 20px; padding: 12px 14px;
+  font-size: 13px; color: #ecc06a; background: rgba(210,153,34,.1);
+  border: 1px solid rgba(210,153,34,.35); border-radius: var(--r-md);
+  line-height: 1.6;
+}
+.pb-band.show { display: block; }
+.pb-band a { color: var(--accent-hover); text-decoration: underline; }
+
+/* 表单 */
+.field { margin-bottom: 18px; }
+.field label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  transition: border-color .15s, box-shadow .15s;
+}
+.input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94,106,210,.15); }
+.input-wrap .prefix { font-family: var(--font-mono); font-size: 14px; color: var(--text-2); padding-left: 14px; }
+.input-wrap input {
+  flex: 1; height: 46px; background: transparent; border: none; outline: none;
+  color: var(--text-1); font-size: 15.5px; font-family: var(--font-mono);
+}
+.input-wrap input::placeholder { color: var(--text-3); }
+.send-btn {
+  margin: 6px; height: 36px; padding: 0 14px; font-size: 13px; white-space: nowrap;
+  color: var(--accent-hover); background: var(--accent-dim);
+  border: 1px solid rgba(94,106,210,.35); border-radius: var(--r-sm); cursor: pointer;
+}
+.send-btn:hover:not(:disabled) { background: rgba(94,106,210,.24); }
+.send-btn:disabled { color: var(--text-3); background: var(--panel-2); border-color: var(--border); cursor: not-allowed; }
+.code-wrap { gap: 0; }
+.code-wrap input { letter-spacing: .35em; font-size: 18px; }
+
+/* 提交按钮 */
+.submit {
+  width: 100%; height: 48px; margin-top: 6px; font-size: 15.5px; font-weight: 600; color: #fff;
+  background: linear-gradient(135deg, var(--accent), #4d58c0);
+  border: none; border-radius: var(--r-md); cursor: pointer;
+  box-shadow: 0 8px 24px rgba(94,106,210,.3);
+  transition: transform .15s, box-shadow .15s;
+}
+.submit:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(94,106,210,.4); }
+.submit:active { transform: none; }
+
+/* 429 频控错误态(形态预置) */
+.err-band {
+  display: none; margin-top: 16px; padding: 11px 14px;
+  font-size: 13px; color: #ff8f88; background: rgba(248,81,73,.09);
+  border: 1px solid rgba(248,81,73,.35); border-radius: var(--r-md); line-height: 1.6;
+}
+.err-band.show { display: block; }
+.err-band .mono { font-size: 12px; }
+
+/* 演示切换(原型内交互) */
+.demo-switch {
+  margin-top: 18px; text-align: center; font-size: 12px; color: var(--text-3);
+}
+.demo-switch a { color: var(--blue); text-decoration: underline; cursor: pointer; }
+
+/* 卡片脚注 */
+.auth-foot { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); text-align: center; font-size: 12.5px; color: var(--text-3); }
+.auth-foot .mono { font-size: 11.5px; }
+
+.footer { padding: 20px 24px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.footer a { color: var(--text-2); }
+.proto-note {
+  position: fixed; left: 16px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.9); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-in">
+    <a class="logo" href="site-home.html">
+      <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
+    </a>
+    <a class="back" href="site-home.html">返回首页 →</a>
+  </div>
+</header>
+
+<div class="main">
+  <div class="auth-card">
+    <div class="auth-head">
+      <div class="term-glyph">›_</div>
+      <h1>登录 / 注册</h1>
+      <p>未注册手机号登录后将自动创建账号</p>
+    </div>
+
+    <!-- pending_binding 引导条:53 位老用户首次登录会看到(默认隐藏,演示可开) -->
+    <div class="pb-band" id="pbBand">
+      ⚠ 检测到你是老站用户,尚未绑定手机号。验证通过后将自动完成绑定并激活账号。
+      <a href="bind-phone.html">了解绑定流程 →</a>
+    </div>
+
+    <form onsubmit="event.preventDefault(); location.href='account.html'">
+      <div class="field">
+        <label>手机号</label>
+        <div class="input-wrap">
+          <span class="prefix">+86</span>
+          <input type="tel" maxlength="11" placeholder="13800001234" id="phone">
+          <button type="button" class="send-btn" id="sendBtn" onclick="sendCode()">获取验证码</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>短信验证码</label>
+        <div class="input-wrap code-wrap">
+          <input type="text" inputmode="numeric" maxlength="6" placeholder="······" id="code" style="padding-left:14px">
+        </div>
+      </div>
+      <button class="submit" type="submit">登 录</button>
+    </form>
+
+    <!-- 429 频控错误态(默认隐藏,演示可开) -->
+    <div class="err-band" id="errBand">
+      ✕ 验证码发送过于频繁,请稍后再试。<br>
+      <span class="mono">HTTP 429 · 同号 60s/次 · 日 10 条 · 同 IP 日 50 条</span>
+    </div>
+
+    <div class="demo-switch">
+      原型演示:<a onclick="togglePb()">切换 pending_binding 态</a> · <a onclick="toggleErr()">切换 429 频控态</a>
+    </div>
+
+    <div class="auth-foot">
+      登录即代表同意 <a href="#" style="color:var(--text-2)">用户协议</a> 与 <a href="#" style="color:var(--text-2)">隐私政策</a><br>
+      <span class="mono">POST /api/auth/sms-code → /api/auth/login · jose httpOnly Cookie 会话</span>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">© 2021-2026 17aitech.com · 一起AI技术</footer>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · M4 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+// 60s 倒计时(同号 60s/次 频控的可视化)
+var left = 0, timer = null;
+function sendCode() {
+  var btn = document.getElementById('sendBtn');
+  if (left > 0) return;
+  left = 60;
+  btn.disabled = true;
+  tick();
+  timer = setInterval(tick, 1000);
+}
+function tick() {
+  var btn = document.getElementById('sendBtn');
+  if (left <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = '重新获取'; return; }
+  btn.textContent = left + 's 后重发';
+  left--;
+}
+function togglePb() { document.getElementById('pbBand').classList.toggle('show'); }
+function toggleErr() { document.getElementById('errBand').classList.toggle('show'); }
+</script>
+
+</body>
+</html>

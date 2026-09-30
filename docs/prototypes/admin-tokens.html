@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · PAT 令牌 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏(同款) */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
+.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-body { padding: 20px 24px 40px; }
+
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 18px;
+  background: var(--accent); color: #fff; font-size: 14px; font-weight: 500;
+  border: none; border-radius: var(--r-sm); cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.tip { font-size: 12.5px; color: var(--antd-t3); }
+
+.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.a-table th { text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa; padding: 12px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap; }
+.a-table td { padding: 14px 16px; border-bottom: 1px solid var(--antd-border); vertical-align: middle; }
+.a-table tr:last-child td { border-bottom: none; }
+.a-table tr:hover td { background: #fafafa; }
+
+.tk-name { font-weight: 600; }
+.tk-name .scope { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: 1px; }
+.tk-hash { font-family: var(--font-mono); font-size: 11.5px; color: var(--antd-t3); margin-top: 2px; }
+.scope-chip { font-size: 10.5px; font-family: var(--font-mono); padding: 1px 7px; border-radius: 3px; }
+.sc-write { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; }
+.sc-read { color: #1677ff; background: #e6f4ff; border: 1px solid #91caff; }
+.status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 10px; border-radius: 999px; }
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.st-active { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; } .st-active::before { background: var(--green); }
+.st-revoked { color: rgba(0,0,0,.45); background: #fafafa; border: 1px solid #d9d9d9; } .st-revoked::before { background: #bbb; }
+.num { font-family: var(--font-mono); font-size: 12.5px; }
+.op-link { border: none; background: transparent; font-size: 13px; color: var(--accent); cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.op-link:hover { background: var(--accent-dim); }
+.op-link.danger { color: var(--red); }
+.op-link.danger:hover { background: rgba(248,81,73,.08); }
+
+/* 新建弹窗:明文一次性展示 */
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200; display: none; align-items: center; justify-content: center; }
+.modal-mask.show { display: flex; }
+.modal { width: 560px; background: var(--antd-card); border-radius: var(--r-lg); box-shadow: 0 24px 64px rgba(0,0,0,.3); }
+.mo-head { display: flex; align-items: center; padding: 18px 22px 0; }
+.mo-head h3 { font-size: 16px; font-weight: 600; }
+.mo-head .x { margin-left: auto; border: none; background: transparent; font-size: 17px; color: var(--antd-t3); cursor: pointer; }
+.mo-body { padding: 18px 22px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 13px; color: var(--antd-t2); margin-bottom: 7px; }
+.m-input { width: 100%; height: 38px; border: 1px solid #d9d9d9; border-radius: var(--r-sm); padding: 0 12px; font-size: 13.5px; outline: none; }
+.m-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94,106,210,.12); }
+.scope-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.scope-opt {
+  display: flex; align-items: center; gap: 7px; border: 1px solid #d9d9d9; border-radius: var(--r-sm);
+  padding: 8px 14px; font-size: 13px; cursor: pointer; background: #fff;
+}
+.scope-opt.on { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+.token-reveal {
+  background: #0c0e12; border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 16px 18px; margin: 6px 0 4px;
+}
+.token-reveal .tk { font-family: var(--font-mono); font-size: 13px; color: #7ee2a0; word-break: break-all; line-height: 1.7; }
+.token-reveal .copy-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.copy-btn { height: 30px; padding: 0 16px; font-size: 12.5px; color: #8b96e8; background: rgba(94,106,210,.16); border: 1px solid rgba(94,106,210,.45); border-radius: var(--r-sm); cursor: pointer; }
+.warn-line {
+  margin-top: 12px; padding: 10px 14px; background: #fffbe6; border: 1px solid #ffe58f;
+  border-radius: var(--r-sm); font-size: 12.5px; color: #d48806; line-height: 1.7;
+}
+.mo-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 0 22px 20px; }
+.btn-lg { height: 38px; padding: 0 22px; font-size: 14px; border-radius: var(--r-sm); cursor: pointer; }
+.btn-lg.ghost { background: #fff; border: 1px solid #d9d9d9; color: var(--antd-t1); }
+.btn-lg.primary { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+.btn-lg.primary:hover { background: var(--accent-hover); }
+
+/* MCP 配置卡 */
+.mcp-card { margin-top: 16px; }
+.mcp-card pre {
+  background: #0c0e12; color: #d6d9e0; border-radius: var(--r-sm);
+  padding: 16px 18px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.8;
+  overflow-x: auto; margin: 0;
+}
+.mcp-card .tk-k { color: #82aaff; } .mcp-card .tk-s { color: #7ee2a0; } .mcp-card .tk-c { color: #6b7280; }
+
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <a class="sb-item" href="admin-telegram.html"><span class="ico">📡</span>电报流治理<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-spider.html"><span class="ico">🕷</span>采集管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item active" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-home.html">↩ 返回前台站点</a></div>
+</aside>
+
+<div class="content">
+  <header class="a-header">
+    <h1>PAT 令牌</h1>
+    <span class="crumb">/ 系统 · <b>创作 MCP 与发布 API 的鉴权凭证</b></span>
+    <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+  </header>
+
+  <div class="a-body">
+
+    <div class="toolbar">
+      <button class="btn-primary" onclick="openModal()">✚ 新建令牌</button>
+      <span class="tip">Bearer PAT · 库中只存 SHA-256 哈希 · 明文仅在创建时展示一次</span>
+    </div>
+
+    <div class="card">
+      <table class="a-table">
+        <thead>
+          <tr>
+            <th>令牌</th>
+            <th>状态</th>
+            <th style="text-align:right">调用次数</th>
+            <th>最近使用</th>
+            <th>创建时间</th>
+            <th style="text-align:right; width:150px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="tk-name">claude-code-local<span class="scope"><span class="scope-chip sc-write">write</span><span class="scope-chip sc-read">read</span></span></div>
+              <div class="tk-hash">ah_pat_9f2e…c41d · SHA-256 入库</div>
+            </td>
+            <td><span class="status-badge st-active">active</span></td>
+            <td class="num" style="text-align:right">1,204</td>
+            <td class="num">2026-09-30 13:48</td>
+            <td class="num">2026-09-12</td>
+            <td><div class="ops"><button class="op-link">审计日志</button><button class="op-link danger">吊销</button></div></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="tk-name">ci-smoke-test<span class="scope"><span class="scope-chip sc-read">read</span></span></div>
+              <div class="tk-hash">ah_pat_77b0…e892 · SHA-256 入库</div>
+            </td>
+            <td><span class="status-badge st-active">active</span></td>
+            <td class="num" style="text-align:right">86</td>
+            <td class="num">2026-09-29 02:10</td>
+            <td class="num">2026-09-20</td>
+            <td><div class="ops"><button class="op-link">审计日志</button><button class="op-link danger">吊销</button></div></td>
+          </tr>
+          <tr style="opacity:.72">
+            <td>
+              <div class="tk-name">旧笔电备份<span class="scope"><span class="scope-chip sc-write">write</span></span></div>
+              <div class="tk-hash">ah_pat_1d33…a07f · SHA-256 入库</div>
+            </td>
+            <td><span class="status-badge st-revoked">已吊销</span></td>
+            <td class="num" style="text-align:right">312</td>
+            <td class="num">2026-09-15 18:22</td>
+            <td class="num">2026-09-01</td>
+            <td><div class="ops"><span class="mono" style="font-size:11px; color:var(--antd-t3); align-self:center">吊销后即拒 · 已留审计</span></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- MCP 接入卡 -->
+    <div class="card mcp-card">
+      <div class="card-h" style="padding:16px 20px 0">
+        <h3>MCP 接入(创作端点)</h3>
+        <span class="mono-tag" style="font-family:var(--font-mono); font-size:11px; color:var(--antd-t3)">[ /api/mcp · STREAMABLE HTTP ]</span>
+      </div>
+      <div class="card-b" style="padding:14px 20px 20px">
+<pre><span class="tk-c"># Claude Code / 任意 MCP 客户端接入配置(令牌替换 <span class="tk-s">&lt;YOUR_PAT&gt;</span>)</span>
+{
+  <span class="tk-k">"mcpServers"</span>: {
+    <span class="tk-k">"aitech-create"</span>: {
+      <span class="tk-k">"type"</span>: <span class="tk-s">"http"</span>,
+      <span class="tk-k">"url"</span>: <span class="tk-s">"https://17aitech.com/api/mcp"</span>,
+      <span class="tk-k">"headers"</span>: { <span class="tk-k">"Authorization"</span>: <span class="tk-s">"Bearer &lt;YOUR_PAT&gt;"</span> }
+    }
+  }
+}
+
+<span class="tk-c"># 工具面:upsert_article(slug 幂等,frontmatter: title/excerpt/category/tags/cover/seo)
+#          upload_media · get_article · list_articles · publish / unpublish</span></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新建令牌弹窗(创建成功、明文一次性展示态) -->
+<div class="modal-mask show" id="modal">
+  <div class="modal">
+    <div class="mo-head">
+      <h3>🔑 令牌已创建 —— 请立即保存</h3>
+      <button class="x" onclick="closeModal()">✕</button>
+    </div>
+    <div class="mo-body">
+      <div class="token-reveal">
+        <div class="tk">ah_pat_livel9Xk2Pw7QmRt5ZvB8nDc3Fs6HyJg4Ea1Uo0Ki</div>
+        <div class="copy-row">
+          <button class="copy-btn" onclick="this.textContent='✓ 已复制'">⧉ 复制令牌</button>
+          <span style="font-size:12px; color:var(--text-2); font-family:var(--font-mono)">SHA-256: 4c7e…91b3(入库值)</span>
+        </div>
+      </div>
+      <div class="warn-line">
+        ⚠ <b>这是明文唯一一次展示。</b>关闭后无法再次查看,只能重新生成。请粘贴到你的 MCP 客户端配置或密码管理器。
+      </div>
+      <div style="margin-top:14px; font-size:12px; color:var(--antd-t3); font-family:var(--font-mono); line-height:1.8">
+        名称:claude-code-local · scope: write+read<br>
+        创建事件 + 本次查看均已记入审计日志(以 token 身份,不记敏感值)
+      </div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn-lg ghost" onclick="closeModal()">我已保存,关闭</button>
+      <button class="btn-lg primary">去配置 MCP 客户端 →</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · M5 · 弹窗为「新建令牌」成功态 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+function openModal() { document.getElementById('modal').classList.add('show'); }
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 搜索 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --site-header-h: 64px; --site-max-w: 1200px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--text-1);
+  font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+img { display: block; }
+
+/* 顶栏(同款) */
+.header {
+  position: sticky; top: 0; z-index: 50; height: var(--site-header-h);
+  background: rgba(12,14,18,.82); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.header-in {
+  max-width: var(--site-max-w); margin: 0 auto; height: 100%;
+  padding: 0 24px; display: flex; align-items: center; gap: 40px;
+}
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+.logo .cursor-block {
+  width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
+  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: .35; } }
+.logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
+.nav { display: flex; gap: 8px; margin-left: auto; }
+.nav a { padding: 8px 14px; border-radius: var(--r-sm); color: var(--text-2); font-size: 14px; }
+.nav a:hover { color: var(--text-1); background: var(--panel-2); }
+.nav a.active { color: var(--text-1); background: var(--accent-dim); }
+.nav a.mono { font-size: 13px; }
+
+/* ==== 搜索区(终端 grep 隐喻) ==== */
+.search-zone { max-width: 780px; margin: 0 auto; padding: 56px 24px 0; }
+.grep-box {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--panel); border: 2px solid var(--accent);
+  border-radius: var(--r-md); padding: 4px 6px 4px 20px;
+  box-shadow: 0 0 0 4px rgba(94,106,210,.12), 0 16px 48px rgba(0,0,0,.4);
+}
+.grep-box .g-sym { font-family: var(--font-mono); color: var(--green); font-size: 15px; }
+.grep-box input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text-1); font-size: 16px; font-family: var(--font-mono); height: 46px;
+}
+.grep-box input::placeholder { color: var(--text-3); }
+.grep-box .g-btn {
+  font-family: var(--font-mono); font-size: 14px; color: #fff;
+  background: var(--accent); border: none; border-radius: var(--r-sm);
+  padding: 11px 22px; cursor: pointer;
+}
+.grep-box .g-btn:hover { background: var(--accent-hover); }
+.hint-line { margin-top: 14px; font-size: 13px; color: var(--text-3); }
+.hint-line .kw { font-family: var(--font-mono); color: var(--text-2); margin: 0 6px; cursor: pointer; }
+.hint-line .kw:hover { color: var(--accent-hover); }
+
+/* 结果区 */
+.result-head {
+  margin: 36px 0 18px; font-family: var(--font-mono); font-size: 13px; color: var(--text-2);
+  padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.result-head b { color: var(--green); }
+.result-head .t { color: var(--text-3); }
+.hits { display: flex; flex-direction: column; gap: 14px; }
+.hit {
+  display: block; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 18px 22px;
+  transition: border-color .15s, transform .15s;
+}
+.hit:hover { border-color: #3d4260; transform: translateY(-1px); }
+.hit .h-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.hit .h-cat {
+  font-family: var(--font-mono); font-size: 11px; color: #7ee2a0;
+  background: rgba(46,160,67,.12); border: 1px solid rgba(46,160,67,.3);
+  border-radius: 4px; padding: 0 8px;
+}
+.hit .h-date { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.hit h3 { font-size: 16.5px; line-height: 1.5; margin-bottom: 6px; }
+.hit:hover h3 { color: var(--accent-hover); }
+.hit p { font-size: 13.5px; color: var(--text-2); }
+.hit p mark { background: rgba(210,153,34,.22); color: #ecc06a; padding: 0 2px; border-radius: 2px; }
+.hit .h-meta { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+
+/* 空态(页面底部展示,标注“无结果时形态”) */
+.empty-state { margin: 20px 0 0; }
+.empty-in {
+  border: 1px dashed var(--border); border-radius: var(--r-md);
+  padding: 44px 24px; text-align: center;
+}
+.empty-in .e-icon { font-size: 34px; opacity: .5; }
+.empty-in h3 { font-size: 16px; color: var(--text-2); margin: 12px 0 6px; }
+.empty-in p { font-size: 13px; color: var(--text-3); }
+.empty-in .mono { font-size: 12px; margin-top: 10px; display: inline-block;
+  color: var(--text-3); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 10px; }
+
+/* 标注条 */
+.state-note {
+  margin: 48px auto 0; max-width: 780px; padding: 0 24px;
+  font-size: 12px; color: var(--text-3); text-align: center; font-family: var(--font-mono);
+}
+
+/* 页脚 */
+.footer { margin-top: 64px; border-top: 1px solid var(--border); }
+.footer-base { padding: 20px 24px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.footer-base a { color: var(--text-2); }
+.proto-note {
+  position: fixed; left: 16px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.9); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-in">
+    <a class="logo" href="site-home.html">
+      <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
+    </a>
+    <nav class="nav">
+      <a href="site-home.html">首页</a>
+      <a href="site-articles.html">文章</a>
+      <a href="site-telegram.html">电报流</a>
+      <a href="site-articles.html">归档</a>
+      <a href="#">关于</a>
+      <a href="site-search.html" class="mono active">⌕ 搜索</a>
+    </nav>
+  </div>
+</header>
+
+<div class="search-zone">
+  <div class="grep-box">
+    <span class="g-sym">❯</span>
+    <input type="text" value="claude code" placeholder="grep 站内文章…" autofocus>
+    <button class="g-btn">搜索</button>
+  </div>
+  <div class="hint-line">
+    试试:<span class="kw">MCP</span><span class="kw">Prisma</span><span class="kw">智能体</span><span class="kw">SEO</span><span class="kw">付费</span>
+  </div>
+
+  <div class="result-head">
+    $ grep -ri "claude code" /articles --files-with-matches → <b>23</b> 条结果 <span class="t">(0.012s · 标题/摘要 LIKE)</span>
+  </div>
+
+  <div class="hits">
+    <a class="hit" href="site-article.html">
+      <div class="h-top"><span class="h-cat">AI 实战</span><span class="h-date">2026-09-28</span></div>
+      <h3>用 <mark>Claude Code</mark> 重建我的博客:从 WordPress 到 Next.js 全栈单体</h3>
+      <p>整个项目是我一个人 + <mark>Claude Code</mark> 完成的。工作流是:我出决策,智能体出实现。文档体系是人和智能体的共同上下文……</p>
+      <div class="h-meta">👁 12,408 · ≈ 28 min · #Claude Code #Next.js</div>
+    </a>
+    <a class="hit" href="site-article.html">
+      <div class="h-top"><span class="h-cat">AI 实战</span><span class="h-date">2026-09-21</span></div>
+      <h3>MCP 实战:从本地 Markdown 连图一键发布到线上站点</h3>
+      <p>让 <mark>Claude Code</mark> 成为你的发布前端:创作 MCP 的设计与实现,Bearer PAT 鉴权、slug 幂等 upsert、图片自动转存替换。</p>
+      <div class="h-meta">👁 8,930 · ≈ 16 min · #MCP #发布</div>
+    </a>
+    <a class="hit" href="site-article.html">
+      <div class="h-top"><span class="h-cat">AI 实战</span><span class="h-date">2026-09-15</span></div>
+      <h3>智能体军团指挥手册:多 Agent 协作的拆解与编排</h3>
+      <p>用 <mark>Claude Code</mark> 的子 agent 机制把模糊需求拆成任务图:主从模式、流水线模式、评审环,附失败案例与复盘。</p>
+      <div class="h-meta">👁 6,214 · ≈ 18 min · #Agents #编排</div>
+    </a>
+    <a class="hit" href="site-article.html">
+      <div class="h-top"><span class="h-cat">建站</span><span class="h-date">2026-09-08</span></div>
+      <h3>GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</h3>
+      <p>给 <mark>Claude Code</mark>、ChatGPT、Perplexity 一个可引用的站点:llms.txt 索引、文章 .md 直出与站点内容 MCP 的完整打法。</p>
+      <div class="h-meta">👁 4,872 · ≈ 14 min · #SEO #GEO</div>
+    </a>
+  </div>
+
+  <!-- 无结果空态(交付注记:q 无命中时的形态) -->
+  <div class="empty-state">
+    <div class="result-head">$ grep -ri "不存在的关键词" /articles → <b style="color:var(--red)">0</b> 条结果</div>
+    <div class="empty-in">
+      <div class="e-icon">⌕</div>
+      <h3>没有找到相关文章</h3>
+      <p>换个关键词试试,或者去<a href="site-articles.html" style="color:var(--accent-hover)"> 全部文章 </a>逛逛</p>
+      <span class="mono">hint: 支持标题/摘要模糊匹配 · 大小写不敏感</span>
+    </div>
+  </div>
+
+  <div class="state-note">※ 上半部分 = 有结果态 · 下半部分 = 无结果空态(二态同页展示,实现时按 q 渲染其一)</div>
+</div>
+
+<footer class="footer">
+  <div class="footer-base">
+    © 2021-2026 17aitech.com · 一起AI技术 · <a href="site-home.html">返回首页</a>
+  </div>
+</footer>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · <a href="index.html">← 原型索引</a></div>
+
+</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · 封面工作流 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏(同款) */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
+.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-body { padding: 20px 24px 40px; }
+
+/* 两栏:左裁剪 右模板与导出 */
+.work-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.card-h { padding: 16px 20px 0; display: flex; align-items: center; gap: 10px; }
+.card-h h3 { font-size: 15px; font-weight: 600; }
+.card-h .mono-tag { font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); letter-spacing: .04em; }
+.card-b { padding: 16px 20px 20px; }
+
+/* 裁剪器 */
+.crop-stage {
+  position: relative; background:
+    repeating-conic-gradient(#f0f0f0 0% 25%, #fafafa 0% 50%) 0 0 / 20px 20px;
+  border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--antd-border);
+}
+.crop-stage img { width: 100%; display: block; }
+.crop-box {
+  position: absolute; left: 8%; top: 14%; width: 84%; height: 72%;
+  border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
+  cursor: move;
+}
+.crop-grid { position: absolute; inset: 0; }
+.crop-grid::before, .crop-grid::after {
+  content: ''; position: absolute; background: rgba(255,255,255,.4);
+}
+.crop-grid::before { left: 33.3%; top: 0; bottom: 0; width: 1px; box-shadow: 33.3vw 0 0 rgba(255,255,255,.4); }
+.crop-grid::after { top: 33.3%; left: 0; right: 0; height: 1px; box-shadow: 0 33.3% rgba(255,255,255,.4); }
+.handle {
+  position: absolute; width: 10px; height: 10px; background: #fff; border-radius: 2px; border: 1px solid var(--accent);
+}
+.handle.tl { left: -5px; top: -5px; cursor: nwse-resize; }
+.handle.tr { right: -5px; top: -5px; cursor: nesw-resize; }
+.handle.bl { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.handle.br { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.crop-meta {
+  display: flex; gap: 18px; margin-top: 12px; font-size: 12.5px; color: var(--antd-t3); font-family: var(--font-mono);
+}
+.crop-meta b { color: var(--antd-t1); font-weight: 600; }
+.crop-zoom { margin-top: 12px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--antd-t2); }
+.crop-zoom input[type=range] { flex: 1; accent-color: var(--accent); }
+
+/* 模板选择 */
+.tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tpl {
+  border: 2px solid var(--antd-border); border-radius: var(--r-sm); padding: 12px;
+  cursor: pointer; transition: all .15s; position: relative;
+}
+.tpl:hover { border-color: rgba(94,106,210,.45); }
+.tpl.on { border-color: var(--accent); background: #fafaff; }
+.tpl .tick {
+  position: absolute; right: -1px; top: -1px; width: 20px; height: 20px;
+  background: var(--accent); color: #fff; font-size: 12px;
+  display: none; align-items: center; justify-content: center;
+  border-radius: 0 var(--r-sm) 0 var(--r-sm);
+}
+.tpl.on .tick { display: flex; }
+.tpl .demo { border-radius: 4px; overflow: hidden; border: 1px solid var(--antd-border); background: linear-gradient(135deg, #1b1e2e, #232742 60%, #2c2f52); position: relative; }
+.tpl .demo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tpl .demo.w235 { aspect-ratio: 2.35/1; }
+.tpl .demo.og { aspect-ratio: 1.91/1; }
+.tpl .demo.c169 { aspect-ratio: 16/9; }
+.tpl h5 { font-size: 13px; margin: 8px 0 2px; }
+.tpl .spec { font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); }
+.tpl .use { font-size: 11.5px; color: var(--antd-t2); margin-top: 2px; }
+
+/* 导出队列 */
+.exp-item { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px dashed var(--antd-border); }
+.exp-item:last-child { border-bottom: none; }
+.exp-thumb { height: 44px; border-radius: 4px; overflow: hidden; border: 1px solid var(--antd-border); background: linear-gradient(135deg, #1b1e2e, #232742); }
+.exp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.exp-info .nm { font-size: 13px; font-weight: 600; }
+.exp-info .spec { font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); margin-top: 2px; }
+.exp-st { font-size: 12px; font-family: var(--font-mono); }
+.exp-st.ok { color: var(--green); } .exp-st.wait { color: var(--antd-t3); }
+
+.export-all {
+  width: 100%; height: 42px; margin-top: 14px; font-size: 14px; font-weight: 600; color: #fff;
+  background: var(--accent); border: none; border-radius: var(--r-md); cursor: pointer;
+}
+.export-all:hover { background: var(--accent-hover); }
+.sub-ops { display: flex; gap: 8px; margin-top: 10px; }
+.sub-ops button { flex: 1; height: 32px; font-size: 12.5px; border: 1px solid #d9d9d9; background: #fff; border-radius: var(--r-sm); cursor: pointer; color: var(--antd-t2); }
+.sub-ops button:hover { color: var(--accent); border-color: var(--accent); }
+
+/* AI 文生图(置灰) */
+.ai-row {
+  margin-top: 16px; padding: 14px 16px; border: 1px dashed #d9d9d9; border-radius: var(--r-sm);
+  display: flex; align-items: center; gap: 12px; opacity: .55;
+}
+.ai-row .ai-t { flex: 1; }
+.ai-row .ai-t b { font-size: 13.5px; display: block; }
+.ai-row .ai-t span { font-size: 12px; color: var(--antd-t3); }
+.btn-disabled {
+  height: 32px; padding: 0 16px; font-size: 12.5px; color: var(--antd-t3);
+  background: #f5f5f5; border: 1px solid #d9d9d9; border-radius: var(--r-sm); cursor: not-allowed;
+}
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+@media (max-width: 1200px) { .work-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <a class="sb-item" href="admin-telegram.html"><span class="ico">📡</span>电报流治理<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-spider.html"><span class="ico">🕷</span>采集管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-home.html">↩ 返回前台站点</a></div>
+</aside>
+
+<div class="content">
+  <header class="a-header">
+    <h1>封面工作流</h1>
+    <span class="crumb">/ 内容管理 · <b>一次裁剪 · 多尺寸导出</b></span>
+    <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+  </header>
+
+  <div class="a-body">
+    <div class="work-grid">
+
+      <!-- 左:裁剪器 -->
+      <div class="card">
+        <div class="card-h">
+          <h3>裁剪器</h3><span class="mono-tag">[CROP · react-easy-crop 形态]</span>
+          <span style="margin-left:auto; font-size:12.5px; color:var(--antd-t3)">源图:cover-agent-legion.jpg · <span class="mono">1344×768</span></span>
+        </div>
+        <div class="card-b">
+          <div class="crop-stage">
+            <img src="assets/cover-agent-legion.jpg" alt="">
+            <div class="crop-box">
+              <div class="crop-grid"></div>
+              <span class="handle tl"></span><span class="handle tr"></span>
+              <span class="handle bl"></span><span class="handle br"></span>
+            </div>
+          </div>
+          <div class="crop-zoom">
+            <span>缩放</span>
+            <input type="range" min="1" max="3" step="0.01" value="1.2">
+            <span class="mono">1.20×</span>
+          </div>
+          <div class="crop-zoom" style="margin-top:6px">
+            <span>旋转</span>
+            <input type="range" min="-15" max="15" step="0.5" value="0">
+            <span class="mono">0.0°</span>
+          </div>
+          <div class="crop-meta">
+            <span>选区 <b>1129 × 553 px</b>(微信模板)</span>
+            <span>输出 <b>900 × 383</b> @cover 变体</span>
+            <span>格式 <b>WebP + JPG 保底</b></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右:模板 + 导出 -->
+      <div>
+        <div class="card">
+          <div class="card-h"><h3>裁剪模板</h3><span class="mono-tag">[TEMPLATES]</span></div>
+          <div class="card-b">
+            <div class="tpl-grid">
+              <div class="tpl on" onclick="pickTpl(this)">
+                <span class="tick">✓</span>
+                <div class="demo w235"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+                <h5>微信公众号头图</h5>
+                <div class="spec">2.35 : 1 · 900 × 383</div>
+                <div class="use">多渠道分发(二期)</div>
+              </div>
+              <div class="tpl" onclick="pickTpl(this)">
+                <span class="tick">✓</span>
+                <div class="demo og"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+                <h5>站内 / OG 卡片</h5>
+                <div class="spec">1200 × 630 · 1.91 : 1</div>
+                <div class="use">社交分享卡 · JSON-LD</div>
+              </div>
+              <div class="tpl" onclick="pickTpl(this)">
+                <span class="tick">✓</span>
+                <div class="demo c169"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+                <h5>CSDN / 通用横图</h5>
+                <div class="spec">16 : 9 · 1024 × 576</div>
+                <div class="use">多渠道分发(二期)</div>
+              </div>
+              <div class="tpl" onclick="pickTpl(this)">
+                <span class="tick">✓</span>
+                <div class="demo c169"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+                <h5>列表缩略图</h5>
+                <div class="spec">16 : 9 · 480 × 270(webp)</div>
+                <div class="use">前台卡片 thumb_path</div>
+              </div>
+            </div>
+
+            <div class="ai-row">
+              <span style="font-size:20px">✨</span>
+              <div class="ai-t">
+                <b>AI 文生图(腾讯云混元)</b>
+                <span>标题/摘要生成 prompt → 多候选选用</span>
+              </div>
+              <button class="btn-disabled" disabled>二期开放</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-h"><h3>导出队列</h3><span class="mono-tag">[EXPORT · 一次裁剪多尺寸]</span></div>
+          <div class="card-b">
+            <div class="exp-item">
+              <div class="exp-thumb"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+              <div class="exp-info">
+                <div class="nm">微信头图</div>
+                <div class="spec">900×383 · webp+jpg · ≤100KB</div>
+              </div>
+              <span class="exp-st ok">✓ 已导出</span>
+            </div>
+            <div class="exp-item">
+              <div class="exp-thumb"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+              <div class="exp-info">
+                <div class="nm">OG 卡片</div>
+                <div class="spec">1200×630 · jpg · og:image</div>
+              </div>
+              <span class="exp-st ok">✓ 已导出</span>
+            </div>
+            <div class="exp-item">
+              <div class="exp-thumb"><img src="assets/cover-agent-legion.jpg" alt=""></div>
+              <div class="exp-info">
+                <div class="nm">列表缩略图</div>
+                <div class="spec">480×270 · webp · thumb_path</div>
+              </div>
+              <span class="exp-st wait">… 处理中</span>
+            </div>
+
+            <button class="export-all">⤓ 按模板一键导出 4 尺寸</button>
+            <div class="sub-ops">
+              <button>设为文章封面</button>
+              <button>存入媒体库</button>
+            </div>
+            <div style="margin-top:12px; font-size:11.5px; color:var(--antd-t3); font-family:var(--font-mono); line-height:1.7">
+              canvas 裁剪 → 各尺寸按 cover 变体入队列 → sharp 出 webp 缩略图<br>
+              POST /api/media(多文件)→ 返回 media_id 数组 → 回填文章 cover
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · M5 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+function pickTpl(el) {
+  el.parentElement.querySelectorAll('.tpl').forEach(function (t) { t.classList.remove('on'); });
+  el.classList.add('on');
+}
+</script>
+
+</body>
+</html>

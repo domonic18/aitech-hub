@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI技术 — 后台 · 用户管理 · aitech-hub 原型</title>
+<style>
+/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
+:root {
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
+  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+a { text-decoration: none; color: inherit; }
+img { display: block; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏(同款) */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
+.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-body { padding: 20px 24px 40px; }
+
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.seg { display: flex; border: 1px solid #d9d9d9; border-radius: var(--r-sm); overflow: hidden; }
+.seg button { border: none; background: #fff; padding: 8px 16px; font-size: 13.5px; color: var(--antd-t2); cursor: pointer; border-right: 1px solid #d9d9d9; }
+.seg button:last-child { border-right: none; }
+.seg button.on { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+.search-box { margin-left: auto; display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #d9d9d9; border-radius: var(--r-sm); padding: 0 12px; height: 36px; width: 280px; }
+.search-box input { flex: 1; border: none; outline: none; font-size: 13.5px; background: transparent; color: var(--antd-t1); }
+.search-box input::placeholder { color: #bbb; }
+
+.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.a-table th { text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa; padding: 12px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap; }
+.a-table td { padding: 12px 16px; border-bottom: 1px solid var(--antd-border); vertical-align: middle; }
+.a-table tr:last-child td { border-bottom: none; }
+.a-table tr:hover td { background: #fafafa; }
+
+.u-cell { display: flex; align-items: center; gap: 12px; }
+.u-cell img, .u-cell .ph-av {
+  width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+  background: #f0f0f5; border: 1px solid var(--antd-border);
+  display: flex; align-items: center; justify-content: center; color: #b8bccd; font-size: 14px;
+}
+.u-cell .nm { font-weight: 600; }
+.u-cell .em { font-size: 11.5px; color: var(--antd-t3); font-family: var(--font-mono); margin-top: 1px; }
+
+.status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 10px; border-radius: 999px; }
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.st-active { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; } .st-active::before { background: var(--green); }
+.st-pending { color: #d48806; background: #fffbe6; border: 1px solid #ffe58f; } .st-pending::before { background: var(--amber); }
+.st-disabled { color: rgba(0,0,0,.45); background: #fafafa; border: 1px solid #d9d9d9; } .st-disabled::before { background: #bbb; }
+
+.role-badge {
+  font-family: var(--font-mono); font-size: 11px; padding: 2px 9px; border-radius: 4px;
+}
+.role-admin { color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.35); }
+.role-user { color: var(--antd-t2); background: #fafafa; border: 1px solid #e0e0e0; }
+
+.num { font-family: var(--font-mono); font-size: 12.5px; }
+.ops { display: flex; gap: 4px; justify-content: flex-end; }
+.op-link { border: none; background: transparent; font-size: 13px; color: var(--accent); cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.op-link:hover { background: var(--accent-dim); }
+.op-link.danger { color: var(--red); }
+.op-link.danger:hover { background: rgba(248,81,73,.08); }
+
+/* 迁移提示条 */
+.mig-tip {
+  margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  background: var(--accent-dim); border: 1px solid rgba(94,106,210,.35); border-radius: var(--r-sm);
+  padding: 10px 16px; font-size: 13px; color: #3d4aa8;
+}
+
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px; }
+.pager .info { font-size: 13px; color: var(--antd-t3); margin-right: auto; }
+.pg-btn { min-width: 32px; height: 32px; border: 1px solid #d9d9d9; background: #fff; border-radius: var(--r-sm); font-size: 13px; color: var(--antd-t2); cursor: pointer; font-family: var(--font-mono); }
+.pg-btn.cur { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.pg-btn:hover:not(.cur) { color: var(--accent); border-color: var(--accent); }
+
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico">📊</span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico">📝</span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico">🖼</span>媒体库</a>
+    <a class="sb-item" href="admin-telegram.html"><span class="ico">📡</span>电报流治理<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-spider.html"><span class="ico">🕷</span>采集管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item active" href="admin-users.html"><span class="ico">👥</span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico">🔑</span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-home.html">↩ 返回前台站点</a></div>
+</aside>
+
+<div class="content">
+  <header class="a-header">
+    <h1>用户管理</h1>
+    <span class="crumb">/ 用户 · <b>296 位(全量迁移自旧站)</b></span>
+    <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+  </header>
+
+  <div class="a-body">
+
+    <div class="mig-tip">
+      ℹ 旧站 296 用户已全量迁移:<b>243 active</b> 可直接短信登录 · <b>53 pending_binding</b> 首次登录需绑定手机号后转 active。旧密码(phpass)未迁移,仅审计字段保留。
+    </div>
+
+    <div class="toolbar">
+      <div class="seg">
+        <button class="on">全部 296</button>
+        <button>✓ active 243</button>
+        <button>🔗 pending_binding 53</button>
+        <button>🚫 已禁用 2</button>
+      </div>
+      <div class="search-box">
+        <span style="color:#bbb">⌕</span>
+        <input placeholder="搜索昵称 / 手机号…">
+      </div>
+    </div>
+
+    <div class="card">
+      <table class="a-table">
+        <thead>
+          <tr>
+            <th style="width:44px"><input type="checkbox"></th>
+            <th>用户</th>
+            <th>角色</th>
+            <th>状态</th>
+            <th style="text-align:right">评论</th>
+            <th>注册时间</th>
+            <th>最近登录</th>
+            <th style="text-align:right; width:150px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="u-cell">
+                <img src="assets/avatar.jpg" alt="" onerror="this.remove()">
+                <div><div class="nm">诸葛东明</div><div class="em">138****1234 · uid 10086</div></div>
+              </div>
+            </td>
+            <td><span class="role-badge role-admin">admin</span></td>
+            <td><span class="status-badge st-active">active</span></td>
+            <td class="num" style="text-align:right">128</td>
+            <td class="num">2023-05-11</td>
+            <td class="num">2026-09-30 14:02</td>
+            <td><div class="ops"><span class="mono" style="font-size:11px; color:var(--antd-t3); align-self:center">当前登录</span></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="u-cell">
+                <div class="ph-av">A</div>
+                <div><div class="nm">Aiya_演进</div><div class="em">137****8821 · uid 10023</div></div>
+              </div>
+            </td>
+            <td><span class="role-badge role-user">user</span></td>
+            <td><span class="status-badge st-active">active</span></td>
+            <td class="num" style="text-align:right">42</td>
+            <td class="num">2022-08-03</td>
+            <td class="num">2026-09-29 21:30</td>
+            <td><div class="ops"><button class="op-link">资料</button><button class="op-link danger">禁用</button></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="u-cell">
+                <div class="ph-av">M</div>
+                <div><div class="nm">Markdown老玩家</div><div class="em">159****3402 · uid 10177</div></div>
+              </div>
+            </td>
+            <td><span class="role-badge role-user">user</span></td>
+            <td><span class="status-badge st-pending">pending_binding</span></td>
+            <td class="num" style="text-align:right">7</td>
+            <td class="num">2024-01-19</td>
+            <td class="num">未登录</td>
+            <td><div class="ops"><button class="op-link">资料</button><button class="op-link danger">禁用</button></div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="u-cell">
+                <div class="ph-av">L</div>
+                <div><div class="nm">LLM观察员</div><div class="em">186****5517 · uid 10290</div></div>
+              </div>
+            </td>
+            <td><span class="role-badge role-user">user</span></td>
+            <td><span class="status-badge st-active">active</span></td>
+            <td class="num" style="text-align:right">0</td>
+            <td class="num">2025-11-30</td>
+            <td class="num">2026-09-28 09:14</td>
+            <td><div class="ops"><button class="op-link">资料</button><button class="op-link danger">禁用</button></div></td>
+          </tr>
+          <tr style="opacity:.72">
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="u-cell">
+                <div class="ph-av">S</div>
+                <div><div class="nm">spam_bot_042</div><div class="em">170****0000 · uid 10102</div></div>
+              </div>
+            </td>
+            <td><span class="role-badge role-user">user</span></td>
+            <td><span class="status-badge st-disabled">已禁用</span></td>
+            <td class="num" style="text-align:right">0</td>
+            <td class="num">2023-02-14</td>
+            <td class="num">2023-02-15</td>
+            <td><div class="ops"><button class="op-link">资料</button><button class="op-link">启用</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="pager">
+        <span class="info">共 296 位 · 已选 0 位 · 手机号按掩码展示,完整值仅鉴权比对用</span>
+        <button class="pg-btn">‹</button>
+        <button class="pg-btn cur">1</button>
+        <button class="pg-btn">2</button>
+        <button class="pg-btn">3</button>
+        <span style="color:#bbb">…</span>
+        <button class="pg-btn">6</button>
+        <button class="pg-btn">›</button>
+      </div>
+    </div>
+
+    <div style="margin-top:14px; font-size:12px; color:var(--antd-t3); font-family:var(--font-mono)">
+      GET /api/users?page=&status= · PUT /api/users/[id]/status(禁用即吊销该用户全部会话)· 登录尝试/频控记 auth 事件日志
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.2.0 · M5 · <a href="index.html">← 原型索引</a></div>
+
+</body>
+</html>
