@@ -23,7 +23,7 @@ model Post {
   contentMd       String?       @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
   coverPath       String?       @map("cover_path") @db.VarChar(500)
   categoryId      BigInt        @map("category_id")
-  status          String        @default("draft") @db.VarChar(20) // draft/published
+  status          String        @default("draft") @db.VarChar(20) // draft/published/deleted(软删;下架=回 draft 保留 published_at;合法值应用层 Zod 管控,arch/03 枚举演进条款)
   isPinned        Boolean       @default(false) @map("is_pinned")
   viewsCount      BigInt        @default(0) @map("views_count")
   seoTitle        String?       @map("seo_title") @db.VarChar(255)
