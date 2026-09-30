@@ -1,0 +1,120 @@
+# 生产全栈(07 文档 §4):nginx 唯一对外,web/worker/pg/redis 仅内网
+# 部署:docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+# 本地验证:APP_IMAGE=aitech-hub:m3 docker compose -f docker-compose.prod.yml up -d
+#   (需 .env 配 POSTGRES_PASSWORD;workspace/ssl 放 fullchain.pem/privkey.pem;
+#   workspace/media 为迁移媒体——宿主机持久化数据统一收敛在 ./workspace/)
+name: aitech-hub-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# 应用容器公共环境:.env 提供业务变量(AUTH_SECRET/NEXT_PUBLIC_SITE_URL/SMS 等),
+# 数据面地址在这里覆盖为容器网内主机名(.env 里的 localhost 系 dev 值)
+x-app-env: &app-env
+  DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=10
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  nginx:
+    image: nginx:1.28-alpine
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro # 目录挂载遮盖镜像自带 default.conf
+      - ./workspace/ssl:/etc/nginx/ssl:ro
+      - ./workspace/media:/var/www/media:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    mem_limit: 128m
+    <<: *restart
+    logging: *logging
+
+  web:
+    image: ${APP_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub:latest}
+    # SERVICE_ROLE=web:entrypoint 先 prisma migrate deploy,再起 server + ISR 预热
+    environment:
+      SERVICE_ROLE: web
+      <<: *app-env
+    env_file:
+      - .env
+    volumes:
+      - ./workspace/media:/app/media:ro # /wp-content/** 应用侧兜底只读(Nginx 直服为主)
+    ports:
+      - "127.0.0.1:3000:3000" # 宿主回环发布:切换日 runbook curl 127.0.0.1:3000 验证用
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # slim 无 curl,用 node;尾斜杠必带(trailingSlash 下 /api/health 308)
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s # 首启含全量 migrate deploy,放宽
+    mem_limit: 768m
+    <<: *restart
+    logging: *logging
+
+  worker:
+    image: ${APP_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub:latest}
+    environment:
+      SERVICE_ROLE: worker
+      <<: *app-env
+    env_file:
+      - .env
+    volumes:
+      - ./workspace/media:/app/media # 媒体异步任务(M4)读写
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy # web entrypoint 先 migrate deploy;healthy 即 schema 就绪
+    mem_limit: 512m
+    <<: *restart
+    logging: *logging
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aitech
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}
+      POSTGRES_DB: aitech_hub
+      TZ: Asia/Shanghai # 每日 03:30 pg_dump 备份 cron 依本地时区(07 文档 §6)
+    volumes:
+      - ./workspace/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aitech -d aitech_hub"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+    <<: *restart
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    # AOF 持久化:BullMQ 队列与统计缓冲不因容器重启丢任务
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./workspace/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    mem_limit: 128m
+    <<: *restart
+    logging: *logging

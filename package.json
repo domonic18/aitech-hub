@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "worker": "tsx --env-file=.env worker/index.ts",
-    "worker:build": "tsc -p tsconfig.worker.json",
+    "worker:build": "tsc -p tsconfig.worker.json && tsc-alias -p tsconfig.worker.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -63,6 +63,7 @@
     "prettier": "^3.6.2",
     "prisma": "6.19.3",
     "tailwindcss": "^4",
+    "tsc-alias": "^1.9.5",
     "tsx": "^4.20.6",
     "typescript": "^5",
     "vitest": "^5.0.2"

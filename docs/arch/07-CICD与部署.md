@@ -39,22 +39,38 @@ make migrate   # npx prisma migrate deploy
 - `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`
 - **媒体目录不打进镜像**:compose 卷挂载,独立于发版
 
+### 3.1 构建期无 DB 降级与启动预热(2026-09-30 实测定型)
+
+- builder 无 env/DB:`ENV` 占位三件套(DATABASE_URL/REDIS_URL/AUTH_SECRET)过 Zod 校验;预渲染取数经 `lib/prerenderSafe`(仅 `NEXT_PHASE=phase-production-build` 生效)降级为空数据,**运行时 ISR 错误照常上抛不吞**
+- 降级产物在 revalidate 窗口内不会自动再生 → entrypoint 启动后 3s:先 `POST /api/internal/revalidate/`(AUTH_SECRET 派生 token,`revalidatePath("/", "layout")` + SEO 路由全量失效)再逐路径 fetch 触发同步再生;失效端点勿删,预热失败不阻塞启动
+- 实测踩坑(均已修,勿回退):
+  - runner 的 node_modules 必须取 **builder 层**(含 `prisma generate` 产物;取 deps 层会覆盖 standalone 内 traced 生成物,运行时报 `client did not initialize`)
+  - `HOSTNAME=0.0.0.0` 必须显式设——容器 HOSTNAME 是容器 ID,Next standalone 会当绑定地址,回环拒连(预热 ECONNREFUSED)
+  - slim 无 openssl,deps/runner 需 apt 安装(prisma 引擎探测)
+  - worker:build 须接 `tsc-alias`(`@/` 别名 emit 不改写,产物运行时崩)
+  - healthcheck 打 `/api/health/`(trailingSlash 308;compose 探针需带尾斜杠或 `-f` 跟随)
+- 镜像现状 2.33GB(runner 全量 node_modules,worker + prisma CLI 同镜像所需);M6 瘦身方向:`npm ci --omit=dev` + prisma CLI 去留决策(migrate 角色拆分或 CLI 入 dependencies),非一期阻塞
+
 ## 4. 生产拓扑与 Nginx(compose 服务)
 
+实现落位 `docker-compose.prod.yml`(project 名 `aitech-hub-prod`,与 dev compose 同机互不干扰):
+
 ```
-nginx        80/443(唯一对外;SSL 终结,证书卷挂载 ./ssl)
-  ├── /wp-content/uploads/*  → 静态 media/ 卷(immutable 长缓存;二期切 COS 反代,URL 不变)
-  ├── /_next/*、页面          → web:3000(Next.js 单体)
-  ├── /feed/                  → 301 /feed.xml
-  └── try_files 兜底:未命中新站路由 → /legacy/<path>(查 legacy_url_map)
-web:3000     仅内网(Next.js;SSR + API)
-worker       仅内网(BullMQ;同镜像 command 覆盖)
-redis / postgres  仅内网
+nginx        80/443(唯一对外;SSL 终结,证书卷挂载 workspace/ssl;80 全量 301 https)
+  ├── /wp-content/uploads/*  → 静态 media/ 卷直服(immutable 长缓存;二期切 COS 反代,URL 不变)
+  ├── /feed、/feed/          → 301 /feed.xml(nginx 层)
+  └── 其余全量反代 web:3000(原始请求串原样透传,中文编码 slug 不经 nginx 归一化)
+web:3000     内网 + 宿主回环发布 127.0.0.1:3000(切换日 runbook curl 验证用)
+worker       仅内网(同镜像,SERVICE_ROLE=worker;媒体卷读写)
+redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 ```
 
-- compose prod:`mem_limit` 全线(web 768m / worker 512m / pg 512m / redis 128m / nginx 128m,2C4G 起步值)+ `restart: unless-stopped` + 日志轮转(json-file 10m×3,范例同款)+ healthcheck(web `/api/health`、pg `pg_isready`、redis `ping`)
-- 部署顺序纪律:**起库健康 → `prisma migrate deploy` → 再起 web/worker**(漏跑迁移应用会因缺表报错,与范例同款铁律)
-- 证书:沿用旧站 `./ssl` 目录,compose 卷挂载
+- **legacy 兜底差异(实现沉淀)**:兜底已前移到应用层路由——单段旧路径由 `(site)/[slug]` 页承接,`/category/*`、`/tag/*` 页内 fallback,`/legacy/[...path]` 路由保留;实测 `legacy_url_map` 内多段路径仅 3 条且全落在专用路由,nginx 无需 error_page 拦截(还会误伤 API 404)
+- **媒体直服两个 nginx 坑(实测沉淀)**:①磁盘文件名为 percent-encoded(与应用侧 normalizeUrlPath 同因),`alias` 按解码后 URI 找文件必 404 → 用 `map $request_uri` 取未解码原始串拼路径;②alias 带变量时 nginx 仍追加"location 匹配后剩余 URI(已解码)",location 必须正则吃满整个 URI
+- compose prod:project 名隔离 + `mem_limit` 全线(web 768m / worker 512m / pg 512m / redis 128m / nginx 128m,2C4G 起步值)+ `restart: unless-stopped` + 日志轮转(json-file 10m×3)+ healthcheck(web `node fetch /api/health/`(slim 无 curl)、pg `pg_isready`、redis `ping`)
+- **部署顺序纪律由编排表达**:web/worker `depends_on` pg+redis healthy;worker 额外等 web healthy(web entrypoint 先跑 `prisma migrate deploy`,healthy 即 schema 就绪);nginx 等 web healthy
+- 镜像:`image: ${APP_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub:latest}`,服务器默认拉 TCR,本地验证 `APP_IMAGE=<local> 覆盖`;pg 口令经 `.env` 的 `POSTGRES_PASSWORD` 插值(web/worker 的 DATABASE_URL 由 compose 拼出,覆盖 .env 里的 dev 地址)
+- 证书:沿用旧站 `workspace/ssl` 目录(compose 卷挂载,gitignore),文件名 letsencrypt 惯例 `fullchain.pem`/`privkey.pem`
 
 ## 5. 同服务器原位切换 runbook(切换日执行)
 
@@ -63,7 +79,7 @@ redis / postgres  仅内网
 | # | 步骤 | 验证 |
 |---|------|------|
 | 1 | 服务器拉代码与镜像:`git pull && docker compose -f docker-compose.prod.yml pull` | 镜像 sha 与 CI 一致 |
-| 2 | 迁移:`npx prisma migrate deploy`;种子:`prisma/seed.ts`;建 admin:`npm run admin <phone>` | 台账到最新 |
+| 2 | 迁移(web 容器 entrypoint 已自动跑;复核:`docker compose -f docker-compose.prod.yml exec web npx prisma migrate deploy`,幂等);种子与 admin 同容器内执行:`exec web npx prisma db seed`、admin 建号脚本 | 台账到最新 |
 | 3 | `up -d` 全栈;`curl -H 'Host: 17aitech.com' http://127.0.0.1:3000/` 与 `/api/health` | 均 200 |
 | 4 | **入口切换**:443 流量从旧 Apache/WP 切到新 nginx(按生产现网入口形态:改宿主机反代 upstream 或停旧监听起新 nginx;执行前截图记录现网配置) | 见验收清单 |
 | 5 | 观察期(≥1 周):旧 WP 容器与 mysql 保持运行但不再对外 | 可随时回切 |
@@ -84,8 +100,8 @@ redis / postgres  仅内网
 
 | 对象 | 频率 | 方式 | 保留 |
 |------|------|------|------|
-| PostgreSQL | 每日 03:30(容器 cron) | `pg_dump -Fc` → `backups/` | 本地 14 天 + 每周一份拉回开发机 |
-| media/ | 每周日 | rsync 增量到备份盘 | 4 版本 |
+| PostgreSQL | 每日 03:30(容器 cron) | `pg_dump -Fc` → `workspace/backups/` | 本地 14 天 + 每周一份拉回开发机 |
+| workspace/media/ | 每周日 | rsync 增量到备份盘 | 4 版本 |
 | .env / ssl | 变更时 | 手动归档(密钥不入 git) | 永久 |
 
 恢复演练:M6 前做一次"备份 → 空目录恢复 → verify 全绿"完整演练(含 `migrate deploy` 重放)。
