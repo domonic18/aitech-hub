@@ -29,7 +29,10 @@
 | 多渠道分发·微信公众号(纯 API) | 一期稳定后;开发者模式已就绪(2026-09-29 核实) | `distribute` 队列 + `publish_channel` 状态表;正文图 uploadimg 转存 + doocs/md 式内联样式 HTML + draft/add 推草稿;届时补 arch 文档。CSDN 等无 API 渠道后置,形态届时再定 |
 | 封面 AI 文生图(腾讯云混元) | 与微信公众号分发并行或紧随其后 | 标题/摘要生成 prompt → 混元生图 → 多候选选用;与一期封面裁剪模板衔接 |
 | 站点内容 MCP(对外只读;一期创作 MCP 已交付,见 requirement §3.6) | llms.txt/md 直出一期落地后,智能体引用形成一定规模 | 同一 `/api/mcp` 端点增加对外只读工具集,把"搜索文章/读文章"暴露为 MCP 工具;远期 RAG 问答入口(战略定位见 requirement §1);设计落点 arch/04-ai-agent(占位) |
-| AI 资讯管道(自建采集) | 有稳定内容运营节奏后;**2026-09-30 需求细化为「电报流」产品形态**(requirement §4),概要设计与原型已落(arch/02-data-collection;原型 site-telegram / admin-telegram / admin-spider / hub 版 site-home) | Crawlee/BullMQ `crawler` 队列 + **复用 Python signer sidecar**([research/01-douyin-signer-eval.md](../research/01-douyin-signer-eval.md));电报表独立于文章库、`/telegram` noindex |
+| AI 资讯管道(自建采集) | 有稳定内容运营节奏后;**2026-09-30 需求细化为「电报流」并升级混合流**(requirement §4):文字资讯 + 短视频解读(抖音博主起步,扩展小红书/B站;版权红线与转写即删见 requirement §1),概要设计与原型 v0.3.0 已落(arch/02-data-collection;原型 site-telegram 混合流 / admin-telegram / admin-spider 解读服务 / site-home 控制台) | Crawlee/BullMQ `crawler` + `interpreter` 双队列 + **复用 Python signer sidecar**([research/01-douyin-signer-eval.md](../research/01-douyin-signer-eval.md));`social_account` 博主表 + telegram `media_type`/视频字段组;ASR/LLM 成本护栏(日预算/告警/时长上限);电报表独立于文章库、`/telegram` noindex |
+| Agent 搜索(首页控制台 + 结果页 Agent 化) | 与站点内容 MCP 同期;一期 M3 基础搜索已交付;2026-09-30 需求定稿(requirement §4) | 检索聚合 telegrams + content_post + github_repo(与站点内容 MCP 共用检索 service 层);AI 答案卡 + 引用溯源;PG 全文起步 vs pgvector 混合留立项;设计锚点 arch/04-ai-agent §3 |
+| 多租户博主订阅(「我的关注」;三期) | 三期:站点统一视频解读效果验证后 | `social_account` 加 user 维度;订阅准入/成本配额模型届时设计;轻入口已留(电报流置灰 chip + 个人中心入口卡),不出原型 |
+| 长视频切片 + AI 学习笔记(进阶) | 进阶:合作授权拿到长视频之后;**前期不实现、不出原型** | 授权先行(无授权不做);依赖短视频解读管道(`interpreter`)成熟 |
 | 图片迁 COS(URL 不变演进) | 流量包压力或磁盘吃紧 | `CosProvider` + Nginx 反代 origin(arch/08-media §1) |
 | 视频转码/封面自动化 | 自托管视频更新稳定 | COS 数据万象 snapshot;超规转码再评估 VOD |
 | giscus 评论 | GitHub 展示上线后(依赖 Discussions) | - |
