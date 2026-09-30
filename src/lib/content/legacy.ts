@@ -1,5 +1,5 @@
 /**
- * 旧 URL 承接(04 文档 §6):legacy_url_map 查表 + Redis 1h 缓存(含负缓存防穿透)。
+ * 旧 URL 承接(arch/07-frontend §6):legacy_url_map 查表 + Redis 1h 缓存(含负缓存防穿透)。
  * 两条消费路径:/(site)/legacy/[...path] 路由(prod Nginx 兜底转发),以及
  * /[slug]、/category/[slug]、/tag/[slug] 页面未命中文章时的同进程兜底
  * ("先新站路由、后映射表")。纯决策见 legacy-decide.ts(单测)。

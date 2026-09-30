@@ -3,7 +3,7 @@ set -e
 
 case "$SERVICE_ROLE" in
   web)
-    # 起应用前确保 schema 最新(02 文档 §1:起库健康后、起应用前必须执行)
+    # 起应用前确保 schema 最新(arch/03-data-model §1:起库健康后、起应用前必须执行)
     npx prisma migrate deploy
     # ISR 预热:镜像构建期无 DB,静态页为降级空产物(prerenderSafe),
     # 且 revalidate 窗口内不会自动再生——先调内部端点 on-demand 全量失效

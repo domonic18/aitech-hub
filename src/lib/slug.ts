@@ -1,5 +1,5 @@
 /**
- * slug 归一化唯一入口(04 文档 §3 红线)。
+ * slug 归一化唯一入口(arch/07-frontend §2 红线)。
  *
  * DB(wp 迁移与新文)统一存 percent-encoded 形态,且百分号十六进制为小写
  * (WordPress rawurlencode 口径,如 `2-pycharm%e5%ae%89...`)。路由层(App Router
@@ -39,7 +39,7 @@ export function normalizeSlug(raw: string): string {
 /**
  * URL 路径归一化:与 normalizeSlug 同一 decode→encode→小写十六进制流程,
  * 但用 encodeURI 保留 `/`(媒体路径如 `/wp-content/uploads/2024/04/图.png`
- * 的归一化入口,03 文档 §5;slug 场景仍必须走 normalizeSlug)。
+ * 的归一化入口(媒体路径场景,arch/08-media);slug 场景仍必须走 normalizeSlug)。
  */
 export function normalizeUrlPath(raw: string): string {
   if (!raw) return "";

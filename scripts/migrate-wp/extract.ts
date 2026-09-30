@@ -1,5 +1,5 @@
 /**
- * extract 阶段(03 文档 §10):只读连接源库 → artifacts/*.json。
+ * extract 阶段:只读连接源库 → artifacts/*.json。
  * 产物可重放,transform 及后续阶段不再连源库;dateStrings 防 mysql2 时区改写。
  */
 import { mkdir, writeFile } from "node:fs/promises";

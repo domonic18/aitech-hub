@@ -1,6 +1,6 @@
 # 数据模型与迁移管理
 
-> schema 唯一真相源是 `prisma/schema.prisma` + `prisma/migrations/`。本文定义表结构设计与迁移纪律;Prisma 模型名与 DB 表名的映射规则见 [01 文档 §3](01-项目结构与CLAUDE.md体系.md)。
+> schema 唯一真相源是 `prisma/schema.prisma` + `prisma/migrations/`。本文定义表结构设计与迁移纪律;Prisma 模型名与 DB 表名的映射规则见 [arch/06-project-structure §3](06-project-structure.md)。
 
 ## 1. 迁移纪律(Prisma Migrate 承载 SQL 台账制精神)
 
@@ -9,11 +9,11 @@
 - **执行**:`npx prisma migrate deploy`(**起库健康后、起应用前必须执行**);`_prisma_migrations` 台账 exactly-once、幂等
 - 开发流程:`prisma migrate dev --create-only` 生成 SQL → 人工评审 → 应用;禁止 `db push` 绕过迁移
 - 种子:`prisma/seed.ts`(幂等 upsert:四分类、站点配置);admin 不预置,首次部署 `npm run admin <phone>` 创建
-- **CI 重放守卫**:起临时 postgres:16 → `migrate deploy` 全量 → 再 deploy 一次验证幂等 → Prisma introspect 断言 schema 一致(06 文档 §5)
+- **CI 重放守卫**:起临时 postgres:16 → `migrate deploy` 全量 → 再 deploy 一次验证幂等 → Prisma introspect 断言 schema 一致(standard/01-testing §5)
 
 ## 2. 一期表结构(0000_init 的设计依据)
 
-域前缀:`content_` / `user_` / `stats_` / `legacy_`;视频字段按 08 文档决策已内建。站点统计聚合族与 `user_pat` 为 2026-09-29 需求补充(requirement §3.5/§3.6),属一期表,随 `0000_init` 基线建表。
+域前缀:`content_` / `user_` / `stats_` / `legacy_`;视频字段按 arch/08-media 决策已内建。站点统计聚合族与 `user_pat` 为 2026-09-29 需求补充(requirement §3.5/§3.6),属一期表,随 `0000_init` 基线建表。
 
 ### 2.1 content_(内容域)
 
@@ -80,14 +80,14 @@ CREATE TABLE content_media (
     duration_seconds INT,                            -- 视频用;图片 NULL
     thumb_path       VARCHAR(500),                   -- 缩略图/视频封面(WebP)
     sha1             CHAR(40),                       -- 重复检测与去重
-    storage          VARCHAR(20) NOT NULL DEFAULT 'local',  -- local/cos(08 文档演进)
+    storage          VARCHAR(20) NOT NULL DEFAULT 'local',  -- local/cos(arch/08-media 演进)
     wp_attachment_id BIGINT,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX uq_content_media_path ON content_media (path);
 CREATE INDEX idx_content_media_kind_status ON content_media (kind, status);
 
--- 媒体引用追踪:文章保存时解析正文/封面写入;孤儿/断链清洗的地基(08 文档 §3)
+-- 媒体引用追踪:文章保存时解析正文/封面写入;孤儿/断链清洗的地基(arch/08-media §3)
 CREATE TABLE content_media_ref (
     media_path VARCHAR(500) NOT NULL,
     post_id    BIGINT NOT NULL REFERENCES content_post(id) ON DELETE CASCADE,
@@ -207,4 +207,11 @@ CREATE TABLE legacy_url_map (
 - Prisma client 单例 `lib/db.ts`(dev 环境 globalThis 缓存防热更像);**禁止第二实例**
 - 关系:Post↔Tag 显式多对多表(`content_post_tag` 用 `@@id([postId, tagId])` 复合主键建模),不用 Prisma 隐式 m2m(保 SQL 可控)
 - 约束/索引命名:unique 与普通索引经 schema `map` 直接落 `uq_<table>_<cols>` / `idx_*` 规范(如 `uq_content_post_slug`);**PK/FK 保留 Prisma 默认名**(`content_post_pkey` / `*_fkey`)——Prisma schema 层无法表达 FK 命名,硬改会导致 introspect 断言(CI 重放守卫)永久报差异;一致性校验优先于命名美学(2026-09-29 实施定)
+- 枚举字段(`status`/`role`/`kind`/`storage`/`source_class` 等)统一 VARCHAR + 注释枚举,**不加 DB CHECK 约束**:合法值由应用层 Zod 边界校验管控,演进免改库约束;`chk_` 前缀规范随之废止(2026-09-30 定)
 - 禁止 `prisma db push`、禁止 `interceptDataLayer` 外的裸 SQL(迁移脚本除外)
+
+## 4. 数据订正规范(生产修数)
+
+- 订正一律走**一次性 TS 脚本**放 `scripts/`(pg Pool + SQL,可评审可重放);**禁止直连生产 psql 手改**,禁止在应用运行时热修数据
+- 脚本结构:先打印影响行预览(默认 dry-run,显式传参才执行)→ 单事务执行 → 打印结果;**破坏性订正(批量 UPDATE/DELETE)执行前先 `pg_dump -Fc -t <表>`** 落 `workspace/backups/`
+- 订正不改变 schema 语义——涉及表/列/约束的变更走 §1 迁移,不得以订正绕过;订正脚本完成后留存入库不删除(溯源)

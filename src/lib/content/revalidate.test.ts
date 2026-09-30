@@ -6,7 +6,7 @@ vi.mock("next/cache", () => ({ revalidatePath: (...args: unknown[]) => revalidat
 
 import { revalidatePostPaths } from "./revalidate";
 
-describe("revalidatePostPaths(保存时按需失效,04 文档 §1)", () => {
+describe("revalidatePostPaths(保存时按需失效,arch/07-frontend §1)", () => {
   beforeEach(() => {
     revalidatePath.mockClear();
   });

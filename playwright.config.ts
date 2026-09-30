@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * E2E 冒烟(06 文档 §4,5 条以内):本地全栈验收,前置条件——
+ * E2E 冒烟(standard/01-testing §4,5 条以内):本地全栈验收,前置条件——
  *   1. `npm run build`(用例打的是构建产物,CI app job 不构建,E2E 在本地/发布前跑)
  *   2. pg(5434)/ redis(6380)在位且已迁移(154 篇文章 + legacy 映射)
  */

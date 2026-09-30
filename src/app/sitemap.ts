@@ -4,7 +4,7 @@ import { listAllPostsForSeo } from "@/lib/content/posts";
 import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
 import { absoluteUrl } from "@/lib/seo/site";
 
-/** sitemap(04 文档 §3:全部 published 文章 + 分类 + 标签 + 静态页;lastModified 取 updated_at) */
+/** sitemap(arch/07-frontend §3:全部 published 文章 + 分类 + 标签 + 静态页;lastModified 取 updated_at) */
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

@@ -49,7 +49,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # 从零全量应用(06 文档 §5)
+      # 从零全量应用(standard/01-testing §5)
       - run: npx prisma migrate deploy
       # 第二次 deploy 必须无错(exactly-once 台账幂等)
       - run: npx prisma migrate deploy

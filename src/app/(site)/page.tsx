@@ -3,7 +3,7 @@ import PostListView from "@/components/site/PostListView";
 import { listLatestPosts, listPinnedPosts } from "@/lib/content/posts";
 import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
-/** 首页(04 文档 §1:ISR 600s;最新 + 精选) */
+/** 首页(arch/07-frontend §1:ISR 600s;最新 + 精选) */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {

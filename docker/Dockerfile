@@ -1,4 +1,4 @@
-# 多阶段构建(07 文档 §3):deps → builder → runner
+# 多阶段构建(standard/02-cicd-deployment §3):deps → builder → runner
 # 同一镜像双角色:SERVICE_ROLE=web|worker 由 entrypoint 区分启动目标
 FROM node:22-slim AS deps
 WORKDIR /app

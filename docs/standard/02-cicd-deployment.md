@@ -1,5 +1,6 @@
 # CICD 与部署
 
+> 本文属 `docs/standard/`(稳定规范:内容不轻易变更,随实现漂移的过程细节回 arch 文档)。
 > 参照 ai-invest-assisstant 的 GitHub Actions → 腾讯云 TCR → 服务器 compose 拉取模式;叠加本项目特有的"同服务器原位切换" runbook。单体架构:一个应用镜像(web + worker 两个服务共用)。
 
 ## 1. 流水线总览(.github/workflows/ci.yml)
@@ -8,12 +9,14 @@
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
 ├── job migration [条件:prisma/** 变更] 起 postgres:16 → migrate deploy 全量 →
-│                 幂等重放 → db pull 一致性断言 → seed.ts 幂等断言(06 文档 §5)
+│                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 └── job build     [依赖 app] next build(standalone)+ tsc 编译 worker → 产物健康
 
 push(main)
 └── job release   全绿 → docker build 单镜像 → 推 TCR(tag = git 短 sha + latest)
 ```
+
+> 当前实装:上图中 `app` + `migration` 两 job(见 `.github/workflows/ci.yml`);`build`/`release` 随 M6 接入,图为目标态。
 
 - Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
@@ -41,7 +44,7 @@ make migrate   # npx prisma migrate deploy
 ## 3. 镜像(docker/Dockerfile)
 
 - 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
-- 产物:`.next/standalone` + `.next/static` + `worker-dist/` + `prisma/`(migrate 需 schema);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
+- 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
 - `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`
 - **媒体目录不打进镜像**:compose 卷挂载,独立于发版
 

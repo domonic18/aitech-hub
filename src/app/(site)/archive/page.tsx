@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/archive/" },
 };
 
-/** 归档(04 文档 §1:ISR 600s;按年分组,154 篇量级单页承载) */
+/** 归档(arch/07-frontend §1:ISR 600s;按年分组,154 篇量级单页承载) */
 export default async function ArchivePage(): Promise<React.ReactElement> {
   const posts = await listArchivePosts();
   const byYear = new Map<number, typeof posts>();

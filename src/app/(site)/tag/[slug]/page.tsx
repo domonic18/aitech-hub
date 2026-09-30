@@ -13,7 +13,7 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-/** 标签 slug 为 DB 原始(可能 percent-encoded 中文)形态(04 文档 §2 规则 5) */
+/** 标签 slug 为 DB 原始(可能 percent-encoded 中文)形态(arch/07-frontend §2 规则 5) */
 export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
   return (await listTagSlugsForPrerender()).map((slug) => ({ slug }));
 }

@@ -15,7 +15,7 @@ describe("normalizeSlug", () => {
   });
 
   it("十六进制大写形态 → 归一为小写(与 DB 一致);字面字母不动", () => {
-    // 仅 %XX 部分大写:DB 口径为小写十六进制,字面大写字母不转(03 文档:不做任何改写)
+    // 仅 %XX 部分大写:DB 口径为小写十六进制,字面大写字母不转(迁移红线:slug 不做任何改写)
     const upperHex = WP_SLUG.replace(/%[0-9a-f]{2}/g, (m) => m.toUpperCase());
     expect(normalizeSlug(upperHex)).toBe(WP_SLUG);
     expect(normalizeSlug("2-PyCharm 安装")).toBe("2-PyCharm%20%e5%ae%89%e8%a3%85");
@@ -58,7 +58,8 @@ describe("normalizeSlug", () => {
 });
 
 describe("normalizeUrlPath", () => {
-  const UPLOAD_URL = "/wp-content/uploads/2024/04/%e4%bb%a3%e7%a0%81%e8%87%aa%e5%8a%a8%e8%a1%a5%e5%85%a8.png";
+  const UPLOAD_URL =
+    "/wp-content/uploads/2024/04/%e4%bb%a3%e7%a0%81%e8%87%aa%e5%8a%a8%e8%a1%a5%e5%85%a8.png";
 
   it("已编码路径原样保留,路径分隔符不编码(媒体路径主路径)", () => {
     expect(normalizeUrlPath(UPLOAD_URL)).toBe(UPLOAD_URL);

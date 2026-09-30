@@ -1,4 +1,4 @@
-# 生产全栈(07 文档 §4):nginx 唯一对外,web/worker/pg/redis 仅内网
+# 生产全栈(standard/02-cicd-deployment §4):nginx 唯一对外,web/worker/pg/redis 仅内网
 # 部署:docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
 # 本地验证:APP_IMAGE=aitech-hub:m3 docker compose -f docker-compose.prod.yml up -d
 #   (需 .env 配 POSTGRES_PASSWORD;workspace/ssl 放 fullchain.pem/privkey.pem;
@@ -94,7 +94,7 @@ services:
       POSTGRES_USER: aitech
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}
       POSTGRES_DB: aitech_hub
-      TZ: Asia/Shanghai # 每日 03:30 pg_dump 备份 cron 依本地时区(07 文档 §6)
+      TZ: Asia/Shanghai # 每日 03:30 pg_dump 备份 cron 依本地时区(standard/02-cicd-deployment §6)
     volumes:
       - ./workspace/postgres:/var/lib/postgresql/data
     healthcheck:

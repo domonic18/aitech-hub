@@ -12,7 +12,7 @@ import { absoluteUrl } from "@/lib/seo/site";
 import { normalizeSlug } from "@/lib/slug";
 
 /**
- * 文章详情(04 文档 §1/§2):ISR + 按需 revalidate(M5 保存时直调);
+ * 文章详情(arch/07-frontend §1/§2):ISR + 按需 revalidate(M5 保存时直调);
  * generateStaticParams 返回 DB 原始(编码形态)slug,构建期全量预渲染。
  */
 export const revalidate = 600;
@@ -52,7 +52,7 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
   const { slug } = await params;
   const normalized = normalizeSlug(slug);
   const post = await getPostBySlug(normalized);
-  // 先新站路由、后映射表(04 文档 §6):未命中文章走 legacy 永久重定向,再 404
+  // 先新站路由、后映射表(arch/07-frontend §6):未命中文章走 legacy 永久重定向,再 404
   if (!post) {
     await legacyRedirectOrNotFound([slug]); // 必抛(redirect/notFound)
     notFound();
@@ -96,7 +96,7 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
 
       {post.coverPath ? (
         <div className="relative mt-6 aspect-[2.35/1] overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-900">
-          {/* /wp-content/** 由 Nginx 直接服务,不走 next/image 优化器(04 文档 §3;本地为 wp-content 路由兜底) */}
+          {/* /wp-content/** 由 Nginx 直接服务,不走 next/image 优化器(arch/07-frontend §3;本地为 wp-content 路由兜底) */}
           <Image
             src={post.coverPath}
             alt={post.title}

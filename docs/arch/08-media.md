@@ -41,7 +41,7 @@
 ### 3.1 引用追踪(所有清洗的地基)
 
 - `content_media_ref(media_path, post_id)`:文章保存时由 `lib/media/refs.ts` 解析 content_md(图片/视频语法)与 content_html(`img[src]`、VideoPlayer 数据)提取引用,**先删后插**该文的引用行;封面 cover_path 同步纳入
-- 迁移脚本 load 阶段同样为 154 篇旧文建立引用行(与 §03 迁移设计的媒体闭包同源逻辑,复用 `refs.ts`)
+- 迁移脚本 load 阶段同样为 154 篇旧文建立引用行(与 WP 迁移的媒体闭包同源逻辑,复用 `refs.ts`)
 
 ### 3.2 三类体检与处置
 

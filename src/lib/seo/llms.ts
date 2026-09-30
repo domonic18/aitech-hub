@@ -1,7 +1,7 @@
 /**
  * GEO 内容面构造(requirement §3.2 智能体可见性):
  *  - buildLlmsIndex:站点结构的 AI 目录(llms.txt,标题 + 链接 + 一句话摘要,分节同 sitemap);
- *  - buildLlmsFullParts:全量文章 Markdown 拼合,按字符上限分页(llms-full-N.txt,04 文档 §3)。
+ *  - buildLlmsFullParts:全量文章 Markdown 拼合,按字符上限分页(llms-full-N.txt,arch/07-frontend §3)。
  * 纯构造,Route Handler(ISR 1h)调用;md 来源:content_md 优先,旧文由清洗后 HTML 转换。
  */
 import { htmlToMarkdown } from "@/lib/content/html-to-md";

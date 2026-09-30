@@ -1,5 +1,5 @@
 /**
- * 文章读侧 service(RSC 页面与 SEO Route Handler 共用;05 文档 §1:
+ * 文章读侧 service(RSC 页面与 SEO Route Handler 共用;arch/05-services §1:
  * 页面禁止裸 Prisma,一律经 service;复杂查询集中本目录)。
  * 写侧(保存钩子/revalidate 编排)随 M5 管理后台落地。
  */
@@ -28,7 +28,7 @@ export type PostListItem = Awaited<ReturnType<typeof listLatestPosts>>[number];
 export const PUBLISHED = { status: "published", publishedAt: { not: null } } as const;
 const ORDER = [{ publishedAt: "desc" }, { id: "desc" }] as const;
 
-/** 详情:slug 经 normalizeSlug(红线,04 文档 §3);仅已发布 */
+/** 详情:slug 经 normalizeSlug(红线,arch/07-frontend §3);仅已发布 */
 export async function getPostBySlug(rawSlug: string) {
   const slug = normalizeSlug(rawSlug);
   if (!slug) return null;
@@ -132,7 +132,7 @@ export async function listArchivePosts(): Promise<ArchivePost[]> {
   });
 }
 
-/** generateStaticParams 数据源:返回 DB 原始(编码形态)slug;构建期无库时降级为按需 ISR(04 文档 §2 规则 5) */
+/** generateStaticParams 数据源:返回 DB 原始(编码形态)slug;构建期无库时降级为按需 ISR(arch/07-frontend §2 规则 5) */
 export async function listPostSlugsForPrerender(): Promise<string[]> {
   try {
     const rows = await prisma.post.findMany({ where: PUBLISHED, select: { slug: true } });

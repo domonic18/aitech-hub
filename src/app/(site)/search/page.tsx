@@ -4,7 +4,7 @@ import PostListView from "@/components/site/PostListView";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
 import { searchPosts } from "@/lib/content/posts";
 
-/** 搜索(04 文档 §1:动态 SSR,每请求查询;标题/摘要 LIKE,requirement §3.1) */
+/** 搜索(arch/07-frontend §1:动态 SSR,每请求查询;标题/摘要 LIKE,requirement §3.1) */
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {

@@ -1,10 +1,10 @@
 /**
- * 站点统计 service(requirement §3.5;05 文档 §1 分层):
+ * 站点统计 service(requirement §3.5;arch/05-services §1 分层):
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
- *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,05 文档 §5)。
+ *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5)。
  *  - flushStatsBuffer:worker 每 60s 将缓冲 RENAME 后落库聚合表
  *    (stats_visit/referrer/page/client/post_view_daily + views_count 累加)。
- * 复杂聚合 SQL 集中本文件($executeRaw 仅 service 层内合法,05 文档 §2)。
+ * 复杂聚合 SQL 集中本文件($executeRaw 仅 service 层内合法,arch/05-services §2)。
  */
 import { createHash } from "node:crypto";
 
@@ -17,7 +17,7 @@ import { normalizeSlug } from "@/lib/slug";
 import { classifyReferrer, isBotUa, normalizePagePath, parseClient, visitorHash } from "./classify";
 
 const DAY_TTL_SECONDS = 86400; // UV 日去重窗口(当日有效)
-const POST_DEDUP_TTL_SECONDS = 3600; // 文章阅读去重窗口(05 文档:IP+UA 去重窗口 1h)
+const POST_DEDUP_TTL_SECONDS = 3600; // 文章阅读去重窗口(arch/05-services:IP+UA 去重窗口 1h)
 const BUFFER_TTL_SECONDS = 172800; // 缓冲键兜底过期(worker 长期不可用时防堆积)
 const POSTMAP_TTL_SECONDS = 3600; // slug→postId 解析缓存(含负缓存 "0")
 

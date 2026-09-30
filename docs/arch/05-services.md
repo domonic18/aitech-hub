@@ -47,7 +47,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 ### 3.3 安全红线
 
 - 外部输入一律 Zod 边界校验;上传类型+大小白名单,文件名重生成(sha1)
-- Origin/Host 校验:所有 mutation 类 Route Handler(§04 文档 §4)
+- Origin/Host 校验:所有 mutation 类 Route Handler(arch/07-frontend §4)
 - CORS:Next 同源架构默认无跨域;若未来开放 API 再显式配置白名单
 - 安全事件记录:登录尝试/验证码频控/权限拒绝/上传拒绝
 
@@ -56,7 +56,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 ### 4.1 队列与纪律
 
 - 单 Redis,队列按域命名:`media`(一期)、`github`、`crawler`、`pay`(二期启用)
-- **请求内禁做秒级以上处理**(00 文档 §7):一切转码/压缩/抓取/同步 enqueue 后立即返回 `{ jobId }`
+- **请求内禁做秒级以上处理**(arch/00-overview §7):一切转码/压缩/抓取/同步 enqueue 后立即返回 `{ jobId }`
 - 任务幂等:所有 processor 以业务键去重(jobId 用 `media:{sha1}:process` 形态),可重复投递
 - worker 独立进程 `worker/index.ts`:注册 processors、优雅退出(SIGTERM 排空)、失败重试(指数退避,上限 3 次)+ 死信记录
 
@@ -66,10 +66,10 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 |------|------|------|------|
 | media | `media.process` | 上传成功后 enqueue | sharp:主图 WebP 副本 + 缩略图(thumb_path)、宽高回填、sha1 入库 |
 | media | `media.transfer` | md 导入对外链图 enqueue | 抓取外链图片 → LocalDiskProvider 入库(sha1)→ 链式复用 media.process;失败标 error 供编辑器提示 |
-| media | `media.audit` | 每日定时(BullMQ repeatable) | 孤儿/断链/重复扫描,更新 status 与统计(08 文档 §3) |
+| media | `media.audit` | 每日定时(upsertJobScheduler,同 §3.1 实现注) | 孤儿/断链/重复扫描,更新 status 与统计(arch/08-media §3) |
 | stats | `stats.flush` | 每 60s(upsertJobScheduler) | 日缓冲 RENAME→HGETALL→聚合表 UPSERT(visit/referrer/page/client/post_view_daily + views_count 累加);失败还原缓冲下轮重试(`lib/stats/service.ts`) |
 
-二期任务(立项时补设计):`github.sync`(仓库同步)、`crawler.*`(Crawlee 资讯采集)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询)。
+二期任务(立项时补设计):`github.sync`(仓库同步)、`crawler.*`(Crawlee 资讯采集,设计落点 arch/02-data-collection)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。
 
 ### 4.3 本地与部署形态
 

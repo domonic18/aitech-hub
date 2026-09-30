@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 本地一键初始化(00 文档 §6 / 07 文档 §2):env → 依赖 → pg/redis → 迁移 → 种子
+# 本地一键初始化(arch/00-overview §6 / standard/02-cicd-deployment §2):env → 依赖 → pg/redis → 迁移 → 种子
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

@@ -34,7 +34,7 @@ export async function getCategoryBySlug(rawSlug: string) {
   return prisma.category.findUnique({ where: { slug } });
 }
 
-/** 有已发布文章的标签(空标签不展示,05 文档口径:仅保留文章关联的标签) */
+/** 有已发布文章的标签(空标签不展示,arch/05-services 口径:仅保留文章关联的标签) */
 export async function listTagsWithCount() {
   return prerenderSafe("taxonomy.tagsWithCount", [], async () => {
     const rows = await prisma.tag.findMany({
