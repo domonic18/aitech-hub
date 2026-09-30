@@ -1,9 +1,23 @@
+import { loadEnvConfig } from "@next/env";
+import bcrypt from "bcryptjs";
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
 
 /**
- * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/登录(M4)/SEO 端点。
+ * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/admin 登录(M4)/SEO 端点。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
+
+loadEnvConfig(process.cwd());
+const prisma = new PrismaClient();
+
+/** e2e 专用 admin 账号(本地库幂等 upsert;与开发者个人账号隔离) */
+const E2E_ADMIN_PHONE = "13800000000";
+const E2E_ADMIN_PASSWORD = "e2e-admin-pass1";
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 const LEGACY_TO_ARTICLES =
   "/%e9%a6%96%e4%b8%aagpu%e9%ab%98%e7%ba%a7%e8%af%ad%e8%a8%80%ef%bc%8c%e5%a4%a7%e8%a7%84%e6%a8%a1%e5%b9%b6%e8%a1%8c%e5%b0%b1%e5%83%8f%e5%86%99python%ef%bc%8c%e5%b7%b2%e8%8e%b78500-star/";
 const LEGACY_TO_HOME = "/ai%e8%a7%86%e9%a2%91%e5%b7%a5%e5%85%b7/";
@@ -100,8 +114,50 @@ test("3. 弃用 slug:route 精确 301;单段直开永久重定向", async ({ req
   expect((await request.get("/legacy/no/such/path/", { maxRedirects: 0 })).status()).toBe(404);
 });
 
-test("4. 登录流(依赖 M4 短信登录)", async () => {
-  test.skip(true, "M4 实现后补:集成环境注入 SMS_E2E_BYPASS_CODE(standard/01-testing §4)");
+test("4. admin 登录流(M4:守卫预检/密码登录/爆破提示/会话吊销)", async ({ page }) => {
+  const passwordHash = await bcrypt.hash(E2E_ADMIN_PASSWORD, 10);
+  await prisma.userAccount.upsert({
+    where: { phone: E2E_ADMIN_PHONE },
+    update: { role: "admin", status: "active", passwordHash },
+    create: {
+      phone: E2E_ADMIN_PHONE,
+      nickname: "e2e-admin",
+      role: "admin",
+      status: "active",
+      passwordHash,
+    },
+  });
+
+  // 4.1 未登录访问 /admin → middleware 预检跳登录页
+  await page.goto("/admin");
+  expect(new URL(page.url()).pathname).toBe("/admin/login");
+
+  // 4.2 错误密码 → 模糊提示(不区分账号锁定/密码错)
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill("wrong-pass-9");
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await expect(page.getByText("手机号或密码不正确")).toBeVisible();
+
+  // 4.3 正确密码 → 回跳 /admin(登录成功同时清空失败计数)
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL("**/admin");
+  await expect(page.getByText("站点统计").first()).toBeVisible();
+
+  // 4.4 会话吊销:UI 登出后把旧 Cookie 复放回去,/admin 仍拒——
+  //     middleware 只查 exp 会放行,guard 的 Redis jti 双查兜底(防"签发后即吊销"窗口)
+  const oldCookie = (await page.context().cookies()).find((c) => c.name === "ah_at");
+  expect(oldCookie).toBeTruthy();
+
+  await page.getByRole("button", { name: "e2e-admin" }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
+  await page.waitForURL("**/admin/login");
+
+  await page
+    .context()
+    .addCookies([{ name: "ah_at", value: oldCookie!.value, domain: "localhost", path: "/" }]);
+  await page.goto("/admin");
+  expect(new URL(page.url()).pathname).toBe("/admin/login");
 });
 
 test("5. SEO/GEO 端点:sitemap、feed、robots、llms.txt、文章 .md 直出", async ({ request }) => {

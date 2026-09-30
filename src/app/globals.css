@@ -1,27 +1,213 @@
 @import "tailwindcss";
 
+/*
+ * 设计 token(唯一真相源:docs/prototypes/common.css;DESIGN-SPEC v1.0,2026-09-30 M4 落地)
+ * - 双主题:暗黑为基底、明亮可选;html[data-theme] 切换,禁新增第三主题、禁跟随系统主题
+ * - 前台与后台同一组 token,任何主题下同一风格
+ * - M4 注记:前台 M3 页面暗色回补在二期(Hub 化同批),应用默认 light,
+ *   admin 壳层经顶栏胶囊即时切换双主题;二期 Hub 切换时默认改 dark(arch/07 §5)
+ */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 背景三层(深空) */
+  --bg: #0c0e12;
+  --panel: #181a21;
+  --panel-2: #1f2229;
+  --border: #2a2d37;
+
+  /* 品牌主色(靛蓝) */
+  --accent: #5e6ad2;
+  --accent-hover: #6e7ae2;
+  --accent-dim: rgba(94, 106, 210, 0.14);
+  --accent-hi: #8b96e8;
+
+  /* 语义色 */
+  --green: #2ea043;
+  --green-hi: #7ee2a0;
+  --red: #f85149;
+  --red-hi: #ff8f88;
+  --amber: #d29922;
+  --amber-hi: #ecc06a;
+  --blue: #3b82f6;
+
+  /* 文本三级 */
+  --text-1: #e6e8ee;
+  --text-2: #9aa1ad;
+  --text-3: #6b7280;
+
+  /* 氛围(仅暗色使用) */
+  --glow: rgba(94, 106, 210, 0.55);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 12px 40px rgba(0, 0, 0, 0.35);
+
+  /* 派生(吸顶栏玻璃底 / 控件 hover 描边) */
+  --header-bg: rgba(12, 14, 18, 0.82);
+  --border-hover: #3d4260;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f2f3f6;
+  --border: #e3e6eb;
+
+  --accent: #5e6ad2;
+  --accent-hover: #4c56b8;
+  --accent-dim: rgba(94, 106, 210, 0.1);
+  --accent-hi: #4c56b8;
+
+  --green: #1a7f37;
+  --green-hi: #1a7f37;
+  --red: #cf222e;
+  --red-hi: #cf222e;
+  --amber: #9a6700;
+  --amber-hi: #9a6700;
+  --blue: #0969da;
+
+  --text-1: #1f2328;
+  --text-2: #57606a;
+  --text-3: #8c959f;
+
+  --glow: rgba(94, 106, 210, 0.35);
+  --shadow-lg: 0 8px 24px rgba(30, 35, 60, 0.08);
+  --shadow-sm: 0 4px 16px rgba(30, 35, 60, 0.06);
+
+  --header-bg: rgba(246, 247, 249, 0.82);
+  --border-hover: #c9cfd8;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 字体(双主题共用;不加载大 webfont,arch/07 §3) */
+  --font-sans:
+    Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+
+  /* 圆角 */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* 布局常量 */
+  --site-header-h: 64px;
+  --site-max-w: 1200px;
+  --admin-sidebar-w: 220px;
+  --admin-header-h: 56px;
 }
 
+/* Tailwind v4 工具类映射(类名 → token;禁在类外写裸色值) */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--border);
+  --color-line-hover: var(--border-hover);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-hi: var(--accent-hi);
+  --color-green: var(--green);
+  --color-green-hi: var(--green-hi);
+  --color-red: var(--red);
+  --color-red-hi: var(--red-hi);
+  --color-amber: var(--amber);
+  --color-amber-hi: var(--amber-hi);
+  --color-blue: var(--blue);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-sm: var(--shadow-sm);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text-1);
   /* 中文系统字体栈,不加载大 webfont(arch/07-frontend §3) */
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* ---- SVG 图标(DESIGN-SPEC §4;全站禁 emoji 作图标) ----
+ * 引用:<svg className="ic"><use href="#i-xxx"/></svg>;currentColor 继承文字色 */
+.ic {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  fill: currentColor;
+  flex: none;
+}
+.ic-sm {
+  width: 12px;
+  height: 12px;
+  vertical-align: -1.5px;
+}
+.ic-lg {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+}
+
+/* ---- 主题胶囊(DESIGN-SPEC §5:44×24 分段滑块,滑块 0.2s) ----
+ * 暗色=滑块压左(月亮亮白);亮色=滑块滑右(太阳亮白) */
+.theme-toggle {
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  position: relative;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.theme-toggle:hover {
+  border-color: var(--border-hover);
+}
+.tt-track {
+  position: absolute;
+  inset: 2px;
+}
+.tt-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+  transition: transform 0.2s ease;
+}
+[data-theme="light"] .tt-thumb {
+  transform: translateX(20px);
+}
+.tt-ic {
+  position: absolute;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-3);
+  transition: color 0.2s;
+}
+.tt-moon {
+  left: 3px;
+}
+.tt-sun {
+  right: 3px;
+}
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun {
+  color: #ffffff;
 }

@@ -15,8 +15,11 @@ lint:             ## eslint
 typecheck:        ## tsc --noEmit
 	npm run typecheck
 
-test:             ## vitest 单测
+test:             ## vitest 单测(无外部依赖;CI 同款)
 	npm run test:unit
+
+test-integration: ## vitest 集成测试(需 dev compose 的 pg/redis:make setup 后可用)
+	npm run test:integration
 
 build:            ## next build(standalone)+ worker 编译
 	npm run build && npm run worker:build
