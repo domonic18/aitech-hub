@@ -5,20 +5,17 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { needsRenewal, readFullSessionUser, renewSession, sessionCookie } from "@/lib/auth/issuer";
+import { apiEnvelope } from "@/lib/http/response";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const claims = await readFullSessionUser(req.headers.get("cookie"));
   if (!claims) {
-    return NextResponse.json({ code: 0, message: "ok", data: { user: null } });
+    return apiEnvelope(0, "ok", { user: null });
   }
 
-  const res = NextResponse.json({
-    code: 0,
-    message: "ok",
-    data: { user: { sub: claims.sub, role: claims.role } },
-  });
+  const res = apiEnvelope(0, "ok", { user: { sub: claims.sub, role: claims.role } });
   if (needsRenewal(claims)) {
     res.cookies.set(sessionCookie(await renewSession(claims)));
   }

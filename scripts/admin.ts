@@ -8,6 +8,7 @@ import { loadEnvConfig } from "@next/env";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { stdin, stdout } from "node:process";
+import { ADMIN_ROLE } from "../src/lib/auth/constants";
 import { maskPhone } from "../src/lib/auth/mask";
 import { PHONE_RE, validatePassword } from "../src/lib/auth/rules";
 
@@ -92,8 +93,8 @@ async function main(): Promise<void> {
 
   const user = await prisma.userAccount.upsert({
     where: { phone },
-    update: { role: "admin", passwordHash, status: "active" },
-    create: { phone, role: "admin", status: "active", passwordHash },
+    update: { role: ADMIN_ROLE, passwordHash, status: "active" },
+    create: { phone, role: ADMIN_ROLE, status: "active", passwordHash },
   });
 
   console.log(

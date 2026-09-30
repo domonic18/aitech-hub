@@ -54,19 +54,7 @@ test("1. 首页 200 且含最新文章卡", async ({ request }) => {
   expect(html).toContain('href="/articles/"');
   const cardSlugs = [...html.matchAll(/href="\/([^"/]+)\/"/g)]
     .map((m) => m[1])
-    .filter(
-      (s) =>
-        ![
-          "articles",
-          "archive",
-          "about",
-          "agreement",
-          "privacy",
-          "search",
-          "category",
-          "tag",
-        ].includes(s),
-    );
+    .filter((s) => !STATIC_SEGMENTS.has(s));
   expect(cardSlugs.length).toBeGreaterThan(0);
 });
 

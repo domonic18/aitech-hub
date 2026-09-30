@@ -7,6 +7,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
+import { ADMIN_LOGIN_PATH } from "@/lib/auth/constants";
+
 import ThemeToggle from "./ThemeToggle";
 
 /** 路径 → crumb 文案(M4 仅概览一层;M5 面板增多后换注册表映射) */
@@ -48,7 +50,7 @@ export default function AdminTopbar({
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
-      window.location.href = "/admin/login";
+      window.location.href = ADMIN_LOGIN_PATH;
     }
   };
 

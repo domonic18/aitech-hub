@@ -7,7 +7,9 @@ import { jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
 
-export const ACCESS_COOKIE_NAME = "ah_at";
+import { ACCESS_COOKIE_NAME } from "./constants";
+
+export { ACCESS_COOKIE_NAME };
 
 export interface AccessClaims {
   sub: string;
