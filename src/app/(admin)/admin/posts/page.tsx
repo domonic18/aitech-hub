@@ -5,6 +5,7 @@
  */
 import Link from "next/link";
 
+import ImportPostsButton from "@/components/admin/ImportPostsButton";
 import PostRowOps from "@/components/admin/PostRowOps";
 import PostStatusBadge from "@/components/admin/PostStatusBadge";
 import {
@@ -89,17 +90,7 @@ export default async function AdminPostsPage({
           </svg>
           新建文章
         </Link>
-        <button
-          type="button"
-          disabled
-          title="随 M5-b(媒体库与一键发文)交付"
-          className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-sm border border-line bg-panel px-3 py-2 text-sm text-text-3 opacity-60"
-        >
-          <svg className="ic" aria-hidden="true">
-            <use href="#i-cloudupload" />
-          </svg>
-          一键发文(md 导入)
-        </button>
+        <ImportPostsButton />
         <div className="flex overflow-hidden rounded-sm border border-line">
           {ADMIN_LIST_SEGMENTS.map((seg) => (
             <Link

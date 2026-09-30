@@ -1,0 +1,230 @@
+/**
+ * 媒体库(原型 admin-media.html):统计卡 + kind Tab × 引用过滤 + 网格 + 分页,整页服务端渲染;
+ * 引用状态实时计算(refs+cover 双查),audit 定时任务仅作持久投影。
+ * 仅上传/体检/勾选/抽屉是客户端组件(MediaActions / MediaGrid)。
+ */
+import Link from "next/link";
+
+import MediaActions from "@/components/admin/MediaActions";
+import MediaGrid from "@/components/admin/MediaGrid";
+import {
+  MEDIA_KINDS,
+  MEDIA_REF_FILTERS,
+  formatBytes,
+  parseKind,
+  parseRefFilter,
+} from "@/lib/media/media-schema";
+import { MEDIA_PAGE_SIZE, brokenRefs, listMediaAdmin, mediaStats } from "@/lib/media/queries";
+
+export const dynamic = "force-dynamic";
+
+const KIND_LABELS: Record<string, string> = { image: "图片", video: "视频", file: "文件" };
+const REF_LABELS: Record<string, string> = { all: "全部", referenced: "已引用", orphan: "未引用" };
+
+interface PageProps {
+  searchParams: Promise<{ kind?: string; ref?: string; q?: string; page?: string }>;
+}
+
+function parsePage(raw: string | undefined): number {
+  const n = Number.parseInt(raw ?? "1", 10);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+function listHref(kind: string, refFilter: string, page: number, q?: string): string {
+  const params = new URLSearchParams();
+  if (kind !== "image") params.set("kind", kind);
+  if (refFilter !== "all") params.set("ref", refFilter);
+  if (q) params.set("q", q);
+  if (page > 1) params.set("page", String(page));
+  const qs = params.toString();
+  return qs ? `/admin/media/?${qs}` : "/admin/media/";
+}
+
+/** 页码窗口(当前页居中,首尾恒在;null = 省略号)——与文章列表同款 */
+function pageWindow(cur: number, total: number): Array<number | null> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, cur - 1, cur, cur + 1].filter((p) => p >= 1 && p <= total));
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out: Array<number | null> = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push(null);
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
+export default async function AdminMediaPage({
+  searchParams,
+}: PageProps): Promise<React.ReactElement> {
+  const sp = await searchParams;
+  const kind = parseKind(sp.kind);
+  const refFilter = parseRefFilter(sp.ref);
+  const q = sp.q?.trim() || undefined;
+  const page = parsePage(sp.page);
+
+  const [list, stats, broken] = await Promise.all([
+    listMediaAdmin({ kind, refFilter, q, page }),
+    mediaStats(),
+    brokenRefs(),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(list.total / MEDIA_PAGE_SIZE));
+  const pgBtn =
+    "rounded-sm border border-line bg-panel px-2.5 py-1 font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {MEDIA_KINDS.map((k) => (
+          <div key={k} className="rounded-md border border-line bg-panel px-4 py-3">
+            <div className="text-xs text-text-3">{KIND_LABELS[k]}</div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="font-mono text-2xl font-semibold">{stats.kinds[k].count}</span>
+              <span className="font-mono text-[11px] text-text-3">
+                {formatBytes(stats.kinds[k].bytes)}
+              </span>
+            </div>
+          </div>
+        ))}
+        <div className="rounded-md border border-line bg-panel px-4 py-3">
+          <div className="text-xs text-text-3">近 30 天 / 未引用</div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-mono text-2xl font-semibold">{stats.last30d.count}</span>
+            <span className="font-mono text-[11px] text-text-3">
+              {formatBytes(stats.last30d.bytes)}
+            </span>
+            <span
+              className={`ml-auto font-mono text-sm ${stats.orphanCount > 0 ? "text-amber" : "text-text-3"}`}
+            >
+              孤儿 {stats.orphanCount}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <MediaActions />
+        <div className="flex overflow-hidden rounded-sm border border-line">
+          {MEDIA_KINDS.map((k) => (
+            <Link
+              key={k}
+              href={listHref(k, refFilter, 1, q)}
+              className={`border-r border-line px-4 py-2 text-[13px] last:border-r-0 ${
+                k === kind
+                  ? "bg-accent-dim font-semibold text-accent"
+                  : "bg-panel text-text-2 hover:bg-panel-2"
+              }`}
+            >
+              {KIND_LABELS[k]} {list.counts[k].all}
+            </Link>
+          ))}
+        </div>
+        <div className="flex overflow-hidden rounded-sm border border-line">
+          {MEDIA_REF_FILTERS.map((f) => (
+            <Link
+              key={f}
+              href={listHref(kind, f, 1, q)}
+              className={`border-r border-line px-3 py-2 text-[13px] last:border-r-0 ${
+                f === refFilter
+                  ? "bg-accent-dim font-semibold text-accent"
+                  : "bg-panel text-text-2 hover:bg-panel-2"
+              }`}
+            >
+              {REF_LABELS[f]}
+            </Link>
+          ))}
+        </div>
+        <form
+          method="GET"
+          action="/admin/media/"
+          className="ml-auto flex items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent"
+        >
+          <input type="hidden" name="kind" value={kind} />
+          <input type="hidden" name="ref" value={refFilter} />
+          <svg className="ic ic-sm text-text-3" aria-hidden="true">
+            <use href="#i-search" />
+          </svg>
+          <input
+            name="q"
+            defaultValue={q ?? ""}
+            placeholder="搜索文件名 / sha1…"
+            className="w-44 bg-transparent text-[13px] outline-none placeholder:text-text-3"
+          />
+        </form>
+      </div>
+
+      {refFilter === "orphan" && (
+        <div className="flex items-center gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-xs text-text-2">
+          <svg className="ic text-amber" aria-hidden="true">
+            <use href="#i-warning" />
+          </svg>
+          <span>
+            未引用 = 无文章正文/封面引用;勾选后可批量删除(被引用的会自动跳过)。软删入回收站,7
+            天后物理清除。
+          </span>
+        </div>
+      )}
+
+      {broken.length > 0 && (
+        <div className="flex items-center gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-xs text-text-2">
+          <svg className="ic text-red" aria-hidden="true">
+            <use href="#i-warning" />
+          </svg>
+          <span>
+            断链 <b className="text-red">{broken.length}</b> 处(库/盘里已无文件):{" "}
+            <span className="break-all font-mono text-[11px]">
+              {broken
+                .slice(0, 3)
+                .map((b) => `${b.path}(${b.posts} 篇)`)
+                .join("、")}
+              {broken.length > 3 ? " …" : ""}
+            </span>
+          </span>
+        </div>
+      )}
+
+      <MediaGrid items={list.items} refFilter={refFilter} />
+
+      <div className="flex items-center justify-end gap-2">
+        <span className="mr-auto text-xs text-text-3">
+          共 {list.total.toLocaleString("en-US")} 项 · 第 {page} / {totalPages} 页
+        </span>
+        {page > 1 && (
+          <Link href={listHref(kind, refFilter, page - 1, q)} className={pgBtn} aria-label="上一页">
+            ‹
+          </Link>
+        )}
+        {pageWindow(page, totalPages).map((p, i) =>
+          p === null ? (
+            <span key={`gap-${i}`} className="text-xs text-text-3">
+              …
+            </span>
+          ) : p === page ? (
+            <span
+              key={p}
+              className="rounded-sm border border-accent bg-accent-dim px-2.5 py-1 font-mono text-xs font-semibold text-accent"
+              aria-current="page"
+            >
+              {p}
+            </span>
+          ) : (
+            <Link key={p} href={listHref(kind, refFilter, p, q)} className={pgBtn}>
+              {p}
+            </Link>
+          ),
+        )}
+        {page < totalPages && (
+          <Link href={listHref(kind, refFilter, page + 1, q)} className={pgBtn} aria-label="下一页">
+            ›
+          </Link>
+        )}
+      </div>
+
+      <div className="font-mono text-[11px] text-text-3">
+        POST /api/media · GET/DELETE /api/media/[id] · POST /api/media/import|batch-delete|audit ·
+        audit 定时 03:41
+      </div>
+    </div>
+  );
+}

@@ -19,7 +19,7 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "内容管理",
     items: [
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
-      { icon: "i-picture", label: "媒体库", tag: "M5" },
+      { icon: "i-picture", label: "媒体库", href: "/admin/media" },
       { icon: "i-send", label: "电报流治理", tag: "二期" },
     ],
   },

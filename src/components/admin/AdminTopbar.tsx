@@ -17,6 +17,7 @@ function crumbOf(pathname: string): string {
   if (pathname === "/admin/posts") return "文章管理";
   if (pathname === "/admin/posts/new") return "新建文章";
   if (/^\/admin\/posts\/\d+$/.test(pathname)) return "编辑文章";
+  if (pathname === "/admin/media") return "媒体库";
   return pathname.replace(/^\/admin\//, "").replace(/^\//, "");
 }
 

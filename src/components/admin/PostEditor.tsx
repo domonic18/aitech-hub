@@ -14,6 +14,7 @@ import PostMetaPanel, {
   type EditorCategory,
   type PostMetaValue,
 } from "@/components/admin/PostMetaPanel";
+import EditorTextarea from "@/components/admin/EditorTextarea";
 import ArticleBody from "@/components/article/ArticleBody";
 import {
   POST_LIMITS,
@@ -72,9 +73,12 @@ function splitTags(text: string): string[] {
 export default function PostEditor({
   categories,
   post,
+  imported,
 }: {
   categories: EditorCategory[];
   post?: EditorPost;
+  /** 一键发文交接(/admin/posts/new?import=1):EditorTextarea mount 时消费 sessionStorage */
+  imported?: boolean;
 }): React.ReactElement {
   const router = useRouter();
   const mode = post ? ("edit" as const) : ("create" as const);
@@ -282,12 +286,10 @@ export default function PostEditor({
           </div>
 
           {tab === "edit" ? (
-            <textarea
+            <EditorTextarea
               value={contentMd}
-              onChange={(e) => setContentMd(e.target.value)}
-              placeholder="正文(Markdown;代码块 ``` 围栏,GFM 表格/任务列表支持)…"
-              spellCheck={false}
-              className="min-h-[520px] w-full resize-y bg-transparent p-4 font-mono text-[13px] leading-relaxed text-text-1 outline-none placeholder:text-text-3"
+              onChange={setContentMd}
+              imported={imported ?? false}
             />
           ) : (
             <div className="min-h-[520px] p-4">

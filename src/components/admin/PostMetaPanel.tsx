@@ -6,6 +6,7 @@
  */
 import { POST_LIMITS } from "@/lib/content/post-schema";
 
+import CoverUploader from "./CoverUploader";
 import { INPUT, LABEL } from "./editor-controls";
 
 export interface EditorCategory {
@@ -75,19 +76,7 @@ export default function PostMetaPanel({
       </div>
 
       <div>
-        <label className={LABEL} htmlFor="post-cover">
-          封面路径
-        </label>
-        <input
-          id="post-cover"
-          value={value.coverPath}
-          onChange={set("coverPath")}
-          placeholder="/wp-content/uploads/…"
-          className={`${INPUT} font-mono`}
-        />
-        <div className="mt-1 text-[11px] text-text-3">
-          站内路径手填;上传工作流随 M5-b(媒体库)交付
-        </div>
+        <CoverUploader coverPath={value.coverPath} onChange={(p) => onChange({ coverPath: p })} />
       </div>
 
       <div>
