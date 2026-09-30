@@ -1,5 +1,6 @@
 # dev 依赖:仅 postgres/redis,应用本地跑保热更(00 文档 §6)
 # 端口避让:本机 5432/5433(agent-eval、ai-invest)与 6379(ai-invest)已占
+# 持久化:全部收敛到 ./workspace/(PG 数据库;dev redis 无持久化,重启即失)
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +12,7 @@ services:
     ports:
       - "5434:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./workspace/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aitech -d aitech_hub"]
       interval: 3s
@@ -28,6 +29,3 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-
-volumes:
-  pgdata:

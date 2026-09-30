@@ -5,9 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { cleanPostHtml, rewriteBase64Images } from "./clean-html";
 
-const FIXTURES = join(__dirname, "../../../tests/fixtures/wp-content");
-const readFixture = (name: string): string =>
-  readFileSync(join(FIXTURES, name), "utf8");
+const FIXTURES = join(__dirname, "../../../scripts/migrate-wp/fixtures/wp-content");
+const readFixture = (name: string): string => readFileSync(join(FIXTURES, name), "utf8");
 
 describe("cleanPostHtml:注释规则(03 §4)", () => {
   it("Gutenberg 注释删除;<!--more--> 转标准分隔;普通注释删除", () => {
@@ -30,9 +29,7 @@ describe("cleanPostHtml:注释规则(03 §4)", () => {
 
 describe("cleanPostHtml:script/style/iframe", () => {
   it("script 与 style 整体删除", () => {
-    const { html, report } = cleanPostHtml(
-      "<p>a</p><script>alert(1)</script><style>.x{}</style>",
-    );
+    const { html, report } = cleanPostHtml("<p>a</p><script>alert(1)</script><style>.x{}</style>");
     expect(html).not.toContain("alert");
     expect(report.scriptsRemoved).toBe(1);
     expect(report.stylesRemoved).toBe(1);
@@ -64,23 +61,18 @@ describe("cleanPostHtml:短码(实库 0 例,防御)", () => {
 
   it("未知成对短码删除;自闭合杂项短码删除;su_* 剥壳", () => {
     const { html, report } = cleanPostHtml(
-      "[my_shortcode]内容[/my_shortcode][gallery ids=\"1,2\"][su_box]保留[/su_box]",
+      '[my_shortcode]内容[/my_shortcode][gallery ids="1,2"][su_box]保留[/su_box]',
     );
     expect(html).not.toContain("my_shortcode");
     expect(html).not.toContain("gallery");
     expect(html).toContain("保留");
-    expect(report.shortcodesRemoved.map((s) => s.code)).toEqual([
-      "my_shortcode",
-      "gallery",
-    ]);
+    expect(report.shortcodesRemoved.map((s) => s.code)).toEqual(["my_shortcode", "gallery"]);
   });
 });
 
 describe("cleanPostHtml:标签/属性白名单", () => {
   it("白名单外标签剥壳留文本;b/i/s 改名语义等价标签", () => {
-    const { html, report } = cleanPostHtml(
-      "<div><p><b>加粗</b><i>斜体</i><s>删除</s></p></div>",
-    );
+    const { html, report } = cleanPostHtml("<div><p><b>加粗</b><i>斜体</i><s>删除</s></p></div>");
     expect(html).not.toContain("<div");
     expect(html).toContain("<strong>加粗</strong>");
     expect(html).toContain("<em>斜体</em>");

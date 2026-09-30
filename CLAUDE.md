@@ -14,6 +14,7 @@
 
 - `src/app/(site|user|admin)/` 页面;`src/app/api/` Route Handlers;`src/lib/` 业务库(按 domain 分包)
 - `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/migrate-wp/` WP 迁移
+- `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库
 - 文档:requirement/(需求基准)arch/(终态方案)plan/development-plan.md(状态真相源)
 
 | 主题               | 文档            |

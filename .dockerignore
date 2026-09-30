@@ -9,7 +9,10 @@ worker-dist/
 coverage/
 docs/
 e2e/
-media/
+workspace
 scripts/migrate-wp/artifacts/
 *.log
 .DS_Store
+test-results/
+playwright-report/
+tsconfig.tsbuildinfo

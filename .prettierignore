@@ -8,3 +8,7 @@ node_modules/
 worker-dist/
 coverage/
 package-lock.json
+workspace/
+test-results/
+playwright-report/
+*.tsbuildinfo

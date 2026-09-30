@@ -18,10 +18,16 @@ coverage/
 .DS_Store
 *.log
 
-# 迁移产物与媒体(不入库)
-/media/
+# 运行时持久化数据(库/Redis/迁移媒体/证书,不入库;backups 见下方白名单)
+# !/workspace/ 与 !/workspace/backups/ 用于覆盖全局 ~/.gitignore_global 的 workspace 规则
+/workspace/*
+!/workspace/
 scripts/migrate-wp/artifacts/
 *.tsbuildinfo
+
+# 备份目录保留占位(M6 pg_dump cron 落盘处)
+!/workspace/backups/
+!/workspace/backups/.gitkeep
 
 # Playwright 本地产物
 /test-results/
@@ -30,3 +36,6 @@ scripts/migrate-wp/artifacts/
 # App Router 字面段目录名含 .txt,被全局 gitignore *.txt 误伤,强制纳管
 !src/app/llms.txt/
 !src/app/llms-full.txt/
+
+# Next.js 自动生成,不追踪(新克隆由 next dev/build 生成;typecheck 实测不依赖)
+/next-env.d.ts

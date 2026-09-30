@@ -77,14 +77,18 @@ aitech-hub/
 │   ├── setup-local.sh            # cp .env / npm install / compose up pg,redis / migrate / seed
 │   └── migrate-wp/               # TS 一次性迁移:extract(mysql2)/ transform(cheerio,共享 src/lib/slug)/
 │                                 #   media-manifest / load(pg)/ verify / run(dry-run 支持)
+│                                 #   fixtures/ WP 真实导出 HTML(clean-html 等单测共用)
 ├── e2e/                          # Playwright:首页/中文 slug 文章页/301/登录/sitemap
 ├── docker/
 │   ├── Dockerfile                # 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)
+│   ├── entrypoint.sh             # 容器入口:web 先 migrate deploy + ISR 预热;worker 直起
 │   └── nginx/                    # nginx.conf + conf.d/aitech-hub.conf(07 文档 §4)
 ├── docs/                         # 本文档体系(索引 docs/README.md)
+├── public/                       # 静态字节资源(favicon 等)
 │
 ├── docker-compose.yml            # dev:postgres(5434)/ redis(6380)
-└── docker-compose.prod.yml       # prod:nginx / web / worker / redis / postgres(mem_limit 全线)
+├── docker-compose.prod.yml       # prod:nginx / web / worker / redis / postgres(mem_limit 全线)
+└── workspace/                    # 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl、backups;gitignore,不入库)
 ```
 
 ## 2. 文件组织与代码规则(全仓强制)
