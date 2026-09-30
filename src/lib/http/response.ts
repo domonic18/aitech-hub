@@ -11,8 +11,14 @@ export interface ApiEnvelope<T = unknown> {
   data: T;
 }
 
-export function apiEnvelope(code: number, message: string, data: unknown = null): NextResponse {
+export function apiEnvelope(
+  code: number,
+  message: string,
+  data: unknown = null,
+  /** 业务成功但异步受理(如上传后 sharp 管线)可指定 202;默认 code=0 → 200 */
+  okStatus: 200 | 202 = 200,
+): NextResponse {
   return NextResponse.json({ code, message, data } satisfies ApiEnvelope, {
-    status: code === 0 ? 200 : code,
+    status: code === 0 ? okStatus : code,
   });
 }
