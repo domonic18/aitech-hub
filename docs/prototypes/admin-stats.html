@@ -1,26 +1,38 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 后台 · 站点统计 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本)
- * admin 形态:AntD 5 亮色内容区 + 深色侧栏;primary 覆写为品牌靛蓝 ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --admin-sidebar-w: 220px; --admin-header-h: 56px;
-  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
-  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--bg); color: var(--text-1); }
 a { text-decoration: none; color: inherit; }
 .mono { font-family: var(--font-mono); }
 
@@ -37,7 +49,7 @@ a { text-decoration: none; color: inherit; }
 }
 .sb-logo .cursor-block {
   width: 10px; height: 17px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 10px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
@@ -56,51 +68,51 @@ a { text-decoration: none; color: inherit; }
   display: block; text-align: center; padding: 8px; border-radius: var(--r-sm);
   border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono);
 }
-.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+.sb-site-link:hover { color: var(--text-2); border-color: var(--border-hover); }
 
 /* ==== 亮色内容区 ==== */
 .content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
 .a-header {
-  height: var(--admin-header-h); background: var(--antd-card);
-  border-bottom: 1px solid var(--antd-border);
+  height: var(--admin-header-h); background: var(--panel);
+  border-bottom: 1px solid var(--border);
   display: flex; align-items: center; padding: 0 24px; gap: 16px;
   position: sticky; top: 0; z-index: 90;
 }
 .a-header h1 { font-size: 16px; font-weight: 600; }
-.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
-.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--text-3); }
+.a-header .crumb b { color: var(--text-1); font-weight: 600; }
 .a-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.range-chip { font-family: var(--font-mono); font-size: 12px; color: var(--antd-t3); background: var(--antd-bg); border: 1px solid var(--antd-border); border-radius: 4px; padding: 3px 10px; }
-.avatar-sm { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.range-chip { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; }
+.avatar-sm { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); background: var(--bg); }
 
 .a-body { padding: 20px 24px 40px; }
-.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); }
 .card-h { padding: 16px 20px 0; display: flex; align-items: center; gap: 10px; }
 .card-h h3 { font-size: 15px; font-weight: 600; }
-.card-h .mono-tag { font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); letter-spacing: .04em; }
+.card-h .mono-tag { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .04em; }
 .card-b { padding: 16px 20px 20px; }
 
 /* ==== 总览卡 ==== */
 .ov-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
-.ov-card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); padding: 18px 20px 16px; }
+.ov-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 18px 20px 16px; }
 .ov-top { display: flex; align-items: center; justify-content: space-between; }
-.ov-lbl { font-size: 13px; color: var(--antd-t2); }
+.ov-lbl { font-size: 13px; color: var(--text-2); }
 .ov-ico { font-size: 16px; opacity: .8; }
 .ov-num { font-family: var(--font-mono); font-size: 28px; font-weight: 600; margin-top: 8px; letter-spacing: -.01em; }
-.ov-num small { font-size: 13px; color: var(--antd-t3); font-weight: 400; margin-left: 4px; }
-.ov-sub { margin-top: 6px; font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); }
+.ov-num small { font-size: 13px; color: var(--text-3); font-weight: 400; margin-left: 4px; }
+.ov-sub { margin-top: 6px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 .up { color: var(--green); } .down { color: var(--red); }
 .pv-line { color: var(--accent); } .uv-line { color: var(--green); }
 
 /* ==== 趋势图 ==== */
 .trend-head { display: flex; align-items: center; padding: 16px 20px 0; gap: 12px; }
 .trend-head h3 { font-size: 15px; font-weight: 600; }
-.legend { display: flex; gap: 16px; margin-left: 18px; font-size: 12.5px; color: var(--antd-t2); }
+.legend { display: flex; gap: 16px; margin-left: 18px; font-size: 12.5px; color: var(--text-2); }
 .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
-.seg { margin-left: auto; display: flex; border: 1px solid #d9d9d9; border-radius: var(--r-sm); overflow: hidden; }
+.seg { margin-left: auto; display: flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
 .seg button {
-  border: none; background: #fff; padding: 5px 14px; font-size: 13px; color: var(--antd-t2);
-  cursor: pointer; font-family: var(--font-sans); border-right: 1px solid #d9d9d9;
+  border: none; background: var(--panel); padding: 5px 14px; font-size: 13px; color: var(--text-2);
+  cursor: pointer; font-family: var(--font-sans); border-right: 1px solid var(--border);
 }
 .seg button:last-child { border-right: none; }
 .seg button.on { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
@@ -111,41 +123,41 @@ a { text-decoration: none; color: inherit; }
 
 /* 来源行 */
 .src-row { display: grid; grid-template-columns: 150px 1fr 92px; align-items: center; gap: 14px; padding: 8px 0; }
-.src-row .nm { font-size: 13.5px; color: var(--antd-t1); display: flex; align-items: center; gap: 8px; }
+.src-row .nm { font-size: 13.5px; color: var(--text-1); display: flex; align-items: center; gap: 8px; }
 .src-row .nm .ico { font-size: 14px; }
 .src-row .nm .cat {
   font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 2px;
 }
-.cat-search { color: #3b82f6; background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.25); }
+.cat-search { color: var(--blue); background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.25); }
 .cat-ai { color: #8b5cf6; background: rgba(139,92,246,.08); border: 1px solid rgba(139,92,246,.3); }
 .cat-direct { color: #64748b; background: rgba(100,116,139,.08); border: 1px solid rgba(100,116,139,.25); }
-.cat-ref { color: #d29922; background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.3); }
-.bar-track { height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+.cat-ref { color: var(--amber); background: rgba(210,153,34,.08); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); }
+.bar-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 4px; }
-.src-row .pv { text-align: right; font-family: var(--font-mono); font-size: 12.5px; color: var(--antd-t2); }
-.src-row .pv b { color: var(--antd-t1); font-weight: 600; }
-.src-sep { border-top: 1px dashed var(--antd-border); margin: 8px 0; }
+.src-row .pv { text-align: right; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); }
+.src-row .pv b { color: var(--text-1); font-weight: 600; }
+.src-sep { border-top: 1px dashed var(--border); margin: 8px 0; }
 
 /* 访客环境 */
-.env-block h4 { font-size: 13px; color: var(--antd-t2); font-weight: 600; margin: 4px 0 10px; }
+.env-block h4 { font-size: 13px; color: var(--text-2); font-weight: 600; margin: 4px 0 10px; }
 .env-block + .env-block { margin-top: 18px; }
 
 /* ==== 热门页面表 ==== */
 .top-card { margin-top: 16px; }
 .a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .a-table th {
-  text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa;
-  padding: 11px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap;
+  text-align: left; font-weight: 600; color: var(--text-2); background: var(--panel-2);
+  padding: 11px 16px; border-bottom: 1px solid var(--border); white-space: nowrap;
 }
-.a-table td { padding: 12px 16px; border-bottom: 1px solid var(--antd-border); color: var(--antd-t1); }
+.a-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-1); }
 .a-table tr:last-child td { border-bottom: none; }
-.a-table tr:hover td { background: #fafafa; }
+.a-table tr:hover td { background: var(--panel-2); }
 .a-table .num { font-family: var(--font-mono); font-size: 12.5px; }
-.a-table .path { font-family: var(--font-mono); font-size: 12.5px; color: var(--antd-t2); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.a-table .path { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank-badge {
   display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center;
   font-family: var(--font-mono); font-size: 12px; border-radius: 4px;
-  background: #f0f0f0; color: var(--antd-t2);
+  background: var(--border); color: var(--text-2);
 }
 .rank-badge.g { background: rgba(94,106,210,.12); color: var(--accent); font-weight: 700; }
 .tag-mini { font-size: 11px; padding: 1px 8px; border-radius: 4px; }
@@ -154,8 +166,8 @@ a { text-decoration: none; color: inherit; }
 
 /* 数据口径注 */
 .caliber-note {
-  margin-top: 14px; padding: 10px 14px; font-size: 12px; color: var(--antd-t3);
-  background: #fafafa; border: 1px dashed #d9d9d9; border-radius: var(--r-sm); line-height: 1.7;
+  margin-top: 14px; padding: 10px 14px; font-size: 12px; color: var(--text-3);
+  background: var(--panel-2); border: 1px dashed var(--border); border-radius: var(--r-sm); line-height: 1.7;
 }
 .caliber-note .mono { font-size: 11px; }
 
@@ -167,6 +179,18 @@ a { text-decoration: none; color: inherit; }
 }
 .proto-note a { color: var(--accent-hover); }
 @media (max-width: 1100px) { .ov-grid { grid-template-columns: repeat(2,1fr); } .cols { grid-template-columns: 1fr; } }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -195,14 +219,15 @@ a { text-decoration: none; color: inherit; }
   </div>
 </aside>
 
-<!-- 亮色内容区 -->
+<!-- 内容区(admin 与前台同一 token,双主题) -->
 <div class="content">
   <header class="a-header">
     <h1>站点统计</h1>
     <span class="crumb">/ 数据看板 · <b>流量与内容观测</b></span>
     <div class="a-right">
       <span class="range-chip">📅 2026-09-30 14:30 更新 · 日聚合表实时汇总</span>
-      <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
+    <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
     </div>
   </header>
 
@@ -262,7 +287,7 @@ a { text-decoration: none; color: inherit; }
           <div class="src-sep"></div>
           <div class="src-row">
             <span class="nm"><span class="ico">🔍</span>Google<span class="cat cat-search">SEARCH</span></span>
-            <div class="bar-track"><div class="bar-fill" style="width:21%; background:#3b82f6"></div></div>
+            <div class="bar-track"><div class="bar-fill" style="width:21%; background:var(--blue)"></div></div>
             <span class="pv"><b>1,875</b> · 21%</span>
           </div>
           <div class="src-row">
@@ -294,7 +319,7 @@ a { text-decoration: none; color: inherit; }
           <div class="src-sep"></div>
           <div class="src-row">
             <span class="nm"><span class="ico">↗️</span>GitHub<span class="cat cat-ref">站外</span></span>
-            <div class="bar-track"><div class="bar-fill" style="width:5%; background:#d29922"></div></div>
+            <div class="bar-track"><div class="bar-fill" style="width:5%; background:var(--amber)"></div></div>
             <span class="pv"><b>447</b> · 5%</span>
           </div>
           <div class="src-row">
@@ -321,7 +346,7 @@ a { text-decoration: none; color: inherit; }
           </div>
           <div class="src-row" style="grid-template-columns:90px 1fr 64px">
             <span class="nm">Safari</span>
-            <div class="bar-track"><div class="bar-fill" style="width:19%; background:#8b96e8"></div></div>
+            <div class="bar-track"><div class="bar-fill" style="width:19%; background:var(--accent-hi)"></div></div>
             <span class="pv">19%</span>
           </div>
           <div class="src-row" style="grid-template-columns:90px 1fr 64px">
@@ -331,7 +356,7 @@ a { text-decoration: none; color: inherit; }
           </div>
           <div class="src-row" style="grid-template-columns:90px 1fr 64px">
             <span class="nm">其他</span>
-            <div class="bar-track"><div class="bar-fill" style="width:12%; background:#d9d9d9"></div></div>
+            <div class="bar-track"><div class="bar-fill" style="width:12%; background:var(--border)"></div></div>
             <span class="pv">12%</span>
           </div>
         </div>
@@ -425,7 +450,7 @@ a { text-decoration: none; color: inherit; }
   </div>
 </div>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · M5 · 图表数据为种子伪随机 mock · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · M5 · 图表数据为种子伪随机 mock · <a href="index.html">← 原型索引</a></div>
 
 <script>
 // 种子伪随机(mulberry32)—— 确定性 mock,每次打开图形一致
@@ -473,8 +498,8 @@ function renderTrend(days) {
   for (var g = 0; g <= 4; g++) {
     var y = padT + (ih * g) / 4;
     var val = Math.round(max * (1 - g / 4));
-    grid += '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="#f0f0f0"/>' +
-      '<text x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#bbb" font-family="SF Mono,monospace">' + val + '</text>';
+    grid += '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="var(--border)"/>' +
+      '<text x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="var(--text-3)" font-family="SF Mono,monospace">' + val + '</text>';
   }
   // 面积渐变(PV 下方淡靛蓝)
   var area = pts(pv).split(' ');
@@ -482,11 +507,11 @@ function renderTrend(days) {
   document.getElementById('trendBox').innerHTML =
     '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
     '<defs><linearGradient id="pvFill" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#5e6ad2" stop-opacity=".18"/><stop offset="1" stop-color="#5e6ad2" stop-opacity="0"/>' +
+    '<stop offset="0" stop-color="var(--accent)" stop-opacity=".18"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>' +
     '</linearGradient></defs>' + grid +
     '<path d="' + areaPath + '" fill="url(#pvFill)"/>' +
-    '<polyline points="' + pts(pv) + '" fill="none" stroke="#5e6ad2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-    '<polyline points="' + pts(uv) + '" fill="none" stroke="#2ea043" stroke-width="2" stroke-dasharray="1 0" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<polyline points="' + pts(pv) + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<polyline points="' + pts(uv) + '" fill="none" stroke="var(--green)" stroke-width="2" stroke-dasharray="1 0" stroke-linejoin="round" stroke-linecap="round"/>' +
     labels + '</svg>';
 }
 renderTrend(7);
@@ -505,5 +530,13 @@ document.getElementById('topSeg').addEventListener('click', function (e) {
 });
 </script>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

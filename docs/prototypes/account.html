@@ -1,20 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 个人中心 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-max-w: 1200px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -27,12 +42,12 @@ img { display: block; }
 .mono { font-family: var(--font-mono); }
 
 /* 顶栏 */
-.header { height: 64px; border-bottom: 1px solid var(--border); background: rgba(12,14,18,.82); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(12px); }
+.header { height: 64px; border-bottom: 1px solid var(--border); background: var(--header-bg); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(12px); }
 .header-in { max-width: var(--site-max-w); margin: 0 auto; height: 100%; padding: 0 24px; display: flex; align-items: center; gap: 40px; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
@@ -62,12 +77,30 @@ img { display: block; }
 .badge {
   font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: 4px;
 }
-.badge.active { color: #7ee2a0; background: rgba(46,160,67,.12); border: 1px solid rgba(46,160,67,.35); }
+.badge.active { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); }
 .ph-info .sub { font-size: 13px; color: var(--text-3); margin-top: 5px; font-family: var(--font-mono); }
 .ph-info .desc { font-size: 13.5px; color: var(--text-2); margin-top: 8px; }
 .ph-stats { display: flex; gap: 28px; text-align: right; }
 .ph-stats .st b { display: block; font-family: var(--font-mono); font-size: 20px; color: var(--text-1); }
 .ph-stats .st span { font-size: 12px; color: var(--text-3); }
+
+/* 我的关注 · 三期入口(置灰) */
+.follow-card {
+  display: flex; align-items: center; gap: 16px; margin-top: 14px;
+  background: var(--panel); border: 1px dashed var(--border); border-radius: var(--r-lg);
+  padding: 16px 20px; opacity: .8;
+}
+.follow-card .fc-ic { font-size: 22px; }
+.follow-card .fc-tx { flex: 1; }
+.follow-card .fc-tx b { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.follow-card .fc-tx span { font-size: 12.5px; color: var(--text-3); display: block; margin-top: 3px; }
+.fc-soon {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--amber-hi, var(--amber));
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+  border-radius: 3px; padding: 0 6px; font-weight: 400;
+}
+.follow-card .btn-ghost[disabled] { opacity: .5; cursor: not-allowed; }
 
 /* Tab 导航 */
 .tabs { display: flex; gap: 4px; margin: 26px 0 0; border-bottom: 1px solid var(--border); }
@@ -118,7 +151,7 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
   padding: 11px 22px; font-size: 14px; color: var(--text-2);
   background: transparent; border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer;
 }
-.btn-ghost:hover { color: var(--text-1); border-color: #3d4260; }
+.btn-ghost:hover { color: var(--text-1); border-color: var(--border-hover); }
 .save-note { font-size: 12.5px; color: var(--text-3); margin-left: auto; font-family: var(--font-mono); }
 
 /* 密码强度条 */
@@ -132,8 +165,8 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
 .ses-table td { padding: 13px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); }
 .ses-table td .mono { font-size: 12.5px; }
 .ses-table .cur-badge {
-  font-family: var(--font-mono); font-size: 10.5px; color: #7ee2a0;
-  background: rgba(46,160,67,.12); border: 1px solid rgba(46,160,67,.35);
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--green-hi);
+  background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
   border-radius: 4px; padding: 1px 7px; margin-left: 8px;
 }
 .revoke { font-size: 12.5px; color: var(--red); background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.3); border-radius: 4px; padding: 4px 12px; cursor: pointer; }
@@ -142,7 +175,7 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
 .danger-zone .dz-t { flex: 1; }
 .danger-zone .dz-t b { font-size: 14px; color: var(--text-1); display: block; }
 .danger-zone .dz-t span { font-size: 12.5px; color: var(--text-3); }
-.btn-danger { font-size: 13px; color: #ff8f88; background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.35); border-radius: var(--r-sm); padding: 8px 16px; cursor: pointer; }
+.btn-danger { font-size: 13px; color: var(--red-hi); background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.35); border-radius: var(--r-sm); padding: 8px 16px; cursor: pointer; }
 .btn-danger:hover { background: rgba(248,81,73,.16); }
 
 /* 页脚 */
@@ -156,6 +189,18 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
 }
 .proto-note a { color: var(--accent-hover); }
 @media (max-width: 760px) { .form-grid { grid-template-columns: 1fr; } .ph-stats { display: none; } }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -171,6 +216,7 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
       <a href="#">归档</a>
       <a href="#">关于</a>
       <div class="me-chip"><img src="assets/avatar.jpg" alt="" onerror="this.remove()"><span>诸葛东明</span></div>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     </nav>
   </div>
 </header>
@@ -189,6 +235,16 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
       <div class="st"><b>154</b><span>文章</span></div>
       <div class="st"><b>296</b><span>同批用户</span></div>
     </div>
+  </div>
+
+  <!-- 我的关注 · 博主订阅(三期,置灰入口) -->
+  <div class="follow-card">
+    <span class="fc-ic">🎯</span>
+    <div class="fc-tx">
+      <b>我的关注 · 博主订阅 <span class="fc-soon">三期规划</span></b>
+      <span>三期开放:关注你感兴趣的 AI 博主(抖音 / 小红书 / B站),电报流将按关注排序并支持「仅看关注」。当前为站点统一解读源,此功能未开放。</span>
+    </div>
+    <button class="btn-ghost" type="button" disabled>三期开放</button>
   </div>
 
   <!-- Tabs -->
@@ -297,7 +353,7 @@ textarea.input { resize: vertical; min-height: 88px; line-height: 1.7; }
   © 2021-2026 17aitech.com · 一起AI技术 · <a href="site-home.html">返回首页</a>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · M4 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · M4 · <a href="index.html">← 原型索引</a></div>
 
 <script>
 function switchTab(btn) {
@@ -308,5 +364,13 @@ function switchTab(btn) {
 }
 </script>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

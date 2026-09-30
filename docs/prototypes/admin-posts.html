@@ -1,32 +1,45 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 后台 · 文章管理 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --admin-sidebar-w: 220px; --admin-header-h: 56px;
-  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
-  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--bg); color: var(--text-1); }
 a { text-decoration: none; color: inherit; }
 .mono { font-family: var(--font-mono); }
 
 /* 深色侧栏(与 admin-stats 同款) */
 .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
 .sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
-.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px var(--glow); animation: blink 1.2s steps(1) infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 .sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
 .sb-nav { flex: 1; padding: 12px 10px; overflow-y: auto; }
@@ -37,15 +50,15 @@ a { text-decoration: none; color: inherit; }
 .sb-item.active { color: #fff; background: var(--accent); }
 .sb-foot { padding: 12px; border-top: 1px solid var(--border); }
 .sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
-.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+.sb-site-link:hover { color: var(--text-2); border-color: var(--border-hover); }
 
 /* 亮内容区 */
 .content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
-.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header { height: var(--admin-header-h); background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
 .a-header h1 { font-size: 16px; font-weight: 600; }
-.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
-.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
-.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-header .crumb { font-size: 13px; color: var(--text-3); }
+.a-header .crumb b { color: var(--text-1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); background: var(--bg); }
 
 .a-body { padding: 20px 24px 40px; }
 
@@ -59,61 +72,61 @@ a { text-decoration: none; color: inherit; }
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-secondary {
   display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px;
-  background: #fff; color: var(--antd-t1); font-size: 14px;
-  border: 1px solid #d9d9d9; border-radius: var(--r-sm); cursor: pointer;
+  background: var(--panel); color: var(--text-1); font-size: 14px;
+  border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer;
 }
 .btn-secondary:hover { color: var(--accent); border-color: var(--accent); }
-.seg { display: flex; border: 1px solid #d9d9d9; border-radius: var(--r-sm); overflow: hidden; }
-.seg button { border: none; background: #fff; padding: 8px 16px; font-size: 13.5px; color: var(--antd-t2); cursor: pointer; border-right: 1px solid #d9d9d9; }
+.seg { display: flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.seg button { border: none; background: var(--panel); padding: 8px 16px; font-size: 13.5px; color: var(--text-2); cursor: pointer; border-right: 1px solid var(--border); }
 .seg button:last-child { border-right: none; }
 .seg button.on { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
-.search-box { margin-left: auto; display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #d9d9d9; border-radius: var(--r-sm); padding: 0 12px; height: 36px; width: 280px; }
-.search-box input { flex: 1; border: none; outline: none; font-size: 13.5px; background: transparent; color: var(--antd-t1); }
-.search-box input::placeholder { color: #bbb; }
+.search-box { margin-left: auto; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 12px; height: 36px; width: 280px; }
+.search-box input { flex: 1; border: none; outline: none; font-size: 13.5px; background: transparent; color: var(--text-1); }
+.search-box input::placeholder { color: var(--text-3); }
 
 /* 表格卡 */
-.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); }
 .a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.a-table th { text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa; padding: 12px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap; }
-.a-table td { padding: 14px 16px; border-bottom: 1px solid var(--antd-border); vertical-align: middle; }
+.a-table th { text-align: left; font-weight: 600; color: var(--text-2); background: var(--panel-2); padding: 12px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.a-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .a-table tr:last-child td { border-bottom: none; }
-.a-table tr:hover td { background: #fafafa; }
+.a-table tr:hover td { background: var(--panel-2); }
 
-.post-title { font-weight: 600; color: var(--antd-t1); max-width: 420px; }
+.post-title { font-weight: 600; color: var(--text-1); max-width: 420px; }
 .post-title:hover { color: var(--accent); cursor: pointer; }
-.post-slug { font-family: var(--font-mono); font-size: 11.5px; color: var(--antd-t3); margin-top: 3px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-slug { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); margin-top: 3px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tag-mini { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 4px; margin-right: 5px; }
-.tm-cat { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; }
+.tm-cat { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); }
 .tm-tag { color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.3); }
 
 .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 10px; border-radius: 999px; }
 .status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
-.st-pub { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; } .st-pub::before { background: var(--green); }
-.st-draft { color: #d48806; background: #fffbe6; border: 1px solid #ffe58f; } .st-draft::before { background: var(--amber); }
-.st-off { color: rgba(0,0,0,.45); background: #fafafa; border: 1px solid #d9d9d9; } .st-off::before { background: #bbb; }
+.st-pub { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); } .st-pub::before { background: var(--green); }
+.st-draft { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); } .st-draft::before { background: var(--amber); }
+.st-off { color: rgba(0,0,0,.45); background: var(--panel-2); border: 1px solid var(--border); } .st-off::before { background: var(--text-3); }
 
 .num { font-family: var(--font-mono); font-size: 12.5px; }
-.num.hot { color: #d4380d; font-weight: 600; }
+.num.hot { color: var(--red); font-weight: 600; }
 
 .ops { display: flex; gap: 4px; justify-content: flex-end; }
 .op-link { border: none; background: transparent; font-size: 13px; color: var(--accent); cursor: pointer; padding: 4px 8px; border-radius: 4px; }
 .op-link:hover { background: var(--accent-dim); }
 .op-link.danger { color: var(--red); }
 .op-link.danger:hover { background: rgba(248,81,73,.08); }
-.op-link.more { color: var(--antd-t2); }
+.op-link.more { color: var(--text-2); }
 
 /* 旧文保真提示条 */
 .legacy-tip {
   margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
-  background: #fffbe6; border: 1px solid #ffe58f; border-radius: var(--r-sm);
-  padding: 10px 16px; font-size: 13px; color: #d48806;
+  background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: var(--r-sm);
+  padding: 10px 16px; font-size: 13px; color: var(--amber);
 }
 
 /* 分页 */
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px; }
-.pager .info { font-size: 13px; color: var(--antd-t3); margin-right: auto; }
-.pg-btn { min-width: 32px; height: 32px; border: 1px solid #d9d9d9; background: #fff; border-radius: var(--r-sm); font-size: 13px; color: var(--antd-t2); cursor: pointer; font-family: var(--font-mono); }
+.pager .info { font-size: 13px; color: var(--text-3); margin-right: auto; }
+.pg-btn { min-width: 32px; height: 32px; border: 1px solid var(--border); background: var(--panel); border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); cursor: pointer; font-family: var(--font-mono); }
 .pg-btn.cur { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .pg-btn:hover:not(.cur) { color: var(--accent); border-color: var(--accent); }
 
@@ -124,6 +137,18 @@ a { text-decoration: none; color: inherit; }
   padding: 5px 10px; border-radius: 6px;
 }
 .proto-note a { color: var(--accent-hover); }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -151,6 +176,7 @@ a { text-decoration: none; color: inherit; }
   <header class="a-header">
     <h1>文章管理</h1>
     <span class="crumb">/ 内容管理 · <b>154 篇(含草稿)</b></span>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
   </header>
 
@@ -166,7 +192,7 @@ a { text-decoration: none; color: inherit; }
         <button>已下架 3</button>
       </div>
       <div class="search-box">
-        <span style="color:#bbb">⌕</span>
+        <span style="color:var(--text-3)">⌕</span>
         <input placeholder="搜索标题 / slug…">
       </div>
     </div>
@@ -239,10 +265,10 @@ a { text-decoration: none; color: inherit; }
             <td class="num">2026-09-08 08:00</td>
             <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">下架</button><button class="op-link danger">删除</button></div></td>
           </tr>
-          <tr style="background:#fafafa">
+          <tr style="background:var(--panel-2)">
             <td><input type="checkbox"></td>
             <td>
-              <div class="post-title" style="color:var(--antd-t2)">Vue3 组合式 API 在中后台系统的落地实践 <span class="tag-mini" style="background:#f0f0f0;color:var(--antd-t3);border:1px solid #d9d9d9">旧文保真</span></div>
+              <div class="post-title" style="color:var(--text-2)">Vue3 组合式 API 在中后台系统的落地实践 <span class="tag-mini" style="background:var(--border);color:var(--text-3);border:1px solid var(--border)">旧文保真</span></div>
               <div class="post-slug">/vue3%E7%BB%84%E5%90%88%E5%BC%8Fapi%E5%AE%9E%E8%B7%B5 · WP 迁移(HTML)</div>
             </td>
             <td><span class="tag-mini tm-cat">前端</span><span class="tag-mini tm-tag">Vue3</span></td>
@@ -251,10 +277,10 @@ a { text-decoration: none; color: inherit; }
             <td class="num">2024-11-02 10:22</td>
             <td><div class="ops"><button class="op-link">查看</button><button class="op-link">转 MD 重发</button><button class="op-link">下架</button></div></td>
           </tr>
-          <tr style="background:#fafafa">
+          <tr style="background:var(--panel-2)">
             <td><input type="checkbox"></td>
             <td>
-              <div class="post-title" style="color:var(--antd-t2)">某旗舰手机 30 天深度评测:影像与续航的真实表现 <span class="tag-mini" style="background:#f0f0f0;color:var(--antd-t3);border:1px solid #d9d9d9">旧文保真</span></div>
+              <div class="post-title" style="color:var(--text-2)">某旗舰手机 30 天深度评测:影像与续航的真实表现 <span class="tag-mini" style="background:var(--border);color:var(--text-3);border:1px solid var(--border)">旧文保真</span></div>
               <div class="post-slug">/%E6%97%97%E8%88%B0%E6%89%8B%E6%9C%BA%E8%AF%84%E6%B5%8B · WP 迁移(HTML)</div>
             </td>
             <td><span class="tag-mini tm-cat">产品评测</span></td>
@@ -272,19 +298,27 @@ a { text-decoration: none; color: inherit; }
         <button class="pg-btn cur">1</button>
         <button class="pg-btn">2</button>
         <button class="pg-btn">3</button>
-        <span style="color:#bbb">…</span>
+        <span style="color:var(--text-3)">…</span>
         <button class="pg-btn">13</button>
         <button class="pg-btn">›</button>
       </div>
     </div>
 
-    <div style="margin-top:14px; font-size:12px; color:var(--antd-t3); font-family:var(--font-mono)">
+    <div style="margin-top:14px; font-size:12px; color:var(--text-3); font-family:var(--font-mono)">
       GET /api/posts?status=&page= · POST /api/posts · PUT /api/posts/[id] · POST /api/posts/[id]/publish|unpublish · DELETE 软删
     </div>
   </div>
 </div>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · M5 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · M5 · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

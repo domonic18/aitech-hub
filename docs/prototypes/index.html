@@ -1,19 +1,32 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 原型图索引 · aitech-hub prototypes</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -24,28 +37,46 @@ body {
     radial-gradient(ellipse 1000px 500px at 50% -10%, rgba(94,106,210,.14), transparent 60%),
     radial-gradient(ellipse 700px 400px at 90% 110%, rgba(46,160,67,.04), transparent 60%);
 }
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 1000px 500px at 50% -10%, rgba(94,106,210,.07), transparent 60%),
+    radial-gradient(ellipse 700px 400px at 90% 110%, rgba(46,160,67,.03), transparent 60%);
+}
 a { color: inherit; text-decoration: none; }
 .mono { font-family: var(--font-mono); }
 
 .wrap { max-width: 1200px; margin: 0 auto; padding: 56px 24px 60px; }
 
 /* 头部 */
-.head { margin-bottom: 12px; }
+.head { margin-bottom: 12px; position: relative; }
 .head .glyph { display: flex; align-items: center; gap: 12px; }
 .head .cursor-block {
   width: 16px; height: 28px; background: var(--accent); border-radius: 3px;
-  box-shadow: 0 0 16px rgba(94,106,210,.6); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 16px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .head h1 { font-size: 30px; letter-spacing: .01em; }
 .head h1 .tld { color: var(--text-3); font-family: var(--font-mono); font-size: 16px; font-weight: 400; margin-left: 6px; }
 .head .prompt { margin-top: 14px; font-family: var(--font-mono); font-size: 13.5px; color: var(--text-3); }
 .head .prompt .c { color: var(--green); }
-.head .prompt .a { color: #8b96e8; }
+.head .prompt .a { color: var(--accent-hi, #8b96e8); }
+[data-theme="light"] .head .prompt .a { color: var(--accent-hover); }
 .head .desc { margin-top: 10px; color: var(--text-2); font-size: 14px; max-width: 780px; }
 .head .desc b { color: var(--text-1); }
-.head .desc a { color: var(--blue); border-bottom: 1px solid rgba(59,130,246,.35); }
+.head .desc a { color: var(--blue); border-bottom: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); }
 .head .desc a:hover { color: var(--accent-hover); }
+
+/* 主题切换(约定见 common.css v0.3.0) */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+.head .theme-toggle { position: absolute; right: 0; top: 6px; }
 
 /* 分区 */
 .group { margin-top: 40px; }
@@ -61,7 +92,7 @@ a { color: inherit; text-decoration: none; }
   border-radius: var(--r-lg); padding: 20px 22px;
   transition: transform .18s, border-color .18s, box-shadow .18s;
 }
-.card:hover { transform: translateY(-3px); border-color: #4a5079; box-shadow: 0 14px 36px rgba(0,0,0,.4); }
+.card:hover { transform: translateY(-3px); border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
 .card-link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
 .card .top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .card .ico { font-size: 20px; }
@@ -72,16 +103,18 @@ a { color: inherit; text-decoration: none; }
 
 /* 状态标签 */
 .badge { font-family: var(--font-mono); font-size: 10.5px; padding: 2px 9px; border-radius: 999px; border: 1px solid; }
-.b-live { color: #7ee2a0; background: rgba(46,160,67,.1); border-color: rgba(46,160,67,.35); }
-.b-plan { color: #8b96e8; background: var(--accent-dim); border-color: rgba(94,106,210,.35); }
-.b-core { color: #ecc06a; background: rgba(210,153,34,.08); border-color: rgba(210,153,34,.35); }
+.b-live { color: var(--green-hi); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+[data-theme="light"] .b-live { color: var(--green); }
+.b-plan { color: var(--accent-hover); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.b-core { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 8%, transparent); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+[data-theme="light"] .b-core { color: var(--amber); }
 .b-ref { margin-left: auto; font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
 .b-ref a { color: var(--text-3); border-bottom: 1px dashed var(--text-3); position: relative; z-index: 2; }
 .b-ref a:hover { color: var(--accent-hover); border-color: var(--accent-hover); }
 
 /* 使用说明 */
 .usage {
-  margin-top: 44px; background: var(--panel); border: 1px dashed #3d4260;
+  margin-top: 44px; background: var(--panel); border: 1px dashed var(--border-hover);
   border-radius: var(--r-md); padding: 20px 24px;
 }
 .usage h3 { font-size: 14.5px; margin-bottom: 10px; }
@@ -107,12 +140,13 @@ a { color: inherit; text-decoration: none; }
       <span class="cursor-block"></span>
       <h1>aitech-hub 原型图<span class="tld">docs/prototypes</span></h1>
     </div>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     <div class="prompt">
-      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 17 screens · 3 groups · dark-terminal theme · <span class="a">v0.2.0</span>
+      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 17 screens · 3 groups · dual-theme(暗黑默认/明亮可选)· <span class="a">v0.3.0</span>
     </div>
     <p class="desc">
-      一起AI技术(17aitech.com)全站 UI 原型。深色终端风(2026-09-30 定稿):
-      覆盖<b>前台核心 5 屏(M3 已实现 + 二期电报流)</b>、<b>用户中心 3 屏(M4)</b>、<b>admin 后台 9 屏(M5 + 二期电报流治理/采集管理)</b>。
+      一起AI技术(17aitech.com)全站 UI 原型。<b>AI 信息 Hub</b> 定位(2026-09-30 升级):连接用户与快速变化的 AI 信息——资讯、教程、开源项目与博主实战文章的聚合平台;深色终端风 + 明暗双主题。
+      覆盖<b>前台核心 5 屏(M3 已实现 + 二期混合电报流 / Agent 搜索)</b>、<b>用户中心 3 屏(M4)</b>、<b>admin 后台 9 屏(M5 + 二期电报流治理/采集管理)</b>。
       每页为可独立打开的单文件 HTML(内联 token + 可交互),页面间可点击走通。
       需求基准见 <a href="../requirement/01-requirement.md">requirement/01-requirement.md</a>,
       设计 token 真相源见 <a href="common.css">common.css</a>。
@@ -129,8 +163,8 @@ a { color: inherit; text-decoration: none; }
     <div class="grid">
       <div class="card">
         <a class="card-link" href="site-home.html" aria-label="首页"></a>
-        <div class="top"><span class="ico">🏠</span><h3>首页(Hub)</h3><span class="route">/</span></div>
-        <p>Hub 一体化终态(二期切换):终端 hero(压缩)+ ①电报流 LIVE 带(实时感首屏)→ ②GitHub 项目展示(仓库给武器)→ ③博客精选/最新 + GEO 条。三区可独立降级。</p>
+        <div class="top"><span class="ico">🏠</span><h3>首页(Hub 控制台)</h3><span class="route">/</span></div>
+        <p>Hub 控制台终态(二期切换):终端控制台 hero(whoami + Agent 搜索输入框 + 建议词)→ ①电报流 LIVE 带(文字 + 短视频混排)→ ②GitHub 项目 → ③博主文章(「博主个人」渠道标识)+ GEO 条。三区可独立降级。</p>
         <div class="foot"><span class="badge b-live">M3 已实现</span><span class="badge b-plan">二期 Hub</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §4</a></span></div>
       </div>
       <div class="card">
@@ -146,15 +180,15 @@ a { color: inherit; text-decoration: none; }
         <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
       </div>
       <div class="card">
-        <a class="card-link" href="site-search.html" aria-label="搜索"></a>
-        <div class="top"><span class="ico">⌕</span><h3>搜索</h3><span class="route">/search?q=</span></div>
-        <p>grep 隐喻搜索框、命中关键词高亮、结果计数与耗时、无结果空态(二态同页展示)。</p>
-        <div class="foot"><span class="badge b-live">M3 已实现</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.1</a></span></div>
+        <a class="card-link" href="site-search.html" aria-label="Agent 搜索"></a>
+        <div class="top"><span class="ico">⌕</span><h3>Agent 搜索</h3><span class="route">/search?q=</span></div>
+        <p>首页控制台输入框的落地页:AI 答案卡(结论 + 引用角标溯源 + 追问建议)+ 三分组命中(资讯含短视频 / 教程 / 项目,mark 高亮 + 命中度)+ 无命中空态(二态同页)。</p>
+        <div class="foot"><span class="badge b-live">M3 基础搜索</span><span class="badge b-plan">二期 Agent 化</span><span class="b-ref"><a href="../arch/04-ai-agent.md">arch/04</a></span></div>
       </div>
       <div class="card">
         <a class="card-link" href="site-telegram.html" aria-label="电报流"></a>
-        <div class="top"><span class="ico">📡</span><h3>电报流</h3><span class="route">/telegram</span></div>
-        <p>站内 AI 资讯短讯流(二期):LIVE 指示、渠道过滤 chips、今天/昨天分组、相对时间 + NEW 徽标、新讯息浮条(轮询不打断浏览)、右栏采集概况/渠道健康。noindex,不进 sitemap。</p>
+        <div class="top"><span class="ico">📡</span><h3>电报流(混合)</h3><span class="route">/telegram</span></div>
+        <p>混合信息流(二期):文字资讯 + 短视频解读(抖音/小红书/B站,竖版封面 + AI 解读 + 原视频外链)+ 博主文章条目(渠道标识);媒体类型/渠道双组过滤、版权边界卡(转写是输入不是资产)、新讯息浮条。noindex。</p>
         <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §6</a></span></div>
       </div>
     </div>
@@ -183,7 +217,7 @@ a { color: inherit; text-decoration: none; }
       <div class="card">
         <a class="card-link" href="account.html" aria-label="个人中心"></a>
         <div class="top"><span class="ico">⚙️</span><h3>个人中心</h3><span class="route">/account</span></div>
-        <p>基本资料(头像/昵称/签名)+ 账号安全(补设密码/强度条、登录会话管理与吊销、注销危险区)双 Tab。</p>
+        <p>基本资料(头像/昵称/签名)+ 账号安全(补设密码/强度条、登录会话管理与吊销、注销危险区)双 Tab;「我的关注 · 博主订阅」三期置灰入口(多租户轻入口)。</p>
         <div class="foot"><span class="badge b-plan">M4 开发依据</span><span class="b-ref"><a href="../requirement/01-requirement.md">req §3.3</a></span></div>
       </div>
     </div>
@@ -194,7 +228,7 @@ a { color: inherit; text-decoration: none; }
     <div class="g-head">
       <h2>🛠 管理后台</h2>
       <span class="mono-tag">[ADMIN · M5 未实现]</span>
-      <span class="g-desc">AntD 5 亮内容 + 深色侧栏(品牌靛蓝)· role=admin 守卫</span>
+      <span class="g-desc">与前台同一 token 双主题(v0.3.0 起 AntD 独立配色退役)· role=admin 守卫</span>
     </div>
     <div class="grid">
       <div class="card">
@@ -242,13 +276,13 @@ a { color: inherit; text-decoration: none; }
       <div class="card">
         <a class="card-link" href="admin-telegram.html" aria-label="电报流治理"></a>
         <div class="top"><span class="ico">📋</span><h3>电报流治理</h3><span class="route">/admin/telegram</span></div>
-        <p>电报条目 CRUD(渠道/状态/日期筛选、编辑/隐藏/归档/删除)、广告过滤与屏蔽词命中留痕、屏蔽词管理(命中计数 + 回溯隐藏存量)、归档策略(visible>90d)与清理确认。</p>
+        <p>电报条目 CRUD(渠道/媒体/状态/日期筛选、编辑/隐藏/归档/删除)、视频解读行(封面缩略图 + 平台徽标 + 博主 + AI 解读摘要 + 原视频链,含转写缺失降级态)、广告过滤与屏蔽词管理、归档策略与清理确认。</p>
         <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §4</a></span></div>
       </div>
       <div class="card">
         <a class="card-link" href="admin-spider.html" aria-label="采集管理"></a>
         <div class="top"><span class="ico">🕷</span><h3>采集管理</h3><span class="route">/admin/spider</span></div>
-        <p>采集后台(二期):worker 心跳 + BullMQ 队列深度可视化、各渠道 24h 采集条带、采集日历(月网格色阶 + 渠道分解)、渠道管理(interval/成功率/启停/立即重跑)、最近错误与处置建议。</p>
+        <p>采集后台(二期):worker 心跳 + BullMQ 队列可视化(crawler / interpreter 双队列)、采集日历与 24h 条带、渠道管理(含视频博主渠道:douyin/xhs/bilibili + ASR 解读状态)、短视频解读服务卡(转写/解读/成本护栏 + 登记博主)、最近错误与处置建议。</p>
         <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §5</a></span></div>
       </div>
     </div>
@@ -259,22 +293,32 @@ a { color: inherit; text-decoration: none; }
     <h3>使用说明</h3>
     <ul>
       <li>直接双击任意 HTML 打开(单文件自包含,零外部依赖;素材仅相对路径 <span class="mono">assets/*.jpg</span>)</li>
-      <li>页面间通过 Header / 侧边栏互链,可点击走通整站流程(登录 → 个人中心 → 后台各页)</li>
+      <li><b>主题切换(v0.3.0)</b>:每页顶栏 ☀/🌙 圆钮切换明暗主题,记忆于 <span class="mono">localStorage("proto-theme")</span>,默认暗黑;前台与后台同一风格,明亮模式下代码块/终端窗保持深底(语法色为深底设计)</li>
+      <li>页面间通过 Header / 侧边栏互链,可点击走通整站流程(登录 → 个人中心 → 后台各页);首页控制台输入框回车可跳 Agent 搜索结果页</li>
       <li>状态演示:login 页可切换 pending_binding / 429 频控态;bind-phone 可切成功态;编辑器与令牌页弹窗默认展示关键状态</li>
       <li>图表数据为种子伪随机(mulberry32)确定性 mock;所有接口端点标注在各页页脚,与 arch/05-services §5 清单对应</li>
       <li>设计 token 真相源:<span class="mono">common.css</span>(不被 link,各页内联副本;改 token 先改它再同步)</li>
+      <li><b>三期 / 进阶注记</b>:「我的关注」(每用户自定义博主订阅,多租户)为三期规划,仅在电报流与个人中心留置灰入口;长视频切片 + AI 学习笔记为进阶合作功能,前期不实现、不出原型</li>
       <li><b>待补充</b>:移动端适配页(一期响应式由 Tailwind 自然承载,暂不单独出原型)</li>
     </ul>
   </div>
 
   <footer class="base">
-    <span class="v">v0.2.0</span>
-    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30 · v0.2.0 增电报流三屏与首页 Hub</span>
+    <span class="v">v0.3.0</span>
+    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30 · v0.3.0 双主题 + Hub 化重构(控制台首页 / 混合电报流 / Agent 搜索)</span>
     <a href="../README.md" style="margin-left:auto">← 文档中心</a>
     <a href="https://github.com/domonic18/aitech-hub" target="_blank">GitHub</a>
   </footer>
 
 </div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

@@ -1,19 +1,34 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 登录 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -23,13 +38,13 @@ body {
   display: flex; flex-direction: column;
   background-image:
     radial-gradient(ellipse 900px 480px at 50% -8%, rgba(94,106,210,.16), transparent 62%),
-    radial-gradient(ellipse 700px 400px at 85% 108%, rgba(46,160,67,.05), transparent 60%);
+    radial-gradient(ellipse 700px 400px at 85% 108%, color-mix(in srgb, var(--green) 5%, transparent), transparent 60%);
 }
 a { color: inherit; text-decoration: none; }
 .mono { font-family: var(--font-mono); }
 
 /* 顶栏(精简) */
-.header { height: 64px; border-bottom: 1px solid var(--border); background: rgba(12,14,18,.7); }
+.header { height: 64px; border-bottom: 1px solid var(--border); background: var(--header-bg); }
 .header-in {
   max-width: 1200px; margin: 0 auto; height: 100%; padding: 0 24px;
   display: flex; align-items: center;
@@ -37,11 +52,11 @@ a { color: inherit; text-decoration: none; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
-.back { margin-left: auto; font-size: 13.5px; color: var(--text-2); }
+.back { font-size: 13.5px; color: var(--text-2); }
 .back:hover { color: var(--text-1); }
 
 /* ==== 主体:居中卡 ==== */
@@ -56,7 +71,7 @@ a { color: inherit; text-decoration: none; }
   width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 12px;
   background: var(--accent-dim); border: 1px solid rgba(94,106,210,.35);
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-size: 20px; color: #8b96e8;
+  font-family: var(--font-mono); font-size: 20px; color: var(--accent-hi);
 }
 .auth-head h1 { font-size: 21px; }
 .auth-head p { font-size: 13px; color: var(--text-3); margin-top: 6px; }
@@ -64,8 +79,8 @@ a { color: inherit; text-decoration: none; }
 /* pending_binding 提示条(老用户绑定引导,形态预置) */
 .pb-band {
   display: none; margin-bottom: 20px; padding: 12px 14px;
-  font-size: 13px; color: #ecc06a; background: rgba(210,153,34,.1);
-  border: 1px solid rgba(210,153,34,.35); border-radius: var(--r-md);
+  font-size: 13px; color: var(--amber-hi); background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: var(--r-md);
   line-height: 1.6;
 }
 .pb-band.show { display: block; }
@@ -110,7 +125,7 @@ a { color: inherit; text-decoration: none; }
 /* 429 频控错误态(形态预置) */
 .err-band {
   display: none; margin-top: 16px; padding: 11px 14px;
-  font-size: 13px; color: #ff8f88; background: rgba(248,81,73,.09);
+  font-size: 13px; color: var(--red-hi); background: rgba(248,81,73,.09);
   border: 1px solid rgba(248,81,73,.35); border-radius: var(--r-md); line-height: 1.6;
 }
 .err-band.show { display: block; }
@@ -135,6 +150,18 @@ a { color: inherit; text-decoration: none; }
   padding: 5px 10px; border-radius: 6px;
 }
 .proto-note a { color: var(--accent-hover); }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  margin-left: auto; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -144,6 +171,7 @@ a { color: inherit; text-decoration: none; }
     <a class="logo" href="site-home.html">
       <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
     </a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     <a class="back" href="site-home.html">返回首页 →</a>
   </div>
 </header>
@@ -199,7 +227,7 @@ a { color: inherit; text-decoration: none; }
 
 <footer class="footer">© 2021-2026 17aitech.com · 一起AI技术</footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · M4 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · M4 · <a href="index.html">← 原型索引</a></div>
 
 <script>
 // 60s 倒计时(同号 60s/次 频控的可视化)
@@ -222,5 +250,13 @@ function togglePb() { document.getElementById('pbBand').classList.toggle('show')
 function toggleErr() { document.getElementById('errBand').classList.toggle('show'); }
 </script>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

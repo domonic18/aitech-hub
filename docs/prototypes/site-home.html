@@ -1,20 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 首页 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;  /* 封面占位渐变 */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-header-h: 64px; --site-max-w: 1200px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -30,7 +45,7 @@ img { display: block; }
 /* ==== 顶栏 ==== */
 .header {
   position: sticky; top: 0; z-index: 50; height: var(--site-header-h);
-  background: rgba(12,14,18,.82); backdrop-filter: blur(12px);
+  background: var(--header-bg); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .header-in {
@@ -40,11 +55,11 @@ img { display: block; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: .01em; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; margin-left: 2px; }
-.nav { display: flex; gap: 8px; margin-left: auto; }
+.nav { display: flex; gap: 8px; margin-left: auto; align-items: center; }
 .nav a {
   padding: 8px 14px; border-radius: var(--r-sm); color: var(--text-2);
   font-size: 14px; transition: color .15s, background .15s;
@@ -53,12 +68,24 @@ img { display: block; }
 .nav a.active { color: var(--text-1); background: var(--accent-dim); }
 .nav a.mono { font-size: 13px; }
 
-/* ==== Hero:终端品牌语(Hub 化后压缩,给三区让位) ==== */
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
+
+/* ==== Hero:控制台(Hub 化:终端品牌语 + Agent 搜索输入框) ==== */
 .hero { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 8px; }
 .term {
   max-width: 860px; margin: 0 auto; background: var(--panel);
   border: 1px solid var(--border); border-radius: var(--r-lg);
-  box-shadow: 0 24px 64px rgba(0,0,0,.45), 0 0 0 1px rgba(94,106,210,.08);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(94,106,210,.08);
   overflow: hidden;
 }
 .term-bar {
@@ -68,68 +95,127 @@ img { display: block; }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
 .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
 .term-title { margin-left: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
-.term-body { padding: 18px 32px 20px; font-family: var(--font-mono); font-size: 13.5px; line-height: 2; }
+.term-body { padding: 18px 32px 22px; font-family: var(--font-mono); font-size: 13.5px; line-height: 2; }
 .term-body .ln { white-space: pre-wrap; }
 .c-prompt { color: var(--green); }
 .c-cmd { color: var(--text-1); }
 .c-dim { color: var(--text-3); }
-.c-accent { color: #8b96e8; }
+.c-accent { color: var(--accent-hi, #8b96e8); }
+[data-theme="light"] .c-accent { color: var(--accent-hover); }
 .cursor-tail {
   display: inline-block; width: 8px; height: 15px; background: var(--accent);
   vertical-align: -2px; animation: blink 1.2s steps(1) infinite;
 }
+/* Agent 搜索输入行:控制台核心交互 */
+.console {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 12px; padding: 12px 16px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  transition: border-color .15s, box-shadow .15s;
+}
+.console:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.console .c-prompt { font-size: 16px; flex: none; }
+.console input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-family: var(--font-mono); font-size: 15px; color: var(--text-1);
+}
+.console input::placeholder { color: var(--text-3); }
+.console .go {
+  flex: none; font-family: var(--font-mono); font-size: 12.5px; cursor: pointer;
+  color: #fff; background: var(--accent); border: 1px solid var(--accent);
+  padding: 6px 14px; border-radius: var(--r-sm);
+}
+.console .go:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* 建议词 chips */
 .hero-sub {
-  max-width: 860px; margin: 14px auto 0; display: flex; gap: 12px; flex-wrap: wrap;
+  max-width: 860px; margin: 14px auto 0; display: flex; gap: 10px; flex-wrap: wrap;
 }
 .hero-chip {
   font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2);
   background: var(--panel); border: 1px solid var(--border);
-  padding: 5px 12px; border-radius: 999px;
+  padding: 5px 12px; border-radius: 999px; transition: color .15s, border-color .15s;
 }
+.hero-chip:hover { color: var(--text-1); border-color: var(--border-hover); }
 .hero-chip b { color: var(--text-1); font-weight: 600; }
 
 /* ==== 区块标题 ==== */
 .section { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 8px; }
-.sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+.sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
 .sec-head h2 { font-size: 21px; font-weight: 700; letter-spacing: .01em; }
 .sec-head .mono-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); letter-spacing: .04em; }
 .sec-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); }
 .sec-head .more:hover { color: var(--accent-hover); }
 
-/* ==== ① 电报流 LIVE 带(Hub 第一区:实时感首屏元素) ==== */
+/* ==== 渠道 chip(「博主个人」与外部渠道区分,与 site-telegram 同款) ==== */
+.chip {
+  display: inline-block; font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+  padding: 0 8px; border-radius: 4px; border: 1px solid; vertical-align: 2px; white-space: nowrap;
+}
+.chip-blogger { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
+[data-theme="light"] .chip-blogger { color: var(--green); }
+.chip-douyin { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+.chip-xhs { color: var(--red-hi, var(--red)); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
+.chip-bili { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 32%, transparent); }
+
+/* ==== ① 电报流 LIVE 带(Hub 第一区:文字资讯 + 短视频解读 混排) ==== */
 .tg-band {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
-  overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  overflow: hidden; box-shadow: var(--shadow-sm);
 }
 .tg-band-head {
   display: flex; align-items: center; gap: 12px; padding: 14px 20px;
   background: var(--panel-2); border-bottom: 1px solid var(--border); flex-wrap: wrap;
 }
-.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: #7ee2a0; background: rgba(46,160,67,.1); border: 1px solid rgba(46,160,67,.35); border-radius: 999px; padding: 3px 12px; }
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgba(46,160,67,.8); animation: pulse 1.6s ease-in-out infinite; }
+.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--green-hi); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 999px; padding: 3px 12px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px color-mix(in srgb, var(--green) 80%, transparent); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.8); } }
 .tg-band-head .bt { font-weight: 700; font-size: 15px; }
 .tg-band-head .bd { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
 .tg-band-head .more { margin-left: auto; font-size: 13px; color: var(--text-2); }
 .tg-band-head .more:hover { color: var(--accent-hover); }
+/* 文字行 */
 .tg-row {
   display: grid; grid-template-columns: 74px 108px 1fr auto; gap: 14px; align-items: center;
-  padding: 11px 20px; border-bottom: 1px solid rgba(42,45,55,.55);
+  padding: 11px 20px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   transition: background .15s; position: relative;
 }
-.tg-row:last-child { border-bottom: none; }
 .tg-row:hover { background: var(--panel-2); }
 .tg-row .tm { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
-.tg-row .tm.fresh { color: #7ee2a0; }
+.tg-row .tm.fresh { color: var(--green-hi); }
 .tg-row .sr { font-family: var(--font-mono); font-size: 11px; padding: 1px 0; text-align: center; border-radius: 4px; border: 1px solid; white-space: nowrap; overflow: hidden; }
-.sr-rss { color: #8b96e8; background: var(--accent-dim); border-color: rgba(94,106,210,.3); }
-.sr-web { color: #7ec8e2; background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.3); }
-.sr-sns { color: #ecc06a; background: rgba(210,153,34,.08); border-color: rgba(210,153,34,.3); }
+.sr-rss { color: var(--accent-hi, #8b96e8); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+[data-theme="light"] .sr-rss { color: var(--accent-hover); }
+.sr-web { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, transparent); border-color: color-mix(in srgb, var(--blue) 30%, transparent); }
+.sr-sns { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 8%, transparent); border-color: color-mix(in srgb, var(--amber) 30%, transparent); }
 .tg-row .ti { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tg-row .ti a:hover { color: var(--accent-hover); }
 .tg-row .ti .ext { color: var(--text-3); font-size: 11px; margin-left: 4px; }
 .tg-row .ag { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
-.tg-row.fresh::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px rgba(94,106,210,.6); }
+.tg-row.fresh::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+/* 视频行:小竖版封面 + 平台徽标 + 博主 + 主题 + 时长 */
+.tg-row.video { grid-template-columns: 74px 54px 96px 1fr auto; padding: 12px 20px; }
+.tg-row.video .thumb {
+  position: relative; width: 54px; height: 95px; border-radius: 6px; overflow: hidden;
+  background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); border: 1px solid var(--border);
+}
+.tg-row.video .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tg-row.video .thumb .play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #fff; background: rgba(12,14,18,.35); text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.tg-row.video .thumb .dur {
+  position: absolute; left: 3px; bottom: 3px; right: 3px; text-align: center;
+  font-family: var(--font-mono); font-size: 9.5px; color: #fff; background: rgba(12,14,18,.72);
+  border-radius: 3px; padding: 0 2px;
+}
+.tg-row.video .pf { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tg-row.video .pf .who { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.tg-row.video .vt { min-width: 0; }
+.tg-row.video .vt .t { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tg-row.video .vt .t a:hover { color: var(--accent-hover); }
+.tg-row.video .vt .m { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tg-row.video .vt .m .ai { color: var(--accent-hi, #8b96e8); }
+[data-theme="light"] .tg-row.video .vt .m .ai { color: var(--accent-hover); }
 .tg-band-foot { padding: 10px 20px; background: var(--panel-2); text-align: center; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); border-top: 1px solid var(--border); }
 .tg-band-foot a:hover { color: var(--accent-hover); }
 
@@ -140,27 +226,27 @@ img { display: block; }
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
   padding: 20px 22px; transition: transform .2s, border-color .2s;
 }
-.repo-card:hover { transform: translateY(-2px); border-color: #3d4260; }
+.repo-card:hover { transform: translateY(-2px); border-color: var(--border-hover); }
 .repo-head { display: flex; align-items: center; gap: 10px; }
 .repo-head .ic { font-size: 16px; }
 .repo-head h3 { font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
 .repo-head h3 a:hover { color: var(--accent-hover); }
 .repo-head .stars { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--amber); }
 .repo-card p { color: var(--text-2); font-size: 13.5px; flex: 1; }
-.repo-link { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-hover); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px; align-self: flex-start; }
+.repo-link { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-hover); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 4px; padding: 1px 8px; align-self: flex-start; }
 .repo-link:hover { border-color: var(--accent); }
 .repo-foot { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 2px; }
 .lang-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; vertical-align: -1px; margin-right: 5px; }
 
-/* ==== 精选大卡 ==== */
+/* ==== ③ 博主文章:精选(Hub 第三区:渠道之一,标「博主个人」) ==== */
 .featured-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 20px; }
 .feat-card {
   display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
   overflow: hidden; transition: transform .2s, border-color .2s;
 }
-.feat-card:hover { transform: translateY(-2px); border-color: #3d4260; }
-.feat-cover { position: relative; height: 210px; flex: none; background: linear-gradient(135deg, #1b1e2e, #232742 60%, #2c2f52); }
+.feat-card:hover { transform: translateY(-2px); border-color: var(--border-hover); }
+.feat-cover { position: relative; height: 210px; flex: none; background: linear-gradient(135deg, var(--cover-a), var(--cover-b) 60%, var(--accent-dim)); }
 .feat-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .feat-body { padding: 26px 28px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
 .feat-body h3 { font-size: 20px; line-height: 1.45; }
@@ -173,9 +259,9 @@ img { display: block; }
 .tag {
   display: inline-block; font-family: var(--font-mono); font-size: 11.5px;
   color: var(--accent-hover); background: var(--accent-dim);
-  border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 4px; padding: 1px 8px;
 }
-.tag.cat { color: #7ee2a0; background: rgba(46,160,67,.12); border-color: rgba(46,160,67,.3); }
+.tag.cat { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ==== 文章卡网格 ==== */
@@ -185,8 +271,8 @@ img { display: block; }
   overflow: hidden; display: flex; flex-direction: column;
   transition: transform .2s, border-color .2s;
 }
-.card:hover { transform: translateY(-2px); border-color: #3d4260; }
-.card-cover { position: relative; aspect-ratio: 16/9; background: linear-gradient(135deg, #171a26, #20243c); }
+.card:hover { transform: translateY(-2px); border-color: var(--border-hover); }
+.card-cover { position: relative; aspect-ratio: 16/9; background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); }
 .card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .card-cover .views-float {
   position: absolute; right: 10px; bottom: 10px; font-family: var(--font-mono); font-size: 11px;
@@ -205,7 +291,7 @@ img { display: block; }
   max-width: var(--site-max-w); margin: 48px auto 0; padding: 0 24px;
 }
 .geo-in {
-  background: var(--panel); border: 1px dashed #3d4260; border-radius: var(--r-md);
+  background: var(--panel); border: 1px dashed var(--border-hover); border-radius: var(--r-md);
   padding: 18px 22px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
 .geo-in .g-icon { font-size: 18px; }
@@ -214,10 +300,10 @@ img { display: block; }
 .geo-in .g-links { margin-left: auto; display: flex; gap: 10px; }
 .geo-in .g-links a {
   font-family: var(--font-mono); font-size: 12px; color: var(--blue);
-  background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25);
+  background: color-mix(in srgb, var(--blue) 10%, transparent); border: 1px solid color-mix(in srgb, var(--blue) 25%, transparent);
   padding: 3px 10px; border-radius: 4px;
 }
-.geo-in .g-links a:hover { background: rgba(59,130,246,.18); }
+.geo-in .g-links a:hover { background: color-mix(in srgb, var(--blue) 18%, transparent); }
 
 /* ==== 页脚 ==== */
 .footer { margin-top: 72px; border-top: 1px solid var(--border); }
@@ -251,6 +337,8 @@ img { display: block; }
   .repo-grid { grid-template-columns: 1fr; }
   .tg-row { grid-template-columns: 64px 92px 1fr; }
   .tg-row .ag { display: none; }
+  .tg-row.video { grid-template-columns: 54px 1fr; }
+  .tg-row.video .tm, .tg-row.video .pf { display: none; }
   .footer-in { grid-template-columns: 1fr; }
 }
 </style>
@@ -270,38 +358,44 @@ img { display: block; }
       <a href="site-telegram.html">电报流</a>
       <a href="site-articles.html">归档</a>
       <a href="site-article.html">关于</a>
-      <a href="site-search.html" class="mono" title="搜索">⌕ 搜索</a>
+      <a href="site-search.html" class="mono" title="Agent 搜索">⌕ 搜索</a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     </nav>
   </div>
 </header>
 
-<!-- Hero:终端品牌语(Hub 化后压缩) -->
+<!-- Hero:控制台(Hub 首屏:品牌语 + Agent 搜索输入框,回车进 site-search) -->
 <section class="hero">
   <div class="term">
     <div class="term-bar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="term-title">17aitech — zsh</span>
+      <span class="term-title">17aitech — hub console</span>
     </div>
     <div class="term-body">
       <div class="ln"><span class="c-prompt">➜</span> <span class="c-cmd">whoami</span></div>
-      <div class="ln c-dim"># 一起AI技术 · 一个人指挥智能体军团的公开实战档案</div>
-      <div class="ln"><span class="c-accent">agent.legion</span> <span class="c-dim">--status=</span><span class="c-prompt">active</span> <span class="c-dim">--since=</span>2021 <span class="cursor-tail"></span></div>
+      <div class="ln c-dim"># AI 信息 Hub — 资讯 · 教程 · 项目,连接人与快速变化的 AI</div>
+      <div class="ln"><span class="c-accent">agent.legion</span> <span class="c-dim">--status=</span><span class="c-prompt">active</span> <span class="c-dim">--channels=</span>13 <span class="c-dim">--since=</span>2021 <span class="cursor-tail"></span></div>
+      <form class="console" onsubmit="return goSearch(event)">
+        <span class="c-prompt">&gt;</span>
+        <input id="q" type="text" placeholder="问点什么,或搜索资讯 / 教程 / 项目…" autocomplete="off" aria-label="Agent 搜索">
+        <button type="submit" class="go">搜索 ⏎</button>
+      </form>
     </div>
   </div>
   <div class="hero-sub">
-    <span class="hero-chip">📄 <b>154</b> 篇原创实战文章</span>
-    <span class="hero-chip">📡 <b>13</b> 个渠道实时采集中</span>
-    <span class="hero-chip">⭐ 专注 <b>Claude Code / MCP / AI 落地</b></span>
+    <a class="hero-chip" href="site-search.html">🔥 本周 Agent 框架有什么新进展?</a>
+    <a class="hero-chip" href="site-search.html">📘 MCP 入门到实战</a>
+    <a class="hero-chip" href="site-search.html">🛠 能本地跑 LLM 的开源项目</a>
   </div>
 </section>
 
-<!-- ① 电报流 LIVE 带:实时感首屏元素 -->
+<!-- ① 电报流 LIVE 带:Hub 第一区(实时感首屏元素;文字资讯 + 短视频解读 混排) -->
 <section class="section" id="telegram">
   <div class="tg-band">
     <div class="tg-band-head">
       <span class="live-chip"><span class="live-dot"></span>LIVE</span>
       <span class="bt">⚡ 电报流</span>
-      <span class="bd">站内智能体正在巡检 13 个 AI 资讯渠道 · 今日已入库 47 条</span>
+      <span class="bd">13 个渠道巡检中 · 文字资讯 + 短视频解读 · 今日已入库 47 条</span>
       <a class="more" href="site-telegram.html">进入电报流 →</a>
     </div>
     <a class="tg-row fresh" href="site-telegram.html">
@@ -310,37 +404,45 @@ img { display: block; }
       <span class="ti">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变 <span class="ext">↗</span></span>
       <span class="ag">3 分钟前 · NEW</span>
     </a>
-    <a class="tg-row" href="site-telegram.html">
-      <span class="tm">14:03</span>
-      <span class="sr sr-sns">X · 学者圈</span>
-      <span class="ti">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑 <span class="ext">↗</span></span>
-      <span class="ag">18 分钟前</span>
+    <a class="tg-row video" href="site-telegram.html">
+      <span class="tm">13:58</span>
+      <span class="thumb"><img src="assets/video-cover-douyin.jpg" alt="" onerror="this.remove()"><span class="play">▶</span><span class="dur">03:12</span></span>
+      <span class="pf"><span class="chip chip-douyin">抖音</span><span class="who">@AI 前线老李</span></span>
+      <span class="vt">
+        <span class="t">3 分钟看懂 Claude Skills:把提示词升级为可复用技能包</span>
+        <span class="m"><span class="ai">AI 解读</span> · Skills 的加载时机与目录约定,附 2 个实战示例</span>
+      </span>
+      <span class="ag">37 分钟前</span>
     </a>
     <a class="tg-row" href="site-telegram.html">
       <span class="tm">13:47</span>
-      <span class="sr sr-web">Hacker News</span>
-      <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext">↗</span></span>
-      <span class="ag">41 分钟前</span>
+      <span class="sr sr-sns">X · 学者圈</span>
+      <span class="ti">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑 <span class="ext">↗</span></span>
+      <span class="ag">48 分钟前</span>
     </a>
-    <a class="tg-row" href="site-telegram.html">
-      <span class="tm">13:31</span>
-      <span class="sr sr-sns">Reddit</span>
-      <span class="ti">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平 <span class="ext">↗</span></span>
+    <a class="tg-row video" href="site-telegram.html">
+      <span class="tm">13:20</span>
+      <span class="thumb"><img src="assets/video-cover-bili.jpg" alt="" onerror="this.remove()"><span class="play">▶</span><span class="dur">12:48</span></span>
+      <span class="pf"><span class="chip chip-bili">B站</span><span class="who">@AI 工坊 · 阿凯</span></span>
+      <span class="vt">
+        <span class="t">手把手:24G 显卡本地部署 Qwen3.5,量化方案与显存账</span>
+        <span class="m"><span class="ai">AI 解读</span> · GGUF Q4 与 AWQ 实测对比,长上下文显存占用清单</span>
+      </span>
       <span class="ag">1 小时前</span>
     </a>
     <a class="tg-row" href="site-telegram.html">
       <span class="tm">13:12</span>
-      <span class="sr sr-rss">官方 Blog</span>
-      <span class="ti">OpenAI DevBlog:function calling 支持流式 JSON Schema 校验 <span class="ext">↗</span></span>
+      <span class="sr sr-web">Hacker News</span>
+      <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext">↗</span></span>
       <span class="ag">1 小时前</span>
     </a>
     <div class="tg-band-foot">
-      <a href="site-telegram.html">tail -f /telegram — 查看完整电报流(30-60s 自动刷新)→</a>
+      <a href="site-telegram.html">tail -f /telegram — 查看完整混合电报流(30-60s 自动刷新)→</a>
     </div>
   </div>
 </section>
 
-<!-- ② GitHub 项目展示:仓库给武器 -->
+<!-- ② GitHub 项目展示:仓库给武器(Hub 第二区) -->
 <section class="section" id="projects">
   <div class="sec-head">
     <h2>开源项目</h2>
@@ -370,10 +472,11 @@ img { display: block; }
   </div>
 </section>
 
-<!-- ③ 博客:精选 -->
+<!-- ③ 博主文章:精选(Hub 第三区;博主原创是渠道之一,chip 与外部渠道区分) -->
 <section class="section" id="blog">
   <div class="sec-head">
-    <h2>精选文章</h2>
+    <h2>博主文章</h2>
+    <span class="chip chip-blogger">博主个人</span>
     <span class="mono-tag">[FEATURED]</span>
     <a class="more" href="site-articles.html">全部文章 →</a>
   </div>
@@ -406,10 +509,11 @@ img { display: block; }
   </div>
 </section>
 
-<!-- ③ 博客:最新 -->
+<!-- ③ 博主文章:最新 -->
 <section class="section">
   <div class="sec-head">
     <h2>最新文章</h2>
+    <span class="chip chip-blogger">博主个人</span>
     <span class="mono-tag">[LATEST]</span>
     <a class="more" href="site-articles.html">更多 →</a>
   </div>
@@ -509,7 +613,7 @@ img { display: block; }
       <a class="logo" href="site-home.html" style="font-size:16px">
         <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
       </a>
-      <p class="brand-desc">一个人指挥智能体军团的公开实战档案。Claude Code、MCP、AI 落地实践,每篇文章附完整源码仓库。</p>
+      <p class="brand-desc">AI 信息 Hub:资讯、教程、开源项目与博主实战文章的聚合平台。博主亲自写,智能体军团帮跑——Claude Code、MCP、AI 落地实践,每篇文章附完整源码仓库。</p>
     </div>
     <div class="col">
       <h4>导航</h4>
@@ -531,7 +635,21 @@ img { display: block; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · 二期 Hub 终态 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · 二期 Hub 终态 · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+function goSearch(e) {
+  e.preventDefault();
+  const q = document.getElementById("q").value.trim();
+  location.href = q ? "site-search.html?q=" + encodeURIComponent(q) : "site-search.html";
+  return false;
+}
+</script>
 </body>
 </html>

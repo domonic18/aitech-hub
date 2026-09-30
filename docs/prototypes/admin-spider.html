@@ -1,25 +1,38 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 后台 · 采集管理 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --admin-sidebar-w: 220px; --admin-header-h: 56px;
-  --antd-bg: #f5f5f5; --antd-card: #ffffff; --antd-border: #f0f0f0;
-  --antd-t1: rgba(0,0,0,.88); --antd-t2: rgba(0,0,0,.65); --antd-t3: rgba(0,0,0,.45);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--antd-bg); color: var(--antd-t1); }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--bg); color: var(--text-1); }
 a { text-decoration: none; color: inherit; }
 img { display: block; }
 .mono { font-family: var(--font-mono); }
@@ -27,7 +40,7 @@ img { display: block; }
 /* 深色侧栏(同款) */
 .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
 .sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
-.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px var(--glow); animation: blink 1.2s steps(1) infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 .sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
 .sb-nav { flex: 1; padding: 12px 10px; }
@@ -39,108 +52,120 @@ img { display: block; }
 .sb-item.active { color: #fff; background: var(--accent); }
 .sb-foot { padding: 12px; border-top: 1px solid var(--border); }
 .sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
-.sb-site-link:hover { color: var(--text-2); border-color: #3d4260; }
+.sb-site-link:hover { color: var(--text-2); border-color: var(--border-hover); }
 
 .content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
-.a-header { height: var(--admin-header-h); background: var(--antd-card); border-bottom: 1px solid var(--antd-border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header { height: var(--admin-header-h); background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
 .a-header h1 { font-size: 16px; font-weight: 600; }
-.a-header .crumb { font-size: 13px; color: var(--antd-t3); }
-.a-header .crumb b { color: var(--antd-t1); font-weight: 600; }
-.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--antd-border); background: var(--antd-bg); }
+.a-header .crumb { font-size: 13px; color: var(--text-3); }
+.a-header .crumb b { color: var(--text-1); font-weight: 600; }
+.avatar-sm { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); background: var(--bg); }
 .a-body { padding: 20px 24px 40px; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
-.stat-card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); padding: 16px 18px; }
-.stat-card .lb { font-size: 13px; color: var(--antd-t2); }
+.stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px 18px; }
+.stat-card .lb { font-size: 13px; color: var(--text-2); }
 .stat-card .v { font-size: 24px; font-weight: 700; font-family: var(--font-mono); margin-top: 6px; }
-.stat-card .sub { font-size: 12px; color: var(--antd-t3); margin-top: 4px; font-family: var(--font-mono); }
-.stat-card .v.ok { color: #389e0d; } .stat-card .v.warn { color: #d48806; } .stat-card .v.bad { color: #cf1322; }
+.stat-card .sub { font-size: 12px; color: var(--text-3); margin-top: 4px; font-family: var(--font-mono); }
+.stat-card .v.ok { color: var(--green); } .stat-card .v.warn { color: var(--amber); } .stat-card .v.bad { color: var(--red); }
 
 .two-col { display: grid; grid-template-columns: 7fr 5fr; gap: 14px; margin-bottom: 14px; align-items: start; }
-.card { background: var(--antd-card); border: 1px solid var(--antd-border); border-radius: var(--r-md); }
-.card-head { padding: 14px 18px; border-bottom: 1px solid var(--antd-border); font-weight: 600; display: flex; align-items: center; gap: 10px; }
-.card-head .hint { font-weight: 400; font-size: 12px; color: var(--antd-t3); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); }
+.card-head { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.card-head .hint { font-weight: 400; font-size: 12px; color: var(--text-3); }
 .card-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 /* 采集日历 */
 .cal-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px 4px; }
 .cal-head .ym { font-family: var(--font-mono); font-size: 15px; font-weight: 700; }
-.cal-nav { width: 26px; height: 26px; border: 1px solid #d9d9d9; background: #fff; border-radius: 4px; cursor: pointer; color: var(--antd-t2); }
+.cal-nav { width: 26px; height: 26px; border: 1px solid var(--border); background: var(--panel); border-radius: 4px; cursor: pointer; color: var(--text-2); }
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 10px 18px 14px; }
-.cal .dow { text-align: center; font-size: 11.5px; color: var(--antd-t3); padding: 2px 0; }
-.day { position: relative; border-radius: 6px; padding: 6px 8px 5px; min-height: 52px; background: #fafafa; border: 1px solid transparent; }
-.day .dn { font-family: var(--font-mono); font-size: 11.5px; color: var(--antd-t3); }
-.day .cnt { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--antd-t1); margin-top: 2px; }
-.day .cnt small { font-size: 10px; color: var(--antd-t3); font-weight: 400; }
-.day .err-dot { position: absolute; top: 7px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: #cf1322; }
-.day.q0 { background: #fafafa; } .day.q0 .cnt { color: #bbb; }
-.day.q1 { background: #f0f1fb; } .day.q2 { background: #e2e5f7; } .day.q3 { background: #cdd2f0; } .day.q4 { background: #b5bcE9; }
+.cal .dow { text-align: center; font-size: 11.5px; color: var(--text-3); padding: 2px 0; }
+.day { position: relative; border-radius: 6px; padding: 6px 8px 5px; min-height: 52px; background: var(--panel-2); border: 1px solid transparent; }
+.day .dn { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
+.day .cnt { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-1); margin-top: 2px; }
+.day .cnt small { font-size: 10px; color: var(--text-3); font-weight: 400; }
+.day .err-dot { position: absolute; top: 7px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+.day.q0 { background: var(--panel-2); } .day.q0 .cnt { color: var(--text-3); }
+.day.q1 { background: var(--accent-dim); } .day.q2 { background: color-mix(in srgb, var(--accent) 25%, transparent); } .day.q3 { background: color-mix(in srgb, var(--accent) 42%, transparent); } .day.q4 { background: color-mix(in srgb, var(--accent) 60%, transparent); }
 .day.today { border: 2px solid var(--accent); }
-.day.has-err { border: 1.5px dashed #ff4d4f; }
+.day.has-err { border: 1.5px dashed var(--red); }
 .day.empty { background: transparent; min-height: 0; }
-.cal-legend { display: flex; align-items: center; gap: 10px; padding: 0 18px 14px; font-size: 12px; color: var(--antd-t3); flex-wrap: wrap; }
+.cal-legend { display: flex; align-items: center; gap: 10px; padding: 0 18px 14px; font-size: 12px; color: var(--text-3); flex-wrap: wrap; }
 .cal-legend .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; vertical-align: -2px; }
-.day-detail { border-top: 1px solid var(--antd-border); padding: 12px 18px 16px; }
+.day-detail { border-top: 1px solid var(--border); padding: 12px 18px 16px; }
 .day-detail .dd-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
 .dd-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; font-size: 12.5px; }
-.dd-row .nm { width: 170px; color: var(--antd-t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dd-bar { flex: 1; height: 12px; background: #f5f5f5; border-radius: 3px; overflow: hidden; }
+.dd-row .nm { width: 170px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-bar { flex: 1; height: 12px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
 .dd-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .dd-row .n { width: 52px; text-align: right; font-family: var(--font-mono); font-size: 12px; }
 
 /* worker / 队列可视化 */
-.wk-sec { padding: 12px 18px 16px; border-bottom: 1px solid var(--antd-border); }
+.wk-sec { padding: 12px 18px 16px; border-bottom: 1px solid var(--border); }
 .wk-sec:last-child { border-bottom: none; }
-.wk-sec .st { font-size: 12px; font-family: var(--font-mono); color: var(--antd-t3); letter-spacing: .05em; margin-bottom: 10px; }
-.pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #389e0d; margin-right: 6px; animation: pulse 1.6s ease infinite; }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(56,158,13,.45); } 60% { box-shadow: 0 0 0 6px rgba(56,158,13,0); } }
+.wk-sec .st { font-size: 12px; font-family: var(--font-mono); color: var(--text-3); letter-spacing: .05em; margin-bottom: 10px; }
+.pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: pulse 1.6s ease infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(46,160,67,.45); } 60% { box-shadow: 0 0 0 6px rgba(46,160,67,0); } }
 .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.kv .it { background: #fafafa; border: 1px solid var(--antd-border); border-radius: 6px; padding: 8px 12px; font-size: 12.5px; }
+.kv .it { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 12.5px; }
 .kv .it b { display: block; font-family: var(--font-mono); font-size: 14px; }
-.kv .it span { color: var(--antd-t3); font-size: 11.5px; }
-.run-task { display: flex; align-items: center; gap: 9px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px dashed var(--antd-border); }
+.kv .it span { color: var(--text-3); font-size: 11.5px; }
+.run-task { display: flex; align-items: center; gap: 9px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px dashed var(--border); }
 .run-task:last-child { border-bottom: none; }
-.run-task .nm { font-family: var(--font-mono); color: var(--antd-t1); }
-.run-task .ago { margin-left: auto; color: var(--antd-t3); font-family: var(--font-mono); font-size: 11.5px; }
+.run-task .nm { font-family: var(--font-mono); color: var(--text-1); }
+.run-task .ago { margin-left: auto; color: var(--text-3); font-family: var(--font-mono); font-size: 11.5px; }
 .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--accent-dim); border-top-color: var(--accent); border-radius: 50%; animation: rot .9s linear infinite; }
 @keyframes rot { to { transform: rotate(360deg); } }
 .q-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; font-size: 12.5px; }
-.q-bar .nm { width: 76px; color: var(--antd-t2); }
-.q-bar .track { flex: 1; height: 14px; background: #f5f5f5; border-radius: 3px; overflow: hidden; display: flex; }
+.q-bar .nm { width: 76px; color: var(--text-2); }
+.q-bar .track { flex: 1; height: 14px; background: var(--panel-2); border-radius: 3px; overflow: hidden; display: flex; }
 .q-bar .track i { height: 100%; }
 .q-bar .n { width: 46px; text-align: right; font-family: var(--font-mono); font-size: 12px; }
-.q-completed { background: #389e0d; } .q-active { background: var(--accent); } .q-delayed { background: #d48806; } .q-failed { background: #cf1322; }
+.q-completed { background: var(--green); } .q-active { background: var(--accent); } .q-delayed { background: var(--amber); } .q-failed { background: var(--red); }
 
 /* 24h 条带 */
 .band-wrap { overflow-x: auto; }
 .band { min-width: 520px; }
 .b-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.b-row .nm { width: 96px; font-size: 11.5px; color: var(--antd-t2); white-space: nowrap; }
+.b-row .nm { width: 96px; font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
 .cells { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; flex: 1; }
-.cell { height: 14px; border-radius: 2px; background: #f0f0f0; }
-.cell.ok { background: #b7eb8f; } .cell.ok2 { background: #73d13d; } .cell.bad { background: #ff7875; }
-.hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-left: 104px; font-family: var(--font-mono); font-size: 9px; color: var(--antd-t3); }
+.cell { height: 14px; border-radius: 2px; background: var(--border); }
+.cell.ok { background: color-mix(in srgb, var(--green) 35%, transparent); } .cell.ok2 { background: var(--green-hi); } .cell.bad { background: var(--red-hi); }
+.hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-left: 104px; font-family: var(--font-mono); font-size: 9px; color: var(--text-3); }
 .hours span { text-align: left; }
 
 /* 渠道表 */
 .a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.a-table th { text-align: left; font-weight: 600; color: var(--antd-t2); background: #fafafa; padding: 11px 16px; border-bottom: 1px solid var(--antd-border); white-space: nowrap; }
-.a-table td { padding: 11px 16px; border-bottom: 1px solid var(--antd-border); vertical-align: middle; }
+.a-table th { text-align: left; font-weight: 600; color: var(--text-2); background: var(--panel-2); padding: 11px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.a-table td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .a-table tr:last-child td { border-bottom: none; }
-.a-table tr:hover td { background: #fafafa; }
+.a-table tr:hover td { background: var(--panel-2); }
 .src-name { font-weight: 600; }
-.src-name small { display: block; font-weight: 400; font-family: var(--font-mono); font-size: 11px; color: var(--antd-t3); margin-top: 1px; }
+.src-name small { display: block; font-weight: 400; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 1px; }
 .src-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 9px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
-.src-rss { color: #5e6ad2; background: #f0f1fb; border-color: #c9cdf1; }
+.src-rss { color: var(--accent); background: var(--accent-dim); border-color: #c9cdf1; }
 .src-web { color: #1677ff; background: #e6f4ff; border-color: #91caff; }
 .src-api { color: #13c2c2; background: #e6fffb; border-color: #87e8de; }
+.pf-douyin { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+.pf-xhs { color: var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); border-color: color-mix(in srgb, var(--red) 35%, transparent); }
+.pf-bili { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 35%, transparent); }
+.intr-ok { color: var(--green); } .intr-warn { color: var(--amber); }
+
+/* 短视频解读服务卡 */
+.svc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 14px 18px; }
+.svc-grid .it { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 12.5px; }
+.svc-grid .it b { display: block; font-family: var(--font-mono); font-size: 16px; }
+.svc-grid .it span { color: var(--text-3); font-size: 11.5px; }
+.svc-note { margin: 0 18px; padding: 11px 0 16px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--text-3); }
+.svc-note b { color: var(--amber-hi, var(--amber)); font-weight: 600; }
 .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 10px; border-radius: 999px; }
 .status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
-.st-healthy { color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; } .st-healthy::before { background: var(--green); }
-.st-degraded { color: #d48806; background: #fffbe6; border: 1px solid #ffe58f; } .st-degraded::before { background: var(--amber); }
-.st-error { color: #cf1322; background: #fff1f0; border: 1px solid #ffa39e; } .st-error::before { background: #cf1322; }
+.st-healthy { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); } .st-healthy::before { background: var(--green); }
+.st-degraded { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); } .st-degraded::before { background: var(--amber); }
+.st-error { color: var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); } .st-error::before { background: var(--red); }
 .rate-bar { display: flex; align-items: center; gap: 8px; }
-.rate-bar .track { width: 72px; height: 8px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
+.rate-bar .track { width: 72px; height: 8px; background: var(--border); border-radius: 3px; overflow: hidden; }
 .rate-bar .track i { display: block; height: 100%; border-radius: 3px; }
 .rate-bar .n { font-family: var(--font-mono); font-size: 12px; }
 .ops { display: flex; gap: 2px; justify-content: flex-end; }
@@ -148,25 +173,37 @@ img { display: block; }
 .op-link:hover { background: var(--accent-dim); }
 .op-link.danger { color: var(--red); }
 .op-link.danger:hover { background: rgba(248,81,73,.08); }
-.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid #d9d9d9; background: #fff; font-size: 13px; color: var(--antd-t1); cursor: pointer; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--panel); font-size: 13px; color: var(--text-1); cursor: pointer; }
 .btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn.accent:hover { color: #fff; background: var(--accent-hover); }
 
 /* 最近错误 */
 .err-list { padding: 6px 18px 14px; }
-.err-row { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--antd-border); font-size: 12.5px; }
+.err-row { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; }
 .err-row:last-child { border-bottom: none; }
-.err-row .ic { color: #cf1322; }
+.err-row .ic { color: var(--red); }
 .err-row .msg b { font-family: var(--font-mono); font-size: 12px; }
-.err-row .msg span { display: block; color: var(--antd-t3); font-size: 11.5px; margin-top: 1px; }
-.err-row .ago { margin-left: auto; color: var(--antd-t3); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+.err-row .msg span { display: block; color: var(--text-3); font-size: 11.5px; margin-top: 1px; }
+.err-row .ago { margin-left: auto; color: var(--text-3); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 
-.endpoint-note { margin-top: 14px; font-size: 12px; color: var(--antd-t3); font-family: var(--font-mono); }
+.endpoint-note { margin-top: 14px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 .proto-note { position: fixed; left: 232px; bottom: 16px; z-index: 99; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: rgba(24,26,33,.92); border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px; }
 .proto-note a { color: var(--accent-hover); }
 
 @media (max-width: 1100px) { .stat-grid { grid-template-columns: 1fr 1fr; } .two-col { grid-template-columns: 1fr; } }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -192,7 +229,8 @@ img { display: block; }
 <div class="content">
   <header class="a-header">
     <h1>采集管理</h1>
-    <span class="crumb">/ 内容管理 · <b>13 渠道 · worker 运行中 · 队列 active 2</b></span>
+    <span class="crumb">/ 内容管理 · <b>16 渠道(含视频博主 3)· worker 运行中 · 队列 active 3</b></span>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     <img class="avatar-sm" src="assets/avatar.jpg" alt="" onerror="this.style.visibility='hidden'">
   </header>
 
@@ -201,8 +239,8 @@ img { display: block; }
     <!-- 采集器总览 -->
     <div class="stat-grid">
       <div class="stat-card"><div class="lb"><span class="pulse-dot"></span>采集器状态</div><div class="v ok">运行中</div><div class="sub">worker-1 · 心跳 8s 前 · uptime 3d 14h</div></div>
-      <div class="stat-card"><div class="lb">⚙️ 队列深度(active)</div><div class="v">2 / 11</div><div class="sub">active 2 · delayed 11 · failed 22</div></div>
-      <div class="stat-card"><div class="lb">📥 今日采集入库</div><div class="v ok">47</div><div class="sub">拦截 12 · 去重 5 · 屏蔽 3</div></div>
+      <div class="stat-card"><div class="lb">⚙️ 队列深度(active)</div><div class="v">3 / 14</div><div class="sub">active 3 · delayed 14 · failed 26</div></div>
+      <div class="stat-card"><div class="lb">📥 今日采集入库</div><div class="v ok">47</div><div class="sub">拦截 12 · 去重 5 · 含短视频解读 9</div></div>
       <div class="stat-card"><div class="lb">📈 7 日成功率</div><div class="v ok">98.2%</div><div class="sub">失败 22 次 · 集中于 X·学者圈</div></div>
     </div>
 
@@ -253,12 +291,12 @@ img { display: block; }
         </div>
         <div class="cal-legend">
           <span>入库量色阶:</span>
-          <span class="sw" style="background:#fafafa"></span>0
-          <span class="sw" style="background:#f0f1fb"></span>1-29
-          <span class="sw" style="background:#e2e5f7"></span>30-49
-          <span class="sw" style="background:#cdd2f0"></span>50-69
-          <span class="sw" style="background:#b5bcE9"></span>70+
-          <span style="margin-left:8px"><span class="sw" style="background:transparent; border:1.5px dashed #ff4d4f"></span> 渠道异常日(09-14 X·学者圈 403×3)</span>
+          <span class="sw" style="background:var(--panel-2)"></span>0
+          <span class="sw" style="background:var(--accent-dim)"></span>1-29
+          <span class="sw" style="background:color-mix(in srgb, var(--accent) 25%, transparent)"></span>30-49
+          <span class="sw" style="background:color-mix(in srgb, var(--accent) 42%, transparent)"></span>50-69
+          <span class="sw" style="background:color-mix(in srgb, var(--accent) 60%, transparent)"></span>70+
+          <span style="margin-left:8px"><span class="sw" style="background:transparent; border:1.5px dashed var(--red)"></span> 渠道异常日(09-14 X·学者圈 403×3)</span>
         </div>
         <div class="day-detail">
           <div class="dd-title">09-30(今天)渠道分解 · 共入库 47 条</div>
@@ -283,6 +321,7 @@ img { display: block; }
           <div style="margin-top:10px">
             <div class="run-task"><span class="spin"></span><span class="nm">crawl:x-scholars</span><span class="ago">运行 2m 14s</span></div>
             <div class="run-task"><span class="spin"></span><span class="nm">crawl:hackernews</span><span class="ago">运行 41s</span></div>
+            <div class="run-task"><span class="spin"></span><span class="nm">interpret:douyin-ai-front-li#b312</span><span class="ago">运行 18s</span></div>
           </div>
         </div>
         <div class="wk-sec">
@@ -291,6 +330,13 @@ img { display: block; }
           <div class="q-bar"><span class="nm">active</span><div class="track"><i class="q-active" style="width:3%"></i></div><span class="n">2</span></div>
           <div class="q-bar"><span class="nm">delayed</span><div class="track"><i class="q-delayed" style="width:4%"></i></div><span class="n">11</span></div>
           <div class="q-bar"><span class="nm">failed</span><div class="track"><i class="q-failed" style="width:2%"></i></div><span class="n">22</span></div>
+        </div>
+        <div class="wk-sec">
+          <div class="st">QUEUE · interpreter(短视频解读 · 二期)</div>
+          <div class="q-bar"><span class="nm">completed</span><div class="track"><i class="q-completed" style="width:93%"></i></div><span class="n">318</span></div>
+          <div class="q-bar"><span class="nm">active</span><div class="track"><i class="q-active" style="width:2%"></i></div><span class="n">1</span></div>
+          <div class="q-bar"><span class="nm">delayed</span><div class="track"><i class="q-delayed" style="width:3%"></i></div><span class="n">7</span></div>
+          <div class="q-bar"><span class="nm">failed</span><div class="track"><i class="q-failed" style="width:2%"></i></div><span class="n">6</span></div>
         </div>
         <div class="wk-sec">
           <div class="st">各渠道最近 24h 采集条带</div>
@@ -303,10 +349,10 @@ img { display: block; }
             <div class="hours"><span>00</span><span></span><span>02</span><span></span><span>04</span><span></span><span>06</span><span></span><span>08</span><span></span><span>10</span><span></span><span>12</span><span></span><span>14</span><span></span><span>16</span><span></span><span>18</span><span></span><span>20</span><span></span><span>22</span><span></span></div>
           </div></div>
           <div class="cal-legend" style="padding:10px 0 0">
-            <span class="sw" style="background:#b7eb8f"></span>入库 1-5
-            <span class="sw" style="background:#73d13d"></span>入库 6+
-            <span class="sw" style="background:#ff7875"></span>失败
-            <span class="sw" style="background:#f0f0f0"></span>未调度
+            <span class="sw" style="background:color-mix(in srgb, var(--green) 35%, transparent)"></span>入库 1-5
+            <span class="sw" style="background:var(--green-hi)"></span>入库 6+
+            <span class="sw" style="background:var(--red-hi)"></span>失败
+            <span class="sw" style="background:var(--border)"></span>未调度
           </div>
         </div>
       </div>
@@ -322,6 +368,7 @@ img { display: block; }
           <tr>
             <th>渠道</th>
             <th>类型</th>
+            <th>解读</th>
             <th>频率</th>
             <th>最近采集</th>
             <th>下次调度</th>
@@ -335,50 +382,55 @@ img { display: block; }
           <tr>
             <td class="src-name">机器之心<small>jiqizhixin.com/rss</small></td>
             <td><span class="src-tag src-rss">rss</span></td>
+            <td class="mono" style="font-size:12px; color:var(--text-3)">—</td>
             <td class="mono" style="font-size:12.5px">60 min</td>
             <td class="mono" style="font-size:12.5px">14:03</td>
             <td class="mono" style="font-size:12.5px">15:03</td>
             <td class="mono" style="font-size:12.5px">9</td>
-            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:#52c41a"></i></div><span class="n">100%</span></div></td>
+            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:var(--green)"></i></div><span class="n">100%</span></div></td>
             <td><span class="status-badge st-healthy">healthy</span></td>
             <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
           </tr>
           <tr>
             <td class="src-name">量子位<small>qbitai.com/feed</small></td>
             <td><span class="src-tag src-rss">rss</span></td>
+            <td class="mono" style="font-size:12px; color:var(--text-3)">—</td>
             <td class="mono" style="font-size:12.5px">60 min</td>
             <td class="mono" style="font-size:12.5px">13:47</td>
             <td class="mono" style="font-size:12.5px">14:47</td>
             <td class="mono" style="font-size:12.5px">7</td>
-            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:#52c41a"></i></div><span class="n">100%</span></div></td>
+            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:var(--green)"></i></div><span class="n">100%</span></div></td>
             <td><span class="status-badge st-healthy">healthy</span></td>
             <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
           </tr>
           <tr>
             <td class="src-name">Hacker News<small>hn.algolia.com/api/v1</small></td>
             <td><span class="src-tag src-api">api</span></td>
+            <td class="mono" style="font-size:12px; color:var(--text-3)">—</td>
             <td class="mono" style="font-size:12.5px">30 min</td>
             <td class="mono" style="font-size:12.5px">14:19</td>
             <td class="mono" style="font-size:12.5px">14:49</td>
             <td class="mono" style="font-size:12.5px">8</td>
-            <td><div class="rate-bar"><div class="track"><i style="width:99%; background:#52c41a"></i></div><span class="n">99%</span></div></td>
+            <td><div class="rate-bar"><div class="track"><i style="width:99%; background:var(--green)"></i></div><span class="n">99%</span></div></td>
             <td><span class="status-badge st-healthy">healthy</span></td>
             <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
           </tr>
           <tr>
             <td class="src-name">Reddit r/MachineLearning<small>reddit.com/r/MachineLearning</small></td>
             <td><span class="src-tag src-api">api</span></td>
+            <td class="mono" style="font-size:12px; color:var(--text-3)">—</td>
             <td class="mono" style="font-size:12.5px">45 min</td>
             <td class="mono" style="font-size:12.5px">13:58</td>
             <td class="mono" style="font-size:12.5px">14:43</td>
             <td class="mono" style="font-size:12.5px">6</td>
-            <td><div class="rate-bar"><div class="track"><i style="width:97%; background:#52c41a"></i></div><span class="n">97%</span></div></td>
+            <td><div class="rate-bar"><div class="track"><i style="width:97%; background:var(--green)"></i></div><span class="n">97%</span></div></td>
             <td><span class="status-badge st-healthy">healthy</span></td>
             <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
           </tr>
           <tr>
             <td class="src-name">X · 学者圈<small>x.com Lists · 47 accounts</small></td>
-            <td><span class="src-tag src-sns" style="color:#d48806; background:#fffbe6; border-color:#ffe58f">web</span></td>
+            <td><span class="src-tag src-sns" style="color:var(--amber); background:color-mix(in srgb, var(--amber) 10%, transparent); border-color:color-mix(in srgb, var(--amber) 35%, transparent)">web</span></td>
+            <td class="mono" style="font-size:12px; color:var(--text-3)">—</td>
             <td class="mono" style="font-size:12.5px">90 min</td>
             <td class="mono" style="font-size:12.5px">14:12</td>
             <td class="mono" style="font-size:12.5px">15:42</td>
@@ -388,18 +440,68 @@ img { display: block; }
             <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
           </tr>
           <tr>
+            <td class="src-name">AI 前线老李<small>douyin · @AI前线老李 · sec_uid 已登记</small></td>
+            <td><span class="src-tag pf-douyin">douyin</span></td>
+            <td class="mono intr-ok" style="font-size:12px">✓ ASR 96%</td>
+            <td class="mono" style="font-size:12.5px">120 min</td>
+            <td class="mono" style="font-size:12.5px">11:26</td>
+            <td class="mono" style="font-size:12.5px">13:26</td>
+            <td class="mono" style="font-size:12.5px">5</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:98%; background:var(--green)"></i></div><span class="n">98%</span></div></td>
+            <td><span class="status-badge st-healthy">healthy</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">停用</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">AI 工坊·阿凯<small>bilibili · space.bilibili.com/22105417</small></td>
+            <td><span class="src-tag pf-bili">bilibili</span></td>
+            <td class="mono intr-ok" style="font-size:12px">✓ ASR 94%</td>
+            <td class="mono" style="font-size:12.5px">180 min</td>
+            <td class="mono" style="font-size:12.5px">10:58</td>
+            <td class="mono" style="font-size:12.5px">13:58</td>
+            <td class="mono" style="font-size:12.5px">2</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:100%; background:var(--green)"></i></div><span class="n">100%</span></div></td>
+            <td><span class="status-badge st-healthy">healthy</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">停用</button></div></td>
+          </tr>
+          <tr>
+            <td class="src-name">AI 日常手册<small>xiaohongshu · 用户 ID 5f2c8a11</small></td>
+            <td><span class="src-tag pf-xhs">xhs</span></td>
+            <td class="mono intr-warn" style="font-size:12px">⚠ 1 条转写缺失</td>
+            <td class="mono" style="font-size:12.5px">240 min</td>
+            <td class="mono" style="font-size:12.5px">09:47</td>
+            <td class="mono" style="font-size:12.5px">13:47</td>
+            <td class="mono" style="font-size:12.5px">2</td>
+            <td><div class="rate-bar"><div class="track"><i style="width:92%; background:#faad14"></i></div><span class="n">92%</span></div></td>
+            <td><span class="status-badge st-degraded">degraded</span></td>
+            <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">停用</button></div></td>
+          </tr>
+          <tr>
             <td class="src-name">RSS 聚合<small>feedly_mix.opml · 12 源</small></td>
             <td><span class="src-tag src-rss">rss</span></td>
+            <td class="mono" style="font-size:12px; color:var(--text-3)">—</td>
             <td class="mono" style="font-size:12.5px">120 min</td>
             <td class="mono" style="font-size:12.5px">12:20</td>
             <td class="mono" style="font-size:12.5px">14:20</td>
             <td class="mono" style="font-size:12.5px">6</td>
-            <td><div class="rate-bar"><div class="track"><i style="width:64%; background:#ff4d4f"></i></div><span class="n">64%</span></div></td>
+            <td><div class="rate-bar"><div class="track"><i style="width:64%; background:var(--red)"></i></div><span class="n">64%</span></div></td>
             <td><span class="status-badge st-error">error ×3</span></td>
             <td><div class="ops"><button class="op-link">立即重跑</button><button class="op-link">编辑</button><button class="op-link danger">暂停</button></div></td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 短视频解读服务 -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-head">🎬 短视频解读服务 <span class="hint">listing 幂等 → 无水印下载抽音轨 → ASR → LLM 结构化解读 → 转写即删 · 管道见 arch/02 §3.4</span>
+        <span class="right"><button class="btn accent">+ 登记博主</button></span>
+      </div>
+      <div class="svc-grid">
+        <div class="it"><b>9 条 / 今日</b><span>ASR 转写 · 平均视频时长 3m42s · 成功率 96%(失败降级:仅主题 + 外链)</span></div>
+        <div class="it"><b>p95 4.1s</b><span>LLM 解读 · 结构化输出:主题分类 / 摘要 / 关键要点</span></div>
+        <div class="it"><b>$0.83 / $5</b><span>今日成本 / 日预算 · 超 80% 告警 · 单条重试 ≤2 次</span></div>
+      </div>
+      <div class="svc-note">版权边界(红线):仅持久化 <b>分析结论、摘要、封面缩略图、原文外链</b> 四样;不存储 / 不分发视频原片与完整文稿,转写文本解读判定后即置 NULL。前台展示一律带「原视频 ↗」外链与 AI 生成标注。</div>
     </div>
 
     <!-- 最近错误 -->
@@ -421,16 +523,29 @@ img { display: block; }
           <span class="msg"><b>量子位 · 摘要规则截断异常(length=0)</b><span>单条丢弃重试成功,不影响渠道健康 · 已在 filter_hit 留痕</span></span>
           <span class="ago">13:47</span>
         </div>
+        <div class="err-row">
+          <span class="ic">✕</span>
+          <span class="msg"><b>AI 日常手册 · ASR 超时(音频 18:22,超 300s 上限)</b><span>重试 ×2 失败 → 降级:仅主题 + 外链入流,不阻塞 · 建议:上调 ASR 时长上限或对 &gt;15min 视频跳过解读</span></span>
+          <span class="ago">09:58</span>
+        </div>
       </div>
     </div>
 
     <div class="endpoint-note">
-      GET /api/spider/sources · POST /api/spider/sources · PATCH /api/spider/sources/[id] · POST /api/spider/sources/[id]/run · GET /api/spider/calendar?month=2026-09 · GET /api/spider/status(worker 心跳 + BullMQ getJobCounts) · GET /api/spider/errors
+      GET /api/spider/sources · POST /api/spider/sources · PATCH /api/spider/sources/[id] · POST /api/spider/sources/[id]/run · GET /api/spider/calendar?month=2026-09 · GET /api/spider/status(worker 心跳 + BullMQ getJobCounts) · GET /api/spider/errors · 视频博主:POST /api/spider/accounts(重复 409)/ PATCH [id](启停)· GET /api/spider/interpret/status(ASR/LLM/成本)
     </div>
   </div>
 </div>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · 二期 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · 二期 · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

@@ -1,32 +1,48 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>电报流 — 一起AI技术 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;  /* 封面占位渐变 */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-header-h: 64px; --site-max-w: 1200px;
 }
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: var(--bg); color: var(--text-1); font-family: var(--font-sans); font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration: none; }
+img { display: block; }
 .mono { font-family: var(--font-mono); }
 .wrap { max-width: var(--site-max-w); margin: 0 auto; padding: 0 24px; }
 
 /* Header(同前台各页) */
-.site-header { position: sticky; top: 0; z-index: 50; height: var(--site-header-h); background: rgba(12,14,18,.82); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.site-header { position: sticky; top: 0; z-index: 50; height: var(--site-header-h); background: var(--header-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
 .header-in { height: 100%; display: flex; align-items: center; gap: 28px; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
-.logo .cursor-block { width: 12px; height: 20px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite; }
+.logo .cursor-block { width: 12px; height: 20px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 12px; }
 .nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
@@ -35,11 +51,23 @@ a { color: inherit; text-decoration: none; }
 .nav a.on { color: var(--text-1); background: var(--panel-2); }
 .nav .search-link { font-family: var(--font-mono); font-size: 13px; }
 
+/* 主题切换(约定见 common.css v0.3.0) */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
+
 /* 页头 */
 .pg-head { padding: 40px 0 22px; display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
 .pg-head h1 { font-size: 28px; }
-.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: #7ee2a0; background: rgba(46,160,67,.1); border: 1px solid rgba(46,160,67,.35); border-radius: 999px; padding: 4px 14px; margin-left: 14px; vertical-align: 6px; }
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgba(46,160,67,.8); animation: pulse 1.6s ease-in-out infinite; }
+.live-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--green-hi); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 999px; padding: 4px 14px; margin-left: 14px; vertical-align: 6px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px color-mix(in srgb, var(--green) 80%, transparent); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.8); } }
 .pg-head .cmd { width: 100%; font-family: var(--font-mono); font-size: 13px; color: var(--text-3); margin-top: 6px; }
 .pg-head .cmd .p { color: var(--green); }
@@ -50,42 +78,85 @@ a { color: inherit; text-decoration: none; }
 /* 主体两栏 */
 .layout { display: grid; grid-template-columns: 1fr 320px; gap: 28px; align-items: start; padding-bottom: 56px; }
 
-/* 过滤 chips */
-.src-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+/* 过滤 chips(两组:媒体类型 + 渠道) */
+.src-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.grp-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; width: 34px; flex: none; }
 .src-chip { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; cursor: pointer; }
-.src-chip:hover { color: var(--text-1); border-color: #3d4260; }
+.src-chip:hover { color: var(--text-1); border-color: var(--border-hover); }
 .src-chip.on { color: #fff; background: var(--accent); border-color: var(--accent); }
 .src-chip .n { opacity: .65; }
+.src-chip.disabled { color: var(--text-3); border-style: dashed; cursor: not-allowed; opacity: .75; }
+.src-chip.disabled .lock { font-size: 10px; }
 
 /* 时间分组 */
 .tg-day { display: flex; align-items: center; gap: 12px; margin: 26px 0 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); letter-spacing: .08em; }
 .tg-day::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-/* 电报条目 */
+/* 渠道 tag(文字渠道 + 视频平台 + 博主个人) */
+.src-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 9px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+.src-rss { color: var(--accent-hover); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.src-web { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, transparent); border-color: color-mix(in srgb, var(--blue) 30%, transparent); }
+.src-sns { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 8%, transparent); border-color: color-mix(in srgb, var(--amber) 30%, transparent); }
+.pf-douyin { color: var(--amber-hi, var(--amber)); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+.pf-xhs { color: var(--red-hi, var(--red)); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
+.pf-bili { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 32%, transparent); }
+.chip-blogger { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
+[data-theme="light"] .chip-blogger { color: var(--green); }
+[data-theme="light"] .pf-douyin { color: var(--amber); }
+[data-theme="light"] .pf-xhs { color: var(--red); }
+
+/* 电报条目(文字) */
 .tg-item { display: block; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px 20px; margin-bottom: 10px; transition: border-color .16s, transform .16s; position: relative; }
-.tg-item:hover { border-color: #4a5079; transform: translateX(3px); }
+.tg-item:hover { border-color: var(--border-hover); transform: translateX(3px); }
 .tg-item.fresh { border-left: 3px solid var(--accent); background: linear-gradient(90deg, var(--accent-dim), var(--panel) 18%); }
-.tg-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.src-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 9px; border-radius: 4px; border: 1px solid; }
-.src-rss { color: #8b96e8; background: var(--accent-dim); border-color: rgba(94,106,210,.3); }
-.src-web { color: #7ec8e2; background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.3); }
-.src-sns { color: #ecc06a; background: rgba(210,153,34,.08); border-color: rgba(210,153,34,.3); }
+.tg-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
 .tg-ago { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
-.tg-new { font-family: var(--font-mono); font-size: 10px; color: #7ee2a0; border: 1px solid rgba(46,160,67,.4); border-radius: 3px; padding: 0 6px; }
+.tg-new { font-family: var(--font-mono); font-size: 10px; color: var(--green-hi); border: 1px solid color-mix(in srgb, var(--green) 40%, transparent); border-radius: 3px; padding: 0 6px; }
 .tg-item h3 { font-size: 15.5px; line-height: 1.5; margin-bottom: 4px; }
 .tg-item h3 a:hover { color: var(--accent-hover); }
 .tg-item h3 .ext { color: var(--text-3); font-size: 12px; }
 .tg-item p { font-size: 13.5px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.tg-meta { margin-top: 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); display: flex; gap: 14px; }
+.tg-meta { margin-top: 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); display: flex; gap: 14px; flex-wrap: wrap; }
 .tg-meta a { color: var(--text-3); border-bottom: 1px dashed var(--text-3); }
 .tg-meta a:hover { color: var(--blue); border-color: var(--blue); }
-.more-btn { display: block; text-align: center; margin: 26px 0 0; padding: 12px; border: 1px dashed #3d4260; border-radius: var(--r-md); color: var(--text-2); font-family: var(--font-mono); font-size: 13px; }
+.more-btn { display: block; text-align: center; margin: 26px 0 0; padding: 12px; border: 1px dashed var(--border-hover); border-radius: var(--r-md); color: var(--text-2); font-family: var(--font-mono); font-size: 13px; }
 .more-btn:hover { color: var(--text-1); border-color: var(--accent); }
 
+/* 视频电报卡(短视频解读:竖版封面 + AI 解读;版权边界见右栏) */
+.tg-item.video { display: grid; grid-template-columns: 88px 1fr; gap: 16px; padding: 14px 16px; }
+.v-cover { position: relative; width: 88px; height: 157px; border-radius: var(--r-sm); overflow: hidden; background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); border: 1px solid var(--border); }
+.v-cover img { width: 100%; height: 100%; object-fit: cover; }
+.v-cover .play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: #fff; background: rgba(12,14,18,.32); text-shadow: 0 1px 6px rgba(0,0,0,.6);
+}
+.v-cover .dur { position: absolute; left: 4px; bottom: 4px; font-family: var(--font-mono); font-size: 10px; color: #fff; background: rgba(12,14,18,.78); border-radius: 3px; padding: 0 5px; }
+.v-cover .plat { position: absolute; left: 4px; top: 4px; font-family: var(--font-mono); font-size: 9.5px; color: #fff; background: rgba(12,14,18,.78); border-radius: 3px; padding: 0 5px; }
+.v-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.v-body .who { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); }
+.v-body h3 { font-size: 15px; }
+.ai-sum { font-size: 13px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ai-badge { display: inline-block; font-family: var(--font-mono); font-size: 10px; color: var(--accent-hover); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 3px; padding: 0 6px; margin-right: 8px; vertical-align: 1px; }
+.v-points { margin-top: 4px; }
+.v-points summary { cursor: pointer; font-family: var(--font-mono); font-size: 12px; color: var(--accent-hover); list-style: none; }
+.v-points summary::before { content: '▸ '; }
+.v-points[open] summary::before { content: '▾ '; }
+.v-points ul { margin: 8px 0 2px; padding-left: 18px; }
+.v-points li { font-size: 12.5px; color: var(--text-2); margin: 4px 0; }
+.ai-gen { color: var(--text-3); }
+.tg-item.video:hover { transform: translateY(-1px); }
+
+/* 博主文章条目(渠道之一,chip 区分) */
+.tg-item.blogger { border-left: 3px solid var(--green); }
+
+/* 已过滤注记(准入纪律的可见性) */
+.filtered-note { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); text-align: center; padding: 14px 0 0; }
+.filtered-note b { color: var(--text-2); font-weight: 600; }
+
 /* 新讯息浮条(轮询发现新电报,不打断当前浏览位置) */
-.new-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; padding: 9px; border: 1px solid rgba(94,106,210,.4); background: var(--accent-dim); border-radius: var(--r-md); color: #b9c0f0; font-family: var(--font-mono); font-size: 12.5px; cursor: pointer; animation: newbar 2.4s ease-in-out infinite; }
-.new-bar:hover { border-color: var(--accent); color: #fff; }
-@keyframes newbar { 0%,100% { box-shadow: 0 0 0 0 rgba(94,106,210,.25); } 50% { box-shadow: 0 0 14px 0 rgba(94,106,210,.35); } }
+.new-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; padding: 9px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-dim); border-radius: var(--r-md); color: var(--accent-hover); font-family: var(--font-mono); font-size: 12.5px; cursor: pointer; animation: newbar 2.4s ease-in-out infinite; }
+.new-bar:hover { border-color: var(--accent); color: var(--text-1); }
+@keyframes newbar { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 25%, transparent); } 50% { box-shadow: 0 0 14px 0 var(--accent-dim); } }
 
 /* 右栏 */
 .rail { position: sticky; top: calc(var(--site-header-h) + 20px); display: flex; flex-direction: column; gap: 16px; }
@@ -93,11 +164,13 @@ a { color: inherit; text-decoration: none; }
 .rail-card h4 { font-size: 13px; font-family: var(--font-mono); color: var(--text-3); letter-spacing: .06em; margin-bottom: 12px; }
 .kv { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; color: var(--text-2); }
 .kv b { font-family: var(--font-mono); color: var(--text-1); font-weight: 600; }
-.kv b.ok { color: #7ee2a0; } .kv b.warn { color: #ecc06a; }
+.kv b.ok { color: var(--green-hi); } .kv b.warn { color: var(--amber-hi, var(--amber)); }
 .src-health { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; color: var(--text-2); }
 .h-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .h-ok { background: var(--green); } .h-err { background: var(--red); }
 .rail-card .note { font-size: 12px; color: var(--text-3); line-height: 1.65; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.rail-card .note.flat { margin: 0; padding: 0; border: none; }
+.rail-card .note b { color: var(--text-2); font-weight: 600; }
 .sub-btn { display: block; text-align: center; padding: 9px; border: 1px solid var(--border); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2); margin-top: 12px; }
 .sub-btn:hover { color: var(--text-1); border-color: var(--accent); }
 
@@ -117,6 +190,8 @@ a { color: inherit; text-decoration: none; }
   .rail { position: static; }
   .footer-in { grid-template-columns: 1fr; }
   .nav a:not(.search-link) { display: none; }
+  .tg-item.video { grid-template-columns: 72px 1fr; }
+  .v-cover { width: 72px; height: 128px; }
 }
 </style>
 </head>
@@ -132,6 +207,7 @@ a { color: inherit; text-decoration: none; }
       <a href="site-articles.html">归档</a>
       <a href="#">关于</a>
       <a class="search-link" href="site-search.html">⌕ 搜索</a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     </nav>
   </div>
 </header>
@@ -142,24 +218,33 @@ a { color: inherit; text-decoration: none; }
     <h1>电报流<span class="live-chip"><span class="live-dot"></span>LIVE · 持续采集中</span></h1>
     <div class="stats">
       <span class="stat-chip">今日 <b>47</b> 条</span>
+      <span class="stat-chip">短视频解读 <b>9</b> 条</span>
       <span class="stat-chip">渠道 <b>12/13</b> 健康</span>
       <span class="stat-chip">更新于 <b>3 分钟前</b></span>
     </div>
-    <div class="cmd"><span class="p">$</span> tail -f /telegram --sources=ai-web,rss,sns --filter=cleaned <span style="color:var(--text-3)"># 站内智能体自动采集 · 每 30 分钟巡检 13 个渠道</span></div>
+    <div class="cmd"><span class="p">$</span> tail -f /telegram --media=text,video --filter=cleaned <span style="color:var(--text-3)"># 文字资讯 + 短视频解读 混合流 · 每 30 分钟巡检 13 个渠道</span></div>
   </div>
 
   <div class="layout">
 
     <main>
-      <!-- 渠道过滤 -->
+      <!-- 过滤两组:媒体类型(文字/短视频)+ 渠道 -->
       <div class="src-filter">
+        <span class="grp-label">媒体</span>
         <span class="src-chip on">全部 <span class="n">47</span></span>
+        <span class="src-chip">文字 <span class="n">38</span></span>
+        <span class="src-chip">短视频 <span class="n">9</span></span>
+        <span class="src-chip disabled" title="多租户博主订阅 · 三期规划">🔒 我的关注 · 三期</span>
+      </div>
+      <div class="src-filter">
+        <span class="grp-label">渠道</span>
         <span class="src-chip">机器之心 <span class="n">9</span></span>
         <span class="src-chip">量子位 <span class="n">7</span></span>
         <span class="src-chip">Hacker News <span class="n">8</span></span>
-        <span class="src-chip">Reddit r/LocalLLaMA <span class="n">6</span></span>
         <span class="src-chip">X · 学者圈 <span class="n">11</span></span>
-        <span class="src-chip">官方 Blog <span class="n">6</span></span>
+        <span class="src-chip">抖音 <span class="n">5</span></span>
+        <span class="src-chip">小红书 <span class="n">2</span></span>
+        <span class="src-chip">B站 <span class="n">2</span></span>
       </div>
 
       <!-- 新讯息浮条:轮询发现新电报时出现,点击载入,不打断当前浏览位置 -->
@@ -179,10 +264,43 @@ a { color: inherit; text-decoration: none; }
         <div class="tg-meta"><span>mp.weixin.qq.com</span><a href="#" onclick="return false">原文 ↗</a><a href="#" onclick="return false">AI 摘要</a></div>
       </article>
 
+      <!-- 短视频解读卡(抖音):AI 解读 + 原视频外链;版权边界见右栏 -->
+      <article class="tg-item video">
+        <a class="v-cover" href="#" onclick="return false" title="跳转原视频">
+          <img src="assets/video-cover-douyin.jpg" alt="" onerror="this.remove()">
+          <span class="play">▶</span>
+          <span class="plat">抖音</span>
+          <span class="dur">03:12</span>
+        </a>
+        <div class="v-body">
+          <div class="tg-top">
+            <span class="src-tag pf-douyin">抖音</span>
+            <span class="who">@AI 前线老李</span>
+            <span class="tg-ago">37 分钟前</span>
+            <span class="tg-new">NEW</span>
+          </div>
+          <h3><a href="#" onclick="return false">3 分钟看懂 Claude Skills:把提示词升级为可复用技能包</a></h3>
+          <p class="ai-sum"><span class="ai-badge">AI 解读</span>Skills 本质是带元数据的提示词目录:模型按需加载,不占常驻上下文。视频演示了 SKILL.md 的目录约定、触发时机,以及与 MCP 工具的分工边界。</p>
+          <details class="v-points">
+            <summary>关键要点 ×3</summary>
+            <ul>
+              <li>Skills 按声明式元数据惰性加载,适合「会但少用」的能力</li>
+              <li>SKILL.md 只写触发条件与入口,正文放引用文件避免膨胀</li>
+              <li>与 MCP 分工:Skills 管提示词编排,MCP 管外部系统连接</li>
+            </ul>
+          </details>
+          <div class="tg-meta">
+            <span>▶ 2.1w · 👍 1,842 · 💬 316</span>
+            <a href="#" onclick="return false">原视频 ↗</a>
+            <span class="ai-gen">✦ AI 生成 · 摘要与要点,内容版权归原作者</span>
+          </div>
+        </div>
+      </article>
+
       <article class="tg-item">
         <div class="tg-top">
           <span class="src-tag src-sns">X · 学者圈</span>
-          <span class="tg-ago">18 分钟前</span>
+          <span class="tg-ago">48 分钟前</span>
         </div>
         <h3><a href="#" onclick="return false">Qwen3.5-402B 开源权重即日可下,实测 4bit 量化后 24G 单卡可跑</a> <span class="ext">↗</span></h3>
         <p>HF 仓库已放出 bf16 权重;社区实测 GSM8K 91.3,代码能力接近闭源第一梯队。</p>
@@ -192,41 +310,98 @@ a { color: inherit; text-decoration: none; }
       <article class="tg-item">
         <div class="tg-top">
           <span class="src-tag src-web">Hacker News</span>
-          <span class="tg-ago">41 分钟前</span>
+          <span class="tg-ago">1 小时前</span>
         </div>
         <h3><a href="#" onclick="return false">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告</a> <span class="ext">↗</span></h3>
         <p>作者把 cron 输出喂给 headless claude -p,生成每日变更电报;评论区讨论了 token 成本与安全边界。</p>
         <div class="tg-meta"><span>news.ycombinator.com</span><a href="#" onclick="return false">原文 ↗</a><span>💬 128</span></div>
       </article>
 
+      <!-- 博主文章条目:渠道之一,绿色左边线 + 「博主个人」chip 与外部渠道区分 -->
+      <article class="tg-item blogger">
+        <div class="tg-top">
+          <span class="src-tag chip-blogger">博主个人</span>
+          <span class="tg-ago">2 小时前</span>
+        </div>
+        <h3><a href="site-article.html">GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</a></h3>
+        <p>ChatGPT、Perplexity 开始替 Google 分流流量。站点的 llms.txt、文章 .md 直出与站点内容 MCP,是一套完整的 GEO 打法。</p>
+        <div class="tg-meta"><span>17aitech.com · 站内</span><a href="site-article.html">阅读全文 →</a><span>👁 4,872</span></div>
+      </article>
+
+      <!-- 短视频解读卡(B站) -->
+      <article class="tg-item video">
+        <a class="v-cover" href="#" onclick="return false" title="跳转原视频">
+          <img src="assets/video-cover-bili.jpg" alt="" onerror="this.remove()">
+          <span class="play">▶</span>
+          <span class="plat">B站</span>
+          <span class="dur">12:48</span>
+        </a>
+        <div class="v-body">
+          <div class="tg-top">
+            <span class="src-tag pf-bili">B站</span>
+            <span class="who">@AI 工坊 · 阿凯</span>
+            <span class="tg-ago">2 小时前</span>
+          </div>
+          <h3><a href="#" onclick="return false">手把手:24G 显卡本地部署 Qwen3.5,量化方案与显存账</a></h3>
+          <p class="ai-sum"><span class="ai-badge">AI 解读</span>GGUF Q4_K_M 与 AWQ 两条路线的实测对比:吞吐、显存峰值、长上下文表现各附数据;结尾给出 24G 单卡「能跑什么」的决策清单。</p>
+          <details class="v-points">
+            <summary>关键要点 ×3</summary>
+            <ul>
+              <li>Q4_K_M 综合最稳:质量损失小,24G 刚好容下 32B + 8K 上下文</li>
+              <li>AWQ 吞吐更高,但长上下文显存峰值容易击穿 24G</li>
+              <li>视频评论区已确认:llama.cpp 最新版修复了 Qwen3.5 的 RoPE 偏移</li>
+            </ul>
+          </details>
+          <div class="tg-meta">
+            <span>▶ 8.7w · 👍 4,120 · 💬 892</span>
+            <a href="#" onclick="return false">原视频 ↗</a>
+            <span class="ai-gen">✦ AI 生成 · 摘要与要点,内容版权归原作者</span>
+          </div>
+        </div>
+      </article>
+
       <article class="tg-item">
         <div class="tg-top">
           <span class="src-tag src-sns">Reddit r/LocalLLaMA</span>
-          <span class="tg-ago">1 小时前</span>
+          <span class="tg-ago">3 小时前</span>
         </div>
         <h3><a href="#" onclick="return false">vLLM v0.9 支持 MTP 投机解码:长文吞吐 +1.8×,显存占用持平</a> <span class="ext">↗</span></h3>
         <p>实测 Llama-70B AWQ,TP=2 4090×2;batch=32 时 TTFT 从 840ms 降到 460ms。</p>
         <div class="tg-meta"><span>reddit.com</span><a href="#" onclick="return false">原文 ↗</a><span>▲ 456</span></div>
       </article>
 
-      <article class="tg-item">
-        <div class="tg-top">
-          <span class="src-tag src-rss">量子位</span>
-          <span class="tg-ago">2 小时前</span>
+      <!-- 短视频解读卡(小红书):仅内容解读 + 原文外链(版权红线) -->
+      <article class="tg-item video">
+        <a class="v-cover" href="#" onclick="return false" title="跳转原视频">
+          <img src="assets/video-cover-xhs.jpg" alt="" onerror="this.remove()">
+          <span class="play">▶</span>
+          <span class="plat">小红书</span>
+          <span class="dur">01:47</span>
+        </a>
+        <div class="v-body">
+          <div class="tg-top">
+            <span class="src-tag pf-xhs">小红书</span>
+            <span class="who">@AI 日常手册</span>
+            <span class="tg-ago">4 小时前</span>
+          </div>
+          <h3><a href="#" onclick="return false">打工人的 AI 周报自动化:截图丢进去,周报自己写</a></h3>
+          <p class="ai-sum"><span class="ai-badge">AI 解读</span>用多模态模型读取工作截图 → 汇总成本周纪要 → 按团队模板输出周报。作者附了提示词模板与两个翻车案例(敏感信息脱敏、数据口径)。</p>
+          <div class="tg-meta">
+            <span>❤️ 5,632 · ⭐ 2,104 · 💬 447</span>
+            <a href="#" onclick="return false">原视频 ↗</a>
+            <span class="ai-gen">✦ AI 生成 · 摘要与要点,内容版权归原作者</span>
+          </div>
         </div>
-        <h3><a href="#" onclick="return false">微信「灰度测试」AI 搜索入口:公众号生态内容权重显著提升</a> <span class="ext">↗</span></h3>
-        <p>内测用户搜索框新增「AI 回答」;引用以公众号文章为主——对公众号分发(本站二期规划)是利好信号。</p>
-        <div class="tg-meta"><span>qbitai.com</span><a href="#" onclick="return false">原文 ↗</a></div>
       </article>
 
       <article class="tg-item">
         <div class="tg-top">
-          <span class="src-tag src-web">官方 Blog</span>
-          <span class="tg-ago">3 小时前</span>
+          <span class="src-tag src-rss">量子位</span>
+          <span class="tg-ago">5 小时前</span>
         </div>
-        <h3><a href="#" onclick="return false">Next.js 15.6 canary:partial prerendering 默认开启,ISR 语法简化</a> <span class="ext">↗</span></h3>
-        <p>PPR 转 stable 的信号;本站 App Router + ISR 架构无需迁移,但缓存语义有 breaking 变更,升级前先看 changelog。</p>
-        <div class="tg-meta"><span>nextjs.org</span><a href="#" onclick="return false">原文 ↗</a></div>
+        <h3><a href="#" onclick="return false">微信「灰度测试」AI 搜索入口:公众号生态内容权重显著提升</a> <span class="ext">↗</span></h3>
+        <p>内测用户搜索框新增「AI 回答」;引用以公众号文章为主——对公众号分发(本站二期规划)是利好信号。</p>
+        <div class="tg-meta"><span>qbitai.com</span><a href="#" onclick="return false">原文 ↗</a></div>
       </article>
 
       <!-- 昨天 -->
@@ -248,9 +423,12 @@ a { color: inherit; text-decoration: none; }
           <span class="tg-ago">昨天 19:02</span>
         </div>
         <h3><a href="#" onclick="return false">「Agent 记忆」共识正在形成:分层摘要 + 向量召回 + 结构化状态三件套</a> <span class="ext">↗</span></h3>
-        <p>多个团队独立收敛到相似架构;与本文站长《智能体军团指挥手册》中「指挥官读地图」的实践一致。</p>
+        <p>多个团队独立收敛到相似架构;与本站站长《智能体军团指挥手册》中「指挥官读地图」的实践一致。</p>
         <div class="tg-meta"><span>x.com</span><a href="#" onclick="return false">原文 ↗</a><a href="site-article.html">相关文章 →</a></div>
       </article>
+
+      <!-- 准入纪律可见性:被过滤内容计数注记 -->
+      <div class="filtered-note">🕘 已过滤 <b>12</b> 条无关内容(生活动态 / 广告 / 招聘)· 规则与拦截率见治理后台</div>
 
       <a class="more-btn" href="#" onclick="return false">加载更早的电报 · 共 1,102 条可见 ↓</a>
     </main>
@@ -260,26 +438,39 @@ a { color: inherit; text-decoration: none; }
       <div class="rail-card">
         <h4>[采集概况 · 近 24h]</h4>
         <div class="kv"><span>采集入库</span><b class="ok">47</b></div>
+        <div class="kv"><span>其中 短视频解读</span><b class="ok">9</b></div>
         <div class="kv"><span>广告/低质过滤拦截</span><b>12</b></div>
         <div class="kv"><span>屏蔽词命中</span><b class="warn">3</b></div>
         <div class="kv"><span>哈希去重丢弃</span><b>5</b></div>
-        <div class="note">电报流由站内智能体自动采集与过滤,非人工编辑;摘要为 AI 生成,内容版权归原作者。发现误采?<a href="#" onclick="return false" style="color:var(--blue)">报告</a></div>
+        <div class="note">电报流由站内智能体自动采集与过滤,非人工编辑;摘要与要点为 AI 生成,内容版权归原作者。发现误采?<a href="#" onclick="return false" style="color:var(--blue)">报告</a></div>
+      </div>
+
+      <!-- 版权边界卡(Hub 红线:转写是输入,不是资产) -->
+      <div class="rail-card">
+        <h4>[版权边界 · 重要]</h4>
+        <div class="note flat">
+          <b>「转写是输入,不是资产。」</b><br><br>
+          短视频解读仅持久化四样东西:<b>分析结论、摘要、封面缩略图、原文外链</b>。<br><br>
+          不存储、不分发视频原片与完整文稿;播放始终跳回平台原页。转写文本仅作为解读管道的临时输入,判读后即删。
+        </div>
       </div>
 
       <div class="rail-card">
         <h4>[渠道健康]</h4>
         <div class="src-health"><span class="h-dot h-ok"></span>机器之心 · 30min 前</div>
-        <div class="src-health"><span class="h-dot h-ok"></span>量子位 · 45min 前</div>
         <div class="src-health"><span class="h-dot h-ok"></span>Hacker News · 22min 前</div>
+        <div class="src-health"><span class="h-dot h-ok"></span>抖音 · @AI 前线老李 · 40min 前</div>
+        <div class="src-health"><span class="h-dot h-ok"></span>B站 · @AI 工坊 · 2h 前</div>
         <div class="src-health"><span class="h-dot h-err"></span>X · 学者圈 · 连续失败 3 次</div>
         <a class="sub-btn" href="#" onclick="return false">RSS 订阅 /telegram.xml</a>
       </div>
 
       <div class="rail-card">
         <h4>[这是什么?]</h4>
-        <div class="note" style="margin:0; border:none; padding:0">
-          站长的 AI 信息触达回路:爬虫巡检 13 个渠道 → 规则过滤广告 → 屏蔽词 → 去重 → 1-3 句电报。短、少、准,不追资讯量。<br><br>
-          本页与电报流内容<b style="color:var(--text-2)">不参与搜索引擎收录</b>(noindex),避免低质资讯拖累站点 SEO——旧站 3314 条采集资讯的教训。<a href="site-home.html" style="color:var(--blue)">回到首页 →</a>
+        <div class="note flat">
+          站长的 AI 信息触达回路:智能体巡检 13 个渠道 → 规则过滤 → 屏蔽词 → 去重 → 1-3 句电报或短视频解读。短、少、准,不追资讯量。<br><br>
+          「我的关注」(每用户自定义博主订阅)为三期规划,敬请期待。<br><br>
+          本页<b>不参与搜索引擎收录</b>(noindex),避免低质资讯拖累站点 SEO——旧站 3314 条采集资讯的教训。<a href="site-home.html" style="color:var(--blue)">回到首页 →</a>
         </div>
       </div>
     </aside>
@@ -292,7 +483,7 @@ a { color: inherit; text-decoration: none; }
     <div class="footer-in">
       <div>
         <h5>一起AI技术 · 17aitech.com</h5>
-        一个人指挥智能体军团的公开实战档案。Claude Code、MCP、AI 落地实践。每篇文章附完整源码仓库。
+        AI 信息 Hub:资讯、教程、开源项目与博主实战文章的聚合平台。博主亲自写,智能体军团帮跑。
       </div>
       <div>
         <h5>导航</h5>
@@ -317,7 +508,15 @@ a { color: inherit; text-decoration: none; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · 二期 · 电报流 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · 二期 · 混合电报流 · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

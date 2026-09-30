@@ -1,20 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 文章列表 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;  /* 封面占位渐变 */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-header-h: 64px; --site-max-w: 1200px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -28,7 +43,7 @@ img { display: block; }
 /* ==== 顶栏 ==== */
 .header {
   position: sticky; top: 0; z-index: 50; height: var(--site-header-h);
-  background: rgba(12,14,18,.82); backdrop-filter: blur(12px);
+  background: var(--header-bg); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .header-in {
@@ -38,7 +53,7 @@ img { display: block; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
@@ -47,6 +62,17 @@ img { display: block; }
 .nav a:hover { color: var(--text-1); background: var(--panel-2); }
 .nav a.active { color: var(--text-1); background: var(--accent-dim); }
 .nav a.mono { font-size: 13px; }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
 
 /* ==== 页头:标题 + 分类过滤 Tab ==== */
 .page-head { max-width: var(--site-max-w); margin: 0 auto; padding: 40px 24px 0; }
@@ -62,7 +88,7 @@ img { display: block; }
   border-radius: 999px; padding: 5px 14px; cursor: pointer;
   transition: all .15s;
 }
-.f-tab:hover { color: var(--text-1); border-color: #3d4260; }
+.f-tab:hover { color: var(--text-1); border-color: var(--border-hover); }
 .f-tab.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 .f-tab .n { opacity: .65; font-size: 12px; margin-left: 4px; }
 .f-sort { margin-left: auto; font-size: 13px; color: var(--text-3); display: flex; gap: 14px; align-items: center; }
@@ -75,8 +101,8 @@ img { display: block; }
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
   overflow: hidden; transition: border-color .2s, transform .2s;
 }
-.row-card:hover { border-color: #3d4260; transform: translateY(-1px); }
-.row-cover { position: relative; min-height: 148px; background: linear-gradient(135deg, #171a26, #20243c); }
+.row-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+.row-cover { position: relative; min-height: 148px; background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); }
 .row-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .row-body { padding: 18px 22px 18px 0; display: flex; flex-direction: column; gap: 9px; }
 .row-body h3 { font-size: 17px; line-height: 1.5; }
@@ -90,7 +116,7 @@ img { display: block; }
   color: var(--accent-hover); background: var(--accent-dim);
   border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px;
 }
-.tag.cat { color: #7ee2a0; background: rgba(46,160,67,.12); border-color: rgba(46,160,67,.3); }
+.tag.cat { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
 
 /* ==== 分页 ==== */
 .pager { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 40px 0 8px; }
@@ -99,7 +125,7 @@ img { display: block; }
   font-family: var(--font-mono); font-size: 13.5px; border-radius: var(--r-sm);
   border: 1px solid var(--border); color: var(--text-2); padding: 0 10px;
 }
-.pager a:hover { color: var(--text-1); border-color: #3d4260; background: var(--panel-2); }
+.pager a:hover { color: var(--text-1); border-color: var(--border-hover); background: var(--panel-2); }
 .pager span.cur { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .pager .ell { border: none; color: var(--text-3); }
 
@@ -114,6 +140,7 @@ img { display: block; }
   padding: 5px 10px; border-radius: 6px;
 }
 .proto-note a { color: var(--accent-hover); }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 @media (max-width: 800px) { .row-card { grid-template-columns: 1fr; } .row-body { padding: 0 20px 18px; } }
 </style>
 </head>
@@ -131,6 +158,7 @@ img { display: block; }
       <a href="site-articles.html">归档</a>
       <a href="#">关于</a>
       <a href="site-search.html" class="mono">⌕ 搜索</a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     </nav>
   </div>
 </header>
@@ -242,7 +270,15 @@ img { display: block; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>

@@ -1,20 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一起AI技术 — 文章详情 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.1.0,内联副本) ==== */
-:root {
+/* ==== 设计 token(真相源:common.css v0.3.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
   --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
-  --green: #2ea043; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
   --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --site-header-h: 64px; --site-max-w: 1200px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -29,7 +44,7 @@ img { display: block; }
 /* ==== 顶栏(与 site-home 同款) ==== */
 .header {
   position: sticky; top: 0; z-index: 50; height: var(--site-header-h);
-  background: rgba(12,14,18,.82); backdrop-filter: blur(12px);
+  background: var(--header-bg); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .header-in {
@@ -39,7 +54,7 @@ img { display: block; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
 .logo .cursor-block {
   width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
-  box-shadow: 0 0 12px rgba(94,106,210,.55); animation: blink 1.2s steps(1) infinite;
+  box-shadow: 0 0 12px var(--glow); animation: blink 1.2s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
@@ -59,7 +74,7 @@ img { display: block; }
   color: var(--accent-hover); background: var(--accent-dim);
   border: 1px solid rgba(94,106,210,.25); border-radius: 4px; padding: 1px 8px;
 }
-.tag.cat { color: #7ee2a0; background: rgba(46,160,67,.12); border-color: rgba(46,160,67,.3); }
+.tag.cat { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
 h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spacing: .01em; }
 .post-meta {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -77,7 +92,7 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
 .post-cover {
   margin-top: 24px; border-radius: var(--r-lg); overflow: hidden;
   border: 1px solid var(--border); position: relative; aspect-ratio: 21/9;
-  background: linear-gradient(135deg, #1b1e2e, #232742 60%, #2c2f52);
+  background: linear-gradient(135deg, var(--cover-a), var(--cover-b) 60%, var(--accent-dim));
 }
 .post-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
@@ -89,11 +104,11 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
   padding: 9px 14px;
 }
 .slug-band .u { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slug-band .u b { color: #8b96e8; font-weight: 500; }
+.slug-band .u b { color: var(--accent-hi); font-weight: 500; }
 .slug-band .copy { margin-left: auto; color: var(--blue); cursor: pointer; flex-shrink: 0; }
 
 /* ==== 正文排版(prose,对齐 src/styles/prose.css 基调) ==== */
-.prose { margin-top: 36px; font-size: 16px; line-height: 1.85; color: #d6d9e0; }
+.prose { margin-top: 36px; font-size: 16px; line-height: 1.85; color: var(--text-1); }
 .prose h2 {
   font-size: 22px; color: var(--text-1); margin: 44px 0 18px; padding-top: 20px;
   border-top: 1px solid var(--border);
@@ -111,18 +126,19 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
 }
 .prose code:not(pre code) {
-  font-family: var(--font-mono); font-size: .86em; color: #c3c9f5;
+  font-family: var(--font-mono); font-size: .86em; color: var(--accent-hi);
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 4px; padding: 1px 6px;
 }
+/* 代码块固定深底(GitHub-dark 式嵌入),双主题一致;tk-* 语法色为深底设计 */
 .prose pre {
-  margin: 20px 0; background: var(--panel); border: 1px solid var(--border);
+  margin: 20px 0; background: #16181f; border: 1px solid #2a2d37; color: #d6d9e0;
   border-radius: var(--r-md); padding: 18px 20px; overflow-x: auto;
   font-family: var(--font-mono); font-size: 13.5px; line-height: 1.75;
 }
 .prose pre .head-bar {
   display: flex; align-items: center; gap: 6px; margin: -6px 0 14px;
-  font-size: 11px; color: var(--text-3);
+  font-size: 11px; color: #6b7280;
 }
 .prose .tk-kw { color: #c792ea; } .prose .tk-str { color: #7ee2a0; }
 .prose .tk-num { color: #f0a45d; } .prose .tk-fn { color: #82aaff; }
@@ -143,11 +159,11 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
   font-size: 13px; color: var(--text-2); background: var(--panel);
   border: 1px solid var(--border); border-radius: var(--r-sm); padding: 6px 14px; cursor: pointer;
 }
-.btn-ghost:hover { color: var(--text-1); border-color: #3d4260; }
+.btn-ghost:hover { color: var(--text-1); border-color: var(--border-hover); }
 .md-direct {
   margin-top: 18px; display: flex; align-items: center; gap: 12px;
   font-size: 13px; color: var(--text-2); background: var(--panel);
-  border: 1px dashed #3d4260; border-radius: var(--r-sm); padding: 12px 16px;
+  border: 1px dashed var(--border-hover); border-radius: var(--r-sm); padding: 12px 16px;
 }
 .md-direct .m-links { margin-left: auto; display: flex; gap: 8px; }
 .md-direct .m-links a {
@@ -166,8 +182,8 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
   overflow: hidden; transition: transform .2s, border-color .2s;
 }
-.rel-card:hover { transform: translateY(-2px); border-color: #3d4260; }
-.rel-cover { position: relative; aspect-ratio: 16/9; background: linear-gradient(135deg, #171a26, #20243c); }
+.rel-card:hover { transform: translateY(-2px); border-color: var(--border-hover); }
+.rel-cover { position: relative; aspect-ratio: 16/9; background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); }
 .rel-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .rel-body { padding: 16px 18px 18px; }
 .rel-body h3 { font-size: 15px; line-height: 1.5; margin-bottom: 8px; }
@@ -196,6 +212,18 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
 }
 .proto-note a { color: var(--accent-hover); }
 @media (max-width: 960px) { .rel-grid { grid-template-columns: 1fr; } h1.post-title { font-size: 24px; } }
+
+/* ==== 主题切换(约定见 common.css v0.3.0) ==== */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text-1); border-color: var(--border-hover); }
+[data-theme="dark"] .tt-moon { display: none; }
+[data-theme="light"] .tt-sun { display: none; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -212,6 +240,7 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
       <a href="site-articles.html">归档</a>
       <a href="#">关于</a>
       <a href="site-search.html" class="mono">⌕ 搜索</a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></button>
     </nav>
   </div>
 </header>
@@ -367,7 +396,15 @@ h1.post-title { font-size: 30px; line-height: 1.4; font-weight: 700; letter-spac
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.2.0 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.3.0 · <a href="index.html">← 原型索引</a></div>
 
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
 </body>
 </html>
