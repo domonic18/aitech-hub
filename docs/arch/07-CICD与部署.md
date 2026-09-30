@@ -19,6 +19,12 @@ push(main)
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
 - TCR 凭证走 repo secrets(`TCR_NAMESPACE`/`TCR_USER`/`TCR_PASSWORD`);镜像 `ccr.ccs.tencentyun.com/domonic18/aitech-hub`
 
+### 1.1 分支模型(2026-09-30 起,同 ai-invest-assisstant)
+
+- 常驻分支双主干:`develop`(开发主线)+ `main`(发布线);CI 对两者 push/PR 均触发
+- 功能开发:基于 develop 建 `feature/<topic>` 分支(文档 `docs/`、杂务 `chore/`、重构 `refactor/` 同规),完毕 PR 合回 develop
+- 发布:develop → main 走 PR;`main` 设分支保护**禁直推**(含管理员),合入只经 PR;develop 不设保护,直推仅限小修正(约定,同参考仓)
+
 ## 2. 本地开发链路
 
 ```bash

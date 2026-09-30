@@ -30,6 +30,7 @@
 - 你最重要的工作是管理自己的上下文。规划变更前,务必先阅读相关文件。
 - KISS、YAGNI、DRY;文件 ≤350 行;Server Component 默认,请求内禁秒级任务(进 BullMQ)。
 - 未经用户批准不要提交到 git。不要主动创建 *.md/README。
+- 分支:开发主线为 `develop`;新功能建 `feature/<topic>` 分支 PR 合回 develop;`main` 禁直推(只经 develop→main PR 发布)。
 - 永远不要模拟、不要占位符、不要省略代码;对想法的好坏坦率诚实。
 - 安全:外部输入边界校验(Zod);密钥仅 env;日志记事件不记敏感值;Origin 校验 mutation。
 - slug 红线:任何含 slug 的路由/查询必须经 `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。

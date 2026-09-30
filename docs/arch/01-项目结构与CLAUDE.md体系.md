@@ -101,6 +101,7 @@ aitech-hub/
 - Zod schema 与 TS 类型同源(`z.infer`),API 输入/`api-client` 响应双端校验
 - 安全:外部输入边界校验;密钥仅 env;CORS/Origin 白名单;上传类型+大小白名单;日志不落敏感值
 - 提交纪律:Conventional Commits;`make check` 过了才提交;husky + lint-staged(eslint/prettier);未经用户批准不 commit
+- 分支纪律:开发主线 `develop`;新功能建 `feature/<topic>` 等类型前缀分支 PR 合回 develop;`main` 只经 develop→main 的 PR 更新,禁直推
 - 文档纪律:不主动建 .md;行为变更同步 CLAUDE.md;arch 文档写终态,过程进提交历史
 
 ## 3. 命名规范速查
