@@ -5,7 +5,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "target": "ES2022",
-    "outDir": "worker-dist",
+    "outDir": "dist",
     "rootDir": ".",
     "incremental": false,
     "plugins": [],

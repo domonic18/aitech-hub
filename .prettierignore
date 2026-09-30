@@ -5,10 +5,10 @@ CLAUDE.md
 .secret/
 node_modules/
 .next/
-worker-dist/
+dist/
 coverage/
 package-lock.json
 workspace/
-test-results/
+.test-results/
 playwright-report/
 *.tsbuildinfo

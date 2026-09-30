@@ -5,7 +5,7 @@
 .secret/
 node_modules/
 .next/
-worker-dist/
+dist/
 coverage/
 docs/
 e2e/
@@ -13,6 +13,6 @@ workspace
 scripts/migrate-wp/artifacts/
 *.log
 .DS_Store
-test-results/
+.test-results/
 playwright-report/
 tsconfig.tsbuildinfo

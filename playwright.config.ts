@@ -7,6 +7,7 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  outputDir: ".test-results", // 点前缀隐藏:临时产物不占根目录视线(每次运行自动清空重建)
   timeout: 30_000,
   workers: 1, // 顺序执行:共享 ISR 缓存与统计缓冲,避免并发干扰
   retries: 0,

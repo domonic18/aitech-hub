@@ -20,7 +20,7 @@ case "$SERVICE_ROLE" in
     exec node server.js
     ;;
   worker)
-    exec node worker-dist/worker/index.js
+    exec node dist/worker/index.js
     ;;
   *)
     echo "SERVICE_ROLE must be web or worker, got: $SERVICE_ROLE" >&2

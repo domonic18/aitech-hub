@@ -42,7 +42,7 @@ RUN apt-get update -y \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/worker-dist ./worker-dist
+COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 # worker 依赖与 @prisma/client 生成物必须取 builder(node_modules 含
 # prisma generate 产物;取 deps 层会覆盖 standalone 内 traced 生成物,

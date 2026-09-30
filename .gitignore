@@ -11,7 +11,6 @@
 node_modules/
 .next/
 dist/
-worker-dist/
 coverage/
 
 # 系统与日志
@@ -30,7 +29,7 @@ scripts/migrate-wp/artifacts/
 !/workspace/backups/.gitkeep
 
 # Playwright 本地产物
-/test-results/
+/.test-results/
 /playwright-report/
 
 # App Router 字面段目录名含 .txt,被全局 gitignore *.txt 误伤,强制纳管
