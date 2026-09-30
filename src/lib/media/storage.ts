@@ -6,7 +6,7 @@
  * 路径约定:站内 URL `/wp-content/uploads/YYYY/MM/<file>` ↔ 磁盘 `$MEDIA_DIR/YYYY/MM/<file>`
  * (与 wp-content 路由、Nginx 直服、WP 迁移目录同构;新上传沿用旧站路径风格)。
  */
-import { createReadStream, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -68,13 +68,6 @@ export class LocalDiskProvider implements MediaStorage {
     } catch {
       return null;
     }
-  }
-
-  /** 供 worker 流式读取大图(避免整图进内存两次) */
-  readStream(relPath: string): ReturnType<typeof createReadStream> | null {
-    const p = this.abs(relPath);
-    if (!existsSync(p)) return null;
-    return createReadStream(p);
   }
 
   async delete(relPath: string): Promise<void> {

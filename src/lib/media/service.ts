@@ -7,7 +7,13 @@
 import { createHash } from "node:crypto";
 
 import { prisma } from "@/lib/db";
-import { IMAGE_MIME_WHITELIST, MEDIA_LIMITS, extByMime } from "@/lib/media/media-schema";
+import {
+  IMAGE_MIME_WHITELIST,
+  MEDIA_LIMITS,
+  extByMime,
+  type BatchDeleteResult,
+  type MediaStatus,
+} from "@/lib/media/media-schema";
 import { getQueue, QUEUE_MEDIA_PROCESS } from "@/lib/queue";
 import { mediaStorage, relToUploadsUrl } from "@/lib/media/storage";
 
@@ -84,7 +90,7 @@ export async function uploadMedia(input: {
     // 命中回收站里的同 sha1:URL 路径全站唯一(文件仍在盘上),复活原行重新走 sharp 管线
     await prisma.media.update({
       where: { id: dup.id },
-      data: { deletedAt: null, status: "processing" },
+      data: { deletedAt: null, status: "processing" satisfies MediaStatus },
     });
     await enqueueMediaProcess(dup.id, sha1);
     return { id: dup.id.toString(), path: dup.path, reused: true, status: "processing" };
@@ -97,9 +103,9 @@ export async function uploadMedia(input: {
   const row = await prisma.media.create({
     data: {
       path: url,
-      filename: input.filename.slice(0, 255),
+      filename: input.filename.slice(0, MEDIA_LIMITS.maxFilenameChars),
       kind: "image",
-      status: "processing",
+      status: "processing" satisfies MediaStatus,
       sizeBytes: BigInt(input.data.byteLength),
       sha1,
       storage: "local",
@@ -124,16 +130,13 @@ export async function deleteMedia(id: bigint): Promise<{ path: string }> {
   }
   await prisma.media.update({
     where: { id },
-    data: { status: "deleted", deletedAt: new Date() },
+    data: { status: "deleted" satisfies MediaStatus, deletedAt: new Date() },
   });
   return { path: media.path };
 }
 
 /** 批量删除(孤儿处置):逐条引用检查,有引用的跳过并在结果中列出 */
-export async function batchDeleteMedia(ids: bigint[]): Promise<{
-  deleted: number;
-  skipped: Array<{ id: string; filename: string; refCount: number }>;
-}> {
+export async function batchDeleteMedia(ids: bigint[]): Promise<BatchDeleteResult> {
   const rows = await prisma.media.findMany({
     where: { id: { in: ids }, deletedAt: null },
     select: { id: true, path: true, filename: true },
@@ -148,7 +151,7 @@ export async function batchDeleteMedia(ids: bigint[]): Promise<{
   if (deletable.length > 0) {
     await prisma.media.updateMany({
       where: { id: { in: deletable.map((r) => r.id) } },
-      data: { status: "deleted", deletedAt: new Date() },
+      data: { status: "deleted" satisfies MediaStatus, deletedAt: new Date() },
     });
   }
   return {

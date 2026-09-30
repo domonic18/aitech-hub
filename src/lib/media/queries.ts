@@ -1,17 +1,27 @@
 /**
  * 媒体库读侧查询(M5-b;arch/08-media + arch/05-services §5 media 行):
  * 列表(kind Tab × 引用过滤)、详情抽屉、存储统计、断链清单。
- * 引用状态实时计算(refs+cover 双查,表量级 ~1k 直接聚合);audit 定时任务仅作持久投影。
+ * 引用状态实时计算(refs+cover 双查,表量级 ~1k 直接聚合);audit 定时任务仅作持久投影,
+ * 两侧引用口径共用 loadRefIndex / loadReferencedPathSet(评审 W5:单源)。
  */
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { type MediaKind, type MediaRefFilter, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import {
+  type MediaKind,
+  type MediaRefFilter,
+  type MediaStatus,
+  DAY_MS,
+  MEDIA_LIMITS,
+} from "@/lib/media/media-schema";
 
 export const MEDIA_PAGE_SIZE = MEDIA_LIMITS.pageSize;
 
-/** 引用索引(全库口径,量级 ~1k 行;管理页独享,脏活集中此处):路径 → 引用篇数 */
-async function loadRefIndex(): Promise<{ refCount: Map<string, number>; coverSet: Set<string> }> {
+/** 引用索引(全库口径,量级 ~1k 行;列表与统计共用,孤儿口径单源——评审 W5):路径 → 引用篇数 */
+export async function loadRefIndex(): Promise<{
+  refCount: Map<string, number>;
+  coverSet: Set<string>;
+}> {
   // 只读聚合,Promise.all 并行即可($transaction 数组形态会劣化 groupBy 的重载推导)
   const [refs, covers] = await Promise.all([
     prisma.mediaRef.groupBy({
@@ -27,12 +37,23 @@ async function loadRefIndex(): Promise<{ refCount: Map<string, number>; coverSet
   };
 }
 
+/** 被引用路径全集(正文引用 ∪ 封面;audit 判定与读侧同源,评审 W5) */
+export async function loadReferencedPathSet(): Promise<Set<string>> {
+  const [refs, covers] = await Promise.all([
+    prisma.mediaRef.findMany({ select: { mediaPath: true } }),
+    prisma.post.findMany({ where: { coverPath: { not: null } }, select: { coverPath: true } }),
+  ]);
+  const paths = new Set(refs.map((r) => r.mediaPath));
+  for (const c of covers) if (c.coverPath) paths.add(c.coverPath);
+  return paths;
+}
+
 export interface MediaListItem {
   id: string;
   path: string;
   filename: string;
   kind: MediaKind;
-  status: string;
+  status: MediaStatus;
   sizeBytes: number | null;
   width: number | null;
   height: number | null;
@@ -105,7 +126,7 @@ export async function listMediaAdmin(query: {
       path: r.path,
       filename: r.filename,
       kind: r.kind as MediaKind,
-      status: r.status,
+      status: r.status as MediaStatus,
       sizeBytes: r.sizeBytes === null ? null : Number(r.sizeBytes),
       width: r.width,
       height: r.height,
@@ -140,10 +161,10 @@ export interface MediaStats {
   last30d: { count: number; bytes: number };
 }
 
-/** 存储统计卡(arch/08 §3.3;表量级 ~1k,实时聚合即可,audit 任务不做缓存投影) */
+/** 存储统计卡(arch/08 §3.3;表量级 ~1k,实时聚合即可;引用口径复用 loadRefIndex——评审 W5) */
 export async function mediaStats(): Promise<MediaStats> {
-  const since30d = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-  const [groups, recent, live, refIndex, covers] = await Promise.all([
+  const since30d = new Date(Date.now() - 30 * DAY_MS);
+  const [groups, recent, live, refIndex] = await Promise.all([
     prisma.media.groupBy({
       by: ["kind"],
       where: { deletedAt: null },
@@ -160,16 +181,11 @@ export async function mediaStats(): Promise<MediaStats> {
       where: { deletedAt: null },
       select: { path: true },
     }),
-    prisma.mediaRef.groupBy({
-      by: ["mediaPath"],
-      _count: { mediaPath: true },
-      orderBy: { mediaPath: "asc" },
-    }),
-    prisma.post.findMany({ where: { coverPath: { not: null } }, select: { coverPath: true } }),
+    loadRefIndex(),
   ]);
-  const refPaths = new Set(refIndex.map((r) => r.mediaPath));
-  const coverPaths = new Set(covers.map((c) => c.coverPath ?? ""));
-  const orphanCount = live.filter((m) => !refPaths.has(m.path) && !coverPaths.has(m.path)).length;
+  const orphanCount = live.filter(
+    (m) => !refIndex.refCount.has(m.path) && !refIndex.coverSet.has(m.path),
+  ).length;
 
   const stats: MediaStats = {
     kinds: {

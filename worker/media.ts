@@ -8,7 +8,7 @@
 import type { Job } from "bullmq";
 
 import { prisma } from "../src/lib/db";
-import { MEDIA_LIMITS } from "../src/lib/media/media-schema";
+import { type MediaStatus, type TransferResult, MEDIA_LIMITS } from "../src/lib/media/media-schema";
 import { uploadMedia } from "../src/lib/media/service";
 import { mediaStorage, uploadsUrlToRel } from "../src/lib/media/storage";
 
@@ -60,24 +60,20 @@ export async function processMediaJob(job: Job): Promise<{ id: string; status: s
       width,
       height,
       thumbPath: thumbUrlOf(media.path),
-      status: "active",
+      status: "active" satisfies MediaStatus,
     },
   });
   return { id: mediaId.toString(), status: "active" };
 }
 
-export interface TransferResult {
-  mapping: Record<string, string | null>;
-  ok: number;
-  failed: number;
-}
-
-const TRANSFER_TIMEOUT_MS = 15_000;
-
-/** 单张外链抓取:content-type 白名单 + 大小上限(与上传同规) */
+/**
+ * 单张外链抓取:content-type 白名单 + 大小上限(与上传同规)。
+ * SSRF 边界(评审 S1):URL 仅来自 admin 后台(会话 + Origin 双守卫),风险有界;
+ * 开放多管理员/三方导入前需先解析 DNS 并拒绝私网段(二期硬化项)。
+ */
 async function fetchExternalImage(url: string): Promise<{ data: Uint8Array; mime: string }> {
   const res = await fetch(url, {
-    signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+    signal: AbortSignal.timeout(MEDIA_LIMITS.fetchTimeoutMs),
     headers: { "user-agent": "aitech-hub-media-transfer/1.0" },
     redirect: "follow",
   });
@@ -99,7 +95,7 @@ export async function transferMediaJob(job: Job): Promise<TransferResult> {
       const saved = await uploadMedia({
         data,
         mime,
-        filename: url.split("/").pop()?.slice(0, 255) || "transfer",
+        filename: url.split("/").pop()?.slice(0, MEDIA_LIMITS.maxFilenameChars) || "transfer",
       });
       mapping[url] = saved.path;
       ok += 1;

@@ -2,6 +2,7 @@ import { Worker, type Processor, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
 import {
+  MEDIA_AUDIT_CRON,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
@@ -33,8 +34,6 @@ const PROCESSORS: Record<string, Processor> = {
 
 /** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
 const STATS_FLUSH_EVERY_MS = 60_000;
-/** 媒体体检每日一次(避开整点;arch/08-media §3.2) */
-const MEDIA_AUDIT_CRON = "41 3 * * *";
 
 async function scheduleStatsFlush(): Promise<void> {
   const queue = getQueue(QUEUE_STATS);

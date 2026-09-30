@@ -6,7 +6,8 @@
  * 幂等:全量重算状态,可重复执行;文件删除先库后盘(失败重跑补删)。
  */
 import { prisma } from "@/lib/db";
-import { MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { type MediaStatus, DAY_MS, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { loadReferencedPathSet } from "@/lib/media/queries";
 import { mediaStorage, uploadsUrlToRel } from "@/lib/media/storage";
 
 /** 一个媒体行的全部落盘文件(主文件 + WebP 副本 + 缩略图,同目录 sha1 家族) */
@@ -26,13 +27,8 @@ export interface AuditSummary {
 export async function runAudit(): Promise<AuditSummary> {
   const summary: AuditSummary = { orphaned: 0, restored: 0, missing: 0, purged: 0 };
 
-  // 1) 引用索引(路径即身份;封面算引用)
-  const [refs, covers] = await prisma.$transaction([
-    prisma.mediaRef.findMany({ select: { mediaPath: true } }),
-    prisma.post.findMany({ where: { coverPath: { not: null } }, select: { coverPath: true } }),
-  ]);
-  const refSet = new Set(refs.map((r) => r.mediaPath));
-  for (const c of covers) if (c.coverPath) refSet.add(c.coverPath);
+  // 1) 引用索引(路径即身份;封面算引用;口径与读侧同源——评审 W5)
+  const refSet = await loadReferencedPathSet();
 
   // 2) 逐行重算 active/orphan/missing(软删行不参与)
   const rows = await prisma.media.findMany({
@@ -42,7 +38,7 @@ export async function runAudit(): Promise<AuditSummary> {
   for (const row of rows) {
     const referenced = refSet.has(row.path);
     const onDisk = await mediaStorage.exists(uploadsUrlToRel(row.path) ?? "");
-    let next: string | null = null;
+    let next: MediaStatus | null = null;
     if (!onDisk) {
       if (row.status !== "missing") {
         next = "missing";
@@ -64,7 +60,7 @@ export async function runAudit(): Promise<AuditSummary> {
 
   // 3) 回收站清退:deletedAt 超期 → 删盘上文件家族 → 删记录(引用行随媒体删除本就不存在:
   //    软删前置引用检查保证零引用;若之后文章新引用了软删路径,断链体检会提示)
-  const expireBefore = new Date(Date.now() - MEDIA_LIMITS.trashDays * 24 * 3600 * 1000);
+  const expireBefore = new Date(Date.now() - MEDIA_LIMITS.trashDays * DAY_MS);
   const trashed = await prisma.media.findMany({
     where: { deletedAt: { not: null, lt: expireBefore } },
     select: { id: true, path: true },

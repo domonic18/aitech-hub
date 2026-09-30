@@ -1,5 +1,6 @@
 /**
- * 媒体域常量与边界校验唯一出口(M5-b;评审 W1 同款模式:Zod 与 UI 共用一套 LIMITS)。
+ * 媒体域协议唯一出口(M5-b;评审 W1 同款模式:Zod 与 UI 共用一套 LIMITS;
+ * 评审 W4:跨端线类型——上传结果/转存结果/详情响应——同源,客户端不手写同形接口)。
  * arch/08-media:上传白名单 jpg/png/webp/gif ≤10MB;视频不经应用服务器(STS 直传 COS,二期)。
  */
 import { z } from "zod";
@@ -10,17 +11,27 @@ export const MEDIA_LIMITS = {
   maxUploadBytes: 10 * 1024 * 1024,
   /** 一键发文单批外链转存上限(防滥用;超出提示分批) */
   maxBatchUrls: 30,
-  /** 外链抓取单张超时/大小(与上传同限) */
+  /** 外链抓取单张大小上限(与上传同限) */
   maxFetchBytes: 10 * 1024 * 1024,
+  /** 外链抓取单张超时(worker media.transfer) */
+  fetchTimeoutMs: 15_000,
   /** 缩略图宽(worker sharp 生成,arch/08-media §3.4) */
   thumbWidth: 640,
   /** WebP 副本质量 */
   webpQuality: 80,
   /** 媒体库分页大小 */
   pageSize: 24,
-  /** 软删回收站保留天数(到期 audit 物理删除) */
+  /** 软删回收站保留天数(到期 audit 物理删除;UI 文案同源插值) */
   trashDays: 7,
+  /** filename 截断长度(绑定 schema Media.filename VarChar(255)) */
+  maxFilenameChars: 255,
 } as const;
+
+/** 一天毫秒数(近 30 天统计 / 回收站到期换算共用) */
+export const DAY_MS = 24 * 3600 * 1000;
+
+/** POST /api/media 的 multipart 文件字段名(服务端与 upload-client 同源,评审 W4) */
+export const UPLOAD_FIELD = "file";
 
 export const MEDIA_KINDS = ["image", "video", "file"] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
@@ -84,6 +95,47 @@ export type MediaImportInput = z.infer<typeof mediaImportSchema>;
 export const mediaBatchDeleteSchema = z.object({
   ids: z.array(z.string().regex(/^\d+$/, "id 必须是数字")).min(1, "至少选择一条").max(200),
 });
+
+/** 批量删除响应 data(service 返回、batch-delete 路由透传、MediaGrid 消费同源) */
+export interface BatchDeleteResult {
+  deleted: number;
+  skipped: Array<{ id: string; filename: string; refCount: number }>;
+}
+
+/** media.transfer job returnvalue(worker 写、import 路由与导入弹窗读,评审 W4 同源) */
+export interface TransferResult {
+  mapping: Record<string, string | null>;
+  ok: number;
+  failed: number;
+}
+
+/** GET /api/media/[id] 响应 data(路由组装、MediaDrawer 消费;createdAt 为 JSON 字符串) */
+export interface MediaDetailMedia {
+  id: string;
+  path: string;
+  filename: string;
+  kind: MediaKind;
+  status: MediaStatus;
+  storage: string;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  sha1: string | null;
+  thumbPath: string | null;
+  createdAt: string;
+}
+
+export interface MediaDetailRef {
+  id: string;
+  slug: string;
+  title: string;
+  publishedAt: string | null;
+}
+
+export interface MediaDetailData {
+  media: MediaDetailMedia;
+  refs: MediaDetailRef[];
+}
 
 /** 媒体库列表过滤参数解析(page/RSC 服务端入参) */
 export function parseRefFilter(raw: string | undefined): MediaRefFilter {
