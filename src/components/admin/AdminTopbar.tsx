@@ -23,6 +23,7 @@ const SEG_LABEL: Record<string, string> = {
   posts: "文章管理",
   media: "媒体库",
   new: "新建文章",
+  preview: "预览",
 };
 
 /** 数字段 = 文章 id(编辑页);其余未知段解码展示 */

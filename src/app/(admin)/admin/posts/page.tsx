@@ -75,7 +75,8 @@ export default async function AdminPostsPage({
 
   const { items, total, counts } = await listPostsAdmin({ page, segment, q });
   const totalPages = Math.max(1, Math.ceil(total / ADMIN_PAGE_SIZE));
-  const hasLegacy = items.some((row) => row.wpPostId !== null);
+  // M5-d 回填后旧文均可编辑,仅当仍存在未转 MD 的 WP 行才提示保真只读
+  const hasLegacy = items.some((row) => row.wpPostId !== null && !row.contentMd);
   const pgBtn =
     "rounded-sm border border-line bg-panel px-2.5 py-1 font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1";
 
@@ -160,8 +161,12 @@ export default async function AdminPostsPage({
                   className={`border-b border-line last:border-b-0 ${legacy ? "bg-panel-2" : ""}`}
                 >
                   <td className="max-w-[420px] px-4 py-3">
-                    <div
-                      className={`truncate font-medium ${legacy ? "text-text-2" : "text-text-1"}`}
+                    {/* 点击标题 = 查看正文(admin 预览页,草稿/已发布均可看);编辑走右侧按钮 */}
+                    <Link
+                      href={`/admin/posts/${row.id.toString()}/preview`}
+                      className={`block truncate font-medium hover:text-accent ${
+                        legacy ? "text-text-2" : "text-text-1"
+                      }`}
                     >
                       {row.title}
                       {legacy && (
@@ -169,7 +174,7 @@ export default async function AdminPostsPage({
                           旧文保真
                         </span>
                       )}
-                    </div>
+                    </Link>
                     <div
                       className="mt-0.5 truncate font-mono text-[11px] text-text-3"
                       title={"/" + displaySlug(row.slug)}
@@ -180,7 +185,7 @@ export default async function AdminPostsPage({
                         target="_blank"
                         className="ml-2 text-text-3 underline decoration-dotted hover:text-accent"
                       >
-                        查看
+                        前台查看
                       </Link>
                     </div>
                   </td>

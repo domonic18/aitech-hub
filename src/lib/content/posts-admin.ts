@@ -48,6 +48,7 @@ const ADMIN_LIST_SELECT = {
   updatedAt: true,
   viewsCount: true,
   wpPostId: true,
+  contentMd: true,
   category: { select: { slug: true, name: true } },
   tags: { select: { tag: { select: { name: true } } } },
 } as const;
