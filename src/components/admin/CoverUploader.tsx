@@ -1,62 +1,13 @@
 "use client";
 
 /**
- * 封面工作流(原型 admin-cover.html,M5-b):选源图 → 按模板 canvas 居中裁剪
- * (cover-fit)→ 导出各尺寸 → 逐张 POST /api/media 入库 → coverPath 取 OG 变体。
- * 模板默认勾选 OG(前台/分享主图);其余变体入库后由作者在分发平台使用(媒体库可取 URL)。
- * toBlob 不支持 webp 的浏览器自动落 PNG(上传侧按实际 mime 白名单校验)。
+ * 右侧栏封面卡(M5-d 用户反馈:对齐 WordPress 精选图像交互):有封面 = 缩略图 +
+ * 悬浮「更换/移除」;无封面 = 虚线设置框。路径/尺寸模板/裁剪等技术细节全部收进
+ * 点击弹出的 CoverDialog,右侧栏不出现任何路径文本。移除即清空(未保存前可重设)。
  */
-import { useRef, useState } from "react";
+import { useState } from "react";
 
-import { uploadImageFile } from "@/lib/media/upload-client";
-
-interface CoverTemplate {
-  key: string;
-  label: string;
-  w: number;
-  h: number;
-}
-
-const COVER_TEMPLATES: ReadonlyArray<CoverTemplate & { defaultOn?: boolean }> = [
-  { key: "og", label: "OG 1200×630", w: 1200, h: 630, defaultOn: true },
-  { key: "wechat", label: "微信 900×383", w: 900, h: 383 },
-  { key: "csdn", label: "CSDN 1024×576", w: 1024, h: 576 },
-  { key: "thumb", label: "缩略 480×270", w: 480, h: 270 },
-];
-
-const OG_KEY = "og";
-
-/** canvas 导出质量(canvas 编码器,与 worker sharp 的 MEDIA_LIMITS.webpQuality 相互独立) */
-const CANVAS_WEBP_QUALITY = 0.85;
-
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("canvas toBlob failed"))),
-      "image/webp",
-      CANVAS_WEBP_QUALITY,
-    );
-  });
-}
-
-/** cover-fit 居中裁剪:目标画布铺满,源图等比缩放后取中央 */
-function drawCover(bmp: ImageBitmap, canvas: HTMLCanvasElement, t: CoverTemplate): void {
-  canvas.width = t.w;
-  canvas.height = t.h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("canvas 2d context unavailable");
-  const scale = Math.max(t.w / bmp.width, t.h / bmp.height);
-  const sw = t.w / scale;
-  const sh = t.h / scale;
-  ctx.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, 0, 0, t.w, t.h);
-}
-
-async function uploadBlob(blob: Blob, filename: string): Promise<string | null> {
-  // File 包装保留 mime 兜底(blob.type 为空时按 png,服务端白名单显式拒绝)
-  const file = new File([blob], filename, { type: blob.type || "image/png" });
-  const r = await uploadImageFile(file, filename);
-  return r.ok ? r.path : null;
-}
+import CoverDialog from "./CoverDialog";
 
 export default function CoverUploader({
   coverPath,
@@ -65,144 +16,53 @@ export default function CoverUploader({
   coverPath: string;
   onChange: (path: string) => void;
 }): React.ReactElement {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [checked, setChecked] = useState<Set<string>>(
-    new Set(COVER_TEMPLATES.filter((t) => t.defaultOn).map((t) => t.key)),
-  );
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  /** key 作身份(评审 W6:label 是展示文案,改文案不应影响逻辑匹配) */
-  const [results, setResults] = useState<
-    Array<{ key: string; label: string; path: string | null }>
-  >([]);
-
-  function toggle(key: string): void {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  async function generate(file: File): Promise<void> {
-    const templates = COVER_TEMPLATES.filter((t) => checked.has(t.key));
-    if (templates.length === 0) {
-      setNote("至少选择一个尺寸模板");
-      return;
-    }
-    setBusy(true);
-    setNote("生成中…");
-    setResults([]);
-    try {
-      const bmp = await createImageBitmap(file);
-      const canvas = document.createElement("canvas");
-      const out: Array<{ key: string; label: string; path: string | null }> = [];
-      for (const t of templates) {
-        drawCover(bmp, canvas, t);
-        const blob = await canvasToBlob(canvas);
-        const ext = blob.type === "image/webp" ? "webp" : "png";
-        const path = await uploadBlob(blob, `cover-${t.key}.${ext}`);
-        out.push({ key: t.key, label: t.label, path });
-        setResults([...out]);
-      }
-      bmp.close?.();
-      const og = out.find((r) => r.key === OG_KEY);
-      if (og?.path) {
-        onChange(og.path);
-        setNote(`完成 ${out.filter((r) => r.path).length}/${out.length} 张,封面已设为 OG 变体`);
-      } else {
-        setNote("上传失败,请重试(封面未变更)");
-      }
-    } catch {
-      setNote("图片解码失败,请换一张图");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [open, setOpen] = useState(false);
 
   return (
     <div>
-      <label className="mb-1 block text-xs text-text-2" htmlFor="post-cover">
-        封面
-      </label>
-      <input
-        id="post-cover"
-        value={coverPath}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="/wp-content/uploads/…(可手填)"
-        className="w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 font-mono text-xs text-text-1 outline-none focus:border-accent"
-      />
-      {coverPath && (
-        // eslint-disable-next-line @next/next/no-img-element -- 管理端内部预览,src 为站内动态路径
-        <img
-          src={coverPath}
-          alt="封面预览"
-          className="mt-2 h-24 w-full rounded-sm border border-line object-cover"
-        />
-      )}
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        {COVER_TEMPLATES.map((t) => (
-          <label
-            key={t.key}
-            className="flex cursor-pointer items-center gap-1 text-[11px] text-text-2"
-          >
-            <input
-              type="checkbox"
-              className="accent-[var(--accent)]"
-              checked={checked.has(t.key)}
-              onChange={() => toggle(t.key)}
-              disabled={busy}
-            />
-            {t.label}
-          </label>
-        ))}
-      </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void generate(f);
-          e.target.value = "";
-        }}
-      />
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mb-1 text-xs text-text-2">封面</div>
+      {coverPath ? (
+        // 点击缩略图重开设置弹窗;更换/移除悬浮在图上(移动端无 hover 时点图亦可进弹窗)
+        <div className="group relative overflow-hidden rounded-sm border border-line">
+          {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部预览,src 为站内动态路径 */}
+          <img
+            src={coverPath}
+            alt="封面预览"
+            title="点击更换封面"
+            onClick={() => setOpen(true)}
+            className="h-28 w-full cursor-pointer object-cover"
+          />
+          <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/40 group-hover:flex">
+            <button
+              type="button"
+              className="cursor-pointer rounded-sm bg-panel px-2.5 py-1 text-xs text-text-1 hover:bg-panel-2"
+              onClick={() => setOpen(true)}
+            >
+              更换
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer rounded-sm bg-panel px-2.5 py-1 text-xs text-red hover:bg-panel-2"
+              onClick={() => onChange("")}
+            >
+              移除
+            </button>
+          </div>
+        </div>
+      ) : (
         <button
           type="button"
-          disabled={busy}
-          onClick={() => inputRef.current?.click()}
-          className="cursor-pointer rounded-sm border border-line bg-panel-2 px-2.5 py-1.5 text-xs text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-60"
+          onClick={() => setOpen(true)}
+          className="flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
         >
-          {busy ? "处理中…" : "上传源图 · 按模板导出"}
+          <svg className="ic-lg" aria-hidden="true">
+            <use href="#i-picture" />
+          </svg>
+          <span className="text-xs">设置封面</span>
+          <span className="text-[11px]">上传后自动裁剪各平台尺寸</span>
         </button>
-        {coverPath && !busy && (
-          <button
-            type="button"
-            className="cursor-pointer text-xs text-red hover:underline"
-            onClick={() => onChange("")}
-          >
-            清除封面
-          </button>
-        )}
-      </div>
-      {note && <div className="mt-1 text-[11px] text-text-3">{note}</div>}
-      {results.length > 0 && (
-        <ul className="mt-1 space-y-0.5">
-          {results.map((r) => (
-            <li key={r.key} className="truncate font-mono text-[10px]">
-              <span className={r.path ? "text-accent" : "text-red"}>{r.path ? "✓" : "✗"}</span>{" "}
-              <span className="text-text-3" title={r.path ?? undefined}>
-                {r.path ?? `${r.label} 失败`}
-              </span>
-            </li>
-          ))}
-        </ul>
       )}
+      {open && <CoverDialog onClose={() => setOpen(false)} onSet={onChange} />}
     </div>
   );
 }
