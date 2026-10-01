@@ -5,7 +5,7 @@
 
 ## 1. 当前基线
 
-截至 2026-09-30:M1~M4 已完成(骨架基建 / WP 迁移脚本本地实跑七条全 PASS / 前台含 SEO·统计·llms.txt / admin 认证基座)。**同日需求评审四项定稿**:① 用户短信登录延后三期(运营商个人签名资质停发,requirement §3.3),一期仅 admin 密码鉴权;② 二期排序调整(GitHub 展示移电报流后、付费阅读收尾);③ Agent 搜索与站点内容 MCP 拆出二期,独立为「知识库 + Agent + MCP」专项(§4)。当前推进 M5(M5-a 内容管理闭环已合并 PR #6;M5-b 媒体库与一键发文已实现);开发主线 `develop`,`main` 发布线禁直推(standard/02-cicd-deployment §1.1)。数据摸底结论冻结于迁移脚本(scripts/migrate-wp)注释与 git 历史(原迁移设计文档已删,验收基准 requirement §7)。
+截至 2026-09-30:M1~M4 已完成(骨架基建 / WP 迁移脚本本地实跑七条全 PASS / 前台含 SEO·统计·llms.txt / admin 认证基座)。**同日需求评审四项定稿**:① 用户短信登录延后三期(运营商个人签名资质停发,requirement §3.3),一期仅 admin 密码鉴权;② 二期排序调整(GitHub 展示移电报流后、付费阅读收尾);③ Agent 搜索与站点内容 MCP 拆出二期,独立为「知识库 + Agent + MCP」专项(§4)。当前推进 M5(M5-a 内容管理闭环已合并 PR #6;M5-b 媒体库与一键发文已实现);开发主线 `develop`,`main` 发布线禁直推(standard/02-cicd-deployment §1.1)。数据摸底结论冻结于迁移脚本(scripts/migrate-wp)注释与 git 历史(原迁移设计文档已删,验收基准 requirement §7)。**2026-10-01 用户验收反馈**:编辑器体验与旧文只读不可编(四项),立项 M5-d 优先于 M5-c(编辑器可视化升级 + 旧文 md 批量接管);M5-b 交付的封面上传/截图直传被编辑器强依赖,M5-d 基于 M5-b 分支叠加。
 
 ## 2. 里程碑(一期)
 
@@ -18,6 +18,7 @@
 | M5-a | 内容管理闭环(M5 切片 1/3,2026-09-30 定) | 文章列表(状态分段 全部/已发布/草稿/已下架 + 标题·slug 搜索 + 分页);新建/编辑(Markdown 编辑 + 前台渲染链实时预览 + 分类/标签/摘要/SEO 元栏);发布/下架/软删 + 按需 revalidate 前台即时可见;旧文(contentHtml)只读保真不可改写;状态口径:`draft/published` 双值,下架 = 回 draft 保留 publishedAt,软删 = deleted(应用层 Zod 管控,arch/03 枚举演进条款);封面 M5-a 为路径手填(上传工作流随 M5-b,降级注记);UI 按 DESIGN-SPEC v1.0 + 原型 v0.4.0(admin-posts/admin-editor),Tailwind token 不引 AntD | 后台发布新文章 → 前台即时可见(e2e);下架后前台不可见;旧文编辑被拒;slug 查询全走 normalizeSlug(红线) | 已完成(2026-09-30;PR #6 合 `482c0da`,评审修复 `02508f7`;e2e 用例 6 发布闭环;保存即同步 MediaRef) |
 | M5-b | 媒体库与一键发文(M5 切片 2/3) | 上传管线(BullMQ sharp:WebP 副本 + 缩略图 + 宽高回填);媒体库(图片/视频/文件 Tab、引用追踪 MediaRef 落库、孤儿/断链/重复体检、存储统计);**一键发文**:md 导入图片批量上传/外链转存(media.transfer)/自动替换;封面工作流(上传 + 多尺寸裁剪模板);编辑器截图粘贴直传 | 上传图片自动 WebP+缩略图;本地 md 连图一键导入替换;封面按模板一键多尺寸导出;孤儿扫描与批量删除可用 | 已实现(2026-10-01,feature/admin-content 未合;上传 sha1 去重/回收站软删 7 天 audit 物理清退/引用实时口径 + audit 定时 03:41 投影;媒体删除 409 守卫含《引用方》;视频上传一期拒收(whitelist,STS 直传二期);封面工作流内嵌编辑器元信息栏(非独立原型页,验收场景即编辑器);存储统计实时聚合未走 Redis 缓存(表量级 ~1k);e2e 用例 7 + 集成 14 例;迁移 20260930152518_media_soft_delete 前向追加) |
 | M5-c | 统计页与发布 API/MCP(M5 切片 3/3) | **站点统计页**:总览卡片(今日/昨日/近7日/近30日 PV・UV)、PV/UV 趋势图、流量来源(搜索引擎细分/直接/站外 Top/AI 助手类目)、热门页面(时间段筛选)、访客环境分布;**发布 API + 创作 MCP**:Bearer PAT 鉴权(PAT 哈希存储/可吊销/审计)的 upsert_article(slug 幂等)/upload_media/publish,`GET /api/posts` 管理列表 API 一并交付;同应用托管 `/api/mcp` Streamable HTTP 端点;用户管理 | 统计页各模块数据可见且与日聚合表一致;**Claude Code 经 MCP 从本地 md 连图发布草稿→直发闭环,同 slug 重发为更新,令牌吊销后即拒** | 未实现 |
+| M5-d | 编辑器可视化升级与旧文 md 接管(2026-10-01 用户验收反馈立项,M5-c 顺延) | Vditor 分屏 Markdown 编辑器(左编辑右预览/工具栏/截图粘贴直传,运行时资源本地化 public/vditor);后台体验修复:面包屑可点击、列表 slug 解码展示、表单简化(slug/SEO 折叠进高级选项,自动派生冲突加后缀);154 篇 WP 旧文 contentHtml → contentMd 批量回填(scripts/convert-legacy-md,只回填不改写 content_html,可清空回滚) | 分屏编辑/工具栏/粘贴截图入库可用;任一旧文进入编辑器可改并发布;自动派生 slug 撞题出 `-2` 后缀;面包屑中间级可点击返回 | 实现中(feature/md-editor) |
 | M6 | 上线切换 | 生产实跑迁移(以生产库为源);服务器部署(compose prod + nginx + ssl);备份/恢复演练;standard/02-cicd-deployment §5 runbook 执行 + 验收清单;Search Console/百度站长重新提交 | 切换验收清单全勾;观察 1 周后下线 WP | 未实现 |
 
 **发布门槛**:standard/01-testing §7 口径(验收全绿);M6 前必须完成备份恢复演练与全量 verify。
