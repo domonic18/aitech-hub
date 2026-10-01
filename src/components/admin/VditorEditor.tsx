@@ -4,8 +4,10 @@
  * Vditor 分屏编辑器实现(M5-d):浏览器端库,经 MdEditor 的 dynamic(ssr:false) 分包加载。
  * mode "sv" 左编辑右预览(工具栏可切即时渲染 ir/所见即所得 wysiwyg);截图粘贴/拖拽/
  * 工具栏上传统一走 upload.handler → uploadImageFile(POST /api/media,sha1 去重)。
- * 运行时懒加载资源(lute WASM/i18n/highlight/预览主题)已本地化至 public/vditor,
- * cdn 选项指向站内,不依赖 unpkg(内网/离线可用)。
+ * 运行时懒加载资源已本地化至 public/vditor(lute WASM/i18n/highlight/预览主题,
+ * 以及按内容触发懒加载的 mermaid/katex——库内 6 篇 mermaid 围栏、69 篇含数学定界符,
+ * 且 math engine 无 none 开关),cdn 选项指向站内,不依赖 unpkg(内网/离线可用)。
+ * echarts/graphviz 等其余渲染器全库零使用未纳入,内容用到时再随库补拷。
  */
 import "vditor/dist/index.css";
 import { useEffect, useRef } from "react";
