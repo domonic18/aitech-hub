@@ -132,15 +132,30 @@ function deriveSlug(input: PostCreateInput): string {
   return normalizeSlug(input.slug ?? input.title);
 }
 
+/** 自动派生 slug 的冲突候选:-2…-9 后缀(用户显式指定的冲突不在此列,直接 409) */
+const DERIVED_SUFFIX_MAX = 9;
+
 export async function createPost(input: PostCreateInput): Promise<{ id: bigint; slug: string }> {
-  const slug = deriveSlug(input);
-  if (!slug) throw new PostAdminError("slug_conflict", "slug 归一化后为空,请手动指定 slug");
+  const base = deriveSlug(input);
+  if (!base) throw new PostAdminError("slug_conflict", "slug 归一化后为空,请在高级选项手动指定");
   const category = await prisma.category.findUnique({ where: { slug: input.categorySlug } });
   if (!category) {
     throw new PostAdminError("category_missing", `分类不存在:${input.categorySlug}`);
   }
-  const dup = await prisma.post.findUnique({ where: { slug }, select: { id: true } });
-  if (dup) throw new PostAdminError("slug_conflict", `slug 已存在:${slug}`);
+  // 自动派生(标题撞题常见)依次尝试后缀;显式 slug 冲突语义不变(409,让作者改)
+  const explicit = input.slug !== undefined;
+  const candidates = explicit
+    ? [base]
+    : [base, ...Array.from({ length: DERIVED_SUFFIX_MAX - 1 }, (_, i) => `${base}-${i + 2}`)];
+  let slug: string | null = null;
+  for (const candidate of candidates) {
+    const dup = await prisma.post.findUnique({ where: { slug: candidate }, select: { id: true } });
+    if (!dup) {
+      slug = candidate;
+      break;
+    }
+  }
+  if (slug === null) throw new PostAdminError("slug_conflict", `slug 已存在:${base}`);
 
   const post = await prisma.$transaction(async (tx) => {
     const tags = await upsertTags(tx, input.tags);

@@ -194,7 +194,8 @@ test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand rev
   await newLink.click();
   await page.waitForURL(/\/admin\/posts\/new\/?$/);
   await page.getByPlaceholder("文章标题…").fill(TITLE);
-  await page.getByPlaceholder(/正文\(Markdown/).fill("## E2E 正文\n\nM5a 发布闭环冒烟。");
+  // M5-d 起编辑器为 Vditor 分屏:sv 模式可编辑面是 textarea(带 placeholder 的 PRE 为高亮镜像,不能用 getByPlaceholder 定位)
+  await page.locator("textarea.vditor-sv").fill("## E2E 正文\n\nM5a 发布闭环冒烟。");
   await page.getByRole("button", { name: "存草稿" }).click();
   await page.waitForURL(/\/admin\/posts\/\d+\/?$/);
 
@@ -311,7 +312,7 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
 
   // 交接进编辑器:URL 带 import=1,正文引用已替换为站内路径
   await page.waitForURL(/\/admin\/posts\/new\/\?import=1/);
-  const ta = page.getByPlaceholder(/正文\(Markdown/);
+  const ta = page.locator("textarea.vditor-sv");
   await expect(ta).toHaveValue(/!\[配图\]\(\/wp-content\/uploads\//);
 
   // 清理:媒体行 + 盘上文件族(与用例 7 同款)

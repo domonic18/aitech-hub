@@ -13,6 +13,12 @@ node_modules/
 dist/
 coverage/
 
+# vditor 运行时懒加载资源随库分发(lute WASM/i18n/图标/高亮/预览主题,内网可用);
+# 反向规则覆盖上方 dist/ 与全局 ~/.gitignore_global 的 *.png 等
+!/public/vditor/
+!/public/vditor/dist/
+!/public/vditor/dist/**
+
 # 系统与日志
 .DS_Store
 *.log

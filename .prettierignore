@@ -15,3 +15,6 @@ playwright-report/
 
 # WP 真实导出切片,属测试数据:字节内容参与断言,不参与格式门禁
 scripts/migrate-wp/fixtures/
+
+# vditor 第三方运行时资源(随包拷贝,不参与格式门禁)
+public/vditor/
