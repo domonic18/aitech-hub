@@ -7,6 +7,7 @@
  * 运行时懒加载资源(lute WASM/i18n/highlight/预览主题)已本地化至 public/vditor,
  * cdn 选项指向站内,不依赖 unpkg(内网/离线可用)。
  */
+import "vditor/dist/index.css";
 import { useEffect, useRef } from "react";
 import Vditor from "vditor";
 
