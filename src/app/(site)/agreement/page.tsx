@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 /** 用户协议(requirement §3.1:迁移旧文本,见 src/content/agreement.ts) */
 export default function AgreementPage(): React.ReactElement {
   return (
-    <section>
+    <section className="mx-auto w-full max-w-3xl">
       <h1 className="text-2xl font-bold">用户协议</h1>
       <div className="mt-6">
         <ArticleBody contentMd={null} contentHtml={agreementHtml} />

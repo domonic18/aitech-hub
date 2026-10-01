@@ -11,7 +11,8 @@ export default function SiteLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">{children}</main>
+      {/* 版心由各页自管:内容页 768px(PostListView/静态页),首页 Hub 全宽 --site-max-w */}
+      <main className="w-full flex-1 px-4 py-8 sm:px-6">{children}</main>
       <Footer />
       <StatsBeacon />
     </div>

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 /** 隐私政策(迁移旧文本 + 统计采集说明,requirement §3.5 约束) */
 export default function PrivacyPage(): React.ReactElement {
   return (
-    <section>
+    <section className="mx-auto w-full max-w-3xl">
       <h1 className="text-2xl font-bold">隐私政策</h1>
       <div className="mt-6">
         <ArticleBody contentMd={null} contentHtml={privacyHtml} />

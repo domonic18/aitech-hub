@@ -211,3 +211,22 @@ body {
 [data-theme="light"] .tt-sun {
   color: #ffffff;
 }
+
+/* ── 首页 Hub 终端输入框光标(DESIGN-SPEC §4:镜面光标仅限控制台输入框;
+      失焦时闪烁并跟随文字,聚焦后隐藏交还原生 caret,见 HeroConsole.tsx) ── */
+.q-caret {
+  animation: caret-blink 1.2s steps(1) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* 窄屏 Header 横向滚动不显滚动条(见 Header.tsx 窄屏降级注记) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

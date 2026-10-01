@@ -28,13 +28,14 @@ export default function PostListView({
 }: PostListViewProps): React.ReactElement {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
-    <section>
-      <header className="border-b border-neutral-200/60 pb-4">
+    // 版心 768px(阅读页口径;首页 Hub 用全宽 --site-max-w,见 (site)/page.tsx)
+    <section className="mx-auto w-full max-w-3xl">
+      <header className="border-b border-line/60 pb-4">
         <h1 className="text-2xl font-bold">{heading}</h1>
-        <p className="mt-1 text-sm text-neutral-500">{description ?? `共 ${total} 篇`}</p>
+        <p className="mt-1 text-sm text-text-3">{description ?? `共 ${total} 篇`}</p>
       </header>
       {items.length === 0 ? (
-        <p className="py-12 text-center text-neutral-500">暂无文章</p>
+        <p className="py-12 text-center text-text-3">暂无文章</p>
       ) : (
         <div>
           {items.map((post) => (

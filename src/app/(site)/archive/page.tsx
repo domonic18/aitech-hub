@@ -26,26 +26,26 @@ export default async function ArchivePage(): Promise<React.ReactElement> {
   const years = [...byYear.keys()].sort((a, b) => b - a);
 
   return (
-    <section>
-      <header className="border-b border-neutral-200/60 pb-4">
+    <section className="mx-auto w-full max-w-3xl">
+      <header className="border-b border-line/60 pb-4">
         <h1 className="text-2xl font-bold">归档</h1>
-        <p className="mt-1 text-sm text-neutral-500">共 {posts.length} 篇</p>
+        <p className="mt-1 text-sm text-text-3">共 {posts.length} 篇</p>
       </header>
       {years.map((year) => (
         <section key={year} className="mt-8">
           <h2 className="text-lg font-semibold">{year}</h2>
-          <ul className="mt-2 divide-y divide-neutral-200/60">
+          <ul className="mt-2 divide-y divide-line/60">
             {byYear.get(year)!.map((post) => {
               const date = formatCnDate(post.publishedAt);
               return (
                 <li key={post.slug} className="flex items-baseline gap-3 py-2 text-sm">
                   <time
                     dateTime={post.publishedAt.toISOString()}
-                    className="shrink-0 tabular-nums text-neutral-500"
+                    className="shrink-0 tabular-nums text-text-3"
                   >
                     {date.slice(5)}
                   </time>
-                  <Link href={`/${post.slug}/`} className="hover:text-sky-700">
+                  <Link href={`/${post.slug}/`} className="hover:text-accent-hover">
                     {post.title}
                   </Link>
                 </li>

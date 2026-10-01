@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import AdminSprite from "@/components/admin/AdminSprite";
 import LoginForm from "@/components/admin/LoginForm";
-import ThemeToggle from "@/components/admin/ThemeToggle";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "admin 登录",

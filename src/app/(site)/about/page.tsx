@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 /** 关于(requirement §3.1:重写;定位口径承袭 requirement §1 战略定稿) */
 export default function AboutPage(): React.ReactElement {
   return (
-    <section>
+    <section className="mx-auto w-full max-w-3xl">
       <h1 className="text-2xl font-bold">关于本站</h1>
-      <div className="mt-6 space-y-5 text-[15px] leading-relaxed text-neutral-700 dark:text-neutral-300">
+      <div className="mt-6 space-y-5 text-[15px] leading-relaxed text-text-2">
         <p>
           这里是 <strong>domonic18</strong> 的个人技术站「一起AI技术」。内容主线只有一条:
           <strong>一个人指挥智能体军团的公开实战档案</strong>——以第一人称记录 AI
@@ -26,7 +26,7 @@ export default function AboutPage(): React.ReactElement {
             href="https://github.com/domonic18"
             target="_blank"
             rel="noopener noreferrer"
-            className="mx-1 text-sky-700 underline underline-offset-4 dark:text-sky-400"
+            className="mx-1 text-accent underline underline-offset-4 hover:text-accent-hover"
           >
             github.com/domonic18
           </a>
@@ -36,15 +36,13 @@ export default function AboutPage(): React.ReactElement {
           本站同时为智能体而写:全站提供{" "}
           <a
             href="/llms.txt"
-            className="text-sky-700 underline underline-offset-4 dark:text-sky-400"
+            className="text-accent underline underline-offset-4 hover:text-accent-hover"
           >
             llms.txt
           </a>{" "}
           结构化目录,每篇文章均可在地址后加{" "}
-          <code className="rounded bg-neutral-100 px-1 py-0.5 text-[13px] dark:bg-neutral-800">
-            .md
-          </code>{" "}
-          获取 Markdown 原文,欢迎 AI 助手与爬虫引用。
+          <code className="rounded bg-panel-2 px-1 py-0.5 text-[13px]">.md</code> 获取 Markdown
+          原文,欢迎 AI 助手与爬虫引用。
         </p>
         <p>
           站点由 WordPress 重写为 Next.js 全栈单体,旧文章、旧用户与全部旧 URL
@@ -54,7 +52,7 @@ export default function AboutPage(): React.ReactElement {
           <li>
             <Link
               href="/articles/"
-              className="text-sky-700 underline underline-offset-4 dark:text-sky-400"
+              className="text-accent underline underline-offset-4 hover:text-accent-hover"
             >
               全部文章
             </Link>
@@ -63,7 +61,7 @@ export default function AboutPage(): React.ReactElement {
           <li>
             <Link
               href="/archive/"
-              className="text-sky-700 underline underline-offset-4 dark:text-sky-400"
+              className="text-accent underline underline-offset-4 hover:text-accent-hover"
             >
               归档
             </Link>
@@ -72,14 +70,14 @@ export default function AboutPage(): React.ReactElement {
           <li>
             <Link
               href="/agreement/"
-              className="text-sky-700 underline underline-offset-4 dark:text-sky-400"
+              className="text-accent underline underline-offset-4 hover:text-accent-hover"
             >
               用户协议
             </Link>{" "}
             与{" "}
             <Link
               href="/privacy/"
-              className="text-sky-700 underline underline-offset-4 dark:text-sky-400"
+              className="text-accent underline underline-offset-4 hover:text-accent-hover"
             >
               隐私政策
             </Link>

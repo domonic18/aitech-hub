@@ -63,6 +63,11 @@ export async function listPinnedPosts(limit: number) {
   );
 }
 
+/** 已发布文章总数(首页 Hub whoami 状态行用;ISR 600s 内低频 count) */
+export async function countPublishedPosts() {
+  return prerenderSafe("posts.count", 0, () => prisma.post.count({ where: PUBLISHED }));
+}
+
 export interface ListPageParams {
   page: number;
   pageSize: number;
