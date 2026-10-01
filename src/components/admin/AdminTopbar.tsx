@@ -5,20 +5,55 @@
  * 退出登录走 POST /api/auth/logout(吊销 Redis jti + 清 Cookie)后回登录页。
  */
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ADMIN_LOGIN_PATH } from "@/lib/auth/constants";
 
 import ThemeToggle from "./ThemeToggle";
 
-/** 路径 → crumb 文案(M4/M5 两层;面板再增多后换注册表映射) */
-function crumbOf(pathname: string): string {
-  if (pathname === "/admin") return "站点统计";
-  if (pathname === "/admin/posts") return "文章管理";
-  if (pathname === "/admin/posts/new") return "新建文章";
-  if (/^\/admin\/posts\/\d+$/.test(pathname)) return "编辑文章";
-  if (pathname === "/admin/media") return "媒体库";
-  return pathname.replace(/^\/admin\//, "").replace(/^\//, "");
+interface Crumb {
+  label: string;
+  /** 末级 crumb 无 href(纯文本);中间级必带,可点击返回 */
+  href?: string;
+}
+
+/** 已知段文案;未知段按 decodeURIComponent 兜底(不再裸输出路径) */
+const SEG_LABEL: Record<string, string> = {
+  posts: "文章管理",
+  media: "媒体库",
+  new: "新建文章",
+};
+
+/** 数字段 = 文章 id(编辑页);其余未知段解码展示 */
+function segLabel(seg: string): string {
+  if (/^\d+$/.test(seg)) return "编辑文章";
+  return SEG_LABEL[seg] ?? decodeSeg(seg);
+}
+
+function decodeSeg(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+/** 路径 → crumb 链(中间级全部可点击,解决"进详情后回不去"的反馈) */
+function crumbsOf(pathname: string): Crumb[] {
+  const crumbs: Crumb[] = [{ label: "站点统计", href: "/admin" }];
+  const segs = pathname
+    .replace(/^\/admin\/?/, "")
+    .split("/")
+    .filter(Boolean);
+  let acc = "/admin";
+  segs.forEach((seg, i) => {
+    acc += `/${seg}`;
+    crumbs.push(
+      i === segs.length - 1 ? { label: segLabel(seg) } : { label: segLabel(seg), href: acc },
+    );
+  });
+  return crumbs;
 }
 
 export default function AdminTopbar({
@@ -58,15 +93,26 @@ export default function AdminTopbar({
     }
   };
 
+  const crumbs = crumbsOf(pathname);
+
   return (
     <header
       className="sticky top-0 z-10 flex items-center justify-between border-b border-line px-6 backdrop-blur"
       style={{ height: "var(--admin-header-h)", background: "var(--header-bg)" }}
     >
       <div className="font-mono text-xs text-text-3">
-        <span>admin</span>
-        <span className="mx-1">›</span>
-        <span className="text-text-1">{crumbOf(pathname)}</span>
+        {crumbs.map((c, i) => (
+          <span key={c.href ?? c.label}>
+            {i > 0 && <span className="mx-1">›</span>}
+            {c.href ? (
+              <Link href={c.href} className="hover:text-accent">
+                {c.label}
+              </Link>
+            ) : (
+              <span className="text-text-1">{c.label}</span>
+            )}
+          </span>
+        ))}
       </div>
 
       <div className="flex items-center gap-3">

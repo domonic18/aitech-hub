@@ -15,6 +15,7 @@ import {
 } from "@/lib/content/post-schema";
 import { ADMIN_PAGE_SIZE, listPostsAdmin } from "@/lib/content/posts-admin";
 import { formatCnDateTime } from "@/lib/datetime";
+import { displaySlug } from "@/lib/slug";
 
 export const dynamic = "force-dynamic";
 
@@ -169,8 +170,18 @@ export default async function AdminPostsPage({
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 truncate font-mono text-[11px] text-text-3">
-                      /{row.slug} · {legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
+                    <div
+                      className="mt-0.5 truncate font-mono text-[11px] text-text-3"
+                      title={"/" + displaySlug(row.slug)}
+                    >
+                      /{displaySlug(row.slug)} · {legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
+                      <Link
+                        href={"/" + row.slug}
+                        target="_blank"
+                        className="ml-2 text-text-3 underline decoration-dotted hover:text-accent"
+                      >
+                        查看
+                      </Link>
                     </div>
                   </td>
                   <td className="px-3 py-3">
