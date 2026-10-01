@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * 列表行内操作(原型 admin-posts .ops):编辑/查看为普通链接;
+ * 列表行内操作(原型 admin-posts .ops):编辑为普通链接(M5-d 反馈:行点击 = 查看,
+ * 编辑走显式按钮;旧文回填后同样可编辑,未回填行由编辑页保真只读兜底);
  * 发布/下架/删除走 /api/posts,成功后 router.refresh 重拉本页 RSC。
- * 旧文保真行(WP 迁移纯 HTML)只有 查看/下架/重新上架,无编辑无删除(降级注记)。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -51,7 +51,7 @@ export default function PostRowOps({
     <span className="inline-flex flex-col items-end gap-1">
       <span className="inline-flex items-center gap-2.5">
         <Link href={`/admin/posts/${id}`} className="text-xs text-accent hover:underline">
-          {legacy ? "查看" : "编辑"}
+          编辑
         </Link>
         {state !== "published" && (
           <button

@@ -58,3 +58,15 @@ export function normalizeUrlPath(raw: string): string {
 
   return lowercasePercentEscapes(encodeURI(decoded));
 }
+
+/**
+ * 展示专用:把 percent-encoded slug 解码为可读中文(如 `%e3%80%90…` → `【…`)。
+ * 红线:仅供后台 UI 展示,任何查库/路由仍必须走 normalizeSlug(见文件头)。
+ */
+export function displaySlug(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}

@@ -86,7 +86,7 @@ model Media {
   path            String   @unique(map: "uq_content_media_path") @db.VarChar(500) // URL 路径;/wp-content/uploads/... 或 /media/videos/...
   filename        String   @db.VarChar(255)
   kind            String   @default("image") @db.VarChar(20) // image/video/file
-  status          String   @default("active") @db.VarChar(20) // active/orphan/missing
+  status          String   @default("active") @db.VarChar(20) // active/orphan/missing/processing/error/deleted(应用层 Zod 管控,arch/03 枚举演进条款)
   sizeBytes       BigInt?  @map("size_bytes")
   width           Int?
   height          Int?
@@ -95,6 +95,7 @@ model Media {
   sha1            String?  @db.Char(40) // 重复检测与去重
   storage         String   @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
   wpAttachmentId  BigInt?  @map("wp_attachment_id")
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6) // 软删回收站:7 天后 audit 任务物理删除(arch/08-media §3.2)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([kind, status], map: "idx_content_media_kind_status")

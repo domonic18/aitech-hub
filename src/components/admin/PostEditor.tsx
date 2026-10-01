@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Markdown 文章编辑器(M5-a;原型 admin-editor.html):左编辑/预览 + 右元信息栏(PostMetaPanel)。
- * 保存走 POST /api/posts(新建,slug 缺省由标题派生)/ PUT /api/posts/[id](更新,slug 只读);
- * 发布 = 先保存再 POST publish(全页跳转让头部状态与列表整体刷新)。
- * 预览复用前台渲染链 ArticleBody(react-markdown + GFM + 高亮),所见即所得。
+ * Markdown 文章编辑器(M5-a 立骨,M5-d 换 Vditor 分屏编辑):左编辑/前台预览 + 右元信息栏。
+ * 保存走 POST /api/posts(新建,slug 缺省由标题派生,冲突自动 -2…-9 后缀)/
+ * PUT /api/posts/[id](更新,slug 只读);发布 = 先保存再 POST publish(全页跳转刷新)。
+ * 「前台预览」Tab 复用线上渲染链 ArticleBody(react-markdown + GFM + 高亮)——
+ * Vditor 内置预览与其有细微差异,发布前以此做最终核对(单一渲染链不变式)。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,7 +14,9 @@ import { useMemo, useState } from "react";
 import PostMetaPanel, {
   type EditorCategory,
   type PostMetaValue,
+  type SlugField,
 } from "@/components/admin/PostMetaPanel";
+import MdEditor from "@/components/admin/MdEditor";
 import ArticleBody from "@/components/article/ArticleBody";
 import {
   POST_LIMITS,
@@ -22,7 +25,7 @@ import {
   type PostDisplayState,
 } from "@/lib/content/post-schema";
 import { type ApiEnvelope } from "@/lib/http/response";
-import { normalizeSlug } from "@/lib/slug";
+import { displaySlug, normalizeSlug } from "@/lib/slug";
 
 import { INPUT } from "./editor-controls";
 
@@ -72,9 +75,12 @@ function splitTags(text: string): string[] {
 export default function PostEditor({
   categories,
   post,
+  imported,
 }: {
   categories: EditorCategory[];
   post?: EditorPost;
+  /** 一键发文交接(/admin/posts/new?import=1):EditorTextarea mount 时消费 sessionStorage */
+  imported?: boolean;
 }): React.ReactElement {
   const router = useRouter();
   const mode = post ? ("edit" as const) : ("create" as const);
@@ -97,9 +103,14 @@ export default function PostEditor({
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
   const slugPreview = useMemo(
-    () => normalizeSlug(slugText.trim() || title) || "…",
+    () => normalizeSlug(slugText.trim() || title) || "自动生成",
     [slugText, title],
   );
+
+  const slugField: SlugField =
+    mode === "create"
+      ? { mode: "create", text: slugText, preview: slugPreview, onChange: setSlugText }
+      : { mode: "edit", fixed: displaySlug(post!.slug) };
 
   async function saveOnly(): Promise<string | null> {
     setBusy(true);
@@ -239,31 +250,6 @@ export default function PostEditor({
 
       <div className="grid grid-cols-[1fr_300px] items-start gap-4">
         <div className="rounded-md border border-line bg-panel">
-          {mode === "create" ? (
-            <div className="border-b border-line px-4 py-3">
-              <label className="mb-1 block text-xs text-text-2" htmlFor="post-slug">
-                slug(缺省由标题派生;发布后不可改,SEO 红线)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="post-slug"
-                  value={slugText}
-                  onChange={(e) => setSlugText(e.target.value)}
-                  placeholder="留空 = 自动生成"
-                  className={`${INPUT} font-mono`}
-                />
-                <span className="whitespace-nowrap font-mono text-[11px] text-text-3">
-                  /{slugPreview}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="border-b border-line px-4 py-3 font-mono text-xs text-text-3">
-              /{post!.slug}
-              <span className="ml-2 text-[10px]">slug 发布后不可改(SEO)</span>
-            </div>
-          )}
-
           <div className="flex border-b border-line text-xs">
             {(["edit", "preview"] as const).map((t) => (
               <button
@@ -276,21 +262,15 @@ export default function PostEditor({
                     : "text-text-2 hover:bg-panel-2"
                 }`}
               >
-                {t === "edit" ? "编辑" : "预览"}
+                {t === "edit" ? "编辑(分屏)" : "前台预览"}
               </button>
             ))}
           </div>
 
           {tab === "edit" ? (
-            <textarea
-              value={contentMd}
-              onChange={(e) => setContentMd(e.target.value)}
-              placeholder="正文(Markdown;代码块 ``` 围栏,GFM 表格/任务列表支持)…"
-              spellCheck={false}
-              className="min-h-[520px] w-full resize-y bg-transparent p-4 font-mono text-[13px] leading-relaxed text-text-1 outline-none placeholder:text-text-3"
-            />
+            <MdEditor value={contentMd} onChange={setContentMd} imported={imported ?? false} />
           ) : (
-            <div className="min-h-[520px] p-4">
+            <div className="min-h-[520px] max-h-[720px] overflow-y-auto p-4">
               <ArticleBody contentMd={contentMd} contentHtml={null} />
             </div>
           )}
@@ -301,6 +281,7 @@ export default function PostEditor({
           value={meta}
           tagCount={splitTags(meta.tagsText).length}
           onChange={(patch) => setMeta((m) => ({ ...m, ...patch }))}
+          slug={slugField}
         />
       </div>
     </div>

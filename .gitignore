@@ -13,6 +13,12 @@ node_modules/
 dist/
 coverage/
 
+# vditor 运行时懒加载资源随库分发(lute WASM/i18n/图标/高亮/预览主题,内网可用);
+# 反向规则覆盖上方 dist/ 与全局 ~/.gitignore_global 的 *.png 等
+!/public/vditor/
+!/public/vditor/dist/
+!/public/vditor/dist/**
+
 # 系统与日志
 .DS_Store
 *.log
@@ -31,6 +37,9 @@ scripts/migrate-wp/artifacts/
 # Playwright 本地产物
 /.test-results/
 /playwright-report/
+
+# cc-connect 消息桥运行时数据(会话附件等,不入库)
+/.cc-connect/
 
 # App Router 字面段目录名含 .txt,被全局 gitignore *.txt 误伤,强制纳管
 !src/app/llms.txt/

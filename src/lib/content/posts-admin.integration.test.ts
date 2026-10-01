@@ -151,6 +151,32 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
     expect(noCat.status).toBe(400);
   });
 
+  it("自动派生 slug 撞题 → -2 后缀(M5-d);显式指定冲突仍 409", async () => {
+    const title = "M5a 集成测试撞题";
+    const first = await createPOST(
+      req("/api/posts", "POST", cookie, { title, contentMd: "x", categorySlug: CAT_SLUG }),
+    );
+    expect(first.status).toBe(200);
+    const firstSlug = ((await envelope(first)).data as { slug: string }).slug;
+
+    const second = await createPOST(
+      req("/api/posts", "POST", cookie, { title, contentMd: "x", categorySlug: CAT_SLUG }),
+    );
+    expect(second.status).toBe(200);
+    expect(((await envelope(second)).data as { slug: string }).slug).toBe(`${firstSlug}-2`);
+
+    // 显式指定 firstSlug(已被第一篇占用)→ 语义不变 409
+    const dup = await createPOST(
+      req("/api/posts", "POST", cookie, {
+        title: `${title} 再来`,
+        contentMd: "x",
+        categorySlug: CAT_SLUG,
+        slug: firstSlug,
+      }),
+    );
+    expect(dup.status).toBe(409);
+  });
+
   it("草稿对前台读侧不可见;管理列表可见且分段计数正确", async () => {
     expect(await getPostBySlug(derivedSlug)).toBeNull();
     const draftList = await listPostsAdmin({ page: 1, segment: "draft" });
@@ -217,6 +243,12 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
     expect(admin?.title).toBe("M5a 集成测试文章(改)");
     expect(admin?.tags.map((t) => t.tag.slug)).toEqual(["it-m5a-tag-one"]);
     expect(await prisma.postTag.count({ where: { postId: post.id } })).toBe(1);
+    // M5-b:保存时同步媒体引用(封面入 media_ref)
+    expect(
+      await prisma.mediaRef.count({
+        where: { postId: post.id, mediaPath: "/wp-content/uploads/m5a.png" },
+      }),
+    ).toBe(1);
   });
 
   it("旧文保真:纯 HTML 正文 PUT → 409 legacy_readonly", async () => {

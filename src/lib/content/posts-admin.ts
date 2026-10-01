@@ -4,6 +4,7 @@
  * 旧文保真红线:WP 迁移的 HTML 正文(contentHtml 且无 contentMd)不可经后台改写。
  */
 import { prisma } from "@/lib/db";
+import { extractMediaRefs, syncMediaRefs } from "@/lib/media/refs";
 import { normalizeSlug } from "@/lib/slug";
 
 import { revalidatePostPaths } from "./revalidate";
@@ -47,6 +48,7 @@ const ADMIN_LIST_SELECT = {
   updatedAt: true,
   viewsCount: true,
   wpPostId: true,
+  contentMd: true,
   category: { select: { slug: true, name: true } },
   tags: { select: { tag: { select: { name: true } } } },
 } as const;
@@ -131,19 +133,34 @@ function deriveSlug(input: PostCreateInput): string {
   return normalizeSlug(input.slug ?? input.title);
 }
 
+/** 自动派生 slug 的冲突候选:-2…-9 后缀(用户显式指定的冲突不在此列,直接 409) */
+const DERIVED_SUFFIX_MAX = 9;
+
 export async function createPost(input: PostCreateInput): Promise<{ id: bigint; slug: string }> {
-  const slug = deriveSlug(input);
-  if (!slug) throw new PostAdminError("slug_conflict", "slug 归一化后为空,请手动指定 slug");
+  const base = deriveSlug(input);
+  if (!base) throw new PostAdminError("slug_conflict", "slug 归一化后为空,请在高级选项手动指定");
   const category = await prisma.category.findUnique({ where: { slug: input.categorySlug } });
   if (!category) {
     throw new PostAdminError("category_missing", `分类不存在:${input.categorySlug}`);
   }
-  const dup = await prisma.post.findUnique({ where: { slug }, select: { id: true } });
-  if (dup) throw new PostAdminError("slug_conflict", `slug 已存在:${slug}`);
+  // 自动派生(标题撞题常见)依次尝试后缀;显式 slug 冲突语义不变(409,让作者改)
+  const explicit = input.slug !== undefined;
+  const candidates = explicit
+    ? [base]
+    : [base, ...Array.from({ length: DERIVED_SUFFIX_MAX - 1 }, (_, i) => `${base}-${i + 2}`)];
+  let slug: string | null = null;
+  for (const candidate of candidates) {
+    const dup = await prisma.post.findUnique({ where: { slug: candidate }, select: { id: true } });
+    if (!dup) {
+      slug = candidate;
+      break;
+    }
+  }
+  if (slug === null) throw new PostAdminError("slug_conflict", `slug 已存在:${base}`);
 
   const post = await prisma.$transaction(async (tx) => {
     const tags = await upsertTags(tx, input.tags);
-    return tx.post.create({
+    const created = await tx.post.create({
       data: {
         slug,
         title: input.title,
@@ -157,6 +174,13 @@ export async function createPost(input: PostCreateInput): Promise<{ id: bigint; 
         ...(tags.length > 0 ? { tags: { create: tags } } : {}),
       },
     });
+    // 媒体引用随写落库(arch/08-media §3.1,孤儿/断链清洗的地基)
+    await syncMediaRefs(
+      tx,
+      created.id,
+      extractMediaRefs({ contentMd: created.contentMd, coverPath: created.coverPath }),
+    );
+    return created;
   });
   return { id: post.id, slug: post.slug };
 }
@@ -196,6 +220,12 @@ export async function updatePost(id: bigint, input: PostUpdateInput): Promise<{ 
         tags: { deleteMany: {}, ...(tags.length > 0 ? { create: tags } : {}) },
       },
     });
+    // 引用先删后插,与正文/封面原子一致(编辑器封面工作流 M5-b 起真实写 cover_path)
+    await syncMediaRefs(
+      tx,
+      id,
+      extractMediaRefs({ contentMd: input.contentMd, coverPath: input.coverPath || null }),
+    );
   });
   if (post.status === "published") revalidatePostPaths(post.slug);
   return { slug: post.slug };

@@ -19,8 +19,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // suppressHydrationWarning:下方预置脚本在水合前把 data-theme 改写为 localStorage
+  // 保存的主题,服务端硬编码 "light" 必然属性不匹配;真实 DOM 值已是正确的,仅抑制该元素告警
   return (
-    <html lang="zh-CN" data-theme="light">
+    <html lang="zh-CN" data-theme="light" suppressHydrationWarning>
       <body className="antialiased">
         {/* 主题预置(先于渲染执行防闪烁;DESIGN-SPEC §5 双主题,禁跟随系统) */}
         <script

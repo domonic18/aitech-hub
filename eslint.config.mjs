@@ -14,6 +14,7 @@ const eslintConfig = [
   {
     ignores: [
       "node_modules/**",
+      "public/vditor/**", // vditor 第三方运行时资源(lute WASM/highlight,随包拷贝,不入 lint)
       ".next/**",
       "out/**",
       "build/**",

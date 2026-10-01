@@ -1,7 +1,10 @@
 import { loadEnvConfig } from "@next/env";
 import bcrypt from "bcryptjs";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import sharp from "sharp";
 
 /**
  * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/admin 登录(M4)/
@@ -191,7 +194,8 @@ test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand rev
   await newLink.click();
   await page.waitForURL(/\/admin\/posts\/new\/?$/);
   await page.getByPlaceholder("文章标题…").fill(TITLE);
-  await page.getByPlaceholder(/正文\(Markdown/).fill("## E2E 正文\n\nM5a 发布闭环冒烟。");
+  // M5-d 起编辑器为 Vditor 分屏:sv 模式可编辑面是 textarea(带 placeholder 的 PRE 为高亮镜像,不能用 getByPlaceholder 定位)
+  await page.locator("textarea.vditor-sv").fill("## E2E 正文\n\nM5a 发布闭环冒烟。");
   await page.getByRole("button", { name: "存草稿" }).click();
   await page.waitForURL(/\/admin\/posts\/\d+\/?$/);
 
@@ -224,4 +228,105 @@ test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand rev
 
   // 清理本用例数据
   await prisma.post.deleteMany({ where: { title: TITLE } });
+});
+
+test("7. 媒体库闭环(M5b:上传/卡片/详情抽屉/软删)", async ({ page }) => {
+  const NAME = "e2e-media.png";
+  await prisma.media.deleteMany({ where: { filename: NAME } });
+
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 统计卡与工具条
+  await page.goto("/admin/media/");
+  await expect(page.getByText("近 30 天 / 未引用")).toBeVisible();
+
+  // 上传(setInputFiles 直喂缓冲,无需夹具文件)→ refresh 后卡片出现
+  const png = await sharp({
+    create: { width: 4, height: 3, channels: 3, background: { r: 30, g: 144, b: 255 } },
+  })
+    .png()
+    .toBuffer();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({ name: NAME, mimeType: "image/png", buffer: png });
+  const card = page.locator(`img[alt="${NAME}"]`);
+  await expect(card).toBeVisible({ timeout: 15_000 });
+
+  // 详情抽屉:预览 + kv + 引用方为空
+  await card.click();
+  await expect(page.getByRole("heading", { name: "媒体详情" })).toBeVisible();
+  await expect(page.getByText("暂无文章引用")).toBeVisible();
+
+  // 软删(原生 confirm)→ 抽屉关、卡片消失,落库 deleted
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "删除" }).click();
+  await expect(page.getByRole("heading", { name: "媒体详情" })).toBeHidden({ timeout: 10_000 });
+  await expect(card).toHaveCount(0, { timeout: 15_000 });
+  const row = await prisma.media.findFirst({ where: { filename: NAME } });
+  expect(row?.status).toBe("deleted");
+
+  // 清理:回收站行 + 盘上文件族(测试不依赖 7 天后的物理清退)
+  if (row) {
+    const rel = decodeURIComponent(row.path.replace("/wp-content/uploads/", ""));
+    const root = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+    const stem = rel.replace(/\.[a-z]+$/, "");
+    await Promise.all(
+      [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+        rm(path.join(root, f), { force: true }),
+      ),
+    );
+    await prisma.media.delete({ where: { id: row.id } });
+  }
+});
+
+test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑器交接)", async ({ page }) => {
+  const IMG_NAME = "e2e-import-img.png";
+  await prisma.media.deleteMany({ where: { filename: IMG_NAME } });
+
+  // 登录(同用例 4/6 的 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 列表页 → 一键发文弹窗 → 选 md + 本地图(相对路径引用,按文件名匹配)
+  await page.goto("/admin/posts/");
+  await page.getByRole("button", { name: "一键发文(md 导入)" }).click();
+  const png = await sharp({
+    create: { width: 4, height: 3, channels: 3, background: { r: 20, g: 120, b: 200 } },
+  })
+    .png()
+    .toBuffer();
+  const md = `# E2E 导入\n\n![配图](./imgs/${IMG_NAME})\n`;
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "e2e-import.md", mimeType: "text/markdown", buffer: Buffer.from(md, "utf8") },
+    { name: IMG_NAME, mimeType: "image/png", buffer: png },
+  ]);
+  await expect(page.getByText("图片引用 1 处")).toBeVisible();
+  await page.getByRole("button", { name: "开始导入" }).click();
+
+  // 交接进编辑器:URL 带 import=1,正文引用已替换为站内路径
+  await page.waitForURL(/\/admin\/posts\/new\/\?import=1/);
+  const ta = page.locator("textarea.vditor-sv");
+  await expect(ta).toHaveValue(/!\[配图\]\(\/wp-content\/uploads\//);
+
+  // 清理:媒体行 + 盘上文件族(与用例 7 同款)
+  const row = await prisma.media.findFirst({ where: { filename: IMG_NAME } });
+  expect(row).toBeTruthy();
+  if (row) {
+    const rel = decodeURIComponent(row.path.replace("/wp-content/uploads/", ""));
+    const root = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+    const stem = rel.replace(/\.[a-z]+$/, "");
+    await Promise.all(
+      [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+        rm(path.join(root, f), { force: true }),
+      ),
+    );
+    await prisma.media.delete({ where: { id: row.id } });
+  }
 });

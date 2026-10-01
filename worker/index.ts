@@ -1,14 +1,27 @@
 import { Worker, type Processor, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
-import { QUEUE_MEDIA_PROCESS, QUEUE_STATS, bullConnection, getQueue } from "../src/lib/queue";
+import {
+  MEDIA_AUDIT_CRON,
+  QUEUE_MEDIA_AUDIT,
+  QUEUE_MEDIA_PROCESS,
+  QUEUE_MEDIA_TRANSFER,
+  QUEUE_STATS,
+  bullConnection,
+  getQueue,
+} from "../src/lib/queue";
 import { flushStatsBuffer } from "../src/lib/stats/service";
+import { processMediaJob, transferMediaJob } from "./media";
+import { runAudit } from "../src/lib/media/audit";
 
 /** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
 const PROCESSORS: Record<string, Processor> = {
-  [QUEUE_MEDIA_PROCESS]: async (job) => {
-    // media 管线(sharp WebP/缩略图/宽高回填)随 M5 媒体库落地
-    throw new Error(`queue ${QUEUE_MEDIA_PROCESS} 的处理器尚未实现(job ${job.id},M5 交付)`);
+  [QUEUE_MEDIA_PROCESS]: (job) => processMediaJob(job),
+  [QUEUE_MEDIA_TRANSFER]: (job) => transferMediaJob(job),
+  [QUEUE_MEDIA_AUDIT]: async () => {
+    const summary = await runAudit();
+    console.log(JSON.stringify({ event: "media.audit", ...summary }));
+    return summary;
   },
   [QUEUE_STATS]: async () => {
     const summary = await flushStatsBuffer();
@@ -19,7 +32,7 @@ const PROCESSORS: Record<string, Processor> = {
   },
 };
 
-/** 统计 flush 的调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
+/** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
 const STATS_FLUSH_EVERY_MS = 60_000;
 
 async function scheduleStatsFlush(): Promise<void> {
@@ -31,6 +44,19 @@ async function scheduleStatsFlush(): Promise<void> {
       name: "flush",
       data: {},
       opts: { removeOnComplete: 100 },
+    },
+  );
+}
+
+async function scheduleMediaAudit(): Promise<void> {
+  const queue = getQueue(QUEUE_MEDIA_AUDIT);
+  await queue.upsertJobScheduler(
+    "media-audit",
+    { pattern: MEDIA_AUDIT_CRON },
+    {
+      name: "audit",
+      data: {},
+      opts: { removeOnComplete: 7 },
     },
   );
 }
@@ -48,12 +74,15 @@ async function main(): Promise<void> {
   const workers: Array<Worker> = [];
 
   for (const name of Object.keys(PROCESSORS)) {
-    const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2 });
+    // transfer 抓外链耗时长,放宽锁续期;其余队列默认值即可
+    const opts = name === QUEUE_MEDIA_TRANSFER ? { lockDuration: 300_000 } : {};
+    const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
   }
 
   await scheduleStatsFlush();
+  await scheduleMediaAudit();
 
   console.log(
     JSON.stringify({
