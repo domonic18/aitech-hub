@@ -1,6 +1,6 @@
 # 原型图设计规范(DESIGN-SPEC)
 
-> 状态:v1.0(2026-09-30,随原型 v0.4.0 定稿立此存照)。新增或修改 `docs/prototypes/*.html` 前必读;偏离本规范的实现一律视为缺陷。
+> 状态:v1.1(2026-10-02:品牌定稿「一起AI」+ 17 monogram logo 基线,原型同步 v0.5.0;初版 v1.0 随 2026-09-30 v0.4.0 定稿)。新增或修改 `docs/prototypes/*.html` 前必读;偏离本规范的实现一律视为缺陷。
 > 范本:`ai-invest-assisstant` 仓(本机 `~/Code/ai_proj_agent/ai-invest-assisstant`,React + antd v5 管理端,原型见其 `docs/prototypes/`)——本项目的图标体系与后台组件形态均提炼自它,但**落地为纯 HTML 单文件**(零依赖、双击即开),不复刻其技术栈。
 
 ## 1. 定位与形态
@@ -57,7 +57,7 @@
 ## 5. 主题切换与交互基线
 
 - **主题胶囊**:44×24 分段控件,左月右日两个 SVG 图标,滑块 200ms 滑动;`aria-pressed` + `title`;状态存 `localStorage("proto-theme")`,默认暗。全站唯一实现(在 common.css),禁止页内自造变体。
-- **Logo**:静态色块 + 文字,**无闪烁光标**;闪烁 caret 只允许出现在控制台输入框(site-home/site-search:原生 `caret-color: var(--accent)` + 镜像 ▍ 随输入移动)。
+- **Logo(品牌「一起AI」,2026-10-02 定稿)**:17 monogram 芯片(圆角方块 `var(--accent)` 底 + mono 粗体「17」白字 + `--glow` 光)+ 名称「一起AI」+ 弱色 mono tld(前台 `17aitech.com`、admin `admin`);尺寸三档 26/22/32px(footer 24px),全站唯一形态(site header / admin sb-logo / index head),规格见 common.css §Logo;静态无闪烁,闪烁 caret 只允许出现在控制台输入框(site-home/site-search:原生 `caret-color: var(--accent)` + 镜像 ▍ 随输入移动)。站点口号:**一起,看懂 AI**。
 - **站点 header**(唯一形态):左 logo;右 nav `首页 / 电报流 / 文章` + 搜索图标按钮 + 主题胶囊 + 头像下拉(SVG 头像 + caret;菜单:个人设置 → account.html、退出登录 → login.html;点外关闭 + Esc)。**归档/关于不放 header**,固定在 footer。
 - **admin 侧栏 v2**(唯一形态,17 项,消除漂移):`OVERVIEW 站点统计 / 内容管理 文章管理·媒体库·电报流治理(二期) / 采集 采集总览(二期)·渠道配置(二期)·博主管理(二期) / AI 服务 模型配置(二期)·用量统计(二期)·会话管理(二期) / 用户 用户管理 / 系统 PAT 令牌`;底部 sb-foot「返回前台站点」。图标全 SVG,禁「站点设置」等占位项。
 - 可交互元素最低要求:hover 态、`cursor:pointer`、下拉/弹窗支持点外关闭与 Esc;`alert()` 允许作为原型演示动作(标注真实交互由开发实现)。

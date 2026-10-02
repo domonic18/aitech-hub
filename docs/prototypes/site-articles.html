@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>一起AI技术 — 文章列表 · aitech-hub 原型</title>
+<title>一起AI — 文章列表 · aitech-hub 原型</title>
 <script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;双主题) ==== */
+/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;双主题) ==== */
 :root, [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
@@ -33,7 +33,7 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
 .ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
 .ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
 .ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
@@ -57,11 +57,12 @@ img { display: block; }
   padding: 0 24px; display: flex; align-items: center; gap: 40px;
 }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
-.logo .cursor-block {
-  width: 12px; height: 20px; background: var(--accent); border-radius: 2px;
+.logo .logo-mark {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px;
+  height: 26px; background: var(--accent); border-radius: var(--r-sm); color: #fff;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700; letter-spacing: -0.5px;
   box-shadow: 0 0 12px var(--glow);
 }
-@keyframes blink { 50% { opacity: .35; } }
 .logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
 .nav { display: flex; gap: 8px; margin-left: auto; }
 .nav a { padding: 8px 14px; border-radius: var(--r-sm); color: var(--text-2); font-size: 14px; }
@@ -69,7 +70,7 @@ img { display: block; }
 .nav a.active { color: var(--text-1); background: var(--accent-dim); }
 .nav a.mono { font-size: 13px; }
 
-/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
+/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
 .theme-toggle {
   width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
   border: 1px solid var(--border); border-radius: 12px;
@@ -205,7 +206,7 @@ img { display: block; }
 <header class="header">
   <div class="header-in">
     <a class="logo" href="site-home.html">
-      <span class="cursor-block"></span>一起AI技术<span class="tld">17aitech.com</span>
+      <span class="logo-mark">17</span>一起AI<span class="tld">17aitech.com</span>
     </a>
     <nav class="nav">
       <a href="site-home.html">首页</a>
@@ -331,11 +332,11 @@ img { display: block; }
 
 <footer class="footer">
   <div class="footer-base">
-    © 2021-2026 17aitech.com · 一起AI技术 · <a href="site-article.html">关于</a> · <a href="site-articles.html">归档</a> · <a href="#" onclick="return false">协议</a> · <a href="#" onclick="return false">RSS</a> · <a href="site-home.html">返回首页</a>
+    © 2021-2026 17aitech.com · 一起AI · <a href="site-article.html">关于</a> · <a href="site-articles.html">归档</a> · <a href="#" onclick="return false">协议</a> · <a href="#" onclick="return false">RSS</a> · <a href="site-home.html">返回首页</a>
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.4.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.5.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
 
 <script>
 function toggleTheme() {

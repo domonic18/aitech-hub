@@ -1,7 +1,7 @@
 # aitech-hub 需求基准
 
 > 本文档是需求基准(真相源)。范围变更先改这里,再同步 development-plan.md 与相关 arch 文档。
-> UI 原型:[docs/prototypes/index.html](../prototypes/index.html)(深色终端风 + 明暗双主题 + SVG 图标体系 v0.4.0;前台 5 屏中 Hub 控制台/混合电报流为二期形态提案、Agent 搜索为专项提案;admin 14 屏为 M5/二期开发依据——含 AI 服务后台模型配置/用量统计/会话管理与采集后台渠道配置/博主管理;用户中心 3 屏为三期开发依据——短信资质解锁后实施,见 §3.3)。
+> UI 原型:[docs/prototypes/index.html](../prototypes/index.html)(深色终端风 + 明暗双主题 + SVG 图标体系;品牌「一起AI」+ 17 monogram logo,原型 v0.5.0;前台 5 屏中 Hub 控制台/混合电报流为二期形态提案、Agent 搜索为专项提案;admin 14 屏为 M5/二期开发依据——含 AI 服务后台模型配置/用量统计/会话管理与采集后台渠道配置/博主管理;用户中心 3 屏为三期开发依据——短信资质解锁后实施,见 §3.3)。
 
 ## 1. 项目定位
 

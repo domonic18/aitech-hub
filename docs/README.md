@@ -1,6 +1,6 @@
 # aitech-hub 文档中心
 
-> 一起AI技术(17aitech.com)全新重建项目。本文档体系仿 ai-invest-assisstant 的组织方式:
+> 一起AI(17aitech.com)全新重建项目。本文档体系仿 ai-invest-assisstant 的组织方式:
 > **requirement/ 是需求基准,arch/ 是终态方案,standard/ 是稳定规范,plan/ 是迭代状态真相源**。
 > 按需阅读,勿全量加载。文件名统一 `NN-英文主题.md`(GitHub 友好)。
 
