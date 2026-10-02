@@ -39,17 +39,23 @@ RUN apt-get update -y \
   && useradd --system --uid 1001 --gid nodejs next
 
 # standalone 产物 + 静态资源 + worker 编译产物 + prisma(migrate 需 schema)
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+# + scripts/src(ops 脚本如 npm run admin 以 tsx 直跑,依赖 src 源码;
+#   standalone 追踪只带碎片——实测 src/lib/auth 仅剩 *.test.ts,不能依赖)
+# COPY --chown 在拷贝时定属主,替代 RUN chown -R(后者对已拷内容整层
+# CoW 复制一遍,实测多出 1.08GB 层)
+COPY --from=builder --chown=next:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=next:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=next:nodejs /app/public ./public
+COPY --from=builder --chown=next:nodejs /app/dist ./dist
+COPY --from=builder --chown=next:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=next:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=next:nodejs /app/src ./src
 # worker 依赖与 @prisma/client 生成物必须取 builder(node_modules 含
 # prisma generate 产物;取 deps 层会覆盖 standalone 内 traced 生成物,
 # 运行时报 "client did not initialize")
-COPY --from=builder /app/node_modules ./node_modules
-COPY docker/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh && chown -R next:nodejs /app
+COPY --from=builder --chown=next:nodejs /app/node_modules ./node_modules
+COPY --chown=next:nodejs docker/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 USER next
 EXPOSE 3000
