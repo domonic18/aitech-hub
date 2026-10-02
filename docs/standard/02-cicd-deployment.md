@@ -53,13 +53,14 @@ make migrate   # npx prisma migrate deploy
 ### 3.1 构建期无 DB 降级与启动预热(2026-09-30 实测定型)
 
 - builder 无 env/DB:`ENV` 占位三件套(DATABASE_URL/REDIS_URL/AUTH_SECRET)过 Zod 校验;预渲染取数经 `lib/prerenderSafe`(仅 `NEXT_PHASE=phase-production-build` 生效)降级为空数据,**运行时 ISR 错误照常上抛不吞**
-- 降级产物在 revalidate 窗口内不会自动再生 → entrypoint 启动后 3s:先 `POST /api/internal/revalidate/`(AUTH_SECRET 派生 token,`revalidatePath("/", "layout")` + SEO 路由全量失效)再逐路径 fetch 触发同步再生;失效端点勿删,预热失败不阻塞启动
+- 降级产物在 revalidate 窗口内不会自动再生 → entrypoint 轮询 `/api/health/` 就绪后:先 `POST /api/internal/revalidate/`(AUTH_SECRET 派生 token,`revalidatePath("/", "layout")` + SEO 路由全量失效)再逐路径双 fetch(首触发再生、次取新鲜产物入缓存);失效端点勿删,预热失败不阻塞启动
 - 实测踩坑(均已修,勿回退):
   - runner 的 node_modules 必须取 **builder 层**(含 `prisma generate` 产物;取 deps 层会覆盖 standalone 内 traced 生成物,运行时报 `client did not initialize`)
   - `HOSTNAME=0.0.0.0` 必须显式设——容器 HOSTNAME 是容器 ID,Next standalone 会当绑定地址,回环拒连(预热 ECONNREFUSED)
   - slim 无 openssl,deps/runner 需 apt 安装(prisma 引擎探测)
   - worker:build 须接 `tsc-alias`(`@/` 别名 emit 不改写,产物运行时崩)
   - healthcheck 打 `/api/health/`(trailingSlash 308;compose 探针需带尾斜杠或 `-f` 跟随)
+  - 预热不能用「固定 sleep 后单发 POST」:2C 冷启动 server 绑定可晚于 sleep,POST 落空且被吞、无任何日志;页面靠短 revalidate(600s)自然自愈,feed/sitemap(3600s)空壳挂满窗口(2026-10-03 生产实测定诊)——就绪轮询 + 重试 + 双 fetch,见 entrypoint
 - 镜像现状 2.33GB(runner 全量 node_modules,worker + prisma CLI 同镜像所需);M6 瘦身方向:`npm ci --omit=dev` + prisma CLI 去留决策(migrate 角色拆分或 CLI 入 dependencies),非一期阻塞
 
 ## 4. 生产拓扑与 Nginx(compose 服务)
