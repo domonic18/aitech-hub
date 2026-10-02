@@ -5,10 +5,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>一起AI技术 — 后台 · 博主管理 · aitech-hub 原型</title>
+<title>一起AI — 后台 · 博主管理 · aitech-hub 原型</title>
 <script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;admin 与前台同一体系,双主题) ==== */
+/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;admin 与前台同一体系,双主题) ==== */
 :root, [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
@@ -33,7 +33,7 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
 .ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
 .ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
 .ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
@@ -47,7 +47,7 @@ img { display: block; }
 .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
 [data-theme="light"] .sidebar { background: var(--panel); }
 .sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
-.sb-logo .cursor-block { width: 10px; height: 17px; background: var(--accent); border-radius: 2px; box-shadow: 0 0 10px var(--glow); }
+.sb-logo .logo-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: var(--accent); border-radius: var(--r-sm); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: -0.5px; box-shadow: 0 0 10px var(--glow); }
 .sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
 .sb-nav { flex: 1; padding: 12px 10px; }
 .sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
@@ -65,7 +65,7 @@ img { display: block; }
 .a-header .crumb { font-size: 13px; color: var(--text-3); }
 .a-header .crumb b { color: var(--text-1); font-weight: 600; }
 
-/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
+/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
 .theme-toggle {
   width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
   border: 1px solid var(--border); border-radius: 12px;
@@ -344,7 +344,7 @@ img { display: block; }
 </svg>
 
 <aside class="sidebar">
-  <div class="sb-logo"><span class="cursor-block"></span>一起AI技术<span class="tld">admin</span></div>
+  <div class="sb-logo"><span class="logo-mark">17</span>一起AI<span class="tld">admin</span></div>
 <nav class="sb-nav">
     <div class="sb-group">OVERVIEW</div>
     <a class="sb-item" href="admin-stats.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg></span>站点统计</a>
@@ -543,7 +543,7 @@ img { display: block; }
   </div>
 </div>
 
-<div class="proto-note">PROTOTYPE v0.4.0 · 二期提案 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.5.0 · 二期提案 · <a href="index.html">← 原型索引</a></div>
 
 <script>
 

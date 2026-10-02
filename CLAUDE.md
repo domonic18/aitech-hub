@@ -2,7 +2,7 @@
 
 ## 1. 项目概览
 
-- **愿景**:一起AI技术(17aitech.com)AI 信息 Hub(连接用户与快速变化的 AI 信息:资讯/教程/示例项目;
+- **愿景**:一起AI(17aitech.com)AI 信息 Hub(连接用户与快速变化的 AI 信息:资讯/教程/示例项目;
   站长原创文章为核心渠道之一),替换旧 WordPress;SEO 是生命线
 - **架构**:Next.js 15 全栈单体(App Router RSC/ISR + Route Handlers)+ Prisma/PostgreSQL
   + Redis/BullMQ worker;公开品牌与域名沿用 17aitech

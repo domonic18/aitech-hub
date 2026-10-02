@@ -1,6 +1,6 @@
 # aitech-hub
 
-一起AI技术(17aitech.com)全新重建:Next.js 15 全栈单体 + Prisma/PostgreSQL + Redis/BullMQ。
+一起AI(17aitech.com)全新重建:Next.js 15 全栈单体 + Prisma/PostgreSQL + Redis/BullMQ。
 替换现有 WordPress 站,SEO 无损迁移为最高优先级约束(中文 percent-encoded slug 原样可用)。
 
 ## 快速开始

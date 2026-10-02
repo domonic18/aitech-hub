@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>一起AI技术 — 原型图索引 · aitech-hub prototypes</title>
+<title>一起AI — 原型图索引 · aitech-hub prototypes</title>
 <script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.4.0,内联副本;双主题) ==== */
+/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;双主题) ==== */
 :root, [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
@@ -30,7 +30,7 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ==== 图标系统(common.css v0.4.0 §图标系统,内联副本) ==== */
+/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
 .ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
 .ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
 body {
@@ -54,8 +54,10 @@ a { color: inherit; text-decoration: none; }
 /* 头部 */
 .head { margin-bottom: 12px; position: relative; }
 .head .glyph { display: flex; align-items: center; gap: 12px; }
-.head .cursor-block {
-  width: 16px; height: 28px; background: var(--accent); border-radius: 3px;
+.head .logo-mark {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px;
+  height: 32px; background: var(--accent); border-radius: var(--r-sm); color: #fff;
+  font-family: var(--font-mono); font-size: 17px; font-weight: 700; letter-spacing: -0.5px;
   box-shadow: 0 0 16px var(--glow);
 }
 .head h1 { font-size: 30px; letter-spacing: .01em; }
@@ -69,7 +71,7 @@ a { color: inherit; text-decoration: none; }
 .head .desc a { color: var(--blue); border-bottom: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); }
 .head .desc a:hover { color: var(--accent-hover); }
 
-/* ==== 主题切换胶囊(约定见 common.css v0.4.0) ==== */
+/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
 .theme-toggle {
   width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
   border: 1px solid var(--border); border-radius: 12px;
@@ -178,15 +180,15 @@ a { color: inherit; text-decoration: none; }
 
   <header class="head">
     <div class="glyph">
-      <span class="cursor-block"></span>
+      <span class="logo-mark">17</span>
       <h1>aitech-hub 原型图<span class="tld">docs/prototypes</span></h1>
     </div>
     <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
     <div class="prompt">
-      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 23 screens · 3 groups · dual-theme(暗黑默认/明亮可选)· <span class="a">v0.4.0</span>
+      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 23 screens · 3 groups · dual-theme(暗黑默认/明亮可选)· <span class="a">v0.5.0</span>
     </div>
     <p class="desc">
-      一起AI技术(17aitech.com)全站 UI 原型。<b>AI 信息 Hub</b> 定位(2026-09-30 升级):连接用户与快速变化的 AI 信息——资讯、教程、开源项目与博主实战文章的聚合平台;深色终端风 + 明暗双主题。
+      一起AI(17aitech.com)全站 UI 原型。<b>AI 信息 Hub</b> 定位(2026-09-30 升级):连接用户与快速变化的 AI 信息——资讯、教程、开源项目与博主实战文章的聚合平台;深色终端风 + 明暗双主题。
       覆盖<b>前台核心 5 屏(M3 已实现 + 二期混合电报流 / 专项 Agent 搜索)</b>、<b>用户中心 3 屏(三期,短信资质解锁后)</b>、<b>admin 后台 14 屏(M5 + 二期电报流治理 / 采集三页 / AI 服务治理三页)</b>。
       每页为可独立打开的单文件 HTML(内联 token + 可交互),页面间可点击走通。
       需求基准见 <a href="../requirement/01-requirement.md">requirement/01-requirement.md</a>,
@@ -377,8 +379,8 @@ a { color: inherit; text-decoration: none; }
   </div>
 
   <footer class="base">
-    <span class="v">v0.4.0</span>
-    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-09-30 · v0.4.0 矢量图标体系 + 双栏 Hub 仪表盘 + 采集/AI 服务治理后台(23 屏)</span>
+    <span class="v">v0.5.0</span>
+    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-10-02 · v0.5.0 品牌「一起AI」+ 17 monogram logo(v0.4.0 矢量图标/双栏 Hub 仪表盘/采集与 AI 服务治理后台,23 屏)</span>
     <a href="DESIGN-SPEC.md">设计规范</a>
     <a href="../README.md" style="margin-left:auto">← 文档中心</a>
     <a href="https://github.com/domonic18/aitech-hub" target="_blank">GitHub</a>
