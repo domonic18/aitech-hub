@@ -10,7 +10,7 @@ import { usePathname } from "next/navigation";
 
 import { ADMIN_LOGIN_PATH } from "@/lib/auth/constants";
 
-import ThemeToggle from "./ThemeToggle";
+import ThemeToggle from "@/components/ThemeToggle";
 
 interface Crumb {
   label: string;

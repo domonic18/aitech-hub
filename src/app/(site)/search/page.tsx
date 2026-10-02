@@ -36,8 +36,8 @@ export default async function SearchPage({ searchParams }: PageProps): Promise<R
       : { items: [], total: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE };
 
   return (
-    <section>
-      <header className="border-b border-neutral-200/60 pb-4">
+    <section className="mx-auto w-full max-w-3xl">
+      <header className="border-b border-line/60 pb-4">
         <h1 className="text-2xl font-bold">搜索</h1>
         <form action="/search" className="mt-3 flex gap-2">
           <input
@@ -45,11 +45,11 @@ export default async function SearchPage({ searchParams }: PageProps): Promise<R
             name="q"
             defaultValue={q}
             placeholder="输入关键词,按标题/摘要匹配"
-            className="w-full max-w-md rounded-md border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
+            className="w-full max-w-md rounded-md border border-line bg-panel px-3 py-1.5 text-sm text-text-1 outline-none focus:border-accent"
           />
           <button
             type="submit"
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700"
+            className="cursor-pointer rounded-md bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover"
           >
             搜索
           </button>

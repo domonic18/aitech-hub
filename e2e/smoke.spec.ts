@@ -51,10 +51,11 @@ async function sitemapPostUrls(
   return locs.map((u) => new URL(u).pathname).filter(isPostPath);
 }
 
-test("1. 首页 200 且含最新文章卡", async ({ request }) => {
+test("1. 首页 200 且含 hero 终端与最新文章卡", async ({ request }) => {
   const res = await request.get("/");
   expect(res.status()).toBe(200);
   const html = await res.text();
+  expect(html).toContain("whoami"); // M5-e hero 终端
   expect(html).toContain('href="/articles/"');
   const cardSlugs = [...html.matchAll(/href="\/([^"/]+)\/"/g)]
     .map((m) => m[1])

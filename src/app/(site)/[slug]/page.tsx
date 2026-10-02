@@ -71,22 +71,22 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
   };
 
   return (
-    <article>
+    <article className="mx-auto w-full max-w-3xl">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <header>
         <h1 className="text-2xl font-bold leading-snug sm:text-3xl">{post.title}</h1>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-3">
           {post.publishedAt ? (
             <time dateTime={post.publishedAt.toISOString()}>{formatCnDate(post.publishedAt)}</time>
           ) : null}
-          <Link href={`/category/${post.category.slug}/`} className="hover:text-neutral-800">
+          <Link href={`/category/${post.category.slug}/`} className="hover:text-text-1">
             {post.category.name}
           </Link>
           {post.tags.map(({ tag }) => (
-            <Link key={tag.slug} href={`/tag/${tag.slug}/`} className="hover:text-neutral-800">
+            <Link key={tag.slug} href={`/tag/${tag.slug}/`} className="hover:text-text-1">
               #{tag.name}
             </Link>
           ))}
@@ -95,7 +95,7 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
       </header>
 
       {post.coverPath ? (
-        <div className="relative mt-6 aspect-[2.35/1] overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-900">
+        <div className="relative mt-6 aspect-[2.35/1] overflow-hidden rounded-lg bg-panel-2">
           {/* /wp-content/** 由 Nginx 直接服务,不走 next/image 优化器(arch/07-frontend §3;本地为 wp-content 路由兜底) */}
           <Image
             src={post.coverPath}
@@ -113,8 +113,8 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
         <ArticleBody contentMd={post.contentMd} contentHtml={post.contentHtml} />
       </div>
 
-      <footer className="mt-12 border-t border-neutral-200/60 pt-4 text-sm text-neutral-500">
-        <Link href="/articles/" className="hover:text-neutral-800">
+      <footer className="mt-12 border-t border-line/60 pt-4 text-sm text-text-3">
+        <Link href="/articles/" className="hover:text-text-1">
           ← 返回全部文章
         </Link>
       </footer>
