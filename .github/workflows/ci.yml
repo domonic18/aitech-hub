@@ -81,7 +81,9 @@ jobs:
             echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
+      # id + 重试条件:登录失败属配置错误,不进重试(避免白建镜像且盖住真错;2026-10-02 首跑实测教训)
+      - id: login
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.TCR_USERNAME }}
@@ -101,7 +103,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build and Push / 构建并推送(重试)
-        if: failure()
+        if: failure() && steps.login.conclusion == 'success'
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
