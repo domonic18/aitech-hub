@@ -10,17 +10,19 @@ PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
 ├── job migration 起 postgres:16 → migrate deploy 全量 →
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
-└── job build     [依赖 app] next build(standalone)+ tsc 编译 worker → 产物健康
 
-push(main)
-└── job release   全绿 → docker build 单镜像 → 推 TCR(tag = git 短 sha + latest)
+push(develop, main)/ 手动
+└── job docker-release  [依赖 app+migration 全绿] buildx 构建单镜像 → 推 TCR
+                        tag = <branch>-<短 sha>;latest 仅 main(保证 compose pull 默认即发布版)
 ```
 
-> 当前实装:上图中 `app` + `migration` 两 job(见 `.github/workflows/ci.yml`);`build`/`release` 随 M6 接入,图为目标态。
+> 实装(M6,2026-10-02):`app` + `migrate-replay` + `docker-release` 三 job(见 `.github/workflows/ci.yml`)。
+> docker-release 支持 `workflow_dispatch` 手动触发(首次打通 TCR 用);build 构建在镜像内完成,不设独立 build job。
+> 跨境推送(美国 runner → 大陆 TCR)偶发 stall:构建步骤级超时 25 分钟,失败自动重推一次(同范例仓实测经验)。
 
 - Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
-- TCR 凭证走 repo secrets(`TCR_NAMESPACE`/`TCR_USER`/`TCR_PASSWORD`);镜像 `ccr.ccs.tencentyun.com/domonic18/aitech-hub`
+- TCR 凭证走 repo secrets(`TCR_NAMESPACE`/`TCR_USERNAME`/`TCR_PASSWORD`);镜像 `ccr.ccs.tencentyun.com/domonic18/aitech-hub`;构建带 `provenance: false`(TCR 不认 OCI attestation 附加清单)
 
 ### 1.1 分支模型(2026-09-30 起,同 ai-invest-assisstant)
 
