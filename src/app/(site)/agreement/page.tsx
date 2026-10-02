@@ -5,7 +5,7 @@ import { agreementHtml } from "@/content/agreement";
 
 export const metadata: Metadata = {
   title: "用户协议",
-  description: "一起AI技术网站用户协议。",
+  description: "一起AI网站用户协议。",
   alternates: { canonical: "/agreement/" },
 };
 

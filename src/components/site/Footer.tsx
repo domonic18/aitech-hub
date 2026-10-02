@@ -30,7 +30,7 @@ export default function Footer(): React.ReactElement {
           </a>
         </div>
         <p className="mt-4 text-text-3">
-          © {new Date().getFullYear()} 一起AI技术 · domonic18 的 AI 工程实战博客
+          © {new Date().getFullYear()} 一起AI · domonic18 的 AI 工程实战博客
         </p>
       </div>
     </footer>

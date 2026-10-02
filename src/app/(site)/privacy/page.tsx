@@ -5,7 +5,7 @@ import { privacyHtml } from "@/content/privacy";
 
 export const metadata: Metadata = {
   title: "隐私政策",
-  description: "一起AI技术网站隐私政策,含自建访问统计的采集与匿名化说明。",
+  description: "一起AI网站隐私政策,含自建访问统计的采集与匿名化说明。",
   alternates: { canonical: "/privacy/" },
 };
 

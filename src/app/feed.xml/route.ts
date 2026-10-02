@@ -39,7 +39,7 @@ export async function GET(): Promise<NextResponse> {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>一起AI技术</title>
+    <title>一起AI</title>
     <link>${escapeXml(siteUrl())}</link>
     <description>domonic18 的 AI 工程实战原创博客</description>
     <language>zh-CN</language>
