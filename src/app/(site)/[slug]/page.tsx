@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title,
       description,
       url: absoluteUrl(`/${post.slug}/`),
-      siteName: "一起AI技术",
+      siteName: "一起AI",
       publishedTime: post.publishedAt?.toISOString(),
       modifiedTime: post.updatedAt.toISOString(),
       images: post.coverPath ? [{ url: absoluteUrl(post.coverPath) }] : undefined,

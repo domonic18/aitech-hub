@@ -33,7 +33,7 @@
 
 ## 3. SEO 实现清单
 
-- `app/layout.tsx`:默认 metadata(template `%s | 一起AI`——品牌 2026-10-02 定稿,src 落地随下次前台批次),`metadataBase = NEXT_PUBLIC_SITE_URL`
+- `app/layout.tsx`:默认 metadata(template `%s | 一起AI`;品牌 2026-10-02 定稿,src 已同批落地:Header 17 monogram 芯片 + icon.svg),`metadataBase = NEXT_PUBLIC_SITE_URL`
 - 文章页 `generateMetadata`:title=seo_title||title,description=seo_description||excerpt,canonical=`/<slug>/`,OG(article + cover + published_time)
 - 文章页 JSON-LD:`Article`(headline/datePublished/dateModified/author=Person domonic18/mainEntityOfPage)
 - `sitemap.ts`:全部 published 文章 + 分类 + 标签 + 静态页,`lastModified` 取 updated_at

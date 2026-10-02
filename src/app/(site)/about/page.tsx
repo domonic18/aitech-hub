@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "关于",
   description:
-    "一起AI技术:domonic18 的个人品牌技术站。第一人称、可复现、可问责的 AI 工程实战记录,与 GitHub 开源联动。",
+    "一起AI:domonic18 的个人品牌技术站。第一人称、可复现、可问责的 AI 工程实战记录,与 GitHub 开源联动。",
   alternates: { canonical: "/about/" },
 };
 
@@ -15,7 +15,7 @@ export default function AboutPage(): React.ReactElement {
       <h1 className="text-2xl font-bold">关于本站</h1>
       <div className="mt-6 space-y-5 text-[15px] leading-relaxed text-text-2">
         <p>
-          这里是 <strong>domonic18</strong> 的个人技术站「一起AI技术」。内容主线只有一条:
+          这里是 <strong>domonic18</strong> 的个人技术站「一起AI」。内容主线只有一条:
           <strong>一个人指挥智能体军团的公开实战档案</strong>——以第一人称记录 AI
           工程中的真实做法,可复现、含失败案例,每篇文章尽量附带可以直接跑起来的资产 (CLAUDE.md
           模板、skills、MCP 配置、工作流仓库)。

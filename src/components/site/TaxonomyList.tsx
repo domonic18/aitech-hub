@@ -39,7 +39,7 @@ export function taxonomyMetadata(kind: TaxonomyKind, info: TaxonomyInfo, page: n
   const title = kind === "category" ? `${info.name}分类文章` : `「${info.name}」标签文章`;
   return {
     title: page > 1 ? `${title} 第 ${page} 页` : title,
-    description: `${title}——一起AI技术原创内容。`,
+    description: `${title}——一起AI原创内容。`,
     alternates: { canonical: page > 1 ? `${base}page/${page}/` : base },
   };
 }

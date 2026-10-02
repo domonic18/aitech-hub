@@ -8,7 +8,7 @@ export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: "归档",
-  description: "一起AI技术全部文章的时间线归档。",
+  description: "一起AI全部文章的时间线归档。",
   alternates: { canonical: "/archive/" },
 };
 

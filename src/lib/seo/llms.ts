@@ -37,7 +37,7 @@ export async function buildLlmsIndex(): Promise<string> {
   ]);
 
   const lines: string[] = [
-    "# 一起AI技术(17aitech.com)",
+    "# 一起AI(17aitech.com)",
     "",
     "> domonic18 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文;全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起)。",
     "",
@@ -92,8 +92,8 @@ export async function buildLlmsFullParts(): Promise<string[]> {
   return parts.map((body, i) => {
     const head =
       i === 0
-        ? `# 一起AI技术 · 全量文章内容(第 1/${parts.length} 部分)\n${moreList ? `后续部分:${moreList}\n` : "\n"}\n`
-        : `# 一起AI技术 · 全量文章内容(第 ${i + 1}/${parts.length} 部分)\n\n`;
+        ? `# 一起AI · 全量文章内容(第 1/${parts.length} 部分)\n${moreList ? `后续部分:${moreList}\n` : "\n"}\n`
+        : `# 一起AI · 全量文章内容(第 ${i + 1}/${parts.length} 部分)\n\n`;
     return head + body + "\n";
   });
 }

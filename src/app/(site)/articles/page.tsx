@@ -8,7 +8,7 @@ export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: "全部文章",
-  description: "一起AI技术全部原创文章:AI 工程实战、Claude Code、MCP、LLM 训练与评测。",
+  description: "一起AI全部原创文章:AI 工程实战、Claude Code、MCP、LLM 训练与评测。",
   alternates: { canonical: "/articles/" },
 };
 
