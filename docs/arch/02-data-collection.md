@@ -20,7 +20,7 @@
 
 ## 2. 数据模型锚点(终态字段草案,实现时进 arch/03 + Prisma migration)
 
-- `crawl_source` 渠道表:`id / name / type(rss|web|api|social-video) / platform(douyin|xhs|bilibili,type=social-video 时) / url / enabled / crawl_interval_min / last_run_at / next_run_at / status(healthy|degraded|error) / 备注`;视频博主渠道与普通渠道同表管理,`type` 区分
+- `crawl_source` 渠道表:`id / name / type(rss|web|api|social-video) / platform(douyin|xhs|bilibili,type=social-video 时) / url / enabled / crawl_interval_min / daily_max_requests(每日请求上限,超限当日跳过,null=不限;2026-10-03 立项新增) / last_run_at / next_run_at / status(healthy|degraded|error) / 备注`;视频博主渠道与普通渠道同表管理,`type` 区分
 - `social_account` 视频博主表(2026-09-30 新增锚点,二期评审):`id / platform / sec_uid 或平台用户 ID / 昵称 / avatar_url / 分类标签 / enabled(启停) / crawl_interval_min / asr_success_rate_7d(观测字段) / remark / created_at`;登记入口在 admin/spider「短视频解读服务」卡(视频链接或 sec_uid + 昵称 + 分类,重复登记 409);删除走**两步武装删除**(先停用观察再物理删)
 - `telegram` 电报表:`id / source_id / title / summary(1-3 句) / url(原文外链) / published_at / content_hash(去重,sha1(title+url 规范化)) / status(visible|hidden|archived) / filter_hit(命中的过滤规则,nullable) / created_at`,混合流扩:**`media_type(text|video)`** + 视频字段组 `video_platform / video_blogger(冗余博主名,博主删除不影响历史条目) / video_cover_url(封面缩略图) / video_duration / video_engagement(jsonb:play/like/comment)`;**不设 transcript 字段**——转写文本不落库(§3.2 红线)
 - `blocklist` 屏蔽词表:`id / word / scope(title|summary|all) / hit_count / enabled / created_at`
@@ -40,6 +40,7 @@
 ```
 
 - 频控:每渠道独立 `crawl_interval_min`(默认 ≥30min),对目标站遵守 robots.txt 与 UA 规范
+- **每日请求上限(2026-10-03 立项定)**:每渠道独立 `daily_max_requests`(如机器之心 60min/日 25 次);worker 以 Redis 按渠道按日 INCR(key 含日期,TTL 48h)计数,超限当日剩余调度直接跳过——warn 日志、不计失败、不影响健康度,次日自然恢复
 - 失败处理:连续失败 ≥3 次 → source.status=error 并在采集后台标红;不阻塞其他渠道
 - 队列复用 arch/05-services §4 二期任务划分;抖音等签名渠道复用 Python signer sidecar(research/01)
 
@@ -83,14 +84,21 @@
 - 实时感:KISS 起步 = 前台 30-60s 轮询 `GET /api/telegrams?since=&media=`(公开缓存短 TTL);SSE 仅在轮询体验不足时升级
 - 首页 Hub 控制台化:hero 控制台(Agent 搜索输入框 + 建议词 chips)+ 电报流 LIVE 带(文字/短视频混排,视频行含小封面/平台徽标/博主/时长)+ 项目展示 + 博主文章(「博主个人」渠道标识)多区一体(requirement §4「首页 Hub 控制台化」);任一区数据源不可用时其余区正常渲染
 
-## 7. 待明确(二期立项时回答)
+## 7. 立项结论与待明确
 
-- 渠道清单与优先级(候选:机器之心/量子位/HN/Reddit r/MachineLearning/X 学者账号/RSS 聚合)
+**已定(2026-10-03,M7 文字管道立项;实测 = 从生产服务器直连验证)**:
+
+- **首批渠道**:量子位(RSS `https://www.qbitai.com/feed`,实测 175 可达 0.2s/条目有效)+ 机器之心(官方 API,用户已申请;端点与凭证仅 env,不入仓)。频控按渠道独立:`crawl_interval_min` + `daily_max_requests`(机器之心 60min/日 25 次起步)。备选池(HN hnrss.org 可分数过滤/arXiv cs.AI/Solidot 均 175 可达,MIT-TR/Verge AI 备选)。**一期弃:Reddit(175 直连超时被墙)、X(API 付费制且不可达)**。
+- 前台实时感:终选 **30-60s 轮询**(SSE 不做)。
+- 首页电报 LIVE 带随 M7 一并接入。
+- LLM 摘要:一期先规则截断,LLM 摘要作后置增强开关(选型评审后开)。
+- 电报流进站点内容 MCP 只读工具集:随专项 K3 一并交付,M7 不做。
+- AI 内容合规口径(2026-09-30 评估结论沿用):「✦ AI 生成」标注已定,电报流预生成摘要不触发备案义务。
+
+**待明确(随②短视频解读立项时回答)**:
+
 - **视频博主首批名单与平台顺序**(抖音起步——signer sidecar 已有调研 research/01;小红书/B站适配层工时与风控评估)。**2026-09-30 合规评估结论**:全链路唯一实质法律风险点在抖音无水印下载(平台 ToS + 规避技术措施/反不正当竞争,有抓取判例);建议首批改为 **B 站优先**(开放生态/官方接口),抖音先走「listing 元数据 + 外链」保守模式(不做无水印下载与 ASR),取得博主书面授权后再开启解读——个人品牌站私信授权成本低
 - **ASR 供应商选型与成本实测**(云 ASR vs 本地 whisper;单条成本 × 日量估算,验证 $5/日预算护栏)。**成本锚点(2026-09-30 评估)**:录音文件识别腾讯云 ¥1.75/小时(每月 5h 免费额度)、阿里云 ¥2.50/小时;起步场景(约 10 条/日 × 4 min)月增 ~¥0-40,受 $5/日护栏钉住的硬上限 ~¥1100/月,预期 ¥50-300/月;服务器零增量(interpreter 同机 worker,见 §3.2 资源约束)
 - LLM 摘要/解读模型选型(成本 vs 摘要质量;结构化输出 schema 评审)。单条成本上限随选型锁定(2026-09-30 评估:每条转写 2-3k tokens 入 + 0.5k 出 ≈ 0.5-5 分)
 - 版权投诉与下架通道的运营口径(入口位置/响应时效/留痕要求;机制已进 §4)
-- AI 内容合规口径(2026-09-30 评估):显式标识已按《人工智能生成合成内容标识办法》(2025-09-01 施行)落实为「✦ AI 生成」标注(§6);电报流为预生成摘要、非交互式,不触发《生成式 AI 服务管理暂行办法》备案义务——若演进到交互式 RAG 问答(arch/04 专项 K4)再重新评估
-- 电报流是否进站点内容 MCP 只读工具集(倾向进,与「给人也给智能体」一致)
-- 轮询 vs SSE 终选
 - **多租户演进(三期)**:`social_account` 加 user 维度(每用户自选博主)的数据隔离、采集去重(同一博主多人关注时解读结果共享)与成本配额模型;博主条目更新通知机制(是否有「新解读」提醒)
