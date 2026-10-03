@@ -83,11 +83,13 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | 域 | 端点 | 鉴权 |
 |----|------|------|
 | auth | login / logout / session | 公开(login 有爆破防护,§3.1) |
-| content | `GET /api/posts`(管理列表,草稿含)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish`(POST 建文 slug 缺省由标题派生 ASCII、冲突自动追加 `-2…-9` 后缀、纯中文标题 → NULL;显式指定冲突仍 409;PUT 可改 slug——URL 由 id 锚定不破链) | admin |
+| content | `GET /api/posts`(管理列表,草稿含;q 搜索)、`PUT /api/posts`(发布 API upsert:slug 幂等,原始 md 服务端解析 frontmatter,图片随文 base64 复用 M5-b 上传管线,publish=true 直发;legacy 纯 HTML 旧文 409 保真)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish`(POST 建文 slug 缺省由标题派生 ASCII、冲突自动追加 `-2…-9` 后缀、纯中文标题 → NULL;显式指定冲突仍 409;PUT 可改 slug——URL 由 id 锚定不破链) | admin(会话或 PAT 双路,§3.1) |
+| pats | `GET/POST /api/pats`、`POST /api/pats/[id]/revoke`(仅会话——PAT 不得自我增殖;明文仅签发时返回一次,库存 sha256) | admin |
+| mcp | `POST /api/mcp`(Streamable HTTP stateless,每请求新建 transport;Bearer PAT 鉴权在 MCP 协议层之前;六工具 upsert_article/upload_media/get_article/list_articles/publish/unpublish,一律 slug 为键;GET/DELETE 405;接入串 arch/04 §2) | admin(PAT) |
 | content | `GET /api/search?q=` | 公开 |
 | stats | `POST /api/view { path, referrer? }`(同源校验 + bot/管理员过滤) | 公开(IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,Redis 缓冲 60s 批量落库) |
 | media | `POST /api/media`(上传)、`POST /api/media/import`(外链图批量转存,enqueue 返回 jobId,前端轮询取映射)、`GET /api/media`(列表/过滤)、`DELETE /api/media/[id]`、`GET /api/media/{orphans,duplicates,stats}` | admin |
-| users | `GET/PUT /api/me/profile`、`PUT /api/me/password`、`GET /api/users`、`PUT /api/users/[id]/status` | user / admin |
+| users | `GET/PUT /api/me/profile`、`PUT /api/me/password`(三期用户体系启用)、`GET /api/users`、`PUT /api/users/[id]/status`(后两者仅会话,§3.1;不能变更当前登录账号;禁用即吊销该用户全部 PAT) | user / admin |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
 
