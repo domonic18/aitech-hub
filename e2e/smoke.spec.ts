@@ -331,3 +331,30 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
     await prisma.media.delete({ where: { id: row.id } });
   }
 });
+
+test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)", async ({ page }) => {
+  // 登录(同前序用例 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 五模块渲染(空库也不空壳:卡片/表头常在,趋势图恒有 generate_series 点)
+  await expect(page.getByText("今日 PV")).toBeVisible();
+  await expect(page.getByText("PV / UV 趋势")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "流量来源" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "访客环境" })).toBeVisible();
+  await expect(page.getByText("热门页面")).toBeVisible();
+  const polylines = page.locator("main svg polyline");
+  await expect(polylines).toHaveCount(2);
+
+  // 分段切换 URL 驱动:trend=30 生效且 hot 参数跨段保留
+  // 「近 30 天」在趋势卡与热门卡各一枚(Link 分段),count=2 证两卡分段均按参数渲染
+  await page.goto("/admin/?trend=30&hot=all");
+  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(2);
+  await expect(page.getByText("该时段暂无页面浏览")).toHaveCount(0);
+  await expect(polylines.first()).toBeVisible();
+  await page.getByRole("link", { name: "近 90 天" }).click(); // 仅趋势卡有,唯一
+  await expect(page).toHaveURL(/trend=90&hot=all/);
+});
