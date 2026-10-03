@@ -18,6 +18,7 @@ import {
   recordIpFail,
 } from "@/lib/auth/rate-limit";
 import { prisma } from "@/lib/db";
+import { USER_STATUS_ACTIVE } from "@/lib/users/user-status";
 import { isSameOrigin } from "@/lib/http/origin";
 import { clientIp } from "@/lib/http/request";
 import { apiEnvelope } from "@/lib/http/response";
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
     return apiEnvelope(401, "手机号或密码不正确");
   }
-  if (user.status !== "active") {
+  if (user.status !== USER_STATUS_ACTIVE) {
     logger.warn({
       event: "auth.login.reject",
       phone: maskPhone(phone),

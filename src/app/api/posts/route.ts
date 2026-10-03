@@ -6,13 +6,13 @@
  *    默认草稿,publish=true 直发;Bearer PAT / 会话双路自动生效)。
  */
 import { type NextRequest } from "next/server";
-import { z } from "zod";
 
 import { requireAdminActor } from "@/lib/http/mutation-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
 import { upsertArticle } from "@/lib/content/publish-api";
-import { POST_LIMITS, postCreateSchema, ADMIN_LIST_SEGMENTS } from "@/lib/content/post-schema";
+import { publishUpsertSchema } from "@/lib/content/publish-schema";
+import { postCreateSchema, ADMIN_LIST_SEGMENTS } from "@/lib/content/post-schema";
 import { createPost, listPostsAdmin, type AdminListQuery } from "@/lib/content/posts-admin";
 
 import { postErrorResponse, requireAdminForMutation } from "./shared";
@@ -84,27 +84,6 @@ export async function GET(req: NextRequest) {
   });
 }
 
-const PutBody = z.object({
-  markdown: z
-    .string()
-    .min(1, "markdown 不能为空")
-    .max(POST_LIMITS.contentMd, `正文过长(上限 ${POST_LIMITS.contentMd / 10_000} 万字符)`),
-  images: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(255),
-        mime: z.string().regex(/^image\//, "mime 须为 image/*"),
-        dataBase64: z.string().min(1),
-      }),
-    )
-    .max(20, "images 最多 20 张")
-    .default([]),
-  title: z.string().trim().min(1).max(POST_LIMITS.title).optional(),
-  slug: z.string().max(POST_LIMITS.slug).optional(),
-  categorySlug: z.string().max(100).optional(),
-  publish: z.boolean().default(false),
-});
-
 export async function PUT(req: NextRequest) {
   // 单次双路鉴权(requireAdminForMutation 的展开形态):actor 供审计
   const actorGuard = await requireAdminActor(req);
@@ -116,7 +95,8 @@ export async function PUT(req: NextRequest) {
   } catch {
     return apiEnvelope(400, "invalid json");
   }
-  const parsed = PutBody.safeParse(raw);
+  // 入参约束统一引用发布域 schema(publish-schema,与 MCP upsert_article 同源)
+  const parsed = publishUpsertSchema.safeParse(raw);
   if (!parsed.success) {
     return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }

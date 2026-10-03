@@ -7,8 +7,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { AdminActor } from "@/lib/http/mutation-guard";
-import { PUBLISH_API_IMAGES_MAX, upsertArticle } from "@/lib/content/publish-api";
-import { POST_LIMITS } from "@/lib/content/post-schema";
+import { upsertArticle } from "@/lib/content/publish-api";
+import { publishUpsertShape } from "@/lib/content/publish-schema";
 import {
   getPostBySlugAdmin,
   listPostsAdmin,
@@ -58,23 +58,8 @@ export function createMcpServer(actor: AdminActor): McpServer {
   server.tool(
     "upsert_article",
     "按 slug 幂等发布文章(markdown 可含 frontmatter;默认落草稿,publish=true 直发;本地图片随文 base64 上传,外链保留原链)",
-    {
-      markdown: z.string().min(1).max(POST_LIMITS.contentMd),
-      images: z
-        .array(
-          z.object({
-            name: z.string().min(1).max(255),
-            mime: z.string().regex(/^image\//),
-            dataBase64: z.string().min(1),
-          }),
-        )
-        .max(PUBLISH_API_IMAGES_MAX)
-        .optional(),
-      title: z.string().trim().min(1).max(POST_LIMITS.title).optional(),
-      slug: z.string().max(POST_LIMITS.slug).optional(),
-      categorySlug: z.string().max(100).optional(),
-      publish: z.boolean().optional(),
-    },
+    // 入参约束与 HTTP PUT /api/posts 同源(publish-schema 单一事实源)
+    publishUpsertShape,
     async (args) => {
       try {
         const result = await upsertArticle({ ...args, actor });

@@ -16,6 +16,7 @@ import {
 import { ADMIN_PAGE_SIZE, listPostsAdmin } from "@/lib/content/posts-admin";
 import { formatCnDateTime } from "@/lib/datetime";
 import { postPath, postPathSegment } from "@/lib/content/post-path";
+import { adminListHref, pageWindow, parseListSegment, parsePage } from "@/lib/admin/list";
 
 export const dynamic = "force-dynamic";
 
@@ -30,46 +31,19 @@ interface PageProps {
   searchParams: Promise<{ status?: string; page?: string; q?: string }>;
 }
 
-function parseSegment(raw: string | undefined): AdminListSegment {
-  return (ADMIN_LIST_SEGMENTS as readonly string[]).includes(raw ?? "")
-    ? (raw as AdminListSegment)
-    : "all";
-}
-
-function parsePage(raw: string | undefined): number {
-  const n = Number.parseInt(raw ?? "1", 10);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
 function listHref(segment: AdminListSegment, page: number, q?: string): string {
-  const params = new URLSearchParams();
-  if (segment !== "all") params.set("status", segment);
-  if (q) params.set("q", q);
-  if (page > 1) params.set("page", String(page));
-  const qs = params.toString();
-  return qs ? `/admin/posts/?${qs}` : "/admin/posts/";
-}
-
-/** 页码窗口(当前页居中,首尾恒在;null = 省略号) */
-function pageWindow(cur: number, total: number): Array<number | null> {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set([1, total, cur - 1, cur, cur + 1].filter((p) => p >= 1 && p <= total));
-  const sorted = [...pages].sort((a, b) => a - b);
-  const out: Array<number | null> = [];
-  let prev = 0;
-  for (const p of sorted) {
-    if (p - prev > 1) out.push(null);
-    out.push(p);
-    prev = p;
-  }
-  return out;
+  return adminListHref("/admin/posts/", {
+    status: segment === "all" ? undefined : segment,
+    page,
+    q,
+  });
 }
 
 export default async function AdminPostsPage({
   searchParams,
 }: PageProps): Promise<React.ReactElement> {
   const sp = await searchParams;
-  const segment = parseSegment(sp.status);
+  const segment = parseListSegment(ADMIN_LIST_SEGMENTS, sp.status, "all");
   const page = parsePage(sp.page);
   const q = sp.q?.trim() || undefined;
 

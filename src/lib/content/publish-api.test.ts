@@ -14,6 +14,7 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import { resolveUpsertAction } from "./publish-api";
+import { PUBLISH_API_IMAGES_MAX, publishUpsertSchema } from "./publish-schema";
 import { PostAdminError } from "./posts-admin";
 
 const EXISTING_MD = { id: BigInt(2), status: "published", contentMd: "# 正文" };
@@ -47,5 +48,37 @@ describe("resolveUpsertAction(slug 幂等裁定)", () => {
       expect(e).toBeInstanceOf(PostAdminError);
       expect((e as PostAdminError).code).toBe("legacy_readonly");
     }
+  });
+});
+
+describe("publishUpsertSchema(HTTP 路由与 MCP 工具共用,契约钉点)", () => {
+  const base = { markdown: "# 正文" };
+
+  it("缺省填默认值:images=[]、publish=false(两边界解析产物一致)", () => {
+    const r = publishUpsertSchema.parse(base);
+    expect(r.images).toEqual([]);
+    expect(r.publish).toBe(false);
+  });
+
+  it(`images 超 ${PUBLISH_API_IMAGES_MAX} 张 → 拒绝(上限常量单一事实源)`, () => {
+    const images = Array.from({ length: PUBLISH_API_IMAGES_MAX + 1 }, (_, i) => ({
+      name: `img-${i}.png`,
+      mime: "image/png",
+      dataBase64: "aGk=",
+    }));
+    expect(publishUpsertSchema.safeParse({ ...base, images }).success).toBe(false);
+    expect(
+      publishUpsertSchema.safeParse({ ...base, images: images.slice(0, PUBLISH_API_IMAGES_MAX) })
+        .success,
+    ).toBe(true);
+  });
+
+  it("非 image/* mime → 拒绝", () => {
+    expect(
+      publishUpsertSchema.safeParse({
+        ...base,
+        images: [{ name: "a.pdf", mime: "application/pdf", dataBase64: "aGk=" }],
+      }).success,
+    ).toBe(false);
   });
 });

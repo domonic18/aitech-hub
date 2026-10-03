@@ -19,6 +19,7 @@ import {
   parseRefFilter,
 } from "@/lib/media/media-schema";
 import { MEDIA_PAGE_SIZE, brokenRefs, listMediaAdmin, mediaStats } from "@/lib/media/queries";
+import { pageWindow, parsePage } from "@/lib/admin/list";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +35,6 @@ interface PageProps {
   searchParams: Promise<{ kind?: string; ref?: string; q?: string; page?: string }>;
 }
 
-function parsePage(raw: string | undefined): number {
-  const n = Number.parseInt(raw ?? "1", 10);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
 function listHref(kind: string, refFilter: string, page: number, q?: string): string {
   const params = new URLSearchParams();
   if (kind !== "image") params.set("kind", kind);
@@ -47,21 +43,6 @@ function listHref(kind: string, refFilter: string, page: number, q?: string): st
   if (page > 1) params.set("page", String(page));
   const qs = params.toString();
   return qs ? `/admin/media/?${qs}` : "/admin/media/";
-}
-
-/** 页码窗口(当前页居中,首尾恒在;null = 省略号)——与文章列表同款 */
-function pageWindow(cur: number, total: number): Array<number | null> {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set([1, total, cur - 1, cur, cur + 1].filter((p) => p >= 1 && p <= total));
-  const sorted = [...pages].sort((a, b) => a - b);
-  const out: Array<number | null> = [];
-  let prev = 0;
-  for (const p of sorted) {
-    if (p - prev > 1) out.push(null);
-    out.push(p);
-    prev = p;
-  }
-  return out;
 }
 
 export default async function AdminMediaPage({

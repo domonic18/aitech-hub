@@ -8,11 +8,12 @@ import { z } from "zod";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { UserAdminError, setUserStatus } from "@/lib/users/admin-users";
+import { USER_STATUS_ACTIVE, USER_STATUS_MUTABLE } from "@/lib/users/user-status";
 
 export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage users";
-const Body = z.object({ status: z.enum(["active", "disabled"]) });
+const Body = z.object({ status: z.enum(USER_STATUS_MUTABLE) });
 
 export async function PUT(
   req: NextRequest,
@@ -27,7 +28,7 @@ export async function PUT(
   if (!parsed.success) return apiEnvelope(400, "status 须为 active|disabled");
   try {
     const r = await setUserStatus(BigInt(id), parsed.data.status);
-    return apiEnvelope(0, r.status === "active" ? "enabled" : "disabled", r);
+    return apiEnvelope(0, r.status === USER_STATUS_ACTIVE ? "enabled" : "disabled", r);
   } catch (e) {
     if (e instanceof UserAdminError) return apiEnvelope(404, e.message);
     throw e;
