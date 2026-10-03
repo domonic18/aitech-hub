@@ -3,7 +3,12 @@
  */
 import { createHash } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// pat.ts 经 logger 传递 import env(导入期校验);CI 无 .env,按仓库惯例 mock 掉
+vi.mock("@/lib/env", () => ({
+  env: { AUTH_SECRET: "test-secret-0123456789-abcdef" },
+}));
 
 import { hashToken, parseBearer, PAT_PREFIX } from "./pat";
 

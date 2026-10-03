@@ -2,7 +2,16 @@
  * resolveUpsertAction 四分支单测(DB 流程由 e2e 用例 10 覆盖):
  * 不存在→create / 有 md→update / 软删占 slug→409 / HTML 旧文→409 不绕过。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// publish-api 经 logger/media/service 传递 import env(导入期校验 + storage 模块级
+// new LocalDiskProvider(env.MEDIA_DIR));CI 无 .env,按仓库惯例 mock 掉
+vi.mock("@/lib/env", () => ({
+  env: {
+    AUTH_SECRET: "test-secret-0123456789-abcdef",
+    MEDIA_DIR: "/tmp/aitech-ci-media",
+  },
+}));
 
 import { resolveUpsertAction } from "./publish-api";
 import { PostAdminError } from "./posts-admin";
