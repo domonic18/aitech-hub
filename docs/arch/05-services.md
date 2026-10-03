@@ -90,6 +90,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | stats | `POST /api/view { path, referrer? }`(同源校验 + bot/管理员过滤) | 公开(IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,Redis 缓冲 60s 批量落库) |
 | media | `POST /api/media`(上传)、`POST /api/media/import`(外链图批量转存,enqueue 返回 jobId,前端轮询取映射)、`GET /api/media`(列表/过滤)、`DELETE /api/media/[id]`、`GET /api/media/{orphans,duplicates,stats}` | admin |
 | users | `GET/PUT /api/me/profile`、`PUT /api/me/password`(三期用户体系启用)、`GET /api/users`、`PUT /api/users/[id]/status`(后两者仅会话,§3.1;不能变更当前登录账号;禁用即吊销该用户全部 PAT) | user / admin |
+| telegram | `GET/POST /api/channels`、`PUT /api/channels/[id]`、`PUT /api/channels/[id]/status`(启停)、`POST /api/channels/[id]/crawl`(手动采集;渠道凭证存 config 展示一律脱敏,M7 批④a)、`PUT /api/telegram/[id]`(条目人工修正/状态迁移 title≤500/summary≤1000/三态,批④b)、`GET/POST /api/blocklist`、`PUT/DELETE /api/blocklist/[id]`(批④b)、`GET /api/telegram/public`(前台公共流:limit≤50/after 增量锚/source 过滤,`no-store`,BigInt 出参字符串化,M7 批⑤) | 除 public 外 admin **仅会话**(PAT 禁管渠道/治理电报流,§3.1);public 公开只读 visible |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
 

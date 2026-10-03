@@ -44,6 +44,8 @@
 - 失败处理:连续失败 ≥3 次 → source.status=error 并在采集后台标红;不阻塞其他渠道
 - 队列复用 arch/05-services §4 二期任务划分;抖音等签名渠道复用 Python signer sidecar(research/01)
 
+**落地注记(2026-10-04,M7 批③/⑤ 已交付)**:适配器一期仅 `rss`(fast-xml-parser,RSS/Atom 双格式;`token` 等凭证经 `crawl_source.config` 注入、拼为 query 参数,报错信息不回显 URL 防外泄);**HTTP 429 特判** = 供应方限频(`RateLimitedError`)不计失败、来源保持 healthy、顺延下轮(机器之心免费档 60min/次实测);队列装配 = BullMQ `upsertJobScheduler("crawler-tick")` 每 60s 扫描到期渠道,per-source job 以 `crawl-{id}-{nextRunAt}` 幂等去重;入库编排 = 日上限(Redis INCR 跳过不计失败)→ 适配器 → canonical_url/content_hash 双重去重 → 启发式+屏蔽词 → 规则截断 → visible/hidden。前台落地见 arch/07 §1 `/telegram` 行。
+
 ### 3.2 短视频解读管道(`interpreter`,2026-09-30 新增)
 
 ```
