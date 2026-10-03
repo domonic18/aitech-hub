@@ -26,7 +26,7 @@ const GROUPS: ReadonlyArray<Group> = [
   {
     label: "采集",
     items: [
-      { icon: "i-scan", label: "采集总览", tag: "二期" },
+      { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
       { icon: "i-cloudserver", label: "渠道配置", href: "/admin/channels" },
       { icon: "i-aim", label: "博主管理", tag: "二期" },
     ],

@@ -39,7 +39,6 @@ export default function TelegramRowOps({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState(title ?? "");
   const [editSummary, setEditSummary] = useState(summary);
 
@@ -113,7 +112,7 @@ export default function TelegramRowOps({
                 className={`mt-1 ${field}`}
               />
             </label>
-            {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
+            {busy && <p className="mt-2 font-mono text-xs text-text-3">保存中…</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
