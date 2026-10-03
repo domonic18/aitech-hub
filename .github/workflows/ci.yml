@@ -89,7 +89,12 @@ jobs:
           username: ${{ secrets.TCR_USERNAME }}
           password: ${{ secrets.TCR_PASSWORD }}
       # provenance: false——TCR 不认 OCI attestation 附加清单
+      # continue-on-error:首试失败不染红 job,成败由重试步裁定(run 37106851119 教训:
+      # 冷缓存首试超时→重试推图成功,job 仍红,误导发布判断)。连带:重试条件必须用
+      # outcome 而非 failure()(continue-on-error 会把 failure() 归 false)
       - name: Build and Push / 构建并推送(第 1 次尝试)
+        id: build1
+        continue-on-error: true
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
@@ -103,7 +108,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build and Push / 构建并推送(重试)
-        if: failure() && steps.login.conclusion == 'success'
+        if: steps.build1.outcome == 'failure' && steps.login.conclusion == 'success'
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
