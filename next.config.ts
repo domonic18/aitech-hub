@@ -5,6 +5,14 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   /** Docker 单镜像部署(standard/02-cicd-deployment §3) */
   output: "standalone",
+  async redirects() {
+    return [
+      // WP 时代订阅地址承接(standard/02 §5 验收清单):/feed 与 /feed/ → /feed.xml
+      // trailingSlash 规范化先于 redirects 执行,canonical 形态 /feed/ 必须显式列出
+      { source: "/feed", destination: "/feed.xml", statusCode: 301 },
+      { source: "/feed/", destination: "/feed.xml", statusCode: 301 },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [],
