@@ -14,6 +14,11 @@ import {
   listUsersAdmin,
   type UserListSegment,
 } from "@/lib/users/admin-users";
+import {
+  USER_STATUS_ACTIVE,
+  USER_STATUS_DISABLED,
+  USER_STATUS_PENDING_BINDING,
+} from "@/lib/users/user-status";
 
 import UserStatusButton from "@/components/admin/UserStatusButton";
 
@@ -66,12 +71,12 @@ function pageWindow(cur: number, total: number): Array<number | null> {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "active") {
+  if (status === USER_STATUS_ACTIVE) {
     return (
       <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">active</span>
     );
   }
-  if (status === "pending_binding") {
+  if (status === USER_STATUS_PENDING_BINDING) {
     return (
       <span className="rounded-sm bg-amber/10 px-1.5 py-px text-[10px] text-amber">待绑定</span>
     );
@@ -163,7 +168,7 @@ export default async function AdminUsersPage({
                 <tr
                   key={u.id}
                   className={`border-b border-line last:border-b-0 hover:bg-panel-2 ${
-                    u.status === "disabled" ? "opacity-70" : ""
+                    u.status === USER_STATUS_DISABLED ? "opacity-70" : ""
                   }`}
                 >
                   <td className="px-4 py-2.5">

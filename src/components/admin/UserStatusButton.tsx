@@ -7,6 +7,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { USER_STATUS_ACTIVE, USER_STATUS_DISABLED } from "@/lib/users/user-status";
 export default function UserStatusButton({
   id,
   nickname,
@@ -18,7 +19,7 @@ export default function UserStatusButton({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const disabling = status !== "disabled";
+  const disabling = status !== USER_STATUS_DISABLED;
 
   async function toggle() {
     const label = nickname ?? `uid ${id}`;
@@ -28,7 +29,7 @@ export default function UserStatusButton({
       const res = await fetch(`/api/users/${id}/status`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: disabling ? "disabled" : "active" }),
+        body: JSON.stringify({ status: disabling ? USER_STATUS_DISABLED : USER_STATUS_ACTIVE }),
       });
       const body = (await res.json()) as { code: number; message: string };
       if (body.code !== 0) {

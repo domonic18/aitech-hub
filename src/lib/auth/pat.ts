@@ -8,6 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { USER_STATUS_ACTIVE } from "@/lib/users/user-status";
 
 import { ADMIN_ROLE } from "./constants";
 
@@ -64,7 +65,7 @@ export async function verifyPatToken(header: string | null): Promise<PatActor | 
       user: { select: { id: true, role: true, status: true } },
     },
   });
-  if (!row || row.user.role !== ADMIN_ROLE || row.user.status !== "active") return null;
+  if (!row || row.user.role !== ADMIN_ROLE || row.user.status !== USER_STATUS_ACTIVE) return null;
   void prisma.userPat
     .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
     .catch((err: unknown) => logger.warn({ event: "pat.touch_failed", error: String(err) }));

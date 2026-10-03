@@ -7,10 +7,22 @@ import { ADMIN_ROLE } from "@/lib/auth/constants";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
+import {
+  USER_STATUS_ACTIVE,
+  USER_STATUS_DISABLED,
+  USER_STATUS_PENDING_BINDING,
+  type UserMutableStatus,
+} from "./user-status";
+
 export const USERS_PAGE_SIZE = 15;
 
 /** 四分段(原型 admin-users):全部 / active / pending_binding / 已禁用 */
-export const USER_LIST_SEGMENTS = ["all", "active", "pending_binding", "disabled"] as const;
+export const USER_LIST_SEGMENTS = [
+  "all",
+  USER_STATUS_ACTIVE,
+  USER_STATUS_PENDING_BINDING,
+  USER_STATUS_DISABLED,
+] as const;
 export type UserListSegment = (typeof USER_LIST_SEGMENTS)[number];
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
@@ -61,9 +73,10 @@ function segmentWhere(segment: UserListSegment, q?: string) {
         ],
       }
     : {};
-  if (segment === "active") return { ...text, status: "active" };
-  if (segment === "pending_binding") return { ...text, status: "pending_binding" };
-  if (segment === "disabled") return { ...text, status: "disabled" };
+  if (segment === USER_STATUS_ACTIVE) return { ...text, status: USER_STATUS_ACTIVE };
+  if (segment === USER_STATUS_PENDING_BINDING)
+    return { ...text, status: USER_STATUS_PENDING_BINDING };
+  if (segment === USER_STATUS_DISABLED) return { ...text, status: USER_STATUS_DISABLED };
   return text;
 }
 
@@ -80,9 +93,9 @@ export async function listUsersAdmin({ page, segment, q }: AdminUserListQuery) {
       take: USERS_PAGE_SIZE,
     }),
     prisma.userAccount.count({ where: countWhere("all") }),
-    prisma.userAccount.count({ where: countWhere("active") }),
-    prisma.userAccount.count({ where: countWhere("pending_binding") }),
-    prisma.userAccount.count({ where: countWhere("disabled") }),
+    prisma.userAccount.count({ where: countWhere(USER_STATUS_ACTIVE) }),
+    prisma.userAccount.count({ where: countWhere(USER_STATUS_PENDING_BINDING) }),
+    prisma.userAccount.count({ where: countWhere(USER_STATUS_DISABLED) }),
   ]);
   return {
     items: items.map((r): AdminUserRow => ({
@@ -107,7 +120,7 @@ export async function listUsersAdmin({ page, segment, q }: AdminUserListQuery) {
  */
 export async function setUserStatus(
   id: bigint,
-  status: "active" | "disabled",
+  status: UserMutableStatus,
 ): Promise<{ status: string; revokedPats: number }> {
   const user = await prisma.userAccount.findUnique({ where: { id }, select: { id: true } });
   if (!user) throw new UserAdminError("not_found", "用户不存在");
@@ -117,7 +130,7 @@ export async function setUserStatus(
     select: { status: true, role: true },
   });
   let revokedPats = 0;
-  if (status === "disabled") {
+  if (status === USER_STATUS_DISABLED) {
     const r = await prisma.userPat.updateMany({
       where: { userId: id, revokedAt: null },
       data: { revokedAt: new Date() },
