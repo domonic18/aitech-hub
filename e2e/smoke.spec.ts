@@ -157,6 +157,12 @@ test("4. admin 登录流(M4:守卫预检/密码登录/爆破提示/会话吊销)
   await page.waitForURL(/\/admin\/?$/);
   await expect(page.getByText("站点统计").first()).toBeVisible();
 
+  // 4.3b 会话 GET /api/posts 可用(同源 fetch 不带 Origin;读请求免 Origin 关。
+  //     曾因守卫无 safe-method 豁免而 403,与路由注释矛盾——回归钉点)
+  const list = await page.request.get("/api/posts/");
+  expect(list.status()).toBe(200);
+  expect(((await list.json()) as { code: number }).code).toBe(0);
+
   // 4.4 会话吊销:UI 登出后把旧 Cookie 复放回去,/admin 仍拒——
   //     middleware 只查 exp 会放行,guard 的 Redis jti 双查兜底(防"签发后即吊销"窗口)
   const oldCookie = (await page.context().cookies()).find((c) => c.name === "ah_at");
