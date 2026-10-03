@@ -108,6 +108,17 @@ export async function getPostForAdmin(id: bigint) {
   return post;
 }
 
+/** 按 slug 取稿(M5-c MCP/API 以 slug 为键):软删视为不存在 */
+export async function getPostBySlugAdmin(slug: string) {
+  return prisma.post.findFirst({
+    where: { slug, status: { not: POST_STATUS_DELETED } },
+    include: {
+      category: { select: { slug: true, name: true } },
+      tags: { select: { tag: { select: { slug: true, name: true } } } },
+    },
+  });
+}
+
 /** 标签按名 upsert(Prototype admin-editor:tags 按名自动建),返回关联 id 集 */
 async function upsertTags(
   tx: Pick<typeof prisma, "tag">,
