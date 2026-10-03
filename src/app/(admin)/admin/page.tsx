@@ -1,53 +1,64 @@
 /**
- * 站点统计概览(M4):真实计数的最小落地;PV/UV 趋势、来源细分、热门页面等
- * 完整形态随 M5 交付(侧栏/页内降级注记,DESIGN-SPEC §6)。
+ * 站点统计页(M5-c;原型 admin-stats):KPI 四卡 / PV·UV 趋势(手写 SVG)/
+ * 流量来源 / 访客环境 / 热门页面,整页服务端渲染直调读侧 queries。
+ * 分段切换全 URL 驱动:trend=7|30|90、hot=today|7d|30d|all(非法值回落默认)。
+ * 口径:站点级统计自新站上线起算(WP 明细不迁移);「今日」读日聚合表,
+ * 经 60s worker flush,最长延迟约 2 分钟。
  */
-import { prisma } from "@/lib/db";
+import EnvPanel from "@/components/admin/stats/EnvPanel";
+import HotPagesTable from "@/components/admin/stats/HotPagesTable";
+import KpiCards from "@/components/admin/stats/KpiCards";
+import SourcePanel from "@/components/admin/stats/SourcePanel";
+import TrendChart from "@/components/admin/stats/TrendChart";
+import {
+  getClientPanel,
+  getHotPages,
+  getReferrerPanel,
+  getVisitOverview,
+  getVisitSeries,
+  type HotRange,
+} from "@/lib/stats/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminOverviewPage(): Promise<React.ReactElement> {
-  const [postsTotal, postsPublished, users, media, categories] = await Promise.all([
-    prisma.post.count(),
-    prisma.post.count({ where: { status: "published" } }),
-    prisma.userAccount.count(),
-    prisma.media.count(),
-    prisma.category.count(),
-  ]);
+interface PageProps {
+  searchParams: Promise<{ trend?: string; hot?: string }>;
+}
 
-  const kpis = [
-    { icon: "i-filetext", label: "文章", value: postsTotal, sub: `已发布 ${postsPublished}` },
-    { icon: "i-user", label: "用户", value: users, sub: "继承旧站 296(三期短信登录)" },
-    { icon: "i-picture", label: "媒体文件", value: media, sub: "媒体库随 M5 交付" },
-    { icon: "i-book", label: "分类", value: categories, sub: "四分类沿用旧站" },
-  ];
+function parseTrend(raw: string | undefined): 7 | 30 | 90 {
+  if (raw === "30") return 30;
+  if (raw === "90") return 90;
+  return 7;
+}
+
+function parseHot(raw: string | undefined): HotRange {
+  return raw === "7d" || raw === "30d" || raw === "all" ? raw : "today";
+}
+
+export default async function AdminStatsPage({
+  searchParams,
+}: PageProps): Promise<React.ReactElement> {
+  const sp = await searchParams;
+  const trend = parseTrend(sp.trend);
+  const hot = parseHot(sp.hot);
+
+  const [overview, series, referrers, clients, hotPages] = await Promise.all([
+    getVisitOverview(),
+    getVisitSeries(trend),
+    getReferrerPanel(7),
+    getClientPanel(7),
+    getHotPages(hot),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-4 gap-4">
-        {kpis.map((k) => (
-          <div key={k.label} className="rounded-md border border-line bg-panel p-4">
-            <div className="mb-2 flex items-center gap-2 text-xs text-text-2">
-              <svg className="ic" aria-hidden="true">
-                <use href={`#${k.icon}`} />
-              </svg>
-              {k.label}
-            </div>
-            <div className="font-mono text-2xl font-semibold">
-              {k.value.toLocaleString("en-US")}
-            </div>
-            <div className="mt-1 text-[11px] text-text-3">{k.sub}</div>
-          </div>
-        ))}
+      <KpiCards overview={overview} />
+      <TrendChart series={series} trend={trend} hot={hot} />
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+        <SourcePanel panel={referrers} />
+        <EnvPanel panel={clients} />
       </div>
-
-      <div className="rounded-md border border-line bg-panel p-4 text-xs leading-relaxed text-text-2">
-        <p className="mb-1 font-medium text-text-1">M4 认证基座已就绪</p>
-        <p>
-          admin 密码登录 + 会话吊销 + 爆破防护已生效;文章管理、媒体库、完整站点统计(PV/UV 趋势、
-          来源细分、热门页面)随 M5 交付,电报流治理与采集后台为二期范围。
-        </p>
-      </div>
+      <HotPagesTable rows={hotPages} range={hot} trend={trend} />
     </div>
   );
 }
