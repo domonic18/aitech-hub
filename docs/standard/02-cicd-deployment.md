@@ -46,8 +46,8 @@ make migrate   # npx prisma migrate deploy
 ## 3. 镜像(docker/Dockerfile)
 
 - 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
-- 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
-- `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`
+- 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema)+ `scripts/` 与 `src/`(ops 脚本如 `npm run admin` 以 tsx 直跑,依赖 src 源码;显式整拷,勿依赖 standalone 追踪);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
+- `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
 - **媒体目录不打进镜像**:compose 卷挂载,独立于发版
 
 ### 3.1 构建期无 DB 降级与启动预热(2026-09-30 实测定型)
@@ -61,7 +61,9 @@ make migrate   # npx prisma migrate deploy
   - worker:build 须接 `tsc-alias`(`@/` 别名 emit 不改写,产物运行时崩)
   - healthcheck 打 `/api/health/`(trailingSlash 308;compose 探针需带尾斜杠或 `-f` 跟随)
   - 预热不能用「固定 sleep 后单发 POST」:2C 冷启动 server 绑定可晚于 sleep,POST 落空且被吞、无任何日志;页面靠短 revalidate(600s)自然自愈,feed/sitemap(3600s)空壳挂满窗口(2026-10-03 生产实测定诊)——就绪轮询 + 重试 + 双 fetch,见 entrypoint
-- 镜像现状 2.33GB(runner 全量 node_modules,worker + prisma CLI 同镜像所需);M6 瘦身方向:`npm ci --omit=dev` + prisma CLI 去留决策(migrate 角色拆分或 CLI 入 dependencies),非一期阻塞
+  - ops 脚本依赖的 src 必须**显式 COPY**:standalone 追踪对源码只带碎片(2026-10-03 实测 `src/lib/auth/` 仅剩 `*.test.ts`,生产镜像 `npm run admin` 必 MODULE_NOT_FOUND);`scripts/`、`src/` 勿依赖追踪带入
+  - 定属主用 `COPY --chown`,勿 `RUN chown -R /app`:后者把已拷内容整层 CoW 复制一遍,实测多出 1.08GB 层(镜像层只增不删)
+- 镜像现状 ≈2.4GB → 消除 chown 复制层后 ≈1.4GB(runner 全量 node_modules 为既有取舍:worker 与 prisma CLI 同镜像所需——web 启动即跑 `npx prisma migrate deploy`,CLI 必须在);进一步瘦身方向:`npm ci --omit=dev` 拆 prod-deps 层 + tsx 入 dependencies,非一期阻塞(2026-10-03 评估)
 
 ## 4. 生产拓扑与 Nginx(compose 服务)
 

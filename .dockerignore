@@ -10,6 +10,10 @@ coverage/
 docs/
 e2e/
 workspace
+media
+CLAUDE.md
+Makefile
+docker-compose*.yml
 scripts/migrate-wp/artifacts/
 *.log
 .DS_Store
