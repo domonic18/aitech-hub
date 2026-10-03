@@ -1,21 +1,50 @@
 /**
- * mutation 类 Route Handler 共用三关守卫(arch/07-frontend §4):
- * Origin → 会话完整校验 → role(admin)。失败返回响应,通过返回 null。
- * (M5-b 起由 /api/posts 与 /api/media 两域共用,原 posts/shared 实现收编至此)
+ * mutation 类 Route Handler 共用守卫(arch/07-frontend §4):
+ * 双通道鉴权(M5-c)——
+ *  - 带 Authorization 头 → 只走 PAT 路(verifyPatToken)。Bearer 非浏览器
+ *    凭证,不存在 CSRF 搭车面,故跳过 Origin 关;失败一律 401。
+ *  - 无该头 → 原三关:Origin → 会话完整校验 → role(admin)。
+ * requireAdminForMutation 签名不变,既有 mutation 路由零改动自动获得双路。
+ * 需要区分 actor 的调用方(requirement §3.6 审计)改用 requireAdminActor。
  */
 import { type NextRequest, NextResponse } from "next/server";
 
+import { verifyPatToken } from "@/lib/auth/pat";
 import { requireAdminRequest } from "@/lib/auth/guard";
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
 
-export async function requireAdminForMutation(req: NextRequest): Promise<NextResponse | null> {
-  if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
+/** 通过守卫的操作者:会话(JWT)或 PAT(requirement §3.6 审计锚) */
+export type AdminActor =
+  { kind: "session"; sub: string } | { kind: "pat"; sub: string; patId: string };
+
+export type ActorGuardResult =
+  { ok: true; actor: AdminActor } | { ok: false; response: NextResponse };
+
+export async function requireAdminActor(req: NextRequest): Promise<ActorGuardResult> {
+  const authorization = req.headers.get("authorization");
+  if (authorization !== null) {
+    const pat = await verifyPatToken(authorization);
+    if (!pat) {
+      logger.warn({ event: "authz.denied", via: "pat", path: new URL(req.url).pathname });
+      return { ok: false, response: apiEnvelope(401, "invalid token") };
+    }
+    return { ok: true, actor: { kind: "pat", sub: pat.sub, patId: pat.patId } };
+  }
+
+  if (!isSameOrigin(req))
+    return { ok: false, response: apiEnvelope(403, "cross-origin forbidden") };
   const claims = await requireAdminRequest(req);
   if (!claims) {
-    logger.warn({ event: "authz.denied", path: new URL(req.url).pathname });
-    return apiEnvelope(401, "unauthorized");
+    logger.warn({ event: "authz.denied", via: "session", path: new URL(req.url).pathname });
+    return { ok: false, response: apiEnvelope(401, "unauthorized") };
   }
-  return null;
+  return { ok: true, actor: { kind: "session", sub: claims.sub } };
+}
+
+/** 兼容形态:不关心 actor 的调用方维持原用法(通过返 null,失败返响应) */
+export async function requireAdminForMutation(req: NextRequest): Promise<NextResponse | null> {
+  const result = await requireAdminActor(req);
+  return result.ok ? null : result.response;
 }
