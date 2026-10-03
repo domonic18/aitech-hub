@@ -3,8 +3,11 @@
  * 一期 LocalDiskProvider(env.MEDIA_DIR,dev compose / 生产 compose 均挂 workspace/media);
  * 二期 CosProvider 实现同一接口,上层零改动。
  *
- * 路径约定:站内 URL `/wp-content/uploads/YYYY/MM/<file>` ↔ 磁盘 `$MEDIA_DIR/YYYY/MM/<file>`
- * (与 wp-content 路由、Nginx 直服、WP 迁移目录同构;新上传沿用旧站路径风格)。
+ * 路径约定:站内 URL `/wp-content/uploads/YYYY/MM/<file>` ↔ 磁盘 `$MEDIA_DIR/YYYY/MM/<file>`;
+ * 段内 percent-encoding **原样同构(不 decode)**——磁盘文件名即 URL 段的逐字节形态,
+ * 与 WP 迁移闭包、Nginx `map $request_uri` 未解码直服一致;新上传沿用旧站路径风格。
+ * 红线:此处一旦 decode,中文文件名(库内为 %xx 编码形态)在盘上必然打偏——
+ * 2026-10-03 生产 1158 条误判断链即源于此;且 decodeURIComponent 对畸形 % 会抛 URIError。
  */
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -22,11 +25,11 @@ export interface MediaStorage {
   size(relPath: string): Promise<number | null>;
 }
 
-/** URL 路径 → 磁盘相对路径(`/wp-content/uploads/a/b` → `a/b`);非法路径返回 null */
+/** URL 路径 → 磁盘相对路径(`/wp-content/uploads/a/b` → `a/b`;不 decode,见文件头路径约定);非法路径返回 null */
 export function uploadsUrlToRel(urlPath: string): string | null {
   const prefix = "/wp-content/uploads/";
   if (!urlPath.startsWith(prefix)) return null;
-  const rel = decodeURIComponent(urlPath.slice(prefix.length));
+  const rel = urlPath.slice(prefix.length);
   if (!rel || rel.includes("\0") || rel.split("/").includes("..")) return null;
   return rel;
 }
