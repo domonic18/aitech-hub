@@ -4,7 +4,7 @@
  * 会话半段复用 requireSessionClaims(review P1 收敛,Origin 关含 safe-method
  * 豁免)。通过返回 claims,失败返回 reject(调用方按 kind 判别)。
  */
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest } from "next/server";
 
 import { apiEnvelope } from "@/lib/http/response";
 

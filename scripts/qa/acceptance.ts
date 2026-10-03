@@ -90,7 +90,7 @@ const STATIC_PATHS = new Set([
   "/privacy/",
 ]);
 
-function sitemapArticleLocs(xml: string, base: string): string[] {
+function sitemapArticleLocs(xml: string): string[] {
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
   return locs.filter((loc) => {
     const path = new URL(loc).pathname;
@@ -122,7 +122,7 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<CheckResul
     add("① sitemap 可达", false, `GET /sitemap.xml → ${smRes.status}`);
   } else {
     const xml = await smRes.text();
-    const locs = sitemapArticleLocs(xml, opts.base);
+    const locs = sitemapArticleLocs(xml);
     add(
       "① sitemap loc 数",
       xml.length > 0 && locs.length > 150,
