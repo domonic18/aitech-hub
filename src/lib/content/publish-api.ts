@@ -19,7 +19,7 @@ import { uploadMedia } from "@/lib/media/service";
 import { logger } from "@/lib/logger";
 
 import { fmString, fmStringArray, parseFrontmatter } from "./frontmatter";
-import { asciiSlugFromTitle, postPath } from "./post-path";
+import { postPath } from "./post-path";
 import { POST_LIMITS } from "./post-schema";
 import { PostAdminError } from "./posts-admin";
 import { createPost, publishPost, updatePost } from "./posts-admin";
