@@ -8,6 +8,7 @@ import { extractMediaRefs, syncMediaRefs } from "@/lib/media/refs";
 import { normalizeSlug } from "@/lib/slug";
 
 import { revalidatePostPaths } from "./revalidate";
+import { asciiSlugCandidates, asciiSlugFromTitle } from "./post-path";
 import { POST_STATUS_DELETED, type PostCreateInput, type PostUpdateInput } from "./post-schema";
 
 export const ADMIN_PAGE_SIZE = 15;
@@ -128,35 +129,35 @@ async function upsertTags(
   return links;
 }
 
-/** slug 派生:显式 slug 优先,否则标题归一化(中文标题 → percent-encoded) */
-function deriveSlug(input: PostCreateInput): string {
-  return normalizeSlug(input.slug ?? input.title);
+/** slug 派生:显式 slug(已归一为 ASCII 或 undefined)优先,否则标题 ASCII token(纯中文标题 → null=bare-id) */
+function deriveSlug(input: PostCreateInput): string | null {
+  return input.slug ?? asciiSlugFromTitle(input.title);
 }
 
-/** 自动派生 slug 的冲突候选:-2…-9 后缀(用户显式指定的冲突不在此列,直接 409) */
-const DERIVED_SUFFIX_MAX = 9;
-
-export async function createPost(input: PostCreateInput): Promise<{ id: bigint; slug: string }> {
+export async function createPost(
+  input: PostCreateInput,
+): Promise<{ id: bigint; slug: string | null }> {
   const base = deriveSlug(input);
-  if (!base) throw new PostAdminError("slug_conflict", "slug 归一化后为空,请在高级选项手动指定");
   const category = await prisma.category.findUnique({ where: { slug: input.categorySlug } });
   if (!category) {
     throw new PostAdminError("category_missing", `分类不存在:${input.categorySlug}`);
   }
-  // 自动派生(标题撞题常见)依次尝试后缀;显式 slug 冲突语义不变(409,让作者改)
+  // 自动派生(标题撞题常见)依次尝试 -2…-9 后缀;显式 slug 冲突语义不变(409,让作者改);
+  // 派生为空(纯中文标题)→ slug 置 null,URL 走 bare-id /post/<id>/
   const explicit = input.slug !== undefined;
-  const candidates = explicit
-    ? [base]
-    : [base, ...Array.from({ length: DERIVED_SUFFIX_MAX - 1 }, (_, i) => `${base}-${i + 2}`)];
+  const candidates: Array<string | null> =
+    base === null ? [null] : explicit ? [base] : asciiSlugCandidates(base);
   let slug: string | null = null;
   for (const candidate of candidates) {
+    if (candidate === null) break; // bare-id 无冲突面
     const dup = await prisma.post.findUnique({ where: { slug: candidate }, select: { id: true } });
     if (!dup) {
       slug = candidate;
       break;
     }
   }
-  if (slug === null) throw new PostAdminError("slug_conflict", `slug 已存在:${base}`);
+  if (base !== null && slug === null)
+    throw new PostAdminError("slug_conflict", `slug 已存在:${base}`);
 
   const post = await prisma.$transaction(async (tx) => {
     const tags = await upsertTags(tx, input.tags);
@@ -187,9 +188,13 @@ export async function createPost(input: PostCreateInput): Promise<{ id: bigint; 
 
 /**
  * 更新(草稿含)。旧文保真:WP 迁移的纯 HTML 正文拒绝改写;
- * 已发布文章更新后重放 revalidate(内容修正即刻生效)。
+ * slug 可改(id 锚定 URL,改后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改);
+ * 已发布文章更新后重放 revalidate(slug 变更时新旧缓存面都失效)。
  */
-export async function updatePost(id: bigint, input: PostUpdateInput): Promise<{ slug: string }> {
+export async function updatePost(
+  id: bigint,
+  input: PostUpdateInput,
+): Promise<{ slug: string | null }> {
   const post = await prisma.post.findFirst({
     where: { id, status: { not: POST_STATUS_DELETED } },
   });
@@ -204,6 +209,17 @@ export async function updatePost(id: bigint, input: PostUpdateInput): Promise<{ 
   if (!category) {
     throw new PostAdminError("category_missing", `分类不存在:${input.categorySlug}`);
   }
+  let nextSlug = post.slug;
+  if (input.slug !== undefined && input.slug !== post.slug) {
+    if (input.slug !== null) {
+      const dup = await prisma.post.findFirst({
+        where: { slug: input.slug, id: { not: id } },
+        select: { id: true },
+      });
+      if (dup) throw new PostAdminError("slug_conflict", `slug 已存在:${input.slug}`);
+    }
+    nextSlug = input.slug;
+  }
 
   await prisma.$transaction(async (tx) => {
     const tags = await upsertTags(tx, input.tags);
@@ -211,6 +227,7 @@ export async function updatePost(id: bigint, input: PostUpdateInput): Promise<{ 
       where: { id },
       data: {
         title: input.title,
+        slug: nextSlug,
         excerpt: input.excerpt ?? null,
         contentMd: input.contentMd,
         coverPath: input.coverPath || null,
@@ -227,8 +244,11 @@ export async function updatePost(id: bigint, input: PostUpdateInput): Promise<{ 
       extractMediaRefs({ contentMd: input.contentMd, coverPath: input.coverPath || null }),
     );
   });
-  if (post.status === "published") revalidatePostPaths(post.slug);
-  return { slug: post.slug };
+  if (post.status === "published") {
+    if (post.slug && post.slug !== nextSlug) revalidatePostPaths({ id, slug: post.slug });
+    revalidatePostPaths({ id, slug: nextSlug });
+  }
+  return { slug: nextSlug };
 }
 
 async function loadMutable(id: bigint) {
@@ -241,7 +261,7 @@ async function loadMutable(id: bigint) {
 }
 
 /** 发布:置 published;首次发布落 publishedAt(已下架重发保留原发布时间) */
-export async function publishPost(id: bigint): Promise<{ slug: string }> {
+export async function publishPost(id: bigint): Promise<{ slug: string | null }> {
   const post = await loadMutable(id);
   const updated = await prisma.post.update({
     where: { id },
@@ -250,22 +270,22 @@ export async function publishPost(id: bigint): Promise<{ slug: string }> {
       publishedAt: post.publishedAt ?? new Date(),
     },
   });
-  revalidatePostPaths(post.slug);
+  revalidatePostPaths({ id: post.id, slug: post.slug });
   return { slug: updated.slug };
 }
 
 /** 下架:回 draft 并保留 publishedAt(展示态「已下架」,可重新上架) */
-export async function unpublishPost(id: bigint): Promise<{ slug: string }> {
+export async function unpublishPost(id: bigint): Promise<{ slug: string | null }> {
   const post = await loadMutable(id);
   await prisma.post.update({ where: { id }, data: { status: "draft" } });
-  revalidatePostPaths(post.slug);
+  revalidatePostPaths({ id: post.id, slug: post.slug });
   return { slug: post.slug };
 }
 
 /** 软删:置 deleted,前台与列表即刻不可见;原为已发布时重放 revalidate */
-export async function softDeletePost(id: bigint): Promise<{ slug: string }> {
+export async function softDeletePost(id: bigint): Promise<{ slug: string | null }> {
   const post = await loadMutable(id);
   await prisma.post.update({ where: { id }, data: { status: POST_STATUS_DELETED } });
-  if (post.status === "published") revalidatePostPaths(post.slug);
+  if (post.status === "published") revalidatePostPaths({ id: post.id, slug: post.slug });
   return { slug: post.slug };
 }

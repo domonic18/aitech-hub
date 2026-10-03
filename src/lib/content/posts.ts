@@ -4,7 +4,7 @@
  * 写侧(保存钩子/revalidate 编排)随 M5 管理后台落地。
  */
 import { prisma } from "@/lib/db";
-import { normalizeSlug } from "@/lib/slug";
+import { postPathSegment } from "@/lib/content/post-path";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
 /** 列表条目统一投影(卡片/sitemap/llms 共用;避免每处 select 漂移) */
@@ -28,12 +28,10 @@ export type PostListItem = Awaited<ReturnType<typeof listLatestPosts>>[number];
 export const PUBLISHED = { status: "published", publishedAt: { not: null } } as const;
 const ORDER = [{ publishedAt: "desc" }, { id: "desc" }] as const;
 
-/** 详情:slug 经 normalizeSlug(红线,arch/07-frontend §3);仅已发布 */
-export async function getPostBySlug(rawSlug: string) {
-  const slug = normalizeSlug(rawSlug);
-  if (!slug) return null;
+/** 详情:id 直取(2026-10 URL 终态,id 是唯一解析锚;slug 仅装饰);仅已发布 */
+export async function getPostById(id: bigint) {
   return prisma.post.findFirst({
-    where: { slug, ...PUBLISHED },
+    where: { id, ...PUBLISHED },
     include: {
       category: { select: { slug: true, name: true } },
       tags: { select: { tag: { select: { slug: true, name: true } } } },
@@ -120,28 +118,32 @@ export async function searchPosts(q: string, page: number, pageSize: number) {
 }
 
 export interface ArchivePost {
-  slug: string;
+  id: bigint;
+  slug: string | null;
   title: string;
   publishedAt: Date;
 }
 
-/** 归档:全量已发布的轻投影(154 篇量级一次取回,页面分组) */
+/** 归档:全量已发布的轻投影(103 篇量级一次取回,页面分组) */
 export async function listArchivePosts(): Promise<ArchivePost[]> {
   return prerenderSafe("posts.archive", [], async () => {
     const rows = await prisma.post.findMany({
       where: PUBLISHED,
-      select: { slug: true, title: true, publishedAt: true },
+      select: { id: true, slug: true, title: true, publishedAt: true },
       orderBy: [{ publishedAt: "desc" }],
     });
     return rows.filter((r): r is ArchivePost & { publishedAt: Date } => r.publishedAt !== null);
   });
 }
 
-/** generateStaticParams 数据源:返回 DB 原始(编码形态)slug;构建期无库时降级为按需 ISR(arch/07-frontend §2 规则 5) */
-export async function listPostSlugsForPrerender(): Promise<string[]> {
+/**
+ * /post/[slug] generateStaticParams 数据源:canonical 段(<id>-<slug> | <id>,纯 ASCII);
+ * 构建期无库时降级为按需 ISR(arch/07-frontend §2 规则 5)。
+ */
+export async function listPostSegmentsForPrerender(): Promise<string[]> {
   try {
-    const rows = await prisma.post.findMany({ where: PUBLISHED, select: { slug: true } });
-    return rows.map((r) => r.slug);
+    const rows = await prisma.post.findMany({ where: PUBLISHED, select: { id: true, slug: true } });
+    return rows.map((r) => postPathSegment(r.id, r.slug));
   } catch (e) {
     console.warn(JSON.stringify({ event: "posts.prerender.degraded", error: String(e) }));
     return [];
@@ -154,6 +156,7 @@ export async function listAllPostsForSeo() {
     prisma.post.findMany({
       where: PUBLISHED,
       select: {
+        id: true,
         slug: true,
         title: true,
         excerpt: true,

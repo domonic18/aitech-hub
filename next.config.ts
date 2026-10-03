@@ -17,7 +17,9 @@ const nextConfig: NextConfig = {
     return {
       beforeFiles: [],
       afterFiles: [
-        // 文章 .md 直出(GEO,requirement §3.2):/<slug>.md → /md/<slug>
+        // 文章 .md 直出(GEO,requirement §3.2;2026-10 URL 终态):/post/<id>-<slug>.md → /md/post/<id>-<slug>
+        { source: "/post/:seg.md", destination: "/md/post/:seg" },
+        // 旧单段 .md(llms.txt 早期分发形态):/<slug>.md → /md/<slug>(经映射表 301 到新形态)
         { source: "/:slug*.md", destination: "/md/:slug*" },
         // llms-full 分片对外 URL 带宽;/llms-full-2.txt → /llms-full.txt/2
         { source: "/llms-full-:part.txt", destination: "/llms-full.txt/:part" },

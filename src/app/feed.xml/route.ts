@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { RSS_FEED_SIZE } from "@/lib/constants";
 import { listAllPostsForSeo } from "@/lib/content/posts";
+import { postPath } from "@/lib/content/post-path";
 import { excerptOf } from "@/lib/content/format";
 import { absoluteUrl, siteUrl } from "@/lib/seo/site";
 
@@ -21,7 +22,7 @@ export async function GET(): Promise<NextResponse> {
   const posts = (await listAllPostsForSeo()).slice(0, RSS_FEED_SIZE);
   const items = posts
     .map((p) => {
-      const link = absoluteUrl(`/${p.slug}/`);
+      const link = absoluteUrl(postPath(p.id, p.slug));
       return [
         "    <item>",
         `      <title>${escapeXml(p.title)}</title>`,

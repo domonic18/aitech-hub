@@ -21,7 +21,8 @@
 -- 文章主表;wp_post_id 是与旧站的溯源锚点
 CREATE TABLE content_post (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    slug            VARCHAR(255) NOT NULL,          -- WP 原始 post_name(percent-encoded 中文)
+    slug            VARCHAR(255) NULL,               -- 装饰性 ASCII slug(2026-10 起;URL /post/<id>-<slug> 由 id 锚定,
+                                                     -- 迁移自 WP percent-encoded 中文;可空可改,纯中文标题 → NULL)
     title           VARCHAR(500) NOT NULL,
     excerpt         TEXT,
     content_html    TEXT,                            -- 旧文正文(清洗后 HTML,只读保真)
@@ -38,7 +39,7 @@ CREATE TABLE content_post (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX uq_content_post_slug ON content_post (slug);
+CREATE UNIQUE INDEX uq_content_post_slug ON content_post (slug);  -- PG unique 允许多行 NULL(bare-id 文)
 CREATE INDEX idx_content_post_status_published ON content_post (status, published_at DESC);
 CREATE INDEX idx_content_post_category ON content_post (category_id);
 

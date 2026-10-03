@@ -6,7 +6,8 @@
   站长原创文章为核心渠道之一),替换旧 WordPress;SEO 是生命线
 - **架构**:Next.js 15 全栈单体(App Router RSC/ISR + Route Handlers)+ Prisma/PostgreSQL
   + Redis/BullMQ worker;公开品牌与域名沿用 17aitech
-- **关键约束**:旧文章 URL(中文 percent-encoded slug)原样可用;296 老用户短信登录继承(三期开启——运营商个人签名资质停发,一期仅 admin 密码鉴权);
+- **关键约束**:文章 URL 终态 `/post/<id>-<slug>`(id 锚定,2026-10 迁移,旧中文链 301/410 承接);
+  296 老用户短信登录继承(三期开启——运营商个人签名资质停发,一期仅 admin 密码鉴权);
   154 篇原创文章及其引用图片全量迁移;3314 篇爬虫资讯弃用(301 承接)
 
 ## 2. 项目结构
@@ -24,7 +25,7 @@
 | 表结构/迁移纪律               | docs/arch/03-data-model          |
 | 服务分层/异步任务/接口清单    | docs/arch/05-services            |
 | 目录与规范细节                | docs/arch/06-project-structure   |
-| 中文 slug 路由红线            | docs/arch/07-frontend §2         |
+| 文章 URL 终态(/post/id-slug) | docs/arch/07-frontend §2         |
 | 媒体/视频/清洗                | docs/arch/08-media               |
 | UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
 | 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
@@ -39,7 +40,8 @@
 - 分支:开发主线为 `develop`;新功能建 `feature/<topic>` 分支 PR 合回 develop;`main` 禁直推(只经 develop→main PR 发布)。
 - 永远不要模拟、不要占位符、不要省略代码;对想法的好坏坦率诚实。
 - 安全:外部输入边界校验(Zod);密钥仅 env;日志记事件不记敏感值;Origin 校验 mutation。
-- slug 红线:任何含 slug 的路由/查询必须经 `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
+- slug 红线:文章详情以 BigInt id 解析(`/post/<id>-<slug>`,构造/解析唯一出口 `src/lib/content/post-path.ts`,
+  非 canonical 段一律 308 归一);分类/标签/legacy 仍经 `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
 - 数据库:schema 只经 prisma/migrations 变更(forward-only);跑 `npx prisma migrate deploy`;
   禁止改已应用迁移;禁止 create_all 式建表。
 - 端口:本地 web:3000 / pg:5434 / redis:6380。

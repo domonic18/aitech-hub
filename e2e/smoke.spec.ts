@@ -7,7 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
 
 /**
- * E2E 冒烟(standard/01-testing §4):首页/中文 slug 文章/legacy 301/admin 登录(M4)/
+ * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
  * SEO 端点/后台发布→前台闭环(M5-a)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
@@ -26,21 +26,8 @@ const LEGACY_TO_ARTICLES =
   "/%e9%a6%96%e4%b8%aagpu%e9%ab%98%e7%ba%a7%e8%af%ad%e8%a8%80%ef%bc%8c%e5%a4%a7%e8%a7%84%e6%a8%a1%e5%b9%b6%e8%a1%8c%e5%b0%b1%e5%83%8f%e5%86%99python%ef%bc%8c%e5%b7%b2%e8%8e%b78500-star/";
 const LEGACY_TO_HOME = "/ai%e8%a7%86%e9%a2%91%e5%b7%a5%e5%85%b7/";
 
-/** 单段文章路径:排除静态路由与文件形态(/sitemap.xml、/category/… 天然多段不在此列) */
-const STATIC_SEGMENTS = new Set([
-  "articles",
-  "archive",
-  "about",
-  "agreement",
-  "privacy",
-  "search",
-  "category",
-  "tag",
-]);
-function isPostPath(pathname: string): boolean {
-  const segs = pathname.split("/").filter(Boolean);
-  return segs.length === 1 && !segs[0].includes(".") && !STATIC_SEGMENTS.has(segs[0]);
-}
+/** 文章路径(2026-10 URL 终态):/post/<id>-<slug>/ 或 bare-id /post/<id>/ */
+const POST_PATH_RE = /^\/post\/\d+(?:-[^/]+)?\/$/;
 
 async function sitemapPostUrls(
   request: import("@playwright/test").APIRequestContext,
@@ -48,7 +35,7 @@ async function sitemapPostUrls(
   const res = await request.get("/sitemap.xml");
   expect(res.status()).toBe(200);
   const locs = [...(await res.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  return locs.map((u) => new URL(u).pathname).filter(isPostPath);
+  return locs.map((u) => new URL(u).pathname).filter((p) => POST_PATH_RE.test(p));
 }
 
 test("1. 首页 200 且含 hero 终端与最新文章卡", async ({ request }) => {
@@ -57,18 +44,30 @@ test("1. 首页 200 且含 hero 终端与最新文章卡", async ({ request }) =
   const html = await res.text();
   expect(html).toContain("whoami"); // M5-e hero 终端
   expect(html).toContain('href="/articles/"');
-  const cardSlugs = [...html.matchAll(/href="\/([^"/]+)\/"/g)]
-    .map((m) => m[1])
-    .filter((s) => !STATIC_SEGMENTS.has(s));
-  expect(cardSlugs.length).toBeGreaterThan(0);
+  const cardLinks = [...html.matchAll(/href="(\/post\/[^"]+)"/g)].map((m) => m[1]);
+  expect(cardLinks.length).toBeGreaterThan(0);
+  expect(cardLinks.every((l) => POST_PATH_RE.test(`${l}/`) || POST_PATH_RE.test(l))).toBe(true);
 });
 
-test("2. 中文编码 slug 直开文章:200、标题、图片无 broken", async ({ request, browser }) => {
+test("2. /post/<id>-<slug> 直开文章:200、标题、图片无 broken;非 canonical 308 归一", async ({
+  request,
+  browser,
+}) => {
   const posts = await sitemapPostUrls(request);
   expect(posts.length).toBeGreaterThan(150);
-  // arch/07-frontend §2 规则 5:中文 URL 直开采样 10 篇
+  // canonical 段直开采样 10 篇(id 锚定;slug 为装饰性 ASCII)
   for (const path of posts.slice(0, 10)) {
     expect((await request.get(path)).status()).toBe(200);
+  }
+
+  // canonical 归一:bare-id 与任意错误尾巴都 308 到唯一 canonical(slug 改名不破链)
+  const canonical = posts.find((p) => p.includes("-"));
+  expect(canonical).toBeTruthy();
+  const id = canonical!.match(/^\/post\/(\d+)/)![1];
+  for (const probe of [`/post/${id}/`, `/post/${id}-junk/`]) {
+    const res = await request.get(probe, { maxRedirects: 0 });
+    expect(res.status()).toBe(308);
+    expect(new URL(res.headers().location!, "http://localhost:3000").pathname).toBe(canonical);
   }
 
   // 图片 naturalWidth 抽查:从采样里找第一篇正文带图的(部分文章可能无图)
@@ -89,7 +88,9 @@ test("2. 中文编码 slug 直开文章:200、标题、图片无 broken", async 
   await context.close();
 });
 
-test("3. 弃用 slug:route 精确 301;单段直开永久重定向", async ({ request }) => {
+test("3. 弃用 slug:route 精确 301;单段直开永久重定向;URL 迁移行单跳 /post/", async ({
+  request,
+}) => {
   // /legacy/<path> 路由层:表内 http_status=301 原样表达
   const viaRoute = await request.get(`/legacy${LEGACY_TO_ARTICLES}`, { maxRedirects: 0 });
   expect(viaRoute.status()).toBe(301);
@@ -103,6 +104,21 @@ test("3. 弃用 slug:route 精确 301;单段直开永久重定向", async ({ req
   const toHome = await request.get(`/legacy${LEGACY_TO_HOME}`, { maxRedirects: 0 });
   expect(toHome.status()).toBe(301);
   expect(new URL(toHome.headers().location!, "http://localhost:3000").pathname).toBe("/");
+
+  // 2026-10 URL 迁移行:旧中文链 → /post/<id>-<slug>/(目标带尾斜杠 → 单跳 308,不经二次归一)
+  const row = await prisma.legacyUrlMap.findFirst({
+    where: { targetUrl: { startsWith: "/post/" } },
+  });
+  expect(row).toBeTruthy();
+  const migrated = await request.get(row!.oldPath, { maxRedirects: 0 });
+  expect(migrated.status()).toBe(308);
+  expect(new URL(migrated.headers().location!, "http://localhost:3000").pathname).toBe(
+    row!.targetUrl,
+  );
+
+  // 下架删除行的旧链(表内 410/target NULL)→ 404
+  const gone = await prisma.legacyUrlMap.findFirst({ where: { httpStatus: 410, targetUrl: null } });
+  if (gone) expect((await request.get(gone.oldPath, { maxRedirects: 0 })).status()).toBe(404);
 
   expect((await request.get("/legacy/no/such/path/", { maxRedirects: 0 })).status()).toBe(404);
 });
@@ -210,9 +226,11 @@ test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand rev
   });
   expect(post).toBeTruthy();
 
-  // 前台闭环:/articles/ 出现标题;详情直开 200 且 h1 匹配(发布即 revalidate,不等 ISR)
+  // 前台闭环:/articles/ 出现标题;详情直开 200 且 h1 匹配(发布即 revalidate,不等 ISR);
+  // 标题纯中文 → 派生 slug 为 NULL,canonical 走 bare-id(post-path.ts 派生规则同构)
   expect(await (await request.get("/articles/")).text()).toContain(TITLE);
-  const detail = await page.goto(`/${post!.slug}/`);
+  const seg = post!.slug ? `${post!.id}-${post!.slug}` : `${post!.id}`;
+  const detail = await page.goto(`/post/${seg}/`);
   expect(detail!.status()).toBe(200);
   await expect(page.locator("h1")).toHaveText(TITLE);
 
@@ -225,7 +243,7 @@ test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand rev
   expect(
     (await prisma.post.findUnique({ where: { id: post!.id }, select: { status: true } }))?.status,
   ).toBe("deleted");
-  expect((await request.get(`/${post!.slug}/`)).status()).toBe(404);
+  expect((await request.get(`/post/${seg}/`)).status()).toBe(404);
 
   // 清理本用例数据
   await prisma.post.deleteMany({ where: { title: TITLE } });

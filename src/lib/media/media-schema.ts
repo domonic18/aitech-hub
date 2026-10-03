@@ -127,7 +127,7 @@ export interface MediaDetailMedia {
 
 export interface MediaDetailRef {
   id: string;
-  slug: string;
+  slug: string | null; // 2026-10 起 Post.slug 可空(bare-id URL)
   title: string;
   publishedAt: string | null;
 }

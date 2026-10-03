@@ -2,7 +2,7 @@
  * 文章管理集成测试(standard/01-testing:*.integration.test.ts 同层;`npm run test:integration`,
  * 不进 test:unit/make check/CI——依赖 dev compose 的 PG/Redis)。
  * 覆盖 M5-a 主线:新建草稿(slug 派生/标签去重)→ slug 冲突 → 草稿前台不可见 →
- * 发布(前台可见 + revalidate 编排)→ 下架(不可见但保留发布时间)→ 更新 →
+ * 发布(前台可见 + revalidate 编排)→ 下架(不可见但保留发布时间)→ 更新(slug 可改)→
  * 旧文保真只读 → 软删 → 守卫(Origin/未登录)。
  * 前置:docker compose up -d postgres redis && npx prisma migrate deploy;测试自清理数据。
  */
@@ -27,7 +27,7 @@ const { PUT: postPUT, DELETE: postDELETE } = await import("@/app/api/posts/[id]/
 const { POST: publishPOST } = await import("@/app/api/posts/[id]/publish/route");
 const { POST: unpublishPOST } = await import("@/app/api/posts/[id]/unpublish/route");
 const { getPostForAdmin, listPostsAdmin } = await import("@/lib/content/posts-admin");
-const { getPostBySlug } = await import("@/lib/content/posts");
+const { getPostById } = await import("@/lib/content/posts");
 
 const PHONE = "13900000003";
 const PASSWORD = "it-admin-pass1";
@@ -59,7 +59,8 @@ async function envelope(res: Response): Promise<ApiEnvelope<unknown>> {
 }
 
 let cookie = "";
-let derivedSlug = ""; // 首用例由中文标题派生(用例间串行,后续步骤复用)
+let createdId = ""; // 首用例创建的草稿 id(用例间串行,后续步骤复用;id 是唯一解析锚)
+let derivedSlug = ""; // 首用例由标题派生的 ASCII slug
 
 beforeAll(async () => {
   await prisma.userAccount.upsert({
@@ -99,10 +100,10 @@ afterAll(async () => {
 });
 
 describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
-  it("新建草稿:slug 缺省由标题派生、标签按名去重 upsert", async () => {
+  it("新建草稿:slug 缺省由标题派生 ASCII token、标签按名去重 upsert", async () => {
     const res = await createPOST(
       req("/api/posts", "POST", cookie, {
-        title: "M5a 集成测试文章",
+        title: "M5a 集成测试文章 Integration",
         categorySlug: CAT_SLUG,
         contentMd: "# 正文\n\nM5a 内容。",
         tags: ["it-m5a-tag-one", "it-m5a-tag-one", " it-m5a-tag-two "],
@@ -111,15 +112,16 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
     expect(res.status).toBe(200);
     const { code, data } = await envelope(res);
     expect(code).toBe(0);
-    const created = data as { id: string; slug: string };
-    // 标题派生 slug:字面量保留大写,中文段 percent-encoded 小写(normalizeSlug)
-    expect(created.slug).toMatch(/^M5a%20/);
-    derivedSlug = created.slug;
-    const row = await prisma.post.findUnique({ where: { slug: derivedSlug } });
-    expect(row?.status).toBe("draft");
-    expect(row?.publishedAt).toBeNull();
+    const created = data as { id: string; slug: string | null };
+    // 标题派生 slug:ASCII token 小写连接(中文段忽略;纯中文标题才会派生为空 → bare-id)
+    expect(created.slug).toBe("m5a-integration");
+    derivedSlug = created.slug as string;
+    createdId = created.id;
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: BigInt(created.id) } });
+    expect(row.status).toBe("draft");
+    expect(row.publishedAt).toBeNull();
     const tagNames = await prisma.postTag.findMany({
-      where: { postId: row!.id },
+      where: { postId: row.id },
       include: { tag: true },
     });
     expect(tagNames.map((t) => t.tag.slug).sort()).toEqual(["it-m5a-tag-one", "it-m5a-tag-two"]);
@@ -131,7 +133,7 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
         title: "重复",
         contentMd: "x",
         categorySlug: CAT_SLUG,
-        slug: derivedSlug, // 显式传已存在的 slug(含编码形态,经 normalizeSlug 归一)
+        slug: derivedSlug, // 显式传已存在的 slug(经 postSlugSchema 归一)
       }),
     );
     expect(dup.status).toBe(409);
@@ -152,12 +154,13 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
   });
 
   it("自动派生 slug 撞题 → -2 后缀(M5-d);显式指定冲突仍 409", async () => {
-    const title = "M5a 集成测试撞题";
+    const title = "M5a 集成测试撞题 Collide";
     const first = await createPOST(
       req("/api/posts", "POST", cookie, { title, contentMd: "x", categorySlug: CAT_SLUG }),
     );
     expect(first.status).toBe(200);
     const firstSlug = ((await envelope(first)).data as { slug: string }).slug;
+    expect(firstSlug).toBe("m5a-collide");
 
     const second = await createPOST(
       req("/api/posts", "POST", cookie, { title, contentMd: "x", categorySlug: CAT_SLUG }),
@@ -178,7 +181,7 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
   });
 
   it("草稿对前台读侧不可见;管理列表可见且分段计数正确", async () => {
-    expect(await getPostBySlug(derivedSlug)).toBeNull();
+    expect(await getPostById(BigInt(createdId))).toBeNull();
     const draftList = await listPostsAdmin({ page: 1, segment: "draft" });
     expect(draftList.items.some((p) => p.wpPostId === null && p.title.includes("M5a"))).toBe(true);
   });
@@ -201,13 +204,13 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
   });
 
   it("发布 → 前台可见 + revalidate 编排;下架 → 不可见但保留发布时间", async () => {
-    const post = await prisma.post.findUniqueOrThrow({ where: { slug: derivedSlug } });
+    const post = await prisma.post.findUniqueOrThrow({ where: { id: BigInt(createdId) } });
     const pub = await publishPOST(req(`/api/posts/${post.id}/publish`, "POST", cookie), {
       params: Promise.resolve({ id: post.id.toString() }),
     });
     expect(pub.status).toBe(200);
-    expect(revalidateMock).toHaveBeenCalledWith(derivedSlug);
-    const visible = await getPostBySlug(derivedSlug);
+    expect(revalidateMock).toHaveBeenCalledWith({ id: post.id, slug: derivedSlug });
+    const visible = await getPostById(post.id);
     expect(visible?.title).toContain("M5a");
     expect(visible?.publishedAt).not.toBeNull();
 
@@ -215,18 +218,19 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
       params: Promise.resolve({ id: post.id.toString() }),
     });
     expect(unpub.status).toBe(200);
-    expect(await getPostBySlug(derivedSlug)).toBeNull();
-    const after = await prisma.post.findUniqueOrThrow({ where: { slug: derivedSlug } });
+    expect(await getPostById(post.id)).toBeNull();
+    const after = await prisma.post.findUniqueOrThrow({ where: { id: post.id } });
     expect(after.status).toBe("draft");
     expect(after.publishedAt).not.toBeNull(); // 下架保留发布时间(展示态「已下架」)
   });
 
-  it("更新草稿:字段落库且不触发 revalidate;管理取稿含分类/标签", async () => {
-    const post = await prisma.post.findUniqueOrThrow({ where: { slug: derivedSlug } });
+  it("更新草稿:字段落库且不触发 revalidate;slug 可改(id 锚定 URL);管理取稿含分类/标签", async () => {
+    const post = await prisma.post.findUniqueOrThrow({ where: { id: BigInt(createdId) } });
     const calls = revalidateMock.mock.calls.length;
     const res = await postPUT(
       req(`/api/posts/${post.id}`, "PUT", cookie, {
         title: "M5a 集成测试文章(改)",
+        slug: "m5a-integration-renamed",
         categorySlug: CAT_SLUG,
         contentMd: "# 正文 v2",
         tags: ["it-m5a-tag-one"],
@@ -239,8 +243,11 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
     );
     expect(res.status).toBe(200);
     expect(revalidateMock.mock.calls.length).toBe(calls); // 草稿更新不 revalidate
+    expect(((await envelope(res)).data as { slug: string }).slug).toBe("m5a-integration-renamed");
+    derivedSlug = "m5a-integration-renamed";
     const admin = await getPostForAdmin(post.id);
     expect(admin?.title).toBe("M5a 集成测试文章(改)");
+    expect(admin?.slug).toBe("m5a-integration-renamed");
     expect(admin?.tags.map((t) => t.tag.slug)).toEqual(["it-m5a-tag-one"]);
     expect(await prisma.postTag.count({ where: { postId: post.id } })).toBe(1);
     // M5-b:保存时同步媒体引用(封面入 media_ref)
@@ -277,19 +284,19 @@ describe("文章管理写侧(dev compose 真实 PG/Redis)", () => {
     const { message } = await envelope(res);
     expect(message).toContain("旧文保真");
     // 已发布旧文不受影响
-    expect(await getPostBySlug(LEGACY_SLUG)).not.toBeNull();
+    expect(await getPostById(legacy.id)).not.toBeNull();
   });
 
   it("软删:状态置 deleted,前台/管理双不可见", async () => {
-    const post = await prisma.post.findUniqueOrThrow({ where: { slug: derivedSlug } });
+    const post = await prisma.post.findUniqueOrThrow({ where: { id: BigInt(createdId) } });
     const res = await postDELETE(req(`/api/posts/${post.id}`, "DELETE", cookie), {
       params: Promise.resolve({ id: post.id.toString() }),
     });
     expect(res.status).toBe(200);
-    expect((await prisma.post.findUniqueOrThrow({ where: { slug: derivedSlug } })).status).toBe(
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: post.id } })).status).toBe(
       "deleted",
     );
-    expect(await getPostBySlug(derivedSlug)).toBeNull();
+    expect(await getPostById(post.id)).toBeNull();
     expect(await getPostForAdmin(post.id)).toBeNull();
     const list = await listPostsAdmin({ page: 1, segment: "all" });
     expect(list.items.some((p) => p.slug === derivedSlug)).toBe(false);

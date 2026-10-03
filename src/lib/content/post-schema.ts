@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 
+import { isAsciiSlug } from "./post-path";
 import { normalizeSlug } from "@/lib/slug";
 
 export const POST_STATUS_DELETED = "deleted";
@@ -40,13 +41,32 @@ export function postDisplayState(post: {
 export const ADMIN_LIST_SEGMENTS = ["all", "published", "draft", "unpublished"] as const;
 export type AdminListSegment = (typeof ADMIN_LIST_SEGMENTS)[number];
 
-/** slug 边界:先归一化(arch/07-frontend §2 红线,统一 percent-encoded 小写)再验空 */
+/** slug 边界(分类/标签沿用):先归一化(arch/07-frontend §2 红线,统一 percent-encoded 小写)再验空 */
 export const slugSchema = z
   .string()
   .max(POST_LIMITS.slug, `slug 最长 ${POST_LIMITS.slug} 字符`)
   .transform((s) => s.trim())
   .transform((s) => normalizeSlug(s))
   .refine((s) => s.length > 0, "slug 归一化后为空");
+
+/**
+ * 文章 slug(2026-10 URL 终态):ASCII 装饰段,可空(URL 由 id 锚定 /post/<id>-<slug>,
+ * 改 slug 永不毁外链)。归一:小写化、非 [a-z0-9] 折叠为连字符、去首尾;空 → undefined
+ * (创建=由标题派生/缺省 bare-id,更新=不改)。
+ */
+export const postSlugSchema = z
+  .string()
+  .max(POST_LIMITS.slug, `slug 最长 ${POST_LIMITS.slug} 字符`)
+  .transform((s) =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, ""),
+  )
+  .transform((s) => (s === "" ? undefined : s))
+  .refine((s) => s === undefined || isAsciiSlug(s), "slug 须为小写字母数字与连字符")
+  .optional();
 
 const optionalText = (max: number) =>
   z
@@ -69,8 +89,8 @@ export const postCreateSchema = z.object({
     .trim()
     .min(1, "标题不能为空")
     .max(POST_LIMITS.title, `标题最长 ${POST_LIMITS.title} 字符`),
-  /** 缺省时由 service 以标题派生(normalizeSlug) */
-  slug: slugSchema.optional(),
+  /** 缺省时由 service 以标题派生 ASCII token(纯中文标题 → bare-id URL) */
+  slug: postSlugSchema,
   categorySlug: slugSchema,
   /** 按名自动建(原型 admin-editor:upsert_article 同规则),去重由 service 做 */
   tags: z
@@ -94,8 +114,8 @@ export const postCreateSchema = z.object({
   seoDescription: optionalText(POST_LIMITS.seoDescription),
 });
 
-/** 更新不含 slug:slug 创建时定死,发布后改 slug = 毁 URL(SEO 红线) */
-export const postUpdateSchema = postCreateSchema.omit({ slug: true });
+/** 更新含 slug(可改):id 锚定 URL,改 slug 后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改 */
+export const postUpdateSchema = postCreateSchema;
 
 export type PostCreateInput = z.infer<typeof postCreateSchema>;
 export type PostUpdateInput = z.infer<typeof postUpdateSchema>;

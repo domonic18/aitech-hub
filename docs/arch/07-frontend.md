@@ -7,7 +7,8 @@
 | 路由 | 策略 | 说明 |
 |------|------|------|
 | `/`(首页) | ISR 600s | 最新/精选文章 |
-| `/[slug]`(文章详情) | ISR + 按需 revalidate | 154 篇构建期全量预渲染;后台保存文章后由 post service 直调 `revalidatePath` |
+| `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath` |
+| `/[slug]`(旧中文链承接) | ISR 600s | 纯 legacy 引擎:查 `legacy_url_map` 命中 → 308,否则 404(不再直接供文) |
 | `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族 |
 | `/search` | 动态 SSR | 每请求查询 |
 | `/about`、`/agreement`、`/privacy` | 静态 | |
@@ -16,31 +17,34 @@
 | `src/app/api/**` | Route Handlers | 不参与渲染;`dynamic = 'force-dynamic'` |
 | `sitemap.ts`、`robots.ts`、`feed.xml` | Metadata Route / Route Handler | 动态生成,缓存 1h |
 
-- **按需失效**:文章保存(publish/update)→ post service 内直接 `revalidatePath('/<slug>')` + 列表页 + 首页 + sitemap——单体红利,无需 HTTP 内部调用
+- **按需失效**:文章保存(publish/update)→ post service 内直接 `revalidatePostPaths({id, slug})`(详情 + `.md` + 列表族 + sitemap,见 `lib/content/revalidate.ts`)——单体红利,无需 HTTP 内部调用
 - RSC 数据获取**直查 Prisma**(经 `lib/content/` service 层),禁止页面内 fetch 自己的 `/api`
 
-## 2. 中文编码 slug 路由(红线,范例项目式"事故条款")
+## 2. 文章 URL 终态:/post/&lt;id&gt;-&lt;slug&gt;(2026-10 迁移,红线)
 
-旧站 URL 形如 `https://17aitech.com/%e3%80%90%e5%b7%a5%e5%85%b7%e6%8a%80%e5%b7%a7%e3%80%91.../`,DB `slug` 列存的就是 **percent-encoded 原文**。App Router 的 `params.slug` 是 **URL-decode 后的中文**。因此:
+**历史**:旧站(WordPress)URL 为中文 percent-encoded 单段(`/%e3%80%90.../`),2026-06 切换初期原样保留;2026-10-03 起全站迁移到 id 锚定混合形态,旧链经 `legacy_url_map` 301/410 承接(103×301 + 53×410,见 migration `20261003190000_post_id_url`)。
 
-1. **`trailingSlash: true` 必须始终开启**(旧 URL 全部带尾斜杠,canonical 一致)
-2. 唯一匹配入口 `src/lib/slug.ts` 的 `normalizeSlug(raw: string): string`:
-   - 输入可能是解码后的中文(`【工具技巧】...`)或编码形态(`%e3%80%90...`),统一归一化为**编码形态**再查库
-   - 实现:`decodeURIComponent` 幂等包裹(try/catch 已编码串)+ `encodeURIComponent` 输出;处理 `%` 二次编码边界
-3. 文章页、tag 页、legacy 兜底、迁移脚本——**凡查 slug 一律经 `normalizeSlug`,禁止直接拿 params 查库**
-4. `normalizeSlug` 必须有单测钉死:编码↔解码往返、`%` 字面量、`+`/空格边界(此函数坏了 = 全站文章 404)
-5. `generateStaticParams` 返回 DB 原始 `slug`(编码形态);构建后抽 10 篇中文 URL 做产物断言(e2e)
+**终态规则**(`src/lib/content/post-path.ts` 是唯一构造/解析出口):
+
+1. 文章详情 URL = `/post/<id>-<ascii-slug>/`;`id`(BigInt)是**唯一解析锚**,slug 是纯装饰(可空、可随时改,改名不破链)
+2. 纯中文标题派生不出 ASCII token → slug 为 NULL,canonical 为 bare-id `/post/<id>/`
+3. **canonical 归一**:`/post/[slug]` 页解析段后与 canonical 段对比,不一致一律 `permanentRedirect`(308)到唯一 canonical——bare-id、错误尾巴、旧装饰 slug 都收敛到同一地址
+4. **`trailingSlash: true` 必须始终开启**(新旧 URL 全部带尾斜杠,canonical 一致;legacy 301 目标须带尾斜杠,避免二次归一跳)
+5. ASCII slug 派生:`asciiSlugFromTitle`——标题取 `[a-z0-9]+` token 小写连字符连接、连续重复 token 去重、80 字符 token 边界截断、零 token → NULL;冲突自动 `-2..-9` 后缀(`posts-admin.createPost`)
+6. 解析容错:`parsePostSegment` 按**前导数字段**取 id、尾巴整段容忍(`/<id>-<任意>/` 都能解析到 id 再 canonical 归一),禁止直接拿 params 查库
+7. 分类/标签/legacy 兜底仍走 `src/lib/slug.ts#normalizeSlug`(percent-encoded 中文,与文章 URL 无关):输入可能是解码中文或编码形态,统一归一化为编码形态再查库;`normalizeSlug` 单测钉死编码↔解码往返、`%` 字面量、`+`/空格边界
+8. `generateStaticParams` 只返回 canonical 段(`listPostSegmentsForPrerender`);e2e 冒烟断言:canonical 200、bare-id/错误尾巴 308、旧中文链单跳 301/308 到 `/post/`、410 行 404
 
 ## 3. SEO 实现清单
 
 - `app/layout.tsx`:默认 metadata(template `%s | 一起AI`;品牌 2026-10-02 定稿,src 已同批落地:Header 17 monogram 芯片 + icon.svg),`metadataBase = NEXT_PUBLIC_SITE_URL`
-- 文章页 `generateMetadata`:title=seo_title||title,description=seo_description||excerpt,canonical=`/<slug>/`,OG(article + cover + published_time)
+- 文章页 `generateMetadata`:title=seo_title||title,description=seo_description||excerpt,canonical=`/post/<id>-<slug>/`(post-path 构造),OG(article + cover + published_time)
 - 文章页 JSON-LD:`Article`(headline/datePublished/dateModified/author=Person domonic18/mainEntityOfPage)
 - `sitemap.ts`:全部 published 文章 + 分类 + 标签 + 静态页,`lastModified` 取 updated_at
 - `feed.xml`:RSS 2.0 最新 20 篇(旧 `/feed/` 由 Nginx 301 接入)
 - `robots.ts`:允许全部,`Sitemap` 指向本站;`/admin`、`/api` disallow
 - `llms.txt` / `llms-full.txt`(2026-09-29 战略定稿,智能体可见性):前者 = 站点结构 AI 目录(标题 + 链接 + 一句话摘要,分节同 sitemap);后者 = 全量文章 content_md 拼合(超长则分页 `llms-full-N.txt`);Route Handler 动态生成 + ISR 缓存,策略同 sitemap。**实现注**:分片对外 URL 为 `/llms-full-N.txt`,经 next.config rewrite 转 `/llms-full.txt/[part]` 路由(.md rewrite 同理,已实测与 trailingSlash 共存)
-- 文章 `.md` 直出:`GET /<slug>.md`(与 `/<slug>/` 同语义),`Content-Type: text/markdown`,输出 content_md,为 NULL 时(154 篇迁移文均如此)以 `htmlToMarkdown(content_html)` 兜底转换;同 ISR 缓存;不为 AI 爬虫设 disallow(robots 默认全允许已覆盖)
+- 文章 `.md` 直出:`GET /post/<id>-<slug>.md`(与 `/post/<id>-<slug>/` 同语义,next.config rewrite → `/md/post/<seg>` 路由),`Content-Type: text/markdown`,输出 content_md,为 NULL 时(154 篇迁移文均如此)以 `htmlToMarkdown(content_html)` 兜底转换;同 ISR 缓存;旧单段 `/<slug>.md` 经映射表 301 到新形态 `.md`;不为 AI 爬虫设 disallow(robots 默认全允许已覆盖)
 - 图片:`/wp-content/**` 由 Nginx 直接服务,**不走 next/image 优化器**(文件不在 Next 侧,optimizer 会 404)——正文用原生 `<img loading="lazy">`(迁移清洗时统一补),封面 `next/image` + `unoptimized`;Nginx 对该前缀 immutable 长缓存。**本地兜底(实现注)**:`app/wp-content/[...path]/route.ts` 读 `MEDIA_DIR`(默认 `workspace/media/`;生产容器由 compose x-app-env 钉为 `/app/media`)直出文件;catch-all params 不含 `wp-content` 前缀,磁盘文件名保持 percent-encoded 形态,params 已解码,须经 `normalizeUrlPath` 重编码后读盘(媒体零改写原则,arch/08-media)
 - 字体:中文走系统字体栈,不加载大 webfont;拉丁/代码 next/font(local) 子集
 
@@ -67,7 +71,8 @@
 1. 入参经 `normalizeSlug` 还原完整路径,查 `legacy_url_map`(Redis 缓存 1h,miss 落库一次防穿透)
 2. 命中 → `NextResponse.redirect(target, status)`;`target_url` 为 NULL → 410;未命中 → `notFound()`
 3. Nginx 把新站未命中路由兜底转发到 `/legacy/<path>`(standard/02-cicd-deployment §4),即"先新站路由、后映射表"
-4. **双层兜底(实现注)**:`/[slug]`、`/category/[slug]`、`/tag/[slug]` 页面查无内容时同进程直查映射表(`lib/content/legacy.ts#legacyRedirectOrNotFound`),命中则 `permanentRedirect`——RSC 页面语境拿不到精确 301(固定 308,同为永久类),表内 `http_status` 的精确表达由本 route 层完成;E2E 断言精确 301 须打 `/legacy/<path>`
+4. **双层兜底(实现注)**:`/category/[slug]`、`/tag/[slug]` 页面查无内容时同进程直查映射表(`lib/content/legacy.ts#legacyRedirectOrNotFound`),命中则 `permanentRedirect`——RSC 页面语境拿不到精确 301(固定 308,同为永久类),表内 `http_status` 的精确表达由本 route 层完成;E2E 断言精确 301 须打 `/legacy/<path>`
+5. **2026-10 URL 迁移行**:`legacy_url_map` 增 103×301(旧中文单段链 → `/post/<id>-<slug>/`,目标带尾斜杠单跳直达)与 53×410(下架删除文);`/[slug]` 页自迁移起为纯 legacy 引擎(不再直接供文,见 §1);Redis `legacy:map:*` 缓存 1h——**部署后须 flush 该前缀**,否则旧行(404/旧目标)最长多活 1h
 
 ## 7. 管理后台(/admin)
 

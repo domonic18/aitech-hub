@@ -39,7 +39,7 @@ export default function PostListView({
       ) : (
         <div>
           {items.map((post) => (
-            <PostCard key={post.slug} post={post} />
+            <PostCard key={post.id} post={post} />
           ))}
         </div>
       )}

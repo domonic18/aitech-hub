@@ -16,7 +16,7 @@ datasource db {
 /// 文章主表;wpPostId 是与旧站的溯源锚点
 model Post {
   id              BigInt        @id @default(autoincrement())
-  slug            String        @unique(map: "uq_content_post_slug") @db.VarChar(255) // WP 原始 post_name(percent-encoded 中文)
+  slug            String?       @unique(map: "uq_content_post_slug") @db.VarChar(255) // 装饰性 ASCII slug(可空可改;URL 由 id 锚定 /post/<id>-<slug>,2026-10 迁移自 percent-encoded 中文)
   title           String        @db.VarChar(500)
   excerpt         String?       @db.Text
   contentHtml     String?       @map("content_html") @db.Text // 旧文正文(清洗后 HTML,只读保真)

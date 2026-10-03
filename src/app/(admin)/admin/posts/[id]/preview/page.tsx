@@ -10,7 +10,7 @@ import ArticleBody from "@/components/article/ArticleBody";
 import { postDisplayState } from "@/lib/content/post-schema";
 import { getPostForAdmin, parsePostId } from "@/lib/content/posts-admin";
 import { formatCnDateTime } from "@/lib/datetime";
-import { displaySlug } from "@/lib/slug";
+import { postPath } from "@/lib/content/post-path";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,7 @@ export default async function PreviewPostPage({ params }: PageProps): Promise<Re
       <article className="rounded-md border border-line bg-panel p-8">
         <h1 className="text-2xl font-bold leading-snug">{post.title}</h1>
         <div className="mt-2 font-mono text-[11px] text-text-3">
-          /{displaySlug(post.slug)} · 分类 {post.category.name} · 浏览{" "}
+          {postPath(post.id, post.slug)} · 分类 {post.category.name} · 浏览{" "}
           {post.viewsCount.toLocaleString("en-US")} · 发布{" "}
           {post.publishedAt ? formatCnDateTime(post.publishedAt) : "—"}
         </div>

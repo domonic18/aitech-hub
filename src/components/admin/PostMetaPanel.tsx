@@ -25,10 +25,9 @@ export interface PostMetaValue {
   seoDescription: string;
 }
 
-/** slug 字段两态:创建可填(带实时派生预览)/编辑只读(displaySlug 解码展示) */
-export type SlugField =
-  | { mode: "create"; text: string; preview: string; onChange: (v: string) => void }
-  | { mode: "edit"; fixed: string };
+/** slug 字段(2026-10 URL 终态):两态统一可编辑——id 锚定 URL,改 slug 永不毁外链;
+ * preview 展示派生/当前 canonical 形态,留空语义由调用方按创建(=派生)/编辑(=不改)区分 */
+export type SlugField = { text: string; preview: string; onChange: (v: string) => void };
 
 export default function PostMetaPanel({
   categories,
@@ -110,31 +109,22 @@ export default function PostMetaPanel({
           高级选项(slug / SEO,均可留空)
         </summary>
         <div className="mt-3 flex flex-col gap-4">
-          {slug.mode === "create" ? (
-            <div>
-              <label className={LABEL} htmlFor="post-slug">
-                链接地址 slug(留空按标题自动生成)
-              </label>
-              <input
-                id="post-slug"
-                value={slug.text}
-                onChange={(e) => slug.onChange(e.target.value)}
-                placeholder="留空 = 自动生成"
-                maxLength={POST_LIMITS.slug}
-                className={`${INPUT} font-mono`}
-              />
-              <div className="mt-1 truncate font-mono text-[11px] text-text-3" title={slug.preview}>
-                发布后不可改:{slug.preview}
-              </div>
+          <div>
+            <label className={LABEL} htmlFor="post-slug">
+              链接地址 slug(ASCII;可随时改,旧链接按 id 自动重定向)
+            </label>
+            <input
+              id="post-slug"
+              value={slug.text}
+              onChange={(e) => slug.onChange(e.target.value)}
+              placeholder={slug.preview}
+              maxLength={POST_LIMITS.slug}
+              className={`${INPUT} font-mono`}
+            />
+            <div className="mt-1 truncate font-mono text-[11px] text-text-3" title={slug.preview}>
+              文章地址:{slug.preview}
             </div>
-          ) : (
-            <div>
-              <label className={LABEL}>链接地址 slug(发布后不可改)</label>
-              <div className={`${INPUT} truncate font-mono text-text-3`} title={"/" + slug.fixed}>
-                /{slug.fixed}
-              </div>
-            </div>
-          )}
+          </div>
 
           <div>
             <label className={LABEL} htmlFor="post-seo-title">

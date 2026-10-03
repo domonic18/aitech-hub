@@ -83,7 +83,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | 域 | 端点 | 鉴权 |
 |----|------|------|
 | auth | login / logout / session | 公开(login 有爆破防护,§3.1) |
-| content | `GET /api/posts`(管理列表,草稿含)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish`(POST 建文 slug 缺省由标题派生,冲突自动追加 `-2…-9` 后缀;显式指定冲突仍 409) | admin |
+| content | `GET /api/posts`(管理列表,草稿含)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish`(POST 建文 slug 缺省由标题派生 ASCII、冲突自动追加 `-2…-9` 后缀、纯中文标题 → NULL;显式指定冲突仍 409;PUT 可改 slug——URL 由 id 锚定不破链) | admin |
 | content | `GET /api/search?q=` | 公开 |
 | stats | `POST /api/view { path, referrer? }`(同源校验 + bot/管理员过滤) | 公开(IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,Redis 缓冲 60s 批量落库) |
 | media | `POST /api/media`(上传)、`POST /api/media/import`(外链图批量转存,enqueue 返回 jobId,前端轮询取映射)、`GET /api/media`(列表/过滤)、`DELETE /api/media/[id]`、`GET /api/media/{orphans,duplicates,stats}` | admin |
