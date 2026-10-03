@@ -16,6 +16,32 @@ export interface AdapterItem {
 const CRAWLER_UA = "aitech-hub-crawler/0.1 (+https://17aitech.com)";
 const FETCH_TIMEOUT_MS = 15_000;
 
+/** 供应方限频(HTTP 429):ingest 特判不记失败,顺延下轮(渠道健康性不受影响) */
+export class RateLimitedError extends Error {
+  constructor() {
+    super("feed rate limited (HTTP 429)");
+    this.name = "RateLimitedError";
+  }
+}
+
+/** token 鉴权 feed 的凭证容器(值来自 crawl_source.config,不落日志/错误信息) */
+export interface RssFetchConfig {
+  token?: string;
+  timeoutMs?: number;
+}
+
+/** 凭证以 query 注入(机器之心 MCP 应用端点模式);非法 URL 原样返回交上层报错 */
+export function applyToken(raw: string, token?: string): string {
+  if (!token) return raw;
+  try {
+    const u = new URL(raw);
+    u.searchParams.set("token", token);
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
 const PARSER = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -104,18 +130,19 @@ export function parseFeed(xml: string): AdapterItem[] {
     .filter((it): it is AdapterItem => it !== null);
 }
 
-/** 拉取并解析 feed;HTTP 非 2xx 或超时抛错(交 ingest 记来源连续失败) */
+/** 拉取并解析 feed;429 抛 RateLimitedError,其余非 2xx/超时抛错(交 ingest 记连续失败) */
 export async function fetchRssItems(
   url: string,
-  timeoutMs = FETCH_TIMEOUT_MS,
+  config: RssFetchConfig = {},
 ): Promise<AdapterItem[]> {
-  const res = await fetch(url, {
+  const res = await fetch(applyToken(url, config.token), {
     headers: {
       "user-agent": CRAWLER_UA,
       accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
     },
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(config.timeoutMs ?? FETCH_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`feed HTTP ${res.status}`);
+  if (res.status === 429) throw new RateLimitedError();
+  if (!res.ok) throw new Error(`feed HTTP ${res.status}`); // 错误信息不含 URL——token 不外泄
   return parseFeed(await res.text());
 }

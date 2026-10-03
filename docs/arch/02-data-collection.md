@@ -88,7 +88,7 @@
 
 **已定(2026-10-03,M7 文字管道立项;实测 = 从生产服务器直连验证)**:
 
-- **首批渠道**:量子位(RSS `https://www.qbitai.com/feed`,实测 175 可达 0.2s/条目有效)+ 机器之心(官方 API,用户已申请;端点与凭证存 `crawl_source.config`,**后台配置管理,不走环境变量**——2026-10-03 用户定)。频控按渠道独立:`crawl_interval_min` + `daily_max_requests`(机器之心 60min/日 25 次起步)。备选池(HN hnrss.org 可分数过滤/arXiv cs.AI/Solidot 均 175 可达,MIT-TR/Verge AI 备选)。**一期弃:Reddit(175 直连超时被墙)、X(API 付费制且不可达)**。
+- **首批渠道**:量子位(RSS `https://www.qbitai.com/feed`,实测 175 可达 0.2s/条目有效)+ 机器之心(官方 token 鉴权 RSS `https://mcp.applications.jiqizhixin.com/rss`,MCP 应用端点;免费档实测限 1 次/60min,适配器对 HTTP 429 特判——供应方限频不记失败只顺延下轮;token 存 `crawl_source.config`,**后台配置管理,不走环境变量**——2026-10-03 用户定)。频控按渠道独立:`crawl_interval_min` + `daily_max_requests`(机器之心 60min/日 25 次起步)。备选池(HN hnrss.org 可分数过滤/arXiv cs.AI/Solidot 均 175 可达,MIT-TR/Verge AI 备选)。**一期弃:Reddit(175 直连超时被墙)、X(API 付费制且不可达)**。
 - 前台实时感:终选 **30-60s 轮询**(SSE 不做)。
 - 首页电报 LIVE 带随 M7 一并接入。
 - LLM 摘要:一期先规则截断,LLM 摘要作后置增强开关(选型评审后开)。

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parseFeed } from "./rss";
+import { applyToken, fetchRssItems, parseFeed, RateLimitedError } from "./rss";
 
 const RSS_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><title>量子位</title>
@@ -42,5 +42,43 @@ describe("parseFeed", () => {
 
   it("两格式都无条目返回空数组(交上层计失败)", () => {
     expect(parseFeed("<html><body>not a feed</body></html>")).toEqual([]);
+  });
+});
+
+describe("applyToken", () => {
+  it("注入 token 保留原参数,无 token 原样", () => {
+    expect(applyToken("https://a.com/rss?x=1", "sk-abc")).toBe(
+      "https://a.com/rss?x=1&token=sk-abc",
+    );
+    expect(applyToken("https://a.com/rss", "sk-abc")).toBe("https://a.com/rss?token=sk-abc");
+    expect(applyToken("https://a.com/rss", undefined)).toBe("https://a.com/rss");
+  });
+
+  it("非法 URL 原样返回", () => {
+    expect(applyToken("not a url", "sk-abc")).toBe("not a url");
+  });
+});
+
+describe("fetchRssItems 错误分型", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("429 → RateLimitedError(供应方限频,非渠道故障)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("rate limited", { status: 429 })),
+    );
+    await expect(fetchRssItems("https://a.com/rss")).rejects.toBeInstanceOf(RateLimitedError);
+  });
+
+  it("其余非 2xx → 普通错误且信息不含 URL(token 不外泄)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500 })),
+    );
+    await expect(fetchRssItems("https://a.com/rss?token=sk-abc")).rejects.toThrow(
+      /^feed HTTP 500$/,
+    );
   });
 });

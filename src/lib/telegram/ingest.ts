@@ -9,7 +9,7 @@ import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_CRAWLER } from "../queue";
 
-import { fetchSourceItems, type AdapterItem } from "./adapters";
+import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
 import {
   CRAWL_MAX_CONSECUTIVE_FAILS,
   CRAWL_MAX_ITEMS_PER_RUN,
@@ -35,6 +35,8 @@ export interface CrawlOutcome {
   /** hash 重复跳过 */
   duplicated: number;
   skippedDailyCap: boolean;
+  /** 供应方限频(429)跳过,不记失败 */
+  rateLimited: boolean;
 }
 
 type IngestVerdict = "inserted" | "filtered" | "duplicated";
@@ -94,6 +96,7 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     filtered: 0,
     duplicated: 0,
     skippedDailyCap: false,
+    rateLimited: false,
   };
   if (!source || !source.enabled) return outcome;
 
@@ -114,7 +117,7 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
   }
 
   try {
-    const items = await fetchSourceItems(source.type, source.url);
+    const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);
     outcome.fetched = items.length;
 
     const words: BlocklistWord[] = (
@@ -138,6 +141,16 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     });
     return outcome;
   } catch (err) {
+    // 供应方限频(如机器之心免费档 1 次/60min):非渠道故障,不记失败只顺延
+    if (err instanceof RateLimitedError) {
+      await prisma.crawlSource.update({
+        where: { id: source.id },
+        data: { lastRunAt: now, nextRunAt: nextRunAt(source.crawlIntervalMin, now) },
+      });
+      outcome.rateLimited = true;
+      logger.warn({ event: "crawler.rate_limited", sourceId: source.id, name: source.name });
+      return outcome;
+    }
     const fails = source.consecutiveFails + 1;
     await prisma.crawlSource.update({
       where: { id: source.id },
