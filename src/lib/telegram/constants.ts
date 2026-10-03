@@ -43,3 +43,6 @@ export type BlocklistScope = (typeof BLOCKLIST_SCOPES)[number];
 
 /** 连续失败阈值(arch/02 §3.1:≥3 → source.status=error) */
 export const CRAWL_MAX_CONSECUTIVE_FAILS = 3;
+
+/** 单来源单轮入库上限(防异常 feed 撑爆单轮;适配器返回再多也截断) */
+export const CRAWL_MAX_ITEMS_PER_RUN = 50;

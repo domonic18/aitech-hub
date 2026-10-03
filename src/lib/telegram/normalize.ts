@@ -68,7 +68,7 @@ export function truncateSummary(text: string, max = TELEGRAM_SUMMARY_MAX): strin
   const clean = stripHtml(text);
   if (clean.length <= max) return clean;
   const window = clean.slice(0, max);
-  const m = window.match(/^(.*[。!?;；])[^.!?;；]*$/s);
+  const m = window.match(/^(.*[。!?;；])[^.!?;；]*$/);
   const cut = m ? m[1] : `${window.slice(0, max - 1).trimEnd()}…`;
   return cut.trim();
 }

@@ -15,12 +15,15 @@ export const QUEUE_MEDIA_TRANSFER = "media-transfer";
 export const QUEUE_MEDIA_AUDIT = "media-audit";
 /** 站点统计日聚合(requirement §3.5:beacon → Redis 缓冲 → worker 聚合落库) */
 export const QUEUE_STATS = "stats";
+/** 电报流采集(M7:tick 扫到期来源 → 逐源 crawl job,单源失败隔离;arch/02 §3) */
+export const QUEUE_CRAWLER = "crawler";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_STATS,
+  QUEUE_CRAWLER,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
