@@ -8,24 +8,27 @@ vi.mock("@/lib/env", () => ({ env: { MEDIA_DIR: "/tmp/ah-media-unused" } }));
 
 import { LocalDiskProvider, relToUploadsUrl, uploadsUrlToRel } from "./storage";
 
-describe("uploadsUrlToRel / relToUploadsUrl(路径约定互逆)", () => {
-  it("合法 URL 剥前缀并解码;互逆成立", () => {
+describe("uploadsUrlToRel / relToUploadsUrl(URL ↔ 磁盘名同构)", () => {
+  it("合法 URL 剥前缀;percent-encoding 原样保留(不 decode,与盘上文件名逐字节同构)", () => {
     expect(uploadsUrlToRel("/wp-content/uploads/2026/09/abc.png")).toBe("2026/09/abc.png");
     expect(uploadsUrlToRel("/wp-content/uploads/2024/01/%E4%B8%AD%E6%96%87.png")).toBe(
-      "2024/01/中文.png",
+      "2024/01/%E4%B8%AD%E6%96%87.png",
+    );
+    expect(uploadsUrlToRel("/wp-content/uploads/2024/01/%e4%b8%ad%e6%96%87.png")).toBe(
+      "2024/01/%e4%b8%ad%e6%96%87.png", // 小写 hex 原样(生产库/闭包的规范形态)
     );
     const round = relToUploadsUrl("2026/09/a%20b.png");
-    expect(round).toBe("/wp-content/uploads/2026/09/a%2520b.png"); // 段内 % 自身被编码
+    expect(round).toBe("/wp-content/uploads/2026/09/a%2520b.png"); // 段内 % 自身被编码(新上传为 sha1 ASCII 名,不受影响)
     expect(relToUploadsUrl("2024/01/中文.png")).toBe(
       "/wp-content/uploads/2024/01/%E4%B8%AD%E6%96%87.png",
     );
   });
 
-  it("非站内前缀/穿越/NUL → null", () => {
+  it("非站内前缀/穿越/字面 NUL → null", () => {
     expect(uploadsUrlToRel("/media/videos/a.mp4")).toBeNull();
     expect(uploadsUrlToRel("https://cdn.com/a.png")).toBeNull();
     expect(uploadsUrlToRel("/wp-content/uploads/../../etc/passwd")).toBeNull();
-    expect(uploadsUrlToRel("/wp-content/uploads/a%00b.png")).toBeNull();
+    expect(uploadsUrlToRel("/wp-content/uploads/a\0b.png")).toBeNull();
   });
 });
 
