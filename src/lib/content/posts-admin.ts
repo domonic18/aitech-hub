@@ -28,7 +28,7 @@ export function parsePostId(raw: string): bigint | null {
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type PostAdminErrorCode =
-  "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing";
+  "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing" | "invalid_body";
 
 export class PostAdminError extends Error {
   constructor(
@@ -106,6 +106,17 @@ export async function getPostForAdmin(id: bigint) {
     },
   });
   return post;
+}
+
+/** 按 slug 取稿(M5-c MCP/API 以 slug 为键):软删视为不存在 */
+export async function getPostBySlugAdmin(slug: string) {
+  return prisma.post.findFirst({
+    where: { slug, status: { not: POST_STATUS_DELETED } },
+    include: {
+      category: { select: { slug: true, name: true } },
+      tags: { select: { tag: { select: { slug: true, name: true } } } },
+    },
+  });
 }
 
 /** 标签按名 upsert(Prototype admin-editor:tags 按名自动建),返回关联 id 集 */

@@ -103,7 +103,7 @@ redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 
 **切换验收清单**(全部通过才算切完;任一失败 → 立即回滚):
 
-- [ ] 抽 30 篇旧文章 URL(中文编码 slug)→ 200 且正文/图片完整(qa/acceptance 脚本自动跑)
+- [ ] 抽 30 篇旧文章 URL(中文编码 slug)→ 200 且正文/图片完整(脚本自动跑:`npm run qa:acceptance -- --base https://17aitech.com --count 30 --seed 20261003`;默认 base localhost:3000,同 seed 可重放)
 - [ ] 抽 30 个资讯 slug → 301 /articles;`/feed/` → 301 `/feed.xml`
 - [ ] 首页/列表/归档/搜索/关于 200;sitemap.xml、robots.txt、feed.xml 内容正确
 - [ ] admin 密码登录 + 后台守卫可见(用户短信登录三期开启——短信资质解锁后,requirement §3.3)

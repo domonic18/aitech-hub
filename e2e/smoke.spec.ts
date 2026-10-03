@@ -1,5 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
@@ -67,7 +68,10 @@ test("2. /post/<id>-<slug> 直开文章:200、标题、图片无 broken;非 cano
   for (const probe of [`/post/${id}/`, `/post/${id}-junk/`]) {
     const res = await request.get(probe, { maxRedirects: 0 });
     expect(res.status()).toBe(308);
-    expect(new URL(res.headers().location!, "http://localhost:3000").pathname).toBe(canonical);
+    // Next #82117:ISR fallback 冷渲染会双写 Location(进缓存后单头);
+    // 浏览器/爬虫按第一个生效,undici 会把重复值 join 成 "a, b" —— 取首值断言
+    const location = res.headers().location!.split(",")[0]!.trim();
+    expect(new URL(location, "http://localhost:3000").pathname).toBe(canonical);
   }
 
   // 图片 naturalWidth 抽查:从采样里找第一篇正文带图的(部分文章可能无图)
@@ -380,4 +384,169 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await expect(polylines.first()).toBeVisible();
   await page.getByRole("link", { name: "近 90 天" }).click(); // 仅趋势卡有,唯一
   await expect(page).toHaveURL(/trend=90&hot=all/);
+});
+
+test("10. PAT 生命周期:UI 创建→Bearer PUT 落草稿→同 slug 重发更新→吊销即 401(M5c)", async ({
+  page,
+  request,
+}) => {
+  const TITLE = "E2E 冒烟 PAT 发布 API";
+  const SLUG = "e2e-pat-publish";
+  const PAT_NAME = "e2e-pat-publish";
+  // 与库内残留隔离(重跑幂等)
+  await prisma.post.deleteMany({ where: { OR: [{ title: TITLE }, { slug: SLUG }] } });
+  await prisma.userPat.deleteMany({ where: { name: PAT_NAME } });
+
+  // 登录 → PAT 页 UI 创建(明文一次性展示)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+  await page.goto("/admin/pats/");
+  await page.getByRole("button", { name: "新建令牌" }).click();
+  await page.getByPlaceholder("令牌备注(必填,≤100 字)").fill(PAT_NAME);
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  const tokenEl = page.getByText(/^ahp_/);
+  await expect(tokenEl).toBeVisible();
+  const token = (await tokenEl.innerText()).trim();
+  expect(token).toMatch(/^ahp_[A-Za-z0-9_-]+$/);
+  await page.getByRole("button", { name: "我已保存,关闭" }).click();
+
+  // Bearer 直发(带 frontmatter + 本地随文图):默认落草稿
+  const auth = { authorization: `Bearer ${token}` };
+  const png = await sharp({
+    create: { width: 1, height: 1, channels: 3, background: "#5e6ad2" },
+  })
+    .png()
+    .toBuffer();
+  const markdown = `---\ntitle: ${TITLE}\nslug: ${SLUG}\ntags: [e2e]\n---\n\n正文配图 ![](img/e2e-pat.png)\n`;
+  const putBody = {
+    markdown,
+    images: [{ name: "e2e-pat.png", mime: "image/png", dataBase64: png.toString("base64") }],
+  };
+  const r1 = await request.put("/api/posts/", { headers: auth, data: putBody });
+  expect(r1.status()).toBe(200);
+  const b1 = (await r1.json()) as {
+    code: number;
+    data: { action: string; id: string; status: string; uploads: Array<{ path: string | null }> };
+  };
+  expect(b1.code).toBe(0);
+  expect(b1.data.action).toBe("created");
+  expect(b1.data.status).toBe("draft");
+  expect(b1.data.uploads[0]?.path).toMatch(/^\/wp-content\/uploads\//);
+  const row = await prisma.post.findUnique({
+    where: { slug: SLUG },
+    select: { id: true, status: true },
+  });
+  expect(row?.status).toBe("draft");
+  expect(row?.id.toString()).toBe(b1.data.id);
+
+  // 同 slug 重发 = 更新(id 不变)
+  const r2 = await request.put("/api/posts/", {
+    headers: auth,
+    data: { ...putBody, markdown: `${markdown}\n更新追补。\n` },
+  });
+  const b2 = (await r2.json()) as { code: number; data: { action: string; id: string } };
+  expect(b2.data.action).toBe("updated");
+  expect(b2.data.id).toBe(b1.data.id);
+
+  // UI 吊销(原生 confirm)→ 行变已吊销
+  await page.goto("/admin/pats/");
+  const patRow = page.getByRole("row", { name: new RegExp(PAT_NAME) });
+  page.once("dialog", (d) => d.accept());
+  await patRow.getByRole("button", { name: "吊销" }).click();
+  await expect(patRow.getByText("已吊销")).toBeVisible({ timeout: 10_000 });
+
+  // 吊销后同令牌即 401(即时生效)
+  const r3 = await request.put("/api/posts/", { headers: auth, data: putBody });
+  expect(r3.status()).toBe(401);
+
+  // 清理:文章 + 媒体行 + 盘上文件族(与用例 7 同款)
+  await prisma.post.deleteMany({ where: { OR: [{ title: TITLE }, { slug: SLUG }] } });
+  const media = await prisma.media.findFirst({ where: { filename: "e2e-pat.png" } });
+  expect(media).toBeTruthy();
+  if (media) {
+    const rel = decodeURIComponent(media.path.replace("/wp-content/uploads/", ""));
+    const root = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+    const stem = rel.replace(/\.[a-z]+$/, "");
+    await Promise.all(
+      [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+        rm(path.join(root, f), { force: true }),
+      ),
+    );
+    await prisma.media.delete({ where: { id: media.id } });
+  }
+  await prisma.userPat.deleteMany({ where: { name: PAT_NAME } });
+});
+
+test("11. /api/mcp:无 Bearer 401;initialize + tools/list 六工具齐备(M5c)", async ({ request }) => {
+  const ENDPOINT = "/api/mcp/";
+  // 鉴权在 MCP 协议层之前:无凭证一律 401 + WWW-Authenticate
+  const noAuth = await request.post(ENDPOINT, {
+    data: { jsonrpc: "2.0", id: 1, method: "ping" },
+    headers: { accept: "application/json, text/event-stream" },
+  });
+  expect(noAuth.status()).toBe(401);
+  expect(noAuth.headers()["www-authenticate"]).toContain("Bearer");
+
+  // 直插测试令牌(明文仅测试内可见,断后即清)
+  const admin = await prisma.userAccount.findUnique({
+    where: { phone: E2E_ADMIN_PHONE },
+    select: { id: true },
+  });
+  expect(admin).toBeTruthy();
+  const MCP_PAT = "e2e-pat-mcp";
+  const token = `ahp_${randomBytes(32).toString("base64url")}`;
+  await prisma.userPat.create({
+    data: {
+      userId: admin!.id,
+      name: MCP_PAT,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+    },
+  });
+  try {
+    const headers = {
+      authorization: `Bearer ${token}`,
+      accept: "application/json, text/event-stream",
+    };
+    const init = await request.post(ENDPOINT, {
+      headers,
+      data: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "e2e", version: "0.0.0" },
+        },
+      },
+    });
+    expect(init.status()).toBe(200);
+    const initBody = (await init.json()) as { result: { serverInfo: { name: string } } };
+    expect(initBody.result.serverInfo.name).toBe("aitech-hub");
+
+    const list = await request.post(ENDPOINT, {
+      headers,
+      data: { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    });
+    const tools = (await list.json()) as { result: { tools: Array<{ name: string }> } };
+    const names = tools.result.tools.map((t) => t.name);
+    for (const t of [
+      "upsert_article",
+      "upload_media",
+      "get_article",
+      "list_articles",
+      "publish",
+      "unpublish",
+    ]) {
+      expect(names).toContain(t);
+    }
+
+    // GET(独立 SSE 流)/ DELETE(会话终止)不开放 → 405,不留半实现
+    expect((await request.get(ENDPOINT, { headers })).status()).toBe(405);
+  } finally {
+    await prisma.userPat.deleteMany({ where: { name: MCP_PAT } });
+  }
 });

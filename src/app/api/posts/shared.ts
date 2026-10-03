@@ -16,6 +16,7 @@ const ERROR_STATUS = {
   slug_conflict: 409,
   legacy_readonly: 409,
   category_missing: 400,
+  invalid_body: 400,
 } as const satisfies Record<PostAdminErrorCode, number>;
 
 export function postErrorResponse(e: unknown): NextResponse {
