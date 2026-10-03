@@ -349,6 +349,11 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   const polylines = page.locator("main svg polyline");
   await expect(polylines).toHaveCount(2);
 
+  // hover 趋势图 → client 岛吸附出数据 tip(用户反馈补强)
+  await page.locator("svg[aria-label='PV/UV 趋势图']").hover({ position: { x: 200, y: 100 } });
+  await expect(page.getByTestId("trend-tip")).toBeVisible();
+  await expect(page.getByTestId("trend-tip")).toContainText("PV");
+
   // 分段切换 URL 驱动:trend=30 生效且 hot 参数跨段保留
   // 「近 30 天」在趋势卡与热门卡各一枚(Link 分段),count=2 证两卡分段均按参数渲染
   await page.goto("/admin/?trend=30&hot=all");

@@ -55,4 +55,27 @@ describe("buildTrendGeometry(原型 admin-stats 几何)", () => {
     expect(g.pvPoints.split(" ")).toHaveLength(1);
     expect(g.pvPoints).not.toMatch(/NaN|Infinity/);
   });
+
+  it("hoverPoints 与折线同源:逐点同长、x 严格递增、抽稀一致", () => {
+    const g = buildTrendGeometry(seriesOf(90));
+    expect(g.hoverPoints).toHaveLength(g.pvPoints.split(" ").length); // 46(同步稀)
+    for (let i = 1; i < g.hoverPoints.length; i += 1) {
+      expect(g.hoverPoints[i]!.x).toBeGreaterThan(g.hoverPoints[i - 1]!.x);
+    }
+    expect(g.hoverPoints[0]!.date).toBe("2026-09-01"); // 首点保留
+    expect(g.hoverPoints.at(-1)!.pv).toBe(90 + 100 - 1); // 尾点保留
+  });
+
+  it("hoverPoints 坐标落在绘图区且与 max 缩放一致(岛内零计算的前提)", () => {
+    const g = buildTrendGeometry(seriesOf(7, 1000, 500));
+    for (const h of g.hoverPoints) {
+      expect(h.x).toBeGreaterThanOrEqual(52);
+      expect(h.x).toBeLessThanOrEqual(TREND_W - 16);
+      expect(h.pvY).toBeGreaterThanOrEqual(18); // TREND_TOP
+      expect(h.pvY).toBeLessThanOrEqual(270); // TREND_BASELINE
+      // y = 270 - 252*pv/max 逐点成立(实现侧坐标留 1 位小数,精度取 1 位)
+      expect(h.pvY).toBeCloseTo(270 - (252 * h.pv) / g.max, 1);
+    }
+    expect(buildTrendGeometry([]).hoverPoints).toEqual([]);
+  });
 });

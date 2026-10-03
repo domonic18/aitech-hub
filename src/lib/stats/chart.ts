@@ -1,7 +1,8 @@
 /**
  * PV/UV 趋势图几何(纯函数,M5-c):复刻原型 admin-stats renderTrend 的
  * 手写 SVG 几何(DESIGN-SPEC §6 禁图表库),RSC 服务端算好点串、
- * 组件直接渲染,零 client JS。单测锚点:chart.test.ts。
+ * 组件直接渲染;hover 数据提示由 TrendHover client 岛消费 hoverPoints
+ * 做最近点吸附(岛内零几何计算)。单测锚点:chart.test.ts。
  */
 
 export interface DayPoint {
@@ -20,6 +21,17 @@ export interface XLabel {
   text: string;
 }
 
+/** hover 吸附点(viewBox 坐标,tip 与强调点定位用;服务端算好) */
+export interface HoverPoint {
+  x: number;
+  pvY: number;
+  uvY: number;
+  /** YYYY-MM-DD */
+  date: string;
+  pv: number;
+  uv: number;
+}
+
 export interface TrendGeometry {
   /** polyline points 串:"x,y x,y …" */
   pvPoints: string;
@@ -29,11 +41,16 @@ export interface TrendGeometry {
   gridLines: GridLine[];
   xLabels: XLabel[];
   max: number;
+  /** 与折线同源逐点(含抽稀),TrendHover 岛命中测试用 */
+  hoverPoints: HoverPoint[];
 }
 
 /** 画布与内边距(与原型逐值一致,勿单独改动一侧) */
 export const TREND_W = 1040;
 export const TREND_H = 300;
+/** 绘图区上下界(hover 岛十字线纵向范围) */
+export const TREND_TOP = 18;
+export const TREND_BASELINE = 270;
 const PAD_L = 52;
 const PAD_R = 16;
 const PAD_T = 18;
@@ -99,5 +116,14 @@ export function buildTrendGeometry(series: DayPoint[]): TrendGeometry {
     }
   }
 
-  return { pvPoints: pvPts, uvPoints: uvPts, areaPath, gridLines, xLabels, max };
+  const hoverPoints: HoverPoint[] = pts.map((p, i) => ({
+    x: Number(xAt(i, pts.length).toFixed(1)),
+    pvY: Number(yAt(p.pv, max).toFixed(1)),
+    uvY: Number(yAt(p.uv, max).toFixed(1)),
+    date: p.date,
+    pv: p.pv,
+    uv: p.uv,
+  }));
+
+  return { pvPoints: pvPts, uvPoints: uvPts, areaPath, gridLines, xLabels, max, hoverPoints };
 }
