@@ -80,3 +80,29 @@ export async function revokePat(id: bigint): Promise<boolean> {
   if (r.count > 0) logger.info({ event: "pat.revoked", patId: id.toString() });
   return r.count > 0;
 }
+
+export interface PatRow {
+  id: string;
+  name: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+}
+
+/** 管理列表(单管理员期全量):生效在前,其余按创建倒序 */
+export async function listPats(): Promise<PatRow[]> {
+  const rows = await prisma.userPat.findMany({
+    orderBy: [{ revokedAt: "asc" }, { createdAt: "desc" }],
+    select: { id: true, name: true, createdAt: true, lastUsedAt: true, revokedAt: true },
+  });
+  return rows.map((r) => ({ ...r, id: r.id.toString() }));
+}
+
+/** 路由边界按 id 吊销:十进制串校验,区分不存在/已吊销/本次吊销 */
+export async function revokePatById(id: string): Promise<"revoked" | "already" | "missing"> {
+  if (!/^\d{1,19}$/.test(id)) return "missing";
+  const big = BigInt(id);
+  const exists = await prisma.userPat.findUnique({ where: { id: big }, select: { id: true } });
+  if (!exists) return "missing";
+  return (await revokePat(big)) ? "revoked" : "already";
+}

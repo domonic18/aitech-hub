@@ -40,7 +40,7 @@ const GROUPS: ReadonlyArray<Group> = [
     ],
   },
   { label: "用户", items: [{ icon: "i-user", label: "用户管理", tag: "M5" }] },
-  { label: "系统", items: [{ icon: "i-key", label: "PAT 令牌", tag: "M5" }] },
+  { label: "系统", items: [{ icon: "i-key", label: "PAT 令牌", href: "/admin/pats" }] },
 ];
 
 export default function AdminSidebar(): React.ReactElement {
