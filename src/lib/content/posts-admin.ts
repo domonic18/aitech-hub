@@ -28,7 +28,7 @@ export function parsePostId(raw: string): bigint | null {
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type PostAdminErrorCode =
-  "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing";
+  "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing" | "invalid_body";
 
 export class PostAdminError extends Error {
   constructor(
