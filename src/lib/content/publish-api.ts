@@ -20,7 +20,7 @@ import { logger } from "@/lib/logger";
 
 import { fmString, fmStringArray, parseFrontmatter } from "./frontmatter";
 import { postPath } from "./post-path";
-import { POST_LIMITS } from "./post-schema";
+import { POST_LIMITS, normalizeAsciiSlug } from "./post-schema";
 import { PostAdminError } from "./posts-admin";
 import { createPost, publishPost, updatePost } from "./posts-admin";
 
@@ -67,15 +67,15 @@ export interface UpsertArticleResult {
   external: string[];
 }
 
-/** slug 归一(与 postSlugSchema 同规则):非 [a-z0-9] 折叠连字符,空 → undefined */
+/**
+ * slug 归一走 post-schema 唯一实现;超长(折叠后)→ undefined(bare-id)。
+ * 折叠只缩短:入参边界已限 raw ≤ POST_LIMITS.slug(publishUpsertShape),
+ * 此长度检查为防御性兜底。
+ */
 function foldSlug(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
-  const s = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return s === "" || s.length > POST_LIMITS.slug ? undefined : s;
+  const s = normalizeAsciiSlug(raw);
+  return s !== undefined && s.length > POST_LIMITS.slug ? undefined : s;
 }
 
 /**

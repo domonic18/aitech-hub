@@ -50,21 +50,27 @@ export const slugSchema = z
   .refine((s) => s.length > 0, "slug 归一化后为空");
 
 /**
+ * ASCII slug 归一(review P3 收敛):小写化、非 [a-z0-9] 折叠为连字符、
+ * 去首尾;空 → undefined。postSlugSchema 与 publish-api#foldSlug 共用此
+ * 唯一实现,slug 规则变更不再两处漂移。
+ */
+export function normalizeAsciiSlug(raw: string): string | undefined {
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s === "" ? undefined : s;
+}
+
+/**
  * 文章 slug(2026-10 URL 终态):ASCII 装饰段,可空(URL 由 id 锚定 /post/<id>-<slug>,
- * 改 slug 永不毁外链)。归一:小写化、非 [a-z0-9] 折叠为连字符、去首尾;空 → undefined
- * (创建=由标题派生/缺省 bare-id,更新=不改)。
+ * 改 slug 永不毁外链)。空 → undefined(创建=由标题派生/缺省 bare-id,更新=不改)。
  */
 export const postSlugSchema = z
   .string()
   .max(POST_LIMITS.slug, `slug 最长 ${POST_LIMITS.slug} 字符`)
-  .transform((s) =>
-    s
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, ""),
-  )
-  .transform((s) => (s === "" ? undefined : s))
+  .transform(normalizeAsciiSlug)
   .refine((s) => s === undefined || isAsciiSlug(s), "slug 须为小写字母数字与连字符")
   .optional();
 
