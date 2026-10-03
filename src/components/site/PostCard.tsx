@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { excerptOf } from "@/lib/content/format";
+import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
 import type { PostListItem } from "@/lib/content/posts";
 
@@ -10,7 +11,7 @@ export default function PostCard({ post }: { post: PostListItem }): React.ReactE
   return (
     <article className="border-b border-line/60 py-5 last:border-b-0">
       <h2 className="text-lg font-semibold leading-snug">
-        <Link href={`/${post.slug}/`} className="hover:text-accent-hover">
+        <Link href={postPath(post.id, post.slug)} className="hover:text-accent-hover">
           {post.title}
         </Link>
       </h2>

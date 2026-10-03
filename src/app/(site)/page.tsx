@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 import { countPublishedPosts, listLatestPosts, listPinnedPosts } from "@/lib/content/posts";
+import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
 
 import HeroConsole from "@/components/site/HeroConsole";
@@ -45,7 +46,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           </div>
           <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm [&>article]:px-5">
             {latest.map((post) => (
-              <PostCard key={post.slug} post={post} />
+              <PostCard key={post.id} post={post} />
             ))}
           </div>
         </section>
@@ -65,8 +66,8 @@ export default async function HomePage(): Promise<React.ReactElement> {
               </div>
               {pinned.map((post) => (
                 <Link
-                  key={post.slug}
-                  href={`/${post.slug}/`}
+                  key={post.id}
+                  href={postPath(post.id, post.slug)}
                   className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
                 >
                   <span className="block truncate text-[13px] font-semibold leading-normal hover:text-accent-hover">

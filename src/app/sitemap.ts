@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { listAllPostsForSeo } from "@/lib/content/posts";
+import { postPath } from "@/lib/content/post-path";
 import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
 import { absoluteUrl } from "@/lib/seo/site";
 
@@ -33,7 +34,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
   const postPages: MetadataRoute.Sitemap = posts.map((p) => ({
-    url: absoluteUrl(`/${p.slug}/`),
+    url: absoluteUrl(postPath(p.id, p.slug)),
     lastModified: p.updatedAt,
     changeFrequency: "monthly",
     priority: 0.8,

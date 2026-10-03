@@ -10,7 +10,7 @@ import { postDisplayState } from "@/lib/content/post-schema";
 import { getPostForAdmin, parsePostId } from "@/lib/content/posts-admin";
 import { listCategories } from "@/lib/content/taxonomy";
 import { formatCnDateTime } from "@/lib/datetime";
-import { displaySlug } from "@/lib/slug";
+import { postPath } from "@/lib/content/post-path";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
         <div className="rounded-md border border-line bg-panel p-6">
           <h1 className="text-xl font-bold">{post.title}</h1>
           <div className="mt-2 font-mono text-[11px] text-text-3">
-            /{displaySlug(post.slug)} · 发布{" "}
+            {postPath(post.id, post.slug)} · 发布{" "}
             {post.publishedAt ? formatCnDateTime(post.publishedAt) : "—"} · 分类{" "}
             {post.category.name}
           </div>

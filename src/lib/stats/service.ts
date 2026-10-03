@@ -13,13 +13,13 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 import { redis } from "@/lib/redis";
-import { normalizeSlug } from "@/lib/slug";
+import { parsePostSegment } from "@/lib/content/post-path";
 import { classifyReferrer, isBotUa, normalizePagePath, parseClient, visitorHash } from "./classify";
 
 const DAY_TTL_SECONDS = 86400; // UV 日去重窗口(当日有效)
 const POST_DEDUP_TTL_SECONDS = 3600; // 文章阅读去重窗口(arch/05-services:IP+UA 去重窗口 1h)
 const BUFFER_TTL_SECONDS = 172800; // 缓冲键兜底过期(worker 长期不可用时防堆积)
-const POSTMAP_TTL_SECONDS = 3600; // slug→postId 解析缓存(含负缓存 "0")
+const POSTMAP_TTL_SECONDS = 3600; // id→发布态解析缓存(含负缓存 "0";id 锚定,解析仅验发布态)
 
 export interface IngestInput {
   path: string;
@@ -79,21 +79,26 @@ function hash16(s: string): string {
   return createHash("sha1").update(s).digest("hex").slice(0, 16);
 }
 
-/** 文章页 PV:路径形如 /<slug>/ 才计;同访客同文章 1h 一窗(防刷新虚增阅读数) */
+/** 文章页 PV:路径形如 /post/<id>(-<slug>)?/ 才计(2026-10 URL 终态,id 锚定);
+ * 同访客同文章 1h 一窗(防刷新虚增阅读数)。旧单段路径不再归属文章(迁移过渡期缓存页上报,量小可弃)。 */
 async function countPostView(path: string, vhash: string, day: string): Promise<boolean> {
   const seg = path.replace(/^\/+|\/+$/g, "");
-  if (!seg || seg.includes(".")) return false; // 非单段文章路径(.md 直出/多级路径不计)
-  const slug = normalizeSlug(seg);
-  if (!slug) return false;
+  if (!seg.startsWith("post/")) return false;
+  const parsed = parsePostSegment(seg.slice("post/".length));
+  if (!parsed) return false;
+  const postId = parsed.id.toString();
 
-  const mapKey = `stats:postmap:${slug}`;
-  let postId = await redis.get(mapKey);
-  if (postId === null) {
-    const row = await prisma.post.findUnique({ where: { slug }, select: { id: true } });
-    postId = row ? row.id.toString() : "0";
-    await redis.set(mapKey, postId, "EX", POSTMAP_TTL_SECONDS);
+  const mapKey = `stats:postmap:${postId}`;
+  let live = await redis.get(mapKey);
+  if (live === null) {
+    const row = await prisma.post.findUnique({
+      where: { id: parsed.id },
+      select: { status: true, publishedAt: true },
+    });
+    live = row && row.status === "published" && row.publishedAt !== null ? "1" : "0";
+    await redis.set(mapKey, live, "EX", POSTMAP_TTL_SECONDS);
   }
-  if (postId === "0") return false;
+  if (live === "0") return false;
 
   const fresh =
     (await redis.set(

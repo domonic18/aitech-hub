@@ -8,6 +8,7 @@
  * - 全部出口为 number(BigInt/Decimal 在本层收口),调用方可直接渲染。
  */
 import { prisma } from "@/lib/db";
+import { parsePostSegment } from "@/lib/content/post-path";
 import { statsDay } from "@/lib/datetime";
 
 import type { SourceClass } from "./classify";
@@ -159,8 +160,9 @@ export async function getClientPanel(days: 7 | 30 | 90): Promise<ClientPanel> {
 }
 
 /**
- * 热门页面(路径粒度)。path → 文章反解为 JS 二步:
- * 单段且不含 "." 的路径视作 slug 候选,批量查 post 表补标题;余按前缀映射 page/list。
+ * 热门页面(路径粒度)。path → 文章反解(JS 二步):
+ * /post/<id>-<slug> 按 id 反解(2026-10 URL 终态,id 锚定,装饰 slug 不参与匹配);
+ * 历史单段路径(迁移前统计行)仍按 slug 候选反解;余按前缀映射 page/list。
  */
 export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageRow[]> {
   const rows = await prisma.statsPageDaily.groupBy({
@@ -178,13 +180,25 @@ export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageR
     take: limit * 3, // 先多取一些,文章命中优先保留后截断
   });
   const PAGE_PATHS = new Set(["/search", "/about/", "/agreement/", "/privacy/"]);
-  const candidates = rows
-    .map((r) => r.path)
-    .filter((p) => {
-      const seg = p.replace(/^\/+|\/+$/g, "");
-      return seg.length > 0 && !seg.includes("/") && !seg.includes(".");
-    })
-    .map((p) => p.replace(/^\/+|\/+$/g, ""));
+  const bareSegs = rows.map((r) => r.path.replace(/^\/+|\/+$/g, ""));
+  const postIds = [
+    ...new Set(
+      bareSegs
+        .filter((seg) => seg.startsWith("post/"))
+        .map((seg) => parsePostSegment(seg.slice("post/".length))?.id)
+        .filter((id): id is bigint => id !== undefined),
+    ),
+  ];
+  const postsById = postIds.length
+    ? await prisma.post.findMany({
+        where: { id: { in: postIds } },
+        select: { id: true, title: true },
+      })
+    : [];
+  const byId = new Map(postsById.map((p) => [p.id, p.title]));
+  const candidates = bareSegs.filter(
+    (seg) => seg.length > 0 && !seg.includes("/") && !seg.includes("."),
+  );
   const posts = candidates.length
     ? await prisma.post.findMany({
         where: { slug: { in: candidates } },
@@ -194,7 +208,10 @@ export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageR
   const bySlug = new Map(posts.map((p) => [p.slug, p.title]));
   const out: HotPageRow[] = rows.map((r) => {
     const seg = r.path.replace(/^\/+|\/+$/g, "");
-    const title = bySlug.get(seg);
+    const postId = seg.startsWith("post/")
+      ? parsePostSegment(seg.slice("post/".length))?.id
+      : undefined;
+    const title = postId !== undefined ? byId.get(postId) : bySlug.get(seg);
     const kind: HotPageRow["kind"] = title
       ? "article"
       : PAGE_PATHS.has(r.path) || r.path.startsWith("/articles/page") || r.path === "/"

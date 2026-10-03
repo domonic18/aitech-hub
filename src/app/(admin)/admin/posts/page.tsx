@@ -15,7 +15,7 @@ import {
 } from "@/lib/content/post-schema";
 import { ADMIN_PAGE_SIZE, listPostsAdmin } from "@/lib/content/posts-admin";
 import { formatCnDateTime } from "@/lib/datetime";
-import { displaySlug } from "@/lib/slug";
+import { postPath, postPathSegment } from "@/lib/content/post-path";
 
 export const dynamic = "force-dynamic";
 
@@ -177,11 +177,12 @@ export default async function AdminPostsPage({
                     </Link>
                     <div
                       className="mt-0.5 truncate font-mono text-[11px] text-text-3"
-                      title={"/" + displaySlug(row.slug)}
+                      title={postPath(row.id, row.slug)}
                     >
-                      /{displaySlug(row.slug)} · {legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
+                      /post/{postPathSegment(row.id, row.slug)} ·{" "}
+                      {legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
                       <Link
-                        href={"/" + row.slug}
+                        href={postPath(row.id, row.slug)}
                         target="_blank"
                         className="ml-2 text-text-3 underline decoration-dotted hover:text-accent"
                       >

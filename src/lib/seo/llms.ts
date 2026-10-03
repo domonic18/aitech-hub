@@ -7,13 +7,15 @@
 import { htmlToMarkdown } from "@/lib/content/html-to-md";
 import { excerptOf } from "@/lib/content/format";
 import { listAllPostsForSeo } from "@/lib/content/posts";
+import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
 import { absoluteUrl } from "@/lib/seo/site";
 
 const PART_MAX_CHARS = 400_000;
 
 function postMarkdown(p: {
-  slug: string;
+  id: bigint;
+  slug: string | null;
   title: string;
   contentMd: string | null;
   contentHtml: string | null;
@@ -21,7 +23,7 @@ function postMarkdown(p: {
 }): string {
   const body = p.contentMd ?? (p.contentHtml ? htmlToMarkdown(p.contentHtml) : "");
   const meta = [
-    `URL: ${absoluteUrl(`/${p.slug}/`)}`,
+    `URL: ${absoluteUrl(postPath(p.id, p.slug))}`,
     p.publishedAt ? `发布: ${formatCnDate(p.publishedAt)}` : null,
   ]
     .filter(Boolean)
@@ -63,7 +65,9 @@ export async function buildLlmsIndex(): Promise<string> {
   ];
   for (const p of posts) {
     const summary = excerptOf(p).replace(/\s+/g, " ").slice(0, 80);
-    lines.push(`- [${p.title}](${absoluteUrl(`/${p.slug}/`)})${summary ? `: ${summary}` : ""}`);
+    lines.push(
+      `- [${p.title}](${absoluteUrl(postPath(p.id, p.slug))})${summary ? `: ${summary}` : ""}`,
+    );
   }
   return lines.join("\n") + "\n";
 }

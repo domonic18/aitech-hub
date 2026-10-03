@@ -25,7 +25,7 @@ import {
   type PostDisplayState,
 } from "@/lib/content/post-schema";
 import { type ApiEnvelope } from "@/lib/http/response";
-import { displaySlug, normalizeSlug } from "@/lib/slug";
+import { asciiSlugFromTitle } from "@/lib/content/post-path";
 
 import { INPUT } from "./editor-controls";
 
@@ -34,7 +34,7 @@ export type { EditorCategory };
 export interface EditorPost {
   id: string;
   title: string;
-  slug: string;
+  slug: string | null;
   categorySlug: string;
   tags: string[];
   contentMd: string;
@@ -86,7 +86,7 @@ export default function PostEditor({
   const mode = post ? ("edit" as const) : ("create" as const);
 
   const [title, setTitle] = useState(post?.title ?? "");
-  const [slugText, setSlugText] = useState("");
+  const [slugText, setSlugText] = useState(post?.slug ?? "");
   const [contentMd, setContentMd] = useState(post?.contentMd ?? "");
   const [meta, setMeta] = useState<PostMetaValue>({
     categorySlug: post?.categorySlug ?? categories[0]?.slug ?? "",
@@ -102,15 +102,13 @@ export default function PostEditor({
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
-  const slugPreview = useMemo(
-    () => normalizeSlug(slugText.trim() || title) || "自动生成",
-    [slugText, title],
-  );
+  // 派生预览(创建/编辑同规则):显式输入优先,否则标题 ASCII token;纯中文标题 → bare-id
+  const slugPreview = useMemo(() => {
+    const derived = asciiSlugFromTitle(slugText.trim() || title);
+    return derived ? `/post/…-${derived}/` : "/post/<id>/(纯中文标题,由 id 锚定)";
+  }, [slugText, title]);
 
-  const slugField: SlugField =
-    mode === "create"
-      ? { mode: "create", text: slugText, preview: slugPreview, onChange: setSlugText }
-      : { mode: "edit", fixed: displaySlug(post!.slug) };
+  const slugField: SlugField = { text: slugText, preview: slugPreview, onChange: setSlugText };
 
   async function saveOnly(): Promise<string | null> {
     setBusy(true);
@@ -127,7 +125,7 @@ export default function PostEditor({
         coverPath: meta.coverPath,
         seoTitle: meta.seoTitle,
         seoDescription: meta.seoDescription,
-        ...(mode === "create" && slugText.trim() ? { slug: slugText.trim() } : {}),
+        ...(slugText.trim() ? { slug: slugText.trim() } : {}), // 缺省:创建=按标题派生/更新=不改
       });
       if (!parsed.success) {
         setError(parsed.error.issues[0]?.message ?? "输入不合法");

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { listArchivePosts } from "@/lib/content/posts";
+import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
 
 export const revalidate = 600;
@@ -38,14 +39,14 @@ export default async function ArchivePage(): Promise<React.ReactElement> {
             {byYear.get(year)!.map((post) => {
               const date = formatCnDate(post.publishedAt);
               return (
-                <li key={post.slug} className="flex items-baseline gap-3 py-2 text-sm">
+                <li key={post.id} className="flex items-baseline gap-3 py-2 text-sm">
                   <time
                     dateTime={post.publishedAt.toISOString()}
                     className="shrink-0 tabular-nums text-text-3"
                   >
                     {date.slice(5)}
                   </time>
-                  <Link href={`/${post.slug}/`} className="hover:text-accent-hover">
+                  <Link href={postPath(post.id, post.slug)} className="hover:text-accent-hover">
                     {post.title}
                   </Link>
                 </li>
