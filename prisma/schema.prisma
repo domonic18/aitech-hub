@@ -224,3 +224,61 @@ model LegacyUrlMap {
 
   @@map("legacy_url_map")
 }
+
+// ── telegram_(电报流/采集域,M7)────────────────────────────────
+
+/// 采集渠道台账(arch/02 §2):频控与每日上限按渠道独立;视频博主渠道二期同表加 type=social-video
+model CrawlSource {
+  id               Int       @id @default(autoincrement())
+  name             String    @unique(map: "uq_crawl_source_name") @db.VarChar(100)
+  type             String    @db.VarChar(20) // rss/api/web/social-video(合法值应用层 Zod 管控,arch/03 枚举演进条款)
+  platform         String?   @db.VarChar(20) // douyin/xhs/bilibili(type=social-video 时)
+  url              String    @db.VarChar(500) // feed/API 端点
+  enabled          Boolean   @default(true)
+  crawlIntervalMin Int       @default(30) @map("crawl_interval_min")
+  dailyMaxRequests Int?      @map("daily_max_requests") // 每日请求上限,超限当日跳过;null=不限
+  consecutiveFails Int       @default(0) @map("consecutive_fails") // 连续失败 ≥3 → status=error(arch/02 §3.1)
+  lastRunAt        DateTime? @map("last_run_at") @db.Timestamptz(6)
+  nextRunAt        DateTime? @map("next_run_at") @db.Timestamptz(6)
+  status           String    @default("healthy") @db.VarChar(20) // healthy/degraded/error
+  config           Json? // 渠道适配配置(type=api 存 {apiKey} 等;后台维护,展示脱敏、日志禁打,不入环境变量)
+  remark           String?   @db.VarChar(200)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  telegrams Telegram[]
+
+  @@map("crawl_source")
+}
+
+/// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
+model Telegram {
+  id          BigInt    @id @default(autoincrement())
+  sourceId    Int       @map("source_id")
+  title       String?   @db.VarChar(500)
+  summary     String    @db.VarChar(1000) // 1-3 句(一期规则截断,LLM 摘要后置开关)
+  url         String    @db.VarChar(1000) // 原文外链(一律跳原站)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  contentHash String    @unique(map: "uq_telegram_content_hash") @map("content_hash") @db.Char(40) // sha1(title+url 规范化)
+  status      String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
+  filterHit   String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([status, publishedAt(sort: Desc)], map: "idx_telegram_status_published")
+  @@index([sourceId, createdAt], map: "idx_telegram_source_created")
+  @@map("telegram")
+}
+
+/// 屏蔽词(命中即不入流;scope 限定匹配字段;回溯隐藏存量为后台手动操作)
+model Blocklist {
+  id        Int      @id @default(autoincrement())
+  word      String   @unique(map: "uq_blocklist_word") @db.VarChar(100)
+  scope     String   @default("all") @db.VarChar(10) // title/summary/all
+  hitCount  Int      @default(0) @map("hit_count")
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("blocklist")
+}

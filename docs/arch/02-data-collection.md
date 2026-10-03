@@ -20,7 +20,7 @@
 
 ## 2. 数据模型锚点(终态字段草案,实现时进 arch/03 + Prisma migration)
 
-- `crawl_source` 渠道表:`id / name / type(rss|web|api|social-video) / platform(douyin|xhs|bilibili,type=social-video 时) / url / enabled / crawl_interval_min / daily_max_requests(每日请求上限,超限当日跳过,null=不限;2026-10-03 立项新增) / last_run_at / next_run_at / status(healthy|degraded|error) / 备注`;视频博主渠道与普通渠道同表管理,`type` 区分
+- `crawl_source` 渠道表:`id / name / type(rss|web|api|social-video) / platform(douyin|xhs|bilibili,type=social-video 时) / url / enabled / crawl_interval_min / daily_max_requests(每日请求上限,超限当日跳过,null=不限;2026-10-03 立项新增) / last_run_at / next_run_at / status(healthy|degraded|error) / config(Jsonb 适配配置:type=api 存 {apiKey} 等;后台维护,展示脱敏、日志禁打——凭证不走环境变量,2026-10-03 用户定) / 备注`;视频博主渠道与普通渠道同表管理,`type` 区分
 - `social_account` 视频博主表(2026-09-30 新增锚点,二期评审):`id / platform / sec_uid 或平台用户 ID / 昵称 / avatar_url / 分类标签 / enabled(启停) / crawl_interval_min / asr_success_rate_7d(观测字段) / remark / created_at`;登记入口在 admin/spider「短视频解读服务」卡(视频链接或 sec_uid + 昵称 + 分类,重复登记 409);删除走**两步武装删除**(先停用观察再物理删)
 - `telegram` 电报表:`id / source_id / title / summary(1-3 句) / url(原文外链) / published_at / content_hash(去重,sha1(title+url 规范化)) / status(visible|hidden|archived) / filter_hit(命中的过滤规则,nullable) / created_at`,混合流扩:**`media_type(text|video)`** + 视频字段组 `video_platform / video_blogger(冗余博主名,博主删除不影响历史条目) / video_cover_url(封面缩略图) / video_duration / video_engagement(jsonb:play/like/comment)`;**不设 transcript 字段**——转写文本不落库(§3.2 红线)
 - `blocklist` 屏蔽词表:`id / word / scope(title|summary|all) / hit_count / enabled / created_at`
@@ -88,7 +88,7 @@
 
 **已定(2026-10-03,M7 文字管道立项;实测 = 从生产服务器直连验证)**:
 
-- **首批渠道**:量子位(RSS `https://www.qbitai.com/feed`,实测 175 可达 0.2s/条目有效)+ 机器之心(官方 API,用户已申请;端点与凭证仅 env,不入仓)。频控按渠道独立:`crawl_interval_min` + `daily_max_requests`(机器之心 60min/日 25 次起步)。备选池(HN hnrss.org 可分数过滤/arXiv cs.AI/Solidot 均 175 可达,MIT-TR/Verge AI 备选)。**一期弃:Reddit(175 直连超时被墙)、X(API 付费制且不可达)**。
+- **首批渠道**:量子位(RSS `https://www.qbitai.com/feed`,实测 175 可达 0.2s/条目有效)+ 机器之心(官方 API,用户已申请;端点与凭证存 `crawl_source.config`,**后台配置管理,不走环境变量**——2026-10-03 用户定)。频控按渠道独立:`crawl_interval_min` + `daily_max_requests`(机器之心 60min/日 25 次起步)。备选池(HN hnrss.org 可分数过滤/arXiv cs.AI/Solidot 均 175 可达,MIT-TR/Verge AI 备选)。**一期弃:Reddit(175 直连超时被墙)、X(API 付费制且不可达)**。
 - 前台实时感:终选 **30-60s 轮询**(SSE 不做)。
 - 首页电报 LIVE 带随 M7 一并接入。
 - LLM 摘要:一期先规则截断,LLM 摘要作后置增强开关(选型评审后开)。
