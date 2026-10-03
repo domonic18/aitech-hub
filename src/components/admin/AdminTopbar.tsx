@@ -22,6 +22,7 @@ interface Crumb {
 const SEG_LABEL: Record<string, string> = {
   posts: "文章管理",
   media: "媒体库",
+  users: "用户管理",
   pats: "PAT 令牌",
   new: "新建文章",
   preview: "预览",

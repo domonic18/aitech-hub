@@ -39,7 +39,7 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-comment", label: "会话管理", tag: "二期" },
     ],
   },
-  { label: "用户", items: [{ icon: "i-user", label: "用户管理", tag: "M5" }] },
+  { label: "用户", items: [{ icon: "i-user", label: "用户管理", href: "/admin/users" }] },
   { label: "系统", items: [{ icon: "i-key", label: "PAT 令牌", href: "/admin/pats" }] },
 ];
 
