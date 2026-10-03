@@ -25,7 +25,6 @@ import { PostAdminError } from "./posts-admin";
 import { createPost, publishPost, updatePost } from "./posts-admin";
 
 export const DEFAULT_CATEGORY_SLUG = "blog";
-export const PUBLISH_API_IMAGES_MAX = 20;
 
 export interface PublishApiImage {
   name: string;
