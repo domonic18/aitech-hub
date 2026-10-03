@@ -4,21 +4,23 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 import { countPublishedPosts, listLatestPosts, listPinnedPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
+import { BAND_ITEM_COUNT, listPublicTelegram } from "@/lib/telegram/public-feed";
 
 import HeroConsole from "@/components/site/HeroConsole";
 import PostCard from "@/components/site/PostCard";
 import SiteSprite from "@/components/site/SiteSprite";
+import TelegramBand from "@/components/site/TelegramBand";
 
 /**
  * 首页 Hub(M5-e 布局壳,原型 site-home;arch/07-frontend §1:ISR 600s):
- * 终端 hero + 左主轴博主文章流 + 右栏(精选/GEO)。电报流与 GitHub 项目区按原型
- * 「三区可独立降级」不渲染(二期数据接入;首页为 SEO 第一页面,不落空壳 DOM),
- * 左栏区块头挂显式降级注记(DESIGN-SPEC §6)。
+ * 终端 hero + 左主轴电报流 LIVE 带(M7 批⑤,客户端 60s 轮询)+ 博主文章流
+ * + 右栏(精选/GEO)。GitHub 项目区仍按「三区可独立降级」不渲染(显式注记)。
  */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
-  const [pinned, latest, postCount] = await Promise.all([
+  const [bandItems, pinned, latest, postCount] = await Promise.all([
+    listPublicTelegram({ limit: BAND_ITEM_COUNT }),
     listPinnedPosts(5),
     listLatestPosts(DEFAULT_PAGE_SIZE),
     countPublishedPosts(),
@@ -30,24 +32,25 @@ export default async function HomePage(): Promise<React.ReactElement> {
       <HeroConsole postCount={postCount} />
 
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        {/* 左主轴:博主文章流(电报流二期接入,显式降级注记) */}
-        <section>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <h2 className="font-mono text-sm font-semibold text-text-2">$ ls -la /articles</h2>
-            <span className="rounded-sm border border-line px-2 py-0.5 font-mono text-[11px] text-text-3">
-              电报流 · 二期接入
-            </span>
-            <Link
-              href="/articles/"
-              className="ml-auto whitespace-nowrap text-[13px] text-text-2 hover:text-accent-hover"
-            >
-              全部文章 →
-            </Link>
-          </div>
-          <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm [&>article]:px-5">
-            {latest.map((post) => (
-              <PostCard key={post.id} post={post} />
-            ))}
+        {/* 左主轴:电报流 LIVE 带 + 博主文章流(GitHub 项目区三期/后续降级注记) */}
+        <section className="flex flex-col gap-6">
+          <TelegramBand initialItems={bandItems} />
+
+          <div>
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <h2 className="font-mono text-sm font-semibold text-text-2">$ ls -la /articles</h2>
+              <Link
+                href="/articles/"
+                className="ml-auto whitespace-nowrap text-[13px] text-text-2 hover:text-accent-hover"
+              >
+                全部文章 →
+              </Link>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm [&>article]:px-5">
+              {latest.map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+            </div>
           </div>
         </section>
 
