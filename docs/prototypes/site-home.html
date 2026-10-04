@@ -336,7 +336,14 @@ a.rail-foot:hover { color: var(--accent-hover); }
 
 @media (max-width: 960px) {
   .hub-grid { grid-template-columns: 1fr; }
-  .tg-row { grid-template-columns: 64px 92px 1fr; }
+  /* 2026-10-05 反馈改版:窄屏 64+92 定宽列挤压标题(手机宽只剩 ~170px)——
+     时间+渠道缩一行小字、标题独占整行(限文字行,视频行另有降级) */
+  .tg-row:not(.video) {
+    grid-template-columns: auto 1fr; grid-template-areas: "tm sr" "ti ti"; row-gap: 3px;
+  }
+  .tg-row:not(.video) .tm { grid-area: tm; }
+  .tg-row:not(.video) .sr { grid-area: sr; justify-self: start; }
+  .tg-row:not(.video) .ti { grid-area: ti; }
   .tg-row .ag { display: none; }
   .tg-row.video { grid-template-columns: 54px 1fr; }
   .tg-row.video .tm, .tg-row.video .pf { display: none; }
