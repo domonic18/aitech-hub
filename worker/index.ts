@@ -4,6 +4,7 @@ import { env } from "../src/lib/env";
 import {
   MEDIA_AUDIT_CRON,
   QUEUE_CRAWLER,
+  QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
@@ -14,6 +15,7 @@ import {
 import { flushStatsBuffer } from "../src/lib/stats/service";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
+import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 
@@ -57,6 +59,8 @@ const PROCESSORS: Record<string, Processor> = {
     console.log(JSON.stringify({ event: "crawler.crawl", ...summary }));
     return summary;
   },
+  // 视频解读(M9):下载→抽轨→ASR→LLM;分支语义在 interpretVideoJob 内收敛
+  [QUEUE_INTERPRETER]: (job) => interpretVideoJob(job.data as InterpretJobData),
 };
 
 /** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
@@ -117,8 +121,14 @@ async function main(): Promise<void> {
   const workers: Array<Worker> = [];
 
   for (const name of Object.keys(PROCESSORS)) {
-    // transfer 抓外链耗时长,放宽锁续期;其余队列默认值即可
-    const opts = name === QUEUE_MEDIA_TRANSFER ? { lockDuration: 300_000 } : {};
+    // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用耗时长,放宽锁续期;
+    // interpreter 并发钉 1(ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
+    const opts =
+      name === QUEUE_MEDIA_TRANSFER
+        ? { lockDuration: 300_000 }
+        : name === QUEUE_INTERPRETER
+          ? { concurrency: 1, lockDuration: 600_000 }
+          : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);

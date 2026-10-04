@@ -15,6 +15,7 @@ const prismaMock = vi.hoisted(() => ({
   telegram: {
     findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
     create: vi.fn<(args?: unknown) => Promise<unknown>>(async () => ({ id: 1 })),
+    update: vi.fn<(args?: unknown) => Promise<unknown>>(async () => ({})),
   },
   blocklist: { findMany: vi.fn<(args?: unknown) => Promise<unknown>>(async () => []) },
 }));
@@ -140,6 +141,7 @@ beforeEach(() => {
   interpretMock.enqueueInterpret.mockResolvedValue(undefined);
   prismaMock.telegram.findUnique.mockResolvedValue(null);
   prismaMock.telegram.create.mockResolvedValue({ id: 1 });
+  prismaMock.telegram.update.mockResolvedValue({});
   prismaMock.socialAccount.update.mockResolvedValue({});
   prismaMock.socialAccount.findMany.mockResolvedValue([]);
   prismaMock.blocklist.findMany.mockResolvedValue([]);
@@ -276,6 +278,11 @@ describe("解读入队钩子(M9)", () => {
       platform: "douyin",
       secUid: "sec-abc",
     });
+    // 先标 pending 再入队(worker 可能先于入队返回开跑,反序会把 processing 打回)
+    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { aiStatus: "pending" },
+    });
   });
 
   it("版权红线:落库 data 永不含 playUrl(适配器透传仅到 job data)", async () => {
@@ -319,6 +326,10 @@ describe("解读入队钩子(M9)", () => {
     ]);
     const outcome = await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) }));
     expect(outcome.inserted).toBe(1);
+    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { aiStatus: null }, // 残留 pending 无 job 兜底,回滚
+    });
   });
 });
 

@@ -31,6 +31,9 @@ const serverEnvSchema = z.object({
 
   /** 抖音数据网关(M8):dev 经 compose 映射 127.0.0.1:8010;prod 容器网内服务名 */
   DOUYIN_GATEWAY_URL: z.string().default("http://127.0.0.1:8010"),
+
+  /** 视频解读日配额(M9):单自然日 AI 判读条数上限,超限延迟 30min 重投顺延(不标败) */
+  INTERPRETER_DAILY_MAX: z.coerce.number().int().min(1).default(100),
 });
 
 const parsed = serverEnvSchema.safeParse(process.env);

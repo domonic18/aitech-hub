@@ -9,11 +9,14 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
+import { getQueue, QUEUE_INTERPRETER } from "../queue";
 import {
+  TELEGRAM_AI_PENDING,
   TELEGRAM_STATUS_ARCHIVED,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
 } from "./constants";
+import { enqueueInterpret } from "./interpret-video";
 import { toEngagement, type FeedMediaFilter } from "./feed-view";
 
 export const TELEGRAM_PAGE_SIZE = 15;
@@ -195,4 +198,66 @@ export async function updateTelegramItem(
     fields: Object.keys(patch),
   });
   return updated;
+}
+
+/** 解读触发错误码(路由映射:not_found→404 / not_video→400 / no_link→409) */
+export type TelegramInterpretErrorCode = "not_found" | "not_video" | "no_link";
+
+export class TelegramInterpretError extends Error {
+  constructor(
+    public code: TelegramInterpretErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * 手动触发单条解读(M9;存量补读与失败重试同入口):重置解读态 → 入队。
+ * 过境直链不落库,这里恒传 null,processor 现场经网关重拉 listing 取链。
+ */
+export async function triggerTelegramInterpret(id: bigint): Promise<{ enqueued: true }> {
+  const row = await prisma.telegram.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      mediaType: true,
+      url: true,
+      videoPlatform: true,
+      videoBlogger: true,
+    },
+  });
+  if (!row) throw new TelegramInterpretError("not_found", "条目不存在");
+  if (row.mediaType !== "video") throw new TelegramInterpretError("not_video", "仅视频条目可解读");
+  // videoId 从 canonical 外链尾段解析(ingest 落库形 https://www.douyin.com/video/{id})
+  const videoId = row.url?.match(/\/video\/([\w-]+)/)?.[1] ?? null;
+  if (!videoId) throw new TelegramInterpretError("no_link", "外链缺视频 id,无法回拉直链");
+  // secUid 经博主台账反查(平台+昵称);博主已删 → null,processor 只能吃直链重拉失败降级
+  const account = await prisma.socialAccount.findFirst({
+    where: { platform: row.videoPlatform ?? "", nickname: row.videoBlogger ?? "" },
+    select: { secUid: true },
+  });
+  const queue = getQueue(QUEUE_INTERPRETER);
+  // 先移除遗留 job(removeOnComplete 保留的 completed job 会顶掉同名 jobId 入队,静默去重)
+  await queue.remove(`interpret:${row.id}`).catch(() => null);
+  await prisma.telegram.update({
+    where: { id: row.id },
+    data: { aiStatus: TELEGRAM_AI_PENDING, lastAiError: null },
+  });
+  try {
+    await enqueueInterpret({
+      telegramId: row.id.toString(),
+      videoId,
+      playUrl: null,
+      platform: row.videoPlatform ?? "",
+      secUid: account?.secUid ?? null,
+    });
+  } catch (err) {
+    await prisma.telegram
+      .update({ where: { id: row.id }, data: { aiStatus: null } })
+      .catch(() => undefined);
+    throw err;
+  }
+  logger.info({ event: "telegram.interpret_triggered", telegramId: row.id.toString() });
+  return { enqueued: true };
 }

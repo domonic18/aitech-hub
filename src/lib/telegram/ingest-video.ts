@@ -18,6 +18,7 @@ import {
   SOCIAL_BACKFILL_MAX_PAGES,
   SOCIAL_MANUAL_BACKFILL_DAYS,
   SOCIAL_MAX_CONSECUTIVE_FAILS,
+  TELEGRAM_AI_PENDING,
   TELEGRAM_MEDIA_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
@@ -114,9 +115,14 @@ async function ingestVideoItem(
     });
     if (hit) return "filtered";
     // 可见新条 + 解读就绪 + 网关透出直链 → 入队解读(playUrl 仅经 job data 过境,禁落库;
-    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)
+    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)。先标 pending 再入队(顺序不可反:
+    // worker 可能在入队返回前就开跑,反序会把 processing 打回 pending)
     if (interpretReady && item.playUrl) {
       try {
+        await prisma.telegram.update({
+          where: { id: created.id },
+          data: { aiStatus: TELEGRAM_AI_PENDING },
+        });
         await enqueueInterpret({
           telegramId: created.id.toString(),
           videoId: item.videoId,
@@ -125,6 +131,9 @@ async function ingestVideoItem(
           secUid,
         });
       } catch (err) {
+        await prisma.telegram
+          .update({ where: { id: created.id }, data: { aiStatus: null } })
+          .catch(() => undefined);
         logger.warn({
           event: "crawler.video.interpret_enqueue_failed",
           telegramId: created.id.toString(),

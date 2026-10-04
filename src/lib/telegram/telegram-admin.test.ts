@@ -1,6 +1,6 @@
 /**
- * 电报流治理列表单测(批⑧博主作品筛选):$transaction 逐个执行打桩,
- * 验 listWhere 组合——blogger 等值 video_blogger、隐含 video 覆盖 media、与 q 并存。
+ * 电报流治理单测:批⑧博主作品筛选(listWhere 组合)+ M9 手动解读触发
+ * (not_found/not_video/no_link 前置、secUid 反查、遗留 job 清理、pending 重置与回滚)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,13 +9,27 @@ const prismaMock = vi.hoisted(() => ({
   telegram: {
     findMany: vi.fn<(args?: unknown) => Promise<unknown>>(async () => []),
     count: vi.fn<(args?: unknown) => Promise<unknown>>(async () => 0),
+    findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
+    update: vi.fn<(args?: unknown) => Promise<unknown>>(async () => ({})),
   },
   crawlSource: { findMany: vi.fn<(args?: unknown) => Promise<unknown>>(async () => []) },
+  socialAccount: { findFirst: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null) },
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { listTelegramAdmin } from "./telegram-admin";
+const queueMock = vi.hoisted(() => ({
+  add: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
+  remove: vi.fn<(args: unknown) => Promise<unknown>>(async () => undefined),
+}));
+vi.mock("../queue", () => ({ QUEUE_INTERPRETER: "interpreter", getQueue: () => queueMock }));
+
+const enqueueInterpretMock = vi.hoisted(() =>
+  vi.fn<(data: unknown) => Promise<void>>(async () => undefined),
+);
+vi.mock("./interpret-video", () => ({ enqueueInterpret: enqueueInterpretMock }));
+
+import { listTelegramAdmin, triggerTelegramInterpret } from "./telegram-admin";
 
 /** 最近一次 telegram.findMany 的 where 参数 */
 function lastWhere(): Record<string, unknown> {
@@ -29,7 +43,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.telegram.findMany.mockResolvedValue([]);
   prismaMock.telegram.count.mockResolvedValue(0);
+  prismaMock.telegram.findUnique.mockResolvedValue(null);
+  prismaMock.telegram.update.mockResolvedValue({});
   prismaMock.crawlSource.findMany.mockResolvedValue([]);
+  prismaMock.socialAccount.findFirst.mockResolvedValue(null);
+  enqueueInterpretMock.mockResolvedValue(undefined);
 });
 
 describe("listTelegramAdmin 博主作品筛选(批⑧)", () => {
@@ -70,6 +88,83 @@ describe("listTelegramAdmin 博主作品筛选(批⑧)", () => {
       status: "visible",
       mediaType: "video",
       videoBlogger: "AI 前沿",
+    });
+  });
+});
+
+describe("triggerTelegramInterpret(M9 手动触发)", () => {
+  it("条目不存在 / 非视频 / 外链缺视频 id → 前置拒绝,不入队", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue(null);
+    await expect(triggerTelegramInterpret(BigInt(1))).rejects.toMatchObject({ code: "not_found" });
+
+    prismaMock.telegram.findUnique.mockResolvedValue({
+      id: BigInt(1),
+      mediaType: "text",
+      url: "https://t.me/x",
+    });
+    await expect(triggerTelegramInterpret(BigInt(1))).rejects.toMatchObject({ code: "not_video" });
+
+    prismaMock.telegram.findUnique.mockResolvedValue({
+      id: BigInt(1),
+      mediaType: "video",
+      url: "https://example.com/watch",
+      videoPlatform: "douyin",
+      videoBlogger: "AI 前沿",
+    });
+    await expect(triggerTelegramInterpret(BigInt(1))).rejects.toMatchObject({ code: "no_link" });
+    expect(enqueueInterpretMock).not.toHaveBeenCalled();
+  });
+
+  it("视频行:videoId 取自外链尾段,secUid 经博主台账反查,pending 重置 + 遗留 job 清理", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue({
+      id: BigInt(5),
+      mediaType: "video",
+      url: "https://www.douyin.com/video/7301234567890",
+      videoPlatform: "douyin",
+      videoBlogger: "AI 前沿",
+    });
+    prismaMock.socialAccount.findFirst.mockResolvedValue({ secUid: "sec-9" });
+
+    await expect(triggerTelegramInterpret(BigInt(5))).resolves.toEqual({ enqueued: true });
+    expect(queueMock.remove).toHaveBeenCalledWith("interpret:5"); // 防遗留 completed job 静默去重
+    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+      where: { id: BigInt(5) },
+      data: { aiStatus: "pending", lastAiError: null },
+    });
+    expect(enqueueInterpretMock).toHaveBeenCalledWith({
+      telegramId: "5",
+      videoId: "7301234567890",
+      playUrl: null, // 过境直链不落库,processor 现场重拉
+      platform: "douyin",
+      secUid: "sec-9",
+    });
+  });
+
+  it("博主已删 → secUid 传 null(processor 降级处理),仍可入队", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue({
+      id: BigInt(6),
+      mediaType: "video",
+      url: "https://www.douyin.com/video/7301234567890",
+      videoPlatform: "douyin",
+      videoBlogger: "已注销博主",
+    });
+    await triggerTelegramInterpret(BigInt(6));
+    expect(enqueueInterpretMock).toHaveBeenCalledWith(expect.objectContaining({ secUid: null }));
+  });
+
+  it("入队失败 → pending 回滚为 null,错误上抛", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue({
+      id: BigInt(7),
+      mediaType: "video",
+      url: "https://www.douyin.com/video/7301234567890",
+      videoPlatform: "douyin",
+      videoBlogger: "AI 前沿",
+    });
+    enqueueInterpretMock.mockRejectedValue(new Error("redis down"));
+    await expect(triggerTelegramInterpret(BigInt(7))).rejects.toThrow("redis down");
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(7) },
+      data: { aiStatus: null },
     });
   });
 });

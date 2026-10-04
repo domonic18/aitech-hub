@@ -65,6 +65,15 @@ export const TELEGRAM_STATUSES = [
 ] as const;
 export type TelegramStatus = (typeof TELEGRAM_STATUSES)[number];
 
+/** 解读态(M9,telegram.ai_status;null=未解读):入队 pending → processing → 终态 */
+export const TELEGRAM_AI_PENDING = "pending";
+export const TELEGRAM_AI_PROCESSING = "processing";
+export const TELEGRAM_AI_DONE = "done";
+/** ASR 终败降级:无转写,LLM 仅基于文案元数据概括(仍落 ai_* 列) */
+export const TELEGRAM_AI_MISSING_TRANSCRIPT = "missing_transcript";
+export const TELEGRAM_AI_FAILED = "failed";
+export const TELEGRAM_AI_TERMINAL = [TELEGRAM_AI_DONE, TELEGRAM_AI_MISSING_TRANSCRIPT] as const;
+
 export const BLOCKLIST_SCOPE_TITLE = "title";
 export const BLOCKLIST_SCOPE_SUMMARY = "summary";
 export const BLOCKLIST_SCOPE_ALL = "all";
