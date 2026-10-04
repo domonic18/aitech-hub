@@ -5,7 +5,8 @@
  */
 import { prisma } from "../db";
 import { formatCnDate } from "../datetime";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { env } from "../env";
+import { getQueue, QUEUE_CRAWLER, QUEUE_INTERPRETER } from "../queue";
 
 const TICK_SCHEDULER_ID = "crawler-tick";
 
@@ -43,6 +44,43 @@ export async function getCrawlerQueueSnapshot(): Promise<QueueSnapshot> {
       at: j.finishedOn ? new Date(j.finishedOn) : null,
     })),
   };
+}
+
+/** interpreter 队列实况(M9):四计数 + 今日已判读/日配额(worker 并发 1 说明在页侧) */
+export async function getInterpreterQueueSnapshot(): Promise<{
+  counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
+  todayDone: number;
+  dailyMax: number;
+}> {
+  const queue = getQueue(QUEUE_INTERPRETER);
+  const counts = (await queue.getJobCounts(
+    "waiting",
+    "active",
+    "completed",
+    "failed",
+    "delayed",
+  )) as Record<string, number>;
+  const todayDone = await prisma.telegram.count({
+    where: { aiStatus: { in: ["done", "missing_transcript"] }, aiRanAt: { gte: todayStart() } },
+  });
+  return {
+    counts: {
+      waiting: counts.waiting ?? 0,
+      active: counts.active ?? 0,
+      completed: counts.completed ?? 0,
+      failed: counts.failed ?? 0,
+      delayed: counts.delayed ?? 0,
+    },
+    todayDone,
+    dailyMax: env.INTERPRETER_DAILY_MAX,
+  };
+}
+
+/** 服务器本地自然日零点(与 interpret-video countTodayInterpreted 同口径) */
+function todayStart(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 /** 采集日历:近 N 天入库量(含 hidden,按 created_at 北京时区),缺日补零 */

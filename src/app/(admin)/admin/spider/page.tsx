@@ -9,6 +9,7 @@ import { requireAdminPage } from "@/lib/auth/guard";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import {
   getCrawlerQueueSnapshot,
+  getInterpreterQueueSnapshot,
   getIngestCalendar,
   getIngestHourly,
   getTelegramStock,
@@ -41,13 +42,14 @@ function hhmm(at: Date | null): string {
 
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [snapshot, calendar, hourly, stock, channels, video] = await Promise.all([
+  const [snapshot, calendar, hourly, stock, channels, video, interpreter] = await Promise.all([
     getCrawlerQueueSnapshot(),
     getIngestCalendar(14),
     getIngestHourly(),
     getTelegramStock(),
     listChannelsAdmin(),
     getVideoObservation(),
+    getInterpreterQueueSnapshot(),
   ]);
   const today = calendar[calendar.length - 1]?.count ?? 0;
   const yesterday = calendar[calendar.length - 2]?.count ?? 0;
@@ -57,6 +59,11 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   const enabledChannels = channels.filter((c) => c.enabled).length;
   const backlog = snapshot.counts.waiting + snapshot.counts.delayed;
   const busyTotal = Math.max(1, backlog + snapshot.counts.active + snapshot.counts.failed);
+  const interpreterBacklog = interpreter.counts.waiting + interpreter.counts.delayed;
+  const interpreterBusyTotal = Math.max(
+    1,
+    interpreterBacklog + interpreter.counts.active + interpreter.counts.failed,
+  );
 
   const kpi = "rounded-md border border-line bg-panel px-4 py-4";
   const kpiLabel = "flex items-center gap-1.5 text-[12.5px] text-text-2";
@@ -165,7 +172,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
         </Link>
       </div>
 
-      {/* 双队列实况 + 24h 条带(原型 mid-grid 1fr 360px;interpreter 为诚实占位) */}
+      {/* 双队列实况 + 24h 条带(原型 mid-grid 1fr 360px;M9 起 interpreter 真实计数) */}
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_360px]">
         <div className="rounded-md border border-line bg-panel">
           <div className="flex items-center justify-between border-b border-line px-4 py-3.5 text-sm font-semibold">
@@ -222,24 +229,54 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
               <span className="text-text-3/80">视频博主 crawl-video 与文字渠道同队列调度</span>
             </div>
 
-            {/* interpreter:未启用诚实占位(队列随解读批 M9 立项,不造假计数) */}
+            {/* interpreter(M9 实况):下载/抽轨/ASR/LLM,并发 1(ffmpeg CPU 峰值) */}
             <div className="mt-4 border-t border-line pt-4">
               <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-text-1">
-                <svg className="ic text-text-3" aria-hidden="true">
+                <svg
+                  className={`ic ${interpreter.counts.active > 0 ? "text-accent" : "text-text-3"}`}
+                  aria-hidden="true"
+                >
                   <use href="#i-robot" />
                 </svg>
                 <span>interpreter</span>
                 <span className="text-[11px] font-normal text-text-3">
-                  视频解读 · 抽轨 / ASR / LLM
+                  视频解读 · 下载 / 抽轨 / ASR / LLM · 并发 1 · 今日 {interpreter.todayDone}/
+                  {interpreter.dailyMax}
                 </span>
-                <span className="ml-auto flex items-center gap-2 font-mono text-[11px] font-normal text-text-3">
-                  active <b>0</b> · waiting <b>0</b> · completed <b>0</b> · failed <b>0</b>
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-px font-sans text-[10px] text-text-3">
-                    未启用 · 随解读批(M9)交付
-                  </span>
+                <span className="ml-auto font-mono text-[11px] font-normal text-text-3">
+                  active <b>{interpreter.counts.active}</b> · waiting{" "}
+                  <b>{interpreter.counts.waiting + interpreter.counts.delayed}</b> · completed{" "}
+                  <b>{interpreter.counts.completed}</b> · failed <b>{interpreter.counts.failed}</b>
                 </span>
               </div>
-              <div className="mt-2 h-2.5 overflow-hidden rounded-[5px] bg-panel-2 opacity-60" />
+              <div className="mt-2 flex h-2.5 overflow-hidden rounded-[5px] bg-panel-2">
+                <span
+                  className="block h-full bg-accent"
+                  style={{
+                    width: `${(interpreter.counts.active / interpreterBusyTotal) * 100}%`,
+                  }}
+                />
+                <span
+                  className="block h-full bg-accent/45"
+                  style={{
+                    width: `${((interpreter.counts.waiting + interpreter.counts.delayed) / interpreterBusyTotal) * 100}%`,
+                  }}
+                />
+                <span className="block h-full flex-1" />
+                <span
+                  className="block h-full bg-red"
+                  style={{
+                    width: `${(interpreter.counts.failed / interpreterBusyTotal) * 100}%`,
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-mono text-[11px] text-text-3">
+                <span>
+                  <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
+                  completed(近 50 留存)
+                </span>
+                <span>日配额超限延迟 30min 重投(delayed),失败条目经治理台「解读」按钮重试</span>
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-4 py-3 font-mono text-xs text-text-3">

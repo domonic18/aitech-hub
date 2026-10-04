@@ -51,6 +51,7 @@ function VideoCard({ t }: { t: PublicTelegramItem }) {
   const duration = formatDuration(v.durationSeconds);
   const like = compactCount(v.engagement.like);
   const comment = compactCount(v.engagement.comment);
+  const ai = v.ai;
   return (
     <div className="mt-2.5 flex gap-3">
       <a
@@ -75,7 +76,34 @@ function VideoCard({ t }: { t: PublicTelegramItem }) {
           {like && <span className="text-text-3">赞 {like}</span>}
           {comment && <span className="text-text-3">评 {comment}</span>}
         </div>
-        {t.summary && <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">{t.summary}</p>}
+        {ai ? (
+          // AI 解读替代原始 summary 段(原型 site-telegram v.ai 口径;显隐跟数据走)
+          <>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">
+              <span className="mr-1.5 inline-block rounded-sm bg-accent-dim px-1.5 py-px align-middle font-mono text-[10px] text-accent">
+                AI 解读
+              </span>
+              {ai.summary}
+            </p>
+            {ai.points.length > 0 && (
+              <details className="mt-1">
+                <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
+                  关键要点 ×{ai.points.length}
+                </summary>
+                <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
+                  {ai.points.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <p className="mt-1 font-mono text-[10.5px] text-text-3">
+              AI 生成 · 摘要与要点,内容版权归原作者
+            </p>
+          </>
+        ) : (
+          t.summary && <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">{t.summary}</p>
+        )}
         <a
           href={t.url}
           target="_blank"

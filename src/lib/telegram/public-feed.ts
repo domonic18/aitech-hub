@@ -10,6 +10,7 @@ import { prerenderSafe } from "../prerender-safe";
 import {
   BAND_ITEM_COUNT,
   toEngagement,
+  toVideoAi,
   type FeedMediaFilter,
   type PublicTelegramItem,
 } from "./feed-view";
@@ -90,6 +91,9 @@ async function queryPublicTelegram(
       videoCoverUrl: true,
       videoDuration: true,
       videoEngagement: true,
+      aiTopic: true,
+      aiSummary: true,
+      aiPoints: true,
       source: { select: { id: true, name: true } },
     },
     orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
@@ -112,6 +116,7 @@ async function queryPublicTelegram(
             coverUrl: t.videoCoverUrl,
             durationSeconds: t.videoDuration,
             engagement: toEngagement(t.videoEngagement),
+            ai: toVideoAi(t.aiTopic, t.aiSummary, t.aiPoints),
           },
         }
       : {}),

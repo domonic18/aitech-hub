@@ -4,6 +4,13 @@
  * (/telegram 时间轴、首页 LIVE 带)与轮询 API 的契约。
  */
 
+/** AI 解读结论(M9;仅持久化分析结论——topic/summary/points,无转写文本) */
+export interface PublicVideoAi {
+  topic: string;
+  summary: string;
+  points: string[];
+}
+
 /** 视频条目附加元数据(M8 混合流;mediaType=video 时存在) */
 export interface PublicVideoMeta {
   platform: string;
@@ -11,6 +18,8 @@ export interface PublicVideoMeta {
   coverUrl: string | null;
   durationSeconds: number | null;
   engagement: { play: number | null; like: number | null; comment: number | null };
+  /** M9:LLM 解读结论;null=未解读/解读未产出(前台显隐跟数据走) */
+  ai: PublicVideoAi | null;
 }
 
 export interface PublicTelegramItem {
@@ -69,6 +78,18 @@ export function toEngagement(raw: unknown): {
   const num = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
   return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
+}
+
+/** AI 解读投影(镜像 toEngagement;ai_summary 非空才产出,points 白名单截 3 条) */
+export function toVideoAi(topic: unknown, summary: unknown, points: unknown): PublicVideoAi | null {
+  if (typeof summary !== "string" || summary.trim() === "") return null;
+  return {
+    topic: typeof topic === "string" ? topic.trim() : "",
+    summary,
+    points: Array.isArray(points)
+      ? points.filter((p): p is string => typeof p === "string" && p.trim() !== "").slice(0, 3)
+      : [],
+  };
 }
 
 /** 相对时间(分/小时/天;分钟内「刚刚」) */

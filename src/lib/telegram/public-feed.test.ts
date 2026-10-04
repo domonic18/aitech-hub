@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../db", () => ({ prisma: {}, isP2002: () => false }));
 
 import { mergeBandItems } from "./public-feed";
-import type { PublicTelegramItem } from "./feed-view";
+import { toVideoAi, type PublicTelegramItem } from "./feed-view";
 
 function item(id: string, publishedAt: string): PublicTelegramItem {
   return {
@@ -32,6 +32,7 @@ function videoItem(id: string, publishedAt: string): PublicTelegramItem {
       coverUrl: null,
       durationSeconds: 60,
       engagement: { play: null, like: null, comment: null },
+      ai: null,
     },
   };
 }
@@ -71,5 +72,23 @@ describe("mergeBandItems 视频保底槽位", () => {
   it("混排为空 → 仅视频", () => {
     const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
     expect(mergeBandItems([], newest, 8)).toEqual([newest]);
+  });
+});
+
+describe("toVideoAi 解读投影(M9)", () => {
+  it("summary 非空才产出;points 白名单过滤并截 3 条;topic trim", () => {
+    expect(toVideoAi(" 主题 ", "概括", ["要点一", 42, null, "要点二", "要点三", "要点四"])).toEqual(
+      { topic: "主题", summary: "概括", points: ["要点一", "要点二", "要点三"] },
+    );
+  });
+
+  it("summary 空/非串 → null(未解读,前台跟数据显隐);库内形状异常防御", () => {
+    expect(toVideoAi("主题", null, [])).toBeNull();
+    expect(toVideoAi("主题", "  ", ["x"])).toBeNull();
+    expect(toVideoAi({ evil: 1 }, "概括", "not-array")).toEqual({
+      topic: "",
+      summary: "概括",
+      points: [],
+    });
   });
 });

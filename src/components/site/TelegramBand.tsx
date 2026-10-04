@@ -6,7 +6,7 @@
  * 窄屏降级按原型 64/92/1fr 隐 ag);SSR 初值 + 60s 轮询(visible only,band=1 与
  * SSR 同源 listBandFeed——最新视频不在前 N 也保底在带);行点击直达外链。
  * 视频行:来源位显示「平台 · 博主」,标题前小封面(play 钮 + 底部时长角标,
- * no-referrer 防盗链,失败降级 ▶ 占位块)。
+ * no-referrer 防盗链,失败降级 ▶ 占位块);M9 已解读行显 AI 徽章 + 概括主题。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -137,12 +137,24 @@ export default function TelegramBand({
             </span>
             <span className="flex min-w-0 items-center gap-2">
               {video && <BandCover src={video.coverUrl} duration={duration} />}
-              <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
-                {t.title}
-                <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
-                  <use href="#i-export" />
-                </svg>
-              </span>
+              {video?.ai ? (
+                // AI 徽章 + LLM 概括主题(无主题回退摘要;单行 truncate,band 不放 details)
+                <>
+                  <span className="flex-none rounded-sm bg-accent-dim px-1 py-px font-mono text-[9px] text-accent">
+                    AI
+                  </span>
+                  <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
+                    {video.ai.topic || video.ai.summary}
+                  </span>
+                </>
+              ) : (
+                <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
+                  {t.title}
+                </span>
+              )}
+              <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
+                <use href="#i-export" />
+              </svg>
             </span>
             <span
               className={`hidden flex-none justify-self-end font-mono text-[11px] sm:block ${

@@ -3,6 +3,7 @@
 /**
  * 电报条目行操作(M7 批④):状态迁移(按当前态给 恢复/隐藏/归档)+ 标题摘要
  * 人工修正弹窗。deleted 终态不经 UI。
+ * M9:视频行加「解读」按钮(存量补读与失败重试同入口;POST interpret 入队即返回)。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -30,17 +31,35 @@ export default function TelegramRowOps({
   title,
   summary,
   status,
+  mediaType,
 }: {
   id: string;
   title: string | null;
   summary: string;
   status: string;
+  mediaType?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(title ?? "");
   const [editSummary, setEditSummary] = useState(summary);
+
+  /** 手动触发解读(M9):入队即返回,结果看解读态徽章;失败 alert 不阻断行内其他操作 */
+  const interpret = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/telegram/${id}/interpret`, { method: "POST" });
+      const resp = (await res.json()) as { code: number; message: string };
+      if (resp.code !== 0) {
+        alert(`解读触发失败:${resp.message}`);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     setBusy(true);
@@ -82,6 +101,17 @@ export default function TelegramRowOps({
           {a.label}
         </button>
       ))}
+      {mediaType === "video" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void interpret()}
+          title="下载 → 抽轨 → ASR 转写 → LLM 概括(入队即返回)"
+          className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
+        >
+          解读
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setOpen(true)}

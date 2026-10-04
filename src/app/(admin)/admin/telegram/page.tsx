@@ -5,13 +5,13 @@
  * M8 批⑦:媒体列与视频行(封面/平台·博主/互动/时长/原视频链;
  * AI 解读态随解读批,以灰字注记如实呈现,不伪装)。
  * M8 批⑧:博主作品筛选(?blogger= 锚 video_blogger 冗余,活动 chip 呈现;
- * 博主台账「作品」按钮落地入口)。
+ * 博主台账「作品」按钮落地入口)。M9:解读态徽章(六态如实呈现)+ 行内「解读」按钮。
  */
 import Link from "next/link";
 
 import BlocklistManager from "@/components/admin/BlocklistManager";
 import TelegramRowOps from "@/components/admin/TelegramRowOps";
-import { MediaBadge, StatusBadge } from "@/components/admin/TelegramBadges";
+import { AiBadge, MediaBadge, StatusBadge } from "@/components/admin/TelegramBadges";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { pageWindow, parseListSegment, parsePage } from "@/lib/admin/list";
@@ -231,9 +231,7 @@ export default async function AdminTelegramPage({
                           <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
                             {like && <span>赞 {like}</span>}
                             {comment && <span>评 {comment}</span>}
-                            <span title="短视频解读(抽轨/ASR/LLM)随解读批(M9)立项交付">
-                              解读未启用
-                            </span>
+                            <AiBadge aiStatus={t.aiStatus} lastAiError={t.lastAiError} />
                           </div>
                         </div>
                       </div>
@@ -278,6 +276,7 @@ export default async function AdminTelegramPage({
                       title={t.title}
                       summary={t.summary}
                       status={t.status}
+                      mediaType={t.mediaType}
                     />
                   </td>
                 </tr>
