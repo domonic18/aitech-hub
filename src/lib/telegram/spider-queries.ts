@@ -69,3 +69,28 @@ export async function getTelegramStock(): Promise<Record<string, number>> {
   for (const g of groups) out[g.status] = g._count._all;
   return out;
 }
+
+/**
+ * 最近 24 小时逐小时入库量(整点槽补零;原型 admin-spider 24h 条带)。
+ * 槽边界 JS 算好作参数(SQL 禁 now());+08:00 为整小时偏移,UTC 整点即北京整点。
+ */
+export async function getIngestHourly(): Promise<Array<{ hourLabel: string; count: number }>> {
+  const end = new Date();
+  end.setMinutes(0, 0, 0);
+  const start = new Date(end.getTime() - 23 * 3_600_000);
+  const rows = await prisma.$queryRaw<Array<{ h: Date; count: bigint }>>`
+    WITH slots AS (
+      SELECT generate_series(${start}::timestamptz, ${end}::timestamptz, interval '1 hour') AS h
+    )
+    SELECT s.h, count(t.id) AS count
+    FROM slots s
+    LEFT JOIN telegram t ON t.created_at >= s.h AND t.created_at < s.h + interval '1 hour'
+    GROUP BY s.h ORDER BY s.h`;
+  return rows.map((r) => ({
+    hourLabel: new Intl.DateTimeFormat("sv-SE", {
+      hour: "2-digit",
+      timeZone: "Asia/Shanghai",
+    }).format(r.h),
+    count: Number(r.count),
+  }));
+}
