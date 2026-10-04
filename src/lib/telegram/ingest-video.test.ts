@@ -1,6 +1,7 @@
 /**
  * 视频采集编排单测:db/queue/logger/cookies/适配器/redis 全打桩,
- * 验编排语义——增量地板、首采回填窗口、去重、过滤、失败归因(风控 vs 网关不可达)。
+ * 验编排语义——增量地板、首采回填窗口、去重、过滤、失败归因(风控 vs 网关不可达)、
+ * 手动回填(批⑧:30 天窗/不设条帽/maxPages 深扫/地板推进不回退)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -106,9 +107,12 @@ function lastUpdateData(): Record<string, unknown> {
 
 const HOUR = 3_600_000;
 
-async function run(account: Record<string, unknown>): Promise<VideoCrawlOutcome> {
+async function run(
+  account: Record<string, unknown>,
+  opts?: { backfill?: boolean },
+): Promise<VideoCrawlOutcome> {
   prismaMock.socialAccount.findUnique.mockResolvedValue(account);
-  return crawlVideoAccount(1);
+  return crawlVideoAccount(1, opts);
 }
 
 beforeEach(() => {
@@ -265,6 +269,70 @@ describe("crawlVideoAccount 失败归因", () => {
     expect(lastUpdateData()).toEqual(
       expect.objectContaining({ consecutiveFails: 0, lastError: null }),
     );
+  });
+});
+
+describe("crawlVideoAccount 手动回填(批⑧)", () => {
+  it("30 天窗覆盖增量地板与首采条帽:last_post_at 之后的 12 条旧作全采", async () => {
+    const items = Array.from(
+      { length: 12 },
+      (_, i) => videoItem(100 + i, new Date(Date.now() - (2 + i) * 24 * HOUR)), // 2~13 天前,均旧于地板
+    );
+    fetchVideosMock.mockResolvedValue(items);
+
+    const outcome = await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) }), {
+      backfill: true,
+    });
+    expect(outcome.backfill).toBe(true);
+    expect(outcome.fetched).toBe(12);
+    expect(outcome.inserted).toBe(12); // 增量地板只放行 0 条、首采帽 10 条,回填双双绕过
+  });
+
+  it("首采 + 回填:7 天窗外的 20 天前旧作也采,40 天前仍不采", async () => {
+    fetchVideosMock.mockResolvedValue([
+      videoItem(1, new Date(Date.now() - 20 * 24 * HOUR)),
+      videoItem(2, new Date(Date.now() - 40 * 24 * HOUR)),
+    ]);
+    const outcome = await run(makeAccount({ lastPostAt: null }), { backfill: true });
+    expect(outcome.inserted).toBe(1);
+    expect(prismaMock.telegram.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ url: "https://www.douyin.com/video/vid-1" }),
+      }),
+    );
+  });
+
+  it("maxPages 仅回填轮透传(3),常规轮不传该键", async () => {
+    fetchVideosMock.mockResolvedValue([]);
+    await run(makeAccount({ lastPostAt: null }), { backfill: true });
+    expect(fetchVideosMock).toHaveBeenCalledWith(expect.objectContaining({ maxPages: 3 }));
+
+    await run(makeAccount({ lastPostAt: null }));
+    expect(fetchVideosMock.mock.calls.at(-1)![0]).not.toHaveProperty("maxPages");
+  });
+
+  it("常规轮 outcome.backfill 为 false(既有路径形状不变)", async () => {
+    fetchVideosMock.mockResolvedValue([]);
+    const outcome = await run(makeAccount({ lastPostAt: null }));
+    expect(outcome.backfill).toBe(false);
+  });
+
+  it("回填全为窗外旧作:candidates 为 0 且地板推进不回退(守卫锚 last_post_at)", async () => {
+    const lastPostAt = new Date(Date.now() - 2 * 24 * HOUR);
+    fetchVideosMock.mockResolvedValue([
+      videoItem(1, new Date(Date.now() - 40 * 24 * HOUR)), // 超 30 天回填窗
+      videoItem(2, new Date(Date.now() - 45 * 24 * HOUR)),
+    ]);
+    const outcome = await run(makeAccount({ lastPostAt }), { backfill: true });
+    expect(outcome.inserted).toBe(0);
+    expect(lastUpdateData().lastPostAt).toEqual(lastPostAt); // 若无 Math.max 守卫会被拉回 now-30d
+  });
+
+  it("回填采到旧作但不越过更高 last_post_at:推进取三者最大", async () => {
+    const lastPostAt = new Date(Date.now() - 24 * HOUR);
+    fetchVideosMock.mockResolvedValue([videoItem(1, new Date(Date.now() - 3 * 24 * HOUR))]);
+    await run(makeAccount({ lastPostAt }), { backfill: true });
+    expect(lastUpdateData().lastPostAt).toEqual(lastPostAt); // max(采到 now-3d, 原值 now-1d) = 原值
   });
 });
 

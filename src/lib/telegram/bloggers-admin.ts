@@ -1,7 +1,7 @@
 /**
  * 博主台账管理(M8 批③,arch/02 §3.2):social_account 列表/登记/编辑/启停/
- * 手动采集/删除。平台行与 Cookie 池/网关健康在 social-platform-admin.ts;
- * Cookie 展示永远脱敏,日志禁打 cookie 值。
+ * 手动采集/删除;批⑧加手动回填(30 天窗深扫补采)。平台行与 Cookie 池/网关
+ * 健康在 social-platform-admin.ts;Cookie 展示永远脱敏,日志禁打 cookie 值。
  */
 import { z } from "zod";
 
@@ -10,7 +10,7 @@ import { logger } from "../logger";
 import { getQueue, QUEUE_CRAWLER } from "../queue";
 import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "./constants";
 import { fetchDouyinProfile, resolveDouyinSecUid } from "./adapters/video/douyin";
-import { BloggerAdminError, type BloggerAdminErrorCode } from "./bloggers-errors";
+import { BloggerAdminError } from "./bloggers-errors";
 import { activeJars, ensurePlatformRow } from "./social-platform-admin";
 
 export { BloggerAdminError, type BloggerAdminErrorCode } from "./bloggers-errors";
@@ -174,8 +174,8 @@ export async function deleteBlogger(id: number): Promise<void> {
   logger.info({ event: "blogger.deleted", bloggerId: id, nickname: row.nickname });
 }
 
-/** 手动触发一轮采集(停用博主/平台总开关关闭均拒绝) */
-export async function triggerBloggerCrawl(id: number): Promise<{ enqueued: true }> {
+/** 手动触发前置校验(采集/回填共用):存在 + 启用 + 平台开 */
+async function loadCrawlableAccount(id: number): Promise<{ id: number; nickname: string }> {
   const row = await prisma.socialAccount.findUnique({
     where: { id },
     select: {
@@ -188,6 +188,12 @@ export async function triggerBloggerCrawl(id: number): Promise<{ enqueued: true 
   if (!row) throw new BloggerAdminError("not_found", "博主不存在");
   if (!row.enabled) throw new BloggerAdminError("disabled", "博主已停用,启用后再采集");
   if (!row.platformRow.enabled) throw new BloggerAdminError("disabled", "平台采集总开关已关闭");
+  return { id: row.id, nickname: row.nickname };
+}
+
+/** 手动触发一轮采集(停用博主/平台总开关关闭均拒绝) */
+export async function triggerBloggerCrawl(id: number): Promise<{ enqueued: true }> {
+  const row = await loadCrawlableAccount(id);
   await getQueue(QUEUE_CRAWLER).add(
     "crawl-video",
     { accountId: row.id },
@@ -199,5 +205,21 @@ export async function triggerBloggerCrawl(id: number): Promise<{ enqueued: true 
     },
   );
   logger.info({ event: "blogger.crawl_triggered", bloggerId: row.id, nickname: row.nickname });
+  return { enqueued: true };
+}
+
+/** 手动回填(批⑧):30 天窗 + 3 页深扫,不套首采条数帽;地板推进不回退,结果看台账 */
+export async function triggerBloggerBackfill(id: number): Promise<{ enqueued: true }> {
+  const row = await loadCrawlableAccount(id);
+  await getQueue(QUEUE_CRAWLER).add(
+    "crawl-video",
+    { accountId: row.id, backfill: true },
+    {
+      jobId: `crawl-video-${row.id}-backfill-${Date.now()}`,
+      removeOnComplete: 200,
+      removeOnFail: 200,
+    },
+  );
+  logger.info({ event: "blogger.backfill_triggered", bloggerId: row.id, nickname: row.nickname });
   return { enqueued: true };
 }

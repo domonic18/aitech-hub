@@ -48,6 +48,10 @@ export const SOCIAL_MAX_CONSECUTIVE_FAILS = 3;
 /** 首采回填窗口(天)与条数上限:防新登记博主刷屏(arch/02 §3.2 shell 降级可见) */
 export const SOCIAL_BACKFILL_DAYS = 7;
 export const SOCIAL_BACKFILL_MAX_ITEMS = 10;
+/** 手动回填窗口(天,批⑧「回填」ops):比首采 7 天窗宽,不设条数帽(maxPages=3 深扫) */
+export const SOCIAL_MANUAL_BACKFILL_DAYS = 30;
+/** 手动回填单轮翻页上限(编排层口径;适配器按各自网关上限自行钳制) */
+export const SOCIAL_BACKFILL_MAX_PAGES = 3;
 
 export const TELEGRAM_STATUS_VISIBLE = "visible";
 export const TELEGRAM_STATUS_HIDDEN = "hidden";

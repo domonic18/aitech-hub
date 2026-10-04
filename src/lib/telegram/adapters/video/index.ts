@@ -23,6 +23,8 @@ export interface VideoItem {
 export interface VideoFetchInput {
   secUid: string;
   cookies: string[];
+  /** 单轮翻页上限(默认 1;批⑧手动回填传 3——各适配器按网关上限自行钳制,B站后补同契约) */
+  maxPages?: number;
 }
 
 export interface VideoAdapter {

@@ -84,12 +84,12 @@ async function gatewayPost<T>(path: string, payload: unknown): Promise<T> {
 export const douyinAdapter: VideoAdapter = {
   platform: VIDEO_PLATFORM_DOUYIN,
 
-  async fetchRecentVideos({ secUid, cookies }) {
-    // 首采翻页由编排层按增量地板决定;网关单次最多 3 页(POSTS_MAX_PAGES)
+  async fetchRecentVideos({ secUid, cookies, maxPages }) {
+    // 翻页上限由编排层传入(常规增量 1,手动回填 3);网关侧 POSTS_MAX_PAGES=3 兜底钳制
     const data = await gatewayPost<GatewayPostsResponse>("/posts", {
       sec_uid: secUid,
       cookies,
-      max_pages: 1,
+      max_pages: Math.min(Math.max(maxPages ?? 1, 1), MAX_PAGES),
     });
     const items: VideoItem[] = [];
     for (const raw of data.videos ?? []) {
@@ -116,5 +116,3 @@ export async function resolveDouyinSecUid(raw: string): Promise<string> {
   const data = await gatewayPost<{ sec_uid: string }>("/resolve", { url: raw });
   return data.sec_uid;
 }
-
-export const MAX_LIST_PAGES = MAX_PAGES;

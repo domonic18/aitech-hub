@@ -46,7 +46,10 @@ const PROCESSORS: Record<string, Processor> = {
       return { ...summary, videoDue: video.due };
     }
     if (job.name === "crawl-video") {
-      const summary = await crawlVideoAccount(Number(job.data.accountId));
+      // data.backfill 由手动回填路由置真(批⑧);旧 worker 收到退化为常规增量(良性)
+      const summary = await crawlVideoAccount(Number(job.data.accountId), {
+        backfill: job.data.backfill === true,
+      });
       console.log(JSON.stringify({ event: "crawler.video.crawl", ...summary }));
       return summary;
     }

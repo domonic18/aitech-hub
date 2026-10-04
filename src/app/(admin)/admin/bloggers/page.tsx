@@ -190,10 +190,11 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:调度器每分钟扫描到期博主逐个入队(失败隔离在单博主 job);轮询间隔 ≥
         {SOCIAL_CRAWL_INTERVAL_MIN}min(平台礼貌红线);首采回填近 7 天至多 10
-        条防刷屏;网关不可达顺延本轮不计失败, 上游风控(如 jar
-        全灭)计入连续失败。删除为两步武装:启用中 409,停用后可物理删,已入库视频不受影响。
-        API:GET/POST /api/bloggers · PUT/DELETE /api/bloggers/[id] · PUT /api/bloggers/[id]/status ·
-        POST /api/bloggers/[id]/crawl · GET/POST/DELETE /api/bloggers/cookies。
+        条防刷屏;手动「回填」向前深扫 30 天(至多 3 页)补采,地板推进不回退;
+        网关不可达顺延本轮不计失败, 上游风控(如 jar 全灭)计入连续失败。删除为两步武装:启用中
+        409,停用后可物理删,已入库视频不受影响。 API:GET/POST /api/bloggers · PUT/DELETE
+        /api/bloggers/[id] · PUT /api/bloggers/[id]/status · POST /api/bloggers/[id]/crawl · POST
+        /api/bloggers/[id]/backfill · GET/POST/DELETE /api/bloggers/cookies。
       </p>
     </div>
   );

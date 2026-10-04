@@ -14,6 +14,8 @@ import { decryptJars } from "./cookies";
 import {
   SOCIAL_BACKFILL_DAYS,
   SOCIAL_BACKFILL_MAX_ITEMS,
+  SOCIAL_BACKFILL_MAX_PAGES,
+  SOCIAL_MANUAL_BACKFILL_DAYS,
   SOCIAL_MAX_CONSECUTIVE_FAILS,
   TELEGRAM_MEDIA_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
@@ -43,6 +45,8 @@ const CONFIG_KEY_JARS = "cookieJars";
 export interface VideoCrawlOutcome {
   accountId: number;
   platform: string;
+  /** 手动回填轮(30 天窗/3 页深扫/不设条帽;worker 日志可分辨) */
+  backfill: boolean;
   fetched: number;
   inserted: number;
   filtered: number;
@@ -112,8 +116,11 @@ async function ingestVideoItem(
   }
 }
 
-/** 单博主采集一轮(worker「crawl-video」job 入口);账号不存在/停用返回空结果 */
-export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOutcome> {
+/** 单博主采集一轮(worker「crawl-video」job 入口;opts.backfill 为手动回填轮);账号不存在/停用返回空结果 */
+export async function crawlVideoAccount(
+  accountId: number,
+  opts: { backfill?: boolean } = {},
+): Promise<VideoCrawlOutcome> {
   const account = await prisma.socialAccount.findUnique({
     where: { id: accountId },
     include: { platformRow: true },
@@ -121,6 +128,7 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
   const outcome: VideoCrawlOutcome = {
     accountId,
     platform: account?.platform ?? "",
+    backfill: opts.backfill === true,
     fetched: 0,
     inserted: 0,
     filtered: 0,
@@ -179,18 +187,26 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
   }
 
   try {
-    const items = await adapter.fetchRecentVideos({ secUid: account.secUid, cookies: jars });
+    const items = await adapter.fetchRecentVideos({
+      secUid: account.secUid,
+      cookies: jars,
+      ...(outcome.backfill ? { maxPages: SOCIAL_BACKFILL_MAX_PAGES } : {}),
+    });
     outcome.fetched = items.length;
 
-    // 增量地板:只采比 last_post_at 新的;首采回填窗口(7 天)再限条防新登记刷屏
+    // 增量地板:只采比 last_post_at 新的;首采回填窗口(7 天)再限条防新登记刷屏;
+    // 手动回填(批⑧)绕过地板与条帽,按 30 天窗深扫补采
     const nowMs = now.getTime();
     const firstRun = account.lastPostAt === null;
-    const floorMs = firstRun
-      ? nowMs - SOCIAL_BACKFILL_DAYS * 86_400_000
-      : (account.lastPostAt?.getTime() ?? 0);
+    const floorMs = outcome.backfill
+      ? nowMs - SOCIAL_MANUAL_BACKFILL_DAYS * 86_400_000
+      : firstRun
+        ? nowMs - SOCIAL_BACKFILL_DAYS * 86_400_000
+        : (account.lastPostAt?.getTime() ?? 0);
+    const cap = !outcome.backfill && firstRun ? SOCIAL_BACKFILL_MAX_ITEMS : items.length;
     const candidates = items
       .filter((it) => (it.publishedAt?.getTime() ?? nowMs) > floorMs)
-      .slice(0, firstRun ? SOCIAL_BACKFILL_MAX_ITEMS : items.length);
+      .slice(0, cap);
 
     const words = await loadBlocklistWords();
     for (const item of candidates) {
@@ -205,12 +221,13 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
       ] += 1;
     }
 
-    // 地板推进取全部拉取结果的最大发布时间(含被回填上限截掉的),避免下轮重复扫
+    // 地板推进取全部拉取结果的最大发布时间(含被回填上限截掉的),避免下轮重复扫;
+    // 三项 Math.max 守卫:回填地板(now-30d)可能低于 last_post_at,推进绝不回退
     const maxPublishedMs = Math.max(floorMs, ...items.map((it) => it.publishedAt?.getTime() ?? 0));
     await advance({
       consecutiveFails: 0,
       lastError: null,
-      lastPostAt: new Date(Math.max(maxPublishedMs, floorMs)),
+      lastPostAt: new Date(Math.max(maxPublishedMs, floorMs, account.lastPostAt?.getTime() ?? 0)),
     });
     return outcome;
   } catch (err) {
