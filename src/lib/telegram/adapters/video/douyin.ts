@@ -1,7 +1,7 @@
 /**
  * 抖音适配器(M8):经 douyin-gateway(Python sidecar)拉博主 listing。
  * 本层只做「HTTP 往返 + 异常翻译」——签名/TLS 指纹/jar 冷却全在网关
- * (research/01 路线 A;网关契约见 douyin-gateway/app/gateway.py)。
+ * (research/01 路线 A;网关契约见 services/douyin-gateway/app/gateway.py)。
  */
 import { VIDEO_PLATFORM_DOUYIN } from "../../constants";
 import { env } from "../../../env";

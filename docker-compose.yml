@@ -33,7 +33,7 @@ services:
   # 抖音数据网关(M8):签名 sidecar + 数据端点;按需启用,不影响日常 pg/redis 起
   # 停:docker compose --profile douyin up -d douyin-gateway;冒烟 curl 127.0.0.1:8010/health
   douyin-gateway:
-    build: { context: ./douyin-gateway }
+    build: { context: ./services/douyin-gateway }
     container_name: aitech_hub_douyin_gateway
     profiles: ["douyin"]
     environment:

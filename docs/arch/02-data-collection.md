@@ -65,7 +65,7 @@
 - **资源约束(2026-09-30 评估)**:`interpreter` 队列并发锁 1——ffmpeg 抽音轨是 CPU 峰值,2C4G 单机 worker 串行消化;临时下载为服务器入流,不占出站带宽
 - 博主停用/删除不影响已入库电报(`video_blogger` 冗余);前台展示边界见 §6
 
-**落地注记(2026-10-04,M8 已交付;本批边界)**:上图管道仅交付前两环——**博主 listing 轮询 → 视频幂等入库 shell**(标题/封面/时长/互动数/原视频外链,`media_type=video`,即时可见)。**无水印下载 → ffmpeg → ASR → LLM 解读整段后置独立立项**(ASR/LLM 选型未评审,§7 成本锚点届时沿用;`interpreter` 队列不建)。合规保守模式:**`play_url` 不落库不下载**(§2 注记),版权红线四样收敛为「结论(后续解读批)/封面缩略图/外链」。采集基建为 Python 网关 sidecar `douyin-gateway/`(签名 a_bogus + Chrome TLS 指纹 transport + Cookie 池轮换,compose 内网服务,契约见 arch/05 §4.4);Node 侧仅编排(`crawl-video` job 走 BullMQ `crawler` 队列,与文字渠道同 tick 调度器,`crawlDueSources` 已排除 `type=social-video` 行防双扫)。无 AI 解读,前台视频卡**不显 AI 生成标注**(§6 标注随解读批落地);降级/成本护栏/asr_success_rate_7d 同批后置。
+**落地注记(2026-10-04,M8 已交付;本批边界)**:上图管道仅交付前两环——**博主 listing 轮询 → 视频幂等入库 shell**(标题/封面/时长/互动数/原视频外链,`media_type=video`,即时可见)。**无水印下载 → ffmpeg → ASR → LLM 解读整段后置独立立项**(ASR/LLM 选型未评审,§7 成本锚点届时沿用;`interpreter` 队列不建)。合规保守模式:**`play_url` 不落库不下载**(§2 注记),版权红线四样收敛为「结论(后续解读批)/封面缩略图/外链」。采集基建为 Python 网关 sidecar `services/douyin-gateway/`(签名 a_bogus + Chrome TLS 指纹 transport + Cookie 池轮换,compose 内网服务,契约见 arch/05 §4.4);Node 侧仅编排(`crawl-video` job 走 BullMQ `crawler` 队列,与文字渠道同 tick 调度器,`crawlDueSources` 已排除 `type=social-video` 行防双扫)。无 AI 解读,前台视频卡**不显 AI 生成标注**(§6 标注随解读批落地);降级/成本护栏/asr_success_rate_7d 同批后置。
 
 ## 4. 治理(后台 admin/telegram)
 
@@ -105,7 +105,7 @@
 
 **待明确(随②短视频解读立项时回答)**:
 
-- **视频博主首批名单与平台顺序**。~~2026-09-30 合规评估曾建议 B 站优先~~ → **2026-10-04 用户定调:抖音优先,M8 立项交付**(签名/TLS 指纹/Cookie 风控这套最难基建打通后,B 站开放生态只需轻适配器;反之不成立)。合规评估结论仍然成立并已内化为交付边界:全链路唯一实质法律风险点在抖音无水印下载(平台 ToS + 规避技术措施/反不正当竞争,有抓取判例)——故 M8 走「listing 元数据 + 外链」保守模式(§3.2 注记:play_url 不落库不下载,不做 ASR),无水印下载与解读待博主书面授权后独立立项。首批博主名单随真机验证补充(登记入口 admin/bloggers 已就绪)。参考实现:`ai-invest-assisstant` 项目 2026-09-22 前实战有效的 signer/transport/cookies,已平移为 `douyin-gateway/`
+- **视频博主首批名单与平台顺序**。~~2026-09-30 合规评估曾建议 B 站优先~~ → **2026-10-04 用户定调:抖音优先,M8 立项交付**(签名/TLS 指纹/Cookie 风控这套最难基建打通后,B 站开放生态只需轻适配器;反之不成立)。合规评估结论仍然成立并已内化为交付边界:全链路唯一实质法律风险点在抖音无水印下载(平台 ToS + 规避技术措施/反不正当竞争,有抓取判例)——故 M8 走「listing 元数据 + 外链」保守模式(§3.2 注记:play_url 不落库不下载,不做 ASR),无水印下载与解读待博主书面授权后独立立项。首批博主名单随真机验证补充(登记入口 admin/bloggers 已就绪)。参考实现:`ai-invest-assisstant` 项目 2026-09-22 前实战有效的 signer/transport/cookies,已平移为 `services/douyin-gateway/`
 - **ASR 供应商选型与成本实测**(云 ASR vs 本地 whisper;单条成本 × 日量估算,验证 $5/日预算护栏)。**成本锚点(2026-09-30 评估)**:录音文件识别腾讯云 ¥1.75/小时(每月 5h 免费额度)、阿里云 ¥2.50/小时;起步场景(约 10 条/日 × 4 min)月增 ~¥0-40,受 $5/日护栏钉住的硬上限 ~¥1100/月,预期 ¥50-300/月;服务器零增量(interpreter 同机 worker,见 §3.2 资源约束)
 - LLM 摘要/解读模型选型(成本 vs 摘要质量;结构化输出 schema 评审)。单条成本上限随选型锁定(2026-09-30 评估:每条转写 2-3k tokens 入 + 0.5k 出 ≈ 0.5-5 分)
 - 版权投诉与下架通道的运营口径(入口位置/响应时效/留痕要求;机制已进 §4)

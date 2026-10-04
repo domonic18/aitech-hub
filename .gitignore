@@ -49,10 +49,10 @@ scripts/migrate-wp/artifacts/
 /next-env.d.ts
 
 # douyin-gateway(Python venv 与字节码;镜像内由 pip 现装)
-/douyin-gateway/.venv/
+/services/douyin-gateway/.venv/
 __pycache__/
 *.pyc
 
 # douyin-gateway 依赖清单(全局 *.txt 误伤;CI gateway job 与镜像构建依赖)
-!douyin-gateway/requirements.txt
-!douyin-gateway/requirements-dev.txt
+!services/douyin-gateway/requirements.txt
+!services/douyin-gateway/requirements-dev.txt

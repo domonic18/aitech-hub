@@ -8,13 +8,13 @@
 ```
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
-├── job gateway   Python 3.11 + pip 缓存 → pytest douyin-gateway/tests(M8 批①;纯单测无网依赖)
+├── job gateway   Python 3.11 + pip 缓存 → pytest services/douyin-gateway/tests(M8 批①;纯单测无网依赖)
 ├── job migration 起 postgres:16 → migrate deploy 全量 →
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 
 push(develop, main)/ 手动
 └── job docker-release  [依赖 app+gateway+migration 全绿] buildx 构建双镜像 → 推 TCR
-                        应用 aitech-hub + 网关 aitech-hub-gateway(douyin-gateway/Dockerfile,M8 批①)
+                        应用 aitech-hub + 网关 aitech-hub-gateway(services/douyin-gateway/Dockerfile,M8 批①)
                         tag = <branch>-<短 sha>;latest 仅 main(保证 compose pull 默认即发布版)
 ```
 
@@ -66,7 +66,7 @@ make migrate   # npx prisma migrate deploy
   - ops 脚本依赖的 src 必须**显式 COPY**:standalone 追踪对源码只带碎片(2026-10-03 实测 `src/lib/auth/` 仅剩 `*.test.ts`,生产镜像 `npm run admin` 必 MODULE_NOT_FOUND);`scripts/`、`src/` 勿依赖追踪带入
   - 定属主用 `COPY --chown`,勿 `RUN chown -R /app`:后者把已拷内容整层 CoW 复制一遍,实测多出 1.08GB 层(镜像层只增不删)
 
-### 3.2 网关镜像(douyin-gateway/Dockerfile,M8 批①)
+### 3.2 网关镜像(services/douyin-gateway/Dockerfile,M8 批①)
 
 - 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 装 requirements 后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,`.dockerignore` 仓库级排除互不影响
 - CI 与主镜像同一 `docker-release` job 内先后构建(各带重推重试);tag 规则同款 `<branch>-<短 sha>` + `latest` 仅 main
