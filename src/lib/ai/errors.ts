@@ -19,3 +19,10 @@ export class AiAdminError extends Error {
     super(message);
   }
 }
+
+/** 路由侧统一映射:not_found→404,duplicate|bound→409,其余→400 */
+export function aiErrorStatus(code: AiAdminErrorCode): number {
+  if (code === "not_found") return 404;
+  if (code === "duplicate" || code === "bound") return 409;
+  return 400;
+}

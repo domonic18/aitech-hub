@@ -781,3 +781,137 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await prisma.crawlSource.deleteMany({ where: { name: "e2e-social:douyin" } });
   }
 });
+
+test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑定校验/ASR/测试优雅失败)", async ({
+  page,
+}) => {
+  const BASE_NAME = "e2e-无钥模型";
+  const KEYED_NAME = "e2e-密钥模型";
+  const KEYED_RENAME = "e2e-密钥模型-改";
+  const PLAIN_KEY = "e2e-secretkey-1234";
+  // 自播种:无钥模型(summarize 用途)+ 前置清理 e2e 痕迹(spec 不 import secret-box,密文仅经 API 路径落库)
+  await prisma.aiModel.deleteMany({ where: { name: { startsWith: "e2e-" } } });
+  const base = await prisma.aiModel.create({
+    data: {
+      name: BASE_NAME,
+      provider: "DeepSeek",
+      protocol: "openai",
+      baseUrl: "https://e2e.invalid/v1",
+      modelId: "e2e-base",
+      purposes: ["summarize"],
+    },
+  });
+
+  try {
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+
+    // 三 Tab + 台账:播种行可见,API Key 列显「无鉴权」
+    await page.goto("/admin/models/");
+    await expect(page.getByRole("tab", { name: /模型条目/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "ASR 渠道" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "任务绑定" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ 新增模型" })).toBeVisible();
+    const baseRow = page.getByRole("row", { name: new RegExp(BASE_NAME) });
+    await expect(baseRow).toBeVisible();
+    await expect(baseRow).toContainText("无鉴权");
+
+    // UI 建模带 Key → 行显掩码,全 DOM 无明文,DB 密文 ≠ 明文
+    await page.getByRole("button", { name: "+ 新增模型" }).click();
+    await page.getByPlaceholder("如:解读主力 / Agent 搜索").fill(KEYED_NAME);
+    await page.getByRole("button", { name: "文字摘要", exact: true }).click();
+    await page.getByPlaceholder("如 deepseek-chat").fill("e2e-keyed");
+    await page
+      .getByPlaceholder("https://api.deepseek.com(可粘完整端点,自动剥尾缀)")
+      .fill("https://e2e.invalid/v1/chat/completions");
+    await page.getByPlaceholder("••••••••").fill(PLAIN_KEY);
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    const keyedRow = page.getByRole("row", { name: new RegExp(KEYED_NAME) });
+    await expect(keyedRow).toBeVisible({ timeout: 10_000 });
+    await expect(keyedRow).toContainText("e2e****1234");
+    expect(await page.content()).not.toContain(PLAIN_KEY);
+    // URL 尾缀自动剥:粘 /chat/completions 落库为裸 base
+    const keyed = await prisma.aiModel.findFirstOrThrow({ where: { name: KEYED_NAME } });
+    expect(keyed.baseUrl).toBe("https://e2e.invalid/v1");
+    expect(keyed.apiKeyEnc).toBeTruthy();
+    expect(keyed.apiKeyEnc).not.toContain(PLAIN_KEY);
+    expect(keyed.apiKeyMask).toBe("e2e****1234");
+
+    // 编辑留空 API Key = 保留旧钥(密文逐字节不变)
+    await keyedRow.getByRole("button", { name: "编辑" }).click();
+    await page.getByPlaceholder("如:解读主力 / Agent 搜索").fill(KEYED_RENAME);
+    await expect(page.getByPlaceholder("••••••••")).toHaveValue("");
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(page.getByRole("row", { name: new RegExp(KEYED_RENAME) })).toBeVisible({
+      timeout: 10_000,
+    });
+    const after = await prisma.aiModel.findUniqueOrThrow({ where: { id: keyed.id } });
+    expect(after.apiKeyEnc).toBe(keyed.apiKeyEnc);
+
+    // 任务绑定:文字摘要卡 主力=无钥模型 备用=密钥模型 → 保存;定位列派生徽标
+    await page.getByRole("tab", { name: "任务绑定" }).click();
+    const sumCard = page.getByRole("group", { name: "文字摘要绑定" });
+    await sumCard.getByLabel("文字摘要主力模型").selectOption({ label: "e2e-base(DeepSeek)" });
+    await sumCard.getByLabel("文字摘要备用模型").selectOption({ label: "e2e-keyed(DeepSeek)" });
+    await sumCard.getByRole("button", { name: "保存" }).click();
+    await expect(sumCard).toContainText("已保存");
+    const sumBinding = await prisma.aiTaskBinding.findUniqueOrThrow({
+      where: { role: "summarize" },
+    });
+    expect(sumBinding.primaryId).toBe(base.id);
+    expect(sumBinding.backupId).toBe(keyed.id);
+
+    // 服务端绑定校验:purposes 不匹配 → 400;主备同模型 → 400(mutation 带 Origin,同 14)
+    const badPurpose = await page.request.put("/api/model-bindings", {
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      data: { role: "search", primaryId: base.id, backupId: null },
+    });
+    expect(badPurpose.status()).toBe(400);
+    expect(((await badPurpose.json()) as { message: string }).message).toContain("用途");
+    const badSame = await page.request.put("/api/model-bindings", {
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      data: { role: "summarize", primaryId: base.id, backupId: base.id },
+    });
+    expect(badSame.status()).toBe(400);
+    expect(((await badSame.json()) as { message: string }).message).toContain("主力与备用");
+
+    // ASR 渠道:UI 编辑生效(单例持久化);注记防误报文案在页
+    await page.getByRole("tab", { name: "ASR 渠道" }).click();
+    await expect(page.getByText("转写文本为空属正常")).toBeVisible();
+    await page.getByRole("button", { name: "编辑配置" }).click();
+    await page.getByPlaceholder("如 阿里云智能语音 / MiniMax").fill("e2e-ASR供应商");
+    await page
+      .getByPlaceholder("https://asr.example.com(可粘完整端点,自动剥尾缀)")
+      .fill("https://e2e.invalid");
+    await page.getByRole("button", { name: "保存", exact: true }).last().click();
+    await expect(page.getByText("e2e-ASR供应商")).toBeVisible({ timeout: 10_000 });
+    const asrRow = await prisma.asrConfig.findUniqueOrThrow({ where: { id: 1 } });
+    expect(asrRow.provider).toBe("e2e-ASR供应商");
+    expect(asrRow.baseUrl).toBe("https://e2e.invalid");
+
+    // 模型条目:对 e2e.invalid 点测试 → 优雅失败(行显 ✗,DB 落 fail),不抛 500
+    await page.getByRole("tab", { name: /模型条目/ }).click();
+    await baseRow.getByRole("button", { name: "测试", exact: true }).click();
+    await expect(baseRow.getByText("✗ 失败")).toBeVisible({ timeout: 20_000 });
+    const baseAfter = await prisma.aiModel.findUniqueOrThrow({ where: { id: base.id } });
+    expect(baseAfter.lastTestStatus).toBe("fail");
+    expect(baseAfter.lastTestError).toBeTruthy();
+  } finally {
+    // 解绑引用(仅 e2e 模型)→ 清 e2e 模型与 ASR 单例(下次运行重建)
+    const e2eIds = (
+      await prisma.aiModel.findMany({
+        where: { name: { startsWith: "e2e-" } },
+        select: { id: true },
+      })
+    ).map((r) => r.id);
+    await prisma.aiTaskBinding.updateMany({
+      where: { OR: [{ primaryId: { in: e2eIds } }, { backupId: { in: e2eIds } }] },
+      data: { primaryId: null, backupId: null },
+    });
+    await prisma.aiModel.deleteMany({ where: { name: { startsWith: "e2e-" } } });
+    await prisma.asrConfig.deleteMany({ where: { provider: "e2e-ASR供应商" } });
+  }
+});
