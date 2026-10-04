@@ -74,18 +74,26 @@ vi.mock("./adapters/video/douyin", () => ({
   douyinAdapter: { fetchRecentVideos: fetchVideosMock },
 }));
 
-vi.mock("ffmpeg-static", () => ({ default: "/fake/ffmpeg" }));
-vi.mock("node:child_process", () => ({
-  execFile: vi.fn((_file: string, _args: string[], cb: (e: Error | null) => void) => cb(null)),
+// 媒体操作整桩(下载走全局 fetch 桩保留「直链过期重拉」语义;即删/抽轨记录调用)。
+// 真实现的下载护栏/ffmpeg 参数由 lib/media 侧职责,不进本测试面。
+const mediaMock = vi.hoisted(() => ({
+  makeInterpretTmpDir: vi.fn(async () => "/tmp/interpret-fake"),
+  tmpMediaPaths: vi.fn((dir: string) => ({
+    videoPath: `${dir}/video.mp4`,
+    audioPath: `${dir}/audio.mp3`,
+  })),
+  removeTmpDir: vi.fn(async () => undefined),
+  downloadVideoToTmp: vi.fn(async (playUrl: string, destPath: string) => {
+    const res = await fetch(playUrl);
+    if (!res.ok) throw new Error(`直链下载失败 HTTP ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    mediaMock.writeCalls.push([destPath, buf]);
+  }),
+  extractAudioMp3: vi.fn(async () => undefined),
+  readAudioFile: vi.fn(async () => Buffer.from("audio-bytes")),
+  writeCalls: [] as Array<[string, Buffer]>,
 }));
-
-const fsMock = vi.hoisted(() => ({
-  mkdtemp: vi.fn(async () => "/tmp/interpret-fake"),
-  writeFile: vi.fn(async () => undefined),
-  readFile: vi.fn(async () => Buffer.from("audio-bytes")),
-  rm: vi.fn<(args?: unknown) => Promise<void>>(async () => undefined),
-}));
-vi.mock("node:fs", () => ({ promises: fsMock }));
+vi.mock("../media/interpret-media", () => mediaMock);
 
 import {
   interpretJobId,
@@ -139,10 +147,9 @@ beforeEach(() => {
   transcribeMock.mockResolvedValue("转写全文");
   chatJsonMock.mockResolvedValue(GOOD_JSON);
   fetchVideosMock.mockResolvedValue([]);
-  fsMock.mkdtemp.mockResolvedValue("/tmp/interpret-fake");
-  fsMock.writeFile.mockResolvedValue(undefined);
-  fsMock.readFile.mockResolvedValue(Buffer.from("audio-bytes"));
-  fsMock.rm.mockResolvedValue(undefined);
+  mediaMock.writeCalls.length = 0;
+  mediaMock.removeTmpDir.mockResolvedValue(undefined);
+  mediaMock.readAudioFile.mockResolvedValue(Buffer.from("audio-bytes"));
   queueMock.add.mockResolvedValue(undefined);
 });
 
@@ -171,7 +178,7 @@ describe("interpretVideoJob 状态机", () => {
         lastAiError: null,
       },
     });
-    expect(fsMock.rm).toHaveBeenCalledWith("/tmp/interpret-fake", { recursive: true, force: true });
+    expect(mediaMock.removeTmpDir).toHaveBeenCalledWith("/tmp/interpret-fake");
     expect(queueMock.add).not.toHaveBeenCalled();
     expect(transcribeMock).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: "asr-key", hotwords: ["大模型"], timeoutSec: 120 }),
@@ -296,10 +303,7 @@ describe("interpretVideoJob 状态机", () => {
       cookies: ["ck"],
       maxPages: 3,
     });
-    expect(fsMock.writeFile).toHaveBeenCalledWith(
-      "/tmp/interpret-fake/video.mp4",
-      expect.any(Buffer),
-    );
+    expect(mediaMock.writeCalls).toEqual([["/tmp/interpret-fake/video.mp4", expect.any(Buffer)]]);
   });
 
   it("过境直链过期(下载失败)→ 重拉一次新链再试", async () => {

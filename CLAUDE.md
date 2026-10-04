@@ -35,7 +35,7 @@
 ## 3. 通用编码规范与 AI 指令
 
 - 你最重要的工作是管理自己的上下文。规划变更前,务必先阅读相关文件。
-- KISS、YAGNI、DRY;文件 ≤350 行;Server Component 默认,请求内禁秒级任务(进 BullMQ)。
+- KISS、YAGNI、DRY;文件 ≤350 行(页面只留编排,拆片子组件入 `src/components/` 对应域目录,见 arch/06 §2);Server Component 默认,请求内禁秒级任务(进 BullMQ)。
 - 未经用户批准不要提交到 git。不要主动创建 *.md/README。
 - 分支:开发主线为 `develop`;新功能建 `feature/<topic>` 分支 PR 合回 develop;`main` 禁直推(只经 develop→main PR 发布)。
 - 永远不要模拟、不要占位符、不要省略代码;对想法的好坏坦率诚实。

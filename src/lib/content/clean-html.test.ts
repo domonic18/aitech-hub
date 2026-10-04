@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cleanPostHtml, rewriteBase64Images } from "./clean-html";
+import { cleanPostHtml } from "./clean-html";
+import { rewriteBase64Images } from "./data-uri-image";
 
 const FIXTURES = join(__dirname, "../../../scripts/migrate-wp/fixtures/wp-content");
 const readFixture = (name: string): string => readFileSync(join(FIXTURES, name), "utf8");

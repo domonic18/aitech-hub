@@ -17,7 +17,8 @@ import {
   bullConnection,
   getQueue,
 } from "../src/lib/queue";
-import { flushStatsBuffer, purgeVisitLogs } from "../src/lib/stats/service";
+import { flushStatsBuffer } from "../src/lib/stats/flush";
+import { purgeVisitLogs } from "../src/lib/stats/service";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";

@@ -6,14 +6,6 @@
  * ASR 终败(重试≤2)→ missing_transcript 降级:仍走 LLM 基于文案元数据概括,不阻塞入流。
  * 两层重试语义:ASR/LLM 解析失败在管道内兜住;下载/网关/LLM 网络层上抛给 BullMQ attempts。
  */
-import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
-
-import ffmpegPath from "ffmpeg-static";
-
 import type { JobsOptions } from "bullmq";
 
 import { getAsrRuntimeConfig } from "../ai/asr-admin";
@@ -25,6 +17,14 @@ import { chatJson } from "../ai/llm-client";
 import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
 import { prisma } from "../db";
 import { logger } from "../logger";
+import {
+  downloadVideoToTmp,
+  extractAudioMp3,
+  makeInterpretTmpDir,
+  readAudioFile,
+  removeTmpDir,
+  tmpMediaPaths,
+} from "../media/interpret-media";
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
 
 import { douyinAdapter } from "./adapters/video/douyin";
@@ -125,15 +125,11 @@ export interface InterpretOutcome {
   error?: string;
 }
 
-const DOWNLOAD_TIMEOUT_SEC = 60;
-const DOWNLOAD_MAX_BYTES = 100 * 1024 * 1024; // 100MB(并发 1,内存缓冲可承受)
 const ASR_RETRIES = 2; // 管道内重试(首次 + 2 重试);终败降级不抛
 const ASR_RETRY_DELAY_MS = 3_000;
 const LLM_PARSE_RETRIES = 1; // 输出不成 JSON 重试一次;网络错误不在此层
 const QUOTA_DEFER_MS = 30 * 60_000;
 const ASR_TIMEOUT_SEC = 120;
-
-const execFileAsync = promisify(execFile);
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -166,42 +162,6 @@ async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Prom
     maxPages: SOCIAL_BACKFILL_MAX_PAGES,
   });
   return items.find((it) => it.videoId === data.videoId)?.playUrl ?? null;
-}
-
-async function downloadVideoToTmp(playUrl: string, destPath: string): Promise<void> {
-  const res = await fetch(playUrl, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_SEC * 1000) });
-  if (!res.ok || !res.body) throw new Error(`直链下载失败 HTTP ${res.status}`);
-  const len = Number(res.headers.get("content-length") ?? "0");
-  if (len > DOWNLOAD_MAX_BYTES) {
-    throw new Error(`视频超过大小上限(${Math.round(len / 1e6)}MB > 100MB)`);
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > DOWNLOAD_MAX_BYTES) throw new Error("视频超过大小上限(100MB)");
-  await fs.writeFile(destPath, buf);
-}
-
-/** ffmpeg 抽 mp3(16k 单声,-t 截断);execFile 数组参数零注入,-loglevel error 防 stderr 撑爆 */
-async function extractAudioMp3(
-  videoPath: string,
-  audioPath: string,
-  maxAudioSeconds: number,
-): Promise<void> {
-  if (!ffmpegPath) throw new Error("ffmpeg 二进制缺失(ffmpeg-static 安装异常)");
-  await execFileAsync(ffmpegPath, [
-    "-i",
-    videoPath,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-t",
-    String(maxAudioSeconds),
-    "-loglevel",
-    "error",
-    "-y",
-    audioPath,
-  ]);
 }
 
 /** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛 */
@@ -293,7 +253,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
   });
 
   // 下载/抽轨/ASR:临时文件 try/finally 即删(版权红线);下载失败上抛给 BullMQ 重试
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "interpret-"));
+  const tmpDir = await makeInterpretTmpDir();
   let transcript: string | null = null;
   let transcriptError: string | null = null;
   try {
@@ -305,8 +265,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
         return { telegramId: data.telegramId, status: "failed", transcriptUsed: false };
       }
     }
-    const videoPath = path.join(tmpDir, "video.mp4");
-    const audioPath = path.join(tmpDir, "audio.mp3");
+    const { videoPath, audioPath } = tmpMediaPaths(tmpDir);
     try {
       await downloadVideoToTmp(playUrl, videoPath);
     } catch (err) {
@@ -321,7 +280,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       baseUrl: asr.baseUrl,
       modelId: asr.modelId,
       apiKey: asr.apiKey,
-      audio: await fs.readFile(audioPath),
+      audio: await readAudioFile(audioPath),
       filename: "audio.mp3",
       hotwords: asr.hotwords,
       timeoutSec: ASR_TIMEOUT_SEC,
@@ -332,7 +291,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     await markFailed(id, err);
     throw err; // 下载/网关网络层 → BullMQ attempts 兜重试
   } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    await removeTmpDir(tmpDir).catch(() => undefined);
   }
 
   // LLM 概括(ASR 终败降级:仅基于文案元数据,公开信息不触红线)
