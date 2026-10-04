@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
+import { getBandItemCount } from "@/lib/config/site-config";
 import { formatCnDate } from "@/lib/datetime";
 import { countTodayVisible, listBandFeed, listPublicChannels } from "@/lib/telegram/public-feed";
 
@@ -12,19 +13,20 @@ import TelegramBand from "@/components/site/TelegramBand";
 /**
  * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
  * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=博主文章紧凑卡 + GEO,
- * GitHub 项目区按「三区可独立降级」不渲染)。电报带客户端 60s 轮询(M7 批⑤);
- * 本重构按用户反馈对齐原型(原 M5-e 过渡形态「左轴文章流 + 右栏精选」收编)。
+ * GitHub 项目区按「三区可独立降级」不渲染)。电报带条数后台可配(M10,site_config,
+ * 保存后 on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤)+ 下滚加载更多(M10)。
  */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
-  const [bandItems, today, channels, latest, postCount] = await Promise.all([
-    listBandFeed(),
+  const [bandCount, today, channels, latest, postCount] = await Promise.all([
+    getBandItemCount(),
     countTodayVisible(),
     listPublicChannels(),
     listLatestPosts(5),
     countPublishedPosts(),
   ]);
+  const bandItems = await listBandFeed({ limit: bandCount });
 
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
@@ -33,7 +35,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左主轴:电报流 LIVE 带(原型 tg-band 即整个左栏) */}
-        <TelegramBand initialItems={bandItems} channels={channels.length} today={today} />
+        <TelegramBand
+          initialItems={bandItems}
+          channels={channels.length}
+          today={today}
+          count={bandCount}
+        />
 
         {/* 右栏:博主文章(紧凑 rail 卡)+ GEO(GitHub 项目卡二期接入,同批降级) */}
         <aside className="flex min-w-0 flex-col gap-4">

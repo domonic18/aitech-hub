@@ -13,7 +13,10 @@ type Group = { label: string; items: Item[] };
 const GROUPS: ReadonlyArray<Group> = [
   {
     label: "OVERVIEW",
-    items: [{ icon: "i-dashboard", label: "站点统计", href: "/admin" }],
+    items: [
+      { icon: "i-dashboard", label: "站点统计", href: "/admin" },
+      { icon: "i-setting", label: "站点设置", href: "/admin/settings" },
+    ],
   },
   {
     label: "内容管理",

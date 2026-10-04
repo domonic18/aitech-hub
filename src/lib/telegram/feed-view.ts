@@ -39,8 +39,9 @@ export interface PublicTelegramItem {
 export const FEED_MEDIA_FILTERS = ["all", "text", "video"] as const;
 export type FeedMediaFilter = (typeof FEED_MEDIA_FILTERS)[number];
 
-/** 首页 LIVE 带条数(批⑧:SSR 初值与 60s 轮询同源;保底槽位口径 7 最新 + 1 视频) */
-export const BAND_ITEM_COUNT = 8;
+/** 首页 LIVE 带条数默认值(M10 起后台可配,存 site_config band.item_count,
+ * clamp 1..50;此常量是配置缺行/构建期无库时的兜底,SSR 初值与 60s 轮询同源) */
+export const DEFAULT_BAND_ITEM_COUNT = 12;
 
 /** 平台展示名(未知平台回退原值) */
 export function platformLabel(platform: string): string {

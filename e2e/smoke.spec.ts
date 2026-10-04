@@ -10,7 +10,7 @@ import sharp from "sharp";
 /**
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
- * AI 治理与解读配额(M9)/主题三段式(M10)。
+ * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -1048,4 +1048,82 @@ test("16. 主题三段式(M10 批①:系统跟随/实时变化/显式选择优�
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await ctx.close();
+});
+
+test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/offset 翻页/到底提示)", async ({
+  page,
+}) => {
+  // 自播种:独立渠道 + 15 条可见文字电报(> 默认 12;publishedAt 逐分钟递减保证确定性排序)
+  const source = await prisma.crawlSource.upsert({
+    where: { name: "e2e-band-source" },
+    update: {},
+    create: {
+      name: "e2e-band-source",
+      type: "rss",
+      url: "https://e2e.invalid/band-rss",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  const BAND_URL = (i: number): string => `https://e2e.invalid/band/${i}`;
+  await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+  await prisma.telegram.createMany({
+    data: Array.from({ length: 15 }, (_, i) => ({
+      sourceId: source.id,
+      title: `e2e-band-${String(i).padStart(2, "0")}`,
+      summary: "e2e 带条目",
+      url: BAND_URL(i),
+      publishedAt: new Date(Date.now() - i * 60_000),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+    })),
+  });
+  // 记住原配置(行缺=null)测后还原
+  const original = await prisma.siteConfig.findUnique({ where: { key: "band.item_count" } });
+  const rows = page.locator("a[href^='https://e2e.invalid/band/']");
+
+  try {
+    // admin 登录 → 设置页:初值=默认 12,改成 3 保存
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+    await page.goto("/admin/settings/");
+    const input = page.getByLabel("首页电报流条数");
+    await expect(input).toHaveValue("12");
+    await input.fill("3");
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("已保存,首页即将按新条数再生")).toBeVisible();
+
+    // 落库 + GET API 回读;revalidatePath 后首页 SSR 立即 3 行
+    expect(
+      (await prisma.siteConfig.findUniqueOrThrow({ where: { key: "band.item_count" } })).value,
+    ).toBe("3");
+    const cfg = await page.request.get("/api/site-config");
+    expect(((await cfg.json()) as { data: { bandItemCount: number } }).data.bandItemCount).toBe(3);
+    await page.goto("/");
+    await expect(rows).toHaveCount(3);
+
+    // 下滚:哨兵自动追加载至 15 条 + 到底提示(offset 分页 + id 去重)
+    for (let i = 0; i < 12 && (await rows.count()) < 15; i++) {
+      await page.mouse.wheel(0, 1000);
+      await page.waitForTimeout(250);
+    }
+    await expect(rows).toHaveCount(15);
+    // 到底判定:补一滚让哨兵再触发 offset=15 的空页(< count 判定到底)
+    await page.mouse.wheel(0, 2000);
+    await expect(page.getByText("— 已加载全部 —")).toBeVisible({ timeout: 10_000 });
+  } finally {
+    // 还原:回写原值(原无行 → 写默认 12 后删行),清播种数据
+    const origin = { "content-type": "application/json", origin: "http://localhost:3000" };
+    await page.request.put("/api/site-config", {
+      headers: origin,
+      data: { bandItemCount: original ? Number(original.value) : 12 },
+    });
+    if (original === null) {
+      await prisma.siteConfig.deleteMany({ where: { key: "band.item_count" } });
+    }
+    await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+    await prisma.crawlSource.delete({ where: { id: source.id } });
+  }
 });

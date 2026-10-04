@@ -1,12 +1,17 @@
 /**
  * 首页带合并纯函数单测(批⑧保底槽位):最新视频不在混排前 N 则替换末位,
- * 在则原样;不破坏倒序不变量。db 打桩(import 链含 prisma 客户端)。
+ * 在则原样;不破坏倒序不变量。M10 批②:offset 分页钳制(0..500)。
+ * db 打桩(import 链含 prisma 客户端)。
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../db", () => ({ prisma: {}, isP2002: () => false }));
+const findManyMock = vi.hoisted(() => vi.fn<(args?: unknown) => Promise<unknown[]>>());
+vi.mock("../db", () => ({
+  prisma: { telegram: { findMany: findManyMock } },
+  isP2002: () => false,
+}));
 
-import { mergeBandItems } from "./public-feed";
+import { mergeBandItems, listPublicTelegram } from "./public-feed";
 import { toVideoAi, type PublicTelegramItem } from "./feed-view";
 
 function item(id: string, publishedAt: string): PublicTelegramItem {
@@ -90,5 +95,19 @@ describe("toVideoAi 解读投影(M9)", () => {
       summary: "概括",
       points: [],
     });
+  });
+});
+
+describe("listPublicTelegram offset 分页(M10 批②)", () => {
+  it("offset 透传 skip;非法/负值回落 0;越界 clamp 500", async () => {
+    findManyMock.mockResolvedValue([]);
+    await listPublicTelegram({ limit: 12, offset: 24 });
+    expect(findManyMock).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 24, take: 12 }));
+    await listPublicTelegram({ limit: 12, offset: -5 });
+    expect(findManyMock).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 0 }));
+    await listPublicTelegram({ limit: 12, offset: 9999 });
+    expect(findManyMock).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 500 }));
+    await listPublicTelegram({ limit: 12 });
+    expect(findManyMock).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 0 }));
   });
 });
