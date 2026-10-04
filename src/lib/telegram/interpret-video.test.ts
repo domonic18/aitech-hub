@@ -83,7 +83,12 @@ const fsMock = vi.hoisted(() => ({
 }));
 vi.mock("node:fs", () => ({ promises: fsMock }));
 
-import { interpretVideoJob, type InterpretJobData } from "./interpret-video";
+import {
+  interpretJobId,
+  interpretVideoJob,
+  markPendingAndEnqueue,
+  type InterpretJobData,
+} from "./interpret-video";
 
 const ASR_ROW = {
   id: 1,
@@ -313,6 +318,47 @@ describe("interpretVideoJob 状态机", () => {
     expect(prismaMock.telegram.update).toHaveBeenCalledWith({
       where: { id: BigInt(1) },
       data: { aiStatus: "failed", lastAiError: "fetch failed" },
+    });
+  });
+});
+
+describe("markPendingAndEnqueue 入队契约(pending→入队→回滚 单一入口)", () => {
+  const PAYLOAD = { videoId: "vid-1", playUrl: null, platform: "douyin", secUid: "sec-abc" };
+
+  it("先标 pending(lastAiError 重置)再入队,顺序不可反", async () => {
+    const order: string[] = [];
+    prismaMock.telegram.update.mockImplementation(async () => {
+      order.push("update");
+      return {};
+    });
+    queueMock.add.mockImplementation(async () => {
+      order.push("add");
+      return undefined;
+    });
+    await markPendingAndEnqueue(BigInt(9), PAYLOAD);
+    expect(order).toEqual(["update", "add"]);
+    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+      where: { id: BigInt(9) },
+      data: { aiStatus: "pending", lastAiError: null },
+    });
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      { telegramId: "9", ...PAYLOAD },
+      expect.objectContaining({ jobId: "interpret-9", removeOnComplete: 50 }),
+    );
+  });
+
+  it("interpretJobId 幂等锚与顺延后缀(连字符分隔,BullMQ 禁冒号)", () => {
+    expect(interpretJobId("5")).toBe("interpret-5");
+    expect(interpretJobId("5", "r123")).toBe("interpret-5-r123");
+  });
+
+  it("入队失败 → 回滚 aiStatus=null(吞更新错)后原样上抛", async () => {
+    queueMock.add.mockRejectedValue(new Error("redis down"));
+    await expect(markPendingAndEnqueue(BigInt(9), PAYLOAD)).rejects.toThrow("redis down");
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(9) },
+      data: { aiStatus: null },
     });
   });
 });

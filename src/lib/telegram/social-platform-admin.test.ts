@@ -16,6 +16,13 @@ vi.mock("./cookies", () => ({
   encryptJars: vi.fn(),
   maskJars: vi.fn(() => []),
   mergeImportedJar: vi.fn(),
+  clearJarsInConfig: vi.fn((config: unknown) =>
+    config !== null && typeof config === "object"
+      ? Object.fromEntries(
+          Object.entries(config as Record<string, unknown>).filter(([k]) => k !== "cookieJars"),
+        )
+      : null,
+  ),
   CookiePoolError: class extends Error {},
 }));
 vi.mock("./bloggers-admin", () => ({

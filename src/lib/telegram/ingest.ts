@@ -7,7 +7,7 @@
  */
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
 import {
@@ -186,7 +186,7 @@ export async function crawlDueSources(): Promise<{ due: number }> {
   for (const source of due) {
     // jobId 锚定到期时刻:同源同轮重复入队被 BullMQ 幂等挡掉
     await queue.add(
-      "crawl",
+      CRAWL_JOB_SOURCE,
       { sourceId: source.id },
       {
         jobId: `crawl-${source.id}-${source.nextRunAt?.getTime() ?? 0}`,

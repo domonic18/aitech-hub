@@ -28,7 +28,24 @@ vi.mock("../queue", () => ({ QUEUE_INTERPRETER: "interpreter", getQueue: () => q
 const enqueueInterpretMock = vi.hoisted(() =>
   vi.fn<(data: unknown) => Promise<void>>(async () => undefined),
 );
-vi.mock("./interpret-video", () => ({ enqueueInterpret: enqueueInterpretMock }));
+// 镜像真实「pending→入队→失败回滚」语义(不变量本体由 interpret-video.test 对真实现钉死)
+vi.mock("./interpret-video", () => ({
+  interpretJobId: (id: string, suffix?: string) => `interpret-${id}${suffix ? `-${suffix}` : ""}`,
+  markPendingAndEnqueue: async (telegramId: bigint, data: Record<string, unknown>) => {
+    await prismaMock.telegram.update({
+      where: { id: telegramId },
+      data: { aiStatus: "pending", lastAiError: null },
+    });
+    try {
+      await enqueueInterpretMock({ telegramId: telegramId.toString(), ...data });
+    } catch (err) {
+      await prismaMock.telegram
+        .update({ where: { id: telegramId }, data: { aiStatus: null } })
+        .catch(() => undefined);
+      throw err;
+    }
+  },
+}));
 
 import { aiFilterWhere, listTelegramAdmin, triggerTelegramInterpret } from "./telegram-admin";
 

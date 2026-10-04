@@ -28,7 +28,11 @@ vi.mock("../db", () => ({
 const queueMock = vi.hoisted(() => ({
   add: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
 }));
-vi.mock("../queue", () => ({ QUEUE_CRAWLER: "crawler", getQueue: () => queueMock }));
+vi.mock("../queue", () => ({
+  CRAWL_JOB_VIDEO: "crawl-video",
+  QUEUE_CRAWLER: "crawler",
+  getQueue: () => queueMock,
+}));
 
 vi.mock("../logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -37,14 +41,33 @@ vi.mock("../logger", () => ({
 const cookiesMock = vi.hoisted(() => ({ decryptJars: vi.fn((): string[] => []) }));
 vi.mock("./cookies", () => ({ decryptJars: cookiesMock.decryptJars }));
 
-// 解读模块整桩(管道本体不进本测试面;默认未就绪使既有用例零入队)
+// 解读模块整桩(管道本体不进本测试面;默认未就绪使既有用例零入队)。
+// markPendingAndEnqueue 镜像真实「pending→入队→失败回滚」语义;不变量本体由
+// interpret-video.test 对真实现钉死
 const interpretMock = vi.hoisted(() => ({
   isInterpretReady: vi.fn(async (): Promise<boolean> => false),
   enqueueInterpret: vi.fn<(data: unknown) => Promise<void>>(async () => undefined),
+  markPendingAndEnqueue: vi.fn(
+    async (telegramId: bigint | number, data: Record<string, unknown>): Promise<void> => {
+      await prismaMock.telegram.update({
+        where: { id: telegramId },
+        data: { aiStatus: "pending", lastAiError: null },
+      });
+      try {
+        await interpretMock.enqueueInterpret({ telegramId: String(telegramId), ...data });
+      } catch (err) {
+        await prismaMock.telegram
+          .update({ where: { id: telegramId }, data: { aiStatus: null } })
+          .catch(() => undefined);
+        throw err;
+      }
+    },
+  ),
 }));
 vi.mock("./interpret-video", () => ({
   isInterpretReady: interpretMock.isInterpretReady,
   enqueueInterpret: interpretMock.enqueueInterpret,
+  markPendingAndEnqueue: interpretMock.markPendingAndEnqueue,
 }));
 
 // 真实 rate-limit + 内存 redis(照 rate-limit.test.ts 口径)
@@ -281,7 +304,7 @@ describe("解读入队钩子(M9)", () => {
     // 先标 pending 再入队(worker 可能先于入队返回开跑,反序会把 processing 打回)
     expect(prismaMock.telegram.update).toHaveBeenCalledWith({
       where: { id: 1 },
-      data: { aiStatus: "pending" },
+      data: { aiStatus: "pending", lastAiError: null },
     });
   });
 

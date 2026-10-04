@@ -14,13 +14,15 @@ import { promisify } from "node:util";
 
 import ffmpegPath from "ffmpeg-static";
 
+import type { JobsOptions } from "bullmq";
+
+import { getAsrRuntimeConfig } from "../ai/asr-admin";
 import { transcribeAudio, type TranscribeInput } from "../ai/asr-client";
 import { AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-result";
 import { chatJson } from "../ai/llm-client";
 import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
-import { decryptSecret } from "../crypto/secret-box";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
@@ -30,7 +32,9 @@ import {
   TELEGRAM_AI_DONE,
   TELEGRAM_AI_FAILED,
   TELEGRAM_AI_MISSING_TRANSCRIPT,
+  TELEGRAM_AI_PENDING,
   TELEGRAM_AI_PROCESSING,
+  VIDEO_PLATFORM_DOUYIN,
 } from "./constants";
 import { decryptJars } from "./cookies";
 
@@ -49,21 +53,59 @@ export interface InterpretJobData {
 
 /** 解读就绪 = ASR 渠道已启用 + interpret 角色已绑定可用模型(未配置是运营态,不标条目失败) */
 export async function isInterpretReady(): Promise<boolean> {
-  const asr = await prisma.asrConfig.findUnique({ where: { id: 1 }, select: { enabled: true } });
+  const asr = await getAsrRuntimeConfig();
   if (!asr?.enabled) return false;
   return (await resolveAiModel(AI_PURPOSE_INTERPRET)) !== null;
 }
 
-/** 入队解读(jobId=interpret-{id} 幂等;attempts 兜下载/网关网络层,ASR 重试在管道内。
+/** interpreter 队列 job name(入队与 worker 消费同源;改名需与 worker/index.ts 同批) */
+export const INTERPRET_JOB_NAME = "interpret-video";
+
+/** 解读 jobId(幂等锚,telegram-admin 移除遗留 job 同引此函数)。
  * 分隔符必须用连字符:BullMQ 拒绝含冒号的 custom jobId("Custom Id cannot contain :") */
-export async function enqueueInterpret(data: InterpretJobData): Promise<void> {
-  await getQueue(QUEUE_INTERPRETER).add("interpret-video", data, {
-    jobId: `interpret-${data.telegramId}`,
+export function interpretJobId(telegramId: string, suffix?: string): string {
+  return `interpret-${telegramId}${suffix ? `-${suffix}` : ""}`;
+}
+
+/** 解读 job 通用参数(attempts 兜下载/网关/LLM 网络层;保留窗口 50 压 playUrl 在 Redis 的残留) */
+function interpretJobOpts(opts: { jobId: string; delayMs?: number }): JobsOptions {
+  return {
+    jobId: opts.jobId,
+    ...(opts.delayMs !== undefined ? { delay: opts.delayMs } : {}),
     attempts: 3,
     backoff: { type: "fixed", delay: 60_000 },
-    removeOnComplete: 50, // 压低 playUrl 在 Redis 的残留条数
+    removeOnComplete: 50,
     removeOnFail: 50,
+  };
+}
+
+/** 入队解读(attempts 兜网络层,ASR/LLM 解析重试在管道内) */
+export async function enqueueInterpret(data: InterpretJobData): Promise<void> {
+  await getQueue(QUEUE_INTERPRETER).add(
+    INTERPRET_JOB_NAME,
+    data,
+    interpretJobOpts({ jobId: interpretJobId(data.telegramId) }),
+  );
+}
+
+/** 「先标 pending → 入队,失败回滚 null」单一入口(手动触发与采集钩子共用,原地双实现收敛)。
+ * 顺序不可反:worker 可能在入队返回前就开跑,反序会把 processing 打回 pending。 */
+export async function markPendingAndEnqueue(
+  telegramId: bigint,
+  data: Omit<InterpretJobData, "telegramId">,
+): Promise<void> {
+  await prisma.telegram.update({
+    where: { id: telegramId },
+    data: { aiStatus: TELEGRAM_AI_PENDING, lastAiError: null },
   });
+  try {
+    await enqueueInterpret({ telegramId: telegramId.toString(), ...data });
+  } catch (err) {
+    await prisma.telegram
+      .update({ where: { id: telegramId }, data: { aiStatus: null } })
+      .catch(() => undefined);
+    throw err;
+  }
 }
 
 export interface InterpretOutcome {
@@ -117,7 +159,7 @@ async function markFailed(id: bigint, err: unknown): Promise<void> {
 
 /** 经网关重拉 listing(maxPages=3)按 videoId 匹配直链(存量补读/过境链过期两路) */
 async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Promise<string | null> {
-  if (data.platform !== "douyin" || !data.secUid || !data.videoId) return null;
+  if (data.platform !== VIDEO_PLATFORM_DOUYIN || !data.secUid || !data.videoId) return null;
   const platformRow = await prisma.crawlSource.findUnique({
     where: { id: sourceId },
     select: { config: true },
@@ -225,7 +267,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
   }
 
   const [asr, model] = await Promise.all([
-    prisma.asrConfig.findUnique({ where: { id: 1 } }),
+    getAsrRuntimeConfig(),
     resolveAiModel(AI_PURPOSE_INTERPRET),
   ]);
   if (!asr?.enabled || model === null) {
@@ -239,14 +281,14 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
 
   // 日配额(后台 interpret 绑定可配,缺省 100):满则延迟重投顺延,绝不 throw / 标败
   if ((await countTodayInterpreted()) >= (await getRoleDailyMax(AI_PURPOSE_INTERPRET))) {
-    await getQueue(QUEUE_INTERPRETER).add("interpret-video", data, {
-      jobId: `interpret-${data.telegramId}-r${Date.now()}`,
-      delay: QUOTA_DEFER_MS,
-      attempts: 3,
-      backoff: { type: "fixed", delay: 60_000 },
-      removeOnComplete: 50,
-      removeOnFail: 50,
-    });
+    await getQueue(QUEUE_INTERPRETER).add(
+      INTERPRET_JOB_NAME,
+      data,
+      interpretJobOpts({
+        jobId: interpretJobId(data.telegramId, `r${Date.now()}`),
+        delayMs: QUOTA_DEFER_MS,
+      }),
+    );
     logger.warn({ event: "interpret.video.quota_deferred", telegramId: data.telegramId });
     return { telegramId: data.telegramId, status: "deferred_quota", transcriptUsed: false };
   }
@@ -284,7 +326,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       protocol: asr.protocol,
       baseUrl: asr.baseUrl,
       modelId: asr.modelId,
-      apiKey: asr.apiKeyEnc ? decryptSecret(asr.apiKeyEnc) : null,
+      apiKey: asr.apiKey,
       audio: await fs.readFile(audioPath),
       filename: "audio.mp3",
       hotwords: asr.hotwords,

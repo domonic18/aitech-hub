@@ -21,7 +21,7 @@ import {
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
 } from "./constants";
-import { enqueueInterpret } from "./interpret-video";
+import { interpretJobId, markPendingAndEnqueue } from "./interpret-video";
 import { toEngagement, type FeedMediaFilter } from "./feed-view";
 
 export const TELEGRAM_PAGE_SIZE = 15;
@@ -277,25 +277,13 @@ export async function triggerTelegramInterpret(id: bigint): Promise<{ enqueued: 
   });
   const queue = getQueue(QUEUE_INTERPRETER);
   // 先移除遗留 job(removeOnComplete 保留的 completed job 会顶掉同名 jobId 入队,静默去重)
-  await queue.remove(`interpret-${row.id}`).catch(() => null);
-  await prisma.telegram.update({
-    where: { id: row.id },
-    data: { aiStatus: TELEGRAM_AI_PENDING, lastAiError: null },
+  await queue.remove(interpretJobId(row.id.toString())).catch(() => null);
+  await markPendingAndEnqueue(row.id, {
+    videoId,
+    playUrl: null, // 过境直链不落库,processor 现场重拉
+    platform: row.videoPlatform ?? "",
+    secUid: account?.secUid ?? null,
   });
-  try {
-    await enqueueInterpret({
-      telegramId: row.id.toString(),
-      videoId,
-      playUrl: null,
-      platform: row.videoPlatform ?? "",
-      secUid: account?.secUid ?? null,
-    });
-  } catch (err) {
-    await prisma.telegram
-      .update({ where: { id: row.id }, data: { aiStatus: null } })
-      .catch(() => undefined);
-    throw err;
-  }
   logger.info({ event: "telegram.interpret_triggered", telegramId: row.id.toString() });
   return { enqueued: true };
 }

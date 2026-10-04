@@ -36,6 +36,16 @@ export const MEDIA_AUDIT_CRON = "41 3 * * *";
 /** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
 export const VISIT_LOG_PURGE_CRON = "14 4 * * *";
 
+/** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;
+ * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。 */
+export const CRAWL_JOB_TICK = "tick";
+export const CRAWL_JOB_SOURCE = "crawl";
+export const CRAWL_JOB_VIDEO = "crawl-video";
+
+/** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细) */
+export const STATS_JOB_FLUSH = "flush";
+export const STATS_JOB_PURGE = "purge-visit-log";
+
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 }

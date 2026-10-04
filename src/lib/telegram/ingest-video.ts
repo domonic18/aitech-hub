@@ -8,17 +8,16 @@
  */
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { decryptJars } from "./cookies";
-import { enqueueInterpret, isInterpretReady } from "./interpret-video";
+import { isInterpretReady, markPendingAndEnqueue } from "./interpret-video";
 import {
   SOCIAL_BACKFILL_DAYS,
   SOCIAL_BACKFILL_MAX_ITEMS,
   SOCIAL_BACKFILL_MAX_PAGES,
   SOCIAL_MANUAL_BACKFILL_DAYS,
   SOCIAL_MAX_CONSECUTIVE_FAILS,
-  TELEGRAM_AI_PENDING,
   TELEGRAM_MEDIA_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
@@ -115,25 +114,17 @@ async function ingestVideoItem(
     });
     if (hit) return "filtered";
     // 可见新条 + 解读就绪 + 网关透出直链 → 入队解读(playUrl 仅经 job data 过境,禁落库;
-    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)。先标 pending 再入队(顺序不可反:
-    // worker 可能在入队返回前就开跑,反序会把 processing 打回 pending)
+    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)。pending→入队→回滚顺序由
+    // markPendingAndEnqueue 单点保证
     if (interpretReady && item.playUrl) {
       try {
-        await prisma.telegram.update({
-          where: { id: created.id },
-          data: { aiStatus: TELEGRAM_AI_PENDING },
-        });
-        await enqueueInterpret({
-          telegramId: created.id.toString(),
+        await markPendingAndEnqueue(created.id, {
           videoId: item.videoId,
           playUrl: item.playUrl,
           platform,
           secUid,
         });
       } catch (err) {
-        await prisma.telegram
-          .update({ where: { id: created.id }, data: { aiStatus: null } })
-          .catch(() => undefined);
         logger.warn({
           event: "crawler.video.interpret_enqueue_failed",
           telegramId: created.id.toString(),
@@ -311,7 +302,7 @@ export async function enqueueDueVideoAccounts(): Promise<{ due: number }> {
   for (const account of due) {
     // jobId 锚定到期时刻:同账号同轮重复入队被 BullMQ 幂等挡掉
     await queue.add(
-      "crawl-video",
+      CRAWL_JOB_VIDEO,
       { accountId: account.id },
       {
         jobId: `crawl-video-${account.id}-${account.nextRunAt?.getTime() ?? 0}`,

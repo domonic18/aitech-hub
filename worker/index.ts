@@ -2,6 +2,8 @@ import { Worker, type Processor, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
 import {
+  CRAWL_JOB_TICK,
+  CRAWL_JOB_VIDEO,
   MEDIA_AUDIT_CRON,
   QUEUE_CRAWLER,
   QUEUE_INTERPRETER,
@@ -9,6 +11,8 @@ import {
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_STATS,
+  STATS_JOB_FLUSH,
+  STATS_JOB_PURGE,
   VISIT_LOG_PURGE_CRON,
   bullConnection,
   getQueue,
@@ -31,7 +35,7 @@ const PROCESSORS: Record<string, Processor> = {
   },
   [QUEUE_STATS]: async (job) => {
     // 访问明细 7 天保留期清理(M10 批⑥;与 flush 同队列按 job.name 分流)
-    if (job.name === "purge-visit-log") {
+    if (job.name === STATS_JOB_PURGE) {
       const removed = await purgeVisitLogs();
       if (removed > 0) {
         console.log(JSON.stringify({ event: "stats.visit_log.purge", removed }));
@@ -46,7 +50,7 @@ const PROCESSORS: Record<string, Processor> = {
   },
   // tick(每分钟)、crawl(单渠道)、crawl-video(单博主)共用队列,按 job.name 分流
   [QUEUE_CRAWLER]: async (job) => {
-    if (job.name === "tick") {
+    if (job.name === CRAWL_JOB_TICK) {
       const summary = await crawlDueSources();
       // 同拍扫视频博主(平台行不调度,social_account 才是调度主体;M8)
       const video = await enqueueDueVideoAccounts();
@@ -56,7 +60,7 @@ const PROCESSORS: Record<string, Processor> = {
       }
       return { ...summary, videoDue: video.due };
     }
-    if (job.name === "crawl-video") {
+    if (job.name === CRAWL_JOB_VIDEO) {
       // data.backfill 由手动回填路由置真(批⑧);旧 worker 收到退化为常规增量(良性)
       const summary = await crawlVideoAccount(Number(job.data.accountId), {
         backfill: job.data.backfill === true,
@@ -81,7 +85,7 @@ async function scheduleStatsFlush(): Promise<void> {
     "stats-flush",
     { every: STATS_FLUSH_EVERY_MS },
     {
-      name: "flush",
+      name: STATS_JOB_FLUSH,
       data: {},
       opts: { removeOnComplete: 100 },
     },
@@ -108,7 +112,7 @@ async function scheduleVisitLogPurge(): Promise<void> {
     "visit-log-purge",
     { pattern: VISIT_LOG_PURGE_CRON },
     {
-      name: "purge-visit-log",
+      name: STATS_JOB_PURGE,
       data: {},
       opts: { removeOnComplete: 7 },
     },
@@ -124,7 +128,7 @@ async function scheduleCrawlerTick(): Promise<void> {
     "crawler-tick",
     { every: CRAWLER_TICK_EVERY_MS },
     {
-      name: "tick",
+      name: CRAWL_JOB_TICK,
       data: {},
       opts: { removeOnComplete: 50 },
     },

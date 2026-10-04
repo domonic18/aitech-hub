@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "./constants";
 import { fetchDouyinProfile, resolveDouyinSecUid } from "./adapters/video/douyin";
 import { BloggerAdminError } from "./bloggers-errors";
@@ -195,7 +195,7 @@ async function loadCrawlableAccount(id: number): Promise<{ id: number; nickname:
 export async function triggerBloggerCrawl(id: number): Promise<{ enqueued: true }> {
   const row = await loadCrawlableAccount(id);
   await getQueue(QUEUE_CRAWLER).add(
-    "crawl-video",
+    CRAWL_JOB_VIDEO,
     { accountId: row.id },
     {
       // 手动 job id 与调度 job(id 锚定 next_run_at)不冲突;入队即返回,结果看台账
@@ -212,7 +212,7 @@ export async function triggerBloggerCrawl(id: number): Promise<{ enqueued: true 
 export async function triggerBloggerBackfill(id: number): Promise<{ enqueued: true }> {
   const row = await loadCrawlableAccount(id);
   await getQueue(QUEUE_CRAWLER).add(
-    "crawl-video",
+    CRAWL_JOB_VIDEO,
     { accountId: row.id, backfill: true },
     {
       jobId: `crawl-video-${row.id}-backfill-${Date.now()}`,

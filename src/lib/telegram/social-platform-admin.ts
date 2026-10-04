@@ -12,7 +12,14 @@ import { prisma } from "../db";
 import { logger } from "../logger";
 import { socialPlatformRowName, VIDEO_PLATFORMS } from "./constants";
 import { gatewayHealthSchema } from "./adapters/video/gateway-contract";
-import { decryptJars, encryptJars, CookiePoolError, maskJars, mergeImportedJar } from "./cookies";
+import {
+  clearJarsInConfig,
+  decryptJars,
+  encryptJars,
+  CookiePoolError,
+  maskJars,
+  mergeImportedJar,
+} from "./cookies";
 import { BloggerAdminError } from "./bloggers-admin";
 
 /** 平台行占位端点(url 为必填列;平台行自身不做 fetch,值仅语义占位) */
@@ -122,13 +129,6 @@ export async function clearCookieJars(platform: string): Promise<void> {
     data: { config: (config ?? Prisma.DbNull) as Prisma.InputJsonValue },
   });
   logger.info({ event: "blogger.cookie_cleared", platform });
-}
-
-function clearJarsInConfig(config: unknown): Record<string, unknown> | null {
-  if (config == null || typeof config !== "object") return null;
-  const out = { ...(config as Record<string, unknown>) };
-  delete out.cookieJars;
-  return out;
 }
 
 // ── 网关健康(RSC 状态卡) ─────────────────────────────────────────────────────

@@ -11,6 +11,9 @@ import { decryptSecret, encryptSecret, maskSecret } from "../crypto/secret-box";
 import { ASR_PROTOCOLS, TEST_STATUS_FAIL, TEST_STATUS_OK } from "./constants";
 import { AiAdminError } from "./errors";
 
+/** asr_config 单例行锚点(全库唯一 id;消费方禁再裸写 id:1) */
+export const ASR_CONFIG_ID = 1;
+
 /** 脱敏视图(永不含 apiKeyEnc) */
 export interface AsrConfigView {
   provider: string;
@@ -31,9 +34,9 @@ export interface AsrConfigView {
 /** 单例取用;首次访问落默认行(无鉴权/禁用,等管理员配置) */
 export async function getAsrConfigAdmin(): Promise<AsrConfigView> {
   const row =
-    (await prisma.asrConfig.findUnique({ where: { id: 1 } })) ??
+    (await prisma.asrConfig.findUnique({ where: { id: ASR_CONFIG_ID } })) ??
     (await prisma.asrConfig.create({
-      data: { id: 1, provider: "", protocol: "openai", modelId: "whisper-1" },
+      data: { id: ASR_CONFIG_ID, provider: "", protocol: "openai", modelId: "whisper-1" },
     }));
   return {
     provider: row.provider,
@@ -70,7 +73,7 @@ export async function updateAsrConfig(input: AsrUpdateInput): Promise<void> {
   await getAsrConfigAdmin(); // 确保单例行存在(首访落默认行)
   const apiKey = input.apiKey?.trim() ? input.apiKey.trim() : null;
   await prisma.asrConfig.update({
-    where: { id: 1 },
+    where: { id: ASR_CONFIG_ID },
     data: {
       provider: input.provider,
       protocol: input.protocol,
@@ -104,6 +107,33 @@ function normalizeAsrBaseUrl(raw: string): string {
   return out;
 }
 
+/** 消费侧运行时取数(apiKey 已解密;仅供解读管道,禁回传客户端禁日志)。
+ * 行不存在返回 null(未初始化运营态,调用方按未启用处理)——不 get-or-create,
+ * 避免只读链路写库。 */
+export interface AsrRuntimeConfig {
+  enabled: boolean;
+  protocol: string;
+  baseUrl: string | null;
+  modelId: string;
+  apiKey: string | null;
+  maxAudioSeconds: number;
+  hotwords: string[];
+}
+
+export async function getAsrRuntimeConfig(): Promise<AsrRuntimeConfig | null> {
+  const row = await prisma.asrConfig.findUnique({ where: { id: ASR_CONFIG_ID } });
+  if (!row) return null;
+  return {
+    enabled: row.enabled,
+    protocol: row.protocol,
+    baseUrl: row.baseUrl,
+    modelId: row.modelId,
+    apiKey: row.apiKeyEnc ? decryptSecret(row.apiKeyEnc) : null,
+    maxAudioSeconds: row.maxAudioSeconds,
+    hotwords: row.hotwords,
+  };
+}
+
 /** 探针取数(内部解密;仅供 probe,不回客户端不入日志) */
 export async function getAsrForTest(): Promise<{
   protocol: string;
@@ -111,17 +141,9 @@ export async function getAsrForTest(): Promise<{
   modelId: string;
   apiKey: string | null;
 }> {
-  const row = await prisma.asrConfig.findUnique({
-    where: { id: 1 },
-    select: { protocol: true, baseUrl: true, modelId: true, apiKeyEnc: true },
-  });
-  if (!row) throw new AiAdminError("not_found", "ASR 配置不存在");
-  return {
-    protocol: row.protocol,
-    baseUrl: row.baseUrl,
-    modelId: row.modelId,
-    apiKey: row.apiKeyEnc ? decryptSecret(row.apiKeyEnc) : null,
-  };
+  const cfg = await getAsrRuntimeConfig();
+  if (!cfg) throw new AiAdminError("not_found", "ASR 配置不存在");
+  return { protocol: cfg.protocol, baseUrl: cfg.baseUrl, modelId: cfg.modelId, apiKey: cfg.apiKey };
 }
 
 /** 探针结果落库;skipped(不支持的协议)不覆盖既有结果 */
@@ -133,7 +155,7 @@ export async function recordAsrTest(r: {
 }): Promise<void> {
   if (r.skipped) return;
   await prisma.asrConfig.update({
-    where: { id: 1 },
+    where: { id: ASR_CONFIG_ID },
     data: {
       lastTestedAt: new Date(),
       lastTestStatus: r.ok ? TEST_STATUS_OK : TEST_STATUS_FAIL,

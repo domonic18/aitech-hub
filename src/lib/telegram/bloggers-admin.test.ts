@@ -17,7 +17,11 @@ vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 const queueMock = vi.hoisted(() => ({
   add: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
 }));
-vi.mock("../queue", () => ({ QUEUE_CRAWLER: "crawler", getQueue: () => queueMock }));
+vi.mock("../queue", () => ({
+  CRAWL_JOB_VIDEO: "crawl-video",
+  QUEUE_CRAWLER: "crawler",
+  getQueue: () => queueMock,
+}));
 
 vi.mock("./adapters/video/douyin", () => ({
   fetchDouyinProfile: vi.fn(),
