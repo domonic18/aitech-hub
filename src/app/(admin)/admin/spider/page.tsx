@@ -1,14 +1,20 @@
 /**
  * 采集总览页(M7 批④c;2026-10-04 按原型 admin-spider 重排):4 KPI 卡 +
  * 队列堆叠条/24h 入库条带(mid-grid 1fr 360px)+ 采集日历热力图 + 最近错误行。
- * 纯只读 RSC;渠道健康明细在台账页(/admin/channels),治理动作在电报流治理页。
+ * 纯只读 RSC;KPI/队列行/热力图在 components/admin/spider,本件只做取数编排。
+ * 渠道健康明细在台账页(/admin/channels),治理动作在电报流治理页。
  */
 import Link from "next/link";
 
+import IngestHeatmap from "@/components/admin/spider/IngestHeatmap";
+import QueueLane from "@/components/admin/spider/QueueLane";
+import SpiderKpiCards from "@/components/admin/spider/SpiderKpiCards";
 import { requireAdminPage } from "@/lib/auth/guard";
+import { formatCnTime } from "@/lib/datetime";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import {
   getCrawlerQueueSnapshot,
+  getInterpreterQueueSnapshot,
   getIngestCalendar,
   getIngestHourly,
   getTelegramStock,
@@ -17,49 +23,28 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/** 原型 heat-grid 四档色:0 槽色,其余 accent 按 30/60/100% 调入 */
-const HEAT_COLORS = [
-  "var(--panel-2)",
-  "color-mix(in srgb, var(--accent) 30%, var(--panel-2))",
-  "color-mix(in srgb, var(--accent) 60%, var(--panel-2))",
-  "var(--accent)",
-];
-
-function heatStyle(count: number, max: number): React.CSSProperties {
-  const level = count <= 0 ? 0 : Math.min(3, Math.ceil((count / Math.max(max, 1)) * 3));
-  return { background: HEAT_COLORS[level]! };
-}
-
+/** 空值展示「—」的 HH:mm(formatCnTime 同口径) */
 function hhmm(at: Date | null): string {
-  if (!at) return "—";
-  return new Intl.DateTimeFormat("sv-SE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Shanghai",
-  }).format(at);
+  return at === null ? "—" : formatCnTime(at);
 }
 
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [snapshot, calendar, hourly, stock, channels, video] = await Promise.all([
+  const [snapshot, calendar, hourly, stock, channels, video, interpreter] = await Promise.all([
     getCrawlerQueueSnapshot(),
     getIngestCalendar(14),
     getIngestHourly(),
     getTelegramStock(),
     listChannelsAdmin(),
     getVideoObservation(),
+    getInterpreterQueueSnapshot(),
   ]);
   const today = calendar[calendar.length - 1]?.count ?? 0;
   const yesterday = calendar[calendar.length - 2]?.count ?? 0;
-  const maxDay = Math.max(1, ...calendar.map((c) => c.count));
   const maxHour = Math.max(1, ...hourly.map((h) => h.count));
-  const stockTotal = Object.values(stock).reduce((a, b) => a + b, 0);
   const enabledChannels = channels.filter((c) => c.enabled).length;
   const backlog = snapshot.counts.waiting + snapshot.counts.delayed;
-  const busyTotal = Math.max(1, backlog + snapshot.counts.active + snapshot.counts.failed);
-
-  const kpi = "rounded-md border border-line bg-panel px-4 py-4";
-  const kpiLabel = "flex items-center gap-1.5 text-[12.5px] text-text-2";
+  const interpreterBacklog = interpreter.counts.waiting + interpreter.counts.delayed;
 
   return (
     <div className="flex flex-col gap-4">
@@ -75,75 +60,16 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
       </div>
 
       {/* KPI ×4(原型 kpi-grid) */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className={kpi}>
-          <div className={kpiLabel}>
-            <svg className="ic text-accent" aria-hidden="true">
-              <use href="#i-send" />
-            </svg>
-            今日入库
-          </div>
-          <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-text-1">
-            {today}
-          </div>
-          <div className="mt-1.5 text-[11.5px] text-text-3">
-            较昨日
-            <b className={`ml-1 font-medium ${today >= yesterday ? "text-green" : "text-amber"}`}>
-              {today >= yesterday ? "+" : ""}
-              {today - yesterday}
-            </b>
-          </div>
-        </div>
-        <div className={kpi}>
-          <div className={kpiLabel}>
-            <svg className="ic text-accent" aria-hidden="true">
-              <use href="#i-cloudserver" />
-            </svg>
-            条目库存
-          </div>
-          <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-text-1">
-            {stockTotal}
-          </div>
-          <div className="mt-1.5 text-[11.5px] text-text-3">
-            可见 <b className="font-medium text-green">{stock.visible ?? 0}</b> · 隐藏{" "}
-            <b className="font-medium text-text-2">{stock.hidden ?? 0}</b> · 归档{" "}
-            <b className="font-medium text-text-2">{stock.archived ?? 0}</b>
-          </div>
-        </div>
-        <div className={kpi}>
-          <div className={kpiLabel}>
-            <svg className="ic text-accent" aria-hidden="true">
-              <use href="#i-dashboard" />
-            </svg>
-            队列积压
-          </div>
-          <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-text-1">
-            {backlog}
-          </div>
-          <div className="mt-1.5 text-[11.5px] text-text-3">
-            active <b className="font-medium text-text-2">{snapshot.counts.active}</b> · completed{" "}
-            <b className="font-medium text-text-2">{snapshot.counts.completed}</b>
-          </div>
-        </div>
-        <div className={kpi}>
-          <div className={kpiLabel}>
-            <svg className="ic text-accent" aria-hidden="true">
-              <use href="#i-warning" />
-            </svg>
-            失败任务
-          </div>
-          <div
-            className={`mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] ${
-              snapshot.counts.failed > 0 ? "text-red" : "text-text-1"
-            }`}
-          >
-            {snapshot.counts.failed}
-          </div>
-          <div className="mt-1.5 text-[11.5px] text-text-3">
-            渠道 <b className="font-medium text-text-2">{enabledChannels}</b> 个调度中
-          </div>
-        </div>
-      </div>
+      <SpiderKpiCards
+        today={today}
+        yesterday={yesterday}
+        stock={stock}
+        backlog={backlog}
+        active={snapshot.counts.active}
+        completed={snapshot.counts.completed}
+        failed={snapshot.counts.failed}
+        enabledChannels={enabledChannels}
+      />
 
       {/* 短视频观测细带(M8;博主明细与 Cookie 池在 /admin/bloggers) */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-md border border-line bg-panel px-4 py-3 text-xs text-text-3">
@@ -165,7 +91,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
         </Link>
       </div>
 
-      {/* 双队列实况 + 24h 条带(原型 mid-grid 1fr 360px;interpreter 为诚实占位) */}
+      {/* 双队列实况 + 24h 条带(原型 mid-grid 1fr 360px;M9 起 interpreter 真实计数) */}
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_360px]">
         <div className="rounded-md border border-line bg-panel">
           <div className="flex items-center justify-between border-b border-line px-4 py-3.5 text-sm font-semibold">
@@ -174,72 +100,61 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
           </div>
           <div className="px-4 py-4">
             {/* crawler:文字渠道 + 视频博主同队列调度(arch/02 §3.2 注记) */}
-            <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-text-1">
-              <svg className="ic text-accent" aria-hidden="true">
-                <use href="#i-cloudserver" />
-              </svg>
-              <span>crawler</span>
-              <span className="text-[11px] font-normal text-text-3">
-                文字 + 视频抓取 · {enabledChannels} 渠道 + {video.enabledCount} 博主
-              </span>
-              <span className="ml-auto font-mono text-[11px] font-normal text-text-3">
-                active <b>{snapshot.counts.active}</b> · waiting <b>{backlog}</b> · completed{" "}
-                <b>{snapshot.counts.completed}</b> · failed <b>{snapshot.counts.failed}</b>
-              </span>
-            </div>
-            <div className="mt-2 flex h-2.5 overflow-hidden rounded-[5px] bg-panel-2">
-              <span
-                className="block h-full bg-accent"
-                style={{ width: `${(snapshot.counts.active / busyTotal) * 100}%` }}
-              />
-              <span
-                className="block h-full bg-accent/45"
-                style={{ width: `${(backlog / busyTotal) * 100}%` }}
-              />
-              <span className="block h-full flex-1" />
-              <span
-                className="block h-full bg-red"
-                style={{ width: `${(snapshot.counts.failed / busyTotal) * 100}%` }}
-              />
-            </div>
-            <div className="mt-2 flex flex-wrap gap-4 font-mono text-[11px] text-text-3">
-              <span>
-                <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-accent" />
-                active
-              </span>
-              <span>
-                <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-accent/45" />
-                waiting
-              </span>
-              <span>
-                <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
-                completed(近 200 留存)
-              </span>
-              <span>
-                <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-red" />
-                failed
-              </span>
-              <span className="text-text-3/80">视频博主 crawl-video 与文字渠道同队列调度</span>
-            </div>
-
-            {/* interpreter:未启用诚实占位(队列随解读批 M9 立项,不造假计数) */}
-            <div className="mt-4 border-t border-line pt-4">
-              <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-text-1">
-                <svg className="ic text-text-3" aria-hidden="true">
-                  <use href="#i-robot" />
-                </svg>
-                <span>interpreter</span>
-                <span className="text-[11px] font-normal text-text-3">
-                  视频解读 · 抽轨 / ASR / LLM
-                </span>
-                <span className="ml-auto flex items-center gap-2 font-mono text-[11px] font-normal text-text-3">
-                  active <b>0</b> · waiting <b>0</b> · completed <b>0</b> · failed <b>0</b>
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-px font-sans text-[10px] text-text-3">
-                    未启用 · 随解读批(M9)交付
+            <QueueLane
+              icon="i-cloudserver"
+              name="crawler"
+              desc={
+                <>
+                  文字 + 视频抓取 · {enabledChannels} 渠道 + {video.enabledCount} 博主
+                </>
+              }
+              counts={snapshot.counts}
+              legend={
+                <>
+                  <span>
+                    <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-accent" />
+                    active
                   </span>
-                </span>
-              </div>
-              <div className="mt-2 h-2.5 overflow-hidden rounded-[5px] bg-panel-2 opacity-60" />
+                  <span>
+                    <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-accent/45" />
+                    waiting
+                  </span>
+                  <span>
+                    <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
+                    completed(近 200 留存)
+                  </span>
+                  <span>
+                    <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-red" />
+                    failed
+                  </span>
+                  <span className="text-text-3/80">视频博主 crawl-video 与文字渠道同队列调度</span>
+                </>
+              }
+            />
+
+            {/* interpreter(M9 实况):下载/抽轨/ASR/LLM,并发 1(ffmpeg CPU 峰值) */}
+            <div className="mt-4 border-t border-line pt-4">
+              <QueueLane
+                icon="i-robot"
+                name="interpreter"
+                desc={
+                  <>
+                    视频解读 · 下载 / 抽轨 / ASR / LLM · 并发 1 · 今日 {interpreter.todayDone}/
+                    {interpreter.dailyMax}
+                  </>
+                }
+                counts={interpreter.counts}
+                iconPulse
+                legend={
+                  <>
+                    <span>
+                      <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
+                      completed(近 50 留存)
+                    </span>
+                    <span>日配额超限延迟 30min 重投(delayed),失败条目经治理台「解读」按钮重试</span>
+                  </>
+                }
+              />
             </div>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-4 py-3 font-mono text-xs text-text-3">
@@ -278,43 +193,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
       </div>
 
       {/* 采集日历热力图(原型 heat-grid:周对齐 7 行 × 列) */}
-      <div className="rounded-md border border-line bg-panel">
-        <div className="border-b border-line px-4 py-3.5 text-sm font-semibold">
-          采集日历(近 14 天入库,含隐藏)
-        </div>
-        <div className="overflow-x-auto p-4">
-          <div
-            className="grid auto-flow-col grid-rows-7 gap-[3px]"
-            style={{ gridAutoColumns: "12px" }}
-          >
-            {/* 周一对齐:首日前置空格(auto-flow-col 下占满第一列) */}
-            {calendar[0] &&
-              Array.from(
-                { length: (new Date(`${calendar[0].day}T00:00:00Z`).getUTCDay() + 6) % 7 },
-                (_, i) => <i key={`pad-${i}`} className="h-3 w-3 rounded-sm" />,
-              )}
-            {calendar.map((c) => (
-              <i
-                key={c.day}
-                title={`${c.day} — ${c.count} 条`}
-                className="h-3 w-3 rounded-sm"
-                style={heatStyle(c.count, maxDay)}
-              />
-            ))}
-          </div>
-          <div className="mt-2 flex items-center gap-4 font-mono text-[10.5px] text-text-3">
-            <span>{calendar[0]?.day}</span>
-            <span>{calendar[calendar.length - 1]?.day}</span>
-            <span className="ml-auto flex items-center gap-1">
-              少
-              <i className="h-2.5 w-2.5 rounded-sm bg-panel-2" />
-              <i className="h-2.5 w-2.5 rounded-sm bg-accent/30" />
-              <i className="h-2.5 w-2.5 rounded-sm bg-accent/60" />
-              <i className="h-2.5 w-2.5 rounded-sm bg-accent" />多
-            </span>
-          </div>
-        </div>
-      </div>
+      <IngestHeatmap calendar={calendar} />
 
       {/* 最近错误(原型 err-row) */}
       <div className="rounded-md border border-line bg-panel">

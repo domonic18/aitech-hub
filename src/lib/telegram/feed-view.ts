@@ -3,6 +3,16 @@
  * 时间口径统一北京时区(与 lib/datetime 同源);条目形态是前台两个消费端
  * (/telegram 时间轴、首页 LIVE 带)与轮询 API 的契约。
  */
+import { formatCnTime } from "../datetime";
+
+import { VIDEO_PLATFORM_LABELS } from "./constants";
+
+/** AI 解读结论(M9;仅持久化分析结论——topic/summary/points,无转写文本) */
+export interface PublicVideoAi {
+  topic: string;
+  summary: string;
+  points: string[];
+}
 
 /** 视频条目附加元数据(M8 混合流;mediaType=video 时存在) */
 export interface PublicVideoMeta {
@@ -11,6 +21,8 @@ export interface PublicVideoMeta {
   coverUrl: string | null;
   durationSeconds: number | null;
   engagement: { play: number | null; like: number | null; comment: number | null };
+  /** M9:LLM 解读结论;null=未解读/解读未产出(前台显隐跟数据走) */
+  ai: PublicVideoAi | null;
 }
 
 export interface PublicTelegramItem {
@@ -30,10 +42,12 @@ export interface PublicTelegramItem {
 export const FEED_MEDIA_FILTERS = ["all", "text", "video"] as const;
 export type FeedMediaFilter = (typeof FEED_MEDIA_FILTERS)[number];
 
-/** 平台展示名(未知平台回退原值) */
+/** LIVE 带轮询间隔(取第一页按 id 去重前插;M10 批②起与加载更多共存) */
+export const BAND_POLL_MS = 60_000;
+
+/** 平台展示名(未知平台回退原值;标签表在 telegram/constants 零依赖层) */
 export function platformLabel(platform: string): string {
-  const labels: Record<string, string> = { douyin: "抖音", xhs: "小红书", bilibili: "B站" };
-  return labels[platform] ?? platform;
+  return VIDEO_PLATFORM_LABELS[platform] ?? platform;
 }
 
 /** 秒 → m:ss(非法值返回 null,调用方隐藏角标) */
@@ -68,6 +82,18 @@ export function toEngagement(raw: unknown): {
   return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
 }
 
+/** AI 解读投影(镜像 toEngagement;ai_summary 非空才产出,points 白名单截 3 条) */
+export function toVideoAi(topic: unknown, summary: unknown, points: unknown): PublicVideoAi | null {
+  if (typeof summary !== "string" || summary.trim() === "") return null;
+  return {
+    topic: typeof topic === "string" ? topic.trim() : "",
+    summary,
+    points: Array.isArray(points)
+      ? points.filter((p): p is string => typeof p === "string" && p.trim() !== "").slice(0, 3)
+      : [],
+  };
+}
+
 /** 相对时间(分/小时/天;分钟内「刚刚」) */
 export function timeAgo(iso: string, now = Date.now()): string {
   const diff = now - new Date(iso).getTime();
@@ -82,13 +108,9 @@ export function isNew(iso: string, now = Date.now()): boolean {
   return now - new Date(iso).getTime() < 30 * 60_000;
 }
 
-/** 北京时区 HH:mm */
+/** 北京时区 HH:mm(ISO 串入参薄封装;Date 入参用 lib/datetime#formatCnTime) */
 export function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString("sv-SE", {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatCnTime(new Date(iso));
 }
 
 /** 日分组标签:今天/昨天/YYYY-MM-DD(北京时区) */
@@ -105,10 +127,11 @@ export function dayLabel(iso: string, now = Date.now()): string {
 /** 相邻同日合并分组(条目已按时间倒序);保序不重排 */
 export function groupByDay(
   items: readonly PublicTelegramItem[],
+  now = Date.now(),
 ): Array<{ label: string; items: PublicTelegramItem[] }> {
   const out: Array<{ label: string; items: PublicTelegramItem[] }> = [];
   for (const item of items) {
-    const label = dayLabel(item.publishedAt);
+    const label = dayLabel(item.publishedAt, now);
     const last = out[out.length - 1];
     if (last && last.label === label) last.items.push(item);
     else out.push({ label, items: [item] });

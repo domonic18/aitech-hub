@@ -4,7 +4,7 @@
  */
 import type { VideoPlatform } from "../../constants";
 
-/** 视频条目统一形态(title/url 必有;play_url 禁止落库,仅网关调试透出) */
+/** 视频条目统一形态(title/url 必有) */
 export interface VideoItem {
   /** 平台作品 id(aweme_id 等),外链 URL 的稳定锚 */
   videoId: string;
@@ -17,12 +17,18 @@ export interface VideoItem {
   durationSeconds: number | null;
   engagement: { play: number | null; like: number | null; comment: number | null };
   topicTags: string[];
+  /** 无水印播放直链(平台临时签名 URL,本身公开可获取、数小时自然失效;非内容本体):
+   * 仅 ingest → interpret job data 过境(job 完成随保留窗口即焚),禁落库禁分发(arch/02 §3.2 红线)。
+   * null=网关未透出 */
+  playUrl: string | null;
 }
 
 /** 博主 listing 拉取输入:身份 sec_uid + 平台级明文 jar 池(网关零密钥) */
 export interface VideoFetchInput {
   secUid: string;
   cookies: string[];
+  /** 单轮翻页上限(默认 1;批⑧手动回填传 3——各适配器按网关上限自行钳制,B站后补同契约) */
+  maxPages?: number;
 }
 
 export interface VideoAdapter {
@@ -39,7 +45,7 @@ export class GatewayUnavailableError extends Error {
   }
 }
 
-/** 网关在线但上游失败(error 字段归因;编排层计入博主连续失败) */
+/** 网关在线但上游失败(状态码分流:404/422/502 与 ContractDrift;编排层计入博主连续失败) */
 export class GatewayUpstreamError extends Error {
   constructor(
     readonly kind: string,

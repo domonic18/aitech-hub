@@ -8,10 +8,19 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { env } from "../env";
-import { prisma } from "../db";
+import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { socialPlatformRowName, VIDEO_PLATFORMS } from "./constants";
-import { decryptJars, encryptJars, CookiePoolError, maskJars, mergeImportedJar } from "./cookies";
+import { gatewayHealthSchema } from "./adapters/video/gateway-contract";
+import {
+  clearJarsInConfig,
+  CONFIG_KEY_JARS,
+  encryptJars,
+  CookiePoolError,
+  jarsFromConfig,
+  maskJars,
+  mergeImportedJar,
+} from "./cookies";
 import { BloggerAdminError } from "./bloggers-admin";
 
 /** 平台行占位端点(url 为必填列;平台行自身不做 fetch,值仅语义占位) */
@@ -19,21 +28,27 @@ function platformRowUrl(platform: string): string {
   return `https://www.${platform}.com`;
 }
 
-/** 平台行 upsert(首次 Cookie 导入/首次登记博主时落地;enabled=平台总开关) */
+/** 平台行 upsert(首次 Cookie 导入/首次登记博主时落地;enabled=平台总开关)。
+ * 并发首建撞唯一约束 → 捕 P2002 重读(读侧拿到的是已落地行,幂等)。 */
 export async function ensurePlatformRow(platform: string) {
   const name = socialPlatformRowName(platform);
   const existing = await prisma.crawlSource.findUnique({ where: { name } });
   if (existing) return existing;
-  return prisma.crawlSource.create({
-    data: {
-      name,
-      type: "social-video",
-      platform,
-      url: platformRowUrl(platform),
-      crawlIntervalMin: 120,
-      remark: "视频平台行:Cookie 池/总开关/日上限载体,自身不调度",
-    },
-  });
+  try {
+    return await prisma.crawlSource.create({
+      data: {
+        name,
+        type: "social-video",
+        platform,
+        url: platformRowUrl(platform),
+        crawlIntervalMin: 120,
+        remark: "视频平台行:Cookie 池/总开关/日上限载体,自身不调度",
+      },
+    });
+  } catch (e) {
+    if (isP2002(e)) return (await prisma.crawlSource.findUnique({ where: { name } }))!;
+    throw e;
+  }
 }
 
 /** 池中可用明文 jar(采集编排与登记博主拉 profile 复用;空池返回 []) */
@@ -42,8 +57,7 @@ export async function activeJars(platform: string): Promise<string[]> {
     where: { name: socialPlatformRowName(platform) },
     select: { config: true },
   });
-  const config = row?.config as { cookieJars?: unknown } | null;
-  return decryptJars(config?.cookieJars);
+  return jarsFromConfig(row?.config);
 }
 
 // ── Cookie 池 ─────────────────────────────────────────────────────────────────
@@ -64,7 +78,7 @@ export async function getCookiePoolView(): Promise<{ pools: CookiePoolView[] }> 
   });
   return {
     pools: rows.map((r) => {
-      const jars = decryptJars((r.config as { cookieJars?: unknown } | null)?.cookieJars);
+      const jars = jarsFromConfig(r.config);
       return {
         platform: r.platform ?? r.name,
         enabled: r.enabled,
@@ -88,7 +102,7 @@ export async function importCookieJar(
   cookie: string,
 ): Promise<{ jarCount: number }> {
   const row = await ensurePlatformRow(platform);
-  const existing = decryptJars((row.config as { cookieJars?: unknown } | null)?.cookieJars);
+  const existing = jarsFromConfig(row.config);
   let merged: string[];
   try {
     merged = mergeImportedJar(existing, cookie);
@@ -98,7 +112,7 @@ export async function importCookieJar(
   }
   const config = {
     ...((row.config as Record<string, unknown> | null) ?? {}),
-    cookieJars: encryptJars(merged),
+    [CONFIG_KEY_JARS]: encryptJars(merged),
   };
   await prisma.crawlSource.update({
     where: { id: row.id },
@@ -123,13 +137,6 @@ export async function clearCookieJars(platform: string): Promise<void> {
   logger.info({ event: "blogger.cookie_cleared", platform });
 }
 
-function clearJarsInConfig(config: unknown): Record<string, unknown> | null {
-  if (config == null || typeof config !== "object") return null;
-  const out = { ...(config as Record<string, unknown>) };
-  delete out.cookieJars;
-  return out;
-}
-
 // ── 网关健康(RSC 状态卡) ─────────────────────────────────────────────────────
 
 export interface GatewayHealthView {
@@ -139,7 +146,7 @@ export interface GatewayHealthView {
   jarsAvailable?: number;
 }
 
-/** 网关 /health 带短超时;不可达返回降级视图(不阻塞页面渲染) */
+/** 网关 /health 带短超时;不可达或响应不合契约返回降级视图(不阻塞页面渲染) */
 export async function fetchGatewayHealth(): Promise<GatewayHealthView> {
   try {
     const res = await fetch(`${env.DOUYIN_GATEWAY_URL}/health`, {
@@ -147,16 +154,16 @@ export async function fetchGatewayHealth(): Promise<GatewayHealthView> {
       cache: "no-store",
     });
     if (!res.ok) return { reachable: false };
-    const body = (await res.json()) as {
-      status?: string;
-      jars_total?: number;
-      jars_available?: number;
-    };
+    const parsed = gatewayHealthSchema.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) {
+      logger.warn({ event: "gateway.health.contract_drift", issue: parsed.error.message });
+      return { reachable: false };
+    }
     return {
       reachable: true,
-      status: body.status,
-      jarsTotal: body.jars_total,
-      jarsAvailable: body.jars_available,
+      status: parsed.data.status,
+      jarsTotal: parsed.data.jars_total,
+      jarsAvailable: parsed.data.jars_available,
     };
   } catch {
     return { reachable: false };

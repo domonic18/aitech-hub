@@ -8,23 +8,22 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { BindingUpdateSchema, listBindingsAdmin, updateBinding } from "@/lib/ai/bindings-admin";
+import { AI_CONFIG_PAT_DENY } from "@/lib/ai/constants";
 
 export const dynamic = "force-dynamic";
 
-const PAT_DENY = "PAT must not manage AI service config";
-
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const items = await listBindingsAdmin();
   return apiEnvelope(0, "ok", { items });
 }
 
 export async function PUT(req: NextRequest): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const parsed = BindingUpdateSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return apiEnvelope(400, "绑定字段不合法(role/primaryId/backupId)");
+  if (!parsed.success) return apiEnvelope(400, "绑定字段不合法(role/primaryId/backupId/dailyMax)");
   try {
     await updateBinding(parsed.data);
     return apiEnvelope(0, "saved", { items: await listBindingsAdmin() });

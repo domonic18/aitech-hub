@@ -4,11 +4,8 @@
  */
 import { createHash } from "node:crypto";
 
-import {
-  cleanPostHtml,
-  rewriteBase64Images,
-  type Base64Image,
-} from "../../src/lib/content/clean-html";
+import { cleanPostHtml } from "../../src/lib/content/clean-html";
+import { rewriteBase64Images, type Base64Image } from "../../src/lib/content/data-uri-image";
 import { normalizeSlug, normalizeUrlPath } from "../../src/lib/slug";
 import type {
   LegacyMapPlan,

@@ -65,13 +65,17 @@
 - **资源约束(2026-09-30 评估)**:`interpreter` 队列并发锁 1——ffmpeg 抽音轨是 CPU 峰值,2C4G 单机 worker 串行消化;临时下载为服务器入流,不占出站带宽
 - 博主停用/删除不影响已入库电报(`video_blogger` 冗余);前台展示边界见 §6
 
-**落地注记(2026-10-04,M8 已交付;本批边界)**:上图管道仅交付前两环——**博主 listing 轮询 → 视频幂等入库 shell**(标题/封面/时长/互动数/原视频外链,`media_type=video`,即时可见)。**无水印下载 → ffmpeg → ASR → LLM 解读整段后置独立立项**(ASR/LLM 选型未评审,§7 成本锚点届时沿用;`interpreter` 队列不建)。合规保守模式:**`play_url` 不落库不下载**(§2 注记),版权红线四样收敛为「结论(后续解读批)/封面缩略图/外链」。采集基建为 Python 网关 sidecar `douyin-gateway/`(签名 a_bogus + Chrome TLS 指纹 transport + Cookie 池轮换,compose 内网服务,契约见 arch/05 §4.4);Node 侧仅编排(`crawl-video` job 走 BullMQ `crawler` 队列,与文字渠道同 tick 调度器,`crawlDueSources` 已排除 `type=social-video` 行防双扫)。无 AI 解读,前台视频卡**不显 AI 生成标注**(§6 标注随解读批落地);降级/成本护栏/asr_success_rate_7d 同批后置。
+**落地注记(2026-10-04,M8 已交付;本批边界)**:上图管道仅交付前两环——**博主 listing 轮询 → 视频幂等入库 shell**(标题/封面/时长/互动数/原视频外链,`media_type=video`,即时可见)。**无水印下载 → ffmpeg → ASR → LLM 解读整段后置独立立项**(ASR/LLM 选型未评审,§7 成本锚点届时沿用;`interpreter` 队列不建)。合规保守模式:**`play_url` 不落库不下载**(§2 注记),版权红线四样收敛为「结论(后续解读批)/封面缩略图/外链」。采集基建为 Python 网关 sidecar `services/douyin-gateway/`(签名 a_bogus + Chrome TLS 指纹 transport + Cookie 池轮换,compose 内网服务,契约见 arch/05 §4.4);Node 侧仅编排(`crawl-video` job 走 BullMQ `crawler` 队列,与文字渠道同 tick 调度器,`crawlDueSources` 已排除 `type=social-video` 行防双扫)。无 AI 解读,前台视频卡**不显 AI 生成标注**(§6 标注随解读批落地);降级/成本护栏/asr_success_rate_7d 同批后置。
+
+**落地注记(2026-10-04,M9 已交付;管道全通)**:`interpreter` 队列立项(worker **并发 1**,lockDuration 600s——ffmpeg 抽轨 CPU 峰值)。新视频 ingest 落库即入队(job data 携 `playUrl` 过境;ingest 先标 `ai_status=pending` 再 enqueue,入队失败回滚 null);存量补读与失败重试经治理台「解读」按钮手动触发(`POST /api/telegram/[id]/interpret`),缺直链时经网关重拉 listing(maxPages=3)按 video_id 匹配,过期直链下载失败回拉重下一次。管道 = 下载(≤100MB/60s,tmpdir)→ ffmpeg-static 抽 mp3(16k 单声,`-t` 截断,execFile 数组参数)→ ASR(`asr_config` openai/minimax 双协议,管道内重试 ≤2,终败 `missing_transcript` 降级仍走 LLM 基于 title/caption/话题标签概括,summary 以「(基于文案)」前缀)→ 删临时音视频(try/finally 即删)→ LLM 结构化(`ai_task_binding` interpret 角色,topic≤20字/summary 120~200字/points≤3×50字,JSON 约束)→ 落 `telegram.ai_*` 列(`ai_status`:null 未解读/pending/processing/done/missing_transcript/failed + aiRanAt/lastAiError)。红线执行口径:**`play_url` 仅经 BullMQ job data 过境即焚**(removeOnComplete/Fail 50 压痕迹,永不落库);临时音视频 try/finally 即删;**不设 transcript 列维持**;completed job 残留仅直链无转写文本。日配额后台可配(/admin/models 任务绑定「电报解读」卡,存 `ai_task_binding.daily_max`,缺省 100;超限延迟 30min 重投顺延不标败);配置未就绪(ASR 停用/interpret 未绑定)→ aiStatus 留 null 仅 lastAiError 提示;重试两层独立(管道内 ASR≤2、LLM 解析重试 1 次 + BullMQ attempts 3 兜下载/网关/网络层);`asr_success_rate_7d` 仍后置。
 
 ## 4. 治理(后台 admin/telegram)
 
 - **CRUD**:列表(筛选:渠道/**媒体类型(text|video)**/状态/日期/关键词)+ 编辑(标题/摘要)+ 隐藏/恢复 + 归档 + 删除(软删);视频行展示封面缩略图/平台徽标/博主/解读摘要/原视频链与转写缺失降级态
 
-**落地注记(2026-10-04,M8 批⑦ 已交付)**:列表筛选 = 状态四分段 + 渠道 + **媒体(全部/文字/短视频,`?media=`,镜像公开侧白名单回落)** + 关键词;视频行 = 封面缩略(56×74 竖版,`no-referrer`)+ 时长角标 + 互动(赞/评)+ 来源列出「抖音 · 博主」;**AI 解读块与转写缺失降级态随解读批(M9)启用,当前行内灰字「解读未启用」如实注记,不伪装**;博主台账行补作品入口链接(sec_uid 拼抖音主页);采集总览队列面板升级「双队列实况」= crawler(文字+视频同队列调度)+ interpreter(**未启用诚实占位**,队列随解读批立项)。
+**落地注记(2026-10-04,M8 批⑦ 已交付)**:列表筛选 = 状态四分段 + 渠道 + **媒体(全部/文字/短视频,`?media=`,镜像公开侧白名单回落)** + 关键词;视频行 = 封面缩略(56×74 竖版,`no-referrer`)+ 时长角标 + 互动(赞/评)+ 来源列出「抖音 · 博主」;博主台账行补作品入口链接(sec_uid 拼抖音主页)。
+
+**落地注记(2026-10-04,M9 已交付)**:行内灰字「解读未启用」退役——解读态徽章六态如实呈现(null 未解读/pending 排队中/processing 解读中/done 已解读/missing_transcript 无转写·文案概括/failed 失败,title 带 lastAiError 供排查)+ 视频行内「解读」按钮(存量补读与失败重试同入口,POST 入队即返回);采集总览 interpreter 行真实化(队列四计数 + 今日 X/Y 日配额,图例注明超限延迟 30min 重投)。
 - **过滤观测**:进流数 / 过滤拦截数 / 屏蔽词命中数 / 短视频解读数,按日聚合
 - **屏蔽词管理**:增删改 + 命中计数;新增屏蔽词可选"回溯隐藏存量命中"
 - **版权投诉通道(2026-09-30 评估补充)**:前台公示投诉入口,投诉 → 即时隐藏/下架 → 必要时与博主沟通;处置留痕,与条目 CRUD 同一治理面板(著作权争议的快速响应机制)
@@ -105,7 +109,7 @@
 
 **待明确(随②短视频解读立项时回答)**:
 
-- **视频博主首批名单与平台顺序**。~~2026-09-30 合规评估曾建议 B 站优先~~ → **2026-10-04 用户定调:抖音优先,M8 立项交付**(签名/TLS 指纹/Cookie 风控这套最难基建打通后,B 站开放生态只需轻适配器;反之不成立)。合规评估结论仍然成立并已内化为交付边界:全链路唯一实质法律风险点在抖音无水印下载(平台 ToS + 规避技术措施/反不正当竞争,有抓取判例)——故 M8 走「listing 元数据 + 外链」保守模式(§3.2 注记:play_url 不落库不下载,不做 ASR),无水印下载与解读待博主书面授权后独立立项。首批博主名单随真机验证补充(登记入口 admin/bloggers 已就绪)。参考实现:`ai-invest-assisstant` 项目 2026-09-22 前实战有效的 signer/transport/cookies,已平移为 `douyin-gateway/`
+- **视频博主首批名单与平台顺序**。~~2026-09-30 合规评估曾建议 B 站优先~~ → **2026-10-04 用户定调:抖音优先,M8 立项交付**(签名/TLS 指纹/Cookie 风控这套最难基建打通后,B 站开放生态只需轻适配器;反之不成立)。合规评估结论仍然成立并已内化为交付边界:全链路唯一实质法律风险点在抖音无水印下载(平台 ToS + 规避技术措施/反不正当竞争,有抓取判例)——故 M8 走「listing 元数据 + 外链」保守模式(§3.2 注记:play_url 不落库不下载,不做 ASR)。**2026-10-04 站长决策:M9 解读管道推进落地**(下载→抽轨→ASR→LLM 全通,见 §3.2 M9 注记;原「待博主书面授权后独立立项」的前提由站长以运营身份拍板承接,平台 ToS 风险自担)。代码侧红线不放松:持久化仍收敛于版权红线四样(分析结论/摘要/封面缩略图/原文外链),play_url 过境即焚、转写不落库、临时文件即删。首批博主名单随真机验证补充(登记入口 admin/bloggers 已就绪)。参考实现:`ai-invest-assisstant` 项目 2026-09-22 前实战有效的 signer/transport/cookies,已平移为 `services/douyin-gateway/`
 - **ASR 供应商选型与成本实测**(云 ASR vs 本地 whisper;单条成本 × 日量估算,验证 $5/日预算护栏)。**成本锚点(2026-09-30 评估)**:录音文件识别腾讯云 ¥1.75/小时(每月 5h 免费额度)、阿里云 ¥2.50/小时;起步场景(约 10 条/日 × 4 min)月增 ~¥0-40,受 $5/日护栏钉住的硬上限 ~¥1100/月,预期 ¥50-300/月;服务器零增量(interpreter 同机 worker,见 §3.2 资源约束)
 - LLM 摘要/解读模型选型(成本 vs 摘要质量;结构化输出 schema 评审)。单条成本上限随选型锁定(2026-09-30 评估:每条转写 2-3k tokens 入 + 0.5k 出 ≈ 0.5-5 分)
 - 版权投诉与下架通道的运营口径(入口位置/响应时效/留痕要求;机制已进 §4)

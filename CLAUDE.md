@@ -15,7 +15,7 @@
 **⚠️ 执行任何任务前,先读本文件;涉及哪一层,再读 docs/ 对应 arch 文档(按需,勿全量加载)。**
 
 - `src/app/(site|user|admin)/` 页面;`src/app/api/` Route Handlers;`src/lib/` 业务库(按 domain 分包)
-- `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/migrate-wp/` WP 迁移;`douyin-gateway/` 抖音数据网关(Python sidecar,独立镜像,契约 arch/05 §4.4)
+- `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/migrate-wp/` WP 迁移;`services/douyin-gateway/` 抖音数据网关(Python sidecar,独立镜像,契约 arch/05 §4.4)
 - `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库
 - 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)plan/development-plan.md(状态真相源)
 
@@ -35,7 +35,7 @@
 ## 3. 通用编码规范与 AI 指令
 
 - 你最重要的工作是管理自己的上下文。规划变更前,务必先阅读相关文件。
-- KISS、YAGNI、DRY;文件 ≤350 行;Server Component 默认,请求内禁秒级任务(进 BullMQ)。
+- KISS、YAGNI、DRY;文件 ≤350 行(页面只留编排,拆片子组件入 `src/components/` 对应域目录,见 arch/06 §2);Server Component 默认,请求内禁秒级任务(进 BullMQ)。
 - 未经用户批准不要提交到 git。不要主动创建 *.md/README。
 - 分支:开发主线为 `develop`;新功能建 `feature/<topic>` 分支 PR 合回 develop;`main` 禁直推(只经 develop→main PR 发布)。
 - 永远不要模拟、不要占位符、不要省略代码;对想法的好坏坦率诚实。

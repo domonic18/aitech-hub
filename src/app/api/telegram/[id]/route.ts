@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { TELEGRAM_ID_RE } from "@/lib/telegram/constants";
 import {
   TelegramAdminError,
   TelegramUpdateSchema,
@@ -20,7 +21,7 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,19}$/.test(id)) return apiEnvelope(400, "invalid id");
+  if (!TELEGRAM_ID_RE.test(id)) return apiEnvelope(400, "invalid id");
   const parsed = TelegramUpdateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "字段不合法(title≤500/summary≤1000/status 三态)");
   try {

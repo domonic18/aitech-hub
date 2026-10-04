@@ -38,9 +38,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: douyin-gateway/requirements*.txt
-      - run: pip install -r douyin-gateway/requirements.txt -r douyin-gateway/requirements-dev.txt
-      - working-directory: douyin-gateway
+          cache-dependency-path: services/douyin-gateway/requirements*.txt
+      - run: pip install -r services/douyin-gateway/requirements.txt -r services/douyin-gateway/requirements-dev.txt
+      - working-directory: services/douyin-gateway
         run: python -m pytest tests/ -q
 
   migrate-replay:
@@ -143,8 +143,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
-          context: ./douyin-gateway
-          file: douyin-gateway/Dockerfile
+          context: ./services/douyin-gateway
+          file: services/douyin-gateway/Dockerfile
           push: true
           provenance: false
           tags: |
@@ -157,8 +157,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
-          context: ./douyin-gateway
-          file: douyin-gateway/Dockerfile
+          context: ./services/douyin-gateway
+          file: services/douyin-gateway/Dockerfile
           push: true
           provenance: false
           tags: |

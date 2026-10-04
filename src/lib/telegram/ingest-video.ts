@@ -2,18 +2,21 @@
  * 视频采集编排(M8 批②,arch/02 §3.2 前置批):
  * 平台行取 jar 池 → 适配器 listing → 增量地板(publishedAt > last_post_at,
  * 首采回填窗口限条)→ content_hash 去重 → 屏蔽词/启发式 → 视频 shell 落库
- * (media_type=video,降级可见)→ 推进博主地板与调度。
+ * (media_type=video,降级可见)→ 解读就绪则入 interpreter 队列(M9)→ 推进博主地板与调度。
  * 失败归因:网关不可达=基础设施(不计博主连续失败);上游风控/结构=计失败。
- * 无水印 play_url 网关虽透出,本层不落库不下载(版权红线,解读后批)。
+ * 无水印 play_url 不落库,仅经 interpret job data 过境即焚(版权红线 arch/02 §3.2)。
  */
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 
-import { decryptJars } from "./cookies";
+import { jarsFromConfig } from "./cookies";
+import { isInterpretReady, markPendingAndEnqueue } from "./interpret-video";
 import {
   SOCIAL_BACKFILL_DAYS,
   SOCIAL_BACKFILL_MAX_ITEMS,
+  SOCIAL_BACKFILL_MAX_PAGES,
+  SOCIAL_MANUAL_BACKFILL_DAYS,
   SOCIAL_MAX_CONSECUTIVE_FAILS,
   TELEGRAM_MEDIA_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
@@ -37,12 +40,11 @@ const ADAPTERS: Partial<Record<VideoPlatform, VideoAdapter>> = {
   douyin: douyinAdapter,
 };
 
-/** 平台行 config 的形状(Cookie 池密文载体) */
-const CONFIG_KEY_JARS = "cookieJars";
-
 export interface VideoCrawlOutcome {
   accountId: number;
   platform: string;
+  /** 手动回填轮(30 天窗/3 页深扫/不设条帽;worker 日志可分辨) */
+  backfill: boolean;
   fetched: number;
   inserted: number;
   filtered: number;
@@ -63,13 +65,15 @@ async function loadBlocklistWords(): Promise<BlocklistWord[]> {
   return words.map((w) => ({ word: w.word, scope: w.scope as BlocklistScope }));
 }
 
-/** 单条视频入库:去重 → 过滤 → 摘要 → shell 落库(命中过滤也落库 hidden 供观测) */
+/** 单条视频入库:去重 → 过滤 → 摘要 → shell 落库(命中过滤也落库 hidden 供观测)→ 可见条入解读队列 */
 async function ingestVideoItem(
   platformRowId: number,
   nickname: string,
   platform: string,
   item: VideoItem,
   words: readonly BlocklistWord[],
+  secUid: string,
+  interpretReady: boolean,
 ): Promise<"inserted" | "filtered" | "duplicated"> {
   const url = canonicalUrl(item.url);
   const title = item.title.slice(0, 500);
@@ -86,7 +90,7 @@ async function ingestVideoItem(
     matchBlocklist(title, summary, words) ?? matchHeuristics(title, item.caption ?? "");
 
   try {
-    await prisma.telegram.create({
+    const created = await prisma.telegram.create({
       data: {
         sourceId: platformRowId,
         title: title || null,
@@ -105,15 +109,38 @@ async function ingestVideoItem(
       },
       select: { id: true },
     });
-    return hit ? "filtered" : "inserted";
+    if (hit) return "filtered";
+    // 可见新条 + 解读就绪 + 网关透出直链 → 入队解读(playUrl 仅经 job data 过境,禁落库;
+    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)。pending→入队→回滚顺序由
+    // markPendingAndEnqueue 单点保证
+    if (interpretReady && item.playUrl) {
+      try {
+        await markPendingAndEnqueue(created.id, {
+          videoId: item.videoId,
+          playUrl: item.playUrl,
+          platform,
+          secUid,
+        });
+      } catch (err) {
+        logger.warn({
+          event: "crawler.video.interpret_enqueue_failed",
+          telegramId: created.id.toString(),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return "inserted";
   } catch (err) {
     if (isP2002(err)) return "duplicated"; // 并发轮次抢先落库
     throw err;
   }
 }
 
-/** 单博主采集一轮(worker「crawl-video」job 入口);账号不存在/停用返回空结果 */
-export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOutcome> {
+/** 单博主采集一轮(worker「crawl-video」job 入口;opts.backfill 为手动回填轮);账号不存在/停用返回空结果 */
+export async function crawlVideoAccount(
+  accountId: number,
+  opts: { backfill?: boolean } = {},
+): Promise<VideoCrawlOutcome> {
   const account = await prisma.socialAccount.findUnique({
     where: { id: accountId },
     include: { platformRow: true },
@@ -121,6 +148,7 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
   const outcome: VideoCrawlOutcome = {
     accountId,
     platform: account?.platform ?? "",
+    backfill: opts.backfill === true,
     fetched: 0,
     inserted: 0,
     filtered: 0,
@@ -159,8 +187,7 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
   }
 
   // Cookie 池:未配置密钥或池为空是运营缺口——记 last_error 但不计失败,导入后自然恢复
-  const config = account.platformRow.config as { cookieJars?: unknown } | null;
-  const jars = decryptJars(config?.[CONFIG_KEY_JARS]);
+  const jars = jarsFromConfig(account.platformRow.config);
   if (jars.length === 0) {
     outcome.skippedNoCookies = true;
     await advance({ lastError: "Cookie 池为空(待导入)" });
@@ -179,20 +206,30 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
   }
 
   try {
-    const items = await adapter.fetchRecentVideos({ secUid: account.secUid, cookies: jars });
+    const items = await adapter.fetchRecentVideos({
+      secUid: account.secUid,
+      cookies: jars,
+      ...(outcome.backfill ? { maxPages: SOCIAL_BACKFILL_MAX_PAGES } : {}),
+    });
     outcome.fetched = items.length;
 
-    // 增量地板:只采比 last_post_at 新的;首采回填窗口(7 天)再限条防新登记刷屏
+    // 增量地板:只采比 last_post_at 新的;首采回填窗口(7 天)再限条防新登记刷屏;
+    // 手动回填(批⑧)绕过地板与条帽,按 30 天窗深扫补采
     const nowMs = now.getTime();
     const firstRun = account.lastPostAt === null;
-    const floorMs = firstRun
-      ? nowMs - SOCIAL_BACKFILL_DAYS * 86_400_000
-      : (account.lastPostAt?.getTime() ?? 0);
+    const floorMs = outcome.backfill
+      ? nowMs - SOCIAL_MANUAL_BACKFILL_DAYS * 86_400_000
+      : firstRun
+        ? nowMs - SOCIAL_BACKFILL_DAYS * 86_400_000
+        : (account.lastPostAt?.getTime() ?? 0);
+    const cap = !outcome.backfill && firstRun ? SOCIAL_BACKFILL_MAX_ITEMS : items.length;
     const candidates = items
       .filter((it) => (it.publishedAt?.getTime() ?? nowMs) > floorMs)
-      .slice(0, firstRun ? SOCIAL_BACKFILL_MAX_ITEMS : items.length);
+      .slice(0, cap);
 
     const words = await loadBlocklistWords();
+    // 解读就绪整轮 resolve 一次(ASR enabled + interpret 绑定,省逐条双查)
+    const interpretReady = await isInterpretReady();
     for (const item of candidates) {
       outcome[
         await ingestVideoItem(
@@ -201,16 +238,19 @@ export async function crawlVideoAccount(accountId: number): Promise<VideoCrawlOu
           account.platform,
           item,
           words,
+          account.secUid,
+          interpretReady,
         )
       ] += 1;
     }
 
-    // 地板推进取全部拉取结果的最大发布时间(含被回填上限截掉的),避免下轮重复扫
+    // 地板推进取全部拉取结果的最大发布时间(含被回填上限截掉的),避免下轮重复扫;
+    // 三项 Math.max 守卫:回填地板(now-30d)可能低于 last_post_at,推进绝不回退
     const maxPublishedMs = Math.max(floorMs, ...items.map((it) => it.publishedAt?.getTime() ?? 0));
     await advance({
       consecutiveFails: 0,
       lastError: null,
-      lastPostAt: new Date(Math.max(maxPublishedMs, floorMs)),
+      lastPostAt: new Date(Math.max(maxPublishedMs, floorMs, account.lastPostAt?.getTime() ?? 0)),
     });
     return outcome;
   } catch (err) {
@@ -258,7 +298,7 @@ export async function enqueueDueVideoAccounts(): Promise<{ due: number }> {
   for (const account of due) {
     // jobId 锚定到期时刻:同账号同轮重复入队被 BullMQ 幂等挡掉
     await queue.add(
-      "crawl-video",
+      CRAWL_JOB_VIDEO,
       { accountId: account.id },
       {
         jobId: `crawl-video-${account.id}-${account.nextRunAt?.getTime() ?? 0}`,

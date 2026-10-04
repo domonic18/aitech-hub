@@ -11,8 +11,16 @@ import { decryptSecret, encryptSecret } from "../crypto/secret-box";
 export const ESSENTIAL_COOKIE_KEY = "ttwid";
 /** 薄 jar 防呆:作品接口对 ttwid-only 的 jar 返回 200 空,要求完整浏览器 Cookie */
 export const MIN_COOKIE_PAIRS = 3;
+/** 平台行 config 中加密 jar 池的键名(crawl_source.config 契约,读写唯一出处) */
+export const CONFIG_KEY_JARS = "cookieJars";
 
 export class CookiePoolError extends Error {}
+
+/** 从平台行 config 取加密 jar 池(非对象/null 安全;读侧统一出口,禁再手写形状断言) */
+export function jarsFromConfig(config: unknown): string[] {
+  if (config == null || typeof config !== "object") return [];
+  return decryptJars((config as Record<string, unknown>)[CONFIG_KEY_JARS]);
+}
 
 /** 加密 jar 池(JSON 数组 → AES-256-GCM;base64(iv|tag|ciphertext)) */
 export function encryptJars(jars: string[]): string {
@@ -78,6 +86,6 @@ export function maskJars(jars: string[]): Array<{ ttwidPrefix: string }> {
 export function clearJarsInConfig(config: unknown): Record<string, unknown> | null {
   if (config == null || typeof config !== "object") return null;
   const out = { ...(config as Record<string, unknown>) };
-  delete out.cookieJars;
+  delete out[CONFIG_KEY_JARS];
   return out;
 }

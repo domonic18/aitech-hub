@@ -3,9 +3,12 @@
  * 北京时区按日补零)+ 库存概况。日期边界 JS 侧算好作参数,SQL 禁 now()
  * (与 stats/queries 同一时区纪律)。
  */
+import { AI_PURPOSE_INTERPRET } from "../ai/constants";
+import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { formatCnDate } from "../datetime";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { getQueue, QUEUE_CRAWLER, QUEUE_INTERPRETER } from "../queue";
+import { TELEGRAM_AI_TERMINAL, TELEGRAM_MEDIA_VIDEO } from "./constants";
 
 const TICK_SCHEDULER_ID = "crawler-tick";
 
@@ -43,6 +46,50 @@ export async function getCrawlerQueueSnapshot(): Promise<QueueSnapshot> {
       at: j.finishedOn ? new Date(j.finishedOn) : null,
     })),
   };
+}
+
+/** interpreter 队列实况(M9):四计数 + 今日已判读/日配额(worker 并发 1 说明在页侧) */
+export async function getInterpreterQueueSnapshot(): Promise<{
+  counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
+  todayDone: number;
+  dailyMax: number;
+}> {
+  const queue = getQueue(QUEUE_INTERPRETER);
+  const counts = (await queue.getJobCounts(
+    "waiting",
+    "active",
+    "completed",
+    "failed",
+    "delayed",
+  )) as Record<string, number>;
+  return {
+    counts: {
+      waiting: counts.waiting ?? 0,
+      active: counts.active ?? 0,
+      completed: counts.completed ?? 0,
+      failed: counts.failed ?? 0,
+      delayed: counts.delayed ?? 0,
+    },
+    todayDone: await countTodayInterpreted(),
+    dailyMax: await getRoleDailyMax(AI_PURPOSE_INTERPRET),
+  };
+}
+
+/** 服务器本地自然日零点(与 interpret-video 配额计数同口径) */
+function todayStart(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** 今日已解读数(终态口径单点:观测台与配额判定共用,防两侧口径漂移) */
+export async function countTodayInterpreted(): Promise<number> {
+  return prisma.telegram.count({
+    where: {
+      aiRanAt: { gte: todayStart() },
+      aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
+    },
+  });
 }
 
 /** 采集日历:近 N 天入库量(含 hidden,按 created_at 北京时区),缺日补零 */
@@ -106,9 +153,11 @@ export async function getVideoObservation(): Promise<{
   const [bloggerCount, enabledCount, videoCount24h, last] = await Promise.all([
     prisma.socialAccount.count(),
     prisma.socialAccount.count({ where: { enabled: true } }),
-    prisma.telegram.count({ where: { mediaType: "video", createdAt: { gte: since } } }),
+    prisma.telegram.count({
+      where: { mediaType: TELEGRAM_MEDIA_VIDEO, createdAt: { gte: since } },
+    }),
     prisma.telegram.findFirst({
-      where: { mediaType: "video" },
+      where: { mediaType: TELEGRAM_MEDIA_VIDEO },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),

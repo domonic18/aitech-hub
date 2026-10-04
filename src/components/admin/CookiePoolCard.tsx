@@ -7,7 +7,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { VIDEO_PLATFORM_DOUYIN } from "@/lib/telegram/constants";
 import type { CookiePoolView } from "@/lib/telegram/social-platform-admin";
+import type { ApiEnvelope } from "@/lib/http/response";
+import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
 export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
   const router = useRouter();
@@ -30,7 +33,7 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
       const res = await fetch("/api/bloggers/cookies", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ platform: "douyin", cookie: cookie.trim() }),
+        body: JSON.stringify({ platform: VIDEO_PLATFORM_DOUYIN, cookie: cookie.trim() }),
       });
       const body = (await res.json()) as {
         code: number;
@@ -55,8 +58,10 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
     if (!confirm("确认清空抖音 Cookie 池?采集将跳过并提示「Cookie 池为空」。")) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/bloggers/cookies?platform=douyin", { method: "DELETE" });
-      const body = (await res.json()) as { code: number; message: string };
+      const res = await fetch(`/api/bloggers/cookies?platform=${VIDEO_PLATFORM_DOUYIN}`, {
+        method: "DELETE",
+      });
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`清空失败:${body.message}`);
         return;
@@ -67,7 +72,7 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
     }
   }
 
-  const pool = pools.find((p) => p.platform === "douyin");
+  const pool = pools.find((p) => p.platform === VIDEO_PLATFORM_DOUYIN);
   const jarCount = pool?.jarCount ?? 0;
 
   return (
@@ -120,40 +125,37 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
       {notice && <div className="mt-1.5 text-[11px] text-green">{notice}</div>}
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-line bg-panel p-5 shadow-xl">
-            <h3 className="text-sm font-semibold">导入抖音 Cookie</h3>
-            <p className="mt-1 text-[11px] leading-relaxed text-text-3">
-              从已登录抖音的浏览器完整复制 Cookie 请求头(须含 ttwid,≥3 组键值对); 同 ttwid
-              视为同身份,重复导入覆盖旧值。保存后立即加密,不再回显。
-            </p>
-            <textarea
-              value={cookie}
-              onChange={(e) => setCookie(e.target.value)}
-              rows={6}
-              placeholder="ttwid=…; sessionid=…; msToken=…"
-              className="mt-3 w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 font-mono text-xs text-text-1 outline-none focus:border-accent placeholder:text-text-3"
-            />
-            {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={busy || cookie.trim().length < 10}
-                onClick={() => void submit()}
-                className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {busy ? "导入中…" : "导入"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DialogShell width="lg" title="导入抖音 Cookie">
+          <p className="mt-1 text-[11px] leading-relaxed text-text-3">
+            从已登录抖音的浏览器完整复制 Cookie 请求头(须含 ttwid,≥3 组键值对); 同 ttwid
+            视为同身份,重复导入覆盖旧值。保存后立即加密,不再回显。
+          </p>
+          <textarea
+            value={cookie}
+            onChange={(e) => setCookie(e.target.value)}
+            rows={6}
+            placeholder="ttwid=…; sessionid=…; msToken=…"
+            className="mt-3 w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 font-mono text-xs text-text-1 outline-none focus:border-accent placeholder:text-text-3"
+          />
+          {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
+          <DialogActions>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={busy || cookie.trim().length < 10}
+              onClick={() => void submit()}
+              className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {busy ? "导入中…" : "导入"}
+            </button>
+          </DialogActions>
+        </DialogShell>
       )}
     </div>
   );

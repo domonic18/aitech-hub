@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡):
+ * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡;M10 批③ 视频卡原型重排):
  * 日分组卡片 + 60s 轮询增量;新讯不打断浏览位置——浮条提示、点击载入。
- * 视频卡:竖版封面(防盗链 no-referrer,加载失败降级占位)+ 时长角标 +
- * 平台·博主 + 互动数 + 原视频外链;无 AI 解读不显 AI 标注(解读为后置立项)。
+ * 视频项独立卡形(原型 site-telegram .tg-item.video):竖版大封面
+ * 88×157(≤sm 72×128,防盗链 no-referrer,失败降级占位)+ 播放浮层 +
+ * 平台角标左上/时长左下 + 标题进卡 + AI 摘要 line-clamp-3 +
+ * 互动 播/赞/评(空值整项隐藏)+ 原视频外链;文字项维持原行文卡。
  */
 import { useEffect, useState } from "react";
 
@@ -15,6 +17,7 @@ import {
   hhmm,
   hostOf,
   isNew,
+  platformLabel,
   timeAgo,
   videoSourceName,
   type FeedMediaFilter,
@@ -46,46 +49,114 @@ function VideoCover({ src, alt }: { src: string | null; alt: string }) {
   );
 }
 
-function VideoCard({ t }: { t: PublicTelegramItem }) {
+/** 视频项独立卡(M10 批③,原型 .tg-item.video):封面列 + 信息列,标题进卡 */
+function VideoArticle({ t, now }: { t: PublicTelegramItem; now: number }) {
   const v = t.video!;
   const duration = formatDuration(v.durationSeconds);
-  const like = compactCount(v.engagement.like);
-  const comment = compactCount(v.engagement.comment);
+  const ai = v.ai;
+  // 互动三元组(play 口径后采集可空;空值整项隐藏,同原型显隐跟数据走)
+  const engagement = [
+    { icon: "i-caret-right-fill", label: "播放", value: compactCount(v.engagement.play) },
+    { icon: "i-like", label: "点赞", value: compactCount(v.engagement.like) },
+    { icon: "i-comment", label: "评论", value: compactCount(v.engagement.comment) },
+  ].filter((e) => e.value !== null);
   return (
-    <div className="mt-2.5 flex gap-3">
+    <article className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm hover:border-line-hover">
       <a
         href={t.url}
         target="_blank"
         rel="noopener nofollow"
-        className="relative h-[84px] w-[63px] flex-none overflow-hidden rounded-sm bg-panel-2"
+        className="relative h-[128px] w-[72px] overflow-hidden rounded-sm bg-panel-2 sm:h-[157px] sm:w-[88px]"
         aria-label={`打开原视频:${t.title}`}
       >
         <VideoCover src={v.coverUrl} alt={t.title} />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white">
+          <svg className="ic ic-lg" aria-hidden="true">
+            <use href="#i-caret-right-fill" />
+          </svg>
+        </span>
+        <span className="absolute left-1 top-1 rounded-xs bg-black/75 px-1 font-mono text-[9.5px] leading-4 text-white">
+          {platformLabel(v.platform)}
+        </span>
         {duration && (
-          <span className="absolute bottom-0.5 right-0.5 rounded-xs bg-black/70 px-1 font-mono text-[10px] leading-4 text-white">
+          <span className="absolute bottom-1 left-1 rounded-xs bg-black/75 px-1 font-mono text-[10px] leading-4 text-white">
             {duration}
           </span>
         )}
       </a>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
-          <span className="rounded-sm bg-accent-dim px-1.5 py-px text-accent">
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-sm bg-accent-dim px-1.5 py-px font-mono text-[11px] text-accent">
             {videoSourceName(v)}
           </span>
-          {like && <span className="text-text-3">赞 {like}</span>}
-          {comment && <span className="text-text-3">评 {comment}</span>}
+          <span className="font-mono text-[11px] text-text-3">
+            {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
+          </span>
+          {isNew(t.publishedAt, now) && (
+            <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
+              NEW
+            </span>
+          )}
         </div>
-        {t.summary && <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">{t.summary}</p>}
-        <a
-          href={t.url}
-          target="_blank"
-          rel="noopener nofollow"
-          className="mt-1 inline-block font-mono text-[11px] text-text-2 hover:text-accent-hover"
-        >
-          原视频 ↗
-        </a>
+        <h3 className="text-[15px] font-semibold leading-relaxed">
+          <a
+            href={t.url}
+            target="_blank"
+            rel="noopener nofollow"
+            className="text-text-1 hover:text-accent-hover"
+          >
+            {t.title}
+            <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
+              <use href="#i-export" />
+            </svg>
+          </a>
+        </h3>
+        {ai ? (
+          // AI 解读替代原始 summary 段(原型 v.ai 口径;line-clamp-3 防长解读撑破卡)
+          <p className="line-clamp-3 text-[13px] leading-relaxed text-text-2">
+            <span className="mr-1.5 inline-block rounded-sm bg-accent-dim px-1.5 py-px align-middle font-mono text-[10px] text-accent">
+              AI 解读
+            </span>
+            {ai.summary}
+          </p>
+        ) : (
+          t.summary && (
+            <p className="line-clamp-3 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
+          )
+        )}
+        {ai && ai.points.length > 0 && (
+          <details className="mt-0.5">
+            <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
+              关键要点 ×{ai.points.length}
+            </summary>
+            <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
+              {ai.points.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <div className="mt-auto flex flex-wrap items-center gap-3 pt-1 font-mono text-[11px] text-text-3">
+          {engagement.map((e) => (
+            <span key={e.label} className="flex items-center gap-1" title={e.label}>
+              <svg className="ic ic-sm" aria-hidden="true">
+                <use href={`#${e.icon}`} />
+              </svg>
+              {e.value}
+            </span>
+          ))}
+          <a
+            href={t.url}
+            target="_blank"
+            rel="noopener nofollow"
+            className="text-text-2 hover:text-accent-hover"
+          >
+            原视频 ↗
+          </a>
+          {ai && <span>AI 生成 · 摘要与要点,内容版权归原作者</span>}
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -93,14 +164,22 @@ export default function TelegramTimeline({
   initialItems,
   sourceId,
   media = "all",
+  initialNow,
 }: {
   initialItems: PublicTelegramItem[];
   sourceId?: number;
   media?: FeedMediaFilter;
+  /**
+   * SSR 水合基准时钟(服务端 Date.now()):hhmm/timeAgo/NEW/日分组标签以此渲染,
+   * 水合后由 60s 轮询刷新。若客户端自取 Date.now(),服务渲染与水合有时差,
+   * 相对时间文本不一致 → React #418 水合整树回退,连带把 html[data-theme]
+   * 重灌回 light(2026-10-04 修复,与首页带同款)。
+   */
+  initialNow: number;
 }) {
   const [items, setItems] = useState(initialItems);
   const [pending, setPending] = useState<PublicTelegramItem[]>([]);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(initialNow);
 
   useEffect(() => {
     let alive = true;
@@ -152,52 +231,50 @@ export default function TelegramTimeline({
           ↓ {pending.length} 条新电报 · 点击载入,不打断当前浏览位置(轮询 60s)
         </button>
       )}
-      {groupByDay(items).map((group) => (
+      {groupByDay(items, now).map((group) => (
         <section key={group.label} className="mb-5">
           <div className="mb-2.5 flex items-center gap-3">
             <span className="font-mono text-xs font-semibold text-text-2">{group.label}</span>
             <span className="h-px flex-1 bg-line" />
           </div>
           <div className="flex flex-col gap-3">
-            {group.items.map((t) => (
-              <article
-                key={t.id}
-                className="rounded-lg border border-line bg-panel p-4 shadow-sm hover:border-line-hover"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-px font-mono text-[11px] text-text-2">
-                    {t.mediaType === "video" && t.video ? videoSourceName(t.video) : t.sourceName}
-                  </span>
-                  <span className="font-mono text-[11px] text-text-3">
-                    {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
-                  </span>
-                  {isNew(t.publishedAt, now) && (
-                    <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
-                      NEW
+            {group.items.map((t) =>
+              t.mediaType === "video" && t.video ? (
+                <VideoArticle key={t.id} t={t} now={now} />
+              ) : (
+                <article
+                  key={t.id}
+                  className="rounded-lg border border-line bg-panel p-4 shadow-sm hover:border-line-hover"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-sm bg-panel-2 px-1.5 py-px font-mono text-[11px] text-text-2">
+                      {t.sourceName}
                     </span>
-                  )}
-                </div>
-                <h3 className="mt-2 text-[15px] font-semibold leading-relaxed">
-                  <a
-                    href={t.url}
-                    target="_blank"
-                    rel="noopener nofollow"
-                    className="text-text-1 hover:text-accent-hover"
-                  >
-                    {t.title}
-                    <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
-                      <use href="#i-export" />
-                    </svg>
-                  </a>
-                </h3>
-                {t.mediaType === "video" && t.video ? (
-                  <VideoCard t={t} />
-                ) : (
-                  t.summary && (
+                    <span className="font-mono text-[11px] text-text-3">
+                      {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
+                    </span>
+                    {isNew(t.publishedAt, now) && (
+                      <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
+                        NEW
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="mt-2 text-[15px] font-semibold leading-relaxed">
+                    <a
+                      href={t.url}
+                      target="_blank"
+                      rel="noopener nofollow"
+                      className="text-text-1 hover:text-accent-hover"
+                    >
+                      {t.title}
+                      <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
+                        <use href="#i-export" />
+                      </svg>
+                    </a>
+                  </h3>
+                  {t.summary && (
                     <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
-                  )
-                )}
-                {t.mediaType !== "video" && (
+                  )}
                   <div className="mt-2 flex items-center gap-3 font-mono text-[11px] text-text-3">
                     {hostOf(t.url) && <span>{hostOf(t.url)}</span>}
                     <a
@@ -209,9 +286,9 @@ export default function TelegramTimeline({
                       原文 →
                     </a>
                   </div>
-                )}
-              </article>
-            ))}
+                </article>
+              ),
+            )}
           </div>
         </section>
       ))}

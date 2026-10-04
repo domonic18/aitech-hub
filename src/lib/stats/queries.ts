@@ -228,3 +228,41 @@ export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageR
   out.sort((a, b) => b.pv - a.pv);
   return out.slice(0, limit);
 }
+
+// ── 访问明细(M10 批⑥,近 7 天保留)────────────────────────────────
+
+export interface RecentVisitRow {
+  id: string;
+  createdAt: Date;
+  path: string;
+  ip: string;
+  browser: string;
+  os: string;
+  deviceType: string;
+  sourceClass: SourceClass;
+  sourceName: string;
+}
+
+/** 最近访问明细:倒序取 N 行(stats_visit_log,worker 日清 7 天前) */
+export async function getRecentVisits(limit = 30): Promise<RecentVisitRow[]> {
+  const rows = await prisma.statsVisitLog.findMany({
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit,
+    select: {
+      id: true,
+      createdAt: true,
+      path: true,
+      ip: true,
+      browser: true,
+      os: true,
+      deviceType: true,
+      sourceClass: true,
+      sourceName: true,
+    },
+  });
+  return rows.map((r) => ({
+    ...r,
+    id: r.id.toString(),
+    sourceClass: r.sourceClass as SourceClass,
+  }));
+}

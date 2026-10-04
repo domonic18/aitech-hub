@@ -212,6 +212,24 @@ model StatsClientDaily {
   @@map("stats_client_daily")
 }
 
+/// 近期访问明细(M10 批⑥,页面行级):全量 IP 短留存(7 天,worker 日清过期行);
+/// 访客身份仍是哈希(visitor_hash),明文 IP 仅作短留存排查用
+model StatsVisitLog {
+  id          BigInt   @id @default(autoincrement())
+  path        String   @db.VarChar(500)
+  ip          String   @db.VarChar(45) // IPv4/IPv6
+  browser     String   @db.VarChar(50)
+  os          String   @db.VarChar(50)
+  deviceType  String   @map("device_type") @db.VarChar(20) // desktop/mobile/tablet
+  sourceClass String   @map("source_class") @db.VarChar(20) // direct/search/referral/ai
+  sourceName  String   @map("source_name") @db.VarChar(50)
+  visitorHash String   @map("visitor_hash") @db.VarChar(32) // sha256(salt+ip+ua) 前 32 位,不可逆
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "idx_stats_visit_log_created_at")
+  @@map("stats_visit_log")
+}
+
 // ── legacy_(旧站承接域)─────────────────────────────────────────
 
 /// 旧 URL 301 映射(迁移脚本灌入;legacy 路由 + Redis 缓存消费)
@@ -265,12 +283,20 @@ model Telegram {
   status      String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
   filterHit   String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
   mediaType   String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
-  // 视频字段组(media_type=video;解读后批——不设 transcript/play_url,版权红线 arch/02 §3.2)
+  // 视频字段组(media_type=video;解读列组见下——不设 transcript/play_url,版权红线 arch/02 §3.2)
   videoPlatform   String? @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
   videoBlogger    String? @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
   videoCoverUrl   String? @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
   videoDuration   Int?    @map("video_duration") // 秒
   videoEngagement Json?   @map("video_engagement") // {play,like,comment}
+  // AI 解读列组(M9,interpreter 队列产物):仅持久化分析结论(topic/summary/points),
+  // 转写文本是输入不是资产、play_url 不落库(临时音视频文件判读即删)
+  aiStatus    String?   @map("ai_status") @db.VarChar(20) // null=未解读/pending/processing/done/missing_transcript/failed
+  aiTopic     String?   @map("ai_topic") @db.VarChar(50)
+  aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
+  aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
+  aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
+  lastAiError String?   @map("last_ai_error") @db.VarChar(500)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
@@ -361,6 +387,7 @@ model AiTaskBinding {
   role      String   @id @db.VarChar(20) // interpret/summarize/search/cover
   primaryId Int?     @map("primary_id")
   backupId  Int?     @map("backup_id")
+  dailyMax  Int?     @map("daily_max") // 解读日配额(条/日;null=默认 100;当前仅 interpret 消费,M9 后台可配)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   primary AiModel? @relation("AiBindingPrimary", fields: [primaryId], references: [id], onDelete: SetNull)
@@ -389,4 +416,16 @@ model AsrConfig {
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("asr_config")
+}
+
+// ── site_(站点配置域,M10)────────────────────────────────────────
+
+/// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,
+/// 消费方自行解析+clamp;键名合法值应用层 Zod 管控(同枚举字段纪律)
+model SiteConfig {
+  key       String   @id @db.VarChar(50)
+  value     String   @db.VarChar(200)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("site_config")
 }

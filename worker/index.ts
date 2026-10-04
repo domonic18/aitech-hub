@@ -2,18 +2,26 @@ import { Worker, type Processor, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
 import {
+  CRAWL_JOB_TICK,
+  CRAWL_JOB_VIDEO,
   MEDIA_AUDIT_CRON,
   QUEUE_CRAWLER,
+  QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_STATS,
+  STATS_JOB_FLUSH,
+  STATS_JOB_PURGE,
+  VISIT_LOG_PURGE_CRON,
   bullConnection,
   getQueue,
 } from "../src/lib/queue";
-import { flushStatsBuffer } from "../src/lib/stats/service";
+import { flushStatsBuffer } from "../src/lib/stats/flush";
+import { purgeVisitLogs } from "../src/lib/stats/service";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
+import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 
@@ -26,7 +34,15 @@ const PROCESSORS: Record<string, Processor> = {
     console.log(JSON.stringify({ event: "media.audit", ...summary }));
     return summary;
   },
-  [QUEUE_STATS]: async () => {
+  [QUEUE_STATS]: async (job) => {
+    // 访问明细 7 天保留期清理(M10 批⑥;与 flush 同队列按 job.name 分流)
+    if (job.name === STATS_JOB_PURGE) {
+      const removed = await purgeVisitLogs();
+      if (removed > 0) {
+        console.log(JSON.stringify({ event: "stats.visit_log.purge", removed }));
+      }
+      return { removed };
+    }
     const summary = await flushStatsBuffer();
     if (summary.keysFlushed > 0) {
       console.log(JSON.stringify({ event: "stats.flush", ...summary }));
@@ -35,7 +51,7 @@ const PROCESSORS: Record<string, Processor> = {
   },
   // tick(每分钟)、crawl(单渠道)、crawl-video(单博主)共用队列,按 job.name 分流
   [QUEUE_CRAWLER]: async (job) => {
-    if (job.name === "tick") {
+    if (job.name === CRAWL_JOB_TICK) {
       const summary = await crawlDueSources();
       // 同拍扫视频博主(平台行不调度,social_account 才是调度主体;M8)
       const video = await enqueueDueVideoAccounts();
@@ -45,8 +61,11 @@ const PROCESSORS: Record<string, Processor> = {
       }
       return { ...summary, videoDue: video.due };
     }
-    if (job.name === "crawl-video") {
-      const summary = await crawlVideoAccount(Number(job.data.accountId));
+    if (job.name === CRAWL_JOB_VIDEO) {
+      // data.backfill 由手动回填路由置真(批⑧);旧 worker 收到退化为常规增量(良性)
+      const summary = await crawlVideoAccount(Number(job.data.accountId), {
+        backfill: job.data.backfill === true,
+      });
       console.log(JSON.stringify({ event: "crawler.video.crawl", ...summary }));
       return summary;
     }
@@ -54,6 +73,8 @@ const PROCESSORS: Record<string, Processor> = {
     console.log(JSON.stringify({ event: "crawler.crawl", ...summary }));
     return summary;
   },
+  // 视频解读(M9):下载→抽轨→ASR→LLM;分支语义在 interpretVideoJob 内收敛
+  [QUEUE_INTERPRETER]: (job) => interpretVideoJob(job.data as InterpretJobData),
 };
 
 /** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
@@ -65,7 +86,7 @@ async function scheduleStatsFlush(): Promise<void> {
     "stats-flush",
     { every: STATS_FLUSH_EVERY_MS },
     {
-      name: "flush",
+      name: STATS_JOB_FLUSH,
       data: {},
       opts: { removeOnComplete: 100 },
     },
@@ -85,6 +106,20 @@ async function scheduleMediaAudit(): Promise<void> {
   );
 }
 
+/** 访问明细清理:每日 04:14 清 7 天前行(M10 批⑥) */
+async function scheduleVisitLogPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "visit-log-purge",
+    { pattern: VISIT_LOG_PURGE_CRON },
+    {
+      name: STATS_JOB_PURGE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -94,7 +129,7 @@ async function scheduleCrawlerTick(): Promise<void> {
     "crawler-tick",
     { every: CRAWLER_TICK_EVERY_MS },
     {
-      name: "tick",
+      name: CRAWL_JOB_TICK,
       data: {},
       opts: { removeOnComplete: 50 },
     },
@@ -114,8 +149,14 @@ async function main(): Promise<void> {
   const workers: Array<Worker> = [];
 
   for (const name of Object.keys(PROCESSORS)) {
-    // transfer 抓外链耗时长,放宽锁续期;其余队列默认值即可
-    const opts = name === QUEUE_MEDIA_TRANSFER ? { lockDuration: 300_000 } : {};
+    // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用耗时长,放宽锁续期;
+    // interpreter 并发钉 1(ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
+    const opts =
+      name === QUEUE_MEDIA_TRANSFER
+        ? { lockDuration: 300_000 }
+        : name === QUEUE_INTERPRETER
+          ? { concurrency: 1, lockDuration: 600_000 }
+          : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
@@ -123,6 +164,7 @@ async function main(): Promise<void> {
 
   await scheduleStatsFlush();
   await scheduleMediaAudit();
+  await scheduleVisitLogPurge();
   await scheduleCrawlerTick();
 
   console.log(

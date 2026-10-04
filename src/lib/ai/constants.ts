@@ -52,6 +52,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
   },
 };
 
+/** 角色展示名(未知角色回退原值;表格/弹窗/绑定校验文案共用,批D 收敛) */
+export function aiRoleLabel(role: string): string {
+  return AI_ROLE_META[role as AiTaskRole]?.label ?? role;
+}
+
 export const ASR_PROTOCOL_OPENAI = "openai";
 export const ASR_PROTOCOL_MINIMAX = "minimax";
 export const ASR_PROTOCOL_OTHER = "other";
@@ -74,3 +79,9 @@ export const AI_PROVIDER_PRESETS = [
 /** last_test_status 合法值 */
 export const TEST_STATUS_OK = "ok";
 export const TEST_STATUS_FAIL = "fail";
+
+/** AI 服务治理路由的 PAT 拒绝语(models/asr-config/model-bindings 共用一串) */
+export const AI_CONFIG_PAT_DENY = "PAT must not manage AI service config";
+
+/** 错误详情截断宽度(HTTP 响应体摘要/探测错误落 last_test_error 前统一截断) */
+export const AI_ERR_DETAIL_MAX = 200;

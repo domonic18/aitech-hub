@@ -44,7 +44,7 @@ export function enqueueMediaProcess(mediaId: bigint, sha1: string): Promise<unkn
   return getQueue(QUEUE_MEDIA_PROCESS).add(
     "process",
     { mediaId: mediaId.toString() },
-    { jobId: `media:${sha1}:process`, attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
+    { jobId: `media-${sha1}-process`, attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
   );
 }
 

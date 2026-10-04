@@ -94,6 +94,7 @@ aitech-hub/
 ## 2. 文件组织与代码规则(全仓强制)
 
 - 文件 ≤350 行,单一职责;大文件拆 utils/常量/类型/子组件,不建 `misc`/`common` 垃圾抽屉
+- 页面只留编排(取数 + 组装),拆出的行/筛选/卡片等子组件入 `components/` 对应域目录:admin 通用件平铺 `components/admin/`(如 AdminPagination),域专属件进子目录(`admin/spider/`、`admin/models/`、`admin/stats/`);lib 侧同样按领域分包(`lib/telegram/`、`lib/media/`、`lib/stats/`、`lib/ai/`、`lib/content/`)
 - 命名:组件 PascalCase,hook `use` 前缀,工具小写连字符,常量 UPPER_SNAKE;导入别名 `@/`
 - 常量分层:env 可调 → `lib/env.ts`(Zod);跨模块领域常量 → `lib/constants.ts`;模块私有 → 模块顶部
 - Server Component 默认,`"use client"` 尽量下沉到叶子;请求内**禁止**秒级以上处理,重任务一律 BullMQ

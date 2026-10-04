@@ -212,10 +212,15 @@ CREATE TABLE legacy_url_map (
 **AI 服务域三表已落地(2026-10-04 M8 批⑥迁移 `ai_service_admin`,治理后台见 [arch/04 §4](04-ai-agent.md))**:
 
 - `ai_model`(模型台账):`provider/protocol/base_url?/model_id`;`api_key_enc?/api_key_mask?`(AES-256-GCM 密文 + 脱敏冗余列,界面仅回显掩码);`purposes text[]`(interpret/summarize/search/cover,绑定校验 `has: role`);`supports_view/concurrency(默认 4)/timeout_sec(默认 60)/enabled` + `last_test` 四件套(tested_at/status ok|fail/error 截 500/latency_ms)
-- `ai_task_binding`(任务绑定):`role` 自然主键(四角色)+ `primary_id?/backup_id?` FK→ai_model(`onDelete: SetNull` 仅 DB 兜底,应用层删前先校验解绑)
+- `ai_task_binding`(任务绑定):`role` 自然主键(四角色)+ `primary_id?/backup_id?` FK→ai_model(`onDelete: SetNull` 仅 DB 兜底,应用层删前先校验解绑)+ `daily_max?`(M9 批⑥:解读日配额条/日,null=默认 100;当前仅 interpret 消费,设置入口 /admin/models 任务绑定卡)
 - `asr_config`(ASR 渠道单例 `id=1`,get-or-create):`provider/protocol/base_url?/model_id/api_key_enc?/api_key_mask?/max_audio_seconds(默认 600)/hotwords text[] 默认[]/enabled 默认 false`(无消费方,先配置后启用)+ `last_test` 四件套
 
 对称密钥不入库:主钥 = HKDF-SHA256 从必有的 `AUTH_SECRET` 派生 32B(salt/info 冻结常量,`src/lib/crypto/secret-box.ts`),AES-256-GCM;**`APP_COOKIE_ENC_KEY` 已退役**(M8 批⑥,Cookie 池与 API Key 同箱)——轮换 `AUTH_SECRET` 会使存量密文失效(Cookie 重导、Key 重录);枚举合法值应用层 Zod 管控(§3 同款纪律)。
+
+**站点配置与访问明细已落地(2026-10-04 M10 迁移,体验反馈批)**:
+
+- `site_config`(kv 通用底座):`key varchar(50) PK + value varchar(200) + updated_at`;value 一律字符串,消费方自行解析 + clamp(`getBandItemCount` 为首例:缺行/非数值/非正数回落默认,越界钳 1..50);键名合法值应用层 Zod 管控(`SITE_CONFIG_KEYS` 登记,后续设置键在此复用)
+- `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 
 ## 3. Prisma 模型约定
 

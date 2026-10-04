@@ -1,17 +1,17 @@
 /**
  * 站点统计 service(requirement §3.5;arch/05-services §1 分层):
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
- *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5)。
- *  - flushStatsBuffer:worker 每 60s 将缓冲 RENAME 后落库聚合表
- *    (stats_visit/referrer/page/client/post_view_daily + views_count 累加)。
- * 复杂聚合 SQL 集中本文件($executeRaw 仅 service 层内合法,arch/05-services §2)。
+ *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5);
+ *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥)。
+ *  - purgeVisitLogs:worker 日调度清理 7 天前明细行。
+ * 缓冲落库(flushStatsBuffer)在同级 flush.ts(worker 每 60s;
+ * 缓冲键形 stats:buf:<kind>:<day> 由本文件写入、flush.ts 消费,改名需同批)。
  */
 import { createHash } from "node:crypto";
 
-import { Prisma } from "@prisma/client";
-
 import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
+import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { classifyReferrer, isBotUa, normalizePagePath, parseClient, visitorHash } from "./classify";
@@ -71,8 +71,37 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
   pipe.expire(`stats:buf:client:${day}`, BUFFER_TTL_SECONDS);
   await pipe.exec();
 
+  // 访问明细行(M10 批⑥):不 await 不阻断 beacon,失败仅告警(明细缺失可接受,
+  // 聚合口径不受影响);IP 全量短留存,明文只进这张表
+  prisma.statsVisitLog
+    .create({
+      data: {
+        path,
+        ip: input.ip.slice(0, 45),
+        browser: client.browser.slice(0, 50),
+        os: client.os.slice(0, 50),
+        deviceType: client.deviceType.slice(0, 20),
+        sourceClass: ref.sourceClass,
+        sourceName: ref.sourceName.slice(0, 50),
+        visitorHash: vhash,
+      },
+    })
+    .catch((e: unknown) => logger.warn({ event: "stats.visit_log.failed", error: String(e) }));
+
   const postCounted = await countPostView(path, vhash, day);
   return { counted: true, reason: "ok", postCounted };
+}
+
+// ── 明细保留(worker 日调度,M10 批⑥)────────────────────────────────
+
+/** 明细保留天数(2026-10-04 用户定调:全量 IP + 7 天短留存) */
+const VISIT_LOG_RETENTION_DAYS = 7;
+
+/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志) */
+export async function purgeVisitLogs(): Promise<number> {
+  const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * 86_400_000);
+  const r = await prisma.statsVisitLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  return r.count;
 }
 
 function hash16(s: string): string {
@@ -111,172 +140,4 @@ async function countPostView(path: string, vhash: string, day: string): Promise<
   if (!fresh) return false;
   await redis.hincrby(`stats:buf:post:${day}`, postId, 1);
   return true;
-}
-
-// ── flush(worker 每 60s 调用)────────────────────────────────────────
-
-async function scanBufferKeys(): Promise<string[]> {
-  const keys: string[] = [];
-  let cursor = "0";
-  do {
-    const [next, batch] = await redis.scan(cursor, "MATCH", "stats:buf:*", "COUNT", 500);
-    cursor = next;
-    keys.push(...batch);
-  } while (cursor !== "0");
-  return keys;
-}
-
-export interface FlushSummary {
-  keysFlushed: number;
-  postRows: number;
-}
-
-/**
- * 缓冲落库:RENAME 到私有键后再读(HGETALL 与 DEL 之间的新增事件留在原键,
- * 下轮再刷),按键形态分发到对应聚合表;失败把数据键还原,下轮重试。
- */
-export async function flushStatsBuffer(): Promise<FlushSummary> {
-  const keys = await scanBufferKeys();
-  let keysFlushed = 0;
-  let postRows = 0;
-  for (const key of keys) {
-    const tmp = `stats:flushing:${Math.random().toString(36).slice(2)}:${key}`;
-    try {
-      await redis.rename(key, tmp);
-    } catch {
-      continue; // 键已被处理或过期
-    }
-    try {
-      const fields = await redis.hgetall(tmp);
-      postRows += await applyBufferKey(key, fields);
-      await redis.del(tmp);
-      keysFlushed++;
-    } catch (e) {
-      console.error(JSON.stringify({ event: "stats.flush.failed", key, error: String(e) }));
-      await redis.rename(tmp, key).catch(() => undefined);
-    }
-  }
-  return { keysFlushed, postRows };
-}
-
-async function applyBufferKey(key: string, fields: Record<string, string>): Promise<number> {
-  const parts = key.split(":"); // stats:buf:<kind>:<day>[:pv|uv]
-  const kind = parts[2];
-  const day = parts[3];
-  if (!day) return 0;
-  switch (kind) {
-    case "visit":
-      await upsertVisit(day, num(fields.pv), num(fields.uv));
-      return 0;
-    case "ref":
-      await upsertReferrers(day, fields);
-      return 0;
-    case "page": {
-      const isPv = parts[4] === "pv";
-      await upsertPages(day, fields, isPv);
-      return 0;
-    }
-    case "client":
-      await upsertClients(day, fields);
-      return 0;
-    case "post": {
-      const ids = Object.keys(fields);
-      for (const id of ids) {
-        await upsertPostView(day, id, num(fields[id]));
-      }
-      return ids.length;
-    }
-    default:
-      return 0;
-  }
-}
-
-function num(v: string | undefined): number {
-  return Math.max(0, Number.parseInt(v ?? "0", 10) || 0);
-}
-
-async function upsertVisit(day: string, pv: number, uv: number): Promise<void> {
-  if (pv <= 0 && uv <= 0) return;
-  await prisma.$executeRaw`
-    INSERT INTO stats_visit_daily (stat_date, pv, uv)
-    VALUES (${day}::date, ${pv}, ${uv})
-    ON CONFLICT (stat_date)
-    DO UPDATE SET pv = stats_visit_daily.pv + EXCLUDED.pv, uv = stats_visit_daily.uv + EXCLUDED.uv`;
-}
-
-async function upsertReferrers(day: string, fields: Record<string, string>): Promise<void> {
-  const rows = Object.entries(fields)
-    .map(([k, v]) => {
-      const [sourceClass, sourceName, metric] = k.split("|");
-      return {
-        sourceClass,
-        sourceName,
-        pv: metric === "pv" ? num(v) : 0,
-        uv: metric === "uv" ? num(v) : 0,
-      };
-    })
-    .filter((r) => r.pv > 0 || r.uv > 0);
-  if (rows.length === 0) return;
-  await prisma.$transaction(
-    rows.map(
-      (r) => prisma.$executeRaw`
-      INSERT INTO stats_referrer_daily (stat_date, source_class, source_name, pv, uv)
-      VALUES (${day}::date, ${r.sourceClass}, ${r.sourceName}, ${r.pv}, ${r.uv})
-      ON CONFLICT (stat_date, source_class, source_name)
-      DO UPDATE SET pv = stats_referrer_daily.pv + EXCLUDED.pv, uv = stats_referrer_daily.uv + EXCLUDED.uv`,
-    ),
-  );
-}
-
-async function upsertPages(
-  day: string,
-  fields: Record<string, string>,
-  isPv: boolean,
-): Promise<void> {
-  const rows = Object.entries(fields)
-    .map(([path, v]) => ({ path, pv: isPv ? num(v) : 0, uv: isPv ? 0 : num(v) }))
-    .filter((r) => r.pv > 0 || r.uv > 0);
-  if (rows.length === 0) return;
-  await prisma.$transaction(
-    rows.map(
-      (r) => prisma.$executeRaw`
-      INSERT INTO stats_page_daily (stat_date, path, pv, uv)
-      VALUES (${day}::date, ${r.path.slice(0, 500)}, ${r.pv}, ${r.uv})
-      ON CONFLICT (stat_date, path)
-      DO UPDATE SET ${isPv ? Prisma.sql`pv = stats_page_daily.pv + EXCLUDED.pv` : Prisma.sql`uv = stats_page_daily.uv + EXCLUDED.uv`}`,
-    ),
-  );
-}
-
-async function upsertClients(day: string, fields: Record<string, string>): Promise<void> {
-  const rows = Object.entries(fields)
-    .map(([k, v]) => {
-      const [browser, os, deviceType] = k.split("|");
-      return { browser, os, deviceType, pv: num(v) };
-    })
-    .filter((r) => r.pv > 0);
-  if (rows.length === 0) return;
-  await prisma.$transaction(
-    rows.map(
-      (r) => prisma.$executeRaw`
-      INSERT INTO stats_client_daily (stat_date, browser, os, device_type, pv)
-      VALUES (${day}::date, ${r.browser.slice(0, 50)}, ${r.os.slice(0, 50)}, ${r.deviceType.slice(0, 20)}, ${r.pv})
-      ON CONFLICT (stat_date, browser, os, device_type)
-      DO UPDATE SET pv = stats_client_daily.pv + EXCLUDED.pv`,
-    ),
-  );
-}
-
-/** 文章 PV:日行 UPSERT + 总数累加(与迁移来的历史阅读数直接累加,requirement §3.5) */
-async function upsertPostView(day: string, postId: string, count: number): Promise<void> {
-  if (count <= 0) return;
-  const id = BigInt(postId);
-  await prisma.$transaction([
-    prisma.$executeRaw`
-      INSERT INTO stats_post_view_daily (post_id, view_date, count)
-      VALUES (${id}, ${day}::date, ${count})
-      ON CONFLICT (post_id, view_date)
-      DO UPDATE SET count = stats_post_view_daily.count + EXCLUDED.count`,
-    prisma.post.update({ where: { id }, data: { viewsCount: { increment: BigInt(count) } } }),
-  ]);
 }

@@ -9,6 +9,8 @@
 import * as cheerio from "cheerio";
 import type { Comment, Element, ParentNode } from "domhandler";
 
+import { rewriteBase64Images } from "./data-uri-image";
+
 /** 旧站域名(内链/媒体相对化);dev 是 wp_options siteurl 的实际值 */
 export const WP_ORIGINS = ["17aitech.com", "www.17aitech.com", "dev.17aitech.com"] as const;
 
@@ -173,43 +175,6 @@ function convertShortcodes(html: string, report: CleanHtmlReport): string {
     },
   );
   return html;
-}
-
-// ── data: URI 图片(49 篇实库存在,base64 解码落盘策略,2026-09-29 用户确认)──
-
-export interface Base64Image {
-  mime: string;
-  /** 原始 base64 载荷(不含 data: 前缀) */
-  base64: string;
-  ext: string;
-}
-
-const DATA_URI_RE = /data:image\/(png|jpe?g|gif|webp|avif);base64,([A-Za-z0-9+/=]+)/g;
-
-const MIME_EXT: Record<string, string> = {
-  png: "png",
-  jpeg: "jpg",
-  jpg: "jpg",
-  gif: "gif",
-  webp: "webp",
-  avif: "avif",
-};
-
-/**
- * 把 data: URI 图片替换为 replacer 返回的 URL(迁移:落盘为新 URL;
- * 运行时 M5:进上传管线)。返回改写后 HTML 与提取到的图片清单。
- */
-export function rewriteBase64Images(
-  html: string,
-  replacer: (img: Base64Image, index: number) => string,
-): { html: string; images: Base64Image[] } {
-  const images: Base64Image[] = [];
-  const out = html.replace(DATA_URI_RE, (_m, mime: string, base64: string) => {
-    const img: Base64Image = { mime, base64, ext: MIME_EXT[mime] ?? "png" };
-    images.push(img);
-    return replacer(img, images.length - 1);
-  });
-  return { html: out, images };
 }
 
 // ── 主清洗流程 ────────────────────────────────────────────────────

@@ -1,11 +1,21 @@
 /**
  * 抖音适配器(M8):经 douyin-gateway(Python sidecar)拉博主 listing。
- * 本层只做「HTTP 往返 + 异常翻译」——签名/TLS 指纹/jar 冷却全在网关
- * (research/01 路线 A;网关契约见 douyin-gateway/app/gateway.py)。
+ * 本层只做「HTTP 往返 + Zod 校验 + 异常翻译」——签名/TLS 指纹/jar 冷却
+ * 全在网关(research/01 路线 A;契约镜像见 ./gateway-contract,真相源
+ * services/douyin-gateway/app/gateway.py)。
  */
+import { z } from "zod";
+
 import { VIDEO_PLATFORM_DOUYIN } from "../../constants";
 import { env } from "../../../env";
 
+import {
+  postsResponseSchema,
+  profileResponseSchema,
+  resolveResponseSchema,
+  gatewayErrorSchema,
+  type GatewayVideo,
+} from "./gateway-contract";
 import {
   GatewayUnavailableError,
   GatewayUpstreamError,
@@ -15,26 +25,6 @@ import {
 
 const TIMEOUT_MS = 60_000; // 网关侧含限速重试序列(1+2+5s),放宽到分钟级
 const MAX_PAGES = 3;
-
-/** 网关 /posts 归一化投影(与 douyin-gateway VideoOut 对齐) */
-interface GatewayVideo {
-  video_id: string;
-  caption: string | null;
-  topic_tags?: string[];
-  cover_url?: string | null;
-  play_url?: string | null; // 仅日志调试,禁止落库(版权红线)
-  duration_seconds?: number | null;
-  published_at?: string | null;
-  digg_count?: number | null;
-  comment_count?: number | null;
-  share_count?: number | null;
-}
-
-interface GatewayPostsResponse {
-  videos: GatewayVideo[];
-  has_more: boolean;
-  max_cursor: number;
-}
 
 function toVideoItem(raw: GatewayVideo): VideoItem | null {
   if (!raw.video_id) return null;
@@ -56,11 +46,29 @@ function toVideoItem(raw: GatewayVideo): VideoItem | null {
       like: raw.digg_count ?? null,
       comment: raw.comment_count ?? null,
     },
-    topicTags: Array.isArray(raw.topic_tags) ? raw.topic_tags : [],
+    topicTags: raw.topic_tags,
+    // 网关透出的无水印直链仅在此过境(解读管道消费),落库禁令在 ingest 层钉
+    playUrl: raw.play_url ?? null,
   };
 }
 
-async function gatewayPost<T>(path: string, payload: unknown): Promise<T> {
+/** 错误包络 detail 展平(pydantic 422 的 detail 是数组) */
+function formatDetail(detail: string | unknown[] | undefined): string {
+  if (detail === undefined) return "";
+  return typeof detail === "string" ? detail : JSON.stringify(detail);
+}
+
+/**
+ * POST + Zod 校验 + 异常翻译。错误分流按状态码:
+ * 503(浏览器槽位未就绪)与网络层故障 → Unavailable(编排层顺延不计失败);
+ * 其余非 2xx(404 AccountInvalid/422 校验/502 适配层)→ Upstream(计入连续失败);
+ * 2xx 但响应不合契约 → Upstream ContractDrift(漂移必须响,不许静默)。
+ */
+async function gatewayPost<S extends z.ZodType>(
+  path: string,
+  payload: unknown,
+  schema: S,
+): Promise<z.output<S>> {
   let res: Response;
   try {
     res = await fetch(`${env.DOUYIN_GATEWAY_URL}${path}`, {
@@ -72,27 +80,41 @@ async function gatewayPost<T>(path: string, payload: unknown): Promise<T> {
   } catch (err) {
     throw new GatewayUnavailableError(err instanceof Error ? err.message : String(err));
   }
+  const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string; detail?: string } | null;
-    // 网关把适配层异常归因为 {error, detail};连接级/非 JSON 一律基础设施故障
-    if (body?.error) throw new GatewayUpstreamError(body.error, body.detail ?? "");
-    throw new GatewayUnavailableError(`HTTP ${res.status}`);
+    const errBody = gatewayErrorSchema.safeParse(body);
+    const detail = errBody.success ? formatDetail(errBody.data.detail) : "";
+    if (res.status === 503) {
+      throw new GatewayUnavailableError(detail || "HTTP 503");
+    }
+    throw new GatewayUpstreamError(
+      errBody.success && errBody.data.error ? errBody.data.error : `HTTP ${res.status}`,
+      detail,
+    );
   }
-  return (await res.json()) as T;
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw new GatewayUpstreamError("ContractDrift", parsed.error.message);
+  }
+  return parsed.data;
 }
 
 export const douyinAdapter: VideoAdapter = {
   platform: VIDEO_PLATFORM_DOUYIN,
 
-  async fetchRecentVideos({ secUid, cookies }) {
-    // 首采翻页由编排层按增量地板决定;网关单次最多 3 页(POSTS_MAX_PAGES)
-    const data = await gatewayPost<GatewayPostsResponse>("/posts", {
-      sec_uid: secUid,
-      cookies,
-      max_pages: 1,
-    });
+  async fetchRecentVideos({ secUid, cookies, maxPages }) {
+    // 翻页上限由编排层传入(常规增量 1,手动回填 3);网关侧 POSTS_MAX_PAGES=3 兜底钳制
+    const data = await gatewayPost(
+      "/posts",
+      {
+        sec_uid: secUid,
+        cookies,
+        max_pages: Math.min(Math.max(maxPages ?? 1, 1), MAX_PAGES),
+      },
+      postsResponseSchema,
+    );
     const items: VideoItem[] = [];
-    for (const raw of data.videos ?? []) {
+    for (const raw of data.videos) {
       const item = toVideoItem(raw);
       if (item) items.push(item);
     }
@@ -104,17 +126,11 @@ export async function fetchDouyinProfile(
   secUid: string,
   cookies: string[],
 ): Promise<{ secUid: string; nickname: string; avatarUrl: string | null }> {
-  const data = await gatewayPost<{
-    sec_uid: string;
-    nickname: string;
-    avatar_url: string | null;
-  }>("/profile", { sec_uid: secUid, cookies });
+  const data = await gatewayPost("/profile", { sec_uid: secUid, cookies }, profileResponseSchema);
   return { secUid: data.sec_uid, nickname: data.nickname, avatarUrl: data.avatar_url ?? null };
 }
 
 export async function resolveDouyinSecUid(raw: string): Promise<string> {
-  const data = await gatewayPost<{ sec_uid: string }>("/resolve", { url: raw });
+  const data = await gatewayPost("/resolve", { url: raw }, resolveResponseSchema);
   return data.sec_uid;
 }
-
-export const MAX_LIST_PAGES = MAX_PAGES;

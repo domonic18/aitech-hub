@@ -17,6 +17,8 @@ export const QUEUE_MEDIA_AUDIT = "media-audit";
 export const QUEUE_STATS = "stats";
 /** 电报流采集(M7:tick 扫到期来源 → 逐源 crawl job,单源失败隔离;arch/02 §3) */
 export const QUEUE_CRAWLER = "crawler";
+/** 视频解读(M9:下载→抽轨→ASR→LLM 概括;并发 1——ffmpeg 是 CPU 峰值,arch/02 §3.2) */
+export const QUEUE_INTERPRETER = "interpreter";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -24,11 +26,25 @@ export const QUEUE_NAMES = [
   QUEUE_MEDIA_AUDIT,
   QUEUE_STATS,
   QUEUE_CRAWLER,
+  QUEUE_INTERPRETER,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 /** 媒体体检每日调度(避开整点;arch/08-media §3.2;worker 与媒体库页脚同源,评审 W2) */
 export const MEDIA_AUDIT_CRON = "41 3 * * *";
+
+/** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
+export const VISIT_LOG_PURGE_CRON = "14 4 * * *";
+
+/** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;
+ * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。 */
+export const CRAWL_JOB_TICK = "tick";
+export const CRAWL_JOB_SOURCE = "crawl";
+export const CRAWL_JOB_VIDEO = "crawl-video";
+
+/** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细) */
+export const STATS_JOB_FLUSH = "flush";
+export const STATS_JOB_PURGE = "purge-visit-log";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });

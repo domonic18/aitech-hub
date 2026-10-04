@@ -3,7 +3,7 @@
  * - media.process:sharp 出 WebP 副本(q80)+ 640w 缩略图,回填宽高与 sha1,置 active;
  * - media.transfer:抓取外链图 → uploadMedia 入库(sha1 去重)→ 链式复用 process;
  *   单条失败不拖垮整批,失败项在 returnvalue 里标 null 供导入弹窗提示。
- * 幂等:process 以 `media:{sha1}:process` 为 jobId 去重;重跑重算结果一致。
+ * 幂等:process 以 `media-{sha1}-process` 为 jobId 去重(BullMQ 禁冒号);重跑重算结果一致。
  */
 import type { Job } from "bullmq";
 

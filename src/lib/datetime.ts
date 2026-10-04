@@ -11,6 +11,15 @@ export function formatCnDateTime(date: Date): string {
   return date.toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0, 16);
 }
 
+/** 时间展示(时:分,北京时区):电报流条目行/采集观测时间轴共用 */
+export function formatCnTime(date: Date): string {
+  return date.toLocaleTimeString("sv-SE", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** 当前统计日(YYYY-MM-DD,北京时区) */
 export function statsDay(now: Date = new Date()): string {
   return formatCnDate(now);
