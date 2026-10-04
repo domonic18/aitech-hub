@@ -5,7 +5,7 @@
 ## 1. 分层
 
 ```
-页面(RSC)/ Route Handler  →  service(lib/content, lib/media, lib/auth ...)  →  Prisma(db.ts)
+页面(RSC)/ Route Handler  →  service(lib/content, lib/media, lib/auth, lib/ai, lib/telegram ...)  →  Prisma(db.ts)
 ```
 
 - **页面与 Handler 只做协议层**:参数解析(Zod)、鉴权、响应包络、状态码;**禁止页面/Handler 内出现裸 Prisma 调用**(一律经 service)——保住"业务只有一份实现"的单体底线
@@ -71,7 +71,19 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | media | `media.audit` | 每日定时(upsertJobScheduler,同 §3.1 实现注) | 孤儿/断链/重复扫描,更新 status 与统计(arch/08-media §3) |
 | stats | `stats.flush` | 每 60s(upsertJobScheduler) | 日缓冲 RENAME→HGETALL→聚合表 UPSERT(visit/referrer/page/client/post_view_daily + views_count 累加);失败还原缓冲下轮重试(`lib/stats/service.ts`) |
 
-二期任务(立项时补设计):`github.sync`(仓库同步)、`crawler.*`(Crawlee 资讯采集,设计落点 arch/02-data-collection)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。
+二期任务(立项时补设计):`github.sync`(仓库同步)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。**`crawler.*` 已交付**:文字渠道(M7,`crawl-{id}-{nextRunAt}`)+ 视频博主(M8,`crawl-video-{id}-{nextRunAt}`,编排见 `src/lib/telegram/ingest-video.ts`;调度器同一 `crawler-tick` 每 60s 扫描,`crawlDueSources` 排除平台行、`enqueueDueVideoAccounts` 扫 `social_account`);设计落点 arch/02-data-collection。
+
+### 4.4 视频采集网关 sidecar(douyin-gateway/,2026-10-04 M8 新增)
+
+Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 a_bogus + curl_cffi Chrome TLS 指纹 transport + Playwright 签名驱动 + Cookie jar 轮换/冷却/风控归因)。存在理由:抖音 WAF 按 TLS 指纹拦截标准 HTTP 客户端,只有 curl_cffi impersonate 实战验证有效(技术栈决策与平移记录见 memory `douyin-gateway-stays-python`);Node 侧只做编排与落库。
+
+- **HTTP 契约**(compose 内网,无鉴权不暴露公网;Node 每次携带解密后的明文 jar,PG 为真相源,网关零密钥零持久化):
+  - `POST /sign {path,query,user_agent,cookies}` → `{params,user_agent}`
+  - `POST /posts {sec_uid,cookies[],max_pages?=1}` → `{videos[],has_more}`(归一化 video_id/caption/tags/cover_url/duration/published_at/digg/comment/share)
+  - `POST /profile {sec_uid,cookies[]}` → `{nickname,avatar_url}`;`POST /resolve {url}` → `{sec_uid}`(短链展开)
+  - `GET /health` → `{status,driver,jars_total,jars_available}`(**永远 200**,浏览器/池态异常在 body 里表达——Node 侧探测不靠状态码)
+- **错误归因两分**(Node 侧消费约定):连接失败/超时 = `GatewayUnavailableError` = 基础设施故障,顺延下轮**不计**博主连败;网关返回的业务失败(风控/签名失效)= `GatewayUpstreamError` = 计入 `consecutive_fails` + `last_error`
+- 部署:compose 服务 `douyin-gateway`(prod 内网无 ports、tmpfs 指纹目录、mem_limit 1g、healthcheck urllib 探 /health、warm_slots=1 适配 2C4G);本地 `127.0.0.1:8010` 便于冒烟;发布段见 standard/02-cicd-deployment。env:`DOUYIN_GATEWAY_URL`(default `http://127.0.0.1:8010`)
 
 ### 4.3 本地与部署形态
 
@@ -90,7 +102,9 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | stats | `POST /api/view { path, referrer? }`(同源校验 + bot/管理员过滤) | 公开(IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,Redis 缓冲 60s 批量落库) |
 | media | `POST /api/media`(上传)、`POST /api/media/import`(外链图批量转存,enqueue 返回 jobId,前端轮询取映射)、`GET /api/media`(列表/过滤)、`DELETE /api/media/[id]`、`GET /api/media/{orphans,duplicates,stats}` | admin |
 | users | `GET/PUT /api/me/profile`、`PUT /api/me/password`(三期用户体系启用)、`GET /api/users`、`PUT /api/users/[id]/status`(后两者仅会话,§3.1;不能变更当前登录账号;禁用即吊销该用户全部 PAT) | user / admin |
-| telegram | `GET/POST /api/channels`、`PUT /api/channels/[id]`、`PUT /api/channels/[id]/status`(启停)、`POST /api/channels/[id]/crawl`(手动采集;渠道凭证存 config 展示一律脱敏,M7 批④a)、`PUT /api/telegram/[id]`(条目人工修正/状态迁移 title≤500/summary≤1000/三态,批④b)、`GET/POST /api/blocklist`、`PUT/DELETE /api/blocklist/[id]`(批④b)、`GET /api/telegram/public`(前台公共流:limit≤50/after 增量锚/source 过滤,`no-store`,BigInt 出参字符串化,M7 批⑤) | 除 public 外 admin **仅会话**(PAT 禁管渠道/治理电报流,§3.1);public 公开只读 visible |
+| telegram | `GET/POST /api/channels`、`PUT /api/channels/[id]`、`PUT /api/channels/[id]/status`(启停)、`POST /api/channels/[id]/crawl`(手动采集;渠道凭证存 config 展示一律脱敏,M7 批④a)、`PUT /api/telegram/[id]`(条目人工修正/状态迁移 title≤500/summary≤1000/三态,批④b)、`GET/POST /api/blocklist`、`PUT/DELETE /api/blocklist/[id]`(批④b)、`GET /api/telegram/public`(前台公共流:limit≤50/after 增量锚/source 过滤/`media=all\|text\|video` 白名单,M8 批④,`no-store`,BigInt 出参字符串化,M7 批⑤) | 除 public 外 admin **仅会话**(PAT 禁管渠道/治理电报流,§3.1);public 公开只读 visible |
+| bloggers | `GET/POST /api/bloggers`(登记:主页链接/口令/sec_uid 三态,经网关 resolve+profile,重复 409)、`PUT /api/bloggers/[id]`、`PUT /api/bloggers/[id]/status`(启停)、`POST /api/bloggers/[id]/crawl`(手动采集;均 PAT 拒绝)、`GET/POST/DELETE /api/bloggers/cookies`(Cookie 池:脱敏视图/导入 AES-256-GCM 落库(校验 ≥3 对含 ttwid)/清空,platform 白名单 douyin\|xhs\|bilibili;`?platform=` 查询,平台行不存在 404;M8 批③) | admin **仅会话**(PAT 禁管博主与 Cookie) |
+| ai | `GET/POST /api/models`(模型台账,脱敏视图)、`PUT/DELETE /api/models/[id]`(Key write-only 留空=保留;被绑定引用删 409 先解绑)、`PUT /api/models/[id]/status`(启停)、`POST /api/models/[id]/test`(openai/anthropic 探针,结果落 last_test)、`GET/PUT /api/asr-config`(单例 get-or-create)、`POST /api/asr-config/test`(openai/minimax 正弦波实调)、`GET/PUT /api/model-bindings`(四角色主备;purposes 不匹配/主备相同 400,模型不存在 404;均 M8 批⑥) | admin **仅会话**(PAT 禁管 AI 服务配置) |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
 

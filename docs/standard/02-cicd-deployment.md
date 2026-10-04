@@ -8,17 +8,19 @@
 ```
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
+├── job gateway   Python 3.11 + pip 缓存 → pytest douyin-gateway/tests(M8 批①;纯单测无网依赖)
 ├── job migration 起 postgres:16 → migrate deploy 全量 →
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 
 push(develop, main)/ 手动
-└── job docker-release  [依赖 app+migration 全绿] buildx 构建单镜像 → 推 TCR
+└── job docker-release  [依赖 app+gateway+migration 全绿] buildx 构建双镜像 → 推 TCR
+                        应用 aitech-hub + 网关 aitech-hub-gateway(douyin-gateway/Dockerfile,M8 批①)
                         tag = <branch>-<短 sha>;latest 仅 main(保证 compose pull 默认即发布版)
 ```
 
 > 实装(M6,2026-10-02):`app` + `migrate-replay` + `docker-release` 三 job(见 `.github/workflows/ci.yml`)。
 > docker-release 支持 `workflow_dispatch` 手动触发(首次打通 TCR 用);build 构建在镜像内完成,不设独立 build job。
-> 跨境推送(美国 runner → 大陆 TCR)偶发 stall:构建步骤级超时 25 分钟,失败自动重推一次(同范例仓实测经验)。
+> 跨境推送(美国 runner → 大陆 TCR)偶发 stall:构建步骤级超时 25 分钟,失败自动重推一次(同范例仓实测经验;网关镜像两个构建步骤同享重试,gha cache scope=gateway 独立)。
 
 - Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
@@ -63,6 +65,13 @@ make migrate   # npx prisma migrate deploy
   - 预热不能用「固定 sleep 后单发 POST」:2C 冷启动 server 绑定可晚于 sleep,POST 落空且被吞、无任何日志;页面靠短 revalidate(600s)自然自愈,feed/sitemap(3600s)空壳挂满窗口(2026-10-03 生产实测定诊)——就绪轮询 + 重试 + 双 fetch,见 entrypoint
   - ops 脚本依赖的 src 必须**显式 COPY**:standalone 追踪对源码只带碎片(2026-10-03 实测 `src/lib/auth/` 仅剩 `*.test.ts`,生产镜像 `npm run admin` 必 MODULE_NOT_FOUND);`scripts/`、`src/` 勿依赖追踪带入
   - 定属主用 `COPY --chown`,勿 `RUN chown -R /app`:后者把已拷内容整层 CoW 复制一遍,实测多出 1.08GB 层(镜像层只增不删)
+
+### 3.2 网关镜像(douyin-gateway/Dockerfile,M8 批①)
+
+- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 装 requirements 后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,`.dockerignore` 仓库级排除互不影响
+- CI 与主镜像同一 `docker-release` job 内先后构建(各带重推重试);tag 规则同款 `<branch>-<短 sha>` + `latest` 仅 main
+- prod compose 服务 `douyin-gateway`:`image: ${GATEWAY_IMAGE:-…aitech-hub-gateway:latest}`,内网无 ports(worker 经服务名 `http://douyin-gateway:8010` 访问,`x-app-env` 注 `DOUYIN_GATEWAY_URL`);tmpfs 挂 `/tmp/playwright-profiles`(chromium Profile 防容器层写放大);healthcheck urllib 探 `/health`(slim 无 curl 同款问题),`start_period: 60s`(首启含 chromium 拉起);`mem_limit: 1g` + `DOUYIN_SIGNER_WARM_SLOTS: 1`(warm 页吃内存,2C4G 预算钉死单槽)
+- dev compose 走 `--profile douyin` 按需起(build 本地,`127.0.0.1:8010` 仅回环,便于 curl 冒烟),不影响日常 pg/redis 起;契约见 arch/05 §4.4
 - 镜像现状 ≈2.4GB → 消除 chown 复制层后 ≈1.4GB(runner 全量 node_modules 为既有取舍:worker 与 prisma CLI 同镜像所需——web 启动即跑 `npx prisma migrate deploy`,CLI 必须在);进一步瘦身方向:`npm ci --omit=dev` 拆 prod-deps 层 + tsx 入 dependencies,非一期阻塞(2026-10-03 评估)
 
 ## 4. 生产拓扑与 Nginx(compose 服务)
@@ -76,6 +85,7 @@ nginx        80/443(唯一对外;SSL 终结,证书卷挂载 workspace/ssl;80 全
   └── 其余全量反代 web:3000(原始请求串原样透传,中文编码 slug 不经 nginx 归一化)
 web:3000     内网 + 宿主回环发布 127.0.0.1:3000(切换日 runbook curl 验证用)
 worker       仅内网(同镜像,SERVICE_ROLE=worker;媒体卷读写)
+douyin-gateway  仅内网(独立网关镜像;无 ports,worker 经服务名 :8010 访问;M8 批①,§3.2)
 redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 ```
 

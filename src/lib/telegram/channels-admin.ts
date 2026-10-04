@@ -10,7 +10,11 @@ import type { Prisma } from "@prisma/client";
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_CRAWLER } from "../queue";
-import { CRAWL_SOURCE_STATUS_HEALTHY, CRAWL_SOURCE_TYPES } from "./constants";
+import {
+  CRAWL_SOURCE_STATUS_HEALTHY,
+  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPES,
+} from "./constants";
 
 /** 视为凭证的 config 键(读侧脱敏 + 写侧空串清除) */
 export const SECRET_CONFIG_KEYS = ["token", "apiKey", "api_key", "secret"] as const;
@@ -76,9 +80,13 @@ export const ChannelInputSchema = z.object({
 });
 export type ChannelInput = z.infer<typeof ChannelInputSchema>;
 
-/** 台账列表(渠道个位数量级,不分页);端点与凭证均脱敏后出service */
+/** 台账列表(渠道个位数量级,不分页);端点与凭证均脱敏后出service。
+ * 平台行(type=social-video)是 Cookie 池载体非采集渠道,不进文字台账(arch/02 §5)。 */
 export async function listChannelsAdmin() {
-  const rows = await prisma.crawlSource.findMany({ orderBy: { id: "asc" } });
+  const rows = await prisma.crawlSource.findMany({
+    where: { type: { not: CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } },
+    orderBy: { id: "asc" },
+  });
   return rows.map((c) => ({
     id: c.id,
     name: c.name,

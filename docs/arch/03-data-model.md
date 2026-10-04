@@ -200,7 +200,22 @@ CREATE TABLE legacy_url_map (
 
 ### 2.4 二期预留(到时增量迁移,不在基线)
 
-`pay_order` / `pay_order_item` / `content_post_purchase`(付费权益)、`github_repo` / `github_repo_activity`(项目展示)、`crawl_source` / `social_account` / `telegram` / `blocklist`(电报流,字段草案见 [arch/02-data-collection §2](02-data-collection.md))。命名已避让。
+`pay_order` / `pay_order_item` / `content_post_purchase`(付费权益)、`github_repo` / `github_repo_activity`(项目展示)。命名已避让。
+
+**电报流表族已落地(M7 文字管道 + M8 视频管道,增量迁移进 `prisma/migrations/`,字段终态以 schema 为准)**:
+
+- `crawl_source`(文字渠道台账;M8 起兼**平台行**:`type=social-video + platform=douyin` 每平台一行,承载 Cookie 池密文 `config.cookieJars`/平台总开关/日上限,自身不调度——设计见 [arch/02 §2 落地注记](02-data-collection.md))
+- `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
+- `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2)
+- `blocklist`(屏蔽词)
+
+**AI 服务域三表已落地(2026-10-04 M8 批⑥迁移 `ai_service_admin`,治理后台见 [arch/04 §4](04-ai-agent.md))**:
+
+- `ai_model`(模型台账):`provider/protocol/base_url?/model_id`;`api_key_enc?/api_key_mask?`(AES-256-GCM 密文 + 脱敏冗余列,界面仅回显掩码);`purposes text[]`(interpret/summarize/search/cover,绑定校验 `has: role`);`supports_view/concurrency(默认 4)/timeout_sec(默认 60)/enabled` + `last_test` 四件套(tested_at/status ok|fail/error 截 500/latency_ms)
+- `ai_task_binding`(任务绑定):`role` 自然主键(四角色)+ `primary_id?/backup_id?` FK→ai_model(`onDelete: SetNull` 仅 DB 兜底,应用层删前先校验解绑)
+- `asr_config`(ASR 渠道单例 `id=1`,get-or-create):`provider/protocol/base_url?/model_id/api_key_enc?/api_key_mask?/max_audio_seconds(默认 600)/hotwords text[] 默认[]/enabled 默认 false`(无消费方,先配置后启用)+ `last_test` 四件套
+
+对称密钥不入库:主钥 = HKDF-SHA256 从必有的 `AUTH_SECRET` 派生 32B(salt/info 冻结常量,`src/lib/crypto/secret-box.ts`),AES-256-GCM;**`APP_COOKIE_ENC_KEY` 已退役**(M8 批⑥,Cookie 池与 API Key 同箱)——轮换 `AUTH_SECRET` 会使存量密文失效(Cookie 重导、Key 重录);枚举合法值应用层 Zod 管控(§3 同款纪律)。
 
 ## 3. Prisma 模型约定
 

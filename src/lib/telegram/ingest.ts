@@ -16,6 +16,7 @@ import {
   CRAWL_SOURCE_STATUS_DEGRADED,
   CRAWL_SOURCE_STATUS_ERROR,
   CRAWL_SOURCE_STATUS_HEALTHY,
+  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
   type BlocklistScope,
@@ -168,11 +169,14 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
   }
 }
 
-/** worker「tick」入口(每 60s):扫描到期来源逐源入队,失败隔离在单源 job */
+/** worker「tick」入口(每 60s):扫描到期来源逐源入队,失败隔离在单源 job。
+ * 平台行(type=social-video)自身不调度——Cookie 池/开关载体,视频博主扫
+ * social_account 走 ingest-video#enqueueDueVideoAccounts(worker tick 同拍调)。 */
 export async function crawlDueSources(): Promise<{ due: number }> {
   const due = await prisma.crawlSource.findMany({
     where: {
       enabled: true,
+      type: { not: CRAWL_SOURCE_TYPE_SOCIAL_VIDEO },
       OR: [{ nextRunAt: null }, { nextRunAt: { lte: new Date() } }],
     },
     select: { id: true, nextRunAt: true },

@@ -4,6 +4,15 @@
  * (/telegram 时间轴、首页 LIVE 带)与轮询 API 的契约。
  */
 
+/** 视频条目附加元数据(M8 混合流;mediaType=video 时存在) */
+export interface PublicVideoMeta {
+  platform: string;
+  blogger: string;
+  coverUrl: string | null;
+  durationSeconds: number | null;
+  engagement: { play: number | null; like: number | null; comment: number | null };
+}
+
 export interface PublicTelegramItem {
   id: string;
   title: string;
@@ -13,6 +22,50 @@ export interface PublicTelegramItem {
   publishedAt: string;
   sourceId: number;
   sourceName: string;
+  mediaType: "text" | "video";
+  video?: PublicVideoMeta;
+}
+
+/** 媒体筛选合法值(URL 驱动,白名单回落 all) */
+export const FEED_MEDIA_FILTERS = ["all", "text", "video"] as const;
+export type FeedMediaFilter = (typeof FEED_MEDIA_FILTERS)[number];
+
+/** 平台展示名(未知平台回退原值) */
+export function platformLabel(platform: string): string {
+  const labels: Record<string, string> = { douyin: "抖音", xhs: "小红书", bilibili: "B站" };
+  return labels[platform] ?? platform;
+}
+
+/** 秒 → m:ss(非法值返回 null,调用方隐藏角标) */
+export function formatDuration(sec: number | null | undefined): string | null {
+  if (sec == null || !Number.isFinite(sec) || sec <= 0) return null;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** 视频条目来源名:平台·博主(博主名冗余隔离,平台行名 social:* 不出前端) */
+export function videoSourceName(video: PublicVideoMeta): string {
+  return `${platformLabel(video.platform)} · ${video.blogger}`;
+}
+
+/** 互动数紧凑展示(1.2w / 3400;null 忽略) */
+export function compactCount(n: number | null | undefined): string | null {
+  if (n == null || !Number.isFinite(n) || n < 0) return null;
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1).replace(/\.0$/, "")}w`;
+  return String(n);
+}
+
+/** 互动 JSON 投影(库内形状不受信,逐字段白名单;M8 play 恒 null 隐藏) */
+export function toEngagement(raw: unknown): {
+  play: number | null;
+  like: number | null;
+  comment: number | null;
+} {
+  const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
 }
 
 /** 相对时间(分/小时/天;分钟内「刚刚」) */

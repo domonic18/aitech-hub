@@ -28,13 +28,13 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
       { icon: "i-cloudserver", label: "渠道配置", href: "/admin/channels" },
-      { icon: "i-aim", label: "博主管理", tag: "二期" },
+      { icon: "i-aim", label: "博主管理", href: "/admin/bloggers" },
     ],
   },
   {
     label: "AI 服务",
     items: [
-      { icon: "i-robot", label: "模型配置", tag: "二期" },
+      { icon: "i-robot", label: "模型配置", href: "/admin/models" },
       { icon: "i-piechart", label: "用量统计", tag: "二期" },
       { icon: "i-comment", label: "会话管理", tag: "二期" },
     ],

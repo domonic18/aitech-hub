@@ -1,7 +1,9 @@
 /**
  * 电报流治理页(M7 批④,侧栏「电报流治理」;原型 admin-telegram):
- * 四分段 + 来源筛选 + 搜索 + 分页;行内 恢复/隐藏/归档/编辑;
+ * 四分段 + 来源/媒体筛选 + 搜索 + 分页;行内 恢复/隐藏/归档/编辑;
  * filter_hit 命中徽章即误杀观测。页尾屏蔽词管理。
+ * M8 批⑦:媒体列与视频行(封面/平台·博主/互动/时长/原视频链;
+ * AI 解读态随解读批,以灰字注记如实呈现,不伪装)。
  */
 import Link from "next/link";
 
@@ -17,6 +19,13 @@ import {
   type TelegramListSegment,
 } from "@/lib/telegram/telegram-admin";
 import { listBlocklist } from "@/lib/telegram/blocklist-admin";
+import {
+  FEED_MEDIA_FILTERS,
+  compactCount,
+  formatDuration,
+  platformLabel,
+  type FeedMediaFilter,
+} from "@/lib/telegram/feed-view";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +36,20 @@ const SEG_LABELS: Record<TelegramListSegment, string> = {
   archived: "归档",
 };
 
+const MEDIA_LABELS: Record<FeedMediaFilter, string> = {
+  all: "全部媒体",
+  text: "文字",
+  video: "短视频",
+};
+
 interface PageProps {
-  searchParams: Promise<{ status?: string; page?: string; q?: string; source?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    page?: string;
+    q?: string;
+    source?: string;
+    media?: string;
+  }>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -41,6 +62,23 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`rounded-sm px-1.5 py-px text-[10px] ${s.cls}`}>{s.label}</span>;
 }
 
+/** 媒体徽章(原型 media-tag:文字 i-filetext / 短视频 i-video) */
+function MediaBadge({ mediaType }: { mediaType: string }) {
+  const video = mediaType === "video";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-px text-[10px] ${
+        video ? "bg-accent-dim text-accent" : "bg-panel-2 text-text-2"
+      }`}
+    >
+      <svg className="ic ic-sm" aria-hidden="true">
+        <use href={video ? "#i-video" : "#i-filetext"} />
+      </svg>
+      {video ? "短视频" : "文字"}
+    </span>
+  );
+}
+
 export default async function AdminTelegramPage({
   searchParams,
 }: PageProps): Promise<React.ReactElement> {
@@ -50,8 +88,17 @@ export default async function AdminTelegramPage({
   const page = parsePage(sp.page);
   const q = sp.q?.trim() || undefined;
   const sourceId = /^\d{1,10}$/.test(sp.source ?? "") ? Number(sp.source) : undefined;
+  const media: FeedMediaFilter = FEED_MEDIA_FILTERS.includes(sp.media as FeedMediaFilter)
+    ? (sp.media as FeedMediaFilter)
+    : "all";
 
-  const { items, total, counts, sources } = await listTelegramAdmin({ page, segment, sourceId, q });
+  const { items, total, counts, sources } = await listTelegramAdmin({
+    page,
+    segment,
+    sourceId,
+    q,
+    media,
+  });
   const words = await listBlocklist();
   const totalPages = Math.max(1, Math.ceil(total / TELEGRAM_PAGE_SIZE));
   const pgBtn =
@@ -61,6 +108,7 @@ export default async function AdminTelegramPage({
     if (seg !== "all") params.set("status", seg);
     if (q) params.set("q", q);
     if (sourceId !== undefined) params.set("source", String(sourceId));
+    if (media !== "all") params.set("media", media);
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
     return qs ? `/admin/telegram/?${qs}` : "/admin/telegram/";
@@ -94,8 +142,19 @@ export default async function AdminTelegramPage({
         <form method="GET" action="/admin/telegram/" className="ml-auto flex items-center gap-2">
           {segment !== "all" && <input type="hidden" name="status" value={segment} />}
           <select
+            name="media"
+            defaultValue={media === "all" ? "" : media}
+            aria-label="媒体类型筛选"
+            className="rounded-sm border border-line bg-panel px-2 py-1.5 text-xs text-text-2 outline-none focus:border-accent"
+          >
+            <option value="">{MEDIA_LABELS.all}</option>
+            <option value="text">{MEDIA_LABELS.text}</option>
+            <option value="video">{MEDIA_LABELS.video}</option>
+          </select>
+          <select
             name="source"
             defaultValue={sp.source ?? ""}
+            aria-label="来源渠道筛选"
             className="rounded-sm border border-line bg-panel px-2 py-1.5 text-xs text-text-2 outline-none focus:border-accent"
           >
             <option value="">全部来源</option>
@@ -124,6 +183,7 @@ export default async function AdminTelegramPage({
           <thead>
             <tr className="border-b border-line text-xs text-text-3">
               <th className="px-4 py-2.5 font-medium">条目</th>
+              <th className="px-3 py-2.5 font-medium">媒体</th>
               <th className="px-3 py-2.5 font-medium">来源</th>
               <th className="px-3 py-2.5 font-medium">过滤命中</th>
               <th className="px-3 py-2.5 font-medium">状态</th>
@@ -132,39 +192,110 @@ export default async function AdminTelegramPage({
             </tr>
           </thead>
           <tbody>
-            {items.map((t) => (
-              <tr key={t.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
-                <td className="max-w-[380px] px-4 py-2.5">
-                  <div className="truncate font-medium text-text-1">{t.title ?? "(无标题)"}</div>
-                  <div className="mt-0.5 truncate text-[11px] text-text-3">{t.summary}</div>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-text-2">{t.sourceName}</td>
-                <td className="px-3 py-2.5">
-                  {t.filterHit ? (
-                    <span
-                      className="rounded-sm bg-amber/10 px-1.5 py-px font-mono text-[10px] text-amber"
-                      title="命中过滤规则,以隐藏态入库"
-                    >
-                      {t.filterHit}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-text-3">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2.5">
-                  <StatusBadge status={t.status} />
-                </td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-text-3">
-                  {formatCnDateTime(t.publishedAt ?? t.createdAt)}
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <TelegramRowOps id={t.id} title={t.title} summary={t.summary} status={t.status} />
-                </td>
-              </tr>
-            ))}
+            {items.map((t) => {
+              const isVideo = t.mediaType === "video";
+              const duration = isVideo ? formatDuration(t.videoDuration) : null;
+              const like = isVideo ? compactCount(t.videoEngagement?.like) : null;
+              const comment = isVideo ? compactCount(t.videoEngagement?.comment) : null;
+              return (
+                <tr key={t.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
+                  <td className="max-w-[380px] px-4 py-2.5">
+                    {isVideo ? (
+                      <div className="flex gap-3">
+                        <a
+                          href={t.url}
+                          target="_blank"
+                          rel="noopener nofollow"
+                          aria-label={`打开原视频:${t.title ?? ""}`}
+                          className="relative h-[74px] w-[56px] flex-none overflow-hidden rounded-sm bg-panel-2"
+                        >
+                          {t.videoCoverUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域
+                            <img
+                              src={t.videoCoverUrl}
+                              alt={t.title ?? "视频封面"}
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center font-mono text-[10px] text-text-3">
+                              ▶
+                            </div>
+                          )}
+                          {duration && (
+                            <span className="absolute bottom-0.5 right-0.5 rounded-xs bg-black/70 px-1 font-mono text-[10px] leading-4 text-white">
+                              {duration}
+                            </span>
+                          )}
+                        </a>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium text-text-1">
+                            {t.title ?? "(无标题)"}
+                          </div>
+                          {t.summary && (
+                            <div className="mt-0.5 truncate text-[11px] text-text-3">
+                              {t.summary}
+                            </div>
+                          )}
+                          <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
+                            {like && <span>赞 {like}</span>}
+                            {comment && <span>评 {comment}</span>}
+                            <span title="短视频解读(抽轨/ASR/LLM)随解读批(M9)立项交付">
+                              解读未启用
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="truncate font-medium text-text-1">
+                          {t.title ?? "(无标题)"}
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] text-text-3">{t.summary}</div>
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <MediaBadge mediaType={t.mediaType} />
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-text-2">
+                    {isVideo && t.videoPlatform
+                      ? `${platformLabel(t.videoPlatform)} · ${t.videoBlogger ?? "未知博主"}`
+                      : t.sourceName}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {t.filterHit ? (
+                      <span
+                        className="rounded-sm bg-amber/10 px-1.5 py-px font-mono text-[10px] text-amber"
+                        title="命中过滤规则,以隐藏态入库"
+                      >
+                        {t.filterHit}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-3">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <StatusBadge status={t.status} />
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-3">
+                    {formatCnDateTime(t.publishedAt ?? t.createdAt)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <TelegramRowOps
+                      id={t.id}
+                      title={t.title}
+                      summary={t.summary}
+                      status={t.status}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
             {items.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
+                <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
                   没有符合条件的条目
                 </td>
               </tr>

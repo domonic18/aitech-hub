@@ -12,8 +12,9 @@ import {
   countTodayVisible,
   listPublicChannels,
   listPublicTelegram,
+  PUBLIC_FEED_PAGE_SIZE,
 } from "@/lib/telegram/public-feed";
-import { PUBLIC_FEED_PAGE_SIZE } from "@/lib/telegram/public-feed";
+import { FEED_MEDIA_FILTERS, type FeedMediaFilter } from "@/lib/telegram/feed-view";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,22 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ source?: string }>;
+  searchParams: Promise<{ source?: string; media?: string }>;
+}
+
+const MEDIA_LABELS: Record<FeedMediaFilter, string> = {
+  all: "全部",
+  text: "文字",
+  video: "视频",
+};
+
+/** 筛选组合 href(源与媒体互相保留) */
+function feedHref(sourceId: number | undefined, media: FeedMediaFilter): string {
+  const sp = new URLSearchParams();
+  if (sourceId !== undefined) sp.set("source", String(sourceId));
+  if (media !== "all") sp.set("media", media);
+  const qs = sp.toString();
+  return qs ? `/telegram/?${qs}` : "/telegram/";
 }
 
 export default async function TelegramPage({
@@ -32,9 +48,12 @@ export default async function TelegramPage({
 }: PageProps): Promise<React.ReactElement> {
   const sp = await searchParams;
   const sourceId = sp.source && /^\d{1,10}$/.test(sp.source) ? Number(sp.source) : undefined;
+  const media: FeedMediaFilter = FEED_MEDIA_FILTERS.includes(sp.media as FeedMediaFilter)
+    ? (sp.media as FeedMediaFilter)
+    : "all";
 
   const [items, today, channels] = await Promise.all([
-    listPublicTelegram({ limit: PUBLIC_FEED_PAGE_SIZE, sourceId }),
+    listPublicTelegram({ limit: PUBLIC_FEED_PAGE_SIZE, sourceId, media }),
     countTodayVisible(),
     listPublicChannels(),
   ]);
@@ -60,16 +79,33 @@ export default async function TelegramPage({
         </div>
         <p className="mt-2 font-mono text-[11.5px] text-text-3">
           <span className="text-text-2">$</span> tail -f /telegram
-          <span className="ml-2"># 多渠道巡检 · 文字资讯 · 60s 轮询刷新</span>
+          <span className="ml-2"># 多渠道巡检 · 文字+视频 · 60s 轮询刷新</span>
         </p>
       </div>
 
       <div className="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <main className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] text-text-3">媒体</span>
+            {FEED_MEDIA_FILTERS.map((m) => (
+              <Link
+                key={m}
+                href={feedHref(sourceId, m)}
+                aria-current={media === m ? "true" : undefined}
+                className={`rounded-sm border px-2.5 py-1 text-xs ${
+                  media === m
+                    ? "border-accent bg-accent-dim font-medium text-accent"
+                    : "border-line bg-panel text-text-2 hover:bg-panel-2"
+                }`}
+              >
+                {MEDIA_LABELS[m]}
+              </Link>
+            ))}
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="font-mono text-[11px] text-text-3">渠道</span>
             <Link
-              href="/telegram/"
+              href={feedHref(undefined, media)}
               aria-current={sourceId === undefined ? "true" : undefined}
               className={`rounded-sm border px-2.5 py-1 text-xs ${
                 sourceId === undefined
@@ -82,7 +118,7 @@ export default async function TelegramPage({
             {channels.map((c) => (
               <Link
                 key={c.id}
-                href={`/telegram/?source=${c.id}`}
+                href={feedHref(c.id, media)}
                 aria-current={sourceId === c.id ? "true" : undefined}
                 className={`rounded-sm border px-2.5 py-1 text-xs ${
                   sourceId === c.id
@@ -94,7 +130,7 @@ export default async function TelegramPage({
               </Link>
             ))}
           </div>
-          <TelegramTimeline initialItems={items} sourceId={sourceId} />
+          <TelegramTimeline initialItems={items} sourceId={sourceId} media={media} />
         </main>
 
         <aside className="flex min-w-0 flex-col gap-4">

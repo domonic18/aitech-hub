@@ -1,17 +1,48 @@
 "use client";
 
 /**
- * 首页电报流 LIVE 带(M7 批⑤,原型 site-home tg-band 文字条目一期形态):
+ * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行):
  * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(74/108/1fr/auto,
  * 窄屏降级按原型 64/92/1fr 隐 ag);SSR 初值 + 60s 轮询(visible only);行点击直达外链。
+ * 视频行:来源位显示「平台 · 博主」,标题前小封面(no-referrer 防盗链,失败隐图留 duration 角标语义)。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { hhmm, isNew, timeAgo, type PublicTelegramItem } from "@/lib/telegram/feed-view";
+import {
+  formatDuration,
+  hhmm,
+  isNew,
+  timeAgo,
+  videoSourceName,
+  type PublicTelegramItem,
+} from "@/lib/telegram/feed-view";
 
 const POLL_MS = 60_000;
 const BAND_LIMIT = 8;
+
+/** 带内小封面:失败/无封面降级为 ▶ 占位块(不重试) */
+function BandCover({ src }: { src: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (src === null || failed) {
+    return (
+      <span className="inline-flex h-8 w-6 flex-none items-center justify-center rounded-xs bg-panel-2 text-[9px] text-text-3">
+        ▶
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="inline-block h-8 w-6 flex-none rounded-xs object-cover"
+    />
+  );
+}
 
 export default function TelegramBand({
   initialItems,
@@ -58,7 +89,7 @@ export default function TelegramBand({
           电报流
         </span>
         <span className="font-mono text-xs text-text-3">
-          {channels} 个渠道巡检中 · 文字资讯 · 今日已入库 {today} 条
+          {channels} 个渠道巡检中 · 文字+视频 · 今日已入库 {today} 条
         </span>
         <Link
           href="/telegram/"
@@ -69,6 +100,8 @@ export default function TelegramBand({
       </div>
       {items.map((t) => {
         const fresh = isNew(t.publishedAt, now);
+        const video = t.mediaType === "video" ? t.video : undefined;
+        const duration = video ? formatDuration(video.durationSeconds) : null;
         return (
           <a
             key={t.id}
@@ -83,19 +116,23 @@ export default function TelegramBand({
               {hhmm(t.publishedAt)}
             </span>
             <span className="flex-none truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-              {t.sourceName}
+              {video ? videoSourceName(video) : t.sourceName}
             </span>
-            <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
-              {t.title}
-              <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
-                <use href="#i-export" />
-              </svg>
+            <span className="flex min-w-0 items-center gap-2">
+              {video && <BandCover src={video.coverUrl} />}
+              <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
+                {t.title}
+                <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
+                  <use href="#i-export" />
+                </svg>
+              </span>
             </span>
             <span
               className={`hidden flex-none justify-self-end font-mono text-[11px] sm:block ${
                 fresh ? "text-green-hi" : "text-text-3"
               }`}
             >
+              {duration ? `${duration} · ` : ""}
               {fresh ? "NEW · " : ""}
               {timeAgo(t.publishedAt, now)}
             </span>
