@@ -155,7 +155,7 @@ describe("triggerTelegramInterpret(M9 手动触发)", () => {
     prismaMock.socialAccount.findFirst.mockResolvedValue({ secUid: "sec-9" });
 
     await expect(triggerTelegramInterpret(BigInt(5))).resolves.toEqual({ enqueued: true });
-    expect(queueMock.remove).toHaveBeenCalledWith("interpret:5"); // 防遗留 completed job 静默去重
+    expect(queueMock.remove).toHaveBeenCalledWith("interpret-5"); // 防遗留 completed job 静默去重
     expect(prismaMock.telegram.update).toHaveBeenCalledWith({
       where: { id: BigInt(5) },
       data: { aiStatus: "pending", lastAiError: null },

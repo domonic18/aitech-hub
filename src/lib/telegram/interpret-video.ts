@@ -54,10 +54,11 @@ export async function isInterpretReady(): Promise<boolean> {
   return (await resolveAiModel(AI_PURPOSE_INTERPRET)) !== null;
 }
 
-/** 入队解读(jobId=interpret:{id} 幂等;attempts 兜下载/网关网络层,ASR 重试在管道内) */
+/** 入队解读(jobId=interpret-{id} 幂等;attempts 兜下载/网关网络层,ASR 重试在管道内。
+ * 分隔符必须用连字符:BullMQ 拒绝含冒号的 custom jobId("Custom Id cannot contain :") */
 export async function enqueueInterpret(data: InterpretJobData): Promise<void> {
   await getQueue(QUEUE_INTERPRETER).add("interpret-video", data, {
-    jobId: `interpret:${data.telegramId}`,
+    jobId: `interpret-${data.telegramId}`,
     attempts: 3,
     backoff: { type: "fixed", delay: 60_000 },
     removeOnComplete: 50, // 压低 playUrl 在 Redis 的残留条数
@@ -239,7 +240,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
   // 日配额(后台 interpret 绑定可配,缺省 100):满则延迟重投顺延,绝不 throw / 标败
   if ((await countTodayInterpreted()) >= (await getRoleDailyMax(AI_PURPOSE_INTERPRET))) {
     await getQueue(QUEUE_INTERPRETER).add("interpret-video", data, {
-      jobId: `interpret:${data.telegramId}:r${Date.now()}`,
+      jobId: `interpret-${data.telegramId}-r${Date.now()}`,
       delay: QUOTA_DEFER_MS,
       attempts: 3,
       backoff: { type: "fixed", delay: 60_000 },

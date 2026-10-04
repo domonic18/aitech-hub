@@ -277,7 +277,7 @@ export async function triggerTelegramInterpret(id: bigint): Promise<{ enqueued: 
   });
   const queue = getQueue(QUEUE_INTERPRETER);
   // 先移除遗留 job(removeOnComplete 保留的 completed job 会顶掉同名 jobId 入队,静默去重)
-  await queue.remove(`interpret:${row.id}`).catch(() => null);
+  await queue.remove(`interpret-${row.id}`).catch(() => null);
   await prisma.telegram.update({
     where: { id: row.id },
     data: { aiStatus: TELEGRAM_AI_PENDING, lastAiError: null },

@@ -59,7 +59,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 
 - 单 Redis,队列按域命名:`media`(一期)、`github`、`crawler`、`pay`(二期启用)
 - **请求内禁做秒级以上处理**(arch/00-overview §7):一切转码/压缩/抓取/同步 enqueue 后立即返回 `{ jobId }`
-- 任务幂等:所有 processor 以业务键去重(jobId 用 `media:{sha1}:process` 形态),可重复投递
+- 任务幂等:所有 processor 以业务键去重(jobId 用 `media-{sha1}-process` 连字符形态),可重复投递。**custom jobId 禁含冒号**(BullMQ 直接抛 "Custom Id cannot contain :",2026-10-04 实修——interpret/media 旧冒号键致入队 500)
 - worker 独立进程 `worker/index.ts`:注册 processors、优雅退出(SIGTERM 排空)、失败重试(指数退避,上限 3 次)+ 死信记录
 
 ### 4.2 一期任务清单

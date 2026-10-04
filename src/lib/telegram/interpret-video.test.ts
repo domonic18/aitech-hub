@@ -212,7 +212,7 @@ describe("interpretVideoJob 状态机", () => {
       "interpret-video",
       DATA,
       expect.objectContaining({
-        jobId: expect.stringMatching(/^interpret:1:r\d+$/),
+        jobId: expect.stringMatching(/^interpret-1-r\d+$/),
         delay: 30 * 60_000,
       }),
     );

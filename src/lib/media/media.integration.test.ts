@@ -208,7 +208,7 @@ describe("媒体上传与处理(dev compose 真实 PG)", () => {
     expect(row.sha1).toHaveLength(40);
     const last = queueState.added.at(-1);
     expect(last?.name).toBe("process");
-    expect(last?.jobId).toBe(`media:${row.sha1}:process`);
+    expect(last?.jobId).toBe(`media-${row.sha1}-process`);
   });
 
   it("sha1 去重复用:同字节二传不建新行不重传", async () => {
