@@ -45,38 +45,46 @@ function videoItem(id: string, publishedAt: string): PublicTelegramItem {
 describe("mergeBandItems 视频保底槽位", () => {
   const mixed = Array.from({ length: 8 }, (_, i) => item(`t${i}`, `2026-10-04T0${i}:00:00+08:00`));
 
-  it("最新视频已在混排前 N → 原样返回(同引用)", () => {
+  it("最新视频已在混排前 N → 原样返回(同引用),游标消费全部", () => {
     const withVideo = [
       ...mixed.slice(0, 3),
       videoItem("v", mixed[3]!.publishedAt),
       ...mixed.slice(4),
     ];
-    expect(mergeBandItems(withVideo, withVideo[3]!, 8)).toBe(withVideo);
+    const out = mergeBandItems(withVideo, withVideo[3]!, 8);
+    expect(out.items).toBe(withVideo);
+    expect(out.nextOffset).toBe(8);
   });
 
-  it("最新视频不在前 N → 替换末位,长度不变", () => {
+  it("最新视频不在前 N → 替换末位,被替换项不占游标(后续页补达)", () => {
     const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
     const out = mergeBandItems(mixed, newest, 8);
-    expect(out).toHaveLength(8);
-    expect(out.at(-1)).toBe(newest);
-    expect(out.slice(0, 7)).toEqual(mixed.slice(0, 7));
+    expect(out.items).toHaveLength(8);
+    expect(out.items.at(-1)).toBe(newest);
+    expect(out.items.slice(0, 7)).toEqual(mixed.slice(0, 7));
+    expect(out.nextOffset).toBe(7);
   });
 
-  it("混排不足 N → 追加视频", () => {
+  it("混排不足 N → 追加视频,游标消费混排全长", () => {
     const short = mixed.slice(0, 3);
     const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
     const out = mergeBandItems(short, newest, 8);
-    expect(out).toHaveLength(4);
-    expect(out.at(-1)).toBe(newest);
+    expect(out.items).toHaveLength(4);
+    expect(out.items.at(-1)).toBe(newest);
+    expect(out.nextOffset).toBe(3);
   });
 
   it("无视频条目 → 原样返回", () => {
-    expect(mergeBandItems(mixed, null, 8)).toBe(mixed);
+    const out = mergeBandItems(mixed, null, 8);
+    expect(out.items).toBe(mixed);
+    expect(out.nextOffset).toBe(8);
   });
 
-  it("混排为空 → 仅视频", () => {
+  it("混排为空 → 仅视频,游标 0", () => {
     const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
-    expect(mergeBandItems([], newest, 8)).toEqual([newest]);
+    const out = mergeBandItems([], newest, 8);
+    expect(out.items).toEqual([newest]);
+    expect(out.nextOffset).toBe(0);
   });
 });
 

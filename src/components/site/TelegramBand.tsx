@@ -4,11 +4,13 @@
  * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位;
  * M10 批② 条数后台可配 + 下滚加载更多):头部 live-chip + 标题 + 巡检统计 + more;
  * 行四列网格 tm/sr/ti/ag(74/108/1fr/auto,窄屏降级按原型 64/92/1fr 隐 ag);
+ * 视频行按原型 site-home .tg-row.video 五列(tm/thumb/pf/vt/ag):54×95 竖版封面
+ * (play 蒙层 + 时长横条,no-referrer 防盗链,失败降级播放占位块)+ pf 平台章/博主
+ * (窄屏隐)+ 标题与「AI 解读 · 概括」双行;窄屏降 54px+1fr 双列。行高由封面撑起。
  * SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重前插,保留
- * 用户已展开的尾部)+ 底部哨兵 IntersectionObserver 自动加载下一页(offset 分页,
- * 返回条数 < count 判定到底)。视频行:来源位显示「平台 · 博主」,标题前小封面
- * (play 钮 + 底部时长角标,no-referrer 防盗链,失败降级 ▶ 占位块);M9 已解读行
- * 显 AI 徽章 + 概括主题。行点击直达外链。
+ * 用户已展开的尾部)+ 底部哨兵 IntersectionObserver 自动加载下一页(服务端
+ * nextOffset 游标翻页,保底视频只占展示位不占游标;返回条数 < count 判定到底)。
+ * 行点击直达外链。
  */
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -17,26 +19,28 @@ import {
   formatDuration,
   hhmm,
   isNew,
+  platformLabel,
   timeAgo,
-  videoSourceName,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
 
 const POLL_MS = 60_000;
 
-/** 带内小封面:play 蒙层 + 底部时长横条(原型 .thumb .play/.dur 口径);
- * 失败/无封面降级为 ▶ 占位块(占位即播放语义,不叠蒙层)。 */
+/** 带内竖版封面(原型 .tg-row.video .thumb 口径:54×95 圆角 6、play 蒙层、
+ * 底部时长横条 inset 3px);失败/无封面降级为播放占位块(不叠蒙层)。 */
 function BandCover({ src, duration }: { src: string | null; duration: string | null }) {
   const [failed, setFailed] = useState(false);
   if (src === null || failed) {
     return (
-      <span className="inline-flex h-8 w-6 flex-none items-center justify-center rounded-xs bg-panel-2 text-[9px] text-text-3">
-        ▶
+      <span className="flex h-[95px] w-[54px] flex-none items-center justify-center rounded-md border border-line bg-panel-2 text-text-3">
+        <svg className="ic ic-lg" aria-hidden="true">
+          <use href="#i-caret-right-fill" />
+        </svg>
       </span>
     );
   }
   return (
-    <span className="relative inline-flex h-8 w-6 flex-none overflow-hidden rounded-xs bg-panel-2">
+    <span className="relative h-[95px] w-[54px] flex-none overflow-hidden rounded-md border border-line bg-panel-2">
       {/* eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域 */}
       <img
         src={src}
@@ -46,13 +50,13 @@ function BandCover({ src, duration }: { src: string | null; duration: string | n
         onError={() => setFailed(true)}
         className="h-full w-full object-cover"
       />
-      <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white">
-        <svg className="ic ic-sm" aria-hidden="true">
+      <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
+        <svg className="ic" aria-hidden="true">
           <use href="#i-caret-right-fill" />
         </svg>
       </span>
       {duration && (
-        <span className="absolute inset-x-0 bottom-0 bg-black/70 text-center font-mono text-[8px] leading-3 text-white">
+        <span className="absolute inset-x-[3px] bottom-[3px] rounded-[3px] bg-black/70 text-center font-mono text-[9.5px] leading-[14px] text-white">
           {duration}
         </span>
       )}
@@ -62,12 +66,15 @@ function BandCover({ src, duration }: { src: string | null; duration: string | n
 
 export default function TelegramBand({
   initialItems,
+  initialNextOffset,
   channels,
   today,
   count,
   initialNow,
 }: {
   initialItems: PublicTelegramItem[];
+  /** SSR 首屏已消费的混排游标(保底视频不占游标);后续翻页以服务端 nextOffset 为准 */
+  initialNextOffset: number;
   channels: number;
   today: number;
   /** 后台配置的每页条数(site_config band.item_count,SSR 与轮询/翻页同源) */
@@ -81,6 +88,7 @@ export default function TelegramBand({
   initialNow: number;
 }) {
   const [items, setItems] = useState(initialItems);
+  const [nextOffset, setNextOffset] = useState(initialNextOffset);
   const [now, setNow] = useState(initialNow);
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
@@ -115,13 +123,17 @@ export default function TelegramBand({
     };
   }, [count]);
 
-  // 下滚加载更多:底部哨兵进入视口(预载 200px)取下一页;返回不足一页判定到底
+  // 下滚加载更多:底部哨兵进入视口(预载 200px)取下一页;返回不足一页判定到底。
+  // IO 只在穿越边沿触发:哨兵滞留视口(带矮/快速滚动)时 loading 落定不会重发,
+  // 故记最近相交态,loading 结束仍在视口则续拉(failure 时清零,待新的穿越再试)
+  const intersectingRef = useRef(false);
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || exhausted) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) void loadMore();
+        intersectingRef.current = entries.some((e) => e.isIntersecting);
+        if (intersectingRef.current) void loadMore();
       },
       { rootMargin: "200px" },
     );
@@ -130,14 +142,22 @@ export default function TelegramBand({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- items.length 变化后以最新闭包重挂哨兵
   }, [exhausted, items.length, count, loading]);
 
+  useEffect(() => {
+    if (!loading && intersectingRef.current && !exhausted) void loadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loading 落定即续拉,loadMore 读最新 state
+  }, [loading, exhausted]);
+
   const loadMore = async (): Promise<void> => {
     if (loading || exhausted) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/telegram/public?band=1&offset=${items.length}&limit=${count}`, {
+      const res = await fetch(`/api/telegram/public?band=1&offset=${nextOffset}&limit=${count}`, {
         cache: "no-store",
       });
-      const body = (await res.json()) as { code: number; data?: { items: PublicTelegramItem[] } };
+      const body = (await res.json()) as {
+        code: number;
+        data?: { items: PublicTelegramItem[]; nextOffset: number };
+      };
       if (body.code === 0 && body.data) {
         const page = body.data.items;
         setItems((prev) => {
@@ -145,12 +165,14 @@ export default function TelegramBand({
           const added = page.filter((i) => !seen.has(i.id));
           return added.length > 0 ? [...prev, ...added] : prev;
         });
+        setNextOffset(body.data.nextOffset);
         if (page.length < count) setExhausted(true);
       } else {
         setExhausted(true);
       }
     } catch {
-      /* 拉取失败静默:哨兵再次进入视口时重试 */
+      /* 拉取失败静默:清相交态,待哨兵新的穿越边沿再试(防失败热循环) */
+      intersectingRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -182,7 +204,55 @@ export default function TelegramBand({
       {items.map((t) => {
         const fresh = isNew(t.publishedAt, now);
         const video = t.mediaType === "video" ? t.video : undefined;
-        const duration = video ? formatDuration(video.durationSeconds) : null;
+        if (video) {
+          // 视频行(原型 site-home .tg-row.video 口径):54×95 竖版封面独立列 +
+          // 平台章/博主列(pf,窄屏隐)+ 标题/AI 概括双行(vt)+ 右侧相对时间;
+          // 窄屏降 54px+1fr 双列(隐 tm/pf/ag),行高由封面撑起
+          const duration = formatDuration(video.durationSeconds);
+          return (
+            <a
+              key={t.id}
+              href={t.url}
+              target="_blank"
+              rel="noopener nofollow"
+              className="grid grid-cols-[54px_1fr] items-center gap-3.5 border-b border-line/55 px-5 py-3 last:border-b-0 hover:bg-panel-2 sm:grid-cols-[74px_54px_96px_1fr_auto]"
+            >
+              <span
+                className={`hidden flex-none font-mono text-xs sm:block ${
+                  fresh ? "text-green-hi" : "text-text-3"
+                }`}
+              >
+                {hhmm(t.publishedAt)}
+              </span>
+              <BandCover src={video.coverUrl} duration={duration} />
+              <span className="hidden min-w-0 flex-none flex-col items-start gap-1 sm:flex">
+                <span className="rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
+                  {platformLabel(video.platform)}
+                </span>
+                <span className="max-w-full truncate font-mono text-[11px] text-text-2">
+                  @{video.blogger}
+                </span>
+              </span>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-sm leading-normal text-text-1">{t.title}</span>
+                {video.ai && (
+                  <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
+                    <span className="text-accent">AI 解读</span> ·{" "}
+                    {video.ai.topic || video.ai.summary}
+                  </span>
+                )}
+              </span>
+              <span
+                className={`hidden flex-none justify-self-end whitespace-nowrap font-mono text-[11px] sm:block ${
+                  fresh ? "text-green-hi" : "text-text-3"
+                }`}
+              >
+                {fresh ? "NEW · " : ""}
+                {timeAgo(t.publishedAt, now)}
+              </span>
+            </a>
+          );
+        }
         return (
           <a
             key={t.id}
@@ -197,25 +267,12 @@ export default function TelegramBand({
               {hhmm(t.publishedAt)}
             </span>
             <span className="flex-none truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-              {video ? videoSourceName(video) : t.sourceName}
+              {t.sourceName}
             </span>
             <span className="flex min-w-0 items-center gap-2">
-              {video && <BandCover src={video.coverUrl} duration={duration} />}
-              {video?.ai ? (
-                // AI 徽章 + LLM 概括主题(无主题回退摘要;单行 truncate,band 不放 details)
-                <>
-                  <span className="flex-none rounded-sm bg-accent-dim px-1 py-px font-mono text-[9px] text-accent">
-                    AI
-                  </span>
-                  <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
-                    {video.ai.topic || video.ai.summary}
-                  </span>
-                </>
-              ) : (
-                <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
-                  {t.title}
-                </span>
-              )}
+              <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
+                {t.title}
+              </span>
               <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
                 <use href="#i-export" />
               </svg>

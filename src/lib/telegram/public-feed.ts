@@ -16,6 +16,7 @@ import {
 } from "./feed-view";
 
 export { DEFAULT_BAND_ITEM_COUNT } from "./feed-view";
+export type { PublicTelegramItem } from "./feed-view";
 
 export const PUBLIC_FEED_PAGE_SIZE = 30;
 /** offset 分页上限(M10 带滚动加载;防御性封顶,正常滚动触不到) */
@@ -23,20 +24,32 @@ export const PUBLIC_FEED_MAX_OFFSET = 500;
 
 /** 带合并(批⑧保底槽位):最新视频不在混排前 N 则替换末位;在则原样返回。
  * 保序不变量:视频不在 top-N 时其 publishedAt 必 ≤ 第 N 条,置末位不破坏倒序。 */
+/** 首页带取数结果:items + 服务端已消费的混排游标。保底视频只占展示位不占游标
+ * ——被其替换掉的混排项游标不消费,会由后续 offset 页自然送达,客户端按 id 去重
+ * (2026-10-04 修:此前客户端 offset=items.length,被替换项被永久跳过,带内恒少一条)。 */
+export interface BandFeedPage {
+  items: PublicTelegramItem[];
+  nextOffset: number;
+}
+
+/** 首页带首屏合并:混排前 N + 最新视频保底(替换末位/不足追加),游标语义见 BandFeedPage */
 export function mergeBandItems(
   mixed: PublicTelegramItem[],
   newestVideo: PublicTelegramItem | null,
   limit: number,
-): PublicTelegramItem[] {
-  if (!newestVideo || mixed.some((i) => i.id === newestVideo.id)) return mixed;
-  return mixed.length >= limit ? [...mixed.slice(0, -1), newestVideo] : [...mixed, newestVideo];
+): BandFeedPage {
+  if (!newestVideo || mixed.some((i) => i.id === newestVideo.id))
+    return { items: mixed, nextOffset: mixed.length };
+  if (mixed.length >= limit)
+    return { items: [...mixed.slice(0, -1), newestVideo], nextOffset: mixed.length - 1 };
+  return { items: [...mixed, newestVideo], nextOffset: mixed.length };
 }
 
 /** 首页 LIVE 带取数:混排前 N + 最新视频保底(两查询并行,合并规则闭合)。
  * N 由调用方传后台配置值(site-config.getBandItemCount);缺省用默认 12。 */
-export async function listBandFeed(opts: { limit?: number } = {}): Promise<PublicTelegramItem[]> {
+export async function listBandFeed(opts: { limit?: number } = {}): Promise<BandFeedPage> {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? DEFAULT_BAND_ITEM_COUNT) || 12, 1), 50);
-  return prerenderSafe("telegram.bandFeed", [], async () => {
+  return prerenderSafe("telegram.bandFeed", { items: [], nextOffset: 0 }, async () => {
     const [mixed, videos] = await Promise.all([
       queryPublicTelegram(limit, null, undefined, "all", 0),
       queryPublicTelegram(1, null, undefined, "video", 0),

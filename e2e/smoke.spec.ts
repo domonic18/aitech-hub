@@ -1127,6 +1127,30 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
     })),
   });
+  // 视频行(最旧 → 首屏 3 行仍为文字,滚到底随末页载入):验证带内视频行原型结构
+  await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: "e2e-band-video",
+      summary: "e2e 带视频条目",
+      url: "https://e2e.invalid/bandv/1",
+      publishedAt: new Date(Date.now() - 16 * 60_000), // 比 15 条文字都旧,不搅动计数断言
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      mediaType: "video",
+      videoPlatform: "douyin",
+      videoBlogger: "e2e 带博主",
+      // 1×1 GIF data-url:img 可成功解码渲染(外链 404 会触发 onError 降级占位块)
+      videoCoverUrl:
+        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+      videoDuration: 91,
+      videoEngagement: { play: 12000, like: 34, comment: 5 },
+      aiStatus: "done",
+      aiTopic: "e2e 带视频 AI 主题",
+      aiSummary: "e2e 带视频 AI 摘要",
+      aiPoints: [],
+      aiRanAt: new Date(),
+    },
+  });
   // 记住原配置(行缺=null)测后还原
   const original = await prisma.siteConfig.findUnique({ where: { key: "band.item_count" } });
   const rows = page.locator("a[href^='https://e2e.invalid/band/']");
@@ -1145,24 +1169,40 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
     await page.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText("已保存,首页即将按新条数再生")).toBeVisible();
 
-    // 落库 + GET API 回读;revalidatePath 后首页 SSR 立即 3 行
+    // 落库 + GET API 回读;revalidatePath 后首页 SSR 立即 3 行。
+    // 首屏计数用 evaluate 原子快照:带矮时哨兵在水合后立即自动连页加载,
+    // toHaveCount 轮询会与加载赛跑(视频保底槽位还会替换首屏末位,文字行可为 2)
     expect(
       (await prisma.siteConfig.findUniqueOrThrow({ where: { key: "band.item_count" } })).value,
     ).toBe("3");
     const cfg = await page.request.get("/api/site-config");
     expect(((await cfg.json()) as { data: { bandItemCount: number } }).data.bandItemCount).toBe(3);
     await page.goto("/");
-    await expect(rows).toHaveCount(3);
+    expect(
+      await page.evaluate(
+        () => document.querySelectorAll("a[href^='https://e2e.invalid/band']").length,
+      ),
+    ).toBe(3);
 
-    // 下滚:哨兵自动追加载至 15 条 + 到底提示(offset 分页 + id 去重)
-    for (let i = 0; i < 12 && (await rows.count()) < 15; i++) {
-      await page.mouse.wheel(0, 1000);
+    // 下滚:哨兵自动追加载至 15 条 + 到底提示(offset 分页 + id 去重;
+    // 上限 24 = 6 轮分页富余:保底视频占首屏一槽,文字行到位需多一轮)
+    for (let i = 0; i < 24 && (await rows.count()) < 15; i++) {
+      await page.mouse.wheel(0, 1200);
       await page.waitForTimeout(250);
     }
     await expect(rows).toHaveCount(15);
     // 到底判定:补一滚让哨兵再触发 offset=15 的空页(< count 判定到底)
     await page.mouse.wheel(0, 2000);
     await expect(page.getByText("— 已加载全部 —")).toBeVisible({ timeout: 10_000 });
+
+    // 视频行结构(M10 批③ 带内原型重排):54×95 封面 + 平台章/博主 + 时长条 + AI 概括行
+    const vRow = page.locator("a[href='https://e2e.invalid/bandv/1']");
+    await expect(vRow).toBeVisible();
+    await expect(vRow.locator("img")).toBeVisible();
+    await expect(vRow.getByText("抖音", { exact: true })).toBeVisible();
+    await expect(vRow.getByText("@e2e 带博主")).toBeVisible();
+    await expect(vRow.getByText("1:31")).toBeVisible();
+    await expect(vRow.getByText(/AI 解读 · e2e 带视频 AI 主题/)).toBeVisible();
   } finally {
     // 还原:回写原值(原无行 → 写默认 12 后删行),清播种数据
     const origin = { "content-type": "application/json", origin: "http://localhost:3000" };

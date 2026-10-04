@@ -26,7 +26,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
     listLatestPosts(5),
     countPublishedPosts(),
   ]);
-  const bandItems = await listBandFeed({ limit: bandCount });
+  const band = await listBandFeed({ limit: bandCount });
 
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
@@ -36,7 +36,8 @@ export default async function HomePage(): Promise<React.ReactElement> {
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左主轴:电报流 LIVE 带(原型 tg-band 即整个左栏) */}
         <TelegramBand
-          initialItems={bandItems}
+          initialItems={band.items}
+          initialNextOffset={band.nextOffset}
           channels={channels.length}
           today={today}
           count={bandCount}
