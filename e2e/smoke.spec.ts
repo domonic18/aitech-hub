@@ -722,6 +722,17 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
       `https://www.douyin.com/user/${SEC_UID}`,
     );
 
+    // 「作品」「回填」ops(批⑧):作品链站内筛选;回填按钮可见但平台行停用 → 409
+    await expect(row.getByRole("link", { name: "作品" })).toHaveAttribute(
+      "href",
+      `/admin/telegram/?media=video&blogger=${encodeURIComponent(NICK)}`,
+    );
+    await expect(row.getByRole("button", { name: "回填" })).toBeVisible();
+    const bf = await page.request.post(`/api/bloggers/${blogger.id}/backfill/`, {
+      headers: { origin: "http://localhost:3000" },
+    });
+    expect(bf.status()).toBe(409); // 播种平台行停用 → disabled,零 worker 依赖
+
     // 两步武装删除·UI 侧:启用中删除被客户端守卫拦(alert,不发请求,行仍在)
     const alertPromise = page.waitForEvent("dialog").then((d) => {
       const msg = d.message();
@@ -738,10 +749,13 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     });
     expect(del.status()).toBe(409);
 
-    // 停用(confirm)→ 行刷新出「启用」;删除(confirm)→ 物理删,行消失
+    // 停用(confirm)→ 行刷新出「启用」;启用态专属按钮(立即采集/回填)随之隐藏
     page.once("dialog", (d) => d.accept());
     await row.getByRole("button", { name: "停用" }).click();
     await expect(row.getByRole("button", { name: "启用" })).toBeVisible({ timeout: 10_000 });
+    await expect(row.getByRole("button", { name: "回填" })).toBeHidden();
+    await expect(row.getByRole("button", { name: "立即采集" })).toBeHidden();
+    // 删除(confirm)→ 物理删,行消失
     page.once("dialog", (d) => d.accept());
     await row.getByRole("button", { name: "删除" }).click();
     await expect(row).toBeHidden({ timeout: 10_000 });
@@ -760,6 +774,15 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await expect(vRow.getByText(`抖音 · ${NICK}`)).toBeVisible();
     await page.goto("/admin/telegram/?media=text");
     await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toHaveCount(0);
+
+    // 博主作品筛选(批⑧):?blogger= 命中播种行,活动 chip 呈现且可清除
+    await page.goto(`/admin/telegram/?media=video&blogger=${encodeURIComponent(NICK)}`);
+    await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toBeVisible();
+    const chip = page.getByRole("link", { name: `清除博主筛选` });
+    await expect(chip).toHaveText(`博主:${NICK} ✕`);
+    await chip.click();
+    await expect(page).toHaveURL(/\/admin\/telegram\/\?(?!.*blogger=)/);
+    await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toBeVisible(); // media=video 仍在
 
     // 前台 media 筛选:video 页含播种视频卡(平台·博主 chip),text 页不含;非法值回落 all
     const videoHtml = await (await request.get("/telegram/?media=video")).text();
