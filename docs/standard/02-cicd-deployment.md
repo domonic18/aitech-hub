@@ -72,6 +72,7 @@ make migrate   # npx prisma migrate deploy
 - CI 与主镜像同一 `docker-release` job 内先后构建(各带重推重试);tag 规则同款 `<branch>-<短 sha>` + `latest` 仅 main
 - prod compose 服务 `douyin-gateway`:`image: ${GATEWAY_IMAGE:-…aitech-hub-gateway:latest}`,内网无 ports(worker 经服务名 `http://douyin-gateway:8010` 访问,`x-app-env` 注 `DOUYIN_GATEWAY_URL`);tmpfs 挂 `/tmp/playwright-profiles`(chromium Profile 防容器层写放大);healthcheck urllib 探 `/health`(slim 无 curl 同款问题),`start_period: 60s`(首启含 chromium 拉起);`mem_limit: 1g` + `DOUYIN_SIGNER_WARM_SLOTS: 1`(warm 页吃内存,2C4G 预算钉死单槽)
 - dev compose 走 `--profile douyin` 按需起(build 本地,`127.0.0.1:8010` 仅回环,便于 curl 冒烟),不影响日常 pg/redis 起;契约见 arch/05 §4.4
+- **网关镜像升级步骤**(契约护栏):黄金样本双侧对拍已进 CI(pytest `test_contract_fixtures.py` + vitest `gateway-contract.test.ts`),升级后另跑一次实弹对拍——`docker compose --profile douyin up -d douyin-gateway` 起本地网关,`npm run test:integration`(gateway 未起自动跳过;真实拉取对拍设 `DOUYIN_INTEGRATION_SEC_UID`/`DOUYIN_INTEGRATION_SHARE_URL` 开启)
 - 镜像现状 ≈2.4GB → 消除 chown 复制层后 ≈1.4GB(runner 全量 node_modules 为既有取舍:worker 与 prisma CLI 同镜像所需——web 启动即跑 `npx prisma migrate deploy`,CLI 必须在);进一步瘦身方向:`npm ci --omit=dev` 拆 prod-deps 层 + tsx 入 dependencies,非一期阻塞(2026-10-03 评估)
 
 ## 4. 生产拓扑与 Nginx(compose 服务)

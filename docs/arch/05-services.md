@@ -77,12 +77,13 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 
 Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 a_bogus + curl_cffi Chrome TLS 指纹 transport + Playwright 签名驱动 + Cookie jar 轮换/冷却/风控归因)。存在理由:抖音 WAF 按 TLS 指纹拦截标准 HTTP 客户端,只有 curl_cffi impersonate 实战验证有效(技术栈决策与平移记录见 memory `douyin-gateway-stays-python`);Node 侧只做编排与落库。
 
-- **HTTP 契约**(compose 内网,无鉴权不暴露公网;Node 每次携带解密后的明文 jar,PG 为真相源,网关零密钥零持久化):
+- **HTTP 契约**(compose 内网,无鉴权不暴露公网;Node 每次携带解密后的明文 jar,PG 为真相源,网关零密钥零持久化。**契约真相源**:TS 侧 Zod 镜像 `src/lib/telegram/adapters/video/gateway-contract.ts` + 黄金样本 `services/douyin-gateway/contract/*.json`,双侧对拍——网关改形状则 pytest 红,重生成 fixture 则 vitest 红,逼同步;/sign 仅网关内部消费不入契约):
   - `POST /sign {path,query,user_agent,cookies}` → `{params,user_agent}`
-  - `POST /posts {sec_uid,cookies[],max_pages?=1}` → `{videos[],has_more}`(归一化 video_id/caption/tags/cover_url/duration/published_at/digg/comment/share)
-  - `POST /profile {sec_uid,cookies[]}` → `{nickname,avatar_url}`;`POST /resolve {url}` → `{sec_uid}`(短链展开)
-  - `GET /health` → `{status,driver,jars_total,jars_available}`(**永远 200**,浏览器/池态异常在 body 里表达——Node 侧探测不靠状态码)
-- **错误归因两分**(Node 侧消费约定):连接失败/超时 = `GatewayUnavailableError` = 基础设施故障,顺延下轮**不计**博主连败;网关返回的业务失败(风控/签名失效)= `GatewayUpstreamError` = 计入 `consecutive_fails` + `last_error`
+  - `POST /posts {sec_uid,cookies[],max_pages?=1}` → `{videos[],has_more,max_cursor}`(归一化 video_id/caption/topic_tags/cover_url/play_url/duration/published_at/digg/comment/share;play_url 仅日志调试禁止落库)
+  - `POST /profile {sec_uid,cookies[]}` → `{sec_uid,nickname,avatar_url}`;`POST /resolve {url}` → `{sec_uid}`(短链展开)
+  - `GET /health` → `{status,driver,warm_slots,in_use,last_error,jars_total,jars_available}`(**永远 200**,浏览器/池态异常在 body 里表达——Node 侧探测不靠状态码)
+  - 错误包络:适配层异常 `{error,detail}`(404/502);pydantic 校验/签名未就绪 `{detail}`(422/503,detail 兼容数组)
+- **错误归因两分**(Node 侧消费约定,**按状态码分流**):网络层失败与 `503`(签名服务未就绪)= `GatewayUnavailableError` = 基础设施故障,顺延下轮**不计**博主连败;其余非 2xx(`404/422/502`)与响应不合契约(`ContractDrift`)= `GatewayUpstreamError` = 计入 `consecutive_fails` + `last_error`
 - 部署:compose 服务 `douyin-gateway`(prod 内网无 ports、tmpfs 指纹目录、mem_limit 1g、healthcheck urllib 探 /health、warm_slots=1 适配 2C4G);本地 `127.0.0.1:8010` 便于冒烟;发布段见 standard/02-cicd-deployment。env:`DOUYIN_GATEWAY_URL`(default `http://127.0.0.1:8010`)
 
 ### 4.3 本地与部署形态
