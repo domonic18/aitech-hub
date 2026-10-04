@@ -800,6 +800,12 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await expect(page).toHaveURL(/\/admin\/telegram\/\?(?!.*blogger=)/);
     await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toBeVisible(); // media=video 仍在
 
+    // 解读态筛选(M10 批⑤):done 命中播种行(aiStatus=done),none 不含
+    await page.goto("/admin/telegram/?ai=done");
+    await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toBeVisible();
+    await page.goto("/admin/telegram/?ai=none");
+    await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toHaveCount(0);
+
     // 前台 media 筛选:video 页含播种视频卡(平台·博主 chip),text 页不含;非法值回落 all
     const videoHtml = await (await request.get("/telegram/?media=video")).text();
     expect(videoHtml).toContain(MARK_V);

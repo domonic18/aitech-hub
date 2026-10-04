@@ -4,6 +4,7 @@
  * hidden 入库,治理台是误杀观测与恢复的唯一入口。
  * M8 批⑦:列表补媒体筛选与视频字段投影(镜像 public-feed 模式,原 AI 解读态随解读批)。
  * M8 批⑧:补博主作品筛选(blogger 等值 video_blogger,博主台账「作品」入口落地)。
+ * M10 批⑤:补解读态筛选(ai=none/working/done/failed,存量视频找「解读」入口的导向筛)。
  */
 import { z } from "zod";
 
@@ -11,7 +12,11 @@ import { prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
 import {
+  TELEGRAM_AI_DONE,
+  TELEGRAM_AI_FAILED,
+  TELEGRAM_AI_MISSING_TRANSCRIPT,
   TELEGRAM_AI_PENDING,
+  TELEGRAM_AI_PROCESSING,
   TELEGRAM_STATUS_ARCHIVED,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
@@ -29,6 +34,26 @@ export const TELEGRAM_LIST_SEGMENTS = [
   TELEGRAM_STATUS_ARCHIVED,
 ] as const;
 export type TelegramListSegment = (typeof TELEGRAM_LIST_SEGMENTS)[number];
+
+/** 解读态筛选(M10 批⑤):四组口径映射 aiStatus 多值;非法值由页面解析层回落全部 */
+export const TELEGRAM_AI_FILTERS = ["none", "working", "done", "failed"] as const;
+export type TelegramAiFilter = (typeof TELEGRAM_AI_FILTERS)[number];
+
+/** 解读态 → where 片段(纯函数,单测锚):none=未解读;working=在途;done 含无转写降级 */
+export function aiFilterWhere(
+  aiFilter: TelegramAiFilter,
+): { aiStatus: string | null } | { aiStatus: { in: string[] } } {
+  switch (aiFilter) {
+    case "none":
+      return { aiStatus: null };
+    case "working":
+      return { aiStatus: { in: [TELEGRAM_AI_PENDING, TELEGRAM_AI_PROCESSING] } };
+    case "done":
+      return { aiStatus: { in: [TELEGRAM_AI_DONE, TELEGRAM_AI_MISSING_TRANSCRIPT] } };
+    case "failed":
+      return { aiStatus: TELEGRAM_AI_FAILED };
+  }
+}
 
 /** UI 可迁移的三个状态(deleted 终态不经治理台) */
 export const TELEGRAM_MUTABLE_STATUSES = [
@@ -68,6 +93,8 @@ export interface TelegramListQuery {
   media?: FeedMediaFilter;
   /** 博主作品筛选(批⑧):video_blogger 冗余字段等值;隐含 mediaType=video */
   blogger?: string;
+  /** 解读态筛选(M10 批⑤):undefined=全部 */
+  aiFilter?: TelegramAiFilter;
 }
 
 /** 视频行互动数(库内 Json 白名单投影;采集缺失位为 null) */
@@ -79,12 +106,14 @@ function listWhere(
   q?: string,
   media?: FeedMediaFilter,
   blogger?: string,
+  aiFilter?: TelegramAiFilter,
 ) {
   const where: {
     status?: string;
     sourceId?: number;
     mediaType?: string;
     videoBlogger?: string;
+    aiStatus?: string | null | { in: string[] };
     OR?: Array<
       | { title: { contains: string; mode: "insensitive" } }
       | { summary: { contains: string; mode: "insensitive" } }
@@ -98,6 +127,7 @@ function listWhere(
     where.mediaType = "video";
     where.videoBlogger = blogger;
   }
+  if (aiFilter) Object.assign(where, aiFilterWhere(aiFilter));
   if (q) {
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
@@ -115,9 +145,11 @@ export async function listTelegramAdmin({
   q,
   media,
   blogger,
+  aiFilter,
 }: TelegramListQuery) {
-  const where = listWhere(segment, sourceId, q, media, blogger);
-  const countWhere = (seg: TelegramListSegment) => listWhere(seg, sourceId, q, media, blogger);
+  const where = listWhere(segment, sourceId, q, media, blogger, aiFilter);
+  const countWhere = (seg: TelegramListSegment) =>
+    listWhere(seg, sourceId, q, media, blogger, aiFilter);
   const [items, all, visible, hidden, archived, sources] = await prisma.$transaction([
     prisma.telegram.findMany({
       where,

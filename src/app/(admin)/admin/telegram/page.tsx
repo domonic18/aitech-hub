@@ -6,6 +6,7 @@
  * AI 解读态随解读批,以灰字注记如实呈现,不伪装)。
  * M8 批⑧:博主作品筛选(?blogger= 锚 video_blogger 冗余,活动 chip 呈现;
  * 博主台账「作品」按钮落地入口)。M9:解读态徽章(六态如实呈现)+ 行内「解读」按钮。
+ * M10 批⑤:解读态下拉(?ai=,存量视频以此导向行内「解读」按钮)。
  */
 import Link from "next/link";
 
@@ -16,9 +17,11 @@ import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { pageWindow, parseListSegment, parsePage } from "@/lib/admin/list";
 import {
+  TELEGRAM_AI_FILTERS,
   TELEGRAM_PAGE_SIZE,
   TELEGRAM_LIST_SEGMENTS,
   listTelegramAdmin,
+  type TelegramAiFilter,
   type TelegramListSegment,
 } from "@/lib/telegram/telegram-admin";
 import { listBlocklist } from "@/lib/telegram/blocklist-admin";
@@ -45,6 +48,14 @@ const MEDIA_LABELS: Record<FeedMediaFilter, string> = {
   video: "短视频",
 };
 
+/** 解读态下拉(M10 批⑤):值同 TELEGRAM_AI_FILTERS,空=全部 */
+const AI_FILTER_LABELS: Record<TelegramAiFilter, string> = {
+  none: "未解读",
+  working: "解读中",
+  done: "已解读",
+  failed: "解读失败",
+};
+
 interface PageProps {
   searchParams: Promise<{
     status?: string;
@@ -53,6 +64,7 @@ interface PageProps {
     source?: string;
     media?: string;
     blogger?: string;
+    ai?: string;
   }>;
 }
 
@@ -69,6 +81,11 @@ export default async function AdminTelegramPage({
     ? (sp.media as FeedMediaFilter)
     : "all";
   const blogger = sp.blogger?.trim() || undefined;
+  const aiFilter: TelegramAiFilter | undefined = TELEGRAM_AI_FILTERS.includes(
+    sp.ai as TelegramAiFilter,
+  )
+    ? (sp.ai as TelegramAiFilter)
+    : undefined;
 
   const { items, total, counts, sources } = await listTelegramAdmin({
     page,
@@ -77,6 +94,7 @@ export default async function AdminTelegramPage({
     q,
     media,
     blogger,
+    aiFilter,
   });
   const words = await listBlocklist();
   const totalPages = Math.max(1, Math.ceil(total / TELEGRAM_PAGE_SIZE));
@@ -89,6 +107,7 @@ export default async function AdminTelegramPage({
     if (sourceId !== undefined) params.set("source", String(sourceId));
     if (media !== "all") params.set("media", media);
     if (blogger && omit !== "blogger") params.set("blogger", blogger);
+    if (aiFilter) params.set("ai", aiFilter);
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
     return qs ? `/admin/telegram/?${qs}` : "/admin/telegram/";
@@ -140,6 +159,19 @@ export default async function AdminTelegramPage({
             <option value="">{MEDIA_LABELS.all}</option>
             <option value="text">{MEDIA_LABELS.text}</option>
             <option value="video">{MEDIA_LABELS.video}</option>
+          </select>
+          <select
+            name="ai"
+            defaultValue={aiFilter ?? ""}
+            aria-label="解读态筛选"
+            className="rounded-sm border border-line bg-panel px-2 py-1.5 text-xs text-text-2 outline-none focus:border-accent"
+          >
+            <option value="">全部解读态</option>
+            {TELEGRAM_AI_FILTERS.map((f) => (
+              <option key={f} value={f}>
+                {AI_FILTER_LABELS[f]}
+              </option>
+            ))}
           </select>
           <select
             name="source"

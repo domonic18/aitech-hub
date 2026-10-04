@@ -1,6 +1,7 @@
 /**
  * 电报流治理单测:批⑧博主作品筛选(listWhere 组合)+ M9 手动解读触发
- * (not_found/not_video/no_link 前置、secUid 反查、遗留 job 清理、pending 重置与回滚)。
+ * (not_found/not_video/no_link 前置、secUid 反查、遗留 job 清理、pending 重置与回滚)
+ * + M10 批⑤解读态筛选(aiFilterWhere 口径与 listWhere 透传)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,7 +30,7 @@ const enqueueInterpretMock = vi.hoisted(() =>
 );
 vi.mock("./interpret-video", () => ({ enqueueInterpret: enqueueInterpretMock }));
 
-import { listTelegramAdmin, triggerTelegramInterpret } from "./telegram-admin";
+import { aiFilterWhere, listTelegramAdmin, triggerTelegramInterpret } from "./telegram-admin";
 
 /** 最近一次 telegram.findMany 的 where 参数 */
 function lastWhere(): Record<string, unknown> {
@@ -89,6 +90,34 @@ describe("listTelegramAdmin 博主作品筛选(批⑧)", () => {
       mediaType: "video",
       videoBlogger: "AI 前沿",
     });
+  });
+});
+
+describe("解读态筛选(M10 批⑤)", () => {
+  it("aiFilterWhere 口径:none=null;working=在途;done 含无转写降级;failed=failed", () => {
+    expect(aiFilterWhere("none")).toEqual({ aiStatus: null });
+    expect(aiFilterWhere("working")).toEqual({ aiStatus: { in: ["pending", "processing"] } });
+    expect(aiFilterWhere("done")).toEqual({ aiStatus: { in: ["done", "missing_transcript"] } });
+    expect(aiFilterWhere("failed")).toEqual({ aiStatus: "failed" });
+  });
+
+  it("listTelegramAdmin 透传:aiFilter 与分段/媒体并存,计数同 where", async () => {
+    await listTelegramAdmin({ page: 1, segment: "visible", media: "video", aiFilter: "none" });
+    expect(lastWhere()).toEqual({ status: "visible", mediaType: "video", aiStatus: null });
+    const countCalls = prismaMock.telegram.count.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown> }]
+    >;
+    const visibleCall = countCalls.find((c) => c[0].where.status === "visible")!;
+    expect(visibleCall[0].where).toEqual({
+      status: "visible",
+      mediaType: "video",
+      aiStatus: null,
+    });
+  });
+
+  it("无 aiFilter 不出 aiStatus 键(现有筛选行为不变)", async () => {
+    await listTelegramAdmin({ page: 1, segment: "all" });
+    expect(lastWhere()).toEqual({});
   });
 });
 
