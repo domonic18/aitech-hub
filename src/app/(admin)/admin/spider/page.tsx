@@ -12,6 +12,7 @@ import {
   getIngestCalendar,
   getIngestHourly,
   getTelegramStock,
+  getVideoObservation,
 } from "@/lib/telegram/spider-queries";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +41,13 @@ function hhmm(at: Date | null): string {
 
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [snapshot, calendar, hourly, stock, channels] = await Promise.all([
+  const [snapshot, calendar, hourly, stock, channels, video] = await Promise.all([
     getCrawlerQueueSnapshot(),
     getIngestCalendar(14),
     getIngestHourly(),
     getTelegramStock(),
     listChannelsAdmin(),
+    getVideoObservation(),
   ]);
   const today = calendar[calendar.length - 1]?.count ?? 0;
   const yesterday = calendar[calendar.length - 2]?.count ?? 0;
@@ -141,6 +143,26 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
             渠道 <b className="font-medium text-text-2">{enabledChannels}</b> 个调度中
           </div>
         </div>
+      </div>
+
+      {/* 短视频观测细带(M8;博主明细与 Cookie 池在 /admin/bloggers) */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-md border border-line bg-panel px-4 py-3 text-xs text-text-3">
+        <span className="font-semibold text-text-2">短视频</span>
+        <span>
+          博主 <b className="font-medium text-text-2">{video.bloggerCount}</b>(调度中{" "}
+          <b className="font-medium text-text-2">{video.enabledCount}</b>)
+        </span>
+        <span>
+          24h 入库{" "}
+          <b className={`font-medium ${video.videoCount24h > 0 ? "text-green" : "text-text-2"}`}>
+            {video.videoCount24h}
+          </b>{" "}
+          条
+        </span>
+        <span>最新 {video.lastVideoAt ? hhmm(video.lastVideoAt) : "—"}</span>
+        <Link href="/admin/bloggers/" className="ml-auto text-accent hover:text-accent-hover">
+          博主台账 →
+        </Link>
       </div>
 
       {/* 队列堆叠条 + 24h 条带(原型 mid-grid 1fr 360px) */}

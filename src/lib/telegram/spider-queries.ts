@@ -94,3 +94,24 @@ export async function getIngestHourly(): Promise<Array<{ hourLabel: string; coun
     count: Number(r.count),
   }));
 }
+
+/** 短视频观测(M8 批③):博主数/调度中/24h 视频入库/最新一条时间 */
+export async function getVideoObservation(): Promise<{
+  bloggerCount: number;
+  enabledCount: number;
+  videoCount24h: number;
+  lastVideoAt: Date | null;
+}> {
+  const since = new Date(Date.now() - 24 * 3_600_000);
+  const [bloggerCount, enabledCount, videoCount24h, last] = await Promise.all([
+    prisma.socialAccount.count(),
+    prisma.socialAccount.count({ where: { enabled: true } }),
+    prisma.telegram.count({ where: { mediaType: "video", createdAt: { gte: since } } }),
+    prisma.telegram.findFirst({
+      where: { mediaType: "video" },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  return { bloggerCount, enabledCount, videoCount24h, lastVideoAt: last?.createdAt ?? null };
+}

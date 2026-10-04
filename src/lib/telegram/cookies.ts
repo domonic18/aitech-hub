@@ -97,3 +97,11 @@ export function maskJars(jars: string[]): Array<{ ttwidPrefix: string }> {
     return { ttwidPrefix: ttwid.slice(0, 8) };
   });
 }
+
+/** 清池:去掉 config.cookieJars 键(其余键保留);非对象返回 null */
+export function clearJarsInConfig(config: unknown): Record<string, unknown> | null {
+  if (config == null || typeof config !== "object") return null;
+  const out = { ...(config as Record<string, unknown>) };
+  delete out.cookieJars;
+  return out;
+}
