@@ -643,13 +643,16 @@ test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", 
   await expect(page.getByRole("link", { name: /^全部 \d+$/ })).toBeVisible();
   await expect(page.getByText(/屏蔽词/).first()).toBeVisible();
 
-  // 采集总览:tick 调度卡 + 双队列实况(interpreter 诚实占位,批⑦)
+  // 采集总览:tick 调度卡 + 双队列实况(M9:interpreter 真实计数与日配额)
   await page.goto("/admin/spider/");
   await expect(page.getByRole("heading", { name: "采集总览" })).toBeVisible();
   await expect(page.getByText("tick 调度器", { exact: true })).toBeVisible();
   await expect(page.getByText("双队列实况")).toBeVisible();
   await expect(page.getByText("interpreter", { exact: true })).toBeVisible();
-  await expect(page.getByText(/未启用 · 随解读批/)).toBeVisible();
+  await expect(
+    page.getByText(/视频解读 · 下载 \/ 抽轨 \/ ASR \/ LLM · 并发 1 · 今日 \d+\/\d+/),
+  ).toBeVisible();
+  await expect(page.getByText(/日配额超限延迟 30min 重投/)).toBeVisible();
 });
 
 test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启停物理删/media 筛选)", async ({
@@ -659,6 +662,10 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
   const NICK = "e2e-抖音博主";
   const SEC_UID = "MS4wLjABAAAAe2e_video_blogger_0000";
   const MARK_V = "e2e-视频电报-mark";
+  // M9:播种已解读态(ai_* 列),断言前台 AI 卡与治理台徽章;按钮不点击,避免真入队
+  const AI_TOPIC = "e2e 大模型解读主题";
+  const AI_SUMMARY = "e2e 解读摘要:大模型对该视频内容的概括文本,供前台 AI 解读卡冒烟断言。";
+  const AI_POINTS = ["要点甲", "要点乙", "要点丙"];
   // 自播种:专属平台行(停用 → 页面应现「平台已停用」;不触真实调度)+ 启用中博主 + 视频电报行
   const platformRow = await prisma.crawlSource.upsert({
     where: { name: "e2e-social:douyin" },
@@ -697,6 +704,11 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
       videoCoverUrl: "https://e2e.invalid/cover-e2e0001.jpg",
       videoDuration: 213,
       videoEngagement: { play: 12000, like: 345, comment: 67 },
+      aiStatus: "done",
+      aiTopic: AI_TOPIC,
+      aiSummary: AI_SUMMARY,
+      aiPoints: AI_POINTS,
+      aiRanAt: new Date(),
     },
   });
 
@@ -772,13 +784,16 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await expect(vRow.getByRole("img", { name: MARK_V })).toBeVisible();
     await expect(vRow.getByRole("link", { name: /打开原视频/ })).toBeVisible();
     await expect(vRow.getByText(`抖音 · ${NICK}`)).toBeVisible();
+    // M9:已解读徽章 + 行内「解读」按钮在(不点击——真按会下载/转写入队)
+    await expect(vRow.getByText("已解读")).toBeVisible();
+    await expect(vRow.getByRole("button", { name: "解读", exact: true })).toBeVisible();
     await page.goto("/admin/telegram/?media=text");
     await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toHaveCount(0);
 
     // 博主作品筛选(批⑧):?blogger= 命中播种行,活动 chip 呈现且可清除
     await page.goto(`/admin/telegram/?media=video&blogger=${encodeURIComponent(NICK)}`);
     await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toBeVisible();
-    const chip = page.getByRole("link", { name: `清除博主筛选` });
+    const chip = page.locator(`a[title="清除博主筛选"]`); // title 不参与 accessible name,按属性定位
     await expect(chip).toHaveText(`博主:${NICK} ✕`);
     await chip.click();
     await expect(page).toHaveURL(/\/admin\/telegram\/\?(?!.*blogger=)/);
@@ -790,6 +805,16 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(videoHtml).toContain(`抖音 · ${NICK}`);
     expect(await (await request.get("/telegram/?media=text")).text()).not.toContain(MARK_V);
     expect(await (await request.get("/telegram/?media=junk")).text()).toContain(MARK_V);
+
+    // 前台 AI 解读卡(M9):AI 徽章 + 摘要 + 要点 details(展开见 3 条)+ 尾注
+    await page.goto("/telegram/?media=video");
+    const aiCard = page.getByRole("article").filter({ hasText: MARK_V });
+    await expect(aiCard.getByText("AI 解读")).toBeVisible();
+    await expect(aiCard.getByText(AI_SUMMARY)).toBeVisible();
+    await expect(aiCard.getByText(/关键要点 ×3/)).toBeVisible();
+    await aiCard.getByText(/关键要点 ×3/).click();
+    await expect(aiCard.getByText("要点甲")).toBeVisible();
+    await expect(aiCard.getByText("AI 生成 · 摘要与要点,内容版权归原作者")).toBeVisible();
 
     // 公共 API media 参数:video 过滤命中且视频字段投影齐备;text 过滤不含
     const apiV = await request.get("/api/telegram/public/?media=video&limit=50");
@@ -804,6 +829,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
             blogger: string;
             durationSeconds: number;
             engagement: { like: number };
+            ai: { topic: string; summary: string; points: string[] } | null;
           } | null;
         }>;
       };
@@ -814,6 +840,8 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(hit!.mediaType).toBe("video");
     expect(hit!.video).toMatchObject({ platform: "douyin", blogger: NICK, durationSeconds: 213 });
     expect(hit!.video!.engagement.like).toBe(345);
+    // M9:公共 API 投影带 ai 解读结论(白名单三字段)
+    expect(hit!.video!.ai).toEqual({ topic: AI_TOPIC, summary: AI_SUMMARY, points: AI_POINTS });
     const bt = (await (await request.get("/api/telegram/public/?media=text&limit=50")).json()) as {
       data: { items: Array<{ title: string }> };
     };
