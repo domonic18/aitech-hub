@@ -23,5 +23,7 @@ export function revalidatePostPaths(post: RevalidatePostRef): void {
   revalidatePath("/articles/");
   revalidatePath("/articles/page/[page]", "page");
   revalidatePath("/archive/");
-  revalidatePath("/sitemap.xml");
+  // sitemap 是 Metadata Route(ISR):默认 "page" 型打不中其内部 route tag,
+  // "layout" 型命中的 `_N_T_/sitemap.xml/layout` 在其 tag 列表内(2026-10-05 e2e 实证)
+  revalidatePath("/sitemap.xml", "layout");
 }

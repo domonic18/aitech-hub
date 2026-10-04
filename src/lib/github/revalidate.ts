@@ -15,6 +15,9 @@ export function revalidateProjectPaths(slug: string | null): void {
   if (slug) revalidatePath(projectPath(slug));
   revalidatePath(`${PROJECTS_BASE}/`);
   revalidatePath("/");
-  revalidatePath("/sitemap.xml");
-  revalidatePath("/llms.txt");
+  // sitemap/llms 是 Route Handler·Metadata Route(ISR):默认 "page" 型打不中其
+  // `_N_T_/<path>/route` 内部 tag(e2e 实证缓存不动),"layout" 型命中的
+  // `_N_T_/<path>/layout` 在其 tag 列表内,能即时失效
+  revalidatePath("/sitemap.xml", "layout");
+  revalidatePath("/llms.txt", "layout");
 }

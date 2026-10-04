@@ -20,7 +20,7 @@
 | `src/app/api/**` | Route Handlers | 不参与渲染;`dynamic = 'force-dynamic'` |
 | `sitemap.ts`、`robots.ts`、`feed.xml` | Metadata Route / Route Handler | 动态生成,缓存 1h |
 
-- **按需失效**:文章保存(publish/update)→ post service 内直接 `revalidatePostPaths({id, slug})`(详情 + `.md` + 列表族 + sitemap,见 `lib/content/revalidate.ts`)——单体红利,无需 HTTP 内部调用
+- **按需失效**:文章保存(publish/update)→ post service 内直接 `revalidatePostPaths({id, slug})`(详情 + `.md` + 列表族 + sitemap,见 `lib/content/revalidate.ts`)——单体红利,无需 HTTP 内部调用。**sitemap/llms.txt 是 Metadata Route / ISR Route Handler,`revalidatePath` 必须用 `"layout"` 型**:默认 `"page"` 型打不中其内部 `_N_T_/<path>/route` 缓存 tag(缓存纹丝不动,2026-10-05 M11 e2e 实证;`"layout"` 型命中的 `_N_T_/<path>/layout` 在其 tag 列表内,即时生效)——发文本就带 sitemap 的一步曾长期只走 1h ISR 兜底
 - RSC 数据获取**直查 Prisma**(经 `lib/content/` service 层),禁止页面内 fetch 自己的 `/api`
 - **骨架图(loading.tsx)只挂无状态码语义的路由**(2026-10-04 M10 批④,e2e 实证):现仅 `/telegram`、`/search`(动态 SSR,每请求真流式)与 `/articles`、`/archive`(纯 200 列表)四段。段落级 loading 会使首屏 shell 先行 200 冲刷,页内 `permanentRedirect`/`notFound()` 退化为软跳转/软 404——`/post/[id]-[slug]` 308 归一与 category/tag 404 是 SEO 红线,故不挂(三者为 ISR 缓存热读,生产近秒开,骨架收益本就趋零);admin 段 loading 与 `router.refresh()` 互卡致变更后内容不出,同样不挂。基元/组合件见 `src/components/Skeleton.tsx` 头注
 - **相对时间的水合契约(2026-10-04 实修)**:首页带与 `/telegram` 时间线的 `timeAgo`/`NEW`/日分组标签以**服务端下发的 `initialNow` prop** 为基准(props 经 RSC 序列化,SSR 与水合必然一致),水合后 60s 轮询才切客户端时钟。组件内自取 `Date.now()` 会在 SSR/水合时差下产出不同相对时间文本 → React #418 整树水合回退——回退重渲染会把预置脚本设置的 `html[data-theme]` 重灌回 light(用户实测「页面自动变 Light、切换后刷新复原」即此链)
