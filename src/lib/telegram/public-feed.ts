@@ -4,6 +4,7 @@
  */
 import { prisma } from "../db";
 import { statsDay } from "../datetime";
+import { prerenderSafe } from "../prerender-safe";
 
 import { type PublicTelegramItem } from "./feed-view";
 
@@ -19,10 +20,20 @@ export async function listPublicTelegram(opts: {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? PUBLIC_FEED_PAGE_SIZE) || 30, 1), 50);
   const after = opts.afterIso ? new Date(opts.afterIso) : null;
   const validAfter = after && !Number.isNaN(after.getTime()) ? after : null;
+  return prerenderSafe("telegram.publicFeed", [], () =>
+    queryPublicTelegram(limit, validAfter, opts.sourceId),
+  );
+}
+
+async function queryPublicTelegram(
+  limit: number,
+  validAfter: Date | null,
+  sourceId: number | undefined,
+): Promise<PublicTelegramItem[]> {
   const rows = await prisma.telegram.findMany({
     where: {
       status: "visible",
-      ...(opts.sourceId !== undefined ? { sourceId: opts.sourceId } : {}),
+      ...(sourceId !== undefined ? { sourceId } : {}),
       ...(validAfter
         ? {
             OR: [
@@ -58,13 +69,19 @@ export async function listPublicTelegram(opts: {
 /** 今日已入库 visible 条数(页头 LIVE 统计) */
 export async function countTodayVisible(): Promise<number> {
   const since = new Date(`${statsDay()}T00:00:00+08:00`);
-  return prisma.telegram.count({ where: { status: "visible", createdAt: { gte: since } } });
+  return prerenderSafe("telegram.todayVisible", 0, () =>
+    prisma.telegram.count({ where: { status: "visible", createdAt: { gte: since } } }),
+  );
 }
 
 /** 渠道筛选选项(visible 计数降序;无条目渠道不出现) */
 export async function listPublicChannels(): Promise<
   Array<{ id: number; name: string; count: number }>
 > {
+  return prerenderSafe("telegram.publicChannels", [], queryPublicChannels);
+}
+
+async function queryPublicChannels(): Promise<Array<{ id: number; name: string; count: number }>> {
   const groups = await prisma.telegram.groupBy({
     by: ["sourceId"],
     where: { status: "visible" },
