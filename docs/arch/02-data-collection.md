@@ -26,7 +26,7 @@
 - `blocklist` 屏蔽词表:`id / word / scope(title|summary|all) / hit_count / enabled / created_at`
 - 过滤规则一期内置代码级启发(广告特征、标题党、编码异常),不做规则表;命中统计写 `telegram.filter_hit` 供后台观测
 
-**落地注记(2026-10-04,M8 批② 已交付)**:视频渠道与普通渠道**不同表混管**——`crawl_source` 每**平台**一行(`type=social-video + platform=douyin`,`name=social:douyin`,承载 Cookie 池密文 config/平台总开关 enabled/日上限 daily_max_requests,**自身不调度**);博主个体落 `social_account` 与平台行 **N:1**(`platform+sec_uid` 唯一),携带独立调度字段(`crawl_interval_min 默认 180 / last_post_at 增量地板 / last_run_at / next_run_at / consecutive_fails / last_error`)。`asr_success_rate_7d` 随解读批后置。Cookie 池为**平台级**共享(非博主级):AES-256-GCM 密文存平台行 `config.cookieJars`(密钥 env `APP_COOKIE_ENC_KEY`,32 字节 base64,空=导入禁用);导入校验 ≥3 组键值对且含 `ttwid`(薄 jar 防呆——ttwid-only 拿到 200 空响应),同 ttwid 视为同身份覆盖合并;展示只出脱敏 ttwid 前缀。`telegram` 视频字段组同上落地,**play_url 不落库不下载**(版权保守模式)。
+**落地注记(2026-10-04,M8 批② 已交付)**:视频渠道与普通渠道**不同表混管**——`crawl_source` 每**平台**一行(`type=social-video + platform=douyin`,`name=social:douyin`,承载 Cookie 池密文 config/平台总开关 enabled/日上限 daily_max_requests,**自身不调度**);博主个体落 `social_account` 与平台行 **N:1**(`platform+sec_uid` 唯一),携带独立调度字段(`crawl_interval_min 默认 180 / last_post_at 增量地板 / last_run_at / next_run_at / consecutive_fails / last_error`)。`asr_success_rate_7d` 随解读批后置。Cookie 池为**平台级**共享(非博主级):AES-256-GCM 密文存平台行 `config.cookieJars`(密钥 2026-10-04 M8 批⑥起改 **AUTH_SECRET HKDF 派生**,`APP_COOKIE_ENC_KEY` 已退役——导入不再依赖环境变量,零配置可用;轮换 AUTH_SECRET 需重导 Cookie);导入校验 ≥3 组键值对且含 `ttwid`(薄 jar 防呆——ttwid-only 拿到 200 空响应),同 ttwid 视为同身份覆盖合并;展示只出脱敏 ttwid 前缀。`telegram` 视频字段组同上落地,**play_url 不落库不下载**(版权保守模式)。
 
 ## 3. 采集管道(worker,BullMQ 双队列:`crawler` + `interpreter`)
 
