@@ -25,7 +25,7 @@
 | `--r-sm`(6px)/ `--r-md`(8px)/ `--r-lg` | 圆角 |
 | `--glow` / `--shadow-sm` / `--shadow-lg` | logo 光块 / 两级投影 |
 
-- 红线:任何页面不得出现未走变量的裸色值(代码块深底语法色除外,那是「亮模式下终端窗保持深底」的既定设计);不得新增第三主题或跟随系统主题。
+- 红线:任何页面不得出现未走变量的裸色值(代码块深底语法色除外,那是「亮模式下终端窗保持深底」的既定设计);不得新增第三主题。主题默认**跟随系统** `prefers-color-scheme`,用户显式切换后固定(2026-10-04 定调,推翻旧「禁跟随系统」;站点实现见 `src/app/layout.tsx` 预置脚本)。
 
 ## 3. 版式
 
@@ -56,7 +56,7 @@
 
 ## 5. 主题切换与交互基线
 
-- **主题胶囊**:44×24 分段控件,左月右日两个 SVG 图标,滑块 200ms 滑动;`aria-pressed` + `title`;状态存 `localStorage("proto-theme")`,默认暗。全站唯一实现(在 common.css),禁止页内自造变体。
+- **主题胶囊**:44×24 分段控件,左月右日两个 SVG 图标,滑块 200ms 滑动;`aria-pressed` + `title`;状态存 `localStorage("proto-theme")`(站点实现为 `ah-theme`),优先级:显式选择 > 系统偏好 > 亮色;无显式选择时实时跟随系统变化。全站唯一实现(在 common.css),禁止页内自造变体。
 - **Logo(品牌「一起AI」,2026-10-02 定稿)**:17 monogram 芯片(圆角方块 `var(--accent)` 底 + mono 粗体「17」白字 + `--glow` 光)+ 名称「一起AI」+ 弱色 mono tld(前台 `17aitech.com`、admin `admin`);尺寸三档 26/22/32px(footer 24px),全站唯一形态(site header / admin sb-logo / index head),规格见 common.css §Logo;静态无闪烁,闪烁 caret 只允许出现在控制台输入框(site-home/site-search:原生 `caret-color: var(--accent)` + 镜像 ▍ 随输入移动)。站点口号:**一起,看懂 AI**。
 - **站点 header**(唯一形态):左 logo;右 nav `首页 / 电报流 / 文章` + 搜索图标按钮 + 主题胶囊 + 头像下拉(SVG 头像 + caret;菜单:个人设置 → account.html、退出登录 → login.html;点外关闭 + Esc)。**归档/关于不放 header**,固定在 footer。
 - **admin 侧栏 v2**(唯一形态,17 项,消除漂移):`OVERVIEW 站点统计 / 内容管理 文章管理·媒体库·电报流治理(二期) / 采集 采集总览(二期)·渠道配置(二期)·博主管理(二期) / AI 服务 模型配置(二期)·用量统计(二期)·会话管理(二期) / 用户 用户管理 / 系统 PAT 令牌`;底部 sb-foot「返回前台站点」。图标全 SVG,禁「站点设置」等占位项。

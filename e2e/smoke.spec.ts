@@ -9,7 +9,8 @@ import sharp from "sharp";
 
 /**
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
- * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)。
+ * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
+ * AI 治理与解读配额(M9)/主题三段式(M10)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -1015,4 +1016,36 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
     await prisma.aiModel.deleteMany({ where: { name: { startsWith: "e2e-" } } });
     await prisma.asrConfig.deleteMany({ where: { provider: "e2e-ASR供应商" } });
   }
+});
+
+test("16. 主题三段式(M10 批①:系统跟随/实时变化/显式选择优先/胶囊翻转持久化)", async ({
+  browser,
+}) => {
+  // 全新上下文 = 无 localStorage 的「新访客」;从暗色系统偏好开始
+  const ctx = await browser.newContext({ colorScheme: "dark" });
+  const page = await ctx.newPage();
+
+  // 无显式选择:跟随系统 → 暗;系统偏好实时变化,不重载即跟随
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+  // 胶囊点击 = 显式选择:翻转 + 落 localStorage;显式 dark 压过 light 系统(重载后仍 dark)
+  await page.locator(".theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(await page.evaluate(() => localStorage.getItem("ah-theme"))).toBe("dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+  // 显式 light 压过暗色系统;清掉显式选择后回落系统(当前 light)
+  await page.evaluate(() => localStorage.setItem("ah-theme", "light"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light"); // 显式选择不被系统翻转
+  await page.evaluate(() => localStorage.removeItem("ah-theme"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await ctx.close();
 });

@@ -2,10 +2,10 @@
 
 /*
  * 设计 token(唯一真相源:docs/prototypes/common.css;DESIGN-SPEC v1.0,2026-09-30 M4 落地)
- * - 双主题:暗黑为基底、明亮可选;html[data-theme] 切换,禁新增第三主题、禁跟随系统主题
+ * - 双主题:暗黑为基底、明亮可选;html[data-theme] 切换,禁新增第三主题
+ * - 主题优先级(layout 预置脚本):显式选择(localStorage ah-theme)> 系统偏好 > light;
+ *   无显式选择时实时跟随系统(2026-10-04 定调,推翻旧「禁跟随系统」)
  * - 前台与后台同一组 token,任何主题下同一风格
- * - M4 注记:前台 M3 页面暗色回补在二期(Hub 化同批),应用默认 light,
- *   admin 壳层经顶栏胶囊即时切换双主题;二期 Hub 切换时默认改 dark(arch/07 §5)
  */
 
 [data-theme="dark"] {
