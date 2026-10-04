@@ -70,6 +70,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | media | `media.transfer` | md 导入对外链图 enqueue | 抓取外链图片 → LocalDiskProvider 入库(sha1)→ 链式复用 media.process;失败标 error 供编辑器提示 |
 | media | `media.audit` | 每日定时(upsertJobScheduler,同 §3.1 实现注) | 孤儿/断链/重复扫描,更新 status 与统计(arch/08-media §3) |
 | stats | `stats.flush` | 每 60s(upsertJobScheduler) | 日缓冲 RENAME→HGETALL→聚合表 UPSERT(visit/referrer/page/client/post_view_daily + views_count 累加);失败还原缓冲下轮重试(`lib/stats/service.ts`) |
+| stats | `purge-visit-log` | 每日 04:14(同队列 upsertJobScheduler pattern,job.name 分流) | `stats_visit_log` 清 7 天前行(全量 IP 短留存,arch/03 §2.4;`purgeVisitLogs`) |
 
 二期任务(立项时补设计):`github.sync`(仓库同步)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。**`crawler.*` 已交付**:文字渠道(M7,`crawl-{id}-{nextRunAt}`)+ 视频博主(M8,`crawl-video-{id}-{nextRunAt}`,编排见 `src/lib/telegram/ingest-video.ts`;调度器同一 `crawler-tick` 每 60s 扫描,`crawlDueSources` 排除平台行、`enqueueDueVideoAccounts` 扫 `social_account`);设计落点 arch/02-data-collection。
 
@@ -106,6 +107,7 @@ Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 
 | telegram | `GET/POST /api/channels`、`PUT /api/channels/[id]`、`PUT /api/channels/[id]/status`(启停)、`POST /api/channels/[id]/crawl`(手动采集;渠道凭证存 config 展示一律脱敏,M7 批④a)、`PUT /api/telegram/[id]`(条目人工修正/状态迁移 title≤500/summary≤1000/三态,批④b)、`GET/POST /api/blocklist`、`PUT/DELETE /api/blocklist/[id]`(批④b)、`GET /api/telegram/public`(前台公共流:limit≤50/after 增量锚/source 过滤/`media=all\|text\|video` 白名单,M8 批④,`no-store`,BigInt 出参字符串化,M7 批⑤) | 除 public 外 admin **仅会话**(PAT 禁管渠道/治理电报流,§3.1);public 公开只读 visible |
 | bloggers | `GET/POST /api/bloggers`(登记:主页链接/口令/sec_uid 三态,经网关 resolve+profile,重复 409)、`PUT /api/bloggers/[id]`、`PUT /api/bloggers/[id]/status`(启停)、`POST /api/bloggers/[id]/crawl`(手动采集;均 PAT 拒绝)、`GET/POST/DELETE /api/bloggers/cookies`(Cookie 池:脱敏视图/导入 AES-256-GCM 落库(校验 ≥3 对含 ttwid)/清空,platform 白名单 douyin\|xhs\|bilibili;`?platform=` 查询,平台行不存在 404;M8 批③) | admin **仅会话**(PAT 禁管博主与 Cookie) |
 | ai | `GET/POST /api/models`(模型台账,脱敏视图)、`PUT/DELETE /api/models/[id]`(Key write-only 留空=保留;被绑定引用删 409 先解绑)、`PUT /api/models/[id]/status`(启停)、`POST /api/models/[id]/test`(openai/anthropic 探针,结果落 last_test)、`GET/PUT /api/asr-config`(单例 get-or-create)、`POST /api/asr-config/test`(openai/minimax 正弦波实调)、`GET/PUT /api/model-bindings`(四角色主备;purposes 不匹配/主备相同 400,模型不存在 404;均 M8 批⑥) | admin **仅会话**(PAT 禁管 AI 服务配置) |
+| site | `GET/PUT /api/site-config`(站点 kv 设置;PUT zod 校验,成功 `revalidatePath("/", "layout")` 使首页 ISR 立即再生;M10 批②,首键 `band.item_count` 1..50) | admin **仅会话**(PAT 禁管站点配置) |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
 

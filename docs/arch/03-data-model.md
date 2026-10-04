@@ -217,6 +217,11 @@ CREATE TABLE legacy_url_map (
 
 对称密钥不入库:主钥 = HKDF-SHA256 从必有的 `AUTH_SECRET` 派生 32B(salt/info 冻结常量,`src/lib/crypto/secret-box.ts`),AES-256-GCM;**`APP_COOKIE_ENC_KEY` 已退役**(M8 批⑥,Cookie 池与 API Key 同箱)——轮换 `AUTH_SECRET` 会使存量密文失效(Cookie 重导、Key 重录);枚举合法值应用层 Zod 管控(§3 同款纪律)。
 
+**站点配置与访问明细已落地(2026-10-04 M10 迁移,体验反馈批)**:
+
+- `site_config`(kv 通用底座):`key varchar(50) PK + value varchar(200) + updated_at`;value 一律字符串,消费方自行解析 + clamp(`getBandItemCount` 为首例:缺行/非数值/非正数回落默认,越界钳 1..50);键名合法值应用层 Zod 管控(`SITE_CONFIG_KEYS` 登记,后续设置键在此复用)
+- `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
