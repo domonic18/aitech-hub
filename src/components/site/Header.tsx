@@ -8,6 +8,7 @@ const NAV = [
   { href: "/", label: "首页" },
   { href: "/telegram/", label: "电报流" },
   { href: "/articles/", label: "文章" },
+  { href: "/projects/", label: "项目" },
   { href: "/archive/", label: "归档", smOnly: true },
   { href: "/about/", label: "关于", smOnly: true },
 ];

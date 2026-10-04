@@ -4,6 +4,8 @@ import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
 import { getBandItemCount } from "@/lib/config/site-config";
 import { formatCnDate } from "@/lib/datetime";
+import { formatStars, listShowcaseRepos } from "@/lib/github/public";
+import { projectPath } from "@/lib/github/project-path";
 import { countTodayVisible, listBandFeed, listPublicChannels } from "@/lib/telegram/public-feed";
 
 import HeroConsole from "@/components/site/HeroConsole";
@@ -12,19 +14,21 @@ import TelegramBand from "@/components/site/TelegramBand";
 
 /**
  * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
- * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=博主文章紧凑卡 + GEO,
- * GitHub 项目区按「三区可独立降级」不渲染)。电报带条数后台可配(M10,site_config,
- * 保存后 on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤)+ 下滚加载更多(M10)。
+ * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=开源项目卡 + 博主文章紧凑卡 +
+ * GEO)。电报带条数后台可配(M10,site_config,保存后 on-demand revalidate 本页);
+ * 客户端 60s 轮询(M7 批⑤)+ 下滚加载更多(M10)。GitHub 项目卡 M11:白名单空
+ * (全部下架)整卡不渲染,「三区可独立降级」。
  */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
-  const [bandCount, today, channels, latest, postCount] = await Promise.all([
+  const [bandCount, today, channels, latest, postCount, repos] = await Promise.all([
     getBandItemCount(),
     countTodayVisible(),
     listPublicChannels(),
     listLatestPosts(5),
     countPublishedPosts(),
+    listShowcaseRepos(3),
   ]);
   const band = await listBandFeed({ limit: bandCount });
 
@@ -44,8 +48,63 @@ export default async function HomePage(): Promise<React.ReactElement> {
           initialNow={Date.now()}
         />
 
-        {/* 右栏:博主文章(紧凑 rail 卡)+ GEO(GitHub 项目卡二期接入,同批降级) */}
+        {/* 右栏:开源项目(M11 白名单 rail)+ 博主文章(紧凑 rail 卡)+ GEO */}
         <aside className="flex min-w-0 flex-col gap-4">
+          {repos.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+              <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
+                <svg className="ic text-text-2" aria-hidden="true">
+                  <use href="#i-github" />
+                </svg>
+                开源项目
+                <span className="ml-auto font-mono text-[11px] font-normal tracking-wider text-text-3">
+                  [REPOS]
+                </span>
+              </div>
+              {repos.map((repo) => (
+                <Link
+                  key={repo.id}
+                  href={projectPath(repo.slug)}
+                  className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
+                      <use href="#i-code" />
+                    </svg>
+                    <span className="truncate font-mono text-[13px] font-semibold text-text-1">
+                      {repo.fullName}
+                    </span>
+                    <span className="ml-auto inline-flex flex-none items-center gap-1 font-mono text-[11.5px] text-text-3">
+                      <svg className="ic ic-sm" aria-hidden="true">
+                        <use href="#i-star" />
+                      </svg>
+                      {formatStars(repo.stars)}
+                    </span>
+                  </span>
+                  {repo.description && (
+                    <span className="mt-1 block truncate text-[12px] leading-normal text-text-3">
+                      {repo.description}
+                    </span>
+                  )}
+                  <span className="mt-1 flex items-center gap-2.5 font-mono text-[11.5px] text-text-3">
+                    {repo.language && (
+                      <span className="rounded border border-blue/25 bg-blue/10 px-1.5 text-blue">
+                        {repo.language}
+                      </span>
+                    )}
+                    <span className="ml-auto">
+                      {repo._count.posts > 0 ? `配套文章 ×${repo._count.posts}` : "查看详情 →"}
+                    </span>
+                  </span>
+                </Link>
+              ))}
+              <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
+                <Link href="/projects/" className="text-[13px] text-text-2 hover:text-accent-hover">
+                  全部项目 →
+                </Link>
+              </div>
+            </div>
+          )}
           <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
             <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
               <svg className="ic text-text-2" aria-hidden="true">

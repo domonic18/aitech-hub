@@ -8,6 +8,8 @@ import { htmlToMarkdown } from "@/lib/content/html-to-md";
 import { excerptOf } from "@/lib/content/format";
 import { listAllPostsForSeo } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
+import { listShowcaseRepos } from "@/lib/github/public";
+import { projectPath } from "@/lib/github/project-path";
 import { formatCnDate } from "@/lib/datetime";
 import { absoluteUrl } from "@/lib/seo/site";
 
@@ -32,10 +34,11 @@ function postMarkdown(p: {
 }
 
 export async function buildLlmsIndex(): Promise<string> {
-  const [posts, categories, tags] = await Promise.all([
+  const [posts, categories, tags, repos] = await Promise.all([
     listAllPostsForSeo(),
     import("@/lib/content/taxonomy").then((m) => m.listCategories()),
     import("@/lib/content/taxonomy").then((m) => m.listTagsWithCount()),
+    listShowcaseRepos(),
   ]);
 
   const lines: string[] = [
@@ -47,6 +50,7 @@ export async function buildLlmsIndex(): Promise<string> {
     "",
     `- [首页](${absoluteUrl("/")})`,
     `- [全部文章](${absoluteUrl("/articles/")})`,
+    `- [开源项目](${absoluteUrl("/projects/")})`,
     `- [归档](${absoluteUrl("/archive/")})`,
     `- [关于](${absoluteUrl("/about/")})`,
     `- [用户协议](${absoluteUrl("/agreement/")})`,
@@ -59,6 +63,13 @@ export async function buildLlmsIndex(): Promise<string> {
     "## 标签",
     "",
     ...tags.map((t) => `- [${t.name}](${absoluteUrl(`/tag/${t.slug}/`)})`),
+    "",
+    "## 开源项目",
+    "",
+    ...repos.map((r) => {
+      const summary = r.description ? `: ${r.description.replace(/\s+/g, " ").slice(0, 80)}` : "";
+      return `- [${r.fullName}](${absoluteUrl(projectPath(r.slug))})${summary}`;
+    }),
     "",
     "## 文章",
     "",

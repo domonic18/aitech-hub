@@ -10,6 +10,8 @@
 | `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath` |
 | `/[slug]`(旧中文链承接) | ISR 600s | 纯 legacy 引擎:查 `legacy_url_map` 命中 → 308,否则 404(不再直接供文) |
 | `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族 |
+| `/projects/`(开源项目列表,M11) | ISR 600s | 白名单展示仓全量卡片(sortOrder→stars),不分页;admin 写侧即时 revalidate,同步新鲜度走本窗口;首页右栏同源 rail 卡(空白名单整卡不渲染) |
+| `/projects/[slug]/`(项目详情,M11) | ISR 600s + 按需 revalidate | slug 是唯一解析键(登记时派生此后冻结;**无 id 锚点,错 slug 直接 404 不做 308 归一**,构造唯一出口 `src/lib/github/project-path.ts`);README 渲染 + 进展动态 + 配套文章;下架(display=false)即 404 |
 | `/search` | 动态 SSR | 每请求查询 |
 | `/telegram`(电报流,M7 批⑤) | 动态 SSR(`force-dynamic`)+ 客户端 60s 轮询 | **noindex 双保险**(robots meta + next.config `X-Robots-Tag` 头)且**不入 sitemap**(显式页面清单);渠道筛选 URL 驱动(`?source=`);新讯浮条点击载入不打断浏览位置 |
 | `/about`、`/agreement`、`/privacy` | 静态 | |

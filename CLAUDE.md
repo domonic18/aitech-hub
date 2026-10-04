@@ -41,7 +41,9 @@
 - 永远不要模拟、不要占位符、不要省略代码;对想法的好坏坦率诚实。
 - 安全:外部输入边界校验(Zod);密钥仅 env;日志记事件不记敏感值;Origin 校验 mutation。
 - slug 红线:文章详情以 BigInt id 解析(`/post/<id>-<slug>`,构造/解析唯一出口 `src/lib/content/post-path.ts`,
-  非 canonical 段一律 308 归一);分类/标签/legacy 仍经 `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
+  非 canonical 段一律 308 归一);项目详情以冻结 slug 解析(`/projects/<slug>/`,构造唯一出口
+  `src/lib/github/project-path.ts`,无 id 锚点错 slug 直接 404 不归一);分类/标签/legacy 仍经
+  `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
 - 数据库:schema 只经 prisma/migrations 变更(forward-only);跑 `npx prisma migrate deploy`;
   禁止改已应用迁移;禁止 create_all 式建表。
 - 端口:本地 web:3000 / pg:5434 / redis:6380。
