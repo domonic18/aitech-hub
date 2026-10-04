@@ -643,10 +643,13 @@ test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", 
   await expect(page.getByRole("link", { name: /^全部 \d+$/ })).toBeVisible();
   await expect(page.getByText(/屏蔽词/).first()).toBeVisible();
 
-  // 采集总览:tick 调度卡
+  // 采集总览:tick 调度卡 + 双队列实况(interpreter 诚实占位,批⑦)
   await page.goto("/admin/spider/");
   await expect(page.getByRole("heading", { name: "采集总览" })).toBeVisible();
   await expect(page.getByText("tick 调度器", { exact: true })).toBeVisible();
+  await expect(page.getByText("双队列实况")).toBeVisible();
+  await expect(page.getByText("interpreter", { exact: true })).toBeVisible();
+  await expect(page.getByText(/未启用 · 随解读批/)).toBeVisible();
 });
 
 test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启停物理删/media 筛选)", async ({
@@ -691,6 +694,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
       mediaType: "video",
       videoPlatform: "douyin",
       videoBlogger: NICK,
+      videoCoverUrl: "https://e2e.invalid/cover-e2e0001.jpg",
       videoDuration: 213,
       videoEngagement: { play: 12000, like: 345, comment: 67 },
     },
@@ -711,6 +715,12 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     const row = page.getByRole("row", { name: new RegExp(NICK) });
     await expect(row).toBeVisible();
     await expect(row.getByText("平台已停用")).toBeVisible();
+
+    // 博主作品入口(批⑦):行内 secUid 外链拼抖音主页(删除前断言,删后行不在)
+    await expect(row.getByRole("link", { name: `打开 ${NICK} 的主页` })).toHaveAttribute(
+      "href",
+      `https://www.douyin.com/user/${SEC_UID}`,
+    );
 
     // 两步武装删除·UI 侧:启用中删除被客户端守卫拦(alert,不发请求,行仍在)
     const alertPromise = page.waitForEvent("dialog").then((d) => {
@@ -740,6 +750,16 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(
       await prisma.telegram.count({ where: { sourceId: platformRow.id, title: MARK_V } }),
     ).toBe(1);
+
+    // 后台媒体筛选(批⑦):video 页含播种行(封面/原视频链/平台·博主),text 页不含
+    await page.goto("/admin/telegram/?media=video");
+    const vRow = page.getByRole("row", { name: new RegExp(MARK_V) });
+    await expect(vRow).toBeVisible();
+    await expect(vRow.getByRole("img", { name: MARK_V })).toBeVisible();
+    await expect(vRow.getByRole("link", { name: /打开原视频/ })).toBeVisible();
+    await expect(vRow.getByText(`抖音 · ${NICK}`)).toBeVisible();
+    await page.goto("/admin/telegram/?media=text");
+    await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toHaveCount(0);
 
     // 前台 media 筛选:video 页含播种视频卡(平台·博主 chip),text 页不含;非法值回落 all
     const videoHtml = await (await request.get("/telegram/?media=video")).text();

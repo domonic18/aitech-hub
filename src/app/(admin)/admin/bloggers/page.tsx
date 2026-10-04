@@ -18,6 +18,11 @@ function secUidShort(secUid: string): string {
   return secUid.length > 18 ? `${secUid.slice(0, 14)}…` : secUid;
 }
 
+/** 作品入口链接:抖音主页由 sec_uid 派生(库内不存主页 URL);其余平台未上线不出链接 */
+function profileUrl(b: { platform: string; secUid: string }): string | null {
+  return b.platform === "douyin" ? `https://www.douyin.com/user/${b.secUid}` : null;
+}
+
 export default async function AdminBloggersPage(): Promise<React.ReactElement> {
   await requireAdminPage();
   const [bloggers, pool, gateway] = await Promise.all([
@@ -84,70 +89,93 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
             </tr>
           </thead>
           <tbody>
-            {bloggers.map((b) => (
-              <tr
-                key={b.id}
-                className={`border-b border-line last:border-b-0 hover:bg-panel-2 ${
-                  b.enabled ? "" : "opacity-60"
-                }`}
-              >
-                <td className="px-4 py-2.5">
-                  <div className="font-medium text-text-1">{b.nickname}</div>
-                  <div className="mt-0.5 font-mono text-[11px] text-text-3" title={b.secUid}>
-                    {secUidShort(b.secUid)}
-                    {b.remark && <span className="ml-2 font-sans">{b.remark}</span>}
-                  </div>
-                </td>
-                <td className="px-3 py-2.5">
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
-                    {b.platform}
-                  </span>
-                  {b.category && <div className="mt-0.5 text-[11px] text-text-3">{b.category}</div>}
-                </td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-text-2">
-                  {b.crawlIntervalMin}min
-                </td>
-                <td className="px-3 py-2.5">
-                  {b.lastError ? (
-                    <span
-                      className="rounded-sm bg-red/10 px-1.5 py-px text-[10px] text-red"
-                      title={b.lastError}
-                    >
-                      {b.consecutiveFails} 连败
+            {bloggers.map((b) => {
+              const homeUrl = profileUrl(b);
+              return (
+                <tr
+                  key={b.id}
+                  className={`border-b border-line last:border-b-0 hover:bg-panel-2 ${
+                    b.enabled ? "" : "opacity-60"
+                  }`}
+                >
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-text-1">{b.nickname}</div>
+                    {/* 作品入口(原型 ops「作品」;sec_uid 拼抖音主页,M8 批⑦) */}
+                    {homeUrl ? (
+                      <a
+                        href={homeUrl}
+                        target="_blank"
+                        rel="noopener nofollow"
+                        title={`${b.secUid} · 打开博主主页`}
+                        aria-label={`打开 ${b.nickname} 的主页`}
+                        className="mt-0.5 inline-flex items-center gap-1 font-mono text-[11px] text-text-3 hover:text-accent-hover"
+                      >
+                        {secUidShort(b.secUid)}
+                        <svg className="ic ic-sm" aria-hidden="true">
+                          <use href="#i-export" />
+                        </svg>
+                        {b.remark && <span className="ml-1 font-sans">{b.remark}</span>}
+                      </a>
+                    ) : (
+                      <div className="mt-0.5 font-mono text-[11px] text-text-3" title={b.secUid}>
+                        {secUidShort(b.secUid)}
+                        {b.remark && <span className="ml-2 font-sans">{b.remark}</span>}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
+                      {b.platform}
                     </span>
-                  ) : (
-                    <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">
-                      ok
-                    </span>
-                  )}
-                  {!b.platformEnabled && (
-                    <div className="mt-0.5 font-mono text-[10px] text-amber">平台已停用</div>
-                  )}
-                </td>
-                <td className="px-3 py-2.5 text-[11px] leading-relaxed text-text-3">
-                  最新作品 {b.lastPostAt ? formatCnDateTime(b.lastPostAt) : "—"}
-                  <br />
-                  上轮 {b.lastRunAt ? formatCnDateTime(b.lastRunAt) : "—"}
-                  <br />
-                  下轮{" "}
-                  {b.enabled && b.platformEnabled && b.nextRunAt
-                    ? formatCnDateTime(b.nextRunAt)
-                    : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <BloggerRowOps
-                    blogger={{
-                      id: b.id,
-                      nickname: b.nickname,
-                      category: b.category,
-                      crawlIntervalMin: b.crawlIntervalMin,
-                      remark: b.remark,
-                      enabled: b.enabled,
-                    }}
-                  />
-                </td>
-              </tr>
-            ))}
+                    {b.category && (
+                      <div className="mt-0.5 text-[11px] text-text-3">{b.category}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-2">
+                    {b.crawlIntervalMin}min
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {b.lastError ? (
+                      <span
+                        className="rounded-sm bg-red/10 px-1.5 py-px text-[10px] text-red"
+                        title={b.lastError}
+                      >
+                        {b.consecutiveFails} 连败
+                      </span>
+                    ) : (
+                      <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">
+                        ok
+                      </span>
+                    )}
+                    {!b.platformEnabled && (
+                      <div className="mt-0.5 font-mono text-[10px] text-amber">平台已停用</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-[11px] leading-relaxed text-text-3">
+                    最新作品 {b.lastPostAt ? formatCnDateTime(b.lastPostAt) : "—"}
+                    <br />
+                    上轮 {b.lastRunAt ? formatCnDateTime(b.lastRunAt) : "—"}
+                    <br />
+                    下轮{" "}
+                    {b.enabled && b.platformEnabled && b.nextRunAt
+                      ? formatCnDateTime(b.nextRunAt)
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <BloggerRowOps
+                      blogger={{
+                        id: b.id,
+                        nickname: b.nickname,
+                        category: b.category,
+                        crawlIntervalMin: b.crawlIntervalMin,
+                        remark: b.remark,
+                        enabled: b.enabled,
+                      }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
             {bloggers.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">

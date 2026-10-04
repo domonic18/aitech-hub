@@ -6,7 +6,7 @@ import { prisma } from "../db";
 import { statsDay } from "../datetime";
 import { prerenderSafe } from "../prerender-safe";
 
-import { type FeedMediaFilter, type PublicTelegramItem } from "./feed-view";
+import { toEngagement, type FeedMediaFilter, type PublicTelegramItem } from "./feed-view";
 
 export const PUBLIC_FEED_PAGE_SIZE = 30;
 export const BAND_ITEM_COUNT = 8;
@@ -25,18 +25,6 @@ export async function listPublicTelegram(opts: {
   return prerenderSafe("telegram.publicFeed", [], () =>
     queryPublicTelegram(limit, validAfter, opts.sourceId, opts.media ?? "all"),
   );
-}
-
-/** 互动 JSON 投影(库内形状不受信,逐字段白名单;M8 play 恒 null 隐藏) */
-function toEngagement(raw: unknown): {
-  play: number | null;
-  like: number | null;
-  comment: number | null;
-} {
-  const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
-  return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
 }
 
 async function queryPublicTelegram(

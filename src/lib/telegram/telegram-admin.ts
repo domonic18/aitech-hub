@@ -1,7 +1,8 @@
 /**
- * 电报流治理(M7 批④,arch/02 §4):条目列表(分段/来源/搜索)+ 状态迁移 +
+ * 电报流治理(M7 批④,arch/02 §4):条目列表(分段/来源/搜索/媒体)+ 状态迁移 +
  * 标题摘要人工修正。软删(deleted)为终态不经 UI 触达;命中过滤的条目以
  * hidden 入库,治理台是误杀观测与恢复的唯一入口。
+ * M8 批⑦:列表补媒体筛选与视频字段投影(镜像 public-feed 模式,原 AI 解读态随解读批)。
  */
 import { z } from "zod";
 
@@ -12,6 +13,7 @@ import {
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
 } from "./constants";
+import { toEngagement, type FeedMediaFilter } from "./feed-view";
 
 export const TELEGRAM_PAGE_SIZE = 15;
 
@@ -58,12 +60,23 @@ export interface TelegramListQuery {
   segment: TelegramListSegment;
   sourceId?: number;
   q?: string;
+  /** 媒体筛选(批⑦):all/text/video,非法值由页面解析层回落 all */
+  media?: FeedMediaFilter;
 }
 
-function listWhere(segment: TelegramListSegment, sourceId: number | undefined, q?: string) {
+/** 视频行互动数(库内 Json 白名单投影;采集缺失位为 null) */
+export type TelegramVideoEngagement = ReturnType<typeof toEngagement>;
+
+function listWhere(
+  segment: TelegramListSegment,
+  sourceId: number | undefined,
+  q?: string,
+  media?: FeedMediaFilter,
+) {
   const where: {
     status?: string;
     sourceId?: number;
+    mediaType?: string;
     OR?: Array<
       | { title: { contains: string; mode: "insensitive" } }
       | { summary: { contains: string; mode: "insensitive" } }
@@ -71,6 +84,7 @@ function listWhere(segment: TelegramListSegment, sourceId: number | undefined, q
   } = {};
   if (segment !== "all") where.status = segment;
   if (sourceId !== undefined) where.sourceId = sourceId;
+  if (media && media !== "all") where.mediaType = media;
   if (q) {
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
@@ -81,9 +95,9 @@ function listWhere(segment: TelegramListSegment, sourceId: number | undefined, q
 }
 
 /** 条目列表 + 分段计数;渠道下拉选项一并返回(渠道个位数量级) */
-export async function listTelegramAdmin({ page, segment, sourceId, q }: TelegramListQuery) {
-  const where = listWhere(segment, sourceId, q);
-  const countWhere = (seg: TelegramListSegment) => listWhere(seg, sourceId, q);
+export async function listTelegramAdmin({ page, segment, sourceId, q, media }: TelegramListQuery) {
+  const where = listWhere(segment, sourceId, q, media);
+  const countWhere = (seg: TelegramListSegment) => listWhere(seg, sourceId, q, media);
   const [items, all, visible, hidden, archived, sources] = await prisma.$transaction([
     prisma.telegram.findMany({
       where,
@@ -96,6 +110,13 @@ export async function listTelegramAdmin({ page, segment, sourceId, q }: Telegram
         createdAt: true,
         status: true,
         filterHit: true,
+        // 批⑦:视频行字段(封面/平台/博主/时长/互动;解读态字段随解读批)
+        mediaType: true,
+        videoPlatform: true,
+        videoBlogger: true,
+        videoCoverUrl: true,
+        videoDuration: true,
+        videoEngagement: true,
         source: { select: { id: true, name: true } },
       },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
@@ -119,6 +140,12 @@ export async function listTelegramAdmin({ page, segment, sourceId, q }: Telegram
       status: t.status,
       filterHit: t.filterHit,
       sourceName: t.source.name,
+      mediaType: t.mediaType,
+      videoPlatform: t.videoPlatform,
+      videoBlogger: t.videoBlogger,
+      videoCoverUrl: t.videoCoverUrl,
+      videoDuration: t.videoDuration,
+      videoEngagement: t.videoEngagement === null ? null : toEngagement(t.videoEngagement),
     })),
     total: all,
     counts: { all, visible, hidden, archived },

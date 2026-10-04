@@ -56,6 +56,18 @@ export function compactCount(n: number | null | undefined): string | null {
   return String(n);
 }
 
+/** 互动 JSON 投影(库内形状不受信,逐字段白名单;M8 play 恒 null 隐藏) */
+export function toEngagement(raw: unknown): {
+  play: number | null;
+  like: number | null;
+  comment: number | null;
+} {
+  const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
+}
+
 /** 相对时间(分/小时/天;分钟内「刚刚」) */
 export function timeAgo(iso: string, now = Date.now()): string {
   const diff = now - new Date(iso).getTime();

@@ -165,14 +165,29 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
         </Link>
       </div>
 
-      {/* 队列堆叠条 + 24h 条带(原型 mid-grid 1fr 360px) */}
+      {/* 双队列实况 + 24h 条带(原型 mid-grid 1fr 360px;interpreter 为诚实占位) */}
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_360px]">
         <div className="rounded-md border border-line bg-panel">
-          <div className="border-b border-line px-4 py-3.5 text-sm font-semibold">
-            crawler 队列实况
+          <div className="flex items-center justify-between border-b border-line px-4 py-3.5 text-sm font-semibold">
+            双队列实况
+            <span className="font-mono text-[11px] font-normal text-text-3">BullMQ</span>
           </div>
           <div className="px-4 py-4">
-            <div className="flex h-2.5 overflow-hidden rounded-[5px] bg-panel-2">
+            {/* crawler:文字渠道 + 视频博主同队列调度(arch/02 §3.2 注记) */}
+            <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-text-1">
+              <svg className="ic text-accent" aria-hidden="true">
+                <use href="#i-cloudserver" />
+              </svg>
+              <span>crawler</span>
+              <span className="text-[11px] font-normal text-text-3">
+                文字 + 视频抓取 · {enabledChannels} 渠道 + {video.enabledCount} 博主
+              </span>
+              <span className="ml-auto font-mono text-[11px] font-normal text-text-3">
+                active <b>{snapshot.counts.active}</b> · waiting <b>{backlog}</b> · completed{" "}
+                <b>{snapshot.counts.completed}</b> · failed <b>{snapshot.counts.failed}</b>
+              </span>
+            </div>
+            <div className="mt-2 flex h-2.5 overflow-hidden rounded-[5px] bg-panel-2">
               <span
                 className="block h-full bg-accent"
                 style={{ width: `${(snapshot.counts.active / busyTotal) * 100}%` }}
@@ -190,20 +205,41 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
             <div className="mt-2 flex flex-wrap gap-4 font-mono text-[11px] text-text-3">
               <span>
                 <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-accent" />
-                active {snapshot.counts.active}
+                active
               </span>
               <span>
                 <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-accent/45" />
-                waiting {backlog}
+                waiting
               </span>
               <span>
                 <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
-                completed {snapshot.counts.completed}(近 200 留存)
+                completed(近 200 留存)
               </span>
               <span>
                 <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-red" />
-                failed {snapshot.counts.failed}
+                failed
               </span>
+              <span className="text-text-3/80">视频博主 crawl-video 与文字渠道同队列调度</span>
+            </div>
+
+            {/* interpreter:未启用诚实占位(队列随解读批 M9 立项,不造假计数) */}
+            <div className="mt-4 border-t border-line pt-4">
+              <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-text-1">
+                <svg className="ic text-text-3" aria-hidden="true">
+                  <use href="#i-robot" />
+                </svg>
+                <span>interpreter</span>
+                <span className="text-[11px] font-normal text-text-3">
+                  视频解读 · 抽轨 / ASR / LLM
+                </span>
+                <span className="ml-auto flex items-center gap-2 font-mono text-[11px] font-normal text-text-3">
+                  active <b>0</b> · waiting <b>0</b> · completed <b>0</b> · failed <b>0</b>
+                  <span className="rounded-sm bg-panel-2 px-1.5 py-px font-sans text-[10px] text-text-3">
+                    未启用 · 随解读批(M9)交付
+                  </span>
+                </span>
+              </div>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-[5px] bg-panel-2 opacity-60" />
             </div>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-4 py-3 font-mono text-xs text-text-3">
