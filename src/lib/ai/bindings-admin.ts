@@ -14,6 +14,8 @@ export interface BindingRow {
   role: string;
   primaryId: number | null;
   backupId: number | null;
+  /** 解读日配额(条/日;null=默认 100;当前仅 interpret 消费,M9 后台可配) */
+  dailyMax: number | null;
 }
 
 /** 四角色台账;缺失角色行补齐(null/null,首访播种) */
@@ -33,7 +35,7 @@ export async function listBindingsAdmin(): Promise<BindingRow[]> {
   }
   return AI_MODEL_PURPOSES.map((role) => {
     const r = byRole.get(role)!;
-    return { role: r.role, primaryId: r.primaryId, backupId: r.backupId };
+    return { role: r.role, primaryId: r.primaryId, backupId: r.backupId, dailyMax: r.dailyMax };
   });
 }
 
@@ -41,6 +43,8 @@ export const BindingUpdateSchema = z.object({
   role: z.enum(AI_MODEL_PURPOSES),
   primaryId: z.number().int().nullable(),
   backupId: z.number().int().nullable(),
+  // 可选:省略 = 不动配额(部分更新语义);显式 null = 回默认 100
+  dailyMax: z.number().int().min(1).max(1_000_000).nullable().optional(),
 });
 
 /**
@@ -83,13 +87,23 @@ export async function updateBinding(input: z.infer<typeof BindingUpdateSchema>):
   if (error) throw error;
   await prisma.aiTaskBinding.upsert({
     where: { role: input.role },
-    update: { primaryId: input.primaryId, backupId: input.backupId },
-    create: { role: input.role, primaryId: input.primaryId, backupId: input.backupId },
+    update: {
+      primaryId: input.primaryId,
+      backupId: input.backupId,
+      dailyMax: input.dailyMax,
+    },
+    create: {
+      role: input.role,
+      primaryId: input.primaryId,
+      backupId: input.backupId,
+      dailyMax: input.dailyMax,
+    },
   });
   logger.info({
     event: "ai_binding.updated",
     role: input.role,
     primaryId: input.primaryId,
     backupId: input.backupId,
+    dailyMax: input.dailyMax,
   });
 }

@@ -24,9 +24,13 @@ vi.mock("../queue", () => ({ QUEUE_INTERPRETER: "interpreter", getQueue: () => q
 
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-vi.mock("../env", () => ({ env: { INTERPRETER_DAILY_MAX: 2 } }));
+// 日配额已后台化(M9 批⑥):经 resolver getRoleDailyMax 读 ai_task_binding.daily_max
+vi.mock("../env", () => ({ env: {} }));
+
+const dailyMaxMock = vi.hoisted(() => vi.fn<(args?: unknown) => Promise<number>>(async () => 2));
 
 vi.mock("../ai/resolver", () => ({
+  getRoleDailyMax: dailyMaxMock,
   resolveAiModel: vi.fn(async () => ({
     id: 1,
     name: "m",
@@ -201,7 +205,7 @@ describe("interpretVideoJob 状态机", () => {
   });
 
   it("日配额满 → 延迟 30min 重投新 jobId 顺延,不标败不入管道", async () => {
-    prismaMock.telegram.count.mockResolvedValue(2); // == INTERPRETER_DAILY_MAX
+    prismaMock.telegram.count.mockResolvedValue(2); // == getRoleDailyMax mock(2)
     const outcome = await interpretVideoJob(DATA);
     expect(outcome.status).toBe("deferred_quota");
     expect(queueMock.add).toHaveBeenCalledWith(

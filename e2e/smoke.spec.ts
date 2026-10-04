@@ -935,6 +935,36 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
     expect(sumBinding.primaryId).toBe(base.id);
     expect(sumBinding.backupId).toBe(keyed.id);
 
+    // M9 批⑥:解读日配额后台化——interpret 卡日配额输入在;API 改值落库后还原
+    // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)
+    const interpretCard = page.getByRole("group", { name: "电报解读绑定" });
+    await expect(interpretCard.getByLabel("解读日配额")).toBeVisible();
+    const beforeQuota = await prisma.aiTaskBinding.findUniqueOrThrow({
+      where: { role: "interpret" },
+    });
+    const quotaPut = await page.request.put("/api/model-bindings", {
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      data: {
+        role: "interpret",
+        primaryId: beforeQuota.primaryId,
+        backupId: beforeQuota.backupId,
+        dailyMax: 25,
+      },
+    });
+    expect(quotaPut.status()).toBe(200);
+    expect(
+      (await prisma.aiTaskBinding.findUniqueOrThrow({ where: { role: "interpret" } })).dailyMax,
+    ).toBe(25);
+    await page.request.put("/api/model-bindings", {
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      data: {
+        role: "interpret",
+        primaryId: beforeQuota.primaryId,
+        backupId: beforeQuota.backupId,
+        dailyMax: beforeQuota.dailyMax,
+      },
+    });
+
     // 服务端绑定校验:purposes 不匹配 → 400;主备同模型 → 400(mutation 带 Origin,同 14)
     const badPurpose = await page.request.put("/api/model-bindings", {
       headers: { "content-type": "application/json", origin: "http://localhost:3000" },

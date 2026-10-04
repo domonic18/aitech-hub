@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const parsed = BindingUpdateSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return apiEnvelope(400, "绑定字段不合法(role/primaryId/backupId)");
+  if (!parsed.success) return apiEnvelope(400, "绑定字段不合法(role/primaryId/backupId/dailyMax)");
   try {
     await updateBinding(parsed.data);
     return apiEnvelope(0, "saved", { items: await listBindingsAdmin() });

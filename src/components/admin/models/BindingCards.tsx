@@ -30,6 +30,8 @@ function RoleCard({
     binding?.primaryId != null ? String(binding.primaryId) : "",
   );
   const [backup, setBackup] = useState(binding?.backupId != null ? String(binding.backupId) : "");
+  // 解读日配额(M9 后台化,原 INTERPRETER_DAILY_MAX env):仅 interpret 卡出现,空=默认 100
+  const [quota, setQuota] = useState(binding?.dailyMax != null ? String(binding.dailyMax) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -48,6 +50,7 @@ function RoleCard({
           role,
           primaryId,
           backupId: backup === "" ? null : Number(backup),
+          dailyMax: quota === "" ? null : Number(quota),
         }),
       });
       const body = (await res.json()) as { code: number; message: string };
@@ -136,6 +139,22 @@ function RoleCard({
           ))}
         </select>
       </label>
+      {role === "interpret" && (
+        // 日配额(条/日):超限延迟 30min 重投顺延,消费方在 worker;留空=默认 100
+        <label className="mt-2 block text-[11px] text-text-3">
+          日配额(条/日,留空=默认 100)
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={quota}
+            onChange={(e) => setQuota(e.target.value)}
+            aria-label="解读日配额"
+            placeholder="100"
+            className={`mt-1 ${selectField}`}
+          />
+        </label>
+      )}
       {error && <p className="mt-2 font-mono text-[11px] text-red">{error}</p>}
       {notice && <p className="mt-2 font-mono text-[11px] text-text-2">{notice}</p>}
       <div className="mt-3 flex justify-end gap-2">

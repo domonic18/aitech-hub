@@ -19,10 +19,9 @@ import { AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-result";
 import { chatJson } from "../ai/llm-client";
-import { resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
+import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
 import { decryptSecret } from "../crypto/secret-box";
 import { prisma } from "../db";
-import { env } from "../env";
 import { logger } from "../logger";
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
 
@@ -237,8 +236,8 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     return { telegramId: data.telegramId, status: "skipped_not_ready", transcriptUsed: false };
   }
 
-  // 日配额:满则延迟重投顺延,绝不 throw / 标败
-  if ((await countTodayInterpreted()) >= env.INTERPRETER_DAILY_MAX) {
+  // 日配额(后台 interpret 绑定可配,缺省 100):满则延迟重投顺延,绝不 throw / 标败
+  if ((await countTodayInterpreted()) >= (await getRoleDailyMax(AI_PURPOSE_INTERPRET))) {
     await getQueue(QUEUE_INTERPRETER).add("interpret-video", data, {
       jobId: `interpret:${data.telegramId}:r${Date.now()}`,
       delay: QUOTA_DEFER_MS,

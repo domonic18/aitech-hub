@@ -3,9 +3,10 @@
  * 北京时区按日补零)+ 库存概况。日期边界 JS 侧算好作参数,SQL 禁 now()
  * (与 stats/queries 同一时区纪律)。
  */
+import { AI_PURPOSE_INTERPRET } from "../ai/constants";
+import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { formatCnDate } from "../datetime";
-import { env } from "../env";
 import { getQueue, QUEUE_CRAWLER, QUEUE_INTERPRETER } from "../queue";
 
 const TICK_SCHEDULER_ID = "crawler-tick";
@@ -72,7 +73,7 @@ export async function getInterpreterQueueSnapshot(): Promise<{
       delayed: counts.delayed ?? 0,
     },
     todayDone,
-    dailyMax: env.INTERPRETER_DAILY_MAX,
+    dailyMax: await getRoleDailyMax(AI_PURPOSE_INTERPRET),
   };
 }
 
