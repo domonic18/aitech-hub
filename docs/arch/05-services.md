@@ -72,7 +72,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | stats | `stats.flush` | 每 60s(upsertJobScheduler) | 日缓冲 RENAME→HGETALL→聚合表 UPSERT(visit/referrer/page/client/post_view_daily + views_count 累加);失败还原缓冲下轮重试(`lib/stats/service.ts`) |
 | stats | `purge-visit-log` | 每日 04:14(同队列 upsertJobScheduler pattern,job.name 分流) | `stats_visit_log` 清 7 天前行(全量 IP 短留存,arch/03 §2.4;`purgeVisitLogs`) |
 
-二期任务(立项时补设计):`github.sync`(仓库同步)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。**`crawler.*` 已交付**:文字渠道(M7,`crawl-{id}-{nextRunAt}`)+ 视频博主(M8,`crawl-video-{id}-{nextRunAt}`,编排见 `src/lib/telegram/ingest-video.ts`;调度器同一 `crawler-tick` 每 60s 扫描,`crawlDueSources` 排除平台行、`enqueueDueVideoAccounts` 扫 `social_account`);设计落点 arch/02-data-collection。
+二期任务(立项时补设计):`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。**`crawler.*` 已交付**:文字渠道(M7,`crawl-{id}-{nextRunAt}`)+ 视频博主(M8,`crawl-video-{id}-{nextRunAt}`,编排见 `src/lib/telegram/ingest-video.ts`;调度器同一 `crawler-tick` 每 60s 扫描,`crawlDueSources` 排除平台行、`enqueueDueVideoAccounts` 扫 `social_account`);设计落点 arch/02-data-collection。**`github.sync` 已交付**(M11,2026-10-05):`github` 队列,`github-tick` 每 5min 扫 `github_repo.next_sync_at` 到期白名单仓逐仓 fanout(`github-sync-{id}-{nextSyncAt}`,调度器见 worker/index.ts;sync 编排 `src/lib/github/sync.ts`——meta 条件写防 updatedAt 空转、README sha 跳写、动态去重裁剪;Unavailable/限频不计连败,Upstream 计连败 ≥3 → error;手动「立即同步」经 repos-admin 入队 `github-sync-{id}-manual-{ts}`)。
 
 ### 4.4 视频采集网关 sidecar(services/douyin-gateway/,2026-10-04 M8 新增)
 

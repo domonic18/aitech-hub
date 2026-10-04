@@ -202,6 +202,12 @@ CREATE TABLE legacy_url_map (
 
 `pay_order` / `pay_order_item` / `content_post_purchase`(付费权益)、`github_repo` / `github_repo_activity`(项目展示)。命名已避让。
 
+**GitHub 项目展示域三表已落地(2026-10-05 M11 批①迁移 `github_showcase`,白名单口径——admin 逐行登记,不做全账号扫描)**:
+
+- `github_repo`(仓库白名单台账):`full_name` 唯一(同步跟随 GitHub 改名重定向回写);`slug` 唯一(站内 URL 键 `/projects/<slug>`,登记时由 name 派生**此后冻结**);stars/forks/language/topics text[]/html_url/homepage/default_branch;README 缓存 `readme_md`/`readme_sha`(sha 不变跳写,防 updatedAt/sitemap lastmod 空转)/`readme_fetched_at`;展示 `display`(前台开关,下架不删数据)/`sort_order`;调度观测列族与 social_account 同款 `sync_interval_min(默认 60)/last_sync_at/next_sync_at/consecutive_fails/last_error/status`
+- `github_repo_activity`(进展动态):`repo_id+kind+external_id` 唯一(commit sha/release id 去重锚),`occurred_at` 倒序索引;同步裁剪仅留每仓最新 50 条
+- `github_repo_post`(仓库↔文章显式 m2m,镜像 PostTag 复合主键双侧 Cascade):admin 手动关联,「配套文章 ×N」与详情页联动数据源
+
 **电报流表族已落地(M7 文字管道 + M8 视频管道,增量迁移进 `prisma/migrations/`,字段终态以 schema 为准)**:
 
 - `crawl_source`(文字渠道台账;M8 起兼**平台行**:`type=social-video + platform=douyin` 每平台一行,承载 Cookie 池密文 `config.cookieJars`/平台总开关/日上限,自身不调度——设计见 [arch/02 §2 落地注记](02-data-collection.md))

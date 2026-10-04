@@ -5,8 +5,10 @@ import { SITE_TZ } from "../src/lib/datetime";
 import {
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
+  GITHUB_JOB_TICK,
   MEDIA_AUDIT_CRON,
   QUEUE_CRAWLER,
+  QUEUE_GITHUB,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
@@ -20,6 +22,7 @@ import {
 } from "../src/lib/queue";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeVisitLogs } from "../src/lib/stats/service";
+import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
@@ -76,6 +79,19 @@ const PROCESSORS: Record<string, Processor> = {
   },
   // 视频解读(M9):下载→抽轨→ASR→LLM;分支语义在 interpretVideoJob 内收敛
   [QUEUE_INTERPRETER]: (job) => interpretVideoJob(job.data as InterpretJobData),
+  // GitHub 项目同步(二期③/M11):tick(5min)扫到期白名单仓逐仓入队;sync 为缺省路径
+  [QUEUE_GITHUB]: async (job) => {
+    if (job.name === GITHUB_JOB_TICK) {
+      const summary = await syncDueRepos();
+      if (summary.due > 0) {
+        console.log(JSON.stringify({ event: "github.tick", ...summary }));
+      }
+      return summary;
+    }
+    const summary = await syncGithubRepo(Number(job.data.repoId));
+    console.log(JSON.stringify({ event: "github.sync", ...summary }));
+    return summary;
+  },
 };
 
 /** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
@@ -138,6 +154,23 @@ async function scheduleCrawlerTick(): Promise<void> {
   );
 }
 
+/** GitHub 同步 tick:每 5 分钟扫到期白名单仓(逐仓间隔由 github_repo.next_sync_at 表达;
+ * 5min 粒度相对 600s ISR 前台窗口不可见) */
+const GITHUB_TICK_EVERY_MS = 300_000;
+
+async function scheduleGithubTick(): Promise<void> {
+  const queue = getQueue(QUEUE_GITHUB);
+  await queue.upsertJobScheduler(
+    "github-tick",
+    { every: GITHUB_TICK_EVERY_MS },
+    {
+      name: GITHUB_JOB_TICK,
+      data: {},
+      opts: { removeOnComplete: 50 },
+    },
+  );
+}
+
 function logFailed(queue: string): (job: Job | undefined, err: Error) => void {
   return (job, err) => {
     console.error(
@@ -168,6 +201,7 @@ async function main(): Promise<void> {
   await scheduleMediaAudit();
   await scheduleVisitLogPurge();
   await scheduleCrawlerTick();
+  await scheduleGithubTick();
 
   console.log(
     JSON.stringify({
