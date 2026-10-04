@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
 
+import { getSiteTitle } from "@/lib/config/site-config";
 import { siteUrl } from "@/lib/seo/site";
 import "./globals.css";
 import "@/styles/prose.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl()),
-  title: {
-    default: "一起AI · domonic18 的 AI 工程实战博客",
-    template: "%s | 一起AI",
-  },
-  description:
-    "一起AI:第一人称、可复现的 AI 工程实战原创博客,Claude Code / MCP / LLM 训练与评测等主题。",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const title = await getSiteTitle();
+  return {
+    metadataBase: new URL(siteUrl()),
+    title: {
+      default: `${title} · domonic18 的 AI 工程实战博客`,
+      template: `%s | ${title}`,
+    },
+    description:
+      "一起AI:第一人称、可复现的 AI 工程实战原创博客,Claude Code / MCP / LLM 训练与评测等主题。",
+  };
+}
 
 export default function RootLayout({
   children,

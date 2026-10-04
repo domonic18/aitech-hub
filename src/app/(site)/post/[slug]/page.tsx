@@ -1,3 +1,4 @@
+import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -42,7 +43,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title,
       description,
       url: absoluteUrl(postPath(post.id, post.slug)),
-      siteName: "一起AI",
+      siteName: await getSiteTitle(),
       publishedTime: post.publishedAt?.toISOString(),
       modifiedTime: post.updatedAt.toISOString(),
       images: post.coverPath ? [{ url: absoluteUrl(post.coverPath) }] : undefined,

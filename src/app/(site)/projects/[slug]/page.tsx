@@ -1,3 +1,4 @@
+import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -46,7 +47,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title,
       description,
       url: absoluteUrl(projectPath(repo.slug)),
-      siteName: "一起AI",
+      siteName: await getSiteTitle(),
     },
   };
 }

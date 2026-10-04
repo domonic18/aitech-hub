@@ -21,7 +21,7 @@ export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const info = await resolveTaxonomy("tag", slug);
-  return info ? taxonomyMetadata("tag", info, 1) : {};
+  return info ? await taxonomyMetadata("tag", info, 1) : {};
 }
 
 export default async function TagPage({ params }: PageProps): Promise<React.ReactElement> {

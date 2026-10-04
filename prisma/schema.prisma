@@ -422,10 +422,11 @@ model AsrConfig {
 // ── site_(站点配置域,M10)────────────────────────────────────────
 
 /// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,
-/// 消费方自行解析+clamp;键名合法值应用层 Zod 管控(同枚举字段纪律)
+/// 消费方自行解析+clamp;键名合法值应用层 Zod 管控(同枚举字段纪律)。
+/// value Text(M12 批②扩列:home.hero_md 存 markdown 文案,200 装不下)
 model SiteConfig {
   key       String   @id @db.VarChar(50)
-  value     String   @db.VarChar(200)
+  value     String   @db.Text
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("site_config")

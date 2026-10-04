@@ -1,3 +1,4 @@
+import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -7,11 +8,14 @@ import { formatCnDate } from "@/lib/datetime";
 
 export const revalidate = 600;
 
-export const metadata: Metadata = {
-  title: "归档",
-  description: "一起AI全部文章的时间线归档。",
-  alternates: { canonical: "/archive/" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const siteTitle = await getSiteTitle();
+  return {
+    title: "归档",
+    description: `${siteTitle}全部文章的时间线归档。`,
+    alternates: { canonical: "/archive/" },
+  };
+}
 
 /** 归档(arch/07-frontend §1:ISR 600s;按年分组,154 篇量级单页承载) */
 export default async function ArchivePage(): Promise<React.ReactElement> {

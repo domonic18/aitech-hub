@@ -1,27 +1,27 @@
 /**
- * 站点设置页(M10 批②,侧栏「站点设置」):站点级运行参数。
- * 当前:首页电报流 LIVE 带条数(site_config kv,1..50,默认 12)。
- * 保存走 PUT /api/site-config(session 鉴权,PAT 拒绝),成功后 on-demand
- * revalidatePath("/", "layout") 首页立即再生,无需等 600s ISR。
+ * 站点设置页(M10 批②,侧栏「站点设置」;M12 批② 键族扩展):站点级运行
+ * 参数与站点标识(site_config kv,键族见 site-config.ts)。保存走 PUT
+ * /api/site-config(session 鉴权,PAT 拒绝),成功后 on-demand revalidate
+ * 首页/feed.xml/llms.txt 立即再生,其余页标题走 ISR 窗口。
  */
 import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { getBandItemCount } from "@/lib/config/site-config";
+import { getSiteSettings } from "@/lib/config/site-config";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const bandItemCount = await getBandItemCount();
+  const initial = await getSiteSettings();
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-semibold">站点设置</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          站点级运行参数;保存即时生效(前台页面按需再生,免等 ISR 周期)。
+          站点级运行参数与站点标识;保存即时生效(前台页面按需再生,免等 ISR 周期)。
         </p>
       </div>
-      <SiteSettingsForm initialBandItemCount={bandItemCount} />
+      <SiteSettingsForm initial={initial} />
     </div>
   );
 }

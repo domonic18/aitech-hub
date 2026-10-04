@@ -1,3 +1,4 @@
+import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 
 import ProjectsView from "@/components/site/ProjectsView";
@@ -10,12 +11,14 @@ import { listShowcaseRepos } from "@/lib/github/public";
  */
 export const revalidate = 600;
 
-export const metadata: Metadata = {
-  title: "开源项目",
-  description:
-    "一起AI 开源项目展示:domonic18 的 GitHub 仓库白名单,README 直读、进展动态与配套实战教程。",
-  alternates: { canonical: "/projects/" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const siteTitle = await getSiteTitle();
+  return {
+    title: "开源项目",
+    description: `${siteTitle} 开源项目展示:domonic18 的 GitHub 仓库白名单,README 直读、进展动态与配套实战教程。`,
+    alternates: { canonical: "/projects/" },
+  };
+}
 
 export default async function ProjectsPage(): Promise<React.ReactElement> {
   const repos = await listShowcaseRepos();

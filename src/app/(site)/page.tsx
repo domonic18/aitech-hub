@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
-import { getBandItemCount } from "@/lib/config/site-config";
+import { getBandItemCount, getHeroMd, getPostCount, getRepoCount } from "@/lib/config/site-config";
 import { formatCnDate } from "@/lib/datetime";
 import { formatStars, listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
@@ -15,27 +15,33 @@ import TelegramBand from "@/components/site/TelegramBand";
 /**
  * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
  * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=开源项目卡 + 博主文章紧凑卡 +
- * GEO)。电报带条数后台可配(M10,site_config,保存后 on-demand revalidate 本页);
- * 客户端 60s 轮询(M7 批⑤)+ 下滚加载更多(M10)。GitHub 项目卡 M11:白名单空
- * (全部下架)整卡不渲染,「三区可独立降级」。
+ * GEO)。电报带/项目/文章条数与 hub 主文案后台可配(M10/M12,site_config,保存后
+ * on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤)+ 下滚加载更多(M10)。
+ * GitHub 项目卡 M11:白名单空(全部下架)整卡不渲染,「三区可独立降级」。
  */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
-  const [bandCount, today, channels, latest, postCount, repos] = await Promise.all([
+  // 先取配置(rail 条数是后续取数的入参),再并行取数据
+  const [bandCount, heroMd, railPostCount, railRepoCount, today, channels] = await Promise.all([
     getBandItemCount(),
+    getHeroMd(),
+    getPostCount(),
+    getRepoCount(),
     countTodayVisible(),
     listPublicChannels(),
-    listLatestPosts(5),
+  ]);
+  const [latest, postCount, repos] = await Promise.all([
+    listLatestPosts(railPostCount),
     countPublishedPosts(),
-    listShowcaseRepos(3),
+    listShowcaseRepos(railRepoCount),
   ]);
   const band = await listBandFeed({ limit: bandCount });
 
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
       <SiteSprite />
-      <HeroConsole postCount={postCount} />
+      <HeroConsole postCount={postCount} heroMd={heroMd || undefined} />
 
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左主轴:电报流 LIVE 带(原型 tg-band 即整个左栏) */}
