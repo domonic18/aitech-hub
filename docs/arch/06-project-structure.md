@@ -31,6 +31,7 @@ aitech-hub/
 │   │   │   ├── category/[slug]/page.tsx
 │   │   │   ├── tag/[slug]/page.tsx
 │   │   │   ├── archive/page.tsx
+│   │   │   ├── projects/{page,[slug]/page}.tsx # 开源项目列表/详情(M11;URL 红线 arch/07-frontend §1)
 │   │   │   ├── search/page.tsx
 │   │   │   ├── about|agreement|privacy/page.tsx
 │   │   │   ├── sitemap.ts / robots.ts / feed.xml/route.ts
@@ -43,12 +44,14 @@ aitech-hub/
 │   │   │   ├── posts/{page,[id]/edit,new}/page.tsx
 │   │   │   ├── media/page.tsx    # 媒体库:图片/视频/文件 + 孤儿/断链/重复清洗(arch/08-media)
 │   │   │   ├── users/page.tsx
+│   │   │   ├── github/page.tsx   # GitHub 仓库台账:白名单登记/健康度/调度/展示开关(M11)
 │   │   │   └── overview/page.tsx
 │   │   ├── api/                  # Route Handlers(REST 风格,camelCase JSON)
 │   │   │   ├── auth/{sms-code,login,logout,session}/route.ts
 │   │   │   ├── posts/route.ts、posts/[id]/route.ts、posts/[id]/{publish,unpublish}/route.ts
 │   │   │   ├── media/route.ts、media/[id]/route.ts、media/{orphans,duplicates,stats}/route.ts
 │   │   │   ├── users/route.ts、users/[id]/route.ts
+│   │   │   ├── github/repos/route.ts、repos/[id]/{route,status,sync,posts}/route.ts # 仓库台账 CRUD/开关/立即同步/配套文章(M11;PAT 拒绝)
 │   │   │   ├── view/route.ts     # 浏览计数(去重窗口)
 │   │   │   ├── revalidate/route.ts
 │   │   │   └── health/route.ts
@@ -61,6 +64,7 @@ aitech-hub/
 │   │   ├── auth/                 # session(jose cookie)/ sms(腾讯云)/ rate-limit
 │   │   ├── media/                # storage(LocalDisk→COS Provider)/ refs(引用解析)/ rules(类型白名单)
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
+│   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
 │   │   ├── seo/                  # metadata/jsonld/sitemap 构造
 │   │   ├── queue.ts              # BullMQ producer(enqueue 封装)
