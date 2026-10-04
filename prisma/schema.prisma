@@ -227,7 +227,8 @@ model LegacyUrlMap {
 
 // ── telegram_(电报流/采集域,M7)────────────────────────────────
 
-/// 采集渠道台账(arch/02 §2):频控与每日上限按渠道独立;视频博主渠道二期同表加 type=social-video
+/// 采集渠道台账(arch/02 §2):频控与每日上限按渠道独立;
+/// type=social-video 为平台行(M8:1 平台 1 行——Cookie 池 config/总开关/日上限,自身不调度)
 model CrawlSource {
   id               Int       @id @default(autoincrement())
   name             String    @unique(map: "uq_crawl_source_name") @db.VarChar(100)
@@ -247,6 +248,7 @@ model CrawlSource {
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   telegrams Telegram[]
+  socialAccounts SocialAccount[]
 
   @@map("crawl_source")
 }
@@ -262,13 +264,51 @@ model Telegram {
   contentHash String    @unique(map: "uq_telegram_content_hash") @map("content_hash") @db.Char(40) // sha1(title+url 规范化)
   status      String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
   filterHit   String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
+  mediaType   String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
+  // 视频字段组(media_type=video;解读后批——不设 transcript/play_url,版权红线 arch/02 §3.2)
+  videoPlatform   String? @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
+  videoBlogger    String? @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
+  videoCoverUrl   String? @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
+  videoDuration   Int?    @map("video_duration") // 秒
+  videoEngagement Json?   @map("video_engagement") // {play,like,comment}
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_telegram_status_published")
   @@index([sourceId, createdAt], map: "idx_telegram_source_created")
+  @@index([status, mediaType], map: "idx_telegram_status_media")
   @@map("telegram")
+}
+
+/// 短视频博主台账(M8,arch/02 §2):平台级 Cookie 池与总开关/日上限在 crawl_source
+/// 平台行(type=social-video,1 平台 1 行,N:1),本表持博主身份与逐博主调度/观测;
+/// 删除两步武装(先停用再物理删;video_blogger 冗余隔离历史条目)
+model SocialAccount {
+  id               Int       @id @default(autoincrement())
+  platformRowId    Int       @map("platform_row_id")
+  platform         String    @db.VarChar(20) // douyin 首批(bilibili/xhs 后补)
+  secUid           String    @map("sec_uid") @db.VarChar(100)
+  nickname         String    @db.VarChar(100)
+  avatarUrl        String?   @map("avatar_url") @db.VarChar(1000)
+  category         String?   @db.VarChar(50)
+  enabled          Boolean   @default(true)
+  crawlIntervalMin Int       @default(180) @map("crawl_interval_min") // arch/02 §3.2:博主轮询 ≥120min
+  lastPostAt       DateTime? @map("last_post_at") @db.Timestamptz(6) // 增量地板(只采更新)
+  lastRunAt        DateTime? @map("last_run_at") @db.Timestamptz(6)
+  nextRunAt        DateTime? @map("next_run_at") @db.Timestamptz(6)
+  consecutiveFails Int       @default(0) @map("consecutive_fails")
+  lastError        String?   @map("last_error") @db.VarChar(500)
+  remark           String?   @db.VarChar(200)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  platformRow CrawlSource @relation(fields: [platformRowId], references: [id], onDelete: Restrict)
+
+  @@unique([platform, secUid], map: "uq_social_account_platform_sec_uid")
+  @@index([enabled, nextRunAt], map: "idx_social_account_due")
+  @@index([platformRowId], map: "idx_social_account_platform_row")
+  @@map("social_account")
 }
 
 /// 屏蔽词(命中即不入流;scope 限定匹配字段;回溯隐藏存量为后台手动操作)

@@ -19,6 +19,36 @@ export const CRAWL_SOURCE_STATUS_HEALTHY = "healthy";
 export const CRAWL_SOURCE_STATUS_DEGRADED = "degraded";
 export const CRAWL_SOURCE_STATUS_ERROR = "error";
 
+/** 电报媒体类型(M8 混合流,arch/02 §2):视频字段组仅 media_type=video 时有值 */
+export const TELEGRAM_MEDIA_TEXT = "text";
+export const TELEGRAM_MEDIA_VIDEO = "video";
+export const TELEGRAM_MEDIA_TYPES = [TELEGRAM_MEDIA_TEXT, TELEGRAM_MEDIA_VIDEO] as const;
+export type TelegramMediaType = (typeof TELEGRAM_MEDIA_TYPES)[number];
+
+/** 视频平台(M8 抖音首批;adapter 按 platform 分发,B站后补仅新增实现) */
+export const VIDEO_PLATFORM_DOUYIN = "douyin";
+export const VIDEO_PLATFORM_XHS = "xhs";
+export const VIDEO_PLATFORM_BILIBILI = "bilibili";
+export const VIDEO_PLATFORMS = [
+  VIDEO_PLATFORM_DOUYIN,
+  VIDEO_PLATFORM_XHS,
+  VIDEO_PLATFORM_BILIBILI,
+] as const;
+export type VideoPlatform = (typeof VIDEO_PLATFORMS)[number];
+
+/** 平台行 crawl_source.name(1 平台 1 行;Cookie 池/总开关/日上限载体) */
+export function socialPlatformRowName(platform: string): string {
+  return `social:${platform}`;
+}
+
+/** 博主轮询间隔下限(arch/02 §3.2:listing 轮询 ≥120min) */
+export const SOCIAL_CRAWL_INTERVAL_MIN = 120;
+/** 博主连续失败阈值(语义同渠道侧 ≥3 → 观测降级;写 last_error 供博主台账) */
+export const SOCIAL_MAX_CONSECUTIVE_FAILS = 3;
+/** 首采回填窗口(天)与条数上限:防新登记博主刷屏(arch/02 §3.2 shell 降级可见) */
+export const SOCIAL_BACKFILL_DAYS = 7;
+export const SOCIAL_BACKFILL_MAX_ITEMS = 10;
+
 export const TELEGRAM_STATUS_VISIBLE = "visible";
 export const TELEGRAM_STATUS_HIDDEN = "hidden";
 export const TELEGRAM_STATUS_ARCHIVED = "archived";

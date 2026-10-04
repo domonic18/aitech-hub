@@ -13,6 +13,7 @@ import {
 } from "../src/lib/queue";
 import { flushStatsBuffer } from "../src/lib/stats/service";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
+import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 
@@ -32,13 +33,21 @@ const PROCESSORS: Record<string, Processor> = {
     }
     return summary;
   },
-  // tick(每分钟)与 crawl(单源)共用队列,按 job.name 分流
+  // tick(每分钟)、crawl(单渠道)、crawl-video(单博主)共用队列,按 job.name 分流
   [QUEUE_CRAWLER]: async (job) => {
     if (job.name === "tick") {
       const summary = await crawlDueSources();
-      if (summary.due > 0) {
-        console.log(JSON.stringify({ event: "crawler.tick", ...summary }));
+      // 同拍扫视频博主(平台行不调度,social_account 才是调度主体;M8)
+      const video = await enqueueDueVideoAccounts();
+      const due = summary.due + video.due;
+      if (due > 0) {
+        console.log(JSON.stringify({ event: "crawler.tick", ...summary, videoDue: video.due }));
       }
+      return { ...summary, videoDue: video.due };
+    }
+    if (job.name === "crawl-video") {
+      const summary = await crawlVideoAccount(Number(job.data.accountId));
+      console.log(JSON.stringify({ event: "crawler.video.crawl", ...summary }));
       return summary;
     }
     const summary = await crawlSource(Number(job.data.sourceId));

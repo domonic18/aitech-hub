@@ -21,6 +21,7 @@ const eslintConfig = [
       "dist/**",
       "coverage/**",
       "workspace/**",
+      "douyin-gateway/.venv/**", // Python 虚拟环境(playwright 驱动自带海量 JS 产物,非 lint 对象)
       ".test-results/**",
       "playwright-report/**",
       "next-env.d.ts",

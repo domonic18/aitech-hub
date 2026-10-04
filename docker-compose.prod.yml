@@ -19,6 +19,8 @@ x-logging: &logging
 x-app-env: &app-env
   DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=10
   REDIS_URL: redis://redis:6379/0
+  # 抖音网关容器网内地址(.env 里的 127.0.0.1:8010 是 dev 值;M8)
+  DOUYIN_GATEWAY_URL: http://douyin-gateway:8010
   # environment 优先级高于 env_file(.env):容器内媒体路径钉死为挂载点,不随宿主 .env 漂移
   MEDIA_DIR: /app/media
 

@@ -26,6 +26,12 @@ const serverEnvSchema = z.object({
   TENCENT_SMS_SECRET_KEY: z.string().default(""),
   TENCENT_SMS_SDK_APP_ID: z.string().default(""),
   TENCENT_SMS_SIGN_NAME: z.string().default(""),
+
+  /** 抖音数据网关(M8):dev 经 compose 映射 127.0.0.1:8010;prod 容器网内服务名 */
+  DOUYIN_GATEWAY_URL: z.string().default("http://127.0.0.1:8010"),
+
+  /** 抖音 Cookie 池 AES-256-GCM 密钥(base64 32 字节;留空=导入禁用,采集跳过) */
+  APP_COOKIE_ENC_KEY: z.string().default(""),
 });
 
 const parsed = serverEnvSchema.safeParse(process.env);
