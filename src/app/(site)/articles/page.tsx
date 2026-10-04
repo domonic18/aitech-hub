@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
 import PostListView from "@/components/site/PostListView";
+import TagFilterBar from "@/components/site/TagFilterBar";
 import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 import { listPostsPage } from "@/lib/content/posts";
+import { listTagsWithCount } from "@/lib/content/taxonomy";
 
 export const revalidate = 600;
 
@@ -13,10 +15,10 @@ export const metadata: Metadata = {
 };
 
 export default async function ArticlesPage(): Promise<React.ReactElement> {
-  const { items, total, page, pageSize } = await listPostsPage({
-    page: 1,
-    pageSize: DEFAULT_PAGE_SIZE,
-  });
+  const [{ items, total, page, pageSize }, tags] = await Promise.all([
+    listPostsPage({ page: 1, pageSize: DEFAULT_PAGE_SIZE }),
+    listTagsWithCount(),
+  ]);
   return (
     <PostListView
       heading="全部文章"
@@ -25,6 +27,7 @@ export default async function ArticlesPage(): Promise<React.ReactElement> {
       page={page}
       pageSize={pageSize}
       basePath="/articles"
+      filterBar={<TagFilterBar tags={tags} />}
     />
   );
 }

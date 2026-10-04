@@ -9,16 +9,14 @@ const NAV = [
   { href: "/telegram/", label: "电报流" },
   { href: "/articles/", label: "文章" },
   { href: "/projects/", label: "项目" },
-  { href: "/archive/", label: "归档", smOnly: true },
-  { href: "/about/", label: "关于", smOnly: true },
 ];
 
 /**
  * 站点顶栏(DESIGN-SPEC §5):logo 17 monogram 芯片(品牌「一起AI」,
  * 2026-10-02 定稿,规格见 common.css §Logo)+ 域名 tld;nav 电报流随 M7(批⑤)挂入;
  * 搜索入口为图标 → /search;主题胶囊全站可用;头像菜单随三期用户体系,一期不渲染。
- * 窄屏降级(DESIGN-SPEC §6):tld 隐藏、归档/关于收起(footer 有同款入口),
- * 整行禁止换行;超宽兜底可横滚(no-scrollbar)。
+ * 窄屏降级(DESIGN-SPEC §6):tld 隐藏,整行禁止换行;超宽兜底可横滚(no-scrollbar)。
+ * 归档/关于不进主菜单(2026-10-05 反馈;路由保留,入口在 Footer/sitemap)。
  */
 export default function Header(): React.ReactElement {
   return (
@@ -45,9 +43,7 @@ export default function Header(): React.ReactElement {
             <Link
               key={item.href}
               href={item.href}
-              className={`whitespace-nowrap rounded-sm px-2 py-1.5 text-text-2 hover:bg-panel-2 hover:text-text-1 sm:px-3${
-                item.smOnly ? " hidden sm:inline-block" : ""
-              }`}
+              className="whitespace-nowrap rounded-sm px-2 py-1.5 text-text-2 hover:bg-panel-2 hover:text-text-1 sm:px-3"
             >
               {item.label}
             </Link>
