@@ -807,9 +807,16 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(await (await request.get("/telegram/?media=text")).text()).not.toContain(MARK_V);
     expect(await (await request.get("/telegram/?media=junk")).text()).toContain(MARK_V);
 
-    // 前台 AI 解读卡(M9):AI 徽章 + 摘要 + 要点 details(展开见 3 条)+ 尾注
+    // 前台视频卡(M10 批③ 原型重排):卡内标题/封面链/平台角标/时长/互动数 +
+    // AI 解读徽章 + 摘要 + 要点 details(展开见 3 条)+ 尾注
     await page.goto("/telegram/?media=video");
     const aiCard = page.getByRole("article").filter({ hasText: MARK_V });
+    await expect(aiCard.getByRole("heading", { name: MARK_V })).toBeVisible();
+    await expect(aiCard.getByRole("link", { name: /打开原视频/ })).toBeVisible();
+    await expect(aiCard.getByText("抖音", { exact: true })).toBeVisible(); // 平台角标
+    await expect(aiCard.getByText("3:33", { exact: true })).toBeVisible(); // 213s
+    await expect(aiCard.getByText("1.2w", { exact: true })).toBeVisible(); // 播放 12000
+    await expect(aiCard.getByText("345", { exact: true })).toBeVisible(); // 点赞
     await expect(aiCard.getByText("AI 解读")).toBeVisible();
     await expect(aiCard.getByText(AI_SUMMARY)).toBeVisible();
     await expect(aiCard.getByText(/关键要点 ×3/)).toBeVisible();
