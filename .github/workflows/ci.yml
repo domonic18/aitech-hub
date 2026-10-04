@@ -78,11 +78,13 @@ jobs:
       # introspect 断言:实际 schema 与 schema.prisma 一致(有差异则非零退出)
       - run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
-  # 镜像发布线:两 job 全绿才出镜像,仿 ai-invest-assisstant TCR 模式
-  # (standard/02-cicd-deployment §1;跨境推送偶发 stall → 步骤级超时 + 失败重推一次)
+  # 镜像发布线:三检查 job 全绿后,app 与网关镜像各自独立 job 并行构建推送
+  # (2026-10-04 拆分,仿 ai-invest-assisstant 每镜像一 job:互不拖累,失败可
+  #  re-run failed jobs 单镜像重试;standard/02-cicd-deployment §1;
+  #  跨境推送偶发 stall → 步骤级超时 + 失败重推一次)
   # develop 出 develop-<sha> 供演练;latest 只从 main 出,保证 compose pull 默认拉到发布版
   docker-release:
-    name: release(镜像构建推送 TCR)
+    name: release(app 镜像构建推送 TCR)
     runs-on: ubuntu-latest
     needs: [app, gateway, migrate-replay]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
@@ -136,7 +138,31 @@ jobs:
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # 网关镜像(M8,独立 Dockerfile);latest 同 app 镜像策略:只从 main 出
+
+  # 网关镜像(M8,独立 Dockerfile):与 app 镜像同语义的独立 job,cache scope=gateway 隔离。
+  # 登录守卫/continue-on-error + outcome 重试/provenance:false 语义与 docker-release 同款
+  # (逐条教训注释见上,勿只改一处)
+  docker-release-gateway:
+    name: release(网关镜像构建推送 TCR)
+    runs-on: ubuntu-latest
+    needs: [app, gateway, migrate-replay]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - id: login
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
       - name: Build and Push gateway / 网关镜像(第 1 次尝试)
         id: gbuild1
         continue-on-error: true
