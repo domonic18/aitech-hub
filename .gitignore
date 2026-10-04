@@ -52,3 +52,7 @@ scripts/migrate-wp/artifacts/
 /douyin-gateway/.venv/
 __pycache__/
 *.pyc
+
+# douyin-gateway 依赖清单(全局 *.txt 误伤;CI gateway job 与镜像构建依赖)
+!douyin-gateway/requirements.txt
+!douyin-gateway/requirements-dev.txt
