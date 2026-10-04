@@ -1,6 +1,7 @@
 import { Worker, type Processor, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
+import { SITE_TZ } from "../src/lib/datetime";
 import {
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
@@ -97,7 +98,8 @@ async function scheduleMediaAudit(): Promise<void> {
   const queue = getQueue(QUEUE_MEDIA_AUDIT);
   await queue.upsertJobScheduler(
     "media-audit",
-    { pattern: MEDIA_AUDIT_CRON },
+    // tz 显式声明:缺省走进程系统时区,靠镜像 ENV TZ 兜底属侥幸(2026-10-05 review 定级)
+    { pattern: MEDIA_AUDIT_CRON, tz: SITE_TZ },
     {
       name: "audit",
       data: {},
@@ -111,7 +113,7 @@ async function scheduleVisitLogPurge(): Promise<void> {
   const queue = getQueue(QUEUE_STATS);
   await queue.upsertJobScheduler(
     "visit-log-purge",
-    { pattern: VISIT_LOG_PURGE_CRON },
+    { pattern: VISIT_LOG_PURGE_CRON, tz: SITE_TZ },
     {
       name: STATS_JOB_PURGE,
       data: {},

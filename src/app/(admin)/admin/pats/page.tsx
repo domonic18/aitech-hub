@@ -5,12 +5,13 @@
  */
 import PatCreateDialog from "@/components/admin/PatCreateDialog";
 import PatRevokeButton from "@/components/admin/PatRevokeButton";
+import { formatCnDateTime } from "@/lib/datetime";
 import { listPats } from "@/lib/auth/pat";
 
 export const dynamic = "force-dynamic";
 
 function fmt(d: Date | null): string {
-  return d === null ? "—" : d.toLocaleString("zh-CN", { hour12: false });
+  return d === null ? "—" : formatCnDateTime(d);
 }
 
 export default async function AdminPatsPage(): Promise<React.ReactElement> {

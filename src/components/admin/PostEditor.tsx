@@ -26,6 +26,7 @@ import {
 } from "@/lib/content/post-schema";
 import { type ApiEnvelope } from "@/lib/http/response";
 import { asciiSlugFromTitle } from "@/lib/content/post-path";
+import { formatCnTime } from "@/lib/datetime";
 
 import { INPUT } from "./editor-controls";
 
@@ -235,7 +236,7 @@ export default function PostEditor({
         </div>
       )}
       {savedAt && !error && (
-        <div className="text-xs text-text-3">已保存 {savedAt.toLocaleTimeString("sv-SE")}</div>
+        <div className="text-xs text-text-3">已保存 {formatCnTime(savedAt)}</div>
       )}
 
       <input

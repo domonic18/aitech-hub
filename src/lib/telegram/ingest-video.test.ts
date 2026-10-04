@@ -96,6 +96,9 @@ vi.mock("./adapters/video/douyin", async () => {
 import { crawlVideoAccount, enqueueDueVideoAccounts, type VideoCrawlOutcome } from "./ingest-video";
 import { douyinAdapter } from "./adapters/video/douyin";
 import { GatewayUnavailableError, GatewayUpstreamError } from "./adapters/video/index";
+// 配额键走实现单点(dailyRequestKey,统计日 statsDay() 实时推导)——
+// 硬编码日期是定时炸弹:跨日(尤其 UTC runner 撞北京日界)即红(2026-10-05 CI 实测)
+import { dailyRequestKey } from "./rate-limit";
 
 const fetchVideosMock = vi.mocked(douyinAdapter.fetchRecentVideos);
 
@@ -195,7 +198,7 @@ describe("crawlVideoAccount 短路与跳过", () => {
   });
 
   it("平台日上限超限 → 只顺延不触网关", async () => {
-    quotaStore.set("crawler:req:10:2026-10-04", "3");
+    quotaStore.set(dailyRequestKey(10), "3");
     const outcome = await run(
       makeAccount({
         platformRow: { id: 10, enabled: true, dailyMaxRequests: 3, config: { cookieJars: "x" } },
