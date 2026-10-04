@@ -3,6 +3,7 @@
  * 标题摘要人工修正。软删(deleted)为终态不经 UI 触达;命中过滤的条目以
  * hidden 入库,治理台是误杀观测与恢复的唯一入口。
  * M8 批⑦:列表补媒体筛选与视频字段投影(镜像 public-feed 模式,原 AI 解读态随解读批)。
+ * M8 批⑧:补博主作品筛选(blogger 等值 video_blogger,博主台账「作品」入口落地)。
  */
 import { z } from "zod";
 
@@ -62,6 +63,8 @@ export interface TelegramListQuery {
   q?: string;
   /** 媒体筛选(批⑦):all/text/video,非法值由页面解析层回落 all */
   media?: FeedMediaFilter;
+  /** 博主作品筛选(批⑧):video_blogger 冗余字段等值;隐含 mediaType=video */
+  blogger?: string;
 }
 
 /** 视频行互动数(库内 Json 白名单投影;采集缺失位为 null) */
@@ -72,11 +75,13 @@ function listWhere(
   sourceId: number | undefined,
   q?: string,
   media?: FeedMediaFilter,
+  blogger?: string,
 ) {
   const where: {
     status?: string;
     sourceId?: number;
     mediaType?: string;
+    videoBlogger?: string;
     OR?: Array<
       | { title: { contains: string; mode: "insensitive" } }
       | { summary: { contains: string; mode: "insensitive" } }
@@ -85,6 +90,11 @@ function listWhere(
   if (segment !== "all") where.status = segment;
   if (sourceId !== undefined) where.sourceId = sourceId;
   if (media && media !== "all") where.mediaType = media;
+  if (blogger) {
+    // 博主筛选隐含 video(锚 video_blogger 冗余字段),覆盖 media
+    where.mediaType = "video";
+    where.videoBlogger = blogger;
+  }
   if (q) {
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
@@ -95,9 +105,16 @@ function listWhere(
 }
 
 /** 条目列表 + 分段计数;渠道下拉选项一并返回(渠道个位数量级) */
-export async function listTelegramAdmin({ page, segment, sourceId, q, media }: TelegramListQuery) {
-  const where = listWhere(segment, sourceId, q, media);
-  const countWhere = (seg: TelegramListSegment) => listWhere(seg, sourceId, q, media);
+export async function listTelegramAdmin({
+  page,
+  segment,
+  sourceId,
+  q,
+  media,
+  blogger,
+}: TelegramListQuery) {
+  const where = listWhere(segment, sourceId, q, media, blogger);
+  const countWhere = (seg: TelegramListSegment) => listWhere(seg, sourceId, q, media, blogger);
   const [items, all, visible, hidden, archived, sources] = await prisma.$transaction([
     prisma.telegram.findMany({
       where,

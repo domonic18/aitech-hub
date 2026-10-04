@@ -4,11 +4,14 @@
  * filter_hit 命中徽章即误杀观测。页尾屏蔽词管理。
  * M8 批⑦:媒体列与视频行(封面/平台·博主/互动/时长/原视频链;
  * AI 解读态随解读批,以灰字注记如实呈现,不伪装)。
+ * M8 批⑧:博主作品筛选(?blogger= 锚 video_blogger 冗余,活动 chip 呈现;
+ * 博主台账「作品」按钮落地入口)。
  */
 import Link from "next/link";
 
 import BlocklistManager from "@/components/admin/BlocklistManager";
 import TelegramRowOps from "@/components/admin/TelegramRowOps";
+import { MediaBadge, StatusBadge } from "@/components/admin/TelegramBadges";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { pageWindow, parseListSegment, parsePage } from "@/lib/admin/list";
@@ -49,34 +52,8 @@ interface PageProps {
     q?: string;
     source?: string;
     media?: string;
+    blogger?: string;
   }>;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { cls: string; label: string }> = {
-    visible: { cls: "bg-green/10 text-green", label: "可见" },
-    hidden: { cls: "bg-amber/10 text-amber", label: "隐藏" },
-    archived: { cls: "bg-panel-2 text-text-3", label: "归档" },
-  };
-  const s = map[status] ?? { cls: "bg-panel-2 text-text-3", label: status };
-  return <span className={`rounded-sm px-1.5 py-px text-[10px] ${s.cls}`}>{s.label}</span>;
-}
-
-/** 媒体徽章(原型 media-tag:文字 i-filetext / 短视频 i-video) */
-function MediaBadge({ mediaType }: { mediaType: string }) {
-  const video = mediaType === "video";
-  return (
-    <span
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-px text-[10px] ${
-        video ? "bg-accent-dim text-accent" : "bg-panel-2 text-text-2"
-      }`}
-    >
-      <svg className="ic ic-sm" aria-hidden="true">
-        <use href={video ? "#i-video" : "#i-filetext"} />
-      </svg>
-      {video ? "短视频" : "文字"}
-    </span>
-  );
 }
 
 export default async function AdminTelegramPage({
@@ -91,6 +68,7 @@ export default async function AdminTelegramPage({
   const media: FeedMediaFilter = FEED_MEDIA_FILTERS.includes(sp.media as FeedMediaFilter)
     ? (sp.media as FeedMediaFilter)
     : "all";
+  const blogger = sp.blogger?.trim() || undefined;
 
   const { items, total, counts, sources } = await listTelegramAdmin({
     page,
@@ -98,17 +76,19 @@ export default async function AdminTelegramPage({
     sourceId,
     q,
     media,
+    blogger,
   });
   const words = await listBlocklist();
   const totalPages = Math.max(1, Math.ceil(total / TELEGRAM_PAGE_SIZE));
   const pgBtn =
     "rounded-sm border border-line bg-panel px-2.5 py-1 font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1";
-  const href = (seg: TelegramListSegment, p: number): string => {
+  const href = (seg: TelegramListSegment, p: number, omit?: "blogger"): string => {
     const params = new URLSearchParams();
     if (seg !== "all") params.set("status", seg);
     if (q) params.set("q", q);
     if (sourceId !== undefined) params.set("source", String(sourceId));
     if (media !== "all") params.set("media", media);
+    if (blogger && omit !== "blogger") params.set("blogger", blogger);
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
     return qs ? `/admin/telegram/?${qs}` : "/admin/telegram/";
@@ -139,8 +119,18 @@ export default async function AdminTelegramPage({
             </Link>
           ))}
         </div>
+        {blogger && (
+          <Link
+            href={href(segment, 1, "blogger")}
+            className="inline-flex items-center gap-1 rounded-sm border border-accent/40 bg-accent-dim px-2 py-1 text-xs text-accent hover:border-accent"
+            title="清除博主筛选"
+          >
+            博主:{blogger} ✕
+          </Link>
+        )}
         <form method="GET" action="/admin/telegram/" className="ml-auto flex items-center gap-2">
           {segment !== "all" && <input type="hidden" name="status" value={segment} />}
+          {blogger && <input type="hidden" name="blogger" value={blogger} />}
           <select
             name="media"
             defaultValue={media === "all" ? "" : media}
