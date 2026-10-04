@@ -9,7 +9,7 @@ import sharp from "sharp";
 
 /**
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
- * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)。
+ * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -647,4 +647,137 @@ test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", 
   await page.goto("/admin/spider/");
   await expect(page.getByRole("heading", { name: "采集总览" })).toBeVisible();
   await expect(page.getByText("tick 调度器", { exact: true })).toBeVisible();
+});
+
+test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启停物理删/media 筛选)", async ({
+  page,
+  request,
+}) => {
+  const NICK = "e2e-抖音博主";
+  const SEC_UID = "MS4wLjABAAAAe2e_video_blogger_0000";
+  const MARK_V = "e2e-视频电报-mark";
+  // 自播种:专属平台行(停用 → 页面应现「平台已停用」;不触真实调度)+ 启用中博主 + 视频电报行
+  const platformRow = await prisma.crawlSource.upsert({
+    where: { name: "e2e-social:douyin" },
+    update: { enabled: false },
+    create: {
+      name: "e2e-social:douyin",
+      type: "social-video",
+      platform: "douyin",
+      url: "https://e2e.invalid/douyin",
+      enabled: false,
+      remark: "e2e 专用",
+    },
+  });
+  await prisma.socialAccount.deleteMany({ where: { secUid: SEC_UID } });
+  const blogger = await prisma.socialAccount.create({
+    data: {
+      platformRowId: platformRow.id,
+      platform: "douyin",
+      secUid: SEC_UID,
+      nickname: NICK,
+      category: "AI 资讯",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: platformRow.id, title: MARK_V } });
+  await prisma.telegram.create({
+    data: {
+      sourceId: platformRow.id,
+      title: MARK_V,
+      summary: "e2e 视频卡冒烟",
+      url: "https://www.douyin.com/video/e2e0001",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      mediaType: "video",
+      videoPlatform: "douyin",
+      videoBlogger: NICK,
+      videoDuration: 213,
+      videoEngagement: { play: 12000, like: 345, comment: 67 },
+    },
+  });
+
+  try {
+    // 登录(同前序用例 UI 流)
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+
+    // 台账页:双状态卡 + 播种行(平台行停用 → 健康列「平台已停用」徽标)
+    await page.goto("/admin/bloggers/");
+    await expect(page.getByRole("button", { name: "登记博主" })).toBeVisible();
+    await expect(page.getByText("抖音网关(douyin-gateway)")).toBeVisible();
+    const row = page.getByRole("row", { name: new RegExp(NICK) });
+    await expect(row).toBeVisible();
+    await expect(row.getByText("平台已停用")).toBeVisible();
+
+    // 两步武装删除·UI 侧:启用中删除被客户端守卫拦(alert,不发请求,行仍在)
+    const alertPromise = page.waitForEvent("dialog").then((d) => {
+      const msg = d.message();
+      void d.accept();
+      return msg;
+    });
+    await row.getByRole("button", { name: "删除" }).click();
+    expect(await alertPromise).toContain("先停用再删除");
+    await expect(row).toBeVisible();
+    // 两步武装删除·服务端同判:session DELETE 直打启用中博主 → 409
+    // (mutation 有 Origin 关:page.request 不自动带,须显式补同源 Origin,同 4.3b 注)
+    const del = await page.request.delete(`/api/bloggers/${blogger.id}/`, {
+      headers: { origin: "http://localhost:3000" },
+    });
+    expect(del.status()).toBe(409);
+
+    // 停用(confirm)→ 行刷新出「启用」;删除(confirm)→ 物理删,行消失
+    page.once("dialog", (d) => d.accept());
+    await row.getByRole("button", { name: "停用" }).click();
+    await expect(row.getByRole("button", { name: "启用" })).toBeVisible({ timeout: 10_000 });
+    page.once("dialog", (d) => d.accept());
+    await row.getByRole("button", { name: "删除" }).click();
+    await expect(row).toBeHidden({ timeout: 10_000 });
+    expect(await prisma.socialAccount.count({ where: { secUid: SEC_UID } })).toBe(0);
+    // 博主删除不影响已入库视频条目(video_blogger 冗余隔离,arch/02 §3.2)
+    expect(
+      await prisma.telegram.count({ where: { sourceId: platformRow.id, title: MARK_V } }),
+    ).toBe(1);
+
+    // 前台 media 筛选:video 页含播种视频卡(平台·博主 chip),text 页不含;非法值回落 all
+    const videoHtml = await (await request.get("/telegram/?media=video")).text();
+    expect(videoHtml).toContain(MARK_V);
+    expect(videoHtml).toContain(`抖音 · ${NICK}`);
+    expect(await (await request.get("/telegram/?media=text")).text()).not.toContain(MARK_V);
+    expect(await (await request.get("/telegram/?media=junk")).text()).toContain(MARK_V);
+
+    // 公共 API media 参数:video 过滤命中且视频字段投影齐备;text 过滤不含
+    const apiV = await request.get("/api/telegram/public/?media=video&limit=50");
+    const bv = (await apiV.json()) as {
+      code: number;
+      data: {
+        items: Array<{
+          title: string;
+          mediaType: string;
+          video: {
+            platform: string;
+            blogger: string;
+            durationSeconds: number;
+            engagement: { like: number };
+          } | null;
+        }>;
+      };
+    };
+    expect(bv.code).toBe(0);
+    const hit = bv.data.items.find((i) => i.title === MARK_V);
+    expect(hit).toBeTruthy();
+    expect(hit!.mediaType).toBe("video");
+    expect(hit!.video).toMatchObject({ platform: "douyin", blogger: NICK, durationSeconds: 213 });
+    expect(hit!.video!.engagement.like).toBe(345);
+    const bt = (await (await request.get("/api/telegram/public/?media=text&limit=50")).json()) as {
+      data: { items: Array<{ title: string }> };
+    };
+    expect(bt.data.items.find((i) => i.title === MARK_V)).toBeUndefined();
+  } finally {
+    await prisma.socialAccount.deleteMany({ where: { secUid: SEC_UID } });
+    await prisma.telegram.deleteMany({ where: { sourceId: platformRow.id } });
+    await prisma.crawlSource.deleteMany({ where: { name: "e2e-social:douyin" } });
+  }
 });
