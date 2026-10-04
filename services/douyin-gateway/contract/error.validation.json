@@ -1,0 +1,16 @@
+{
+  "status": 422,
+  "body": {
+    "detail": [
+      {
+        "type": "string_too_short",
+        "loc": ["body", "sec_uid"],
+        "msg": "String should have at least 10 characters",
+        "input": "short",
+        "ctx": {
+          "min_length": 10
+        }
+      }
+    ]
+  }
+}
