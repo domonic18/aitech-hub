@@ -33,6 +33,9 @@ export type QueueName = (typeof QUEUE_NAMES)[number];
 /** 媒体体检每日调度(避开整点;arch/08-media §3.2;worker 与媒体库页脚同源,评审 W2) */
 export const MEDIA_AUDIT_CRON = "41 3 * * *";
 
+/** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
+export const VISIT_LOG_PURGE_CRON = "14 4 * * *";
+
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 }

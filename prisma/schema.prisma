@@ -212,6 +212,24 @@ model StatsClientDaily {
   @@map("stats_client_daily")
 }
 
+/// 近期访问明细(M10 批⑥,页面行级):全量 IP 短留存(7 天,worker 日清过期行);
+/// 访客身份仍是哈希(visitor_hash),明文 IP 仅作短留存排查用
+model StatsVisitLog {
+  id          BigInt   @id @default(autoincrement())
+  path        String   @db.VarChar(500)
+  ip          String   @db.VarChar(45) // IPv4/IPv6
+  browser     String   @db.VarChar(50)
+  os          String   @db.VarChar(50)
+  deviceType  String   @map("device_type") @db.VarChar(20) // desktop/mobile/tablet
+  sourceClass String   @map("source_class") @db.VarChar(20) // direct/search/referral/ai
+  sourceName  String   @map("source_name") @db.VarChar(50)
+  visitorHash String   @map("visitor_hash") @db.VarChar(32) // sha256(salt+ip+ua) 前 32 位,不可逆
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "idx_stats_visit_log_created_at")
+  @@map("stats_visit_log")
+}
+
 // ── legacy_(旧站承接域)─────────────────────────────────────────
 
 /// 旧 URL 301 映射(迁移脚本灌入;legacy 路由 + Redis 缓存消费)

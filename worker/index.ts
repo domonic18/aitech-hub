@@ -9,10 +9,11 @@ import {
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_STATS,
+  VISIT_LOG_PURGE_CRON,
   bullConnection,
   getQueue,
 } from "../src/lib/queue";
-import { flushStatsBuffer } from "../src/lib/stats/service";
+import { flushStatsBuffer, purgeVisitLogs } from "../src/lib/stats/service";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
@@ -28,7 +29,15 @@ const PROCESSORS: Record<string, Processor> = {
     console.log(JSON.stringify({ event: "media.audit", ...summary }));
     return summary;
   },
-  [QUEUE_STATS]: async () => {
+  [QUEUE_STATS]: async (job) => {
+    // 访问明细 7 天保留期清理(M10 批⑥;与 flush 同队列按 job.name 分流)
+    if (job.name === "purge-visit-log") {
+      const removed = await purgeVisitLogs();
+      if (removed > 0) {
+        console.log(JSON.stringify({ event: "stats.visit_log.purge", removed }));
+      }
+      return { removed };
+    }
     const summary = await flushStatsBuffer();
     if (summary.keysFlushed > 0) {
       console.log(JSON.stringify({ event: "stats.flush", ...summary }));
@@ -92,6 +101,20 @@ async function scheduleMediaAudit(): Promise<void> {
   );
 }
 
+/** 访问明细清理:每日 04:14 清 7 天前行(M10 批⑥) */
+async function scheduleVisitLogPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "visit-log-purge",
+    { pattern: VISIT_LOG_PURGE_CRON },
+    {
+      name: "purge-visit-log",
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -136,6 +159,7 @@ async function main(): Promise<void> {
 
   await scheduleStatsFlush();
   await scheduleMediaAudit();
+  await scheduleVisitLogPurge();
   await scheduleCrawlerTick();
 
   console.log(

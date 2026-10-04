@@ -1,9 +1,11 @@
 /**
  * 站点统计 service(requirement §3.5;arch/05-services §1 分层):
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
- *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5)。
+ *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5);
+ *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥)。
  *  - flushStatsBuffer:worker 每 60s 将缓冲 RENAME 后落库聚合表
  *    (stats_visit/referrer/page/client/post_view_daily + views_count 累加)。
+ *  - purgeVisitLogs:worker 日调度清理 7 天前明细行。
  * 复杂聚合 SQL 集中本文件($executeRaw 仅 service 层内合法,arch/05-services §2)。
  */
 import { createHash } from "node:crypto";
@@ -12,6 +14,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
+import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { classifyReferrer, isBotUa, normalizePagePath, parseClient, visitorHash } from "./classify";
@@ -71,8 +74,37 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
   pipe.expire(`stats:buf:client:${day}`, BUFFER_TTL_SECONDS);
   await pipe.exec();
 
+  // 访问明细行(M10 批⑥):不 await 不阻断 beacon,失败仅告警(明细缺失可接受,
+  // 聚合口径不受影响);IP 全量短留存,明文只进这张表
+  prisma.statsVisitLog
+    .create({
+      data: {
+        path,
+        ip: input.ip.slice(0, 45),
+        browser: client.browser.slice(0, 50),
+        os: client.os.slice(0, 50),
+        deviceType: client.deviceType.slice(0, 20),
+        sourceClass: ref.sourceClass,
+        sourceName: ref.sourceName.slice(0, 50),
+        visitorHash: vhash,
+      },
+    })
+    .catch((e: unknown) => logger.warn({ event: "stats.visit_log.failed", error: String(e) }));
+
   const postCounted = await countPostView(path, vhash, day);
   return { counted: true, reason: "ok", postCounted };
+}
+
+// ── 明细保留(worker 日调度,M10 批⑥)────────────────────────────────
+
+/** 明细保留天数(2026-10-04 用户定调:全量 IP + 7 天短留存) */
+const VISIT_LOG_RETENTION_DAYS = 7;
+
+/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志) */
+export async function purgeVisitLogs(): Promise<number> {
+  const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * 86_400_000);
+  const r = await prisma.statsVisitLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  return r.count;
 }
 
 function hash16(s: string): string {

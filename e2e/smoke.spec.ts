@@ -361,7 +361,14 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
   }
 });
 
-test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)", async ({ page }) => {
+test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)+ 最近访问明细(M10 批⑥)", async ({
+  page,
+  request,
+}) => {
+  // 访问明细隔离(重跑幂等)
+  const visitPath = "/e2e-visit-log";
+  await prisma.statsVisitLog.deleteMany({ where: { path: visitPath } });
+
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
   await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
@@ -369,7 +376,22 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
 
+  // beacon 直打(M10 批⑥):request 上下文无 cookie(非管理员可入账);
+  // 本地无反代头,自置 x-forwarded-for 模拟 nginx 形态(clientIp 取首跳);
+  // UA 用真实浏览器串(playwright 字样被 isBotUa 过滤,正是生产口径)
+  const beacon = await request.post("/api/view", {
+    headers: {
+      origin: "http://localhost:3000",
+      "x-forwarded-for": "203.0.113.7",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    },
+    data: { path: visitPath, referrer: "" },
+  });
+  expect(beacon.status()).toBe(204);
+
   // 五模块渲染(空库也不空壳:卡片/表头常在,趋势图恒有 generate_series 点)
+  await page.goto("/admin/");
   await expect(page.getByText("今日 PV")).toBeVisible();
   await expect(page.getByText("PV / UV 趋势")).toBeVisible();
   await expect(page.getByRole("heading", { name: "流量来源" })).toBeVisible();
@@ -377,6 +399,12 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await expect(page.getByText("热门页面")).toBeVisible();
   const polylines = page.locator("main svg polyline");
   await expect(polylines).toHaveCount(2);
+
+  // 最近访问明细行(M10 批⑥):伪路径 + 全量 IP;断言后即清
+  const visitRow = page.getByRole("row", { name: new RegExp(visitPath) });
+  await expect(visitRow).toBeVisible();
+  await expect(visitRow).toContainText("203.0.113.7");
+  await prisma.statsVisitLog.deleteMany({ where: { path: visitPath } });
 
   // hover 趋势图 → client 岛吸附出数据 tip(用户反馈补强)
   await page.locator("svg[aria-label='PV/UV 趋势图']").hover({ position: { x: 200, y: 100 } });
