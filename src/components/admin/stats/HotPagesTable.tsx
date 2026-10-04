@@ -20,6 +20,15 @@ const KIND_META: Record<HotPageRow["kind"], { label: string; cls: string }> = {
   list: { label: "列表", cls: "text-text-2 bg-panel-2" },
 };
 
+/** 采集存的是编码后 URL 路径,展示解码(畸形序列原样兜底) */
+function shown(path: string): string {
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+}
+
 export default function HotPagesTable({
   rows,
   range,
@@ -81,11 +90,11 @@ export default function HotPagesTable({
                       </span>
                     </td>
                     <td className="max-w-0 px-3 py-2.5">
-                      <div className="truncate text-text-1" title={r.postTitle ?? r.path}>
-                        {r.postTitle ?? r.path}
+                      <div className="truncate text-text-1" title={r.postTitle ?? shown(r.path)}>
+                        {r.postTitle ?? shown(r.path)}
                       </div>
                       <div className="truncate font-mono text-[11px] text-text-3" title={r.path}>
-                        {r.path}
+                        {shown(r.path)}
                       </div>
                     </td>
                     <td className="px-3 py-2.5">

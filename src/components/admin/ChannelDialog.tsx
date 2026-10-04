@@ -31,7 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const field =
-  "w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-sm outline-none focus:border-accent";
+  "w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-sm text-text-1 outline-none focus:border-accent placeholder:text-text-3";
 
 export default function ChannelDialog({
   label,
