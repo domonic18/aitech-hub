@@ -40,7 +40,7 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
 
       {/* 状态卡 ×2(原型 kpi 双卡):Cookie 池(客户端,含导入)+ 网关健康(RSC) */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <CookiePoolCard keyReady={pool.keyReady} pools={pool.pools} />
+        <CookiePoolCard pools={pool.pools} />
         <div className="rounded-md border border-line bg-panel px-4 py-4">
           <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
             <svg className="ic text-accent" aria-hidden="true">

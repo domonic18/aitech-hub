@@ -2,11 +2,10 @@
  * 抖音 Cookie 池(M8,arch/02 §2「加密落库」):AES-256-GCM 密文存 crawl_source
  * 平台行 config.cookieJars,真相源在 PG;网关零密钥(每次请求携明文 jar)。
  * 池是平台级(非博主级):多博主共享身份池,风控冷却态在网关内存。
+ * 加密经 ../crypto/secret-box(主密钥 AUTH_SECRET 派生,批⑥去 env 化)。
  * 展示永远脱敏;日志禁打 cookie 值。
  */
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-
-import { env } from "../env";
+import { decryptSecret, encryptSecret } from "../crypto/secret-box";
 
 /** 可用性判定关键 cookie:ttwid 是抖音 Web 接口刚需(缺它拿到 200 空响应) */
 export const ESSENTIAL_COOKIE_KEY = "ttwid";
@@ -15,41 +14,18 @@ export const MIN_COOKIE_PAIRS = 3;
 
 export class CookiePoolError extends Error {}
 
-/** 密钥就绪(AES-GCM 32 字节 base64);未配置=导入禁用(不阻塞启动/采集其他渠道) */
-export function cookieKeyReady(): boolean {
-  return getKey() !== null;
-}
-
-function getKey(): Buffer | null {
-  if (!env.APP_COOKIE_ENC_KEY) return null;
-  const key = Buffer.from(env.APP_COOKIE_ENC_KEY, "base64");
-  return key.length === 32 ? key : null;
-}
-
 /** 加密 jar 池(JSON 数组 → AES-256-GCM;base64(iv|tag|ciphertext)) */
 export function encryptJars(jars: string[]): string {
-  const key = getKey();
-  if (!key) throw new CookiePoolError("APP_COOKIE_ENC_KEY 未配置或非 32 字节 base64");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(jars), "utf8"), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64");
+  return encryptSecret(JSON.stringify(jars));
 }
 
 /** 解密 jar 池;损坏/密钥轮换视为空池(不阻塞,等重新导入) */
 export function decryptJars(payload: unknown): string[] {
   if (typeof payload !== "string" || payload.length === 0) return [];
-  const key = getKey();
-  if (!key) return [];
+  const plaintext = decryptSecret(payload);
+  if (plaintext === null) return [];
   try {
-    const blob = Buffer.from(payload, "base64");
-    const iv = blob.subarray(0, 12);
-    const tag = blob.subarray(12, 28);
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(tag);
-    const parsed: unknown = JSON.parse(
-      Buffer.concat([decipher.update(blob.subarray(28)), decipher.final()]).toString("utf8"),
-    );
+    const parsed: unknown = JSON.parse(plaintext);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((j): j is string => typeof j === "string" && j.length > 0);
   } catch {

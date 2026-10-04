@@ -11,14 +11,7 @@ import { env } from "../env";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { socialPlatformRowName, VIDEO_PLATFORMS } from "./constants";
-import {
-  cookieKeyReady,
-  decryptJars,
-  encryptJars,
-  CookiePoolError,
-  maskJars,
-  mergeImportedJar,
-} from "./cookies";
+import { decryptJars, encryptJars, CookiePoolError, maskJars, mergeImportedJar } from "./cookies";
 import { BloggerAdminError } from "./bloggers-admin";
 
 /** 平台行占位端点(url 为必填列;平台行自身不做 fetch,值仅语义占位) */
@@ -64,16 +57,12 @@ export interface CookiePoolView {
 }
 
 /** Cookie 池状态(页顶状态卡 + GET /api/bloggers/cookies):只出脱敏视图 */
-export async function getCookiePoolView(): Promise<{
-  keyReady: boolean;
-  pools: CookiePoolView[];
-}> {
+export async function getCookiePoolView(): Promise<{ pools: CookiePoolView[] }> {
   const rows = await prisma.crawlSource.findMany({
     where: { type: "social-video" },
     orderBy: { id: "asc" },
   });
   return {
-    keyReady: cookieKeyReady(),
     pools: rows.map((r) => {
       const jars = decryptJars((r.config as { cookieJars?: unknown } | null)?.cookieJars);
       return {
@@ -98,16 +87,13 @@ export async function importCookieJar(
   platform: string,
   cookie: string,
 ): Promise<{ jarCount: number }> {
-  if (!cookieKeyReady()) {
-    throw new BloggerAdminError("cookie_key", "APP_COOKIE_ENC_KEY 未配置或非 32 字节 base64");
-  }
   const row = await ensurePlatformRow(platform);
   const existing = decryptJars((row.config as { cookieJars?: unknown } | null)?.cookieJars);
   let merged: string[];
   try {
     merged = mergeImportedJar(existing, cookie);
   } catch (e) {
-    if (e instanceof CookiePoolError) throw new BloggerAdminError("cookie_key", e.message);
+    if (e instanceof CookiePoolError) throw new BloggerAdminError("invalid", e.message);
     throw e;
   }
   const config = {

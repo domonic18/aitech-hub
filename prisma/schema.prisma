@@ -322,3 +322,71 @@ model Blocklist {
 
   @@map("blocklist")
 }
+
+// ── ai_(AI 服务治理域,M8 批⑥,arch/04 §4)──────────────────────────
+
+/// LLM/生图模型台账(多行):API Key AES-256-GCM 密文落 api_key_enc
+/// (主密钥由 AUTH_SECRET HKDF 派生,不入库),api_key_mask 冗余回显脱敏;
+/// 主力/备用定位不在本表——ai_task_binding 按角色持有(默认/备用由绑定派生)
+model AiModel {
+  id                Int       @id @default(autoincrement())
+  name              String    @db.VarChar(100)
+  provider          String    @db.VarChar(20) // 自由串(DeepSeek/智谱 AI/其他…)
+  protocol          String    @db.VarChar(20) // openai/anthropic/other,合法值应用层 Zod 管控
+  baseUrl           String?   @map("base_url") @db.VarChar(500)
+  modelId           String    @map("model_id") @db.VarChar(100)
+  apiKeyEnc         String?   @map("api_key_enc") @db.VarChar(500) // base64(iv|tag|ct);null=无鉴权(内网网关)
+  apiKeyMask        String?   @map("api_key_mask") @db.VarChar(20) // 脱敏回显冗余列,免解密
+  purposes          String[] // interpret/summarize/search/cover,合法值应用层 Zod 管控
+  supportsVision    Boolean   @default(false) @map("supports_vision")
+  concurrency       Int       @default(4)
+  timeoutSec        Int       @default(60) @map("timeout_sec")
+  enabled           Boolean   @default(true)
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  primaryBindings AiTaskBinding[] @relation("AiBindingPrimary")
+  backupBindings  AiTaskBinding[] @relation("AiBindingBackup")
+
+  @@map("ai_model")
+}
+
+/// 任务绑定(四角色一行,role 自然主键;首访 upsert 补齐):
+/// M9 消费方经 resolver 读本表解析主力→备用
+model AiTaskBinding {
+  role      String   @id @db.VarChar(20) // interpret/summarize/search/cover
+  primaryId Int?     @map("primary_id")
+  backupId  Int?     @map("backup_id")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  primary AiModel? @relation("AiBindingPrimary", fields: [primaryId], references: [id], onDelete: SetNull)
+  backup  AiModel? @relation("AiBindingBackup", fields: [backupId], references: [id], onDelete: SetNull)
+
+  @@map("ai_task_binding")
+}
+
+/// ASR 转写渠道(单例 id=1,get-or-create;apiKey 空=无鉴权)
+model AsrConfig {
+  id                Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  provider          String    @db.VarChar(50)
+  protocol          String    @db.VarChar(20) // openai/minimax/other,合法值应用层 Zod 管控
+  baseUrl           String?   @map("base_url") @db.VarChar(500)
+  modelId           String    @map("model_id") @db.VarChar(100)
+  apiKeyEnc         String?   @map("api_key_enc") @db.VarChar(500)
+  apiKeyMask        String?   @map("api_key_mask") @db.VarChar(20)
+  maxAudioSeconds   Int       @default(600) @map("max_audio_seconds")
+  hotwords          String[]  @default([])
+  enabled           Boolean   @default(false) // 默认关:先配置并测试通过后再开(消费方 M9)
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("asr_config")
+}

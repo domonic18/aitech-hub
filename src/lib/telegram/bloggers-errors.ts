@@ -9,7 +9,7 @@ export type BloggerAdminErrorCode =
   | "enabled" // 两步武装删除:启用中禁物理删
   | "disabled" // 博主或平台停用,拒绝手动采集
   | "gateway" // 网关不可达/业务失败
-  | "cookie_key"; // APP_COOKIE_ENC_KEY 未配置
+  | "invalid"; // Cookie 导入校验不过(缺 ttwid/键值对不足)
 
 /** 业务错误 → 路由按码映射 HTTP 状态(同 ChannelAdminError 模式) */
 export class BloggerAdminError extends Error {

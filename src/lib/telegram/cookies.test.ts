@@ -1,14 +1,12 @@
 /**
  * Cookie 池单测:AES-256-GCM roundtrip、导入校验(ttwid 防呆)、脱敏视图。
- * env 经 vi.mock 注入固定密钥(不触真实 .env)。
+ * env 经 vi.mock 注入固定 AUTH_SECRET(密钥箱主密钥派生源,不触真实 .env)。
  */
 import { describe, expect, it, vi } from "vitest";
 
-const TEST_KEY = vi.hoisted(() => Buffer.alloc(32, 9).toString("base64"));
-vi.mock("../env", () => ({ env: { APP_COOKIE_ENC_KEY: TEST_KEY } }));
+vi.mock("../env", () => ({ env: { AUTH_SECRET: "unit-test-auth-secret-0123456789" } }));
 
 import {
-  cookieKeyReady,
   decryptJars,
   encryptJars,
   CookiePoolError,
@@ -28,7 +26,6 @@ describe("AES-256-GCM roundtrip", () => {
     expect(c1).not.toBe(c2); // iv 随机
     expect(decryptJars(c1)).toEqual(jars);
     expect(decryptJars(c2)).toEqual(jars);
-    expect(cookieKeyReady()).toBe(true);
   });
 
   it("密钥不符/密文损坏 → 空池(不阻塞,等重新导入)", () => {

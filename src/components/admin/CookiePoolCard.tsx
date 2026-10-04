@@ -9,13 +9,7 @@ import { useState } from "react";
 
 import type { CookiePoolView } from "@/lib/telegram/social-platform-admin";
 
-export default function CookiePoolCard({
-  keyReady,
-  pools,
-}: {
-  keyReady: boolean;
-  pools: CookiePoolView[];
-}) {
+export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,9 +83,7 @@ export default function CookiePoolCard({
           <button
             type="button"
             onClick={() => setOpen(true)}
-            disabled={!keyReady}
-            title={keyReady ? "" : "APP_COOKIE_ENC_KEY 未配置,导入禁用"}
-            className="cursor-pointer rounded-sm border border-line px-2 py-1 text-[11px] text-text-2 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="cursor-pointer rounded-sm border border-line px-2 py-1 text-[11px] text-text-2 hover:bg-panel-2"
           >
             导入
           </button>
@@ -119,9 +111,12 @@ export default function CookiePoolCard({
           ? pool!.masked.map((m) => `ttwid:${m.ttwidPrefix}…`).join("  ")
           : "池为空,采集将跳过(待导入)"}
       </div>
-      {!keyReady && (
-        <div className="mt-1.5 text-[11px] text-amber">APP_COOKIE_ENC_KEY 未配置,导入禁用</div>
-      )}
+      <div
+        className="mt-1.5 text-[11px] text-text-3"
+        title="AUTH_SECRET 轮换会使已存密文失效,需重导 Cookie"
+      >
+        密钥来源:AUTH_SECRET 派生(AES-256-GCM)
+      </div>
       {notice && <div className="mt-1.5 text-[11px] text-green">{notice}</div>}
 
       {open && (
