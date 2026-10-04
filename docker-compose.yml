@@ -1,4 +1,4 @@
-# dev 依赖:仅 postgres/redis,应用本地跑保热更(arch/00-overview §6)
+# dev 依赖:postgres/redis + douyin-gateway(M8,按需 --profile douyin)
 # 端口避让:本机 5432/5433(agent-eval、ai-invest)与 6379(ai-invest)已占
 # 持久化:全部收敛到 ./workspace/(PG 数据库;dev redis 无持久化,重启即失)
 services:
@@ -29,3 +29,23 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  # 抖音数据网关(M8):签名 sidecar + 数据端点;按需启用,不影响日常 pg/redis 起
+  # 停:docker compose --profile douyin up -d douyin-gateway;冒烟 curl 127.0.0.1:8010/health
+  douyin-gateway:
+    build: { context: ./douyin-gateway }
+    container_name: aitech_hub_douyin_gateway
+    profiles: ["douyin"]
+    environment:
+      TZ: Asia/Shanghai
+      DOUYIN_SIGNER_WARM_SLOTS: 1 # dev 单槽位足够
+    ports:
+      - "127.0.0.1:8010:8010" # 仅回环,便于本机 curl 冒烟
+    tmpfs:
+      - /tmp/playwright-profiles
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8010/health')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

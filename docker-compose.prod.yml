@@ -92,6 +92,25 @@ services:
     <<: *restart
     logging: *logging
 
+  # 抖音数据网关(M8):签名 + 数据端点;仅内网(无 ports,worker 经服务名访问)
+  # chromium warm 页吃内存,prod 钉 warm_slots=1 压内存(2C4G 预算)
+  douyin-gateway:
+    image: ${GATEWAY_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub-gateway:latest}
+    environment:
+      TZ: Asia/Shanghai
+      DOUYIN_SIGNER_WARM_SLOTS: 1
+    tmpfs:
+      - /tmp/playwright-profiles # chromium Profile 写 tmpfs,避免容器层写放大
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8010/health')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s # 首启含 chromium 拉起
+    mem_limit: 1g
+    <<: *restart
+    logging: *logging
+
   postgres:
     image: postgres:16-alpine
     environment:

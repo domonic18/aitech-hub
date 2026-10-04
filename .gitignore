@@ -47,3 +47,8 @@ scripts/migrate-wp/artifacts/
 
 # Next.js 自动生成,不追踪(新克隆由 next dev/build 生成;typecheck 实测不依赖)
 /next-env.d.ts
+
+# douyin-gateway(Python venv 与字节码;镜像内由 pip 现装)
+/douyin-gateway/.venv/
+__pycache__/
+*.pyc
