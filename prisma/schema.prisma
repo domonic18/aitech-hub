@@ -265,12 +265,20 @@ model Telegram {
   status      String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
   filterHit   String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
   mediaType   String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
-  // 视频字段组(media_type=video;解读后批——不设 transcript/play_url,版权红线 arch/02 §3.2)
+  // 视频字段组(media_type=video;解读列组见下——不设 transcript/play_url,版权红线 arch/02 §3.2)
   videoPlatform   String? @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
   videoBlogger    String? @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
   videoCoverUrl   String? @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
   videoDuration   Int?    @map("video_duration") // 秒
   videoEngagement Json?   @map("video_engagement") // {play,like,comment}
+  // AI 解读列组(M9,interpreter 队列产物):仅持久化分析结论(topic/summary/points),
+  // 转写文本是输入不是资产、play_url 不落库(临时音视频文件判读即删)
+  aiStatus    String?   @map("ai_status") @db.VarChar(20) // null=未解读/pending/processing/done/missing_transcript/failed
+  aiTopic     String?   @map("ai_topic") @db.VarChar(50)
+  aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
+  aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
+  aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
+  lastAiError String?   @map("last_ai_error") @db.VarChar(500)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)

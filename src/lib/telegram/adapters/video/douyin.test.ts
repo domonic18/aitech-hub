@@ -55,7 +55,8 @@ describe("douyinAdapter.fetchRecentVideos", () => {
     expect(it.durationSeconds).toBe(95);
     expect(it.engagement).toEqual({ play: null, like: 120, comment: 34 });
     expect(it.topicTags).toEqual(["AI"]);
-    expect(Object.keys(it)).not.toContain("playUrl"); // 版权红线:play_url 不出适配器
+    // playUrl 透传给解读管道(job data 过境即焚);落库禁令在 ingest 层断言(版权红线)
+    expect(it.playUrl).toBe("https://v.douyinvod.com/x");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://gateway.test:8010/posts",

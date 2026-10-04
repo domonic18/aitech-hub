@@ -2,15 +2,16 @@
  * 视频采集编排(M8 批②,arch/02 §3.2 前置批):
  * 平台行取 jar 池 → 适配器 listing → 增量地板(publishedAt > last_post_at,
  * 首采回填窗口限条)→ content_hash 去重 → 屏蔽词/启发式 → 视频 shell 落库
- * (media_type=video,降级可见)→ 推进博主地板与调度。
+ * (media_type=video,降级可见)→ 解读就绪则入 interpreter 队列(M9)→ 推进博主地板与调度。
  * 失败归因:网关不可达=基础设施(不计博主连续失败);上游风控/结构=计失败。
- * 无水印 play_url 网关虽透出,本层不落库不下载(版权红线,解读后批)。
+ * 无水印 play_url 不落库,仅经 interpret job data 过境即焚(版权红线 arch/02 §3.2)。
  */
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { decryptJars } from "./cookies";
+import { enqueueInterpret, isInterpretReady } from "./interpret-video";
 import {
   SOCIAL_BACKFILL_DAYS,
   SOCIAL_BACKFILL_MAX_ITEMS,
@@ -67,13 +68,15 @@ async function loadBlocklistWords(): Promise<BlocklistWord[]> {
   return words.map((w) => ({ word: w.word, scope: w.scope as BlocklistScope }));
 }
 
-/** 单条视频入库:去重 → 过滤 → 摘要 → shell 落库(命中过滤也落库 hidden 供观测) */
+/** 单条视频入库:去重 → 过滤 → 摘要 → shell 落库(命中过滤也落库 hidden 供观测)→ 可见条入解读队列 */
 async function ingestVideoItem(
   platformRowId: number,
   nickname: string,
   platform: string,
   item: VideoItem,
   words: readonly BlocklistWord[],
+  secUid: string,
+  interpretReady: boolean,
 ): Promise<"inserted" | "filtered" | "duplicated"> {
   const url = canonicalUrl(item.url);
   const title = item.title.slice(0, 500);
@@ -90,7 +93,7 @@ async function ingestVideoItem(
     matchBlocklist(title, summary, words) ?? matchHeuristics(title, item.caption ?? "");
 
   try {
-    await prisma.telegram.create({
+    const created = await prisma.telegram.create({
       data: {
         sourceId: platformRowId,
         title: title || null,
@@ -109,7 +112,27 @@ async function ingestVideoItem(
       },
       select: { id: true },
     });
-    return hit ? "filtered" : "inserted";
+    if (hit) return "filtered";
+    // 可见新条 + 解读就绪 + 网关透出直链 → 入队解读(playUrl 仅经 job data 过境,禁落库;
+    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)
+    if (interpretReady && item.playUrl) {
+      try {
+        await enqueueInterpret({
+          telegramId: created.id.toString(),
+          videoId: item.videoId,
+          playUrl: item.playUrl,
+          platform,
+          secUid,
+        });
+      } catch (err) {
+        logger.warn({
+          event: "crawler.video.interpret_enqueue_failed",
+          telegramId: created.id.toString(),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return "inserted";
   } catch (err) {
     if (isP2002(err)) return "duplicated"; // 并发轮次抢先落库
     throw err;
@@ -209,6 +232,8 @@ export async function crawlVideoAccount(
       .slice(0, cap);
 
     const words = await loadBlocklistWords();
+    // 解读就绪整轮 resolve 一次(ASR enabled + interpret 绑定,省逐条双查)
+    const interpretReady = await isInterpretReady();
     for (const item of candidates) {
       outcome[
         await ingestVideoItem(
@@ -217,6 +242,8 @@ export async function crawlVideoAccount(
           account.platform,
           item,
           words,
+          account.secUid,
+          interpretReady,
         )
       ] += 1;
     }

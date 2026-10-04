@@ -17,6 +17,8 @@ export const QUEUE_MEDIA_AUDIT = "media-audit";
 export const QUEUE_STATS = "stats";
 /** 电报流采集(M7:tick 扫到期来源 → 逐源 crawl job,单源失败隔离;arch/02 §3) */
 export const QUEUE_CRAWLER = "crawler";
+/** 视频解读(M9:下载→抽轨→ASR→LLM 概括;并发 1——ffmpeg 是 CPU 峰值,arch/02 §3.2) */
+export const QUEUE_INTERPRETER = "interpreter";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -24,6 +26,7 @@ export const QUEUE_NAMES = [
   QUEUE_MEDIA_AUDIT,
   QUEUE_STATS,
   QUEUE_CRAWLER,
+  QUEUE_INTERPRETER,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 

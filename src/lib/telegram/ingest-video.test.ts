@@ -1,7 +1,8 @@
 /**
  * 视频采集编排单测:db/queue/logger/cookies/适配器/redis 全打桩,
  * 验编排语义——增量地板、首采回填窗口、去重、过滤、失败归因(风控 vs 网关不可达)、
- * 手动回填(批⑧:30 天窗/不设条帽/maxPages 深扫/地板推进不回退)。
+ * 手动回填(批⑧:30 天窗/不设条帽/maxPages 深扫/地板推进不回退)、
+ * 解读入队钩子(M9:可见+就绪+直链才入队,playUrl 不落库红线)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +35,16 @@ vi.mock("../logger", () => ({
 
 const cookiesMock = vi.hoisted(() => ({ decryptJars: vi.fn((): string[] => []) }));
 vi.mock("./cookies", () => ({ decryptJars: cookiesMock.decryptJars }));
+
+// 解读模块整桩(管道本体不进本测试面;默认未就绪使既有用例零入队)
+const interpretMock = vi.hoisted(() => ({
+  isInterpretReady: vi.fn(async (): Promise<boolean> => false),
+  enqueueInterpret: vi.fn<(data: unknown) => Promise<void>>(async () => undefined),
+}));
+vi.mock("./interpret-video", () => ({
+  isInterpretReady: interpretMock.isInterpretReady,
+  enqueueInterpret: interpretMock.enqueueInterpret,
+}));
 
 // 真实 rate-limit + 内存 redis(照 rate-limit.test.ts 口径)
 const quotaStore = vi.hoisted(() => new Map<string, string>());
@@ -84,7 +95,12 @@ function makeAccount(over: Record<string, unknown> = {}) {
   };
 }
 
-function videoItem(i: number, publishedAt: Date, caption = `视频 ${i} 描述`) {
+function videoItem(
+  i: number,
+  publishedAt: Date,
+  caption = `视频 ${i} 描述`,
+  playUrl: string | null = null,
+) {
   return {
     videoId: `vid-${i}`,
     title: caption.split("\n")[0]!,
@@ -95,6 +111,7 @@ function videoItem(i: number, publishedAt: Date, caption = `视频 ${i} 描述`)
     durationSeconds: 60,
     engagement: { play: null, like: 1, comment: 2 },
     topicTags: [],
+    playUrl,
   };
 }
 
@@ -119,6 +136,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   quotaStore.clear();
   cookiesMock.decryptJars.mockReturnValue(["ttwid=a; b=1; c=2"]);
+  interpretMock.isInterpretReady.mockResolvedValue(false);
+  interpretMock.enqueueInterpret.mockResolvedValue(undefined);
   prismaMock.telegram.findUnique.mockResolvedValue(null);
   prismaMock.telegram.create.mockResolvedValue({ id: 1 });
   prismaMock.socialAccount.update.mockResolvedValue({});
@@ -237,6 +256,69 @@ describe("crawlVideoAccount 增量与去重", () => {
         }),
       }),
     );
+  });
+});
+
+describe("解读入队钩子(M9)", () => {
+  const PLAY_URL = "https://v.douyinvod.com/preview.mp4";
+
+  it("可见条 + 就绪 + 直链 → 入队(data 带 telegramId/videoId/playUrl/secUid)", async () => {
+    interpretMock.isInterpretReady.mockResolvedValue(true);
+    fetchVideosMock.mockResolvedValue([
+      videoItem(1, new Date(Date.now() - HOUR), "视频 1 描述", PLAY_URL),
+    ]);
+    const outcome = await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) }));
+    expect(outcome.inserted).toBe(1);
+    expect(interpretMock.enqueueInterpret).toHaveBeenCalledWith({
+      telegramId: "1",
+      videoId: "vid-1",
+      playUrl: PLAY_URL,
+      platform: "douyin",
+      secUid: "sec-abc",
+    });
+  });
+
+  it("版权红线:落库 data 永不含 playUrl(适配器透传仅到 job data)", async () => {
+    interpretMock.isInterpretReady.mockResolvedValue(true);
+    fetchVideosMock.mockResolvedValue([
+      videoItem(1, new Date(Date.now() - HOUR), "视频 1 描述", PLAY_URL),
+    ]);
+    await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) }));
+    const createData = (
+      prismaMock.telegram.create.mock.calls.at(-1) as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(createData).not.toHaveProperty("playUrl");
+    expect(JSON.stringify(createData)).not.toContain("douyinvod");
+  });
+
+  it("未就绪 / 无直链 / filtered / duplicated 均不入队", async () => {
+    fetchVideosMock.mockResolvedValue([
+      videoItem(1, new Date(Date.now() - HOUR), "视频 1 描述", PLAY_URL),
+      videoItem(2, new Date(Date.now() - 2 * HOUR), "视频 2 描述", null),
+    ]);
+    await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) })); // 默认未就绪
+    expect(interpretMock.enqueueInterpret).not.toHaveBeenCalled();
+
+    interpretMock.isInterpretReady.mockResolvedValue(true);
+    await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) })); // 第 2 条无直链
+    expect(interpretMock.enqueueInterpret).toHaveBeenCalledTimes(1);
+
+    prismaMock.blocklist.findMany.mockResolvedValue([{ word: "广告", scope: "all" }]);
+    fetchVideosMock.mockResolvedValue([
+      videoItem(3, new Date(Date.now() - HOUR), "推广一条广告合作", PLAY_URL),
+    ]);
+    await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) })); // filtered 不入队
+    expect(interpretMock.enqueueInterpret).toHaveBeenCalledTimes(1);
+  });
+
+  it("入队失败不拖垮采集轮:条目照常 inserted,仅 warn", async () => {
+    interpretMock.isInterpretReady.mockResolvedValue(true);
+    interpretMock.enqueueInterpret.mockRejectedValue(new Error("redis down"));
+    fetchVideosMock.mockResolvedValue([
+      videoItem(1, new Date(Date.now() - HOUR), "视频 1 描述", PLAY_URL),
+    ]);
+    const outcome = await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) }));
+    expect(outcome.inserted).toBe(1);
   });
 });
 

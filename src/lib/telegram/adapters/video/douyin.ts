@@ -47,6 +47,8 @@ function toVideoItem(raw: GatewayVideo): VideoItem | null {
       comment: raw.comment_count ?? null,
     },
     topicTags: raw.topic_tags,
+    // 网关透出的无水印直链仅在此过境(解读管道消费),落库禁令在 ingest 层钉
+    playUrl: raw.play_url ?? null,
   };
 }
 
