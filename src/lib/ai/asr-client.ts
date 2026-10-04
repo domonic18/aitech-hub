@@ -4,7 +4,7 @@
  * 音频字节仅以请求体过境,本层不落盘不留存(临时文件即删在 processor)。
  * 错误 kind:unsupported(协议/配置)/http(网络+HTTP 状态)/business(2xx 业务错)/timeout。
  */
-import { ASR_PROTOCOL_MINIMAX, ASR_PROTOCOL_OPENAI } from "./constants";
+import { AI_ERR_DETAIL_MAX, ASR_PROTOCOL_MINIMAX, ASR_PROTOCOL_OPENAI } from "./constants";
 import { AiClientError } from "./errors";
 
 export interface TranscribeInput {
@@ -64,7 +64,7 @@ export async function transcribeAudio(input: TranscribeInput): Promise<string> {
 
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    const detail = body === null ? "" : `: ${JSON.stringify(body).slice(0, 200)}`;
+    const detail = body === null ? "" : `: ${JSON.stringify(body).slice(0, AI_ERR_DETAIL_MAX)}`;
     throw new AiClientError("http", `HTTP ${res.status}${detail}`);
   }
   // minimax 业务错包装在 2xx 里:base_resp.status_code != 0 即失败(probe 同判定)

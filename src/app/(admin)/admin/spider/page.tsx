@@ -6,6 +6,7 @@
 import Link from "next/link";
 
 import { requireAdminPage } from "@/lib/auth/guard";
+import { formatCnTime } from "@/lib/datetime";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import {
   getCrawlerQueueSnapshot,
@@ -31,13 +32,9 @@ function heatStyle(count: number, max: number): React.CSSProperties {
   return { background: HEAT_COLORS[level]! };
 }
 
+/** 空值展示「—」的 HH:mm(formatCnTime 同口径) */
 function hhmm(at: Date | null): string {
-  if (!at) return "—";
-  return new Intl.DateTimeFormat("sv-SE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Shanghai",
-  }).format(at);
+  return at === null ? "—" : formatCnTime(at);
 }
 
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {

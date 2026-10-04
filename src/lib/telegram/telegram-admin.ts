@@ -12,11 +12,10 @@ import { prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
 import {
-  TELEGRAM_AI_DONE,
   TELEGRAM_AI_FAILED,
-  TELEGRAM_AI_MISSING_TRANSCRIPT,
   TELEGRAM_AI_PENDING,
   TELEGRAM_AI_PROCESSING,
+  TELEGRAM_AI_TERMINAL,
   TELEGRAM_STATUS_ARCHIVED,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
@@ -49,7 +48,7 @@ export function aiFilterWhere(
     case "working":
       return { aiStatus: { in: [TELEGRAM_AI_PENDING, TELEGRAM_AI_PROCESSING] } };
     case "done":
-      return { aiStatus: { in: [TELEGRAM_AI_DONE, TELEGRAM_AI_MISSING_TRANSCRIPT] } };
+      return { aiStatus: { in: [...TELEGRAM_AI_TERMINAL] } };
     case "failed":
       return { aiStatus: TELEGRAM_AI_FAILED };
   }

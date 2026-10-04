@@ -4,7 +4,7 @@
  * openai 强制 response_format json_object;网关 400 抱怨该字段时剥掉重发一次
  * (兼容仅透传 chat 的中转网关)。返回 assistant 原文,JSON 提炼在 interpret-result。
  */
-import { AI_PROTOCOL_ANTHROPIC, AI_PROTOCOL_OPENAI } from "./constants";
+import { AI_ERR_DETAIL_MAX, AI_PROTOCOL_ANTHROPIC, AI_PROTOCOL_OPENAI } from "./constants";
 import { AiClientError } from "./errors";
 
 export interface ChatJsonInput {
@@ -51,7 +51,7 @@ async function post(
 function httpError(status: number, bodyText: string): AiClientError {
   return new AiClientError(
     "http",
-    `HTTP ${status}${bodyText ? `: ${bodyText.slice(0, 200)}` : ""}`,
+    `HTTP ${status}${bodyText ? `: ${bodyText.slice(0, AI_ERR_DETAIL_MAX)}` : ""}`,
   );
 }
 

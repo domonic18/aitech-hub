@@ -5,16 +5,15 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { AiModelCreateSchema, deleteAiModel, updateAiModel } from "@/lib/ai/models-admin";
+import { AI_CONFIG_PAT_DENY } from "@/lib/ai/constants";
 
 export const dynamic = "force-dynamic";
-
-const PAT_DENY = "PAT must not manage AI service config";
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
   if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
@@ -33,7 +32,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
   if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");

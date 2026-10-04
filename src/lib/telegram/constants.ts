@@ -41,6 +41,13 @@ export function socialPlatformRowName(platform: string): string {
   return `social:${platform}`;
 }
 
+/** 平台展示名(feed-view 投影角标用;未知平台回退原值) */
+export const VIDEO_PLATFORM_LABELS: Record<string, string> = {
+  [VIDEO_PLATFORM_DOUYIN]: "抖音",
+  [VIDEO_PLATFORM_XHS]: "小红书",
+  [VIDEO_PLATFORM_BILIBILI]: "B站",
+};
+
 /** 博主轮询间隔下限(arch/02 §3.2:listing 轮询 ≥120min) */
 export const SOCIAL_CRAWL_INTERVAL_MIN = 120;
 /** 博主连续失败阈值(语义同渠道侧 ≥3 → 观测降级;写 last_error 供博主台账) */
@@ -74,6 +81,21 @@ export const TELEGRAM_AI_MISSING_TRANSCRIPT = "missing_transcript";
 export const TELEGRAM_AI_FAILED = "failed";
 export const TELEGRAM_AI_TERMINAL = [TELEGRAM_AI_DONE, TELEGRAM_AI_MISSING_TRANSCRIPT] as const;
 
+/** 解读态展示名(治理台徽章/统计共用;null=未解读由 UI 兜底,不入表) */
+export const AI_STATUS_LABELS: Record<string, string> = {
+  [TELEGRAM_AI_PENDING]: "排队中",
+  [TELEGRAM_AI_PROCESSING]: "解读中",
+  [TELEGRAM_AI_DONE]: "已解读",
+  [TELEGRAM_AI_MISSING_TRANSCRIPT]: "无转写 · 文案概括",
+  [TELEGRAM_AI_FAILED]: "失败",
+};
+
+/** lastAiError 落库截断宽度(= schema VarChar(500),写入侧唯一出处) */
+export const TELEGRAM_AI_ERROR_MAX = 500;
+
+/** 电报条目 id 合法形态(BigInt ≤ 19 位;治理 API 路由段唯一校验出处) */
+export const TELEGRAM_ID_RE = /^\d{1,19}$/;
+
 export const BLOCKLIST_SCOPE_TITLE = "title";
 export const BLOCKLIST_SCOPE_SUMMARY = "summary";
 export const BLOCKLIST_SCOPE_ALL = "all";
@@ -89,3 +111,18 @@ export const CRAWL_MAX_CONSECUTIVE_FAILS = 3;
 
 /** 单来源单轮入库上限(防异常 feed 撑爆单轮;适配器返回再多也截断) */
 export const CRAWL_MAX_ITEMS_PER_RUN = 50;
+
+// ── 首页 LIVE 带条数(M10 批②;site_config band.item_count 的合法域) ──────────
+
+/** 配置缺行/构建期无库/库值非数时的兜底(SSR 初值与 60s 轮询同源) */
+export const DEFAULT_BAND_ITEM_COUNT = 12;
+export const BAND_ITEM_COUNT_MIN = 1;
+export const BAND_ITEM_COUNT_MAX = 50;
+
+/** 越界/非数回落默认值后 clamp 到合法域(配置读侧与带取数共用,防两侧口径漂移) */
+export function clampBandItemCount(n: number): number {
+  return Math.min(
+    Math.max(Math.trunc(n) || DEFAULT_BAND_ITEM_COUNT, BAND_ITEM_COUNT_MIN),
+    BAND_ITEM_COUNT_MAX,
+  );
+}

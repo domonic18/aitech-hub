@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { TELEGRAM_ID_RE } from "@/lib/telegram/constants";
 import { TelegramInterpretError, triggerTelegramInterpret } from "@/lib/telegram/telegram-admin";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export async function POST(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  if (!TELEGRAM_ID_RE.test(id)) return apiEnvelope(400, "invalid id");
   try {
     const r = await triggerTelegramInterpret(BigInt(id));
     return apiEnvelope(0, "enqueued", r);

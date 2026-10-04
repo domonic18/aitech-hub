@@ -3,10 +3,12 @@
  * 静态段优先于 [id] 解析(先例 api/telegram/public);cookie 值只写不读,日志禁打。
  */
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { BloggerAdminError } from "@/lib/telegram/bloggers-admin";
+import { VIDEO_PLATFORMS } from "@/lib/telegram/constants";
 import {
   clearCookieJars,
   CookieImportSchema,
@@ -17,6 +19,9 @@ import {
 export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage bloggers";
+
+/** DELETE ?platform= 白名单(与 POST 导入同源 VIDEO_PLATFORMS) */
+const VIDEO_PLATFORM_SCHEMA = z.enum(VIDEO_PLATFORMS);
 
 function mapError(e: BloggerAdminError): NextResponse {
   return apiEnvelope(e.code === "not_found" ? 404 : 400, e.message);
@@ -45,12 +50,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
-  const platform = req.nextUrl.searchParams.get("platform") ?? "";
-  if (!(platform === "douyin" || platform === "xhs" || platform === "bilibili")) {
-    return apiEnvelope(400, "platform 不合法");
-  }
+  const platform = VIDEO_PLATFORM_SCHEMA.safeParse(req.nextUrl.searchParams.get("platform"));
+  if (!platform.success) return apiEnvelope(400, "platform 不合法");
   try {
-    await clearCookieJars(platform);
+    await clearCookieJars(platform.data);
     return apiEnvelope(0, "cleared");
   } catch (e) {
     if (e instanceof BloggerAdminError) return mapError(e);

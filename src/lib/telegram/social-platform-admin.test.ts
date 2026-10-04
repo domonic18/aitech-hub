@@ -9,13 +9,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const envMock = vi.hoisted(() => ({ env: { DOUYIN_GATEWAY_URL: "http://gateway.test:8010" } }));
 vi.mock("../env", () => envMock);
-vi.mock("../db", () => ({ prisma: {} }));
+vi.mock("../db", () => ({
+  prisma: {},
+  isP2002: (e: unknown) => (e as { code?: string }).code === "P2002",
+}));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("./cookies", () => ({
-  decryptJars: vi.fn(() => []),
+  jarsFromConfig: vi.fn(() => []),
   encryptJars: vi.fn(),
   maskJars: vi.fn(() => []),
   mergeImportedJar: vi.fn(),
+  CONFIG_KEY_JARS: "cookieJars",
   clearJarsInConfig: vi.fn((config: unknown) =>
     config !== null && typeof config === "object"
       ? Object.fromEntries(

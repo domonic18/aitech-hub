@@ -10,7 +10,12 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn<(args?: unknown) => Promise<unknown>>(async () => []),
   },
 }));
-vi.mock("../db", () => ({ prisma: prismaMock }));
+vi.mock("../db", () => ({
+  prisma: prismaMock,
+  // 镜像真实 P2002 判定(本体由 db 单测/使用方测试钉死)
+  isP2002: (e: unknown) =>
+    typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002",
+}));
 
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 

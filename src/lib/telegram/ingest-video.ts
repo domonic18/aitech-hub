@@ -10,7 +10,7 @@ import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 
-import { decryptJars } from "./cookies";
+import { jarsFromConfig } from "./cookies";
 import { isInterpretReady, markPendingAndEnqueue } from "./interpret-video";
 import {
   SOCIAL_BACKFILL_DAYS,
@@ -39,9 +39,6 @@ import {
 const ADAPTERS: Partial<Record<VideoPlatform, VideoAdapter>> = {
   douyin: douyinAdapter,
 };
-
-/** 平台行 config 的形状(Cookie 池密文载体) */
-const CONFIG_KEY_JARS = "cookieJars";
 
 export interface VideoCrawlOutcome {
   accountId: number;
@@ -190,8 +187,7 @@ export async function crawlVideoAccount(
   }
 
   // Cookie 池:未配置密钥或池为空是运营缺口——记 last_error 但不计失败,导入后自然恢复
-  const config = account.platformRow.config as { cookieJars?: unknown } | null;
-  const jars = decryptJars(config?.[CONFIG_KEY_JARS]);
+  const jars = jarsFromConfig(account.platformRow.config);
   if (jars.length === 0) {
     outcome.skippedNoCookies = true;
     await advance({ lastError: "Cookie 池为空(待导入)" });

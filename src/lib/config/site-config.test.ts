@@ -12,7 +12,7 @@ const prismaMock = vi.hoisted(() => ({
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
 
-import { DEFAULT_BAND_ITEM_COUNT } from "../telegram/feed-view";
+import { DEFAULT_BAND_ITEM_COUNT } from "../telegram/constants";
 import { SITE_CONFIG_KEYS, getBandItemCount, setBandItemCount } from "./site-config";
 
 describe("getBandItemCount(M10 后台可配)", () => {

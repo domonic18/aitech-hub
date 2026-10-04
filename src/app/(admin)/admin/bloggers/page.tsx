@@ -10,7 +10,7 @@ import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
 import { fetchGatewayHealth, getCookiePoolView } from "@/lib/telegram/social-platform-admin";
-import { SOCIAL_CRAWL_INTERVAL_MIN } from "@/lib/telegram/constants";
+import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "@/lib/telegram/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ function secUidShort(secUid: string): string {
 
 /** 作品入口链接:抖音主页由 sec_uid 派生(库内不存主页 URL);其余平台未上线不出链接 */
 function profileUrl(b: { platform: string; secUid: string }): string | null {
-  return b.platform === "douyin" ? `https://www.douyin.com/user/${b.secUid}` : null;
+  return b.platform === VIDEO_PLATFORM_DOUYIN ? `https://www.douyin.com/user/${b.secUid}` : null;
 }
 
 export default async function AdminBloggersPage(): Promise<React.ReactElement> {

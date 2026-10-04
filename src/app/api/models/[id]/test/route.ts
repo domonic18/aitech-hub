@@ -9,16 +9,15 @@ import { apiEnvelope } from "@/lib/http/response";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { getModelForTest, recordModelTest } from "@/lib/ai/models-admin";
 import { probeLlm } from "@/lib/ai/probe";
+import { AI_CONFIG_PAT_DENY } from "@/lib/ai/constants";
 
 export const dynamic = "force-dynamic";
-
-const PAT_DENY = "PAT must not manage AI service config";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
   if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");

@@ -8,6 +8,7 @@ import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { formatCnDate } from "../datetime";
 import { getQueue, QUEUE_CRAWLER, QUEUE_INTERPRETER } from "../queue";
+import { TELEGRAM_AI_TERMINAL, TELEGRAM_MEDIA_VIDEO } from "./constants";
 
 const TICK_SCHEDULER_ID = "crawler-tick";
 
@@ -61,9 +62,6 @@ export async function getInterpreterQueueSnapshot(): Promise<{
     "failed",
     "delayed",
   )) as Record<string, number>;
-  const todayDone = await prisma.telegram.count({
-    where: { aiStatus: { in: ["done", "missing_transcript"] }, aiRanAt: { gte: todayStart() } },
-  });
   return {
     counts: {
       waiting: counts.waiting ?? 0,
@@ -72,16 +70,26 @@ export async function getInterpreterQueueSnapshot(): Promise<{
       failed: counts.failed ?? 0,
       delayed: counts.delayed ?? 0,
     },
-    todayDone,
+    todayDone: await countTodayInterpreted(),
     dailyMax: await getRoleDailyMax(AI_PURPOSE_INTERPRET),
   };
 }
 
-/** 服务器本地自然日零点(与 interpret-video countTodayInterpreted 同口径) */
+/** 服务器本地自然日零点(与 interpret-video 配额计数同口径) */
 function todayStart(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+/** 今日已解读数(终态口径单点:观测台与配额判定共用,防两侧口径漂移) */
+export async function countTodayInterpreted(): Promise<number> {
+  return prisma.telegram.count({
+    where: {
+      aiRanAt: { gte: todayStart() },
+      aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
+    },
+  });
 }
 
 /** 采集日历:近 N 天入库量(含 hidden,按 created_at 北京时区),缺日补零 */
@@ -145,9 +153,11 @@ export async function getVideoObservation(): Promise<{
   const [bloggerCount, enabledCount, videoCount24h, last] = await Promise.all([
     prisma.socialAccount.count(),
     prisma.socialAccount.count({ where: { enabled: true } }),
-    prisma.telegram.count({ where: { mediaType: "video", createdAt: { gte: since } } }),
+    prisma.telegram.count({
+      where: { mediaType: TELEGRAM_MEDIA_VIDEO, createdAt: { gte: since } },
+    }),
     prisma.telegram.findFirst({
-      where: { mediaType: "video" },
+      where: { mediaType: TELEGRAM_MEDIA_VIDEO },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),

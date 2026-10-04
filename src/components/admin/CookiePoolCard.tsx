@@ -7,6 +7,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { VIDEO_PLATFORM_DOUYIN } from "@/lib/telegram/constants";
 import type { CookiePoolView } from "@/lib/telegram/social-platform-admin";
 
 export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
@@ -30,7 +31,7 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
       const res = await fetch("/api/bloggers/cookies", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ platform: "douyin", cookie: cookie.trim() }),
+        body: JSON.stringify({ platform: VIDEO_PLATFORM_DOUYIN, cookie: cookie.trim() }),
       });
       const body = (await res.json()) as {
         code: number;
@@ -55,7 +56,9 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
     if (!confirm("确认清空抖音 Cookie 池?采集将跳过并提示「Cookie 池为空」。")) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/bloggers/cookies?platform=douyin", { method: "DELETE" });
+      const res = await fetch(`/api/bloggers/cookies?platform=${VIDEO_PLATFORM_DOUYIN}`, {
+        method: "DELETE",
+      });
       const body = (await res.json()) as { code: number; message: string };
       if (body.code !== 0) {
         alert(`清空失败:${body.message}`);
@@ -67,7 +70,7 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
     }
   }
 
-  const pool = pools.find((p) => p.platform === "douyin");
+  const pool = pools.find((p) => p.platform === VIDEO_PLATFORM_DOUYIN);
   const jarCount = pool?.jarCount ?? 0;
 
   return (

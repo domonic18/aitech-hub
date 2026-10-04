@@ -9,13 +9,12 @@ import { apiEnvelope } from "@/lib/http/response";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { getAsrForTest, recordAsrTest } from "@/lib/ai/asr-admin";
 import { probeAsr } from "@/lib/ai/probe";
+import { AI_CONFIG_PAT_DENY } from "@/lib/ai/constants";
 
 export const dynamic = "force-dynamic";
 
-const PAT_DENY = "PAT must not manage AI service config";
-
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   try {
     const target = await getAsrForTest();

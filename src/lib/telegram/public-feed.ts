@@ -6,16 +6,15 @@
 import { prisma } from "../db";
 import { statsDay } from "../datetime";
 import { prerenderSafe } from "../prerender-safe";
+import { clampBandItemCount, DEFAULT_BAND_ITEM_COUNT } from "./constants";
 
 import {
-  DEFAULT_BAND_ITEM_COUNT,
   toEngagement,
   toVideoAi,
   type FeedMediaFilter,
   type PublicTelegramItem,
 } from "./feed-view";
 
-export { DEFAULT_BAND_ITEM_COUNT } from "./feed-view";
 export type { PublicTelegramItem } from "./feed-view";
 
 export const PUBLIC_FEED_PAGE_SIZE = 30;
@@ -48,7 +47,7 @@ export function mergeBandItems(
 /** 首页 LIVE 带取数:混排前 N + 最新视频保底(两查询并行,合并规则闭合)。
  * N 由调用方传后台配置值(site-config.getBandItemCount);缺省用默认 12。 */
 export async function listBandFeed(opts: { limit?: number } = {}): Promise<BandFeedPage> {
-  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? DEFAULT_BAND_ITEM_COUNT) || 12, 1), 50);
+  const limit = clampBandItemCount(opts.limit ?? DEFAULT_BAND_ITEM_COUNT);
   return prerenderSafe("telegram.bandFeed", { items: [], nextOffset: 0 }, async () => {
     const [mixed, videos] = await Promise.all([
       queryPublicTelegram(limit, null, undefined, "all", 0),

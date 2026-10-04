@@ -74,3 +74,9 @@ export const AI_PROVIDER_PRESETS = [
 /** last_test_status 合法值 */
 export const TEST_STATUS_OK = "ok";
 export const TEST_STATUS_FAIL = "fail";
+
+/** AI 服务治理路由的 PAT 拒绝语(models/asr-config/model-bindings 共用一串) */
+export const AI_CONFIG_PAT_DENY = "PAT must not manage AI service config";
+
+/** 错误详情截断宽度(HTTP 响应体摘要/探测错误落 last_test_error 前统一截断) */
+export const AI_ERR_DETAIL_MAX = 200;

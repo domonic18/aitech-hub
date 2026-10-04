@@ -38,8 +38,8 @@ vi.mock("../logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const cookiesMock = vi.hoisted(() => ({ decryptJars: vi.fn((): string[] => []) }));
-vi.mock("./cookies", () => ({ decryptJars: cookiesMock.decryptJars }));
+const cookiesMock = vi.hoisted(() => ({ jarsFromConfig: vi.fn((): string[] => []) }));
+vi.mock("./cookies", () => ({ jarsFromConfig: cookiesMock.jarsFromConfig }));
 
 // 解读模块整桩(管道本体不进本测试面;默认未就绪使既有用例零入队)。
 // markPendingAndEnqueue 镜像真实「pending→入队→失败回滚」语义;不变量本体由
@@ -159,7 +159,7 @@ async function run(
 beforeEach(() => {
   vi.clearAllMocks();
   quotaStore.clear();
-  cookiesMock.decryptJars.mockReturnValue(["ttwid=a; b=1; c=2"]);
+  cookiesMock.jarsFromConfig.mockReturnValue(["ttwid=a; b=1; c=2"]);
   interpretMock.isInterpretReady.mockResolvedValue(false);
   interpretMock.enqueueInterpret.mockResolvedValue(undefined);
   prismaMock.telegram.findUnique.mockResolvedValue(null);
@@ -184,7 +184,7 @@ describe("crawlVideoAccount 短路与跳过", () => {
   });
 
   it("Cookie 池为空 → 记 last_error 顺延,不计失败不触网关", async () => {
-    cookiesMock.decryptJars.mockReturnValue([]);
+    cookiesMock.jarsFromConfig.mockReturnValue([]);
     const outcome = await run(makeAccount({ consecutiveFails: 2 }));
     expect(outcome.skippedNoCookies).toBe(true);
     expect(fetchVideosMock).not.toHaveBeenCalled();

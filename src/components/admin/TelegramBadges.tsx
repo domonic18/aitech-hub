@@ -1,4 +1,13 @@
 /** 电报流治理表内徽章(批⑧从 page 抽出收敛行数):状态 + 媒体形态,纯展示。 */
+import {
+  AI_STATUS_LABELS,
+  TELEGRAM_AI_DONE,
+  TELEGRAM_AI_FAILED,
+  TELEGRAM_AI_MISSING_TRANSCRIPT,
+  TELEGRAM_AI_PENDING,
+  TELEGRAM_AI_PROCESSING,
+  TELEGRAM_MEDIA_VIDEO,
+} from "@/lib/telegram/constants";
 
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { cls: string; label: string }> = {
@@ -12,7 +21,7 @@ export function StatusBadge({ status }: { status: string }) {
 
 /** 媒体徽章(原型 media-tag:文字 i-filetext / 短视频 i-video) */
 export function MediaBadge({ mediaType }: { mediaType: string }) {
-  const video = mediaType === "video";
+  const video = mediaType === TELEGRAM_MEDIA_VIDEO;
   return (
     <span
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-px text-[10px] ${
@@ -27,7 +36,16 @@ export function MediaBadge({ mediaType }: { mediaType: string }) {
   );
 }
 
-/** 解读态徽章(M9;title 带 lastAiError 供失败排查;null=未解读) */
+/** 解读态徽章(M9;title 带 lastAiError 供失败排查;null=未解读)。
+ * 文案单点在 telegram/constants#AI_STATUS_LABELS(统计/徽章共用);cls 是 UI 关注点留本地。 */
+const AI_BADGE_CLS: Record<string, string> = {
+  [TELEGRAM_AI_PENDING]: "bg-panel-2 text-text-2",
+  [TELEGRAM_AI_PROCESSING]: "bg-accent-dim text-accent",
+  [TELEGRAM_AI_DONE]: "bg-green/10 text-green",
+  [TELEGRAM_AI_MISSING_TRANSCRIPT]: "bg-amber/10 text-amber",
+  [TELEGRAM_AI_FAILED]: "bg-red/10 text-red",
+};
+
 export function AiBadge({
   aiStatus,
   lastAiError,
@@ -35,23 +53,15 @@ export function AiBadge({
   aiStatus: string | null;
   lastAiError: string | null;
 }) {
-  const map: Record<string, { cls: string; label: string }> = {
-    pending: { cls: "bg-panel-2 text-text-2", label: "排队中" },
-    processing: { cls: "bg-accent-dim text-accent", label: "解读中" },
-    done: { cls: "bg-green/10 text-green", label: "已解读" },
-    missing_transcript: { cls: "bg-amber/10 text-amber", label: "无转写 · 文案概括" },
-    failed: { cls: "bg-red/10 text-red", label: "失败" },
-  };
-  const s = (aiStatus !== null && aiStatus in map ? map[aiStatus] : undefined) ?? {
-    cls: "bg-panel-2 text-text-3",
-    label: "未解读",
-  };
+  const known = aiStatus !== null && aiStatus in AI_BADGE_CLS;
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-sm px-1.5 py-px text-[10px] ${s.cls}`}
+      className={`inline-block whitespace-nowrap rounded-sm px-1.5 py-px text-[10px] ${
+        known ? AI_BADGE_CLS[aiStatus!] : "bg-panel-2 text-text-3"
+      }`}
       title={lastAiError ?? undefined}
     >
-      {s.label}
+      {(known && AI_STATUS_LABELS[aiStatus!]) || "未解读"}
     </span>
   );
 }

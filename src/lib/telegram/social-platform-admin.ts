@@ -8,15 +8,16 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { env } from "../env";
-import { prisma } from "../db";
+import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { socialPlatformRowName, VIDEO_PLATFORMS } from "./constants";
 import { gatewayHealthSchema } from "./adapters/video/gateway-contract";
 import {
   clearJarsInConfig,
-  decryptJars,
+  CONFIG_KEY_JARS,
   encryptJars,
   CookiePoolError,
+  jarsFromConfig,
   maskJars,
   mergeImportedJar,
 } from "./cookies";
@@ -27,21 +28,27 @@ function platformRowUrl(platform: string): string {
   return `https://www.${platform}.com`;
 }
 
-/** 平台行 upsert(首次 Cookie 导入/首次登记博主时落地;enabled=平台总开关) */
+/** 平台行 upsert(首次 Cookie 导入/首次登记博主时落地;enabled=平台总开关)。
+ * 并发首建撞唯一约束 → 捕 P2002 重读(读侧拿到的是已落地行,幂等)。 */
 export async function ensurePlatformRow(platform: string) {
   const name = socialPlatformRowName(platform);
   const existing = await prisma.crawlSource.findUnique({ where: { name } });
   if (existing) return existing;
-  return prisma.crawlSource.create({
-    data: {
-      name,
-      type: "social-video",
-      platform,
-      url: platformRowUrl(platform),
-      crawlIntervalMin: 120,
-      remark: "视频平台行:Cookie 池/总开关/日上限载体,自身不调度",
-    },
-  });
+  try {
+    return await prisma.crawlSource.create({
+      data: {
+        name,
+        type: "social-video",
+        platform,
+        url: platformRowUrl(platform),
+        crawlIntervalMin: 120,
+        remark: "视频平台行:Cookie 池/总开关/日上限载体,自身不调度",
+      },
+    });
+  } catch (e) {
+    if (isP2002(e)) return (await prisma.crawlSource.findUnique({ where: { name } }))!;
+    throw e;
+  }
 }
 
 /** 池中可用明文 jar(采集编排与登记博主拉 profile 复用;空池返回 []) */
@@ -50,8 +57,7 @@ export async function activeJars(platform: string): Promise<string[]> {
     where: { name: socialPlatformRowName(platform) },
     select: { config: true },
   });
-  const config = row?.config as { cookieJars?: unknown } | null;
-  return decryptJars(config?.cookieJars);
+  return jarsFromConfig(row?.config);
 }
 
 // ── Cookie 池 ─────────────────────────────────────────────────────────────────
@@ -72,7 +78,7 @@ export async function getCookiePoolView(): Promise<{ pools: CookiePoolView[] }> 
   });
   return {
     pools: rows.map((r) => {
-      const jars = decryptJars((r.config as { cookieJars?: unknown } | null)?.cookieJars);
+      const jars = jarsFromConfig(r.config);
       return {
         platform: r.platform ?? r.name,
         enabled: r.enabled,
@@ -96,7 +102,7 @@ export async function importCookieJar(
   cookie: string,
 ): Promise<{ jarCount: number }> {
   const row = await ensurePlatformRow(platform);
-  const existing = decryptJars((row.config as { cookieJars?: unknown } | null)?.cookieJars);
+  const existing = jarsFromConfig(row.config);
   let merged: string[];
   try {
     merged = mergeImportedJar(existing, cookie);
@@ -106,7 +112,7 @@ export async function importCookieJar(
   }
   const config = {
     ...((row.config as Record<string, unknown> | null) ?? {}),
-    cookieJars: encryptJars(merged),
+    [CONFIG_KEY_JARS]: encryptJars(merged),
   };
   await prisma.crawlSource.update({
     where: { id: row.id },

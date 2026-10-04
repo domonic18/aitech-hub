@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 
-import { prisma } from "../db";
+import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "./constants";
@@ -124,13 +124,9 @@ export async function createBlogger(
     });
     return created;
   } catch (e) {
-    if (isDuplicate(e)) throw new BloggerAdminError("duplicate", "该博主已登记(平台+sec_uid 重复)");
+    if (isP2002(e)) throw new BloggerAdminError("duplicate", "该博主已登记(平台+sec_uid 重复)");
     throw e;
   }
-}
-
-function isDuplicate(e: unknown): boolean {
-  return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }
 
 export async function updateBlogger(

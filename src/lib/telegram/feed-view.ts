@@ -3,6 +3,9 @@
  * 时间口径统一北京时区(与 lib/datetime 同源);条目形态是前台两个消费端
  * (/telegram 时间轴、首页 LIVE 带)与轮询 API 的契约。
  */
+import { formatCnTime } from "../datetime";
+
+import { VIDEO_PLATFORM_LABELS } from "./constants";
 
 /** AI 解读结论(M9;仅持久化分析结论——topic/summary/points,无转写文本) */
 export interface PublicVideoAi {
@@ -39,14 +42,9 @@ export interface PublicTelegramItem {
 export const FEED_MEDIA_FILTERS = ["all", "text", "video"] as const;
 export type FeedMediaFilter = (typeof FEED_MEDIA_FILTERS)[number];
 
-/** 首页 LIVE 带条数默认值(M10 起后台可配,存 site_config band.item_count,
- * clamp 1..50;此常量是配置缺行/构建期无库时的兜底,SSR 初值与 60s 轮询同源) */
-export const DEFAULT_BAND_ITEM_COUNT = 12;
-
-/** 平台展示名(未知平台回退原值) */
+/** 平台展示名(未知平台回退原值;标签表在 telegram/constants 零依赖层) */
 export function platformLabel(platform: string): string {
-  const labels: Record<string, string> = { douyin: "抖音", xhs: "小红书", bilibili: "B站" };
-  return labels[platform] ?? platform;
+  return VIDEO_PLATFORM_LABELS[platform] ?? platform;
 }
 
 /** 秒 → m:ss(非法值返回 null,调用方隐藏角标) */
@@ -107,13 +105,9 @@ export function isNew(iso: string, now = Date.now()): boolean {
   return now - new Date(iso).getTime() < 30 * 60_000;
 }
 
-/** 北京时区 HH:mm */
+/** 北京时区 HH:mm(ISO 串入参薄封装;Date 入参用 lib/datetime#formatCnTime) */
 export function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString("sv-SE", {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatCnTime(new Date(iso));
 }
 
 /** 日分组标签:今天/昨天/YYYY-MM-DD(北京时区) */

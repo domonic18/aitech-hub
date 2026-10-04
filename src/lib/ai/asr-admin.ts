@@ -10,6 +10,7 @@ import { logger } from "../logger";
 import { decryptSecret, encryptSecret, maskSecret } from "../crypto/secret-box";
 import { ASR_PROTOCOLS, TEST_STATUS_FAIL, TEST_STATUS_OK } from "./constants";
 import { AiAdminError } from "./errors";
+import { normalizeBaseUrl } from "./models-admin";
 
 /** asr_config 单例行锚点(全库唯一 id;消费方禁再裸写 id:1) */
 export const ASR_CONFIG_ID = 1;
@@ -77,7 +78,7 @@ export async function updateAsrConfig(input: AsrUpdateInput): Promise<void> {
     data: {
       provider: input.provider,
       protocol: input.protocol,
-      baseUrl: normalizeAsrBaseUrl(input.baseUrl ?? "") || null,
+      baseUrl: normalizeBaseUrl(input.baseUrl ?? "") || null,
       modelId: input.modelId,
       ...(apiKey ? { apiKeyEnc: encryptSecret(apiKey), apiKeyMask: maskSecret(apiKey) } : {}),
       maxAudioSeconds: input.maxAudioSeconds,
@@ -92,19 +93,6 @@ export async function updateAsrConfig(input: AsrUpdateInput): Promise<void> {
     keyChanged: apiKey !== null,
     enabled: input.enabled,
   });
-}
-
-/** ASR 端点尾缀剥离(openai /audio/transcriptions;minimax /v1/speech_to_text) */
-function normalizeAsrBaseUrl(raw: string): string {
-  let out = raw.trim();
-  while (out.endsWith("/")) out = out.slice(0, -1);
-  for (const suffix of ["/audio/transcriptions", "/v1/speech_to_text", "/speech_to_text"]) {
-    if (out.toLowerCase().endsWith(suffix) && out.length > suffix.length) {
-      out = out.slice(0, -suffix.length);
-    }
-  }
-  while (out.endsWith("/")) out = out.slice(0, -1);
-  return out;
 }
 
 /** 消费侧运行时取数(apiKey 已解密;仅供解读管道,禁回传客户端禁日志)。

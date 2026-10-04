@@ -18,7 +18,7 @@ import type { JobsOptions } from "bullmq";
 
 import { getAsrRuntimeConfig } from "../ai/asr-admin";
 import { transcribeAudio, type TranscribeInput } from "../ai/asr-client";
-import { AI_PURPOSE_INTERPRET } from "../ai/constants";
+import { AI_ERR_DETAIL_MAX, AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-result";
 import { chatJson } from "../ai/llm-client";
@@ -29,14 +29,17 @@ import { getQueue, QUEUE_INTERPRETER } from "../queue";
 
 import { douyinAdapter } from "./adapters/video/douyin";
 import {
+  SOCIAL_BACKFILL_MAX_PAGES,
   TELEGRAM_AI_DONE,
+  TELEGRAM_AI_ERROR_MAX,
   TELEGRAM_AI_FAILED,
   TELEGRAM_AI_MISSING_TRANSCRIPT,
   TELEGRAM_AI_PENDING,
   TELEGRAM_AI_PROCESSING,
   VIDEO_PLATFORM_DOUYIN,
 } from "./constants";
-import { decryptJars } from "./cookies";
+import { jarsFromConfig } from "./cookies";
+import { countTodayInterpreted } from "./spider-queries";
 
 /** interpret job data:playUrl 过境字段(job 消费完随保留窗口即焚),禁落库 */
 export interface InterpretJobData {
@@ -136,23 +139,14 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** 单自然日已判读条数(服务器本地时区;done + missing_transcript 均占额) */
-async function countTodayInterpreted(): Promise<number> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return prisma.telegram.count({
-    where: {
-      aiRanAt: { gte: start },
-      aiStatus: { in: [TELEGRAM_AI_DONE, TELEGRAM_AI_MISSING_TRANSCRIPT] },
-    },
-  });
-}
-
 async function markFailed(id: bigint, err: unknown): Promise<void> {
   await prisma.telegram
     .update({
       where: { id },
-      data: { aiStatus: TELEGRAM_AI_FAILED, lastAiError: errMessage(err).slice(0, 500) },
+      data: {
+        aiStatus: TELEGRAM_AI_FAILED,
+        lastAiError: errMessage(err).slice(0, TELEGRAM_AI_ERROR_MAX),
+      },
     })
     .catch(() => undefined);
 }
@@ -164,12 +158,12 @@ async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Prom
     where: { id: sourceId },
     select: { config: true },
   });
-  const jars = decryptJars((platformRow?.config as { cookieJars?: unknown } | null)?.cookieJars);
+  const jars = jarsFromConfig(platformRow?.config);
   if (jars.length === 0) return null;
   const items = await douyinAdapter.fetchRecentVideos({
     secUid: data.secUid,
     cookies: jars,
-    maxPages: 3,
+    maxPages: SOCIAL_BACKFILL_MAX_PAGES,
   });
   return items.find((it) => it.videoId === data.videoId)?.playUrl ?? null;
 }
@@ -226,7 +220,7 @@ async function runTranscribeWithRetry(
       logger.warn({
         event: "interpret.video.asr_retry",
         attempt: attempt + 1,
-        error: lastError.slice(0, 200),
+        error: lastError.slice(0, AI_ERR_DETAIL_MAX),
       });
     }
   }

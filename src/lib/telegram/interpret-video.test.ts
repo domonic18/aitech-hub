@@ -20,7 +20,11 @@ const queueMock = vi.hoisted(() => ({
   add: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
   remove: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
 }));
-vi.mock("../queue", () => ({ QUEUE_INTERPRETER: "interpreter", getQueue: () => queueMock }));
+vi.mock("../queue", () => ({
+  QUEUE_CRAWLER: "crawler",
+  QUEUE_INTERPRETER: "interpreter",
+  getQueue: () => queueMock,
+}));
 
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -59,7 +63,7 @@ const chatJsonMock = vi.hoisted(() =>
 );
 vi.mock("../ai/llm-client", () => ({ chatJson: chatJsonMock }));
 
-vi.mock("./cookies", () => ({ decryptJars: vi.fn(() => ["ck"]) }));
+vi.mock("./cookies", () => ({ jarsFromConfig: vi.fn(() => ["ck"]) }));
 
 const fetchVideosMock = vi.hoisted(() =>
   vi.fn<(args: unknown) => Promise<Array<{ videoId: string; playUrl: string | null }>>>(
