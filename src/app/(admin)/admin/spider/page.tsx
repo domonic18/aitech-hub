@@ -14,6 +14,7 @@ import { formatCnTime } from "@/lib/datetime";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import {
   getCrawlerQueueSnapshot,
+  getGithubQueueSnapshot,
   getInterpreterQueueSnapshot,
   getIngestCalendar,
   getIngestHourly,
@@ -30,21 +31,22 @@ function hhmm(at: Date | null): string {
 
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [snapshot, calendar, hourly, stock, channels, video, interpreter] = await Promise.all([
-    getCrawlerQueueSnapshot(),
-    getIngestCalendar(14),
-    getIngestHourly(),
-    getTelegramStock(),
-    listChannelsAdmin(),
-    getVideoObservation(),
-    getInterpreterQueueSnapshot(),
-  ]);
+  const [snapshot, calendar, hourly, stock, channels, video, interpreter, github] =
+    await Promise.all([
+      getCrawlerQueueSnapshot(),
+      getIngestCalendar(14),
+      getIngestHourly(),
+      getTelegramStock(),
+      listChannelsAdmin(),
+      getVideoObservation(),
+      getInterpreterQueueSnapshot(),
+      getGithubQueueSnapshot(),
+    ]);
   const today = calendar[calendar.length - 1]?.count ?? 0;
   const yesterday = calendar[calendar.length - 2]?.count ?? 0;
   const maxHour = Math.max(1, ...hourly.map((h) => h.count));
   const enabledChannels = channels.filter((c) => c.enabled).length;
   const backlog = snapshot.counts.waiting + snapshot.counts.delayed;
-  const interpreterBacklog = interpreter.counts.waiting + interpreter.counts.delayed;
 
   return (
     <div className="flex flex-col gap-4">
@@ -95,7 +97,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_360px]">
         <div className="rounded-md border border-line bg-panel">
           <div className="flex items-center justify-between border-b border-line px-4 py-3.5 text-sm font-semibold">
-            双队列实况
+            队列实况
             <span className="font-mono text-[11px] font-normal text-text-3">BullMQ</span>
           </div>
           <div className="px-4 py-4">
@@ -156,6 +158,31 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
                 }
               />
             </div>
+
+            {/* github(M11 实况):白名单仓 meta/README/动态同步,github-tick 每 5min 扫描 */}
+            <div className="mt-4 border-t border-line pt-4">
+              <QueueLane
+                icon="i-github"
+                name="github"
+                desc={
+                  <>
+                    开源项目白名单同步 · {github.repoCount} 仓(
+                    {github.enabledCount} 调度中)
+                  </>
+                }
+                counts={github.counts}
+                iconPulse
+                legend={
+                  <>
+                    <span>
+                      <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
+                      completed(近 200 留存)
+                    </span>
+                    <span>台账在 GitHub 仓库页;限频/网络故障顺延不计连败,上游 4xx 计连败</span>
+                  </>
+                }
+              />
+            </div>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-4 py-3 font-mono text-xs text-text-3">
             <span>
@@ -167,6 +194,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
               )}
             </span>
             <span>每分钟扫描到期渠道,crawl job 以 nextRunAt 幂等去重</span>
+            <span>GitHub 同步 github-tick 每 5 分钟扫描到期仓库</span>
           </div>
         </div>
 

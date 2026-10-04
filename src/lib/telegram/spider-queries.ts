@@ -7,10 +7,8 @@ import { AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { formatCnDate } from "../datetime";
-import { getQueue, QUEUE_CRAWLER, QUEUE_INTERPRETER } from "../queue";
+import { getQueue, QUEUE_CRAWLER, QUEUE_GITHUB, QUEUE_INTERPRETER, QUEUE_NAMES } from "../queue";
 import { TELEGRAM_AI_TERMINAL, TELEGRAM_MEDIA_VIDEO } from "./constants";
-
-const TICK_SCHEDULER_ID = "crawler-tick";
 
 export interface QueueSnapshot {
   counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
@@ -18,9 +16,12 @@ export interface QueueSnapshot {
   recentFailed: Array<{ id: string; name: string; reason: string; at: Date | null }>;
 }
 
-/** 队列实况:计数 + tick 调度器存活 + 最近 5 条失败(后台「最近错误」) */
-export async function getCrawlerQueueSnapshot(): Promise<QueueSnapshot> {
-  const queue = getQueue(QUEUE_CRAWLER);
+/** 队列实况共性:计数 + tick 调度器存活 + 最近 5 条失败(crawler/github 共用) */
+async function snapshotQueue(
+  queueName: (typeof QUEUE_NAMES)[number],
+  tickSchedulerId: string,
+): Promise<QueueSnapshot> {
+  const queue = getQueue(queueName);
   const counts = (await queue.getJobCounts(
     "waiting",
     "active",
@@ -38,7 +39,7 @@ export async function getCrawlerQueueSnapshot(): Promise<QueueSnapshot> {
       failed: counts.failed ?? 0,
       delayed: counts.delayed ?? 0,
     },
-    tickAlive: schedulers.some((s) => s.key === TICK_SCHEDULER_ID),
+    tickAlive: schedulers.some((s) => s.key === tickSchedulerId),
     recentFailed: failed.map((j) => ({
       id: j.id ?? "",
       name: j.name,
@@ -46,6 +47,23 @@ export async function getCrawlerQueueSnapshot(): Promise<QueueSnapshot> {
       at: j.finishedOn ? new Date(j.finishedOn) : null,
     })),
   };
+}
+
+/** crawler 队列实况:计数 + tick 调度器存活 + 最近 5 条失败(后台「最近错误」) */
+export function getCrawlerQueueSnapshot(): Promise<QueueSnapshot> {
+  return snapshotQueue(QUEUE_CRAWLER, "crawler-tick");
+}
+
+/** github 队列实况(M11):同步 job 计数 + 白名单台账计数(调度中/总数) */
+export async function getGithubQueueSnapshot(): Promise<
+  QueueSnapshot & { repoCount: number; enabledCount: number }
+> {
+  const [snapshot, repoCount, enabledCount] = await Promise.all([
+    snapshotQueue(QUEUE_GITHUB, "github-tick"),
+    prisma.githubRepo.count(),
+    prisma.githubRepo.count({ where: { enabled: true } }),
+  ]);
+  return { ...snapshot, repoCount, enabledCount };
 }
 
 /** interpreter 队列实况(M9):四计数 + 今日已判读/日配额(worker 并发 1 说明在页侧) */
