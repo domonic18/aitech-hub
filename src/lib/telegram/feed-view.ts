@@ -130,10 +130,11 @@ export function dayLabel(iso: string, now = Date.now()): string {
 /** 相邻同日合并分组(条目已按时间倒序);保序不重排 */
 export function groupByDay(
   items: readonly PublicTelegramItem[],
+  now = Date.now(),
 ): Array<{ label: string; items: PublicTelegramItem[] }> {
   const out: Array<{ label: string; items: PublicTelegramItem[] }> = [];
   for (const item of items) {
-    const label = dayLabel(item.publishedAt);
+    const label = dayLabel(item.publishedAt, now);
     const last = out[out.length - 1];
     if (last && last.label === label) last.items.push(item);
     else out.push({ label, items: [item] });

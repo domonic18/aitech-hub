@@ -65,15 +65,23 @@ export default function TelegramBand({
   channels,
   today,
   count,
+  initialNow,
 }: {
   initialItems: PublicTelegramItem[];
   channels: number;
   today: number;
   /** 后台配置的每页条数(site_config band.item_count,SSR 与轮询/翻页同源) */
   count: number;
+  /**
+   * SSR 水合基准时钟(服务端 Date.now()):相对时间/NEW 徽章以此渲染,
+   * 水合后由 60s 轮询刷新为客户端时钟。若客户端自取 Date.now(),ISR 页
+   * 水合晚于渲染数分钟,timeAgo 文本必然不一致 → React #418 水合整树回退,
+   * 连带把 html[data-theme] 重灌回 light(2026-10-04 修复)。
+   */
+  initialNow: number;
 }) {
   const [items, setItems] = useState(initialItems);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(initialNow);
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);

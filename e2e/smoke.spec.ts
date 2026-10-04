@@ -1076,8 +1076,17 @@ test("16. 主题三段式(M10 批①:系统跟随/实时变化/显式选择优�
   await page.locator(".theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await page.evaluate(() => localStorage.getItem("ah-theme"))).toBe("dark");
+  // 回归哨兵(2026-10-04):重载断言后等水合落地复查主题仍在。
+  // 修复前:电报流相对时间 SSR/水合时钟不一致 → React #418 整树回退重渲染,
+  // 把脚本预置的 html[data-theme] 灌回 light(用户实测「刷新又变 Light」)。
+  // 不用 waitForLoadState("networkidle"):首页外链封面图经代理长挂,网络永不静默
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.waitForTimeout(1_500); // 本地 prod 构建水合 << 1s,足够回退显形
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(pageErrors).toEqual([]);
 
   // 显式 light 压过暗色系统;清掉显式选择后回落系统(当前 light)
   await page.evaluate(() => localStorage.setItem("ah-theme", "light"));

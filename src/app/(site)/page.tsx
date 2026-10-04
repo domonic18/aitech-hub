@@ -40,6 +40,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           channels={channels.length}
           today={today}
           count={bandCount}
+          initialNow={Date.now()}
         />
 
         {/* 右栏:博主文章(紧凑 rail 卡)+ GEO(GitHub 项目卡二期接入,同批降级) */}

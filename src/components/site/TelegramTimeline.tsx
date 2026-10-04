@@ -164,14 +164,22 @@ export default function TelegramTimeline({
   initialItems,
   sourceId,
   media = "all",
+  initialNow,
 }: {
   initialItems: PublicTelegramItem[];
   sourceId?: number;
   media?: FeedMediaFilter;
+  /**
+   * SSR 水合基准时钟(服务端 Date.now()):hhmm/timeAgo/NEW/日分组标签以此渲染,
+   * 水合后由 60s 轮询刷新。若客户端自取 Date.now(),服务渲染与水合有时差,
+   * 相对时间文本不一致 → React #418 水合整树回退,连带把 html[data-theme]
+   * 重灌回 light(2026-10-04 修复,与首页带同款)。
+   */
+  initialNow: number;
 }) {
   const [items, setItems] = useState(initialItems);
   const [pending, setPending] = useState<PublicTelegramItem[]>([]);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(initialNow);
 
   useEffect(() => {
     let alive = true;
@@ -223,7 +231,7 @@ export default function TelegramTimeline({
           ↓ {pending.length} 条新电报 · 点击载入,不打断当前浏览位置(轮询 60s)
         </button>
       )}
-      {groupByDay(items).map((group) => (
+      {groupByDay(items, now).map((group) => (
         <section key={group.label} className="mb-5">
           <div className="mb-2.5 flex items-center gap-3">
             <span className="font-mono text-xs font-semibold text-text-2">{group.label}</span>

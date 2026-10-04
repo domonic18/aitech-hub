@@ -130,7 +130,12 @@ export default async function TelegramPage({
               </Link>
             ))}
           </div>
-          <TelegramTimeline initialItems={items} sourceId={sourceId} media={media} />
+          <TelegramTimeline
+            initialItems={items}
+            sourceId={sourceId}
+            media={media}
+            initialNow={Date.now()}
+          />
         </main>
 
         <aside className="flex min-w-0 flex-col gap-4">
