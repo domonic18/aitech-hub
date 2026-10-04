@@ -6,16 +6,16 @@ import SiteSprite from "./SiteSprite";
 
 const NAV = [
   { href: "/", label: "首页" },
+  { href: "/telegram/", label: "电报流" },
   { href: "/articles/", label: "文章" },
   { href: "/archive/", label: "归档", smOnly: true },
   { href: "/about/", label: "关于", smOnly: true },
 ];
 
 /**
- * 站点顶栏(DESIGN-SPEC §5 一期降级形态):logo 17 monogram 芯片(品牌「一起AI」,
- * 2026-10-02 定稿,规格见 common.css §Logo)+ 域名 tld;nav 暂无电报流(二期);
+ * 站点顶栏(DESIGN-SPEC §5):logo 17 monogram 芯片(品牌「一起AI」,
+ * 2026-10-02 定稿,规格见 common.css §Logo)+ 域名 tld;nav 电报流随 M7(批⑤)挂入;
  * 搜索入口为图标 → /search;主题胶囊全站可用;头像菜单随三期用户体系,一期不渲染。
- * 归档/关于暂留 nav,收敛 footer 与电报流 nav 随二期视觉回补同批。
  * 窄屏降级(DESIGN-SPEC §6):tld 隐藏、归档/关于收起(footer 有同款入口),
  * 整行禁止换行;超宽兜底可横滚(no-scrollbar)。
  */

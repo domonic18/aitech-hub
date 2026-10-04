@@ -40,6 +40,7 @@
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.10",
     "cheerio": "^1.2.0",
+    "fast-xml-parser": "^5.11.2",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "mysql2": "^3.24.4",

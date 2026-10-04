@@ -20,14 +20,14 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
-      { icon: "i-send", label: "电报流治理", tag: "二期" },
+      { icon: "i-send", label: "电报流治理", href: "/admin/telegram" },
     ],
   },
   {
     label: "采集",
     items: [
-      { icon: "i-scan", label: "采集总览", tag: "二期" },
-      { icon: "i-cloudserver", label: "渠道配置", tag: "二期" },
+      { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
+      { icon: "i-cloudserver", label: "渠道配置", href: "/admin/channels" },
       { icon: "i-aim", label: "博主管理", tag: "二期" },
     ],
   },

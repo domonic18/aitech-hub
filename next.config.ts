@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
       { source: "/feed/", destination: "/feed.xml", statusCode: 301 },
     ];
   },
+  async headers() {
+    return [
+      // 电报流 noindex 双保险之一(页内另有 robots meta;arch/07 §2 /telegram)
+      { source: "/telegram", headers: [{ key: "X-Robots-Tag", value: "noindex, follow" }] },
+      { source: "/telegram/", headers: [{ key: "X-Robots-Tag", value: "noindex, follow" }] },
+      { source: "/telegram/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, follow" }] },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [],

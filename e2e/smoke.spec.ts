@@ -9,7 +9,7 @@ import sharp from "sharp";
 
 /**
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
- * SEO 端点/后台发布→前台闭环(M5-a)。
+ * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -555,4 +555,96 @@ test("11. /api/mcp:无 Bearer 401;initialize + tools/list 六工具齐备(M5c)",
   } finally {
     await prisma.userPat.deleteMany({ where: { name: MCP_PAT } });
   }
+});
+
+test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 带/不入 sitemap)", async ({
+  request,
+}) => {
+  const MARK = "e2e-telegram-mark";
+  // 自播种:独立渠道(采集关闭)+ 一条可见电报(publishedAt=now 保证排进带首;重跑幂等)
+  const source = await prisma.crawlSource.upsert({
+    where: { name: "e2e-telegram-source" },
+    update: {},
+    create: {
+      name: "e2e-telegram-source",
+      type: "rss",
+      url: "https://e2e.invalid/rss",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: source.id, title: MARK } });
+  await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: MARK,
+      summary: "e2e 冒烟摘要",
+      url: "https://e2e.invalid/item/1",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+    },
+  });
+
+  try {
+    // noindex 双保险:X-Robots-Tag 响应头 + 页内 robots meta;LIVE 头标与播种条目在
+    const feed = await request.get("/telegram/");
+    expect(feed.status()).toBe(200);
+    expect(feed.headers()["x-robots-tag"]).toBe("noindex, follow");
+    const html = await feed.text();
+    expect(html).toMatch(/name="robots" content="noindex[^"]*"/);
+    expect(html).toContain("LIVE · 持续采集中");
+    expect(html).toContain(MARK);
+
+    // 公共 API:no-store;出参 BigInt 已字符串化;today 含播种条目
+    const api = await request.get("/api/telegram/public/");
+    expect(api.status()).toBe(200);
+    expect(api.headers()["cache-control"]).toContain("no-store");
+    const body = (await api.json()) as {
+      code: number;
+      data: {
+        items: Array<{ id: string; title: string; sourceName: string; publishedAt: string }>;
+        today: number;
+      };
+    };
+    expect(body.code).toBe(0);
+    const hit = body.data.items.find((i) => i.title === MARK);
+    expect(hit).toBeTruthy();
+    expect(typeof hit!.id).toBe("string");
+    expect(body.data.today).toBeGreaterThan(0);
+
+    // 首页 LIVE 带壳在(SSR;条目轮询由 /telegram 页与 API 覆盖,首页 ISR 缓存不断言 MARK)
+    const home = await (await request.get("/")).text();
+    expect(home).toContain("tail -f /telegram");
+    expect(home).toContain('href="/telegram/"');
+
+    // SEO 红线:电报流不入 sitemap(显式页面清单)
+    expect(await (await request.get("/sitemap.xml")).text()).not.toContain("/telegram");
+  } finally {
+    await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+    await prisma.crawlSource.delete({ where: { id: source.id } });
+  }
+});
+
+test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", async ({ page }) => {
+  // 登录(同前序用例 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 渠道台账:页头说明 + 新增入口
+  await page.goto("/admin/channels/");
+  await expect(page.getByText("采集渠道台账")).toBeVisible();
+  await expect(page.getByRole("button", { name: "新增渠道" })).toBeVisible();
+
+  // 流治理:分段 tabs(带计数)+ 屏蔽词管理岛
+  await page.goto("/admin/telegram/");
+  await expect(page.getByRole("link", { name: /^全部 \d+$/ })).toBeVisible();
+  await expect(page.getByText(/屏蔽词/).first()).toBeVisible();
+
+  // 采集总览:tick 调度卡
+  await page.goto("/admin/spider/");
+  await expect(page.getByRole("heading", { name: "采集总览" })).toBeVisible();
+  await expect(page.getByText("tick 调度器", { exact: true })).toBeVisible();
 });

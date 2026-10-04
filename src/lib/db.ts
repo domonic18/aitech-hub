@@ -13,3 +13,8 @@ export const prisma =
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+/** Prisma 唯一约束冲突判定(P2002;发布 API slug 并发、采集去重并发共用) */
+export function isP2002(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
+}

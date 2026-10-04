@@ -1,26 +1,33 @@
 import Link from "next/link";
 
-import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
-import { countPublishedPosts, listLatestPosts, listPinnedPosts } from "@/lib/content/posts";
+import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
+import {
+  BAND_ITEM_COUNT,
+  countTodayVisible,
+  listPublicChannels,
+  listPublicTelegram,
+} from "@/lib/telegram/public-feed";
 
 import HeroConsole from "@/components/site/HeroConsole";
-import PostCard from "@/components/site/PostCard";
 import SiteSprite from "@/components/site/SiteSprite";
+import TelegramBand from "@/components/site/TelegramBand";
 
 /**
- * 首页 Hub(M5-e 布局壳,原型 site-home;arch/07-frontend §1:ISR 600s):
- * 终端 hero + 左主轴博主文章流 + 右栏(精选/GEO)。电报流与 GitHub 项目区按原型
- * 「三区可独立降级」不渲染(二期数据接入;首页为 SEO 第一页面,不落空壳 DOM),
- * 左栏区块头挂显式降级注记(DESIGN-SPEC §6)。
+ * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
+ * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=博主文章紧凑卡 + GEO,
+ * GitHub 项目区按「三区可独立降级」不渲染)。电报带客户端 60s 轮询(M7 批⑤);
+ * 本重构按用户反馈对齐原型(原 M5-e 过渡形态「左轴文章流 + 右栏精选」收编)。
  */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
-  const [pinned, latest, postCount] = await Promise.all([
-    listPinnedPosts(5),
-    listLatestPosts(DEFAULT_PAGE_SIZE),
+  const [bandItems, today, channels, latest, postCount] = await Promise.all([
+    listPublicTelegram({ limit: BAND_ITEM_COUNT }),
+    countTodayVisible(),
+    listPublicChannels(),
+    listLatestPosts(5),
     countPublishedPosts(),
   ]);
 
@@ -30,65 +37,50 @@ export default async function HomePage(): Promise<React.ReactElement> {
       <HeroConsole postCount={postCount} />
 
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        {/* 左主轴:博主文章流(电报流二期接入,显式降级注记) */}
-        <section>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <h2 className="font-mono text-sm font-semibold text-text-2">$ ls -la /articles</h2>
-            <span className="rounded-sm border border-line px-2 py-0.5 font-mono text-[11px] text-text-3">
-              电报流 · 二期接入
-            </span>
-            <Link
-              href="/articles/"
-              className="ml-auto whitespace-nowrap text-[13px] text-text-2 hover:text-accent-hover"
-            >
-              全部文章 →
-            </Link>
-          </div>
-          <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm [&>article]:px-5">
-            {latest.map((post) => (
-              <PostCard key={post.id} post={post} />
-            ))}
-          </div>
-        </section>
+        {/* 左主轴:电报流 LIVE 带(原型 tg-band 即整个左栏) */}
+        <TelegramBand initialItems={bandItems} channels={channels.length} today={today} />
 
-        {/* 右栏:精选 + GEO(GitHub 项目卡二期接入,同批降级) */}
+        {/* 右栏:博主文章(紧凑 rail 卡)+ GEO(GitHub 项目卡二期接入,同批降级) */}
         <aside className="flex min-w-0 flex-col gap-4">
-          {pinned.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
-              <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
-                <svg className="ic text-text-2" aria-hidden="true">
-                  <use href="#i-star" />
-                </svg>
-                精选
-                <span className="ml-auto font-mono text-[11px] font-normal tracking-wider text-text-3">
-                  [PINNED]
-                </span>
-              </div>
-              {pinned.map((post) => (
-                <Link
-                  key={post.id}
-                  href={postPath(post.id, post.slug)}
-                  className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
-                >
-                  <span className="block truncate text-[13px] font-semibold leading-normal hover:text-accent-hover">
-                    {post.title}
-                  </span>
-                  <span className="mt-1 flex items-center gap-2.5 font-mono text-[11.5px] text-text-3">
-                    <span className="rounded border border-green/30 bg-green/10 px-1.5 text-green-hi">
-                      {post.category.name}
-                    </span>
-                    {post.publishedAt ? <span>{formatCnDate(post.publishedAt)}</span> : null}
-                    <span className="ml-auto inline-flex items-center gap-1">
-                      <svg className="ic ic-sm" aria-hidden="true">
-                        <use href="#i-eye" />
-                      </svg>
-                      {post.viewsCount.toLocaleString("zh-CN")}
-                    </span>
-                  </span>
-                </Link>
-              ))}
+          <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+            <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
+              <svg className="ic text-text-2" aria-hidden="true">
+                <use href="#i-read" />
+              </svg>
+              博主文章
+              <span className="ml-auto font-mono text-[11px] font-normal tracking-wider text-text-3">
+                [BLOG]
+              </span>
             </div>
-          )}
+            {latest.map((post) => (
+              <Link
+                key={post.id}
+                href={postPath(post.id, post.slug)}
+                className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
+              >
+                <span className="block truncate text-[13px] font-semibold leading-normal text-text-1 hover:text-accent-hover">
+                  {post.title}
+                </span>
+                <span className="mt-1 flex items-center gap-2.5 font-mono text-[11.5px] text-text-3">
+                  <span className="rounded border border-green/30 bg-green/10 px-1.5 text-green-hi">
+                    {post.category.name}
+                  </span>
+                  {post.publishedAt ? <span>{formatCnDate(post.publishedAt).slice(5)}</span> : null}
+                  <span className="ml-auto inline-flex items-center gap-1">
+                    <svg className="ic ic-sm" aria-hidden="true">
+                      <use href="#i-eye" />
+                    </svg>
+                    {post.viewsCount.toLocaleString("zh-CN")}
+                  </span>
+                </span>
+              </Link>
+            ))}
+            <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
+              <Link href="/articles/" className="text-[13px] text-text-2 hover:text-accent-hover">
+                全部文章 →
+              </Link>
+            </div>
+          </div>
           <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
             <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
               <svg className="ic text-text-2" aria-hidden="true">

@@ -7,7 +7,7 @@
  * 按名匹配所选文件 → uploadMedia(sha1 去重)→ replaceImageRefs;外链
  * 一期保留原链并随响应返回清单(转存二期)。
  */
-import { prisma } from "@/lib/db";
+import { isP2002, prisma } from "@/lib/db";
 import type { AdminActor } from "@/lib/http/mutation-guard";
 import {
   extractImageRefs,
@@ -95,10 +95,6 @@ export function resolveUpsertAction(
       "旧文保真:HTML 正文不可经 API 改写,请先在后台转 Markdown",
     );
   return { action: "update", id: existing.id };
-}
-
-function isP2002(e: unknown): boolean {
-  return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }
 
 export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertArticleResult> {
