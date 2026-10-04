@@ -6,7 +6,7 @@ import { prisma } from "../db";
 import { statsDay } from "../datetime";
 import { prerenderSafe } from "../prerender-safe";
 
-import { type PublicTelegramItem } from "./feed-view";
+import { type FeedMediaFilter, type PublicTelegramItem } from "./feed-view";
 
 export const PUBLIC_FEED_PAGE_SIZE = 30;
 export const BAND_ITEM_COUNT = 8;
@@ -16,24 +16,40 @@ export async function listPublicTelegram(opts: {
   sourceId?: number;
   /** 轮询增量:只取该时刻之后(publishedAt 兜底 createdAt) */
   afterIso?: string;
+  /** 媒体筛选(M8 混合流):all|text|video,非法值回落 all */
+  media?: FeedMediaFilter;
 }): Promise<PublicTelegramItem[]> {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? PUBLIC_FEED_PAGE_SIZE) || 30, 1), 50);
   const after = opts.afterIso ? new Date(opts.afterIso) : null;
   const validAfter = after && !Number.isNaN(after.getTime()) ? after : null;
   return prerenderSafe("telegram.publicFeed", [], () =>
-    queryPublicTelegram(limit, validAfter, opts.sourceId),
+    queryPublicTelegram(limit, validAfter, opts.sourceId, opts.media ?? "all"),
   );
+}
+
+/** 互动 JSON 投影(库内形状不受信,逐字段白名单;M8 play 恒 null 隐藏) */
+function toEngagement(raw: unknown): {
+  play: number | null;
+  like: number | null;
+  comment: number | null;
+} {
+  const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
 }
 
 async function queryPublicTelegram(
   limit: number,
   validAfter: Date | null,
   sourceId: number | undefined,
+  media: FeedMediaFilter,
 ): Promise<PublicTelegramItem[]> {
   const rows = await prisma.telegram.findMany({
     where: {
       status: "visible",
       ...(sourceId !== undefined ? { sourceId } : {}),
+      ...(media !== "all" ? { mediaType: media } : {}),
       ...(validAfter
         ? {
             OR: [
@@ -50,6 +66,12 @@ async function queryPublicTelegram(
       url: true,
       publishedAt: true,
       createdAt: true,
+      mediaType: true,
+      videoPlatform: true,
+      videoBlogger: true,
+      videoCoverUrl: true,
+      videoDuration: true,
+      videoEngagement: true,
       source: { select: { id: true, name: true } },
     },
     orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
@@ -63,6 +85,18 @@ async function queryPublicTelegram(
     publishedAt: (t.publishedAt ?? t.createdAt).toISOString(),
     sourceId: t.source.id,
     sourceName: t.source.name,
+    mediaType: t.mediaType === "video" ? "video" : "text",
+    ...(t.mediaType === "video"
+      ? {
+          video: {
+            platform: t.videoPlatform ?? "",
+            blogger: t.videoBlogger ?? "",
+            coverUrl: t.videoCoverUrl,
+            durationSeconds: t.videoDuration,
+            engagement: toEngagement(t.videoEngagement),
+          },
+        }
+      : {}),
   }));
 }
 
