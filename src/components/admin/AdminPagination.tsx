@@ -11,19 +11,22 @@ export default function AdminPagination({
   totalPages,
   total,
   hrefFor,
+  unit = "条",
 }: {
   page: number;
   totalPages: number;
   total: number;
   /** 页码 → 链接(跳页保持既有筛选;上一页/下一页/页码同一出处) */
   hrefFor: (p: number) => string;
+  /** 计数单位(条/篇/位/项,各列表页口径) */
+  unit?: string;
 }) {
   const pgBtn =
     "rounded-sm border border-line bg-panel px-2.5 py-1 font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1";
   return (
     <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">
       <span className="mr-auto text-xs text-text-3">
-        共 {total.toLocaleString("en-US")} 条 · 第 {page} / {totalPages} 页
+        共 {total.toLocaleString("en-US")} {unit} · 第 {page} / {totalPages} 页
       </span>
       {page > 1 && (
         <Link href={hrefFor(page - 1)} className={pgBtn} aria-label="上一页">

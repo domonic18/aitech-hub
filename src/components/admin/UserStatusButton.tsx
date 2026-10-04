@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { USER_STATUS_ACTIVE, USER_STATUS_DISABLED } from "@/lib/users/user-status";
+import type { ApiEnvelope } from "@/lib/http/response";
 export default function UserStatusButton({
   id,
   nickname,
@@ -31,7 +32,7 @@ export default function UserStatusButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: disabling ? USER_STATUS_DISABLED : USER_STATUS_ACTIVE }),
       });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`操作失败:${body.message}`);
         return;

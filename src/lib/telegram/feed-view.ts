@@ -42,6 +42,9 @@ export interface PublicTelegramItem {
 export const FEED_MEDIA_FILTERS = ["all", "text", "video"] as const;
 export type FeedMediaFilter = (typeof FEED_MEDIA_FILTERS)[number];
 
+/** LIVE 带轮询间隔(取第一页按 id 去重前插;M10 批②起与加载更多共存) */
+export const BAND_POLL_MS = 60_000;
+
 /** 平台展示名(未知平台回退原值;标签表在 telegram/constants 零依赖层) */
 export function platformLabel(platform: string): string {
   return VIDEO_PLATFORM_LABELS[platform] ?? platform;

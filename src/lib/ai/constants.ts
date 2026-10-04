@@ -52,6 +52,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
   },
 };
 
+/** 角色展示名(未知角色回退原值;表格/弹窗/绑定校验文案共用,批D 收敛) */
+export function aiRoleLabel(role: string): string {
+  return AI_ROLE_META[role as AiTaskRole]?.label ?? role;
+}
+
 export const ASR_PROTOCOL_OPENAI = "openai";
 export const ASR_PROTOCOL_MINIMAX = "minimax";
 export const ASR_PROTOCOL_OTHER = "other";

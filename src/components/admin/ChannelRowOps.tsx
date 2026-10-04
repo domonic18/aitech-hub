@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import ChannelDialog, { type ChannelDialogData } from "./ChannelDialog";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 export default function ChannelRowOps({ channel }: { channel: ChannelDialogData }) {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function ChannelRowOps({ channel }: { channel: ChannelDialogData 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ enabled: next }),
       });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`操作失败:${body.message}`);
         return;
@@ -38,7 +39,7 @@ export default function ChannelRowOps({ channel }: { channel: ChannelDialogData 
     setBusy(true);
     try {
       const res = await fetch(`/api/channels/${channel.id}/crawl`, { method: "POST" });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`触发失败:${body.message}`);
         return;

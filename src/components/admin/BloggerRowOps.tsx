@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import BloggerDialog, { type BloggerDialogData } from "./BloggerDialog";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 export default function BloggerRowOps({
   blogger,
@@ -30,7 +31,7 @@ export default function BloggerRowOps({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ enabled: next }),
       });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`操作失败:${body.message}`);
         return;
@@ -45,7 +46,7 @@ export default function BloggerRowOps({
     setBusy(true);
     try {
       const res = await fetch(`/api/bloggers/${blogger.id}/crawl`, { method: "POST" });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`触发失败:${body.message}`);
         return;
@@ -66,7 +67,7 @@ export default function BloggerRowOps({
     setBusy(true);
     try {
       const res = await fetch(`/api/bloggers/${blogger.id}/backfill`, { method: "POST" });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`触发失败:${body.message}`);
         return;
@@ -86,7 +87,7 @@ export default function BloggerRowOps({
     setBusy(true);
     try {
       const res = await fetch(`/api/bloggers/${blogger.id}`, { method: "DELETE" });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`删除失败:${body.message}`);
         return;

@@ -9,6 +9,9 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import { CRAWL_SOURCE_TYPES } from "@/lib/telegram/constants";
+import { field } from "@/components/admin/form-fields";
+import type { ApiEnvelope } from "@/lib/http/response";
+import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
 export interface ChannelDialogData {
   id: number;
@@ -29,9 +32,6 @@ const TYPE_LABELS: Record<string, string> = {
   api: "API",
   "social-video": "社交/视频",
 };
-
-const field =
-  "w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-sm text-text-1 outline-none focus:border-accent placeholder:text-text-3";
 
 export default function ChannelDialog({
   label,
@@ -87,7 +87,7 @@ export default function ChannelDialog({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         setError(body.message || `HTTP ${res.status}`);
         return;
@@ -117,136 +117,133 @@ export default function ChannelDialog({
         {label}
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-md border border-line bg-panel p-5 shadow-xl">
-            <h3 className="text-sm font-semibold">{editing ? "编辑渠道" : "新增渠道"}</h3>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="col-span-1 text-xs text-text-3">
-                名称 *
-                <input
-                  ref={nameRef}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={100}
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-              <label className="col-span-1 text-xs text-text-3">
-                类型
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
-                  className={`mt-1 ${field}`}
-                >
-                  {CRAWL_SOURCE_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {TYPE_LABELS[t] ?? t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="col-span-2 text-xs text-text-3">
-                端点(feed/API 地址;勿携带凭证参数) *
-                <input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://example.com/feed"
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-              <label className="col-span-1 text-xs text-text-3">
-                平台标识(可选)
-                <input
-                  value={platform ?? ""}
-                  onChange={(e) => setPlatform(e.target.value)}
-                  maxLength={20}
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-              <label className="col-span-1 text-xs text-text-3">
-                凭证(token/apiKey;留空{editing ? "沿用" : "不设"})
-                <input
-                  type="password"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder={channel?.credentialMask || "无凭证"}
-                  disabled={clearToken}
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-              <label className="col-span-1 text-xs text-text-3">
-                采集间隔(分钟,5-1440)
-                <input
-                  type="number"
-                  min={5}
-                  max={1440}
-                  value={interval}
-                  onChange={(e) => setIntervalMin(e.target.value)}
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-              <label className="col-span-1 text-xs text-text-3">
-                每日请求上限(留空=不限)
-                <input
-                  type="number"
-                  min={1}
-                  value={dailyMax}
-                  onChange={(e) => setDailyMax(e.target.value)}
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-              <label className="col-span-2 text-xs text-text-3">
-                备注
-                <input
-                  value={remark}
-                  onChange={(e) => setRemark(e.target.value)}
-                  maxLength={200}
-                  className={`mt-1 ${field}`}
-                />
-              </label>
-            </div>
-            <div className="mt-3 flex items-center gap-4 text-xs">
-              {editing && (
-                <label className="flex items-center gap-1.5 text-text-2">
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={(e) => setEnabled(e.target.checked)}
-                  />
-                  启用调度
-                </label>
-              )}
-              {editing && channel.credentialMask !== "" && (
-                <label className="flex items-center gap-1.5 text-text-2">
-                  <input
-                    type="checkbox"
-                    checked={clearToken}
-                    onChange={(e) => setClearToken(e.target.checked)}
-                  />
-                  清除凭证(现 {channel.credentialMask})
-                </label>
-              )}
-            </div>
-            {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+        <DialogShell width="lg" scroll title={editing ? "编辑渠道" : "新增渠道"}>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="col-span-1 text-xs text-text-3">
+              名称 *
+              <input
+                ref={nameRef}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={100}
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="col-span-1 text-xs text-text-3">
+              类型
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className={`mt-1 ${field}`}
               >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={busy || name.trim() === "" || url.trim() === ""}
-                onClick={() => void submit()}
-                className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {busy ? "保存中…" : "保存"}
-              </button>
-            </div>
+                {CRAWL_SOURCE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {TYPE_LABELS[t] ?? t}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="col-span-2 text-xs text-text-3">
+              端点(feed/API 地址;勿携带凭证参数) *
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/feed"
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="col-span-1 text-xs text-text-3">
+              平台标识(可选)
+              <input
+                value={platform ?? ""}
+                onChange={(e) => setPlatform(e.target.value)}
+                maxLength={20}
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="col-span-1 text-xs text-text-3">
+              凭证(token/apiKey;留空{editing ? "沿用" : "不设"})
+              <input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={channel?.credentialMask || "无凭证"}
+                disabled={clearToken}
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="col-span-1 text-xs text-text-3">
+              采集间隔(分钟,5-1440)
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={interval}
+                onChange={(e) => setIntervalMin(e.target.value)}
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="col-span-1 text-xs text-text-3">
+              每日请求上限(留空=不限)
+              <input
+                type="number"
+                min={1}
+                value={dailyMax}
+                onChange={(e) => setDailyMax(e.target.value)}
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="col-span-2 text-xs text-text-3">
+              备注
+              <input
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                maxLength={200}
+                className={`mt-1 ${field}`}
+              />
+            </label>
           </div>
-        </div>
+          <div className="mt-3 flex items-center gap-4 text-xs">
+            {editing && (
+              <label className="flex items-center gap-1.5 text-text-2">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                />
+                启用调度
+              </label>
+            )}
+            {editing && channel.credentialMask !== "" && (
+              <label className="flex items-center gap-1.5 text-text-2">
+                <input
+                  type="checkbox"
+                  checked={clearToken}
+                  onChange={(e) => setClearToken(e.target.checked)}
+                />
+                清除凭证(现 {channel.credentialMask})
+              </label>
+            )}
+          </div>
+          {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
+          <DialogActions>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={busy || name.trim() === "" || url.trim() === ""}
+              onClick={() => void submit()}
+              className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {busy ? "保存中…" : "保存"}
+            </button>
+          </DialogActions>
+        </DialogShell>
       )}
     </>
   );

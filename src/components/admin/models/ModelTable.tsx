@@ -8,16 +8,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { BindingRow } from "@/lib/ai/bindings-admin";
-import { AI_ROLE_META, AI_MODEL_PURPOSES } from "@/lib/ai/constants";
+import { AI_MODEL_PURPOSES, aiRoleLabel } from "@/lib/ai/constants";
+import { formatCnDate } from "@/lib/datetime";
 import type { AiModelRow } from "@/lib/ai/models-admin";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 import ModelDialog from "./ModelDialog";
+import TestStatusBadge from "./TestStatusBadge";
 
 const opLink = "cursor-pointer text-xs text-text-2 hover:text-accent disabled:opacity-50";
-
-function roleLabel(role: string): string {
-  return AI_ROLE_META[role as keyof typeof AI_ROLE_META]?.label ?? role;
-}
 
 /** 定位派生:id → (任一角色主力?)默认:(备用?)备用:— */
 function derivePosition(id: number, bindings: BindingRow[]): "default" | "backup" | null {
@@ -32,14 +31,14 @@ function Row({ model, bindings }: { model: AiModelRow; bindings: BindingRow[] })
   const pos = derivePosition(model.id, bindings);
   const posRoles =
     pos === "default"
-      ? bindings.filter((b) => b.primaryId === model.id).map((b) => roleLabel(b.role))
-      : bindings.filter((b) => b.backupId === model.id).map((b) => roleLabel(b.role));
+      ? bindings.filter((b) => b.primaryId === model.id).map((b) => aiRoleLabel(b.role))
+      : bindings.filter((b) => b.backupId === model.id).map((b) => aiRoleLabel(b.role));
 
   async function call(url: string, init: RequestInit): Promise<void> {
     setBusy(true);
     try {
       const res = await fetch(url, init);
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) alert(body.message || `HTTP ${res.status}`);
       router.refresh();
     } catch (e) {
@@ -72,10 +71,7 @@ function Row({ model, bindings }: { model: AiModelRow; bindings: BindingRow[] })
     >
       <td className="px-4 py-2.5">
         <div className="font-medium text-text-1">{model.name}</div>
-        <div className="mt-0.5 text-[11px] text-text-3">
-          {model.createdAt.getFullYear()}-{String(model.createdAt.getMonth() + 1).padStart(2, "0")}-
-          {String(model.createdAt.getDate()).padStart(2, "0")} 接入
-        </div>
+        <div className="mt-0.5 text-[11px] text-text-3">{formatCnDate(model.createdAt)} 接入</div>
       </td>
       <td className="px-3 py-2.5 text-text-2">{model.provider}</td>
       <td className="px-3 py-2.5">
@@ -88,7 +84,7 @@ function Row({ model, bindings }: { model: AiModelRow; bindings: BindingRow[] })
         <div className="flex flex-wrap gap-1">
           {AI_MODEL_PURPOSES.filter((p) => model.purposes.includes(p)).map((p) => (
             <span key={p} className="rounded-sm bg-accent/10 px-1.5 py-px text-[10px] text-accent">
-              {roleLabel(p)}
+              {aiRoleLabel(p)}
             </span>
           ))}
         </div>
@@ -135,20 +131,11 @@ function Row({ model, bindings }: { model: AiModelRow; bindings: BindingRow[] })
         </button>
       </td>
       <td className="px-3 py-2.5 text-[11px]">
-        {model.lastTestStatus === "ok" ? (
-          <span
-            className="text-green"
-            title={model.lastTestLatencyMs != null ? `${model.lastTestLatencyMs}ms` : undefined}
-          >
-            ✓ {model.lastTestLatencyMs ?? "?"}ms
-          </span>
-        ) : model.lastTestStatus === "fail" ? (
-          <span className="cursor-help text-red" title={model.lastTestError ?? undefined}>
-            ✗ 失败
-          </span>
-        ) : (
-          <span className="text-text-3">未测试</span>
-        )}
+        <TestStatusBadge
+          status={model.lastTestStatus}
+          latencyMs={model.lastTestLatencyMs}
+          error={model.lastTestError}
+        />
       </td>
       <td className="px-4 py-2.5 text-right">
         <div className="flex justify-end gap-2.5">

@@ -5,6 +5,7 @@
  * 失败提示直接用服务端模糊文案(不区分锁定/密码错);成功回跳 next(仅 /admin 路径)。
  */
 import { useState } from "react";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 function safeNext(): string {
   const next = new URLSearchParams(window.location.search).get("next") ?? "";
@@ -27,7 +28,7 @@ export default function LoginForm(): React.ReactElement {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, password }),
       });
-      const body: { code: number; message: string } = await res.json();
+      const body: ApiEnvelope = await res.json();
       if (body.code === 0) {
         window.location.replace(safeNext()); // 整页跳转,确保 RSC 重新取守卫状态
         return;

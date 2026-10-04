@@ -10,6 +10,7 @@ import { useState } from "react";
 import type { BindingRow } from "@/lib/ai/bindings-admin";
 import { AI_MODEL_PURPOSES, AI_ROLE_META, type AiTaskRole } from "@/lib/ai/constants";
 import type { AiModelRow } from "@/lib/ai/models-admin";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 const selectField =
   "w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs text-text-1 outline-none focus:border-accent";
@@ -53,7 +54,7 @@ function RoleCard({
           dailyMax: quota === "" ? null : Number(quota),
         }),
       });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         setError(body.message || `HTTP ${res.status}`);
         return;

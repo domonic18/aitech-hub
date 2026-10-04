@@ -19,9 +19,10 @@ import {
   USER_STATUS_DISABLED,
   USER_STATUS_PENDING_BINDING,
 } from "@/lib/users/user-status";
-import { adminListHref, pageWindow, parseListSegment, parsePage } from "@/lib/admin/list";
+import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
 import UserStatusButton from "@/components/admin/UserStatusButton";
+import AdminPagination from "@/components/admin/AdminPagination";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +70,6 @@ export default async function AdminUsersPage({
 
   const { items, total, counts } = await listUsersAdmin({ page, segment, q });
   const totalPages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
-  const pgBtn =
-    "rounded-sm border border-line bg-panel px-2.5 py-1 font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1";
 
   return (
     <div className="flex flex-col gap-4">
@@ -204,40 +203,13 @@ export default async function AdminUsersPage({
           </tbody>
         </table>
 
-        <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">
-          <span className="mr-auto text-xs text-text-3">
-            共 {total.toLocaleString("en-US")} 位 · 第 {page} / {totalPages} 页
-          </span>
-          {page > 1 && (
-            <Link href={listHref(segment, page - 1, q)} className={pgBtn} aria-label="上一页">
-              ‹
-            </Link>
-          )}
-          {pageWindow(page, totalPages).map((p, i) =>
-            p === null ? (
-              <span key={`gap-${i}`} className="text-xs text-text-3">
-                …
-              </span>
-            ) : p === page ? (
-              <span
-                key={p}
-                className="rounded-sm border border-accent bg-accent-dim px-2.5 py-1 font-mono text-xs font-semibold text-accent"
-                aria-current="page"
-              >
-                {p}
-              </span>
-            ) : (
-              <Link key={p} href={listHref(segment, p, q)} className={pgBtn}>
-                {p}
-              </Link>
-            ),
-          )}
-          {page < totalPages && (
-            <Link href={listHref(segment, page + 1, q)} className={pgBtn} aria-label="下一页">
-              ›
-            </Link>
-          )}
-        </div>
+        <AdminPagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          hrefFor={(p) => listHref(segment, p, q)}
+          unit="位"
+        />
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">

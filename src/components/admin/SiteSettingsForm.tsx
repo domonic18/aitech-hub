@@ -6,6 +6,7 @@
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 const inputField =
   "w-32 rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs text-text-1 outline-none focus:border-accent";
@@ -31,7 +32,7 @@ export default function SiteSettingsForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ bandItemCount: Number(bandCount) }),
       });
-      const body = (await res.json()) as { code: number; message: string };
+      const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         setError(body.message || `HTTP ${res.status}`);
         return;

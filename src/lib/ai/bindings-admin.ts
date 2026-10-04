@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { AI_MODEL_PURPOSES, AI_ROLE_META } from "./constants";
+import { AI_MODEL_PURPOSES, aiRoleLabel } from "./constants";
 import { AiAdminError } from "./errors";
 
 export interface BindingRow {
@@ -69,10 +69,7 @@ export function validateBindingSelection(
     if (!m) return new AiAdminError("not_found", `${slot}模型不存在`);
     if (!m.enabled) return new AiAdminError("disabled", `${slot}模型已停用,请先启用`);
     if (!m.purposes.includes(role)) {
-      return new AiAdminError(
-        "invalid",
-        `${slot}模型用途不含「${AI_ROLE_META[role as keyof typeof AI_ROLE_META]?.label ?? role}」`,
-      );
+      return new AiAdminError("invalid", `${slot}模型用途不含「${aiRoleLabel(role)}」`);
     }
   }
   return null;

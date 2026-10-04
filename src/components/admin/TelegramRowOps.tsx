@@ -7,6 +7,9 @@
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { field } from "@/components/admin/form-fields";
+import type { ApiEnvelope } from "@/lib/http/response";
+import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
 const ACTIONS: Record<string, Array<{ label: string; to: string; danger?: boolean }>> = {
   visible: [
@@ -22,9 +25,6 @@ const ACTIONS: Record<string, Array<{ label: string; to: string; danger?: boolea
     { label: "隐藏", to: "hidden", danger: true },
   ],
 };
-
-const field =
-  "w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-sm text-text-1 outline-none focus:border-accent placeholder:text-text-3";
 
 export default function TelegramRowOps({
   id,
@@ -50,7 +50,7 @@ export default function TelegramRowOps({
     setBusy(true);
     try {
       const res = await fetch(`/api/telegram/${id}/interpret`, { method: "POST" });
-      const resp = (await res.json()) as { code: number; message: string };
+      const resp = (await res.json()) as ApiEnvelope;
       if (resp.code !== 0) {
         alert(`解读触发失败:${resp.message}`);
         return;
@@ -69,7 +69,7 @@ export default function TelegramRowOps({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      const resp = (await res.json()) as { code: number; message: string };
+      const resp = (await res.json()) as ApiEnvelope;
       if (resp.code !== 0) {
         alert(`操作失败:${resp.message}`);
         return false;
@@ -120,48 +120,45 @@ export default function TelegramRowOps({
         编辑
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-md border border-line bg-panel p-5 shadow-xl">
-            <h3 className="text-sm font-semibold">修正条目(#{id})</h3>
-            <label className="mt-3 block text-xs text-text-3">
-              标题(≤500)
-              <input
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                maxLength={500}
-                className={`mt-1 ${field}`}
-              />
-            </label>
-            <label className="mt-3 block text-xs text-text-3">
-              摘要(≤1000)
-              <textarea
-                value={editSummary}
-                onChange={(e) => setEditSummary(e.target.value)}
-                rows={4}
-                maxLength={1000}
-                className={`mt-1 ${field}`}
-              />
-            </label>
-            {busy && <p className="mt-2 font-mono text-xs text-text-3">保存中…</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={busy || editTitle.trim() === "" || editSummary.trim() === ""}
-                onClick={() => void saveEdit()}
-                className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {busy ? "保存中…" : "保存"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DialogShell width="lg" title={`修正条目(#${id})`}>
+          <label className="mt-3 block text-xs text-text-3">
+            标题(≤500)
+            <input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              maxLength={500}
+              className={`mt-1 ${field}`}
+            />
+          </label>
+          <label className="mt-3 block text-xs text-text-3">
+            摘要(≤1000)
+            <textarea
+              value={editSummary}
+              onChange={(e) => setEditSummary(e.target.value)}
+              rows={4}
+              maxLength={1000}
+              className={`mt-1 ${field}`}
+            />
+          </label>
+          {busy && <p className="mt-2 font-mono text-xs text-text-3">保存中…</p>}
+          <DialogActions>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={busy || editTitle.trim() === "" || editSummary.trim() === ""}
+              onClick={() => void saveEdit()}
+              className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {busy ? "保存中…" : "保存"}
+            </button>
+          </DialogActions>
+        </DialogShell>
       )}
     </div>
   );

@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { BLOCKLIST_SCOPES } from "@/lib/telegram/constants";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 const SCOPE_LABELS: Record<string, string> = { title: "标题", summary: "摘要", all: "全部" };
 
@@ -37,7 +38,7 @@ export default function BlocklistManager({
         headers: body === undefined ? undefined : { "content-type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-      const resp = (await res.json()) as { code: number; message: string };
+      const resp = (await res.json()) as ApiEnvelope;
       if (resp.code !== 0) {
         setError(resp.message || `HTTP ${res.status}`);
         return;

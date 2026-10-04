@@ -11,6 +11,8 @@ import { useState } from "react";
 import type { AsrConfigView } from "@/lib/ai/asr-admin";
 
 import AsrDialog from "./AsrDialog";
+import TestStatusBadge from "./TestStatusBadge";
+import type { ApiEnvelope } from "@/lib/http/response";
 
 interface TestOutcome {
   ok: boolean;
@@ -53,7 +55,7 @@ export default function AsrCard({ asr }: { asr: AsrConfigView }) {
     setOutcome(null);
     try {
       const res = await fetch("/api/asr-config/test", { method: "POST" });
-      const body = (await res.json()) as { code: number; message: string; data?: TestOutcome };
+      const body = (await res.json()) as ApiEnvelope<TestOutcome | null>;
       if (body.code !== 0 || !body.data) {
         setOutcome({ ok: false, detail: body.message || `HTTP ${res.status}` });
         return;
@@ -110,15 +112,11 @@ export default function AsrCard({ asr }: { asr: AsrConfigView }) {
         <Lb
           label="最后测试"
           value={
-            asr.lastTestStatus === "ok" ? (
-              <span className="text-green">✓ {asr.lastTestLatencyMs ?? "?"}ms</span>
-            ) : asr.lastTestStatus === "fail" ? (
-              <span className="cursor-help text-red" title={asr.lastTestError ?? undefined}>
-                ✗ 失败
-              </span>
-            ) : (
-              "未测试"
-            )
+            <TestStatusBadge
+              status={asr.lastTestStatus}
+              latencyMs={asr.lastTestLatencyMs}
+              error={asr.lastTestError}
+            />
           }
         />
       </div>

@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
+  BAND_POLL_MS,
   formatDuration,
   hhmm,
   isNew,
@@ -23,8 +24,6 @@ import {
   timeAgo,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
-
-const POLL_MS = 60_000;
 
 /** 带内竖版封面(原型 .tg-row.video .thumb 口径:54×95 圆角 6、play 蒙层、
  * 底部时长横条 inset 3px);失败/无封面降级为播放占位块(不叠蒙层)。 */
@@ -116,7 +115,7 @@ export default function TelegramBand({
       }
       if (alive) setNow(Date.now());
     };
-    const t = setInterval(() => void tick(), POLL_MS);
+    const t = setInterval(() => void tick(), BAND_POLL_MS);
     return () => {
       alive = false;
       clearInterval(t);
