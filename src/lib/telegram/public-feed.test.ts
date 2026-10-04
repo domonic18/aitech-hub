@@ -1,0 +1,75 @@
+/**
+ * 首页带合并纯函数单测(批⑧保底槽位):最新视频不在混排前 N 则替换末位,
+ * 在则原样;不破坏倒序不变量。db 打桩(import 链含 prisma 客户端)。
+ */
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../db", () => ({ prisma: {}, isP2002: () => false }));
+
+import { mergeBandItems } from "./public-feed";
+import type { PublicTelegramItem } from "./feed-view";
+
+function item(id: string, publishedAt: string): PublicTelegramItem {
+  return {
+    id,
+    title: `标题 ${id}`,
+    summary: "",
+    url: `https://example.com/${id}`,
+    publishedAt,
+    sourceId: 1,
+    sourceName: "渠道",
+    mediaType: "text",
+  };
+}
+
+function videoItem(id: string, publishedAt: string): PublicTelegramItem {
+  return {
+    ...item(id, publishedAt),
+    mediaType: "video",
+    video: {
+      platform: "douyin",
+      blogger: "博主",
+      coverUrl: null,
+      durationSeconds: 60,
+      engagement: { play: null, like: null, comment: null },
+    },
+  };
+}
+
+describe("mergeBandItems 视频保底槽位", () => {
+  const mixed = Array.from({ length: 8 }, (_, i) => item(`t${i}`, `2026-10-04T0${i}:00:00+08:00`));
+
+  it("最新视频已在混排前 N → 原样返回(同引用)", () => {
+    const withVideo = [
+      ...mixed.slice(0, 3),
+      videoItem("v", mixed[3]!.publishedAt),
+      ...mixed.slice(4),
+    ];
+    expect(mergeBandItems(withVideo, withVideo[3]!, 8)).toBe(withVideo);
+  });
+
+  it("最新视频不在前 N → 替换末位,长度不变", () => {
+    const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
+    const out = mergeBandItems(mixed, newest, 8);
+    expect(out).toHaveLength(8);
+    expect(out.at(-1)).toBe(newest);
+    expect(out.slice(0, 7)).toEqual(mixed.slice(0, 7));
+  });
+
+  it("混排不足 N → 追加视频", () => {
+    const short = mixed.slice(0, 3);
+    const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
+    const out = mergeBandItems(short, newest, 8);
+    expect(out).toHaveLength(4);
+    expect(out.at(-1)).toBe(newest);
+  });
+
+  it("无视频条目 → 原样返回", () => {
+    expect(mergeBandItems(mixed, null, 8)).toBe(mixed);
+  });
+
+  it("混排为空 → 仅视频", () => {
+    const newest = videoItem("v", "2026-09-28T10:00:00+08:00");
+    expect(mergeBandItems([], newest, 8)).toEqual([newest]);
+  });
+});

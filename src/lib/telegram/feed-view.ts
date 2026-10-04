@@ -30,6 +30,9 @@ export interface PublicTelegramItem {
 export const FEED_MEDIA_FILTERS = ["all", "text", "video"] as const;
 export type FeedMediaFilter = (typeof FEED_MEDIA_FILTERS)[number];
 
+/** 首页 LIVE 带条数(批⑧:SSR 初值与 60s 轮询同源;保底槽位口径 7 最新 + 1 视频) */
+export const BAND_ITEM_COUNT = 8;
+
 /** 平台展示名(未知平台回退原值) */
 export function platformLabel(platform: string): string {
   const labels: Record<string, string> = { douyin: "抖音", xhs: "小红书", bilibili: "B站" };

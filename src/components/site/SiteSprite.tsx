@@ -4,7 +4,8 @@
  * 用法:布局挂一次 <SiteSprite />,正文 <svg className="ic"><use href="#i-xxx"/></svg>。
  * 首页 Hub(M5-e)所需:建议词 chips(fire/book/tool)、精选(star)、博主文章头(read)、
  * GEO(robot)、浏览量(eye)、Header 搜索入口(search);电报流(M7 批⑤)增补
- * thunderbolt(LIVE 带头标)、export(原文外链)——path 仍与原型 iconsprite 同源。
+ * thunderbolt(LIVE 带头标)、export(原文外链);批⑧增补 caret-right-fill(视频封面
+ * 播放钮)——path 仍与原型 iconsprite 同源。
  */
 import type { ReactElement } from "react";
 
@@ -52,6 +53,11 @@ const SYMBOLS: ReadonlyArray<{ id: string; body: string }> = [
     id: "i-export",
     // antd ExportOutlined(原型 iconsprite 同源;原文外链)
     body: '<path d="M880 912H144c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32h360c4.4 0 8 3.6 8 8v56c0 4.4-3.6 8-8 8H184v656h656V520c0-4.4 3.6-8 8-8h56c4.4 0 8 3.6 8 8v360c0 17.7-14.3 32-32 32zM770.87 199.13l-52.2-52.2a8.01 8.01 0 014.7-13.6l179.4-21c5.1-.6 9.5 3.7 8.9 8.9l-21 179.4c-.8 6.6-8.9 9.4-13.6 4.7l-52.4-52.4-256.2 256.2a8.03 8.03 0 01-11.3 0l-42.4-42.4a8.03 8.03 0 010-11.3l256.1-256.3z"/>',
+  },
+  {
+    id: "i-caret-right-fill",
+    // antd CaretRightFilled(原型 iconsprite 同源;首页带视频封面播放钮)
+    body: '<path d="M715.8 493.5L335 165.1c-14.2-12.2-35-1.2-35 18.5v656.8c0 19.7 20.8 30.7 35 18.5l380.8-328.4c10.9-9.4 10.9-27.6 0-37z"/>',
   },
 ];
 

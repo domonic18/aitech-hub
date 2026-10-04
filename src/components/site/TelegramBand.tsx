@@ -1,15 +1,18 @@
 "use client";
 
 /**
- * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行):
+ * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位):
  * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(74/108/1fr/auto,
- * 窄屏降级按原型 64/92/1fr 隐 ag);SSR 初值 + 60s 轮询(visible only);行点击直达外链。
- * 视频行:来源位显示「平台 · 博主」,标题前小封面(no-referrer 防盗链,失败隐图留 duration 角标语义)。
+ * 窄屏降级按原型 64/92/1fr 隐 ag);SSR 初值 + 60s 轮询(visible only,band=1 与
+ * SSR 同源 listBandFeed——最新视频不在前 N 也保底在带);行点击直达外链。
+ * 视频行:来源位显示「平台 · 博主」,标题前小封面(play 钮 + 底部时长角标,
+ * no-referrer 防盗链,失败降级 ▶ 占位块)。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import {
+  BAND_ITEM_COUNT,
   formatDuration,
   hhmm,
   isNew,
@@ -19,10 +22,10 @@ import {
 } from "@/lib/telegram/feed-view";
 
 const POLL_MS = 60_000;
-const BAND_LIMIT = 8;
 
-/** 带内小封面:失败/无封面降级为 ▶ 占位块(不重试) */
-function BandCover({ src }: { src: string | null }) {
+/** 带内小封面:play 蒙层 + 底部时长横条(原型 .thumb .play/.dur 口径);
+ * 失败/无封面降级为 ▶ 占位块(占位即播放语义,不叠蒙层)。 */
+function BandCover({ src, duration }: { src: string | null; duration: string | null }) {
   const [failed, setFailed] = useState(false);
   if (src === null || failed) {
     return (
@@ -32,15 +35,27 @@ function BandCover({ src }: { src: string | null }) {
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="inline-block h-8 w-6 flex-none rounded-xs object-cover"
-    />
+    <span className="relative inline-flex h-8 w-6 flex-none overflow-hidden rounded-xs bg-panel-2">
+      {/* eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域 */}
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-cover"
+      />
+      <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white">
+        <svg className="ic ic-sm" aria-hidden="true">
+          <use href="#i-caret-right-fill" />
+        </svg>
+      </span>
+      {duration && (
+        <span className="absolute inset-x-0 bottom-0 bg-black/70 text-center font-mono text-[8px] leading-3 text-white">
+          {duration}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -60,7 +75,9 @@ export default function TelegramBand({
     let alive = true;
     const tick = async (): Promise<void> => {
       try {
-        const res = await fetch(`/api/telegram/public?limit=${BAND_LIMIT}`, { cache: "no-store" });
+        const res = await fetch(`/api/telegram/public?band=1&limit=${BAND_ITEM_COUNT}`, {
+          cache: "no-store",
+        });
         const body = (await res.json()) as { code: number; data?: { items: PublicTelegramItem[] } };
         if (alive && body.code === 0 && body.data) setItems(body.data.items);
       } catch {
@@ -119,7 +136,7 @@ export default function TelegramBand({
               {video ? videoSourceName(video) : t.sourceName}
             </span>
             <span className="flex min-w-0 items-center gap-2">
-              {video && <BandCover src={video.coverUrl} />}
+              {video && <BandCover src={video.coverUrl} duration={duration} />}
               <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
                 {t.title}
                 <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
@@ -132,7 +149,6 @@ export default function TelegramBand({
                 fresh ? "text-green-hi" : "text-text-3"
               }`}
             >
-              {duration ? `${duration} · ` : ""}
               {fresh ? "NEW · " : ""}
               {timeAgo(t.publishedAt, now)}
             </span>

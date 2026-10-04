@@ -3,12 +3,7 @@ import Link from "next/link";
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
-import {
-  BAND_ITEM_COUNT,
-  countTodayVisible,
-  listPublicChannels,
-  listPublicTelegram,
-} from "@/lib/telegram/public-feed";
+import { countTodayVisible, listBandFeed, listPublicChannels } from "@/lib/telegram/public-feed";
 
 import HeroConsole from "@/components/site/HeroConsole";
 import SiteSprite from "@/components/site/SiteSprite";
@@ -24,7 +19,7 @@ export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
   const [bandItems, today, channels, latest, postCount] = await Promise.all([
-    listPublicTelegram({ limit: BAND_ITEM_COUNT }),
+    listBandFeed(),
     countTodayVisible(),
     listPublicChannels(),
     listLatestPosts(5),
