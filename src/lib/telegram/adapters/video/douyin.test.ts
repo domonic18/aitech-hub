@@ -83,14 +83,73 @@ describe("douyinAdapter.fetchRecentVideos", () => {
     expect((err as GatewayUpstreamError).kind).toBe("AccountInvalidError");
   });
 
-  it("非 JSON 错误体/连接失败 → GatewayUnavailableError(不计博主失败)", async () => {
+  it("503 浏览器槽位未就绪(仅 detail)→ GatewayUnavailableError(顺延不计失败)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("<html>502</html>", { status: 502 })),
+      vi.fn(
+        async () => new Response(JSON.stringify({ detail: "签名服务未就绪" }), { status: 503 }),
+      ),
     );
     await expect(
       douyinAdapter.fetchRecentVideos({ secUid: "s", cookies: JARS }),
     ).rejects.toBeInstanceOf(GatewayUnavailableError);
+  });
+
+  it("502 适配层失败(仅 detail,无 error)→ GatewayUpstreamError(计入失败,不再误归顺延)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "SignPageError: 风控" }), { status: 502 }),
+      ),
+    );
+    const err = await douyinAdapter
+      .fetchRecentVideos({ secUid: "s", cookies: JARS })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayUpstreamError);
+    expect((err as GatewayUpstreamError).kind).toBe("HTTP 502");
+    expect((err as GatewayUpstreamError).message).toContain("SignPageError: 风控");
+  });
+
+  it("422 pydantic 校验(detail 数组)→ GatewayUpstreamError kind=HTTP 422", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: [{ loc: ["body", "sec_uid"] }] }), {
+            status: 422,
+          }),
+      ),
+    );
+    const err = await douyinAdapter
+      .fetchRecentVideos({ secUid: "s", cookies: JARS })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayUpstreamError);
+    expect((err as GatewayUpstreamError).kind).toBe("HTTP 422");
+  });
+
+  it("200 但响应不合契约 → GatewayUpstreamError kind=ContractDrift", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ videos: "not-an-array" }), { status: 200 })),
+    );
+    const err = await douyinAdapter
+      .fetchRecentVideos({ secUid: "s", cookies: JARS })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayUpstreamError);
+    expect((err as GatewayUpstreamError).kind).toBe("ContractDrift");
+  });
+
+  it("非 JSON 错误体(502 html)→ GatewayUpstreamError;连接失败 → GatewayUnavailableError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html>502</html>", { status: 502 })),
+    );
+    const err = await douyinAdapter
+      .fetchRecentVideos({ secUid: "s", cookies: JARS })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayUpstreamError);
+    expect((err as GatewayUpstreamError).kind).toBe("HTTP 502");
 
     vi.stubGlobal(
       "fetch",

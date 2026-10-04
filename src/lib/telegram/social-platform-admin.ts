@@ -11,6 +11,7 @@ import { env } from "../env";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { socialPlatformRowName, VIDEO_PLATFORMS } from "./constants";
+import { gatewayHealthSchema } from "./adapters/video/gateway-contract";
 import { decryptJars, encryptJars, CookiePoolError, maskJars, mergeImportedJar } from "./cookies";
 import { BloggerAdminError } from "./bloggers-admin";
 
@@ -139,7 +140,7 @@ export interface GatewayHealthView {
   jarsAvailable?: number;
 }
 
-/** 网关 /health 带短超时;不可达返回降级视图(不阻塞页面渲染) */
+/** 网关 /health 带短超时;不可达或响应不合契约返回降级视图(不阻塞页面渲染) */
 export async function fetchGatewayHealth(): Promise<GatewayHealthView> {
   try {
     const res = await fetch(`${env.DOUYIN_GATEWAY_URL}/health`, {
@@ -147,16 +148,16 @@ export async function fetchGatewayHealth(): Promise<GatewayHealthView> {
       cache: "no-store",
     });
     if (!res.ok) return { reachable: false };
-    const body = (await res.json()) as {
-      status?: string;
-      jars_total?: number;
-      jars_available?: number;
-    };
+    const parsed = gatewayHealthSchema.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) {
+      logger.warn({ event: "gateway.health.contract_drift", issue: parsed.error.message });
+      return { reachable: false };
+    }
     return {
       reachable: true,
-      status: body.status,
-      jarsTotal: body.jars_total,
-      jarsAvailable: body.jars_available,
+      status: parsed.data.status,
+      jarsTotal: parsed.data.jars_total,
+      jarsAvailable: parsed.data.jars_available,
     };
   } catch {
     return { reachable: false };

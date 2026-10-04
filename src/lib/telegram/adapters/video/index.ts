@@ -41,7 +41,7 @@ export class GatewayUnavailableError extends Error {
   }
 }
 
-/** 网关在线但上游失败(error 字段归因;编排层计入博主连续失败) */
+/** 网关在线但上游失败(状态码分流:404/422/502 与 ContractDrift;编排层计入博主连续失败) */
 export class GatewayUpstreamError extends Error {
   constructor(
     readonly kind: string,
