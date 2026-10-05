@@ -28,7 +28,9 @@ export default function IngestHeatmap({ calendar }: { calendar: CalendarDay[] })
   const maxDay = Math.max(1, ...calendar.map((c) => c.count));
   const weeks = Math.max(1, Math.round(calendar.length / 7));
   // 刻度轴:首/末 + 三等分点,共 5 个 MM-DD(原型月度刻度 space-between 口径)
-  const ticks = [...new Set([0, 1, 2, 3].map((i) => Math.round(((calendar.length - 1) * i) / 4)))]
+  const ticks = [
+    ...new Set([0, 1, 2, 3, 4].map((i) => Math.round(((calendar.length - 1) * i) / 4))),
+  ]
     .map((i) => calendar[i]?.day)
     .filter((d): d is string => Boolean(d))
     .map((d) => d.slice(5));
