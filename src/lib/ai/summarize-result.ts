@@ -69,7 +69,9 @@ const OUTPUT_SPEC =
   "keywords(关键词数组,3到5个,每个不超过12个字,从内容抽象出的具体关键字," +
   "如公司名、产品名、技术、人物、事件;禁止输出「AI」「人工智能」这类全站通用的泛词)。" +
   "只输出 JSON,不要解释、前后缀或代码围栏;概括而非复述;" +
-  "不编造材料中没有的信息;全部用简体中文。";
+  "不编造材料中没有的信息;输入可能是英文等外语,summary、points、keywords 必须翻译成简体中文输出" +
+  "(M14:外刊渠道入库后面向中文读者,禁止整段照抄外语原文;公司/产品/模型等专有名词保留原文)," +
+  "全部内容使用简体中文。";
 
 export function buildSummarizePrompt(src: SummarizePromptSource): { system: string; user: string } {
   const meta = `标题:${src.title.trim() || "(无)"}\n摘要:${src.summary.trim() || "(无)"}`;

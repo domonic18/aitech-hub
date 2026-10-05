@@ -119,9 +119,12 @@ describe("buildSummarizePrompt", () => {
     expect(withContent.system).toContain("JSON");
     // 批⑥:prompt 明令禁泛词
     expect(withContent.system).toContain("人工智能");
+    // M14:外刊渠道要求外语输入翻译成简体中文输出
+    expect(withContent.system).toContain("翻译成简体中文");
 
     const degraded = buildSummarizePrompt({ title: "标题", summary: "摘要", content: null });
     expect(degraded.user).not.toContain("正文粗提取");
     expect(degraded.system).toContain("仅基于标题与摘要");
+    expect(degraded.system).toContain("翻译成简体中文");
   });
 });
