@@ -1,7 +1,7 @@
 /**
  * 文字摘要契约单测(M12 批③;批⑥ v2):summary ≤120/points 2-4/keywords 3-5
- * 结构钳制、泛词过滤(「AI」类禁令,滤光判不符)、JSON 提炼容错(围栏/前后噪声)
- * 与 prompt 双分支(有/无原文粗提取)。
+ * 结构钳制(下限硬卡,上限超量截断救底 2026-10-05)、泛词过滤(「AI」类禁令,
+ * 滤光判不符)、JSON 提炼容错(围栏/前后噪声)与 prompt 双分支(有/无原文粗提取)。
  */
 import { describe, expect, it } from "vitest";
 
@@ -33,7 +33,7 @@ describe("parseSummarizeResult", () => {
     });
   });
 
-  it("keywords 数量越界(2 个/6 个)→ 结构不符", () => {
+  it("keywords 不足下限(2 个)→ 仍结构不符;超量(6 个)→ 截到 5 救底(2026-10-05)", () => {
     expect(
       parseSummarizeResult(
         JSON.stringify({ summary: "x", points: ["a", "b"], keywords: ["a", "b"] }),
@@ -46,11 +46,14 @@ describe("parseSummarizeResult", () => {
           points: ["a", "b"],
           keywords: ["a", "b", "c", "d", "e", "f"],
         }),
-      ).ok,
-    ).toBe(false);
+      ),
+    ).toEqual({
+      ok: true,
+      data: { summary: "x", points: ["a", "b"], keywords: ["a", "b", "c", "d", "e"] },
+    });
   });
 
-  it("points 数量越界(1 条/5 条)→ 结构不符", () => {
+  it("points 不足下限(1 条)→ 仍结构不符;超量(5 条)→ 截到 4 救底(2026-10-05)", () => {
     expect(
       parseSummarizeResult(
         JSON.stringify({ summary: "x", points: ["a"], keywords: ["a", "b", "c"] }),
@@ -63,8 +66,30 @@ describe("parseSummarizeResult", () => {
           points: ["a", "b", "c", "d", "e"],
           keywords: ["a", "b", "c"],
         }),
-      ).ok,
-    ).toBe(false);
+      ),
+    ).toEqual({
+      ok: true,
+      data: { summary: "x", points: ["a", "b", "c", "d"], keywords: ["a", "b", "c"] },
+    });
+  });
+
+  it("keywords 超量混泛词 → 先滤泛词再截 5,保住滤后的具体词", () => {
+    expect(
+      parseSummarizeResult(
+        JSON.stringify({
+          summary: "x",
+          points: ["a", "b"],
+          keywords: ["AI", "文生视频", "人工智能", "Sora", "开源", "评测", "算力"],
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      data: {
+        summary: "x",
+        points: ["a", "b"],
+        keywords: ["文生视频", "Sora", "开源", "评测", "算力"],
+      },
+    });
   });
 
   it("summary 超 120 字 → 结构不符", () => {
