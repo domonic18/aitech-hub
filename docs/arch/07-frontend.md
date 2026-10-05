@@ -81,7 +81,7 @@
 
 ## 7. 管理后台(/admin)
 
-- AntD 5 侧边栏布局;`AdminGuard` 客户端守卫(session.role==='admin',否则跳 /login);API 层 `requireAdmin()` 双重防护
+- 壳层:`(admin)/admin/layout.tsx` 服务端守卫(`requireAdminPage`,未登录 307 → 登录页)+ 客户端 `AdminShell`(sidebar + crumb 顶栏,antd 图标子集经 AdminSprite);API 层 `requireAdmin()` 双重防护。窄屏(M13):<1024 sidebar 抽屉化(hamburger 呼出 / 遮罩·Esc·路由切换关),≥1024 固定 220px 常驻;表格 `overflow-x-auto` 横滚,弹层窄屏全宽/流式
 - 文章编辑器:**Markdown 主编辑区 + 实时预览**(`@uiw/react-md-editor` 或等价轻量方案);元信息表单:标题(自动生成 slug)、分类、标签多选、封面、SEO 字段、发布
 - **一键发文(2026-09-29 需求,一期交付)**:
   - Markdown 导入:「导入 .md / 粘贴」→ 解析全部图片引用 → 弹窗批量上传本地图片(选择文件夹/拖拽/zip,sha1 去重)+ 外链图调 `POST /api/media/import` 转存 → 以返回映射自动替换 md 中的引用为站内 URL → 进编辑器;编辑器内截图粘贴直接走上传管线

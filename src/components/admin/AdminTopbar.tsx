@@ -62,9 +62,12 @@ function crumbsOf(pathname: string): Crumb[] {
 export default function AdminTopbar({
   nickname,
   phone,
+  onMenu,
 }: {
   nickname: string | null;
   phone: string;
+  /** M13 移动端:传入则渲染抽屉呼出钮(<1024 显示) */
+  onMenu?: () => void;
 }): React.ReactElement {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -100,22 +103,36 @@ export default function AdminTopbar({
 
   return (
     <header
-      className="sticky top-0 z-10 flex items-center justify-between border-b border-line px-6 backdrop-blur"
+      className="sticky top-0 z-10 flex items-center justify-between border-b border-line px-4 backdrop-blur sm:px-6"
       style={{ height: "var(--admin-header-h)", background: "var(--header-bg)" }}
     >
-      <div className="font-mono text-xs text-text-3">
-        {crumbs.map((c, i) => (
-          <span key={c.href ?? c.label}>
-            {i > 0 && <span className="mx-1">›</span>}
-            {c.href ? (
-              <Link href={c.href} className="hover:text-accent">
-                {c.label}
-              </Link>
-            ) : (
-              <span className="text-text-1">{c.label}</span>
-            )}
-          </span>
-        ))}
+      <div className="flex min-w-0 items-center gap-1">
+        {onMenu && (
+          <button
+            type="button"
+            aria-label="打开菜单"
+            onClick={onMenu}
+            className="cursor-pointer rounded-sm p-1.5 text-text-2 hover:bg-panel-2 hover:text-text-1 lg:hidden"
+          >
+            <svg className="ic" aria-hidden="true">
+              <use href="#i-menu" />
+            </svg>
+          </button>
+        )}
+        <div className="min-w-0 truncate font-mono text-xs text-text-3">
+          {crumbs.map((c, i) => (
+            <span key={c.href ?? c.label}>
+              {i > 0 && <span className="mx-1">›</span>}
+              {c.href ? (
+                <Link href={c.href} className="hover:text-accent">
+                  {c.label}
+                </Link>
+              ) : (
+                <span className="text-text-1">{c.label}</span>
+              )}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

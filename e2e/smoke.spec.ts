@@ -825,9 +825,10 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await expect(vRow.getByRole("img", { name: MARK_V })).toBeVisible();
     await expect(vRow.getByRole("link", { name: /打开原视频/ })).toBeVisible();
     await expect(vRow.getByText(`抖音 · ${NICK}`)).toBeVisible();
-    // M9:已解读徽章 + 行内「解读」按钮在(不点击——真按会下载/转写入队)
+    // M9:已解读徽章 + 行内解读按钮在(不点击——真按会下载/转写入队);
+    // M12 批⑥:done 行按钮为重生成语义「重解读」
     await expect(vRow.getByText("已解读")).toBeVisible();
-    await expect(vRow.getByRole("button", { name: "解读", exact: true })).toBeVisible();
+    await expect(vRow.getByRole("button", { name: /^(重)?解读$/ })).toBeVisible();
     await page.goto("/admin/telegram/?media=text");
     await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toHaveCount(0);
 
@@ -895,7 +896,12 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(hit!.video).toMatchObject({ platform: "douyin", blogger: NICK, durationSeconds: 213 });
     expect(hit!.video!.engagement.like).toBe(345);
     // M9:公共 API 投影带 ai 解读结论(白名单三字段)
-    expect(hit!.video!.ai).toEqual({ topic: AI_TOPIC, summary: AI_SUMMARY, points: AI_POINTS });
+    expect(hit!.video!.ai).toEqual({
+      topic: AI_TOPIC,
+      summary: AI_SUMMARY,
+      points: AI_POINTS,
+      keywords: null,
+    });
     const bt = (await (await request.get("/api/telegram/public/?media=text&limit=50")).json()) as {
       data: { items: Array<{ title: string }> };
     };
