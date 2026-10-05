@@ -5,6 +5,8 @@
  * (批⑥ 新列;此前塞 ai_points 是契约换列前的过渡)。泛词禁令双保险:prompt 明令
  * + 代码层过滤(「AI」「人工智能」全站皆有的词做 tag 恒无区分度),滤光判不符,
  * 借 chatJsonTask 解析重试把禁令反馈给模型。
+ * 数量上限(4/5)不整条硬卡:模型偶发超量输出时滤泛词后截到上限救底(2026-10-05,
+ * 存量 14 条 failed 均因 keywords>5 整条判废);下限(2/3)是质量门槛仍整条拒收。
  * JSON 提炼与 interpret 同款(剥围栏取平衡片段,代码在 interpret-result 共用)。
  */
 import { z } from "zod";
@@ -17,8 +19,9 @@ const GENERIC_KEYWORDS = new Set(["ai", "人工智能", "artificial intelligence
 
 export const summarizeResultSchema = z.object({
   summary: z.string().trim().min(1).max(120),
-  points: z.array(z.string().trim().min(1).max(120)).min(2).max(4),
-  keywords: z.array(z.string().trim().min(1).max(30)).min(3).max(5),
+  // 数组只卡下限:上限(4/5)超量在 parseSummarizeResult 截断救底,不整条判废
+  points: z.array(z.string().trim().min(1).max(120)).min(2),
+  keywords: z.array(z.string().trim().min(1).max(30)).min(3),
 });
 
 export type SummarizeResult = z.infer<typeof summarizeResultSchema>;
@@ -43,16 +46,20 @@ export function parseSummarizeResult(raw: string): ParsedTask<SummarizeResult> {
       error: `结构不符:${parsed.error.issues[0]?.message ?? "unknown"}`.slice(0, 300),
     };
   }
-  const keywords = parsed.data.keywords.filter(
-    (k) => !GENERIC_KEYWORDS.has(k.trim().toLowerCase()),
-  );
+  // 滤泛词在前、截上限在后:保住的是滤后的具体词;单条长度上限仍在 schema 硬卡
+  const keywords = parsed.data.keywords
+    .filter((k) => !GENERIC_KEYWORDS.has(k.trim().toLowerCase()))
+    .slice(0, 5);
   if (keywords.length === 0) {
     return {
       ok: false,
       error: "keywords 全为「AI/人工智能」级泛词:须从内容抽象具体关键字(公司/产品/技术/事件)",
     };
   }
-  return { ok: true, data: { ...parsed.data, keywords } };
+  return {
+    ok: true,
+    data: { summary: parsed.data.summary, points: parsed.data.points.slice(0, 4), keywords },
+  };
 }
 
 export interface SummarizePromptSource {
