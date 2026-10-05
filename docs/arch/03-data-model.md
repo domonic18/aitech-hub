@@ -202,11 +202,17 @@ CREATE TABLE legacy_url_map (
 
 `pay_order` / `pay_order_item` / `content_post_purchase`(付费权益)、`github_repo` / `github_repo_activity`(项目展示)。命名已避让。
 
+**GitHub 项目展示域三表已落地(2026-10-05 M11 批①迁移 `github_showcase`,白名单口径——admin 逐行登记,不做全账号扫描)**:
+
+- `github_repo`(仓库白名单台账):`full_name` 唯一(同步跟随 GitHub 改名重定向回写);`slug` 唯一(站内 URL 键 `/projects/<slug>`,登记时由 name 派生**此后冻结**);stars/forks/language/topics text[]/html_url/homepage/default_branch;README 缓存 `readme_md`/`readme_sha`(sha 不变跳写,防 updatedAt/sitemap lastmod 空转)/`readme_fetched_at`;展示 `display`(前台开关,下架不删数据)/`sort_order`;调度观测列族与 social_account 同款 `sync_interval_min(默认 60)/last_sync_at/next_sync_at/consecutive_fails/last_error/status`
+- `github_repo_activity`(进展动态):`repo_id+kind+external_id` 唯一(commit sha/release id 去重锚),`occurred_at` 倒序索引;同步裁剪仅留每仓最新 50 条
+- `github_repo_post`(仓库↔文章显式 m2m,镜像 PostTag 复合主键双侧 Cascade):admin 手动关联,「配套文章 ×N」与详情页联动数据源
+
 **电报流表族已落地(M7 文字管道 + M8 视频管道,增量迁移进 `prisma/migrations/`,字段终态以 schema 为准)**:
 
 - `crawl_source`(文字渠道台账;M8 起兼**平台行**:`type=social-video + platform=douyin` 每平台一行,承载 Cookie 池密文 `config.cookieJars`/平台总开关/日上限,自身不调度——设计见 [arch/02 §2 落地注记](02-data-collection.md))
 - `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
-- `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2)
+- `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2);AI 解读列组视频/文字共用:`ai_status/ai_topic/ai_summary/ai_points jsonb/ai_keywords jsonb(M12 批⑥ 新列,文字条关键词 tag)/ai_ran_at/last_ai_error`(语义与契约演进见 arch/02 §3.2 落地注记)
 - `blocklist`(屏蔽词)
 
 **AI 服务域三表已落地(2026-10-04 M8 批⑥迁移 `ai_service_admin`,治理后台见 [arch/04 §4](04-ai-agent.md))**:
@@ -219,7 +225,7 @@ CREATE TABLE legacy_url_map (
 
 **站点配置与访问明细已落地(2026-10-04 M10 迁移,体验反馈批)**:
 
-- `site_config`(kv 通用底座):`key varchar(50) PK + value varchar(200) + updated_at`;value 一律字符串,消费方自行解析 + clamp(`getBandItemCount` 为首例:缺行/非数值/非正数回落默认,越界钳 1..50);键名合法值应用层 Zod 管控(`SITE_CONFIG_KEYS` 登记,后续设置键在此复用)
+- `site_config`(kv 通用底座):`key varchar(50) PK + value text + updated_at`;value 一律字符串,消费方自行解析 + clamp(键注册表 `SITE_CONFIG_KEYS` + per-key Zod,`src/lib/config/site-config.ts`;缺行/非数值/越界一律回落默认)。**M12 批② value 放宽为 text**(hero_md 存 markdown,varchar(200) 不够)并扩键族:`band.item_count`(默认 12,钳 1..50)/`home.repo_count`(默认 3,钳 1..12)/`home.post_count`(默认 5,钳 1..12)/`site.title`(默认「一起AI」,1..50 字;传播 generateMetadata/Header/Footer/feed.xml/llms.txt)/`home.hero_md`(≤2000 字,空 = 回退内置品牌语)
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 
 ## 3. Prisma 模型约定

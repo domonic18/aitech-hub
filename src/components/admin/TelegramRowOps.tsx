@@ -4,9 +4,12 @@
  * 电报条目行操作(M7 批④):状态迁移(按当前态给 恢复/隐藏/归档)+ 标题摘要
  * 人工修正弹窗。deleted 终态不经 UI。
  * M9:视频行加「解读」按钮(存量补读与失败重试同入口;POST interpret 入队即返回)。
+ * M12 批⑥(2026-10-05 验收反馈):文字行加「摘要」按钮(POST summarize,done 态
+ * 显「重摘要」= 重新生成入口);解读/摘要入队成功给行内「已加入处理队列」提示
+ * (此前仅静默 refresh,用户不知道点没点生效),失败仍 alert。
  */
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -26,35 +29,53 @@ const ACTIONS: Record<string, Array<{ label: string; to: string; danger?: boolea
   ],
 };
 
+const QUEUED_HINT_MS = 5000;
+
 export default function TelegramRowOps({
   id,
   title,
   summary,
   status,
   mediaType,
+  aiStatus,
 }: {
   id: string;
   title: string | null;
   summary: string;
   status: string;
   mediaType?: string;
+  /** 解读态(批⑥):决定 AI 按钮「首次/重新生成」措辞;pending/processing 加提示 */
+  aiStatus?: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [queued, setQueued] = useState(false);
+  const queuedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [open, setOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(title ?? "");
   const [editSummary, setEditSummary] = useState(summary);
 
-  /** 手动触发解读(M9):入队即返回,结果看解读态徽章;失败 alert 不阻断行内其他操作 */
-  const interpret = async (): Promise<void> => {
+  useEffect(
+    () => () => {
+      if (queuedTimer.current) clearTimeout(queuedTimer.current);
+    },
+    [],
+  );
+
+  /** 手动触发解读/摘要(入队即返回,结果看解读态徽章);失败 alert 不阻断行内其他操作 */
+  const triggerAi = async (kind: "interpret" | "summarize"): Promise<void> => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/telegram/${id}/interpret`, { method: "POST" });
+      const res = await fetch(`/api/telegram/${id}/${kind}`, { method: "POST" });
       const resp = (await res.json()) as ApiEnvelope;
       if (resp.code !== 0) {
-        alert(`解读触发失败:${resp.message}`);
+        alert(`${kind === "interpret" ? "解读" : "摘要"}触发失败:${resp.message}`);
         return;
       }
+      // 批⑥:入队成功行内提示 + refresh 让徽章翻到「排队中」
+      setQueued(true);
+      if (queuedTimer.current) clearTimeout(queuedTimer.current);
+      queuedTimer.current = setTimeout(() => setQueued(false), QUEUED_HINT_MS);
       router.refresh();
     } finally {
       setBusy(false);
@@ -86,6 +107,11 @@ export default function TelegramRowOps({
     if (ok) setOpen(false);
   };
 
+  const isVideo = mediaType === "video";
+  const isText = mediaType === "text";
+  const aiRerun = aiStatus === "done" || aiStatus === "missing_transcript";
+  const aiWorking = aiStatus === "pending" || aiStatus === "processing";
+
   return (
     <div className="flex items-center justify-end gap-1 text-xs">
       {(ACTIONS[status] ?? []).map((a) => (
@@ -101,16 +127,43 @@ export default function TelegramRowOps({
           {a.label}
         </button>
       ))}
-      {mediaType === "video" && (
+      {isVideo && (
         <button
           type="button"
           disabled={busy}
-          onClick={() => void interpret()}
-          title="下载 → 抽轨 → ASR 转写 → LLM 概括(入队即返回)"
+          onClick={() => void triggerAi("interpret")}
+          title={
+            aiRerun
+              ? "重新生成解读:重拉转写/文案 → LLM 概括(覆盖现有结论)"
+              : "下载 → 抽轨 → ASR 转写 → LLM 概括(入队即返回)"
+          }
           className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
         >
-          解读
+          {aiRerun ? "重解读" : "解读"}
         </button>
+      )}
+      {isText && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void triggerAi("summarize")}
+          title={
+            aiRerun
+              ? "重新生成摘要:LLM 中心思想 + 要点 + 关键词(覆盖现有结论)"
+              : "LLM 一句话中心思想 + 要点 + 关键词(入队即返回)"
+          }
+          className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
+        >
+          {aiRerun ? "重摘要" : "摘要"}
+        </button>
+      )}
+      {queued && (
+        <span className="whitespace-nowrap rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
+          已加入处理队列
+        </span>
+      )}
+      {!queued && aiWorking && (
+        <span className="whitespace-nowrap font-mono text-[10px] text-text-3">队列处理中…</span>
       )}
       <button
         type="button"

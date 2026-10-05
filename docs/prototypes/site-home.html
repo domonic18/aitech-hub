@@ -229,6 +229,11 @@ img { display: block; }
 .tg-row .ti { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tg-row .ti a:hover { color: var(--accent-hover); }
 .tg-row .ti .ext { color: var(--text-3); font-size: 11px; margin-left: 4px; }
+/* 文字行轻解读(M12 批③):「AI · 中心思想 + #关键词」单行省略,与视频行 .vt .m 同口径 */
+.tg-row .ti .ail { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tg-row .ti .ail .ai { color: var(--accent-hi, #8b96e8); }
+[data-theme="light"] .tg-row .ti .ail .ai { color: var(--accent-hover); }
+.tg-row .ti .ail .kw { opacity: .8; margin-left: 6px; }
 .tg-row .ag { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
 .tg-row.fresh::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px var(--glow); }
 /* 视频行:小竖版封面 + 平台徽标 + 博主 + 主题 + 时长 */
@@ -336,7 +341,14 @@ a.rail-foot:hover { color: var(--accent-hover); }
 
 @media (max-width: 960px) {
   .hub-grid { grid-template-columns: 1fr; }
-  .tg-row { grid-template-columns: 64px 92px 1fr; }
+  /* 2026-10-05 反馈改版:窄屏 64+92 定宽列挤压标题(手机宽只剩 ~170px)——
+     时间+渠道缩一行小字、标题独占整行(限文字行,视频行另有降级) */
+  .tg-row:not(.video) {
+    grid-template-columns: auto 1fr; grid-template-areas: "tm sr" "ti ti"; row-gap: 3px;
+  }
+  .tg-row:not(.video) .tm { grid-area: tm; }
+  .tg-row:not(.video) .sr { grid-area: sr; justify-self: start; }
+  .tg-row:not(.video) .ti { grid-area: ti; }
   .tg-row .ag { display: none; }
   .tg-row.video { grid-template-columns: 54px 1fr; }
   .tg-row.video .tm, .tg-row.video .pf { display: none; }
@@ -443,10 +455,13 @@ a.rail-foot:hover { color: var(--accent-hover); }
         <span class="bd">13 个渠道巡检中 · 文字资讯 + 短视频解读 · 今日已入库 47 条</span>
         <a class="more" href="site-telegram.html">进入电报流 →</a>
       </div>
+      <!-- 文字行轻解读(M12 批③):入库默认触发 summarize,标题下加 AI 行 -->
       <a class="tg-row fresh" href="site-telegram.html">
         <span class="tm fresh">14:12</span>
         <span class="sr sr-rss">机器之心</span>
-        <span class="ti">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ti">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span>
+          <span class="ail"><span class="ai">AI</span> · Claude 5.1 主打长任务 Agent 能力,基准提升 23% 而 API 价格不变<span class="kw">#Claude #Agent #基准评测</span></span>
+        </span>
         <span class="ag">3 分钟前 · NEW</span>
       </a>
       <a class="tg-row video" href="site-telegram.html">
@@ -478,7 +493,9 @@ a.rail-foot:hover { color: var(--accent-hover); }
       <a class="tg-row" href="site-telegram.html">
         <span class="tm">13:12</span>
         <span class="sr sr-web">Hacker News</span>
-        <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></span>
+        <span class="ti">Show HN:我用 300 行 Bash 让 cron 任务自动写 Claude Code 会话报告 <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span>
+          <span class="ail"><span class="ai">AI</span> · 用 headless claude -p 把 cron 输出转成每日变更电报,附 token 成本讨论<span class="kw">#Claude Code #自动化</span></span>
+        </span>
         <span class="ag">1 小时前</span>
       </a>
       <a class="tg-row" href="site-telegram.html">
@@ -620,7 +637,7 @@ a.rail-foot:hover { color: var(--accent-hover); }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.5.0 · Hub 终态首页 · 双栏仪表盘(二期) · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.5.0 · Hub 终态首页 · 双栏仪表盘(二期) · M12:文字行默认轻解读 · <a href="index.html">← 原型索引</a></div>
 
 <script>
 function toggleTheme() {

@@ -1,12 +1,15 @@
+import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = {
-  title: "关于",
-  description:
-    "一起AI:domonic18 的个人品牌技术站。第一人称、可复现、可问责的 AI 工程实战记录,与 GitHub 开源联动。",
-  alternates: { canonical: "/about/" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const siteTitle = await getSiteTitle();
+  return {
+    title: "关于",
+    description: `${siteTitle}:domonic18 的个人品牌技术站。第一人称、可复现、可问责的 AI 工程实战记录,与 GitHub 开源联动。`,
+    alternates: { canonical: "/about/" },
+  };
+}
 
 /** 关于(requirement §3.1:重写;定位口径承袭 requirement §1 战略定稿) */
 export default function AboutPage(): React.ReactElement {

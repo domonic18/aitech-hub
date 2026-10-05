@@ -324,7 +324,7 @@ describe("解读入队钩子(M9)", () => {
     expect(JSON.stringify(createData)).not.toContain("douyinvod");
   });
 
-  it("未就绪 / 无直链 / filtered / duplicated 均不入队", async () => {
+  it("未就绪 / filtered 不入队;无直链仍入队(M12:job 内重拉/降级,playUrl=null 透传)", async () => {
     fetchVideosMock.mockResolvedValue([
       videoItem(1, new Date(Date.now() - HOUR), "视频 1 描述", PLAY_URL),
       videoItem(2, new Date(Date.now() - 2 * HOUR), "视频 2 描述", null),
@@ -333,15 +333,18 @@ describe("解读入队钩子(M9)", () => {
     expect(interpretMock.enqueueInterpret).not.toHaveBeenCalled();
 
     interpretMock.isInterpretReady.mockResolvedValue(true);
-    await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) })); // 第 2 条无直链
-    expect(interpretMock.enqueueInterpret).toHaveBeenCalledTimes(1);
+    await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) })); // 第 2 条无直链也入队
+    expect(interpretMock.enqueueInterpret).toHaveBeenCalledTimes(2);
+    expect(interpretMock.enqueueInterpret).toHaveBeenLastCalledWith(
+      expect.objectContaining({ videoId: "vid-2", playUrl: null }),
+    );
 
     prismaMock.blocklist.findMany.mockResolvedValue([{ word: "广告", scope: "all" }]);
     fetchVideosMock.mockResolvedValue([
       videoItem(3, new Date(Date.now() - HOUR), "推广一条广告合作", PLAY_URL),
     ]);
     await run(makeAccount({ lastPostAt: new Date(Date.now() - 24 * HOUR) })); // filtered 不入队
-    expect(interpretMock.enqueueInterpret).toHaveBeenCalledTimes(1);
+    expect(interpretMock.enqueueInterpret).toHaveBeenCalledTimes(2);
   });
 
   it("入队失败不拖垮采集轮:条目照常 inserted,仅 warn", async () => {

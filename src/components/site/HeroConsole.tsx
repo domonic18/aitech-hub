@@ -5,8 +5,13 @@
  * 数据为真实已发布文章数)+ 搜索输入框(一期降级:GET /search 基础搜索,Agent 化
  * 随专项 K2)+ 建议词 chips。镜面光标(DESIGN-SPEC §5):失焦时随文字移动并闪烁,
  * 聚焦时隐藏、交还原生 caret(caret-color 为 accent)。
+ * 品牌语一行(M12 批②):后台可配 markdown(site_config home.hero_md),仅行内
+ * 语法生效——块级元素全部 disallow + unwrap,折叠进单个 h1 保持终端形态;空配置
+ * 回退内置文案。
  */
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useRef } from "react";
 
 /** 建议词(与站内内容强相关;点击进基础搜索) */
@@ -16,7 +21,66 @@ const SUGGESTIONS = [
   { icon: "i-tool", label: "本地部署 LLM", q: "本地部署" },
 ] as const;
 
-export default function HeroConsole({ postCount }: { postCount: number }): React.ReactElement {
+/** hero 行内 markdown 白名单渲染:块级全部折叠,链接/行内代码给终端风样式 */
+function HeroMarkdown({ children }: { children: string }): React.ReactElement {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      disallowedElements={[
+        "p",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "pre",
+        "table",
+        "thead",
+        "tbody",
+        "tr",
+        "th",
+        "td",
+        "hr",
+        "img",
+      ]}
+      unwrapDisallowed
+      components={{
+        a: (props) => (
+          <a
+            href={props.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline underline-offset-2 hover:text-accent-hover"
+          >
+            {props.children}
+          </a>
+        ),
+        code: (props) => (
+          <code className="rounded bg-panel-2 px-1 font-mono text-[12.5px] text-accent-hi">
+            {props.children}
+          </code>
+        ),
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+}
+
+export default function HeroConsole({
+  postCount,
+  heroMd,
+}: {
+  postCount: number;
+  /** 后台配置的 hub 主文案(markdown 行内);空 = 回退内置品牌语 */
+  heroMd?: string;
+}): React.ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const caretRef = useRef<HTMLSpanElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
@@ -53,9 +117,13 @@ export default function HeroConsole({ postCount }: { postCount: number }): React
           <div className="whitespace-pre-wrap">
             <span className="text-green">➜</span> <span className="text-text-1">whoami</span>
           </div>
-          {/* h1 承载品牌语(SEO 首页需 h1),视觉上即终端注释行 */}
+          {/* h1 承载品牌语(SEO 首页需 h1),视觉上即终端注释行;后台可配 markdown */}
           <h1 className="whitespace-pre-wrap font-normal text-text-3">
-            # AI 信息 Hub — 资讯 · 教程 · 项目,连接人与快速变化的 AI
+            {heroMd ? (
+              <HeroMarkdown>{heroMd}</HeroMarkdown>
+            ) : (
+              "# AI 信息 Hub — 资讯 · 教程 · 项目,连接人与快速变化的 AI"
+            )}
           </h1>
           <div className="whitespace-pre-wrap">
             <span className="text-accent-hi">hub.17aitech.com</span>{" "}

@@ -12,6 +12,8 @@ export interface PublicVideoAi {
   topic: string;
   summary: string;
   points: string[];
+  /** 文字条关键词 tag(M12 批⑥ 独立列);视频条恒 null(要点无关键词语义) */
+  keywords: string[] | null;
 }
 
 /** 视频条目附加元数据(M8 混合流;mediaType=video 时存在) */
@@ -36,6 +38,10 @@ export interface PublicTelegramItem {
   sourceName: string;
   mediaType: "text" | "video";
   video?: PublicVideoMeta;
+  /** 文字条轻解读(M12 批③:ai_summary=一句话中心思想、ai_points=要点、
+   * ai_keywords=关键词 tag,复用视频 AI 形状字段名不改);视频条的解读在
+   * video.ai。null=未解读 */
+  ai?: PublicVideoAi | null;
 }
 
 /** 媒体筛选合法值(URL 驱动,白名单回落 all) */
@@ -82,16 +88,46 @@ export function toEngagement(raw: unknown): {
   return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
 }
 
-/** AI 解读投影(镜像 toEngagement;ai_summary 非空才产出,points 白名单截 3 条) */
-export function toVideoAi(topic: unknown, summary: unknown, points: unknown): PublicVideoAi | null {
+/** AI 解读投影(镜像 toEngagement;ai_summary 非空才产出,points 白名单截 5 条
+ * ——文字要点/关键词 M12 起全量透出,视频要点契约 ≤3 不受影响) */
+export function toVideoAi(
+  topic: unknown,
+  summary: unknown,
+  points: unknown,
+  keywords: unknown = null,
+): PublicVideoAi | null {
   if (typeof summary !== "string" || summary.trim() === "") return null;
   return {
     topic: typeof topic === "string" ? topic.trim() : "",
     summary,
     points: Array.isArray(points)
-      ? points.filter((p): p is string => typeof p === "string" && p.trim() !== "").slice(0, 3)
+      ? points.filter((p): p is string => typeof p === "string" && p.trim() !== "").slice(0, 5)
       : [],
+    keywords: Array.isArray(keywords)
+      ? keywords.filter((k): k is string => typeof k === "string" && k.trim() !== "").slice(0, 5)
+      : null,
   };
+}
+
+/**
+ * 文字条轻解读投影(M12 批③;批⑥ 2026-10-05 验收反馈改双列):要点进 points、
+ * 关键词进 keywords。存量兼容:批⑥ 前 done 的文字行是旧契约(ai_points=关键词、
+ * ai_keywords 未回填)——keywords 空而 points 非空时对调,旧数据仍显示 tag、
+ * 不把关键词当要点充数;重跑「重新生成」即落新契约。
+ */
+export function toTextAi(
+  topic: unknown,
+  summary: unknown,
+  points: unknown,
+  keywords: unknown,
+): PublicVideoAi | null {
+  const ai = toVideoAi(topic, summary, points, keywords);
+  if (!ai) return null;
+  const kws = ai.keywords ?? [];
+  if (kws.length === 0 && ai.points.length > 0) {
+    return { topic: ai.topic, summary: ai.summary, points: [], keywords: ai.points };
+  }
+  return { topic: ai.topic, summary: ai.summary, points: ai.points, keywords: kws };
 }
 
 /** 相对时间(分/小时/天;分钟内「刚刚」) */

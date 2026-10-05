@@ -38,7 +38,7 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
   [AI_PURPOSE_SUMMARIZE]: {
     label: "文字摘要",
     icon: "i-filetext",
-    sub: "纯文字资讯 → 一句话摘要 + 标签(入流轻处理)",
+    sub: "纯文字资讯 → 一句话中心思想 + 要点 + 关键词(入流轻处理)",
   },
   [AI_PURPOSE_SEARCH]: {
     label: "Agent 搜索",

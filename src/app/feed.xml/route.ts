@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { RSS_FEED_SIZE } from "@/lib/constants";
 import { listAllPostsForSeo } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
+import { getSiteTitle } from "@/lib/config/site-config";
 import { excerptOf } from "@/lib/content/format";
 import { absoluteUrl, siteUrl } from "@/lib/seo/site";
 
@@ -19,7 +20,7 @@ function escapeXml(s: string): string {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const posts = (await listAllPostsForSeo()).slice(0, RSS_FEED_SIZE);
+  const [posts, siteTitle] = await Promise.all([listAllPostsForSeo(), getSiteTitle()]);
   const items = posts
     .map((p) => {
       const link = absoluteUrl(postPath(p.id, p.slug));
@@ -40,7 +41,7 @@ export async function GET(): Promise<NextResponse> {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>一起AI</title>
+    <title>${escapeXml(siteTitle)}</title>
     <link>${escapeXml(siteUrl())}</link>
     <description>domonic18 的 AI 工程实战原创博客</description>
     <language>zh-CN</language>

@@ -10,7 +10,8 @@ import sharp from "sharp";
 /**
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
- * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)。
+ * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)/GitHub 项目展示三件套(M11)/
+ * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -30,6 +31,15 @@ const LEGACY_TO_HOME = "/ai%e8%a7%86%e9%a2%91%e5%b7%a5%e5%85%b7/";
 
 /** 文章路径(2026-10 URL 终态):/post/<id>-<slug>/ 或 bare-id /post/<id>/ */
 const POST_PATH_RE = /^\/post\/\d+(?:-[^/]+)?\/$/;
+
+/** mutation 同源 Origin(运行时取服务源:e2e 可在备用端口起服,写死 :3000 会被同源关 403) */
+function originOf(page: import("@playwright/test").Page): string {
+  return new URL(page.url()).origin;
+}
+
+function jsonOrigin(page: import("@playwright/test").Page): Record<string, string> {
+  return { "content-type": "application/json", origin: originOf(page) };
+}
 
 async function sitemapPostUrls(
   request: import("@playwright/test").APIRequestContext,
@@ -381,7 +391,7 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   // UA 用真实浏览器串(playwright 字样被 isBotUa 过滤,正是生产口径)
   const beacon = await request.post("/api/view", {
     headers: {
-      origin: "http://localhost:3000",
+      origin: originOf(page),
       "x-forwarded-for": "203.0.113.7",
       "user-agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
@@ -672,16 +682,18 @@ test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", 
   await expect(page.getByRole("link", { name: /^全部 \d+$/ })).toBeVisible();
   await expect(page.getByText(/屏蔽词/).first()).toBeVisible();
 
-  // 采集总览:tick 调度卡 + 双队列实况(M9:interpreter 真实计数与日配额)
+  // 采集总览:tick 调度卡 + 队列实况(M9:interpreter 真实计数;M11 批②起 github 第三队列)
   await page.goto("/admin/spider/");
   await expect(page.getByRole("heading", { name: "采集总览" })).toBeVisible();
   await expect(page.getByText("tick 调度器", { exact: true })).toBeVisible();
-  await expect(page.getByText("双队列实况")).toBeVisible();
+  await expect(page.getByText("队列实况")).toBeVisible();
   await expect(page.getByText("interpreter", { exact: true })).toBeVisible();
   await expect(
     page.getByText(/视频解读 · 下载 \/ 抽轨 \/ ASR \/ LLM · 并发 1 · 今日 \d+\/\d+/),
   ).toBeVisible();
   await expect(page.getByText(/日配额超限延迟 30min 重投/)).toBeVisible();
+  await expect(page.getByText("github", { exact: true })).toBeVisible();
+  await expect(page.getByText(/开源项目白名单同步 · \d+ 仓\(\d+ 调度中\)/)).toBeVisible();
 });
 
 test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启停物理删/media 筛选)", async ({
@@ -770,7 +782,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     );
     await expect(row.getByRole("button", { name: "回填" })).toBeVisible();
     const bf = await page.request.post(`/api/bloggers/${blogger.id}/backfill/`, {
-      headers: { origin: "http://localhost:3000" },
+      headers: { origin: originOf(page) },
     });
     expect(bf.status()).toBe(409); // 播种平台行停用 → disabled,零 worker 依赖
 
@@ -786,7 +798,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     // 两步武装删除·服务端同判:session DELETE 直打启用中博主 → 409
     // (mutation 有 Origin 关:page.request 不自动带,须显式补同源 Origin,同 4.3b 注)
     const del = await page.request.delete(`/api/bloggers/${blogger.id}/`, {
-      headers: { origin: "http://localhost:3000" },
+      headers: { origin: originOf(page) },
     });
     expect(del.status()).toBe(409);
 
@@ -985,7 +997,7 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
       where: { role: "interpret" },
     });
     const quotaPut = await page.request.put("/api/model-bindings", {
-      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      headers: jsonOrigin(page),
       data: {
         role: "interpret",
         primaryId: beforeQuota.primaryId,
@@ -998,7 +1010,7 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
       (await prisma.aiTaskBinding.findUniqueOrThrow({ where: { role: "interpret" } })).dailyMax,
     ).toBe(25);
     await page.request.put("/api/model-bindings", {
-      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      headers: jsonOrigin(page),
       data: {
         role: "interpret",
         primaryId: beforeQuota.primaryId,
@@ -1009,13 +1021,13 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
 
     // 服务端绑定校验:purposes 不匹配 → 400;主备同模型 → 400(mutation 带 Origin,同 14)
     const badPurpose = await page.request.put("/api/model-bindings", {
-      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      headers: jsonOrigin(page),
       data: { role: "search", primaryId: base.id, backupId: null },
     });
     expect(badPurpose.status()).toBe(400);
     expect(((await badPurpose.json()) as { message: string }).message).toContain("用途");
     const badSame = await page.request.put("/api/model-bindings", {
-      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      headers: jsonOrigin(page),
       data: { role: "summarize", primaryId: base.id, backupId: base.id },
     });
     expect(badSame.status()).toBe(400);
@@ -1167,7 +1179,7 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
     await expect(input).toHaveValue("12");
     await input.fill("3");
     await page.getByRole("button", { name: "保存" }).click();
-    await expect(page.getByText("已保存,首页即将按新条数再生")).toBeVisible();
+    await expect(page.getByText("已保存,首页即时再生")).toBeVisible();
 
     // 落库 + GET API 回读;revalidatePath 后首页 SSR 立即 3 行。
     // 首屏计数用 evaluate 原子快照:带矮时哨兵在水合后立即自动连页加载,
@@ -1202,10 +1214,11 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
     await expect(vRow.getByText("抖音", { exact: true })).toBeVisible();
     await expect(vRow.getByText("@e2e 带博主")).toBeVisible();
     await expect(vRow.getByText("1:31")).toBeVisible();
-    await expect(vRow.getByText(/AI 解读 · e2e 带视频 AI 主题/)).toBeVisible();
+    // 批⑤:band 视频行 AI 行直出 summary(topic 恒泛化词不再上带)
+    await expect(vRow.getByText(/AI 解读 · e2e 带视频 AI 摘要/)).toBeVisible();
   } finally {
     // 还原:回写原值(原无行 → 写默认 12 后删行),清播种数据
-    const origin = { "content-type": "application/json", origin: "http://localhost:3000" };
+    const origin = jsonOrigin(page);
     await page.request.put("/api/site-config", {
       headers: origin,
       data: { bandItemCount: original ? Number(original.value) : 12 },
@@ -1213,6 +1226,405 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
     if (original === null) {
       await prisma.siteConfig.deleteMany({ where: { key: "band.item_count" } });
     }
+    await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+    await prisma.crawlSource.delete({ where: { id: source.id } });
+  }
+});
+
+test("18. GitHub 项目展示(M11:首页卡/列表/详情 README 重写与时间轴/下架即 404/admin 武装删除)", async ({
+  page,
+  request,
+}) => {
+  const SLUG = "e2e-demo-repo";
+  const FULL_NAME = "domonic18/e2e-demo-repo";
+  // 自播种零网络:登记行 readme 含代码栅栏/相对图/相对链/绝对图;nextSyncAt 推远防 worker 抢跑
+  const README = [
+    "# e2e-demo-repo",
+    "",
+    "安装:`npm i -g e2e-demo`。",
+    "",
+    "![架构图](docs/arch.png)",
+    "",
+    "![外链图](https://example.com/e2e-abs.png)",
+    "",
+    "[使用指南](./GUIDE.md)",
+    "",
+    "```bash",
+    'echo "hello e2e"',
+    "```",
+    "",
+  ].join("\n");
+  await prisma.githubRepo.deleteMany({ where: { slug: SLUG } });
+  const repo = await prisma.githubRepo.create({
+    data: {
+      fullName: FULL_NAME,
+      slug: SLUG,
+      description: "e2e 演示仓库:同步管道与前台三件套冒烟",
+      stars: 1234,
+      forks: 21,
+      language: "TypeScript",
+      topics: ["e2e", "cli"],
+      htmlUrl: `https://github.com/${FULL_NAME}`,
+      homepage: "https://e2e.invalid/home",
+      defaultBranch: "main",
+      readmeMd: README,
+      nextSyncAt: new Date(Date.now() + 24 * 3600_000), // 推远:worker 不抢跑,「立即同步」可见但不可点
+    },
+  });
+  const now = Date.now();
+  await prisma.githubRepoActivity.createMany({
+    data: [
+      // occurredAt 倒序断言用:release 最新,两条 commit 依次更旧
+      {
+        repoId: repo.id,
+        kind: "release",
+        externalId: "1001",
+        title: "e2e release v1.0.0",
+        url: `https://github.com/${FULL_NAME}/releases/tag/v1.0.0`,
+        author: "domonic18",
+        occurredAt: new Date(now - 10 * 60_000),
+      },
+      {
+        repoId: repo.id,
+        kind: "commit",
+        externalId: "abc0000001",
+        title: "e2e commit 甲:初始提交",
+        url: `https://github.com/${FULL_NAME}/commit/abc0000001`,
+        author: "domonic18",
+        occurredAt: new Date(now - 60 * 60_000),
+      },
+      {
+        repoId: repo.id,
+        kind: "commit",
+        externalId: "abc0000002",
+        title: "e2e commit 乙:修复",
+        url: `https://github.com/${FULL_NAME}/commit/abc0000002`,
+        author: "domonic18",
+        occurredAt: new Date(now - 120 * 60_000),
+      },
+    ],
+  });
+  // 配套文章关联既有已发布文(154+ 篇必在;测试尾解除关联,post 本体不动)
+  const linkedPost = await prisma.post.findFirst({
+    where: { status: "published" },
+    orderBy: { publishedAt: "desc" },
+    select: { id: true, slug: true, title: true },
+  });
+  expect(linkedPost).toBeTruthy();
+  await prisma.githubRepoPost.create({ data: { repoId: repo.id, postId: linkedPost!.id } });
+
+  try {
+    // 登录 admin,经 update API 触发 admin 写侧 revalidateProjectPaths(直插 prisma 不失效 ISR)
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+    // Origin 头取运行时站点源(mutation 同源关;e2e 可能起在 :3100 备用端口)
+    const origin = jsonOrigin(page);
+    const nudged = await page.request.put(`/api/github/repos/${repo.id}/`, {
+      headers: origin,
+      data: { syncIntervalMin: 60, sortOrder: 0 },
+    });
+    expect(nudged.status()).toBe(200);
+
+    // 首页右栏「开源项目」卡:仓库名 + /projects/ 链接 + 1.2k 星口径
+    const homeHtml = await (await request.get("/")).text();
+    expect(homeHtml).toContain(FULL_NAME);
+    expect(homeHtml).toContain(`/projects/${SLUG}/`);
+    expect(homeHtml).toContain("1.2k");
+    expect(homeHtml).toContain("配套文章 ×1");
+
+    // /projects/ 列表:终端风头 + 仓库卡
+    const listHtml = await (await request.get("/projects/")).text();
+    expect(listHtml).toContain("ls -la /projects"); // $ 是独立 span,不断言拼接字面量
+    expect(listHtml).toContain(FULL_NAME);
+
+    // 详情:README 相对图重写 raw.githubusercontent、相对链重写 blob、绝对图透传、
+    // 代码高亮、时间轴 release→commit 归并倒序、配套文章、JSON-LD
+    const detailRes = await request.get(`/projects/${SLUG}/`);
+    expect(detailRes.status()).toBe(200);
+    const detailHtml = await detailRes.text();
+    expect(detailHtml).toContain(
+      `https://raw.githubusercontent.com/${FULL_NAME}/main/docs/arch.png`,
+    );
+    expect(detailHtml).toContain("https://example.com/e2e-abs.png");
+    expect(detailHtml).toContain(`https://github.com/${FULL_NAME}/blob/main/GUIDE.md`);
+    expect(detailHtml).toContain("hello e2e");
+    expect(detailHtml).toContain("hljs");
+    expect(detailHtml).toContain('rel="noopener noreferrer nofollow"');
+    expect(detailHtml.indexOf("e2e release v1.0.0")).toBeLessThan(
+      detailHtml.indexOf("e2e commit 甲:初始提交"),
+    );
+    expect(detailHtml.indexOf("e2e commit 甲:初始提交")).toBeLessThan(
+      detailHtml.indexOf("e2e commit 乙:修复"),
+    );
+    const postHref = `/post/${linkedPost!.id}${linkedPost!.slug ? `-${linkedPost!.slug}` : ""}/`;
+    expect(detailHtml).toContain(`href="${postHref}"`);
+    expect(detailHtml).toContain("SoftwareSourceCode");
+
+    // SEO 面:sitemap 收录;错 slug 直接 404 不归一(无 id 锚点);守卫外形态(大写/下划线)同 404
+    const sitemapHtml = await (await request.get("/sitemap.xml")).text();
+    expect(sitemapHtml).toContain(`/projects/${SLUG}/`);
+    expect((await request.get("/projects/e2e-no-such-repo/")).status()).toBe(404);
+    expect((await request.get("/projects/E2E_Demo/")).status()).toBe(404);
+
+    // admin 台账:播种行可见,「立即同步」在(不点击——真按会经 worker 出网)
+    await page.goto("/admin/github/");
+    const row = page.getByRole("row", { name: new RegExp(SLUG) });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("button", { name: "立即同步" })).toBeVisible();
+
+    // 武装删除·服务端:enabled 启用中 DELETE → 409
+    const del = await page.request.delete(`/api/github/repos/${repo.id}/`, {
+      headers: { origin: originOf(page) },
+    });
+    expect(del.status()).toBe(409);
+
+    // 下架即 404(admin 写侧即时 revalidate)→ 重新上架恢复 200
+    await page.request.put(`/api/github/repos/${repo.id}/status/`, {
+      headers: origin,
+      data: { display: false },
+    });
+    expect((await request.get(`/projects/${SLUG}/`)).status()).toBe(404);
+    await page.request.put(`/api/github/repos/${repo.id}/status/`, {
+      headers: origin,
+      data: { display: true },
+    });
+    expect((await request.get(`/projects/${SLUG}/`)).status()).toBe(200);
+  } finally {
+    await prisma.githubRepo.deleteMany({ where: { slug: SLUG } });
+  }
+});
+
+test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单精简/带文字行 AI 轻解读", async ({
+  page,
+  request,
+}) => {
+  const AI_ROW_READ = "https://e2e.invalid/ai/1";
+  const AI_ROW_RAW = "https://e2e.invalid/ai/2";
+  const SLUG_A = "e2e-rail-a";
+  const SLUG_B = "e2e-rail-b";
+  const TAG_SLUG = "e2e-tag-jia";
+  const SITE_TITLE = "e2e站点甲";
+  const HERO_MD = "e2e **hub文案** 主标题甲";
+  const CONFIG_KEYS = [
+    "band.item_count",
+    "home.repo_count",
+    "home.post_count",
+    "site.title",
+    "home.hero_md",
+  ];
+
+  // ── 播种①:band 文字行两条(已解读 ai_* 有值 / 未解读对照),publishedAt=now 保证进带首
+  //    批⑥ 新契约:ai_points=要点、ai_keywords=关键词
+  const source = await prisma.crawlSource.upsert({
+    where: { name: "e2e-ai-band-source" },
+    update: {},
+    create: {
+      name: "e2e-ai-band-source",
+      type: "rss",
+      url: "https://e2e.invalid/ai-rss",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+  await prisma.telegram.createMany({
+    data: [
+      {
+        sourceId: source.id,
+        title: "e2e-ai-已解读",
+        summary: "e2e 轻解读摘要",
+        url: AI_ROW_READ,
+        publishedAt: new Date(),
+        contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+        aiStatus: "done",
+        aiSummary: "e2e 中心思想一句话",
+        aiPoints: ["要点甲", "要点乙"],
+        aiKeywords: ["关键词甲", "关键词乙", "关键词丙"],
+        aiRanAt: new Date(),
+      },
+      {
+        sourceId: source.id,
+        title: "e2e-ai-未解读",
+        summary: "e2e 对照摘要",
+        url: AI_ROW_RAW,
+        publishedAt: new Date(Date.now() - 60_000),
+        contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      },
+    ],
+  });
+  const seeded = await prisma.telegram.findMany({
+    where: { sourceId: source.id },
+    select: { id: true, title: true },
+  });
+  const aiReadId = seeded.find((r) => r.title === "e2e-ai-已解读")!.id.toString();
+
+  // ── 播种②:两个 showcase 仓库(sortOrder 垫到存量最大之上,rail 排序必进前二;
+  //    repo_count=1 时只现 A,验证配置钳制)nextSyncAt 推远防 worker 抢跑
+  await prisma.githubRepo.deleteMany({ where: { slug: { in: [SLUG_A, SLUG_B] } } });
+  const maxSort =
+    (await prisma.githubRepo.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0;
+  await prisma.githubRepo.createMany({
+    data: [SLUG_A, SLUG_B].map((slug, i) => ({
+      fullName: `e2e-rail/${slug}`,
+      slug,
+      description: `e2e rail ${slug}`,
+      stars: 100 - i,
+      htmlUrl: `https://github.com/e2e-rail/${slug}`,
+      sortOrder: maxSort + 1 + i,
+      nextSyncAt: new Date(Date.now() + 24 * 3600_000),
+    })),
+  });
+
+  // ── 播种③:tag 挂到既有已发布文(154+ 篇必在;filter-bar 与 tag 路由闭环用)
+  const linkedPost = await prisma.post.findFirst({
+    where: { status: "published" },
+    orderBy: { publishedAt: "desc" },
+    select: { id: true, title: true },
+  });
+  expect(linkedPost).toBeTruthy();
+  const tag = await prisma.tag.upsert({
+    where: { slug: TAG_SLUG },
+    update: {},
+    create: { slug: TAG_SLUG, name: "e2e标签甲" },
+  });
+  await prisma.postTag.deleteMany({ where: { tagId: tag.id } });
+  await prisma.postTag.create({ data: { postId: linkedPost!.id, tagId: tag.id } });
+
+  // ── 记录原五键(行缺=null,finally 按行有/无回写或删除)
+  const originals = await prisma.siteConfig.findMany({
+    where: { key: { in: CONFIG_KEYS } },
+  });
+
+  try {
+    // ── admin 登录 → 设置页:项目卡 1 / 文章 2 / 站点标题 / hero_md,保存
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+    await page.goto("/admin/settings/");
+    await page.getByLabel("首页项目卡条数").fill("1");
+    await page.getByLabel("首页博主文章条数").fill("2");
+    await page.getByLabel("站点标题").fill(SITE_TITLE);
+    await page.getByLabel("首页 Hub 主文案").fill(HERO_MD);
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("已保存,首页即时再生")).toBeVisible();
+
+    // 落库 + GET API 回读
+    const saved = await prisma.siteConfig.findMany({ where: { key: { in: CONFIG_KEYS } } });
+    const val = (key: string): string => saved.find((r) => r.key === key)!.value;
+    expect(val("home.repo_count")).toBe("1");
+    expect(val("home.post_count")).toBe("2");
+    expect(val("site.title")).toBe(SITE_TITLE);
+    expect(val("home.hero_md")).toBe(HERO_MD);
+    const cfg = await page.request.get("/api/site-config");
+    expect(
+      (await cfg.json()) as { data: { repoCount: number; postCount: number; siteTitle: string } },
+    ).toMatchObject({ data: { repoCount: 1, postCount: 2, siteTitle: SITE_TITLE } });
+
+    // ── 首页(保存即再生):title/顶栏站名、主菜单无 归档/关于、hero_md 行内 markdown
+    await page.goto("/");
+    await expect(page).toHaveTitle(new RegExp(SITE_TITLE));
+    await expect(page.locator("header").getByText(SITE_TITLE)).toBeVisible();
+    await expect(page.locator("header nav a", { hasText: "归档" })).toHaveCount(0);
+    await expect(page.locator("header nav a", { hasText: "关于" })).toHaveCount(0);
+    await expect(page.locator("h1 strong", { hasText: "hub文案" })).toBeVisible();
+
+    // rail 计数受配置钳制:项目卡仅现 sortOrder 最小的 A;文章 2 条
+    await expect(page.locator("a[href^='/projects/']:not([href='/projects/'])")).toHaveCount(1);
+    await expect(page.getByText(`e2e-rail/${SLUG_A}`)).toBeVisible();
+    await expect(page.getByText(`e2e-rail/${SLUG_B}`)).toHaveCount(0);
+    await expect(page.locator("a[href^='/post/']")).toHaveCount(2);
+
+    // band 文字 AI 行:已解读 → 「AI · 中心思想 + #关键词(蓝系)」;未解读对照 → 无 AI 行
+    const readRow = page.locator(`a[href='${AI_ROW_READ}']`);
+    await expect(readRow).toBeVisible();
+    await expect(readRow.getByText(/AI · e2e 中心思想一句话/)).toBeVisible();
+    await expect(readRow.getByText("#关键词甲")).toBeVisible();
+    const rawRow = page.locator(`a[href='${AI_ROW_RAW}']`);
+    await expect(rawRow).toBeVisible();
+    await expect(rawRow.getByText(/AI · /)).toHaveCount(0);
+
+    // 公开 API 投影(批⑥ 契约):要点/关键词双列;未解读行 ai null
+    const pub = await request.get("/api/telegram/public/?limit=50");
+    const pubBody = (await pub.json()) as {
+      code: number;
+      data: { items: Array<{ id: string; ai: Record<string, unknown> | null }> };
+    };
+    expect(pubBody.code).toBe(0);
+    const pubRead = pubBody.data.items.find((i) => i.id === aiReadId);
+    expect(pubRead?.ai).toEqual({
+      topic: "",
+      summary: "e2e 中心思想一句话",
+      points: ["要点甲", "要点乙"],
+      keywords: ["关键词甲", "关键词乙", "关键词丙"],
+    });
+
+    // /telegram 时间轴文字卡:要点折叠列表(批⑥ 问题3)+ 关键词 chips(蓝系,问题5)
+    await page.goto("/telegram/");
+    const aiCard = page.locator("article", { hasText: "e2e-ai-已解读" });
+    await expect(aiCard.getByText("关键要点 ×2")).toBeVisible();
+    await expect(aiCard.locator("summary", { hasText: "关键要点" })).toBeVisible();
+    await expect(aiCard.getByText("#关键词甲")).toBeVisible();
+
+    // 机器订阅源标题同步(feed.xml,保存时 layout 型 revalidate)
+    expect(await (await request.get("/feed.xml")).text()).toContain(SITE_TITLE);
+
+    // ── /articles/:tag 筛选条(全部 + 新 tag 链)→ tag 路由过滤闭环
+    await page.goto("/articles/");
+    const bar = page.locator("nav[aria-label='按标签筛选']");
+    await expect(bar).toBeVisible();
+    const tagLink = bar.getByRole("link", { name: /e2e标签甲/ });
+    await expect(tagLink).toHaveAttribute("href", `/tag/${TAG_SLUG}/`);
+    await tagLink.click();
+    await expect(page).toHaveURL(new RegExp(`/tag/${TAG_SLUG}/`));
+    expect(await page.content()).toContain(linkedPost!.title);
+
+    // ── 视图切换(新 context 默认列表):卡片按钮翻转 + 列表隐而未卸 + localStorage 记忆
+    await page.goto("/articles/");
+    const cardsBtn = page.getByTitle("卡片视图");
+    await expect(cardsBtn).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("article h2").first()).toBeVisible(); // 列表形态:h2 标题卡
+    await expect(page.locator("article div.p-4").first()).toBeHidden(); // 卡片形态藏
+    await cardsBtn.click();
+    await expect(cardsBtn).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("article div.p-4").first()).toBeVisible(); // 封面卡
+    await expect(page.locator("article h2").first()).toBeHidden();
+    await page.reload(); // localStorage 恢复卡片视图
+    await expect(page.getByTitle("卡片视图")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("article div.p-4").first()).toBeVisible();
+  } finally {
+    // 还原五键:原有行回写原值(经 API 走同款 revalidate);原无行删行
+    const restore: Record<string, number | string> = {};
+    const drop: string[] = [];
+    for (const key of CONFIG_KEYS) {
+      const row = originals.find((r) => r.key === key);
+      if (!row) {
+        drop.push(key);
+        continue;
+      }
+      if (key === "band.item_count") restore["bandItemCount"] = Number(row.value);
+      else if (key === "home.repo_count") restore["repoCount"] = Number(row.value);
+      else if (key === "home.post_count") restore["postCount"] = Number(row.value);
+      else if (key === "site.title") restore["siteTitle"] = row.value;
+      else restore["heroMd"] = row.value;
+    }
+    if (Object.keys(restore).length > 0) {
+      await page.request.put("/api/site-config", {
+        headers: jsonOrigin(page),
+        data: restore,
+      });
+    }
+    if (drop.length > 0) {
+      await prisma.siteConfig.deleteMany({ where: { key: { in: drop } } });
+    }
+    // 清播种
+    await prisma.postTag.deleteMany({ where: { tagId: tag.id } });
+    await prisma.tag.delete({ where: { id: tag.id } });
+    await prisma.githubRepo.deleteMany({ where: { slug: { in: [SLUG_A, SLUG_B] } } });
     await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
     await prisma.crawlSource.delete({ where: { id: source.id } });
   }

@@ -2,13 +2,15 @@
 
 /**
  * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位;
- * M10 批② 条数后台可配 + 下滚加载更多):头部 live-chip + 标题 + 巡检统计 + more;
- * 行四列网格 tm/sr/ti/ag(74/108/1fr/auto,窄屏降级按原型 64/92/1fr 隐 ag);
- * 视频行按原型 site-home .tg-row.video 五列(tm/thumb/pf/vt/ag):54×95 竖版封面
- * (play 蒙层 + 时长横条,no-referrer 防盗链,失败降级播放占位块)+ pf 平台章/博主
- * (窄屏隐)+ 标题与「AI 解读 · 概括」双行;窄屏降 54px+1fr 双列。行高由封面撑起。
- * SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重前插,保留
- * 用户已展开的尾部)+ 底部哨兵 IntersectionObserver 自动加载下一页(服务端
+ * M10 批② 条数后台可配 + 下滚加载更多;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
+ * 批⑤ 视频行 AI 行改直出 summary;批⑥ 关键词蓝系与 AI 徽章区分):
+ * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(sm+ 74/108/1fr/auto;
+ * 窄屏 2026-10-05 反馈改版:时间+渠道缩一行小字、标题独占整行——定宽列挤压标题不可读,
+ * 原型 @media 已同步);视频行按原型 site-home .tg-row.video 五列(tm/thumb/pf/vt/ag):
+ * 54×95 竖版封面(play 蒙层 + 时长横条,no-referrer 防盗链,失败降级播放占位块)+
+ * pf 平台章/博主(窄屏隐)+ 标题与「AI 解读 · 概括」双行;窄屏降 54px+1fr 双列。
+ * 行高由封面撑起。SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重
+ * 前插,保留用户已展开的尾部)+ 底部哨兵 IntersectionObserver 自动加载下一页(服务端
  * nextOffset 游标翻页,保底视频只占展示位不占游标;返回条数 < count 判定到底)。
  * 行点击直达外链。
  */
@@ -236,8 +238,10 @@ export default function TelegramBand({
                 <span className="truncate text-sm leading-normal text-text-1">{t.title}</span>
                 {video.ai && (
                   <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
-                    <span className="text-accent">AI 解读</span> ·{" "}
-                    {video.ai.topic || video.ai.summary}
+                    {/* 批⑤(2026-10-05 验收反馈):带内直出 summary 与电报流详情统一——
+                        topic 是 ≤20 字主题标签,每日要闻速递类视频恒产出「全球AI圈今日
+                        要闻速递」级泛化词,把有实质内容的 summary 挡在带外 */}
+                    <span className="text-accent">AI 解读</span> · {video.ai.summary}
                   </span>
                 )}
               </span>
@@ -258,23 +262,42 @@ export default function TelegramBand({
             href={t.url}
             target="_blank"
             rel="noopener nofollow"
-            className="grid grid-cols-[64px_92px_1fr] items-center gap-3 border-b border-line/55 px-5 py-2.5 last:border-b-0 hover:bg-panel-2 sm:grid-cols-[74px_108px_1fr_auto]"
+            className="block border-b border-line/55 px-5 py-2.5 last:border-b-0 hover:bg-panel-2 sm:grid sm:grid-cols-[74px_108px_1fr_auto] sm:items-center sm:gap-3"
           >
-            <span
-              className={`flex-none font-mono text-xs ${fresh ? "text-green-hi" : "text-text-3"}`}
-            >
-              {hhmm(t.publishedAt)}
-            </span>
-            <span className="flex-none truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-              {t.sourceName}
-            </span>
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
-                {t.title}
+            {/* 窄屏(2026-10-05 反馈):64+92 定宽列在手机宽只剩 ~170px,标题截到
+                七八字——时间+渠道缩为一行小字、标题独占整行;sm+ 回到原型四列
+                (sm:contents 让包裹层退场,子元素直接落格) */}
+            <span className="flex items-center gap-2 sm:contents">
+              <span
+                className={`flex-none font-mono text-xs ${fresh ? "text-green-hi" : "text-text-3"}`}
+              >
+                {hhmm(t.publishedAt)}
               </span>
-              <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
-                <use href="#i-export" />
-              </svg>
+              <span className="max-w-[140px] truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
+                {t.sourceName}
+              </span>
+            </span>
+            <span className="mt-1 flex min-w-0 flex-col sm:mt-0">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
+                  {t.title}
+                </span>
+                <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
+                  <use href="#i-export" />
+                </svg>
+              </span>
+              {/* 文字条轻解读(M12 批③):中心思想 + #关键词;批⑥ 关键词换蓝系,
+                  与 accent 色「AI」标记区分(tag vs 解读徽章一眼可辨) */}
+              {t.ai && (
+                <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
+                  <span className="text-accent">AI</span> · {t.ai.summary}
+                  {t.ai.keywords && t.ai.keywords.length > 0 && (
+                    <span className="ml-1.5 text-blue">
+                      {t.ai.keywords.map((k) => `#${k}`).join(" ")}
+                    </span>
+                  )}
+                </span>
+              )}
             </span>
             <span
               className={`hidden flex-none justify-self-end font-mono text-[11px] sm:block ${

@@ -31,6 +31,10 @@ const serverEnvSchema = z.object({
 
   /** 抖音数据网关(M8):dev 经 compose 映射 127.0.0.1:8010;prod 容器网内服务名 */
   DOUYIN_GATEWAY_URL: z.string().default("http://127.0.0.1:8010"),
+
+  /** GitHub API 令牌(M11 项目展示;可选——空=未认证 60 req/h,白名单 ≤10 仓可用;
+   *  配 token 提升至 5000/h。密钥仅 env,不入库不打日志) */
+  GITHUB_TOKEN: z.string().default(""),
 });
 
 const parsed = serverEnvSchema.safeParse(process.env);

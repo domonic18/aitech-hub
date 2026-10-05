@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-export default function Footer(): React.ReactElement {
+import { getSiteTitle } from "@/lib/config/site-config";
+
+export default async function Footer(): Promise<React.ReactElement> {
+  const siteTitle = await getSiteTitle();
   return (
     <footer className="mt-16 border-t border-line">
       <div className="mx-auto w-full max-w-[var(--site-max-w)] px-4 py-8 text-sm text-text-2 sm:px-6">
@@ -30,7 +33,7 @@ export default function Footer(): React.ReactElement {
           </a>
         </div>
         <p className="mt-4 text-text-3">
-          © {new Date().getFullYear()} 一起AI · domonic18 的 AI 工程实战博客
+          © {new Date().getFullYear()} {siteTitle} · domonic18 的 AI 工程实战博客
         </p>
       </div>
     </footer>

@@ -23,7 +23,11 @@ const queueMock = vi.hoisted(() => ({
   add: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
   remove: vi.fn<(args: unknown) => Promise<unknown>>(async () => undefined),
 }));
-vi.mock("../queue", () => ({ QUEUE_INTERPRETER: "interpreter", getQueue: () => queueMock }));
+vi.mock("../queue", () => ({
+  QUEUE_INTERPRETER: "interpreter",
+  QUEUE_SUMMARIZER: "summarizer",
+  getQueue: () => queueMock,
+}));
 
 const enqueueInterpretMock = vi.hoisted(() =>
   vi.fn<(data: unknown) => Promise<void>>(async () => undefined),
@@ -47,7 +51,34 @@ vi.mock("./interpret-video", () => ({
   },
 }));
 
-import { aiFilterWhere, listTelegramAdmin, triggerTelegramInterpret } from "./telegram-admin";
+const enqueueSummarizeMock = vi.hoisted(() =>
+  vi.fn<(data: unknown) => Promise<void>>(async () => undefined),
+);
+// 批⑥:summarize-text 同款镜像(导入链含 ai/resolver → env,必须桩掉)
+vi.mock("./summarize-text", () => ({
+  summarizeJobId: (id: string, suffix?: string) => `summarize-${id}${suffix ? `-${suffix}` : ""}`,
+  markPendingAndEnqueueSummarize: async (telegramId: bigint) => {
+    await prismaMock.telegram.update({
+      where: { id: telegramId },
+      data: { aiStatus: "pending", lastAiError: null },
+    });
+    try {
+      await enqueueSummarizeMock({ telegramId: telegramId.toString() });
+    } catch (err) {
+      await prismaMock.telegram
+        .update({ where: { id: telegramId }, data: { aiStatus: null } })
+        .catch(() => undefined);
+      throw err;
+    }
+  },
+}));
+
+import {
+  aiFilterWhere,
+  listTelegramAdmin,
+  triggerTelegramInterpret,
+  triggerTelegramSummarize,
+} from "./telegram-admin";
 
 /** 最近一次 telegram.findMany 的 where 参数 */
 function lastWhere(): Record<string, unknown> {
@@ -210,6 +241,38 @@ describe("triggerTelegramInterpret(M9 手动触发)", () => {
     await expect(triggerTelegramInterpret(BigInt(7))).rejects.toThrow("redis down");
     expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(7) },
+      data: { aiStatus: null },
+    });
+  });
+});
+
+describe("triggerTelegramSummarize(M12 批⑥ 手动触发/重新生成)", () => {
+  it("条目不存在 / 非文字 → 前置拒绝,不入队", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue(null);
+    await expect(triggerTelegramSummarize(BigInt(1))).rejects.toMatchObject({ code: "not_found" });
+
+    prismaMock.telegram.findUnique.mockResolvedValue({ id: BigInt(1), mediaType: "video" });
+    await expect(triggerTelegramSummarize(BigInt(1))).rejects.toMatchObject({ code: "not_text" });
+    expect(enqueueSummarizeMock).not.toHaveBeenCalled();
+  });
+
+  it("文字行:遗留 job 清理 + pending 重置 + 入队;done 无守卫可重跑(重新生成语义)", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue({ id: BigInt(9), mediaType: "text" });
+    await expect(triggerTelegramSummarize(BigInt(9))).resolves.toEqual({ enqueued: true });
+    expect(queueMock.remove).toHaveBeenCalledWith("summarize-9"); // 防遗留 completed job 静默去重
+    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+      where: { id: BigInt(9) },
+      data: { aiStatus: "pending", lastAiError: null },
+    });
+    expect(enqueueSummarizeMock).toHaveBeenCalledWith({ telegramId: "9" });
+  });
+
+  it("入队失败 → pending 回滚为 null,错误上抛", async () => {
+    prismaMock.telegram.findUnique.mockResolvedValue({ id: BigInt(10), mediaType: "text" });
+    enqueueSummarizeMock.mockRejectedValue(new Error("redis down"));
+    await expect(triggerTelegramSummarize(BigInt(10))).rejects.toThrow("redis down");
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(10) },
       data: { aiStatus: null },
     });
   });

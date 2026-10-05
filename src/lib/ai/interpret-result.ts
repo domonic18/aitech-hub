@@ -15,8 +15,9 @@ export type InterpretResult = z.infer<typeof interpretResultSchema>;
 
 export type ParsedInterpret = { ok: true; data: InterpretResult } | { ok: false; error: string };
 
-/** 剥 ```json 围栏,取首个平衡 {} 片段(字符串内的引号/花括号感知) */
-function extractJsonBlock(raw: string): string | null {
+/** 剥 ```json 围栏,取首个平衡 {} 片段(字符串内的引号/花括号感知);
+ * summarize-result 共用(M12 批③) */
+export function extractJsonBlock(raw: string): string | null {
   let text = raw.trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence?.[1]) text = fence[1].trim();

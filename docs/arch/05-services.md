@@ -57,7 +57,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 
 ### 4.1 队列与纪律
 
-- 单 Redis,队列按域命名:`media`(一期)、`github`、`crawler`、`pay`(二期启用)
+- 单 Redis,队列按域命名:`media`(一期)、`crawler`、`interpreter`(M9)、`summarizer`(M12)、`github`(M11)、`pay`(二期启用)
 - **请求内禁做秒级以上处理**(arch/00-overview §7):一切转码/压缩/抓取/同步 enqueue 后立即返回 `{ jobId }`
 - 任务幂等:所有 processor 以业务键去重(jobId 用 `media-{sha1}-process` 连字符形态),可重复投递。**custom jobId 禁含冒号**(BullMQ 直接抛 "Custom Id cannot contain :",2026-10-04 实修——interpret/media 旧冒号键致入队 500)
 - worker 独立进程 `worker/index.ts`:注册 processors、优雅退出(SIGTERM 排空)、失败重试(指数退避,上限 3 次)+ 死信记录
@@ -72,7 +72,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 | stats | `stats.flush` | 每 60s(upsertJobScheduler) | 日缓冲 RENAME→HGETALL→聚合表 UPSERT(visit/referrer/page/client/post_view_daily + views_count 累加);失败还原缓冲下轮重试(`lib/stats/service.ts`) |
 | stats | `purge-visit-log` | 每日 04:14(同队列 upsertJobScheduler pattern,job.name 分流) | `stats_visit_log` 清 7 天前行(全量 IP 短留存,arch/03 §2.4;`purgeVisitLogs`) |
 
-二期任务(立项时补设计):`github.sync`(仓库同步)、`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。**`crawler.*` 已交付**:文字渠道(M7,`crawl-{id}-{nextRunAt}`)+ 视频博主(M8,`crawl-video-{id}-{nextRunAt}`,编排见 `src/lib/telegram/ingest-video.ts`;调度器同一 `crawler-tick` 每 60s 扫描,`crawlDueSources` 排除平台行、`enqueueDueVideoAccounts` 扫 `social_account`);设计落点 arch/02-data-collection。
+二期任务(立项时补设计):`distribute.*`(微信公众号等渠道分发,publish_channel 状态机)、`pay.*`(对账轮询);agent 触发类长任务设计落点 arch/04-ai-agent。**`crawler.*` 已交付**:文字渠道(M7,`crawl-{id}-{nextRunAt}`)+ 视频博主(M8,`crawl-video-{id}-{nextRunAt}`,编排见 `src/lib/telegram/ingest-video.ts`;调度器同一 `crawler-tick` 每 60s 扫描,`crawlDueSources` 排除平台行、`enqueueDueVideoAccounts` 扫 `social_account`);设计落点 arch/02-data-collection。**`interpret-video` 已交付**(M9,`interpreter` 队列并发 1/lockDuration 600s;ASR→LLM 管道编排 `src/lib/telegram/interpret-video.ts`,管道详设与红线见 arch/02 §3.2 落地注记)。**`summarize-text` + AI 补扫已交付**(M12 批③,2026-10-05):`summarizer` 队列(默认并发 2,lockDuration 300s——纯 LLM 秒级调用,与视频长任务分队列防阻塞)跑 `summarize-text` job(文字电报轻解读:一句话中心思想 + 要点 + 3-5 关键词(禁泛词,批⑥ 契约 v2),复用 `ai_*` 列;编排 `src/lib/telegram/summarize-text.ts`,ingest 落库即入队,治理台「摘要/重摘要」按钮经 POST `/api/telegram/[id]/summarize` 手动触发与重新生成);**AI 存量补扫** `ai-backfill` job 借 `crawler` 队列 tick 生态(`ai-backfill-tick` 每 5min,`worker/index.ts` 调度;扫 `ai_status IS NULL` 且 7 天内可见行每类 5 条,按 mediaType 分流入 interpreter/summarizer,入队前移除遗留 jobId + 先标 pending;对应模型未绑定的类整轮跳过防空转;编排 `src/lib/telegram/ai-backfill.ts`)。**`github.sync` 已交付**(M11,2026-10-05):`github` 队列,`github-tick` 每 5min 扫 `github_repo.next_sync_at` 到期白名单仓逐仓 fanout(`github-sync-{id}-{nextSyncAt}`,调度器见 worker/index.ts;sync 编排 `src/lib/github/sync.ts`——meta 条件写防 updatedAt 空转、README sha 跳写、动态去重裁剪;Unavailable/限频不计连败,Upstream 计连败 ≥3 → error;手动「立即同步」经 repos-admin 入队 `github-sync-{id}-manual-{ts}`)。
 
 ### 4.4 视频采集网关 sidecar(services/douyin-gateway/,2026-10-04 M8 新增)
 

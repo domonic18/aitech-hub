@@ -159,6 +159,24 @@ img { display: block; }
 }
 .tag.cat { color: var(--green-hi); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
 
+/* ==== 视图切换(M12:列表 ⇄ 封面卡片两形态;线上 PostViewToggle,localStorage 记忆,默认列表)==== */
+.f-view { display: flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.f-view button { width: 34px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer; background: transparent; color: var(--text-3); transition: all .15s; }
+.f-view button:hover { color: var(--text-1); background: var(--panel-2); }
+.f-view button.on { background: var(--accent); color: #fff; }
+
+/* 封面卡片网格(M12 问题四卡片形态:16:9 封面 + 2 列;列表形态线上为文字行 PostCard,.row-card 为横排参考) */
+.grid-cards { max-width: var(--site-max-w); margin: 0 auto; padding: 0 24px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.grid-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; transition: border-color .2s; }
+.grid-card:hover { border-color: var(--border-hover); }
+.grid-card .g-cover { position: relative; aspect-ratio: 16/9; background: linear-gradient(135deg, var(--cover-a), var(--cover-b)); }
+.grid-card .g-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.grid-card .g-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; }
+.grid-card h3 { font-size: 15.5px; line-height: 1.5; }
+.grid-card h3 a:hover { color: var(--accent-hover); }
+.grid-card p { color: var(--text-2); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.grid-card .row-meta { margin-top: auto; }
+
 /* ==== 分页 ==== */
 .pager { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 40px 0 8px; }
 .pager a, .pager span.cur {
@@ -182,7 +200,7 @@ img { display: block; }
 }
 .proto-note a { color: var(--accent-hover); }
 [data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
-@media (max-width: 800px) { .row-card { grid-template-columns: 1fr; } .row-body { padding: 0 20px 18px; } }
+@media (max-width: 800px) { .row-card { grid-template-columns: 1fr; } .row-body { padding: 0 20px 18px; } .grid-cards { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -196,6 +214,8 @@ img { display: block; }
   <symbol id="i-user" viewBox="64 64 896 896"><path d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></symbol>
   <symbol id="i-logout" viewBox="64 64 896 896"><path d="M868 732h-70.3c-4.8 0-9.3 2.1-12.3 5.8-7 8.5-14.5 16.7-22.4 24.5a353.84 353.84 0 01-112.7 75.9A352.8 352.8 0 01512.4 866c-47.9 0-94.3-9.4-137.9-27.8a353.84 353.84 0 01-112.7-75.9 353.28 353.28 0 01-76-112.5C167.3 606.2 158 559.9 158 512s9.4-94.2 27.8-137.8c17.8-42.1 43.4-80 76-112.5s70.5-58.1 112.7-75.9c43.6-18.4 90-27.8 137.9-27.8 47.9 0 94.3 9.3 137.9 27.8 42.2 17.8 80.1 43.4 112.7 75.9 7.9 7.9 15.3 16.1 22.4 24.5 3 3.7 7.6 5.8 12.3 5.8H868c6.3 0 10.2-7 6.7-12.3C798 160.5 663.8 81.6 511.3 82 271.7 82.6 79.6 277.1 82 516.4 84.4 751.9 276.2 942 512.4 942c152.1 0 285.7-78.8 362.3-197.7 3.4-5.3-.4-12.3-6.7-12.3zm88.9-226.3L815 393.7c-5.3-4.2-13-.4-13 6.3v76H488c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></symbol>
   <symbol id="i-eye" viewBox="64 64 896 896"><path d="M942.2 486.2C847.4 286.5 704.1 186 512 186c-192.2 0-335.4 100.5-430.2 300.3a60.3 60.3 0 000 51.5C176.6 737.5 319.9 838 512 838c192.2 0 335.4-100.5 430.2-300.3 7.7-16.2 7.7-35 0-51.5zM512 766c-161.3 0-279.4-81.8-362.7-254C232.6 339.8 350.7 258 512 258c161.3 0 279.4 81.8 362.7 254C791.5 684.2 673.4 766 512 766zm-4-430c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176zm0 288c-61.9 0-112-50.1-112-112s50.1-112 112-112 112 50.1 112 112-50.1 112-112 112z"/></symbol>
+  <symbol id="i-bars" viewBox="64 64 896 896"><path d="M912 192H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 284H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 284H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM104 228a56 56 0 10112 0 56 56 0 10-112 0zm0 284a56 56 0 10112 0 56 56 0 10-112 0zm0 284a56 56 0 10112 0 56 56 0 10-112 0z"/></symbol>
+  <symbol id="i-appstore" viewBox="64 64 896 896"><path d="M464 144H160c-8.8 0-16 7.2-16 16v304c0 8.8 7.2 16 16 16h304c8.8 0 16-7.2 16-16V160c0-8.8-7.2-16-16-16zm-52 268H212V212h200v200zm452-268H560c-8.8 0-16 7.2-16 16v304c0 8.8 7.2 16 16 16h304c8.8 0 16-7.2 16-16V160c0-8.8-7.2-16-16-16zm-52 268H612V212h200v200zM464 544H160c-8.8 0-16 7.2-16 16v304c0 8.8 7.2 16 16 16h304c8.8 0 16-7.2 16-16V560c0-8.8-7.2-16-16-16zm-52 268H212V612h200v200zm452-268H560c-8.8 0-16 7.2-16 16v304c0 8.8 7.2 16 16 16h304c8.8 0 16-7.2 16-16V560c0-8.8-7.2-16-16-16zm-52 268H612V612h200v200z"/></symbol>
   <symbol id="i-avatar" viewBox="0 0 1024 1024">
     <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
     <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
@@ -243,10 +263,14 @@ img { display: block; }
     <div class="f-sort">
       排序:<a href="#" class="on" onclick="return false">最新</a><a href="#" onclick="return false">最热</a>
     </div>
+    <div class="f-view" role="group" aria-label="视图切换">
+      <button type="button" id="viewListBtn" class="on" title="列表视图" onclick="setView('list')"><svg class="ic" aria-hidden="true"><use href="#i-bars"/></svg></button>
+      <button type="button" id="viewGridBtn" title="卡片视图" onclick="setView('grid')"><svg class="ic" aria-hidden="true"><use href="#i-appstore"/></svg></button>
+    </div>
   </div>
 </div>
 
-<main class="list">
+<main class="list" id="viewListMain">
   <article class="row-card">
     <div class="row-cover"><img src="assets/cover-claude-code.jpg" alt="" onerror="this.remove()"></div>
     <div class="row-body">
@@ -320,6 +344,46 @@ img { display: block; }
   </article>
 </main>
 
+
+<main class="grid-cards" id="viewGridMain" hidden>
+  <article class="grid-card">
+    <div class="g-cover"><img src="assets/cover-claude-code.jpg" alt="" onerror="this.remove()"></div>
+    <div class="g-body">
+      <div class="tags"><span class="tag cat">AI 实战</span><span class="tag">Claude Code</span></div>
+      <h3><a href="site-article.html">用 Claude Code 重建我的博客:从 WordPress 到 Next.js 全栈单体</a></h3>
+      <p>154 篇文章、296 个用户、3314 篇弃用资讯——一次 SEO 无损迁移的完整决策记录。</p>
+      <div class="row-meta"><span class="mono">2026-09-28</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 12,408</span></div>
+    </div>
+  </article>
+  <article class="grid-card">
+    <div class="g-cover"><img src="assets/cover-mcp.jpg" alt="" onerror="this.remove()"></div>
+    <div class="g-body">
+      <div class="tags"><span class="tag cat">AI 实战</span><span class="tag">MCP</span></div>
+      <h3><a href="site-article.html">MCP 实战:从本地 Markdown 连图一键发布到线上站点</a></h3>
+      <p>Bearer PAT 鉴权、slug 幂等 upsert、图片自动转存替换。让 Claude Code 成为你的发布前端。</p>
+      <div class="row-meta"><span class="mono">2026-09-21</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 8,930</span></div>
+    </div>
+  </article>
+  <article class="grid-card">
+    <div class="g-cover"><img src="assets/cover-agent-legion.jpg" alt="" onerror="this.remove()"></div>
+    <div class="g-body">
+      <div class="tags"><span class="tag cat">AI 实战</span><span class="tag">Agents</span></div>
+      <h3><a href="site-article.html">智能体军团指挥手册:多 Agent 协作的拆解与编排</a></h3>
+      <p>主从模式、流水线模式、评审环,附真实项目里的失败案例与复盘。</p>
+      <div class="row-meta"><span class="mono">2026-09-15</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 6,214</span></div>
+    </div>
+  </article>
+  <article class="grid-card">
+    <div class="g-cover"><img src="assets/cover-seo.jpg" alt="" onerror="this.remove()"></div>
+    <div class="g-body">
+      <div class="tags"><span class="tag cat">建站</span><span class="tag">SEO</span></div>
+      <h3><a href="site-article.html">GEO 实践:让 AI 助手引用你的文章(llms.txt 与 md 直出)</a></h3>
+      <p>llms.txt、文章 .md 直出与站点内容 MCP,是一套完整的 GEO 打法。</p>
+      <div class="row-meta"><span class="mono">2026-09-08</span><span class="mono"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg> 4,872</span></div>
+    </div>
+  </article>
+</main>
+
 <nav class="pager">
   <span class="cur">1</span>
   <a href="#" onclick="return false">2</a>
@@ -336,7 +400,7 @@ img { display: block; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.5.0 · 本页形态覆盖 /articles、/category/[slug]、/tag/[slug] · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.5.0 · 覆盖 /articles、/category/[slug]、/tag/[slug] · M12:tag 筛选条(f-tab 链 /tag/)· 视图切换=列表(线上文字行 PostCard;row-card 为横排参考)⇄ 卡片(grid-card 封面网格)· <a href="index.html">← 原型索引</a></div>
 
 <script>
 function toggleTheme() {
@@ -345,6 +409,21 @@ function toggleTheme() {
   el.dataset.theme = t;
   localStorage.setItem("proto-theme", t);
 }
+
+/* ---- 视图切换(M12:列表 ⇄ 封面卡片;线上为 PostViewToggle 客户端岛,同款 localStorage 记忆)---- */
+function setView(v) {
+  const isList = v === "list";
+  document.getElementById("viewListMain").hidden = !isList;
+  document.getElementById("viewGridMain").hidden = isList;
+  document.getElementById("viewListBtn").classList.toggle("on", isList);
+  document.getElementById("viewGridBtn").classList.toggle("on", !isList);
+  try { localStorage.setItem("proto-articles-view", v); } catch (e) {}
+}
+(function () {
+  let v = "list";
+  try { v = localStorage.getItem("proto-articles-view") || "list"; } catch (e) {}
+  if (v !== "list") setView(v);
+})();
 
 /* ---- 用户菜单(点外关闭 + Esc) ---- */
 function toggleUserMenu(e) {

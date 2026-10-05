@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_INTERPRETER } from "../queue";
+import { getQueue, QUEUE_INTERPRETER, QUEUE_SUMMARIZER } from "../queue";
 import {
   TELEGRAM_AI_FAILED,
   TELEGRAM_AI_PENDING,
@@ -21,6 +21,7 @@ import {
   TELEGRAM_STATUS_VISIBLE,
 } from "./constants";
 import { interpretJobId, markPendingAndEnqueue } from "./interpret-video";
+import { markPendingAndEnqueueSummarize, summarizeJobId } from "./summarize-text";
 import { toEngagement, type FeedMediaFilter } from "./feed-view";
 
 export const TELEGRAM_PAGE_SIZE = 15;
@@ -284,5 +285,36 @@ export async function triggerTelegramInterpret(id: bigint): Promise<{ enqueued: 
     secUid: account?.secUid ?? null,
   });
   logger.info({ event: "telegram.interpret_triggered", telegramId: row.id.toString() });
+  return { enqueued: true };
+}
+
+/** 摘要触发错误码(路由映射:not_found→404 / not_text→400) */
+export type TelegramSummarizeErrorCode = "not_found" | "not_text";
+
+export class TelegramSummarizeError extends Error {
+  constructor(
+    public code: TelegramSummarizeErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * 手动触发/重新生成单条文字摘要(M12 批⑥ 验收反馈;与 interpret 同构):
+ * 无 aiStatus 守卫——done 亦可重跑(重生成是本入口存在的意义),重置 pending →
+ * 入队;先移除遗留 job 防同名 jobId 被 completed 保留窗口静默去重。
+ */
+export async function triggerTelegramSummarize(id: bigint): Promise<{ enqueued: true }> {
+  const row = await prisma.telegram.findUnique({
+    where: { id },
+    select: { id: true, mediaType: true },
+  });
+  if (!row) throw new TelegramSummarizeError("not_found", "条目不存在");
+  if (row.mediaType !== "text") throw new TelegramSummarizeError("not_text", "仅文字条目可摘要");
+  const queue = getQueue(QUEUE_SUMMARIZER);
+  await queue.remove(summarizeJobId(row.id.toString())).catch(() => null);
+  await markPendingAndEnqueueSummarize(row.id);
+  logger.info({ event: "telegram.summarize_triggered", telegramId: row.id.toString() });
   return { enqueued: true };
 }

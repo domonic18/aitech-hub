@@ -188,6 +188,11 @@ img { display: block; }
 .ai-gen { color: var(--text-3); }
 .tg-item.video:hover { transform: translateY(-1px); }
 
+/* 文字电报卡轻解读(M12 批③):一句话中心思想(ai-sum 复用)+ 关键词 chips;
+ * 未解读条目回退原始 RSS 摘要(显隐跟数据走,见 Qwen 卡对照) */
+.kw-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.kw-chips .kw { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; }
+
 /* 博主文章条目(渠道之一,chip 区分) */
 .tg-item.blogger { border-left: 3px solid var(--green); }
 
@@ -329,6 +334,7 @@ img { display: block; }
       <!-- 今天 -->
       <div class="tg-day">今天 · 2026-09-30</div>
 
+      <!-- 文字轻解读卡(M12 批③):入库默认触发 summarize——一句话中心思想 + 关键词 chips -->
       <article class="tg-item fresh">
         <div class="tg-top">
           <span class="src-tag src-rss">机器之心</span>
@@ -336,8 +342,9 @@ img { display: block; }
           <span class="tg-new">NEW</span>
         </div>
         <h3><a href="#" onclick="return false">Anthropic 发布 Claude 5.1:长任务 Agent 基准提升 23%,price 不变</a> <span class="ext"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></span></h3>
-        <p>官方 blog 宣布,新增多智能体编排原语;SWE-bench Verified 74.2%。站长注:等实测,先跑一个 154 篇迁移回归。</p>
-        <div class="tg-meta"><span>mp.weixin.qq.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a><a href="#" onclick="return false">AI 摘要</a></div>
+        <p class="ai-sum"><span class="ai-badge">AI 解读</span>Claude 5.1 主打长任务 Agent 能力:官方基准提升 23% 而 API 价格维持不变,多智能体编排成为第一公民。</p>
+        <div class="kw-chips"><span class="kw">#Claude</span><span class="kw">#Agent</span><span class="kw">#基准评测</span><span class="kw">#Anthropic</span></div>
+        <div class="tg-meta"><span>mp.weixin.qq.com</span><a href="#" onclick="return false">原文 <svg class="ic ic-sm" aria-hidden="true"><use href="#i-export"/></svg></a><span class="ai-gen"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-robot"/></svg> AI 生成 · 中心思想与关键词,内容版权归原作者</span></div>
       </article>
 
       <!-- 短视频解读卡(抖音):AI 解读 + 原视频外链;版权边界见右栏 -->
@@ -373,6 +380,7 @@ img { display: block; }
         </div>
       </article>
 
+      <!-- 未解读对照形态:轻解读未产出时回退原始 RSS 摘要(显隐跟数据走) -->
       <article class="tg-item">
         <div class="tg-top">
           <span class="src-tag src-sns">X · 学者圈</span>
@@ -544,7 +552,7 @@ img { display: block; }
       <div class="rail-card">
         <h4>[这是什么?]</h4>
         <div class="note flat">
-          站长的 AI 信息触达回路:智能体巡检 13 个渠道 → 规则过滤 → 屏蔽词 → 去重 → 1-3 句电报或短视频解读。短、少、准,不追资讯量。<br><br>
+          站长的 AI 信息触达回路:智能体巡检 13 个渠道 → 规则过滤 → 屏蔽词 → 去重 → 文字条自动轻解读(一句话中心思想 + 关键词,M12 起默认触发)或短视频 AI 解读。短、少、准,不追资讯量。<br><br>
           「我的关注」(每用户自定义博主订阅)为三期规划,敬请期待。<br><br>
           本页<b>不参与搜索引擎收录</b>(noindex),避免低质资讯拖累站点 SEO——旧站 3314 条采集资讯的教训。<a href="site-home.html" style="color:var(--blue)">回到首页 →</a>
         </div>
@@ -584,7 +592,7 @@ img { display: block; }
   </div>
 </footer>
 
-<div class="proto-note">PROTOTYPE v0.5.0 · 二期 · 混合电报流 · <a href="index.html">← 原型索引</a></div>
+<div class="proto-note">PROTOTYPE v0.5.0 · 二期 · 混合电报流 · M12:文字卡默认轻解读(中心思想+关键词) · <a href="index.html">← 原型索引</a></div>
 
 <script>
 function toggleTheme() {

@@ -1,5 +1,9 @@
 import PostCard from "@/components/site/PostCard";
+import PostCardGrid from "@/components/site/PostCardGrid";
+import PostViewToggle from "@/components/site/PostViewToggle";
 import Pagination from "@/components/site/Pagination";
+import type { ReactNode } from "react";
+
 import type { PostListItem } from "@/lib/content/posts";
 
 interface PostListViewProps {
@@ -13,9 +17,14 @@ interface PostListViewProps {
   basePath: string;
   /** 自定义分页链接(搜索等 query 分页场景);默认 `${basePath}/page/N/` */
   pageHref?: (p: number) => string;
+  /** 头部下方的筛选条(/articles 注入 tag chips;其余页面无) */
+  filterBar?: ReactNode;
 }
 
-/** 列表族共用正文:全部文章/分类/标签/搜索结果同一渲染,只换数据与分页链接 */
+/**
+ * 列表族共用正文:全部文章/分类/标签/搜索结果同一渲染,只换数据与分页链接;
+ * M12 问题四起条目区包 PostViewToggle(列表 ⇄ 封面卡片,客户端记忆)。
+ */
 export default function PostListView({
   heading,
   description,
@@ -25,6 +34,7 @@ export default function PostListView({
   pageSize,
   basePath,
   pageHref,
+  filterBar,
 }: PostListViewProps): React.ReactElement {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
@@ -34,13 +44,21 @@ export default function PostListView({
         <h1 className="text-2xl font-bold">{heading}</h1>
         <p className="mt-1 text-sm text-text-3">{description ?? `共 ${total} 篇`}</p>
       </header>
+      {filterBar ? <div className="mt-4">{filterBar}</div> : null}
       {items.length === 0 ? (
         <p className="py-12 text-center text-text-3">暂无文章</p>
       ) : (
-        <div>
-          {items.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
+        <div className="mt-4">
+          <PostViewToggle
+            list={
+              <div>
+                {items.map((post) => (
+                  <PostCard key={post.id} post={post} />
+                ))}
+              </div>
+            }
+            cards={<PostCardGrid posts={items} />}
+          />
         </div>
       )}
       <Pagination

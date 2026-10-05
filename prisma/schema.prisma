@@ -37,6 +37,7 @@ model Post {
   tags     PostTag[]
   viewDays StatsPostViewDaily[]
   mediaRefs MediaRef[]
+  githubRepos GithubRepoPost[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -295,6 +296,7 @@ model Telegram {
   aiTopic     String?   @map("ai_topic") @db.VarChar(50)
   aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
   aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
+  aiKeywords  Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
   aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
   lastAiError String?   @map("last_ai_error") @db.VarChar(500)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -421,11 +423,87 @@ model AsrConfig {
 // ── site_(站点配置域,M10)────────────────────────────────────────
 
 /// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,
-/// 消费方自行解析+clamp;键名合法值应用层 Zod 管控(同枚举字段纪律)
+/// 消费方自行解析+clamp;键名合法值应用层 Zod 管控(同枚举字段纪律)。
+/// value Text(M12 批②扩列:home.hero_md 存 markdown 文案,200 装不下)
 model SiteConfig {
   key       String   @id @db.VarChar(50)
-  value     String   @db.VarChar(200)
+  value     String   @db.Text
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("site_config")
+}
+
+// ── github_(项目展示域,二期③/M11)───────────────────────────────
+
+/// GitHub 仓库白名单台账(admin 逐行登记 owner/name,不做全账号扫描):
+/// slug 登记时由 name 派生并冻结(GitHub 改名不影响站内 URL);同步/观测列族
+/// 与 social_account 同款(间隔/连败/last_error/status);删除两步武装(先停用)
+model GithubRepo {
+  id               Int       @id @default(autoincrement())
+  fullName         String    @unique(map: "uq_github_repo_full_name") @map("full_name") @db.VarChar(200) // owner/name(同步跟随 GitHub 改名重定向回写)
+  slug             String    @unique(map: "uq_github_repo_slug") @db.VarChar(100) // 站内 URL 键 /projects/<slug>,登记时派生此后冻结
+  description      String?   @db.VarChar(500)
+  stars            Int       @default(0)
+  forks            Int       @default(0)
+  language         String?   @db.VarChar(50)
+  topics           String[]  @default([])
+  htmlUrl          String    @map("html_url") @db.VarChar(500)
+  homepage         String?   @db.VarChar(500)
+  defaultBranch    String    @default("main") @map("default_branch") @db.VarChar(100)
+  // README 缓存(base64 解码后 md;渲染时相对链接按 fullName/defaultBranch 重写)
+  readmeMd        String?   @map("readme_md") @db.Text
+  readmeSha       String?   @map("readme_sha") @db.Char(40) // sha 不变跳写,防 updatedAt/sitemap lastmod 空转
+  readmeFetchedAt DateTime? @map("readme_fetched_at") @db.Timestamptz(6)
+  // 展示与调度
+  display          Boolean   @default(true) // 前台展示开关(下架不删数据)
+  sortOrder        Int       @default(0) @map("sort_order") // 展示排序(小在前)
+  enabled          Boolean   @default(true)
+  syncIntervalMin  Int       @default(60) @map("sync_interval_min")
+  lastSyncAt       DateTime? @map("last_sync_at") @db.Timestamptz(6)
+  nextSyncAt       DateTime? @map("next_sync_at") @db.Timestamptz(6)
+  consecutiveFails Int       @default(0) @map("consecutive_fails")
+  lastError        String?   @map("last_error") @db.VarChar(500)
+  status           String    @default("healthy") @db.VarChar(20) // healthy/degraded/error
+  remark           String?   @db.VarChar(200)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  activities GithubRepoActivity[]
+  posts      GithubRepoPost[]
+
+  @@index([enabled, nextSyncAt], map: "idx_github_repo_due")
+  @@map("github_repo")
+}
+
+/// 进展动态(最近提交/发布):同步 upsert(去重锚 repo_id+kind+external_id,
+/// P2002 兜底并发),裁剪仅留每仓最新 GITHUB_ACTIVITY_KEEP 条
+model GithubRepoActivity {
+  id         BigInt   @id @default(autoincrement())
+  repoId     Int      @map("repo_id")
+  kind       String   @db.VarChar(20) // commit/release(合法值应用层 Zod 管控)
+  externalId String   @map("external_id") @db.VarChar(100) // commit sha / release id
+  title      String   @db.VarChar(500) // commit 首行 / release 名
+  url        String?  @db.VarChar(500)
+  author     String?  @db.VarChar(100)
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  repo GithubRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, kind, externalId], map: "uq_github_repo_activity_repo_kind_ext")
+  @@index([repoId, occurredAt(sort: Desc)], map: "idx_github_repo_activity_repo_occurred")
+  @@map("github_repo_activity")
+}
+
+/// 仓库↔文章 显式多对多(admin 手动关联;「配套文章 ×N」与详情页联动;镜像 PostTag)
+model GithubRepoPost {
+  repoId Int    @map("repo_id")
+  postId BigInt @map("post_id")
+
+  repo GithubRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  post Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([repoId, postId])
+  @@index([postId], map: "idx_github_repo_post_post")
+  @@map("github_repo_post")
 }
