@@ -36,6 +36,8 @@ export interface PublicTelegramItem {
   publishedAt: string;
   sourceId: number;
   sourceName: string;
+  /** 源类型(rss/api/web/social-video;渠道章配色按此映射,视频条由 platform 定色) */
+  sourceType: string;
   mediaType: "text" | "video";
   video?: PublicVideoMeta;
   /** 文字条轻解读(M12 批③:ai_summary=一句话中心思想、ai_points=要点、
@@ -55,6 +57,39 @@ export const BAND_POLL_MS = 60_000;
 export function platformLabel(platform: string): string {
   return VIDEO_PLATFORM_LABELS[platform] ?? platform;
 }
+
+/** 渠道/平台章色调(原型 site-telegram .src-* / .pf-* 口径,2026-10-05 反馈:
+ * 渠道名同色无区分)。视频条按 platform 定色(抖音 amber/小红书 red/B站 blue),
+ * 文字条按源类型(rss→accent、web/api→blue、sns→amber);未知回退 neutral。 */
+export type FeedChipTone = "neutral" | "accent" | "blue" | "amber" | "red";
+
+const TONE_BY_PLATFORM: Readonly<Record<string, FeedChipTone>> = {
+  douyin: "amber",
+  xhs: "red",
+  bilibili: "blue",
+};
+
+const TONE_BY_SOURCE_TYPE: Readonly<Record<string, FeedChipTone>> = {
+  rss: "accent",
+  web: "blue",
+  api: "blue",
+  "social-video": "amber",
+  sns: "amber",
+};
+
+export function feedChipTone(sourceType: string, platform?: string | null): FeedChipTone {
+  if (platform) return TONE_BY_PLATFORM[platform.toLowerCase()] ?? "neutral";
+  return TONE_BY_SOURCE_TYPE[sourceType] ?? "neutral";
+}
+
+/** 色调→章类映射(边框+浅底+彩色字,原型 src/pf 章同款);带/时间轴共用防漂移 */
+export const FEED_CHIP_TONE_CLASSES: Readonly<Record<FeedChipTone, string>> = {
+  neutral: "border-line bg-panel-2 text-text-2",
+  accent: "border-accent/30 bg-accent-dim text-accent",
+  blue: "border-blue/30 bg-blue/10 text-blue",
+  amber: "border-amber/30 bg-amber/10 text-amber-hi",
+  red: "border-red/30 bg-red/10 text-red-hi",
+};
 
 /** 秒 → m:ss(非法值返回 null,调用方隐藏角标) */
 export function formatDuration(sec: number | null | undefined): string | null {

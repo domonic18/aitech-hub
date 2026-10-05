@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 
 import {
   compactCount,
+  feedChipTone,
   formatDuration,
   groupByDay,
   hhmm,
@@ -21,6 +22,7 @@ import {
   platformLabel,
   timeAgo,
   videoSourceName,
+  FEED_CHIP_TONE_CLASSES,
   type FeedMediaFilter,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
@@ -62,7 +64,7 @@ function VideoArticle({ t, now }: { t: PublicTelegramItem; now: number }) {
     { icon: "i-comment", label: "评论", value: compactCount(v.engagement.comment) },
   ].filter((e) => e.value !== null);
   return (
-    <article className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm hover:border-line-hover">
+    <article className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2">
       <a
         href={t.url}
         target="_blank"
@@ -87,7 +89,11 @@ function VideoArticle({ t, now }: { t: PublicTelegramItem; now: number }) {
       </a>
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-sm bg-accent-dim px-1.5 py-px font-mono text-[11px] text-accent">
+          <span
+            className={`rounded-sm border px-1.5 py-px font-mono text-[11px] ${
+              FEED_CHIP_TONE_CLASSES[feedChipTone(t.sourceType, v.platform)]
+            }`}
+          >
             {videoSourceName(v)}
           </span>
           <span className="font-mono text-[11px] text-text-3">
@@ -245,10 +251,14 @@ export default function TelegramTimeline({
               ) : (
                 <article
                   key={t.id}
-                  className="rounded-lg border border-line bg-panel p-4 shadow-sm hover:border-line-hover"
+                  className="rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-sm bg-panel-2 px-1.5 py-px font-mono text-[11px] text-text-2">
+                    <span
+                      className={`rounded-sm border px-1.5 py-px font-mono text-[11px] ${
+                        FEED_CHIP_TONE_CLASSES[feedChipTone(t.sourceType)]
+                      }`}
+                    >
                       {t.sourceName}
                     </span>
                     <span className="font-mono text-[11px] text-text-3">

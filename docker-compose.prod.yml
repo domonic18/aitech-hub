@@ -47,14 +47,15 @@ services:
     # 本地构建验收镜像:APP_IMAGE=aitech-hub:opt-xxx BUILD_REF=opt-xxx \
     #   docker-compose -f docker-compose.prod.yml build web
     # (worker 共用该镜像,build 一次即可;CI 镜像由 GitHub Actions 构建推 TCR,不经此处;
-    #  FFMPEG_BINARIES_URL 供受限网络下指向 ffmpeg 二进制镜像源,空 = 默认 github)
+    #  FFMPEG_BINARIES_URL 缺省注入 npmmirror 镜像源——ffmpeg-static postinstall 走
+    #  github release,docker VM 直连常被 reset(2026-10-05 实测);置空串可强制回退 github)
     build:
       context: .
       dockerfile: docker/Dockerfile
       args:
         BUILD_REF: ${BUILD_REF:-}
         BUILD_TIME: ${BUILD_TIME:-}
-        FFMPEG_BINARIES_URL: ${FFMPEG_BINARIES_URL:-}
+        FFMPEG_BINARIES_URL: ${FFMPEG_BINARIES_URL:-https://registry.npmmirror.com/-/binary/ffmpeg-static}
     # SERVICE_ROLE=web:entrypoint 先 prisma migrate deploy,再起 server + ISR 预热
     environment:
       SERVICE_ROLE: web

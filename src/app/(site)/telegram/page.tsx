@@ -2,6 +2,10 @@
  * 电报流时间轴页(M7 批⑤,原型 site-telegram;arch/07 §2 /telegram):
  * noindex(SEO 红线:聚合二手资讯不入索引,X-Robots-Tag 双保险);
  * RSC 首屏 + 客户端 60s 轮询增量;渠道筛选 URL 驱动。
+ * 筛选 chip 用原生 <a>(非 next/link):软导航在本页形态下(force-dynamic +
+ * loading.tsx + 仅 searchParams 变化)不可靠——实测点击后 RSC 请求 200 返回
+ * 但路由不提交(时好时坏,2026-10-05 验收反馈「筛选无反应」);本页 noindex,
+ * 整页导航代价可接受,换可靠性。
  */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -88,7 +92,7 @@ export default async function TelegramPage({
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="font-mono text-[11px] text-text-3">媒体</span>
             {FEED_MEDIA_FILTERS.map((m) => (
-              <Link
+              <a
                 key={m}
                 href={feedHref(sourceId, m)}
                 aria-current={media === m ? "true" : undefined}
@@ -99,12 +103,12 @@ export default async function TelegramPage({
                 }`}
               >
                 {MEDIA_LABELS[m]}
-              </Link>
+              </a>
             ))}
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="font-mono text-[11px] text-text-3">渠道</span>
-            <Link
+            <a
               href={feedHref(undefined, media)}
               aria-current={sourceId === undefined ? "true" : undefined}
               className={`rounded-sm border px-2.5 py-1 text-xs ${
@@ -114,9 +118,9 @@ export default async function TelegramPage({
               }`}
             >
               全部
-            </Link>
+            </a>
             {channels.map((c) => (
-              <Link
+              <a
                 key={c.id}
                 href={feedHref(c.id, media)}
                 aria-current={sourceId === c.id ? "true" : undefined}
@@ -127,10 +131,14 @@ export default async function TelegramPage({
                 }`}
               >
                 {c.name} <span className="font-mono text-text-3">{c.count}</span>
-              </Link>
+              </a>
             ))}
           </div>
+          {/* key=筛选组合:软导航(同页换 searchParams)时组件不重挂载,
+              useState(initialItems) 会保留旧列表 → 筛选看似不生效(2026-10-05
+              反馈);强制重挂载让服务端筛选结果落地,轮询状态同步归零 */}
           <TelegramTimeline
+            key={`${sourceId ?? 0}-${media}`}
             initialItems={items}
             sourceId={sourceId}
             media={media}

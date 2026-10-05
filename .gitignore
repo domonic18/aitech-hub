@@ -30,9 +30,10 @@ coverage/
 scripts/migrate-wp/artifacts/
 *.tsbuildinfo
 
-# 备份目录保留占位(M6 pg_dump cron 落盘处)
+# 备份目录保留占位(M6 pg_dump cron 落盘处);包体档案不入库,目录仅留 .gitkeep
 !/workspace/backups/
 !/workspace/backups/.gitkeep
+workspace/backups/*.tgz
 
 # Playwright 本地产物
 /.test-results/

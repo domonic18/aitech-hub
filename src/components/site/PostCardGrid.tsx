@@ -7,14 +7,16 @@ import { formatCnDate } from "@/lib/datetime";
 import type { PostListItem } from "@/lib/content/posts";
 
 /**
- * 封面卡片网格(M12 问题四,原型 site-articles 封面卡形态 + 行业惯例 2 列网格):
- * 与 PostCard 同数据(LIST_SELECT 已含 coverPath),封面 16:9,缺图/加载失败
- * 降级占位块保持行高一致;卡片视图由 PostViewToggle 客户端切换,本组件保持
- * Server Component。
+ * 封面卡片网格(M12 问题四,原型 site-articles 封面卡形态):与 PostCard 同数据
+ * (LIST_SELECT 已含 coverPath),封面 16:9,缺图/加载失败降级占位块保持行高一致;
+ * 卡片视图由 PostViewToggle 客户端切换,本组件保持 Server Component。
+ * 列数按分辨率动态自适应(auto-fill,minmax 280px 下限):375 手机 1 列、768 平板
+ * 2 列、1024 → 3 列、1200 版心 → 4 列(2026-10-05 反馈:定死 2 列两侧太空);
+ * 版心宽度由 PostViewToggle 按视图切换(列表 768 / 卡片 --site-max-w)。
  */
 export default function PostCardGrid({ posts }: { posts: PostListItem[] }): React.ReactElement {
   return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
       {posts.map((post) => {
         const href = postPath(post.id, post.slug);
         const excerpt = excerptOf(post);
