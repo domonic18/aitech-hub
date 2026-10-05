@@ -30,6 +30,15 @@ function hhmm(at: Date | null): string {
   return at === null ? "—" : formatCnTime(at);
 }
 
+/** 最老等待展示(M15 批④):≥1min 显 Xm,<1min 显 s,null(队列空)显「—」。
+ * BullMQ 事件驱动无轮询周期——该值感知的是消化速率(并发 1 串行积压),
+ * 非「多久后开始处理」;配额顺延的 job 在 delayed 不计入此值。 */
+function oldestWait(ms: number | null): string {
+  if (ms === null) return "—";
+  const s = Math.floor(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
+}
+
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   await requireAdminPage();
   const [snapshot, calendar, hourly, stock, channels, video, interpreter, summarizer, github] =
@@ -144,7 +153,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
                 desc={
                   <>
                     视频解读 · 下载 / 抽轨 / ASR / LLM · 并发 1 · 今日 {interpreter.todayDone}/
-                    {interpreter.dailyMax}
+                    {interpreter.dailyMax} · 最老等待 {oldestWait(interpreter.oldestWaitingMs)}
                   </>
                 }
                 counts={interpreter.counts}
@@ -169,7 +178,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
                 desc={
                   <>
                     文字轻解读 · 中心思想 + 要点 + 关键词 · 并发 2 · 今日 {summarizer.todayDone}/
-                    {summarizer.dailyMax}
+                    {summarizer.dailyMax} · 最老等待 {oldestWait(summarizer.oldestWaitingMs)}
                   </>
                 }
                 counts={summarizer.counts}

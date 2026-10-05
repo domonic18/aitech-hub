@@ -79,11 +79,15 @@ export async function getGithubQueueSnapshot(): Promise<
   return { ...snapshot, repoCount, enabledCount };
 }
 
-/** AI 解读/摘要队列实况共性(M12 批③):job 计数 + 今日已判读(mediaType 拆分)/日配额 */
+/** AI 解读/摘要队列实况共性(M12 批③):job 计数 + 今日已判读(mediaType 拆分)/日配额。
+ * M15 批④ 增最老等待年龄——BullMQ Worker 事件驱动无轮询周期,该值用于感知
+ * 消化速率(delayed 峰=配额顺延重投,waiting 长龄=并发 1 串行积压)。 */
 interface AiQueueSnapshot {
   counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
   todayDone: number;
   dailyMax: number;
+  /** waiting 头部 job 的已等待毫秒(入队 timestamp 起);无 waiting job → null */
+  oldestWaitingMs: number | null;
 }
 
 async function aiQueueSnapshot(
@@ -92,13 +96,12 @@ async function aiQueueSnapshot(
   mediaType: TelegramMediaType,
 ): Promise<AiQueueSnapshot> {
   const queue = getQueue(queueName);
-  const counts = (await queue.getJobCounts(
-    "waiting",
-    "active",
-    "completed",
-    "failed",
-    "delayed",
-  )) as Record<string, number>;
+  const [countsRaw, head] = await Promise.all([
+    queue.getJobCounts("waiting", "active", "completed", "failed", "delayed"),
+    queue.getWaiting(0, 1),
+  ]);
+  const counts = countsRaw as Record<string, number>;
+  const oldest = head[0];
   return {
     counts: {
       waiting: counts.waiting ?? 0,
@@ -109,6 +112,7 @@ async function aiQueueSnapshot(
     },
     todayDone: await countTodayAiDone(mediaType),
     dailyMax: await getRoleDailyMax(role),
+    oldestWaitingMs: oldest?.timestamp != null ? Date.now() - oldest.timestamp : null,
   };
 }
 
