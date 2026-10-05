@@ -2,7 +2,7 @@
 
 /**
  * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位;
- * M10 批② 条数后台可配 + 下滚加载更多;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
+ * M10 批② 条数后台可配;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
  * 批⑤ 视频行 AI 行改直出 summary;批⑥ 关键词蓝系与 AI 徽章区分):
  * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(sm+ 74/108/1fr/auto;
  * 窄屏 2026-10-05 反馈改版:时间+渠道缩一行小字、标题独占整行——定宽列挤压标题不可读,
@@ -10,12 +10,11 @@
  * 54×95 竖版封面(play 蒙层 + 时长横条,no-referrer 防盗链,失败降级播放占位块)+
  * pf 平台章/博主(窄屏隐)+ 标题与「AI 解读 · 概括」双行;窄屏降 54px+1fr 双列。
  * 行高由封面撑起。SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重
- * 前插,保留用户已展开的尾部)+ 底部哨兵 IntersectionObserver 自动加载下一页(服务端
- * nextOffset 游标翻页,保底视频只占展示位不占游标;返回条数 < count 判定到底)。
- * 行点击直达外链。
+ * 前插)。下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与
+ * 历史翻页走 /telegram/。行点击直达外链。
  */
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   BAND_POLL_MS,
@@ -67,18 +66,15 @@ function BandCover({ src, duration }: { src: string | null; duration: string | n
 
 export default function TelegramBand({
   initialItems,
-  initialNextOffset,
   channels,
   today,
   count,
   initialNow,
 }: {
   initialItems: PublicTelegramItem[];
-  /** SSR 首屏已消费的混排游标(保底视频不占游标);后续翻页以服务端 nextOffset 为准 */
-  initialNextOffset: number;
   channels: number;
   today: number;
-  /** 后台配置的每页条数(site_config band.item_count,SSR 与轮询/翻页同源) */
+  /** 后台配置的每页条数(site_config band.item_count,SSR 与轮询同源) */
   count: number;
   /**
    * SSR 水合基准时钟(服务端 Date.now()):相对时间/NEW 徽章以此渲染,
@@ -89,13 +85,9 @@ export default function TelegramBand({
   initialNow: number;
 }) {
   const [items, setItems] = useState(initialItems);
-  const [nextOffset, setNextOffset] = useState(initialNextOffset);
   const [now, setNow] = useState(initialNow);
-  const [loading, setLoading] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // 60s 轮询:只取第一页(与 SSR 同源),新条目按 id 去重前插,不动已展开的尾部
+  // 60s 轮询:只取第一页(与 SSR 同源),新条目按 id 去重前插
   useEffect(() => {
     let alive = true;
     const tick = async (): Promise<void> => {
@@ -123,61 +115,6 @@ export default function TelegramBand({
       clearInterval(t);
     };
   }, [count]);
-
-  // 下滚加载更多:底部哨兵进入视口(预载 200px)取下一页;返回不足一页判定到底。
-  // IO 只在穿越边沿触发:哨兵滞留视口(带矮/快速滚动)时 loading 落定不会重发,
-  // 故记最近相交态,loading 结束仍在视口则续拉(failure 时清零,待新的穿越再试)
-  const intersectingRef = useRef(false);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || exhausted) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        intersectingRef.current = entries.some((e) => e.isIntersecting);
-        if (intersectingRef.current) void loadMore();
-      },
-      { rootMargin: "200px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- items.length 变化后以最新闭包重挂哨兵
-  }, [exhausted, items.length, count, loading]);
-
-  useEffect(() => {
-    if (!loading && intersectingRef.current && !exhausted) void loadMore();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loading 落定即续拉,loadMore 读最新 state
-  }, [loading, exhausted]);
-
-  const loadMore = async (): Promise<void> => {
-    if (loading || exhausted) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/telegram/public?band=1&offset=${nextOffset}&limit=${count}`, {
-        cache: "no-store",
-      });
-      const body = (await res.json()) as {
-        code: number;
-        data?: { items: PublicTelegramItem[]; nextOffset: number };
-      };
-      if (body.code === 0 && body.data) {
-        const page = body.data.items;
-        setItems((prev) => {
-          const seen = new Set(prev.map((i) => i.id));
-          const added = page.filter((i) => !seen.has(i.id));
-          return added.length > 0 ? [...prev, ...added] : prev;
-        });
-        setNextOffset(body.data.nextOffset);
-        if (page.length < count) setExhausted(true);
-      } else {
-        setExhausted(true);
-      }
-    } catch {
-      /* 拉取失败静默:清相交态,待哨兵新的穿越边沿再试(防失败热循环) */
-      intersectingRef.current = false;
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
@@ -315,16 +252,6 @@ export default function TelegramBand({
           电报流预热中,首批内容采集入库后在此滚动
         </div>
       )}
-      {/* 加载更多哨兵:进入视口自动取下一页 */}
-      <div ref={sentinelRef} className="px-5 py-2.5 text-center font-mono text-[11px] text-text-3">
-        {exhausted
-          ? items.length > 0
-            ? "— 已加载全部 —"
-            : ""
-          : loading
-            ? "加载中…"
-            : "↓ 继续滚动加载更多"}
-      </div>
       <div className="border-t border-line bg-panel-2 px-5 py-2.5 text-center">
         <Link
           href="/telegram/"

@@ -16,7 +16,8 @@ import TelegramBand from "@/components/site/TelegramBand";
  * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
  * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=开源项目卡 + 博主文章紧凑卡 +
  * GEO)。电报带/项目/文章条数与 hub 主文案后台可配(M10/M12,site_config,保存后
- * on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤)+ 下滚加载更多(M10)。
+ * on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤;下滚加载更多 M10 已于
+ * 2026-10-05 移除,带内固定一页)。
  * GitHub 项目卡 M11:白名单空(全部下架)整卡不渲染,「三区可独立降级」。
  */
 export const revalidate = 600;
@@ -47,7 +48,6 @@ export default async function HomePage(): Promise<React.ReactElement> {
         {/* 左主轴:电报流 LIVE 带(原型 tg-band 即整个左栏) */}
         <TelegramBand
           initialItems={band.items}
-          initialNextOffset={band.nextOffset}
           channels={channels.length}
           today={today}
           count={bandCount}
