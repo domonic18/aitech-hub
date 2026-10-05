@@ -22,7 +22,14 @@ import {
   TELEGRAM_STATUS_VISIBLE,
   type BlocklistScope,
 } from "./constants";
-import { matchBlocklist, matchHeuristics, type BlocklistWord, type FilterHit } from "./filter";
+import {
+  matchBlocklist,
+  matchHeuristics,
+  matchesIncludeKeywords,
+  parseIncludeKeywords,
+  type BlocklistWord,
+  type FilterHit,
+} from "./filter";
 import { canonicalUrl, contentHash, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
 import { isSummarizeReady, markPendingAndEnqueueSummarize } from "./summarize-text";
@@ -35,6 +42,8 @@ export interface CrawlOutcome {
   inserted: number;
   /** 命中过滤以 hidden 落库 */
   filtered: number;
+  /** 主题准入不命中跳过(M14:includeKeywords 非空的渠道),不入库 */
+  topicSkipped: number;
   /** hash 重复跳过 */
   duplicated: number;
   skippedDailyCap: boolean;
@@ -113,6 +122,7 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     fetched: 0,
     inserted: 0,
     filtered: 0,
+    topicSkipped: 0,
     duplicated: 0,
     skippedDailyCap: false,
     rateLimited: false,
@@ -145,9 +155,16 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
         select: { word: true, scope: true },
       })
     ).map((w) => ({ word: w.word, scope: w.scope as BlocklistScope }));
+    // 主题准入(M14):全站源经 config.includeKeywords 限定 AI 相关条目才入库,解析一轮
+    const includeKeywords = parseIncludeKeywords(source.config);
     // summarize 就绪整轮 resolve 一次(镜像 ingest-video 的 interpretReady,省逐条双查)
     const summarizeReady = await isSummarizeReady();
     for (const item of items.slice(0, CRAWL_MAX_ITEMS_PER_RUN)) {
+      // 主题外直接跳过(查重/落库都不做;观测走 topicSkipped 计数)
+      if (!matchesIncludeKeywords(item.title, item.summaryCandidate ?? "", includeKeywords)) {
+        outcome.topicSkipped += 1;
+        continue;
+      }
       outcome[await ingestItem(source.id, item, words, summarizeReady)] += 1;
     }
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { matchBlocklist, matchHeuristics } from "./filter";
+import {
+  matchBlocklist,
+  matchHeuristics,
+  matchesIncludeKeywords,
+  parseIncludeKeywords,
+} from "./filter";
 
 describe("matchBlocklist", () => {
   const words = [
@@ -57,5 +62,49 @@ describe("matchHeuristics", () => {
 
   it("干净内容返回 null(正文提及广告词不算——启发只看标题)", () => {
     expect(matchHeuristics("Google 发布新广告系统论文", "正文提到广告技术")).toBeNull();
+  });
+});
+
+describe("parseIncludeKeywords", () => {
+  it("正常数组原样返回(仅 trim 去空)", () => {
+    expect(parseIncludeKeywords({ includeKeywords: [" AI ", "大模型", ""] })).toEqual([
+      "AI",
+      "大模型",
+    ]);
+  });
+
+  it("config 为空/非对象/缺键/非数组 → 空数组(不启用主题准入)", () => {
+    expect(parseIncludeKeywords(undefined)).toEqual([]);
+    expect(parseIncludeKeywords(null)).toEqual([]);
+    expect(parseIncludeKeywords("bad")).toEqual([]);
+    expect(parseIncludeKeywords(["not", "an", "object"])).toEqual([]);
+    expect(parseIncludeKeywords({ other: 1 })).toEqual([]);
+    expect(parseIncludeKeywords({ includeKeywords: "not-array" })).toEqual([]);
+  });
+
+  it("容错脏数据:非串条目滤除、单个截 30 字符、最多 10 个", () => {
+    expect(parseIncludeKeywords({ includeKeywords: [1, null, "AI", {}] })).toEqual(["AI"]);
+    const long = "字".repeat(40);
+    expect(parseIncludeKeywords({ includeKeywords: [long] })[0].length).toBe(30);
+    const many = Array.from({ length: 15 }, (_, i) => `词${i}`);
+    expect(parseIncludeKeywords({ includeKeywords: many }).length).toBe(10);
+  });
+});
+
+describe("matchesIncludeKeywords", () => {
+  const words = ["AI", "人工智能", "大模型"];
+
+  it("空关键词 = 不启用,恒放行", () => {
+    expect(matchesIncludeKeywords("任意标题", "任意摘要", [])).toBe(true);
+  });
+
+  it("标题或摘要命中任一关键词即放行,大小写不敏感", () => {
+    expect(matchesIncludeKeywords("New AI model released", "body", words)).toBe(true);
+    expect(matchesIncludeKeywords("标题无关键词", "摘要提到大模型进展", words)).toBe(true);
+    expect(matchesIncludeKeywords("gemini update", "gemini is an ai system", words)).toBe(true);
+  });
+
+  it("标题与摘要都不含任何关键词 → 拦下", () => {
+    expect(matchesIncludeKeywords("周末去哪玩", "一份旅行攻略", words)).toBe(false);
   });
 });
