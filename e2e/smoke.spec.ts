@@ -601,7 +601,10 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
   request,
 }) => {
   const MARK = "e2e-telegram-mark";
-  // 自播种:独立渠道(采集关闭)+ 一条可见电报(publishedAt=now 保证排进带首;重跑幂等)
+  const MARK_PENDING = "e2e-telegram-pending";
+  // 自播种:独立渠道(采集关闭)+ 一条可见电报(publishedAt=now 保证排进带首;重跑幂等;
+  // M15 批① 起前台只出 AI 解读终态行,种子带 done+aiRanAt)+ 同源一条 pending
+  // (解读在队列,不上屏)
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-telegram-source" },
     update: {},
@@ -613,7 +616,9 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       remark: "e2e 专用,采集关闭",
     },
   });
-  await prisma.telegram.deleteMany({ where: { sourceId: source.id, title: MARK } });
+  await prisma.telegram.deleteMany({
+    where: { sourceId: source.id, title: { in: [MARK, MARK_PENDING] } },
+  });
   await prisma.telegram.create({
     data: {
       sourceId: source.id,
@@ -622,11 +627,50 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       url: "https://e2e.invalid/item/1",
       publishedAt: new Date(),
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "done",
+      aiSummary: "e2e 冒烟 AI 摘要",
+      aiRanAt: new Date(),
+    },
+  });
+  await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: MARK_PENDING,
+      summary: "e2e 冒烟摘要(解读在队列)",
+      url: "https://e2e.invalid/item/2",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "pending",
+    },
+  });
+  // M15 批① 空态:独立渠道仅一条 pending → 该源 SSR 空列,展示「AI 解读处理中」提示
+  const pendSource = await prisma.crawlSource.upsert({
+    where: { name: "e2e-telegram-pending-source" },
+    update: {},
+    create: {
+      name: "e2e-telegram-pending-source",
+      type: "rss",
+      url: "https://e2e.invalid/rss-pending",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: pendSource.id } });
+  await prisma.telegram.create({
+    data: {
+      sourceId: pendSource.id,
+      title: "e2e-telegram-pending-only",
+      summary: "e2e 空态冒烟摘要",
+      url: "https://e2e.invalid/item/3",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "pending",
     },
   });
 
   try {
-    // noindex 双保险:X-Robots-Tag 响应头 + 页内 robots meta;LIVE 头标与播种条目在
+    // noindex 双保险:X-Robots-Tag 响应头 + 页内 robots meta;LIVE 头标与播种条目在;
+    // pending 行(解读在队列)不上屏——html 与 API 均不可见(M15 批① 门禁)
     const feed = await request.get("/telegram/");
     expect(feed.status()).toBe(200);
     expect(feed.headers()["x-robots-tag"]).toBe("noindex, follow");
@@ -634,8 +678,11 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     expect(html).toMatch(/name="robots" content="noindex[^"]*"/);
     expect(html).toContain("LIVE · 持续采集中");
     expect(html).toContain(MARK);
+    // pending 行不上屏——按条目 URL 断言(标题串会与「仅 pending 渠道」的渠道
+    // chip 名 e2e-telegram-pending-source 撞子串;渠道活性计数口径不随门禁收窄)
+    expect(html).not.toContain("https://e2e.invalid/item/2");
 
-    // 公共 API:no-store;出参 BigInt 已字符串化;today 含播种条目
+    // 公共 API:no-store;出参 BigInt 已字符串化;today 含播种条目;pending 不出
     const api = await request.get("/api/telegram/public/");
     expect(api.status()).toBe(200);
     expect(api.headers()["cache-control"]).toContain("no-store");
@@ -650,7 +697,13 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     const hit = body.data.items.find((i) => i.title === MARK);
     expect(hit).toBeTruthy();
     expect(typeof hit!.id).toBe("string");
+    expect(body.data.items.find((i) => i.title === MARK_PENDING)).toBeUndefined();
     expect(body.data.today).toBeGreaterThan(0);
+
+    // M15 批① 空态:仅 pending 的源 → 空列 + 「AI 解读处理中 · 今日已入库 N 条」
+    const pendHtml = await (await request.get(`/telegram/?source=${pendSource.id}`)).text();
+    expect(pendHtml).toContain("AI 解读处理中");
+    expect(pendHtml).toContain("今日已入库");
 
     // 首页 LIVE 带壳在(SSR;条目轮询由 /telegram 页与 API 覆盖,首页 ISR 缓存不断言 MARK)
     const home = await (await request.get("/")).text();
@@ -660,8 +713,8 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     // SEO 红线:电报流不入 sitemap(显式页面清单)
     expect(await (await request.get("/sitemap.xml")).text()).not.toContain("/telegram");
   } finally {
-    await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
-    await prisma.crawlSource.delete({ where: { id: source.id } });
+    await prisma.telegram.deleteMany({ where: { sourceId: { in: [source.id, pendSource.id] } } });
+    await prisma.crawlSource.deleteMany({ where: { id: { in: [source.id, pendSource.id] } } });
   }
 });
 
@@ -997,9 +1050,18 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
     expect(sumBinding.backupId).toBe(keyed.id);
 
     // M9 批⑥:解读日配额后台化——interpret 卡日配额输入在;API 改值落库后还原
-    // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)
+    // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)。
+    // M15 批②:配额输入按消费方出现——interpret/summarize 卡有(各自独立配置),
+    // search/cover 卡无(存储与 API 预留但无消费方,不渲染假配置)
     const interpretCard = page.getByRole("group", { name: "电报解读绑定" });
-    await expect(interpretCard.getByLabel("解读日配额")).toBeVisible();
+    await expect(interpretCard.getByLabel("电报解读日配额")).toBeVisible();
+    await expect(sumCard.getByLabel("文字摘要日配额")).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "Agent 搜索绑定" }).getByLabel(/日配额/),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("group", { name: "封面生图绑定" }).getByLabel(/日配额/),
+    ).toHaveCount(0);
     const beforeQuota = await prisma.aiTaskBinding.findUniqueOrThrow({
       where: { role: "interpret" },
     });
@@ -1123,7 +1185,8 @@ test("17. 首页带条数可配置(2026-10-05 统筹改版对齐:site_config/设
   page,
 }) => {
   // 自播种:独立渠道 + 15 条可见文字电报(> 默认 12;publishedAt 逐分钟递减保证确定性排序;
-  // 带内已改固定一页,15 条只为验证「只取前 N、不随滚动增长」)
+  // 带内已改固定一页,15 条只为验证「只取前 N、不随滚动增长」;
+  // M15 批① 起前台只出 AI 解读终态行,种子逐行带 done+aiRanAt)
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-band-source" },
     update: {},
@@ -1145,6 +1208,9 @@ test("17. 首页带条数可配置(2026-10-05 统筹改版对齐:site_config/设
       url: BAND_URL(i),
       publishedAt: new Date(Date.now() - i * 60_000),
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "done",
+      aiSummary: `e2e 带条目 AI 摘要 ${i}`,
+      aiRanAt: new Date(Date.now() - i * 60_000),
     })),
   });
   // 视频行(最新 +1min → 必赢全库保底槽位;共享库里有真实爬取视频,
@@ -1423,8 +1489,10 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     "home.hero_md",
   ];
 
-  // ── 播种①:band 文字行两条(已解读 ai_* 有值 / 未解读对照),publishedAt=now 保证进带首
-  //    批⑥ 新契约:ai_points=要点、ai_keywords=关键词
+  // ── 播种①:band 文字行两条(已解读 ai_* 有值 / 无解读对照),publishedAt=now 保证进带首
+  //    批⑥ 新契约:ai_points=要点、ai_keywords=关键词;
+  //    M15 批① 起前台只出 AI 解读终态行——对照行改为「终态但无解读产出」
+  //    (aiStatus=done 无 aiSummary → 投影 ai=null):行可见、无 AI 行,对照语义保留
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-ai-band-source" },
     update: {},
@@ -1459,6 +1527,8 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
         url: AI_ROW_RAW,
         publishedAt: new Date(Date.now() - 60_000),
         contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+        aiStatus: "done",
+        aiRanAt: new Date(Date.now() - 60_000),
       },
     ],
   });

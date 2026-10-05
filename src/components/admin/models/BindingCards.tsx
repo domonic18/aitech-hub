@@ -15,6 +15,12 @@ import type { ApiEnvelope } from "@/lib/http/response";
 const selectField =
   "w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs text-text-1 outline-none focus:border-accent";
 
+/** 日配额输入框仅出现在有真实消费方的角色卡:interpret/summarize 各自消费
+ * getRoleDailyMax(M15 批② 修正:此前仅 interpret 卡渲染,summarize 配额
+ * 默认 100 却无处配置);search/cover 存储与 API 已预留但无消费方,不渲染
+ * 输入框避免假配置。 */
+const QUOTA_ROLES = ["interpret", "summarize"] as const;
+
 function RoleCard({
   role,
   binding,
@@ -31,7 +37,7 @@ function RoleCard({
     binding?.primaryId != null ? String(binding.primaryId) : "",
   );
   const [backup, setBackup] = useState(binding?.backupId != null ? String(binding.backupId) : "");
-  // 解读日配额(M9 后台化,原 INTERPRETER_DAILY_MAX env):仅 interpret 卡出现,空=默认 100
+  // 日配额(M9 后台化,原 INTERPRETER_DAILY_MAX env):QUOTA_ROLES 角色卡出现,空=默认 100
   const [quota, setQuota] = useState(binding?.dailyMax != null ? String(binding.dailyMax) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,8 +146,9 @@ function RoleCard({
           ))}
         </select>
       </label>
-      {role === "interpret" && (
-        // 日配额(条/日):超限延迟 30min 重投顺延,消费方在 worker;留空=默认 100
+      {(QUOTA_ROLES as readonly AiTaskRole[]).includes(role) && (
+        // 日配额(条/日):worker 消费 getRoleDailyMax,超限延迟 30min 重投顺延;
+        // 留空=默认 100。存取本就按角色独立(binding.daily_max),非卡间共享
         <label className="mt-2 block text-[11px] text-text-3">
           日配额(条/日,留空=默认 100)
           <input
@@ -150,7 +157,7 @@ function RoleCard({
             step={1}
             value={quota}
             onChange={(e) => setQuota(e.target.value)}
-            aria-label="解读日配额"
+            aria-label={`${meta.label}日配额`}
             placeholder="100"
             className={`mt-1 ${selectField}`}
           />

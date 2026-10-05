@@ -143,6 +143,7 @@ export default async function TelegramPage({
             sourceId={sourceId}
             media={media}
             initialNow={Date.now()}
+            initialToday={today}
           />
         </main>
 

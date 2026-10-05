@@ -12,7 +12,14 @@ vi.mock("../db", () => ({
 }));
 
 import { mergeBandItems, listPublicTelegram } from "./public-feed";
-import { feedChipTone, toTextAi, toVideoAi, type PublicTelegramItem } from "./feed-view";
+import {
+  countUnseen,
+  feedChipTone,
+  mergeFeedItems,
+  toTextAi,
+  toVideoAi,
+  type PublicTelegramItem,
+} from "./feed-view";
 
 function item(id: string, publishedAt: string): PublicTelegramItem {
   return {
@@ -21,6 +28,7 @@ function item(id: string, publishedAt: string): PublicTelegramItem {
     summary: "",
     url: `https://example.com/${id}`,
     publishedAt,
+    aiRanAt: publishedAt,
     sourceId: 1,
     sourceName: "渠道",
     sourceType: "rss",
@@ -42,6 +50,54 @@ function videoItem(id: string, publishedAt: string): PublicTelegramItem {
     },
   };
 }
+
+describe("mergeFeedItems 轮询增量合并(M15 批③)", () => {
+  const a = item("101", "2026-10-06T10:00:00Z");
+  const b = item("102", "2026-10-06T09:00:00Z");
+  const c = item("103", "2026-10-06T08:00:00Z");
+
+  it("id 去重 + publishedAt desc 排序;fresh 与 prev 重叠不重复", () => {
+    expect(mergeFeedItems([b, c], [a, b])).toEqual([a, b, c]);
+  });
+
+  it("同 publishedAt 时 id 数值降序 tiebreak(字典序对跨位数失真,BigInt 比对)", () => {
+    const x = item("9", "2026-10-06T10:00:00Z");
+    const y = item("100", "2026-10-06T10:00:00Z");
+    expect(mergeFeedItems([], [x, y]).map((i) => i.id)).toEqual(["100", "9"]);
+  });
+
+  it("「刚解读但发布较早」行落中段,不错误置顶(与服务端 orderBy 同构)", () => {
+    // 104 发布最早但 aiRanAt 最新(补扫上屏):重排后按 publishedAt 归位末尾
+    const oldPub = item("104", "2026-10-05T08:00:00Z");
+    expect(mergeFeedItems([a, b], [oldPub]).map((i) => i.id)).toEqual(["101", "102", "104"]);
+  });
+
+  it("prev 为空 → 排序后的 fresh;fresh 为空 → 原列表", () => {
+    expect(mergeFeedItems([], [b, a])).toEqual([a, b]);
+    expect(mergeFeedItems([a, b], [])).toEqual([a, b]);
+  });
+});
+
+describe("countUnseen 未读锚计数(M15 批③)", () => {
+  const items = [
+    item("103", "2026-10-06T10:00:00Z"),
+    item("102", "2026-10-06T09:00:00Z"),
+    item("101", "2026-10-06T08:00:00Z"),
+  ];
+
+  it("前插 N 条 → 锚下标即未读数;锚在首位 → 0;锚 null → 0", () => {
+    expect(countUnseen(items, "101")).toBe(2);
+    expect(countUnseen(items, "103")).toBe(0);
+    expect(countUnseen(items, null)).toBe(0);
+  });
+
+  it("锚不在列表(翻页挤出/异常)→ 0 防御;中段插入(锚下)不计未读", () => {
+    expect(countUnseen(items, "999")).toBe(0);
+    // 旧发布新解读行插在锚(103)之下:锚下标不变,未读数不变
+    const mid = item("104", "2026-10-05T08:00:00Z");
+    expect(countUnseen(mergeFeedItems(items, [mid]), "103")).toBe(0);
+  });
+});
 
 describe("mergeBandItems 视频保底槽位", () => {
   const mixed = Array.from({ length: 8 }, (_, i) => item(`t${i}`, `2026-10-04T0${i}:00:00+08:00`));
@@ -158,6 +214,79 @@ describe("toTextAi 文字投影(M12 批⑥:要点+关键词双列,旧契约存�
       points: [],
       keywords: [],
     });
+  });
+});
+
+describe("listPublicTelegram 可见性门禁与增量锚(M15 批①)", () => {
+  it("where 恒含 aiStatus 终态过滤(done/missing_transcript),pending/failed/null 不上屏", async () => {
+    findManyMock.mockResolvedValue([]);
+    await listPublicTelegram({ limit: 5 });
+    expect(findManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "visible",
+          aiStatus: { in: ["done", "missing_transcript"] },
+        }),
+      }),
+    );
+  });
+
+  it("after 增量锚=aiRanAt(变可见时刻),不再按 publishedAt/createdAt OR 过滤", async () => {
+    findManyMock.mockResolvedValue([]);
+    const after = new Date("2026-10-06T04:00:00Z");
+    await listPublicTelegram({ limit: 5, afterIso: after.toISOString() });
+    const arg = findManyMock.mock.lastCall![0] as { where: Record<string, unknown> };
+    expect(arg.where).toMatchObject({ aiRanAt: { gt: after } });
+    expect(arg.where.OR).toBeUndefined();
+  });
+
+  it("映射:aiRanAt 透出;null(存量脏数据)兜底 publishedAt", async () => {
+    const now = new Date("2026-10-06T10:00:00+08:00");
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: BigInt(11),
+        title: "带解读时刻",
+        summary: "",
+        url: "https://example.com/11",
+        publishedAt: now,
+        createdAt: now,
+        aiRanAt: new Date(now.getTime() + 90_000),
+        mediaType: "text",
+        videoPlatform: null,
+        videoBlogger: null,
+        videoCoverUrl: null,
+        videoDuration: null,
+        videoEngagement: null,
+        aiTopic: null,
+        aiSummary: "中心思想",
+        aiPoints: null,
+        aiKeywords: null,
+        source: { id: 3, name: "渠道" },
+      },
+      {
+        id: BigInt(12),
+        title: "解读时刻缺失",
+        summary: "",
+        url: "https://example.com/12",
+        publishedAt: now,
+        createdAt: now,
+        aiRanAt: null,
+        mediaType: "text",
+        videoPlatform: null,
+        videoBlogger: null,
+        videoCoverUrl: null,
+        videoDuration: null,
+        videoEngagement: null,
+        aiTopic: null,
+        aiSummary: "中心思想",
+        aiPoints: null,
+        aiKeywords: null,
+        source: { id: 3, name: "渠道" },
+      },
+    ]);
+    const items = await listPublicTelegram({ limit: 10 });
+    expect(items[0]!.aiRanAt).toBe(new Date(now.getTime() + 90_000).toISOString());
+    expect(items[1]!.aiRanAt).toBe(now.toISOString());
   });
 });
 

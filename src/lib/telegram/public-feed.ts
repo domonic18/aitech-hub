@@ -2,11 +2,13 @@
  * 电报流公开读侧(M7 批⑤):前台 /telegram 时间轴与首页 LIVE 带。
  * 只出 visible;BigInt 出口一律转 string;「今日」按北京时区(statsDay 同源)。
  * M8 批⑧:首页带视频保底槽位(listBandFeed = 混排 + 最新视频合并,SSR 与轮询同源)。
+ * M15 批①:只出 AI 解读终态行——AI 解读是核心功能,pending/failed 上屏会被
+ * 误读为抓取出错;「变可见的时刻」即 aiRanAt(解读完成),轮询增量锚随之改锚。
  */
 import { prisma } from "../db";
 import { statsDay } from "../datetime";
 import { prerenderSafe } from "../prerender-safe";
-import { clampBandItemCount, DEFAULT_BAND_ITEM_COUNT } from "./constants";
+import { clampBandItemCount, DEFAULT_BAND_ITEM_COUNT, TELEGRAM_AI_TERMINAL } from "./constants";
 
 import {
   toEngagement,
@@ -63,7 +65,7 @@ export async function listPublicTelegram(opts: {
   /** 跳过条数(M10 带滚动加载;clamp 0..500) */
   offset?: number;
   sourceId?: number;
-  /** 轮询增量:只取该时刻之后(publishedAt 兜底 createdAt) */
+  /** 轮询增量:只取该时刻之后解读完成的行(aiRanAt 锚,M15 批①) */
   afterIso?: string;
   /** 媒体筛选(M8 混合流):all|text|video,非法值回落 all */
   media?: FeedMediaFilter;
@@ -87,16 +89,13 @@ async function queryPublicTelegram(
   const rows = await prisma.telegram.findMany({
     where: {
       status: "visible",
+      // M15 批①:仅 AI 解读终态(done/missing_transcript)可见;pending/failed 不上屏
+      aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
       ...(sourceId !== undefined ? { sourceId } : {}),
       ...(media !== "all" ? { mediaType: media } : {}),
-      ...(validAfter
-        ? {
-            OR: [
-              { publishedAt: { gt: validAfter } },
-              { publishedAt: null, createdAt: { gt: validAfter } },
-            ],
-          }
-        : {}),
+      // 增量锚=aiRanAt(变可见时刻;与 publishedAt 解耦——旧解读行补扫上屏时
+      // publishedAt 可能早于客户端已见锚,按发布时间过滤会系统性漏条)
+      ...(validAfter ? { aiRanAt: { gt: validAfter } } : {}),
     },
     select: {
       id: true,
@@ -105,6 +104,7 @@ async function queryPublicTelegram(
       url: true,
       publishedAt: true,
       createdAt: true,
+      aiRanAt: true,
       mediaType: true,
       videoPlatform: true,
       videoBlogger: true,
@@ -127,6 +127,8 @@ async function queryPublicTelegram(
     summary: t.summary,
     url: t.url,
     publishedAt: (t.publishedAt ?? t.createdAt).toISOString(),
+    // 终态行 aiRanAt 恒有值;null 兜底仅防御存量脏数据
+    aiRanAt: (t.aiRanAt ?? t.publishedAt ?? t.createdAt).toISOString(),
     sourceId: t.source.id,
     sourceName: t.source.name,
     sourceType: t.source.type,
