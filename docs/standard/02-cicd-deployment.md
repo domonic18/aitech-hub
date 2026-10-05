@@ -49,6 +49,7 @@ make migrate   # npx prisma migrate deploy
 ## 3. 镜像(docker/Dockerfile)
 
 - 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
+- **构建信息注入**(2026-10-05):`npm run build` 经 `scripts/build-with-info.sh` 包装,`NEXT_PUBLIC_BUILD_REF`/`NEXT_PUBLIC_BUILD_TIME` 构建期内联客户端 bundle,页脚展示版本追踪行;CI build-args 传 `branch-sha` 与 UTC 时间,本地直跑回退 `git describe --always --dirty`(`.dockerignore` 排除 `.git`,容器内必须显式传参),均缺省页脚显示 dev
 - 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema)+ `scripts/` 与 `src/`(ops 脚本如 `npm run admin` 以 tsx 直跑,依赖 src 源码;显式整拷,勿依赖 standalone 追踪);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
 - `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
 - **媒体目录不打进镜像**:compose 卷挂载,独立于发版

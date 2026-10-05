@@ -30,6 +30,8 @@ CREATE TABLE content_post (
     cover_path      VARCHAR(500),                    -- 媒体 URL 路径 /wp-content/uploads/...
     category_id     BIGINT NOT NULL REFERENCES content_category(id),
     status          VARCHAR(20) NOT NULL DEFAULT 'draft',   -- draft/published
+    content_origin  VARCHAR(20) NOT NULL DEFAULT 'human',   -- 创作方式 human/ai_assisted/ai_generated
+                                                     -- (AI 生成合成内容标识办法 2025-09-01 施行;应用层枚举)
     is_pinned       BOOLEAN NOT NULL DEFAULT FALSE,
     views_count     BIGINT NOT NULL DEFAULT 0,
     seo_title       VARCHAR(255),
@@ -225,7 +227,7 @@ CREATE TABLE legacy_url_map (
 
 **站点配置与访问明细已落地(2026-10-04 M10 迁移,体验反馈批)**:
 
-- `site_config`(kv 通用底座):`key varchar(50) PK + value text + updated_at`;value 一律字符串,消费方自行解析 + clamp(键注册表 `SITE_CONFIG_KEYS` + per-key Zod,`src/lib/config/site-config.ts`;缺行/非数值/越界一律回落默认)。**M12 批② value 放宽为 text**(hero_md 存 markdown,varchar(200) 不够)并扩键族:`band.item_count`(默认 12,钳 1..50)/`home.repo_count`(默认 3,钳 1..12)/`home.post_count`(默认 5,钳 1..12)/`site.title`(默认「一起AI」,1..50 字;传播 generateMetadata/Header/Footer/feed.xml/llms.txt)/`home.hero_md`(≤2000 字,空 = 回退内置品牌语)
+- `site_config`(kv 通用底座):`key varchar(50) PK + value text + updated_at`;value 一律字符串,消费方自行解析 + clamp(键注册表 `SITE_CONFIG_KEYS` + per-key Zod,`src/lib/config/site-config.ts`;缺行/非数值/越界一律回落默认)。**M12 批② value 放宽为 text**(hero_md 存 markdown,varchar(200) 不够)并扩键族:`band.item_count`(默认 12,钳 1..50)/`home.repo_count`(默认 3,钳 1..12)/`home.post_count`(默认 5,钳 1..12)/`site.title`(默认「一起AI」,1..50 字;传播 generateMetadata/Header/Footer/feed.xml/llms.txt)/`home.hero_md`(≤2000 字,空 = 回退内置品牌语)/`site.icp`(2026-10-05,≤60 字,空 = 页脚不渲染备案行;页脚链 beian.miit.gov.cn)
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 
 ## 3. Prisma 模型约定
