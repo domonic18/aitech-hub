@@ -34,11 +34,14 @@ import { useEffect, useState } from "react";
 
 import {
   BAND_POLL_MS,
+  feedChipTone,
   formatDuration,
   hhmm,
   isNew,
   platformLabel,
   timeAgo,
+  FEED_CHIP_TONE_CLASSES,
+  type FeedChipTone,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
 
@@ -72,10 +75,12 @@ function BandAgo({ fresh, text }: { fresh: boolean; text: string }) {
   );
 }
 
-/** 渠道/平台章(bg-panel-2 小圆角章;放在定宽列时随列宽,窄屏标题区内收口) */
-function BandChip({ label }: { label: string }) {
+/** 渠道/平台章(带边框浅底色章,色调随渠道类型/平台;定宽列内随列宽,窄屏标题区内收口) */
+function BandChip({ label, tone }: { label: string; tone: FeedChipTone }) {
   return (
-    <span className="max-w-full truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
+    <span
+      className={`max-w-full truncate rounded-sm border px-1.5 py-px text-center text-[11px] ${FEED_CHIP_TONE_CLASSES[tone]}`}
+    >
       {label}
     </span>
   );
@@ -235,20 +240,24 @@ export default function TelegramBand({
           // 标题/AI 解读双行与文字行同构;行高由封面撑起。有要点时行锚 pb 收窄。
           const duration = formatDuration(video.durationSeconds);
           return (
-            <div key={t.id} className="border-b border-line/55 last:border-b-0">
+            <div
+              key={t.id}
+              className="border-b border-line/55 transition-colors last:border-b-0 hover:bg-panel-2"
+            >
               <a
                 href={t.url}
                 target="_blank"
                 rel="noopener nofollow"
-                className={`${ROW_GRID} items-start py-3 hover:bg-panel-2 ${
-                  points.length > 0 ? "pb-1" : ""
-                }`}
+                className={`${ROW_GRID} items-start py-3 ${points.length > 0 ? "pb-1" : ""}`}
               >
                 <BandTime fresh={fresh} text={hhmm(t.publishedAt)} />
                 <span className="flex min-w-0 gap-2">
                   <BandCover src={video.coverUrl} duration={duration} />
                   <span className="hidden min-w-0 flex-1 flex-col items-start gap-1 sm:flex">
-                    <BandChip label={platformLabel(video.platform)} />
+                    <BandChip
+                      label={platformLabel(video.platform)}
+                      tone={feedChipTone(t.sourceType, video.platform)}
+                    />
                     <span className="max-w-full truncate font-mono text-[11px] text-text-2">
                       @{video.blogger}
                     </span>
@@ -277,24 +286,25 @@ export default function TelegramBand({
           );
         }
         return (
-          <div key={t.id} className="border-b border-line/55 last:border-b-0">
+          <div
+            key={t.id}
+            className="border-b border-line/55 transition-colors last:border-b-0 hover:bg-panel-2"
+          >
             <a
               href={t.url}
               target="_blank"
               rel="noopener nofollow"
-              className={`${ROW_GRID} items-start py-2.5 hover:bg-panel-2 ${
-                points.length > 0 ? "pb-1.5" : ""
-              }`}
+              className={`${ROW_GRID} items-start py-2.5 ${points.length > 0 ? "pb-1.5" : ""}`}
             >
               {/* 文字行首列时间双断点常显;渠道章 sm+ 落 164px 元信息列,
                   窄屏并入标题区首行(2026-10-05 反馈:窄屏定宽列挤压标题不可读) */}
               <BandTime fresh={fresh} text={hhmm(t.publishedAt)} always />
               <span className="hidden min-w-0 flex-col items-start sm:flex">
-                <BandChip label={t.sourceName} />
+                <BandChip label={t.sourceName} tone={feedChipTone(t.sourceType)} />
               </span>
               <span className="flex min-w-0 flex-col">
                 <span className="mb-1 sm:hidden">
-                  <BandChip label={t.sourceName} />
+                  <BandChip label={t.sourceName} tone={feedChipTone(t.sourceType)} />
                 </span>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">

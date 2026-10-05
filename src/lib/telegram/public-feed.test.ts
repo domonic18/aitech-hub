@@ -12,7 +12,7 @@ vi.mock("../db", () => ({
 }));
 
 import { mergeBandItems, listPublicTelegram } from "./public-feed";
-import { toTextAi, toVideoAi, type PublicTelegramItem } from "./feed-view";
+import { feedChipTone, toTextAi, toVideoAi, type PublicTelegramItem } from "./feed-view";
 
 function item(id: string, publishedAt: string): PublicTelegramItem {
   return {
@@ -23,6 +23,7 @@ function item(id: string, publishedAt: string): PublicTelegramItem {
     publishedAt,
     sourceId: 1,
     sourceName: "渠道",
+    sourceType: "rss",
     mediaType: "text",
   };
 }
@@ -233,5 +234,29 @@ describe("文字行轻解读投影(M12 批③;批⑥ 新契约+旧契约对调)"
       ai: { summary: "旧契约中心思想", points: [], keywords: ["旧词一", "旧词二", "旧词三"] },
     });
     expect(items[2]).toMatchObject({ mediaType: "text", ai: null });
+  });
+});
+
+describe("feedChipTone 渠道章配色(原型 .src-*/.pf-* 口径;2026-10-05 反馈)", () => {
+  it("视频条按 platform 定色:抖音 amber / 小红书 red / B站 blue / 未知 neutral", () => {
+    expect(feedChipTone("social-video", "douyin")).toBe("amber");
+    expect(feedChipTone("social-video", "xhs")).toBe("red");
+    expect(feedChipTone("social-video", "bilibili")).toBe("blue");
+    expect(feedChipTone("social-video", "kuaishou")).toBe("neutral");
+  });
+
+  it("文字条按源类型定色:rss→accent / web·api→blue / sns→amber / 未知 neutral", () => {
+    expect(feedChipTone("rss")).toBe("accent");
+    expect(feedChipTone("web")).toBe("blue");
+    expect(feedChipTone("api")).toBe("blue");
+    expect(feedChipTone("sns")).toBe("amber");
+    expect(feedChipTone("unknown")).toBe("neutral");
+  });
+
+  it("platform 优先于源类型;大小写不敏感;空 platform 走源类型", () => {
+    expect(feedChipTone("rss", "douyin")).toBe("amber");
+    expect(feedChipTone("rss", "DouYin")).toBe("amber");
+    expect(feedChipTone("social-video", "")).toBe("amber");
+    expect(feedChipTone("rss", null)).toBe("accent");
   });
 });

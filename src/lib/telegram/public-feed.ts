@@ -115,7 +115,7 @@ async function queryPublicTelegram(
       aiSummary: true,
       aiPoints: true,
       aiKeywords: true,
-      source: { select: { id: true, name: true } },
+      source: { select: { id: true, name: true, type: true } },
     },
     orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
     take: limit,
@@ -129,6 +129,7 @@ async function queryPublicTelegram(
     publishedAt: (t.publishedAt ?? t.createdAt).toISOString(),
     sourceId: t.source.id,
     sourceName: t.source.name,
+    sourceType: t.source.type,
     mediaType: t.mediaType === "video" ? "video" : "text",
     ...(t.mediaType === "video"
       ? {

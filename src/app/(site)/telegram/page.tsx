@@ -130,7 +130,11 @@ export default async function TelegramPage({
               </Link>
             ))}
           </div>
+          {/* key=筛选组合:软导航(同页换 searchParams)时组件不重挂载,
+              useState(initialItems) 会保留旧列表 → 筛选看似不生效(2026-10-05
+              反馈);强制重挂载让服务端筛选结果落地,轮询状态同步归零 */}
           <TelegramTimeline
+            key={`${sourceId ?? 0}-${media}`}
             initialItems={items}
             sourceId={sourceId}
             media={media}

@@ -38,15 +38,18 @@ export default function PostListView({
 }: PostListViewProps): React.ReactElement {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
-    // 版心 768px(阅读页口径;首页 Hub 用全宽 --site-max-w,见 (site)/page.tsx)
-    <section className="mx-auto w-full max-w-3xl">
-      <header className="border-b border-line/60 pb-4">
-        <h1 className="text-2xl font-bold">{heading}</h1>
-        <p className="mt-1 text-sm text-text-3">{description ?? `共 ${total} 篇`}</p>
-      </header>
-      {filterBar ? <div className="mt-4">{filterBar}</div> : null}
+    // 版心分两段:页头/筛选 768(阅读口径);视图区由 PostViewToggle 按视图
+    // 切换版心(列表 768 / 卡片 --site-max-w,2026-10-05 反馈:卡片两列两侧太空)
+    <section className="mx-auto w-full">
+      <div className="mx-auto w-full max-w-3xl">
+        <header className="border-b border-line/60 pb-4">
+          <h1 className="text-2xl font-bold">{heading}</h1>
+          <p className="mt-1 text-sm text-text-3">{description ?? `共 ${total} 篇`}</p>
+        </header>
+        {filterBar ? <div className="mt-4">{filterBar}</div> : null}
+      </div>
       {items.length === 0 ? (
-        <p className="py-12 text-center text-text-3">暂无文章</p>
+        <p className="mx-auto w-full max-w-3xl py-12 text-center text-text-3">暂无文章</p>
       ) : (
         <div className="mt-4">
           <PostViewToggle
@@ -58,14 +61,18 @@ export default function PostListView({
               </div>
             }
             cards={<PostCardGrid posts={items} />}
+            footer={
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                hrefFor={
+                  pageHref ?? ((p: number) => (p === 1 ? `${basePath}/` : `${basePath}/page/${p}/`))
+                }
+              />
+            }
           />
         </div>
       )}
-      <Pagination
-        page={page}
-        totalPages={totalPages}
-        hrefFor={pageHref ?? ((p: number) => (p === 1 ? `${basePath}/` : `${basePath}/page/${p}/`))}
-      />
     </section>
   );
 }

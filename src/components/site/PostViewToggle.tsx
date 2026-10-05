@@ -6,6 +6,9 @@
  * 列表,SEO/LCP 不受影响;选择存 localStorage 记忆,水合后恢复;切换纯显隐、
  * 零二次请求。行业惯例口径:视图记忆是个人偏好,不进 URL(可分享的筛选走
  * /category、/tag 路由)。
+ * 2026-10-05 二次反馈:卡片视图需要更宽版心(多列卡片,两侧留白收窄)——
+ * 本组件同时接管「视图区版心」:列表 768(阅读口径)、卡片 1200(--site-max-w,
+ * 列数由网格 auto-fill 按分辨率自适);footer(分页)渲染在版心内随视图同宽。
  */
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -21,9 +24,12 @@ const VIEWS: ReadonlyArray<{ kind: ViewKind; icon: string; label: string }> = [
 export default function PostViewToggle({
   list,
   cards,
+  footer,
 }: {
   list: ReactNode;
   cards: ReactNode;
+  /** 视图区尾部内容(分页),随当前视图版心同宽 */
+  footer?: ReactNode;
 }): React.ReactElement {
   const [view, setView] = useState<ViewKind>("list");
   useEffect(() => {
@@ -43,7 +49,11 @@ export default function PostViewToggle({
     }
   };
   return (
-    <div>
+    <div
+      className={
+        view === "cards" ? "mx-auto w-full max-w-[var(--site-max-w)]" : "mx-auto w-full max-w-3xl"
+      }
+    >
       <div className="flex justify-end">
         <div
           className="inline-flex overflow-hidden rounded-sm border border-line"
@@ -72,6 +82,7 @@ export default function PostViewToggle({
       </div>
       <div className={view === "list" ? "" : "hidden"}>{list}</div>
       <div className={view === "cards" ? "mt-4" : "mt-4 hidden"}>{cards}</div>
+      {footer}
     </div>
   );
 }
