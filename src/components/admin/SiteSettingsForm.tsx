@@ -124,7 +124,8 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
         </Field>
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-text-3">
-        电报流条数控制 LIVE 带初始展示(滚动到底自动加载更多);项目/文章条数控制 aside 两张 rail
+        电报流条数控制 LIVE 带展示条数(带内固定一页,新条目经 60s
+        轮询前插并截回该上限);项目/文章条数控制 aside 两张 rail
         卡的行数,非法/低于下限按默认值兜底,超上限取上限。
       </p>
 
