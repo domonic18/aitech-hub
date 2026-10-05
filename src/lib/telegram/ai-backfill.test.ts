@@ -129,17 +129,22 @@ describe("backfillAiPending", () => {
     expect(queues.summarizer.add).toHaveBeenCalledTimes(0);
   });
 
-  it("每类条数上限透传 take=5;查询锚定未解读可见条 + 7 天窗", async () => {
+  it("每类条数上限透传 take=5;查询锚定未解读可见条 + 7 天窗;最新优先排序(批⑤)", async () => {
     prismaMock.telegram.findMany.mockResolvedValue([]);
     await backfillAiPending();
     for (const call of prismaMock.telegram.findMany.mock.calls) {
       const arg = call[0] as {
         where: { aiStatus: unknown; status: string; OR: unknown[] };
+        orderBy: unknown;
         take: number;
       };
       expect(arg.where.aiStatus).toBeNull();
       expect(arg.where.status).toBe("visible");
       expect(arg.where.OR).toHaveLength(2);
+      expect(arg.orderBy).toEqual([
+        { publishedAt: { sort: "desc", nulls: "last" } },
+        { id: "desc" },
+      ]);
       expect(arg.take).toBe(AI_BACKFILL_PER_TYPE);
     }
   });

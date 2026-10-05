@@ -2,7 +2,8 @@
 
 /**
  * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位;
- * M10 批② 条数后台可配 + 下滚加载更多;M12 批③ 文字行加「AI · 中心思想 + #关键词」):
+ * M10 批② 条数后台可配 + 下滚加载更多;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
+ * 批⑤ 视频行 AI 行改直出 summary 与电报流详情统一):
  * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(sm+ 74/108/1fr/auto;
  * 窄屏 2026-10-05 反馈改版:时间+渠道缩一行小字、标题独占整行——定宽列挤压标题不可读,
  * 原型 @media 已同步);视频行按原型 site-home .tg-row.video 五列(tm/thumb/pf/vt/ag):
@@ -237,8 +238,10 @@ export default function TelegramBand({
                 <span className="truncate text-sm leading-normal text-text-1">{t.title}</span>
                 {video.ai && (
                   <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
-                    <span className="text-accent">AI 解读</span> ·{" "}
-                    {video.ai.topic || video.ai.summary}
+                    {/* 批⑤(2026-10-05 验收反馈):带内直出 summary 与电报流详情统一——
+                        topic 是 ≤20 字主题标签,每日要闻速递类视频恒产出「全球AI圈今日
+                        要闻速递」级泛化词,把有实质内容的 summary 挡在带外 */}
+                    <span className="text-accent">AI 解读</span> · {video.ai.summary}
                   </span>
                 )}
               </span>

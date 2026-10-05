@@ -2,6 +2,9 @@
  * AI 解读存量补扫(M12 批③):解读/摘要能力后配置、或入库时直链缺失的存量,
  * 由 5 分钟 tick 兜底——扫 ai_status IS NULL、近 7 天发布(SOCIAL_BACKFILL_DAYS
  * 同窗)的可见条,视频/文字两类各限 5 条,分流入 interpreter/summarizer 队列。
+ * **最新优先**(批⑤ 2026-10-05 验收反馈):信息流头部最先见到 AI 行——旧→新
+ * 排序会让最旧的先消化,用户看流首长期「仍然没有解读」;存量有限且新入库走
+ * ingest 钩子即时入队,饿死风险可忽略。
  * 就绪检查整轮一次(未绑定模型不入队,防 skipped_not_ready 的 5 分钟重投空转);
  * 入队前移除同名遗留 job(completed 保留窗口会顶掉同 jobId 重复入队,静默去重),
  * 先标 pending 防下一轮重扫;单条入队失败只跳过该条,不拖垮整轮。
@@ -43,13 +46,13 @@ export async function backfillAiPending(): Promise<AiBackfillOutcome> {
     prisma.telegram.findMany({
       where: { ...baseWhere, mediaType: TELEGRAM_MEDIA_VIDEO },
       select: { id: true, url: true, videoPlatform: true, videoBlogger: true },
-      orderBy: { id: "asc" },
+      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
       take: AI_BACKFILL_PER_TYPE,
     }),
     prisma.telegram.findMany({
       where: { ...baseWhere, mediaType: TELEGRAM_MEDIA_TEXT },
       select: { id: true },
-      orderBy: { id: "asc" },
+      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
       take: AI_BACKFILL_PER_TYPE,
     }),
   ]);
