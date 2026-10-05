@@ -114,6 +114,7 @@ describe("summarizeTextJob 状态机", () => {
         system: expect.stringContaining("JSON"),
         user: expect.stringContaining("摘要:"),
       }),
+      expect.any(Function),
     );
   });
 
@@ -162,6 +163,7 @@ describe("summarizeTextJob 状态机", () => {
     await summarizeTextJob(DATA);
     expect(chatJsonMock).toHaveBeenCalledWith(
       expect.objectContaining({ user: expect.stringContaining("原始正文内容") }),
+      expect.any(Function),
     );
 
     vi.stubGlobal(
@@ -173,6 +175,7 @@ describe("summarizeTextJob 状态机", () => {
     await summarizeTextJob(DATA);
     expect(chatJsonMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ user: expect.not.stringContaining("正文粗提取") }),
+      expect.any(Function),
     );
   });
 

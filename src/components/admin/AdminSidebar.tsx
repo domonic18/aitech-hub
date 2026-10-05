@@ -43,7 +43,7 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "AI 服务",
     items: [
       { icon: "i-robot", label: "模型配置", href: "/admin/models" },
-      { icon: "i-piechart", label: "用量统计", tag: "二期" },
+      { icon: "i-piechart", label: "用量统计", href: "/admin/usage" },
       { icon: "i-comment", label: "会话管理", tag: "二期" },
     ],
   },

@@ -8,7 +8,13 @@ import { z } from "zod";
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
-import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "./constants";
+import {
+  SOCIAL_CRAWL_INTERVAL_MIN,
+  TELEGRAM_AI_DONE,
+  TELEGRAM_AI_MISSING_TRANSCRIPT,
+  TELEGRAM_MEDIA_VIDEO,
+  VIDEO_PLATFORM_DOUYIN,
+} from "./constants";
 import { fetchDouyinProfile, resolveDouyinSecUid } from "./adapters/video/douyin";
 import { BloggerAdminError } from "./bloggers-errors";
 import { activeJars, ensurePlatformRow } from "./social-platform-admin";
@@ -20,12 +26,50 @@ const SEC_UID_PATTERN = /MS4wLjABAAAA[A-Za-z0-9_-]{20,}/;
 
 // ── 台账 ──────────────────────────────────────────────────────────────────────
 
-/** 台账列表(博主个位数量级,不分页) */
-export async function listBloggersAdmin() {
-  const rows = await prisma.socialAccount.findMany({
-    orderBy: { id: "asc" },
-    include: { platformRow: { select: { enabled: true } } },
+/** 近 7 天 ASR 转写聚合(2026-10-06 验收反馈问题4,原型「ASR 7d」列:条数/时长):
+ * telegram 无 social_account 外键,按 (video_platform, video_blogger) 冗余名匹配
+ * ——与 ai-backfill/作品筛选同一既定口径;done 计转写,降级单列便于观察。 */
+interface BloggerAsr7d {
+  done: number;
+  degraded: number;
+  durationSec: number;
+}
+
+async function loadAsr7dByBlogger(): Promise<Map<string, BloggerAsr7d>> {
+  const groups = await prisma.telegram.groupBy({
+    by: ["videoBlogger", "videoPlatform", "aiStatus"],
+    where: {
+      mediaType: TELEGRAM_MEDIA_VIDEO,
+      videoBlogger: { not: null },
+      createdAt: { gte: new Date(Date.now() - 7 * 24 * 3_600_000) },
+    },
+    _count: { _all: true },
+    _sum: { videoDuration: true },
   });
+  const out = new Map<string, BloggerAsr7d>();
+  for (const g of groups) {
+    const key = `${g.videoPlatform}\n${g.videoBlogger ?? ""}`;
+    const acc = out.get(key) ?? { done: 0, degraded: 0, durationSec: 0 };
+    if (g.aiStatus === TELEGRAM_AI_DONE) {
+      acc.done += g._count._all;
+      acc.durationSec += Number(g._sum.videoDuration ?? 0);
+    } else if (g.aiStatus === TELEGRAM_AI_MISSING_TRANSCRIPT) {
+      acc.degraded += g._count._all;
+    }
+    out.set(key, acc);
+  }
+  return out;
+}
+
+/** 台账列表(博主个位数量级,不分页);ASR 7d 按 (平台, 昵称) 冗余名聚合 */
+export async function listBloggersAdmin() {
+  const [rows, asr7d] = await Promise.all([
+    prisma.socialAccount.findMany({
+      orderBy: { id: "asc" },
+      include: { platformRow: { select: { enabled: true } } },
+    }),
+    loadAsr7dByBlogger(),
+  ]);
   return rows.map((b) => ({
     id: b.id,
     platform: b.platform,
@@ -41,6 +85,7 @@ export async function listBloggersAdmin() {
     nextRunAt: b.nextRunAt,
     consecutiveFails: b.consecutiveFails,
     lastError: b.lastError,
+    asr7d: asr7d.get(`${b.platform}\n${b.nickname}`) ?? { done: 0, degraded: 0, durationSec: 0 },
     remark: b.remark,
     createdAt: b.createdAt,
   }));

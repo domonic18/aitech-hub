@@ -104,6 +104,7 @@ export default function PostEditor({
   const [status, setStatus] = useState(post?.status ?? "draft");
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [busy, setBusy] = useState(false);
+  const [seoBusy, setSeoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
@@ -153,6 +154,47 @@ export default function PostEditor({
       return null;
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** SEO 一键补全(2026-10-06 验收反馈问题7):同步轻调用,正文取样前 4000 字;
+   * 生成值直接覆盖两个 SEO 字段(重按即重新生成),不影响其他表单态。 */
+  async function seoSuggest(): Promise<void> {
+    if (title.trim() === "" && contentMd.trim() === "") {
+      setError("请先填写标题或正文,再点 AI 填充");
+      return;
+    }
+    setSeoBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/posts/seo-suggest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          contentMd: contentMd.slice(0, 4000),
+          excerpt: meta.excerpt,
+          tags: splitTags(meta.tagsText),
+          categorySlug: meta.categorySlug,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as ApiEnvelope<{
+        seoTitle: string;
+        seoDescription: string;
+      }> | null;
+      if (!res.ok || json?.code !== 0 || !json.data) {
+        setError(json?.message ?? `生成失败(${res.status})`);
+        return;
+      }
+      setMeta((m) => ({
+        ...m,
+        seoTitle: json.data!.seoTitle,
+        seoDescription: json.data!.seoDescription,
+      }));
+    } catch {
+      setError("网络错误,请重试");
+    } finally {
+      setSeoBusy(false);
     }
   }
 
@@ -286,6 +328,9 @@ export default function PostEditor({
           tagCount={splitTags(meta.tagsText).length}
           onChange={(patch) => setMeta((m) => ({ ...m, ...patch }))}
           slug={slugField}
+          onSeoSuggest={() => void seoSuggest()}
+          seoSuggesting={seoBusy}
+          coverContext={{ title, excerpt: meta.excerpt, tags: splitTags(meta.tagsText) }}
         />
       </div>
     </div>

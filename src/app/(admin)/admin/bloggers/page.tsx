@@ -1,14 +1,18 @@
 /**
  * 博主台账页(M8 批③,侧栏「博主管理」;channels 页同款骨架):
- * 页顶 Cookie 池 + 网关健康双状态卡,博主台账表(账号/频率/健康/调度/操作)。
- * Cookie 只出脱敏 ttwid 前缀;网关不可达降级展示,不阻塞页面。
+ * 页顶 Cookie 池 + 网关健康 + ASR 转写三状态卡,博主台账表(账号/频率/启停/
+ * ASR 7d/健康/调度/操作)。Cookie 只出脱敏 ttwid 前缀;网关不可达降级展示,
+ * 不阻塞页面。2026-10-06 验收反馈问题3/4:补启用开关列与 ASR 统计。
  */
+import StatusSwitch from "@/components/admin/StatusSwitch";
+import { getAsrConfigAdmin } from "@/lib/ai/asr-admin";
 import BloggerDialog from "@/components/admin/BloggerDialog";
 import BloggerRowOps from "@/components/admin/BloggerRowOps";
 import CookiePoolCard from "@/components/admin/CookiePoolCard";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
+import { getAsrOverview } from "@/lib/telegram/spider-queries";
 import { fetchGatewayHealth, getCookiePoolView } from "@/lib/telegram/social-platform-admin";
 import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "@/lib/telegram/constants";
 
@@ -23,12 +27,18 @@ function profileUrl(b: { platform: string; secUid: string }): string | null {
   return b.platform === VIDEO_PLATFORM_DOUYIN ? `https://www.douyin.com/user/${b.secUid}` : null;
 }
 
+function asrHours(sec: number): string {
+  return `${(sec / 3600).toFixed(1)}h`;
+}
+
 export default async function AdminBloggersPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [bloggers, pool, gateway] = await Promise.all([
+  const [bloggers, pool, gateway, asr, asrConfig] = await Promise.all([
     listBloggersAdmin(),
     getCookiePoolView(),
     fetchGatewayHealth(),
+    getAsrOverview(),
+    getAsrConfigAdmin(),
   ]);
 
   return (
@@ -43,8 +53,8 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
         <BloggerDialog label="登记博主" />
       </div>
 
-      {/* 状态卡 ×2(原型 kpi 双卡):Cookie 池(客户端,含导入)+ 网关健康(RSC) */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* 状态卡 ×3(原型 kpi 三卡):Cookie 池(客户端)+ 网关健康(RSC)+ ASR 转写 */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <CookiePoolCard pools={pool.pools} />
         <div className="rounded-md border border-line bg-panel px-4 py-4">
           <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
@@ -74,6 +84,51 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
             </>
           )}
         </div>
+        <div className="rounded-md border border-line bg-panel px-4 py-4">
+          <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
+            <svg className="ic text-accent" aria-hidden="true">
+              <use href="#i-sound" />
+            </svg>
+            ASR 转写
+          </div>
+          {asrConfig.enabled ? (
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-text-3">
+              <div>
+                服务状态{" "}
+                <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">
+                  {asrConfig.provider}/{asrConfig.modelId}
+                </span>
+              </div>
+              <div>
+                今日转写{" "}
+                <b className="font-mono text-[13px] text-text-1">
+                  {asr.todayDone} / {asrHours(asr.todayDurationSec)}
+                </b>
+              </div>
+              <div>
+                排队中 <b className="font-mono text-[13px] text-text-1">{asr.queueWaiting}</b>
+              </div>
+              <div>
+                今日降级{" "}
+                <b
+                  className={`font-mono text-[13px] ${asr.todayDegraded > 0 ? "text-amber" : "text-text-1"}`}
+                  title="ASR 终败条数(无音轨/转写失败),按缺转写降级入库"
+                >
+                  {asr.todayDegraded}
+                </b>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-amber">
+                未启用
+              </div>
+              <div className="mt-1.5 text-[11px] text-text-3">
+                在「AI 配置 → ASR」启用并测试通过后,视频自动转写+解读
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
@@ -83,6 +138,8 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
               <th className="px-4 py-2.5 font-medium">博主</th>
               <th className="px-3 py-2.5 font-medium">平台 / 分类</th>
               <th className="px-3 py-2.5 font-medium">频率</th>
+              <th className="px-3 py-2.5 font-medium">启用</th>
+              <th className="px-3 py-2.5 text-right font-medium">ASR 7d</th>
               <th className="px-3 py-2.5 font-medium">健康</th>
               <th className="px-3 py-2.5 font-medium">调度</th>
               <th className="px-4 py-2.5 text-right font-medium">操作</th>
@@ -135,6 +192,25 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
                     {b.crawlIntervalMin}min
                   </td>
                   <td className="px-3 py-2.5">
+                    <StatusSwitch
+                      endpoint={`/api/bloggers/${b.id}/status`}
+                      enabled={b.enabled}
+                      name={b.nickname}
+                      disableHint={`确认停用「${b.nickname}」?停用后调度器不再派发该博主的采集任务。`}
+                    />
+                  </td>
+                  <td
+                    className="px-3 py-2.5 text-right font-mono text-[11px] text-text-2"
+                    title={`近 7 天:转写 ${b.asr7d.done} 条${b.asr7d.degraded > 0 ? ` · 降级 ${b.asr7d.degraded} 条` : ""}`}
+                  >
+                    {b.asr7d.done} / {asrHours(b.asr7d.durationSec)}
+                    {b.asr7d.degraded > 0 && (
+                      <span className="ml-1 text-amber" title={`降级 ${b.asr7d.degraded} 条`}>
+                        ↓{b.asr7d.degraded}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
                     {b.lastError ? (
                       <span
                         className="rounded-sm bg-red/10 px-1.5 py-px text-[10px] text-red"
@@ -178,7 +254,7 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
             })}
             {bloggers.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
+                <td colSpan={8} className="px-4 py-10 text-center text-xs text-text-3">
                   还没有博主,点右上角「登记博主」接入第一批(建议先导入 Cookie 池)
                 </td>
               </tr>
@@ -192,8 +268,9 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
         {SOCIAL_CRAWL_INTERVAL_MIN}min(平台礼貌红线);首采回填近 7 天至多 10
         条防刷屏;手动「回填」向前深扫 30 天(至多 3 页)补采,地板推进不回退;
         网关不可达顺延本轮不计失败, 上游风控(如 jar 全灭)计入连续失败。删除为两步武装:启用中
-        409,停用后可物理删,已入库视频不受影响。 API:GET/POST /api/bloggers · PUT/DELETE
-        /api/bloggers/[id] · PUT /api/bloggers/[id]/status · POST /api/bloggers/[id]/crawl · POST
+        409,停用后可物理删,已入库视频不受影响。 ASR 7d 为近 7 天转写条数/时长(按平台+昵称
+        冗余名匹配),↓N 为缺转写降级数。 API:GET/POST /api/bloggers · PUT/DELETE /api/bloggers/[id] ·
+        PUT /api/bloggers/[id]/status · POST /api/bloggers/[id]/crawl · POST
         /api/bloggers/[id]/backfill · GET/POST/DELETE /api/bloggers/cookies。
       </p>
     </div>

@@ -6,6 +6,7 @@
 import Link from "next/link";
 
 import MediaActions from "@/components/admin/MediaActions";
+import MediaDupeList from "@/components/admin/MediaDupeList";
 import MediaGrid from "@/components/admin/MediaGrid";
 import { MEDIA_AUDIT_CRON } from "@/lib/queue";
 import {
@@ -18,7 +19,13 @@ import {
   parseKind,
   parseRefFilter,
 } from "@/lib/media/media-schema";
-import { MEDIA_PAGE_SIZE, brokenRefs, listMediaAdmin, mediaStats } from "@/lib/media/queries";
+import {
+  MEDIA_PAGE_SIZE,
+  brokenRefs,
+  listDupeGroups,
+  listMediaAdmin,
+  mediaStats,
+} from "@/lib/media/queries";
 import { parsePage } from "@/lib/admin/list";
 import AdminPagination from "@/components/admin/AdminPagination";
 
@@ -55,10 +62,11 @@ export default async function AdminMediaPage({
   const q = sp.q?.trim() || undefined;
   const page = parsePage(sp.page);
 
-  const [list, stats, broken] = await Promise.all([
+  const [list, stats, broken, dupes] = await Promise.all([
     listMediaAdmin({ kind, refFilter, q, page }),
     mediaStats(),
     brokenRefs(),
+    listDupeGroups(),
   ]);
   const totalPages = Math.max(1, Math.ceil(list.total / MEDIA_PAGE_SIZE));
 
@@ -173,6 +181,9 @@ export default async function AdminMediaPage({
         </div>
       )}
 
+      {/* 重复检测分组视图(原型 .dupe-row;同 sha1 ≥2 条即整卡呈现,无重复不占位) */}
+      {dupes.length > 0 && <MediaDupeList groups={dupes} />}
+
       <MediaGrid items={list.items} refFilter={refFilter} />
 
       <AdminPagination
@@ -185,7 +196,7 @@ export default async function AdminMediaPage({
 
       <div className="font-mono text-[11px] text-text-3">
         POST /api/media · GET/DELETE /api/media/[id] · POST /api/media/import|batch-delete|audit ·
-        audit cron {MEDIA_AUDIT_CRON}
+        POST /api/media/dupes/merge · audit cron {MEDIA_AUDIT_CRON}
       </div>
     </div>
   );

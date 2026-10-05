@@ -55,38 +55,68 @@ function httpError(status: number, bodyText: string): AiClientError {
   );
 }
 
-/** 从 openai choices / anthropic content 提取 assistant 原文(缺失=契约漂移) */
-function extractAssistantText(protocol: string, bodyText: string): string {
+/** usage 回读(批⑦ 用量台账):openai prompt/completion_tokens 与 anthropic
+ * input/output_tokens 归一;网关缺 usage 字段按 0(观测数据不做契约漂移判死) */
+export interface ChatUsage {
+  tokensIn: number;
+  tokensOut: number;
+}
+
+function intOr0(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+}
+
+/** 从 openai choices / anthropic content 提取 assistant 原文 + usage(缺失文本=契约漂移) */
+function extractReply(protocol: string, bodyText: string): { text: string; usage: ChatUsage } {
   let body: unknown = null;
   try {
     body = JSON.parse(bodyText);
   } catch {
     throw new AiClientError("business", "2xx 响应非 JSON(契约漂移)");
   }
+  const usageOf = (u: unknown): ChatUsage => {
+    const o = (u ?? {}) as {
+      prompt_tokens?: unknown;
+      completion_tokens?: unknown;
+      input_tokens?: unknown;
+      output_tokens?: unknown;
+    };
+    return {
+      tokensIn: intOr0(o.prompt_tokens ?? o.input_tokens),
+      tokensOut: intOr0(o.completion_tokens ?? o.output_tokens),
+    };
+  };
   if (protocol === AI_PROTOCOL_ANTHROPIC) {
-    const content = (body as { content?: unknown } | null)?.content;
-    if (!Array.isArray(content)) {
+    const b = body as { content?: unknown; usage?: unknown } | null;
+    if (!Array.isArray(b?.content)) {
       throw new AiClientError("business", "响应缺 content 数组(契约漂移)");
     }
-    const text = content
+    const text = b.content
       .filter(
-        (b): b is { type: "text"; text: string } =>
-          typeof b === "object" && b !== null && (b as { type?: unknown }).type === "text",
+        (blk): blk is { type: "text"; text: string } =>
+          typeof blk === "object" && blk !== null && (blk as { type?: unknown }).type === "text",
       )
-      .map((b) => b.text)
+      .map((blk) => blk.text)
       .join("");
     if (!text) throw new AiClientError("business", "响应无 text 块(契约漂移)");
-    return text;
+    return { text, usage: usageOf(b.usage) };
   }
-  const text = (body as { choices?: Array<{ message?: { content?: unknown } }> } | null)
-    ?.choices?.[0]?.message?.content;
+  const b = body as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+    usage?: unknown;
+  } | null;
+  const text = b?.choices?.[0]?.message?.content;
   if (typeof text !== "string" || !text) {
     throw new AiClientError("business", "响应缺 assistant 文本(契约漂移)");
   }
-  return text;
+  return { text, usage: usageOf(b.usage) };
 }
 
-export async function chatJson(input: ChatJsonInput): Promise<string> {
+export async function chatJson(
+  input: ChatJsonInput,
+  /** 批⑦ 用量台账:成功响应的 usage 回调(重试场景每次成功都回调,消费方自行取舍) */
+  onUsage?: (u: ChatUsage) => void,
+): Promise<string> {
   if (input.protocol !== AI_PROTOCOL_OPENAI && input.protocol !== AI_PROTOCOL_ANTHROPIC) {
     throw new AiClientError("unsupported", `LLM 协议不支持(${input.protocol})`);
   }
@@ -106,7 +136,9 @@ export async function chatJson(input: ChatJsonInput): Promise<string> {
       input.timeoutSec,
     );
     if (reply.status < 200 || reply.status >= 300) throw httpError(reply.status, reply.text);
-    return extractAssistantText(AI_PROTOCOL_ANTHROPIC, reply.text);
+    const r = extractReply(AI_PROTOCOL_ANTHROPIC, reply.text);
+    onUsage?.(r.usage);
+    return r.text;
   }
 
   const base = {
@@ -136,5 +168,7 @@ export async function chatJson(input: ChatJsonInput): Promise<string> {
     );
   }
   if (reply.status < 200 || reply.status >= 300) throw httpError(reply.status, reply.text);
-  return extractAssistantText(AI_PROTOCOL_OPENAI, reply.text);
+  const r = extractReply(AI_PROTOCOL_OPENAI, reply.text);
+  onUsage?.(r.usage);
+  return r.text;
 }

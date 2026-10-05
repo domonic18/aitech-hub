@@ -4,12 +4,14 @@
  * 编辑器右侧元信息栏(原型 admin-editor meta panel;M5-d 表单简化):
  * 常用组 = 分类/标签/封面/摘要;【高级选项】默认折叠 = slug/SEO(用户反馈:术语不可
  * 理解、创建时必填项太多)。纯受控组件(值上提,onChange 打补丁),不发请求;
- * 边界校验在 PostEditor.saveOnly。
+ * 边界校验在 PostEditor.saveOnly。SEO「AI 填充」按钮(2026-10-06 验收反馈问题7)
+ * 仅转交 onSeoSuggest 回调,请求仍在 PostEditor(不发请求契约不破)。
  */
 import { POST_LIMITS, type ContentOrigin } from "@/lib/content/post-schema";
 
 import CoverUploader from "./CoverUploader";
 import { INPUT, LABEL } from "./editor-controls";
+import type { CoverGenContext } from "./cover/templates";
 
 export interface EditorCategory {
   slug: string;
@@ -43,12 +45,20 @@ export default function PostMetaPanel({
   tagCount,
   onChange,
   slug,
+  onSeoSuggest,
+  seoSuggesting = false,
+  coverContext,
 }: {
   categories: EditorCategory[];
   value: PostMetaValue;
   tagCount: number;
   onChange: (patch: Partial<PostMetaValue>) => void;
   slug: SlugField;
+  /** 提供即渲染「AI 填充」(PostEditor 传生成函数;缺省不渲染,如测试) */
+  onSeoSuggest?: () => void;
+  seoSuggesting?: boolean;
+  /** AI 文生图上下文(标题/摘要/标签快照;缺省不出 AI 生图入口) */
+  coverContext?: CoverGenContext;
 }): React.ReactElement {
   const set =
     (key: keyof PostMetaValue) =>
@@ -113,7 +123,11 @@ export default function PostMetaPanel({
       </div>
 
       <div>
-        <CoverUploader coverPath={value.coverPath} onChange={(p) => onChange({ coverPath: p })} />
+        <CoverUploader
+          coverPath={value.coverPath}
+          onChange={(p) => onChange({ coverPath: p })}
+          coverContext={coverContext}
+        />
       </div>
 
       <div>
@@ -156,9 +170,22 @@ export default function PostMetaPanel({
           </div>
 
           <div>
-            <label className={LABEL} htmlFor="post-seo-title">
-              SEO 标题(搜索引擎结果页;留空用文章标题)
-            </label>
+            <div className="flex items-center justify-between">
+              <label className={LABEL} htmlFor="post-seo-title">
+                SEO 标题(搜索引擎结果页;留空用文章标题)
+              </label>
+              {onSeoSuggest && (
+                <button
+                  type="button"
+                  disabled={seoSuggesting}
+                  title="按标题/分类/标签/摘要/正文由 LLM 生成 SEO 标题与描述,覆盖现有值"
+                  onClick={onSeoSuggest}
+                  className="mb-1 cursor-pointer text-xs text-accent hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {seoSuggesting ? "生成中…" : "AI 填充"}
+                </button>
+              )}
+            </div>
             <input
               id="post-seo-title"
               value={value.seoTitle}

@@ -16,6 +16,12 @@ jobs:
   app:
     name: app(格式/lint/类型/单测)
     runs-on: ubuntu-latest
+    env:
+      # 单测导入链(src/lib/ai/* → logger → env.ts)加载即做 zod 形校验;
+      # CI 无 .env,补占位值仅为通过形校验,不连任何服务(真实值由部署环境提供)
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/aitech_hub_ci?schema=public
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_SECRET: ci-placeholder-secret-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

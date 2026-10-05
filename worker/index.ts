@@ -8,6 +8,7 @@ import {
   CRAWL_JOB_VIDEO,
   GITHUB_JOB_TICK,
   MEDIA_AUDIT_CRON,
+  QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
@@ -18,16 +19,20 @@ import {
   QUEUE_SUMMARIZER,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
+  STATS_JOB_USAGE_PURGE,
+  USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
   bullConnection,
   getQueue,
 } from "../src/lib/queue";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeVisitLogs } from "../src/lib/stats/service";
+import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
+import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
 import { processMediaJob, transferMediaJob } from "./media";
@@ -48,6 +53,14 @@ const PROCESSORS: Record<string, Processor> = {
       const removed = await purgeVisitLogs();
       if (removed > 0) {
         console.log(JSON.stringify({ event: "stats.visit_log.purge", removed }));
+      }
+      return { removed };
+    }
+    // AI 用量台账 90 天保留期清理(M14 批⑦;与手动清理同口径 usage-log.ts)
+    if (job.name === STATS_JOB_USAGE_PURGE) {
+      const removed = await purgeAiUsageOlderThan();
+      if (removed > 0) {
+        console.log(JSON.stringify({ event: "ai_usage.purge", removed }));
       }
       return { removed };
     }
@@ -93,6 +106,8 @@ const PROCESSORS: Record<string, Processor> = {
   [QUEUE_INTERPRETER]: (job) => interpretVideoJob(job.data as InterpretJobData),
   // 文字资讯轻解读(M12 批③):中心思想 + 关键词,LLM 网络调用为主(默认并发 2)
   [QUEUE_SUMMARIZER]: (job) => summarizeTextJob(job.data as SummarizeJobData),
+  // 文生图封面(M14 批⑥):云厂商生图 10-30s,按张计费不自动重试(attempts=1 入队侧钉)
+  [QUEUE_COVER_GEN]: (job) => coverGenJob(job.data as CoverGenJobData),
   // GitHub 项目同步(二期③/M11):tick(5min)扫到期白名单仓逐仓入队;sync 为缺省路径
   [QUEUE_GITHUB]: async (job) => {
     if (job.name === GITHUB_JOB_TICK) {
@@ -146,6 +161,20 @@ async function scheduleVisitLogPurge(): Promise<void> {
     { pattern: VISIT_LOG_PURGE_CRON, tz: SITE_TZ },
     {
       name: STATS_JOB_PURGE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
+/** AI 用量台账清理:每日 04:52 清 90 天前行(M14 批⑦) */
+async function scheduleUsageLogPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "usage-log-purge",
+    { pattern: USAGE_LOG_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: STATS_JOB_USAGE_PURGE,
       data: {},
       opts: { removeOnComplete: 7 },
     },
@@ -215,10 +244,11 @@ async function main(): Promise<void> {
   const workers: Array<Worker> = [];
 
   for (const name of Object.keys(PROCESSORS)) {
-    // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用、summarizer 抓原文+LLM
-    // 耗时长,放宽锁续期;interpreter 并发钉 1(ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
+    // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用、summarizer 抓原文+LLM、
+    // cover-gen 云厂商生图(10-30s+)耗时长,放宽锁续期;interpreter 并发钉 1
+    // (ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
     const opts =
-      name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER
+      name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER || name === QUEUE_COVER_GEN
         ? { lockDuration: 300_000 }
         : name === QUEUE_INTERPRETER
           ? { concurrency: 1, lockDuration: 600_000 }
@@ -231,6 +261,7 @@ async function main(): Promise<void> {
   await scheduleStatsFlush();
   await scheduleMediaAudit();
   await scheduleVisitLogPurge();
+  await scheduleUsageLogPurge();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();

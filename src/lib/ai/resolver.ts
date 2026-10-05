@@ -7,7 +7,7 @@ import { prisma } from "../db";
 import { decryptSecret } from "../crypto/secret-box";
 import type { AiTaskRole } from "./constants";
 
-/** 解析结果(调用面:protocol/baseUrl/modelId/apiKey/超时/并发) */
+/** 解析结果(调用面:protocol/baseUrl/modelId/apiKey/超时/并发;source 供用量台账记降级) */
 export interface ResolvedAiModel {
   id: number;
   name: string;
@@ -18,6 +18,8 @@ export interface ResolvedAiModel {
   timeoutSec: number;
   concurrency: number;
   supportsVision: boolean;
+  /** 本次实际命中的绑定位:primary=主力(用量 status ok),backup=备用(degraded) */
+  source: "primary" | "backup";
 }
 
 /** 选边(纯函数,单测锚点):主力存在且启用 → 主力;否则备用;否则 null */
@@ -79,5 +81,6 @@ export async function resolveAiModel(role: AiTaskRole): Promise<ResolvedAiModel 
     timeoutSec: row.timeoutSec,
     concurrency: row.concurrency,
     supportsVision: row.supportsVision,
+    source: picked,
   };
 }

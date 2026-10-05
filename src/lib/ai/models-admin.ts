@@ -31,6 +31,10 @@ export interface AiModelRow {
   supportsVision: boolean;
   concurrency: number;
   timeoutSec: number;
+  /** 牌价(¥/1M tokens;生图模型用 pricePerImage ¥/张;null=未填,用量页费用按 0 折算) */
+  priceIn: number | null;
+  priceOut: number | null;
+  pricePerImage: number | null;
   enabled: boolean;
   lastTestedAt: Date | null;
   lastTestStatus: string | null;
@@ -52,6 +56,9 @@ const ROW_SELECT = {
   supportsVision: true,
   concurrency: true,
   timeoutSec: true,
+  priceIn: true,
+  priceOut: true,
+  pricePerImage: true,
   enabled: true,
   lastTestedAt: true,
   lastTestStatus: true,
@@ -102,6 +109,10 @@ export const AiModelCreateSchema = z.object({
   supportsVision: z.boolean(),
   concurrency: z.number().int().min(1).max(64),
   timeoutSec: z.number().int().min(5).max(600),
+  /** 牌价选填(¥/1M tokens;生图 ¥/张);缺省/null=未定价 */
+  priceIn: z.number().min(0).max(100000).nullable().optional(),
+  priceOut: z.number().min(0).max(100000).nullable().optional(),
+  pricePerImage: z.number().min(0).max(100000).nullable().optional(),
 });
 
 export type AiModelInput = z.infer<typeof AiModelCreateSchema>;
@@ -127,6 +138,9 @@ export async function createAiModel(input: AiModelInput): Promise<{ id: number }
       supportsVision: input.supportsVision,
       concurrency: input.concurrency,
       timeoutSec: input.timeoutSec,
+      priceIn: input.priceIn ?? null,
+      priceOut: input.priceOut ?? null,
+      pricePerImage: input.pricePerImage ?? null,
     },
     select: { id: true },
   });
@@ -162,6 +176,9 @@ export async function updateAiModel(id: number, input: AiModelInput): Promise<{ 
       supportsVision: input.supportsVision,
       concurrency: input.concurrency,
       timeoutSec: input.timeoutSec,
+      priceIn: input.priceIn ?? null,
+      priceOut: input.priceOut ?? null,
+      pricePerImage: input.pricePerImage ?? null,
     },
     select: { id: true },
   });

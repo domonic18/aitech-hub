@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
@@ -81,12 +82,21 @@ export const ChannelInputSchema = z.object({
 export type ChannelInput = z.infer<typeof ChannelInputSchema>;
 
 /** 台账列表(渠道个位数量级,不分页);端点与凭证均脱敏后出service。
- * 平台行(type=social-video)是 Cookie 池载体非采集渠道,不进文字台账(arch/02 §5)。 */
+ * 平台行(type=social-video)是 Cookie 池载体非采集渠道,不进文字台账(arch/02 §5)。
+ * 2026-10-06 验收反馈问题3:补 24h 入流条数(原型「24h 条数」列)。 */
 export async function listChannelsAdmin() {
-  const rows = await prisma.crawlSource.findMany({
-    where: { type: { not: CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } },
-    orderBy: { id: "asc" },
-  });
+  const [rows, counts] = await Promise.all([
+    prisma.crawlSource.findMany({
+      where: { type: { not: CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } },
+      orderBy: { id: "asc" },
+    }),
+    prisma.telegram.groupBy({
+      by: ["sourceId"],
+      where: { createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) } },
+      _count: { _all: true },
+    }),
+  ]);
+  const count24h = new Map(counts.map((g) => [g.sourceId, g._count._all]));
   return rows.map((c) => ({
     id: c.id,
     name: c.name,
@@ -102,6 +112,7 @@ export async function listChannelsAdmin() {
     status: c.status,
     remark: c.remark,
     maskedConfig: maskConfig(c.config),
+    count24h: count24h.get(c.id) ?? 0,
     createdAt: c.createdAt,
   }));
 }
@@ -206,4 +217,37 @@ export async function triggerChannelCrawl(id: number): Promise<{ enqueued: true 
   );
   logger.info({ event: "channel.crawl_triggered", channelId: src.id, name: src.name });
   return { enqueued: true };
+}
+
+export interface ChannelDebugResult {
+  ok: boolean;
+  elapsedMs: number;
+  items: Array<{ title: string; url: string; publishedAt: string | null }>;
+  error?: string;
+}
+
+/** 渠道调试(原型「调试」:拉取最新 3 条 + 耗时;2026-10-06 验收反馈问题3):
+ * 直接走采集适配器取数,不入库、不动健康度与调度状态;凭证照常从 config 注入。
+ * web/api 类型适配器未实现(fetchSourceItems 显式抛错),如实返回错误不假装成功。 */
+export async function debugChannel(id: number): Promise<ChannelDebugResult> {
+  const src = await prisma.crawlSource.findUnique({ where: { id } });
+  if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
+  const started = Date.now();
+  try {
+    const items = await fetchSourceItems(src.type, src.url, src.config);
+    logger.info({ event: "channel.debugged", channelId: src.id, name: src.name, ok: true });
+    return {
+      ok: true,
+      elapsedMs: Date.now() - started,
+      items: items.slice(0, 3).map((i) => ({
+        title: i.title,
+        url: i.url,
+        publishedAt: i.publishedAt?.toISOString() ?? null,
+      })),
+    };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    logger.info({ event: "channel.debugged", channelId: src.id, name: src.name, ok: false });
+    return { ok: false, elapsedMs: Date.now() - started, items: [], error };
+  }
 }

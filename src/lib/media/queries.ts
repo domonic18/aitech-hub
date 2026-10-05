@@ -225,3 +225,77 @@ export async function brokenRefs(): Promise<Array<{ path: string; posts: number 
     .map((r) => ({ path: r.mediaPath, posts: r._count.mediaPath }))
     .sort((a, b) => b.posts - a.posts);
 }
+
+export interface MediaDupeItem {
+  id: string;
+  path: string;
+  filename: string;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  thumbPath: string | null;
+  createdAt: Date;
+  refCount: number;
+  coverCount: number;
+}
+
+export interface MediaDupeGroup {
+  sha1: string;
+  /** 组内保留项(最早一条);合并即引用改指它 */
+  keeperId: string;
+  items: MediaDupeItem[];
+  /** 可释放字节(非 keeper 副本体积合计,展示用) */
+  releasableBytes: number;
+}
+
+/** sha1 重复分组(原型 admin-media「重复检测(同 sha1 分组)」;2026-10-06 验收反馈
+ * 问题1:表量级 ~1k 实时聚合,与 mediaStats 同口径):同 sha1 未软删 ≥2 条即一组,
+ * keeper 取组内最早;合并动作见 service.ts mergeDupeGroup。 */
+export async function listDupeGroups(): Promise<MediaDupeGroup[]> {
+  const rows = await prisma.media.findMany({
+    where: { deletedAt: null, sha1: { not: null } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  const bySha1 = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const list = bySha1.get(r.sha1!) ?? [];
+    list.push(r);
+    bySha1.set(r.sha1!, list);
+  }
+  const dupeRows = [...bySha1.values()].filter((g) => g.length >= 2);
+  if (dupeRows.length === 0) return [];
+  const paths = dupeRows.flat().map((r) => r.path);
+  const [refs, covers] = await Promise.all([
+    prisma.mediaRef.groupBy({
+      by: ["mediaPath"],
+      where: { mediaPath: { in: paths } },
+      _count: { mediaPath: true },
+    }),
+    prisma.post.groupBy({
+      by: ["coverPath"],
+      where: { coverPath: { in: paths } },
+      _count: { _all: true },
+    }),
+  ]);
+  const refCount = new Map(refs.map((g) => [g.mediaPath, g._count.mediaPath]));
+  const coverCount = new Map(
+    covers.filter((g) => g.coverPath !== null).map((g) => [g.coverPath as string, g._count._all]),
+  );
+  return dupeRows.map((group) => ({
+    sha1: group[0]!.sha1!,
+    keeperId: group[0]!.id.toString(),
+    items: group.map((r) => ({
+      id: r.id.toString(),
+      path: r.path,
+      filename: r.filename,
+      sizeBytes: r.sizeBytes === null ? null : Number(r.sizeBytes),
+      width: r.width,
+      height: r.height,
+      thumbPath: r.thumbPath,
+      createdAt: r.createdAt,
+      refCount: refCount.get(r.path) ?? 0,
+      coverCount: coverCount.get(r.path) ?? 0,
+    })),
+    releasableBytes: group.slice(1).reduce((sum, r) => sum + Number(r.sizeBytes ?? 0), 0),
+  }));
+}

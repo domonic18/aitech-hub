@@ -15,6 +15,7 @@ import { AI_ERR_DETAIL_MAX, AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-result";
 import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
+import { AI_USAGE_ROLE_ASR, recordAiUsage } from "../ai/usage-log";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import {
@@ -125,17 +126,27 @@ async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Prom
   return items.find((it) => it.videoId === data.videoId)?.playUrl ?? null;
 }
 
-/** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛 */
+/** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛。
+ * 批⑦:逐次落 ai_usage_log(成功记音频秒;终败记 degraded——缺转写降级口径) */
 async function runTranscribeWithRetry(
   input: TranscribeInput,
+  audioSeconds: number,
 ): Promise<{ text: string | null; error: string | null }> {
   let lastError = "";
   for (let attempt = 0; attempt <= ASR_RETRIES; attempt++) {
     if (attempt > 0) {
       await new Promise((r) => setTimeout(r, ASR_RETRY_DELAY_MS));
     }
+    const startedAt = Date.now();
     try {
-      return { text: await transcribeAudio(input), error: null };
+      const text = await transcribeAudio(input);
+      await recordAiUsage({
+        role: AI_USAGE_ROLE_ASR,
+        modelKey: input.modelId,
+        audioSeconds,
+        durationMs: Date.now() - startedAt,
+      });
+      return { text, error: null };
     } catch (err) {
       lastError = errMessage(err);
       logger.warn({
@@ -145,12 +156,19 @@ async function runTranscribeWithRetry(
       });
     }
   }
+  await recordAiUsage({
+    role: AI_USAGE_ROLE_ASR,
+    modelKey: input.modelId,
+    audioSeconds,
+    status: "degraded",
+  });
   return { text: null, error: lastError };
 }
 
-/** LLM 调用 + 解析(解析重试在 chatJsonTask;网络/HTTP 错误上抛给 BullMQ attempts) */
+/** LLM 调用 + 解析(解析重试在 chatJsonTask;网络/HTTP 错误上抛给 BullMQ attempts);
+ * 批⑦:usage 角色入台账(备用=degraded,解析终败=failed) */
 function runLlm(model: ResolvedAiModel, system: string, user: string) {
-  return chatJsonTask(model, parseInterpretResult, system, user);
+  return chatJsonTask(model, parseInterpretResult, system, user, AI_PURPOSE_INTERPRET);
 }
 
 /** worker「interpret-video」job 入口(管道状态机,分支语义见 InterpretOutcome) */
@@ -158,7 +176,14 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
   const id = BigInt(data.telegramId);
   const row = await prisma.telegram.findUnique({
     where: { id },
-    select: { id: true, title: true, summary: true, aiStatus: true, sourceId: true },
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      aiStatus: true,
+      sourceId: true,
+      videoDuration: true,
+    },
   });
   if (!row)
     return { telegramId: data.telegramId, status: "skipped_not_found", transcriptUsed: false };
@@ -222,16 +247,19 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
           await downloadVideoToTmp(fresh, videoPath);
         }
         await extractAudioMp3(videoPath, audioPath, asr.maxAudioSeconds);
-        const asrResult = await runTranscribeWithRetry({
-          protocol: asr.protocol,
-          baseUrl: asr.baseUrl,
-          modelId: asr.modelId,
-          apiKey: asr.apiKey,
-          audio: await readAudioFile(audioPath),
-          filename: "audio.mp3",
-          hotwords: asr.hotwords,
-          timeoutSec: ASR_TIMEOUT_SEC,
-        });
+        const asrResult = await runTranscribeWithRetry(
+          {
+            protocol: asr.protocol,
+            baseUrl: asr.baseUrl,
+            modelId: asr.modelId,
+            apiKey: asr.apiKey,
+            audio: await readAudioFile(audioPath),
+            filename: "audio.mp3",
+            hotwords: asr.hotwords,
+            timeoutSec: ASR_TIMEOUT_SEC,
+          },
+          row.videoDuration ?? 0,
+        );
         transcript = asrResult.text;
         transcriptError = asrResult.error;
       } else {
