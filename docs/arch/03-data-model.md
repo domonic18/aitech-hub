@@ -212,7 +212,7 @@ CREATE TABLE legacy_url_map (
 
 - `crawl_source`(文字渠道台账;M8 起兼**平台行**:`type=social-video + platform=douyin` 每平台一行,承载 Cookie 池密文 `config.cookieJars`/平台总开关/日上限,自身不调度——设计见 [arch/02 §2 落地注记](02-data-collection.md))
 - `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
-- `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2)
+- `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2);AI 解读列组视频/文字共用:`ai_status/ai_topic/ai_summary/ai_points jsonb/ai_keywords jsonb(M12 批⑥ 新列,文字条关键词 tag)/ai_ran_at/last_ai_error`(语义与契约演进见 arch/02 §3.2 落地注记)
 - `blocklist`(屏蔽词)
 
 **AI 服务域三表已落地(2026-10-04 M8 批⑥迁移 `ai_service_admin`,治理后台见 [arch/04 §4](04-ai-agent.md))**:

@@ -296,6 +296,7 @@ model Telegram {
   aiTopic     String?   @map("ai_topic") @db.VarChar(50)
   aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
   aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
+  aiKeywords  Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
   aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
   lastAiError String?   @map("last_ai_error") @db.VarChar(500)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

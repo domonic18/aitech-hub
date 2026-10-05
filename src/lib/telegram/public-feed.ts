@@ -10,6 +10,7 @@ import { clampBandItemCount, DEFAULT_BAND_ITEM_COUNT } from "./constants";
 
 import {
   toEngagement,
+  toTextAi,
   toVideoAi,
   type FeedMediaFilter,
   type PublicTelegramItem,
@@ -113,6 +114,7 @@ async function queryPublicTelegram(
       aiTopic: true,
       aiSummary: true,
       aiPoints: true,
+      aiKeywords: true,
       source: { select: { id: true, name: true } },
     },
     orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
@@ -139,8 +141,8 @@ async function queryPublicTelegram(
             ai: toVideoAi(t.aiTopic, t.aiSummary, t.aiPoints),
           },
         }
-      : // 文字条轻解读(M12 批③):中心思想 + 关键词,复用同一 ai_* 列组
-        { ai: toVideoAi(t.aiTopic, t.aiSummary, t.aiPoints) }),
+      : // 文字条轻解读(M12 批③;批⑥ 起 要点+关键词双列,含旧契约存量对调)
+        { ai: toTextAi(t.aiTopic, t.aiSummary, t.aiPoints, t.aiKeywords) }),
   }));
 }
 

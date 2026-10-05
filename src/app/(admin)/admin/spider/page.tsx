@@ -161,14 +161,14 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
               />
             </div>
 
-            {/* summarizer(M12 批③ 实况):文字轻解读——中心思想 + 关键词,默认并发 2 */}
+            {/* summarizer(M12 批③ 实况;批⑥ 契约 v2):文字轻解读——中心思想 + 要点 + 关键词,默认并发 2 */}
             <div className="mt-4 border-t border-line pt-4">
               <QueueLane
                 icon="i-filetext"
                 name="summarizer"
                 desc={
                   <>
-                    文字轻解读 · 中心思想 + 关键词 · 并发 2 · 今日 {summarizer.todayDone}/
+                    文字轻解读 · 中心思想 + 要点 + 关键词 · 并发 2 · 今日 {summarizer.todayDone}/
                     {summarizer.dailyMax}
                   </>
                 }

@@ -1,8 +1,10 @@
 /**
- * 文字资讯解读(M12 批③,arch/02 §3.1 增补;summarize 角色首个消费方):
+ * 文字资讯解读(M12 批③,arch/02 §3.1 增补;summarize 角色首个消费方;
+ * 批⑥ 2026-10-05 验收反馈契约 v2:要点 + 禁泛词关键词):
  * summarizer 队列——标题 + RSS 摘要(短于 80 字时抓原文粗提取:正则剥标签截
- * 4k 字,10s 超时失败静默降级)→ LLM 一句话中心思想 + 关键词 → telegram.ai_*
- * 列落库(ai_summary=中心思想、ai_points=关键词 JSON)。版权面干净:只吃公开
+ * 4k 字,10s 超时失败静默降级)→ LLM 一句话中心思想 + 要点 + 关键词 →
+ * telegram.ai_* 列落库(ai_summary=中心思想、ai_points=要点 JSON、
+ * ai_keywords=关键词 JSON)。版权面干净:只吃公开
  * RSS 元数据与原文公开正文,无转写/无水印流。落库形状与视频共用 ai_* 列组
  * (ai_topic 留空),读侧 PublicTelegramItem.ai 单形状投影。
  * summarize 未绑定是运营态:不标条目失败,补扫 tick 在绑定后自然消化存量。
@@ -173,7 +175,8 @@ export async function summarizeTextJob(data: SummarizeJobData): Promise<Summariz
       aiStatus: TELEGRAM_AI_DONE,
       aiTopic: null,
       aiSummary: result.summary,
-      aiPoints: result.keywords,
+      aiPoints: result.points,
+      aiKeywords: result.keywords,
       aiRanAt: new Date(),
       lastAiError: null,
     },
@@ -181,6 +184,7 @@ export async function summarizeTextJob(data: SummarizeJobData): Promise<Summariz
   logger.info({
     event: "summarize.text.done",
     telegramId: data.telegramId,
+    points: result.points.length,
     keywords: result.keywords.length,
   });
   return { telegramId: data.telegramId, status: "done" };

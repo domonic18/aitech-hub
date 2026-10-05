@@ -63,6 +63,10 @@ export default function TelegramItemRow({ item: t }: { item: Item }) {
           <>
             <div className="truncate font-medium text-text-1">{t.title ?? "(无标题)"}</div>
             <div className="mt-0.5 truncate text-[11px] text-text-3">{t.summary}</div>
+            {/* 批⑥:文字行也显解读态(摘要按钮的完成/失败可见,与视频行同口径) */}
+            <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
+              <AiBadge aiStatus={t.aiStatus} lastAiError={t.lastAiError} />
+            </div>
           </>
         )}
       </td>
@@ -99,6 +103,7 @@ export default function TelegramItemRow({ item: t }: { item: Item }) {
           summary={t.summary}
           status={t.status}
           mediaType={t.mediaType}
+          aiStatus={t.aiStatus}
         />
       </td>
     </tr>

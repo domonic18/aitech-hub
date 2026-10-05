@@ -3,7 +3,7 @@
 /**
  * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位;
  * M10 批② 条数后台可配 + 下滚加载更多;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
- * 批⑤ 视频行 AI 行改直出 summary 与电报流详情统一):
+ * 批⑤ 视频行 AI 行改直出 summary;批⑥ 关键词蓝系与 AI 徽章区分):
  * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(sm+ 74/108/1fr/auto;
  * 窄屏 2026-10-05 反馈改版:时间+渠道缩一行小字、标题独占整行——定宽列挤压标题不可读,
  * 原型 @media 已同步);视频行按原型 site-home .tg-row.video 五列(tm/thumb/pf/vt/ag):
@@ -286,13 +286,14 @@ export default function TelegramBand({
                   <use href="#i-export" />
                 </svg>
               </span>
-              {/* 文字条轻解读(M12 批③):中心思想 + #关键词,与视频行 AI 行同口径 */}
+              {/* 文字条轻解读(M12 批③):中心思想 + #关键词;批⑥ 关键词换蓝系,
+                  与 accent 色「AI」标记区分(tag vs 解读徽章一眼可辨) */}
               {t.ai && (
                 <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
                   <span className="text-accent">AI</span> · {t.ai.summary}
-                  {t.ai.points.length > 0 && (
-                    <span className="ml-1.5 text-text-3/80">
-                      {t.ai.points.map((k) => `#${k}`).join(" ")}
+                  {t.ai.keywords && t.ai.keywords.length > 0 && (
+                    <span className="ml-1.5 text-blue">
+                      {t.ai.keywords.map((k) => `#${k}`).join(" ")}
                     </span>
                   )}
                 </span>

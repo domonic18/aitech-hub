@@ -2,7 +2,7 @@
 
 /**
  * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡;M10 批③ 视频卡原型重排;
- * M12 批③ 文字卡加轻解读块——中心思想 + #关键词 chips):
+ * M12 批③ 文字卡加轻解读块;批⑥ 要点折叠列表 + 关键词蓝系 chips 与 AI 徽章区分):
  * 日分组卡片 + 60s 轮询增量;新讯不打断浏览位置——浮条提示、点击载入。
  * 视频项独立卡形(原型 site-telegram .tg-item.video):竖版大封面
  * 88×157(≤sm 72×128,防盗链 no-referrer,失败降级占位)+ 播放浮层 +
@@ -273,7 +273,8 @@ export default function TelegramTimeline({
                       </svg>
                     </a>
                   </h3>
-                  {/* 轻解读替代原始 summary(M12 批③;对齐视频卡 v.ai 口径) */}
+                  {/* 轻解读替代原始 summary(M12 批③;批⑥:要点折叠列表 + 蓝系关键词
+                      chips——与 accent 色 AI 徽章在形状/色彩上双重区分) */}
                   {t.ai ? (
                     <>
                       <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">
@@ -283,11 +284,23 @@ export default function TelegramTimeline({
                         {t.ai.summary}
                       </p>
                       {t.ai.points.length > 0 && (
+                        <details className="mt-0.5">
+                          <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
+                            关键要点 ×{t.ai.points.length}
+                          </summary>
+                          <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
+                            {t.ai.points.map((p, i) => (
+                              <li key={i}>{p}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                      {t.ai.keywords && t.ai.keywords.length > 0 && (
                         <p className="mt-1.5 flex flex-wrap gap-1.5">
-                          {t.ai.points.map((k) => (
+                          {t.ai.keywords.map((k) => (
                             <span
                               key={k}
-                              className="rounded-sm bg-panel-2 px-1.5 py-px font-mono text-[11px] text-text-2"
+                              className="rounded-sm border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[11px] text-blue"
                             >
                               #{k}
                             </span>
@@ -310,7 +323,7 @@ export default function TelegramTimeline({
                     >
                       原文 →
                     </a>
-                    {t.ai && <span>AI 生成 · 中心思想与关键词,内容版权归原作者</span>}
+                    {t.ai && <span>AI 生成 · 中心思想、要点与关键词,内容版权归原作者</span>}
                   </div>
                 </article>
               ),

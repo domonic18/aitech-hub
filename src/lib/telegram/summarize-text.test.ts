@@ -47,7 +47,11 @@ vi.mock("../ai/resolver", () => ({
 
 // LLM 默认回合法 JSON(parseSummarizeResult/buildSummarizePrompt 用真实现)
 const GOOD_JSON = vi.hoisted(() =>
-  JSON.stringify({ summary: "一句话中心思想", keywords: ["关键词一", "关键词二", "关键词三"] }),
+  JSON.stringify({
+    summary: "一句话中心思想",
+    points: ["要点一", "要点二", "要点三"],
+    keywords: ["关键词一", "关键词二", "关键词三"],
+  }),
 );
 const chatJsonMock = vi.hoisted(() =>
   vi.fn<(args: unknown) => Promise<string>>(async () => GOOD_JSON),
@@ -85,7 +89,7 @@ afterEach(() => {
 });
 
 describe("summarizeTextJob 状态机", () => {
-  it("成功全链:processing → done,aiSummary/aiPoints(关键词)/aiTopic=null 落库", async () => {
+  it("成功全链:processing → done,aiSummary/aiPoints(要点)/aiKeywords(关键词)/aiTopic=null 落库", async () => {
     const outcome = await summarizeTextJob(DATA);
     expect(outcome).toEqual({ telegramId: "1", status: "done" });
     expect(prismaMock.telegram.update).toHaveBeenCalledWith({
@@ -98,7 +102,8 @@ describe("summarizeTextJob 状态机", () => {
         aiStatus: "done",
         aiTopic: null,
         aiSummary: "一句话中心思想",
-        aiPoints: ["关键词一", "关键词二", "关键词三"],
+        aiPoints: ["要点一", "要点二", "要点三"],
+        aiKeywords: ["关键词一", "关键词二", "关键词三"],
         aiRanAt: expect.any(Date),
         lastAiError: null,
       },

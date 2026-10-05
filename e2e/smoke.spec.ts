@@ -11,7 +11,7 @@ import sharp from "sharp";
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
  * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)/GitHub 项目展示三件套(M11)/
- * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读(M12)。
+ * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -1214,7 +1214,8 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
     await expect(vRow.getByText("抖音", { exact: true })).toBeVisible();
     await expect(vRow.getByText("@e2e 带博主")).toBeVisible();
     await expect(vRow.getByText("1:31")).toBeVisible();
-    await expect(vRow.getByText(/AI 解读 · e2e 带视频 AI 主题/)).toBeVisible();
+    // 批⑤:band 视频行 AI 行直出 summary(topic 恒泛化词不再上带)
+    await expect(vRow.getByText(/AI 解读 · e2e 带视频 AI 摘要/)).toBeVisible();
   } finally {
     // 还原:回写原值(原无行 → 写默认 12 后删行),清播种数据
     const origin = jsonOrigin(page);
@@ -1416,6 +1417,7 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
   ];
 
   // ── 播种①:band 文字行两条(已解读 ai_* 有值 / 未解读对照),publishedAt=now 保证进带首
+  //    批⑥ 新契约:ai_points=要点、ai_keywords=关键词
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-ai-band-source" },
     update: {},
@@ -1439,7 +1441,8 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
         contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
         aiStatus: "done",
         aiSummary: "e2e 中心思想一句话",
-        aiPoints: ["关键词甲", "关键词乙", "关键词丙"],
+        aiPoints: ["要点甲", "要点乙"],
+        aiKeywords: ["关键词甲", "关键词乙", "关键词丙"],
         aiRanAt: new Date(),
       },
       {
@@ -1452,6 +1455,11 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
       },
     ],
   });
+  const seeded = await prisma.telegram.findMany({
+    where: { sourceId: source.id },
+    select: { id: true, title: true },
+  });
+  const aiReadId = seeded.find((r) => r.title === "e2e-ai-已解读")!.id.toString();
 
   // ── 播种②:两个 showcase 仓库(sortOrder 垫到存量最大之上,rail 排序必进前二;
   //    repo_count=1 时只现 A,验证配置钳制)nextSyncAt 推远防 worker 抢跑
@@ -1531,7 +1539,7 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     await expect(page.getByText(`e2e-rail/${SLUG_B}`)).toHaveCount(0);
     await expect(page.locator("a[href^='/post/']")).toHaveCount(2);
 
-    // band 文字 AI 行:已解读 → 「AI · 中心思想 + #关键词」;未解读对照 → 无 AI 行
+    // band 文字 AI 行:已解读 → 「AI · 中心思想 + #关键词(蓝系)」;未解读对照 → 无 AI 行
     const readRow = page.locator(`a[href='${AI_ROW_READ}']`);
     await expect(readRow).toBeVisible();
     await expect(readRow.getByText(/AI · e2e 中心思想一句话/)).toBeVisible();
@@ -1539,6 +1547,28 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     const rawRow = page.locator(`a[href='${AI_ROW_RAW}']`);
     await expect(rawRow).toBeVisible();
     await expect(rawRow.getByText(/AI · /)).toHaveCount(0);
+
+    // 公开 API 投影(批⑥ 契约):要点/关键词双列;未解读行 ai null
+    const pub = await request.get("/api/telegram/public/?limit=50");
+    const pubBody = (await pub.json()) as {
+      code: number;
+      data: { items: Array<{ id: string; ai: Record<string, unknown> | null }> };
+    };
+    expect(pubBody.code).toBe(0);
+    const pubRead = pubBody.data.items.find((i) => i.id === aiReadId);
+    expect(pubRead?.ai).toEqual({
+      topic: "",
+      summary: "e2e 中心思想一句话",
+      points: ["要点甲", "要点乙"],
+      keywords: ["关键词甲", "关键词乙", "关键词丙"],
+    });
+
+    // /telegram 时间轴文字卡:要点折叠列表(批⑥ 问题3)+ 关键词 chips(蓝系,问题5)
+    await page.goto("/telegram/");
+    const aiCard = page.locator("article", { hasText: "e2e-ai-已解读" });
+    await expect(aiCard.getByText("关键要点 ×2")).toBeVisible();
+    await expect(aiCard.locator("summary", { hasText: "关键要点" })).toBeVisible();
+    await expect(aiCard.getByText("#关键词甲")).toBeVisible();
 
     // 机器订阅源标题同步(feed.xml,保存时 layout 型 revalidate)
     expect(await (await request.get("/feed.xml")).text()).toContain(SITE_TITLE);

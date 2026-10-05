@@ -12,7 +12,7 @@ vi.mock("../db", () => ({
 }));
 
 import { mergeBandItems, listPublicTelegram } from "./public-feed";
-import { toVideoAi, type PublicTelegramItem } from "./feed-view";
+import { toTextAi, toVideoAi, type PublicTelegramItem } from "./feed-view";
 
 function item(id: string, publishedAt: string): PublicTelegramItem {
   return {
@@ -88,7 +88,7 @@ describe("mergeBandItems 视频保底槽位", () => {
   });
 });
 
-describe("toVideoAi 解读投影(M9;M12 截 5 条容文字关键词)", () => {
+describe("toVideoAi 解读投影(M9;M12 截 5 条;批⑥ keywords 独立透出)", () => {
   it("summary 非空才产出;points 白名单过滤并截 5 条;topic trim", () => {
     expect(
       toVideoAi(" 主题 ", "概括", [
@@ -105,6 +105,7 @@ describe("toVideoAi 解读投影(M9;M12 截 5 条容文字关键词)", () => {
       topic: "主题",
       summary: "概括",
       points: ["要点一", "要点二", "要点三", "要点四", "要点五"],
+      keywords: null,
     });
   });
 
@@ -115,6 +116,46 @@ describe("toVideoAi 解读投影(M9;M12 截 5 条容文字关键词)", () => {
       topic: "",
       summary: "概括",
       points: [],
+      keywords: null,
+    });
+  });
+
+  it("keywords 白名单过滤截 5 条;缺省(视频行)恒 null", () => {
+    expect(toVideoAi("", "概括", ["要点"], ["a", 1, null, "b", "c", "d", "e", "f"])).toEqual({
+      topic: "",
+      summary: "概括",
+      points: ["要点"],
+      keywords: ["a", "b", "c", "d", "e"],
+    });
+  });
+});
+
+describe("toTextAi 文字投影(M12 批⑥:要点+关键词双列,旧契约存量对调)", () => {
+  it("新契约:points=要点、keywords=关键词,原样透出", () => {
+    expect(toTextAi(null, "中心思想", ["要点一", "要点二"], ["词一", "词二", "词三"])).toEqual({
+      topic: "",
+      summary: "中心思想",
+      points: ["要点一", "要点二"],
+      keywords: ["词一", "词二", "词三"],
+    });
+  });
+
+  it("旧契约存量(ai_points=关键词、ai_keywords 空)→ 对调:关键词进 keywords,要点缺省", () => {
+    expect(toTextAi(null, "中心思想", ["关键词一", "关键词二"], null)).toEqual({
+      topic: "",
+      summary: "中心思想",
+      points: [],
+      keywords: ["关键词一", "关键词二"],
+    });
+  });
+
+  it("未解读 → null;仅 summary 无数组 → 空要点空 tag", () => {
+    expect(toTextAi(null, null, null, null)).toBeNull();
+    expect(toTextAi(null, "中心思想", null, null)).toEqual({
+      topic: "",
+      summary: "中心思想",
+      points: [],
+      keywords: [],
     });
   });
 });
@@ -133,52 +174,64 @@ describe("listPublicTelegram offset 分页(M10 批②)", () => {
   });
 });
 
-describe("文字行轻解读投影(M12 批③)", () => {
-  it("ai_* 有值 → ai 投影(中心思想 + 关键词);未解读 → ai null 显式透出", async () => {
+describe("文字行轻解读投影(M12 批③;批⑥ 新契约+旧契约对调)", () => {
+  it("新契约行:要点/关键词双列投影;旧契约行(ai_keywords 空)对调;未解读 → ai null 显式透出", async () => {
     const now = new Date("2026-10-05T10:00:00+08:00");
+    const base = {
+      title: "标题",
+      summary: "摘要",
+      url: "https://example.com/7",
+      publishedAt: now,
+      createdAt: now,
+      mediaType: "text",
+      videoPlatform: null,
+      videoBlogger: null,
+      videoCoverUrl: null,
+      videoDuration: null,
+      videoEngagement: null,
+      aiTopic: null,
+      source: { id: 3, name: "渠道" },
+    };
     findManyMock.mockResolvedValueOnce([
       {
+        ...base,
         id: BigInt(7),
-        title: "标题",
-        summary: "摘要",
-        url: "https://example.com/7",
-        publishedAt: now,
-        createdAt: now,
-        mediaType: "text",
-        videoPlatform: null,
-        videoBlogger: null,
-        videoCoverUrl: null,
-        videoDuration: null,
-        videoEngagement: null,
-        aiTopic: null,
         aiSummary: "中心思想一句话",
-        aiPoints: ["关键词一", "关键词二", "关键词三"],
-        source: { id: 3, name: "渠道" },
+        aiPoints: ["要点一", "要点二"],
+        aiKeywords: ["词一", "词二", "词三"],
+      },
+      // 批⑥ 前 done 的存量:ai_points=关键词、ai_keywords 列未回填
+      {
+        ...base,
+        id: BigInt(9),
+        aiSummary: "旧契约中心思想",
+        aiPoints: ["旧词一", "旧词二", "旧词三"],
+        aiKeywords: null,
       },
       {
+        ...base,
         id: BigInt(8),
         title: "未解读",
         summary: "",
-        url: "https://example.com/8",
-        publishedAt: now,
-        createdAt: now,
-        mediaType: "text",
-        videoPlatform: null,
-        videoBlogger: null,
-        videoCoverUrl: null,
-        videoDuration: null,
-        videoEngagement: null,
-        aiTopic: null,
         aiSummary: null,
         aiPoints: null,
-        source: { id: 3, name: "渠道" },
+        aiKeywords: null,
       },
     ]);
     const items = await listPublicTelegram({ limit: 10 });
     expect(items[0]).toMatchObject({
       mediaType: "text",
-      ai: { topic: "", summary: "中心思想一句话", points: ["关键词一", "关键词二", "关键词三"] },
+      ai: {
+        topic: "",
+        summary: "中心思想一句话",
+        points: ["要点一", "要点二"],
+        keywords: ["词一", "词二", "词三"],
+      },
     });
-    expect(items[1]).toMatchObject({ mediaType: "text", ai: null });
+    expect(items[1]).toMatchObject({
+      mediaType: "text",
+      ai: { summary: "旧契约中心思想", points: [], keywords: ["旧词一", "旧词二", "旧词三"] },
+    });
+    expect(items[2]).toMatchObject({ mediaType: "text", ai: null });
   });
 });
