@@ -14,8 +14,8 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const denied = await requireSessionActor(req, "PAT 不能调用编辑器 SEO 补全");
-  if (denied) return denied;
+  const actor = await requireSessionActor(req, "PAT 不能调用编辑器 SEO 补全");
+  if (actor.kind === "reject") return actor.response;
 
   let raw: unknown;
   try {

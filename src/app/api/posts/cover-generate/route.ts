@@ -33,8 +33,8 @@ const coverGenInputSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const denied = await requireSessionActor(req, "PAT 不能触发生图");
-  if (denied) return denied;
+  const actor = await requireSessionActor(req, "PAT 不能触发生图");
+  if (actor.kind === "reject") return actor.response;
 
   let raw: unknown;
   try {

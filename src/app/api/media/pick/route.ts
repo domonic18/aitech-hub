@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 24;
 
 export async function GET(req: NextRequest) {
-  const denied = await requireSessionActor(req, "PAT 不能读取选图列表");
-  if (denied) return denied;
+  const actor = await requireSessionActor(req, "PAT 不能读取选图列表");
+  if (actor.kind === "reject") return actor.response;
 
   const sp = req.nextUrl.searchParams;
   const page = Math.max(1, Math.trunc(Number(sp.get("page") ?? "1")) || 1);

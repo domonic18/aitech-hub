@@ -21,8 +21,8 @@ function mapState(st: string): "waiting" | "active" | "completed" | "failed" {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
-  const denied = await requireSessionActor(req, "PAT 不能读取生图进度");
-  if (denied) return denied;
+  const actor = await requireSessionActor(req, "PAT 不能读取生图进度");
+  if (actor.kind === "reject") return actor.response;
 
   const { jobId } = await params;
   if (!/^[a-z0-9-]{6,60}$/.test(jobId)) {

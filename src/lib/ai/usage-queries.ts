@@ -87,10 +87,11 @@ export function usageWindowSince(now: Date, days: number): Date {
   return new Date(Date.parse(`${oldestCn}T00:00:00+08:00`));
 }
 
-/** 单行费用(¥;failed 不计费;未定价按 0) */
+/** 单行费用(¥;failed/ASR 降级(终败无产出)不计费;LLM 备用仍计费;未定价按 0) */
 export function costOfRow(row: UsageRowLike, prices: UsagePrices): number {
   if (row.status === "failed") return 0;
   if (row.role === AI_USAGE_ROLE_ASR) {
+    if (row.status !== "ok") return 0; // 降级=转写终败,供应商未出账
     const perHour = prices.asrPricePerHour;
     if (perHour == null) return 0;
     return (row.audioSeconds / 3600) * perHour;

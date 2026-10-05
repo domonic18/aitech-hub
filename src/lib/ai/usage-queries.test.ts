@@ -46,10 +46,11 @@ describe("costOfRow", () => {
   it("LLM 行 = in×入价 + out×出价(¥/1M)", () => {
     expect(costOfRow(row({ tokensIn: 1_000_000, tokensOut: 500_000 }), PRICES)).toBeCloseTo(6);
   });
-  it("ASR 行按音频秒比例折时价", () => {
+  it("ASR 行按音频秒比例折时价;降级(终败)不计费", () => {
     expect(costOfRow(row({ role: "asr", modelId: null, audioSeconds: 1800 }), PRICES)).toBeCloseTo(
       5,
     );
+    expect(costOfRow(row({ role: "asr", modelId: null, status: "degraded" }), PRICES)).toBe(0);
   });
   it("cover 行按张计费(每行一张);failed 行一律 0;未定价 0", () => {
     expect(costOfRow(row({ role: "cover" }), PRICES)).toBeCloseTo(0.5);

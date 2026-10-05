@@ -13,8 +13,8 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const denied = await requireSessionActor(req, "PAT 不能触发用量明细清理");
-  if (denied) return denied;
+  const actor = await requireSessionActor(req, "PAT 不能触发用量明细清理");
+  if (actor.kind === "reject") return actor.response;
   const removed = await purgeAiUsageOlderThan(AI_USAGE_RETENTION_DAYS);
   logger.info({ event: "ai_usage.manual_purge", removed });
   return apiEnvelope(0, "ok", { removed });
