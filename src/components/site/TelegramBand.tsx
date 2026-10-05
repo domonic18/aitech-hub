@@ -12,7 +12,9 @@
  * 行高由封面撑起。SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重
  * 前插,前插后截回一页上限:长驻标签页只展示最新 count 条,不随时间无限增长)。
  * 下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与
- * 历史翻页走 /telegram/。行点击直达外链。
+ * 历史翻页走 /telegram/。行点击直达外链;AI 要点以「关键要点 ×N」折叠块挂在行锚外
+ * (2026-10-05 反馈:要点此前只在电报流页可见;行改 wrapper+锚分离防 <a> 嵌套交互),
+ * 文字行解读标识统一为「AI 解读」(与视频行/电报流页同款)。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -62,6 +64,22 @@ function BandCover({ src, duration }: { src: string | null; duration: string | n
         </span>
       )}
     </span>
+  );
+}
+
+/** AI 要点折叠块(与电报流页「关键要点 ×N」同款;挂行锚外避免 <a> 内嵌套交互元素) */
+function BandPoints({ points }: { points: readonly string[] }) {
+  return (
+    <details className="px-5 pb-2.5">
+      <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
+        关键要点 ×{points.length}
+      </summary>
+      <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
+        {points.map((p, i) => (
+          <li key={i}>{p}</li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -144,48 +162,107 @@ export default function TelegramBand({
       {items.map((t) => {
         const fresh = isNew(t.publishedAt, now);
         const video = t.mediaType === "video" ? t.video : undefined;
+        const points = t.mediaType === "video" ? (video?.ai?.points ?? []) : (t.ai?.points ?? []);
         if (video) {
           // 视频行(原型 site-home .tg-row.video 口径):54×95 竖版封面独立列 +
           // 平台章/博主列(pf,窄屏隐)+ 标题/AI 概括双行(vt)+ 右侧相对时间;
-          // 窄屏降 54px+1fr 双列(隐 tm/pf/ag),行高由封面撑起
+          // 窄屏降 54px+1fr 双列(隐 tm/pf/ag),行高由封面撑起。
+          // 2026-10-05 优化:行改 wrapper + 锚分离——AI 要点折叠块(与电报流页
+          // 「关键要点 ×N」同款)挂在锚外,避免交互元素嵌套进 <a>
           const duration = formatDuration(video.durationSeconds);
           return (
+            <div key={t.id} className="border-b border-line/55 last:border-b-0">
+              <a
+                href={t.url}
+                target="_blank"
+                rel="noopener nofollow"
+                className="grid grid-cols-[54px_1fr] items-center gap-3.5 px-5 py-3 hover:bg-panel-2 sm:grid-cols-[74px_54px_96px_1fr_auto]"
+              >
+                <span
+                  className={`hidden flex-none font-mono text-xs sm:block ${
+                    fresh ? "text-green-hi" : "text-text-3"
+                  }`}
+                >
+                  {hhmm(t.publishedAt)}
+                </span>
+                <BandCover src={video.coverUrl} duration={duration} />
+                <span className="hidden min-w-0 flex-none flex-col items-start gap-1 sm:flex">
+                  <span className="rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
+                    {platformLabel(video.platform)}
+                  </span>
+                  <span className="max-w-full truncate font-mono text-[11px] text-text-2">
+                    @{video.blogger}
+                  </span>
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm leading-normal text-text-1">{t.title}</span>
+                  {video.ai && (
+                    <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
+                      {/* 批⑤(2026-10-05 验收反馈):带内直出 summary 与电报流详情统一——
+                          topic 是 ≤20 字主题标签,每日要闻速递类视频恒产出「全球AI圈今日
+                          要闻速递」级泛化词,把有实质内容的 summary 挡在带外 */}
+                      <span className="text-accent">AI 解读</span> · {video.ai.summary}
+                    </span>
+                  )}
+                </span>
+                <span
+                  className={`hidden flex-none justify-self-end whitespace-nowrap font-mono text-[11px] sm:block ${
+                    fresh ? "text-green-hi" : "text-text-3"
+                  }`}
+                >
+                  {fresh ? "NEW · " : ""}
+                  {timeAgo(t.publishedAt, now)}
+                </span>
+              </a>
+              {points.length > 0 && <BandPoints points={points} />}
+            </div>
+          );
+        }
+        return (
+          <div key={t.id} className="border-b border-line/55 last:border-b-0">
             <a
-              key={t.id}
               href={t.url}
               target="_blank"
               rel="noopener nofollow"
-              className="grid grid-cols-[54px_1fr] items-center gap-3.5 border-b border-line/55 px-5 py-3 last:border-b-0 hover:bg-panel-2 sm:grid-cols-[74px_54px_96px_1fr_auto]"
+              className="block px-5 py-2.5 hover:bg-panel-2 sm:grid sm:grid-cols-[74px_108px_1fr_auto] sm:items-center sm:gap-3"
             >
-              <span
-                className={`hidden flex-none font-mono text-xs sm:block ${
-                  fresh ? "text-green-hi" : "text-text-3"
-                }`}
-              >
-                {hhmm(t.publishedAt)}
-              </span>
-              <BandCover src={video.coverUrl} duration={duration} />
-              <span className="hidden min-w-0 flex-none flex-col items-start gap-1 sm:flex">
-                <span className="rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-                  {platformLabel(video.platform)}
+              {/* 窄屏(2026-10-05 反馈):64+92 定宽列在手机宽只剩 ~170px,标题截到
+                  七八字——时间+渠道缩为一行小字、标题独占整行;sm+ 回到原型四列
+                  (sm:contents 让包裹层退场,子元素直接落格) */}
+              <span className="flex items-center gap-2 sm:contents">
+                <span
+                  className={`flex-none font-mono text-xs ${fresh ? "text-green-hi" : "text-text-3"}`}
+                >
+                  {hhmm(t.publishedAt)}
                 </span>
-                <span className="max-w-full truncate font-mono text-[11px] text-text-2">
-                  @{video.blogger}
+                <span className="max-w-[140px] truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
+                  {t.sourceName}
                 </span>
               </span>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm leading-normal text-text-1">{t.title}</span>
-                {video.ai && (
+              <span className="mt-1 flex min-w-0 flex-col sm:mt-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
+                    {t.title}
+                  </span>
+                  <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
+                    <use href="#i-export" />
+                  </svg>
+                </span>
+                {/* 文字条轻解读(M12 批③):中心思想 + #关键词;批⑥ 关键词换蓝系;
+                    2026-10-05 优化:标识统一为「AI 解读」(与视频行/电报流页同款) */}
+                {t.ai && (
                   <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
-                    {/* 批⑤(2026-10-05 验收反馈):带内直出 summary 与电报流详情统一——
-                        topic 是 ≤20 字主题标签,每日要闻速递类视频恒产出「全球AI圈今日
-                        要闻速递」级泛化词,把有实质内容的 summary 挡在带外 */}
-                    <span className="text-accent">AI 解读</span> · {video.ai.summary}
+                    <span className="text-accent">AI 解读</span> · {t.ai.summary}
+                    {t.ai.keywords && t.ai.keywords.length > 0 && (
+                      <span className="ml-1.5 text-blue">
+                        {t.ai.keywords.map((k) => `#${k}`).join(" ")}
+                      </span>
+                    )}
                   </span>
                 )}
               </span>
               <span
-                className={`hidden flex-none justify-self-end whitespace-nowrap font-mono text-[11px] sm:block ${
+                className={`hidden flex-none justify-self-end font-mono text-[11px] sm:block ${
                   fresh ? "text-green-hi" : "text-text-3"
                 }`}
               >
@@ -193,60 +270,8 @@ export default function TelegramBand({
                 {timeAgo(t.publishedAt, now)}
               </span>
             </a>
-          );
-        }
-        return (
-          <a
-            key={t.id}
-            href={t.url}
-            target="_blank"
-            rel="noopener nofollow"
-            className="block border-b border-line/55 px-5 py-2.5 last:border-b-0 hover:bg-panel-2 sm:grid sm:grid-cols-[74px_108px_1fr_auto] sm:items-center sm:gap-3"
-          >
-            {/* 窄屏(2026-10-05 反馈):64+92 定宽列在手机宽只剩 ~170px,标题截到
-                七八字——时间+渠道缩为一行小字、标题独占整行;sm+ 回到原型四列
-                (sm:contents 让包裹层退场,子元素直接落格) */}
-            <span className="flex items-center gap-2 sm:contents">
-              <span
-                className={`flex-none font-mono text-xs ${fresh ? "text-green-hi" : "text-text-3"}`}
-              >
-                {hhmm(t.publishedAt)}
-              </span>
-              <span className="max-w-[140px] truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-                {t.sourceName}
-              </span>
-            </span>
-            <span className="mt-1 flex min-w-0 flex-col sm:mt-0">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
-                  {t.title}
-                </span>
-                <svg className="ic ic-sm flex-none text-text-3" aria-hidden="true">
-                  <use href="#i-export" />
-                </svg>
-              </span>
-              {/* 文字条轻解读(M12 批③):中心思想 + #关键词;批⑥ 关键词换蓝系,
-                  与 accent 色「AI」标记区分(tag vs 解读徽章一眼可辨) */}
-              {t.ai && (
-                <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
-                  <span className="text-accent">AI</span> · {t.ai.summary}
-                  {t.ai.keywords && t.ai.keywords.length > 0 && (
-                    <span className="ml-1.5 text-blue">
-                      {t.ai.keywords.map((k) => `#${k}`).join(" ")}
-                    </span>
-                  )}
-                </span>
-              )}
-            </span>
-            <span
-              className={`hidden flex-none justify-self-end font-mono text-[11px] sm:block ${
-                fresh ? "text-green-hi" : "text-text-3"
-              }`}
-            >
-              {fresh ? "NEW · " : ""}
-              {timeAgo(t.publishedAt, now)}
-            </span>
-          </a>
+            {points.length > 0 && <BandPoints points={points} />}
+          </div>
         );
       })}
       {items.length === 0 && (
