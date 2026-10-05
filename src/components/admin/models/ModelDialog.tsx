@@ -160,7 +160,7 @@ export default function ModelDialog({
             支持视觉输入(图片/视频帧理解)
           </label>
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs text-text-3">
               供应商 *
               <select

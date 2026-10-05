@@ -64,7 +64,7 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
 
   return (
     <DialogShell width="xl" scroll title="编辑 ASR 配置">
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs text-text-3">
           供应商 *
           <input

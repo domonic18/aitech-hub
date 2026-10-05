@@ -118,7 +118,7 @@ export default function ChannelDialog({
       </button>
       {open && (
         <DialogShell width="lg" scroll title={editing ? "编辑渠道" : "新增渠道"}>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="col-span-1 text-xs text-text-3">
               名称 *
               <input

@@ -176,11 +176,11 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[80vh] w-[560px] overflow-y-auto rounded-md border border-line bg-panel p-5"
+        className="max-h-[80vh] w-full max-w-[560px] overflow-y-auto rounded-md border border-line bg-panel p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

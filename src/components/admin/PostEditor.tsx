@@ -247,7 +247,7 @@ export default function PostEditor({
         className={INPUT}
       />
 
-      <div className="grid grid-cols-[1fr_300px] items-start gap-4">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_300px]">
         <div className="rounded-md border border-line bg-panel">
           <div className="flex border-b border-line text-xs">
             {(["edit", "preview"] as const).map((t) => (
