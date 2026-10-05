@@ -102,7 +102,7 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
           <span>阅读 {post.viewsCount.toLocaleString("zh-CN")}</span>
           {CONTENT_ORIGIN_BADGES[origin] ? (
             <span
-              className="rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-[11px] text-text-2"
+              className="rounded-sm border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
               title={CONTENT_ORIGIN_LABELS[origin]}
             >
               {CONTENT_ORIGIN_BADGES[origin]}
@@ -123,6 +123,16 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
             className="object-cover"
             sizes="(max-width: 768px) 100vw, 768px"
           />
+        </div>
+      ) : null}
+
+      {/* 创作方式显著提示条(合规显式标识):AI 系正文前明示,human 不渲染 */}
+      {CONTENT_ORIGIN_BADGES[origin] ? (
+        <div className="mt-6 flex items-start gap-2 rounded-md border border-accent/30 bg-accent/5 px-3.5 py-2.5">
+          <svg className="ic mt-0.5 flex-none text-accent" aria-hidden="true">
+            <use href="#i-robot" />
+          </svg>
+          <p className="text-xs leading-relaxed text-text-2">{CONTENT_ORIGIN_LABELS[origin]}</p>
         </div>
       ) : null}
 
