@@ -6,7 +6,7 @@
  * 理解、创建时必填项太多)。纯受控组件(值上提,onChange 打补丁),不发请求;
  * 边界校验在 PostEditor.saveOnly。
  */
-import { POST_LIMITS } from "@/lib/content/post-schema";
+import { POST_LIMITS, type ContentOrigin } from "@/lib/content/post-schema";
 
 import CoverUploader from "./CoverUploader";
 import { INPUT, LABEL } from "./editor-controls";
@@ -23,7 +23,15 @@ export interface PostMetaValue {
   excerpt: string;
   seoTitle: string;
   seoDescription: string;
+  contentOrigin: ContentOrigin;
 }
+
+/** 创作方式选项(值域唯一真相源 CONTENT_ORIGINS;合规要求见 post-schema 注) */
+const ORIGIN_OPTIONS: Array<{ value: ContentOrigin; label: string }> = [
+  { value: "human", label: "人工原创" },
+  { value: "ai_assisted", label: "AI 辅助创作" },
+  { value: "ai_generated", label: "AI 生成" },
+];
 
 /** slug 字段(2026-10 URL 终态):两态统一可编辑——id 锚定 URL,改 slug 永不毁外链;
  * preview 展示派生/当前 canonical 形态,留空语义由调用方按创建(=派生)/编辑(=不改)区分 */
@@ -65,6 +73,27 @@ export default function PostMetaPanel({
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label className={LABEL} htmlFor="post-origin">
+          创作方式(对外合规标识)
+        </label>
+        <select
+          id="post-origin"
+          value={value.contentOrigin}
+          onChange={(e) => onChange({ contentOrigin: e.target.value as ContentOrigin })}
+          className={INPUT}
+        >
+          {ORIGIN_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <div className="mt-1 text-[11px] text-text-3">
+          AI 生成内容按《人工智能生成合成内容标识办法》须显式标识,发布后展示于文章页
+        </div>
       </div>
 
       <div>

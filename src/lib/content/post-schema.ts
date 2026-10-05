@@ -12,6 +12,35 @@ import { normalizeSlug } from "@/lib/slug";
 export const POST_STATUS_DELETED = "deleted";
 
 /**
+ * 创作方式(2026-10-05 合规,四部门《人工智能生成合成内容标识办法》2025-09-01 施行):
+ * AI 生成内容传播须带显式标识;human 为缺省(154 篇迁移旧文全量 human,零影响)。
+ * 展示文案(详情页标注)与此处一一对应,人工原创不展示。
+ */
+export const CONTENT_ORIGINS = ["human", "ai_assisted", "ai_generated"] as const;
+export type ContentOrigin = (typeof CONTENT_ORIGINS)[number];
+
+export const CONTENT_ORIGIN_LABELS: Record<ContentOrigin, string> = {
+  human: "",
+  ai_assisted: "本文为 AI 辅助创作,经人工审核修订",
+  ai_generated: "本文由 AI 生成",
+};
+
+/** 徽章短标(详情页 meta 行):human 恒空不渲染 */
+export const CONTENT_ORIGIN_BADGES: Record<ContentOrigin, string> = {
+  human: "",
+  ai_assisted: "AI 辅助",
+  ai_generated: "AI 生成",
+};
+
+/** 合法值应用层枚举(arch/03 枚举演进条款):非法值拒绝,缺省 human */
+export const contentOriginSchema = z.enum(CONTENT_ORIGINS).default("human");
+
+/** 读侧宽容归一(展示/编辑器取数,与 postDisplayState 同哲学):历史脏值回退 human */
+export function asContentOrigin(v: string): ContentOrigin {
+  return (CONTENT_ORIGINS as readonly string[]).includes(v) ? (v as ContentOrigin) : "human";
+}
+
+/**
  * 文章字段边界数值唯一真相源(M5-a 评审 W1):Zod 边界与编辑器 UI(maxLength/计数)
  * 共用同一组数字,改上限只动这里;客户端校验直接复用 schema,不另抄规则。
  */
@@ -118,6 +147,7 @@ export const postCreateSchema = z.object({
   coverPath: coverPathSchema.optional(),
   seoTitle: optionalText(POST_LIMITS.seoTitle),
   seoDescription: optionalText(POST_LIMITS.seoDescription),
+  contentOrigin: contentOriginSchema,
 });
 
 /** 更新含 slug(可改):id 锚定 URL,改 slug 后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改 */

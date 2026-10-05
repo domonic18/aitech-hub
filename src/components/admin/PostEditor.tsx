@@ -22,6 +22,7 @@ import {
   POST_LIMITS,
   postCreateSchema,
   postUpdateSchema,
+  type ContentOrigin,
   type PostDisplayState,
 } from "@/lib/content/post-schema";
 import { type ApiEnvelope } from "@/lib/http/response";
@@ -43,6 +44,8 @@ export interface EditorPost {
   coverPath: string;
   seoTitle: string;
   seoDescription: string;
+  /** 创作方式(合规标识):human/ai_assisted/ai_generated,缺省人工 */
+  contentOrigin: ContentOrigin;
   /** 展示态(server 端 postDisplayState 派生):published/draft/unpublished */
   status: PostDisplayState;
 }
@@ -96,6 +99,7 @@ export default function PostEditor({
     excerpt: post?.excerpt ?? "",
     seoTitle: post?.seoTitle ?? "",
     seoDescription: post?.seoDescription ?? "",
+    contentOrigin: post?.contentOrigin ?? "human",
   });
   const [status, setStatus] = useState(post?.status ?? "draft");
   const [tab, setTab] = useState<"edit" | "preview">("edit");
@@ -126,6 +130,7 @@ export default function PostEditor({
         coverPath: meta.coverPath,
         seoTitle: meta.seoTitle,
         seoDescription: meta.seoDescription,
+        contentOrigin: meta.contentOrigin,
         ...(slugText.trim() ? { slug: slugText.trim() } : {}), // 缺省:创建=按标题派生/更新=不改
       });
       if (!parsed.success) {

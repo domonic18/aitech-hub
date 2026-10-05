@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   ADMIN_LIST_SEGMENTS,
+  CONTENT_ORIGIN_BADGES,
+  CONTENT_ORIGIN_LABELS,
+  asContentOrigin,
   coverPathSchema,
   postCreateSchema,
   postDisplayState,
@@ -80,12 +83,23 @@ describe("postSlugSchema(2026-10 URL 终态:ASCII 装饰段,可空)", () => {
 describe("postCreateSchema", () => {
   const base = { title: "T", categorySlug: "blog", contentMd: "x" };
 
-  it("最小合法体:tags 默认空、可选字段归一为 undefined", () => {
+  it("最小合法体:tags 默认空、contentOrigin 默认 human、可选字段归一为 undefined", () => {
     const r = postCreateSchema.parse(base);
     expect(r.tags).toEqual([]);
+    expect(r.contentOrigin).toBe("human");
     expect(r.excerpt).toBeUndefined();
     expect(r.slug).toBeUndefined();
     expect(r.coverPath).toBeUndefined();
+  });
+
+  it("contentOrigin:合法值透传,非法值拒绝(应用层枚举)", () => {
+    expect(postCreateSchema.parse({ ...base, contentOrigin: "ai_generated" }).contentOrigin).toBe(
+      "ai_generated",
+    );
+    expect(postCreateSchema.safeParse({ ...base, contentOrigin: "ai_assisted" }).success).toBe(
+      true,
+    );
+    expect(postCreateSchema.safeParse({ ...base, contentOrigin: "gpt" }).success).toBe(false);
   });
 
   it("标签最多 5 个;空标签拒绝", () => {
@@ -123,6 +137,25 @@ describe("postUpdateSchema(更新含 slug:id 锚定 URL,改 slug 不毁外链)",
       postUpdateSchema.parse({ title: "T", categorySlug: "blog", contentMd: "x", slug: "New Slug" })
         .slug,
     ).toBe("new-slug");
+  });
+});
+
+describe("contentOrigin(合规标识三值)", () => {
+  it("asContentOrigin:合法值透传,历史脏值回退 human(读侧宽容)", () => {
+    expect(asContentOrigin("human")).toBe("human");
+    expect(asContentOrigin("ai_assisted")).toBe("ai_assisted");
+    expect(asContentOrigin("ai_generated")).toBe("ai_generated");
+    expect(asContentOrigin("gpt")).toBe("human");
+    expect(asContentOrigin("")).toBe("human");
+  });
+
+  it("AI 系有徽章与完整文案,human 恒空(详情页不渲染)", () => {
+    expect(CONTENT_ORIGIN_BADGES.human).toBe("");
+    expect(CONTENT_ORIGIN_LABELS.human).toBe("");
+    expect(CONTENT_ORIGIN_BADGES.ai_assisted).toBe("AI 辅助");
+    expect(CONTENT_ORIGIN_BADGES.ai_generated).toBe("AI 生成");
+    expect(CONTENT_ORIGIN_LABELS.ai_assisted.length).toBeGreaterThan(0);
+    expect(CONTENT_ORIGIN_LABELS.ai_generated.length).toBeGreaterThan(0);
   });
 });
 

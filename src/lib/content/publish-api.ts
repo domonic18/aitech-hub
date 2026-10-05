@@ -20,7 +20,7 @@ import { logger } from "@/lib/logger";
 
 import { fmString, fmStringArray, parseFrontmatter } from "./frontmatter";
 import { postPath } from "./post-path";
-import { POST_LIMITS, normalizeAsciiSlug } from "./post-schema";
+import { POST_LIMITS, asContentOrigin, normalizeAsciiSlug } from "./post-schema";
 import { PostAdminError } from "./posts-admin";
 import { createPost, publishPost, updatePost } from "./posts-admin";
 
@@ -144,7 +144,7 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
   const existing = slug
     ? await prisma.post.findUnique({
         where: { slug },
-        select: { id: true, status: true, contentMd: true },
+        select: { id: true, status: true, contentMd: true, contentOrigin: true },
       })
     : null;
   const verdict = resolveUpsertAction(existing);
@@ -163,6 +163,7 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
         coverPath,
         seoTitle,
         seoDescription,
+        contentOrigin: "human", // 外部发布通道缺省人工;AI 系标识在后台编辑器补记
       });
       id = created.id;
       finalSlug = created.slug;
@@ -181,6 +182,7 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
       coverPath,
       seoTitle,
       seoDescription,
+      contentOrigin: asContentOrigin(existing?.contentOrigin ?? "human"), // 更新不携带标识,保留后台改标不被冲掉
     });
     id = verdict.id;
     finalSlug = r.slug;
