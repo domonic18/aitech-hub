@@ -231,7 +231,8 @@ export default function TelegramBand({
         </Link>
       </div>
       {items.map((t) => {
-        const fresh = isNew(t.publishedAt, now);
+        // NEW 基准=aiRanAt(变可见时刻,M15 批①):与时间轴角标同口径
+        const fresh = isNew(t.aiRanAt, now);
         const video = t.mediaType === "video" ? t.video : undefined;
         const points = t.mediaType === "video" ? (video?.ai?.points ?? []) : (t.ai?.points ?? []);
         const ago = `${fresh ? "NEW · " : ""}${timeAgo(t.publishedAt, now)}`;

@@ -21,6 +21,7 @@ function item(id: string, publishedAt: string): PublicTelegramItem {
     summary: "",
     url: `https://example.com/${id}`,
     publishedAt,
+    aiRanAt: publishedAt,
     sourceId: 1,
     sourceName: "渠道",
     sourceType: "rss",
@@ -158,6 +159,79 @@ describe("toTextAi 文字投影(M12 批⑥:要点+关键词双列,旧契约存�
       points: [],
       keywords: [],
     });
+  });
+});
+
+describe("listPublicTelegram 可见性门禁与增量锚(M15 批①)", () => {
+  it("where 恒含 aiStatus 终态过滤(done/missing_transcript),pending/failed/null 不上屏", async () => {
+    findManyMock.mockResolvedValue([]);
+    await listPublicTelegram({ limit: 5 });
+    expect(findManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "visible",
+          aiStatus: { in: ["done", "missing_transcript"] },
+        }),
+      }),
+    );
+  });
+
+  it("after 增量锚=aiRanAt(变可见时刻),不再按 publishedAt/createdAt OR 过滤", async () => {
+    findManyMock.mockResolvedValue([]);
+    const after = new Date("2026-10-06T04:00:00Z");
+    await listPublicTelegram({ limit: 5, afterIso: after.toISOString() });
+    const arg = findManyMock.mock.lastCall![0] as { where: Record<string, unknown> };
+    expect(arg.where).toMatchObject({ aiRanAt: { gt: after } });
+    expect(arg.where.OR).toBeUndefined();
+  });
+
+  it("映射:aiRanAt 透出;null(存量脏数据)兜底 publishedAt", async () => {
+    const now = new Date("2026-10-06T10:00:00+08:00");
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: BigInt(11),
+        title: "带解读时刻",
+        summary: "",
+        url: "https://example.com/11",
+        publishedAt: now,
+        createdAt: now,
+        aiRanAt: new Date(now.getTime() + 90_000),
+        mediaType: "text",
+        videoPlatform: null,
+        videoBlogger: null,
+        videoCoverUrl: null,
+        videoDuration: null,
+        videoEngagement: null,
+        aiTopic: null,
+        aiSummary: "中心思想",
+        aiPoints: null,
+        aiKeywords: null,
+        source: { id: 3, name: "渠道" },
+      },
+      {
+        id: BigInt(12),
+        title: "解读时刻缺失",
+        summary: "",
+        url: "https://example.com/12",
+        publishedAt: now,
+        createdAt: now,
+        aiRanAt: null,
+        mediaType: "text",
+        videoPlatform: null,
+        videoBlogger: null,
+        videoCoverUrl: null,
+        videoDuration: null,
+        videoEngagement: null,
+        aiTopic: null,
+        aiSummary: "中心思想",
+        aiPoints: null,
+        aiKeywords: null,
+        source: { id: 3, name: "渠道" },
+      },
+    ]);
+    const items = await listPublicTelegram({ limit: 10 });
+    expect(items[0]!.aiRanAt).toBe(new Date(now.getTime() + 90_000).toISOString());
+    expect(items[1]!.aiRanAt).toBe(now.toISOString());
   });
 });
 

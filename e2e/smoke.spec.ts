@@ -601,7 +601,8 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
   request,
 }) => {
   const MARK = "e2e-telegram-mark";
-  // 自播种:独立渠道(采集关闭)+ 一条可见电报(publishedAt=now 保证排进带首;重跑幂等)
+  // 自播种:独立渠道(采集关闭)+ 一条可见电报(publishedAt=now 保证排进带首;重跑幂等;
+  // M15 批① 起前台只出 AI 解读终态行,种子带 done+aiRanAt)
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-telegram-source" },
     update: {},
@@ -622,6 +623,9 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       url: "https://e2e.invalid/item/1",
       publishedAt: new Date(),
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "done",
+      aiSummary: "e2e 冒烟 AI 摘要",
+      aiRanAt: new Date(),
     },
   });
 
@@ -1123,7 +1127,8 @@ test("17. 首页带条数可配置(2026-10-05 统筹改版对齐:site_config/设
   page,
 }) => {
   // 自播种:独立渠道 + 15 条可见文字电报(> 默认 12;publishedAt 逐分钟递减保证确定性排序;
-  // 带内已改固定一页,15 条只为验证「只取前 N、不随滚动增长」)
+  // 带内已改固定一页,15 条只为验证「只取前 N、不随滚动增长」;
+  // M15 批① 起前台只出 AI 解读终态行,种子逐行带 done+aiRanAt)
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-band-source" },
     update: {},
@@ -1145,6 +1150,9 @@ test("17. 首页带条数可配置(2026-10-05 统筹改版对齐:site_config/设
       url: BAND_URL(i),
       publishedAt: new Date(Date.now() - i * 60_000),
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "done",
+      aiSummary: `e2e 带条目 AI 摘要 ${i}`,
+      aiRanAt: new Date(Date.now() - i * 60_000),
     })),
   });
   // 视频行(最新 +1min → 必赢全库保底槽位;共享库里有真实爬取视频,
@@ -1423,8 +1431,10 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     "home.hero_md",
   ];
 
-  // ── 播种①:band 文字行两条(已解读 ai_* 有值 / 未解读对照),publishedAt=now 保证进带首
-  //    批⑥ 新契约:ai_points=要点、ai_keywords=关键词
+  // ── 播种①:band 文字行两条(已解读 ai_* 有值 / 无解读对照),publishedAt=now 保证进带首
+  //    批⑥ 新契约:ai_points=要点、ai_keywords=关键词;
+  //    M15 批① 起前台只出 AI 解读终态行——对照行改为「终态但无解读产出」
+  //    (aiStatus=done 无 aiSummary → 投影 ai=null):行可见、无 AI 行,对照语义保留
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-ai-band-source" },
     update: {},
@@ -1459,6 +1469,8 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
         url: AI_ROW_RAW,
         publishedAt: new Date(Date.now() - 60_000),
         contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+        aiStatus: "done",
+        aiRanAt: new Date(Date.now() - 60_000),
       },
     ],
   });

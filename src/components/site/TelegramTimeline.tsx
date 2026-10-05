@@ -9,7 +9,7 @@
  * 平台角标左上/时长左下 + 标题进卡 + AI 摘要 line-clamp-3 +
  * 互动 播/赞/评(空值整项隐藏)+ 原视频外链;文字卡同构展示 AI 轻解读。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   compactCount,
@@ -99,7 +99,9 @@ function VideoArticle({ t, now }: { t: PublicTelegramItem; now: number }) {
           <span className="font-mono text-[11px] text-text-3">
             {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
           </span>
-          {isNew(t.publishedAt, now) && (
+          {/* NEW 基准=aiRanAt(变可见时刻,M15 批①):视频采集周期 3h,按源发布
+              时间窗口几乎永不亮;按解读完成时刻 30min 内真实可亮 */}
+          {isNew(t.aiRanAt, now) && (
             <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
               NEW
             </span>
@@ -172,6 +174,7 @@ export default function TelegramTimeline({
   sourceId,
   media = "all",
   initialNow,
+  initialToday,
 }: {
   initialItems: PublicTelegramItem[];
   sourceId?: number;
@@ -183,15 +186,28 @@ export default function TelegramTimeline({
    * 重灌回 light(2026-10-04 修复,与首页带同款)。
    */
   initialNow: number;
+  /** SSR 首屏「今日已入库」(countTodayVisible,采集活性口径):列表空但今日有
+   * 入库时,空态改述为「AI 解读处理中」——条目在解读终态才上屏(M15 批①) */
+  initialToday: number;
 }) {
   const [items, setItems] = useState(initialItems);
   const [pending, setPending] = useState<PublicTelegramItem[]>([]);
   const [now, setNow] = useState(initialNow);
+  const [today, setToday] = useState(initialToday);
+  // 增量锚=已见最大 aiRanAt(M15 批①,变可见时刻):ref 持有不随轮询重建定时器,
+  // 消旧实现取 items[0].publishedAt 的 stale closure。ISO 同为 toISOString() 产物
+  // (UTC Z 定长),字典序即时间序。
+  const afterRef = useRef(
+    initialItems.reduce<string | null>(
+      (max, t) => (max === null || t.aiRanAt > max ? t.aiRanAt : max),
+      null,
+    ),
+  );
 
   useEffect(() => {
     let alive = true;
     const tick = async (): Promise<void> => {
-      const after = items[0]?.publishedAt;
+      const after = afterRef.current;
       const sp = new URLSearchParams({ limit: "50" });
       if (after) sp.set("after", after);
       if (sourceId !== undefined) sp.set("source", String(sourceId));
@@ -203,7 +219,14 @@ export default function TelegramTimeline({
           data?: { items: PublicTelegramItem[]; today: number };
         };
         if (alive && body.code === 0 && body.data) {
-          if (body.data.items.length > 0) setPending((p) => [...body.data!.items, ...p]);
+          if (body.data.items.length > 0) {
+            setPending((p) => [...body.data!.items, ...p]);
+            for (const t of body.data.items) {
+              if (afterRef.current === null || t.aiRanAt > afterRef.current)
+                afterRef.current = t.aiRanAt;
+            }
+          }
+          setToday(body.data.today);
         }
       } catch {
         /* 轮询失败静默保留旧值 */
@@ -215,8 +238,7 @@ export default function TelegramTimeline({
       alive = false;
       clearInterval(t);
     };
-    // items 只取首元素作增量锚,不随轮询重建定时器
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // 锚在 afterRef 内自推进,不随轮询重建定时器
   }, [sourceId, media]);
 
   const loadPending = (): void => {
@@ -264,7 +286,7 @@ export default function TelegramTimeline({
                     <span className="font-mono text-[11px] text-text-3">
                       {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
                     </span>
-                    {isNew(t.publishedAt, now) && (
+                    {isNew(t.aiRanAt, now) && (
                       <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
                         NEW
                       </span>
@@ -343,7 +365,10 @@ export default function TelegramTimeline({
       ))}
       {items.length === 0 && (
         <div className="rounded-lg border border-line bg-panel px-4 py-12 text-center text-xs text-text-3">
-          暂无条目;采集首轮入库后这里开始滚动
+          {today > 0
+            ? // M15 批①:条目 AI 解读终态才上屏;空列=队列消化中,不展示未解读行
+              `AI 解读处理中 · 今日已入库 ${today} 条,解读完成后自动上屏`
+            : "暂无条目;采集首轮入库后这里开始滚动"}
         </div>
       )}
     </div>

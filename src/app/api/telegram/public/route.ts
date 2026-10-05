@@ -1,7 +1,8 @@
 /**
  * 电报流公开 feed(M7 批⑤;M8 加 media;M10 加 offset 滚动加载):
  * 前台轮询端点(visible only,no-store)。静态段 public 优先于 [id] 动态段匹配;
- * limit 1-50,offset 0-500,source 可选,media 可选,after 增量。
+ * limit 1-50,offset 0-500,source 可选,media 可选,after 增量(M15 批① 起锚
+ * aiRanAt,且仅出 AI 解读终态行,见 public-feed.ts)。
  * band=1 走首页带形态:首页(默认 offset=0)混排 + 最新视频保底槽位,与 SSR
  * 同源 listBandFeed;offset>0 的后续页直接混排(保底槽位只属首页,客户端 id 去重)。
  */

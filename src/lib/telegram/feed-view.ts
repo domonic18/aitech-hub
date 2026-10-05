@@ -34,6 +34,9 @@ export interface PublicTelegramItem {
   url: string;
   /** ISO;条目无发布时间时以 createdAt 兜底(服务侧已处理) */
   publishedAt: string;
+  /** ISO;AI 解读完成时刻=条目变可见的时刻(M15 批①:读侧仅出解读终态行)。
+   * 轮询增量锚与 NEW 角标基准;展示排序/相对时间仍以 publishedAt 为准 */
+  aiRanAt: string;
   sourceId: number;
   sourceName: string;
   /** 源类型(rss/api/web/social-video;渠道章配色按此映射,视频条由 platform 定色) */
