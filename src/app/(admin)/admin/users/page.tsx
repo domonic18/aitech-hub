@@ -108,7 +108,7 @@ export default async function AdminUsersPage({
         <form
           method="GET"
           action="/admin/users/"
-          className="ml-auto flex items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent"
+          className="ml-auto flex w-full items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent sm:w-auto"
         >
           <input type="hidden" name="status" value={segment} />
           <svg className="ic ic-sm text-text-3" aria-hidden="true">
@@ -118,12 +118,12 @@ export default async function AdminUsersPage({
             name="q"
             defaultValue={q ?? ""}
             placeholder="搜索昵称 / 手机号 / 旧站用户名…"
-            className="w-56 bg-transparent text-[13px] outline-none placeholder:text-text-3"
+            className="w-full bg-transparent text-[13px] outline-none placeholder:text-text-3 sm:w-56"
           />
         </form>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-line bg-panel">
+      <div className="overflow-x-auto rounded-md border border-line bg-panel">
         <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="border-b border-line text-xs text-text-3">

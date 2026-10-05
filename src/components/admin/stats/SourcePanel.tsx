@@ -49,7 +49,7 @@ export default function SourcePanel({ panel }: { panel: ReferrerPanel }): React.
           return (
             <div
               key={`${r.sourceClass}:${r.sourceName}`}
-              className="grid grid-cols-[150px_1fr_110px] items-center gap-3"
+              className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)_auto] items-center gap-3"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-[13px] text-text-1">
