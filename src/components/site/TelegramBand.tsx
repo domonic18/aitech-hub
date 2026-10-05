@@ -67,10 +67,14 @@ function BandCover({ src, duration }: { src: string | null; duration: string | n
   );
 }
 
-/** AI 要点折叠块(与电报流页「关键要点 ×N」同款;挂行锚外避免 <a> 内嵌套交互元素) */
-function BandPoints({ points }: { points: readonly string[] }) {
+/** AI 要点折叠块(与电报流页「关键要点 ×N」同款;挂行锚外避免 <a> 内嵌套交互元素)。
+ * indent 对齐标题列左缘(2026-10-05 验收反馈:要点块原先落在行首时间/渠道列下):
+ * 文字行 sm+ 网格 [74px_108px_1fr_auto] gap-3 → 74+108+12×2=206px,窄屏标题独占整行不缩进;
+ * 视频行 sm+ [74px_54px_96px_1fr_auto] gap-3.5 → 74+54+96+14×3=266px,窄屏 [54px_1fr] → 54+14=68px。
+ * 行网格改动时此处联动。 */
+function BandPoints({ points, indent }: { points: readonly string[]; indent: string }) {
   return (
-    <details className="px-5 pb-2.5">
+    <details className={`pb-2.5 ${indent}`}>
       <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
         关键要点 ×{points.length}
       </summary>
@@ -214,7 +218,7 @@ export default function TelegramBand({
                   {timeAgo(t.publishedAt, now)}
                 </span>
               </a>
-              {points.length > 0 && <BandPoints points={points} />}
+              {points.length > 0 && <BandPoints points={points} indent="pl-[68px] sm:pl-[266px]" />}
             </div>
           );
         }
@@ -270,7 +274,7 @@ export default function TelegramBand({
                 {timeAgo(t.publishedAt, now)}
               </span>
             </a>
-            {points.length > 0 && <BandPoints points={points} />}
+            {points.length > 0 && <BandPoints points={points} indent="sm:pl-[206px]" />}
           </div>
         );
       })}
