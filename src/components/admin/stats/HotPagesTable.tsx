@@ -2,6 +2,10 @@
  * 热门页面表(原型 admin-stats):排名徽章(前 2 强调)+ 标题/路径 +
  * 类型 tag + PV/UV。平均阅读时长列一期不做(未采集,显式注记)。
  * 分段切换 URL 驱动,保留 trend 参数。
+ * 窄屏降级(M13 漏网补修,2026-10-05):定宽列(排名+类型+PV+UV)在 375px
+ * 下把「页面」挤压列(max-w-0 技巧)压到 0 宽只剩省略号——手机隐藏 类型/UV
+ * 两列,页面列改 max-w-[11rem] 保底(sm 起恢复 max-w-0 压缩);无标题的
+ * 列表行不再重复渲染同一路径两行。
  */
 import Link from "next/link";
 
@@ -67,9 +71,9 @@ export default function HotPagesTable({
               <tr className="border-b border-line text-xs text-text-3">
                 <th className="w-12 px-3 py-2 font-normal">排名</th>
                 <th className="px-3 py-2 font-normal">页面</th>
-                <th className="w-16 px-3 py-2 font-normal">类型</th>
+                <th className="hidden w-16 px-3 py-2 font-normal sm:table-cell">类型</th>
                 <th className="w-24 px-3 py-2 text-right font-normal">PV</th>
-                <th className="w-24 px-3 py-2 text-right font-normal">UV</th>
+                <th className="hidden w-24 px-3 py-2 text-right font-normal sm:table-cell">UV</th>
               </tr>
             </thead>
             <tbody>
@@ -89,15 +93,17 @@ export default function HotPagesTable({
                         {i + 1}
                       </span>
                     </td>
-                    <td className="max-w-0 px-3 py-2.5">
+                    <td className="max-w-[11rem] px-3 py-2.5 sm:max-w-0">
                       <div className="truncate text-text-1" title={r.postTitle ?? shown(r.path)}>
                         {r.postTitle ?? shown(r.path)}
                       </div>
-                      <div className="truncate font-mono text-[11px] text-text-3" title={r.path}>
-                        {shown(r.path)}
-                      </div>
+                      {r.postTitle && (
+                        <div className="truncate font-mono text-[11px] text-text-3" title={r.path}>
+                          {shown(r.path)}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="hidden px-3 py-2.5 sm:table-cell">
                       <span className={`rounded-sm px-1.5 py-px text-[10px] ${kind.cls}`}>
                         {kind.label}
                       </span>
@@ -105,7 +111,7 @@ export default function HotPagesTable({
                     <td className="px-3 py-2.5 text-right font-mono text-text-1">
                       {r.pv.toLocaleString("en-US")}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-text-2">
+                    <td className="hidden px-3 py-2.5 text-right font-mono text-text-2 sm:table-cell">
                       {r.uv.toLocaleString("en-US")}
                     </td>
                   </tr>
