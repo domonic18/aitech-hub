@@ -3,18 +3,31 @@
 /**
  * 首页电报流 LIVE 带(M7 批⑤ 文字条目;M8 批④ 加视频行;批⑧ 视频保底槽位;
  * M10 批② 条数后台可配;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
- * 批⑤ 视频行 AI 行改直出 summary;批⑥ 关键词蓝系与 AI 徽章区分):
- * 头部 live-chip + 标题 + 巡检统计 + more;行四列网格 tm/sr/ti/ag(sm+ 74/108/1fr/auto;
- * 窄屏 2026-10-05 反馈改版:时间+渠道缩一行小字、标题独占整行——定宽列挤压标题不可读,
- * 原型 @media 已同步);视频行按原型 site-home .tg-row.video 五列(tm/thumb/pf/vt/ag):
- * 54×95 竖版封面(play 蒙层 + 时长横条,no-referrer 防盗链,失败降级播放占位块)+
- * pf 平台章/博主(窄屏隐)+ 标题与「AI 解读 · 概括」双行;窄屏降 54px+1fr 双列。
- * 行高由封面撑起。SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重
- * 前插,前插后截回一页上限:长驻标签页只展示最新 count 条,不随时间无限增长)。
- * 下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与
- * 历史翻页走 /telegram/。行点击直达外链;AI 要点以「关键要点 ×N」折叠块挂在行锚外
- * (2026-10-05 反馈:要点此前只在电报流页可见;行改 wrapper+锚分离防 <a> 嵌套交互),
- * 文字行解读标识统一为「AI 解读」(与视频行/电报流页同款)。
+ * 批⑤ 视频行 AI 行改直出 summary;批⑥ 关键词蓝系与 AI 徽章区分;
+ * 2026-10-05 验收反馈统筹改版:行网格统一 + 要点折叠块重做):
+ * 头部 live-chip + 标题 + 巡检统计 + more。
+ *
+ * 行网格统一口径(ROW_GRID,文字/视频行共用一套模板,子元素按列序渲染、
+ * 免 col-start 显式定位;隐藏项随断点进出网格不破坏 auto-placement):
+ *   sm+ [74px 时间 | 164px 元信息 | 1fr 标题 | auto 相对时间] gap-x-3 px-5
+ *     → 标题列起点 20+74+12+164+12 = 282px;
+ *   窄屏 [54px | 1fr 标题] → 20+54+12 = 86px。
+ *   文字行:首列时间(双断点常显)/ 元信息列渠道章(窄屏并入标题区首行)/
+ *   标题+「AI 解读 · 摘要 #关键词」;视频行:元信息列 = 封面 + 平台/博主
+ *   (窄屏仅封面,博主信息并入标题区首行),封面 54×95 撑行高。
+ *   两类行标题列起点逐断点一致(2026-10-05 反馈:视频标题与文字标题不对齐)。
+ *
+ * AI 要点折叠块(BandPoints):默认展开(<details open>);summary 用 chevron
+ * 随开合旋转 90° + hover 反馈 + ×N 计数章替代原生 ▶(反馈:交互不醒目);
+ * 块复用 ROW_GRID 取标题列(col-start-2/3 结构对齐,行网格改动零联动);
+ * 有要点时行锚 pb 收窄,消解要点与 AI 解读间大留白(反馈:间距过大)。
+ * 块挂行锚外(2026-10-05 反馈:要点此前只在电报流页可见;wrapper+锚分离
+ * 防交互元素嵌套进 <a>)。行点击直达外链;文字行解读标识统一「AI 解读」。
+ *
+ * SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重前插,
+ * 前插后截回一页上限:长驻标签页只展示最新 count 条,不随时间无限增长)。
+ * 下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与历史
+ * 翻页走 /telegram/。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -28,6 +41,45 @@ import {
   timeAgo,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
+
+/** 行网格统一口径——BandPoints 依赖同模板取标题列,改动时两处同改(见文件头)。 */
+const ROW_GRID = "grid grid-cols-[54px_1fr] gap-x-3 px-5 sm:grid-cols-[74px_164px_1fr_auto]";
+
+/** 发布时间戳:视频行首列仅 sm+(窄屏首列让给封面,时间并入标题区首行);
+ * 文字行首列双断点常显(always)。fresh 绿色高亮。 */
+function BandTime({ fresh, text, always }: { fresh: boolean; text: string; always?: boolean }) {
+  return (
+    <span
+      className={`flex-none font-mono text-xs ${always ? "" : "hidden sm:block"} ${
+        fresh ? "text-green-hi" : "text-text-3"
+      }`}
+    >
+      {text}
+    </span>
+  );
+}
+
+/** 相对时间(尾部列,窄屏隐;fresh 加 NEW 前缀绿色高亮) */
+function BandAgo({ fresh, text }: { fresh: boolean; text: string }) {
+  return (
+    <span
+      className={`hidden flex-none justify-self-end whitespace-nowrap font-mono text-[11px] sm:block ${
+        fresh ? "text-green-hi" : "text-text-3"
+      }`}
+    >
+      {text}
+    </span>
+  );
+}
+
+/** 渠道/平台章(bg-panel-2 小圆角章;放在定宽列时随列宽,窄屏标题区内收口) */
+function BandChip({ label }: { label: string }) {
+  return (
+    <span className="max-w-full truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
+      {label}
+    </span>
+  );
+}
 
 /** 带内竖版封面(原型 .tg-row.video .thumb 口径:54×95 圆角 6、play 蒙层、
  * 底部时长横条 inset 3px);失败/无封面降级为播放占位块(不叠蒙层)。 */
@@ -67,23 +119,33 @@ function BandCover({ src, duration }: { src: string | null; duration: string | n
   );
 }
 
-/** AI 要点折叠块(与电报流页「关键要点 ×N」同款;挂行锚外避免 <a> 内嵌套交互元素)。
- * indent 对齐标题列左缘(2026-10-05 验收反馈:要点块原先落在行首时间/渠道列下):
- * 文字行 sm+ 网格 [74px_108px_1fr_auto] gap-3 → 74+108+12×2=206px,窄屏标题独占整行不缩进;
- * 视频行 sm+ [74px_54px_96px_1fr_auto] gap-3.5 → 74+54+96+14×3=266px,窄屏 [54px_1fr] → 54+14=68px。
- * 行网格改动时此处联动。 */
-function BandPoints({ points, indent }: { points: readonly string[]; indent: string }) {
+/** AI 要点折叠块(与电报流页「关键要点 ×N」同款数据):默认展开;复用 ROW_GRID
+ * 取标题列(窄屏 col2/sm+ col3)与行标题结构化对齐;summary chevron 旋转 +
+ * hover 反馈(-mx-1.5 抵消内边距,使 caret 落在标题列起点)。 */
+function BandPoints({ points }: { points: readonly string[] }) {
+  if (points.length === 0) return null;
   return (
-    <details className={`pb-2.5 ${indent}`}>
-      <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
-        关键要点 ×{points.length}
-      </summary>
-      <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
-        {points.map((p, i) => (
-          <li key={i}>{p}</li>
-        ))}
-      </ul>
-    </details>
+    <div className={`${ROW_GRID} pb-2.5`}>
+      <details open className="group col-start-2 sm:col-start-3">
+        <summary className="-mx-1.5 flex cursor-pointer list-none items-center gap-1.5 rounded-sm px-1.5 py-1 text-[11px] text-text-3 transition-colors hover:bg-panel hover:text-text-1 [&::-webkit-details-marker]:hidden">
+          <svg
+            className="ic ic-sm flex-none text-text-3 transition-transform duration-200 group-open:rotate-90"
+            aria-hidden="true"
+          >
+            <use href="#i-caret-right-fill" />
+          </svg>
+          <span className="font-medium">关键要点</span>
+          <span className="rounded-full bg-panel-2 px-1.5 font-mono text-[10px] leading-4">
+            ×{points.length}
+          </span>
+        </summary>
+        <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
+          {points.map((p, i) => (
+            <li key={i}>{p}</li>
+          ))}
+        </ul>
+      </details>
+    </div>
   );
 }
 
@@ -167,12 +229,10 @@ export default function TelegramBand({
         const fresh = isNew(t.publishedAt, now);
         const video = t.mediaType === "video" ? t.video : undefined;
         const points = t.mediaType === "video" ? (video?.ai?.points ?? []) : (t.ai?.points ?? []);
+        const ago = `${fresh ? "NEW · " : ""}${timeAgo(t.publishedAt, now)}`;
         if (video) {
-          // 视频行(原型 site-home .tg-row.video 口径):54×95 竖版封面独立列 +
-          // 平台章/博主列(pf,窄屏隐)+ 标题/AI 概括双行(vt)+ 右侧相对时间;
-          // 窄屏降 54px+1fr 双列(隐 tm/pf/ag),行高由封面撑起。
-          // 2026-10-05 优化:行改 wrapper + 锚分离——AI 要点折叠块(与电报流页
-          // 「关键要点 ×N」同款)挂在锚外,避免交互元素嵌套进 <a>
+          // 视频行:元信息列 = 封面 + 平台/博主(窄屏仅封面,信息并入标题区首行),
+          // 标题/AI 解读双行与文字行同构;行高由封面撑起。有要点时行锚 pb 收窄。
           const duration = formatDuration(video.durationSeconds);
           return (
             <div key={t.id} className="border-b border-line/55 last:border-b-0">
@@ -180,25 +240,26 @@ export default function TelegramBand({
                 href={t.url}
                 target="_blank"
                 rel="noopener nofollow"
-                className="grid grid-cols-[54px_1fr] items-center gap-3.5 px-5 py-3 hover:bg-panel-2 sm:grid-cols-[74px_54px_96px_1fr_auto]"
+                className={`${ROW_GRID} items-start py-3 hover:bg-panel-2 ${
+                  points.length > 0 ? "pb-1" : ""
+                }`}
               >
-                <span
-                  className={`hidden flex-none font-mono text-xs sm:block ${
-                    fresh ? "text-green-hi" : "text-text-3"
-                  }`}
-                >
-                  {hhmm(t.publishedAt)}
-                </span>
-                <BandCover src={video.coverUrl} duration={duration} />
-                <span className="hidden min-w-0 flex-none flex-col items-start gap-1 sm:flex">
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-                    {platformLabel(video.platform)}
-                  </span>
-                  <span className="max-w-full truncate font-mono text-[11px] text-text-2">
-                    @{video.blogger}
+                <BandTime fresh={fresh} text={hhmm(t.publishedAt)} />
+                <span className="flex min-w-0 gap-2">
+                  <BandCover src={video.coverUrl} duration={duration} />
+                  <span className="hidden min-w-0 flex-1 flex-col items-start gap-1 sm:flex">
+                    <BandChip label={platformLabel(video.platform)} />
+                    <span className="max-w-full truncate font-mono text-[11px] text-text-2">
+                      @{video.blogger}
+                    </span>
                   </span>
                 </span>
                 <span className="flex min-w-0 flex-col">
+                  <span className="mb-1 flex items-center gap-1.5 font-mono text-[11px] text-text-3 sm:hidden">
+                    <span className={fresh ? "text-green-hi" : ""}>{hhmm(t.publishedAt)}</span>
+                    <span>{platformLabel(video.platform)}</span>
+                    <span className="truncate">@{video.blogger}</span>
+                  </span>
                   <span className="truncate text-sm leading-normal text-text-1">{t.title}</span>
                   {video.ai && (
                     <span className="mt-0.5 truncate font-mono text-[11.5px] text-text-3">
@@ -209,16 +270,9 @@ export default function TelegramBand({
                     </span>
                   )}
                 </span>
-                <span
-                  className={`hidden flex-none justify-self-end whitespace-nowrap font-mono text-[11px] sm:block ${
-                    fresh ? "text-green-hi" : "text-text-3"
-                  }`}
-                >
-                  {fresh ? "NEW · " : ""}
-                  {timeAgo(t.publishedAt, now)}
-                </span>
+                <BandAgo fresh={fresh} text={ago} />
               </a>
-              {points.length > 0 && <BandPoints points={points} indent="pl-[68px] sm:pl-[266px]" />}
+              <BandPoints points={points} />
             </div>
           );
         }
@@ -228,22 +282,20 @@ export default function TelegramBand({
               href={t.url}
               target="_blank"
               rel="noopener nofollow"
-              className="block px-5 py-2.5 hover:bg-panel-2 sm:grid sm:grid-cols-[74px_108px_1fr_auto] sm:items-center sm:gap-3"
+              className={`${ROW_GRID} items-start py-2.5 hover:bg-panel-2 ${
+                points.length > 0 ? "pb-1.5" : ""
+              }`}
             >
-              {/* 窄屏(2026-10-05 反馈):64+92 定宽列在手机宽只剩 ~170px,标题截到
-                  七八字——时间+渠道缩为一行小字、标题独占整行;sm+ 回到原型四列
-                  (sm:contents 让包裹层退场,子元素直接落格) */}
-              <span className="flex items-center gap-2 sm:contents">
-                <span
-                  className={`flex-none font-mono text-xs ${fresh ? "text-green-hi" : "text-text-3"}`}
-                >
-                  {hhmm(t.publishedAt)}
-                </span>
-                <span className="max-w-[140px] truncate rounded-sm bg-panel-2 px-1.5 py-px text-center text-[11px] text-text-2">
-                  {t.sourceName}
-                </span>
+              {/* 文字行首列时间双断点常显;渠道章 sm+ 落 164px 元信息列,
+                  窄屏并入标题区首行(2026-10-05 反馈:窄屏定宽列挤压标题不可读) */}
+              <BandTime fresh={fresh} text={hhmm(t.publishedAt)} always />
+              <span className="hidden min-w-0 flex-col items-start sm:flex">
+                <BandChip label={t.sourceName} />
               </span>
-              <span className="mt-1 flex min-w-0 flex-col sm:mt-0">
+              <span className="flex min-w-0 flex-col">
+                <span className="mb-1 sm:hidden">
+                  <BandChip label={t.sourceName} />
+                </span>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 truncate text-[13px] leading-normal text-text-1">
                     {t.title}
@@ -265,16 +317,9 @@ export default function TelegramBand({
                   </span>
                 )}
               </span>
-              <span
-                className={`hidden flex-none justify-self-end font-mono text-[11px] sm:block ${
-                  fresh ? "text-green-hi" : "text-text-3"
-                }`}
-              >
-                {fresh ? "NEW · " : ""}
-                {timeAgo(t.publishedAt, now)}
-              </span>
+              <BandAgo fresh={fresh} text={ago} />
             </a>
-            {points.length > 0 && <BandPoints points={points} indent="sm:pl-[206px]" />}
+            <BandPoints points={points} />
           </div>
         );
       })}
