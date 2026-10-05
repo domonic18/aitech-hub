@@ -9,7 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const siteTitle = await getSiteTitle();
   return {
     title: "关于",
-    description: `${siteTitle}:domonic18 的个人品牌技术站。第一人称、可复现、可问责的 AI 工程实战记录,与 GitHub 开源联动。`,
+    description: `${siteTitle}:专注于 AI 领域的信息 Hub——追踪 AI 资讯,沉淀可复现的教程与开源项目示例,连接人与工具。`,
     alternates: { canonical: "/about/" },
   };
 }
@@ -44,15 +44,16 @@ export default async function AboutPage(): Promise<React.ReactElement> {
   );
 }
 
-/** 内置默认文案(与原硬编码版内容一致;后台配置为空时回退) */
-const DEFAULT_ABOUT_MD = `这里是 **domonic18** 的个人技术站「一起AI」。内容主线只有一条:**一个人指挥智能体军团的公开实战档案**——以第一人称记录 AI 工程中的真实做法,可复现、含失败案例,每篇文章尽量附带可以直接跑起来的资产(CLAUDE.md 模板、skills、MCP 配置、工作流仓库)。
+/** 内置默认文案(2026-10-05 润色稿,站长逐字确认;后台配置为空时回退) */
+const DEFAULT_ABOUT_MD = `这里是 **一起AI(17aitech.com)**——一个专注于 AI 领域的信息 Hub:追踪快速变化的 AI 资讯,沉淀可复现的教程与开源项目示例,连接人与工具。
 
-与内容联动的开源项目都在 GitHub:[github.com/domonic18](https://github.com/domonic18)——文章教用法,仓库给武器。
+站长 domonic18 以第一人称记录 AI 工程的真实实践,原创文章是本站的核心内容之一;电报流实时汇集全网 AI 动态,GitHub 项目与文章互相联动——文章教用法,仓库给武器。
 
 本站同时为智能体而写:全站提供 [llms.txt](/llms.txt) 结构化目录,每篇文章均可在地址后加 \`.md\` 获取 Markdown 原文,欢迎 AI 助手与爬虫引用。
 
-站点由 WordPress 重写为 Next.js 全栈单体,旧文章、旧用户与全部旧 URL 已完整迁移承接;浏览量为历史数据与新访问的累计值。
+站点由 WordPress 重写为 Next.js 全栈单体,旧文章与全部旧 URL 已完整迁移承接。
 
 - [全部文章](/articles/):AI 工程实战原创内容
-- [归档](/archive/):按时间线浏览
+- [电报流](/telegram/):实时 AI 资讯
+- [全部项目](/projects/):配套开源仓库
 - [用户协议](/agreement/) 与 [隐私政策](/privacy/)`;

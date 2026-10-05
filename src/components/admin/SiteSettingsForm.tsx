@@ -43,6 +43,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
   const [siteTitle, setSiteTitle] = useState(initial.siteTitle);
   const [heroMd, setHeroMd] = useState(initial.heroMd);
   const [aboutMd, setAboutMd] = useState(initial.aboutMd);
+  const [icp, setIcp] = useState(initial.icp);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
           siteTitle,
           heroMd,
           aboutMd,
+          icp,
         }),
       });
       const body = (await res.json()) as ApiEnvelope;
@@ -142,6 +144,19 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
             value={siteTitle}
             onChange={(e) => setSiteTitle(e.target.value)}
             aria-label="站点标题"
+            className={`mt-1 ${inputField} w-full sm:w-64`}
+          />
+        </Field>
+        <Field
+          label="ICP 备案号(留空不展示;作用于页脚,链工信部备案系统)"
+          hint="如「京ICP备2022035466号-2」,保存后页脚出现指向 beian.miit.gov.cn 的备案链接。"
+        >
+          <input
+            type="text"
+            value={icp}
+            onChange={(e) => setIcp(e.target.value)}
+            aria-label="ICP 备案号"
+            maxLength={60}
             className={`mt-1 ${inputField} w-full sm:w-64`}
           />
         </Field>

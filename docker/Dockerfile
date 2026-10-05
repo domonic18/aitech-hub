@@ -16,6 +16,12 @@ RUN apt-get update -y \
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build \
     REDIS_URL=redis://localhost:6379 \
     AUTH_SECRET=build-time-placeholder-0123456789abcdef
+# 构建信息注入(CI build-args 传入;.dockerignore 已排除 .git,容器内无法 git describe):
+# NEXT_PUBLIC_ 前缀构建期内联进客户端 bundle,Footer 展示版本追踪行
+ARG BUILD_REF=""
+ARG BUILD_TIME=""
+ENV NEXT_PUBLIC_BUILD_REF=$BUILD_REF \
+    NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate \

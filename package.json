@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3000",
-    "build": "next build",
+    "build": "sh scripts/build-with-info.sh",
     "start": "next start -p 3000",
     "worker": "tsx --env-file=.env worker/index.ts",
     "worker:build": "tsc -p tsconfig.worker.json && tsc-alias -p tsconfig.worker.json",

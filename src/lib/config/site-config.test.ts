@@ -102,6 +102,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       { key: SITE_CONFIG_KEYS.siteTitle, value: "17AI" },
       { key: SITE_CONFIG_KEYS.heroMd, value: "# 配置文案" },
       { key: SITE_CONFIG_KEYS.aboutMd, value: "# 自定义关于" },
+      { key: SITE_CONFIG_KEYS.icp, value: " 京ICP备2022035466号-2 " },
     ]);
     expect(await getSiteSettings()).toEqual({
       bandItemCount: 20,
@@ -110,6 +111,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       siteTitle: "17AI",
       heroMd: "# 配置文案",
       aboutMd: "# 自定义关于",
+      icp: "京ICP备2022035466号-2",
     });
     prismaMock.siteConfig.findMany.mockResolvedValueOnce([]);
     expect(await getSiteSettings()).toEqual({
@@ -119,6 +121,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       siteTitle: DEFAULT_SITE_TITLE,
       heroMd: "",
       aboutMd: "",
+      icp: "",
     });
   });
 });
@@ -126,7 +129,13 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
 describe("setSiteConfig(M12 多键 partial)", () => {
   it("合法 partial → 事务 upsert 落字符串;siteTitle 由 Zod trim", async () => {
     prismaMock.$transaction.mockResolvedValueOnce([]);
-    await setSiteConfig({ repoCount: 4, siteTitle: " 我的站 ", heroMd: "# hi", aboutMd: "# 关于" });
+    await setSiteConfig({
+      repoCount: 4,
+      siteTitle: " 我的站 ",
+      heroMd: "# hi",
+      aboutMd: "# 关于",
+      icp: " 京ICP备2022035466号-2 ",
+    });
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     const ops = prismaMock.siteConfig.upsert.mock.calls.map(
       (call) => call[0] as { where: { key: string }; create: { key: string; value: string } },
@@ -136,7 +145,8 @@ describe("setSiteConfig(M12 多键 partial)", () => {
     expect(byKey.get(SITE_CONFIG_KEYS.siteTitle)).toBe("我的站");
     expect(byKey.get(SITE_CONFIG_KEYS.heroMd)).toBe("# hi");
     expect(byKey.get(SITE_CONFIG_KEYS.aboutMd)).toBe("# 关于");
-    expect(ops).toHaveLength(4);
+    expect(byKey.get(SITE_CONFIG_KEYS.icp)).toBe("京ICP备2022035466号-2");
+    expect(ops).toHaveLength(5);
   });
 
   it("越界/空标题/超长文案 → Zod 拒绝且不落库;空对象 → 零写入", async () => {
@@ -146,6 +156,7 @@ describe("setSiteConfig(M12 多键 partial)", () => {
     await expect(setSiteConfig({ siteTitle: "   " })).rejects.toThrow();
     await expect(setSiteConfig({ heroMd: "x".repeat(2001) })).rejects.toThrow();
     await expect(setSiteConfig({ aboutMd: "x".repeat(8001) })).rejects.toThrow();
+    await expect(setSiteConfig({ icp: "x".repeat(61) })).rejects.toThrow();
     await setSiteConfig({});
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });

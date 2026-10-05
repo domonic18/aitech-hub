@@ -25,6 +25,7 @@ export const SITE_CONFIG_KEYS = {
   siteTitle: "site.title",
   heroMd: "home.hero_md",
   aboutMd: "about.content",
+  icp: "site.icp",
 } as const;
 
 /** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退) */
@@ -41,6 +42,8 @@ export const HERO_MD_MAX = 2000;
 /** 关于页内容 markdown 上限(空值回退内置默认文案,与 hero_md 同兜底模式) */
 export const ABOUT_MD_MAX = 8000;
 const SITE_TITLE_MAX = 50;
+/** ICP 备案号上限(空 = 不展示;页脚链工信部备案系统) */
+export const ICP_MAX = 60;
 
 // ── 读侧 ──────────────────────────────────────────────────────
 
@@ -91,6 +94,11 @@ export async function getSiteTitle(): Promise<string> {
   return t ? t : DEFAULT_SITE_TITLE;
 }
 
+/** ICP 备案号(空/缺省 → 空串,页脚不渲染备案行) */
+export async function getSiteIcp(): Promise<string> {
+  return ((await readConfigValue(SITE_CONFIG_KEYS.icp)) ?? "").trim();
+}
+
 /** hub 主文案 markdown(空/缺省 → 空串,前台回退内置文案) */
 export async function getHeroMd(): Promise<string> {
   return ((await readConfigValue(SITE_CONFIG_KEYS.heroMd)) ?? "").trim();
@@ -104,6 +112,7 @@ export interface SiteSettings {
   siteTitle: string;
   heroMd: string;
   aboutMd: string;
+  icp: string;
 }
 
 export async function getSiteSettings(): Promise<SiteSettings> {
@@ -116,6 +125,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       siteTitle: DEFAULT_SITE_TITLE,
       heroMd: "",
       aboutMd: "",
+      icp: "",
     },
     async () => {
       const rows = await prisma.siteConfig.findMany({
@@ -142,6 +152,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
         siteTitle: byKey.get(SITE_CONFIG_KEYS.siteTitle)?.trim() || DEFAULT_SITE_TITLE,
         heroMd: (byKey.get(SITE_CONFIG_KEYS.heroMd) ?? "").trim(),
         aboutMd: (byKey.get(SITE_CONFIG_KEYS.aboutMd) ?? "").trim(),
+        icp: (byKey.get(SITE_CONFIG_KEYS.icp) ?? "").trim(),
       };
     },
   );
@@ -157,6 +168,7 @@ export const SiteConfigUpdateSchema = z.object({
   siteTitle: z.string().trim().min(1).max(SITE_TITLE_MAX).optional(),
   heroMd: z.string().max(HERO_MD_MAX).optional(),
   aboutMd: z.string().max(ABOUT_MD_MAX).optional(),
+  icp: z.string().trim().max(ICP_MAX).optional(),
 });
 
 export type SiteConfigUpdateInput = z.infer<typeof SiteConfigUpdateSchema>;
@@ -182,6 +194,9 @@ export async function setSiteConfig(input: SiteConfigUpdateInput): Promise<void>
   }
   if (data.aboutMd !== undefined) {
     rows.push({ key: SITE_CONFIG_KEYS.aboutMd, value: data.aboutMd });
+  }
+  if (data.icp !== undefined) {
+    rows.push({ key: SITE_CONFIG_KEYS.icp, value: data.icp });
   }
   if (rows.length === 0) return;
   await prisma.$transaction(

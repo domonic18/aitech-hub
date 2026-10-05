@@ -96,6 +96,7 @@ jobs:
           {
             echo "sha_short=$(git rev-parse --short HEAD)"
             echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+            echo "build_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v4
       # id + 重试条件:登录失败属配置错误,不进重试(避免白建镜像且盖住真错;2026-10-02 首跑实测教训)
@@ -122,6 +123,9 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+          build-args: |
+            BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build and Push / 构建并推送(重试)
@@ -136,6 +140,9 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+          build-args: |
+            BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
