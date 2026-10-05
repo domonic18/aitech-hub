@@ -204,16 +204,15 @@ export default function ChannelDialog({
             </label>
           </div>
           <div className="mt-3 flex items-center gap-4 text-xs">
-            {editing && (
-              <label className="flex items-center gap-1.5 text-text-2">
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={(e) => setEnabled(e.target.checked)}
-                />
-                启用调度
-              </label>
-            )}
+            {/* 启用开关新建/编辑都渲染(2026-10-06 验收反馈问题3,原型「保存后立即启用并首采」) */}
+            <label className="flex items-center gap-1.5 text-text-2">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              {editing ? "启用调度" : "保存后立即启用并首采"}
+            </label>
             {editing && channel.credentialMask !== "" && (
               <label className="flex items-center gap-1.5 text-text-2">
                 <input

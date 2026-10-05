@@ -5,6 +5,7 @@
  */
 import ChannelDialog from "@/components/admin/ChannelDialog";
 import ChannelRowOps from "@/components/admin/ChannelRowOps";
+import StatusSwitch from "@/components/admin/StatusSwitch";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { CRAWL_SOURCE_STATUS_ERROR, CRAWL_SOURCE_STATUS_HEALTHY } from "@/lib/telegram/constants";
@@ -41,6 +42,8 @@ function StatusBadge({ status, fails }: { status: string; fails: number }) {
 export default async function AdminChannelsPage(): Promise<React.ReactElement> {
   await requireAdminPage();
   const items = await listChannelsAdmin();
+  const enabledCount = items.filter((c) => c.enabled).length;
+  const total24h = items.reduce((sum, c) => sum + c.count24h, 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -49,6 +52,9 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
           <h2 className="text-base font-semibold">渠道配置</h2>
           <p className="mt-0.5 text-xs text-text-3">
             采集渠道台账:端点/频率/凭证/健康度。凭证存 config 不入环境变量,展示一律脱敏。
+          </p>
+          <p className="mt-1 font-mono text-[11px] text-text-3">
+            {items.length} 个渠道 · {enabledCount} 启用 · 24h 共入流 {total24h} 条
           </p>
         </div>
         <ChannelDialog label="新增渠道" />
@@ -62,9 +68,11 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
               <th className="px-3 py-2.5 font-medium">类型</th>
               <th className="px-3 py-2.5 font-medium">端点</th>
               <th className="px-3 py-2.5 font-medium">频率</th>
+              <th className="px-3 py-2.5 font-medium">启用</th>
               <th className="px-3 py-2.5 font-medium">凭证</th>
               <th className="px-3 py-2.5 font-medium">健康</th>
               <th className="px-3 py-2.5 font-medium">调度</th>
+              <th className="px-3 py-2.5 text-right font-medium">24h 条数</th>
               <th className="px-4 py-2.5 text-right font-medium">操作</th>
             </tr>
           </thead>
@@ -97,19 +105,27 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
                   {c.crawlIntervalMin}min
                   <div className="text-text-3">日≤{c.dailyMaxRequests ?? "∞"}</div>
                 </td>
+                <td className="px-3 py-2.5">
+                  <StatusSwitch
+                    endpoint={`/api/channels/${c.id}/status`}
+                    enabled={c.enabled}
+                    name={c.name}
+                    disableHint={`确认停用「${c.name}」?停用后调度器不再派发采集任务。`}
+                  />
+                </td>
                 <td className="px-3 py-2.5 font-mono text-[11px] text-text-2">
                   {c.maskedConfig?.token ?? "—"}
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusBadge status={c.status} fails={c.consecutiveFails} />
-                  {!c.enabled && (
-                    <div className="mt-0.5 font-mono text-[10px] text-text-3">已停用</div>
-                  )}
                 </td>
                 <td className="px-3 py-2.5 text-[11px] leading-relaxed text-text-3">
                   上轮 {c.lastRunAt ? formatCnDateTime(c.lastRunAt) : "—"}
                   <br />
                   下轮 {c.enabled && c.nextRunAt ? formatCnDateTime(c.nextRunAt) : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] text-text-2">
+                  {c.count24h}
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   <ChannelRowOps
@@ -131,7 +147,7 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-xs text-text-3">
+                <td colSpan={10} className="px-4 py-10 text-center text-xs text-text-3">
                   还没有渠道,点右上角「新增渠道」接入第一批
                 </td>
               </tr>
@@ -144,7 +160,7 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
         说明:调度器每分钟扫描到期渠道逐源入队(单源失败隔离);每日上限超限跳过不计失败; 供应方 429
         限频同样不污染健康度。凭证仅在编辑弹窗写入(留空沿用,勾选清除),
         服务端日志不落凭证值。API:GET/POST /api/channels · PUT /api/channels/[id] · PUT
-        /api/channels/[id]/status · POST /api/channels/[id]/crawl。
+        /api/channels/[id]/status · POST /api/channels/[id]/crawl|debug。
       </p>
     </div>
   );
