@@ -49,7 +49,7 @@
 
 - **引用**:`<svg class="ic" aria-hidden="true"><use href="#i-xxx"/></svg>`;尺寸类:`.ic` 14px(默认)/ `.ic-sm` 12px / `.ic-lg` 18px,`vertical-align` 已在 common.css 校准,禁止内联再调。
 - **命名**:`i-` + antd 原名小写连字(如 `i-checkcircle`、`i-clouddownload`)。已知易错名:下载是 `i-clouddownload` 不是 i-download;播放是 `i-play-square`;没有 i-clockcircle / i-customer。
-- **语义映射**(常用):主题=i-moon/i-sun;搜索=i-search;外链=i-export;视频=i-play-circle/i-videocamera;浏览=i-eye;评论=i-message;AI=i-robot/i-api;采集=i-cloud-download;渠道=i-apartment;博主=i-team;模型=i-database;用量=i-pie-chart;会话=i-comment;密钥=i-key;错误=i-fire/i-warning;成功=i-check-circle。
+- **语义映射**(常用):主题=i-moon/i-sun;搜索=i-search;外链=i-export;视频=i-play-circle/i-videocamera;浏览=i-eye;评论=i-message;AI=i-robot/i-api;采集=i-cloud-download;渠道=i-apartment;博主=i-team;模型=i-database;用量=i-piechart;会话=i-comment;密钥=i-key;错误=i-fire/i-warning;成功=i-check-circle。
 - **新增图标步骤**:从范本仓 `~/Code/ai_proj_agent/ai-invest-assisstant/web/node_modules/@ant-design/icons-svg/es/asn/<Name>.js` 复制 path → 追加 symbol → 同步 iconsprite 注释清单 → 截图验证。禁止手绘 path、禁止混用其他图标体系。
 - **emoji 禁令**:UI 全域不得出现 emoji(包括表格、按钮、KPI、说明文字)。**保留字符白名单**(prose 箭头 / 终端 / 几何符号,属字体不算 emoji):`→ ← ↔ › ▸ ▾ ▲ ▼ ➜ > $ ⏎ ¥`。审查用全 Unicode emoji 区段正则扫 `\p{Emoji}` 并对照白名单。
 - 默认头像一律 SVG 矢量(圆形 `--accent-dim` 底 + 人形剪影 symbol `#i-user` 或专用 `#avatar-default`);`assets/avatar.jpg` 仅允许在 admin-media 作为「媒体素材」语义出现。UI 位禁止位图头像与 onerror 兜底图。
@@ -59,7 +59,7 @@
 - **主题胶囊**:44×24 分段控件,左月右日两个 SVG 图标,滑块 200ms 滑动;`aria-pressed` + `title`;状态存 `localStorage("proto-theme")`(站点实现为 `ah-theme`),优先级:显式选择 > 系统偏好 > 亮色;无显式选择时实时跟随系统变化。全站唯一实现(在 common.css),禁止页内自造变体。
 - **Logo(品牌「一起AI」,2026-10-02 定稿)**:17 monogram 芯片(圆角方块 `var(--accent)` 底 + mono 粗体「17」白字 + `--glow` 光)+ 名称「一起AI」+ 弱色 mono tld(前台 `17aitech.com`、admin `admin`);尺寸三档 26/22/32px(footer 24px),全站唯一形态(site header / admin sb-logo / index head),规格见 common.css §Logo;静态无闪烁,闪烁 caret 只允许出现在控制台输入框(site-home/site-search:原生 `caret-color: var(--accent)` + 镜像 ▍ 随输入移动)。站点口号:**一起,看懂 AI**。
 - **站点 header**(唯一形态):左 logo;右 nav `首页 / 电报流 / 文章` + 搜索图标按钮 + 主题胶囊 + 头像下拉(SVG 头像 + caret;菜单:个人设置 → account.html、退出登录 → login.html;点外关闭 + Esc)。**归档/关于不放 header**,固定在 footer。
-- **admin 侧栏 v2**(唯一形态,17 项,消除漂移):`OVERVIEW 站点统计 / 内容管理 文章管理·媒体库·电报流治理(二期) / 采集 采集总览(二期)·渠道配置(二期)·博主管理(二期) / AI 服务 模型配置(二期)·用量统计(二期)·会话管理(二期) / 用户 用户管理 / 系统 PAT 令牌`;底部 sb-foot「返回前台站点」。图标全 SVG,禁「站点设置」等占位项。
+- **admin 侧栏 v2**(唯一形态,消除漂移;M8-M14 陆续点亮,现状以 `AdminSidebar.tsx` 为准):`OVERVIEW 站点统计·站点设置 / 内容管理 文章管理·媒体库·电报流治理 / 采集 采集总览·渠道配置·博主管理·GitHub 仓库 / AI 服务 模型配置·用量统计·会话管理(二期) / 用户 用户管理 / 系统 PAT 令牌`;底部 sb-foot「返回前台站点」。图标全 SVG,禁占位项。
 - 可交互元素最低要求:hover 态、`cursor:pointer`、下拉/弹窗支持点外关闭与 Esc;`alert()` 允许作为原型演示动作(标注真实交互由开发实现)。
 
 ## 6. 组件规范(后台组件形态照抄范本 antd,前台自绘终端风)

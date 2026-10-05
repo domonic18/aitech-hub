@@ -11,7 +11,8 @@ import sharp from "sharp";
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
  * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)/GitHub 项目展示三件套(M11)/
- * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)。
+ * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)/
+ * 用量统计看板与牌价·封面工作流冒烟(M14)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -786,14 +787,11 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     });
     expect(bf.status()).toBe(409); // 播种平台行停用 → disabled,零 worker 依赖
 
-    // 两步武装删除·UI 侧:启用中删除被客户端守卫拦(alert,不发请求,行仍在)
-    const alertPromise = page.waitForEvent("dialog").then((d) => {
-      const msg = d.message();
-      void d.accept();
-      return msg;
-    });
-    await row.getByRole("button", { name: "删除" }).click();
-    expect(await alertPromise).toContain("先停用再删除");
+    // 两步武装删除·UI 侧(批③原型口径):启停移交「启用」列 StatusSwitch,
+    // 启用中删除钮直接 disabled(旧 alert 客户端守卫退役),行仍在
+    const delBtn = row.getByRole("button", { name: "删除" });
+    await expect(delBtn).toBeDisabled();
+    await expect(delBtn).toHaveAttribute("title", "两步武装删除:先停用,再物理删除");
     await expect(row).toBeVisible();
     // 两步武装删除·服务端同判:session DELETE 直打启用中博主 → 409
     // (mutation 有 Origin 关:page.request 不自动带,须显式补同源 Origin,同 4.3b 注)
@@ -802,15 +800,18 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     });
     expect(del.status()).toBe(409);
 
-    // 停用(confirm)→ 行刷新出「启用」;启用态专属按钮(立即采集/回填)随之隐藏
+    // 停用(confirm 走 StatusSwitch disableHint)→ 开关翻 off;启用态专属按钮
+    // (立即采集/回填)随之隐藏,删除钮解禁
+    const sw = row.getByRole("switch", { name: `${NICK} 启用开关` });
     page.once("dialog", (d) => d.accept());
-    await row.getByRole("button", { name: "停用" }).click();
-    await expect(row.getByRole("button", { name: "启用" })).toBeVisible({ timeout: 10_000 });
+    await sw.click();
+    await expect(sw).toHaveAttribute("aria-checked", "false", { timeout: 10_000 });
     await expect(row.getByRole("button", { name: "回填" })).toBeHidden();
     await expect(row.getByRole("button", { name: "立即采集" })).toBeHidden();
     // 删除(confirm)→ 物理删,行消失
+    await expect(delBtn).toBeEnabled();
     page.once("dialog", (d) => d.accept());
-    await row.getByRole("button", { name: "删除" }).click();
+    await delBtn.click();
     await expect(row).toBeHidden({ timeout: 10_000 });
     expect(await prisma.socialAccount.count({ where: { secUid: SEC_UID } })).toBe(0);
     // 博主删除不影响已入库视频条目(video_blogger 冗余隔离,arch/02 §3.2)
@@ -1118,10 +1119,11 @@ test("16. 主题三段式(M10 批①:系统跟随/实时变化/显式选择优�
   await ctx.close();
 });
 
-test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/offset 翻页/到底提示)", async ({
+test("17. 首页带条数可配置(2026-10-05 统筹改版对齐:site_config/设置页/带内固定一页/保底视频)", async ({
   page,
 }) => {
-  // 自播种:独立渠道 + 15 条可见文字电报(> 默认 12;publishedAt 逐分钟递减保证确定性排序)
+  // 自播种:独立渠道 + 15 条可见文字电报(> 默认 12;publishedAt 逐分钟递减保证确定性排序;
+  // 带内已改固定一页,15 条只为验证「只取前 N、不随滚动增长」)
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-band-source" },
     update: {},
@@ -1145,14 +1147,15 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
     })),
   });
-  // 视频行(最旧 → 首屏 3 行仍为文字,滚到底随末页载入):验证带内视频行原型结构
+  // 视频行(最新 +1min → 必赢全库保底槽位;共享库里有真实爬取视频,
+  // 种子必须比它们新,否则保底槽被真实视频占据,计数断言随数据漂移):
   await prisma.telegram.create({
     data: {
       sourceId: source.id,
       title: "e2e-band-video",
       summary: "e2e 带视频条目",
       url: "https://e2e.invalid/bandv/1",
-      publishedAt: new Date(Date.now() - 16 * 60_000), // 比 15 条文字都旧,不搅动计数断言
+      publishedAt: new Date(Date.now() + 60_000),
       contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
       mediaType: "video",
       videoPlatform: "douyin",
@@ -1171,7 +1174,8 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
   });
   // 记住原配置(行缺=null)测后还原
   const original = await prisma.siteConfig.findUnique({ where: { key: "band.item_count" } });
-  const rows = page.locator("a[href^='https://e2e.invalid/band/']");
+  // 无尾斜杠:视频行 URL bandv/1 同属 band 前缀,计数含保底视频槽
+  const rows = page.locator("a[href^='https://e2e.invalid/band']");
 
   try {
     // admin 登录 → 设置页:初值=默认 12,改成 3 保存
@@ -1188,8 +1192,7 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
     await expect(page.getByText("已保存,首页即时再生")).toBeVisible();
 
     // 落库 + GET API 回读;revalidatePath 后首页 SSR 立即 3 行。
-    // 首屏计数用 evaluate 原子快照:带矮时哨兵在水合后立即自动连页加载,
-    // toHaveCount 轮询会与加载赛跑(视频保底槽位还会替换首屏末位,文字行可为 2)
+    // 首屏计数用 evaluate 原子快照(视频保底槽位会替换首屏末位,文字行可为 2)
     expect(
       (await prisma.siteConfig.findUniqueOrThrow({ where: { key: "band.item_count" } })).value,
     ).toBe("3");
@@ -1202,23 +1205,21 @@ test("17. 首页带可配置 + 滚动加载(M10 批②:site_config/设置页/off
       ),
     ).toBe(3);
 
-    // 下滚:哨兵自动追加载至 15 条 + 到底提示(offset 分页 + id 去重;
-    // 上限 24 = 6 轮分页富余:保底视频占首屏一槽,文字行到位需多一轮)
-    for (let i = 0; i < 24 && (await rows.count()) < 15; i++) {
-      await page.mouse.wheel(0, 1200);
-      await page.waitForTimeout(250);
-    }
-    await expect(rows).toHaveCount(15);
-    // 到底判定:补一滚让哨兵再触发 offset=15 的空页(< count 判定到底)
+    // 带内固定一页(2026-10-05 统筹改版:下滚自动加载已移除):滚动不增长,
+    // 完整流与历史翻页走「进入电报流 →」;保底视频占一槽
     await page.mouse.wheel(0, 2000);
-    await expect(page.getByText("— 已加载全部 —")).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(400);
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByText("— 已加载全部 —")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "进入电报流 →" })).toBeVisible();
 
     // 视频行结构(M10 批③ 带内原型重排):54×95 封面 + 平台章/博主 + 时长条 + AI 概括行
     const vRow = page.locator("a[href='https://e2e.invalid/bandv/1']");
     await expect(vRow).toBeVisible();
     await expect(vRow.locator("img")).toBeVisible();
-    await expect(vRow.getByText("抖音", { exact: true })).toBeVisible();
-    await expect(vRow.getByText("@e2e 带博主")).toBeVisible();
+    // 平台章/博主有 sm+ 与窄屏两份响应式副本,取首份断言
+    await expect(vRow.getByText("抖音", { exact: true }).first()).toBeVisible();
+    await expect(vRow.getByText("@e2e 带博主").first()).toBeVisible();
     await expect(vRow.getByText("1:31")).toBeVisible();
     // 批⑤:band 视频行 AI 行直出 summary(topic 恒泛化词不再上带)
     await expect(vRow.getByText(/AI 解读 · e2e 带视频 AI 摘要/)).toBeVisible();
@@ -1545,14 +1546,15 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     await expect(page.getByText(`e2e-rail/${SLUG_B}`)).toHaveCount(0);
     await expect(page.locator("a[href^='/post/']")).toHaveCount(2);
 
-    // band 文字 AI 行:已解读 → 「AI · 中心思想 + #关键词(蓝系)」;未解读对照 → 无 AI 行
+    // band 文字 AI 行:已解读 → 「AI 解读 · 中心思想 + #关键词(蓝系)」;未解读对照 → 无 AI 行
+    // (2026-10-05 统筹改版:标识统一「AI 解读」,与视频行/电报流页同款)
     const readRow = page.locator(`a[href='${AI_ROW_READ}']`);
     await expect(readRow).toBeVisible();
-    await expect(readRow.getByText(/AI · e2e 中心思想一句话/)).toBeVisible();
+    await expect(readRow.getByText(/AI 解读 · e2e 中心思想一句话/)).toBeVisible();
     await expect(readRow.getByText("#关键词甲")).toBeVisible();
     const rawRow = page.locator(`a[href='${AI_ROW_RAW}']`);
     await expect(rawRow).toBeVisible();
-    await expect(rawRow.getByText(/AI · /)).toHaveCount(0);
+    await expect(rawRow.getByText(/AI 解读 · /)).toHaveCount(0);
 
     // 公开 API 投影(批⑥ 契约):要点/关键词双列;未解读行 ai null
     const pub = await request.get("/api/telegram/public/?limit=50");
@@ -1712,4 +1714,170 @@ test("20. M13 移动端走查:壳层抽屉/表格横滚/弹层不溢出/设置�
   expect(editorBox).not.toBeNull();
   expect(metaBox).not.toBeNull();
   expect(metaBox!.y).toBeGreaterThan(editorBox!.y + editorBox!.height);
+});
+
+test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/90 天清理)+ 牌价配置 + 封面工作流冒烟", async ({
+  page,
+}) => {
+  const MODEL_KEY = "e2e-usage-llm";
+  const ASR_KEY = "e2e-usage-asr";
+  // 自播种:带牌价模型(¥2 in / ¥8 out / ¥0.5 每张)+ 用量四行(LLM/ASR ok/ASR 降级/生图)
+  // 期望账目:tokens 2.0M;费用 ¥7.00(LLM) + ¥5.00(ASR 0.5h×¥10) + ¥0.50(生图) = ¥12.50
+  await prisma.aiUsageLog.deleteMany({ where: { modelKey: { startsWith: "e2e-usage" } } });
+  await prisma.aiModel.deleteMany({ where: { modelId: MODEL_KEY } });
+  const model = await prisma.aiModel.create({
+    data: {
+      name: "e2e-用量模型",
+      provider: "DeepSeek",
+      protocol: "openai",
+      baseUrl: "https://e2e.invalid/v1",
+      modelId: MODEL_KEY,
+      purposes: ["summarize", "cover"],
+      priceIn: 2,
+      priceOut: 8,
+      pricePerImage: 0.5,
+    },
+  });
+  // ASR 单例牌价暂改(页脚口径:读时现折);记原值 finally 还原
+  const asrBefore = await prisma.asrConfig.findUnique({ where: { id: 1 } });
+  await prisma.asrConfig.upsert({
+    where: { id: 1 },
+    update: { pricePerHour: 10 },
+    create: { id: 1, provider: "e2e", protocol: "openai", modelId: "e2e-asr", pricePerHour: 10 },
+  });
+  await prisma.aiUsageLog.createMany({
+    data: [
+      {
+        role: "interpret",
+        modelId: model.id,
+        modelKey: MODEL_KEY,
+        tokensIn: 1_500_000,
+        tokensOut: 500_000,
+        durationMs: 800,
+      },
+      { role: "asr", modelKey: ASR_KEY, audioSeconds: 1800, durationMs: 5000 },
+      { role: "asr", modelKey: ASR_KEY, audioSeconds: 60, status: "degraded" },
+      { role: "cover", modelId: model.id, modelKey: MODEL_KEY, durationMs: 12_000 },
+    ],
+  });
+  // 91 天前的旧行:90 天保留期手动清理的靶子
+  await prisma.aiUsageLog.create({
+    data: {
+      role: "summarize",
+      modelId: model.id,
+      modelKey: MODEL_KEY,
+      tokensIn: 1000,
+      createdAt: new Date(Date.now() - 91 * 86_400_000),
+    },
+  });
+
+  try {
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+
+    // 21.1 侧栏新项进看板(批⑦启用):KPI 四卡 + 趋势 + 双分布 + 明细
+    await page.goto("/admin/");
+    await page.getByRole("link", { name: "用量统计" }).click();
+    await page.waitForURL(/\/admin\/usage/);
+    await expect(page.getByText("Tokens 消耗")).toBeVisible();
+    await expect(page.getByText("2.0M").first()).toBeVisible();
+    await expect(page.getByText("¥12.50").first()).toBeVisible();
+    await expect(page.getByText(/¥5\.00 · 1 个音频/)).toBeVisible(); // ASR KPI:降级行不计个数
+    await expect(page.getByText("ASR 1 · LLM 0")).toBeVisible(); // 降级拆分
+    await expect(page.getByText("日消耗趋势")).toBeVisible();
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+    await expect(page.getByText(today).first()).toBeVisible(); // 趋势 x 轴含今日
+    await expect(page.getByText("按任务分布")).toBeVisible();
+    await expect(page.getByText("按模型分布")).toBeVisible();
+
+    // 明细三行:LLM(2.0M/¥7.00)/ ASR(调用 2 · 费用只算成功行 ¥5.00)/ 生图(¥0.50)
+    const llmRow = page
+      .getByRole("row", { name: new RegExp(MODEL_KEY) })
+      .filter({ hasText: "电报解读" });
+    await expect(llmRow).toContainText("2.0M");
+    await expect(llmRow).toContainText("¥7.00");
+    const asrRow = page.getByRole("row", { name: new RegExp(ASR_KEY) });
+    await expect(asrRow).toContainText("ASR 转写");
+    await expect(asrRow).toContainText("¥5.00");
+    const coverRow = page
+      .getByRole("row", { name: new RegExp(MODEL_KEY) })
+      .filter({ hasText: "封面生图" });
+    await expect(coverRow).toContainText("¥0.50");
+
+    // 21.2 窗口切换(链接分段):days=7 仍含今日行
+    await page.getByRole("link", { name: "近 7 天" }).click();
+    await expect(page).toHaveURL(/days=7/);
+    await expect(page.getByText("Tokens 消耗")).toBeVisible();
+
+    // 21.3 90 天保留期手动清理:旧行被删,窗口内行保留
+    const before = await prisma.aiUsageLog.count({
+      where: { modelKey: { startsWith: "e2e-usage" } },
+    });
+    expect(before).toBe(5);
+    const purge = await page.request.post("/api/usage/purge/", {
+      headers: { origin: originOf(page) },
+    });
+    expect(purge.status()).toBe(200);
+    expect(((await purge.json()) as { code: number }).code).toBe(0);
+    expect(
+      await prisma.aiUsageLog.count({
+        where: { modelKey: MODEL_KEY, createdAt: { lt: new Date(Date.now() - 90 * 86_400_000) } },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.aiUsageLog.count({ where: { modelKey: { startsWith: "e2e-usage" } } }),
+    ).toBe(4);
+
+    // 21.4 牌价配置 UI:模型编辑弹窗回显三牌价;ASR 弹窗回显时价
+    await page.goto("/admin/models/");
+    await page
+      .getByRole("row", { name: /e2e-用量模型/ })
+      .getByRole("button", { name: "编辑" })
+      .click();
+    await expect(page.getByLabel("输入牌价(¥/1M tokens)")).toHaveValue("2");
+    await expect(page.getByLabel("输出牌价(¥/1M tokens)")).toHaveValue("8");
+    await expect(page.getByLabel("生图牌价(¥/张)")).toHaveValue("0.5");
+    await page.getByRole("button", { name: "取消" }).click();
+    await page.getByRole("tab", { name: "ASR 渠道" }).click();
+    await page.getByRole("button", { name: "编辑配置" }).click();
+    await expect(page.getByLabel("牌价(¥/小时音频)")).toHaveValue("10");
+    await page.getByRole("button", { name: "取消" }).last().click();
+
+    // 21.5 封面工作流冒烟(零 LLM/零网络):双源入口 → 本地注入 1×1 PNG 进裁剪
+    // 工作台 → 四模板卡 + AI 行(无标题禁用)。模板卡在选图后才渲染(CoverDialog !source 分支)
+    await page.goto("/admin/posts/new");
+    await page.getByRole("button", { name: /设置封面/ }).click();
+    await expect(page.getByText("本地上传(jpg / png / webp)")).toBeVisible();
+    await expect(page.getByText("从媒体库选图")).toBeVisible();
+    await page.setInputFiles('input[type="file"]', {
+      name: "e2e-cover.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+    await expect(page.getByText("裁剪模板")).toBeVisible();
+    for (const label of ["微信公众号头图", "站内 / OG 卡片", "CSDN / 通用横图", "列表缩略图"]) {
+      await expect(page.getByText(label).first()).toBeVisible();
+    }
+    await expect(page.getByText("AI 文生图")).toBeVisible();
+    await expect(page.getByRole("button", { name: "生成候选" })).toBeDisabled();
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(page.getByText("本地上传(jpg / png / webp)")).toBeHidden();
+  } finally {
+    await prisma.aiUsageLog.deleteMany({ where: { modelKey: { startsWith: "e2e-usage" } } });
+    await prisma.aiModel.deleteMany({ where: { modelId: MODEL_KEY } });
+    if (asrBefore) {
+      await prisma.asrConfig.update({
+        where: { id: 1 },
+        data: { pricePerHour: asrBefore.pricePerHour },
+      });
+    } else {
+      await prisma.asrConfig.deleteMany({ where: { id: 1 } });
+    }
+  }
 });
