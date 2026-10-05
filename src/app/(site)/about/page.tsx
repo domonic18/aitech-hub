@@ -27,6 +27,19 @@ export default async function AboutPage(): Promise<React.ReactElement> {
       <div className="mt-6">
         <ArticleBody contentMd={aboutMd || DEFAULT_ABOUT_MD} contentHtml={null} />
       </div>
+      {/* 微信公众号二维码(品牌资产随镜像分发 public/,不依赖媒体库与配置) */}
+      <figure className="mt-8 flex flex-col items-center gap-2.5 rounded-md border border-line bg-panel p-5">
+        {/* eslint-disable-next-line @next/next/no-img-element -- 本地静态资产,不走 next/image 优化域 */}
+        <img
+          src="/wechat-qrcode.jpg"
+          alt="微信公众号「一起AI」二维码"
+          width={168}
+          height={168}
+          loading="lazy"
+          className="rounded-sm"
+        />
+        <figcaption className="text-xs text-text-3">微信扫码关注公众号「一起AI」</figcaption>
+      </figure>
     </section>
   );
 }
