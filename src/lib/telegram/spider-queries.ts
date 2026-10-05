@@ -16,6 +16,7 @@ import {
   QUEUE_SUMMARIZER,
 } from "../queue";
 import {
+  TELEGRAM_AI_MISSING_TRANSCRIPT,
   TELEGRAM_AI_TERMINAL,
   TELEGRAM_MEDIA_TEXT,
   TELEGRAM_MEDIA_VIDEO,
@@ -126,6 +127,48 @@ function todayStart(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+export interface AsrOverview {
+  /** 今日完成转写+解读的视频数(终态口径,含降级) */
+  todayDone: number;
+  /** 今日已处理视频时长合计秒(转写时长口径) */
+  todayDurationSec: number;
+  /** interpreter 队列 waiting+active */
+  queueWaiting: number;
+  /** 今日降级数(ASR 终败 missing_transcript,LLM 已实际消耗) */
+  todayDegraded: number;
+}
+
+/** ASR 转写总览(2026-10-06 验收反馈问题4,原型 admin-bloggers「ASR 转写」统计卡):
+ * 今日转写 / 排队中 / 今日降级;服务状态读 asr_config 由页侧另取。 */
+export async function getAsrOverview(): Promise<AsrOverview> {
+  const today = todayStart();
+  const [agg, degraded, interpreter] = await Promise.all([
+    prisma.telegram.aggregate({
+      where: {
+        mediaType: TELEGRAM_MEDIA_VIDEO,
+        aiRanAt: { gte: today },
+        aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
+      },
+      _count: { _all: true },
+      _sum: { videoDuration: true },
+    }),
+    prisma.telegram.count({
+      where: {
+        mediaType: TELEGRAM_MEDIA_VIDEO,
+        aiStatus: TELEGRAM_AI_MISSING_TRANSCRIPT,
+        aiRanAt: { gte: today },
+      },
+    }),
+    getInterpreterQueueSnapshot(),
+  ]);
+  return {
+    todayDone: agg._count._all,
+    todayDurationSec: Number(agg._sum.videoDuration ?? 0),
+    queueWaiting: interpreter.counts.waiting + interpreter.counts.active,
+    todayDegraded: degraded,
+  };
 }
 
 /** 今日已完成 AI 处理数(终态口径单点:观测台与配额判定共用,防两侧口径漂移)。
