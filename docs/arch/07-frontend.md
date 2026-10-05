@@ -6,10 +6,10 @@
 
 | 路由 | 策略 | 说明 |
 |------|------|------|
-| `/`(首页) | ISR 600s | 最新/精选文章 + 电报流 LIVE 带(M7 批⑤:SSR 首屏,岛内 60s 轮询;M10 批②:条数后台可配 `site_config.band.item_count` 默认 12,钳 1..50,滚动到底按服务端 `nextOffset` 游标翻页——保底视频只占展示位不占游标,被替换项由后续页补达;客户端 id 去重防轮询前插与翻页追加打架;保存条数即 `revalidatePath("/", "layout")`) |
+| `/`(首页) | ISR 600s | 最新/精选文章 + 电报流 LIVE 带(M7 批⑤:SSR 首屏,岛内 60s 轮询;M10 批②:条数后台可配 `site_config.band.item_count` 默认 12,钳 1..50,滚动到底按服务端 `nextOffset` 游标翻页——保底视频只占展示位不占游标,被替换项由后续页补达;客户端 id 去重防轮询前插与翻页追加打架;保存条数即 `revalidatePath("/", "layout")`;M12 批②:项目/文章 rail 条数 `home.repo_count` 默认 3、`home.post_count` 默认 5(均钳 1..12)、站名 `site.title` 与 hub 主文案 `home.hero_md`(行内 markdown,空回退内置)同键族后台可配,站名传播 generateMetadata/Header/Footer/feed.xml/llms.txt) |
 | `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath` |
 | `/[slug]`(旧中文链承接) | ISR 600s | 纯 legacy 引擎:查 `legacy_url_map` 命中 → 308,否则 404(不再直接供文) |
-| `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族 |
+| `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族;M12 批①:条目区客户端「列表 ⇄ 封面卡」视图切换(两视图皆服务端渲染、切换纯显隐零二次请求;localStorage `articles-view` 记忆,默认列表——SSR HTML 即列表,SEO/LCP 不受影响;视图记忆是个人偏好不进 URL,可分享的筛选走 /category、/tag 路由)+ /articles 头部 tag 筛选条(chip 链既有 `/tag/<slug>/` 静态路由,零 searchParams 不破 ISR/canonical) |
 | `/projects/`(开源项目列表,M11) | ISR 600s | 白名单展示仓全量卡片(sortOrder→stars),不分页;admin 写侧即时 revalidate,同步新鲜度走本窗口;首页右栏同源 rail 卡(空白名单整卡不渲染) |
 | `/projects/[slug]/`(项目详情,M11) | ISR 600s + 按需 revalidate | slug 是唯一解析键(登记时派生此后冻结;**无 id 锚点,错 slug 直接 404 不做 308 归一**,构造唯一出口 `src/lib/github/project-path.ts`);README 渲染 + 进展动态 + 配套文章;下架(display=false)即 404 |
 | `/search` | 动态 SSR | 每请求查询 |

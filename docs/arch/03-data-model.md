@@ -225,7 +225,7 @@ CREATE TABLE legacy_url_map (
 
 **站点配置与访问明细已落地(2026-10-04 M10 迁移,体验反馈批)**:
 
-- `site_config`(kv 通用底座):`key varchar(50) PK + value varchar(200) + updated_at`;value 一律字符串,消费方自行解析 + clamp(`getBandItemCount` 为首例:缺行/非数值/非正数回落默认,越界钳 1..50);键名合法值应用层 Zod 管控(`SITE_CONFIG_KEYS` 登记,后续设置键在此复用)
+- `site_config`(kv 通用底座):`key varchar(50) PK + value text + updated_at`;value 一律字符串,消费方自行解析 + clamp(键注册表 `SITE_CONFIG_KEYS` + per-key Zod,`src/lib/config/site-config.ts`;缺行/非数值/越界一律回落默认)。**M12 批② value 放宽为 text**(hero_md 存 markdown,varchar(200) 不够)并扩键族:`band.item_count`(默认 12,钳 1..50)/`home.repo_count`(默认 3,钳 1..12)/`home.post_count`(默认 5,钳 1..12)/`site.title`(默认「一起AI」,1..50 字;传播 generateMetadata/Header/Footer/feed.xml/llms.txt)/`home.hero_md`(≤2000 字,空 = 回退内置品牌语)
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 
 ## 3. Prisma 模型约定
