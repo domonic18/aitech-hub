@@ -825,9 +825,10 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await expect(vRow.getByRole("img", { name: MARK_V })).toBeVisible();
     await expect(vRow.getByRole("link", { name: /打开原视频/ })).toBeVisible();
     await expect(vRow.getByText(`抖音 · ${NICK}`)).toBeVisible();
-    // M9:已解读徽章 + 行内「解读」按钮在(不点击——真按会下载/转写入队)
+    // M9:已解读徽章 + 行内解读按钮在(不点击——真按会下载/转写入队);
+    // M12 批⑥:done 行按钮为重生成语义「重解读」
     await expect(vRow.getByText("已解读")).toBeVisible();
-    await expect(vRow.getByRole("button", { name: "解读", exact: true })).toBeVisible();
+    await expect(vRow.getByRole("button", { name: /^(重)?解读$/ })).toBeVisible();
     await page.goto("/admin/telegram/?media=text");
     await expect(page.getByRole("row", { name: new RegExp(MARK_V) })).toHaveCount(0);
 
@@ -895,7 +896,12 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(hit!.video).toMatchObject({ platform: "douyin", blogger: NICK, durationSeconds: 213 });
     expect(hit!.video!.engagement.like).toBe(345);
     // M9:公共 API 投影带 ai 解读结论(白名单三字段)
-    expect(hit!.video!.ai).toEqual({ topic: AI_TOPIC, summary: AI_SUMMARY, points: AI_POINTS });
+    expect(hit!.video!.ai).toEqual({
+      topic: AI_TOPIC,
+      summary: AI_SUMMARY,
+      points: AI_POINTS,
+      keywords: null,
+    });
     const bt = (await (await request.get("/api/telegram/public/?media=text&limit=50")).json()) as {
       data: { items: Array<{ title: string }> };
     };
@@ -1628,4 +1634,82 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
     await prisma.crawlSource.delete({ where: { id: source.id } });
   }
+});
+
+test("20. M13 移动端走查:壳层抽屉/表格横滚/弹层不溢出/设置全宽/编辑器单栏(375×812)", async ({
+  page,
+}) => {
+  const passwordHash = await bcrypt.hash(E2E_ADMIN_PASSWORD, 10);
+  await prisma.userAccount.upsert({
+    where: { phone: E2E_ADMIN_PHONE },
+    update: { role: "admin", status: "active", passwordHash },
+    create: {
+      phone: E2E_ADMIN_PHONE,
+      nickname: "e2e-admin",
+      role: "admin",
+      status: "active",
+      passwordHash,
+    },
+  });
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 20.1 壳层抽屉:窄屏侧栏离屏(-translate-x-full,勿用 toBeHidden——离屏仍"可见");
+  //     hamburger 呼出 → Esc 关 → 重开点导航,路由切换自闭
+  const sidebar = page.locator("aside.border-r");
+  await expect(sidebar).not.toBeInViewport();
+  const menuBtn = page.getByRole("button", { name: "打开菜单" });
+  await menuBtn.click();
+  await expect(sidebar).toBeInViewport();
+  await expect(page.getByRole("button", { name: "关闭菜单" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sidebar).not.toBeInViewport();
+  await menuBtn.click();
+  await expect(sidebar).toBeInViewport();
+  await page.getByRole("link", { name: "电报流治理" }).click();
+  await page.waitForURL(/\/admin\/telegram/);
+  await expect(sidebar).not.toBeInViewport();
+
+  // 20.2 表格横滚:三张代表表(电报/文章/模型最宽表)wrapper scrollWidth > clientWidth
+  for (const path of ["/admin/telegram/", "/admin/posts/", "/admin/models/"]) {
+    await page.goto(path);
+    const wrap = page.locator("div.overflow-x-auto").filter({ has: page.locator("table") });
+    await expect(wrap.first()).toBeVisible();
+    const scrollable = await wrap
+      .first()
+      .evaluate((el) => el.scrollWidth > el.clientWidth && el.clientWidth <= 375);
+    expect(scrollable, `${path} 表格应横向滚动且容器不超视口`).toBe(true);
+  }
+
+  // 20.3 模型新增弹层(DialogShell)不溢出视口:面板右缘 ≤ 375(遮罩 p-4 + w-full 流式)
+  await page.goto("/admin/models/");
+  await page.getByRole("button", { name: "+ 新增模型" }).click();
+  const panel = page.getByRole("heading", { name: "新增模型" }).locator("..");
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(376); // 1px 容差
+  await page.getByRole("button", { name: "取消" }).click();
+  await expect(panel).toBeHidden();
+
+  // 20.4 站点设置:站点标题输入窄屏全宽(w-full sm:w-64)
+  await page.goto("/admin/settings/");
+  const input = page.getByLabel("站点标题");
+  await expect(input).toBeVisible();
+  expect((await input.boundingBox())!.width).toBeGreaterThan(300);
+
+  // 20.5 文章编辑器窄屏降级:ir 单栏模式在(非桌面 sv),元信息面板堆叠于编辑器下方
+  await page.goto("/admin/posts/new");
+  await expect(page.locator(".vditor-ir").first()).toBeVisible();
+  const editorBox = await page.locator(".vditor").first().boundingBox();
+  const metaBox = await page.locator("#post-category").boundingBox();
+  expect(editorBox).not.toBeNull();
+  expect(metaBox).not.toBeNull();
+  expect(metaBox!.y).toBeGreaterThan(editorBox!.y + editorBox!.height);
 });

@@ -85,7 +85,11 @@ export default function TelegramFilterBar({
           博主:{blogger} ✕
         </Link>
       )}
-      <form method="GET" action="/admin/telegram/" className="ml-auto flex items-center gap-2">
+      <form
+        method="GET"
+        action="/admin/telegram/"
+        className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto"
+      >
         {segment !== "all" && <input type="hidden" name="status" value={segment} />}
         {blogger && <input type="hidden" name="blogger" value={blogger} />}
         <select
@@ -132,7 +136,7 @@ export default function TelegramFilterBar({
             name="q"
             defaultValue={q ?? ""}
             placeholder="搜索标题 / 摘要…"
-            className="w-52 bg-transparent text-[13px] outline-none placeholder:text-text-3"
+            className="w-full bg-transparent text-[13px] outline-none placeholder:text-text-3 sm:w-52"
           />
         </div>
       </form>

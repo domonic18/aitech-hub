@@ -127,7 +127,7 @@ export default async function AdminMediaPage({
         <form
           method="GET"
           action="/admin/media/"
-          className="ml-auto flex items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent"
+          className="ml-auto flex w-full items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent sm:w-auto"
         >
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="ref" value={refFilter} />
@@ -138,7 +138,7 @@ export default async function AdminMediaPage({
             name="q"
             defaultValue={q ?? ""}
             placeholder="搜索文件名 / sha1…"
-            className="w-44 bg-transparent text-[13px] outline-none placeholder:text-text-3"
+            className="w-full bg-transparent text-[13px] outline-none placeholder:text-text-3 sm:w-44"
           />
         </form>
       </div>

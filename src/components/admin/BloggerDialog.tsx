@@ -104,7 +104,7 @@ export default function BloggerDialog({
       </button>
       {open && (
         <DialogShell width="lg" scroll title={editing ? "编辑博主" : "登记博主"}>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {!editing && (
               <label className="col-span-2 text-xs text-text-3">
                 主页链接或 sec_uid *

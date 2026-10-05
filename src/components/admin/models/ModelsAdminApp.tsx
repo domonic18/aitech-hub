@@ -44,7 +44,7 @@ export default function ModelsAdminApp({
         </p>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-line">
+      <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-b border-line">
         {TABS.map((t) => (
           <button
             key={t.key}

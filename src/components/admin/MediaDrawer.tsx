@@ -79,7 +79,7 @@ export default function MediaDrawer({
   return (
     <div className="fixed inset-0 z-30 flex justify-end bg-black/40" onClick={onClose}>
       <aside
-        className="h-full w-[420px] overflow-y-auto border-l border-line bg-panel p-5"
+        className="h-full w-full overflow-y-auto border-l border-line bg-panel p-5 sm:w-[420px]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

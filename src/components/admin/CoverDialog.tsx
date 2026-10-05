@@ -162,11 +162,11 @@ export default function CoverDialog({
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[80vh] w-[560px] overflow-y-auto rounded-md border border-line bg-panel p-5"
+        className="max-h-[80vh] w-full max-w-[560px] overflow-y-auto rounded-md border border-line bg-panel p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -234,7 +234,7 @@ export default function CoverDialog({
             <div className="mt-4 text-xs font-medium text-text-2">
               尺寸模板(勾选导出;预览即裁剪效果)
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {COVER_TEMPLATES.map((t) => (
                 <label
                   key={t.key}

@@ -138,7 +138,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
             value={siteTitle}
             onChange={(e) => setSiteTitle(e.target.value)}
             aria-label="站点标题"
-            className={`mt-1 ${inputField} w-64`}
+            className={`mt-1 ${inputField} w-full sm:w-64`}
           />
         </Field>
         <Field

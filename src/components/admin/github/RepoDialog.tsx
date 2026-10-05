@@ -99,7 +99,7 @@ export default function RepoDialog({
       </button>
       {open && (
         <DialogShell title={editing ? "编辑仓库" : "登记仓库"}>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {!editing && (
               <label className="col-span-2 text-xs text-text-3">
                 仓库 owner/name *

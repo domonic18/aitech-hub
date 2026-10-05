@@ -31,7 +31,7 @@
 
 - 内容统一宽 `--site-max-w`(1152px)居中;前台 hero 控制台、电报流带、双栏网格与全局 header 内容**同宽对齐**,禁止某区块单独加宽/收窄。
 - 双栏 Hub 仪表盘:`grid-template-columns: 1fr 360px; gap: 24px`(M5-e 已将布局壳前置至一期:hero + 博主文章区已上线;电报流/GitHub 区按「三区可独立降级」暂不渲染,二期接入)。
-- admin 布局:左侧固定 sidebar(220px)+ 右侧 crumb 头 + 内容卡;页脚一行 `PROTOTYPE v0.x.x · 阶段 · ← 原型索引`。
+- admin 布局:左侧固定 sidebar(220px)+ 右侧 crumb 头 + 内容卡;页脚一行 `PROTOTYPE v0.x.x · 阶段 · ← 原型索引`。窄屏降级(M13):<1024 sidebar 抽屉化——顶栏 hamburger 呼出,遮罩/Esc/路由切换自闭;≥1024 固定常驻原样;z 阶梯 topbar(10)< 侧栏/遮罩(20)< 抽屉类(30)< DialogShell(50)。
 - 字号阶梯克制:页面标题 22-28px,区块标题 14-16px,正文 13-14px,辅助 12px,角标 10-11px;行高 1.5-1.6。数据/路径/端点一律 `--font-mono`。
 - 终端风口吻:前台区块头用 mono 命令行式($ ls -la /articles、$ tail -f /telegram),这是品牌语言,新页面延续。
 

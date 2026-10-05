@@ -92,7 +92,7 @@ export default async function AdminGithubPage(): Promise<React.ReactElement> {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-line bg-panel">
+      <div className="overflow-x-auto rounded-md border border-line bg-panel">
         <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="border-b border-line text-xs text-text-3">

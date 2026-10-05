@@ -24,7 +24,7 @@ export default function AdminPagination({
   const pgBtn =
     "rounded-sm border border-line bg-panel px-2.5 py-1 font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1";
   return (
-    <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-4 py-3">
       <span className="mr-auto text-xs text-text-3">
         共 {total.toLocaleString("en-US")} {unit} · 第 {page} / {totalPages} 页
       </span>
