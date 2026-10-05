@@ -24,6 +24,8 @@ export interface AsrConfigView {
   apiKeyMask: string | null;
   maxAudioSeconds: number;
   hotwords: string[];
+  /** 牌价(¥/小时音频;null=未填,用量页 ASR 费用按 0 折算) */
+  pricePerHour: number | null;
   enabled: boolean;
   lastTestedAt: Date | null;
   lastTestStatus: string | null;
@@ -47,6 +49,7 @@ export async function getAsrConfigAdmin(): Promise<AsrConfigView> {
     apiKeyMask: row.apiKeyMask,
     maxAudioSeconds: row.maxAudioSeconds,
     hotwords: row.hotwords,
+    pricePerHour: row.pricePerHour,
     enabled: row.enabled,
     lastTestedAt: row.lastTestedAt,
     lastTestStatus: row.lastTestStatus,
@@ -64,6 +67,8 @@ export const AsrUpdateSchema = z.object({
   apiKey: z.string().trim().max(400).optional().nullable(),
   maxAudioSeconds: z.number().int().min(10).max(7200),
   hotwords: z.array(z.string().trim().min(1).max(50)).max(50),
+  /** 牌价选填(¥/小时音频);缺省/null=未定价 */
+  pricePerHour: z.number().min(0).max(100000).nullable().optional(),
   enabled: z.boolean(),
 });
 
@@ -83,6 +88,7 @@ export async function updateAsrConfig(input: AsrUpdateInput): Promise<void> {
       ...(apiKey ? { apiKeyEnc: encryptSecret(apiKey), apiKeyMask: maskSecret(apiKey) } : {}),
       maxAudioSeconds: input.maxAudioSeconds,
       hotwords: input.hotwords,
+      pricePerHour: input.pricePerHour ?? null,
       enabled: input.enabled,
     },
   });

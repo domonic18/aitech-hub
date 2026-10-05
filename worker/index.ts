@@ -19,12 +19,15 @@ import {
   QUEUE_SUMMARIZER,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
+  STATS_JOB_USAGE_PURGE,
+  USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
   bullConnection,
   getQueue,
 } from "../src/lib/queue";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeVisitLogs } from "../src/lib/stats/service";
+import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
@@ -50,6 +53,14 @@ const PROCESSORS: Record<string, Processor> = {
       const removed = await purgeVisitLogs();
       if (removed > 0) {
         console.log(JSON.stringify({ event: "stats.visit_log.purge", removed }));
+      }
+      return { removed };
+    }
+    // AI 用量台账 90 天保留期清理(M14 批⑦;与手动清理同口径 usage-log.ts)
+    if (job.name === STATS_JOB_USAGE_PURGE) {
+      const removed = await purgeAiUsageOlderThan();
+      if (removed > 0) {
+        console.log(JSON.stringify({ event: "ai_usage.purge", removed }));
       }
       return { removed };
     }
@@ -156,6 +167,20 @@ async function scheduleVisitLogPurge(): Promise<void> {
   );
 }
 
+/** AI 用量台账清理:每日 04:52 清 90 天前行(M14 批⑦) */
+async function scheduleUsageLogPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "usage-log-purge",
+    { pattern: USAGE_LOG_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: STATS_JOB_USAGE_PURGE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -236,6 +261,7 @@ async function main(): Promise<void> {
   await scheduleStatsFlush();
   await scheduleMediaAudit();
   await scheduleVisitLogPurge();
+  await scheduleUsageLogPurge();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();

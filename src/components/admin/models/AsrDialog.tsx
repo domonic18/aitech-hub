@@ -23,7 +23,17 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
   const [apiKey, setApiKey] = useState("");
   const [maxAudioSeconds, setMaxAudioSeconds] = useState(String(asr.maxAudioSeconds));
   const [hotwords, setHotwords] = useState(asr.hotwords.join("、"));
+  // 牌价(¥/小时音频;空串=未定价):用量页 ASR 费用折算口径
+  const [pricePerHour, setPricePerHour] = useState(
+    asr.pricePerHour != null ? String(asr.pricePerHour) : "",
+  );
   const [enabled, setEnabled] = useState(asr.enabled);
+  const priceNum = (): number | null => {
+    const t = pricePerHour.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
 
   const submit = async (): Promise<void> => {
     setBusy(true);
@@ -45,6 +55,7 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
           apiKey: apiKey.trim() || null,
           maxAudioSeconds: Number(maxAudioSeconds),
           hotwords: words,
+          pricePerHour: priceNum(),
           enabled,
         }),
       });
@@ -133,6 +144,18 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
           <span className="mt-1 block text-[11px] text-amber">
             保存后 AES-256-GCM 加密落库,界面仅回显掩码。
           </span>
+        </label>
+        <label className="text-xs text-text-3">
+          牌价(¥/小时音频)
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={pricePerHour}
+            onChange={(e) => setPricePerHour(e.target.value)}
+            placeholder="如 5.00(选填,用量页折算费用)"
+            className={`mt-1 ${field}`}
+          />
         </label>
         <label className="col-span-2 text-xs text-text-3">
           热词(顿号/逗号分隔,至多 50 条)

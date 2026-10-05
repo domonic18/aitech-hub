@@ -190,6 +190,7 @@ describe("interpretVideoJob 状态机", () => {
         timeoutSec: 60,
         system: expect.stringContaining("JSON"),
       }),
+      expect.any(Function),
     );
   });
 
@@ -213,6 +214,7 @@ describe("interpretVideoJob 状态机", () => {
     expect(transcribeMock).not.toHaveBeenCalled();
     expect(chatJsonMock).toHaveBeenCalledWith(
       expect.objectContaining({ user: expect.not.stringContaining("视频转写全文") }),
+      expect.any(Function),
     );
     expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(1) },
@@ -254,6 +256,7 @@ describe("interpretVideoJob 状态机", () => {
     expect(chatJsonMock).toHaveBeenCalledTimes(1);
     expect(chatJsonMock).toHaveBeenCalledWith(
       expect.objectContaining({ user: expect.not.stringContaining("视频转写全文") }),
+      expect.any(Function),
     );
     expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(1) },

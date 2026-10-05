@@ -49,6 +49,18 @@ export default function ModelDialog({
   const [apiKey, setApiKey] = useState("");
   const [concurrency, setConcurrency] = useState(String(model?.concurrency ?? 4));
   const [timeoutSec, setTimeoutSec] = useState(String(model?.timeoutSec ?? 60));
+  // 牌价(用量页费用折算口径;空串=未定价):LLM ¥/1M tokens,生图 ¥/张
+  const numOrNull = (v: string): number | null => {
+    const t = v.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const [priceIn, setPriceIn] = useState(model?.priceIn != null ? String(model.priceIn) : "");
+  const [priceOut, setPriceOut] = useState(model?.priceOut != null ? String(model.priceOut) : "");
+  const [pricePerImage, setPricePerImage] = useState(
+    model?.pricePerImage != null ? String(model.pricePerImage) : "",
+  );
   const nameRef = useRef<HTMLInputElement>(null);
 
   const close = (): void => {
@@ -81,6 +93,9 @@ export default function ModelDialog({
           supportsVision,
           concurrency: Number(concurrency),
           timeoutSec: Number(timeoutSec),
+          priceIn: numOrNull(priceIn),
+          priceOut: numOrNull(priceOut),
+          pricePerImage: numOrNull(pricePerImage),
         }),
       });
       const body = (await res.json()) as ApiEnvelope;
@@ -260,6 +275,44 @@ export default function ModelDialog({
                 className={`mt-1 ${field}`}
               />
             </label>
+            <label className="text-xs text-text-3">
+              输入牌价(¥/1M tokens)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={priceIn}
+                onChange={(e) => setPriceIn(e.target.value)}
+                placeholder="如 2.00(选填,用量页折算费用)"
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="text-xs text-text-3">
+              输出牌价(¥/1M tokens)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={priceOut}
+                onChange={(e) => setPriceOut(e.target.value)}
+                placeholder="如 8.00(选填)"
+                className={`mt-1 ${field}`}
+              />
+            </label>
+            {purposes.includes("cover") && (
+              <label className="text-xs text-text-3">
+                生图牌价(¥/张)
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={pricePerImage}
+                  onChange={(e) => setPricePerImage(e.target.value)}
+                  placeholder="如 0.30(封面生图模型必读)"
+                  className={`mt-1 ${field}`}
+                />
+              </label>
+            )}
           </div>
 
           {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}

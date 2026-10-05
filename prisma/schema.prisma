@@ -368,6 +368,9 @@ model AiModel {
   apiKeyMask        String?   @map("api_key_mask") @db.VarChar(20) // 脱敏回显冗余列,免解密
   purposes          String[] // interpret/summarize/search/cover,合法值应用层 Zod 管控
   supportsVision    Boolean   @default(false) @map("supports_vision")
+  priceIn           Float?    @map("price_in") // 牌价 ¥/1M prompt tokens(null=不计费/未配置)
+  priceOut          Float?    @map("price_out") // 牌价 ¥/1M completion tokens
+  pricePerImage     Float?    @map("price_per_image") // 生图牌价 ¥/张(cover 角色)
   concurrency       Int       @default(4)
   timeoutSec        Int       @default(60) @map("timeout_sec")
   enabled           Boolean   @default(true)
@@ -409,6 +412,7 @@ model AsrConfig {
   apiKeyEnc         String?   @map("api_key_enc") @db.VarChar(500)
   apiKeyMask        String?   @map("api_key_mask") @db.VarChar(20)
   maxAudioSeconds   Int       @default(600) @map("max_audio_seconds")
+  pricePerHour      Float?    @map("price_per_hour") // ASR 牌价 ¥/小时音频(null=不计费/未配置)
   hotwords          String[]  @default([])
   enabled           Boolean   @default(false) // 默认关:先配置并测试通过后再开(消费方 M9)
   lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
@@ -437,6 +441,29 @@ model CoverCandidate {
   @@index([token], map: "idx_ai_cover_candidate_token")
   @@index([postId], map: "idx_ai_cover_candidate_post")
   @@map("ai_cover_candidate")
+}
+
+/// AI 用量台账(M14 批⑦,验收反馈问题8):chatJsonTask(LLM)/ASR 转写/生图
+/// 三类调用逐次落行,status=degraded 记「切备用/降级」事件(原型降级次数 KPI)。
+/// 聚合在 /admin/usage 读侧现算(行量=调用次数级);费用不落库,读侧按
+/// ai_model.price_in/out(¥/1M tokens)、price_per_image(¥/张)、
+/// asr_config.price_per_hour(¥/h)现折算——牌价改动即整体重算,预算参考口径。
+/// 90 天保留:worker 每日清 + 后台手动清理(POST /api/usage/purge)。
+model AiUsageLog {
+  id           BigInt   @id @default(autoincrement())
+  role         String   @db.VarChar(20) // interpret/summarize/search/cover/asr
+  modelId      Int?     @map("model_id") // ai_model.id;asr 行 null(计费走 asr_config)
+  modelKey     String   @map("model_key") @db.VarChar(100) // 展示用 model_id 文本
+  tokensIn     Int      @default(0) @map("tokens_in")
+  tokensOut    Int      @default(0) @map("tokens_out")
+  audioSeconds Int      @default(0) @map("audio_seconds") // asr 行:转写音频秒
+  durationMs   Int      @default(0) @map("duration_ms")
+  status       String   @default("ok") @db.VarChar(10) // ok/degraded/failed
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt], map: "idx_ai_usage_log_created")
+  @@index([role, modelId], map: "idx_ai_usage_log_role_model")
+  @@map("ai_usage_log")
 }
 
 // ── site_(站点配置域,M10)────────────────────────────────────────

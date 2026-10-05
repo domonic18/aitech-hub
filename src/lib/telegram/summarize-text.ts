@@ -196,5 +196,5 @@ function runSummarizeLlm(
   system: string,
   user: string,
 ): Promise<SummarizeResult> {
-  return chatJsonTask(model, parseSummarizeResult, system, user);
+  return chatJsonTask(model, parseSummarizeResult, system, user, AI_PURPOSE_SUMMARIZE);
 }

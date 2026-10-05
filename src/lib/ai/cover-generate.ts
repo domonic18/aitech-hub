@@ -14,6 +14,7 @@ import { buildCoverPrompt, COVER_CANDIDATE_COUNT, COVER_IMAGE_SIZE } from "./cov
 import { decodeImageB64, generateImages, sniffImageMime } from "./image-client";
 import { AiAdminError, AiClientError } from "./errors";
 import { resolveAiModel } from "./resolver";
+import { recordAiUsage } from "./usage-log";
 import { uploadMedia } from "../media/service";
 
 export { buildCoverPrompt, COVER_CANDIDATE_COUNT, COVER_IMAGE_SIZE };
@@ -59,16 +60,40 @@ export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: n
   const model = await resolveAiModel(AI_PURPOSE_COVER);
   if (!model) throw new AiClientError("unsupported", "cover 角色绑定已缺失");
   const prompt = buildCoverPrompt(data);
-  const images = await generateImages({
-    protocol: model.protocol,
-    baseUrl: model.baseUrl,
-    modelId: model.modelId,
-    apiKey: model.apiKey,
-    prompt,
-    n: COVER_CANDIDATE_COUNT,
-    size: COVER_IMAGE_SIZE,
-    timeoutSec: model.timeoutSec,
-  });
+  const startedAt = Date.now();
+  let images;
+  try {
+    images = await generateImages({
+      protocol: model.protocol,
+      baseUrl: model.baseUrl,
+      modelId: model.modelId,
+      apiKey: model.apiKey,
+      prompt,
+      n: COVER_CANDIDATE_COUNT,
+      size: COVER_IMAGE_SIZE,
+      timeoutSec: model.timeoutSec,
+    });
+  } catch (e) {
+    // 请求级失败(整批无图=不计费):落 failed 行供看板观测,错误原样上抛
+    await recordAiUsage({
+      role: AI_PURPOSE_COVER,
+      modelId: model.id,
+      modelKey: model.modelId,
+      status: "failed",
+    });
+    throw e;
+  }
+  // 生图按张计费:逐张落行(status ok/degraded=备用),费用读时 = 行数 × price_per_image
+  const durationMs = Date.now() - startedAt;
+  for (let i = 0; i < images.length; i++) {
+    await recordAiUsage({
+      role: AI_PURPOSE_COVER,
+      modelId: model.id,
+      modelKey: model.modelId,
+      durationMs,
+      status: model.source === "backup" ? "degraded" : "ok",
+    });
+  }
   const postId = data.postId ? BigInt(data.postId) : null;
   let generated = 0;
   for (const img of images) {

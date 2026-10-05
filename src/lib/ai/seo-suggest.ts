@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { POST_LIMITS } from "../content/post-schema";
 import { AI_PURPOSE_SUMMARIZE } from "./constants";
+import { AI_USAGE_ROLE_SEO } from "./usage-log";
 import { chatJsonTask, type ParsedTask } from "./chat-json-task";
 import { extractJsonBlock } from "./interpret-result";
 import { AiAdminError } from "./errors";
@@ -114,5 +115,5 @@ export async function suggestSeo(src: SeoSuggestInput): Promise<SeoSuggestResult
     );
   }
   const { system, user } = buildSeoSuggestPrompt(src);
-  return chatJsonTask(model, parseSeoSuggest, system, user);
+  return chatJsonTask(model, parseSeoSuggest, system, user, AI_USAGE_ROLE_SEO);
 }
