@@ -24,6 +24,7 @@ export const SITE_CONFIG_KEYS = {
   postCount: "home.post_count",
   siteTitle: "site.title",
   heroMd: "home.hero_md",
+  aboutMd: "about.content",
 } as const;
 
 /** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退) */
@@ -37,6 +38,8 @@ export const DEFAULT_POST_COUNT = 5;
 
 /** hub 主文案 markdown 上限(前台空值回退内置文案) */
 export const HERO_MD_MAX = 2000;
+/** 关于页内容 markdown 上限(空值回退内置默认文案,与 hero_md 同兜底模式) */
+export const ABOUT_MD_MAX = 8000;
 const SITE_TITLE_MAX = 50;
 
 // ── 读侧 ──────────────────────────────────────────────────────
@@ -100,6 +103,7 @@ export interface SiteSettings {
   postCount: number;
   siteTitle: string;
   heroMd: string;
+  aboutMd: string;
 }
 
 export async function getSiteSettings(): Promise<SiteSettings> {
@@ -111,6 +115,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       postCount: DEFAULT_POST_COUNT,
       siteTitle: DEFAULT_SITE_TITLE,
       heroMd: "",
+      aboutMd: "",
     },
     async () => {
       const rows = await prisma.siteConfig.findMany({
@@ -136,6 +141,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
         ),
         siteTitle: byKey.get(SITE_CONFIG_KEYS.siteTitle)?.trim() || DEFAULT_SITE_TITLE,
         heroMd: (byKey.get(SITE_CONFIG_KEYS.heroMd) ?? "").trim(),
+        aboutMd: (byKey.get(SITE_CONFIG_KEYS.aboutMd) ?? "").trim(),
       };
     },
   );
@@ -150,6 +156,7 @@ export const SiteConfigUpdateSchema = z.object({
   postCount: z.number().int().min(RAIL_COUNT_MIN).max(RAIL_COUNT_MAX).optional(),
   siteTitle: z.string().trim().min(1).max(SITE_TITLE_MAX).optional(),
   heroMd: z.string().max(HERO_MD_MAX).optional(),
+  aboutMd: z.string().max(ABOUT_MD_MAX).optional(),
 });
 
 export type SiteConfigUpdateInput = z.infer<typeof SiteConfigUpdateSchema>;
@@ -172,6 +179,9 @@ export async function setSiteConfig(input: SiteConfigUpdateInput): Promise<void>
   }
   if (data.heroMd !== undefined) {
     rows.push({ key: SITE_CONFIG_KEYS.heroMd, value: data.heroMd });
+  }
+  if (data.aboutMd !== undefined) {
+    rows.push({ key: SITE_CONFIG_KEYS.aboutMd, value: data.aboutMd });
   }
   if (rows.length === 0) return;
   await prisma.$transaction(

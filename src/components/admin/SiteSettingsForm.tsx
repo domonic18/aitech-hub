@@ -2,13 +2,14 @@
 
 /**
  * 站点设置表单(M10 批② 电报带条数;M12 批② 键族:首页项目/文章条数、
- * 站点标题、hub 主文案 markdown)。空/越界由服务端 Zod 校验返回 400 文案
- * 原样展示;PUT /api/site-config 多键 partial 一次保存。
+ * 站点标题、hub 主文案 markdown;2026-10-05 反馈:关于页内容 markdown)。
+ * 空/越界由服务端 Zod 校验返回 400 文案原样展示;PUT /api/site-config
+ * 多键 partial 一次保存,保存后 revalidatePath("/","layout") 全站即时再生。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { SiteSettings } from "@/lib/config/site-config";
+import { ABOUT_MD_MAX, type SiteSettings } from "@/lib/config/site-config";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 const inputField =
@@ -41,6 +42,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
   const [postCount, setPostCount] = useState(String(initial.postCount));
   const [siteTitle, setSiteTitle] = useState(initial.siteTitle);
   const [heroMd, setHeroMd] = useState(initial.heroMd);
+  const [aboutMd, setAboutMd] = useState(initial.aboutMd);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -59,6 +61,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
           postCount: Number(postCount),
           siteTitle,
           heroMd,
+          aboutMd,
         }),
       });
       const body = (await res.json()) as ApiEnvelope;
@@ -158,6 +161,26 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
         </Field>
       </div>
 
+      <div className="mt-5 flex items-center gap-2 border-t border-line pt-4">
+        <b className="text-[13px] text-text-1">关于页</b>
+      </div>
+      <div className="mt-3 flex flex-col gap-3">
+        <Field
+          label="关于页内容(留空用内置默认文案;支持完整 Markdown:标题、列表、链接、加粗、行内代码、代码块)"
+          hint="展示于前台 /about/;保存后随全站配置即时再生。"
+        >
+          <textarea
+            value={aboutMd}
+            onChange={(e) => setAboutMd(e.target.value)}
+            aria-label="关于页内容"
+            rows={8}
+            maxLength={ABOUT_MD_MAX}
+            placeholder="留空回退内置默认文案;支持完整 Markdown。"
+            className={`mt-1 font-mono ${wideField}`}
+          />
+        </Field>
+      </div>
+
       {error && <p className="mt-2 font-mono text-[11px] text-red">{error}</p>}
       {notice && <p className="mt-2 font-mono text-[11px] text-text-2">{notice}</p>}
       <div className="mt-3 flex justify-end">
@@ -172,7 +195,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
       </div>
       <p className="mt-3 font-mono text-[11px] text-text-3">
         GET/PUT /api/site-config — 配置存 site_config kv(band.item_count / home.repo_count /
-        home.post_count / site.title / home.hero_md)。
+        home.post_count / site.title / home.hero_md / about.content)。
       </p>
     </div>
   );

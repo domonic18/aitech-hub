@@ -29,7 +29,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
   if (!parsed.success) {
     return apiEnvelope(
       400,
-      "配置不合法:条数须为整数(电报流 1-50、项目/文章 1-12)、标题 1-50 字、文案 ≤2000 字",
+      "配置不合法:条数须为整数(电报流 1-50、项目/文章 1-12)、标题 1-50 字、文案 ≤2000 字、关于页 ≤8000 字",
     );
   }
   if (Object.values(parsed.data).every((v) => v === undefined)) {
