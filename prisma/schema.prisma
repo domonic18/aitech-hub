@@ -393,7 +393,7 @@ model AiTaskBinding {
   role      String   @id @db.VarChar(20) // interpret/summarize/search/cover
   primaryId Int?     @map("primary_id")
   backupId  Int?     @map("backup_id")
-  dailyMax  Int?     @map("daily_max") // 解读日配额(条/日;null=默认 100;当前仅 interpret 消费,M9 后台可配)
+  dailyMax  Int?     @map("daily_max") // 角色日配额(条/日;null=默认 100;interpret/summarize 各自消费,M9 后台可配)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   primary AiModel? @relation("AiBindingPrimary", fields: [primaryId], references: [id], onDelete: SetNull)

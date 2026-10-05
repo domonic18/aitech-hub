@@ -1001,9 +1001,18 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
     expect(sumBinding.backupId).toBe(keyed.id);
 
     // M9 批⑥:解读日配额后台化——interpret 卡日配额输入在;API 改值落库后还原
-    // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)
+    // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)。
+    // M15 批②:配额输入按消费方出现——interpret/summarize 卡有(各自独立配置),
+    // search/cover 卡无(存储与 API 预留但无消费方,不渲染假配置)
     const interpretCard = page.getByRole("group", { name: "电报解读绑定" });
-    await expect(interpretCard.getByLabel("解读日配额")).toBeVisible();
+    await expect(interpretCard.getByLabel("电报解读日配额")).toBeVisible();
+    await expect(sumCard.getByLabel("文字摘要日配额")).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "Agent 搜索绑定" }).getByLabel(/日配额/),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("group", { name: "封面生图绑定" }).getByLabel(/日配额/),
+    ).toHaveCount(0);
     const beforeQuota = await prisma.aiTaskBinding.findUniqueOrThrow({
       where: { role: "interpret" },
     });
