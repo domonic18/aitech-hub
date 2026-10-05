@@ -10,7 +10,8 @@
  * 54×95 竖版封面(play 蒙层 + 时长横条,no-referrer 防盗链,失败降级播放占位块)+
  * pf 平台章/博主(窄屏隐)+ 标题与「AI 解读 · 概括」双行;窄屏降 54px+1fr 双列。
  * 行高由封面撑起。SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重
- * 前插)。下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与
+ * 前插,前插后截回一页上限:长驻标签页只展示最新 count 条,不随时间无限增长)。
+ * 下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与
  * 历史翻页走 /telegram/。行点击直达外链。
  */
 import Link from "next/link";
@@ -87,7 +88,8 @@ export default function TelegramBand({
   const [items, setItems] = useState(initialItems);
   const [now, setNow] = useState(initialNow);
 
-  // 60s 轮询:只取第一页(与 SSR 同源),新条目按 id 去重前插
+  // 60s 轮询:只取第一页(与 SSR 同源),新条目按 id 去重前插后截回一页上限
+  // (长驻标签页只展示最新 count 条,不随时间无限增长)
   useEffect(() => {
     let alive = true;
     const tick = async (): Promise<void> => {
@@ -101,7 +103,7 @@ export default function TelegramBand({
           setItems((prev) => {
             const seen = new Set(prev.map((i) => i.id));
             const added = fresh.filter((i) => !seen.has(i.id));
-            return added.length > 0 ? [...added, ...prev] : prev;
+            return added.length > 0 ? [...added, ...prev].slice(0, count) : prev;
           });
         }
       } catch {
