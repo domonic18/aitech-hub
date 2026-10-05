@@ -8,6 +8,7 @@ import {
   CRAWL_JOB_VIDEO,
   GITHUB_JOB_TICK,
   MEDIA_AUDIT_CRON,
+  QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
@@ -28,6 +29,7 @@ import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
+import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
 import { processMediaJob, transferMediaJob } from "./media";
@@ -93,6 +95,8 @@ const PROCESSORS: Record<string, Processor> = {
   [QUEUE_INTERPRETER]: (job) => interpretVideoJob(job.data as InterpretJobData),
   // 文字资讯轻解读(M12 批③):中心思想 + 关键词,LLM 网络调用为主(默认并发 2)
   [QUEUE_SUMMARIZER]: (job) => summarizeTextJob(job.data as SummarizeJobData),
+  // 文生图封面(M14 批⑥):云厂商生图 10-30s,按张计费不自动重试(attempts=1 入队侧钉)
+  [QUEUE_COVER_GEN]: (job) => coverGenJob(job.data as CoverGenJobData),
   // GitHub 项目同步(二期③/M11):tick(5min)扫到期白名单仓逐仓入队;sync 为缺省路径
   [QUEUE_GITHUB]: async (job) => {
     if (job.name === GITHUB_JOB_TICK) {
@@ -215,10 +219,11 @@ async function main(): Promise<void> {
   const workers: Array<Worker> = [];
 
   for (const name of Object.keys(PROCESSORS)) {
-    // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用、summarizer 抓原文+LLM
-    // 耗时长,放宽锁续期;interpreter 并发钉 1(ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
+    // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用、summarizer 抓原文+LLM、
+    // cover-gen 云厂商生图(10-30s+)耗时长,放宽锁续期;interpreter 并发钉 1
+    // (ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
     const opts =
-      name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER
+      name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER || name === QUEUE_COVER_GEN
         ? { lockDuration: 300_000 }
         : name === QUEUE_INTERPRETER
           ? { concurrency: 1, lockDuration: 600_000 }

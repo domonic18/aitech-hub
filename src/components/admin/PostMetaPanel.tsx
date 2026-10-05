@@ -11,6 +11,7 @@ import { POST_LIMITS, type ContentOrigin } from "@/lib/content/post-schema";
 
 import CoverUploader from "./CoverUploader";
 import { INPUT, LABEL } from "./editor-controls";
+import type { CoverGenContext } from "./cover/templates";
 
 export interface EditorCategory {
   slug: string;
@@ -46,6 +47,7 @@ export default function PostMetaPanel({
   slug,
   onSeoSuggest,
   seoSuggesting = false,
+  coverContext,
 }: {
   categories: EditorCategory[];
   value: PostMetaValue;
@@ -55,6 +57,8 @@ export default function PostMetaPanel({
   /** 提供即渲染「AI 填充」(PostEditor 传生成函数;缺省不渲染,如测试) */
   onSeoSuggest?: () => void;
   seoSuggesting?: boolean;
+  /** AI 文生图上下文(标题/摘要/标签快照;缺省不出 AI 生图入口) */
+  coverContext?: CoverGenContext;
 }): React.ReactElement {
   const set =
     (key: keyof PostMetaValue) =>
@@ -119,7 +123,11 @@ export default function PostMetaPanel({
       </div>
 
       <div>
-        <CoverUploader coverPath={value.coverPath} onChange={(p) => onChange({ coverPath: p })} />
+        <CoverUploader
+          coverPath={value.coverPath}
+          onChange={(p) => onChange({ coverPath: p })}
+          coverContext={coverContext}
+        />
       </div>
 
       <div>

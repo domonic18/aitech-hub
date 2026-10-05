@@ -23,6 +23,9 @@ export const QUEUE_INTERPRETER = "interpreter";
 export const QUEUE_SUMMARIZER = "summarizer";
 /** GitHub 项目展示(M11:tick 扫到期白名单仓 → 逐仓 sync job,单仓失败隔离;arch/05 §4) */
 export const QUEUE_GITHUB = "github";
+/** 文生图封面(M14 批⑥,验收反馈问题6):编辑器「AI 生成候选」→ worker 生图入
+ * 媒体库 + 候选落库,编辑器凭 token 轮询;云厂商生图 10-30s,不占请求(请求内禁秒级任务) */
+export const QUEUE_COVER_GEN = "cover-gen";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -33,6 +36,7 @@ export const QUEUE_NAMES = [
   QUEUE_INTERPRETER,
   QUEUE_SUMMARIZER,
   QUEUE_GITHUB,
+  QUEUE_COVER_GEN,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -49,6 +53,9 @@ export const CRAWL_JOB_TICK = "tick";
 export const CRAWL_JOB_SOURCE = "crawl";
 export const CRAWL_JOB_VIDEO = "crawl-video";
 export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
+
+/** cover-gen 队列 job name 契约(M14 批⑥;generate 为缺省路径,编辑器手动触发) */
+export const COVER_JOB_GEN = "generate";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细) */
 export const STATS_JOB_FLUSH = "flush";

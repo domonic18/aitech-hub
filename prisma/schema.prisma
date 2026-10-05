@@ -421,6 +421,24 @@ model AsrConfig {
   @@map("asr_config")
 }
 
+/// 文生图封面候选(M14 批⑥,验收反馈问题6):worker 生成入库(uploadMedia 走
+/// sha1 去重 + sharp 缩略管线),编辑器凭 token 轮询选用。token=编辑器会话令牌
+/// (创建态文章尚无 id,统一以 token 定位;编辑态回填 postId 供溯源)。
+/// 候选不清洗:历史候选保留供回溯,媒体回收站承担删除语义(arch/08 §3.2)。
+model CoverCandidate {
+  id        BigInt   @id @default(autoincrement())
+  token     String   @db.VarChar(64) // 编辑器生成会话令牌(crypto.randomUUID)
+  postId    BigInt?  @map("post_id") // 编辑态回填;创建态 null
+  prompt    String   @db.VarChar(1000)
+  mediaPath String   @map("media_path") @db.VarChar(500)
+  modelId   Int      @map("model_id") // ai_model.id(生图模型溯源)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([token], map: "idx_ai_cover_candidate_token")
+  @@index([postId], map: "idx_ai_cover_candidate_post")
+  @@map("ai_cover_candidate")
+}
+
 // ── site_(站点配置域,M10)────────────────────────────────────────
 
 /// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,

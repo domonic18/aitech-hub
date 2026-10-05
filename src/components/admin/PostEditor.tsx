@@ -330,6 +330,7 @@ export default function PostEditor({
           slug={slugField}
           onSeoSuggest={() => void seoSuggest()}
           seoSuggesting={seoBusy}
+          coverContext={{ title, excerpt: meta.excerpt, tags: splitTags(meta.tagsText) }}
         />
       </div>
     </div>
