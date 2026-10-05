@@ -102,6 +102,21 @@ export interface BatchDeleteResult {
   skipped: Array<{ id: string; filename: string; refCount: number }>;
 }
 
+/** 重复检测合并入参(同 sha1 组;2026-10-06 验收反馈问题1) */
+export const mediaDupeMergeSchema = z.object({
+  sha1: z.string().regex(/^[0-9a-f]{40}$/, "sha1 格式不合法"),
+});
+
+/** 重复组合并响应 data(service 返回、dupes/merge 路由透传、MediaDupeList 消费同源) */
+export interface DupeMergeResult {
+  keptId: string;
+  keptPath: string;
+  /** 改指 keeper 的引用行数(正文 MediaRef,含封面改指) */
+  movedRefs: number;
+  /** 软删入回收站的副本数 */
+  removed: number;
+}
+
 /** media.transfer job returnvalue(worker 写、import 路由与导入弹窗读,评审 W4 同源) */
 export interface TransferResult {
   mapping: Record<string, string | null>;

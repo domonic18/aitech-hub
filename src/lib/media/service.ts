@@ -12,6 +12,7 @@ import {
   MEDIA_LIMITS,
   extByMime,
   type BatchDeleteResult,
+  type DupeMergeResult,
   type MediaStatus,
 } from "@/lib/media/media-schema";
 import { getQueue, QUEUE_MEDIA_PROCESS } from "@/lib/queue";
@@ -164,4 +165,53 @@ export async function batchDeleteMedia(ids: bigint[]): Promise<BatchDeleteResult
         refCount: countByPath.get(r.path) ?? 0,
       })),
   };
+}
+
+/**
+ * 重复组合并(原型「保留 1 个并合并引用」;2026-10-06 验收反馈问题1):
+ * keeper 取组内最早一条;正文引用(MediaRef)与封面(Post.coverPath)改指 keeper,
+ * 同一文章已同时引用两份的引用行直接删除(防 (media_path, post_id) 主键冲突);
+ * 其余副本软删入回收站(物理文件留待 audit 清退,URL 路径全站唯一不复活)。
+ */
+export async function mergeDupeGroup(sha1: string): Promise<DupeMergeResult> {
+  const rows = await prisma.media.findMany({
+    where: { sha1, deletedAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  if (rows.length < 2) throw new MediaError("not_found", "该 sha1 没有可合并的重复组");
+  const [keeper, ...dupes] = rows;
+  let movedRefs = 0;
+  for (const dupe of dupes) {
+    const refs = await prisma.mediaRef.findMany({
+      where: { mediaPath: dupe.path },
+      select: { postId: true },
+    });
+    for (const ref of refs) {
+      const clash = await prisma.mediaRef.findUnique({
+        where: { mediaPath_postId: { mediaPath: keeper.path, postId: ref.postId } },
+        select: { postId: true },
+      });
+      if (clash) {
+        await prisma.mediaRef.delete({
+          where: { mediaPath_postId: { mediaPath: dupe.path, postId: ref.postId } },
+        });
+      } else {
+        await prisma.mediaRef.update({
+          where: { mediaPath_postId: { mediaPath: dupe.path, postId: ref.postId } },
+          data: { mediaPath: keeper.path },
+        });
+        movedRefs += 1;
+      }
+    }
+    const covers = await prisma.post.updateMany({
+      where: { coverPath: dupe.path },
+      data: { coverPath: keeper.path },
+    });
+    movedRefs += covers.count;
+    await prisma.media.update({
+      where: { id: dupe.id },
+      data: { status: "deleted" satisfies MediaStatus, deletedAt: new Date() },
+    });
+  }
+  return { keptId: keeper.id.toString(), keptPath: keeper.path, movedRefs, removed: dupes.length };
 }

@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
   const denied = await requireAdminForMutation(req);
   if (denied) return denied;
 
-  const jobId = `audit:${Date.now().toString(36)}`;
+  // jobId 禁冒号:BullMQ "Custom Id cannot contain :"(两段即 throw→500,2026-10-06
+  // 验收「重复检测点击报错」根因;与 interpretJobId/summarizeJobId 同用连字符)
+  const jobId = `audit-${Date.now().toString(36)}`;
   await getQueue(QUEUE_MEDIA_AUDIT).add("audit", {}, { jobId, removeOnComplete: 50 });
   logger.info({ event: "media.audit.trigger", jobId });
   return apiEnvelope(0, "accepted", { jobId }, 202);
