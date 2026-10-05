@@ -2,7 +2,8 @@
  * 采集日历热力图(原型 admin-spider heat-grid;2026-10-06 验收反馈问题2 对齐原型):
  * 近 12 周 84 格、accent 日历图标标题 + 副标、五档日期刻度轴与图例同行
  * space-between(DESIGN-SPEC 热力图硬约定:84 格 color-mix 4 档 + 日期轴
- * space-between,子元素禁 margin-left:auto)。周一对齐 7 行 × auto-flow-col;纯 RSC。
+ * space-between,子元素禁 margin-left:auto)。周一对齐 7 行 × 列流(几何内联声明,
+ * 见网格处注记);格/图例圆角 2px 同原型(--r-sm 6px 落在 12px 格上呈圆点,不可用);纯 RSC。
  */
 
 interface CalendarDay {
@@ -43,21 +44,28 @@ export default function IngestHeatmap({ calendar }: { calendar: CalendarDay[] })
         </span>
       </div>
       <div className="overflow-x-auto p-4">
+        {/* 网格几何内联声明,逐条等效原型 .heat-grid 三行 CSS——
+            不用 Tailwind 工具类:auto-flow-col 是无效类名(正确名为 grid-flow-col),
+            类名不生成时 row 流会沿 7 行模板竖排(实测 86 格拉出 ~1287px 高,2026-10-06) */}
         <div
-          className="grid auto-flow-col grid-rows-7 gap-[3px]"
-          style={{ gridAutoColumns: "12px" }}
+          className="grid gap-[3px]"
+          style={{
+            gridAutoFlow: "column",
+            gridTemplateRows: "repeat(7, 12px)",
+            gridAutoColumns: "12px",
+          }}
         >
           {/* 周一对齐:首日前置空格(auto-flow-col 下占满第一列) */}
           {calendar[0] &&
             Array.from(
               { length: (new Date(`${calendar[0].day}T00:00:00Z`).getUTCDay() + 6) % 7 },
-              (_, i) => <i key={`pad-${i}`} className="h-3 w-3 rounded-sm" />,
+              (_, i) => <i key={`pad-${i}`} className="h-3 w-3 rounded-[2px]" />,
             )}
           {calendar.map((c) => (
             <i
               key={c.day}
               title={`${c.day} — ${c.count} 条`}
-              className="h-3 w-3 rounded-sm"
+              className="h-3 w-3 rounded-[2px]"
               style={heatStyle(c.count, maxDay)}
             />
           ))}
@@ -69,7 +77,7 @@ export default function IngestHeatmap({ calendar }: { calendar: CalendarDay[] })
           <span className="flex items-center gap-1">
             少
             {HEAT_COLORS.map((c) => (
-              <i key={c} className="h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
+              <i key={c} className="h-2.5 w-2.5 rounded-[2px]" style={{ background: c }} />
             ))}
             多
           </span>
