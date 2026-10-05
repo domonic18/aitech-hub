@@ -13,7 +13,7 @@
 | `/projects/`(开源项目列表,M11) | ISR 600s | 白名单展示仓全量卡片(sortOrder→stars),不分页;admin 写侧即时 revalidate,同步新鲜度走本窗口;首页右栏同源 rail 卡(空白名单整卡不渲染) |
 | `/projects/[slug]/`(项目详情,M11) | ISR 600s + 按需 revalidate | slug 是唯一解析键(登记时派生此后冻结;**无 id 锚点,错 slug 直接 404 不做 308 归一**,构造唯一出口 `src/lib/github/project-path.ts`);README 渲染 + 进展动态 + 配套文章;下架(display=false)即 404 |
 | `/search` | 动态 SSR | 每请求查询 |
-| `/telegram`(电报流,M7 批⑤) | 动态 SSR(`force-dynamic`)+ 客户端 60s 轮询 | **noindex 双保险**(robots meta + next.config `X-Robots-Tag` 头)且**不入 sitemap**(显式页面清单);渠道筛选 URL 驱动(`?source=`);新讯浮条点击载入不打断浏览位置 |
+| `/telegram`(电报流,M7 批⑤) | 动态 SSR(`force-dynamic`)+ 客户端 60s 轮询 | **noindex 双保险**(robots meta + next.config `X-Robots-Tag` 头)且**不入 sitemap**(显式页面清单);渠道筛选 URL 驱动(`?source=`);仅出 AI 解读终态行,空列 + 今日有入库 → 「AI 解读处理中」空态(M15 批①);新讯**即刷即渲染**(同构重排)+ 虚线浮条「↑ N 条新电报」点击平滑回顶重置未读锚(与 ai-invest-assisstant 同款,M15 批③;原「点击载入」缓冲闸门退役) |
 | `/about`、`/agreement`、`/privacy` | 静态 | |
 | `/(user)/**`(登录/账号) | CSR | 无 SEO 诉求 |
 | `/admin/**` | CSR + 客户端守卫 | AntD;API 层二次鉴权 |
@@ -24,6 +24,7 @@
 - RSC 数据获取**直查 Prisma**(经 `lib/content/` service 层),禁止页面内 fetch 自己的 `/api`
 - **骨架图(loading.tsx)只挂无状态码语义的路由**(2026-10-04 M10 批④,e2e 实证):现仅 `/telegram`、`/search`(动态 SSR,每请求真流式)与 `/articles`、`/archive`(纯 200 列表)四段。段落级 loading 会使首屏 shell 先行 200 冲刷,页内 `permanentRedirect`/`notFound()` 退化为软跳转/软 404——`/post/[id]-[slug]` 308 归一与 category/tag 404 是 SEO 红线,故不挂(三者为 ISR 缓存热读,生产近秒开,骨架收益本就趋零);admin 段 loading 与 `router.refresh()` 互卡致变更后内容不出,同样不挂。基元/组合件见 `src/components/Skeleton.tsx` 头注
 - **相对时间的水合契约(2026-10-04 实修)**:首页带与 `/telegram` 时间线的 `timeAgo`/`NEW`/日分组标签以**服务端下发的 `initialNow` prop** 为基准(props 经 RSC 序列化,SSR 与水合必然一致),水合后 60s 轮询才切客户端时钟。组件内自取 `Date.now()` 会在 SSR/水合时差下产出不同相对时间文本 → React #418 整树水合回退——回退重渲染会把预置脚本设置的 `html[data-theme]` 重灌回 light(用户实测「页面自动变 Light、切换后刷新复原」即此链)
+- **电报流 M15 交互契约(2026-10-06)**:公开读侧仅出 AI 解读终态行(done/missing_transcript),`PublicTelegramItem.aiRanAt`(解读完成=变可见时刻)入契约——前台增量轮询 after 锚与 NEW 角标基准(30min 窗)都锚它,展示排序/相对时间仍按 `publishedAt`;首页带 NEW 同基准。轮询增量经 `mergeFeedItems`(id 去重 + 服务端同构序 publishedAt desc/id 数值 desc)即刷即渲染,未读锚 `seenTopId`(已见首行 id)驱动浮条计数(中段插入的补扫行不计);带宽前插同函数重排后截回一页(见 arch/02 §3.2 M15 注记)
 
 ## 2. 文章 URL 终态:/post/&lt;id&gt;-&lt;slug&gt;(2026-10 迁移,红线)
 

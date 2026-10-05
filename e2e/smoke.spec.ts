@@ -601,8 +601,10 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
   request,
 }) => {
   const MARK = "e2e-telegram-mark";
+  const MARK_PENDING = "e2e-telegram-pending";
   // 自播种:独立渠道(采集关闭)+ 一条可见电报(publishedAt=now 保证排进带首;重跑幂等;
-  // M15 批① 起前台只出 AI 解读终态行,种子带 done+aiRanAt)
+  // M15 批① 起前台只出 AI 解读终态行,种子带 done+aiRanAt)+ 同源一条 pending
+  // (解读在队列,不上屏)
   const source = await prisma.crawlSource.upsert({
     where: { name: "e2e-telegram-source" },
     update: {},
@@ -614,7 +616,9 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       remark: "e2e 专用,采集关闭",
     },
   });
-  await prisma.telegram.deleteMany({ where: { sourceId: source.id, title: MARK } });
+  await prisma.telegram.deleteMany({
+    where: { sourceId: source.id, title: { in: [MARK, MARK_PENDING] } },
+  });
   await prisma.telegram.create({
     data: {
       sourceId: source.id,
@@ -628,9 +632,45 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       aiRanAt: new Date(),
     },
   });
+  await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: MARK_PENDING,
+      summary: "e2e 冒烟摘要(解读在队列)",
+      url: "https://e2e.invalid/item/2",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "pending",
+    },
+  });
+  // M15 批① 空态:独立渠道仅一条 pending → 该源 SSR 空列,展示「AI 解读处理中」提示
+  const pendSource = await prisma.crawlSource.upsert({
+    where: { name: "e2e-telegram-pending-source" },
+    update: {},
+    create: {
+      name: "e2e-telegram-pending-source",
+      type: "rss",
+      url: "https://e2e.invalid/rss-pending",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: pendSource.id } });
+  await prisma.telegram.create({
+    data: {
+      sourceId: pendSource.id,
+      title: "e2e-telegram-pending-only",
+      summary: "e2e 空态冒烟摘要",
+      url: "https://e2e.invalid/item/3",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "pending",
+    },
+  });
 
   try {
-    // noindex 双保险:X-Robots-Tag 响应头 + 页内 robots meta;LIVE 头标与播种条目在
+    // noindex 双保险:X-Robots-Tag 响应头 + 页内 robots meta;LIVE 头标与播种条目在;
+    // pending 行(解读在队列)不上屏——html 与 API 均不可见(M15 批① 门禁)
     const feed = await request.get("/telegram/");
     expect(feed.status()).toBe(200);
     expect(feed.headers()["x-robots-tag"]).toBe("noindex, follow");
@@ -638,8 +678,11 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     expect(html).toMatch(/name="robots" content="noindex[^"]*"/);
     expect(html).toContain("LIVE · 持续采集中");
     expect(html).toContain(MARK);
+    // pending 行不上屏——按条目 URL 断言(标题串会与「仅 pending 渠道」的渠道
+    // chip 名 e2e-telegram-pending-source 撞子串;渠道活性计数口径不随门禁收窄)
+    expect(html).not.toContain("https://e2e.invalid/item/2");
 
-    // 公共 API:no-store;出参 BigInt 已字符串化;today 含播种条目
+    // 公共 API:no-store;出参 BigInt 已字符串化;today 含播种条目;pending 不出
     const api = await request.get("/api/telegram/public/");
     expect(api.status()).toBe(200);
     expect(api.headers()["cache-control"]).toContain("no-store");
@@ -654,7 +697,13 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     const hit = body.data.items.find((i) => i.title === MARK);
     expect(hit).toBeTruthy();
     expect(typeof hit!.id).toBe("string");
+    expect(body.data.items.find((i) => i.title === MARK_PENDING)).toBeUndefined();
     expect(body.data.today).toBeGreaterThan(0);
+
+    // M15 批① 空态:仅 pending 的源 → 空列 + 「AI 解读处理中 · 今日已入库 N 条」
+    const pendHtml = await (await request.get(`/telegram/?source=${pendSource.id}`)).text();
+    expect(pendHtml).toContain("AI 解读处理中");
+    expect(pendHtml).toContain("今日已入库");
 
     // 首页 LIVE 带壳在(SSR;条目轮询由 /telegram 页与 API 覆盖,首页 ISR 缓存不断言 MARK)
     const home = await (await request.get("/")).text();
@@ -664,8 +713,8 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     // SEO 红线:电报流不入 sitemap(显式页面清单)
     expect(await (await request.get("/sitemap.xml")).text()).not.toContain("/telegram");
   } finally {
-    await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
-    await prisma.crawlSource.delete({ where: { id: source.id } });
+    await prisma.telegram.deleteMany({ where: { sourceId: { in: [source.id, pendSource.id] } } });
+    await prisma.crawlSource.deleteMany({ where: { id: { in: [source.id, pendSource.id] } } });
   }
 });
 

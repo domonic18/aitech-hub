@@ -200,8 +200,8 @@ img { display: block; }
 .filtered-note { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); text-align: center; padding: 14px 0 0; }
 .filtered-note b { color: var(--text-2); font-weight: 600; }
 
-/* 新讯息浮条(轮询发现新电报,不打断当前浏览位置) */
-.new-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; padding: 9px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-dim); border-radius: var(--r-md); color: var(--accent-hover); font-family: var(--font-mono); font-size: 12.5px; cursor: pointer; animation: newbar 2.4s ease-in-out infinite; }
+/* 新讯息浮条(M15 批③ 对齐 ai-invest:即刷即渲染 + 未读锚;虚线边框,点击回顶重置锚) */
+.new-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; padding: 9px; border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); border-radius: var(--r-md); color: var(--accent-hover); font-family: var(--font-mono); font-size: 12.5px; cursor: pointer; animation: newbar 2.4s ease-in-out infinite; }
 .new-bar:hover { border-color: var(--accent); color: var(--text-1); }
 @keyframes newbar { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 25%, transparent); } 50% { box-shadow: 0 0 14px 0 var(--accent-dim); } }
 
@@ -328,8 +328,8 @@ img { display: block; }
         <span class="src-chip">B站 <span class="n">2</span></span>
       </div>
 
-      <!-- 新讯息浮条:轮询发现新电报时出现,点击载入,不打断当前浏览位置 -->
-      <div class="new-bar">↓ 2 条新电报 · 点击载入,不打断当前浏览位置 <span style="opacity:.6">· 轮询 45s</span></div>
+      <!-- 新讯息浮条(M15 批③):轮询增量即刷即渲染,浮条=未读计数(已见锚之上条数),点击平滑回顶并重置锚 -->
+      <div class="new-bar">↑ <b>3 条新电报</b> <span style="opacity:.65">点击回到顶部载入,不打断当前浏览位置</span></div>
 
       <!-- 今天 -->
       <div class="tg-day">今天 · 2026-09-30</div>
