@@ -35,7 +35,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   const [snapshot, calendar, hourly, stock, channels, video, interpreter, summarizer, github] =
     await Promise.all([
       getCrawlerQueueSnapshot(),
-      getIngestCalendar(14),
+      getIngestCalendar(84),
       getIngestHourly(),
       getTelegramStock(),
       listChannelsAdmin(),
