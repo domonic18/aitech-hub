@@ -1,173 +1,31 @@
 "use client";
 
 /**
- * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡;M10 批③ 视频卡原型重排;
- * M12 批③ 文字卡加轻解读块;批⑥ 要点折叠列表 + 关键词蓝系 chips 与 AI 徽章区分):
- * 日分组卡片 + 60s 轮询增量;新讯不打断浏览位置——浮条提示、点击载入。
- * 视频项独立卡形(原型 site-telegram .tg-item.video):竖版大封面
- * 88×157(≤sm 72×128,防盗链 no-referrer,失败降级占位)+ 播放浮层 +
- * 平台角标左上/时长左下 + 标题进卡 + AI 摘要 line-clamp-3 +
- * 互动 播/赞/评(空值整项隐藏)+ 原视频外链;文字卡同构展示 AI 轻解读。
+ * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡;M12 批③ 文字卡加轻解读;
+ * 批⑥ 要点折叠列表 + 关键词蓝系 chips;M15 批③ 新内容交互对齐 ai-invest-assisstant):
+ * 日分组卡片 + 60s 轮询增量。新讯**即刷即渲染**(mergeFeedItems 按服务端同构序
+ * 重排,不打断浏览位置),未读锚 seenTopId(已见列表首行 id)之上条数即未读
+ * ——虚线浮条提示,点击平滑回顶并重置锚(与 ai-invest 电报流同款交互语义)。
+ * 视频卡形抽至 TelegramArticle(壳文件守 350 行限);文字卡同构展示 AI 轻解读。
  */
 import { useEffect, useRef, useState } from "react";
 
+import VideoArticle from "@/components/site/TelegramArticle";
 import {
-  compactCount,
+  countUnseen,
   feedChipTone,
-  formatDuration,
   groupByDay,
   hhmm,
   hostOf,
   isNew,
-  platformLabel,
+  mergeFeedItems,
   timeAgo,
-  videoSourceName,
   FEED_CHIP_TONE_CLASSES,
   type FeedMediaFilter,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
 
 const POLL_MS = 60_000;
-
-/** 封面缩略(抖音图床带防盗链:no-referrer + 失败换占位块,不重试) */
-function VideoCover({ src, alt }: { src: string | null; alt: string }) {
-  const [failed, setFailed] = useState(false);
-  if (src === null || failed) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-panel-2 font-mono text-[10px] text-text-3">
-        ▶
-      </div>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="h-full w-full object-cover"
-    />
-  );
-}
-
-/** 视频项独立卡(M10 批③,原型 .tg-item.video):封面列 + 信息列,标题进卡 */
-function VideoArticle({ t, now }: { t: PublicTelegramItem; now: number }) {
-  const v = t.video!;
-  const duration = formatDuration(v.durationSeconds);
-  const ai = v.ai;
-  // 互动三元组(play 口径后采集可空;空值整项隐藏,同原型显隐跟数据走)
-  const engagement = [
-    { icon: "i-caret-right-fill", label: "播放", value: compactCount(v.engagement.play) },
-    { icon: "i-like", label: "点赞", value: compactCount(v.engagement.like) },
-    { icon: "i-comment", label: "评论", value: compactCount(v.engagement.comment) },
-  ].filter((e) => e.value !== null);
-  return (
-    <article className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2">
-      <a
-        href={t.url}
-        target="_blank"
-        rel="noopener nofollow"
-        className="relative h-[128px] w-[72px] overflow-hidden rounded-sm bg-panel-2 sm:h-[157px] sm:w-[88px]"
-        aria-label={`打开原视频:${t.title}`}
-      >
-        <VideoCover src={v.coverUrl} alt={t.title} />
-        <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white">
-          <svg className="ic ic-lg" aria-hidden="true">
-            <use href="#i-caret-right-fill" />
-          </svg>
-        </span>
-        <span className="absolute left-1 top-1 rounded-xs bg-black/75 px-1 font-mono text-[9.5px] leading-4 text-white">
-          {platformLabel(v.platform)}
-        </span>
-        {duration && (
-          <span className="absolute bottom-1 left-1 rounded-xs bg-black/75 px-1 font-mono text-[10px] leading-4 text-white">
-            {duration}
-          </span>
-        )}
-      </a>
-      <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-sm border px-1.5 py-px font-mono text-[11px] ${
-              FEED_CHIP_TONE_CLASSES[feedChipTone(t.sourceType, v.platform)]
-            }`}
-          >
-            {videoSourceName(v)}
-          </span>
-          <span className="font-mono text-[11px] text-text-3">
-            {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
-          </span>
-          {/* NEW 基准=aiRanAt(变可见时刻,M15 批①):视频采集周期 3h,按源发布
-              时间窗口几乎永不亮;按解读完成时刻 30min 内真实可亮 */}
-          {isNew(t.aiRanAt, now) && (
-            <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
-              NEW
-            </span>
-          )}
-        </div>
-        <h3 className="text-[15px] font-semibold leading-relaxed">
-          <a
-            href={t.url}
-            target="_blank"
-            rel="noopener nofollow"
-            className="text-text-1 hover:text-accent-hover"
-          >
-            {t.title}
-            <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
-              <use href="#i-export" />
-            </svg>
-          </a>
-        </h3>
-        {ai ? (
-          // AI 解读替代原始 summary 段(原型 v.ai 口径;line-clamp-3 防长解读撑破卡)
-          <p className="line-clamp-3 text-[13px] leading-relaxed text-text-2">
-            <span className="mr-1.5 inline-block rounded-sm bg-accent-dim px-1.5 py-px align-middle font-mono text-[10px] text-accent">
-              AI 解读
-            </span>
-            {ai.summary}
-          </p>
-        ) : (
-          t.summary && (
-            <p className="line-clamp-3 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
-          )
-        )}
-        {ai && ai.points.length > 0 && (
-          <details className="mt-0.5">
-            <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
-              关键要点 ×{ai.points.length}
-            </summary>
-            <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
-              {ai.points.map((p, i) => (
-                <li key={i}>{p}</li>
-              ))}
-            </ul>
-          </details>
-        )}
-        <div className="mt-auto flex flex-wrap items-center gap-3 pt-1 font-mono text-[11px] text-text-3">
-          {engagement.map((e) => (
-            <span key={e.label} className="flex items-center gap-1" title={e.label}>
-              <svg className="ic ic-sm" aria-hidden="true">
-                <use href={`#${e.icon}`} />
-              </svg>
-              {e.value}
-            </span>
-          ))}
-          <a
-            href={t.url}
-            target="_blank"
-            rel="noopener nofollow"
-            className="text-text-2 hover:text-accent-hover"
-          >
-            原视频 ↗
-          </a>
-          {ai && <span>AI 生成 · 摘要与要点,内容版权归原作者</span>}
-        </div>
-      </div>
-    </article>
-  );
-}
 
 export default function TelegramTimeline({
   initialItems,
@@ -191,12 +49,14 @@ export default function TelegramTimeline({
   initialToday: number;
 }) {
   const [items, setItems] = useState(initialItems);
-  const [pending, setPending] = useState<PublicTelegramItem[]>([]);
   const [now, setNow] = useState(initialNow);
   const [today, setToday] = useState(initialToday);
-  // 增量锚=已见最大 aiRanAt(M15 批①,变可见时刻):ref 持有不随轮询重建定时器,
-  // 消旧实现取 items[0].publishedAt 的 stale closure。ISO 同为 toISOString() 产物
-  // (UTC Z 定长),字典序即时间序。
+  // 未读锚=用户已见的列表首行 id(ai-invest 同款;id 稳定,不受排序变动影响):
+  // SSR 首屏首行视为已见;轮询前插后锚不动 → 其上条数即未读;点击浮条回顶重置;
+  // 筛选/换源经 key 重挂载自然归零。「中段插入」(旧发布新解读)在锚下,不计未读。
+  const [seenTopId, setSeenTopId] = useState<string | null>(initialItems[0]?.id ?? null);
+  // 增量锚=已见最大 aiRanAt(M15 批①,变可见时刻):ref 持有不随轮询重建定时器。
+  // ISO 同为 toISOString() 产物(UTC Z 定长),字典序即时间序。
   const afterRef = useRef(
     initialItems.reduce<string | null>(
       (max, t) => (max === null || t.aiRanAt > max ? t.aiRanAt : max),
@@ -220,11 +80,16 @@ export default function TelegramTimeline({
         };
         if (alive && body.code === 0 && body.data) {
           if (body.data.items.length > 0) {
-            setPending((p) => [...body.data!.items, ...p]);
-            for (const t of body.data.items) {
-              if (afterRef.current === null || t.aiRanAt > afterRef.current)
-                afterRef.current = t.aiRanAt;
-            }
+            // 即刷即渲染(M15 批③):mergeFeedItems 同构重排;增量锚推进到全表
+            // 最大 aiRanAt(updater 内 max 推进幂等,StrictMode 双调无副作用)
+            setItems((prev) => {
+              const merged = mergeFeedItems(prev, body.data!.items);
+              for (const t of merged) {
+                if (afterRef.current === null || t.aiRanAt > afterRef.current)
+                  afterRef.current = t.aiRanAt;
+              }
+              return merged;
+            });
           }
           setToday(body.data.today);
         }
@@ -241,23 +106,26 @@ export default function TelegramTimeline({
     // 锚在 afterRef 内自推进,不随轮询重建定时器
   }, [sourceId, media]);
 
-  const loadPending = (): void => {
-    setItems((prev) => {
-      const seen = new Set(prev.map((i) => i.id));
-      return [...pending.filter((i) => !seen.has(i.id)), ...prev];
-    });
-    setPending([]);
+  // 浮条点击:重置未读锚到当前首行 + 平滑回顶(ai-invest 同款;即刷即渲染下
+  // 内容已在列表,「载入」即回到顶部阅读)
+  const backToTop = (): void => {
+    setSeenTopId(items[0]?.id ?? null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const unseen = countUnseen(items, seenTopId);
 
   return (
     <div>
-      {pending.length > 0 && (
+      {unseen > 0 && (
         <button
           type="button"
-          onClick={loadPending}
-          className="mb-3 w-full cursor-pointer rounded-md border border-accent/40 bg-accent-dim px-4 py-2 text-center text-xs text-accent hover:bg-accent/20"
+          onClick={backToTop}
+          className="mb-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/45 bg-accent-dim px-4 py-2 text-xs text-accent transition-colors hover:bg-accent/20"
         >
-          ↓ {pending.length} 条新电报 · 点击载入,不打断当前浏览位置(轮询 60s)
+          <span aria-hidden="true">↑</span>
+          <b>{unseen} 条新电报</b>
+          <span className="font-normal text-accent/70">点击回到顶部载入,不打断当前浏览位置</span>
         </button>
       )}
       {groupByDay(items, now).map((group) => (
@@ -286,6 +154,7 @@ export default function TelegramTimeline({
                     <span className="font-mono text-[11px] text-text-3">
                       {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
                     </span>
+                    {/* NEW 基准=aiRanAt(变可见时刻,M15 批①) */}
                     {isNew(t.aiRanAt, now) && (
                       <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
                         NEW

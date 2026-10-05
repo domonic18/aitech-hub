@@ -24,8 +24,9 @@
  * 块挂行锚外(2026-10-05 反馈:要点此前只在电报流页可见;wrapper+锚分离
  * 防交互元素嵌套进 <a>)。行点击直达外链;文字行解读标识统一「AI 解读」。
  *
- * SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目按 id 去重前插,
- * 前插后截回一页上限:长驻标签页只展示最新 count 条,不随时间无限增长)。
+ * SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目 id 去重后按服务端
+ * 同构序重排(M15 批③ mergeFeedItems),再截回一页上限:长驻标签页只展示
+ * 最新 count 条,不随时间无限增长)。
  * 下滚自动加载已移除(2026-10-05 用户要求):带内固定一页,完整流与历史
  * 翻页走 /telegram/。
  */
@@ -38,6 +39,7 @@ import {
   formatDuration,
   hhmm,
   isNew,
+  mergeFeedItems,
   platformLabel,
   timeAgo,
   FEED_CHIP_TONE_CLASSES,
@@ -177,7 +179,7 @@ export default function TelegramBand({
   const [items, setItems] = useState(initialItems);
   const [now, setNow] = useState(initialNow);
 
-  // 60s 轮询:只取第一页(与 SSR 同源),新条目按 id 去重前插后截回一页上限
+  // 60s 轮询:只取第一页(与 SSR 同源),新条目 id 去重、同构重排后截回一页上限
   // (长驻标签页只展示最新 count 条,不随时间无限增长)
   useEffect(() => {
     let alive = true;
@@ -190,9 +192,11 @@ export default function TelegramBand({
         if (alive && body.code === 0 && body.data) {
           const fresh = body.data.items;
           setItems((prev) => {
-            const seen = new Set(prev.map((i) => i.id));
-            const added = fresh.filter((i) => !seen.has(i.id));
-            return added.length > 0 ? [...added, ...prev].slice(0, count) : prev;
+            const added = fresh.filter((i) => !prev.some((p) => p.id === i.id));
+            if (added.length === 0) return prev;
+            // M15 批③:mergeFeedItems 同构重排后再截回一页——「刚解读但发布较早」
+            // 的行(补扫/backfill 上屏)纯前插会错误置顶,破坏倒序不变量
+            return mergeFeedItems(prev, fresh).slice(0, count);
           });
         }
       } catch {

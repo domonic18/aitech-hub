@@ -177,9 +177,44 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
-/** 30 分钟内视为新讯(LIVE 带/时间轴 NEW 徽章) */
+/** 30 分钟内视为新讯(LIVE 带/时间轴 NEW 徽章;基准 aiRanAt,M15 批①) */
 export function isNew(iso: string, now = Date.now()): boolean {
   return now - new Date(iso).getTime() < 30 * 60_000;
+}
+
+/** 服务端同构排序比较:publishedAt desc,id 数值 desc tiebreak(id 为 BigInt 串,
+ * 字典序对跨位数比较失真,转 BigInt 比对);去重后 id 恒异,无相等分支 */
+function compareFeedItems(a: PublicTelegramItem, b: PublicTelegramItem): number {
+  const t = Date.parse(b.publishedAt) - Date.parse(a.publishedAt);
+  if (t !== 0) return t;
+  return BigInt(b.id) >= BigInt(a.id) ? 1 : -1;
+}
+
+/**
+ * 轮询增量合并(M15 批③):id 去重后按服务端同构序(publishedAt desc,id desc)
+ * 重排。「刚解读但发布较早」的行(补扫/backfill 上屏)不错误置顶——纯前插会
+ * 破坏倒序不变量,与 listPublicTelegram 的 orderBy 保持一致。
+ */
+export function mergeFeedItems(
+  prev: readonly PublicTelegramItem[],
+  fresh: readonly PublicTelegramItem[],
+): PublicTelegramItem[] {
+  const seen = new Set(prev.map((i) => i.id));
+  return [...prev, ...fresh.filter((i) => !seen.has(i.id))].sort(compareFeedItems);
+}
+
+/**
+ * 未读计数(M15 批③,ai-invest-assisstant 同款未读锚):锚=用户已见的列表首行
+ * id,其上条数即未读;锚 null/已被翻页挤出列表(缺失)= 0。中段插入(旧发布
+ * 新解读)天然不计——锚下标不变。
+ */
+export function countUnseen(
+  items: readonly PublicTelegramItem[],
+  seenTopId: string | null,
+): number {
+  if (seenTopId === null) return 0;
+  const idx = items.findIndex((i) => i.id === seenTopId);
+  return idx > 0 ? idx : 0;
 }
 
 /** 北京时区 HH:mm(ISO 串入参薄封装;Date 入参用 lib/datetime#formatCnTime) */

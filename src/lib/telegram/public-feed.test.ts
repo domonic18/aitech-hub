@@ -12,7 +12,14 @@ vi.mock("../db", () => ({
 }));
 
 import { mergeBandItems, listPublicTelegram } from "./public-feed";
-import { feedChipTone, toTextAi, toVideoAi, type PublicTelegramItem } from "./feed-view";
+import {
+  countUnseen,
+  feedChipTone,
+  mergeFeedItems,
+  toTextAi,
+  toVideoAi,
+  type PublicTelegramItem,
+} from "./feed-view";
 
 function item(id: string, publishedAt: string): PublicTelegramItem {
   return {
@@ -43,6 +50,54 @@ function videoItem(id: string, publishedAt: string): PublicTelegramItem {
     },
   };
 }
+
+describe("mergeFeedItems 轮询增量合并(M15 批③)", () => {
+  const a = item("101", "2026-10-06T10:00:00Z");
+  const b = item("102", "2026-10-06T09:00:00Z");
+  const c = item("103", "2026-10-06T08:00:00Z");
+
+  it("id 去重 + publishedAt desc 排序;fresh 与 prev 重叠不重复", () => {
+    expect(mergeFeedItems([b, c], [a, b])).toEqual([a, b, c]);
+  });
+
+  it("同 publishedAt 时 id 数值降序 tiebreak(字典序对跨位数失真,BigInt 比对)", () => {
+    const x = item("9", "2026-10-06T10:00:00Z");
+    const y = item("100", "2026-10-06T10:00:00Z");
+    expect(mergeFeedItems([], [x, y]).map((i) => i.id)).toEqual(["100", "9"]);
+  });
+
+  it("「刚解读但发布较早」行落中段,不错误置顶(与服务端 orderBy 同构)", () => {
+    // 104 发布最早但 aiRanAt 最新(补扫上屏):重排后按 publishedAt 归位末尾
+    const oldPub = item("104", "2026-10-05T08:00:00Z");
+    expect(mergeFeedItems([a, b], [oldPub]).map((i) => i.id)).toEqual(["101", "102", "104"]);
+  });
+
+  it("prev 为空 → 排序后的 fresh;fresh 为空 → 原列表", () => {
+    expect(mergeFeedItems([], [b, a])).toEqual([a, b]);
+    expect(mergeFeedItems([a, b], [])).toEqual([a, b]);
+  });
+});
+
+describe("countUnseen 未读锚计数(M15 批③)", () => {
+  const items = [
+    item("103", "2026-10-06T10:00:00Z"),
+    item("102", "2026-10-06T09:00:00Z"),
+    item("101", "2026-10-06T08:00:00Z"),
+  ];
+
+  it("前插 N 条 → 锚下标即未读数;锚在首位 → 0;锚 null → 0", () => {
+    expect(countUnseen(items, "101")).toBe(2);
+    expect(countUnseen(items, "103")).toBe(0);
+    expect(countUnseen(items, null)).toBe(0);
+  });
+
+  it("锚不在列表(翻页挤出/异常)→ 0 防御;中段插入(锚下)不计未读", () => {
+    expect(countUnseen(items, "999")).toBe(0);
+    // 旧发布新解读行插在锚(103)之下:锚下标不变,未读数不变
+    const mid = item("104", "2026-10-05T08:00:00Z");
+    expect(countUnseen(mergeFeedItems(items, [mid]), "103")).toBe(0);
+  });
+});
 
 describe("mergeBandItems 视频保底槽位", () => {
   const mixed = Array.from({ length: 8 }, (_, i) => item(`t${i}`, `2026-10-04T0${i}:00:00+08:00`));
