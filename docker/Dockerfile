@@ -2,8 +2,20 @@
 # 同一镜像双角色:SERVICE_ROLE=web|worker 由 entrypoint 区分启动目标
 FROM node:22-slim AS deps
 WORKDIR /app
+# ffmpeg-static postinstall 从 github release 拉 Linux 二进制,网络受限环境
+# (docker VM 内 github 直连常被 reset)可经 FFMPEG_BINARIES_URL 指向镜像源/
+# 宿主机 seed 服务;空值回退默认 github,CI 无感
+ARG FFMPEG_BINARIES_URL=""
+ENV FFMPEG_BINARIES_URL=$FFMPEG_BINARIES_URL
+# npm fetch 容错(2026-10-05 本机 VM 出网抖动实测:长传输间歇 ECONNRESET):
+# 放宽重试次数/超时;npm 缓存挂 BuildKit cache 挂载,构建失败重试时已下载的
+# tarball 跨构建累计,只补缺口(CI 网络稳定,行为无差)
+ENV NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+    NPM_CONFIG_FETCH_TIMEOUT=600000
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM node:22-slim AS builder
 WORKDIR /app
