@@ -171,6 +171,8 @@ export async function listTelegramAdmin({
         videoEngagement: true,
         aiStatus: true,
         aiTopic: true,
+        // 2026-10-05 反馈:治理台行内灰字改显 AI 解读(未解读回退原始 summary)
+        aiSummary: true,
         lastAiError: true,
         source: { select: { id: true, name: true } },
       },
@@ -203,6 +205,7 @@ export async function listTelegramAdmin({
       videoEngagement: t.videoEngagement === null ? null : toEngagement(t.videoEngagement),
       aiStatus: t.aiStatus,
       aiTopic: t.aiTopic,
+      aiSummary: t.aiSummary,
       lastAiError: t.lastAiError,
     })),
     total: all,

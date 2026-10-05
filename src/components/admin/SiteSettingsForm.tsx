@@ -2,13 +2,14 @@
 
 /**
  * 站点设置表单(M10 批② 电报带条数;M12 批② 键族:首页项目/文章条数、
- * 站点标题、hub 主文案 markdown)。空/越界由服务端 Zod 校验返回 400 文案
- * 原样展示;PUT /api/site-config 多键 partial 一次保存。
+ * 站点标题、hub 主文案 markdown;2026-10-05 反馈:关于页内容 markdown)。
+ * 空/越界由服务端 Zod 校验返回 400 文案原样展示;PUT /api/site-config
+ * 多键 partial 一次保存,保存后 revalidatePath("/","layout") 全站即时再生。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { SiteSettings } from "@/lib/config/site-config";
+import { ABOUT_MD_MAX, type SiteSettings } from "@/lib/config/site-config";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 const inputField =
@@ -41,6 +42,8 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
   const [postCount, setPostCount] = useState(String(initial.postCount));
   const [siteTitle, setSiteTitle] = useState(initial.siteTitle);
   const [heroMd, setHeroMd] = useState(initial.heroMd);
+  const [aboutMd, setAboutMd] = useState(initial.aboutMd);
+  const [icp, setIcp] = useState(initial.icp);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -59,6 +62,8 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
           postCount: Number(postCount),
           siteTitle,
           heroMd,
+          aboutMd,
+          icp,
         }),
       });
       const body = (await res.json()) as ApiEnvelope;
@@ -124,7 +129,8 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
         </Field>
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-text-3">
-        电报流条数控制 LIVE 带初始展示(滚动到底自动加载更多);项目/文章条数控制 aside 两张 rail
+        电报流条数控制 LIVE 带展示条数(带内固定一页,新条目经 60s
+        轮询前插并截回该上限);项目/文章条数控制 aside 两张 rail
         卡的行数,非法/低于下限按默认值兜底,超上限取上限。
       </p>
 
@@ -138,6 +144,19 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
             value={siteTitle}
             onChange={(e) => setSiteTitle(e.target.value)}
             aria-label="站点标题"
+            className={`mt-1 ${inputField} w-full sm:w-64`}
+          />
+        </Field>
+        <Field
+          label="ICP 备案号(留空不展示;作用于页脚,链工信部备案系统)"
+          hint="如「京ICP备2022035466号-2」,保存后页脚出现指向 beian.miit.gov.cn 的备案链接。"
+        >
+          <input
+            type="text"
+            value={icp}
+            onChange={(e) => setIcp(e.target.value)}
+            aria-label="ICP 备案号"
+            maxLength={60}
             className={`mt-1 ${inputField} w-full sm:w-64`}
           />
         </Field>
@@ -157,6 +176,26 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
         </Field>
       </div>
 
+      <div className="mt-5 flex items-center gap-2 border-t border-line pt-4">
+        <b className="text-[13px] text-text-1">关于页</b>
+      </div>
+      <div className="mt-3 flex flex-col gap-3">
+        <Field
+          label="关于页内容(留空用内置默认文案;支持完整 Markdown:标题、列表、链接、加粗、行内代码、代码块)"
+          hint="展示于前台 /about/;保存后随全站配置即时再生。"
+        >
+          <textarea
+            value={aboutMd}
+            onChange={(e) => setAboutMd(e.target.value)}
+            aria-label="关于页内容"
+            rows={8}
+            maxLength={ABOUT_MD_MAX}
+            placeholder="留空回退内置默认文案;支持完整 Markdown。"
+            className={`mt-1 font-mono ${wideField}`}
+          />
+        </Field>
+      </div>
+
       {error && <p className="mt-2 font-mono text-[11px] text-red">{error}</p>}
       {notice && <p className="mt-2 font-mono text-[11px] text-text-2">{notice}</p>}
       <div className="mt-3 flex justify-end">
@@ -171,7 +210,7 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
       </div>
       <p className="mt-3 font-mono text-[11px] text-text-3">
         GET/PUT /api/site-config — 配置存 site_config kv(band.item_count / home.repo_count /
-        home.post_count / site.title / home.hero_md)。
+        home.post_count / site.title / home.hero_md / about.content)。
       </p>
     </div>
   );

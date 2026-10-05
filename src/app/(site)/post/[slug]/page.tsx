@@ -8,6 +8,11 @@ import ArticleBody from "@/components/article/ArticleBody";
 import { excerptOf } from "@/lib/content/format";
 import { getPostById, listPostSegmentsForPrerender } from "@/lib/content/posts";
 import { parsePostSegment, postPath, postPathSegment } from "@/lib/content/post-path";
+import {
+  CONTENT_ORIGIN_BADGES,
+  CONTENT_ORIGIN_LABELS,
+  asContentOrigin,
+} from "@/lib/content/post-schema";
 import { formatCnDate } from "@/lib/datetime";
 import { absoluteUrl } from "@/lib/seo/site";
 
@@ -56,6 +61,8 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
   const parsed = parsePostSegment(slug);
   const post = parsed ? await getPostById(parsed.id) : null;
   if (!post) notFound();
+  // 创作方式标识(合规):human 恒空不渲染,AI 系挂徽章 + 悬浮完整文案
+  const origin = asContentOrigin(post.contentOrigin);
   // 解析只认 id,URL 形态归一:非 canonical 段(含 bare-id、错 slug)永久重定向收敛信号
   const canonical = postPathSegment(post.id, post.slug);
   if (slug !== canonical) permanentRedirect(`/post/${canonical}/`);
@@ -93,6 +100,14 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
             </Link>
           ))}
           <span>阅读 {post.viewsCount.toLocaleString("zh-CN")}</span>
+          {CONTENT_ORIGIN_BADGES[origin] ? (
+            <span
+              className="rounded-sm border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+              title={CONTENT_ORIGIN_LABELS[origin]}
+            >
+              {CONTENT_ORIGIN_BADGES[origin]}
+            </span>
+          ) : null}
         </div>
       </header>
 
@@ -108,6 +123,16 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
             className="object-cover"
             sizes="(max-width: 768px) 100vw, 768px"
           />
+        </div>
+      ) : null}
+
+      {/* 创作方式显著提示条(合规显式标识):AI 系正文前明示,human 不渲染 */}
+      {CONTENT_ORIGIN_BADGES[origin] ? (
+        <div className="mt-6 flex items-start gap-2 rounded-md border border-accent/30 bg-accent/5 px-3.5 py-2.5">
+          <svg className="ic mt-0.5 flex-none text-accent" aria-hidden="true">
+            <use href="#i-robot" />
+          </svg>
+          <p className="text-xs leading-relaxed text-text-2">{CONTENT_ORIGIN_LABELS[origin]}</p>
         </div>
       ) : null}
 

@@ -9,14 +9,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type Item = { icon: string; label: string; href?: string; tag?: "M5" | "二期" };
+type Item = { icon: string; label: string; href?: string; tag?: "M5" | "二期"; exact?: boolean };
 type Group = { label: string; items: Item[] };
 
 const GROUPS: ReadonlyArray<Group> = [
   {
     label: "OVERVIEW",
     items: [
-      { icon: "i-dashboard", label: "站点统计", href: "/admin" },
+      // exact:/admin 是所有后台路由的前缀,只按全等点亮,
+      // 否则任何 /admin/xxx 页都会让「站点统计」与激活项同时高亮(2026-10-05 反馈)
+      { icon: "i-dashboard", label: "站点统计", href: "/admin", exact: true },
       { icon: "i-setting", label: "站点设置", href: "/admin/settings" },
     ],
   },
@@ -88,7 +90,7 @@ export default function AdminSidebar({
             {group.items.map((item) => {
               const active =
                 item.href !== undefined &&
-                (pathname === item.href || pathname.startsWith(`${item.href}/`));
+                (pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`)));
               if (item.href) {
                 return (
                   <Link

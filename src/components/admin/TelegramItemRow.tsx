@@ -1,6 +1,8 @@
 /**
  * 电报流治理表行(批C 从 page 抽出):视频行 = 封面缩略(时长角标)+ 标题摘要 +
  * 互动/解读态注记;文字行 = 标题摘要。徽章与行内操作复用既有件,纯展示。
+ * 2026-10-05 反馈:标题下灰字改显 AI 解读(aiSummary;未解读/无解读回退原始
+ * summary,解读态由 AiBadge 表达),与用户「这行应是解读内容」的预期一致。
  */
 import TelegramRowOps from "@/components/admin/TelegramRowOps";
 import { AiBadge, MediaBadge, StatusBadge } from "@/components/admin/TelegramBadges";
@@ -49,8 +51,13 @@ export default function TelegramItemRow({ item: t }: { item: Item }) {
             </a>
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium text-text-1">{t.title ?? "(无标题)"}</div>
-              {t.summary && (
-                <div className="mt-0.5 truncate text-[11px] text-text-3">{t.summary}</div>
+              {(t.aiSummary || t.summary) && (
+                <div
+                  className="mt-0.5 truncate text-[11px] text-text-3"
+                  title={t.aiSummary || t.summary}
+                >
+                  {t.aiSummary || t.summary}
+                </div>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
                 {like && <span>赞 {like}</span>}
@@ -62,7 +69,12 @@ export default function TelegramItemRow({ item: t }: { item: Item }) {
         ) : (
           <>
             <div className="truncate font-medium text-text-1">{t.title ?? "(无标题)"}</div>
-            <div className="mt-0.5 truncate text-[11px] text-text-3">{t.summary}</div>
+            <div
+              className="mt-0.5 truncate text-[11px] text-text-3"
+              title={t.aiSummary || t.summary}
+            >
+              {t.aiSummary || t.summary}
+            </div>
             {/* 批⑥:文字行也显解读态(摘要按钮的完成/失败可见,与视频行同口径) */}
             <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
               <AiBadge aiStatus={t.aiStatus} lastAiError={t.lastAiError} />

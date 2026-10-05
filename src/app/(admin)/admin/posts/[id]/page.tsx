@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 
 import PostEditor from "@/components/admin/PostEditor";
 import ArticleBody from "@/components/article/ArticleBody";
-import { postDisplayState } from "@/lib/content/post-schema";
+import { asContentOrigin, postDisplayState } from "@/lib/content/post-schema";
 import { getPostForAdmin, parsePostId } from "@/lib/content/posts-admin";
 import { listCategories } from "@/lib/content/taxonomy";
 import { formatCnDateTime } from "@/lib/datetime";
@@ -66,6 +66,7 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
         coverPath: post.coverPath ?? "",
         seoTitle: post.seoTitle ?? "",
         seoDescription: post.seoDescription ?? "",
+        contentOrigin: asContentOrigin(post.contentOrigin),
         status: postDisplayState(post),
       }}
     />

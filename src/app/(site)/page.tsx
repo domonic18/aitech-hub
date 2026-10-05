@@ -2,13 +2,14 @@ import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
-import { getBandItemCount, getHeroMd, getPostCount, getRepoCount } from "@/lib/config/site-config";
+import { getSiteSettings } from "@/lib/config/site-config";
 import { formatCnDate } from "@/lib/datetime";
 import { formatStars, listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import { countTodayVisible, listBandFeed, listPublicChannels } from "@/lib/telegram/public-feed";
 
 import HeroConsole from "@/components/site/HeroConsole";
+import HeroBrandLine from "@/components/site/HeroBrandLine";
 import SiteSprite from "@/components/site/SiteSprite";
 import TelegramBand from "@/components/site/TelegramBand";
 
@@ -19,30 +20,33 @@ import TelegramBand from "@/components/site/TelegramBand";
  * on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤;下滚加载更多 M10 已于
  * 2026-10-05 移除,带内固定一页)。
  * GitHub 项目卡 M11:白名单空(全部下架)整卡不渲染,「三区可独立降级」。
+ * 2026-10-05 性能批次:配置走 getSiteSettings 单查询;取数三段串行改两段
+ * (band 只依赖配置段,与 rails 并行);hero markdown 服务端渲染下传。
  */
 export const revalidate = 600;
 
 export default async function HomePage(): Promise<React.ReactElement> {
-  // 先取配置(rail 条数是后续取数的入参),再并行取数据
-  const [bandCount, heroMd, railPostCount, railRepoCount, today, channels] = await Promise.all([
-    getBandItemCount(),
-    getHeroMd(),
-    getPostCount(),
-    getRepoCount(),
+  // 配置段先行(rail/band 条数是后续取数的入参):getSiteSettings 单查询读全键,
+  // 与巡检统计/渠道清单并行
+  const [cfg, today, channels] = await Promise.all([
+    getSiteSettings(),
     countTodayVisible(),
     listPublicChannels(),
   ]);
-  const [latest, postCount, repos] = await Promise.all([
-    listLatestPosts(railPostCount),
+  // rails 与电报带并行(band 仅依赖 cfg.bandItemCount)
+  const [latest, postCount, repos, band] = await Promise.all([
+    listLatestPosts(cfg.postCount),
     countPublishedPosts(),
-    listShowcaseRepos(railRepoCount),
+    listShowcaseRepos(cfg.repoCount),
+    listBandFeed({ limit: cfg.bandItemCount }),
   ]);
-  const band = await listBandFeed({ limit: bandCount });
 
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
       <SiteSprite />
-      <HeroConsole postCount={postCount} heroMd={heroMd || undefined} />
+      <HeroConsole postCount={postCount}>
+        <HeroBrandLine heroMd={cfg.heroMd || undefined} />
+      </HeroConsole>
 
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左主轴:电报流 LIVE 带(原型 tg-band 即整个左栏) */}
@@ -50,7 +54,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           initialItems={band.items}
           channels={channels.length}
           today={today}
-          count={bandCount}
+          count={cfg.bandItemCount}
           initialNow={Date.now()}
         />
 
