@@ -19,6 +19,8 @@ export const QUEUE_STATS = "stats";
 export const QUEUE_CRAWLER = "crawler";
 /** 视频解读(M9:下载→抽轨→ASR→LLM 概括;并发 1——ffmpeg 是 CPU 峰值,arch/02 §3.2) */
 export const QUEUE_INTERPRETER = "interpreter";
+/** 文字资讯轻解读(M12 批③:一句话中心思想 + 关键词;与视频分队列防长任务阻塞) */
+export const QUEUE_SUMMARIZER = "summarizer";
 /** GitHub 项目展示(M11:tick 扫到期白名单仓 → 逐仓 sync job,单仓失败隔离;arch/05 §4) */
 export const QUEUE_GITHUB = "github";
 
@@ -29,6 +31,7 @@ export const QUEUE_NAMES = [
   QUEUE_STATS,
   QUEUE_CRAWLER,
   QUEUE_INTERPRETER,
+  QUEUE_SUMMARIZER,
   QUEUE_GITHUB,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -40,10 +43,12 @@ export const MEDIA_AUDIT_CRON = "41 3 * * *";
 export const VISIT_LOG_PURGE_CRON = "14 4 * * *";
 
 /** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;
- * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。 */
+ * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。
+ * ai-backfill(M12 批③)借 crawler 队列的 tick 生态做 AI 存量补扫调度(纯入队,轻)。 */
 export const CRAWL_JOB_TICK = "tick";
 export const CRAWL_JOB_SOURCE = "crawl";
 export const CRAWL_JOB_VIDEO = "crawl-video";
+export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细) */
 export const STATS_JOB_FLUSH = "flush";

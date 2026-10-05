@@ -1,7 +1,8 @@
 /**
  * 电报流入库编排(M7 批③b,arch/02 §3-§4):
  * 每日上限 → 适配器拉取 → content_hash 去重(先查后写,P2002 兜底并发)→
- * 屏蔽词/启发式过滤(命中 hidden + filter_hit 供观测)→ 规则截断摘要 → 落库。
+ * 屏蔽词/启发式过滤(命中 hidden + filter_hit 供观测)→ 规则截断摘要 → 落库
+ * → 可见新条入轻解读队列(M12 批③ summarize;就绪整轮 resolve 一次)。
  * 来源侧每轮推进 lastRunAt/nextRunAt,连续失败 ≥3 → status=error;
  * 失败上抛交 BullMQ failed 事件(后台采集总览「最近错误」的数据源)。
  */
@@ -24,6 +25,7 @@ import {
 import { matchBlocklist, matchHeuristics, type BlocklistWord, type FilterHit } from "./filter";
 import { canonicalUrl, contentHash, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
+import { isSummarizeReady, markPendingAndEnqueueSummarize } from "./summarize-text";
 
 /** 单来源单轮采集结果(worker 日志与后台台账观测字段) */
 export interface CrawlOutcome {
@@ -46,11 +48,13 @@ function nextRunAt(intervalMin: number, from: Date): Date {
   return new Date(from.getTime() + intervalMin * 60_000);
 }
 
-/** 单条入库:去重 → 过滤 → 摘要 → 落库;命中过滤也落库(hidden),供后台观测误杀 */
+/** 单条入库:去重 → 过滤 → 摘要 → 落库;命中过滤也落库(hidden),供后台观测误杀。
+ * 可见新条 + summarize 就绪 → 入轻解读队列(M12 批③;入队失败不拖垮采集轮) */
 async function ingestItem(
   sourceId: number,
   item: AdapterItem,
   words: readonly BlocklistWord[],
+  summarizeReady: boolean,
 ): Promise<IngestVerdict> {
   const url = canonicalUrl(item.url);
   const hash = contentHash(item.title, url);
@@ -67,7 +71,7 @@ async function ingestItem(
     matchHeuristics(item.title, item.summaryCandidate);
 
   try {
-    await prisma.telegram.create({
+    const created = await prisma.telegram.create({
       data: {
         sourceId,
         title: item.title,
@@ -80,7 +84,21 @@ async function ingestItem(
       },
       select: { id: true },
     });
-    return hit ? "filtered" : "inserted";
+    if (hit) return "filtered";
+    // 可见新条 + summarize 就绪 → 入轻解读队列(pending→入队→回滚由 ai-shared 单点保证;
+    // 失败不拖垮采集轮,存量由 ai-backfill-tick 5min 补扫兜底)
+    if (summarizeReady) {
+      try {
+        await markPendingAndEnqueueSummarize(created.id);
+      } catch (err) {
+        logger.warn({
+          event: "crawler.summarize_enqueue_failed",
+          telegramId: created.id.toString(),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return "inserted";
   } catch (err) {
     if (isP2002(err)) return "duplicated"; // 并发轮次抢先落库
     throw err;
@@ -127,8 +145,10 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
         select: { word: true, scope: true },
       })
     ).map((w) => ({ word: w.word, scope: w.scope as BlocklistScope }));
+    // summarize 就绪整轮 resolve 一次(镜像 ingest-video 的 interpretReady,省逐条双查)
+    const summarizeReady = await isSummarizeReady();
     for (const item of items.slice(0, CRAWL_MAX_ITEMS_PER_RUN)) {
-      outcome[await ingestItem(source.id, item, words)] += 1;
+      outcome[await ingestItem(source.id, item, words, summarizeReady)] += 1;
     }
 
     await prisma.crawlSource.update({

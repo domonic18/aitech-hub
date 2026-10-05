@@ -110,10 +110,11 @@ async function ingestVideoItem(
       select: { id: true },
     });
     if (hit) return "filtered";
-    // 可见新条 + 解读就绪 + 网关透出直链 → 入队解读(playUrl 仅经 job data 过境,禁落库;
-    // 入队失败不拖垮采集轮,可后续经 admin 按钮补)。pending→入队→回滚顺序由
-    // markPendingAndEnqueue 单点保证
-    if (interpretReady && item.playUrl) {
+    // 可见新条 + 解读就绪 → 入队解读(playUrl 仅经 job data 过境,禁落库;M12 起
+    // 不再要求网关透出直链——job 内网关重拉,拉不到降级文案解读,存量另有
+    // ai-backfill-tick 5min 补扫兜底;入队失败不拖垮采集轮)。pending→入队→
+    // 回滚顺序由 markPendingAndEnqueue 单点保证
+    if (interpretReady) {
       try {
         await markPendingAndEnqueue(created.id, {
           videoId: item.videoId,
@@ -228,7 +229,7 @@ export async function crawlVideoAccount(
       .slice(0, cap);
 
     const words = await loadBlocklistWords();
-    // 解读就绪整轮 resolve 一次(ASR enabled + interpret 绑定,省逐条双查)
+    // 解读就绪整轮 resolve 一次(interpret 绑定即就绪,M12 起不前置 ASR,省逐条双查)
     const interpretReady = await isInterpretReady();
     for (const item of candidates) {
       outcome[

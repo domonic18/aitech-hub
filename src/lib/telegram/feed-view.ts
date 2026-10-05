@@ -36,6 +36,9 @@ export interface PublicTelegramItem {
   sourceName: string;
   mediaType: "text" | "video";
   video?: PublicVideoMeta;
+  /** 文字条轻解读(M12 批③:ai_summary=一句话中心思想、ai_points=关键词,
+   * 复用视频 AI 形状字段名不改);视频条的解读在 video.ai。null=未解读 */
+  ai?: PublicVideoAi | null;
 }
 
 /** 媒体筛选合法值(URL 驱动,白名单回落 all) */
@@ -82,14 +85,15 @@ export function toEngagement(raw: unknown): {
   return { play: num(o.play), like: num(o.like), comment: num(o.comment) };
 }
 
-/** AI 解读投影(镜像 toEngagement;ai_summary 非空才产出,points 白名单截 3 条) */
+/** AI 解读投影(镜像 toEngagement;ai_summary 非空才产出,points 白名单截 5 条
+ * ——文字关键词 3-5 个 M12 起全量透出,视频要点契约 ≤3 不受影响) */
 export function toVideoAi(topic: unknown, summary: unknown, points: unknown): PublicVideoAi | null {
   if (typeof summary !== "string" || summary.trim() === "") return null;
   return {
     topic: typeof topic === "string" ? topic.trim() : "",
     summary,
     points: Array.isArray(points)
-      ? points.filter((p): p is string => typeof p === "string" && p.trim() !== "").slice(0, 3)
+      ? points.filter((p): p is string => typeof p === "string" && p.trim() !== "").slice(0, 5)
       : [],
   };
 }

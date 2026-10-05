@@ -3,12 +3,24 @@
  * 北京时区按日补零)+ 库存概况。日期边界 JS 侧算好作参数,SQL 禁 now()
  * (与 stats/queries 同一时区纪律)。
  */
-import { AI_PURPOSE_INTERPRET } from "../ai/constants";
+import { AI_PURPOSE_INTERPRET, AI_PURPOSE_SUMMARIZE, type AiTaskRole } from "../ai/constants";
 import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { formatCnDate } from "../datetime";
-import { getQueue, QUEUE_CRAWLER, QUEUE_GITHUB, QUEUE_INTERPRETER, QUEUE_NAMES } from "../queue";
-import { TELEGRAM_AI_TERMINAL, TELEGRAM_MEDIA_VIDEO } from "./constants";
+import {
+  getQueue,
+  QUEUE_CRAWLER,
+  QUEUE_GITHUB,
+  QUEUE_INTERPRETER,
+  QUEUE_NAMES,
+  QUEUE_SUMMARIZER,
+} from "../queue";
+import {
+  TELEGRAM_AI_TERMINAL,
+  TELEGRAM_MEDIA_TEXT,
+  TELEGRAM_MEDIA_VIDEO,
+  type TelegramMediaType,
+} from "./constants";
 
 export interface QueueSnapshot {
   counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
@@ -66,13 +78,19 @@ export async function getGithubQueueSnapshot(): Promise<
   return { ...snapshot, repoCount, enabledCount };
 }
 
-/** interpreter 队列实况(M9):四计数 + 今日已判读/日配额(worker 并发 1 说明在页侧) */
-export async function getInterpreterQueueSnapshot(): Promise<{
+/** AI 解读/摘要队列实况共性(M12 批③):job 计数 + 今日已判读(mediaType 拆分)/日配额 */
+interface AiQueueSnapshot {
   counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
   todayDone: number;
   dailyMax: number;
-}> {
-  const queue = getQueue(QUEUE_INTERPRETER);
+}
+
+async function aiQueueSnapshot(
+  queueName: (typeof QUEUE_NAMES)[number],
+  role: AiTaskRole,
+  mediaType: TelegramMediaType,
+): Promise<AiQueueSnapshot> {
+  const queue = getQueue(queueName);
   const counts = (await queue.getJobCounts(
     "waiting",
     "active",
@@ -88,24 +106,37 @@ export async function getInterpreterQueueSnapshot(): Promise<{
       failed: counts.failed ?? 0,
       delayed: counts.delayed ?? 0,
     },
-    todayDone: await countTodayInterpreted(),
-    dailyMax: await getRoleDailyMax(AI_PURPOSE_INTERPRET),
+    todayDone: await countTodayAiDone(mediaType),
+    dailyMax: await getRoleDailyMax(role),
   };
 }
 
-/** 服务器本地自然日零点(与 interpret-video 配额计数同口径) */
+/** interpreter 队列实况(M9):四计数 + 今日已判读(视频行)/日配额(worker 并发 1 说明在页侧) */
+export function getInterpreterQueueSnapshot(): Promise<AiQueueSnapshot> {
+  return aiQueueSnapshot(QUEUE_INTERPRETER, AI_PURPOSE_INTERPRET, TELEGRAM_MEDIA_VIDEO);
+}
+
+/** summarizer 队列实况(M12 批③):文字轻解读 job 计数 + 今日已摘要(文字行)/日配额 */
+export function getSummarizerQueueSnapshot(): Promise<AiQueueSnapshot> {
+  return aiQueueSnapshot(QUEUE_SUMMARIZER, AI_PURPOSE_SUMMARIZE, TELEGRAM_MEDIA_TEXT);
+}
+
+/** 服务器本地自然日零点(与 interpret-video/summarize-text 配额计数同口径) */
 function todayStart(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-/** 今日已解读数(终态口径单点:观测台与配额判定共用,防两侧口径漂移) */
-export async function countTodayInterpreted(): Promise<number> {
+/** 今日已完成 AI 处理数(终态口径单点:观测台与配额判定共用,防两侧口径漂移)。
+ * M12 批③ 按 mediaType 拆分:interpret 数视频行、summarize 数文字行,两角色
+ * 日配额互不侵占(终态含 missing_transcript 降级——LLM 已实际消耗)。 */
+export async function countTodayAiDone(mediaType: TelegramMediaType): Promise<number> {
   return prisma.telegram.count({
     where: {
       aiRanAt: { gte: todayStart() },
       aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
+      mediaType,
     },
   });
 }

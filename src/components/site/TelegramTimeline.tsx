@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡;M10 批③ 视频卡原型重排):
+ * 电报流时间轴(M7 批⑤ 文字形态;M8 批④ 混合流加视频卡;M10 批③ 视频卡原型重排;
+ * M12 批③ 文字卡加轻解读块——中心思想 + #关键词 chips):
  * 日分组卡片 + 60s 轮询增量;新讯不打断浏览位置——浮条提示、点击载入。
  * 视频项独立卡形(原型 site-telegram .tg-item.video):竖版大封面
  * 88×157(≤sm 72×128,防盗链 no-referrer,失败降级占位)+ 播放浮层 +
  * 平台角标左上/时长左下 + 标题进卡 + AI 摘要 line-clamp-3 +
- * 互动 播/赞/评(空值整项隐藏)+ 原视频外链;文字项维持原行文卡。
+ * 互动 播/赞/评(空值整项隐藏)+ 原视频外链;文字卡同构展示 AI 轻解读。
  */
 import { useEffect, useState } from "react";
 
@@ -272,10 +273,34 @@ export default function TelegramTimeline({
                       </svg>
                     </a>
                   </h3>
-                  {t.summary && (
-                    <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
+                  {/* 轻解读替代原始 summary(M12 批③;对齐视频卡 v.ai 口径) */}
+                  {t.ai ? (
+                    <>
+                      <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">
+                        <span className="mr-1.5 inline-block rounded-sm bg-accent-dim px-1.5 py-px align-middle font-mono text-[10px] text-accent">
+                          AI 解读
+                        </span>
+                        {t.ai.summary}
+                      </p>
+                      {t.ai.points.length > 0 && (
+                        <p className="mt-1.5 flex flex-wrap gap-1.5">
+                          {t.ai.points.map((k) => (
+                            <span
+                              key={k}
+                              className="rounded-sm bg-panel-2 px-1.5 py-px font-mono text-[11px] text-text-2"
+                            >
+                              #{k}
+                            </span>
+                          ))}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    t.summary && (
+                      <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
+                    )
                   )}
-                  <div className="mt-2 flex items-center gap-3 font-mono text-[11px] text-text-3">
+                  <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[11px] text-text-3">
                     {hostOf(t.url) && <span>{hostOf(t.url)}</span>}
                     <a
                       href={t.url}
@@ -285,6 +310,7 @@ export default function TelegramTimeline({
                     >
                       原文 →
                     </a>
+                    {t.ai && <span>AI 生成 · 中心思想与关键词,内容版权归原作者</span>}
                   </div>
                 </article>
               ),

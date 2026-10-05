@@ -1,7 +1,8 @@
 /**
  * 视频解读管道单测:prisma/queue/AI 客户端/ffmpeg/fs 全打桩,验状态机分支——
- * 幂等 skip、未配置不标败、配额顺延重投、ASR 三连败降级仍走 LLM、
- * LLM 解析败 failed 不烧 attempts、直链两路获取与过期回拉、临时文件即删。
+ * 幂等 skip、未配置不标败、配额顺延重投、ASR 停用/直链缺失降级文案概括(M12 解耦)、
+ * ASR 三连败降级仍走 LLM、LLM 解析败 failed 不烧 attempts、
+ * 直链两路获取与过期回拉、临时文件即删。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -204,13 +205,18 @@ describe("interpretVideoJob 状态机", () => {
     expect((await interpretVideoJob(DATA)).status).toBe("skipped_not_found");
   });
 
-  it("未配置(ASR 停用)→ skipped_not_ready:aiStatus 不动,仅落 lastAiError 提示", async () => {
+  it("ASR 停用 → 降级文案概括(M12 解耦):不触下载/转写,missing_transcript 落 ai_* 列", async () => {
     prismaMock.asrConfig.findUnique.mockResolvedValue({ ...ASR_ROW, enabled: false });
     const outcome = await interpretVideoJob(DATA);
-    expect(outcome.status).toBe("skipped_not_ready");
-    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
+    expect(mediaMock.makeInterpretTmpDir).not.toHaveBeenCalled();
+    expect(transcribeMock).not.toHaveBeenCalled();
+    expect(chatJsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.not.stringContaining("视频转写全文") }),
+    );
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(1) },
-      data: { lastAiError: expect.stringContaining("未启用") },
+      data: expect.objectContaining({ aiStatus: "missing_transcript", lastAiError: null }),
     });
   });
 
@@ -277,7 +283,7 @@ describe("interpretVideoJob 状态机", () => {
     });
   });
 
-  it("无直链且无匹配锚(videoId/secUid 缺)→ failed 不触网", async () => {
+  it("无直链且无匹配锚(videoId/secUid 缺)→ 降级文案概括,不触下载(M12 起不再 failed)", async () => {
     const calls = stubDownload();
     const outcome = await interpretVideoJob({
       ...DATA,
@@ -285,9 +291,16 @@ describe("interpretVideoJob 状态机", () => {
       videoId: null,
       secUid: null,
     });
-    expect(outcome.status).toBe("failed");
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
     expect(calls).toHaveLength(0);
     expect(transcribeMock).not.toHaveBeenCalled();
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("无可用播放直链"),
+      }),
+    });
   });
 
   it("过境直链缺失 → 网关重拉 listing(maxPages=3)按 videoId 命中", async () => {

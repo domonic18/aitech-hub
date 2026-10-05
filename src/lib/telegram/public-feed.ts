@@ -139,7 +139,8 @@ async function queryPublicTelegram(
             ai: toVideoAi(t.aiTopic, t.aiSummary, t.aiPoints),
           },
         }
-      : {}),
+      : // 文字条轻解读(M12 批③):中心思想 + 关键词,复用同一 ai_* 列组
+        { ai: toVideoAi(t.aiTopic, t.aiSummary, t.aiPoints) }),
   }));
 }
 
