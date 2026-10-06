@@ -3,7 +3,9 @@
 /**
  * 一键发文弹窗(原型 admin-editor §4,M5-b;M16 改造):md 与图片分离入口,
  * 多次选择累积合并(跨目录补选不互清);引用列表逐条「选图」补选(立即上传)/
- * 失败行「重试」。本地图按文件名匹配上传(sha1 去重)/ 外链交 media.transfer
+ * 失败行「重试」。「选择文件夹(自动配图)」走 webkitdirectory 目录选择,一次选中
+ * 文章目录即自动收集其中全部图片并入、目录内 md 自动选为文章,免逐张挑图。
+ * 本地图按文件名匹配上传(sha1 去重)/ 外链交 media.transfer
  * 批量转存 → 引用替换为站内 URL → sessionStorage 交接给编辑器。
  * 逐图容错:失败保留原链并在交接 warning 中列出,不阻断整篇导入。
  */
@@ -34,12 +36,14 @@ function pollTriesFor(count: number): number {
 }
 
 const MD_RE = /\.(md|markdown)$/i;
+const IMAGE_RE = /\.(jpe?g|png|webp|gif)$/i;
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export default function ImportPostsModal({ onClose }: { onClose: () => void }): React.ReactElement {
   const router = useRouter();
   const mdRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
+  const dirRef = useRef<HTMLInputElement>(null);
   const pickRefRef = useRef<HTMLInputElement>(null);
   /** 已上传映射(ref.src → 站内路径):补选/重试即时上传落这里,run() 优先复用不重传 */
   const overridesRef = useRef<ImportMapping>({});
@@ -55,13 +59,8 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  /** md 选择(可随时换 md;换 md 重置引用与已传映射) */
-  function pickMd(list: FileList): void {
-    const md = [...list].find((f) => MD_RE.test(f.name));
-    if (!md) {
-      setError("所选文件中没有 .md 文章");
-      return;
-    }
+  /** 落定 md 文章(解析引用、重置已传映射);pickMd 与目录自动识别共用 */
+  function applyMd(md: File): void {
     setDoneMsg(null);
     setError(null);
     void md.text().then((text) => {
@@ -74,14 +73,38 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
     });
   }
 
+  /** md 选择(可随时换 md;换 md 重置引用与已传映射) */
+  function pickMd(list: FileList): void {
+    const md = [...list].find((f) => MD_RE.test(f.name));
+    if (!md) {
+      setError("所选文件中没有 .md 文章");
+      return;
+    }
+    applyMd(md);
+  }
+
   /** 图片选择:按文件名去重追加,不清空已有选择(跨目录多次补选) */
-  function addImages(list: FileList): void {
-    const incoming = [...list].filter((f) => !MD_RE.test(f.name));
+  function addImages(list: Iterable<File>): void {
+    const incoming = [...list].filter((f) => !MD_RE.test(f.name) && IMAGE_RE.test(f.name));
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => f.name));
       return [...prev, ...incoming.filter((f) => !seen.has(f.name))];
     });
     setError(null);
+  }
+
+  /** 目录选择(webkitdirectory):一次选中文章目录即自动收集——目录内(含子目录)全部
+   *  图片并入已选;目录里有 md 且尚未选文章时自动选为文章。免逐张挑图(图与 md
+   *  常分处不同层级目录)。目录既无图片也无 md 时给出提示。 */
+  function addDirectory(list: FileList): void {
+    const all = [...list];
+    const imgs = all.filter((f) => !MD_RE.test(f.name) && IMAGE_RE.test(f.name));
+    if (imgs.length > 0) addImages(imgs);
+    const md = mdName ? undefined : all.find((f) => MD_RE.test(f.name));
+    if (md) applyMd(md);
+    if (imgs.length === 0 && !md && !mdName) {
+      setError("所选文件夹中没有图片或 .md 文章");
+    }
   }
 
   function patch(src: string, s: RefState): void {
@@ -252,9 +275,9 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
         </div>
 
         <p className="mt-2 text-xs text-text-3">
-          选择 Markdown
-          文章与其引用的本地图片(按文件名匹配,可分多次补选);外链图自动转存入媒体库;上传与转存 sha1
-          去重。完成后进入编辑器,失败项保留原链。
+          推荐用「选择文件夹(自动配图)」一次选中文章目录:系统自动读取其中的 md
+          并收集全部图片(含子目录,按文件名匹配)。也可分别选择 md
+          与图片;外链图自动转存入媒体库;上传与转存 sha1 去重。完成后进入编辑器,失败项保留原链。
         </p>
 
         <input
@@ -275,6 +298,20 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
           hidden
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) addImages(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {/* 目录选择(webkitdirectory):onChange 的 FileList 含目录内全部文件
+            (webkitRelativePath 带相对路径,匹配仍走 basename)。TS 未收录该
+            非标准属性,以对象展开透传 DOM attribute。 */}
+        <input
+          ref={dirRef}
+          type="file"
+          hidden
+          multiple
+          {...{ webkitdirectory: "", directory: "" }}
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) addDirectory(e.target.files);
             e.target.value = "";
           }}
         />
@@ -306,6 +343,17 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
               <use href="#i-paperclip" />
             </svg>
             {mdName ? "重选 md" : "选择 md"}
+          </button>
+          <button
+            type="button"
+            disabled={running}
+            onClick={() => dirRef.current?.click()}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-3 py-2 text-[13px] text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-60"
+          >
+            <svg className="ic" aria-hidden="true">
+              <use href="#i-folder" />
+            </svg>
+            选择文件夹(自动配图)
           </button>
           <button
             type="button"

@@ -1,7 +1,8 @@
 import { loadEnvConfig } from "@next/env";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
@@ -2106,5 +2107,72 @@ test("24. 批量 SEO 补全 400 路径(M16:多选批量条/未绑定 summarize �
         data: { primaryId: binding.primaryId, backupId: binding.backupId },
       });
     }
+  }
+});
+
+test("25. 一键发文目录自动配图(M16:webkitdirectory 选文件夹/md 自动选中/图片自动并入)", async ({
+  page,
+}) => {
+  const IMG_A = "e2e-dir-hero.png";
+  const IMG_B = "e2e-dir-chart.png";
+  await prisma.media.deleteMany({ where: { filename: { in: [IMG_A, IMG_B] } } });
+
+  // webkitdirectory 的 setInputFiles 只收真实目录路径:md 在根、图片在 imgs 子目录
+  // (对应用户场景:md 与图片分处不同层级目录,一次选文件夹免逐张挑图)
+  const png = await sharp({
+    create: { width: 4, height: 3, channels: 3, background: { r: 30, g: 160, b: 90 } },
+  })
+    .png()
+    .toBuffer();
+  const dir = await mkdtemp(path.join(tmpdir(), "e2e-import-"));
+  try {
+    await mkdir(path.join(dir, "imgs"));
+    await writeFile(
+      path.join(dir, "e2e-dir.md"),
+      Buffer.from(
+        `# E2E 目录导入\n\n![主图](./imgs/${IMG_A})\n\n![图表](./imgs/${IMG_B})\n`,
+        "utf8",
+      ),
+    );
+    await writeFile(path.join(dir, "imgs", IMG_A), png);
+    await writeFile(path.join(dir, "imgs", IMG_B), png);
+
+    // 登录(同前序用例 UI 流)
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+
+    await page.goto("/admin/posts/");
+    await page.getByRole("button", { name: "一键发文(md 导入)" }).click();
+
+    // 选文件夹:目录内 md 自动选为文章、图片自动并入,不用逐张挑
+    await page.locator("input[webkitdirectory]").setInputFiles(dir);
+    await expect(page.getByText(/图片引用 2 处/)).toBeVisible();
+    await expect(page.getByText("已选图片 2 张")).toBeVisible();
+
+    // 开始导入 → 两引用都替换为站内路径(同内容 sha1 去重,复用同一媒体行)
+    await page.getByRole("button", { name: "开始导入" }).click();
+    await page.waitForURL(/\/admin\/posts\/new\/\?import=1/);
+    const ta = page.locator("textarea.vditor-sv");
+    await expect(ta).toHaveValue(/!\[主图\]\(\/wp-content\/uploads\//);
+    await expect(ta).toHaveValue(/!\[图表\]\(\/wp-content\/uploads\//);
+
+    // 清理:媒体行 + 盘上文件族(与用例 23 同款)+ 临时夹具目录
+    const rows = await prisma.media.findMany({ where: { filename: { in: [IMG_A, IMG_B] } } });
+    const root = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+    for (const row of rows) {
+      const rel = decodeURIComponent(row.path.replace("/wp-content/uploads/", ""));
+      const stem = rel.replace(/\.[a-z]+$/, "");
+      await Promise.all(
+        [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+          rm(path.join(root, f), { force: true }),
+        ),
+      );
+      await prisma.media.delete({ where: { id: row.id } });
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
