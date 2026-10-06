@@ -18,6 +18,8 @@ export interface ResolvedAiModel {
   timeoutSec: number;
   concurrency: number;
   supportsVision: boolean;
+  /** 供应商扩展参数(生图 watermark_enabled 等;null/非对象归一为 {}) */
+  extraParams: Record<string, unknown>;
   /** 本次实际命中的绑定位:primary=主力(用量 status ok),backup=备用(degraded) */
   source: "primary" | "backup";
 }
@@ -30,6 +32,13 @@ export function pickBoundModel(
   if (primary?.enabled) return "primary";
   if (backup?.enabled) return "backup";
   return null;
+}
+
+/** extraParams 归一(纯函数,单测锚点):null/数组/标量 → 空对象;对象原样 */
+export function normalizeExtraParams(v: unknown): Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
 }
 
 /** 角色日配额默认值(后台未设置时兜底;设置入口 /admin/models 任务绑定卡) */
@@ -63,6 +72,7 @@ export async function resolveAiModel(role: AiTaskRole): Promise<ResolvedAiModel 
       timeoutSec: true,
       concurrency: true,
       supportsVision: true,
+      extraParams: true,
       enabled: true,
     },
   });
@@ -81,6 +91,7 @@ export async function resolveAiModel(role: AiTaskRole): Promise<ResolvedAiModel 
     timeoutSec: row.timeoutSec,
     concurrency: row.concurrency,
     supportsVision: row.supportsVision,
+    extraParams: normalizeExtraParams(row.extraParams),
     source: picked,
   };
 }

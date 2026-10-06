@@ -1944,6 +1944,9 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
     }
     await expect(page.getByText("AI 文生图")).toBeVisible();
     await expect(page.getByRole("button", { name: "生成候选" })).toBeDisabled();
+    // M16 问题2:prompt 框 gating——填提示词即解锁生成(不触网)
+    await page.getByPlaceholder(/描述画面/).fill("横版 16:9 科技封面插画,无文字与水印");
+    await expect(page.getByRole("button", { name: "生成候选" })).toBeEnabled();
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(page.getByText("本地上传(jpg / png / webp)")).toBeHidden();
   } finally {

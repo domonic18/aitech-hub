@@ -10,7 +10,23 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("../db", () => ({ prisma: prismaMock }));
 vi.mock("../env", () => ({ env: { AUTH_SECRET: "unit-test-auth-secret-0123456789" } }));
 
-import { DEFAULT_DAILY_MAX, getRoleDailyMax, pickBoundModel } from "./resolver";
+import {
+  DEFAULT_DAILY_MAX,
+  getRoleDailyMax,
+  normalizeExtraParams,
+  pickBoundModel,
+} from "./resolver";
+
+describe("normalizeExtraParams(M16 问题2)", () => {
+  it("对象原样;null/数组/标量归一空对象", () => {
+    expect(normalizeExtraParams({ watermark_enabled: false })).toEqual({
+      watermark_enabled: false,
+    });
+    expect(normalizeExtraParams(null)).toEqual({});
+    expect(normalizeExtraParams([1, 2])).toEqual({});
+    expect(normalizeExtraParams("x")).toEqual({});
+  });
+});
 
 describe("pickBoundModel", () => {
   it("主力启用 → primary;主力停用 → backup;主力缺失 → backup", () => {

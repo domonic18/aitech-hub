@@ -56,6 +56,8 @@ export interface CoverGenContext {
   title: string;
   excerpt: string;
   tags: string[];
+  /** 正文 markdown(可选,M16 问题2:LLM 生成提示词时取样;不传则按标题/摘要生成) */
+  contentMd?: string;
 }
 
 export function aspectOf(t: CoverTemplate): number {

@@ -20,6 +20,8 @@ const coverGenInputSchema = z.object({
   title: z.string().trim().max(POST_LIMITS.title).default(""),
   excerpt: z.string().trim().max(POST_LIMITS.excerpt).default(""),
   tags: z.array(z.string().trim().max(POST_LIMITS.tag)).max(POST_LIMITS.tagsMax).default([]),
+  /** 生图 prompt(M16 问题2:前端 AI 建议/手填;空串回退服务端兜底模板) */
+  prompt: z.string().trim().max(2000).default(""),
   /** 编辑态文章 id(数字串);创建态缺省 */
   postId: z
     .string()
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest) {
       title: parsed.data.title,
       excerpt: parsed.data.excerpt,
       tags: parsed.data.tags,
+      prompt: parsed.data.prompt,
     });
     return apiEnvelope(0, "accepted", r, 202);
   } catch (err) {

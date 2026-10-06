@@ -91,6 +91,9 @@ export default function CoverDialog({
   const [candidates, setCandidates] = useState<Array<{ id: string; path: string }>>([]);
   /** 未选源首屏的 AI 生成面板展开态(M16:AI 提为第三源,点卡展开) */
   const [aiOpen, setAiOpen] = useState(false);
+  /** 生图 prompt(M16 问题2:AI 建议填入/用户手改,生成时随请求下发) */
+  const [prompt, setPrompt] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
   const genPollRef = useRef<number | null>(null);
 
   const genRunning = gen.phase === "queued" || gen.phase === "running";
@@ -279,8 +282,41 @@ export default function CoverDialog({
     }
   }
 
+  /** AI 生成提示词(M16 问题2):LLM 分析标题/摘要/标签/正文 → prompt 框,用户可改后再生成 */
+  async function suggestPrompt(): Promise<void> {
+    if (!coverContext) return;
+    setPromptBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/posts/cover-prompt", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: coverContext.title,
+          excerpt: coverContext.excerpt,
+          tags: coverContext.tags,
+          contentMd: coverContext.contentMd ?? "",
+        }),
+      });
+      const json = (await res.json()) as ApiEnvelope<{ prompt: string }>;
+      if (json.code !== 0 || !json.data) {
+        setError(json.message || `提示词生成失败(${res.status})`);
+        return;
+      }
+      setPrompt(json.data.prompt);
+    } catch {
+      setError("网络错误,请重试");
+    } finally {
+      setPromptBusy(false);
+    }
+  }
+
   async function startGen(): Promise<void> {
     if (!coverContext || coverContext.title.trim() === "") return;
+    if (prompt.trim() === "") {
+      setError("先填写生图提示词(可点「AI 生成提示词」自动撰写)");
+      return;
+    }
     stopGenPoll();
     setGen({ phase: "queued", jobId: null, token: null, error: null });
     setError(null);
@@ -293,6 +329,7 @@ export default function CoverDialog({
           title: coverContext.title,
           excerpt: coverContext.excerpt,
           tags: coverContext.tags,
+          prompt: prompt.trim(),
         }),
       });
       const json = (await res.json()) as ApiEnvelope<{ jobId: string; token: string }>;
@@ -325,12 +362,33 @@ export default function CoverDialog({
           AI 文生图
           <span className="ml-1 font-normal text-text-3">(cover 绑定模型)</span>
         </div>
+      </div>
+      <label className="mt-1.5 block text-[11px] text-text-3">
+        生图提示词 *
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={3}
+          maxLength={2000}
+          spellCheck={false}
+          placeholder="描述画面:主体/风格/配色/构图。可点「AI 生成提示词」由 LLM 依文章撰写,再自行修改"
+          className="mt-1 w-full rounded-sm border border-line bg-panel px-2 py-1.5 text-xs text-text-1 placeholder:text-text-3 focus:border-accent focus:outline-none"
+        />
+      </label>
+      <div className="mt-1.5 flex items-center gap-2">
         <button
           type="button"
-          disabled={genRunning || busy || coverContext.title.trim() === ""}
-          title={
-            coverContext.title.trim() === "" ? "先填文章标题" : "标题/摘要 → prompt,一次 2 张候选"
-          }
+          disabled={promptBusy || genRunning || busy || coverContext.title.trim() === ""}
+          title={coverContext.title.trim() === "" ? "先填文章标题" : "标题/摘要/正文 → 提示词"}
+          onClick={() => void suggestPrompt()}
+          className="flex-none cursor-pointer rounded-sm border border-line px-2 py-1 text-[11px] text-text-2 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {promptBusy ? "提示词生成中…" : "AI 生成提示词"}
+        </button>
+        <button
+          type="button"
+          disabled={genRunning || busy || prompt.trim() === ""}
+          title={prompt.trim() === "" ? "先填写提示词" : "按提示词生成,一次 2 张候选"}
           onClick={() => void startGen()}
           className="flex-none cursor-pointer rounded-sm border border-accent px-2 py-1 text-[11px] text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
         >

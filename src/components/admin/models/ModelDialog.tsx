@@ -61,6 +61,21 @@ export default function ModelDialog({
   const [pricePerImage, setPricePerImage] = useState(
     model?.pricePerImage != null ? String(model.pricePerImage) : "",
   );
+  // 扩展参数:textarea 存 JSON 文本,提交时 parse(非法禁提交);空串=null
+  const [extraText, setExtraText] = useState(() => {
+    const v = model?.extraParams;
+    return v && typeof v === "object" && !Array.isArray(v) ? JSON.stringify(v, null, 2) : "";
+  });
+  const extraInvalid =
+    extraText.trim() !== "" &&
+    (() => {
+      try {
+        const v: unknown = JSON.parse(extraText);
+        return typeof v !== "object" || v === null || Array.isArray(v);
+      } catch {
+        return true;
+      }
+    })();
   const nameRef = useRef<HTMLInputElement>(null);
 
   const close = (): void => {
@@ -78,6 +93,22 @@ export default function ModelDialog({
   const submit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
+    let extraParams: Record<string, unknown> | null = null;
+    if (extraText.trim() !== "") {
+      try {
+        const v: unknown = JSON.parse(extraText);
+        if (typeof v !== "object" || v === null || Array.isArray(v)) {
+          setError("扩展参数必须是 JSON 对象");
+          setBusy(false);
+          return;
+        }
+        extraParams = v as Record<string, unknown>;
+      } catch {
+        setError("扩展参数不是合法 JSON");
+        setBusy(false);
+        return;
+      }
+    }
     try {
       const res = await fetch(editing ? `/api/models/${model.id}` : "/api/models", {
         method: editing ? "PUT" : "POST",
@@ -93,6 +124,7 @@ export default function ModelDialog({
           supportsVision,
           concurrency: Number(concurrency),
           timeoutSec: Number(timeoutSec),
+          extraParams,
           priceIn: numOrNull(priceIn),
           priceOut: numOrNull(priceOut),
           pricePerImage: numOrNull(pricePerImage),
@@ -113,7 +145,11 @@ export default function ModelDialog({
   };
 
   const canSubmit =
-    name.trim() !== "" && modelId.trim() !== "" && purposes.length > 0 && provider !== "";
+    name.trim() !== "" &&
+    modelId.trim() !== "" &&
+    purposes.length > 0 &&
+    provider !== "" &&
+    !extraInvalid;
 
   return (
     <>
@@ -313,6 +349,25 @@ export default function ModelDialog({
                 />
               </label>
             )}
+            <label className="col-span-2 text-xs text-text-3">
+              扩展参数(JSON,选填)
+              <textarea
+                value={extraText}
+                onChange={(e) => setExtraText(e.target.value)}
+                rows={3}
+                spellCheck={false}
+                placeholder={
+                  '如 {"watermark_enabled": false}(智谱生图去水印,需平台侧签署去水印免责)'
+                }
+                className={`mt-1 font-mono ${field}`}
+              />
+              <span className="mt-1 block text-[11px] text-amber">
+                浅合并进该模型的请求体;model/prompt/n/size/response_format 为保留键不可覆盖。
+              </span>
+              {extraInvalid && (
+                <span className="mt-1 block text-[11px] text-red">不是合法的 JSON 对象</span>
+              )}
+            </label>
           </div>
 
           {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}

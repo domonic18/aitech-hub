@@ -9,6 +9,7 @@ import { logger } from "../logger";
 /** 台账单列 role 值(不属于 AI_MODEL_PURPOSES 四角色,看板单独给标签) */
 export const AI_USAGE_ROLE_ASR = "asr";
 export const AI_USAGE_ROLE_SEO = "seo";
+export const AI_USAGE_ROLE_COVER_PROMPT = "cover-prompt";
 
 export type AiUsageStatus = "ok" | "degraded" | "failed";
 
