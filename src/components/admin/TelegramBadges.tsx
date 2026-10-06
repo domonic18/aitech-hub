@@ -9,14 +9,34 @@ import {
   TELEGRAM_MEDIA_VIDEO,
 } from "@/lib/telegram/constants";
 
+/** 状态徽章(原型 .status-badge soft chip:tint 底+圆点、无描边;可见绿/隐藏琥珀/归档灰) */
 export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { cls: string; label: string }> = {
-    visible: { cls: "bg-green/10 text-green", label: "可见" },
-    hidden: { cls: "bg-amber/10 text-amber", label: "隐藏" },
-    archived: { cls: "bg-panel-2 text-text-3", label: "归档" },
+  const map: Record<string, { cls: string; dot: string; label: string }> = {
+    visible: {
+      cls: "bg-green/12 text-green",
+      dot: "bg-green",
+      label: "可见",
+    },
+    hidden: {
+      cls: "bg-amber/12 text-amber",
+      dot: "bg-amber",
+      label: "隐藏",
+    },
+    archived: { cls: "bg-panel-2 text-text-3", dot: "bg-text-3", label: "归档" },
   };
-  const s = map[status] ?? { cls: "bg-panel-2 text-text-3", label: status };
-  return <span className={`rounded-sm px-1.5 py-px text-[10px] ${s.cls}`}>{s.label}</span>;
+  const s = map[status] ?? {
+    cls: "bg-panel-2 text-text-3",
+    dot: "bg-text-3",
+    label: status,
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-px text-[11px] font-medium ${s.cls}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} aria-hidden="true" />
+      {s.label}
+    </span>
+  );
 }
 
 /** 媒体徽章(原型 media-tag:文字 i-filetext / 短视频 i-video) */

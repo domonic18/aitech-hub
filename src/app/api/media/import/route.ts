@@ -19,9 +19,9 @@ export const dynamic = "force-dynamic";
 /** 转存 job 保留数(轮询窗口内结果可查,过后随队列清理) */
 const TRANSFER_JOB_KEEP = 500;
 
-/** 单批 jobId(随机串即可:幂等由 sha1 入库去重兜底,批次不要求幂等) */
+/** 单批 jobId(随机串即可:幂等由 sha1 入库去重兜底,批次不要求幂等;jobId 禁冒号,与 cover-gen- 同口径) */
 function newBatchId(): string {
-  return `mt:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+  return `mt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -40,11 +40,17 @@ export async function POST(req: NextRequest) {
   }
 
   const jobId = newBatchId();
-  await getQueue(QUEUE_MEDIA_TRANSFER).add(
-    "transfer",
-    { urls: parsed.data.urls },
-    { jobId, attempts: 1, removeOnComplete: TRANSFER_JOB_KEEP, removeOnFail: TRANSFER_JOB_KEEP },
-  );
+  // 入队失败(Redis 抖动/不可用)显式 502,前端提示重试而非静默保留原链
+  try {
+    await getQueue(QUEUE_MEDIA_TRANSFER).add(
+      "transfer",
+      { urls: parsed.data.urls },
+      { jobId, attempts: 1, removeOnComplete: TRANSFER_JOB_KEEP, removeOnFail: TRANSFER_JOB_KEEP },
+    );
+  } catch (e) {
+    logger.error({ event: "media.import.enqueue.fail", jobId, error: String(e) });
+    return apiEnvelope(502, "转存任务入队失败,请稍后重试");
+  }
   logger.info({ event: "media.import", jobId, total: parsed.data.urls.length });
   return apiEnvelope(0, "accepted", { jobId, total: parsed.data.urls.length }, 202);
 }

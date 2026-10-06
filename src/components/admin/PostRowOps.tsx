@@ -12,8 +12,8 @@ import { useState } from "react";
 import type { PostDisplayState } from "@/lib/content/post-schema";
 
 const OP_BTN =
-  "cursor-pointer bg-transparent p-0 text-xs text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50";
-const OP_DANGER = "text-red hover:text-red-hi";
+  "cursor-pointer rounded-sm bg-transparent px-1.5 py-1 text-xs text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50";
+const OP_DANGER = "text-red hover:bg-red/10 hover:text-red-hi";
 
 export default function PostRowOps({
   id,
@@ -50,7 +50,7 @@ export default function PostRowOps({
   return (
     <span className="inline-flex flex-col items-end gap-1">
       <span className="inline-flex items-center gap-2.5">
-        <Link href={`/admin/posts/${id}`} className="text-xs text-accent hover:underline">
+        <Link href={`/admin/posts/${id}`} className={`${OP_BTN} inline-flex items-center`}>
           编辑
         </Link>
         {state !== "published" && (

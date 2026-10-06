@@ -20,23 +20,34 @@ import type { MediaListItem } from "@/lib/media/queries";
 
 import MediaDrawer from "./MediaDrawer";
 
-/** active 为常态不挂徽标;deleted 行不进列表(Partial = 其余状态显式挂徽标,评审 W3) */
+/** active 为常态不挂徽标;deleted 行不进列表(Partial = 其余状态显式挂徽标,评审 W3)
+ *  徽标挂缩略图左上角(原型 admin-media 覆层式,黑透明底保证图上可读) */
 const STATUS_LABELS: Partial<Record<MediaStatus, { text: string; cls: string }>> = {
-  processing: { text: "处理中", cls: "bg-panel-2 text-text-2" },
-  error: { text: "处理失败", cls: "bg-red/10 text-red" },
-  missing: { text: "文件丢失", cls: "bg-red/10 text-red" },
-  orphan: { text: "未引用", cls: "bg-amber/10 text-amber" },
+  processing: { text: "处理中", cls: "bg-black/60 text-text-2" },
+  error: { text: "处理失败", cls: "bg-black/60 text-red" },
+  missing: { text: "文件丢失", cls: "bg-black/60 text-red" },
+  orphan: { text: "未引用", cls: "bg-black/60 text-amber" },
 };
 
 function RefBadge({ item }: { item: MediaListItem }): React.ReactElement {
   if (item.refCount > 0) {
     return (
-      <span className="rounded-sm bg-accent-dim px-1.5 py-0.5 text-[10px] text-accent">
+      <span className="inline-flex items-center gap-0.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-green">
+        <svg className="ic ic-sm" aria-hidden="true">
+          <use href="#i-check" />
+        </svg>
         引用 {item.refCount}
       </span>
     );
   }
-  return <span className="rounded-sm bg-amber/10 px-1.5 py-0.5 text-[10px] text-amber">孤儿</span>;
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-amber">
+      <svg className="ic ic-sm" aria-hidden="true">
+        <use href="#i-warning" />
+      </svg>
+      孤儿
+    </span>
+  );
 }
 
 export default function MediaGrid({
@@ -128,20 +139,30 @@ export default function MediaGrid({
                 selected.has(item.id) ? "border-accent" : "border-line hover:border-line-hover"
               }`}
             >
-              <button
-                type="button"
-                className="block h-28 w-full cursor-pointer overflow-hidden bg-panel-2"
-                onClick={() => setOpenId(item.id)}
-                title={item.filename}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部缩略,src 为站内动态路径 */}
-                <img
-                  src={preview}
-                  alt={item.filename}
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                />
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  className="block h-28 w-full cursor-pointer overflow-hidden bg-panel-2"
+                  onClick={() => setOpenId(item.id)}
+                  title={item.filename}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部缩略,src 为站内动态路径 */}
+                  <img
+                    src={preview}
+                    alt={item.filename}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+                <div className="pointer-events-none absolute left-1.5 top-1.5 flex gap-1">
+                  <RefBadge item={item} />
+                  {statusBadge && (
+                    <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${statusBadge.cls}`}>
+                      {statusBadge.text}
+                    </span>
+                  )}
+                </div>
+              </div>
               <div className="space-y-1 px-2 py-1.5">
                 <div className="flex items-center gap-1">
                   {selectable ? (
@@ -162,18 +183,9 @@ export default function MediaGrid({
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-1">
-                  <RefBadge item={item} />
-                  {statusBadge && (
-                    <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${statusBadge.cls}`}>
-                      {statusBadge.text}
-                    </span>
-                  )}
-                  <span className="ml-auto font-mono text-[10px] text-text-3">
-                    {item.width !== null
-                      ? `${item.width}×${item.height}`
-                      : formatBytes(item.sizeBytes ?? 0)}
-                  </span>
+                <div className="flex items-center justify-between font-mono text-[10px] text-text-3">
+                  <span>{item.width !== null ? `${item.width}×${item.height}` : ""}</span>
+                  <span>{formatBytes(item.sizeBytes ?? 0)}</span>
                 </div>
               </div>
             </div>

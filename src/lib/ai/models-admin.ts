@@ -5,7 +5,7 @@
  * 读侧永不返回密文与明文,日志禁打凭据值。
  */
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
@@ -31,6 +31,8 @@ export interface AiModelRow {
   supportsVision: boolean;
   concurrency: number;
   timeoutSec: number;
+  /** 供应商扩展参数(生图 watermark_enabled 等;浅合并进请求体,保留键不可覆盖) */
+  extraParams: Prisma.JsonValue | null;
   /** 牌价(¥/1M tokens;生图模型用 pricePerImage ¥/张;null=未填,用量页费用按 0 折算) */
   priceIn: number | null;
   priceOut: number | null;
@@ -56,6 +58,7 @@ const ROW_SELECT = {
   supportsVision: true,
   concurrency: true,
   timeoutSec: true,
+  extraParams: true,
   priceIn: true,
   priceOut: true,
   pricePerImage: true,
@@ -109,6 +112,8 @@ export const AiModelCreateSchema = z.object({
   supportsVision: z.boolean(),
   concurrency: z.number().int().min(1).max(64),
   timeoutSec: z.number().int().min(5).max(600),
+  /** 供应商扩展参数(对象;浅合并进生图/LLM 请求体,保留键不可覆盖);缺省/null=未配置 */
+  extraParams: z.record(z.string(), z.unknown()).nullable().optional(),
   /** 牌价选填(¥/1M tokens;生图 ¥/张);缺省/null=未定价 */
   priceIn: z.number().min(0).max(100000).nullable().optional(),
   priceOut: z.number().min(0).max(100000).nullable().optional(),
@@ -138,6 +143,8 @@ export async function createAiModel(input: AiModelInput): Promise<{ id: number }
       supportsVision: input.supportsVision,
       concurrency: input.concurrency,
       timeoutSec: input.timeoutSec,
+      extraParams: (input.extraParams ?? Prisma.JsonNull) as
+        Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
       priceIn: input.priceIn ?? null,
       priceOut: input.priceOut ?? null,
       pricePerImage: input.pricePerImage ?? null,
@@ -176,6 +183,8 @@ export async function updateAiModel(id: number, input: AiModelInput): Promise<{ 
       supportsVision: input.supportsVision,
       concurrency: input.concurrency,
       timeoutSec: input.timeoutSec,
+      extraParams: (input.extraParams ?? Prisma.JsonNull) as
+        Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
       priceIn: input.priceIn ?? null,
       priceOut: input.priceOut ?? null,
       pricePerImage: input.pricePerImage ?? null,

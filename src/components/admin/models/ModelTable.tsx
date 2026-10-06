@@ -18,6 +18,14 @@ import TestStatusBadge from "./TestStatusBadge";
 
 const opLink = "cursor-pointer text-xs text-text-2 hover:text-accent disabled:opacity-50";
 
+/** 用途 tag 配色(原型 admin-models .use-*):解读/摘要 accent,搜索绿,封面琥珀 */
+const PURPOSE_CHIP: Record<string, string> = {
+  interpret: "border border-accent/35 bg-accent-dim text-accent",
+  summarize: "border border-accent/35 bg-accent-dim text-accent",
+  search: "border border-green/35 bg-green/10 text-green",
+  cover: "border border-amber/35 bg-amber/10 text-amber",
+};
+
 /** 定位派生:id → (任一角色主力?)默认:(备用?)备用:— */
 function derivePosition(id: number, bindings: BindingRow[]): "default" | "backup" | null {
   if (bindings.some((b) => b.primaryId === id)) return "default";
@@ -83,7 +91,10 @@ function Row({ model, bindings }: { model: AiModelRow; bindings: BindingRow[] })
       <td className="px-3 py-2.5">
         <div className="flex flex-wrap gap-1">
           {AI_MODEL_PURPOSES.filter((p) => model.purposes.includes(p)).map((p) => (
-            <span key={p} className="rounded-sm bg-accent/10 px-1.5 py-px text-[10px] text-accent">
+            <span
+              key={p}
+              className={`rounded-sm px-1.5 py-px text-[10px] ${PURPOSE_CHIP[p] ?? "bg-accent/10 text-accent"}`}
+            >
               {aiRoleLabel(p)}
             </span>
           ))}
@@ -168,7 +179,7 @@ export default function ModelTable({
     <div className="overflow-x-auto rounded-md border border-line bg-panel">
       <table className="w-full text-left text-[13px]">
         <thead>
-          <tr className="border-b border-line text-xs text-text-3">
+          <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
             <th className="px-4 py-2.5 font-medium">名称</th>
             <th className="px-3 py-2.5 font-medium">供应商</th>
             <th className="px-3 py-2.5 font-medium">协议</th>

@@ -156,6 +156,14 @@ body {
   vertical-align: -3px;
 }
 
+/* ---- 编辑器容器自适应(M16:右栏 SEO 展开时左编辑器同步长高) ----
+ * 拉伸场景 .vditor 取容器高;非拉伸场景 min-height: inherit 兜底容器的
+ * min-h(480/560 随断点),覆盖 Vditor 固定 height 内联样式 */
+.ah-editor-fill > .vditor {
+  height: 100% !important;
+  min-height: inherit;
+}
+
 /* ---- 主题胶囊(DESIGN-SPEC §5:44×24 分段滑块,滑块 0.2s) ----
  * 暗色=滑块压左(月亮亮白);亮色=滑块滑右(太阳亮白) */
 .theme-toggle {

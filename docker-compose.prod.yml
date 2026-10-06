@@ -63,7 +63,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./workspace/media:/app/media:ro # /wp-content/** 应用侧兜底只读(Nginx 直服为主)
+      # 读写:M14 起媒体库/编辑器上传经 web 路由同步写盘(曾 ro 挂载致 EROFS 500,M16 修复)
+      - ./workspace/media:/app/media
     ports:
       - "127.0.0.1:3000:3000" # 宿主回环发布:切换日 runbook curl 127.0.0.1:3000 验证用
     depends_on:

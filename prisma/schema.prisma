@@ -384,6 +384,7 @@ model AiModel {
   pricePerImage     Float?    @map("price_per_image") // 生图牌价 ¥/张(cover 角色)
   concurrency       Int       @default(4)
   timeoutSec        Int       @default(60) @map("timeout_sec")
+  extraParams       Json?     @map("extra_params") // 供应商扩展参数(如生图 watermark_enabled),浅合并进请求体;保留键不可覆盖
   enabled           Boolean   @default(true)
   lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
   lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail

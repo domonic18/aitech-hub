@@ -11,7 +11,7 @@ import { logger } from "../logger";
 import { COVER_JOB_GEN, getQueue, QUEUE_COVER_GEN } from "../queue";
 import { AI_PURPOSE_COVER } from "./constants";
 import { buildCoverPrompt, COVER_CANDIDATE_COUNT, COVER_IMAGE_SIZE } from "./cover-prompt";
-import { decodeImageB64, generateImages, sniffImageMime } from "./image-client";
+import { decodeImageB64, downloadImage, generateImages, sniffImageMime } from "./image-client";
 import { AiAdminError, AiClientError } from "./errors";
 import { resolveAiModel } from "./resolver";
 import { recordAiUsage } from "./usage-log";
@@ -26,6 +26,8 @@ export interface CoverGenJobData {
   title: string;
   excerpt: string;
   tags: string[];
+  /** 生图 prompt(M16 问题2:前端 AI 建议/手填;空串回退 buildCoverPrompt 兜底) */
+  prompt: string;
 }
 
 /** 入队(路由消费):绑定缺失即抛 disabled(400 明示),不产生无效 job */
@@ -59,7 +61,7 @@ export async function enqueueCoverGen(
 export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: number }> {
   const model = await resolveAiModel(AI_PURPOSE_COVER);
   if (!model) throw new AiClientError("unsupported", "cover 角色绑定已缺失");
-  const prompt = buildCoverPrompt(data);
+  const prompt = data.prompt.trim() !== "" ? data.prompt.trim() : buildCoverPrompt(data);
   const startedAt = Date.now();
   let images;
   try {
@@ -72,6 +74,7 @@ export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: n
       n: COVER_CANDIDATE_COUNT,
       size: COVER_IMAGE_SIZE,
       timeoutSec: model.timeoutSec,
+      extraParams: model.extraParams,
     });
   } catch (e) {
     // 请求级失败(整批无图=不计费):落 failed 行供看板观测,错误原样上抛
@@ -98,7 +101,9 @@ export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: n
   let generated = 0;
   for (const img of images) {
     try {
-      const bytes = decodeImageB64(img.b64);
+      // b64 直解;url 形态服务端转存(智谱 CogView 等只回 url,M16 问题1)
+      const bytes =
+        "b64" in img ? decodeImageB64(img.b64) : await downloadImage(img.url, model.timeoutSec);
       const mime = sniffImageMime(bytes);
       const ext = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
       const saved = await uploadMedia({

@@ -1,9 +1,13 @@
 /**
- * 文生图客户端(M14 批⑥,验收反馈问题6):OpenAI images/generations 兼容协议。
- * POST {baseUrl}/images/generations,body {model, prompt, n, size,
- * response_format:"b64_json"},Bearer 鉴权。协议门禁仅 openai——混元/豆包等
- * 原生签名协议不入本仓(与 LLM 侧同纪律),经其 OpenAI 兼容网关接入;
- * 仅回 b64_json 形态(url 直链形态转存涉及外链抓取策略,留给兼容网关侧)。
+ * 文生图客户端(M14 批⑥,验收反馈问题6;2026-10-06 M16 反馈问题1/2 扩):
+ * OpenAI images/generations 兼容协议。POST {baseUrl}/images/generations,
+ * Bearer 鉴权。协议门禁仅 openai——混元/豆包等原生签名协议不入本仓(与 LLM 侧
+ * 同纪律),经其 OpenAI 兼容网关接入。
+ * 响应两种形态都收(M16 问题1:智谱 CogView 只回 url 且忽略 response_format):
+ * b64_json 直解;url 由服务端转存(免签名 URL 过期,不外链)。Authorization
+ * 不外发下载请求(防密钥泄漏给第三方 CDN)。
+ * 部分供应商(智谱)无 n 参数、单次仅回 1 张:返回不足 n 时顺序补请求凑满候选。
+ * 扩展参数(M16 问题2):模型 extra_params 浅合并进请求体,保留键不可覆盖。
  * 超时/网络/HTTP/业务错归因与 llm-client 同款(AiClientError kind)。
  */
 import { AI_PROTOCOL_OPENAI } from "./constants";
@@ -20,10 +24,36 @@ export interface GenerateImagesInput {
   /** 分辨率 WxH(需供应商支持;默认 1344×768,混元原生档) */
   size: string;
   timeoutSec: number;
+  /** 供应商扩展参数(模型台账配置;浅合并,保留键 model/prompt/n/size/response_format 不可覆盖) */
+  extraParams?: Record<string, unknown>;
 }
 
-export interface GeneratedImage {
-  b64: string;
+/** 单张结果:b64 直解形态或 url 待转存形态(调用侧统一转 bytes) */
+export type GeneratedImage = { b64: string } | { url: string };
+
+/** 请求体保留键 model/prompt/n/size/response_format:extraParams 先展开、保留键后展开,
+ * 后者恒覆盖前者(扩展参数不可改写契约,防配置把请求体改漂;单测锁定) */
+
+/** url 下载体积帽(生图 1344×768 jpg ≈ 200KB;20MB 已是数量级冗余) */
+const DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
+
+function postImages(
+  url: string,
+  apiKey: string | null,
+  body: Record<string, unknown>,
+  timeoutSec: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutSec * 1000);
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: ctrl.signal,
+  }).finally(() => clearTimeout(timer));
 }
 
 export async function generateImages(input: GenerateImagesInput): Promise<GeneratedImage[]> {
@@ -34,56 +64,94 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
     );
   }
   if (!input.baseUrl) throw new AiClientError("unsupported", "生图 Base URL 未配置");
-  const url = `${input.baseUrl.replace(/\/+$/, "")}/images/generations`;
+  const endpoint = `${input.baseUrl.replace(/\/+$/, "")}/images/generations`;
+  const baseBody: Record<string, unknown> = {
+    ...(input.extraParams ?? {}),
+    model: input.modelId,
+    prompt: input.prompt,
+    n: input.n,
+    size: input.size,
+    response_format: "b64_json",
+  };
+
+  const collected: GeneratedImage[] = [];
+  // 请求轮次帽:首轮 n 张 + 至多 2 轮补齐(单图供应商两轮即满;防病兜端点拖死 worker)
+  for (let round = 0; round < 1 + 2 && collected.length < input.n; round++) {
+    const remain = input.n - collected.length;
+    let res: Response;
+    try {
+      res = await postImages(endpoint, input.apiKey, { ...baseBody, n: remain }, input.timeoutSec);
+    } catch (e) {
+      if (e instanceof AiClientError) throw e;
+      const aborted = e instanceof Error && e.name === "AbortError";
+      throw new AiClientError(
+        aborted ? "timeout" : "http",
+        aborted
+          ? `生图超时(${input.timeoutSec}s)`
+          : `生图请求失败:${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new AiClientError("http", `生图 HTTP ${res.status}:${text.slice(0, 200)}`);
+    }
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      throw new AiClientError("business", "生图响应不是 JSON");
+    }
+    const rows = (body as { data?: unknown }).data;
+    if (!Array.isArray(rows)) throw new AiClientError("business", "生图响应缺 data 数组(契约漂移)");
+    for (const r of rows) {
+      const row = r as { b64_json?: unknown; url?: unknown };
+      if (typeof row?.b64_json === "string" && row.b64_json.length > 0) {
+        collected.push({ b64: row.b64_json });
+      } else if (
+        typeof row?.url === "string" &&
+        /^https:\/\//.test(row.url) &&
+        row.url.length < 2000
+      ) {
+        collected.push({ url: row.url });
+      }
+    }
+    if (rows.length === 0) break; // 供应商明确回空:补请求也无益
+  }
+  if (collected.length === 0) {
+    throw new AiClientError(
+      "business",
+      "生图响应无 b64_json/url 图片数据(契约漂移,检查供应商与模型 ID)",
+    );
+  }
+  return collected;
+}
+
+/** url 形态转存(M16 问题1):GET 下载为 bytes;不带 Authorization(签名 URL 自含鉴权) */
+export async function downloadImage(url: string, timeoutSec: number): Promise<Uint8Array> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), input.timeoutSec * 1000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutSec * 1000);
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(input.apiKey ? { authorization: `Bearer ${input.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: input.modelId,
-        prompt: input.prompt,
-        n: input.n,
-        size: input.size,
-        response_format: "b64_json",
-      }),
-      signal: ctrl.signal,
-    });
+    res = await fetch(url, { signal: ctrl.signal });
   } catch (e) {
-    if (ctrl.signal.aborted) {
-      throw new AiClientError("timeout", `生图超时(${input.timeoutSec}s)`);
-    }
-    throw new AiClientError("http", `生图请求失败:${e instanceof Error ? e.message : String(e)}`);
+    const aborted = e instanceof Error && e.name === "AbortError";
+    throw new AiClientError(
+      aborted ? "timeout" : "http",
+      aborted
+        ? `生图 url 转存超时(${timeoutSec}s)`
+        : `生图 url 转存失败:${e instanceof Error ? e.message : String(e)}`,
+    );
   } finally {
     clearTimeout(timer);
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new AiClientError("http", `生图 HTTP ${res.status}:${text.slice(0, 200)}`);
-  }
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    throw new AiClientError("business", "生图响应不是 JSON");
-  }
-  const rows = (body as { data?: Array<{ b64_json?: unknown }> }).data;
-  if (!Array.isArray(rows)) throw new AiClientError("business", "生图响应缺 data 数组(契约漂移)");
-  const images = rows
-    .map((r) => (typeof r?.b64_json === "string" ? r.b64_json : ""))
-    .filter((b) => b.length > 0);
-  if (images.length === 0) {
-    throw new AiClientError(
-      "business",
-      "生图响应无 b64_json(供应商返回 url 形态,需 OpenAI 兼容网关转换)",
-    );
-  }
-  return images.map((b64) => ({ b64 }));
+  if (!res.ok) throw new AiClientError("http", `生图 url 转存 HTTP ${res.status}`);
+  const len = Number(res.headers.get("content-length") ?? "0");
+  if (len > DOWNLOAD_MAX_BYTES) throw new AiClientError("business", "生图 url 转存超过体积帽");
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.length === 0) throw new AiClientError("business", "生图 url 转存为空");
+  if (buf.length > DOWNLOAD_MAX_BYTES)
+    throw new AiClientError("business", "生图 url 转存超过体积帽");
+  return buf;
 }
 
 /** b64 → 字节(容 data: 前缀形态);非法 b64 抛业务错 */

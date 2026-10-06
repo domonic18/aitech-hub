@@ -176,5 +176,6 @@ export default function VditorEditor({
     return () => ob.disconnect();
   }, []);
 
-  return <div ref={ref} />;
+  // ah-editor-fill:.vditor 高度随容器(globals.css);min-h 兜底非拉伸场景(右栏收起时)
+  return <div ref={ref} className="ah-editor-fill min-h-[480px] flex-1 lg:min-h-[560px]" />;
 }

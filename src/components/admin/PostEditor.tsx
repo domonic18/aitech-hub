@@ -2,6 +2,8 @@
 
 /**
  * Markdown 文章编辑器(M5-a 立骨,M5-d 换 Vditor 分屏编辑):左编辑/前台预览 + 右元信息栏。
+ * 右栏可整体收起(M16,localStorage 持久化)便于沉浸编辑;左卡与右栏同网格行
+ * stretch 对齐(SEO 选项展开时编辑器同步长高,不留空白)。
  * 保存走 POST /api/posts(新建,slug 缺省由标题派生,冲突自动 -2…-9 后缀)/
  * PUT /api/posts/[id](更新,slug 只读);发布 = 先保存再 POST publish(全页跳转刷新)。
  * 「前台预览」Tab 复用线上渲染链 ArticleBody(react-markdown + GFM + 高亮)——
@@ -9,7 +11,7 @@
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import PostMetaPanel, {
   type EditorCategory,
@@ -107,6 +109,27 @@ export default function PostEditor({
   const [seoBusy, setSeoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  // 右栏收起(沉浸编辑,M16):mount 后读 localStorage 防 hydration 分歧;收起=右栏不渲染
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(localStorage.getItem("ah:editor:sidebar-collapsed") === "1");
+    } catch {
+      // 隐私模式等 localStorage 不可用:保持默认展开
+    }
+  }, []);
+
+  function toggleSidebar(): void {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("ah:editor:sidebar-collapsed", next ? "1" : "0");
+      } catch {
+        // 持久化失败不影响本次切换
+      }
+      return next;
+    });
+  }
 
   // 派生预览(创建/编辑同规则):显式输入优先,否则标题 ASCII token;纯中文标题 → bare-id
   const slugPreview = useMemo(() => {
@@ -257,6 +280,17 @@ export default function PostEditor({
           {mode === "create" ? "(新)" : ""}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            className="inline-flex cursor-pointer items-center rounded-sm border border-line bg-panel px-2 py-2 text-text-2 hover:border-line-hover hover:text-text-1"
+            onClick={toggleSidebar}
+          >
+            <svg className="ic" aria-hidden="true">
+              <use href="#i-menu" />
+            </svg>
+          </button>
           {status === "published" && (
             <button type="button" disabled={busy} className={BTN_SECONDARY} onClick={unpublish}>
               下架
@@ -294,8 +328,11 @@ export default function PostEditor({
         className={INPUT}
       />
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_300px]">
-        <div className="rounded-md border border-line bg-panel">
+      {/* 默认 stretch(勿加 items-start):右栏 SEO 展开变高时左编辑器卡片同步长高(M16) */}
+      <div
+        className={`grid grid-cols-1 gap-4 ${sidebarCollapsed ? "" : "lg:grid-cols-[1fr_300px]"}`}
+      >
+        <div className="flex flex-col rounded-md border border-line bg-panel">
           <div className="flex border-b border-line text-xs">
             {(["edit", "preview"] as const).map((t) => (
               <button
@@ -322,16 +359,23 @@ export default function PostEditor({
           )}
         </div>
 
-        <PostMetaPanel
-          categories={categories}
-          value={meta}
-          tagCount={splitTags(meta.tagsText).length}
-          onChange={(patch) => setMeta((m) => ({ ...m, ...patch }))}
-          slug={slugField}
-          onSeoSuggest={() => void seoSuggest()}
-          seoSuggesting={seoBusy}
-          coverContext={{ title, excerpt: meta.excerpt, tags: splitTags(meta.tagsText) }}
-        />
+        {!sidebarCollapsed && (
+          <PostMetaPanel
+            categories={categories}
+            value={meta}
+            tagCount={splitTags(meta.tagsText).length}
+            onChange={(patch) => setMeta((m) => ({ ...m, ...patch }))}
+            slug={slugField}
+            onSeoSuggest={() => void seoSuggest()}
+            seoSuggesting={seoBusy}
+            coverContext={{
+              title,
+              excerpt: meta.excerpt,
+              tags: splitTags(meta.tagsText),
+              contentMd: contentMd.slice(0, 4000),
+            }}
+          />
+        )}
       </div>
     </div>
   );

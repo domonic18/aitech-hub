@@ -72,8 +72,8 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
               <th className="px-3 py-2.5 font-medium">凭证</th>
               <th className="px-3 py-2.5 font-medium">健康</th>
               <th className="px-3 py-2.5 font-medium">调度</th>
-              <th className="px-3 py-2.5 text-right font-medium">24h 条数</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
+              <th className="whitespace-nowrap px-3 py-2.5 text-right font-medium">24h 条数</th>
+              <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -127,7 +127,7 @@ export default async function AdminChannelsPage(): Promise<React.ReactElement> {
                 <td className="px-3 py-2.5 text-right font-mono text-[11px] text-text-2">
                   {c.count24h}
                 </td>
-                <td className="px-4 py-2.5 text-right">
+                <td className="whitespace-nowrap px-4 py-2.5 text-right">
                   <ChannelRowOps
                     channel={{
                       id: c.id,
