@@ -2,7 +2,8 @@
 
 /**
  * 内容分发页客户端岛(M17 批①;原型缺,对齐 admin-models 页风格):
- * 公众号配置卡 + 同步记录表。变更后 router.refresh();批量/行操作批④⑤接。
+ * 公众号配置卡 + 同步记录表。变更后 router.refresh();筛选/分页由 RSC 页面
+ * 以 children 注入(SyncRecordsTable 同 PostsTable 模式,M17 批⑤)。
  */
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
 import type { PublishRecordRow } from "@/lib/distribute/records";
@@ -14,10 +15,15 @@ export default function DistributeAdminApp({
   config,
   records,
   total,
+  filter,
+  children,
 }: {
   config: WechatConfigView;
   records: PublishRecordRow[];
   total: number;
+  /** 记录状态筛选条(RSC 渲染的 Link 组,注入表头;hrefFor 函数不能跨界) */
+  filter?: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -30,7 +36,9 @@ export default function DistributeAdminApp({
       </div>
 
       <WechatConfigCard config={config} />
-      <SyncRecordsTable rows={records} total={total} />
+      <SyncRecordsTable rows={records} total={total} filter={filter}>
+        {children}
+      </SyncRecordsTable>
     </div>
   );
 }
