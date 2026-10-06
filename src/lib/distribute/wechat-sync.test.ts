@@ -401,6 +401,33 @@ describe("syncOnePost 管线", () => {
   });
 });
 
+describe("syncOnePost 主题解析(M17 主题扩展)", () => {
+  it("覆盖 > 行快照 > 渠道默认;生效主题随成功落行快照", async () => {
+    mockedPost.findUnique.mockResolvedValue(mdPost() as never);
+    mockedChannel.findUnique.mockResolvedValue(channelRow({ theme: "purple" }) as never);
+    await syncOnePost(BigInt(101), { theme: "green" }); // 本次覆盖优先
+    let data = mockedChannel.update.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.theme).toBe("green");
+
+    mockedChannel.update.mockClear();
+    await syncOnePost(BigInt(101)); // 无覆盖 → 行快照沿用(重推不改主题)
+    data = mockedChannel.update.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.theme).toBe("purple");
+
+    mockedChannel.update.mockClear();
+    mockedChannel.findUnique.mockResolvedValue(channelRow({ theme: null }) as never);
+    await syncOnePost(BigInt(101)); // 无快照 → 渠道默认
+    data = mockedChannel.update.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.theme).toBe("default");
+  });
+
+  it("非法主题覆盖 → invalid 拒绝(入队前置;渲染回退只兜底落库脏值)", async () => {
+    await expect(enqueueWechatSync(BigInt(101), { theme: "rainbow" })).rejects.toMatchObject({
+      code: "invalid",
+    });
+  });
+});
+
 describe("wechatBatchJob 进度与失败隔离", () => {
   it("逐篇顺序 + 篇间 gap;单篇失败隔离记 failedIds", async () => {
     vi.useFakeTimers();

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
+import { WECHAT_THEMES } from "@/lib/distribute/wechat-themes";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -26,6 +27,7 @@ export default function WechatConfigDialog({
   const [appid, setAppid] = useState(config.appid);
   const [appSecret, setAppSecret] = useState("");
   const [author, setAuthor] = useState(config.author ?? "");
+  const [theme, setTheme] = useState(config.theme);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(config.autoSyncEnabled);
   const [enabled, setEnabled] = useState(config.enabled);
 
@@ -40,6 +42,7 @@ export default function WechatConfigDialog({
           appid: appid.trim(),
           appSecret: appSecret.trim() || null,
           author: author.trim() || null,
+          theme,
           autoSyncEnabled,
           enabled,
         }),
@@ -81,6 +84,23 @@ export default function WechatConfigDialog({
             placeholder="缺省「一起AI」"
             className={`mt-1 ${field}`}
           />
+        </label>
+        <label className="text-xs text-text-3">
+          默认正文主题
+          <select
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+            className={`mt-1 ${field}`}
+          >
+            {WECHAT_THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-[11px] text-text-3">
+            标题/引用/链接等强调色;单篇可覆盖
+          </span>
         </label>
         <label className="col-span-2 text-xs text-text-3">
           AppSecret{" "}

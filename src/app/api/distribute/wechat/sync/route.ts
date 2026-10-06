@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { parsePostId } from "@/lib/content/posts-admin";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
+import { WECHAT_THEME_IDS } from "@/lib/distribute/wechat-themes";
 import { enqueueWechatSync } from "@/lib/distribute/wechat-sync";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
@@ -20,6 +21,7 @@ const syncInputSchema = z.object({
   title: z.string().max(200).optional(),
   digest: z.string().max(300).optional(),
   coverPath: z.string().max(500).optional(),
+  theme: z.enum(WECHAT_THEME_IDS).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -40,11 +42,12 @@ export async function POST(req: NextRequest) {
   if (id === null) return apiEnvelope(400, "postId 不合法");
 
   try {
-    const { title, digest, coverPath } = parsed.data;
+    const { title, digest, coverPath, theme } = parsed.data;
     const r = await enqueueWechatSync(id, {
       ...(title !== undefined ? { title } : {}),
       ...(digest !== undefined ? { digest } : {}),
       ...(coverPath !== undefined ? { coverPath } : {}),
+      ...(theme !== undefined ? { theme } : {}),
     });
     return apiEnvelope(0, "accepted", r, 202);
   } catch (err) {

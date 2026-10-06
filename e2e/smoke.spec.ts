@@ -2412,6 +2412,7 @@ test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口
     await expect(page.getByText("AppID").first()).toBeVisible();
     await expect(page.getByText("未录入")).toBeVisible();
     await expect(page.getByText("暂无同步记录")).toBeVisible();
+    await expect(page.getByText("默认主题")).toBeVisible(); // 配置卡含默认主题(主题扩展批⑧)
 
     // 27.2 未就绪:文章列表批量「同步公众号」禁用 + 指引 tooltip(行内同步钮同款禁用)
     await page.goto("/admin/posts/");
@@ -2435,7 +2436,9 @@ test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口
   }
 });
 
-test("28. 同步公众号弹窗(M17 批④:就绪入口/默认预填/计数拦截/封面预览)", async ({ page }) => {
+test("28. 同步公众号弹窗(M17 批④:就绪入口/默认预填/计数拦截/封面预览/主题预览)", async ({
+  page,
+}) => {
   const MARK = "e2e-wxsync";
   const category = await prisma.category.upsert({
     where: { slug: "e2e-wx" },
@@ -2466,6 +2469,7 @@ test("28. 同步公众号弹窗(M17 批④:就绪入口/默认预填/计数拦�
         appid: "wx-e2e-fake",
         appSecret: "e2e-secret-fake",
         author: "e2e",
+        theme: "default",
         autoSyncEnabled: false,
         enabled: true,
       },
@@ -2495,6 +2499,17 @@ test("28. 同步公众号弹窗(M17 批④:就绪入口/默认预填/计数拦�
     await expect(submit).toBeDisabled();
     await titleInput.fill("合法推送标题");
     await expect(submit).toBeEnabled();
+
+    // 主题扩展批⑧:主题色板默认高亮 + 右栏预览(preview 路由纯渲染,不触微信 API)
+    await expect(page.getByText("正文预览(公众号样式)")).toBeVisible();
+    await expect(page.getByText("e2e 公众号同步正文。")).toBeVisible();
+    const defChip = page.getByRole("button", { name: "默认", exact: true });
+    const greenChip = page.getByRole("button", { name: "青绿", exact: true });
+    await expect(defChip).toHaveClass(/border-accent/);
+    await greenChip.click();
+    await expect(greenChip).toHaveClass(/border-accent/);
+    await expect(defChip).not.toHaveClass(/border-accent/);
+    await expect(page.getByText("e2e 公众号同步正文。")).toBeVisible();
 
     await page.getByRole("button", { name: "关闭" }).click();
     await expect(page.getByRole("heading", { name: "同步到公众号草稿箱" })).toHaveCount(0);

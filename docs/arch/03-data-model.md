@@ -233,8 +233,8 @@ CREATE TABLE legacy_url_map (
 
 **内容分发域三表已落地(2026-10-06 M17 批①迁移 `20261006122422_publish_channel_wechat`,多渠道分发首渠道=微信公众号,requirement §4)**:
 
-- `publish_wechat_config`(渠道配置单例 `id=1`,get-or-create,镜像 `asr_config`):`appid/app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`author?`(图文作者,缺省「一起AI」)/`auto_sync_enabled 默认 false`(发布即推,用户定调默认关)/`enabled 默认 false`(渠道总开关)+ `last_test` 四件套
-- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段)/`attempts/last_error?(截 500)/synced_at?`
+- `publish_wechat_config`(渠道配置单例 `id=1`,get-or-create,镜像 `asr_config`):`appid/app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`author?`(图文作者,缺省「一起AI」)/`theme 默认 "default"`(渠道默认正文主题 id,wechat-themes 注册表)/`auto_sync_enabled 默认 false`(发布即推,用户定调默认关)/`enabled 默认 false`(渠道总开关)+ `last_test` 四件套
+- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?/theme?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段;theme 快照=上次推送所用主题 id,重推沿用,空=渠道默认)/`attempts/last_error?(截 500)/synced_at?`
 - `publish_media_cache`(转存防重推):`channel+source_key` 唯一;`source_key` 前缀分区:`b:<sha1 源字节>`(站内正文图)/`u:<sha1 url>`(外链图)/`m:<sha1 源字节>`(封面,`remote_media_id` 有值);`remote_url`(uploadimg 回传 mmbiz 链,永久有效无 TTL)/`remote_media_id?`(add_material 回传);缓存命中零上传,公众号频控友好
 
 ## 3. Prisma 模型约定

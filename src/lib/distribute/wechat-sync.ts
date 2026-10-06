@@ -16,6 +16,7 @@ import {
 } from "../queue";
 import { getWechatRuntimeConfig, type WechatRuntimeConfig } from "./wechat-config-admin";
 import { DistributeError } from "./errors";
+import { getWechatTheme } from "./wechat-themes";
 import {
   CHANNEL_WECHAT,
   DISTRIBUTE_BATCH_MAX,
@@ -29,6 +30,8 @@ export interface WechatSyncOverrides {
   title?: string;
   digest?: string;
   coverPath?: string;
+  /** 正文主题 id(弹窗单篇选择;非法 id 由 validateOverrides 拒绝) */
+  theme?: string;
 }
 
 export interface WechatSyncJobData {
@@ -84,6 +87,9 @@ function validateOverrides(overrides?: WechatSyncOverrides): void {
   }
   if (overrides?.digest !== undefined && [...overrides.digest.trim()].length > WECHAT_DIGEST_MAX) {
     throw new DistributeError("invalid", `摘要最多 ${WECHAT_DIGEST_MAX} 字`);
+  }
+  if (overrides?.theme !== undefined && getWechatTheme(overrides.theme).id !== overrides.theme) {
+    throw new DistributeError("invalid", "未知的正文主题");
   }
 }
 

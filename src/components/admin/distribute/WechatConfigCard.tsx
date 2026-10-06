@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
+import { getWechatTheme } from "@/lib/distribute/wechat-themes";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 import WechatConfigDialog from "./WechatConfigDialog";
@@ -130,6 +131,20 @@ export default function WechatConfigCard({ config }: { config: WechatConfigView 
         <Lb label="AppID" value={config.appid || "—"} mono />
         <Lb label="AppSecret" value={config.appSecretMask ?? "未录入"} mono />
         <Lb label="图文作者" value={config.author ?? "一起AI(缺省)"} />
+        <Lb
+          label="默认主题"
+          value={
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: getWechatTheme(config.theme).heading }}
+                aria-hidden="true"
+              />
+              {getWechatTheme(config.theme).label}
+            </span>
+          }
+          title="公众号正文默认主题;单篇同步时可在弹窗临时更改"
+        />
         <Lb label="自动同步" value={config.autoSyncEnabled ? "发布即推草稿" : "关闭(仅手动)"} />
         <Lb
           label="最后测试"

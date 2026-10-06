@@ -18,6 +18,7 @@ import {
   WECHAT_SYNC_GAP_MS,
   WECHAT_TITLE_MAX,
 } from "./channels";
+import { WECHAT_THEME_DEFAULT } from "./wechat-themes";
 import {
   wechatDraftAdd,
   wechatDraftUpdate,
@@ -105,11 +106,13 @@ export async function syncOnePost(
     );
     const coverPath = overrides?.coverPath?.trim() || row.thumbPath || post.coverPath;
     if (!coverPath) return await failSync(row.id, id, "缺少封面:公众号图文必须有封面");
+    // 主题解析:本次覆盖 > 行快照(上次推送所用,重推沿用)> 渠道默认
+    const themeId = overrides?.theme?.trim() || row.theme || cfg.theme || WECHAT_THEME_DEFAULT;
 
     const creds: WechatCredentials = { appid: cfg.appid, appSecret: cfg.appSecret };
     const cover = await ensureCoverMedia(creds, coverPath);
     const finalMd = await transloadContentImages(creds, contentMd);
-    const { html } = renderWechatHtml(finalMd);
+    const { html } = renderWechatHtml(finalMd, themeId);
     const contentChars = [...html].length;
     if (contentChars > WECHAT_CONTENT_MAX_CHARS) {
       return await failSync(
@@ -141,6 +144,7 @@ export async function syncOnePost(
         title,
         digest,
         thumbPath: coverPath,
+        theme: themeId,
         syncedAt: new Date(),
         lastError: null,
         attempts: { increment: 1 },
