@@ -74,13 +74,18 @@ export const DISTRIBUTE_JOB_WECHAT = "wechat-sync";
 export const DISTRIBUTE_JOB_WECHAT_BATCH = "wechat-batch";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细;
- * purge-usage-log 清理 AI 用量台账,M14 批⑦) */
+ * purge-usage-log 清理 AI 用量台账,M14 批⑦;purge-agent-session 清退
+ * Drawer 会话 30 天前留档,K2.5) */
 export const STATS_JOB_FLUSH = "flush";
 export const STATS_JOB_PURGE = "purge-visit-log";
 export const STATS_JOB_USAGE_PURGE = "purge-usage-log";
+export const STATS_JOB_AGENT_PURGE = "purge-agent-session";
 
 /** AI 用量台账 90 天保留期清理(凌晨档,与 visit-log/media-audit 错峰) */
 export const USAGE_LOG_PURGE_CRON = "52 4 * * *";
+
+/** Drawer 会话 30 天自动清退(凌晨档错峰:audit 03:41 / visit 04:14 / agent 04:33 / usage 04:52) */
+export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
 
 /** github 队列 job name 契约(生产:tick 调度/sync.ts/repos-admin.ts;消费:worker 按
  * job.name 分流,sync 为缺省路径)。改名需与 worker 同批。 */

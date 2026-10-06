@@ -54,11 +54,12 @@ aitech-hub/
 │   │   │   ├── users/route.ts、users/[id]/route.ts
 │   │   │   ├── github/repos/route.ts、repos/[id]/{route,status,sync,posts}/route.ts # 仓库台账 CRUD/开关/立即同步/配套文章(M11;PAT 拒绝)
 │   │   │   ├── distribute/wechat-config/{route,test/route}.ts、wechat/{sync,batch}/[jobId]/route.ts、wechat/preview/route.ts、records/[id]/reset/route.ts # 公众号配置/探针/单篇·批量同步 202+token 轮询/正文主题预览纯渲染/清绑定(M17;PAT 拒绝)
+│   │   │   ├── search/agent/threads/route.ts、threads/[threadId]/{route,state/route,runs/stream/route}.ts # K2.5 Drawer 会话:列表/新建(配额)/删除/checkpoint 恢复/langgraph 协议 SSE(arch/04 §3)
 │   │   │   ├── view/route.ts     # 浏览计数(去重窗口)
 │   │   │   ├── revalidate/route.ts
 │   │   │   └── health/route.ts
 │   │   └── layout.tsx            # 根布局:字体/主题/providers
-│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/
+│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘七件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
 │   ├── lib/
 │   │   ├── db.ts                 # Prisma client 单例
 │   │   ├── redis.ts              # Redis 单例
@@ -68,6 +69,7 @@ aitech-hub/
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
 │   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)
 │   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队三口+job 数据契约)、wechat-sync-run(执行管线,依赖单向 run→sync)、records(读侧+reset)
+│   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏)、sessions(会话行 CRUD)、quota(日配额/频控)、todos(零依赖提取,前端共用)、purge(30 天日清)、visitor(匿名 cookie)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
 │   │   ├── seo/                  # metadata/jsonld/sitemap 构造
 │   │   ├── queue.ts              # BullMQ producer(enqueue 封装)
