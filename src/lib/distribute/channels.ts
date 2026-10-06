@@ -27,6 +27,8 @@ export const WECHAT_CONTENT_MAX_CHARS = 20000;
 export const DISTRIBUTE_BATCH_MAX = 30;
 /** 批量逐篇间隔(ms;草稿接口频控保护,精确限额待官方核验,真机调) */
 export const WECHAT_SYNC_GAP_MS = 1500;
+/** 正文文末 References 条数上限(超出只染色不编号,防撑爆 content 长度预算) */
+export const WECHAT_REFERENCE_MAX = 20;
 /** 图文 author 缺省(公众号作者字段;config.author 空时管道取此值) */
 export const WECHAT_DEFAULT_AUTHOR = "一起AI";
 
