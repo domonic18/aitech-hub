@@ -16,32 +16,14 @@ import { getAgentGraph } from "./agent";
 import { touchSessionAfterRun } from "./sessions";
 import { encodeWireEvent, encodeWireMessage } from "./wire";
 
+// todos 提取在零依赖模块(前端计划条共用,客户端 bundle 不经此文件拉 deepagents)
+export { extractTodos, type AgentTodo } from "./todos";
+
 /** 单会话护栏:工具调用次数 / 累计 tokens(arch/04 §3.4 定稿 ≤12 步/≤50k) */
 export const AGENT_MAX_TOOL_CALLS = 12;
 export const AGENT_MAX_TOKENS = 50_000;
 /** recursionLimit 硬兜底(护栏超限主动断,此值防 prompt 失控兜底) */
 export const AGENT_RECURSION_LIMIT = 30;
-
-/** updates 帧中的 todos 形态(deepagents TodoListMiddleware 写图状态) */
-export interface AgentTodo {
-  content: string;
-  status: "pending" | "in_progress" | "completed";
-}
-
-/** 从 updates 载荷提取 todos(平移 ai-invest extractTodos:扫各节点增量) */
-export function extractTodos(updates: unknown): AgentTodo[] {
-  if (typeof updates !== "object" || updates === null) return [];
-  for (const value of Object.values(updates as Record<string, unknown>)) {
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      Array.isArray((value as { todos?: unknown }).todos)
-    ) {
-      return (value as { todos: AgentTodo[] }).todos;
-    }
-  }
-  return [];
-}
 
 /** 从 updates 载荷收集已完成工具调用 id(tool 消息的 tool_call_id,与 chunk 侧同集去重) */
 function collectToolCallIds(updates: unknown, into: Set<string>): void {

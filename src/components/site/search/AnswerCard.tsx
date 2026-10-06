@@ -4,18 +4,13 @@
  * fetch + getReader 手解 SSE——禁 EventSource(自动重连会对同一问题重复计费)。
  * 事件流 meta→delta*→done;unavailable 任意时刻整体不渲染(前台无感)。
  * done 广播 search:answer-done(detail.durationMs)供 GenTime 填「生成 X.Xs」;
- * 追问 chips 走整页导航 Link(规避换参不刷新);角标 [n] 锚跳引用列表,
- * 站内引用为内链、电报/repo 外链新窗。
+ * 角标 [n] 锚跳引用列表,站内引用为内链、电报/repo 外链新窗。
+ * K2.5:追问 chips 与「继续深挖」改派发 search:agent-ask 唤起 Drawer
+ * (chips 直发,深挖仅预填输入框;原整页导航 Link 因换参不刷新已弃)。
  */
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import {
-  parseAnswerBlocks,
-  type AnswerBlock,
-  type AnswerInline,
-} from "@/lib/search/answer-markdown";
-import { parseAnswerSup } from "@/lib/search/answer-parse";
+import AnswerMarkdown from "@/components/site/search/AnswerMarkdown";
 import { parseSseBlocks, type AnswerCite } from "@/lib/search/answer-protocol";
 
 type Phase = "hidden" | "streaming" | "done";
@@ -32,68 +27,9 @@ function isExternal(kind: AnswerCite["kind"]): boolean {
   return kind !== "post";
 }
 
-const SUP_LINK =
-  "mx-0.5 rounded-[3px] bg-accent-dim px-1 font-mono text-[10.5px] text-accent-hover hover:border hover:border-accent/40";
-
-/** 文本叶子内的 [n]/[n][m] → 上标锚(锚跳引用列表;纯文本原样) */
-function renderSup(text: string, keyPrefix: string): React.ReactNode[] {
-  return parseAnswerSup(text).map((s, i) =>
-    typeof s === "string" ? (
-      <span key={`${keyPrefix}-${i}`}>{s}</span>
-    ) : (
-      <span key={`${keyPrefix}-${i}`}>
-        {s.sup.map((n) => (
-          <sup key={n}>
-            <a href={`#cite-${n}`} className={SUP_LINK}>
-              [{n}]
-            </a>
-          </sup>
-        ))}
-      </span>
-    ),
-  );
-}
-
-/** 行内段渲染:加粗/行内代码/文本(文本叶内再解 [n] 上标) */
-function renderInline(segs: AnswerInline[], keyPrefix: string): React.ReactNode[] {
-  return segs.map((s, i) => {
-    const k = `${keyPrefix}-${i}`;
-    if (s.t === "bold")
-      return (
-        <strong key={k} className="font-semibold text-text-1">
-          {renderSup(s.v, k)}
-        </strong>
-      );
-    if (s.t === "code")
-      return (
-        <code key={k} className="rounded bg-panel-2 px-1 py-px font-mono text-[13px] text-green-hi">
-          {s.v}
-        </code>
-      );
-    return <span key={k}>{renderSup(s.v, k)}</span>;
-  });
-}
-
-const LIST_CLS = "my-1.5 space-y-1 pl-5 marker:text-text-3";
-
-/** 块渲染(子集 markdown;块级标签在 div 内合法嵌套,不用 <p> 包块) */
-function renderBlocks(blocks: AnswerBlock[]): React.ReactNode[] {
-  return blocks.map((b, i) => {
-    if (b.kind === "ul" || b.kind === "ol") {
-      const ListTag = b.kind === "ul" ? "ul" : "ol";
-      return (
-        <ListTag
-          key={i}
-          className={`${LIST_CLS} ${b.kind === "ul" ? "list-disc" : "list-decimal"}`}
-        >
-          {b.items.map((segs, j) => (
-            <li key={j}>{renderInline(segs, `${i}-${j}`)}</li>
-          ))}
-        </ListTag>
-      );
-    }
-    return <p key={i}>{renderInline(b.segs, `p${i}`)}</p>;
-  });
+/** 唤起 Drawer:detail.send=true 直发问题,false 仅预填输入框 */
+export function dispatchAgentAsk(question: string, send: boolean): void {
+  window.dispatchEvent(new CustomEvent("search:agent-ask", { detail: { question, send } }));
 }
 
 export default function AnswerCard({ q }: { q: string }): React.ReactElement | null {
@@ -186,7 +122,7 @@ export default function AnswerCard({ q }: { q: string }): React.ReactElement | n
 
       <div className="text-[14.5px] leading-[1.85] text-text-1">
         {text !== "" ? (
-          renderBlocks(parseAnswerBlocks(text))
+          <AnswerMarkdown text={text} />
         ) : (
           <span className="text-text-3">正在生成…</span>
         )}
@@ -216,26 +152,40 @@ export default function AnswerCard({ q }: { q: string }): React.ReactElement | n
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-text-3">
           追问:
           {followUps.map((f) => (
-            <Link
+            <button
               key={f}
-              href={`/search/?q=${encodeURIComponent(f)}`}
-              className="rounded-full border border-line bg-panel-2 px-3 py-[3px] font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1"
+              type="button"
+              onClick={() => dispatchAgentAsk(f, true)}
+              className="cursor-pointer rounded-full border border-line bg-panel-2 px-3 py-[3px] font-mono text-xs text-text-2 hover:border-line-hover hover:text-text-1"
             >
               {f}
-            </Link>
+            </button>
           ))}
         </div>
       ) : null}
 
       {phase === "done" ? (
-        <div className="mt-3 font-mono text-[11px] text-text-3">
-          <svg className="ic ic-sm" aria-hidden="true">
-            <use href="#i-robot" />
-          </svg>{" "}
-          AI 生成,可能存在错误
-          {meta?.noHits
-            ? ";站内无命中,以下为通用回答、无站内来源"
-            : ";角标 [n] 可溯源到站内原文,点击即跳转"}
+        <div className="mt-3 flex items-center justify-between font-mono text-[11px] text-text-3">
+          <span>
+            <svg className="ic ic-sm" aria-hidden="true">
+              <use href="#i-robot" />
+            </svg>{" "}
+            AI 生成,可能存在错误
+            {meta?.noHits
+              ? ";站内无命中,以下为通用回答、无站内来源"
+              : ";角标 [n] 可溯源到站内原文,点击即跳转"}
+          </span>
+          {/* K2.5:深挖入口——仅唤起 Drawer 预填,不自动消耗会话配额 */}
+          <button
+            type="button"
+            onClick={() => dispatchAgentAsk(`就「${q}」继续深挖:对比/展开/归纳站内相关内容`, false)}
+            className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded border border-line px-2 py-1 text-text-2 hover:border-accent/40 hover:text-accent-hover"
+          >
+            继续深挖
+            <svg className="ic ic-sm" aria-hidden="true">
+              <use href="#i-export" />
+            </svg>
+          </button>
         </div>
       ) : null}
     </div>
