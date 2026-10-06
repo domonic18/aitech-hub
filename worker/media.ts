@@ -8,6 +8,7 @@
 import type { Job } from "bullmq";
 
 import { prisma } from "../src/lib/db";
+import { fetchExternalImage } from "../src/lib/media/fetch-external";
 import { type MediaStatus, type TransferResult, MEDIA_LIMITS } from "../src/lib/media/media-schema";
 import { uploadMedia } from "../src/lib/media/service";
 import { mediaStorage, uploadsUrlToRel } from "../src/lib/media/storage";
@@ -68,21 +69,8 @@ export async function processMediaJob(job: Job): Promise<{ id: string; status: s
 
 /**
  * 单张外链抓取:content-type 白名单 + 大小上限(与上传同规)。
- * SSRF 边界(评审 S1):URL 仅来自 admin 后台(会话 + Origin 双守卫),风险有界;
- * 开放多管理员/三方导入前需先解析 DNS 并拒绝私网段(二期硬化项)。
+ * M17 批③ 起实现提为 src/lib/media/fetch-external.ts 共享(公众号同步外链图同口径)。
  */
-async function fetchExternalImage(url: string): Promise<{ data: Uint8Array; mime: string }> {
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(MEDIA_LIMITS.fetchTimeoutMs),
-    headers: { "user-agent": "aitech-hub-media-transfer/1.0" },
-    redirect: "follow",
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-  const buf = new Uint8Array(await res.arrayBuffer());
-  if (buf.byteLength > MEDIA_LIMITS.maxFetchBytes) throw new Error("超过大小上限");
-  return { data: buf, mime: mime || "application/octet-stream" };
-}
 
 export async function transferMediaJob(job: Job): Promise<TransferResult> {
   const urls = job.data.urls as string[];

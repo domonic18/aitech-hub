@@ -13,7 +13,8 @@ import sharp from "sharp";
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
  * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)/GitHub 项目展示三件套(M11)/
  * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)/
- * 用量统计看板与牌价·封面工作流冒烟(M14)/K1 三域统一检索分组命中(K1)。
+ * 用量统计看板与牌价·封面工作流冒烟(M14)/K1 三域统一检索分组命中(K1)/
+ * 公众号同步草稿:配置卡+未就绪 400+弹窗预填+批量 skipped+绑定重置(M17)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -2365,5 +2366,247 @@ test("26. K1 三域统一检索:/search 分组命中/高亮/g-more/空态/noinde
     await prisma.githubRepo.deleteMany({ where: { slug: REPO_SLUG } });
     await prisma.post.deleteMany({ where: { slug: POST_SLUG } });
     await prisma.category.deleteMany({ where: { slug: "e2e-k1" } });
+  }
+});
+
+/** 公众号配置单例快照/复原(27-29 共用):开发者本地可能已录真实凭证,即测即复原 */
+async function snapshotWechatConfig() {
+  return prisma.wechatConfig.findUnique({ where: { id: 1 } });
+}
+async function restoreWechatConfig(snap: Awaited<ReturnType<typeof snapshotWechatConfig>>) {
+  await prisma.wechatConfig.deleteMany({ where: { id: 1 } });
+  if (snap) await prisma.wechatConfig.create({ data: { ...snap } });
+}
+
+/** e2e admin 登录(27-29 各自幂等 upsert 账号后走 UI 流,同 test 4 口径) */
+async function e2eAdminLogin(page: import("@playwright/test").Page): Promise<void> {
+  const passwordHash = await bcrypt.hash(E2E_ADMIN_PASSWORD, 10);
+  await prisma.userAccount.upsert({
+    where: { phone: E2E_ADMIN_PHONE },
+    update: { role: "admin", status: "active", passwordHash },
+    create: {
+      phone: E2E_ADMIN_PHONE,
+      nickname: "e2e-admin",
+      role: "admin",
+      status: "active",
+      passwordHash,
+    },
+  });
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+}
+
+test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口禁用+sync 400)", async ({ page }) => {
+  const snap = await snapshotWechatConfig();
+  try {
+    // 未配置确定性环境:清单例行(页面 get-or-create 会落默认禁用行)
+    await prisma.wechatConfig.deleteMany({ where: { id: 1 } });
+    await e2eAdminLogin(page);
+
+    // 27.1 配置卡(掩码视图)+ 记录表空态
+    await page.goto("/admin/distribute");
+    await expect(page.getByRole("heading", { name: "内容分发" })).toBeVisible();
+    await expect(page.getByText("AppID").first()).toBeVisible();
+    await expect(page.getByText("未录入")).toBeVisible();
+    await expect(page.getByText("暂无同步记录")).toBeVisible();
+    await expect(page.getByText("默认主题")).toBeVisible(); // 配置卡含默认主题(主题扩展批⑧)
+
+    // 27.2 未就绪:文章列表批量「同步公众号」禁用 + 指引 tooltip(行内同步钮同款禁用)
+    await page.goto("/admin/posts/");
+    await page
+      .getByLabel(/^选择 /)
+      .first()
+      .click();
+    await expect(
+      page.getByTitle("先到「内容分发」完成公众号配置并启用渠道").first(),
+    ).toBeDisabled();
+
+    // 27.3 sync API 400:未就绪前置在资格检查之前(POST 直打,不入队不触网)
+    const res = await page.request.post("/api/distribute/wechat/sync/", {
+      headers: jsonOrigin(page),
+      data: { postId: "1" },
+    });
+    expect(res.status()).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("公众号渠道未就绪");
+  } finally {
+    await restoreWechatConfig(snap);
+  }
+});
+
+test("28. 同步公众号弹窗(M17 批④:就绪入口/默认预填/计数拦截/封面预览/主题预览)", async ({
+  page,
+}) => {
+  const MARK = "e2e-wxsync";
+  const category = await prisma.category.upsert({
+    where: { slug: "e2e-wx" },
+    update: {},
+    create: { slug: "e2e-wx", name: "e2e 公众号冒烟分类" },
+  });
+  await prisma.post.deleteMany({ where: { slug: MARK } });
+  const post = await prisma.post.create({
+    data: {
+      slug: MARK,
+      title: `${MARK} 站内标题`,
+      seoTitle: `${MARK} 推送标题`,
+      excerpt: "e2e 摘要回退样本",
+      contentMd: "e2e 公众号同步正文。",
+      coverPath: "/uploads/e2e-wxsync-cover.webp",
+      categoryId: category.id,
+      status: "published",
+      publishedAt: new Date(Date.now() - 1800_000),
+    },
+  });
+  const snap = await snapshotWechatConfig();
+  try {
+    await e2eAdminLogin(page);
+    // 造就绪:PUT 假凭证(仅开启入口;不点「推送草稿」不触微信 API)
+    const put = await page.request.put("/api/distribute/wechat-config/", {
+      headers: jsonOrigin(page),
+      data: {
+        appid: "wx-e2e-fake",
+        appSecret: "e2e-secret-fake",
+        author: "e2e",
+        theme: "default",
+        autoSyncEnabled: false,
+        enabled: true,
+      },
+    });
+    expect(put.status()).toBe(200);
+
+    await page.goto("/admin/posts/");
+    const row = page.getByRole("row", { name: new RegExp(MARK) });
+    await row.getByRole("button", { name: "同步公众号" }).click();
+    await expect(page.getByRole("heading", { name: "同步到公众号草稿箱" })).toBeVisible();
+
+    // 默认预填:标题=seoTitle、摘要=excerpt、封面缩略预览
+    const titleInput = page.getByLabel(/^标题/);
+    await expect(titleInput).toHaveValue(`${MARK} 推送标题`);
+    await expect(page.getByLabel(/^摘要/)).toHaveValue("e2e 摘要回退样本");
+    await expect(page.getByAltText("封面预览")).toBeVisible();
+
+    // 计数拦截:空标题禁提交;65 字 → 65/64 红标 + 禁用;回合法值恢复
+    const submit = page.getByRole("button", { name: "推送草稿" });
+    await expect(submit).toBeEnabled();
+    await titleInput.fill("");
+    await expect(submit).toBeDisabled();
+    await titleInput.fill("长".repeat(65));
+    const counter = page.getByText("65/64", { exact: true });
+    await expect(counter).toBeVisible();
+    await expect(counter).toHaveClass(/text-red/);
+    await expect(submit).toBeDisabled();
+    await titleInput.fill("合法推送标题");
+    await expect(submit).toBeEnabled();
+
+    // 主题扩展批⑧:主题色板默认高亮 + 右栏预览(preview 路由纯渲染,不触微信 API)
+    await expect(page.getByText("正文预览(公众号样式)")).toBeVisible();
+    await expect(page.getByText("e2e 公众号同步正文。")).toBeVisible();
+    const defChip = page.getByRole("button", { name: "默认", exact: true });
+    const greenChip = page.getByRole("button", { name: "青绿", exact: true });
+    await expect(defChip).toHaveClass(/border-accent/);
+    await greenChip.click();
+    await expect(greenChip).toHaveClass(/border-accent/);
+    await expect(defChip).not.toHaveClass(/border-accent/);
+    await expect(page.getByText("e2e 公众号同步正文。")).toBeVisible();
+
+    await page.getByRole("button", { name: "关闭" }).click();
+    await expect(page.getByRole("heading", { name: "同步到公众号草稿箱" })).toHaveCount(0);
+  } finally {
+    await restoreWechatConfig(snap);
+    await prisma.post.deleteMany({ where: { id: post.id } });
+    await prisma.category.deleteMany({ where: { slug: "e2e-wx" } });
+  }
+});
+
+test("29. 批量同步与绑定重置(M17:空/超限 400/旧文 skipped/清 media_id 绑定)", async ({ page }) => {
+  const MARK = "e2e-wxbatch";
+  const LEGACY_TITLE = `${MARK} 旧文`;
+  const category = await prisma.category.upsert({
+    where: { slug: "e2e-wxb" },
+    update: {},
+    create: { slug: "e2e-wxb", name: "e2e 公众号批量分类" },
+  });
+  // 旧文行:HTML 正文(contentMd 空)+ 有封面 → 批量预检应 skipped(不入队不触网)
+  await prisma.post.deleteMany({ where: { slug: MARK } });
+  const post = await prisma.post.create({
+    data: {
+      slug: MARK,
+      title: LEGACY_TITLE,
+      contentHtml: "<p>legacy e2e</p>",
+      wpPostId: 987654,
+      coverPath: "/uploads/e2e-wxbatch.webp",
+      categoryId: category.id,
+      status: "published",
+      publishedAt: new Date(Date.now() - 3600_000),
+    },
+  });
+  await prisma.publishChannel.deleteMany({ where: { postId: post.id } });
+  const ch = await prisma.publishChannel.create({
+    data: { postId: post.id, channel: "wechat", status: "failed", mediaId: "e2e-media-old" },
+  });
+  const snap = await snapshotWechatConfig();
+  try {
+    await e2eAdminLogin(page);
+    const put = await page.request.put("/api/distribute/wechat-config/", {
+      headers: jsonOrigin(page),
+      data: {
+        appid: "wx-e2e-fake",
+        appSecret: "e2e-secret-fake",
+        author: "e2e",
+        autoSyncEnabled: false,
+        enabled: true,
+      },
+    });
+    expect(put.status()).toBe(200);
+
+    // 29.1 空 ids → 400(zod min,先于渠道检查)
+    const empty = await page.request.post("/api/distribute/wechat/batch/", {
+      headers: jsonOrigin(page),
+      data: { ids: [] },
+    });
+    expect(empty.status()).toBe(400);
+    // 29.2 超 30 篇 → 400(zod max)
+    const over = await page.request.post("/api/distribute/wechat/batch/", {
+      headers: jsonOrigin(page),
+      data: { ids: Array.from({ length: 31 }, () => "1") },
+    });
+    expect(over.status()).toBe(400);
+    expect(((await over.json()) as { message: string }).message).toContain("30");
+    // 29.3 旧文 skipped:202 携回人话,eligible 0 不入队(worker 不触微信 API)
+    const batch = await page.request.post("/api/distribute/wechat/batch/", {
+      headers: jsonOrigin(page),
+      data: { ids: [post.id.toString()] },
+    });
+    expect(batch.status()).toBe(202);
+    const body = (await batch.json()) as {
+      data: { eligible: string[]; skipped: { id: string; reason: string }[] };
+    };
+    expect(body.data.eligible).toEqual([]);
+    expect(body.data.skipped).toHaveLength(1);
+    expect(body.data.skipped[0].reason).toContain("旧文");
+
+    // 29.4 UI 批量:勾旧文行 → 批量条「同步公众号」→ eligible 0 错误浮出
+    await page.goto("/admin/posts/");
+    await page.getByLabel(`选择 ${LEGACY_TITLE}`).click();
+    await page.getByTitle(/^推送选中文章到公众号草稿箱/).click();
+    await expect(page.getByText(/没有可同步的文章/)).toBeVisible();
+
+    // 29.5 reset 路由:有绑定 → 清空 200(落库 mediaId=null);无绑定再清 → 400
+    const reset1 = await page.request.post(`/api/distribute/records/${ch.id}/reset/`, {
+      headers: jsonOrigin(page),
+    });
+    expect(reset1.status()).toBe(200);
+    const reset2 = await page.request.post(`/api/distribute/records/${ch.id}/reset/`, {
+      headers: jsonOrigin(page),
+    });
+    expect(reset2.status()).toBe(400);
+    expect(((await reset2.json()) as { message: string }).message).toContain("没有 media_id 绑定");
+  } finally {
+    await restoreWechatConfig(snap);
+    await prisma.publishChannel.deleteMany({ where: { postId: post.id } });
+    await prisma.post.deleteMany({ where: { id: post.id } });
+    await prisma.category.deleteMany({ where: { slug: "e2e-wxb" } });
   }
 });

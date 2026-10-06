@@ -39,6 +39,7 @@ model Post {
   viewDays StatsPostViewDaily[]
   mediaRefs MediaRef[]
   githubRepos GithubRepoPost[]
+  channels PublishChannel[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -564,4 +565,73 @@ model GithubRepoPost {
   @@id([repoId, postId])
   @@index([postId], map: "idx_github_repo_post_post")
   @@map("github_repo_post")
+}
+
+// ── publish_(分发域,二期⑤/M17;requirement §4 多渠道分发)─────────
+
+/// 微信公众号渠道配置(单例 id=1,get-or-create;镜像 asr_config):
+/// appSecret 经 secret-box AES-256-GCM 密文只写不读,界面仅回显掩码;
+/// auto_sync_enabled=发布即自动推草稿(默认关,先配置并测试通过后手动开)
+model WechatConfig {
+  id                Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  appid             String    @db.VarChar(50)
+  appSecretEnc      String?   @map("app_secret_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  appSecretMask     String?   @map("app_secret_mask") @db.VarChar(20) // 脱敏回显冗余列
+  author            String?   @db.VarChar(64) // 图文 author 字段(空=管道缺省「一起AI」)
+  theme             String    @default("default") @db.VarChar(20) // 默认正文主题 id(wechat-themes 注册表;同步弹窗单篇可覆盖)
+  autoSyncEnabled   Boolean   @default(false) @map("auto_sync_enabled") // 发布即自动推草稿
+  enabled           Boolean   @default(false) // 渠道总开关:配置并测试通过后再开
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("publish_wechat_config")
+}
+
+/// 渠道分发状态(requirement §4 publish_channel;channel 字段渠道中立,
+/// 一期仅 wechat,CSDN/知乎/掘金后置接入):每篇×渠道一行,(post,channel) 唯一。
+/// media_id 有值重推走 draft/update,无值走 draft/add;title/digest/thumb_path
+/// 为本次推送的微调快照(按渠道微调标题摘要封面)。文章软删级联删行。
+model PublishChannel {
+  id        BigInt    @id @default(autoincrement())
+  postId    BigInt    @map("post_id")
+  channel   String    @db.VarChar(20) // wechat(合法值应用层 Zod 管控,arch/03 枚举演进条款)
+  status    String    @default("pending") @db.VarChar(20) // pending/synced/failed(应用层 Zod)
+  mediaId   String?   @map("media_id") @db.VarChar(100) // 公众号草稿 media_id
+  title     String?   @db.VarChar(500) // 推送标题快照(≤64 字,接口上限)
+  digest    String?   @db.VarChar(500) // 摘要快照(≤120 字,接口上限)
+  thumbPath String?   @map("thumb_path") @db.VarChar(500) // 封面快照(站内路径)
+  theme     String?   @db.VarChar(20) // 正文主题快照(上次推送所用 id;空=渠道默认,重推沿用)
+  attempts  Int       @default(0) @map("attempts") // 推送尝试次数(观测)
+  lastError String?   @map("last_error") @db.VarChar(500)
+  syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, channel], map: "uq_publish_channel_post_channel")
+  @@index([channel, status], map: "idx_publish_channel_channel_status")
+  @@index([updatedAt(sort: Desc)], map: "idx_publish_channel_updated")
+  @@map("publish_channel")
+}
+
+/// 渠道图片转存缓存(channel+source_key 唯一;防重推/更新草稿重复上传微信):
+/// source_key 前缀区分锚与通道——b:<sha1(源字节)>=站内正文图(uploadimg)、
+/// u:<sha1(url)>=外链正文图(uploadimg)、m:<sha1(源字节)>=封面(add_material,
+/// remote_media_id 有值)。mmbiz 素材库 URL 永久有效,缓存无 TTL。
+model PublishMediaCache {
+  id            BigInt   @id @default(autoincrement())
+  channel       String   @db.VarChar(20)
+  sourceKey     String   @map("source_key") @db.VarChar(64) // b:/u:/m: 前缀 + sha1
+  sourceUrl     String?  @map("source_url") @db.VarChar(1000) // 溯源(站内路径/原始外链)
+  remoteUrl     String   @map("remote_url") @db.VarChar(1000) // https://mmbiz.qpic.cn/...
+  remoteMediaId String?  @map("remote_media_id") @db.VarChar(100) // 仅 add_material 行
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([channel, sourceKey], map: "uq_publish_media_channel_key")
+  @@map("publish_media_cache")
 }

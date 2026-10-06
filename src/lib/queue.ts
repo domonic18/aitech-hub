@@ -29,6 +29,9 @@ export const QUEUE_COVER_GEN = "cover-gen";
 /** 批量 SEO 补全(M16 问题8,仅补空缺):文章管理多选 → 单批次 job 顺序逐篇;
  * LLM 秒级调用 × ≤50 篇,并发 1 防打爆绑定模型,lockDuration 600s 兜底 */
 export const QUEUE_SEO_BATCH = "seo-batch";
+/** 内容分发(M17,requirement §4 多渠道分发):公众号推草稿;
+ * 并发 1 全局串行(微信接口频控),lockDuration 900s 覆盖单批 30 篇 × ~15s */
+export const QUEUE_DISTRIBUTE = "distribute";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -41,6 +44,7 @@ export const QUEUE_NAMES = [
   QUEUE_GITHUB,
   QUEUE_COVER_GEN,
   QUEUE_SEO_BATCH,
+  QUEUE_DISTRIBUTE,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -63,6 +67,11 @@ export const COVER_JOB_GEN = "generate";
 
 /** seo-batch 队列 job name 契约(M16;batch 为缺省路径,文章管理手动触发) */
 export const SEO_JOB_BATCH = "batch";
+
+/** distribute 队列 job name 契约(M17;wechat-sync 单篇为缺省路径——手动一键/发布
+ * 自动共用;wechat-batch 批量单 job 顺序逐篇)。改名需与 worker 同批。 */
+export const DISTRIBUTE_JOB_WECHAT = "wechat-sync";
+export const DISTRIBUTE_JOB_WECHAT_BATCH = "wechat-batch";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细;
  * purge-usage-log 清理 AI 用量台账,M14 批⑦) */

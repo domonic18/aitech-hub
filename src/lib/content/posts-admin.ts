@@ -4,6 +4,9 @@
  * 旧文保真红线:WP 迁移的 HTML 正文(contentHtml 且无 contentMd)不可经后台改写。
  */
 import { prisma } from "@/lib/db";
+// M17 发布自动分发(渠道开关默认关):跨域单向依赖(distribute 不回头依赖 content 写侧)
+import { maybeEnqueueAutoWechat } from "@/lib/distribute/wechat-sync";
+import { logger } from "@/lib/logger";
 import { extractMediaRefs, syncMediaRefs } from "@/lib/media/refs";
 import { normalizeSlug } from "@/lib/slug";
 
@@ -39,7 +42,9 @@ export class PostAdminError extends Error {
   }
 }
 
-/** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString) */
+/** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString)。
+ * M17 批④:同步弹窗默认值需 coverPath/seoTitle/seoDescription/excerpt,
+ * 行操作「同步公众号」需 channels 状态(pending 禁点/synced 提示覆盖)。 */
 const ADMIN_LIST_SELECT = {
   id: true,
   slug: true,
@@ -50,8 +55,13 @@ const ADMIN_LIST_SELECT = {
   viewsCount: true,
   wpPostId: true,
   contentMd: true,
+  coverPath: true,
+  seoTitle: true,
+  seoDescription: true,
+  excerpt: true,
   category: { select: { slug: true, name: true } },
   tags: { select: { tag: { select: { name: true } } } },
+  channels: { select: { channel: true, status: true } },
 } as const;
 
 export type AdminPostRow = Awaited<ReturnType<typeof listPostsAdmin>>["items"][number];
@@ -284,6 +294,13 @@ export async function publishPost(id: bigint): Promise<{ slug: string | null }> 
     },
   });
   revalidatePostPaths({ id: post.id, slug: post.slug });
+  // M17 发布自动同步公众号草稿:渠道关/旧文/缺封面/已同步均静默跳过;
+  // maybeEnqueueAutoWechat 契约永不抛(内部 catch-all),发布主流程不受影响
+  try {
+    await maybeEnqueueAutoWechat(id);
+  } catch (e) {
+    logger.warn({ event: "wechat.auto_hook_failed", postId: id.toString(), error: String(e) });
+  }
   return { slug: updated.slug };
 }
 

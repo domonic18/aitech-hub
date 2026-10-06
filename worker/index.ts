@@ -6,10 +6,12 @@ import {
   CRAWL_JOB_AI_BACKFILL,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
+  DISTRIBUTE_JOB_WECHAT_BATCH,
   GITHUB_JOB_TICK,
   MEDIA_AUDIT_CRON,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
+  QUEUE_DISTRIBUTE,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
@@ -35,6 +37,8 @@ import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
+import { type WechatBatchJobData, type WechatSyncJobData } from "../src/lib/distribute/wechat-sync";
+import { wechatBatchJob, wechatSyncJob } from "../src/lib/distribute/wechat-sync-run";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
 import { processMediaJob, transferMediaJob } from "./media";
@@ -129,6 +133,26 @@ const PROCESSORS: Record<string, Processor> = {
     const summary = await syncGithubRepo(Number(job.data.repoId));
     console.log(JSON.stringify({ event: "github.sync", ...summary }));
     return summary;
+  },
+  // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
+  [QUEUE_DISTRIBUTE]: async (job) => {
+    if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
+      const progress = await wechatBatchJob(job.data as WechatBatchJobData, (p) =>
+        job.updateProgress(p),
+      );
+      console.log(JSON.stringify({ event: "wechat.batch_result", ...progress }));
+      return progress;
+    }
+    const r = await wechatSyncJob(job.data as WechatSyncJobData);
+    console.log(
+      JSON.stringify({
+        event: "wechat.sync_result",
+        postId: r.postId,
+        ok: r.ok,
+        mediaId: r.mediaId ?? null,
+      }),
+    );
+    return r;
   },
 };
 
@@ -255,13 +279,16 @@ async function main(): Promise<void> {
   for (const name of Object.keys(PROCESSORS)) {
     // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用、summarizer 抓原文+LLM、
     // cover-gen 云厂商生图(10-30s+)耗时长,放宽锁续期;interpreter/seo-batch 并发钉 1
-    // (interpreter:ffmpeg 抽轨 CPU 峰值 arch/02 §3.2;seo-batch:逐篇 LLM 防打爆模型速率)
+    // (interpreter:ffmpeg 抽轨 CPU 峰值 arch/02 §3.2;seo-batch:逐篇 LLM 防打爆模型速率);
+    // distribute 并发 1(微信接口频控全局串行)+ 锁 900s 覆盖单批 30 篇 × ~15s
     const opts =
       name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER || name === QUEUE_COVER_GEN
         ? { lockDuration: 300_000 }
         : name === QUEUE_INTERPRETER || name === QUEUE_SEO_BATCH
           ? { concurrency: 1, lockDuration: 600_000 }
-          : {};
+          : name === QUEUE_DISTRIBUTE
+            ? { concurrency: 1, lockDuration: 900_000 }
+            : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
