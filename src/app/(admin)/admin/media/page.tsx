@@ -181,9 +181,6 @@ export default async function AdminMediaPage({
         </div>
       )}
 
-      {/* 重复检测分组视图(原型 .dupe-row;同 sha1 ≥2 条即整卡呈现,无重复不占位) */}
-      {dupes.length > 0 && <MediaDupeList groups={dupes} />}
-
       <MediaGrid items={list.items} refFilter={refFilter} />
 
       <AdminPagination
@@ -193,6 +190,9 @@ export default async function AdminMediaPage({
         hrefFor={(p) => listHref(kind, refFilter, p, q)}
         unit="项"
       />
+
+      {/* 重复检测分组视图(原型:网格下方独立分区;同 sha1 ≥2 条即整卡呈现,无重复不占位) */}
+      {dupes.length > 0 && <MediaDupeList groups={dupes} />}
 
       <div className="font-mono text-[11px] text-text-3">
         POST /api/media · GET/DELETE /api/media/[id] · POST /api/media/import|batch-delete|audit ·
