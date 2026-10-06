@@ -1051,14 +1051,14 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
 
     // M9 批⑥:解读日配额后台化——interpret 卡日配额输入在;API 改值落库后还原
     // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)。
-    // M15 批②:配额输入按消费方出现——interpret/summarize 卡有(各自独立配置),
-    // search/cover 卡无(存储与 API 预留但无消费方,不渲染假配置)
+    // M15 批②:配额输入按消费方出现——interpret/summarize 卡有(各自独立配置);
+    // K1/K2 起 search 有消费方(答案路由)同样可配;cover 仍无消费方不渲染
     const interpretCard = page.getByRole("group", { name: "电报解读绑定" });
     await expect(interpretCard.getByLabel("电报解读日配额")).toBeVisible();
     await expect(sumCard.getByLabel("文字摘要日配额")).toBeVisible();
     await expect(
       page.getByRole("group", { name: "Agent 搜索绑定" }).getByLabel(/日配额/),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await expect(
       page.getByRole("group", { name: "封面生图绑定" }).getByLabel(/日配额/),
     ).toHaveCount(0);
@@ -2018,6 +2018,28 @@ test("22. K1 三域统一检索:/search 分组命中/高亮/g-more/空态/noinde
       nextSyncAt: new Date(Date.now() + 24 * 3600_000),
     },
   });
+  // K2 答案 API 确定性:假模型(http 打不通,秒失败零真金)+ search 绑定指它;
+  // 生成必断流 → unavailable(error)+ failed 台账行,缓存/配额不受污染
+  const fakeModel = await prisma.aiModel.create({
+    data: {
+      name: "e2e-k1-answer-model",
+      provider: "e2e",
+      modelId: "e2e-answer-model",
+      protocol: "openai",
+      baseUrl: "https://e2e.invalid/v1",
+      timeoutSec: 5,
+      concurrency: 1,
+      enabled: true,
+      purposes: ["search"],
+    },
+  });
+  const bindingBefore = await prisma.aiTaskBinding.findUniqueOrThrow({
+    where: { role: "search" },
+  });
+  await prisma.aiTaskBinding.update({
+    where: { role: "search" },
+    data: { primaryId: fakeModel.id, backupId: null },
+  });
 
   try {
     // 22.1 三域分组命中页:SSR 直出真实 HTML(noindex 双保险;AI 答案卡 K2 批③
@@ -2060,7 +2082,34 @@ test("22. K1 三域统一检索:/search 分组命中/高亮/g-more/空态/noinde
     const bare = await request.get("/search/");
     expect(bare.status()).toBe(200);
     expect(await bare.text()).not.toContain("条命中");
+
+    // 22.4 K2 答案 API:校验缺失 → 400 包络;绑定假模型 → SSE 流式头 +
+    // meta(3 命中 3 引用)后生成断流 → 单帧 unavailable(error),failed 落台账
+    const noQ = await request.get("/api/search/answer/");
+    expect(noQ.status()).toBe(400);
+    expect(((await noQ.json()) as { code: number }).code).toBe(400);
+    const sse = await request.get(`/api/search/answer/?q=${MARK}`);
+    expect(sse.status()).toBe(200);
+    expect(sse.headers()["content-type"]).toContain("text/event-stream");
+    expect(sse.headers()["x-accel-buffering"]).toBe("no");
+    expect(sse.headers()["cache-control"]).toContain("no-store");
+    const sseBody = await sse.text();
+    expect(sseBody).toContain("event: meta");
+    expect(sseBody).toContain('"total":3');
+    expect(sseBody).toContain('"noHits":false');
+    expect(sseBody).toContain('"kind":"post"');
+    expect(sseBody).toContain("event: unavailable");
+    expect(sseBody).toContain('"reason":"error"');
+    expect(
+      await prisma.aiUsageLog.count({ where: { role: "search", modelKey: "e2e-answer-model" } }),
+    ).toBe(1);
   } finally {
+    await prisma.aiTaskBinding.update({
+      where: { role: "search" },
+      data: { primaryId: bindingBefore.primaryId, backupId: bindingBefore.backupId },
+    });
+    await prisma.aiUsageLog.deleteMany({ where: { modelKey: "e2e-answer-model" } });
+    await prisma.aiModel.deleteMany({ where: { modelId: "e2e-answer-model" } });
     await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
     await prisma.crawlSource.deleteMany({ where: { name: SRC_NAME } });
     await prisma.githubRepo.deleteMany({ where: { slug: REPO_SLUG } });

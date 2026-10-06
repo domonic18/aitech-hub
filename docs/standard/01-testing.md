@@ -15,6 +15,8 @@
 
 ## 2. 单测(Vitest,质量红线,缺一不绿)
 
+> 环境加载:根 `vitest.setup.ts`(`vitest.config.ts` setupFiles)显式 `loadEnvConfig` 载入 `.env`——`vi.mock("../db")` 会切断 @prisma/client 运行时隐式 dotenv 的加载副作用,env 校验必须显式化,否则 mock 协作方的套件级炸 DATABASE_URL undefined(2026-10-06 K2 实修)。
+
 1. **`normalizeSlug` 全边界**(编码↔解码往返、二次编码、`%` 字面量、`+`/空格)——arch/07-frontend §2 红线;`scripts/migrate-wp` 引用同一实现,天然同源
 2. **HTML 清洗每条规则**(src/lib/content/clean-html.ts 白名单规则):Gutenberg 注释剥离、短码转换、标签/属性白名单、内链相对化——正例+反例各一;测试数据用 WP 导出真实切片(脱敏 fixtures)
 3. 会话:签发/校验/轮换/吊销(jose + mock Redis);频控计数边界

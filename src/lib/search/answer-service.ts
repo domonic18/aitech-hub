@@ -9,6 +9,7 @@ import { chatStream } from "@/lib/ai/llm-client";
 import { getRoleDailyMax, resolveAiModel } from "@/lib/ai/resolver";
 import { recordAiUsage } from "@/lib/ai/usage-log";
 import { countTodayRoleUsage } from "@/lib/ai/usage-queries";
+import { formatCnDateTime } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 
 import { encodeAnswerEvent, type AnswerCite, type AnswerEvent } from "./answer-protocol";
@@ -100,7 +101,8 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
           total: result.total,
           noHits: !hasHits,
           cites,
-          generatedAt: new Date().toISOString(),
+          // 展示串直接给北京时区格式(全站时间口径红线,datetime.ts)
+          generatedAt: formatCnDateTime(new Date()),
         });
 
         // 流式生成:哨兵与半截哨兵扣住不外泄,只发可见前缀增量

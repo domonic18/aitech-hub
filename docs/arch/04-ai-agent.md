@@ -26,7 +26,7 @@
 ### 3.2 检索基座(K1):三域统一检索 service
 
 - 一次 query 并发检索三域——`telegram`(资讯,含短视频解读)/ `content_post`(教程,博主文章)/ `github_repo`(项目),合并分组返回;**给人搜索 = 给智能体检索**:同层供 K2 答案卡、K2.5 agent 工具与 K3 站点内容 MCP「搜索」工具,同源不漂移
-- PG 全文(tsvector)起步;中文分词实效待测,不足再评审 zhparser/pgvector embedding 混合(成本:全量回填 embedding + 每文增量,届时另议)
+- ~~PG 全文(tsvector)起步;中文分词实效待测~~ **实施定稿(2026-10-06,第一迭代)**:ILIKE 词项计分起步——PG simple 分词器对中文无效(无空格整段一个 token),tsvector 全文对中文查询无召回;q 切词(`src/lib/search/tokenize.ts`,CJK 连续段整词、≤8 词)逐词 `contains insensitive`(OR)取候选(每域 50 条预排),JS 侧加权计分重排(title 3 > 摘要 2 > 正文 1,`search-view.ts#scoreTerms`),命中度 = 词项覆盖率%。零迁移零扩展;已知限制:长无空格 CJK 问句召回弱,实测差再追加 bigram 词项(仍零迁移),zhparser/pgvector 升级路径不变。落点 `src/lib/search/unified-search.ts#searchAll`(唯一碰 Prisma 的检索入口)
 - 生成选型定稿:**直连 LLM(进程内),不经自有 MCP 复用**——与 §2 站点内容 MCP 的关系保持「同检索层、不同鉴权与工具面」
 
 ### 3.3 技术栈定稿:全 TS,无 Python sidecar(2026-10-06)
@@ -47,9 +47,18 @@
 | 答案缓存 | 同 `q=` **24h** 内复用 | 省钱 + 秒开;缓存行落 Redis/PG 实施时定 |
 | 模型建议 | search 角色绑国产模型(DeepSeek/GLM/Qwen 级) | 单次答案卡 ¥0.005~0.1、会话 ¥0.05~1;Claude 级成本 ×10 收益边际 |
 
+**K2 实施注记(2026-10-06,第一迭代批②/③,`src/lib/search/answer-*` + `GET /api/search/answer/`)**:
+
+- **配额口径**:`countTodayRoleUsage("search")` = `ai_usage_log` 当日(北京日界)`role=search` 且 `status∈{ok,degraded}` 行数(终败不占);缓存命中**计配额**(落 tokens 0 行);无绑定/超配额单帧 `unavailable` 不落台账(无 LLM 调用)
+- **降级三路径**(no_binding/quota/error)一律 SSE `unavailable` 事件,不占 HTTP 状态,前台无感;IP 频控 10 次/分(`rate-limit.ts`,Redis 挂放行)
+- **0 命中仍生成**(requirement §4 红线「AI 直接作答」):prompt 换无资料变体(凭模型知识、不用 [n]),meta.noHits 标注,答案卡明示「站内无命中 · AI 直接作答」
+- **追问 chips**:单次调用哨兵分隔(`###FOLLOW###` + 恰好 3 行,≤20 字/条);流式侧 `visiblePrefix` 扣住哨兵与半截哨兵防泄漏;漏哨兵 → 无 chips 优雅降级
+- **流式**:openai `stream:true + include_usage`(400 点名剥参重发,镜像 response_format 先例);anthropic 非流式兜底单 delta;断流有增量按 done 收尾(degraded 行,不写缓存)、零增量 unavailable(error)+ failed 行;备用模型 → degraded 行
+- **nginx**:`location ^~ /api/search/` `proxy_buffering off`(配置随批落地);响应头 `x-accel-buffering: no`
+
 ### 3.5 分期
 
-- **第一迭代:K1 检索基座 + K2 答案卡**(页面式;TS 进程内单轮 RAG,SSE 流式)
+- **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
 - **第二迭代:K2.5 Drawer 会话 Agent**(deepagents + assistant-ui + checkpoint)
 - K3 站点内容 MCP 随 K1 就绪解锁(同检索层,对外只读工具面)
 
@@ -72,6 +81,6 @@
 - ~~agent 编排形态:单 agent 工具集 vs 多 agent 流水线~~ **已定(2026-10-06,§3)**:K2 答案卡为单轮 RAG;K2.5 Drawer 为 deepagents 单 agent + 工具循环,子 agent 能力框架预留、首版不启用
 - ~~agent 身份与配额:复用 PAT 还是独立主体、计量口径~~ **已定(2026-10-06,§3.3/§3.4)**:无独立主体——复用 `search` 任务绑定(model/key/daily_max)与 `ai_usage_log`(role=search)计量,与 interpret/summarize 同一套治理
 - ~~安全边界:哪些 mutation 允许 agent 触达、审计要求~~ **已定(2026-10-06,§3)**:K 系列只读(检索/读站内内容),不触达任何 mutation;审计 = `ai_usage_log` 逐次落行 + 会话管理(admin-schemas 余项,归 arch §4 二期范围)
-- ~~Agent 搜索的检索/生成选型(§3,随二期立项)~~ **已定(2026-10-06,§3.2)**:检索 PG 全文起步;生成直连 LLM 进程内;pgvector 混合留实效实测后再评审
+- ~~Agent 搜索的检索/生成选型(§3,随二期立项)~~ **已定并实施(2026-10-06,§3.2)**:检索 ILIKE 词项计分起步(PG simple 分词对中文无效,tsvector 弃);生成直连 LLM 进程内;zhparser/pgvector 混合留实效实测后再评审
 - 会话留存期与清退(Drawer 线程 checkpoint 数据保留多久、是否给用户「删除会话」)——K2.5 实施前定
 - Drawer 抽屉在 /search 之外的入口范围(全局 FAB vs 仅搜索场景)——K2.5 实施前定

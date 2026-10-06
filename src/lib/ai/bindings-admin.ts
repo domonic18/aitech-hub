@@ -14,7 +14,7 @@ export interface BindingRow {
   role: string;
   primaryId: number | null;
   backupId: number | null;
-  /** 角色日配额(条/日;null=默认 100;interpret/summarize 各自消费,M9 后台可配) */
+  /** 角色日配额(条/日;null=默认 100;interpret/summarize/search 各自消费,M9 后台可配) */
   dailyMax: number | null;
 }
 

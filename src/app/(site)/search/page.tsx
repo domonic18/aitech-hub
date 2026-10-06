@@ -7,6 +7,8 @@
  */
 import type { Metadata } from "next";
 
+import AnswerCard from "@/components/site/search/AnswerCard";
+import GenTime from "@/components/site/search/GenTime";
 import SearchConsole from "@/components/site/search/SearchConsole";
 import SearchEmpty from "@/components/site/search/SearchEmpty";
 import SearchHits from "@/components/site/search/SearchHits";
@@ -41,16 +43,19 @@ export default async function SearchPage({
             <>
               <div className="mb-[18px] mt-9 border-b border-line pb-3 font-mono text-[13px] text-text-2">
                 $ agent.ask &quot;{result.q}&quot; --scope=site → 检索{" "}
-                <b className="text-green-hi">{result.total}</b> 条 ·
-                {/* 生成耗时由批③ GenTime 在答案 done 后补(检索 N 条 SSR 直出) */}
+                <b className="text-green-hi">{result.total}</b> 条 · <GenTime />
                 <span className="text-text-3">(全文 + 摘要混合检索 · 含短视频解读)</span>
               </div>
-              {/* K2 答案卡挂载点(批③ <AnswerCard q={q} />) */}
+              {/* K2 答案卡:流式增强,unavailable/未绑定整体不渲染 */}
+              <AnswerCard q={q} />
               <SearchHits groups={result.groups} terms={result.terms} />
             </>
           ) : (
-            // 零命中:空态头 + 虚线框;答案卡(批③)仍出「AI 直接作答」卡
-            <SearchEmpty q={result.q} />
+            // 零命中:空态头 + 虚线框;答案卡仍出「AI 直接作答」卡(需求红线)
+            <>
+              <AnswerCard q={q} />
+              <SearchEmpty q={result.q} />
+            </>
           )}
         </>
       ) : null}
