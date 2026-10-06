@@ -2,11 +2,12 @@
  * 用量看板聚合单测(M14 批⑦):窗口起点 CN 日界、费用口径(LLM tokens/ASR 按秒/
  * 生图按张/failed 不计费/未定价 0)、降级与 ASR KPI 分账、CN 日桶、明细 spark 桶。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   aggregateUsage,
   costOfRow,
+  countTodayRoleUsage,
   sparkTrend,
   usageWindowSince,
   type UsageRowLike,
@@ -112,5 +113,27 @@ describe("sparkTrend", () => {
     expect(buckets).toHaveLength(14);
     expect(buckets.reduce((a, b) => a + b, 0)).toBe(10);
     expect(buckets[7]).toBe(10); // 3.5/6.83 窗口 → 第 7 桶
+  });
+});
+
+// ---------- countTodayRoleUsage(K2 答案配额) ----------
+
+const { countMock } = vi.hoisted(() => ({ countMock: vi.fn() }));
+vi.mock("../db", () => ({ prisma: { aiUsageLog: { count: countMock } } }));
+
+describe("countTodayRoleUsage", () => {
+  it("role + 北京当日零点起 + ok/degraded(failed 不占配额)", async () => {
+    countMock.mockResolvedValue(7);
+    const n = await countTodayRoleUsage("search", NOW);
+    expect(n).toBe(7);
+    expect(countMock).toHaveBeenCalledWith({
+      where: {
+        role: "search",
+        createdAt: { gte: usageWindowSince(NOW, 1) },
+        status: { in: ["ok", "degraded"] },
+      },
+    });
+    // 界=北京 10-06 零点(UTC 10-05T16:00)
+    expect(usageWindowSince(NOW, 1).toISOString()).toBe("2026-10-05T16:00:00.000Z");
   });
 });

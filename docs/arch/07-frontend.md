@@ -12,7 +12,7 @@
 | `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族;M12 批①:条目区客户端「列表 ⇄ 封面卡」视图切换(两视图皆服务端渲染、切换纯显隐零二次请求;localStorage `articles-view` 记忆,默认列表——SSR HTML 即列表,SEO/LCP 不受影响;视图记忆是个人偏好不进 URL,可分享的筛选走 /category、/tag 路由)+ /articles 头部 tag 筛选条(chip 链既有 `/tag/<slug>/` 静态路由,零 searchParams 不破 ISR/canonical) |
 | `/projects/`(开源项目列表,M11) | ISR 600s | 白名单展示仓全量卡片(sortOrder→stars),不分页;admin 写侧即时 revalidate,同步新鲜度走本窗口;首页右栏同源 rail 卡(空白名单整卡不渲染) |
 | `/projects/[slug]/`(项目详情,M11) | ISR 600s + 按需 revalidate | slug 是唯一解析键(登记时派生此后冻结;**无 id 锚点,错 slug 直接 404 不做 308 归一**,构造唯一出口 `src/lib/github/project-path.ts`);README 渲染 + 进展动态 + 配套文章;下架(display=false)即 404 |
-| `/search` | 动态 SSR | 每请求查询 |
+| `/search` | 动态 SSR | 每请求查询;K1 三域分组 + K2 AI 答案卡(arch/04 §3,2026-10-06 第一迭代):分组命中即时 SSR(mark 高亮 + 渠道 chip + 命中度),答案卡 `AnswerCard` 客户端 **fetch + getReader 手解 SSE**(站内流式消费先例;**禁 EventSource**——自动重连会重复计费)流式增强不阻塞命中;0 命中同样挂答案卡(「AI 直接作答」标注);组件 `src/components/site/search/`:SearchConsole/SearchHits/TelegramHit/PostHit/RepoHit/SearchEmpty/AnswerCard/GenTime;noindex 仅页内 robots meta(不在 middleware `X-Robots-Tag` 名单) |
 | `/telegram`(电报流,M7 批⑤) | 动态 SSR(`force-dynamic`)+ 客户端 60s 轮询 | **noindex 双保险**(robots meta + next.config `X-Robots-Tag` 头)且**不入 sitemap**(显式页面清单);渠道筛选 URL 驱动(`?source=`);仅出 AI 解读终态行,空列 + 今日有入库 → 「AI 解读处理中」空态(M15 批①);新讯**即刷即渲染**(同构重排)+ 虚线浮条「↑ N 条新电报」点击平滑回顶重置未读锚(与 ai-invest-assisstant 同款,M15 批③;原「点击载入」缓冲闸门退役) |
 | `/about`、`/agreement`、`/privacy` | 静态 | |
 | `/(user)/**`(登录/账号) | CSR | 无 SEO 诉求 |

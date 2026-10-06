@@ -229,6 +229,7 @@ CREATE TABLE legacy_url_map (
 
 - `site_config`(kv 通用底座):`key varchar(50) PK + value text + updated_at`;value 一律字符串,消费方自行解析 + clamp(键注册表 `SITE_CONFIG_KEYS` + per-key Zod,`src/lib/config/site-config.ts`;缺行/非数值/越界一律回落默认)。**M12 批② value 放宽为 text**(hero_md 存 markdown,varchar(200) 不够)并扩键族:`band.item_count`(默认 12,钳 1..50)/`home.repo_count`(默认 3,钳 1..12)/`home.post_count`(默认 5,钳 1..12)/`site.title`(默认「一起AI」,1..50 字;传播 generateMetadata/Header/Footer/feed.xml/llms.txt)/`home.hero_md`(≤2000 字,空 = 回退内置品牌语)/`site.icp`(2026-10-05,≤60 字,空 = 页脚不渲染备案行;页脚链 beian.miit.gov.cn)
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
+- `stats_search_log`(搜索词明细,行级,2026-10-06 排行需求):`term varchar(100)/created_at`;索引 `created_at DESC`。口径:/search 页 counted PV 携带的 q(trim + 空白折叠截 100 字,`classify.ts#normalizeSearchTerm`,保留原样大小写),仅 path 为 /search 记;无 PII(不存 IP/访客哈希);行级直插不经缓冲(不 await 不阻断 beacon,失败仅 warn),worker `visit-log-purge` 同 job 清 180 天前行——排行「全部」窗口的实际上界
 
 ## 3. Prisma 模型约定
 

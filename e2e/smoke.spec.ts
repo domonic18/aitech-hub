@@ -12,7 +12,7 @@ import sharp from "sharp";
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
  * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)/GitHub 项目展示三件套(M11)/
  * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)/
- * 用量统计看板与牌价·封面工作流冒烟(M14)。
+ * 用量统计看板与牌价·封面工作流冒烟(M14)/K1 三域统一检索分组命中(K1)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -372,13 +372,15 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
   }
 });
 
-test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)+ 最近访问明细(M10 批⑥)", async ({
+test("9. 站点统计页六模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)+ 搜索词排行(2026-10-06)+ 最近访问明细(M10 批⑥)", async ({
   page,
   request,
 }) => {
-  // 访问明细隔离(重跑幂等)
+  // 访问明细/搜索词隔离(重跑幂等)
   const visitPath = "/e2e-visit-log";
   await prisma.statsVisitLog.deleteMany({ where: { path: visitPath } });
+  const searchTerm = "e2e 热搜词";
+  await prisma.statsSearchLog.deleteMany({ where: { term: searchTerm } });
 
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
@@ -390,26 +392,47 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   // beacon 直打(M10 批⑥):request 上下文无 cookie(非管理员可入账);
   // 本地无反代头,自置 x-forwarded-for 模拟 nginx 形态(clientIp 取首跳);
   // UA 用真实浏览器串(playwright 字样被 isBotUa 过滤,正是生产口径)
+  const beaconHeaders = {
+    origin: originOf(page),
+    "x-forwarded-for": "203.0.113.7",
+    "user-agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  };
   const beacon = await request.post("/api/view", {
-    headers: {
-      origin: originOf(page),
-      "x-forwarded-for": "203.0.113.7",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    },
+    headers: beaconHeaders,
     data: { path: visitPath, referrer: "" },
   });
   expect(beacon.status()).toBe(204);
 
-  // 五模块渲染(空库也不空壳:卡片/表头常在,趋势图恒有 generate_series 点)
+  // 搜索词排行(2026-10-06):仅 /search 页 counted PV 记词——空白折叠归一(两发同词 → 次数 2);
+  // 非 /search 路径与纯空白词不记
+  for (const data of [
+    { path: "/search", referrer: "", q: `  ${searchTerm}  ` },
+    { path: "/search", referrer: "", q: searchTerm },
+    { path: "/post/", referrer: "", q: searchTerm },
+    { path: "/search", referrer: "", q: "   " },
+  ]) {
+    const r = await request.post("/api/view", { headers: beaconHeaders, data });
+    expect(r.status()).toBe(204);
+  }
+
+  // 六模块渲染(空库也不空壳:卡片/表头常在,趋势图恒有 generate_series 点)
   await page.goto("/admin/");
   await expect(page.getByText("今日 PV")).toBeVisible();
   await expect(page.getByText("PV / UV 趋势")).toBeVisible();
   await expect(page.getByRole("heading", { name: "流量来源" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "访客环境" })).toBeVisible();
   await expect(page.getByText("热门页面")).toBeVisible();
+  await expect(page.getByText("热门搜索")).toBeVisible();
   const polylines = page.locator("main svg polyline");
   await expect(polylines).toHaveCount(2);
+
+  // 搜索词排行行:两次 /search counted beacon(其一带首尾空白)归一为同词 → 次数 2;
+  // 断言后即清
+  const termRow = page.getByRole("row", { name: new RegExp(searchTerm) });
+  await expect(termRow).toBeVisible();
+  await expect(termRow.locator("td").last()).toHaveText("2");
+  await prisma.statsSearchLog.deleteMany({ where: { term: searchTerm } });
 
   // 最近访问明细行(M10 批⑥):伪路径 + 全量 IP;断言后即清
   const visitRow = page.getByRole("row", { name: new RegExp(visitPath) });
@@ -423,9 +446,9 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await expect(page.getByTestId("trend-tip")).toContainText("PV");
 
   // 分段切换 URL 驱动:trend=30 生效且 hot 参数跨段保留
-  // 「近 30 天」在趋势卡与热门卡各一枚(Link 分段),count=2 证两卡分段均按参数渲染
+  // 「近 30 天」在趋势卡与两张热门卡各一枚(Link 分段),count=3 证三卡分段均按参数渲染
   await page.goto("/admin/?trend=30&hot=all");
-  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(3);
   await expect(page.getByText("该时段暂无页面浏览")).toHaveCount(0);
   await expect(polylines.first()).toBeVisible();
   await page.getByRole("link", { name: "近 90 天" }).click(); // 仅趋势卡有,唯一
@@ -1051,14 +1074,14 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
 
     // M9 批⑥:解读日配额后台化——interpret 卡日配额输入在;API 改值落库后还原
     // (只写 dailyMax,主/备用引用原样带回,不动真实绑定)。
-    // M15 批②:配额输入按消费方出现——interpret/summarize 卡有(各自独立配置),
-    // search/cover 卡无(存储与 API 预留但无消费方,不渲染假配置)
+    // M15 批②:配额输入按消费方出现——interpret/summarize 卡有(各自独立配置);
+    // K1/K2 起 search 有消费方(答案路由)同样可配;cover 仍无消费方不渲染
     const interpretCard = page.getByRole("group", { name: "电报解读绑定" });
     await expect(interpretCard.getByLabel("电报解读日配额")).toBeVisible();
     await expect(sumCard.getByLabel("文字摘要日配额")).toBeVisible();
     await expect(
       page.getByRole("group", { name: "Agent 搜索绑定" }).getByLabel(/日配额/),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await expect(
       page.getByRole("group", { name: "封面生图绑定" }).getByLabel(/日配额/),
     ).toHaveCount(0);
@@ -1949,5 +1972,171 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
     } else {
       await prisma.asrConfig.deleteMany({ where: { id: 1 } });
     }
+  }
+});
+
+test("22. K1 三域统一检索:/search 分组命中/高亮/g-more/空态/noindex", async ({ request }) => {
+  // MARK 词取全站唯一串(词项化后单词项,contains insensitive 命中三域各 1 行)
+  const MARK = "k1srchzq";
+  const POST_SLUG = "e2e-k1srchzq";
+  const REPO_SLUG = "e2e-k1srchzq-repo";
+  const SRC_NAME = "e2e-k1-search-source";
+  // 自播种:三域各 1 行含 MARK(独立渠道采集关闭;post/repo publishedAt 回拨与
+  // nextSyncAt 推远,不干扰列表页「最新」序位;重跑幂等)
+  const source = await prisma.crawlSource.upsert({
+    where: { name: SRC_NAME },
+    update: {},
+    create: {
+      name: SRC_NAME,
+      type: "rss",
+      url: "https://e2e.invalid/rss-k1",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+  await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: "k1srchzq 电报快讯",
+      summary: "e2e 三域检索冒烟摘要",
+      url: "https://e2e.invalid/k1/1",
+      publishedAt: new Date(Date.now() - 3600_000),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      aiStatus: "done",
+      aiSummary: "AI 解读:k1srchzq 相关动态一览",
+      aiRanAt: new Date(Date.now() - 3500_000),
+    },
+  });
+  const category = await prisma.category.upsert({
+    where: { slug: "e2e-k1" },
+    update: {},
+    create: { slug: "e2e-k1", name: "e2e 检索冒烟分类" },
+  });
+  await prisma.post.deleteMany({ where: { slug: POST_SLUG } });
+  const post = await prisma.post.create({
+    data: {
+      slug: POST_SLUG,
+      title: "k1srchzq 实战教程",
+      excerpt: "k1srchzq 从零到一",
+      contentMd: "k1srchzq 正文首段。",
+      categoryId: category.id,
+      status: "published",
+      publishedAt: new Date(Date.now() - 7200_000),
+    },
+  });
+  await prisma.githubRepo.deleteMany({ where: { slug: REPO_SLUG } });
+  await prisma.githubRepo.create({
+    data: {
+      fullName: "e2e/k1srchzq-repo",
+      slug: REPO_SLUG,
+      description: "k1srchzq 配套示例仓库",
+      stars: 66,
+      forks: 3,
+      language: "TypeScript",
+      topics: [],
+      htmlUrl: "https://github.com/e2e/k1srchzq-repo",
+      defaultBranch: "main",
+      readmeMd: "# k1srchzq repo\n\n示例正文。",
+      nextSyncAt: new Date(Date.now() + 24 * 3600_000),
+    },
+  });
+  // K2 答案 API 确定性:假模型(http 打不通,秒失败零真金)+ search 绑定指它;
+  // 生成必断流 → unavailable(error)+ failed 台账行,缓存/配额不受污染
+  const fakeModel = await prisma.aiModel.create({
+    data: {
+      name: "e2e-k1-answer-model",
+      provider: "e2e",
+      modelId: "e2e-answer-model",
+      protocol: "openai",
+      baseUrl: "https://e2e.invalid/v1",
+      timeoutSec: 5,
+      concurrency: 1,
+      enabled: true,
+      purposes: ["search"],
+    },
+  });
+  const bindingBefore = await prisma.aiTaskBinding.findUniqueOrThrow({
+    where: { role: "search" },
+  });
+  await prisma.aiTaskBinding.update({
+    where: { role: "search" },
+    data: { primaryId: fakeModel.id, backupId: null },
+  });
+
+  try {
+    // 22.1 三域分组命中页:SSR 直出真实 HTML(noindex 双保险;AI 答案卡 K2 批③
+    // 挂载,此刻未挂载/e2e 无绑定两种情形下均不出「AI 回答」徽标)
+    const res = await request.get(`/search/?q=${MARK}`);
+    expect(res.status()).toBe(200);
+    const html = await res.text();
+    // noindex:metadata 走页内 robots meta(/telegram 的 X-Robots-Tag 头是 middleware
+    // 双保险,search 页未入 middleware 名单,页内 meta 即契约)
+    expect(html).toMatch(/name="robots" content="noindex[^"]*"/);
+    // RSC 文本插值会插 <!-- --> 注释节点,文本包含断言先剥离
+    const text = html.replace(/<!--[\s\S]*?-->/g, "");
+    // 三组组头 + mono 计数标(库内全命中数各 1)+ result-head 合计 3
+    for (const head of ["资讯", "教程", "项目"]) {
+      expect(html).toContain(`aria-label="${head}"`);
+    }
+    expect(text).toContain("[TELEGRAMS · 1 条命中]");
+    expect(text).toContain("[ARTICLES · 1 条命中]");
+    expect(text).toContain("[REPOS · 1 条命中]");
+    expect(text).toMatch(/检索 <b[^>]*>3<\/b> 条/);
+    // mark 高亮 ≥3 处(三域标题各 ≥1)
+    expect(html.match(/<mark\s/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    // g-more 三链 + 文章命中走 /post/<id>-<slug>/ 终态链接
+    for (const label of ["进入电报流", "全部文章", "全部项目"]) {
+      expect(text).toContain(label);
+    }
+    expect(html).toContain(`/post/${post.id.toString()}-${POST_SLUG}/`);
+    // 答案卡区域此刻为空(e2e 无模型绑定,K2 批③ 挂载后走 unavailable 不上屏)
+    expect(html).not.toContain("AI 回答");
+
+    // 22.2 零命中空态:虚线框 + 「AI 直接作答」口径
+    const empty = await request.get("/search/?q=zzk1notfoundxyz");
+    expect(empty.status()).toBe(200);
+    const emptyHtml = await empty.text();
+    expect(emptyHtml).toContain("站内没有找到相关内容");
+    expect(emptyHtml).toContain("AI 直接作答");
+    expect(emptyHtml).not.toContain("[TELEGRAMS");
+
+    // 22.3 空 q:仅搜索台,无结果区
+    const bare = await request.get("/search/");
+    expect(bare.status()).toBe(200);
+    expect(await bare.text()).not.toContain("条命中");
+
+    // 22.4 K2 答案 API:校验缺失 → 400 包络;绑定假模型 → SSE 流式头 +
+    // meta(3 命中 3 引用)后生成断流 → 单帧 unavailable(error),failed 落台账
+    const noQ = await request.get("/api/search/answer/");
+    expect(noQ.status()).toBe(400);
+    expect(((await noQ.json()) as { code: number }).code).toBe(400);
+    const sse = await request.get(`/api/search/answer/?q=${MARK}`);
+    expect(sse.status()).toBe(200);
+    expect(sse.headers()["content-type"]).toContain("text/event-stream");
+    expect(sse.headers()["x-accel-buffering"]).toBe("no");
+    expect(sse.headers()["cache-control"]).toContain("no-store");
+    const sseBody = await sse.text();
+    expect(sseBody).toContain("event: meta");
+    expect(sseBody).toContain('"total":3');
+    expect(sseBody).toContain('"noHits":false');
+    expect(sseBody).toContain('"kind":"post"');
+    expect(sseBody).toContain("event: unavailable");
+    expect(sseBody).toContain('"reason":"error"');
+    expect(
+      await prisma.aiUsageLog.count({ where: { role: "search", modelKey: "e2e-answer-model" } }),
+    ).toBe(1);
+  } finally {
+    await prisma.aiTaskBinding.update({
+      where: { role: "search" },
+      data: { primaryId: bindingBefore.primaryId, backupId: bindingBefore.backupId },
+    });
+    await prisma.aiUsageLog.deleteMany({ where: { modelKey: "e2e-answer-model" } });
+    await prisma.aiModel.deleteMany({ where: { modelId: "e2e-answer-model" } });
+    await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
+    await prisma.crawlSource.deleteMany({ where: { name: SRC_NAME } });
+    await prisma.githubRepo.deleteMany({ where: { slug: REPO_SLUG } });
+    await prisma.post.deleteMany({ where: { slug: POST_SLUG } });
+    await prisma.category.deleteMany({ where: { slug: "e2e-k1" } });
   }
 });

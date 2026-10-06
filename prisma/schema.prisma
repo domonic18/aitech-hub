@@ -232,6 +232,17 @@ model StatsVisitLog {
   @@map("stats_visit_log")
 }
 
+/// 搜索词排行(2026-10-06 需求):/search 页 counted PV 的 q,行级直插不经缓冲;
+/// 无 PII(不存 IP/访客哈希,排行不需要访客维度);180 天保留(worker 日清),排行「全部」窗口受此界
+model StatsSearchLog {
+  id        BigInt   @id @default(autoincrement())
+  term      String   @db.VarChar(100) // 用户输入原文(trim + 空白折叠后截 100 字,不折叠大小写)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "idx_stats_search_log_created_at")
+  @@map("stats_search_log")
+}
+
 // ── legacy_(旧站承接域)─────────────────────────────────────────
 
 /// 旧 URL 301 映射(迁移脚本灌入;legacy 路由 + Redis 缓存消费)
