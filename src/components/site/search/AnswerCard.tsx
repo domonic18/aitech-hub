@@ -10,7 +10,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { parseAnswerSup, type SupSegment } from "@/lib/search/answer-parse";
+import {
+  parseAnswerBlocks,
+  type AnswerBlock,
+  type AnswerInline,
+} from "@/lib/search/answer-markdown";
+import { parseAnswerSup } from "@/lib/search/answer-parse";
 import { parseSseBlocks, type AnswerCite } from "@/lib/search/answer-protocol";
 
 type Phase = "hidden" | "streaming" | "done";
@@ -27,19 +32,19 @@ function isExternal(kind: AnswerCite["kind"]): boolean {
   return kind !== "post";
 }
 
-/** [n]/[n][m] → 上标锚(锚跳引用列表;纯文本段原样) */
-function renderAnswer(segs: SupSegment[]): React.ReactNode[] {
-  return segs.map((s, i) =>
+const SUP_LINK =
+  "mx-0.5 rounded-[3px] bg-accent-dim px-1 font-mono text-[10.5px] text-accent-hover hover:border hover:border-accent/40";
+
+/** 文本叶子内的 [n]/[n][m] → 上标锚(锚跳引用列表;纯文本原样) */
+function renderSup(text: string, keyPrefix: string): React.ReactNode[] {
+  return parseAnswerSup(text).map((s, i) =>
     typeof s === "string" ? (
-      <span key={i}>{s}</span>
+      <span key={`${keyPrefix}-${i}`}>{s}</span>
     ) : (
-      <span key={i}>
+      <span key={`${keyPrefix}-${i}`}>
         {s.sup.map((n) => (
           <sup key={n}>
-            <a
-              href={`#cite-${n}`}
-              className="mx-0.5 rounded-[3px] bg-accent-dim px-1 font-mono text-[10.5px] text-accent-hover hover:border hover:border-accent/40"
-            >
+            <a href={`#cite-${n}`} className={SUP_LINK}>
               [{n}]
             </a>
           </sup>
@@ -47,6 +52,48 @@ function renderAnswer(segs: SupSegment[]): React.ReactNode[] {
       </span>
     ),
   );
+}
+
+/** 行内段渲染:加粗/行内代码/文本(文本叶内再解 [n] 上标) */
+function renderInline(segs: AnswerInline[], keyPrefix: string): React.ReactNode[] {
+  return segs.map((s, i) => {
+    const k = `${keyPrefix}-${i}`;
+    if (s.t === "bold")
+      return (
+        <strong key={k} className="font-semibold text-text-1">
+          {renderSup(s.v, k)}
+        </strong>
+      );
+    if (s.t === "code")
+      return (
+        <code key={k} className="rounded bg-panel-2 px-1 py-px font-mono text-[13px] text-green-hi">
+          {s.v}
+        </code>
+      );
+    return <span key={k}>{renderSup(s.v, k)}</span>;
+  });
+}
+
+const LIST_CLS = "my-1.5 space-y-1 pl-5 marker:text-text-3";
+
+/** 块渲染(子集 markdown;块级标签在 div 内合法嵌套,不用 <p> 包块) */
+function renderBlocks(blocks: AnswerBlock[]): React.ReactNode[] {
+  return blocks.map((b, i) => {
+    if (b.kind === "ul" || b.kind === "ol") {
+      const ListTag = b.kind === "ul" ? "ul" : "ol";
+      return (
+        <ListTag
+          key={i}
+          className={`${LIST_CLS} ${b.kind === "ul" ? "list-disc" : "list-decimal"}`}
+        >
+          {b.items.map((segs, j) => (
+            <li key={j}>{renderInline(segs, `${i}-${j}`)}</li>
+          ))}
+        </ListTag>
+      );
+    }
+    return <p key={i}>{renderInline(b.segs, `p${i}`)}</p>;
+  });
 }
 
 export default function AnswerCard({ q }: { q: string }): React.ReactElement | null {
@@ -137,16 +184,16 @@ export default function AnswerCard({ q }: { q: string }): React.ReactElement | n
         ) : null}
       </div>
 
-      <p className="text-[14.5px] leading-[1.85] text-text-1">
+      <div className="text-[14.5px] leading-[1.85] text-text-1">
         {text !== "" ? (
-          renderAnswer(parseAnswerSup(text))
+          renderBlocks(parseAnswerBlocks(text))
         ) : (
           <span className="text-text-3">正在生成…</span>
         )}
         {phase === "streaming" ? (
           <span className="ml-0.5 inline-block h-[1em] w-[7px] translate-y-[2px] animate-pulse bg-green-hi" />
         ) : null}
-      </p>
+      </div>
 
       {cites.length > 0 ? (
         <div className="mt-3.5 border-t border-dashed border-line pt-3 font-mono text-xs leading-[2] text-text-3">
