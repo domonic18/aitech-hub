@@ -12,13 +12,16 @@ vi.mock("./agent", () => ({ getAgentGraph: getAgentGraphMock }));
 
 import { AGENT_MAX_TOKENS, extractTodos, runAgentTurn, type AgentTodo } from "./run";
 
-/** 假图:按序产出 [mode, payload] 元组 */
+/** 假图:getAgentGraph 返回形状({graph, resolved}),按序产出 [mode, payload] 元组 */
 function fakeGraph(frames: [string, unknown][], onStream?: () => void) {
   return {
-    stream: vi.fn(async function* () {
-      onStream?.();
-      for (const f of frames) yield f;
-    }),
+    graph: {
+      stream: vi.fn(async function* () {
+        onStream?.();
+        for (const f of frames) yield f;
+      }),
+    },
+    resolved: null,
   };
 }
 

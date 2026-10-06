@@ -22,3 +22,22 @@ export async function tryConsumeSessionQuota(visitorId: string): Promise<boolean
     return true;
   }
 }
+
+/** run 频控(IP,10 次/分):防脚本刷 LLM,口径同 search/answer rate-limit */
+export const AGENT_RUN_RL_LIMIT = 10;
+export const AGENT_RUN_RL_WINDOW_SECONDS = 60;
+
+const runRlKey = (ip: string, epochMinute: number): string =>
+  `search:agent:run:rl:${ip}:${epochMinute}`;
+
+export async function tryConsumeAgentRunQuota(ip: string): Promise<boolean> {
+  if (!ip) return true;
+  const key = runRlKey(ip, Math.floor(Date.now() / 60_000));
+  try {
+    const n = await redis.incr(key);
+    if (n === 1) await redis.expire(key, AGENT_RUN_RL_WINDOW_SECONDS);
+    return n <= AGENT_RUN_RL_LIMIT;
+  } catch {
+    return true;
+  }
+}

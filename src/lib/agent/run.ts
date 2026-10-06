@@ -10,6 +10,8 @@ import { HumanMessage } from "@langchain/core/messages";
 import { recordAiUsage, AI_USAGE_ROLE_SEARCH_AGENT } from "../ai/usage-log";
 import { logger } from "../logger";
 
+import type { ResolvedAiModel } from "../ai/resolver";
+
 import { getAgentGraph } from "./agent";
 import { touchSessionAfterRun } from "./sessions";
 import { encodeWireEvent, encodeWireMessage } from "./wire";
@@ -69,6 +71,8 @@ export interface AgentRunOutcome {
   toolCalls: number;
   /** 超限收束时的人话说明(正常为 null) */
   truncatedReason: string | null;
+  /** 本次命中的绑定(台账 modelId/modelKey 直取,免二次解析) */
+  resolved: ResolvedAiModel | null;
 }
 
 interface UsageMeta {
@@ -82,7 +86,7 @@ interface UsageMeta {
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
   const { threadId, message, signal, onFrame } = params;
-  const graph = await getAgentGraph();
+  const { graph, resolved } = await getAgentGraph();
   const runId = crypto.randomUUID();
 
   const outcome: AgentRunOutcome = {
@@ -90,6 +94,7 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
     tokensOut: 0,
     toolCalls: 0,
     truncatedReason: null,
+    resolved,
   };
   const seenToolCallIds = new Set<string>();
 
@@ -144,17 +149,15 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
 
 /** run 后台账与会话行更新(失败只告警,不反噬——usage-log 同款纪律) */
 export async function recordAgentRun(params: {
-  modelKey: string;
-  modelId?: number;
   sessionId: string;
   durationMs: number;
   outcome: AgentRunOutcome;
 }): Promise<void> {
-  const { modelKey, modelId, sessionId, durationMs, outcome } = params;
+  const { sessionId, durationMs, outcome } = params;
   await recordAiUsage({
     role: AI_USAGE_ROLE_SEARCH_AGENT,
-    modelId,
-    modelKey,
+    modelId: outcome.resolved?.id,
+    modelKey: outcome.resolved?.modelId ?? "unknown",
     tokensIn: outcome.tokensIn,
     tokensOut: outcome.tokensOut,
     durationMs,

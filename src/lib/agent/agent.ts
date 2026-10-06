@@ -6,7 +6,9 @@
  */
 import { createDeepAgent, type DeepAgent } from "deepagents";
 
+import type { ResolvedAiModel } from "../ai/resolver";
 import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
+import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
 import { AGENT_TOOLS } from "./tools";
 
@@ -24,7 +26,7 @@ export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜�
 - 内置文件工具(ls/read_file/write_file 等)与本任务无关,不要使用`;
 
 const globalForAgent = globalThis as unknown as {
-  agentGraph?: { key: string; graph: DeepAgent };
+  agentGraph?: { key: string; graph: DeepAgent; resolved: ResolvedAiModel };
 };
 
 /**
@@ -32,18 +34,28 @@ const globalForAgent = globalThis as unknown as {
  * 首次调用触发 checkpoint setup(幂等);绑定身份(id:source)变化即重建,
  * 未变化复用——admin 侧主备切换/启停最迟下一次 run 生效。
  */
-export async function getAgentGraph(): Promise<DeepAgent> {
+export async function getAgentGraph(): Promise<{
+  graph: DeepAgent;
+  resolved: ResolvedAiModel;
+}> {
   await ensureAgentCheckpointer();
   const { model, resolved } = await resolveAgentModel();
   const key = `${resolved.id}:${resolved.source}`;
   const cached = globalForAgent.agentGraph;
-  if (cached?.key === key) return cached.graph;
+  if (cached) {
+    if (cached.key === key) return { graph: cached.graph, resolved: cached.resolved };
+    logger.info({
+      event: "agent.graph_rebuilt",
+      from: cached.key,
+      to: key,
+    });
+  }
   const graph = createDeepAgent({
     model,
     tools: AGENT_TOOLS,
     systemPrompt: AGENT_SYSTEM_PROMPT,
     checkpointer: getAgentCheckpointer(),
   });
-  globalForAgent.agentGraph = { key, graph };
-  return graph;
+  globalForAgent.agentGraph = { key, graph, resolved };
+  return { graph, resolved };
 }
