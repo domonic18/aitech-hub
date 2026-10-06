@@ -50,7 +50,7 @@ export default function MdEditor({
   }, [imported]);
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       {warnings.length > 0 && (
         <div className="border-b border-line bg-panel-2 px-4 py-2 text-xs text-text-2">
           {warnings.map((w) => (
