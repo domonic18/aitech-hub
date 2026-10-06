@@ -31,7 +31,8 @@ vi.mock("../queue", () => ({
 vi.mock("./wechat-config-admin", () => ({
   getWechatRuntimeConfig: vi.fn(),
 }));
-vi.mock("./wechat-client", () => ({
+vi.mock("./wechat-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./wechat-client")>()), // 保留真实 WechatApiError(纯类)
   wechatAddCoverMaterial: vi.fn(),
   wechatDraftAdd: vi.fn(),
   wechatDraftUpdate: vi.fn(),
@@ -57,6 +58,7 @@ import {
   wechatDraftAdd,
   wechatDraftUpdate,
   wechatUploadImage,
+  WechatApiError,
 } from "./wechat-client";
 import { getWechatRuntimeConfig } from "./wechat-config-admin";
 import {
@@ -154,11 +156,26 @@ describe("enqueueWechatSync 资格前置", () => {
     expect(mockedAdd).not.toHaveBeenCalled();
   });
 
-  it("行 pending → 拒绝入队(幂等)", async () => {
+  it("行 pending → 拒绝入队(幂等);拒重判在建行前,不产生 create", async () => {
     mockedPost.findUnique.mockResolvedValue(mdPost() as never);
     mockedChannel.findUnique.mockResolvedValue(channelRow({ status: "pending" }) as never);
     await expect(enqueueWechatSync(BigInt(101))).rejects.toMatchObject({ code: "pending" });
     expect(mockedAdd).not.toHaveBeenCalled();
+    expect(mockedChannel.create).not.toHaveBeenCalled();
+  });
+
+  it("首次同步(行不存在)→ 建行不自拒,正常入队置 pending", async () => {
+    // 回归哨兵(2026-10-07 线上首单):新建行落默认 pending,先建后判会把首推自拒
+    mockedPost.findUnique.mockResolvedValue(mdPost() as never);
+    mockedChannel.findUnique.mockResolvedValue(null);
+    mockedChannel.create.mockResolvedValue(channelRow({ status: "pending" }) as never);
+    const r = await enqueueWechatSync(BigInt(101));
+    expect(r.token).toBeTruthy();
+    expect(mockedChannel.create).toHaveBeenCalledTimes(1);
+    expect(mockedAdd).toHaveBeenCalledTimes(1);
+    expect(mockedChannel.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "pending", lastError: null } }),
+    );
   });
 
   it("成功:job 载荷 postId 串+jobId 禁冒号;行置 pending 清 lastError", async () => {
@@ -398,6 +415,22 @@ describe("syncOnePost 管线", () => {
     const r = await syncOnePost(BigInt(101));
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("上限 64");
+  });
+
+  it("content_source_url 被微信拒(41039)→ 去掉该字段重试一次,草稿照发", async () => {
+    // 本地验收栈站点 URL 为 localhost 必触发;字段可选,草稿可发优先于导流
+    mockedPost.findUnique.mockResolvedValue(mdPost() as never);
+    mockedDraftAdd
+      .mockRejectedValueOnce(new WechatApiError("media", 41039, "invalid content_source_url"))
+      .mockResolvedValueOnce("DRAFT-NO-SRC");
+    const r = await syncOnePost(BigInt(101));
+    expect(r.ok).toBe(true);
+    expect(r.mediaId).toBe("DRAFT-NO-SRC");
+    expect(mockedDraftAdd).toHaveBeenCalledTimes(2);
+    expect(mockedDraftAdd.mock.calls[1][1].content_source_url).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "wechat.source_url_dropped" }),
+    );
   });
 });
 

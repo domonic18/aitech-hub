@@ -114,10 +114,16 @@ export async function enqueueWechatSync(
   if (!(overrides?.coverPath ?? post.coverPath)) {
     throw new DistributeError("invalid", "缺少封面:公众号图文必须有封面,请先在编辑器设置封面");
   }
-  const row = await ensureChannelRow(postId);
-  if (row.status === PUBLISH_STATUS_PENDING) {
+  // pending 拒重必须在建行前判:ensureChannelRow 新建行落 schema 默认 pending,
+  // 先建后判会把首推自拒成僵尸 pending 行(2026-10-07 线上首单即此 bug)
+  const existing = await prisma.publishChannel.findUnique({
+    where: { postId_channel: { postId, channel: CHANNEL_WECHAT } },
+    select: { status: true },
+  });
+  if (existing?.status === PUBLISH_STATUS_PENDING) {
     throw new DistributeError("pending", "该文章已在同步队列中,请等待完成后再试");
   }
+  const row = await ensureChannelRow(postId);
   const token = randomUUID();
   const jobId = `wechat-${Date.now().toString(36)}`; // BullMQ jobId 禁冒号(与 seo-batch- 同口径)
   await getQueue(QUEUE_DISTRIBUTE).add(

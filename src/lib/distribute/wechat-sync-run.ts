@@ -22,6 +22,7 @@ import { WECHAT_THEME_DEFAULT } from "./wechat-themes";
 import {
   wechatDraftAdd,
   wechatDraftUpdate,
+  WechatApiError,
   type WechatCredentials,
   type WechatDraftArticle,
 } from "./wechat-client";
@@ -48,6 +49,34 @@ export interface WechatBatchProgress {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * draft 提交(add/update 分流):微信对 content_source_url 有域名校验
+ * (errcode 41039,本地 localhost/站点 URL 配置失误必触发)——该字段可选,
+ * 被拒时去掉重试一次:草稿可发优先于「阅读原文」导流,落 warn 留痕。
+ */
+async function submitDraft(
+  creds: WechatCredentials,
+  article: WechatDraftArticle,
+  updateMediaId: string | null,
+): Promise<string> {
+  try {
+    if (updateMediaId) {
+      await wechatDraftUpdate(creds, updateMediaId, article);
+      return updateMediaId;
+    }
+    return await wechatDraftAdd(creds, article);
+  } catch (e) {
+    if (!(e instanceof WechatApiError) || e.errcode !== 41039) throw e;
+    logger.warn({ event: "wechat.source_url_dropped", errcode: e.errcode });
+    const { content_source_url: _dropped, ...withoutSourceUrl } = article;
+    if (updateMediaId) {
+      await wechatDraftUpdate(creds, updateMediaId, withoutSourceUrl);
+      return updateMediaId;
+    }
+    return await wechatDraftAdd(creds, withoutSourceUrl);
+  }
+}
 
 /** 失败落行(人话进 lastError;返回不抛,批量隔离靠它) */
 async function failSync(rowId: bigint, postId: string, reason: string): Promise<WechatSyncResult> {
@@ -132,9 +161,7 @@ export async function syncOnePost(
       need_open_comment: 0,
       only_fans_can_comment: 0,
     };
-    let mediaId = row.mediaId;
-    if (mediaId) await wechatDraftUpdate(creds, mediaId, article);
-    else mediaId = await wechatDraftAdd(creds, article);
+    const mediaId = await submitDraft(creds, article, row.mediaId);
 
     await prisma.publishChannel.update({
       where: { id: row.id },
