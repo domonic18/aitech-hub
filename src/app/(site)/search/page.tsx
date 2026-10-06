@@ -1,77 +1,58 @@
+/**
+ * Agent 搜索结果页(K1 改版,arch/04 §3.1 页面式首搜;原型 site-search.html):
+ * 分组命中(资讯/教程/项目,mark 高亮 + 命中度)即时 SSR——URL 可分享/可回退,
+ * 命中是真实 HTML;AI 答案卡为流式增强(K2 批③ 挂载),不阻塞命中呈现。
+ * 动态 SSR 每请求查询(arch/07-frontend §1);noindex;q 100 字截断;无分页
+ * (三组同页纵排限量,组头计数为库内全命中数,深挖经 g-more 进各列表页)。
+ */
 import type { Metadata } from "next";
 
-import PostListView from "@/components/site/PostListView";
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
-import { searchPosts } from "@/lib/content/posts";
+import SearchConsole from "@/components/site/search/SearchConsole";
+import SearchEmpty from "@/components/site/search/SearchEmpty";
+import SearchHits from "@/components/site/search/SearchHits";
+import { searchAll } from "@/lib/search/unified-search";
 
-/** 搜索(arch/07-frontend §1:动态 SSR,每请求查询;标题/摘要 LIKE,requirement §3.1) */
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "搜索",
+  title: "Agent 搜索",
   robots: { index: false },
 };
-
-interface PageProps {
-  searchParams: Promise<{ q?: string; page?: string }>;
-}
 
 function parseQ(raw: string | undefined): string {
   return (raw ?? "").trim().slice(0, 100);
 }
 
-function parsePage(raw: string | undefined): number {
-  const n = Number.parseInt(raw ?? "1", 10);
-  return Number.isInteger(n) && n >= 1 && n <= 1000 ? n : 1;
-}
-
-export default async function SearchPage({ searchParams }: PageProps): Promise<React.ReactElement> {
-  const { q: rawQ, page: rawPage } = await searchParams;
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}): Promise<React.ReactElement> {
+  const { q: rawQ } = await searchParams;
   const q = parseQ(rawQ);
-  const page = parsePage(rawPage);
-
-  const result =
-    q.length > 0
-      ? await searchPosts(q, page, Math.min(DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE))
-      : { items: [], total: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE };
+  const result = q.length > 0 ? await searchAll(q) : null;
 
   return (
-    <section className="mx-auto w-full max-w-3xl">
-      <header className="border-b border-line/60 pb-4">
-        <h1 className="text-2xl font-bold">搜索</h1>
-        <form action="/search" className="mt-3 flex gap-2">
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="输入关键词,按标题/摘要匹配"
-            className="w-full max-w-md rounded-md border border-line bg-panel px-3 py-1.5 text-sm text-text-1 outline-none focus:border-accent"
-          />
-          <button
-            type="submit"
-            className="cursor-pointer rounded-md bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover"
-          >
-            搜索
-          </button>
-        </form>
-      </header>
-      {q ? (
-        <div className="mt-6">
-          <PostListView
-            heading={`“${q}” 的结果`}
-            description={`共 ${result.total} 篇`}
-            items={result.items}
-            total={result.total}
-            page={result.page}
-            pageSize={result.pageSize}
-            basePath="/search"
-            pageHref={(p) =>
-              p === 1
-                ? `/search/?q=${encodeURIComponent(q)}`
-                : `/search/?q=${encodeURIComponent(q)}&page=${p}`
-            }
-          />
-        </div>
+    <section className="mx-auto w-full max-w-[780px]">
+      <SearchConsole q={q} />
+      {result ? (
+        <>
+          {result.total > 0 ? (
+            <>
+              <div className="mb-[18px] mt-9 border-b border-line pb-3 font-mono text-[13px] text-text-2">
+                $ agent.ask &quot;{result.q}&quot; --scope=site → 检索{" "}
+                <b className="text-green-hi">{result.total}</b> 条 ·
+                {/* 生成耗时由批③ GenTime 在答案 done 后补(检索 N 条 SSR 直出) */}
+                <span className="text-text-3">(全文 + 摘要混合检索 · 含短视频解读)</span>
+              </div>
+              {/* K2 答案卡挂载点(批③ <AnswerCard q={q} />) */}
+              <SearchHits groups={result.groups} terms={result.terms} />
+            </>
+          ) : (
+            // 零命中:空态头 + 虚线框;答案卡(批③)仍出「AI 直接作答」卡
+            <SearchEmpty q={result.q} />
+          )}
+        </>
       ) : null}
     </section>
   );

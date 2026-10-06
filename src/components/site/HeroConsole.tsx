@@ -2,8 +2,8 @@
 
 /**
  * 首页 Hub 控制台 hero(M5-e,原型 site-home §Hero):终端窗(whoami + 站点状态行,
- * 数据为真实已发布文章数)+ 搜索输入框(一期降级:GET /search 基础搜索,Agent 化
- * 随专项 K2)+ 建议词 chips。镜面光标(DESIGN-SPEC §5):失焦时随文字移动并闪烁,
+ * 数据为真实已发布文章数)+ 搜索输入框(GET /search;K1 起三域检索,Agent 化
+ * 两层交互见 arch/04 §3)+ 建议词 chips。镜面光标(DESIGN-SPEC §5):失焦时随文字移动并闪烁,
  * 聚焦时隐藏、交还原生 caret(caret-color 为 accent)。
  * 品牌语一行(M12 批②):后台可配 markdown(site_config home.hero_md)。2026-10-05
  * 性能批次:markdown 渲染移至服务端 HeroBrandLine(children 下传),本组件不再
@@ -103,7 +103,7 @@ export default function HeroConsole({
                 type="submit"
                 className="flex-none cursor-pointer rounded-sm border border-accent bg-accent px-3.5 py-1.5 font-mono text-[12.5px] text-white hover:border-accent-hover hover:bg-accent-hover"
               >
-                搜索 ⏎
+                问一下 ⏎
               </button>
             </div>
           </form>

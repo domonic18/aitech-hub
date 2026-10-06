@@ -95,28 +95,6 @@ export async function listPostsPage({ page, pageSize, categorySlug, tagSlug }: L
   });
 }
 
-/** 搜索(requirement §3.1:标题/摘要 LIKE,一期不引入 ES;/search 动态 SSR 用) */
-export async function searchPosts(q: string, page: number, pageSize: number) {
-  const where = {
-    ...PUBLISHED,
-    OR: [
-      { title: { contains: q, mode: "insensitive" as const } },
-      { excerpt: { contains: q, mode: "insensitive" as const } },
-    ],
-  };
-  const [items, total] = await prisma.$transaction([
-    prisma.post.findMany({
-      where,
-      select: LIST_SELECT,
-      orderBy: [...ORDER],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.post.count({ where }),
-  ]);
-  return { items, total, page, pageSize };
-}
-
 export interface ArchivePost {
   id: bigint;
   slug: string | null;
