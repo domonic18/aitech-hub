@@ -31,8 +31,8 @@ export interface GenerateImagesInput {
 /** 单张结果:b64 直解形态或 url 待转存形态(调用侧统一转 bytes) */
 export type GeneratedImage = { b64: string } | { url: string };
 
-/** 请求体保留键(扩展参数不可覆盖,防配置把契约改漂) */
-const RESERVED_KEYS = new Set(["model", "prompt", "n", "size", "response_format"]);
+/** 请求体保留键 model/prompt/n/size/response_format:extraParams 先展开、保留键后展开,
+ * 后者恒覆盖前者(扩展参数不可改写契约,防配置把请求体改漂;单测锁定) */
 
 /** url 下载体积帽(生图 1344×768 jpg ≈ 200KB;20MB 已是数量级冗余) */
 const DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
