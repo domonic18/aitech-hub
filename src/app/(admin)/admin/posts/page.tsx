@@ -16,6 +16,7 @@ import {
 } from "@/lib/content/post-schema";
 import { ADMIN_PAGE_SIZE, listPostsAdmin } from "@/lib/content/posts-admin";
 import { postPath, postPathSegment } from "@/lib/content/post-path";
+import { isWechatReady } from "@/lib/distribute/wechat-config-admin";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 import AdminPagination from "@/components/admin/AdminPagination";
 
@@ -48,7 +49,10 @@ export default async function AdminPostsPage({
   const page = parsePage(sp.page);
   const q = sp.q?.trim() || undefined;
 
-  const { items, total, counts } = await listPostsAdmin({ page, segment, q });
+  const [{ items, total, counts }, wechatReady] = await Promise.all([
+    listPostsAdmin({ page, segment, q }),
+    isWechatReady(),
+  ]);
   const totalPages = Math.max(1, Math.ceil(total / ADMIN_PAGE_SIZE));
   // M5-d 回填后旧文均可编辑,仅当仍存在未转 MD 的 WP 行才提示保真只读
   const hasLegacy = items.some((row) => row.wpPostId !== null && !row.contentMd);
@@ -65,6 +69,12 @@ export default async function AdminPostsPage({
     tagNames: row.tags.map(({ tag }) => tag.name),
     viewsCount: Number(row.viewsCount),
     publishedAt: row.publishedAt,
+    coverPath: row.coverPath,
+    seoTitle: row.seoTitle,
+    excerpt: row.excerpt,
+    seoDescription: row.seoDescription,
+    syncable: row.contentMd !== null,
+    wechat: row.channels.find((c) => c.channel === "wechat") ?? null,
   }));
 
   return (
@@ -126,7 +136,7 @@ export default async function AdminPostsPage({
         </div>
       )}
 
-      <PostsTable rows={rows}>
+      <PostsTable rows={rows} wechatReady={wechatReady}>
         <AdminPagination
           page={page}
           totalPages={totalPages}

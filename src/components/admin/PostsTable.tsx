@@ -3,6 +3,8 @@
 /**
  * 文章管理列表主体(M16 问题8 抽出为客户端组件):行多选 + 批量 SEO 补全
  * (仅补空缺)批量条与进度轮询;行内容/行内操作与原 RSC 表格一致。
+ * M17 批④:批量条加「同步公众号」(wechatReady=false 禁用+指引;预检 skipped
+ * 202 携回人话);行操作透传 sync 视图开 SyncWechatDialog。
  * 分页由 RSC 页面以 children 注入(AdminPagination 需服务端 hrefFor 函数,
  * 不能跨客户端边界)。轮询直至 completed/failed;完成即 router.refresh 重拉
  * 本页 RSC(SEO 列为只读展示,刷新后无可见变化亦无副作用)。
@@ -14,6 +16,7 @@ import { useState } from "react";
 import PostRowOps from "./PostRowOps";
 import PostStatusBadge from "./PostStatusBadge";
 import type { PostDisplayState } from "@/lib/content/post-schema";
+import { DISTRIBUTE_BATCH_MAX } from "@/lib/distribute/channels";
 import { formatCnDateTime } from "@/lib/datetime";
 import type { ApiEnvelope } from "@/lib/http/response";
 
@@ -28,6 +31,12 @@ export interface PostsTableRowView {
   tagNames: string[];
   viewsCount: number;
   publishedAt: Date | null;
+  coverPath: string | null;
+  seoTitle: string | null;
+  excerpt: string | null;
+  seoDescription: string | null;
+  syncable: boolean;
+  wechat: { status: string } | null;
 }
 
 /** 轮询 3s × 240 ≈ 12min:50 篇 × LLM 最坏十几秒,先于 worker 锁超时收敛 */
@@ -45,9 +54,11 @@ type BatchPollBody = ApiEnvelope<{
 
 export default function PostsTable({
   rows,
+  wechatReady,
   children,
 }: {
   rows: PostsTableRowView[];
+  wechatReady: boolean;
   children?: React.ReactNode;
 }): React.ReactElement {
   const router = useRouter();
@@ -132,6 +143,90 @@ export default function PostsTable({
     }
   }
 
+  /** 批量同步公众号(M17 批④):预检 skipped 由 202 携回人话;进度 processed/failedIds */
+  async function runWechatBatch(): Promise<void> {
+    const ids = [...selected];
+    const syncedCount = rows.filter(
+      (r) => ids.includes(r.id) && r.wechat?.status === "synced",
+    ).length;
+    if (
+      syncedCount > 0 &&
+      !window.confirm(
+        `选中文章中 ${syncedCount} 篇已同步过公众号,重新同步将覆盖公众号侧草稿内容,继续?`,
+      )
+    ) {
+      return;
+    }
+    setBatchBusy(true);
+    setBatchError(null);
+    setBatchMsg(`提交中(共 ${ids.length} 篇)…`);
+    try {
+      const res = await fetch("/api/distribute/wechat/batch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const json = (await res.json().catch(() => null)) as ApiEnvelope<{
+        jobId?: string;
+        token?: string;
+        eligible?: number;
+        skipped?: Array<{ id: string; reason: string }>;
+      }> | null;
+      if (!res.ok || json?.code !== 0 || !json.data?.jobId || !json.data?.token) {
+        setBatchError(json?.message ?? `提交失败(${res.status})`);
+        setBatchMsg(null);
+        setBatchBusy(false);
+        return;
+      }
+      const { jobId, token, eligible, skipped } = json.data;
+      if ((eligible ?? 0) === 0) {
+        setBatchMsg(null);
+        setBatchError(
+          `没有可同步的文章:${(skipped ?? []).map((s) => s.reason).join(";") || "资格预检未通过"}`,
+        );
+        setBatchBusy(false);
+        return;
+      }
+      const skipNote = (skipped ?? []).length > 0 ? ` · 跳过 ${skipped?.length}` : "";
+      for (let i = 0; i < POLL_MAX; i += 1) {
+        await new Promise((r) => setTimeout(r, POLL_MS));
+        const poll = await fetch(
+          `/api/distribute/wechat/batch/${jobId}?token=${encodeURIComponent(token)}`,
+        );
+        if (!poll.ok) continue;
+        const body = (await poll.json().catch(() => null)) as BatchPollBody | null;
+        if (body?.code !== 0 || !body?.data) continue;
+        const d = body.data;
+        if (d.state === "completed") {
+          const failed = d.failedIds?.length ?? 0;
+          const done = (d.total ?? eligible ?? 0) - failed;
+          setBatchMsg(`同步完成:成功 ${done} · 失败 ${failed}${skipNote}(失败篇目行内可单篇重试)`);
+          setSelected(new Set());
+          router.refresh();
+          setBatchBusy(false);
+          return;
+        }
+        if (d.state === "failed") {
+          setBatchError(d.error ?? "批量同步任务失败");
+          setBatchMsg(null);
+          setBatchBusy(false);
+          return;
+        }
+        setBatchMsg(
+          `同步中 ${d.processed ?? 0}/${d.total ?? eligible ?? 0}(失败 ${
+            d.failedIds?.length ?? 0
+          }${skipNote})…`,
+        );
+      }
+      setBatchError("轮询超时:任务仍在后台执行,稍后刷新列表或到「内容分发」页查看结果");
+      setBatchBusy(false);
+    } catch {
+      setBatchError("网络错误,请重试");
+      setBatchMsg(null);
+      setBatchBusy(false);
+    }
+  }
+
   const showBatchBar = selected.size > 0 || batchMsg !== null || batchError !== null;
 
   return (
@@ -149,6 +244,19 @@ export default function PostsTable({
             className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {batchBusy ? "批量补全中…" : "批量 SEO 补全(仅补空缺)"}
+          </button>
+          <button
+            type="button"
+            disabled={batchBusy || !wechatReady}
+            onClick={() => void runWechatBatch()}
+            title={
+              wechatReady
+                ? `推送选中文章到公众号草稿箱(单批 ≤${DISTRIBUTE_BATCH_MAX} 篇,顺序逐篇)`
+                : "先到「内容分发」完成公众号配置并启用渠道"
+            }
+            className="cursor-pointer rounded-sm border border-accent/50 bg-transparent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {batchBusy ? "同步中…" : "同步公众号"}
           </button>
           {!batchBusy && selected.size > 0 && (
             <button
@@ -260,7 +368,21 @@ export default function PostsTable({
                 {row.publishedAt ? formatCnDateTime(row.publishedAt) : "—"}
               </td>
               <td className="px-4 py-3 text-right">
-                <PostRowOps id={row.id} state={row.state} legacy={row.legacy} />
+                <PostRowOps
+                  id={row.id}
+                  title={row.title}
+                  state={row.state}
+                  legacy={row.legacy}
+                  wechatReady={wechatReady}
+                  sync={{
+                    coverPath: row.coverPath,
+                    seoTitle: row.seoTitle,
+                    excerpt: row.excerpt,
+                    seoDescription: row.seoDescription,
+                    syncable: row.syncable,
+                    wechat: row.wechat,
+                  }}
+                />
               </td>
             </tr>
           ))}

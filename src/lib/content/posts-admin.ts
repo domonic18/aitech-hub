@@ -42,7 +42,9 @@ export class PostAdminError extends Error {
   }
 }
 
-/** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString) */
+/** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString)。
+ * M17 批④:同步弹窗默认值需 coverPath/seoTitle/seoDescription/excerpt,
+ * 行操作「同步公众号」需 channels 状态(pending 禁点/synced 提示覆盖)。 */
 const ADMIN_LIST_SELECT = {
   id: true,
   slug: true,
@@ -53,8 +55,13 @@ const ADMIN_LIST_SELECT = {
   viewsCount: true,
   wpPostId: true,
   contentMd: true,
+  coverPath: true,
+  seoTitle: true,
+  seoDescription: true,
+  excerpt: true,
   category: { select: { slug: true, name: true } },
   tags: { select: { tag: { select: { name: true } } } },
+  channels: { select: { channel: true, status: true } },
 } as const;
 
 export type AdminPostRow = Awaited<ReturnType<typeof listPostsAdmin>>["items"][number];
