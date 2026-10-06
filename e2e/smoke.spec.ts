@@ -344,10 +344,17 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
     .png()
     .toBuffer();
   const md = `# E2E 导入\n\n![配图](./imgs/${IMG_NAME})\n`;
-  await page.locator('input[type="file"]').setInputFiles([
-    { name: "e2e-import.md", mimeType: "text/markdown", buffer: Buffer.from(md, "utf8") },
-    { name: IMG_NAME, mimeType: "image/png", buffer: png },
+  // M16 起 md 与图片分离两入口(可跨目录多次补选):md 直填,图片经「添加图片」
+  await page
+    .locator('input[accept=".md,.markdown"]')
+    .setInputFiles([
+      { name: "e2e-import.md", mimeType: "text/markdown", buffer: Buffer.from(md, "utf8") },
+    ]);
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "添加图片" }).click(),
   ]);
+  await chooser.setFiles([{ name: IMG_NAME, mimeType: "image/png", buffer: png }]);
   await expect(page.getByText("图片引用 1 处")).toBeVisible();
   await page.getByRole("button", { name: "开始导入" }).click();
 
@@ -1948,6 +1955,156 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
       });
     } else {
       await prisma.asrConfig.deleteMany({ where: { id: 1 } });
+    }
+  }
+});
+
+test("22. 编辑器右栏收起(M16:完全隐藏/localStorage 持久化/展开恢复)", async ({ page }) => {
+  // 登录(同前序用例 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  await page.goto("/admin/posts/new");
+  const collapse = page.getByLabel("收起侧栏");
+  await expect(collapse).toBeVisible();
+  // 右栏在:meta 面板「分类」label 可见
+  const categoryLabel = page.getByLabel("分类");
+  await expect(categoryLabel).toBeVisible();
+
+  // 收起 = 右栏完全不渲染(aria-label 翻转 + 分类 label 消失)
+  await collapse.click();
+  const expand = page.getByLabel("展开侧栏");
+  await expect(expand).toBeVisible();
+  await expect(categoryLabel).toHaveCount(0);
+
+  // 刷新后仍收起(mount 后读 localStorage ah:editor:sidebar-collapsed)
+  await page.reload();
+  await expect(page.getByLabel("展开侧栏")).toBeVisible();
+  await expect(page.getByLabel("分类")).toHaveCount(0);
+
+  // 展开恢复:右栏回归,后续进入默认展开(状态写回 "0")
+  await page.getByLabel("展开侧栏").click();
+  await expect(page.getByLabel("分类")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("收起侧栏")).toBeVisible();
+  await expect(page.getByLabel("分类")).toBeVisible();
+});
+
+test("23. 一键发文补选交互(M16:md 先行/逐引用选图即时上传/多次选择累积不清空)", async ({
+  page,
+}) => {
+  const IMG_NAME = "e2e-pick-img.png";
+  const IMG_NAME2 = "e2e-pick-extra.png";
+  await prisma.media.deleteMany({ where: { filename: { in: [IMG_NAME, IMG_NAME2] } } });
+
+  // 登录(同前序用例 UI 流)
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  await page.goto("/admin/posts/");
+  await page.getByRole("button", { name: "一键发文(md 导入)" }).click();
+  const png = await sharp({
+    create: { width: 4, height: 3, channels: 3, background: { r: 200, g: 120, b: 20 } },
+  })
+    .png()
+    .toBuffer();
+  const md = `# E2E 补选\n\n![配图](./imgs/${IMG_NAME})\n`;
+
+  // ① md 先行、不选图:引用列出,未命中行带「选图」(本地图 0)
+  await page
+    .locator('input[accept=".md,.markdown"]')
+    .setInputFiles([
+      { name: "e2e-pick.md", mimeType: "text/markdown", buffer: Buffer.from(md, "utf8") },
+    ]);
+  await expect(page.getByText(/图片引用 1 处/)).toBeVisible();
+  const pickBtn = page.getByRole("button", { name: "选图" });
+  await expect(pickBtn).toBeVisible();
+
+  // ② 逐引用补选(filechooser):即时上传 → 状态 ✓ + 站内路径;「选图」随之消失
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), pickBtn.click()]);
+  await chooser.setFiles([{ name: IMG_NAME, mimeType: "image/png", buffer: png }]);
+  await expect(page.getByText("已选图片 1 张")).toBeVisible();
+  await expect(page.getByText("✓")).toBeVisible();
+  await expect(page.getByText(/\/wp-content\/uploads\//).first()).toBeVisible();
+  await expect(pickBtn).toHaveCount(0);
+
+  // ③ 再经「添加图片」选一张与引用不同名图:累积不清空(已选 2 张),先前 ✓ 不丢
+  const [chooser2] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "添加图片" }).click(),
+  ]);
+  await chooser2.setFiles([{ name: IMG_NAME2, mimeType: "image/png", buffer: png }]);
+  await expect(page.getByText("已选图片 2 张")).toBeVisible();
+  await expect(page.getByText("✓")).toBeVisible();
+
+  // ④ 开始导入 → 编辑器交接,引用已替换站内路径
+  await page.getByRole("button", { name: "开始导入" }).click();
+  await page.waitForURL(/\/admin\/posts\/new\/\?import=1/);
+  const ta = page.locator("textarea.vditor-sv");
+  await expect(ta).toHaveValue(/!\[配图\]\(\/wp-content\/uploads\//);
+
+  // 清理:媒体行 + 盘上文件族(与用例 8 同款)
+  const rows = await prisma.media.findMany({ where: { filename: { in: [IMG_NAME, IMG_NAME2] } } });
+  const root = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+  for (const row of rows) {
+    const rel = decodeURIComponent(row.path.replace("/wp-content/uploads/", ""));
+    const stem = rel.replace(/\.[a-z]+$/, "");
+    await Promise.all(
+      [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+        rm(path.join(root, f), { force: true }),
+      ),
+    );
+    await prisma.media.delete({ where: { id: row.id } });
+  }
+});
+
+test("24. 批量 SEO 补全 400 路径(M16:多选批量条/未绑定 summarize 前置拒绝,绑定即测即复原)", async ({
+  page,
+}) => {
+  // 记录并临时置空 summarize 绑定(造「未绑定」确定性环境;finally 原样恢复,
+  // 不动开发者本地真实配置;LLM 真跑属人工验收,不在 e2e 内消费额度)
+  const binding = await prisma.aiTaskBinding.findUnique({ where: { role: "summarize" } });
+  try {
+    await prisma.aiTaskBinding.updateMany({
+      where: { role: "summarize" },
+      data: { primaryId: null, backupId: null },
+    });
+
+    // 登录(同前序用例 UI 流)
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+
+    await page.goto("/admin/posts/");
+    // 勾选首行 → 批量条浮出
+    await page
+      .getByLabel(/^选择 /)
+      .first()
+      .click();
+    await expect(page.getByText(/已选/)).toBeVisible();
+    const batchBtn = page.getByRole("button", { name: "批量 SEO 补全(仅补空缺)" });
+    await expect(batchBtn).toBeEnabled();
+
+    // 提交 → summarize 未绑定 400 前置拒绝,错误文案入批量条,不进入轮询忙态
+    await batchBtn.click();
+    await expect(
+      page.getByText("未绑定或未启用「摘要(summarize)」模型:先到 AI 配置完成任务绑定"),
+    ).toBeVisible();
+    await expect(page.getByText("批量补全中…")).toHaveCount(0);
+  } finally {
+    if (binding) {
+      await prisma.aiTaskBinding.update({
+        where: { role: "summarize" },
+        data: { primaryId: binding.primaryId, backupId: binding.backupId },
+      });
     }
   }
 });
