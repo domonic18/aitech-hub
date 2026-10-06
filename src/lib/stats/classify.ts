@@ -114,3 +114,12 @@ export function normalizePagePath(rawPath: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return normalized.slice(0, 500);
 }
+
+/**
+ * 搜索词规整(2026-10-06 排行需求):trim + 连续空白折叠为单空格 + 截 100 字
+ * (表上限);保留用户输入原样大小写——排行展示「用户真实输入」,不做大小写
+ * 折叠(与答案缓存键的 lower 归一目的不同)。空串表示无可记词。
+ */
+export function normalizeSearchTerm(raw: string): string {
+  return raw.trim().replace(/\s+/g, " ").slice(0, 100);
+}

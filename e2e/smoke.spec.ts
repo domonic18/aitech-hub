@@ -372,13 +372,15 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
   }
 });
 
-test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)+ 最近访问明细(M10 批⑥)", async ({
+test("9. 站点统计页六模块可见(M5c:KPI/趋势SVG/来源/环境/热门,分段切换)+ 搜索词排行(2026-10-06)+ 最近访问明细(M10 批⑥)", async ({
   page,
   request,
 }) => {
-  // 访问明细隔离(重跑幂等)
+  // 访问明细/搜索词隔离(重跑幂等)
   const visitPath = "/e2e-visit-log";
   await prisma.statsVisitLog.deleteMany({ where: { path: visitPath } });
+  const searchTerm = "e2e 热搜词";
+  await prisma.statsSearchLog.deleteMany({ where: { term: searchTerm } });
 
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
@@ -390,26 +392,47 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   // beacon 直打(M10 批⑥):request 上下文无 cookie(非管理员可入账);
   // 本地无反代头,自置 x-forwarded-for 模拟 nginx 形态(clientIp 取首跳);
   // UA 用真实浏览器串(playwright 字样被 isBotUa 过滤,正是生产口径)
+  const beaconHeaders = {
+    origin: originOf(page),
+    "x-forwarded-for": "203.0.113.7",
+    "user-agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  };
   const beacon = await request.post("/api/view", {
-    headers: {
-      origin: originOf(page),
-      "x-forwarded-for": "203.0.113.7",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    },
+    headers: beaconHeaders,
     data: { path: visitPath, referrer: "" },
   });
   expect(beacon.status()).toBe(204);
 
-  // 五模块渲染(空库也不空壳:卡片/表头常在,趋势图恒有 generate_series 点)
+  // 搜索词排行(2026-10-06):仅 /search 页 counted PV 记词——空白折叠归一(两发同词 → 次数 2);
+  // 非 /search 路径与纯空白词不记
+  for (const data of [
+    { path: "/search", referrer: "", q: `  ${searchTerm}  ` },
+    { path: "/search", referrer: "", q: searchTerm },
+    { path: "/post/", referrer: "", q: searchTerm },
+    { path: "/search", referrer: "", q: "   " },
+  ]) {
+    const r = await request.post("/api/view", { headers: beaconHeaders, data });
+    expect(r.status()).toBe(204);
+  }
+
+  // 六模块渲染(空库也不空壳:卡片/表头常在,趋势图恒有 generate_series 点)
   await page.goto("/admin/");
   await expect(page.getByText("今日 PV")).toBeVisible();
   await expect(page.getByText("PV / UV 趋势")).toBeVisible();
   await expect(page.getByRole("heading", { name: "流量来源" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "访客环境" })).toBeVisible();
   await expect(page.getByText("热门页面")).toBeVisible();
+  await expect(page.getByText("热门搜索")).toBeVisible();
   const polylines = page.locator("main svg polyline");
   await expect(polylines).toHaveCount(2);
+
+  // 搜索词排行行:两次 /search counted beacon(其一带首尾空白)归一为同词 → 次数 2;
+  // 断言后即清
+  const termRow = page.getByRole("row", { name: new RegExp(searchTerm) });
+  await expect(termRow).toBeVisible();
+  await expect(termRow.locator("td").last()).toHaveText("2");
+  await prisma.statsSearchLog.deleteMany({ where: { term: searchTerm } });
 
   // 最近访问明细行(M10 批⑥):伪路径 + 全量 IP;断言后即清
   const visitRow = page.getByRole("row", { name: new RegExp(visitPath) });
@@ -423,9 +446,9 @@ test("9. 站点统计页五模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await expect(page.getByTestId("trend-tip")).toContainText("PV");
 
   // 分段切换 URL 驱动:trend=30 生效且 hot 参数跨段保留
-  // 「近 30 天」在趋势卡与热门卡各一枚(Link 分段),count=2 证两卡分段均按参数渲染
+  // 「近 30 天」在趋势卡与两张热门卡各一枚(Link 分段),count=3 证三卡分段均按参数渲染
   await page.goto("/admin/?trend=30&hot=all");
-  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(3);
   await expect(page.getByText("该时段暂无页面浏览")).toHaveCount(0);
   await expect(polylines.first()).toBeVisible();
   await page.getByRole("link", { name: "近 90 天" }).click(); // 仅趋势卡有,唯一

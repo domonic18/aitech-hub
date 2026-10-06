@@ -2,8 +2,9 @@
  * 站点统计 service(requirement §3.5;arch/05-services §1 分层):
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
  *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5);
- *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥)。
- *  - purgeVisitLogs:worker 日调度清理 7 天前明细行。
+ *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥);
+ *    /search 页带 q 时行级直插 stats_search_log(搜索词排行,180 天,2026-10-06)。
+ *  - purgeVisitLogs / purgeSearchLogs:worker 日调度清理保留窗口外明细行。
  * 缓冲落库(flushStatsBuffer)在同级 flush.ts(worker 每 60s;
  * 缓冲键形 stats:buf:<kind>:<day> 由本文件写入、flush.ts 消费,改名需同批)。
  */
@@ -14,7 +15,14 @@ import { statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
-import { classifyReferrer, isBotUa, normalizePagePath, parseClient, visitorHash } from "./classify";
+import {
+  classifyReferrer,
+  isBotUa,
+  normalizePagePath,
+  normalizeSearchTerm,
+  parseClient,
+  visitorHash,
+} from "./classify";
 
 const DAY_TTL_SECONDS = 86400; // UV 日去重窗口(当日有效)
 const POST_DEDUP_TTL_SECONDS = 3600; // 文章阅读去重窗口(arch/05-services:IP+UA 去重窗口 1h)
@@ -28,6 +36,8 @@ export interface IngestInput {
   ip: string;
   salt: string;
   isAdmin: boolean;
+  /** /search 页携带的查询词原文(可选;仅在 path 为 /search 且 counted 时记入排行) */
+  q?: string;
 }
 
 export interface IngestResult {
@@ -88,6 +98,17 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
     })
     .catch((e: unknown) => logger.warn({ event: "stats.visit_log.failed", error: String(e) }));
 
+  // 搜索词排行(2026-10-06 需求):仅 /search 页 counted PV 记词;行级直插不经缓冲,
+  // 同样不 await 不阻断 beacon,失败仅告警(排行少计一次可接受,不阻塞主口径)
+  if ((path === "/search" || path === "/search/") && input.q) {
+    const term = normalizeSearchTerm(input.q);
+    if (term !== "") {
+      prisma.statsSearchLog
+        .create({ data: { term } })
+        .catch((e: unknown) => logger.warn({ event: "stats.search_log.failed", error: String(e) }));
+    }
+  }
+
   const postCounted = await countPostView(path, vhash, day);
   return { counted: true, reason: "ok", postCounted };
 }
@@ -101,6 +122,16 @@ const VISIT_LOG_RETENTION_DAYS = 7;
 export async function purgeVisitLogs(): Promise<number> {
   const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * 86_400_000);
   const r = await prisma.statsVisitLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  return r.count;
+}
+
+/** 搜索词明细保留天数(无 PII,比访问明细长;排行「全部」窗口的实际上界) */
+const SEARCH_LOG_RETENTION_DAYS = 180;
+
+/** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志) */
+export async function purgeSearchLogs(): Promise<number> {
+  const cutoff = new Date(Date.now() - SEARCH_LOG_RETENTION_DAYS * 86_400_000);
+  const r = await prisma.statsSearchLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
   return r.count;
 }
 

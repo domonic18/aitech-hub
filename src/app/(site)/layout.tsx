@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import Footer from "@/components/site/Footer";
 import Header from "@/components/site/Header";
 import StatsBeacon from "@/components/site/StatsBeacon";
@@ -14,7 +16,10 @@ export default function SiteLayout({
       {/* 版心由各页自管:内容页 768px(PostListView/静态页),首页 Hub 全宽 --site-max-w */}
       <main className="w-full flex-1 px-4 py-8 sm:px-6">{children}</main>
       <Footer />
-      <StatsBeacon />
+      {/* Suspense:beacon 读 useSearchParams(/search 带词上报),静态预渲染页必须包 */}
+      <Suspense fallback={null}>
+        <StatsBeacon />
+      </Suspense>
     </div>
   );
 }
