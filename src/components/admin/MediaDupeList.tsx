@@ -97,10 +97,10 @@ export default function MediaDupeList({ groups }: { groups: MediaDupeGroupView[]
           ? `正文引用 ${keeper.refCount} · 封面 ${keeper.coverCount}`
           : "暂无引用";
         return (
-          /* 每组独立行卡(原型 .dupe-row:84px 首轨 + 1fr + auto,缩略图并排不叠放) */
+          /* 每组独立行卡(原型 .dupe-row:auto 首轨容纳缩略图并排 + 1fr + auto,不叠放不压字) */
           <div
             key={g.sha1}
-            className="mb-2.5 grid grid-cols-[84px_1fr] items-center gap-3.5 rounded-sm border border-line bg-panel px-3.5 py-3 sm:grid-cols-[84px_1fr_auto]"
+            className="mb-2.5 grid grid-cols-[auto_1fr] items-center gap-3.5 rounded-sm border border-line bg-panel px-3.5 py-3 sm:grid-cols-[auto_1fr_auto]"
           >
             <div className="flex items-center gap-1.5">
               {g.items.slice(0, THUMB_MAX).map((item) => {
