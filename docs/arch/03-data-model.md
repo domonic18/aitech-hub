@@ -231,6 +231,12 @@ CREATE TABLE legacy_url_map (
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 - `stats_search_log`(搜索词明细,行级,2026-10-06 排行需求):`term varchar(100)/created_at`;索引 `created_at DESC`。口径:/search 页 counted PV 携带的 q(trim + 空白折叠截 100 字,`classify.ts#normalizeSearchTerm`,保留原样大小写),仅 path 为 /search 记;无 PII(不存 IP/访客哈希);行级直插不经缓冲(不 await 不阻断 beacon,失败仅 warn),worker `visit-log-purge` 同 job 清 180 天前行——排行「全部」窗口的实际上界
 
+**内容分发域三表已落地(2026-10-06 M17 批①迁移 `20261006122422_publish_channel_wechat`,多渠道分发首渠道=微信公众号,requirement §4)**:
+
+- `publish_wechat_config`(渠道配置单例 `id=1`,get-or-create,镜像 `asr_config`):`appid/app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`author?`(图文作者,缺省「一起AI」)/`auto_sync_enabled 默认 false`(发布即推,用户定调默认关)/`enabled 默认 false`(渠道总开关)+ `last_test` 四件套
+- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段)/`attempts/last_error?(截 500)/synced_at?`
+- `publish_media_cache`(转存防重推):`channel+source_key` 唯一;`source_key` 前缀分区:`b:<sha1 源字节>`(站内正文图)/`u:<sha1 url>`(外链图)/`m:<sha1 源字节>`(封面,`remote_media_id` 有值);`remote_url`(uploadimg 回传 mmbiz 链,永久有效无 TTL)/`remote_media_id?`(add_material 回传);缓存命中零上传,公众号频控友好
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**

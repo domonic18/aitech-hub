@@ -169,7 +169,7 @@ export default function PostsTable({
       const json = (await res.json().catch(() => null)) as ApiEnvelope<{
         jobId?: string;
         token?: string;
-        eligible?: number;
+        eligible?: string[];
         skipped?: Array<{ id: string; reason: string }>;
       }> | null;
       if (!res.ok || json?.code !== 0 || !json.data?.jobId || !json.data?.token) {
@@ -179,7 +179,7 @@ export default function PostsTable({
         return;
       }
       const { jobId, token, eligible, skipped } = json.data;
-      if ((eligible ?? 0) === 0) {
+      if (!eligible || eligible.length === 0) {
         setBatchMsg(null);
         setBatchError(
           `没有可同步的文章:${(skipped ?? []).map((s) => s.reason).join(";") || "资格预检未通过"}`,
@@ -199,7 +199,7 @@ export default function PostsTable({
         const d = body.data;
         if (d.state === "completed") {
           const failed = d.failedIds?.length ?? 0;
-          const done = (d.total ?? eligible ?? 0) - failed;
+          const done = (d.total ?? ids.length) - failed;
           setBatchMsg(`同步完成:成功 ${done} · 失败 ${failed}${skipNote}(失败篇目行内可单篇重试)`);
           setSelected(new Set());
           router.refresh();
@@ -213,7 +213,7 @@ export default function PostsTable({
           return;
         }
         setBatchMsg(
-          `同步中 ${d.processed ?? 0}/${d.total ?? eligible ?? 0}(失败 ${
+          `同步中 ${d.processed ?? 0}/${d.total ?? ids.length}(失败 ${
             d.failedIds?.length ?? 0
           }${skipNote})…`,
         );
