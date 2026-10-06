@@ -58,3 +58,24 @@ export function ensureAgentCheckpointer(): Promise<void> {
   });
   return globalForAgent.agentSetupPromise;
 }
+
+/** 删线程 checkpoint(用户删会话/30 天日清共用;须先 ensure) */
+export async function deleteThread(threadId: string): Promise<void> {
+  await ensureAgentCheckpointer();
+  await getAgentCheckpointer().deleteThread(threadId);
+}
+
+/**
+ * 读线程消息轨迹(state 路由:切线程恢复历史)。走 saver.getTuple 公开 API
+ * (DeepAgent.getState 为 private);channel_values.messages 经 serde 反序列化
+ * 为 BaseMessage 实例。无线程返回 null。
+ */
+export async function getThreadMessages(threadId: string): Promise<unknown[] | null> {
+  await ensureAgentCheckpointer();
+  const tuple = await getAgentCheckpointer().getTuple({
+    configurable: { thread_id: threadId },
+  });
+  const messages = (tuple?.checkpoint.channel_values as { messages?: unknown } | undefined)
+    ?.messages;
+  return Array.isArray(messages) ? messages : null;
+}
