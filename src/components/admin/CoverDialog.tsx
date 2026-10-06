@@ -2,10 +2,11 @@
 
 /**
  * 封面设置弹窗(M5-d 起步;M14 批⑤对齐原型 admin-cover「一次裁剪·多尺寸导出」):
- * 双源选图(本地上传 / 媒体库选用)→ 左裁剪器(react-easy-crop 拖拽/缩放/旋转)
- * → 右模板卡(激活卡定裁剪比例,勾选定导出集)→ 导出队列(逐模板 cover-fit
- * canvas 导出上传,行级状态)→ OG 变体 onSet。本弹窗即走 POST /api/media,
- * 导出即入库(原型「存入媒体库」按钮由此天然满足,不再单列)。
+ * 三源选图(本地上传 / 媒体库选用 / AI 文生图——M16 提为第三源,未选源首屏即可
+ * 直达生成)→ 左裁剪器(react-easy-crop 拖拽/缩放/旋转)→ 右模板卡(激活卡定
+ * 裁剪比例,勾选定导出集)→ 导出队列(逐模板 cover-fit canvas 导出上传,行级状态)
+ * → OG 变体 onSet。本弹窗即走 POST /api/media,导出即入库(原型「存入媒体库」
+ * 按钮由此天然满足,不再单列)。
  */
 import { useEffect, useRef, useState } from "react";
 import type { Area } from "react-easy-crop";
@@ -88,6 +89,8 @@ export default function CoverDialog({
   const [note, setNote] = useState<string | null>(null);
   const [gen, setGen] = useState<GenState>(GEN_IDLE);
   const [candidates, setCandidates] = useState<Array<{ id: string; path: string }>>([]);
+  /** 未选源首屏的 AI 生成面板展开态(M16:AI 提为第三源,点卡展开) */
+  const [aiOpen, setAiOpen] = useState(false);
   const genPollRef = useRef<number | null>(null);
 
   const genRunning = gen.phase === "queued" || gen.phase === "running";
@@ -314,6 +317,59 @@ export default function CoverDialog({
     setTimeout(onClose, 600);
   }
 
+  /** AI 生成块内芯(M16 抽出):未选源首屏与已选源模板卡下两处复用 */
+  const aiGenInner = coverContext ? (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 text-[11px] font-medium text-text-2">
+          AI 文生图
+          <span className="ml-1 font-normal text-text-3">(cover 绑定模型)</span>
+        </div>
+        <button
+          type="button"
+          disabled={genRunning || busy || coverContext.title.trim() === ""}
+          title={
+            coverContext.title.trim() === "" ? "先填文章标题" : "标题/摘要 → prompt,一次 2 张候选"
+          }
+          onClick={() => void startGen()}
+          className="flex-none cursor-pointer rounded-sm border border-accent px-2 py-1 text-[11px] text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {genRunning ? "生成中…" : gen.phase === "done" ? "再生成一批" : "生成候选"}
+        </button>
+      </div>
+      <div className="mt-1 text-[10px] leading-relaxed text-text-3">
+        生图走后台队列约 10-30s;候选入媒体库,点选即设为封面
+      </div>
+      {gen.phase === "failed" && (
+        <div className="mt-1 text-[10px] leading-relaxed text-red">{gen.error}</div>
+      )}
+      {genRunning && (
+        <div className="mt-1 text-[10px] text-amber">生成中…已出 {candidates.length} 张</div>
+      )}
+      {candidates.length > 0 && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {candidates.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              title="点选设为封面"
+              onClick={() => adoptCandidate(c.path)}
+              className="cursor-pointer overflow-hidden rounded-sm border border-line hover:border-accent"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- 管理端候选预览,src 为站内路径 */}
+              <img
+                src={c.path}
+                alt="AI 生成封面候选"
+                loading="lazy"
+                className="h-16 w-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  ) : null;
+
   return (
     <div
       className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
@@ -355,30 +411,54 @@ export default function CoverDialog({
         />
 
         {!source ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
+          <>
+            {/* 三源并列(M16:AI 文生图提为第三源,新建未选源也可直接生成) */}
+            <div
+              className={`mt-4 grid gap-3 ${coverContext ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
             >
-              <svg className="ic-lg" aria-hidden="true">
-                <use href="#i-cloudupload" />
-              </svg>
-              <span className="text-xs">本地上传(jpg / png / webp)</span>
-              <span className="text-[11px]">将按模板比例交互裁剪</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
-            >
-              <svg className="ic-lg" aria-hidden="true">
-                <use href="#i-picture" />
-              </svg>
-              <span className="text-xs">从媒体库选图</span>
-              <span className="text-[11px]">复用已上传素材,无需重复占用空间</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
+              >
+                <svg className="ic-lg" aria-hidden="true">
+                  <use href="#i-cloudupload" />
+                </svg>
+                <span className="text-xs">本地上传(jpg / png / webp)</span>
+                <span className="text-[11px]">将按模板比例交互裁剪</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
+              >
+                <svg className="ic-lg" aria-hidden="true">
+                  <use href="#i-picture" />
+                </svg>
+                <span className="text-xs">从媒体库选图</span>
+                <span className="text-[11px]">复用已上传素材,无需重复占用空间</span>
+              </button>
+              {coverContext && (
+                <button
+                  type="button"
+                  aria-expanded={aiOpen}
+                  onClick={() => setAiOpen((v) => !v)}
+                  className={`flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed text-text-3 hover:border-accent hover:text-accent ${
+                    aiOpen ? "border-accent text-accent" : "border-line"
+                  }`}
+                >
+                  <svg className="ic-lg" aria-hidden="true">
+                    <use href="#i-robot" />
+                  </svg>
+                  <span className="text-xs">AI 生成封面</span>
+                  <span className="text-[11px]">标题/摘要 → prompt,无需先备图</span>
+                </button>
+              )}
+            </div>
+            {coverContext && aiOpen && (
+              <div className="mt-3 rounded-sm border border-line bg-panel-2 p-3">{aiGenInner}</div>
+            )}
+          </>
         ) : (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_300px]">
             {/* 左:裁剪器 */}
@@ -481,62 +561,8 @@ export default function CoverDialog({
                   点卡切换裁剪比例;勾选卡进导出集(多尺寸从同一选区 cover-fit 适配)
                 </div>
 
-                {/* AI 文生图行(原型 admin-cover ai-row;批⑥点亮) */}
-                {coverContext && (
-                  <div className="mt-3 border-t border-line pt-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 text-[11px] font-medium text-text-2">
-                        AI 文生图
-                        <span className="ml-1 font-normal text-text-3">(cover 绑定模型)</span>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={genRunning || busy || coverContext.title.trim() === ""}
-                        title={
-                          coverContext.title.trim() === ""
-                            ? "先填文章标题"
-                            : "标题/摘要 → prompt,一次 2 张候选"
-                        }
-                        onClick={() => void startGen()}
-                        className="flex-none cursor-pointer rounded-sm border border-accent px-2 py-1 text-[11px] text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {genRunning ? "生成中…" : gen.phase === "done" ? "再生成一批" : "生成候选"}
-                      </button>
-                    </div>
-                    <div className="mt-1 text-[10px] leading-relaxed text-text-3">
-                      生图走后台队列约 10-30s;候选入媒体库,点选即设为封面
-                    </div>
-                    {gen.phase === "failed" && (
-                      <div className="mt-1 text-[10px] leading-relaxed text-red">{gen.error}</div>
-                    )}
-                    {genRunning && (
-                      <div className="mt-1 text-[10px] text-amber">
-                        生成中…已出 {candidates.length} 张
-                      </div>
-                    )}
-                    {candidates.length > 0 && (
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        {candidates.map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            title="点选设为封面"
-                            onClick={() => adoptCandidate(c.path)}
-                            className="cursor-pointer overflow-hidden rounded-sm border border-line hover:border-accent"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element -- 管理端候选预览,src 为站内路径 */}
-                            <img
-                              src={c.path}
-                              alt="AI 生成封面候选"
-                              loading="lazy"
-                              className="h-16 w-full object-cover"
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* AI 文生图行(原型 admin-cover ai-row;M16 抽 aiGenInner 与未选源首屏共用) */}
+                {coverContext && <div className="mt-3 border-t border-line pt-3">{aiGenInner}</div>}
               </div>
 
               <div className="rounded-md border border-line bg-panel p-3">
