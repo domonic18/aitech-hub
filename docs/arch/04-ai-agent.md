@@ -1,6 +1,6 @@
 # AI Agent 体系设计(骨架 + Agent 搜索锚点)
 
-> 状态:占位骨架(2026-09-30 建立);同日补「Agent 搜索」需求锚点(§3)与「AI 服务治理后台」原型锚点(§4),细化待二期立项。
+> 状态:占位骨架(2026-09-30 建立);同日补「Agent 搜索」需求锚点(§3)与「AI 服务治理后台」原型锚点(§4)。**2026-10-06 Agent 搜索立项定稿**(§3:交互两层/检索基座/技术栈全 TS/成本护栏/分期),K1 检索基座 + K2 答案卡进入实施(第一迭代),K2.5 Drawer 会话 Agent 第二迭代。
 
 ## 1. 定位
 
@@ -13,14 +13,45 @@
 - **二期封面 AI 文生图**(混元);开发期的图片素材管线用本机 zhipu-image MCP 辅助——属开发工具,非站内能力
 - 异步底座:agent 触发的长任务一律 BullMQ(arch/05-services §4);短视频解读管道(arch/02 §3.2)是第一个 LLM 生产任务
 
-## 3. Agent 搜索(2026-09-30 需求锚点,二期)
+## 3. Agent 搜索(2026-09-30 需求锚点;2026-10-06 立项定稿)
 
-首页控制台输入框 + `/search?q=` 结果页的 Agent 化形态(需求 requirement §4;原型 site-search.html):
+首页控制台输入框 + `/search?q=` 结果页的 Agent 化(需求 requirement §4;原型 site-search.html)。2026-10-06 与站长讨论定稿如下,原「留立项评审」项就地收敛。
 
-- **检索聚合**:一次 query 并发检索三域——`telegram`(资讯,含短视频解读)/ `content_post`(教程,博主文章)/ `github_repo`(项目),合并分组返回;与站点内容 MCP 的「搜索」工具**共用同一 service 层**(给人搜索 = 给智能体检索,同源不漂移)
-- **AI 答案卡**:命中达到阈值时生成——结论段 + 引用角标 `[n]` 溯源到站内条目 + 「✦ AI 生成 · 基于 N 条站内内容」标注 + 追问建议 chips;**答案必须可溯源**,站内 0 命中时明示「站内无命中,AI 直接作答」,不伪装检索结果
-- **展示**:分组命中列表(mark 高亮 + 渠道 chip + 命中度)+ 空态保留基础检索兜底;生成失败降级为纯检索结果页
-- **实现选项(立项评审)**:检索 = PG 全文(tsvector)起步 vs pgvector embedding 混合(多语言中文分行情待测);生成 = 直连 LLM API vs 经自有 MCP 端点复用;与 §2 站点内容 MCP 的关系 = 同检索层、不同鉴权与工具面
+### 3.1 交互定稿:页面为体、Drawer 为翼(两层)
+
+- **第一层 页面式首搜**:`/search?q=` 结果页——分组命中列表(mark 高亮 + 渠道 chip + 命中度)**即时 SSR**(URL 可分享/可回退,命中是真实 HTML);AI 答案卡为流式增强,不阻塞命中呈现。hero 输入框回车即跳此页,交互心智是「找内容」
+- **第二层 继续追问 Drawer**:答案卡追问 chips 或结果页「继续深挖」入口唤起右侧抽屉会话——**ai-invest-assisstant 同款交互**:线程列表(今/昨/更早 + 新建)+ 执行计划条(deepagents todo,✓/◐/○)+ 工具调用过程块;自绘件**结构平移、样式换装终端风 token**(前台不引 antd)。交互心智是「问助手」,多步深挖(对比/展开/归纳)才付 agent 成本
+- **红线不变**:答案必须可溯源(引用角标 [n] 锚站内条目),站内 0 命中明示「AI 直接作答」不伪装检索;生成失败/配额超限**降级纯检索结果页**,前台无感
+
+### 3.2 检索基座(K1):三域统一检索 service
+
+- 一次 query 并发检索三域——`telegram`(资讯,含短视频解读)/ `content_post`(教程,博主文章)/ `github_repo`(项目),合并分组返回;**给人搜索 = 给智能体检索**:同层供 K2 答案卡、K2.5 agent 工具与 K3 站点内容 MCP「搜索」工具,同源不漂移
+- PG 全文(tsvector)起步;中文分词实效待测,不足再评审 zhparser/pgvector embedding 混合(成本:全量回填 embedding + 每文增量,届时另议)
+- 生成选型定稿:**直连 LLM(进程内),不经自有 MCP 复用**——与 §2 站点内容 MCP 的关系保持「同检索层、不同鉴权与工具面」
+
+### 3.3 技术栈定稿:全 TS,无 Python sidecar(2026-10-06)
+
+- **deepagents(npm 官方 TS 版)**:`deepagents@1.x`(2026-10 实测 latest 1.14.2 活跃维护,LangChain 出品,LangGraph.js 之上;计划 todo 工具/文件系统/子 agent/checkpoint 与 Python 版对齐)。讨论中曾预设 Python sidecar(平移 ai-invest 后端),经查证 TS 版成熟后改为**进程内全 TS**——省一个容器与镜像 CI 线,且直连复用现有 AI 治理管线(下条)
+- **直连复用现有管线**:`src/lib/ai/resolver.ts#resolveAiModel("search")` 角色绑定(主力/备用,`ai_task_binding` 槽位现成,M15 批② 起配额输入框就位)+ `getRoleDailyMax` 配额 + `ai_usage_log`(role=search)台账 + /admin/usage 费用看板,零桥接
+- **前端 assistant-ui 组合**(ai-invest 同源实测):`@assistant-ui/react` + `@assistant-ui/react-langgraph`(`useLangGraphRuntime` 吃 LangGraph 兼容消息流)+ `@langchain/langgraph-sdk`(useStream 传输);后端为 Next.js Route Handler 自实现流式契约(ai-invest FastAPI 同款自实现先例)
+- **线程持久化**:LangGraph.js checkpoint-postgres 复用生产 PG;**checkpoint 表框架自管(`setup()` 幂等建),不进 Prisma migrations**——边界同 ai-invest 先例(其头注:checkpoint 表不进 Alembic)
+- **SSE**:Route Handler 直出流;nginx 需对该路由 `proxy_buffering off`(配置变更随批走)
+
+### 3.4 成本与护栏定稿(2026-10-06,上线后按 /admin/usage 真实数据回调)
+
+| 项 | 定稿值 | 说明 |
+|----|--------|------|
+| 答案卡日配额 | `search` 角色 **100 次/日**(`ai_task_binding.daily_max`) | 超限**自动降级纯检索结果页**,前台不报错 |
+| Drawer 会话日配额 | **20 次/日** | 独立计数,超限入口置灰 + 提示 |
+| 单会话上限 | **≤12 步 / ≤50k tokens** | agent 主动收束并提示,防多步失控 |
+| 答案缓存 | 同 `q=` **24h** 内复用 | 省钱 + 秒开;缓存行落 Redis/PG 实施时定 |
+| 模型建议 | search 角色绑国产模型(DeepSeek/GLM/Qwen 级) | 单次答案卡 ¥0.005~0.1、会话 ¥0.05~1;Claude 级成本 ×10 收益边际 |
+
+### 3.5 分期
+
+- **第一迭代:K1 检索基座 + K2 答案卡**(页面式;TS 进程内单轮 RAG,SSE 流式)
+- **第二迭代:K2.5 Drawer 会话 Agent**(deepagents + assistant-ui + checkpoint)
+- K3 站点内容 MCP 随 K1 就绪解锁(同检索层,对外只读工具面)
 
 ## 4. AI 服务治理后台(2026-09-30 原型锚点;模型配置 M8 批⑥ 已提前落地,余项二期)
 
@@ -38,7 +69,9 @@
 
 ## 5. 待明确(细化时回答)
 
-- agent 编排形态:单 agent 工具集 vs 多 agent 流水线
-- agent 身份与配额:复用 PAT 还是独立主体、计量口径
-- 安全边界:哪些 mutation 允许 agent 触达、审计要求
-- Agent 搜索的检索/生成选型(§3,随二期立项)
+- ~~agent 编排形态:单 agent 工具集 vs 多 agent 流水线~~ **已定(2026-10-06,§3)**:K2 答案卡为单轮 RAG;K2.5 Drawer 为 deepagents 单 agent + 工具循环,子 agent 能力框架预留、首版不启用
+- ~~agent 身份与配额:复用 PAT 还是独立主体、计量口径~~ **已定(2026-10-06,§3.3/§3.4)**:无独立主体——复用 `search` 任务绑定(model/key/daily_max)与 `ai_usage_log`(role=search)计量,与 interpret/summarize 同一套治理
+- ~~安全边界:哪些 mutation 允许 agent 触达、审计要求~~ **已定(2026-10-06,§3)**:K 系列只读(检索/读站内内容),不触达任何 mutation;审计 = `ai_usage_log` 逐次落行 + 会话管理(admin-schemas 余项,归 arch §4 二期范围)
+- ~~Agent 搜索的检索/生成选型(§3,随二期立项)~~ **已定(2026-10-06,§3.2)**:检索 PG 全文起步;生成直连 LLM 进程内;pgvector 混合留实效实测后再评审
+- 会话留存期与清退(Drawer 线程 checkpoint 数据保留多久、是否给用户「删除会话」)——K2.5 实施前定
+- Drawer 抽屉在 /search 之外的入口范围(全局 FAB vs 仅搜索场景)——K2.5 实施前定
