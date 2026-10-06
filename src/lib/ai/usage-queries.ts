@@ -270,3 +270,15 @@ export async function getUsageOverview(days: 7 | 30 | 90): Promise<UsageOverview
     prevTokens: (prev._sum.tokensIn ?? 0) + (prev._sum.tokensOut ?? 0),
   });
 }
+
+/** 角色当日已用量计数(K2 答案卡配额口径):北京日界,status ok/degraded
+ * (failed 不占配额——终败无产出,与看板计费口径一致) */
+export async function countTodayRoleUsage(role: string, now: Date = new Date()): Promise<number> {
+  return prisma.aiUsageLog.count({
+    where: {
+      role,
+      createdAt: { gte: usageWindowSince(now, 1) },
+      status: { in: ["ok", "degraded"] },
+    },
+  });
+}
