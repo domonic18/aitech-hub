@@ -58,7 +58,7 @@ export default function ChannelRowOps({ channel }: { channel: ChannelDialogData 
   }
 
   return (
-    <div className="flex items-center justify-end gap-1.5 text-xs">
+    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs">
       <button
         type="button"
         disabled={busy}
