@@ -19,7 +19,13 @@ export async function POST(req: NextRequest) {
   const denied = await requireAdminForMutation(req);
   if (denied) return denied;
   try {
-    const form = await req.formData();
+    // 畸形 multipart(截断/伪造边界)→ 400 客户端错,不落 media.write.fail 日志
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return apiEnvelope(400, "invalid multipart body");
+    }
     const file = form.get(UPLOAD_FIELD);
     if (!(file instanceof File)) {
       return apiEnvelope(400, `缺少文件字段 ${UPLOAD_FIELD}`);
