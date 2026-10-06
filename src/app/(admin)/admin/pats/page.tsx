@@ -57,12 +57,12 @@ export default async function AdminPatsPage(): Promise<React.ReactElement> {
                   </td>
                   <td className="px-4 py-2.5">
                     {p.revokedAt ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-0.5 text-xs text-text-3">
+                      <span className="inline-flex items-center gap-1.5 rounded-sm bg-panel-2 px-2 py-0.5 text-xs font-medium text-text-3">
                         <span className="h-1.5 w-1.5 rounded-full bg-text-3" aria-hidden="true" />
                         已吊销
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-green/35 bg-green/10 px-2.5 py-0.5 text-xs text-green">
+                      <span className="inline-flex items-center gap-1.5 rounded-sm bg-green/12 px-2 py-0.5 text-xs font-medium text-green">
                         <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden="true" />
                         生效中
                       </span>

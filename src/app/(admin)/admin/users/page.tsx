@@ -45,11 +45,11 @@ function listHref(segment: UserListSegment, page: number, q?: string): string {
   });
 }
 
-/** 状态徽标(原型 admin-users .status-badge 药丸):active 绿/待绑定琥珀/已禁用灰 */
+/** 状态徽标(原型 admin-users .status-badge soft chip):active 绿/待绑定琥珀/已禁用灰 */
 function StatusBadge({ status }: { status: string }) {
   if (status === USER_STATUS_ACTIVE) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-green/35 bg-green/10 px-2.5 py-0.5 text-xs text-green">
+      <span className="inline-flex items-center gap-1.5 rounded-sm bg-green/12 px-2 py-0.5 text-xs font-medium text-green">
         <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden="true" />
         active
       </span>
@@ -57,14 +57,14 @@ function StatusBadge({ status }: { status: string }) {
   }
   if (status === USER_STATUS_PENDING_BINDING) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber/35 bg-amber/10 px-2.5 py-0.5 text-xs text-amber">
+      <span className="inline-flex items-center gap-1.5 rounded-sm bg-amber/12 px-2 py-0.5 text-xs font-medium text-amber">
         <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden="true" />
         待绑定
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-0.5 text-xs text-text-3">
+    <span className="inline-flex items-center gap-1.5 rounded-sm bg-panel-2 px-2 py-0.5 text-xs font-medium text-text-3">
       <span className="h-1.5 w-1.5 rounded-full bg-text-3" aria-hidden="true" />
       已禁用
     </span>
