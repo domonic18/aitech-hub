@@ -37,12 +37,8 @@ import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
-import {
-  wechatBatchJob,
-  wechatSyncJob,
-  type WechatBatchJobData,
-  type WechatSyncJobData,
-} from "../src/lib/distribute/wechat-sync";
+import { type WechatBatchJobData, type WechatSyncJobData } from "../src/lib/distribute/wechat-sync";
+import { wechatBatchJob, wechatSyncJob } from "../src/lib/distribute/wechat-sync-run";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
 import { processMediaJob, transferMediaJob } from "./media";

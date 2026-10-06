@@ -63,10 +63,9 @@ import {
   enqueueWechatBatch,
   enqueueWechatSync,
   maybeEnqueueAutoWechat,
-  syncOnePost,
-  wechatBatchJob,
   type WechatSyncOverrides,
 } from "./wechat-sync";
+import { syncOnePost, wechatBatchJob } from "./wechat-sync-run";
 
 const mockedPost = vi.mocked(prisma.post);
 const mockedChannel = vi.mocked(prisma.publishChannel);

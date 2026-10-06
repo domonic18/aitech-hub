@@ -13,12 +13,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { runBatchJob } from "./batch-job";
 import PostRowOps from "./PostRowOps";
 import PostStatusBadge from "./PostStatusBadge";
 import type { PostDisplayState } from "@/lib/content/post-schema";
 import { DISTRIBUTE_BATCH_MAX } from "@/lib/distribute/channels";
 import { formatCnDateTime } from "@/lib/datetime";
-import type { ApiEnvelope } from "@/lib/http/response";
 
 export interface PostsTableRowView {
   id: string;
@@ -42,15 +42,6 @@ export interface PostsTableRowView {
 /** 轮询 3s × 240 ≈ 12min:50 篇 × LLM 最坏十几秒,先于 worker 锁超时收敛 */
 const POLL_MS = 3_000;
 const POLL_MAX = 240;
-
-type BatchPollBody = ApiEnvelope<{
-  state?: "waiting" | "active" | "completed" | "failed";
-  error?: string | null;
-  processed?: number;
-  total?: number;
-  skipped?: number;
-  failedIds?: string[];
-} | null>;
 
 export default function PostsTable({
   rows,
@@ -82,69 +73,43 @@ export default function PostsTable({
     });
   }
 
-  async function runSeoBatch(): Promise<void> {
+  /** 批量 SEO 补全(仅补空缺;M16;提交+轮询骨架 batch-job.ts) */
+  function runSeoBatch(): void {
     const ids = [...selected];
     setBatchBusy(true);
     setBatchError(null);
     setBatchMsg(`提交中(共 ${ids.length} 篇)…`);
-    try {
-      const res = await fetch("/api/posts/seo-suggest-batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      const json = (await res.json().catch(() => null)) as ApiEnvelope<{
-        jobId?: string;
-        token?: string;
-      }> | null;
-      if (!res.ok || json?.code !== 0 || !json.data?.jobId || !json.data?.token) {
-        setBatchError(json?.message ?? `提交失败(${res.status})`);
-        setBatchMsg(null);
-        setBatchBusy(false);
-        return;
-      }
-      const { jobId, token } = json.data;
-      for (let i = 0; i < POLL_MAX; i += 1) {
-        await new Promise((r) => setTimeout(r, POLL_MS));
-        const poll = await fetch(
-          `/api/posts/seo-suggest-batch/${jobId}?token=${encodeURIComponent(token)}`,
-        );
-        if (!poll.ok) continue;
-        const body = (await poll.json().catch(() => null)) as BatchPollBody | null;
-        if (body?.code !== 0 || !body?.data) continue;
-        const d = body.data;
-        if (d.state === "completed") {
-          const failed = d.failedIds?.length ?? 0;
-          const done = (d.total ?? ids.length) - (d.skipped ?? 0) - failed;
-          setBatchMsg(`完成:补全 ${done} · 跳过 ${d.skipped ?? 0} · 失败 ${failed}`);
-          setSelected(new Set());
-          router.refresh();
-          setBatchBusy(false);
-          return;
-        }
-        if (d.state === "failed") {
-          setBatchError(d.error ?? "批量任务失败");
-          setBatchMsg(null);
-          setBatchBusy(false);
-          return;
-        }
+    void runBatchJob({
+      endpoint: "/api/posts/seo-suggest-batch",
+      body: { ids },
+      pollUrl: (j, t) => `/api/posts/seo-suggest-batch/${j}?token=${encodeURIComponent(t)}`,
+      pollMs: POLL_MS,
+      pollMax: POLL_MAX,
+      timeoutMsg: "轮询超时:任务仍在后台执行,稍后刷新列表查看结果",
+      onProgress: (d) =>
         setBatchMsg(
           `补全中 ${d.processed ?? 0}/${d.total ?? ids.length}(跳过 ${d.skipped ?? 0} · 失败 ${
             d.failedIds?.length ?? 0
           })…`,
-        );
-      }
-      setBatchError("轮询超时:任务仍在后台执行,稍后刷新列表查看结果");
-      setBatchBusy(false);
-    } catch {
-      setBatchError("网络错误,请重试");
-      setBatchMsg(null);
-      setBatchBusy(false);
-    }
+        ),
+      onDone: (d) => {
+        const failed = d.failedIds?.length ?? 0;
+        const done = (d.total ?? ids.length) - (d.skipped ?? 0) - failed;
+        setBatchMsg(`完成:补全 ${done} · 跳过 ${d.skipped ?? 0} · 失败 ${failed}`);
+        setSelected(new Set());
+        router.refresh();
+        setBatchBusy(false);
+      },
+      onError: (m) => {
+        setBatchError(m);
+        setBatchMsg(null);
+        setBatchBusy(false);
+      },
+    });
   }
 
   /** 批量同步公众号(M17 批④):预检 skipped 由 202 携回人话;进度 processed/failedIds */
-  async function runWechatBatch(): Promise<void> {
+  function runWechatBatch(): void {
     const ids = [...selected];
     const syncedCount = rows.filter(
       (r) => ids.includes(r.id) && r.wechat?.status === "synced",
@@ -160,71 +125,49 @@ export default function PostsTable({
     setBatchBusy(true);
     setBatchError(null);
     setBatchMsg(`提交中(共 ${ids.length} 篇)…`);
-    try {
-      const res = await fetch("/api/distribute/wechat/batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      const json = (await res.json().catch(() => null)) as ApiEnvelope<{
-        jobId?: string;
-        token?: string;
-        eligible?: string[];
-        skipped?: Array<{ id: string; reason: string }>;
-      }> | null;
-      if (!res.ok || json?.code !== 0 || !json.data?.jobId || !json.data?.token) {
-        setBatchError(json?.message ?? `提交失败(${res.status})`);
-        setBatchMsg(null);
-        setBatchBusy(false);
-        return;
-      }
-      const { jobId, token, eligible, skipped } = json.data;
-      if (!eligible || eligible.length === 0) {
-        setBatchMsg(null);
-        setBatchError(
-          `没有可同步的文章:${(skipped ?? []).map((s) => s.reason).join(";") || "资格预检未通过"}`,
-        );
-        setBatchBusy(false);
-        return;
-      }
-      const skipNote = (skipped ?? []).length > 0 ? ` · 跳过 ${skipped?.length}` : "";
-      for (let i = 0; i < POLL_MAX; i += 1) {
-        await new Promise((r) => setTimeout(r, POLL_MS));
-        const poll = await fetch(
-          `/api/distribute/wechat/batch/${jobId}?token=${encodeURIComponent(token)}`,
-        );
-        if (!poll.ok) continue;
-        const body = (await poll.json().catch(() => null)) as BatchPollBody | null;
-        if (body?.code !== 0 || !body?.data) continue;
-        const d = body.data;
-        if (d.state === "completed") {
-          const failed = d.failedIds?.length ?? 0;
-          const done = (d.total ?? ids.length) - failed;
-          setBatchMsg(`同步完成:成功 ${done} · 失败 ${failed}${skipNote}(失败篇目行内可单篇重试)`);
-          setSelected(new Set());
-          router.refresh();
-          setBatchBusy(false);
-          return;
+    let skipNote = ""; // 预检跳过数由 202 携回(批量进度体只有 processed/total/failedIds)
+    void runBatchJob<{
+      jobId?: string;
+      token?: string;
+      eligible?: string[];
+      skipped?: Array<{ id: string; reason: string }>;
+    }>({
+      endpoint: "/api/distribute/wechat/batch",
+      body: { ids },
+      pollUrl: (j, t) => `/api/distribute/wechat/batch/${j}?token=${encodeURIComponent(t)}`,
+      pollMs: POLL_MS,
+      pollMax: POLL_MAX,
+      timeoutMsg: "轮询超时:任务仍在后台执行,稍后刷新列表或到「内容分发」页查看结果",
+      onSubmitted: (d) => {
+        if (!d.eligible || d.eligible.length === 0) {
+          return `没有可同步的文章:${
+            (d.skipped ?? []).map((s) => s.reason).join(";") || "资格预检未通过"
+          }`;
         }
-        if (d.state === "failed") {
-          setBatchError(d.error ?? "批量同步任务失败");
-          setBatchMsg(null);
-          setBatchBusy(false);
-          return;
-        }
+        const n = (d.skipped ?? []).length;
+        skipNote = n > 0 ? ` · 跳过 ${n}` : "";
+        return null;
+      },
+      onProgress: (d) =>
         setBatchMsg(
           `同步中 ${d.processed ?? 0}/${d.total ?? ids.length}(失败 ${
             d.failedIds?.length ?? 0
           }${skipNote})…`,
-        );
-      }
-      setBatchError("轮询超时:任务仍在后台执行,稍后刷新列表或到「内容分发」页查看结果");
-      setBatchBusy(false);
-    } catch {
-      setBatchError("网络错误,请重试");
-      setBatchMsg(null);
-      setBatchBusy(false);
-    }
+        ),
+      onDone: (d) => {
+        const failed = d.failedIds?.length ?? 0;
+        const done = (d.total ?? ids.length) - failed;
+        setBatchMsg(`同步完成:成功 ${done} · 失败 ${failed}${skipNote}(失败篇目行内可单篇重试)`);
+        setSelected(new Set());
+        router.refresh();
+        setBatchBusy(false);
+      },
+      onError: (m) => {
+        setBatchError(m);
+        setBatchMsg(null);
+        setBatchBusy(false);
+      },
+    });
   }
 
   const showBatchBar = selected.size > 0 || batchMsg !== null || batchError !== null;

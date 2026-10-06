@@ -6,7 +6,7 @@
  */
 import { type NextRequest } from "next/server";
 
-import { type WechatSyncResult } from "@/lib/distribute/wechat-sync";
+import { type WechatSyncResult } from "@/lib/distribute/wechat-sync-run";
 import { getQueue, QUEUE_DISTRIBUTE } from "@/lib/queue";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
