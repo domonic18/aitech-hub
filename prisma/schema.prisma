@@ -635,3 +635,21 @@ model PublishMediaCache {
   @@unique([channel, sourceKey], map: "uq_publish_media_channel_key")
   @@map("publish_media_cache")
 }
+
+/// 搜索 Drawer 会话索引(K2.5,arch/04 §3):id 即 LangGraph thread_id(uuid),
+/// 消息轨迹由 LangGraph checkpoint-postgres 表承载(框架 setup() 自管,不进
+/// migrations——arch/03 边界);本表只做「线程列表 + 归属 + 30 天清退」锚点。
+/// visitor 为匿名 cookie 身份(ah_av uuid);30 天未活跃由 worker 日清连
+/// checkpoint 一起删。tokens_total 为 50k 护栏累计口径(usage_metadata 聚合)。
+model SearchAgentSession {
+  id            String   @id @db.VarChar(36)
+  visitorId     String   @map("visitor_id") @db.VarChar(36)
+  title         String?  @db.VarChar(40) // 首条用户消息前 20 字(run 收尾派生)
+  tokensTotal   Int      @default(0) @map("tokens_total")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastMessageAt DateTime @default(now()) @map("last_message_at") @db.Timestamptz(6)
+
+  @@index([visitorId, lastMessageAt(sort: Desc)], map: "idx_search_agent_session_visitor_recent")
+  @@index([lastMessageAt], map: "idx_search_agent_session_last_message")
+  @@map("search_agent_session")
+}

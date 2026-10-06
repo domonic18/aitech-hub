@@ -10,6 +10,8 @@ import { logger } from "../logger";
 export const AI_USAGE_ROLE_ASR = "asr";
 export const AI_USAGE_ROLE_SEO = "seo";
 export const AI_USAGE_ROLE_COVER_PROMPT = "cover-prompt";
+/** K2.5 Drawer 会话 agent(绑定复用 search,计数独立——与答案卡 100/日 互不侵占) */
+export const AI_USAGE_ROLE_SEARCH_AGENT = "search_agent";
 
 export type AiUsageStatus = "ok" | "degraded" | "failed";
 
