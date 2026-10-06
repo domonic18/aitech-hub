@@ -26,6 +26,9 @@ export const QUEUE_GITHUB = "github";
 /** 文生图封面(M14 批⑥,验收反馈问题6):编辑器「AI 生成候选」→ worker 生图入
  * 媒体库 + 候选落库,编辑器凭 token 轮询;云厂商生图 10-30s,不占请求(请求内禁秒级任务) */
 export const QUEUE_COVER_GEN = "cover-gen";
+/** 批量 SEO 补全(M16 问题8,仅补空缺):文章管理多选 → 单批次 job 顺序逐篇;
+ * LLM 秒级调用 × ≤50 篇,并发 1 防打爆绑定模型,lockDuration 600s 兜底 */
+export const QUEUE_SEO_BATCH = "seo-batch";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -37,6 +40,7 @@ export const QUEUE_NAMES = [
   QUEUE_SUMMARIZER,
   QUEUE_GITHUB,
   QUEUE_COVER_GEN,
+  QUEUE_SEO_BATCH,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -56,6 +60,9 @@ export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
 
 /** cover-gen 队列 job name 契约(M14 批⑥;generate 为缺省路径,编辑器手动触发) */
 export const COVER_JOB_GEN = "generate";
+
+/** seo-batch 队列 job name 契约(M16;batch 为缺省路径,文章管理手动触发) */
+export const SEO_JOB_BATCH = "batch";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细;
  * purge-usage-log 清理 AI 用量台账,M14 批⑦) */

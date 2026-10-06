@@ -16,6 +16,7 @@ import {
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_STATS,
+  QUEUE_SEO_BATCH,
   QUEUE_SUMMARIZER,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
@@ -33,6 +34,7 @@ import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
+import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
 import { processMediaJob, transferMediaJob } from "./media";
@@ -108,6 +110,9 @@ const PROCESSORS: Record<string, Processor> = {
   [QUEUE_SUMMARIZER]: (job) => summarizeTextJob(job.data as SummarizeJobData),
   // 文生图封面(M14 批⑥):云厂商生图 10-30s,按张计费不自动重试(attempts=1 入队侧钉)
   [QUEUE_COVER_GEN]: (job) => coverGenJob(job.data as CoverGenJobData),
+  // 批量 SEO 补全(M16 问题8,仅补空缺):单批次 job 顺序逐篇 LLM 调用,进度逐篇上报
+  [QUEUE_SEO_BATCH]: (job) =>
+    seoBatchJob(job.data as SeoBatchJobData, (p) => job.updateProgress(p)),
   // GitHub 项目同步(二期③/M11):tick(5min)扫到期白名单仓逐仓入队;sync 为缺省路径
   [QUEUE_GITHUB]: async (job) => {
     if (job.name === GITHUB_JOB_TICK) {
@@ -245,12 +250,12 @@ async function main(): Promise<void> {
 
   for (const name of Object.keys(PROCESSORS)) {
     // transfer 抓外链、interpreter 下载+抽轨+云端 AI 调用、summarizer 抓原文+LLM、
-    // cover-gen 云厂商生图(10-30s+)耗时长,放宽锁续期;interpreter 并发钉 1
-    // (ffmpeg 抽轨是 CPU 峰值,arch/02 §3.2)
+    // cover-gen 云厂商生图(10-30s+)耗时长,放宽锁续期;interpreter/seo-batch 并发钉 1
+    // (interpreter:ffmpeg 抽轨 CPU 峰值 arch/02 §3.2;seo-batch:逐篇 LLM 防打爆模型速率)
     const opts =
       name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER || name === QUEUE_COVER_GEN
         ? { lockDuration: 300_000 }
-        : name === QUEUE_INTERPRETER
+        : name === QUEUE_INTERPRETER || name === QUEUE_SEO_BATCH
           ? { concurrency: 1, lockDuration: 600_000 }
           : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });

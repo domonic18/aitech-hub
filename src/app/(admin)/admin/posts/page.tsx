@@ -1,20 +1,20 @@
 /**
- * 文章管理列表(M5-a;原型 admin-posts.html):四分段 + 搜索 + 分页,整页服务端渲染;
- * 仅行内操作是客户端组件(发布/下架/软删成功后 router.refresh 重拉本页)。
- * 旧文保真:WP 迁移行底色区分,操作收敛为 查看/下架(无编辑/删除)。
+ * 文章管理列表(M5-a;原型 admin-posts.html):四分段 + 搜索 + 分页,整页服务端渲染。
+ * 表格主体是客户端组件 PostsTable(M16 问题8:行多选 + 批量 SEO 补全),本页只做
+ * 数据编排与瘦身映射(不把 contentMd 等重字段传给客户端);分页以 children 注入
+ * (AdminPagination 需服务端 hrefFor)。旧文保真:WP 迁移行底色区分,操作收敛为
+ * 查看/下架(无编辑/删除)。
  */
 import Link from "next/link";
 
 import ImportPostsButton from "@/components/admin/ImportPostsButton";
-import PostRowOps from "@/components/admin/PostRowOps";
-import PostStatusBadge from "@/components/admin/PostStatusBadge";
+import PostsTable from "@/components/admin/PostsTable";
 import {
   ADMIN_LIST_SEGMENTS,
   postDisplayState,
   type AdminListSegment,
 } from "@/lib/content/post-schema";
 import { ADMIN_PAGE_SIZE, listPostsAdmin } from "@/lib/content/posts-admin";
-import { formatCnDateTime } from "@/lib/datetime";
 import { postPath, postPathSegment } from "@/lib/content/post-path";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 import AdminPagination from "@/components/admin/AdminPagination";
@@ -52,6 +52,20 @@ export default async function AdminPostsPage({
   const totalPages = Math.max(1, Math.ceil(total / ADMIN_PAGE_SIZE));
   // M5-d 回填后旧文均可编辑,仅当仍存在未转 MD 的 WP 行才提示保真只读
   const hasLegacy = items.some((row) => row.wpPostId !== null && !row.contentMd);
+
+  // 客户端行视图瘦身:id/path 提前在服务端定形(bigint 不跨界),tags 拍平名字
+  const rows = items.map((row) => ({
+    id: row.id.toString(),
+    title: row.title,
+    state: postDisplayState(row),
+    legacy: row.wpPostId !== null,
+    pathSegment: postPathSegment(row.id, row.slug),
+    sitePath: postPath(row.id, row.slug),
+    categoryName: row.category.name,
+    tagNames: row.tags.map(({ tag }) => tag.name),
+    viewsCount: Number(row.viewsCount),
+    publishedAt: row.publishedAt,
+  }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -112,95 +126,7 @@ export default async function AdminPostsPage({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line text-xs text-text-3">
-              <th className="px-4 py-2.5 font-medium">文章</th>
-              <th className="px-3 py-2.5 font-medium">分类 / 标签</th>
-              <th className="px-3 py-2.5 font-medium">状态</th>
-              <th className="px-3 py-2.5 text-right font-medium">浏览</th>
-              <th className="px-3 py-2.5 font-medium">发布时间</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((row) => {
-              const state = postDisplayState(row);
-              const legacy = row.wpPostId !== null;
-              return (
-                <tr
-                  key={row.id.toString()}
-                  className={`border-b border-line last:border-b-0 ${legacy ? "bg-panel-2" : ""}`}
-                >
-                  <td className="max-w-[420px] px-4 py-3">
-                    {/* 点击标题 = 查看正文(admin 预览页,草稿/已发布均可看);编辑走右侧按钮 */}
-                    <Link
-                      href={`/admin/posts/${row.id.toString()}/preview`}
-                      className={`block truncate font-medium hover:text-accent ${
-                        legacy ? "text-text-2" : "text-text-1"
-                      }`}
-                    >
-                      {row.title}
-                      {legacy && (
-                        <span className="ml-2 rounded-sm border border-line px-1 py-px align-middle text-[10px] text-text-3">
-                          旧文保真
-                        </span>
-                      )}
-                    </Link>
-                    <div
-                      className="mt-0.5 truncate font-mono text-[11px] text-text-3"
-                      title={postPath(row.id, row.slug)}
-                    >
-                      /post/{postPathSegment(row.id, row.slug)} ·{" "}
-                      {legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
-                      <Link
-                        href={postPath(row.id, row.slug)}
-                        target="_blank"
-                        className="ml-2 text-text-3 underline decoration-dotted hover:text-accent"
-                      >
-                        前台查看
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="rounded-sm bg-accent-dim px-1.5 py-0.5 text-[11px] text-accent">
-                      {row.category.name}
-                    </span>
-                    {row.tags.map(({ tag }) => (
-                      <span
-                        key={tag.name}
-                        className="ml-1 rounded-sm bg-panel-2 px-1.5 py-0.5 text-[11px] text-text-2"
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </td>
-                  <td className="px-3 py-3">
-                    <PostStatusBadge state={state} />
-                  </td>
-                  <td className="px-3 py-3 text-right font-mono text-xs">
-                    {row.viewsCount.toLocaleString("en-US")}
-                  </td>
-                  <td className="px-3 py-3 font-mono text-xs text-text-2">
-                    {row.publishedAt ? formatCnDateTime(row.publishedAt) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <PostRowOps id={row.id.toString()} state={state} legacy={legacy} />
-                  </td>
-                </tr>
-              );
-            })}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
-                  没有符合条件的文章
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-
+      <PostsTable rows={rows}>
         <AdminPagination
           page={page}
           totalPages={totalPages}
@@ -208,11 +134,11 @@ export default async function AdminPostsPage({
           hrefFor={(p) => listHref(segment, p, q)}
           unit="篇"
         />
-      </div>
+      </PostsTable>
 
       <div className="font-mono text-[11px] text-text-3">
         GET /api/posts?status=&amp;page=(M5-c) · POST /api/posts · PUT /api/posts/[id] · POST
-        /api/posts/[id]/publish|unpublish · DELETE 软删
+        /api/posts/[id]/publish|unpublish · DELETE 软删 · POST /api/posts/seo-suggest-batch(M16)
       </div>
     </div>
   );
