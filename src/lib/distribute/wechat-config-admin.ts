@@ -11,6 +11,7 @@ import { decryptSecret, encryptSecret, maskSecret } from "../crypto/secret-box";
 import { TEST_STATUS_FAIL, TEST_STATUS_OK } from "../ai/constants";
 import { WECHAT_DEFAULT_AUTHOR } from "./channels";
 import { DistributeError } from "./errors";
+import { WECHAT_THEME_IDS } from "./wechat-themes";
 
 /** 单例行锚点(全库唯一 id;消费方禁再裸写 id:1) */
 export const WECHAT_CONFIG_ID = 1;
@@ -20,6 +21,8 @@ export interface WechatConfigView {
   appid: string;
   appSecretMask: string | null;
   author: string | null;
+  /** 渠道默认正文主题 id(wechat-themes 注册表;单篇弹窗可覆盖) */
+  theme: string;
   autoSyncEnabled: boolean;
   enabled: boolean;
   lastTestedAt: Date | null;
@@ -38,6 +41,7 @@ export async function getWechatConfigAdmin(): Promise<WechatConfigView> {
     appid: row.appid,
     appSecretMask: row.appSecretMask,
     author: row.author,
+    theme: row.theme,
     autoSyncEnabled: row.autoSyncEnabled,
     enabled: row.enabled,
     lastTestedAt: row.lastTestedAt,
@@ -53,6 +57,8 @@ export const WechatConfigUpdateSchema = z.object({
   /** 空/缺省 = 保留旧 secret;非空 = 换钥重加密 */
   appSecret: z.string().trim().max(400).optional().nullable(),
   author: z.string().trim().max(64).optional().nullable(),
+  /** 缺省 = 保留现值(e2e/旧客户端 PUT 不带 theme 不落 400) */
+  theme: z.enum(WECHAT_THEME_IDS).optional(),
   autoSyncEnabled: z.boolean(),
   enabled: z.boolean(),
 });
@@ -61,7 +67,7 @@ export type WechatConfigUpdateInput = z.infer<typeof WechatConfigUpdateSchema>;
 
 /** 更新单例;appSecret 空/缺省 = 保留旧值,非空 = 换钥重加密 */
 export async function updateWechatConfig(input: WechatConfigUpdateInput): Promise<void> {
-  await getWechatConfigAdmin(); // 确保单例行存在(首访落默认行)
+  const current = await getWechatConfigAdmin(); // 确保单例行存在(首访落默认行)
   const secret = input.appSecret?.trim() ? input.appSecret.trim() : null;
   await prisma.wechatConfig.update({
     where: { id: WECHAT_CONFIG_ID },
@@ -69,6 +75,7 @@ export async function updateWechatConfig(input: WechatConfigUpdateInput): Promis
       appid: input.appid,
       ...(secret ? { appSecretEnc: encryptSecret(secret), appSecretMask: maskSecret(secret) } : {}),
       author: input.author?.trim() ? input.author.trim() : null,
+      theme: input.theme ?? current.theme,
       autoSyncEnabled: input.autoSyncEnabled,
       enabled: input.enabled,
     },
@@ -91,6 +98,8 @@ export interface WechatRuntimeConfig {
   appid: string;
   appSecret: string | null;
   author: string;
+  /** 渠道默认正文主题 id */
+  theme: string;
 }
 
 export async function getWechatRuntimeConfig(): Promise<WechatRuntimeConfig | null> {
@@ -113,6 +122,7 @@ export async function getWechatRuntimeConfig(): Promise<WechatRuntimeConfig | nu
     appid: row.appid,
     appSecret: secret,
     author: row.author?.trim() ? row.author.trim() : WECHAT_DEFAULT_AUTHOR,
+    theme: row.theme,
   };
 }
 

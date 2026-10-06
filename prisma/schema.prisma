@@ -578,6 +578,7 @@ model WechatConfig {
   appSecretEnc      String?   @map("app_secret_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
   appSecretMask     String?   @map("app_secret_mask") @db.VarChar(20) // 脱敏回显冗余列
   author            String?   @db.VarChar(64) // 图文 author 字段(空=管道缺省「一起AI」)
+  theme             String    @default("default") @db.VarChar(20) // 默认正文主题 id(wechat-themes 注册表;同步弹窗单篇可覆盖)
   autoSyncEnabled   Boolean   @default(false) @map("auto_sync_enabled") // 发布即自动推草稿
   enabled           Boolean   @default(false) // 渠道总开关:配置并测试通过后再开
   lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
@@ -603,6 +604,7 @@ model PublishChannel {
   title     String?   @db.VarChar(500) // 推送标题快照(≤64 字,接口上限)
   digest    String?   @db.VarChar(500) // 摘要快照(≤120 字,接口上限)
   thumbPath String?   @map("thumb_path") @db.VarChar(500) // 封面快照(站内路径)
+  theme     String?   @db.VarChar(20) // 正文主题快照(上次推送所用 id;空=渠道默认,重推沿用)
   attempts  Int       @default(0) @map("attempts") // 推送尝试次数(观测)
   lastError String?   @map("last_error") @db.VarChar(500)
   syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)

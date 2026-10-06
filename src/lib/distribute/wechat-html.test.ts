@@ -96,3 +96,27 @@ describe("外链编号与 References", () => {
     expect(html).toContain("[1] https://ex.com/a</p>");
   });
 });
+
+describe("renderWechatHtml 主题(wechat-themes)", () => {
+  const MD = "## 绿色标题\n\n**重点**与`code`。\n\n> 引用\n\n[外链](https://ex.com/a)";
+
+  it("green 主题:标题/加粗/引用/行内码/链接角标随主题变色,正文段落保持深灰", () => {
+    const { html } = renderWechatHtml(MD, "green");
+    expect(html).toContain("font-size:16px;font-weight:600;color:#2b9939;"); // h2
+    expect(html).toContain('<strong style="font-weight:600;color:#2b9939;">重点</strong>');
+    expect(html).toContain("border-left:3px solid #2b9939;background-color:#f0f9f1");
+    expect(html).toContain("color:#1e7e34;"); // 行内码
+    expect(html).toContain('<span style="color:#2b9939;">'); // 链接
+    expect(html).toContain('<sup style="color:#2b9939;font-size:11px;">[1]</sup>');
+    expect(html).toContain("color:#3f3f46;line-height:1.75;"); // 正文深灰不变
+    expect(html).not.toContain("#1f2328"); // 默认标题色不出现
+  });
+
+  it("缺省/未知主题 id 回退默认主题(渲染永不抛)", () => {
+    const fallback = renderWechatHtml(MD);
+    expect(renderWechatHtml(MD, undefined).html).toBe(fallback.html);
+    expect(renderWechatHtml(MD, "not-a-theme").html).toBe(fallback.html);
+    expect(fallback.html).toContain("color:#1f2328;"); // 默认标题黑
+    expect(fallback.html).not.toContain("#2b9939");
+  });
+});

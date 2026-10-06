@@ -85,6 +85,7 @@ const READY_CFG = {
   appid: "wx123",
   appSecret: "sec",
   author: "一起AI",
+  theme: "default",
 };
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
