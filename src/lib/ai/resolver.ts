@@ -44,7 +44,8 @@ export function normalizeExtraParams(v: unknown): Record<string, unknown> {
 /** 角色日配额默认值(后台未设置时兜底;设置入口 /admin/models 任务绑定卡) */
 export const DEFAULT_DAILY_MAX = 100;
 
-/** 角色日配额(条/日;ai_task_binding.daily_max,null=默认;interpret/summarize 各自消费,M15 批② 起 UI 同步可配) */
+/** 角色日配额(条/日;ai_task_binding.daily_max,null=默认;interpret/summarize/search
+ * 各自消费——K1/K2 起 search 答案路由按 ai_usage_log 当日 ok/degraded 行数比对,M15 批② 起 UI 同步可配) */
 export async function getRoleDailyMax(role: AiTaskRole): Promise<number> {
   const binding = await prisma.aiTaskBinding.findUnique({
     where: { role },

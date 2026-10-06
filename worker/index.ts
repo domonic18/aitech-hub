@@ -27,7 +27,7 @@ import {
   getQueue,
 } from "../src/lib/queue";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
-import { purgeVisitLogs } from "../src/lib/stats/service";
+import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
@@ -50,13 +50,17 @@ const PROCESSORS: Record<string, Processor> = {
     return summary;
   },
   [QUEUE_STATS]: async (job) => {
-    // 访问明细 7 天保留期清理(M10 批⑥;与 flush 同队列按 job.name 分流)
+    // 明细保留期清理(M10 批⑥ 访问 7 天;2026-10-06 搜索词 180 天;与 flush 同队列按 job.name 分流)
     if (job.name === STATS_JOB_PURGE) {
-      const removed = await purgeVisitLogs();
-      if (removed > 0) {
-        console.log(JSON.stringify({ event: "stats.visit_log.purge", removed }));
+      const visitRemoved = await purgeVisitLogs();
+      if (visitRemoved > 0) {
+        console.log(JSON.stringify({ event: "stats.visit_log.purge", removed: visitRemoved }));
       }
-      return { removed };
+      const searchRemoved = await purgeSearchLogs();
+      if (searchRemoved > 0) {
+        console.log(JSON.stringify({ event: "stats.search_log.purge", removed: searchRemoved }));
+      }
+      return { removed: visitRemoved + searchRemoved };
     }
     // AI 用量台账 90 天保留期清理(M14 批⑦;与手动清理同口径 usage-log.ts)
     if (job.name === STATS_JOB_USAGE_PURGE) {

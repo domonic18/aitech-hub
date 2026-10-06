@@ -8,6 +8,7 @@
  */
 import EnvPanel from "@/components/admin/stats/EnvPanel";
 import HotPagesTable from "@/components/admin/stats/HotPagesTable";
+import HotSearchTermsTable from "@/components/admin/stats/HotSearchTermsTable";
 import KpiCards from "@/components/admin/stats/KpiCards";
 import RecentVisitsTable from "@/components/admin/stats/RecentVisitsTable";
 import SourcePanel from "@/components/admin/stats/SourcePanel";
@@ -15,6 +16,7 @@ import TrendChart from "@/components/admin/stats/TrendChart";
 import {
   getClientPanel,
   getHotPages,
+  getHotSearchTerms,
   getRecentVisits,
   getReferrerPanel,
   getVisitOverview,
@@ -45,14 +47,16 @@ export default async function AdminStatsPage({
   const trend = parseTrend(sp.trend);
   const hot = parseHot(sp.hot);
 
-  const [overview, series, referrers, clients, hotPages, recentVisits] = await Promise.all([
-    getVisitOverview(),
-    getVisitSeries(trend),
-    getReferrerPanel(7),
-    getClientPanel(7),
-    getHotPages(hot),
-    getRecentVisits(30),
-  ]);
+  const [overview, series, referrers, clients, hotPages, hotTerms, recentVisits] =
+    await Promise.all([
+      getVisitOverview(),
+      getVisitSeries(trend),
+      getReferrerPanel(7),
+      getClientPanel(7),
+      getHotPages(hot),
+      getHotSearchTerms(hot),
+      getRecentVisits(30),
+    ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -63,6 +67,8 @@ export default async function AdminStatsPage({
         <EnvPanel panel={clients} />
       </div>
       <HotPagesTable rows={hotPages} range={hot} trend={trend} />
+      {/* 搜索词排行(2026-10-06):与热门页面共用 hot 分段;行级直插准实时 */}
+      <HotSearchTermsTable rows={hotTerms} range={hot} trend={trend} />
       <RecentVisitsTable rows={recentVisits} />
     </div>
   );

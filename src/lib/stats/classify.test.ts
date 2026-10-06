@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyReferrer, isBotUa, normalizePagePath, parseClient, visitorHash } from "./classify";
+import {
+  classifyReferrer,
+  isBotUa,
+  normalizePagePath,
+  normalizeSearchTerm,
+  parseClient,
+  visitorHash,
+} from "./classify";
 
 describe("isBotUa(requirement §3.5 去爬虫口径)", () => {
   it("已知爬虫/预览器 → true", () => {
@@ -120,5 +127,20 @@ describe("normalizePagePath", () => {
     expect(normalizePagePath("/articles/?page=2#top")).toBe("/articles/");
     expect(normalizePagePath("articles")).toBe("/articles");
     expect(normalizePagePath(`/${"a".repeat(600)}/`)).toHaveLength(500);
+  });
+});
+
+describe("normalizeSearchTerm", () => {
+  it("trim + 连续空白折叠为单空格,截 100 字", () => {
+    expect(normalizeSearchTerm("  MCP   实战 ")).toBe("MCP 实战");
+    expect(normalizeSearchTerm("\t\nAI  agent\u3000指南")).toBe("AI agent 指南");
+    expect(normalizeSearchTerm("词".repeat(120))).toHaveLength(100);
+  });
+
+  it("保留原样大小写;纯空白 → 空串", () => {
+    expect(normalizeSearchTerm("DeepSeek")).toBe("DeepSeek");
+    expect(normalizeSearchTerm("deepseek")).toBe("deepseek");
+    expect(normalizeSearchTerm("   ")).toBe("");
+    expect(normalizeSearchTerm("")).toBe("");
   });
 });
