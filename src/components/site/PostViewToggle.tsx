@@ -8,7 +8,8 @@
  * /category、/tag 路由)。
  * 2026-10-05 二次反馈:卡片视图需要更宽版心(多列卡片,两侧留白收窄)——
  * 本组件同时接管「视图区版心」:列表 768(阅读口径)、卡片 1200(--site-max-w,
- * 列数由网格 auto-fill 按分辨率自适);footer(分页)渲染在版心内随视图同宽。
+ * 列数由网格 auto-fill 按分辨率自适);footer(分页)渲染在版心内随视图同宽;
+ * 2026-10-06 反馈:topBar(筛选条)同样随视图版心同宽,与内容左右缘对齐。
  */
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -25,11 +26,14 @@ export default function PostViewToggle({
   list,
   cards,
   footer,
+  topBar,
 }: {
   list: ReactNode;
   cards: ReactNode;
   /** 视图区尾部内容(分页),随当前视图版心同宽 */
   footer?: ReactNode;
+  /** 视图区顶部内容(筛选条),随当前视图版心同宽(2026-10-06 反馈:与内容对齐) */
+  topBar?: ReactNode;
 }): React.ReactElement {
   const [view, setView] = useState<ViewKind>("list");
   useEffect(() => {
@@ -54,6 +58,7 @@ export default function PostViewToggle({
         view === "cards" ? "mx-auto w-full max-w-[var(--site-max-w)]" : "mx-auto w-full max-w-3xl"
       }
     >
+      {topBar ? <div className="mb-4">{topBar}</div> : null}
       <div className="flex justify-end">
         <div
           className="inline-flex overflow-hidden rounded-sm border border-line"
