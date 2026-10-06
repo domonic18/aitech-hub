@@ -3,6 +3,7 @@ import { Worker, type Processor, type Job } from "bullmq";
 import { env } from "../src/lib/env";
 import { SITE_TZ } from "../src/lib/datetime";
 import {
+  AGENT_SESSION_PURGE_CRON,
   CRAWL_JOB_AI_BACKFILL,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
@@ -20,6 +21,7 @@ import {
   QUEUE_STATS,
   QUEUE_SEO_BATCH,
   QUEUE_SUMMARIZER,
+  STATS_JOB_AGENT_PURGE,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
   STATS_JOB_USAGE_PURGE,
@@ -31,6 +33,8 @@ import {
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
+import { purgeAgentSessions } from "../src/lib/agent/purge";
+import { ensureAgentCheckpointer } from "../src/lib/agent/checkpointer";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
@@ -71,6 +75,14 @@ const PROCESSORS: Record<string, Processor> = {
       const removed = await purgeAiUsageOlderThan();
       if (removed > 0) {
         console.log(JSON.stringify({ event: "ai_usage.purge", removed }));
+      }
+      return { removed };
+    }
+    // Drawer 会话 30 天自动清退(K2.5;行+checkpoint 同删,残留由下轮再扫)
+    if (job.name === STATS_JOB_AGENT_PURGE) {
+      const removed = await purgeAgentSessions();
+      if (removed > 0) {
+        console.log(JSON.stringify({ event: "agent.session.purge", removed }));
       }
       return { removed };
     }
@@ -214,6 +226,20 @@ async function scheduleUsageLogPurge(): Promise<void> {
   );
 }
 
+/** Drawer 会话清退:每日 04:33 清 30 天前留档(K2.5;行+checkpoint 同删) */
+async function scheduleAgentSessionPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "agent-session-purge",
+    { pattern: AGENT_SESSION_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: STATS_JOB_AGENT_PURGE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -298,9 +324,23 @@ async function main(): Promise<void> {
   await scheduleMediaAudit();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();
+  await scheduleAgentSessionPurge();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
+
+  // checkpoint 表框架双保险(web 侧 getAgentGraph 懒加载为主;失败不拦 boot,
+  // 首个 agent 任务内部 ensure 重试)
+  try {
+    await ensureAgentCheckpointer();
+  } catch (e) {
+    console.warn(
+      JSON.stringify({
+        event: "agent.checkpoint_setup_deferred",
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+  }
 
   console.log(
     JSON.stringify({

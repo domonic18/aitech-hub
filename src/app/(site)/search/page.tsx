@@ -7,6 +7,7 @@
  */
 import type { Metadata } from "next";
 
+import AgentDrawer from "@/components/site/agent/AgentDrawer";
 import AnswerCard from "@/components/site/search/AnswerCard";
 import GenTime from "@/components/site/search/GenTime";
 import SearchConsole from "@/components/site/search/SearchConsole";
@@ -59,6 +60,8 @@ export default async function SearchPage({
           )}
         </>
       ) : null}
+      {/* K2.5 Drawer:搜索场景深挖会话;chips/「继续深挖」经 search:agent-ask 唤起 */}
+      <AgentDrawer />
     </section>
   );
 }

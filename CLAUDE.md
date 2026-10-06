@@ -21,13 +21,14 @@
 
 | 主题                          | 文档                             |
 | ----------------------------- | -------------------------------- |
-| 数据源/采集/AI Agent(占位)   | docs/arch/01、02、04             |
+| 数据源/采集/AI Agent          | docs/arch/01、02、04             |
 | 表结构/迁移纪律               | docs/arch/03-data-model          |
 | 服务分层/异步任务/接口清单    | docs/arch/05-services            |
 | 目录与规范细节                | docs/arch/06-project-structure   |
 | 文章 URL 终态(/post/id-slug) | docs/arch/07-frontend §2         |
 | 媒体/视频/清洗                | docs/arch/08-media               |
 | 公众号分发(微信草稿箱同步)   | docs/arch/05 §4.1 + arch/03 §2.4 |
+| 搜索/AI 答案卡/Drawer 会话 Agent | docs/arch/04 §3(检索/答案卡/K2.5) |
 | UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
 | 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
 | 测试规范                      | docs/standard/01-testing         |

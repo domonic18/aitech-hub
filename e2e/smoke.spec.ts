@@ -14,7 +14,8 @@ import sharp from "sharp";
  * AI 治理与解读配额(M9)/主题三段式与首页带可配置(M10)/GitHub 项目展示三件套(M11)/
  * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)/
  * 用量统计看板与牌价·封面工作流冒烟(M14)/K1 三域统一检索分组命中(K1)/
- * 公众号同步草稿:配置卡+未就绪 400+弹窗预填+批量 skipped+绑定重置(M17)。
+ * 公众号同步草稿:配置卡+未就绪 400+弹窗预填+批量 skipped+绑定重置(M17)/
+ * K2.5 Drawer 深挖会话:线程 API 面+唤起预填+无绑定降级+侧栏删除(K2.5)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -2609,4 +2610,106 @@ test("29. 批量同步与绑定重置(M17:空/超限 400/旧文 skipped/清 medi
     await prisma.post.deleteMany({ where: { id: post.id } });
     await prisma.category.deleteMany({ where: { slug: "e2e-wxb" } });
   }
+});
+
+test("30. K2.5 Drawer 深挖会话:线程 API 面(归属/删除)/Drawer 唤起预填/无绑定直发降级/侧栏删除", async ({
+  page,
+  request,
+  playwright,
+}) => {
+  // 30.1 线程 API 面(APIRequestContext 独立 cookie jar:首访下发 ah_av)
+  const E2E_ORIGIN = new URL(process.env.E2E_BASE_URL ?? "http://localhost:3000").origin;
+  const first = await request.get("/api/search/agent/threads");
+  expect(first.status()).toBe(200);
+  expect(first.headers()["set-cookie"] ?? "").toContain("ah_av=");
+  expect(((await first.json()) as { data: unknown[] }).data).toEqual([]);
+
+  // 新建(同源校验:无 Origin → 403;带 Origin → threadId uuid)
+  const noOrigin = await request.post("/api/search/agent/threads", { data: {} });
+  expect(noOrigin.status()).toBe(403);
+  const created = await request.post("/api/search/agent/threads", {
+    headers: { origin: E2E_ORIGIN },
+    data: {},
+  });
+  expect(created.status()).toBe(200);
+  const threadId = ((await created.json()) as { data: { threadId: string } }).data.threadId;
+  expect(threadId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(
+    ((await (await request.get("/api/search/agent/threads")).json()) as { data: unknown[] }).data,
+  ).toHaveLength(1);
+  // state 空轨迹(建线程后未发送;values.messages 扁平序列化契约)
+  const state = await request.get(`/api/search/agent/threads/${threadId}/state`);
+  expect(state.status()).toBe(200);
+  expect(
+    ((await state.json()) as { data: { values: { messages: unknown[] } } }).data.values.messages,
+  ).toEqual([]);
+
+  // 越权:另一访客(API jar 隔离)对他人的线程删/state → 一律 404(不泄露存在性)
+  const outsider = await playwright.request.newContext();
+  expect((await outsider.delete(`/api/search/agent/threads/${threadId}`)).status()).toBe(404);
+  expect((await outsider.get(`/api/search/agent/threads/${threadId}/state`)).status()).toBe(404);
+  await outsider.dispose();
+
+  // 本主删除 → 200;再 state 404;列表回空
+  expect(
+    (
+      await request.delete(`/api/search/agent/threads/${threadId}`, {
+        headers: { origin: E2E_ORIGIN },
+      })
+    ).status(),
+  ).toBe(200);
+  expect((await request.get(`/api/search/agent/threads/${threadId}/state`)).status()).toBe(404);
+  expect(
+    ((await (await request.get("/api/search/agent/threads")).json()) as { data: unknown[] }).data,
+  ).toHaveLength(0);
+
+  // 30.2 Drawer UI(浏览器上下文独立访客):预建带标题会话 → 唤起事件 →
+  // 侧栏行可见 + ah_av cookie 下发 + 预填不直发
+  const testStart = new Date();
+  await page.goto("/search/");
+  const ownThreadId = await page.evaluate(async () => {
+    const res = await fetch("/api/search/agent/threads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    return ((await res.json()) as { data: { threadId: string } }).data.threadId;
+  });
+  await prisma.searchAgentSession.update({
+    where: { id: ownThreadId },
+    data: { title: "k25agent 会话甲", lastMessageAt: new Date() },
+  });
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("search:agent-ask", {
+        detail: { question: "k25agent 深挖预填问题", send: false },
+      }),
+    ),
+  );
+  const drawer = page.getByRole("dialog", { name: "问助手" });
+  await expect(drawer).toBeVisible();
+  const cookies = await page.context().cookies();
+  expect(cookies.some((c) => c.name === "ah_av")).toBe(true);
+  await expect(page.getByPlaceholder(/继续深挖/)).toHaveValue("k25agent 深挖预填问题");
+  await expect(drawer.getByText("k25agent 会话甲")).toBeVisible();
+
+  // 直发无绑定模型:run 秒败收束(错误帧)——用户气泡落屏、发送钮回位、无 AI 回复
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("search:agent-ask", {
+        detail: { question: "k25agent 无绑定直发问题", send: true },
+      }),
+    ),
+  );
+  await expect(drawer.getByText("k25agent 无绑定直发问题")).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 15_000 });
+
+  // 侧栏两步删除:点删 → 确认? → 行消失
+  const row = drawer.locator('div[role="button"]', { hasText: "k25agent 会话甲" });
+  await row.getByTitle("删除会话").click();
+  await row.getByTitle("删除会话").click();
+  await expect(row).toBeHidden();
+
+  // 30.3 清退日清单测覆盖 purger;此处清场:本测创建的会话行
+  await prisma.searchAgentSession.deleteMany({ where: { createdAt: { gte: testStart } } });
 });
