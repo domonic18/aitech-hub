@@ -83,6 +83,7 @@ const CACHED: CachedAnswer = {
   total: 2,
   noHits: false,
   durationMs: 800,
+  generatedAt: "2026-10-06 12:00",
 };
 
 describe("createAnswerStream 降级与守门", () => {

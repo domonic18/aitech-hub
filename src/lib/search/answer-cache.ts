@@ -30,6 +30,8 @@ export interface CachedAnswer {
   noHits: boolean;
   /** 生成耗时(缓存回放沿用原值,前端「生成 X.Xs」口径一致) */
   durationMs: number;
+  /** 生成时刻(北京时区展示串;缓存命中回放原值,不把命中时刻当生成时刻) */
+  generatedAt: string;
 }
 
 export async function readAnswerCache(q: string): Promise<CachedAnswer | null> {

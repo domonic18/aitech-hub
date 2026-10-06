@@ -85,6 +85,7 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
         }
 
         const result = await searchAll(q);
+        const generatedAt = formatCnDateTime(new Date());
         const hasHits = result.total > 0;
         const picks = hasHits ? pickCitations(result.groups) : [];
         const bodies =
@@ -101,8 +102,9 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
           total: result.total,
           noHits: !hasHits,
           cites,
-          // 展示串直接给北京时区格式(全站时间口径红线,datetime.ts)
-          generatedAt: formatCnDateTime(new Date()),
+          // 展示串直接给北京时区格式(全站时间口径红线,datetime.ts);
+          // 缓存写入复用同一时刻,命中回放不把命中时刻当生成时刻
+          generatedAt,
         });
 
         // 流式生成:哨兵与半截哨兵扣住不外泄,只发可见前缀增量
@@ -191,6 +193,7 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
             total: result.total,
             noHits: !hasHits,
             durationMs,
+            generatedAt,
           });
         }
         closed = true;
@@ -215,13 +218,14 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
   });
 }
 
-/** 缓存回放 meta 事件(cites/total/noHits 与生成时一致) */
+/** 缓存回放 meta 事件(cites/total/noHits/generatedAt 与生成时一致;
+ * 修复前写入的存量缓存缺 generatedAt,24h 内回落命中时刻、北京格式) */
 function cachedMetaEvent(c: CachedAnswer): AnswerEvent {
   return {
     type: "meta",
     total: c.total,
     noHits: c.noHits,
     cites: c.cites,
-    generatedAt: new Date().toISOString(),
+    generatedAt: c.generatedAt ?? formatCnDateTime(new Date()),
   };
 }

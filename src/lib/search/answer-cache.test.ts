@@ -22,6 +22,7 @@ const VALUE: CachedAnswer = {
   total: 2,
   noHits: false,
   durationMs: 900,
+  generatedAt: "2026-10-06 12:00",
 };
 
 describe("键归一", () => {
