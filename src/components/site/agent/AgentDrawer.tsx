@@ -4,7 +4,7 @@
  * 答案卡追问 chips / 「继续深挖」派发 search:agent-ask(detail {question, send})
  * 唤起并预填/直发。编排:受控 threadId + 会话列表(plain fetch,无 react-query)
  * + todos 状态,内部装配 AgentRuntimeProvider。开抽屉才挂 Provider
- * (不打开零开销);Escape / 遮罩点击关闭。
+ * (不打开零开销);Escape / 遮罩点击关闭;左缘拖拽调宽(localStorage 记忆)。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -17,6 +17,16 @@ import TodoListBar from "./TodoListBar";
 
 const SESSIONS_URL = "/api/search/agent/threads";
 
+const DRAWER_WIDTH_KEY = "agent.drawer.width";
+const DRAWER_WIDTH_MIN = 420;
+const DRAWER_WIDTH_MAX = 920;
+
+/** 宽度夹取:420~920 且至多留出视口左侧 120px(拖拽/恢复均收敛) */
+function clampWidth(w: number): number {
+  const max = Math.min(DRAWER_WIDTH_MAX, window.innerWidth - 120);
+  return Math.round(Math.min(Math.max(w, DRAWER_WIDTH_MIN), Math.max(max, DRAWER_WIDTH_MIN)));
+}
+
 type SessionPhase = "idle" | "loading" | "ready";
 
 export default function AgentDrawer(): React.ReactElement {
@@ -27,8 +37,39 @@ export default function AgentDrawer(): React.ReactElement {
   const [sessions, setSessions] = useState<AgentSessionItem[]>([]);
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>("idle");
   const [banner, setBanner] = useState<string | null>(null);
+  // 宽度:默认 520;挂载后读 localStorage(避免 SSR/水合不一致),拖拽实时夹取
+  const [width, setWidth] = useState(520);
+  const [resizing, setResizing] = useState(false);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+  const resizeStart = useRef({ x: 0, w: 520 });
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
+
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem(DRAWER_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved >= DRAWER_WIDTH_MIN) setWidth(clampWidth(saved));
+  }, []);
+
+  // 拖拽中:window 级 pointer 监听(移出把手也不丢);抬起即持久化
+  useEffect(() => {
+    if (!resizing) return undefined;
+    document.body.style.userSelect = "none";
+    const onMove = (e: PointerEvent): void => {
+      setWidth(clampWidth(resizeStart.current.w + (resizeStart.current.x - e.clientX)));
+    };
+    const onUp = (): void => {
+      setResizing(false);
+      window.localStorage.setItem(DRAWER_WIDTH_KEY, String(widthRef.current));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [resizing]);
 
   const refreshSessions = useCallback(async (): Promise<void> => {
     setSessionPhase("loading");
@@ -124,7 +165,22 @@ export default function AgentDrawer(): React.ReactElement {
         onClick={() => setOpen(false)}
         className="absolute inset-0 h-full w-full cursor-default bg-black/45"
       />
-      <aside className="absolute right-0 top-0 flex h-full w-[520px] max-w-full flex-col border-l border-line bg-bg shadow-lg">
+      <aside
+        className="absolute right-0 top-0 flex h-full max-w-full flex-col border-l border-line bg-bg shadow-lg"
+        style={{ width }}
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整宽度"
+          onPointerDown={(e) => {
+            resizeStart.current = { x: e.clientX, w: widthRef.current };
+            setResizing(true);
+          }}
+          className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize ${
+            resizing ? "bg-accent/40" : "hover:bg-accent/25"
+          }`}
+        />
         <header className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2.5">
           <svg className="ic ic-sm text-accent-hover" aria-hidden="true">
             <use href="#i-robot" />

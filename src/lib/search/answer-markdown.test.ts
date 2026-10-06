@@ -68,4 +68,42 @@ describe("parseAnswerBlocks", () => {
     ]);
     expect(parseAnswerBlocks("")).toEqual([]);
   });
+
+  it("标题行成 h 块(#~#### 收敛 2~4 级),标题内行内解析,段落被切断", () => {
+    const blocks = parseAnswerBlocks("引言\n## 架构 **总览**\n正文\n#### 细节\n# 大标题\n尾段");
+    expect(blocks).toEqual([
+      { kind: "p", segs: [{ t: "text", v: "引言" }] },
+      {
+        kind: "h",
+        level: 2,
+        segs: [
+          { t: "text", v: "架构 " },
+          { t: "bold", v: "总览" },
+        ],
+      },
+      { kind: "p", segs: [{ t: "text", v: "正文" }] },
+      { kind: "h", level: 4, segs: [{ t: "text", v: "细节" }] },
+      { kind: "h", level: 2, segs: [{ t: "text", v: "大标题" }] },
+      { kind: "p", segs: [{ t: "text", v: "尾段" }] },
+    ]);
+  });
+
+  it("围栏代码原文收集(不做行内解析),语言标记剥离", () => {
+    const blocks = parseAnswerBlocks('前文\n```ts\nconst a = "**x**";\n`y`\n```\n后文');
+    expect(blocks).toEqual([
+      { kind: "p", segs: [{ t: "text", v: "前文" }] },
+      { kind: "pre", lang: "ts", v: 'const a = "**x**";\n`y`' },
+      { kind: "p", segs: [{ t: "text", v: "后文" }] },
+    ]);
+  });
+
+  it("未闭合围栏到 EOF 按代码块收尾;无语言标记为空串", () => {
+    const blocks = parseAnswerBlocks("```\nline1\n\nline2");
+    expect(blocks).toEqual([{ kind: "pre", lang: "", v: "line1\n\nline2" }]);
+  });
+
+  it("围栏内 #- 行与空行不触发块解析", () => {
+    const blocks = parseAnswerBlocks("```md\n## 不是标题\n- 不是列表\n```");
+    expect(blocks).toEqual([{ kind: "pre", lang: "md", v: "## 不是标题\n- 不是列表" }]);
+  });
 });

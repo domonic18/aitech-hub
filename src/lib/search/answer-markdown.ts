@@ -1,7 +1,8 @@
 /**
- * 答案卡 markdown 子集解析(K2,纯函数):prompt 只放开 **加粗**、`行内代码`、
- * 「- 」列表,但模型会习惯性漏写其他标记——按子集解析成渲染描述块,
- * 子集之外一律字面量。不产 HTML、不经 dangerouslySetInnerHTML,无注入面。
+ * 答案卡/Drawer markdown 子集解析(K2,纯函数):放开 **加粗**、`行内代码`、
+ * 「- 」列表、#/##/### 标题与 ``` 代码围栏(K2.5 验收补充——技术问题下模型
+ * 习惯性输出标题与代码块,渲染器按子集解析成描述块),子集之外一律字面量。
+ * 不产 HTML、不经 dangerouslySetInnerHTML,无注入面。
  * 流式期间尾部未闭合标记短暂按字面量显示,闭合后即正常(可接受)。
  */
 
@@ -10,6 +11,8 @@ export type AnswerInline =
 
 export type AnswerBlock =
   | { kind: "p"; segs: AnswerInline[] }
+  | { kind: "h"; level: 2 | 3 | 4; segs: AnswerInline[] }
+  | { kind: "pre"; lang: string; v: string }
   | { kind: "ul"; items: AnswerInline[][] }
   | { kind: "ol"; items: AnswerInline[][] };
 
@@ -51,13 +54,17 @@ export function parseAnswerInline(text: string): AnswerInline[] {
 
 const UL_LINE = /^\s*[-*]\s+(.*)$/;
 const OL_LINE = /^\s*\d{1,2}[.)]\s+(.*)$/;
+const HEAD_LINE = /^(#{1,4})\s+(.+)$/;
+const FENCE_LINE = /^\s*```(.*)$/;
 
-/** 块解析:连续 `- `/`* ` 行 → ul;`1.`/`1)` 行 → ol;空行分段;
- * 段内软换行(CJK 语义)直接拼接。列表项内做行内解析 */
+/** 块解析:连续 `- `/`* ` 行 → ul;`1.`/`1)` 行 → ol;`#`~`####` 行 → 标题;
+ * ``` 围栏间原文收集(不做行内解析,未闭合到 EOF 按代码块收尾);空行分段;
+ * 段内软换行(CJK 语义)直接拼接。列表项/标题内做行内解析 */
 export function parseAnswerBlocks(text: string): AnswerBlock[] {
   const blocks: AnswerBlock[] = [];
   let para = "";
   let list: { kind: "ul" | "ol"; items: AnswerInline[][] } | null = null;
+  let fence: { lang: string; lines: string[] } | null = null;
   const flushPara = (): void => {
     if (para !== "") {
       blocks.push({ kind: "p", segs: parseAnswerInline(para) });
@@ -71,6 +78,32 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
     }
   };
   for (const line of text.split("\n")) {
+    const fenceMark = FENCE_LINE.exec(line);
+    if (fence) {
+      // 围栏内:闭合标记退出;否则原文收集(含空行)
+      if (fenceMark) {
+        blocks.push({ kind: "pre", lang: fence.lang, v: fence.lines.join("\n") });
+        fence = null;
+      } else {
+        fence.lines.push(line);
+      }
+      continue;
+    }
+    if (fenceMark) {
+      flushPara();
+      flushList();
+      fence = { lang: fenceMark[1].trim(), lines: [] };
+      continue;
+    }
+    const head = HEAD_LINE.exec(line);
+    if (head) {
+      flushPara();
+      flushList();
+      // 层级收敛 2~4(卡片内 # 当二级用,避免超大标题)
+      const level = Math.min(Math.max(head[1].length, 2), 4) as 2 | 3 | 4;
+      blocks.push({ kind: "h", level, segs: parseAnswerInline(head[2]) });
+      continue;
+    }
     const ul = UL_LINE.exec(line);
     const ol = ul ? null : OL_LINE.exec(line);
     if (ul || ol) {
@@ -87,6 +120,10 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
       flushList();
       para += line;
     }
+  }
+  if (fence) {
+    // 未闭合围栏:剩余内容按代码块收尾(比字面量裸奔可读)
+    blocks.push({ kind: "pre", lang: fence.lang, v: fence.lines.join("\n") });
   }
   flushPara();
   flushList();
