@@ -115,10 +115,10 @@ export default function AnswerCard({ q }: { q: string }): React.ReactElement | n
   return (
     <div className="mb-[30px] rounded-lg border border-accent/35 bg-panel px-6 py-[22px] md:px-[26px]">
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <span className="rounded-full border border-accent/35 bg-accent-dim px-3 py-0.5 font-mono text-[11.5px] text-accent-hover">
+        <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/35 bg-accent-dim px-3 py-0.5 font-mono text-[11.5px] text-accent-hover">
           <svg className="ic ic-sm" aria-hidden="true">
             <use href="#i-robot" />
-          </svg>{" "}
+          </svg>
           AI 回答
         </span>
         {meta ? (

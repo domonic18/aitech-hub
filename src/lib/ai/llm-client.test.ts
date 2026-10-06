@@ -179,7 +179,7 @@ describe("chatJson 错误归因", () => {
 
 // ---------- 流式 chat(K2 答案卡) ----------
 
-import { chatStream, parseOpenAiSseBuffer } from "./llm-client";
+import { chatStream, parseAnthropicSseBuffer, parseOpenAiSseBuffer } from "./llm-client";
 
 function sseFrame(payloads: string[]): string {
   return payloads.map((p) => `data: ${p}\n\n`).join("");
@@ -218,6 +218,33 @@ describe("parseOpenAiSseBuffer", () => {
     expect(p.done).toBe(true);
     expect(p.deltas).toEqual([]);
     expect(p.usage).toBeNull();
+  });
+});
+
+describe("parseAnthropicSseBuffer", () => {
+  it("完整事件序列:content_block_delta 出 deltas,usage 两段 max 合并,message_stop 置 done", () => {
+    const p = parseAnthropicSseBuffer(
+      'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":610,"output_tokens":1}}}\n\n' +
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"第一"}}\n\n' +
+        'event: ping\ndata: {"type":"ping"}\n\n' +
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"答案[1]"}}\n\n' +
+        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":417}}\n\n' +
+        "data: not-json\r\n\r\n" +
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    );
+    expect(p.deltas).toEqual(["第一", "答案[1]"]);
+    expect(p.usage).toEqual({ tokensIn: 610, tokensOut: 417 });
+    expect(p.done).toBe(true);
+  });
+
+  it("半截帧留 rest;CRLF 容忍", () => {
+    const p = parseAnthropicSseBuffer(
+      'event: content_block_delta\r\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"你"}}\r\n\r\n' +
+        'data: {"type":"cont',
+    );
+    expect(p.deltas).toEqual(["你"]);
+    expect(p.done).toBe(false);
+    expect(p.rest).toBe('data: {"type":"cont');
   });
 });
 
@@ -284,19 +311,67 @@ describe("chatStream", () => {
     expect((httpErr as AiClientError).kind).toBe("http");
   });
 
-  it("anthropic 非流式兜底:整段单次 onDelta + usage", async () => {
-    stubFetch([
-      {
-        status: 200,
-        body: JSON.stringify({
-          content: [{ type: "text", text: "整段回答" }],
-          usage: { input_tokens: 7, output_tokens: 9 },
-        }),
-      },
-    ]);
+  it("anthropic:标准 SSE 逐 delta,usage 两段聚合,请求体含 stream:true", async () => {
+    const calls: CapturedCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+        calls.push({ url: String(url), init });
+        return sseResponse([
+          'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":11,"output_tokens":1}}}\n\n',
+          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"流式"}}\n\n',
+          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"答案"}}\n\n',
+          'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":22}}\n\n',
+          'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ]);
+      }),
+    );
     const deltas: string[] = [];
-    const r = await chatStream({ ...streamBase, protocol: "anthropic" }, (d) => deltas.push(d));
+    const r = await chatStream(
+      { ...streamBase, protocol: "anthropic", baseUrl: "https://llm.test" },
+      (d) => deltas.push(d),
+    );
+    expect(deltas).toEqual(["流式", "答案"]); // 逐 delta,非整段单次
+    expect(r.text).toBe("流式答案");
+    expect(r.usage).toEqual({ tokensIn: 11, tokensOut: 22 });
+    expect(calls[0]!.url).toBe("https://llm.test/v1/messages");
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe("sk-llm-1");
+    const body = JSON.parse(String(calls[0]!.init.body)) as {
+      stream: boolean;
+      max_tokens: number;
+    };
+    expect(body.stream).toBe(true);
+    expect(body.max_tokens).toBe(800);
+  });
+
+  it("anthropic:400 点名 stream → 回落非流式整段单 delta(镜像 stream_options 先例)", async () => {
+    const calls: CapturedCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+        calls.push({ url: String(url), init });
+        if (calls.length === 1) {
+          return new Response('{"error":"stream is not supported"}', { status: 400 });
+        }
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "整段回答" }],
+            usage: { input_tokens: 7, output_tokens: 9 },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const deltas: string[] = [];
+    const r = await chatStream(
+      { ...streamBase, protocol: "anthropic", baseUrl: "https://llm.test" },
+      (d) => deltas.push(d),
+    );
     expect(deltas).toEqual(["整段回答"]);
     expect(r.usage).toEqual({ tokensIn: 7, tokensOut: 9 });
+    expect(calls).toHaveLength(2);
+    expect((JSON.parse(String(calls[0]!.init.body)) as { stream: boolean }).stream).toBe(true);
+    expect(String(calls[1]!.init.body)).not.toContain("stream");
   });
 });

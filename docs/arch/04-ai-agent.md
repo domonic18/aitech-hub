@@ -53,7 +53,7 @@
 - **降级三路径**(no_binding/quota/error)一律 SSE `unavailable` 事件,不占 HTTP 状态,前台无感;IP 频控 10 次/分(`rate-limit.ts`,Redis 挂放行)
 - **0 命中仍生成**(requirement §4 红线「AI 直接作答」):prompt 换无资料变体(凭模型知识、不用 [n]),meta.noHits 标注,答案卡明示「站内无命中 · AI 直接作答」
 - **追问 chips**:单次调用哨兵分隔(`###FOLLOW###` + 恰好 3 行,≤20 字/条);流式侧 `visiblePrefix` 扣住哨兵与半截哨兵防泄漏;漏哨兵 → 无 chips 优雅降级
-- **流式**:openai `stream:true + include_usage`(400 点名剥参重发,镜像 response_format 先例);anthropic 非流式兜底单 delta;断流有增量按 done 收尾(degraded 行,不写缓存)、零增量 unavailable(error)+ failed 行;备用模型 → degraded 行
+- **流式**:双协议均 SSE——openai `stream:true + include_usage`(400 点名剥参重发,镜像 response_format 先例);anthropic 标准 `content_block_delta` 流式(usage 两段式 message_start/message_delta 按 max 合并;400 点名 stream 参数回落非流式整段单 delta,同款先例——首迭代初版 anthropic 非流式兜底致答案整段一次性出现,验收反馈后升级);断流有增量按 done 收尾(degraded 行,不写缓存)、零增量 unavailable(error)+ failed 行;备用模型 → degraded 行
 - **nginx**:`location ^~ /api/search/` `proxy_buffering off`(配置随批落地);响应头 `x-accel-buffering: no`
 
 ### 3.5 分期
