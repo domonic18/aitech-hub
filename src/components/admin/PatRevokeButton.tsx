@@ -27,7 +27,7 @@ export default function PatRevokeButton({ id }: { id: string }): React.ReactElem
       type="button"
       disabled={busy}
       onClick={() => void revoke()}
-      className="rounded-sm border border-line px-2.5 py-1 text-xs text-red hover:bg-panel-2 disabled:opacity-50"
+      className="rounded-sm px-1.5 py-1 text-xs text-red hover:bg-red/10 disabled:opacity-50"
     >
       {busy ? "吊销中…" : "吊销"}
     </button>

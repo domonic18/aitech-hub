@@ -45,18 +45,30 @@ function listHref(segment: UserListSegment, page: number, q?: string): string {
   });
 }
 
+/** 状态徽标(原型 admin-users .status-badge 药丸):active 绿/待绑定琥珀/已禁用灰 */
 function StatusBadge({ status }: { status: string }) {
   if (status === USER_STATUS_ACTIVE) {
     return (
-      <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">active</span>
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-green/35 bg-green/10 px-2.5 py-0.5 text-xs text-green">
+        <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden="true" />
+        active
+      </span>
     );
   }
   if (status === USER_STATUS_PENDING_BINDING) {
     return (
-      <span className="rounded-sm bg-amber/10 px-1.5 py-px text-[10px] text-amber">待绑定</span>
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber/35 bg-amber/10 px-2.5 py-0.5 text-xs text-amber">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden="true" />
+        待绑定
+      </span>
     );
   }
-  return <span className="rounded-sm bg-panel-2 px-1.5 py-px text-[10px] text-text-3">已禁用</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-0.5 text-xs text-text-3">
+      <span className="h-1.5 w-1.5 rounded-full bg-text-3" aria-hidden="true" />
+      已禁用
+    </span>
+  );
 }
 
 export default async function AdminUsersPage({
@@ -126,7 +138,7 @@ export default async function AdminUsersPage({
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
         <table className="w-full text-left text-[13px]">
           <thead>
-            <tr className="border-b border-line text-xs text-text-3">
+            <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
               <th className="px-4 py-2.5 font-medium">用户</th>
               <th className="px-3 py-2.5 font-medium">角色</th>
               <th className="px-3 py-2.5 font-medium">状态</th>

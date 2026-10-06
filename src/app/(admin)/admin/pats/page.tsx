@@ -33,12 +33,12 @@ export default async function AdminPatsPage(): Promise<React.ReactElement> {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[13px]">
             <thead>
-              <tr className="border-b border-line text-xs text-text-3">
-                <th className="px-4 py-2.5 font-normal">备注</th>
-                <th className="w-44 px-4 py-2.5 font-normal">创建时间</th>
-                <th className="w-44 px-4 py-2.5 font-normal">最近使用</th>
-                <th className="w-24 px-4 py-2.5 font-normal">状态</th>
-                <th className="w-24 px-4 py-2.5 font-normal">操作</th>
+              <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
+                <th className="px-4 py-2.5 font-medium">备注</th>
+                <th className="w-28 px-4 py-2.5 font-medium">状态</th>
+                <th className="w-44 px-4 py-2.5 font-medium">最近使用</th>
+                <th className="w-44 px-4 py-2.5 font-medium">创建时间</th>
+                <th className="w-24 px-4 py-2.5 font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -55,19 +55,21 @@ export default async function AdminPatsPage(): Promise<React.ReactElement> {
                     <span className="text-text-1">{p.name}</span>
                     <span className="ml-2 font-mono text-[11px] text-text-3">#{p.id}</span>
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-text-2">{fmt(p.createdAt)}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-text-2">{fmt(p.lastUsedAt)}</td>
                   <td className="px-4 py-2.5">
                     {p.revokedAt ? (
-                      <span className="rounded-sm bg-panel-2 px-1.5 py-px text-[10px] text-text-3">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-0.5 text-xs text-text-3">
+                        <span className="h-1.5 w-1.5 rounded-full bg-text-3" aria-hidden="true" />
                         已吊销
                       </span>
                     ) : (
-                      <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-green/35 bg-green/10 px-2.5 py-0.5 text-xs text-green">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden="true" />
                         生效中
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-text-2">{fmt(p.lastUsedAt)}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-text-2">{fmt(p.createdAt)}</td>
                   <td className="px-4 py-2.5">
                     {p.revokedAt ? (
                       <span className="text-xs text-text-3">—</span>
@@ -80,6 +82,30 @@ export default async function AdminPatsPage(): Promise<React.ReactElement> {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* MCP 接入面板(原型 admin-tokens):/api/mcp 为真实端点,工具面与
+          src/lib/mcp/tools.ts 注册一一对应;示例令牌位 <YOUR_PAT> 为文档模板 */}
+      <div className="rounded-md border border-line bg-panel">
+        <div className="border-b border-line px-4 py-3">
+          <h3 className="text-sm font-semibold">MCP 接入(创作端点)</h3>
+          <p className="mt-0.5 font-mono text-[11px] text-text-3">/api/mcp · STREAMABLE HTTP</p>
+        </div>
+        <pre className="overflow-x-auto px-4 py-3 font-mono text-[11.5px] leading-relaxed text-text-2">
+          {`# Claude Code / 任意 MCP 客户端
+{
+  "mcpServers": {
+    "aitech-hub": {
+      "type": "http",
+      "url": "https://17aitech.com/api/mcp",
+      "headers": { "Authorization": "Bearer <YOUR_PAT>" }
+    }
+  }
+}
+
+# 工具面:upsert_article(slug 幂等,frontmatter: title/excerpt/category/tags/cover/seo)
+#         upload_media · get_article · list_articles · publish / unpublish`}
+        </pre>
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">

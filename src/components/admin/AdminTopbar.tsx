@@ -26,6 +26,14 @@ const SEG_LABEL: Record<string, string> = {
   pats: "PAT 令牌",
   new: "新建文章",
   preview: "预览",
+  settings: "站点设置",
+  telegram: "电报流治理",
+  spider: "采集总览",
+  channels: "渠道配置",
+  bloggers: "博主管理",
+  github: "GitHub 仓库",
+  models: "模型配置",
+  usage: "用量统计",
 };
 
 /** 数字段 = 文章 id(编辑页);其余未知段解码展示 */

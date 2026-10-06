@@ -166,7 +166,7 @@ export default function PostsTable({
 
       <table className="w-full text-left text-[13px]">
         <thead>
-          <tr className="border-b border-line text-xs text-text-3">
+          <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
             <th className="w-10 px-3 py-2.5">
               <input
                 type="checkbox"
@@ -189,7 +189,9 @@ export default function PostsTable({
           {rows.map((row) => (
             <tr
               key={row.id}
-              className={`border-b border-line last:border-b-0 ${row.legacy ? "bg-panel-2" : ""}`}
+              className={`border-b border-line last:border-b-0 ${
+                row.legacy ? "bg-panel-2" : "hover:bg-panel-2"
+              }`}
             >
               <td className="px-3 py-3">
                 <input
@@ -210,7 +212,7 @@ export default function PostsTable({
                 >
                   {row.title}
                   {row.legacy && (
-                    <span className="ml-2 rounded-sm border border-line px-1 py-px align-middle text-[10px] text-text-3">
+                    <span className="ml-2 rounded-sm border border-line bg-line px-1 py-px align-middle text-[10px] text-text-3">
                       旧文保真
                     </span>
                   )}
@@ -229,14 +231,15 @@ export default function PostsTable({
                   </Link>
                 </div>
               </td>
+              {/* 原型 .tag-mini:分类绿描边(tm-cat),标签 accent(tm-tag) */}
               <td className="px-3 py-3">
-                <span className="rounded-sm bg-accent-dim px-1.5 py-0.5 text-[11px] text-accent">
+                <span className="rounded-sm border border-green/35 bg-green/10 px-1.5 py-0.5 text-[11px] text-green">
                   {row.categoryName}
                 </span>
                 {row.tagNames.map((name) => (
                   <span
                     key={name}
-                    className="ml-1 rounded-sm bg-panel-2 px-1.5 py-0.5 text-[11px] text-text-2"
+                    className="ml-1 rounded-sm border border-accent/30 bg-accent-dim px-1.5 py-0.5 text-[11px] text-accent"
                   >
                     {name}
                   </span>
