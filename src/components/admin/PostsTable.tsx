@@ -222,13 +222,18 @@ export default function PostsTable({
                   title={row.sitePath}
                 >
                   /post/{row.pathSegment} · {row.legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
-                  <Link
-                    href={row.sitePath}
-                    target="_blank"
-                    className="ml-2 text-text-3 underline decoration-dotted hover:text-accent"
-                  >
-                    前台查看
-                  </Link>
+                  {/* 前台仅 published 可见:草稿/下架不渲染入口,避免视口预取打出 404 RSC 噪音;
+                      published 也关预取(新窗口偶发访问,不值得预取流量) */}
+                  {row.state === "published" && (
+                    <Link
+                      href={row.sitePath}
+                      target="_blank"
+                      prefetch={false}
+                      className="ml-2 text-text-3 underline decoration-dotted hover:text-accent"
+                    >
+                      前台查看
+                    </Link>
+                  )}
                 </div>
               </td>
               {/* 原型 .tag-mini:分类绿描边(tm-cat),标签 accent(tm-tag) */}
