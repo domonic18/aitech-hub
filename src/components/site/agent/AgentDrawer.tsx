@@ -5,6 +5,9 @@
  * 唤起并预填/直发。编排:受控 threadId + 会话列表(plain fetch,无 react-query)
  * + todos 状态,内部装配 AgentRuntimeProvider。开抽屉才挂 Provider
  * (不打开零开销);Escape / 遮罩点击关闭;左缘拖拽调宽(localStorage 记忆)。
+ * K2.6 身份分流:GET /api/auth/session 判 admin——游客不渲染会话侧栏/
+ * 新建入口(单列全宽),composer 显限额口径;会话过期(游客 2h 清退)横幅
+ * +复位新会话自愈。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -16,6 +19,7 @@ import AgentThread, { type PendingAsk } from "./AgentThread";
 import TodoListBar from "./TodoListBar";
 
 const SESSIONS_URL = "/api/search/agent/threads";
+const SESSION_STATE_URL = "/api/auth/session";
 
 const DRAWER_WIDTH_KEY = "agent.drawer.width";
 const DRAWER_WIDTH_MIN = 420;
@@ -28,6 +32,7 @@ function clampWidth(w: number): number {
 }
 
 type SessionPhase = "idle" | "loading" | "ready";
+type AuthPhase = "loading" | "admin" | "guest";
 
 export default function AgentDrawer(): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -37,6 +42,7 @@ export default function AgentDrawer(): React.ReactElement {
   const [sessions, setSessions] = useState<AgentSessionItem[]>([]);
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>("idle");
   const [banner, setBanner] = useState<string | null>(null);
+  const [auth, setAuth] = useState<AuthPhase>("loading");
   // 宽度:默认 520;挂载后读 localStorage(避免 SSR/水合不一致),拖拽实时夹取
   const [width, setWidth] = useState(520);
   const [resizing, setResizing] = useState(false);
@@ -87,13 +93,37 @@ export default function AgentDrawer(): React.ReactElement {
     }
   }, []);
 
+  // 开抽屉判身份一次(滑动续期顺带发生;抽屉生命周期内角色不变)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setAuth("loading");
+    void (async () => {
+      try {
+        const res = await fetch(SESSION_STATE_URL);
+        const body = (await res.json()) as {
+          code: number;
+          data?: { user?: { role?: string } | null };
+        };
+        if (cancelled) return;
+        setAuth(body.code === 0 && body.data?.user?.role === "admin" ? "admin" : "guest");
+      } catch {
+        if (!cancelled) setAuth("guest"); // 查询失败按游客兜底(后端同口径)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const onThreadIdChange = useCallback(
     (id: string | undefined) => {
       // 首条消息真实建线程后回填;新会话置 undefined 由 runtime 自建
       setThreadId(id);
-      if (id !== undefined) void refreshSessions();
+      // 游客无线程列表(Guest GET 恒空),不空转
+      if (id !== undefined && auth === "admin") void refreshSessions();
     },
-    [refreshSessions],
+    [refreshSessions, auth],
   );
 
   // search:agent-ask 入口(chips 直发 / 深挖预填);打开时拉会话列表
@@ -108,8 +138,8 @@ export default function AgentDrawer(): React.ReactElement {
     return () => window.removeEventListener("search:agent-ask", onAsk);
   }, []);
   useEffect(() => {
-    if (open) void refreshSessions();
-  }, [open, refreshSessions]);
+    if (open && auth === "admin") void refreshSessions();
+  }, [open, auth, refreshSessions]);
 
   // Escape 关闭(输入框聚焦时也生效;遮罩点击同关闭)
   useEffect(() => {
@@ -154,6 +184,12 @@ export default function AgentDrawer(): React.ReactElement {
   const onTodos = useCallback((next: AgentTodo[]): void => setTodos(next), []);
   const onError = useCallback((message: string): void => setBanner(message), []);
   const onPendingConsumed = useCallback((): void => setPending(null), []);
+  /** K2.6 游客过期自愈:复位新会话 + 横幅指引重发 */
+  const onSessionExpired = useCallback((): void => {
+    setThreadId(undefined);
+    setTodos([]);
+    setBanner("会话已过期,已开启新会话,请重新发送");
+  }, []);
 
   if (!open) return <div />;
 
@@ -216,16 +252,19 @@ export default function AgentDrawer(): React.ReactElement {
         ) : null}
 
         <div className="flex min-h-0 flex-1">
-          <div className="w-[176px] shrink-0">
-            <AgentSidebar
-              sessions={sessions}
-              activeThreadId={threadId}
-              isLoading={sessionPhase === "loading"}
-              onNewThread={handleNewThread}
-              onSwitchThread={handleSwitchThread}
-              onDeleteThread={handleDeleteThread}
-            />
-          </div>
+          {/* K2.6:仅 admin 渲染会话侧栏(游客单列全宽,无列表/新建入口) */}
+          {auth === "admin" && (
+            <div className="w-[176px] shrink-0">
+              <AgentSidebar
+                sessions={sessions}
+                activeThreadId={threadId}
+                isLoading={sessionPhase === "loading"}
+                onNewThread={handleNewThread}
+                onSwitchThread={handleSwitchThread}
+                onDeleteThread={handleDeleteThread}
+              />
+            </div>
+          )}
           <div className="flex min-w-0 flex-1 flex-col">
             <TodoListBar todos={todos} />
             <div className="min-h-0 flex-1">
@@ -234,8 +273,13 @@ export default function AgentDrawer(): React.ReactElement {
                 onThreadIdChange={onThreadIdChange}
                 onTodos={onTodos}
                 onError={onError}
+                onSessionExpired={onSessionExpired}
               >
-                <AgentThread pending={pending} onPendingConsumed={onPendingConsumed} />
+                <AgentThread
+                  pending={pending}
+                  onPendingConsumed={onPendingConsumed}
+                  guestMode={auth === "guest"}
+                />
               </AgentRuntimeProvider>
             </div>
           </div>

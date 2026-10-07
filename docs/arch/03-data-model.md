@@ -239,7 +239,8 @@ CREATE TABLE legacy_url_map (
 
 **搜索 Drawer 会话表已落地(2026-10-07 K2.5 批①迁移 `20261006190159_search_agent_session`,交互见 [arch/04 §3](04-ai-agent.md))**:
 
-- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(匿名 cookie `ah_av`,归属校验锚——非本人 404 不泄露存在性);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
+- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(匿名 cookie `ah_av`,归属校验锚——非本人 404 不泄露存在性;K2.6 起仅 admin 会话落行,key=`admin:<sub>`);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
+- `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。**游客不落会话行**:thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库),checkpoint 由日清按「键已消失」清扫;后台游客统计 = 本表按 session_id 聚合
 
 ## 3. Prisma 模型约定
 

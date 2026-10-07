@@ -49,12 +49,37 @@ function createAgentClient(): Client {
   return new Client({ apiUrl: `${apiOrigin()}${API_BASE}`, apiKey: null });
 }
 
+/** SDK 流错误形态不定(Error/ApiError/响应体文本),统一取 message 判过期 */
+function errText(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "object" && e !== null) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return String(e);
+}
+
+function isSessionExpired(e: unknown): boolean {
+  return SESSION_EXPIRED_RE.test(errText(e));
+}
+
+/** 自愈:换人话抛出(Drawer 同步横幅+复位线程) */
+function selfHealError(onSessionExpired?: () => void): Error {
+  onSessionExpired?.();
+  return new Error("会话已过期,已开启新会话,请重新发送");
+}
+
 export interface AgentRuntimeAdapterOptions {
   /** updates 通道提取出的执行计划上抛(Drawer state 渲染计划条) */
   onTodos?: (todos: AgentTodo[]) => void;
   /** 建线程等自有端点失败(如日配额超限)上抛人话提示(Drawer 横幅) */
   onError?: (message: string) => void;
+  /** 会话已过期/不存在(K2.6 游客 2h 清退)→ Drawer 复位新会话自愈 */
+  onSessionExpired?: () => void;
 }
+
+/** 后端 404 话术(身份路由统一);命中即走自愈而非当普通错误挂横幅 */
+const SESSION_EXPIRED_RE = /会话已过期|会话不存在/;
 
 export interface AgentRuntimeAdapter {
   threadListAdapter: InMemoryThreadListAdapter;
@@ -98,24 +123,40 @@ export function createAgentRuntimeAdapter(
   return {
     threadListAdapter,
     load: async (externalId: string) => {
-      const { values } = await apiJson<{
-        values: { messages?: unknown[] };
-      }>(`${API_BASE}/threads/${externalId}/state`);
-      return { messages: (values.messages ?? []) as LangChainMessage[] };
+      try {
+        const { values } = await apiJson<{
+          values: { messages?: unknown[] };
+        }>(`${API_BASE}/threads/${externalId}/state`);
+        return { messages: (values.messages ?? []) as LangChainMessage[] };
+      } catch (e) {
+        if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
+        throw e;
+      }
     },
     stream: async function* (messages, config) {
       const { externalId } = await config.initialize();
       if (!externalId) throw new Error("会话尚未初始化");
       const client = createAgentClient();
-      const stream = await client.runs.stream(externalId, AGENT_ID, {
-        input: messages.length ? { messages } : null,
-        command: config.command as never,
-        streamMode: ["messages", "updates"],
-        signal: config.abortSignal,
-      });
+      let stream: Awaited<ReturnType<typeof client.runs.stream>>;
+      try {
+        stream = await client.runs.stream(externalId, AGENT_ID, {
+          input: messages.length ? { messages } : null,
+          command: config.command as never,
+          streamMode: ["messages", "updates"],
+          signal: config.abortSignal,
+        });
+      } catch (e) {
+        if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
+        throw e;
+      }
       // 帧原样透传(wire 契约由后端钉死;error 帧已带人话,前端挂末条消息)
-      for await (const chunk of stream) {
-        yield { event: chunk.event, data: chunk.data };
+      try {
+        for await (const chunk of stream) {
+          yield { event: chunk.event, data: chunk.data };
+        }
+      } catch (e) {
+        if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
+        throw e;
       }
     },
     eventHandlers: {

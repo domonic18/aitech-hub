@@ -11,7 +11,7 @@ import { useCallback, useEffect } from "react";
 
 import AnswerMarkdown from "@/components/site/search/AnswerMarkdown";
 
-import AgentComposer from "./AgentComposer";
+import AgentComposer, { GUEST_COMPOSER_HINT } from "./AgentComposer";
 import ToolCallBlock from "./ToolCallBlock";
 
 export interface PendingAsk {
@@ -153,11 +153,14 @@ function EmptyState(): React.ReactElement {
 interface AgentThreadProps {
   pending: PendingAsk | null;
   onPendingConsumed: () => void;
+  /** K2.6:游客身份显限额/清退口径 hint */
+  guestMode?: boolean;
 }
 
 export default function AgentThread({
   pending,
   onPendingConsumed,
+  guestMode = false,
 }: AgentThreadProps): React.ReactElement {
   const isLoading = useAuiState((s) => s.thread.isLoading);
   // 计划条由 Drawer 承载(横贯侧栏+主区),此处仅消息流编排
@@ -178,7 +181,7 @@ export default function AgentThread({
           </>
         )}
       </ThreadPrimitive.Viewport>
-      <AgentComposer />
+      <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
       <PendingAskSender pending={pending} onConsumed={onConsumed} />
     </ThreadPrimitive.Root>
   );

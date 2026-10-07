@@ -2,11 +2,18 @@
 /**
  * 输入区(K2.5,平移 ai-invest Composer,token 换装):ComposerPrimitive 自增高
  * (rows=1,max-h-32);运行中显「停止」(unstable_allowCancellation 侧中止
- * abortSignal),空闲显「发送」。
+ * abortSignal),空闲显「发送」。hint 随身份切换(K2.6:游客显限额/清退口径)。
  */
 import { ComposerPrimitive, ThreadPrimitive } from "@assistant-ui/react";
 
-export default function AgentComposer(): React.ReactElement {
+const DEFAULT_HINT = "agent.digest · 站内三域只读检索 · 会话 30 天自动清退";
+export const GUEST_COMPOSER_HINT = "游客模式 · 每日 3 问 · 会话 2 小时未活动自动清退";
+
+export default function AgentComposer({
+  hint = DEFAULT_HINT,
+}: {
+  hint?: string;
+}): React.ReactElement {
   return (
     <ComposerPrimitive.Root className="border-t border-line p-3">
       <div className="flex items-end gap-2 rounded-lg border border-line bg-panel-2 p-2 transition-colors focus-within:border-accent/50">
@@ -29,9 +36,7 @@ export default function AgentComposer(): React.ReactElement {
           </ThreadPrimitive.If>
         </div>
       </div>
-      <div className="mt-1.5 font-mono text-[10.5px] text-text-3">
-        agent.digest · 站内三域只读检索 · 会话 30 天自动清退
-      </div>
+      <div className="mt-1.5 font-mono text-[10.5px] text-text-3">{hint}</div>
     </ComposerPrimitive.Root>
   );
 }
