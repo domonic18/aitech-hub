@@ -5,6 +5,8 @@
  *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥);
  *    /search 页带 q 时行级直插 stats_search_log(搜索词排行,180 天,2026-10-06)。
  *  - purgeVisitLogs / purgeSearchLogs:worker 日调度清理保留窗口外明细行。
+ *  - ingestBotFetch:爬虫抓取入账(2026-10-07 方案B,middleware→内部端点→
+ *    同一 ref 日缓冲 source_class='bot';识别名单见同目录 bots.ts)。
  * 缓冲落库(flushStatsBuffer)在同级 flush.ts(worker 每 60s;
  * 缓冲键形 stats:buf:<kind>:<day> 由本文件写入、flush.ts 消费,改名需同批)。
  */
@@ -111,6 +113,24 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
 
   const postCounted = await countPostView(path, vhash, day);
   return { counted: true, reason: "ok", postCounted };
+}
+
+// ── 爬虫抓取入账(2026-10-07 方案B)──────────────────────────────
+
+/**
+ * 爬虫页面抓取 PV:middleware 识别已命名爬虫(AI/搜索,bots.ts 名单)后经
+ * 内部端点调此函数,写进与真人流量同一个 ref 日缓冲(source_class='bot'),
+ * 复用既有 flush → stats_referrer_daily,零新表。只记 PV 不去重——抓取频次
+ * 本身就是观测信号;真人管道(beacon)不受影响(爬虫根本不发 beacon)。
+ */
+export async function ingestBotFetch(botName: string): Promise<void> {
+  const day = statsDay();
+  const key = `stats:buf:ref:${day}`;
+  await redis
+    .pipeline()
+    .hincrby(key, `bot|${botName}|pv`, 1)
+    .expire(key, BUFFER_TTL_SECONDS)
+    .exec();
 }
 
 // ── 明细保留(worker 日调度,M10 批⑥)────────────────────────────────

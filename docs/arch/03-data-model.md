@@ -160,11 +160,11 @@ CREATE TABLE stats_visit_daily (
     PRIMARY KEY (stat_date)
 );
 
--- 流量来源:direct/search/referral/ai 四类,细分到具体来源
+-- 流量来源:direct/search/referral/ai/bot 五类,细分到具体来源
 CREATE TABLE stats_referrer_daily (
     stat_date    DATE NOT NULL,
-    source_class VARCHAR(20) NOT NULL,   -- direct/search/referral/ai
-    source_name  VARCHAR(50) NOT NULL,   -- direct 固定 'none';其余为 google/bing/baidu/chatgpt/perplexity…
+    source_class VARCHAR(20) NOT NULL,   -- direct/search/referral/ai/bot(bot=已命名爬虫抓取 PV,2026-10-07 方案B,middleware→/api/stats/bot→同一 ref 日缓冲;无迁移,varchar 枚举演进)
+    source_name  VARCHAR(50) NOT NULL,   -- direct 固定 'none';其余为 google/bing/baidu/chatgpt/perplexity…/GPTBot/ClaudeBot/Googlebot…
     pv           BIGINT NOT NULL DEFAULT 0,
     uv           BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (stat_date, source_class, source_name)

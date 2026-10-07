@@ -6,6 +6,7 @@
  * 经 60s worker flush,最长延迟约 2 分钟。M10 批⑥:尾部加最近访问明细
  * (行级,近 7 天,全量 IP 短留存)。
  */
+import BotPanel from "@/components/admin/stats/BotPanel";
 import EnvPanel from "@/components/admin/stats/EnvPanel";
 import HotPagesTable from "@/components/admin/stats/HotPagesTable";
 import HotSearchTermsTable from "@/components/admin/stats/HotSearchTermsTable";
@@ -14,6 +15,7 @@ import RecentVisitsTable from "@/components/admin/stats/RecentVisitsTable";
 import SourcePanel from "@/components/admin/stats/SourcePanel";
 import TrendChart from "@/components/admin/stats/TrendChart";
 import {
+  getBotPanel,
   getClientPanel,
   getHotPages,
   getHotSearchTerms,
@@ -47,12 +49,13 @@ export default async function AdminStatsPage({
   const trend = parseTrend(sp.trend);
   const hot = parseHot(sp.hot);
 
-  const [overview, series, referrers, clients, hotPages, hotTerms, recentVisits] =
+  const [overview, series, referrers, clients, bots, hotPages, hotTerms, recentVisits] =
     await Promise.all([
       getVisitOverview(),
       getVisitSeries(trend),
       getReferrerPanel(7),
       getClientPanel(7),
+      getBotPanel(7),
       getHotPages(hot),
       getHotSearchTerms(hot),
       getRecentVisits(30),
@@ -66,6 +69,8 @@ export default async function AdminStatsPage({
         <SourcePanel panel={referrers} />
         <EnvPanel panel={clients} />
       </div>
+      {/* 爬虫流量(2026-10-07 方案B):人机区分的「机」侧;与真人四分类同表分账 */}
+      <BotPanel panel={bots} humanPv={overview.last7.pv} />
       <HotPagesTable rows={hotPages} range={hot} trend={trend} />
       {/* 搜索词排行(2026-10-06):与热门页面共用 hot 分段;行级直插准实时 */}
       <HotSearchTermsTable rows={hotTerms} range={hot} trend={trend} />

@@ -35,7 +35,7 @@ export default async function AdminGithubPage(): Promise<React.ReactElement> {
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold">GitHub 仓库</h2>
+          <h2 className="text-base font-semibold">项目展示</h2>
           <p className="mt-0.5 text-xs text-text-3">
             开源项目白名单台账:登记/同步/健康度/配套文章;slug 登记时派生此后冻结,前台 URL
             /projects/&#123;slug&#125;/。
