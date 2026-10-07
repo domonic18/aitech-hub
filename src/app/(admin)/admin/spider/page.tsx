@@ -68,7 +68,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
           <Link href="/admin/channels/" className="mx-1 text-accent hover:text-accent-hover">
             渠道台账
           </Link>
-          ,治理动作见电报流治理页。
+          ,治理动作见电报管理页。
         </p>
       </div>
 
@@ -214,7 +214,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
                       <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-panel-2" />
                       completed(近 200 留存)
                     </span>
-                    <span>台账在 GitHub 仓库页;限频/网络故障顺延不计连败,上游 4xx 计连败</span>
+                    <span>台账在项目展示页;限频/网络故障顺延不计连败,上游 4xx 计连败</span>
                   </>
                 }
               />
@@ -271,10 +271,16 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
           snapshot.recentFailed.map((f) => (
             <div
               key={f.id}
-              className="grid grid-cols-[64px_120px_1fr] items-center gap-3 border-b border-line px-4 py-2.5 text-[13px] last:border-b-0"
+              className="grid grid-cols-[64px_140px_1fr] items-center gap-3 border-b border-line px-4 py-2.5 text-[13px] last:border-b-0"
             >
               <span className="font-mono text-xs text-text-3">{hhmm(f.at)}</span>
-              <span className="whitespace-nowrap font-mono text-xs text-text-2">{f.name}</span>
+              {/* 渠道名(job data 过境;旧 job/github 队列退 job 名) */}
+              <span
+                className="truncate whitespace-nowrap font-mono text-xs text-text-2"
+                title={f.sourceName ?? f.name}
+              >
+                {f.sourceName ?? f.name}
+              </span>
               <span className="truncate font-mono text-xs text-red" title={f.reason}>
                 {f.reason}
               </span>
