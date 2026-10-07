@@ -1,22 +1,29 @@
 /**
  * 答案卡/Drawer markdown 子集解析(K2,纯函数):放开 **加粗**、`行内代码`、
- * 「- 」列表、#/##/### 标题与 ``` 代码围栏(K2.5 验收补充——技术问题下模型
- * 习惯性输出标题与代码块,渲染器按子集解析成描述块),子集之外一律字面量。
- * 不产 HTML、不经 dangerouslySetInnerHTML,无注入面。
+ * `[文本](URL)` 链接、「- 」列表、#/##/### 标题、``` 代码围栏与 GFM 表格
+ * (标题/围栏/表格/链接系 K2.5 验收反馈补充——技术问题下模型习惯性输出,
+ * 渲染器按子集解析成描述块),子集之外一律字面量。
+ * 不产 HTML、不经 dangerouslySetInnerHTML,无注入面;链接 href 仅收
+ * 无空白单行 URL(渲染侧 http(s) 外链 target=_blank)。
  * 流式期间尾部未闭合标记短暂按字面量显示,闭合后即正常(可接受)。
  */
 
 export type AnswerInline =
-  { t: "text"; v: string } | { t: "bold"; v: string } | { t: "code"; v: string };
+  | { t: "text"; v: string }
+  | { t: "bold"; v: string }
+  | { t: "code"; v: string }
+  | { t: "link"; v: string; href: string };
 
 export type AnswerBlock =
   | { kind: "p"; segs: AnswerInline[] }
   | { kind: "h"; level: 2 | 3 | 4; segs: AnswerInline[] }
   | { kind: "pre"; lang: string; v: string }
+  | { kind: "table"; head: AnswerInline[][]; rows: AnswerInline[][][] }
   | { kind: "ul"; items: AnswerInline[][] }
   | { kind: "ol"; items: AnswerInline[][] };
 
-/** 行内解析:**加粗** 与 `代码`(空内容/未闭合按字面量;代码段内不再嵌套) */
+/** 行内解析:`代码`、**加粗** 与 [文本](URL)(空内容/未闭合/URL 含空白按字面量;
+ * 代码段内不再嵌套;链接文本不再嵌套行内标记) */
 export function parseAnswerInline(text: string): AnswerInline[] {
   const segs: AnswerInline[] = [];
   let plain = "";
@@ -44,6 +51,20 @@ export function parseAnswerInline(text: string): AnswerInline[] {
         i = end + 2;
         continue;
       }
+    } else if (text[i] === "[") {
+      const mid = text.indexOf("](", i + 1);
+      if (mid !== -1 && mid > i + 1) {
+        const end = text.indexOf(")", mid + 2);
+        const href = end !== -1 ? text.slice(mid + 2, end).trim() : "";
+        const label = text.slice(i + 1, mid);
+        // href 单行无空白(模型偶发换行排版退化字面量);label 不为空
+        if (end !== -1 && href !== "" && !/\s/.test(href) && label !== "") {
+          flush();
+          segs.push({ t: "link", v: label, href });
+          i = end + 1;
+          continue;
+        }
+      }
     }
     plain += text[i];
     i += 1;
@@ -56,10 +77,23 @@ const UL_LINE = /^\s*[-*]\s+(.*)$/;
 const OL_LINE = /^\s*\d{1,2}[.)]\s+(.*)$/;
 const HEAD_LINE = /^(#{1,4})\s+(.+)$/;
 const FENCE_LINE = /^\s*```(.*)$/;
+// 表格分隔行:| --- | :---: | 形态,至少两段连字符
+const TABLE_DELIM = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/;
+
+/** 表格行拆单元格:去首尾竖线后按 | 切,单元格 trim(行内代码含 | 的瑕疵接受) */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
 
 /** 块解析:连续 `- `/`* ` 行 → ul;`1.`/`1)` 行 → ol;`#`~`####` 行 → 标题;
- * ``` 围栏间原文收集(不做行内解析,未闭合到 EOF 按代码块收尾);空行分段;
- * 段内软换行(CJK 语义)直接拼接。列表项/标题内做行内解析 */
+ * ``` 围栏间原文收集(不做行内解析,未闭合到 EOF 按代码块收尾);
+ * 表头行 + 分隔行开表格,连续含 | 行收表体;空行分段;
+ * 段内软换行(CJK 语义)直接拼接。列表项/标题/单元格内做行内解析 */
 export function parseAnswerBlocks(text: string): AnswerBlock[] {
   const blocks: AnswerBlock[] = [];
   let para = "";
@@ -77,7 +111,9 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
       list = null;
     }
   };
-  for (const line of text.split("\n")) {
+  const lines = text.split("\n");
+  for (let li = 0; li < lines.length; li += 1) {
+    const line = lines[li]!;
     const fenceMark = FENCE_LINE.exec(line);
     if (fence) {
       // 围栏内:闭合标记退出;否则原文收集(含空行)
@@ -93,6 +129,21 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
       flushPara();
       flushList();
       fence = { lang: fenceMark[1].trim(), lines: [] };
+      continue;
+    }
+    // 表格:当前行含 | 且下一行是分隔行;表体连续吞含 | 的非空行
+    if (line.includes("|") && li + 1 < lines.length && TABLE_DELIM.test(lines[li + 1]!)) {
+      flushPara();
+      flushList();
+      const head = splitTableRow(line).map(parseAnswerInline);
+      li += 2;
+      const rows: AnswerInline[][][] = [];
+      while (li < lines.length && lines[li]!.trim() !== "" && lines[li]!.includes("|")) {
+        rows.push(splitTableRow(lines[li]!).map(parseAnswerInline));
+        li += 1;
+      }
+      li -= 1; // 抵消外层 for 的自增
+      blocks.push({ kind: "table", head, rows });
       continue;
     }
     const head = HEAD_LINE.exec(line);
