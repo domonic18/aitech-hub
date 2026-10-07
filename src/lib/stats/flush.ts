@@ -162,7 +162,12 @@ async function upsertClients(day: string, fields: Record<string, string>): Promi
   );
 }
 
-/** 文章 PV:日行 UPSERT + 总数累加(与迁移来的历史阅读数直接累加,requirement §3.5) */
+/**
+ * 文章 PV:日行 UPSERT + 总数累加(与迁移来的历史阅读数直接累加,requirement §3.5)。
+ * 总数累加走裸 SQL 不经 prisma.post.update:update 会连带 @updatedAt,后台文章列表
+ * (updatedAt desc)被访问即浮到最前(2026-10-07 反馈);此处 views_count 单列自增,
+ * updated_at 保持编辑语义。
+ */
 async function upsertPostView(day: string, postId: string, count: number): Promise<void> {
   if (count <= 0) return;
   const id = BigInt(postId);
@@ -172,6 +177,7 @@ async function upsertPostView(day: string, postId: string, count: number): Promi
       VALUES (${id}, ${day}::date, ${count})
       ON CONFLICT (post_id, view_date)
       DO UPDATE SET count = stats_post_view_daily.count + EXCLUDED.count`,
-    prisma.post.update({ where: { id }, data: { viewsCount: { increment: BigInt(count) } } }),
+    prisma.$executeRaw`
+      UPDATE content_post SET views_count = views_count + ${count} WHERE id = ${id}`,
   ]);
 }

@@ -103,6 +103,17 @@ export default async function AdminPatsPage(): Promise<React.ReactElement> {
   }
 }
 
+# WorkBuddy(~/.workbuddy/mcp.json,同标准 mcpServers 格式)
+{
+  "mcpServers": {
+    "aitech-hub": {
+      "type": "http",
+      "url": "https://17aitech.com/api/mcp",
+      "headers": { "Authorization": "Bearer <YOUR_PAT>" }
+    }
+  }
+}
+
 # 工具面:upsert_article(slug 幂等,frontmatter: title/excerpt/category/tags/cover/seo)
 #         upload_media · get_article · list_articles · publish / unpublish`}
         </pre>

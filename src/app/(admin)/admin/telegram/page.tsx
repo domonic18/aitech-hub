@@ -81,7 +81,7 @@ export default async function AdminTelegramPage({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-base font-semibold">电报流治理</h2>
+        <h2 className="text-base font-semibold">电报管理</h2>
         <p className="mt-0.5 text-xs text-text-3">
           采集条目准入观测与人工干预:过滤命中以隐藏态落库,误杀在此恢复;归档退出前台时间轴。
         </p>

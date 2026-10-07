@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { statsDay } from "@/lib/datetime";
 
+import { botKindOf } from "./bots";
 import type { SourceClass } from "./classify";
 
 export interface DayWindow {
@@ -229,6 +230,50 @@ export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageR
   });
   out.sort((a, b) => b.pv - a.pv);
   return out.slice(0, limit);
+}
+
+// ── 爬虫流量(2026-10-07 方案B:人机区分,middleware 捕获)────────────
+
+export interface BotRow {
+  name: string;
+  kind: "ai" | "search" | "other";
+  pv: number;
+}
+
+export interface BotPanel {
+  /** 爬虫抓取 PV 合计(近 N 日) */
+  totalPv: number;
+  aiPv: number;
+  searchPv: number;
+  rows: BotRow[];
+}
+
+/**
+ * 爬虫抓取细分(source_class='bot' 落在 stats_referrer_daily,与真人四分类
+ * 同表分账;流量来源面板不受影响——本类目单独出卡)。类别由展示侧按
+ * bots.ts 名单回查(改名兜 other),表里只存名字与 PV。
+ */
+export async function getBotPanel(days: 7 | 30 | 90): Promise<BotPanel> {
+  const rows = await prisma.statsReferrerDaily.groupBy({
+    by: ["sourceName"],
+    where: {
+      sourceClass: "bot",
+      statDate: { gte: dayDate(dayStr(days - 1)), lte: dayDate(dayStr(0)) },
+    },
+    _sum: { pv: true },
+    orderBy: { _sum: { pv: "desc" } },
+  });
+  const mapped: BotRow[] = rows.map((r) => ({
+    name: r.sourceName,
+    kind: botKindOf(r.sourceName),
+    pv: Number(r._sum.pv ?? 0),
+  }));
+  return {
+    totalPv: mapped.reduce((acc, r) => acc + r.pv, 0),
+    aiPv: mapped.filter((r) => r.kind === "ai").reduce((acc, r) => acc + r.pv, 0),
+    searchPv: mapped.filter((r) => r.kind === "search").reduce((acc, r) => acc + r.pv, 0),
+    rows: mapped,
+  };
 }
 
 // ── 搜索词排行(2026-10-06,行级 180 天保留)────────────────────────

@@ -182,8 +182,8 @@ model StatsVisitDaily {
 /// 流量来源:direct/search/referral/ai 四类细分(requirement §3.5)
 model StatsReferrerDaily {
   statDate    DateTime @map("stat_date") @db.Date
-  sourceClass String   @map("source_class") @db.VarChar(20) // direct/search/referral/ai
-  sourceName  String   @map("source_name") @db.VarChar(50) // direct 固定 'none';其余 google/bing/chatgpt…
+  sourceClass String   @map("source_class") @db.VarChar(20) // direct/search/referral/ai/bot(爬虫抓取,2026-10-07 方案B)
+  sourceName  String   @map("source_name") @db.VarChar(50) // direct 固定 'none';其余 google/bing/chatgpt…/GPTBot…
   pv          BigInt   @default(0)
   uv          BigInt   @default(0)
 

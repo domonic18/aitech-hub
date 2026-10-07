@@ -4,7 +4,8 @@
  * 屏蔽词/启发式过滤(命中 hidden + filter_hit 供观测)→ 规则截断摘要 → 落库
  * → 可见新条入轻解读队列(M12 批③ summarize;就绪整轮 resolve 一次)。
  * 来源侧每轮推进 lastRunAt/nextRunAt,连续失败 ≥3 → status=error;
- * 失败上抛交 BullMQ failed 事件(后台采集总览「最近错误」的数据源)。
+ * 失败经 crawl-error 翻译根因后上抛(「[渠道 名 #id] 根因」入 BullMQ
+ * failedReason = 后台采集总览「最近错误」的数据源)。
  */
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
@@ -30,6 +31,7 @@ import {
   type BlocklistWord,
   type FilterHit,
 } from "./filter";
+import { describeCrawlError } from "./crawl-error";
 import { canonicalUrl, contentHash, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
 import { isSummarizeReady, markPendingAndEnqueueSummarize } from "./summarize-text";
@@ -202,7 +204,19 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
             : CRAWL_SOURCE_STATUS_DEGRADED,
       },
     });
-    throw err;
+    // 结构化日志先记(渠道/根因/连败数,事件不含 URL 防 token 泄漏),再包装上抛:
+    // undici "fetch failed" 原文无渠道无根因,BullMQ failedReason 与后台「最近错误」
+    // 都吃这段人话(2026-10-07 验收反馈问题1)
+    const reason = describeCrawlError(err);
+    logger.warn({
+      event: "crawler.source_failed",
+      sourceId: source.id,
+      name: source.name,
+      type: source.type,
+      fails,
+      reason: reason.slice(0, 200),
+    });
+    throw new Error(`[渠道 ${source.name} #${source.id}] ${reason}`, { cause: err });
   }
 }
 
@@ -216,15 +230,16 @@ export async function crawlDueSources(): Promise<{ due: number }> {
       type: { not: CRAWL_SOURCE_TYPE_SOCIAL_VIDEO },
       OR: [{ nextRunAt: null }, { nextRunAt: { lte: new Date() } }],
     },
-    select: { id: true, nextRunAt: true },
+    select: { id: true, name: true, nextRunAt: true },
     orderBy: { id: "asc" },
   });
   const queue = getQueue(QUEUE_CRAWLER);
   for (const source of due) {
-    // jobId 锚定到期时刻:同源同轮重复入队被 BullMQ 幂等挡掉
+    // jobId 锚定到期时刻:同源同轮重复入队被 BullMQ 幂等挡掉;
+    // sourceName 随 data 过境——后台「最近错误」免查库直显渠道
     await queue.add(
       CRAWL_JOB_SOURCE,
-      { sourceId: source.id },
+      { sourceId: source.id, sourceName: source.name },
       {
         jobId: `crawl-${source.id}-${source.nextRunAt?.getTime() ?? 0}`,
         removeOnComplete: 200,

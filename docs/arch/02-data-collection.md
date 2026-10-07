@@ -43,7 +43,7 @@
 
 - 频控:每渠道独立 `crawl_interval_min`(默认 ≥30min),对目标站遵守 robots.txt 与 UA 规范
 - **每日请求上限(2026-10-03 立项定)**:每渠道独立 `daily_max_requests`(如机器之心 60min/日 25 次);worker 以 Redis 按渠道按日 INCR(key 含日期,TTL 48h)计数,超限当日剩余调度直接跳过——warn 日志、不计失败、不影响健康度,次日自然恢复
-- 失败处理:连续失败 ≥3 次 → source.status=error 并在采集后台标红;不阻塞其他渠道
+- 失败处理:连续失败 ≥3 次 → source.status=error 并在采集后台标红;不阻塞其他渠道。失败根因人话化(2026-10-07):undici `fetch failed` 经 `lib/telegram/crawl-error.ts` 剥 cause 错误码翻译(DNS/连接重置/超时/TLS…),上抛 `[渠道 名 #id] 根因` 入 BullMQ failedReason = 采集总览「最近错误」;结构化日志 `crawler.source_failed`(sourceId/name/fails/reason,不含 URL 防 token 泄漏);job data 随带 `sourceName` 供后台直显渠道
 - 队列复用 arch/05-services §4 二期任务划分;抖音等签名渠道复用 Python signer sidecar(research/01)
 
 **落地注记(2026-10-04,M7 批③/⑤ 已交付)**:适配器一期仅 `rss`(fast-xml-parser,RSS/Atom 双格式;`token` 等凭证经 `crawl_source.config` 注入、拼为 query 参数,报错信息不回显 URL 防外泄);**HTTP 429 特判** = 供应方限频(`RateLimitedError`)不计失败、来源保持 healthy、顺延下轮(机器之心免费档 60min/次实测);队列装配 = BullMQ `upsertJobScheduler("crawler-tick")` 每 60s 扫描到期渠道,per-source job 以 `crawl-{id}-{nextRunAt}` 幂等去重;入库编排 = 日上限(Redis INCR 跳过不计失败)→ 适配器 → canonical_url/content_hash 双重去重 → 启发式+屏蔽词 → 规则截断 → visible/hidden。前台落地见 arch/07 §1 `/telegram` 行。

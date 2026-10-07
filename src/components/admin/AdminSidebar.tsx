@@ -27,7 +27,7 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
-      { icon: "i-send", label: "电报流治理", href: "/admin/telegram" },
+      { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
       { icon: "i-cloudupload", label: "内容分发", href: "/admin/distribute" },
     ],
   },
@@ -37,7 +37,7 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
       { icon: "i-cloudserver", label: "渠道配置", href: "/admin/channels" },
       { icon: "i-aim", label: "博主管理", href: "/admin/bloggers" },
-      { icon: "i-github", label: "GitHub 仓库", href: "/admin/github" },
+      { icon: "i-github", label: "项目展示", href: "/admin/github" },
     ],
   },
   {
