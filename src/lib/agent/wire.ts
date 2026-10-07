@@ -1,13 +1,14 @@
 /**
  * SSE 线协议(K2.5,arch/04 §3.3「Route Handler 自实现 LangGraph 兼容流」):
- * 帧名与载荷以已装解析器实测钉死(2026-10-07,@langchain/langgraph-sdk 1.12.1
- * streamWithRetry 原样透传 {event,data};@assistant-ui/react-langgraph 0.14.33
+ * 帧名与载荷形态实测钉死(2026-10-07;消费方 @assistant-ui/react-langgraph
  * useLangGraphMessages switch——normalizeLangGraphTupleMessage 要求 chunk 型
- * tool_call_chunks[].index 为 number)。平移 ai-invest wire.py 契约,收敛此单文件。
+ * tool_call_chunks[].index 为 number)。服务端编码单点即本文件;客户端解码
+ * 单点 sse.ts(K2.6 起 runs.stream 自有 fetch,官方 langgraph-sdk 退役)。
+ * 平移 ai-invest wire.py 契约,收敛此单文件。
  */
 import type { BaseMessage } from "@langchain/core/messages";
 
-/** useLangGraphMessages 认识的帧名(未知名落 onCustomEvent;end 帧仅作收尾哨兵) */
+/** useLangGraphMessages 认识的帧名(未知名落 onCustomEvent——前端 noop 吞掉;end 帧仅作收尾哨兵) */
 export type AgentWireEvent =
   "metadata" | "messages" | "messages/partial" | "updates" | "values" | "error" | "end";
 

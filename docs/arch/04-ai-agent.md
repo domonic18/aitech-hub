@@ -59,12 +59,12 @@
 
 **K2.5 实施注记(2026-10-07,第二迭代批①~⑤,`src/lib/agent/*` + `/api/search/agent/*`)**:
 
-- **wire 契约以已装 SDK 实测钉死**(`@langchain/langgraph-sdk` 1.12.1 dist 逐行核对,不信旧文档):SDK 透传原始 `{event,data}` SSE 帧;前端 `useLangGraphMessages` 识别 `messages`(tuple `[message, metadata]`)/`messages/partial`/`updates`/`values`/`metadata`/`error` 等,未知事件走 custom;chunk 形态要求 `tool_call_chunks[].index` 为 number——序列化单点收敛 `src/lib/agent/wire.ts`,SDK 升级只改此一处
+- **wire 契约以已装 SDK 实测钉死**(`@langchain/langgraph-sdk` 1.12.1 dist 逐行核对,不信旧文档):SDK 透传原始 `{event,data}` SSE 帧;前端 `useLangGraphMessages` 识别 `messages`(tuple `[message, metadata]`)/`messages/partial`/`updates`/`values`/`metadata`/`error` 等,未知事件走 custom;chunk 形态要求 `tool_call_chunks[].index` 为 number——序列化单点收敛 `src/lib/agent/wire.ts`;客户端解码单点 `src/lib/agent/sse.ts`(K2.6 修复批,见下)
 - **会话 30 天自动清退 + 用户可删(2026-10-07 用户拍板)**:行 `lastMessageAt` 超 30 天 worker 日清(STATS 队列 `purge-agent-session`,04:33 错峰)行+checkpoint 同删;用户删除走 DELETE 路由(归属校验 404 不泄露存在性,checkpoint 删失败不反噬)
 - **入口仅 /search 场景(2026-10-07 用户拍板)**:答案卡追问 chips(直发)+「继续深挖」按钮(仅预填)派发 `search:agent-ask` 事件唤起 Drawer;不做全局 FAB
 - **身份**:匿名 cookie `ah_av`(uuid,365d,httpOnly)即 visitor,会话行与其绑定;换设备/清 cookie 失联,30 天清退兜底;三期登录后再议账号绑定
 - **模型绑定即时性**:agent 图进程级缓存按 `${resolved.id}:${resolved.source}` 键控,admin 改 search 绑定下一次 run 即生效(rebuild 落 `agent.graph_rebuilt` 日志);台账记独立角色 `search_agent`(与答案卡 `search` 的 100/日 互不侵占)
-- **前端**:ai-invest 自绘件结构平移(`src/components/site/agent/` 七件),终端风 token 换装,不引 antd/zustand/react-query;threads 建删与 state 走自有 fetch(apiEnvelope),仅 `runs.stream` 用官方 SDK Client;程序化发送直写 `thread.append`(composer.setText 同 tick send 会静默 no-op);todos 提取零依赖模块 `lib/agent/todos` 客户端可安全引入;Drawer 左缘可拖拽调宽(420~920px 夹取,localStorage `agent.drawer.width` 记忆)
+- **前端**:ai-invest 自绘件结构平移(`src/components/site/agent/` 七件),终端风 token 换装,不引 antd/zustand/react-query;threads 建删与 state 走自有 fetch(apiEnvelope);`runs.stream` K2.6 起亦为自有 fetch+SSE 解析(SDK AsyncCaller 对非 2xx reject Response 且包装 `new Error(response)`,apiEnvelope 人话/状态码全丢 → 429 配额/404 过期无法分流还会盲重试等待,用户实测 3 问后静默停止);程序化发送直写 `thread.append`(composer.setText 同 tick send 会静默 no-op);todos 提取零依赖模块 `lib/agent/todos` 客户端可安全引入;Drawer 左缘可拖拽调宽(420~920px 夹取,localStorage `agent.drawer.width` 记忆)
 
 **K2.6 实施注记(2026-10-07,第三迭代批①~④,游客模式 + 后台会话管理 + 工具面收紧)**:
 

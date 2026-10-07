@@ -1,22 +1,22 @@
 "use client";
 /**
  * Drawer 会话运行时防腐层(K2.5,平移 ai-invest runtimeAdapter 四件套):
- * 集中 @assistant-ui/react-langgraph 与 @langchain/langgraph-sdk 的全部集成点
+ * 集中 @assistant-ui/react-langgraph 与自有 SSE 解析(K2.6 起)的全部集成点
  * (threadListAdapter / load / stream / eventHandlers),Provider 只做装配。
  * 协议对接:threads 建删与 state 走自有 fetch(apiEnvelope 契约,cookie 同源自带);
- * 仅 runs.stream 用官方 SDK Client(其价值在 SSE 解析;apiUrl 必须绝对地址,
- * SDK 内部 new URL(apiUrl + path) 拼接)。
+ * runs.stream 亦为自有 fetch+sse.ts 帧解析——官方 SDK Client 退役:其 AsyncCaller
+ * 对非 2xx reject Response 且包装 new Error(response),message 变 "[object Response]",
+ * apiEnvelope 人话/状态码全丢 → 429 配额与 404 过期既无法分流还会盲重试等待
+ * (用户实测:3 问后静默停止无提示,控制台连环 429)。
  * 纪律:本模块不订阅任何 React 状态,todos 经 onTodos 回调上抛 Drawer。
  */
 import { InMemoryThreadListAdapter } from "@assistant-ui/react";
 import type { LangChainMessage, LangGraphStreamCallback } from "@assistant-ui/react-langgraph";
-import { Client } from "@langchain/langgraph-sdk";
 
+import { createSseEventReader } from "@/lib/agent/sse";
 import { extractTodos, type AgentTodo } from "@/lib/agent/todos";
 
 const API_BASE = "/api/search/agent";
-/** runs.stream 的 assistant_id(后端只认 input,此值仅占位) */
-const AGENT_ID = "search-agent";
 
 export interface Envelope<T> {
   code: number;
@@ -44,9 +44,17 @@ async function apiJson<T>(input: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
-function createAgentClient(): Client {
-  // langgraph-sdk 必须绝对地址;同源无需 apiKey/鉴权头
-  return new Client({ apiUrl: `${apiOrigin()}${API_BASE}`, apiKey: null });
+/** 非 2xx 响应解 apiEnvelope 人话(代理 HTML 错误页等非 JSON 落状态码兜底) */
+async function envelopeMessage(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as Envelope<unknown> | null;
+    if (body !== null && typeof body.message === "string" && body.message !== "") {
+      return body.message;
+    }
+  } catch {
+    /* 非 JSON,落下方兜底 */
+  }
+  return `请求失败(${res.status})`;
 }
 
 /** SDK 流错误形态不定(Error/ApiError/响应体文本),统一取 message 判过期 */
@@ -90,6 +98,8 @@ export interface AgentRuntimeAdapter {
   stream: LangGraphStreamCallback<LangChainMessage>;
   eventHandlers: {
     onUpdates: (updates: unknown) => void;
+    /** 哨兵帧(如 wire end)吞掉,防 useLangGraphMessages 未知名 console.warn */
+    onCustomEvent: (eventType: string, data: unknown) => void;
   };
 }
 
@@ -136,27 +146,53 @@ export function createAgentRuntimeAdapter(
     stream: async function* (messages, config) {
       const { externalId } = await config.initialize();
       if (!externalId) throw new Error("会话尚未初始化");
-      const client = createAgentClient();
-      let stream: Awaited<ReturnType<typeof client.runs.stream>>;
+      // 自有 fetch 替代官方 SDK(头注:错误包装丢人话 + 盲重试)。载荷与 SDK
+      // 同形:后端 bodySchema 只消费 input,command(resume/regenerate)透传备用。
+      let res: Response;
       try {
-        stream = await client.runs.stream(externalId, AGENT_ID, {
-          input: messages.length ? { messages } : null,
-          command: config.command as never,
-          streamMode: ["messages", "updates"],
+        res = await fetch(`${apiOrigin()}${API_BASE}/threads/${externalId}/runs/stream`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: messages.length ? { messages } : null,
+            ...(config.command ? { command: config.command } : {}),
+          }),
           signal: config.abortSignal,
         });
       } catch (e) {
-        if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
-        throw e;
+        if (e instanceof Error && e.name === "AbortError") throw e; // 用户主动停,静默
+        const message = "网络连接异常,请稍后重试";
+        options.onError?.(message);
+        throw new Error(message);
       }
-      // 帧原样透传(wire 契约由后端钉死;error 帧已带人话,前端挂末条消息)
+      if (!res.ok || !res.body) {
+        // 护栏前置拒绝(429 配额/频控、404 过期等)全走这里:人话分流
+        const message = await envelopeMessage(res);
+        if (isSessionExpired(message)) throw selfHealError(options.onSessionExpired);
+        options.onError?.(message);
+        throw new Error(message);
+      }
+      // 帧原样透传(sse.ts 按 encodeWireEvent 逆变换;error 帧已带人话,前端挂末条消息)
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      const frames = createSseEventReader();
       try {
-        for await (const chunk of stream) {
-          yield { event: chunk.event, data: chunk.data };
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const frame of frames.push(decoder.decode(value, { stream: true }))) {
+            yield frame;
+          }
         }
-      } catch (e) {
-        if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
-        throw e;
+        for (const frame of frames.end()) {
+          yield frame;
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          /* 流已断 */
+        }
       }
     },
     eventHandlers: {
@@ -164,6 +200,9 @@ export function createAgentRuntimeAdapter(
         const todos = extractTodos(updates);
         if (todos.length > 0) options.onTodos?.(todos);
       },
+      // end 帧仅是后端收尾哨兵(wire.ts),无消费方;不注册时 useLangGraphMessages
+      // 对未知名 console.warn("Unhandled event received")——控制台噪音,K2.6 修复
+      onCustomEvent: () => {},
     },
   };
 }
