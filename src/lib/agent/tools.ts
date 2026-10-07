@@ -1,7 +1,8 @@
 /**
- * Agent 只读工具面(K2.5,arch/04 §3):站内三域检索 + 文章/项目正文补读。
- * 检索复用 K1 unified-search#searchAll(给人搜索 = 给智能体检索,同源不漂移);
- * K 系列只读红线(§3 已定):无任何 mutation 工具。返回串直接进模型上下文,
+ * Agent 只读工具面(K2.5,arch/04 §3;K2.6 收紧):站内三域检索 + 文章/项目
+ * 正文补读 + 当前时间锚定。检索复用 K1 unified-search#searchAll(给人搜索 =
+ * 给智能体检索,同源不漂移);K 系列只读红线(§3 已定):无任何 mutation 工具、
+ * 无站外网络/文件/代码执行能力(系统提示明示边界)。返回串直接进模型上下文,
  * 一律 JSON.stringify 且正文截断(50k tokens 会话护栏的口径基础)。
  */
 import { tool } from "@langchain/core/tools";
@@ -83,4 +84,27 @@ export const readRepoTool = tool(
   },
 );
 
-export const AGENT_TOOLS = [searchSiteTool, readPostTool, readRepoTool];
+/** 当前时间(北京时区;agent 无时钟感知,「今天/最近」类问题靠它锚定) */
+export const getTimeTool = tool(
+  async () => {
+    const now = new Date();
+    const beijing = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(now);
+    return JSON.stringify({ iso: now.toISOString(), beijing, timezone: "Asia/Shanghai" });
+  },
+  {
+    name: "get_time",
+    description:
+      "获取当前时间(北京时区)。涉及「今天/最近/最新」等相对时间的问题,先调它锚定当前日期。",
+    schema: z.object({}).describe("无参数"),
+  },
+);
+
+export const AGENT_TOOLS = [searchSiteTool, readPostTool, readRepoTool, getTimeTool];
