@@ -52,12 +52,35 @@ function postView(p: {
   };
 }
 
+/**
+ * 发文工作流自解释(随 initialize 下发,MCP 标准字段):二进制图片字节永不进
+ * 模型上下文——大图走 curl multipart 直传 /api/media(PAT 双通道鉴权已内置),
+ * MCP 只承担文本编排。任何 agent(codex/workbuddy/claude)连上 tools/list 即知。
+ */
+const SERVER_INSTRUCTIONS = [
+  "发文工作流(带图文章,适用任意 agent):",
+  "1. 每张本地图先二进制直传(字节不过模型):",
+  '   curl -H "Authorization: Bearer <PAT>" -F "file=@<图片路径>" <base>/api/media/',
+  '   返回 202 {"data":{"path":"/wp-content/uploads/…"}};<PAT> 用连接本 MCP 的同一枚',
+  "   Bearer token,<base> 为本 MCP 端点所属站点源(如 https://17aitech.com)。",
+  "2. 把正文本地图引用(如 ./截图/x.png)改写为返回的 path。",
+  "3. 调 upsert_article 传纯文本 markdown(默认落草稿,publish=true 直发)。",
+  "封面:markdown 头部 frontmatter 加 cover: <已上传的 /wp-content/uploads/… 路径>",
+  "(仅认站内路径,外链被忽略;封面图不必在正文中引用)。",
+  "文生图封面在 agent 侧本地生成后,按步骤 1 直传即可作封面素材。",
+  "约束:单图 ≤10MB,jpg/png/webp/gif;sha1 去重,重跑返回 reused:true;",
+  "仅 <100KB 小图可走 upload_media(base64 会占模型上下文,大图禁用)。",
+].join("\n");
+
 export function createMcpServer(actor: AdminActor): McpServer {
-  const server = new McpServer({ name: "aitech-hub", version: "0.1.0" });
+  const server = new McpServer(
+    { name: "aitech-hub", version: "0.1.0" },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   server.tool(
     "upsert_article",
-    "按 slug 幂等发布文章(markdown 可含 frontmatter;默认落草稿,publish=true 直发;本地图片随文 base64 上传,外链保留原链)",
+    "按 slug 幂等发布文章(markdown 可含 frontmatter;默认落草稿,publish=true 直发)。正文图片引用已上传的 /wp-content/uploads/ 站内路径或外链,勿随文传 base64(images 参数仅为小图场景保留,总体积受代理层限制)",
     // 入参约束与 HTTP PUT /api/posts 同源(publish-schema 单一事实源)
     publishUpsertShape,
     async (args) => {
@@ -72,7 +95,7 @@ export function createMcpServer(actor: AdminActor): McpServer {
 
   server.tool(
     "upload_media",
-    "上传单张图片入库(sha1 去重),返回站内路径;与 upsert_article 的 images 随文通道二选一",
+    "上传单张小图入库(base64 入参会经模型上下文,仅限 <100KB),返回站内路径;大图/批量用 curl 直传 POST /api/media/(字段 file,Bearer 用同一枚 PAT,≤10MB/张)取 data.path",
     {
       name: z.string().min(1).max(255),
       mime: z.string().regex(/^image\//),
