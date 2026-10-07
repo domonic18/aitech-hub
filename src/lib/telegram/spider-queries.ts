@@ -26,7 +26,14 @@ import {
 export interface QueueSnapshot {
   counts: { waiting: number; active: number; completed: number; failed: number; delayed: number };
   tickAlive: boolean;
-  recentFailed: Array<{ id: string; name: string; reason: string; at: Date | null }>;
+  recentFailed: Array<{
+    id: string;
+    name: string;
+    /** 渠道名(crawl job data 过境,2026-10-07);无则 null(旧 job/github 队列) */
+    sourceName: string | null;
+    reason: string;
+    at: Date | null;
+  }>;
 }
 
 /** 队列实况共性:计数 + tick 调度器存活 + 最近 5 条失败(crawler/github 共用) */
@@ -53,12 +60,17 @@ async function snapshotQueue(
       delayed: counts.delayed ?? 0,
     },
     tickAlive: schedulers.some((s) => s.key === tickSchedulerId),
-    recentFailed: failed.map((j) => ({
-      id: j.id ?? "",
-      name: j.name,
-      reason: (j.failedReason ?? "").slice(0, 200),
-      at: j.finishedOn ? new Date(j.finishedOn) : null,
-    })),
+    recentFailed: failed.map((j) => {
+      const data = (j.data ?? {}) as { sourceName?: string; sourceId?: number };
+      return {
+        id: j.id ?? "",
+        name: j.name,
+        // 新 job 直显渠道名;旧 job(保留窗口内)退 #id;github 等队列无此字段 → null 落 job 名
+        sourceName: data.sourceName ?? (data.sourceId != null ? `#${data.sourceId}` : null),
+        reason: (j.failedReason ?? "").slice(0, 200),
+        at: j.finishedOn ? new Date(j.finishedOn) : null,
+      };
+    }),
   };
 }
 

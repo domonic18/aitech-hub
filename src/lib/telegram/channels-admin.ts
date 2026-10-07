@@ -207,7 +207,7 @@ export async function triggerChannelCrawl(id: number): Promise<{ enqueued: true 
   if (!src.enabled) throw new ChannelAdminError("disabled", "渠道已停用,启用后再采集");
   await getQueue(QUEUE_CRAWLER).add(
     "crawl",
-    { sourceId: src.id },
+    { sourceId: src.id, sourceName: src.name },
     {
       // 手动 job id 与调度 job(id 锚定 next_run_at)不冲突;入队即返回,结果看台账
       jobId: `crawl-${src.id}-manual-${Date.now()}`,
