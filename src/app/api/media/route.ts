@@ -6,18 +6,20 @@
  */
 import { type NextRequest } from "next/server";
 
+import { requireAdminActor } from "@/lib/http/mutation-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
 import { UPLOAD_FIELD } from "@/lib/media/media-schema";
 import { uploadMedia } from "@/lib/media/service";
 
-import { mediaErrorResponse, requireAdminForMutation } from "./shared";
+import { mediaErrorResponse } from "./shared";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const denied = await requireAdminForMutation(req);
-  if (denied) return denied;
+  // 单次双路鉴权(requireAdminForMutation 的展开形态):actor 供上传审计归因
+  const actorGuard = await requireAdminActor(req);
+  if (!actorGuard.ok) return actorGuard.response;
   try {
     // 畸形 multipart(截断/伪造边界)→ 400 客户端错,不落 media.write.fail 日志
     let form: FormData;
@@ -36,7 +38,12 @@ export async function POST(req: NextRequest) {
       mime: file.type || "application/octet-stream",
       filename: file.name || "upload",
     });
-    logger.info({ event: "media.upload", id: saved.id, reused: saved.reused });
+    logger.info({
+      event: "media.upload",
+      actor: actorGuard.actor,
+      id: saved.id,
+      reused: saved.reused,
+    });
     return apiEnvelope(0, saved.reused ? "reused" : "accepted", saved, 202);
   } catch (e) {
     return mediaErrorResponse(e);
