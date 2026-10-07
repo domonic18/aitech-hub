@@ -472,10 +472,12 @@ model AiUsageLog {
   audioSeconds Int      @default(0) @map("audio_seconds") // asr 行:转写音频秒
   durationMs   Int      @default(0) @map("duration_ms")
   status       String   @default("ok") @db.VarChar(10) // ok/degraded/failed
+  sessionId    String?  @map("session_id") @db.VarChar(40) // K2.6:会话/线程锚(后台会话管理聚合口径;他类调用缺省)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([createdAt], map: "idx_ai_usage_log_created")
   @@index([role, modelId], map: "idx_ai_usage_log_role_model")
+  @@index([sessionId], map: "idx_ai_usage_log_session")
   @@map("ai_usage_log")
 }
 

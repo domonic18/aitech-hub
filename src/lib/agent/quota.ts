@@ -41,3 +41,31 @@ export async function tryConsumeAgentRunQuota(ip: string): Promise<boolean> {
     return true;
   }
 }
+
+/**
+ * 游客提问双闸(K2.6,用户拍板 3 问/日):visitor 维度 3 问/日(防单号刷)+
+ * IP 维度 30 问/日(防清 cookie 换号刷,同 NAT 多游客互不挤占)。双闸任一
+ * 超限即拒;模型终败也计数(防刷优先)。Redis 挂放行(护栏非计费,同上口径)。
+ */
+export const GUEST_ASK_DAILY_MAX = 3;
+export const GUEST_IP_DAILY_MAX = 30;
+
+const guestAskKey = (visitorId: string, day: string): string =>
+  `search:agent:guest:ask:${visitorId}:${day}`;
+const guestIpKey = (ip: string, day: string): string => `search:agent:guest:ip:${ip}:${day}`;
+
+export async function tryConsumeGuestAskQuota(visitorId: string, ip: string): Promise<boolean> {
+  try {
+    const askKey = guestAskKey(visitorId, statsDay());
+    const asks = await redis.incr(askKey);
+    if (asks === 1) await redis.expire(askKey, 2 * 24 * 3600);
+    if (asks > GUEST_ASK_DAILY_MAX) return false;
+    if (!ip) return true;
+    const ipKey = guestIpKey(ip, statsDay());
+    const ipHits = await redis.incr(ipKey);
+    if (ipHits === 1) await redis.expire(ipKey, 2 * 24 * 3600);
+    return ipHits <= GUEST_IP_DAILY_MAX;
+  } catch {
+    return true;
+  }
+}

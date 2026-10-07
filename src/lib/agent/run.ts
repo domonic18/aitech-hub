@@ -13,6 +13,7 @@ import { logger } from "../logger";
 import type { ResolvedAiModel } from "../ai/resolver";
 
 import { getAgentGraph } from "./agent";
+import { GUEST_THREAD_PREFIX } from "./guest-threads";
 import { touchSessionAfterRun } from "./sessions";
 import { encodeWireEvent, encodeWireMessage } from "./wire";
 
@@ -129,7 +130,8 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
   return outcome;
 }
 
-/** run 后台账与会话行更新(失败只告警,不反噬——usage-log 同款纪律) */
+/** run 后台账与会话行更新(失败只告警,不反噬——usage-log 同款纪律);
+ * 游客线程(g_ 前缀,无会话行)只落台账不 touch */
 export async function recordAgentRun(params: {
   sessionId: string;
   durationMs: number;
@@ -144,7 +146,9 @@ export async function recordAgentRun(params: {
     tokensOut: outcome.tokensOut,
     durationMs,
     status: outcome.truncatedReason ? "degraded" : "ok",
+    sessionId,
   });
+  if (sessionId.startsWith(GUEST_THREAD_PREFIX)) return;
   try {
     await touchSessionAfterRun(sessionId, outcome.tokensIn + outcome.tokensOut);
   } catch (e) {
