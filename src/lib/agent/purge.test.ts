@@ -1,6 +1,6 @@
 /**
- * purge 单测(prisma/checkpointer 必 mock):30 天 cutoff、按批循环清空、
- * checkpoint 删失败不反噬、空批即止。
+ * purge 单测(prisma/checkpointer/redis 必 mock):30 天 cutoff、按批循环清空、
+ * checkpoint 删失败不反噬、空批即止;游客线程 Redis 键消失清扫。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,19 +11,27 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 const deleteThreadMock = vi.hoisted(() => vi.fn());
+const queryMock = vi.hoisted(() => vi.fn());
+const existsMock = vi.hoisted(() => vi.fn());
 const loggerMock = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
 vi.mock("../db", () => ({ prisma: prismaMock }));
-vi.mock("./checkpointer", () => ({ deleteThread: deleteThreadMock }));
+vi.mock("./checkpointer", () => ({
+  deleteThread: deleteThreadMock,
+  getAgentPgPool: () => ({ query: queryMock }),
+}));
+vi.mock("../redis", () => ({ redis: { exists: existsMock } }));
 vi.mock("../logger", () => ({ logger: loggerMock }));
 
-import { purgeAgentSessions } from "./purge";
+import { purgeAgentSessions, purgeExpiredGuestThreads } from "./purge";
 
 beforeEach(() => {
   prismaMock.searchAgentSession.findMany.mockReset();
   prismaMock.searchAgentSession.delete.mockReset();
   deleteThreadMock.mockReset();
   deleteThreadMock.mockResolvedValue(undefined);
+  queryMock.mockReset().mockResolvedValue({ rows: [] });
+  existsMock.mockReset().mockResolvedValue(false);
 });
 
 describe("purgeAgentSessions", () => {
@@ -63,5 +71,30 @@ describe("purgeAgentSessions", () => {
     prismaMock.searchAgentSession.findMany.mockResolvedValue([]);
     await expect(purgeAgentSessions()).resolves.toBe(0);
     expect(prismaMock.searchAgentSession.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe("purgeExpiredGuestThreads", () => {
+  it("扫 g_ 线程:Redis 键消失删 checkpoint,键在场跳过", async () => {
+    queryMock.mockResolvedValue({ rows: [{ thread_id: "g_a" }, { thread_id: "g_b" }] });
+    existsMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await expect(purgeExpiredGuestThreads()).resolves.toBe(1);
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("LIKE"), ["g\\_%"]);
+    expect(deleteThreadMock).toHaveBeenCalledTimes(1);
+    expect(deleteThreadMock).toHaveBeenCalledWith("g_b");
+  });
+
+  it("删失败/exists 失败:单线程告警不反噬,其余照扫", async () => {
+    queryMock.mockResolvedValue({ rows: [{ thread_id: "g_a" }, { thread_id: "g_b" }] });
+    existsMock.mockResolvedValueOnce(false).mockRejectedValueOnce(new Error("redis down"));
+    deleteThreadMock.mockRejectedValueOnce(new Error("cp down"));
+    await expect(purgeExpiredGuestThreads()).resolves.toBe(0);
+    expect(loggerMock.warn).toHaveBeenCalledTimes(2);
+    expect(existsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("无 g_ 线程 → 0 不触删", async () => {
+    await expect(purgeExpiredGuestThreads()).resolves.toBe(0);
+    expect(deleteThreadMock).not.toHaveBeenCalled();
   });
 });

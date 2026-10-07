@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import Redis from "ioredis";
 import sharp from "sharp";
 
 /**
@@ -21,6 +22,11 @@ import sharp from "sharp";
 
 loadEnvConfig(process.cwd());
 const prisma = new PrismaClient();
+/** K2.6 游客配额/归属键种子(与应用同库:REDIS_URL,本地 6380) */
+const e2eRedis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6380/0", {
+  lazyConnect: true,
+  maxRetriesPerRequest: 2,
+});
 
 /** e2e 专用 admin 账号(本地库幂等 upsert;与开发者个人账号隔离) */
 const E2E_ADMIN_PHONE = "13800000000";
@@ -28,7 +34,14 @@ const E2E_ADMIN_PASSWORD = "e2e-admin-pass1";
 
 test.afterAll(async () => {
   await prisma.$disconnect();
+  e2eRedis.disconnect();
 });
+
+/** 游客提问日限键(K2.6 quota 同式:statsDay=sv-SE 北京日界,YYYY-MM-DD) */
+function guestAskKey(visitorId: string): string {
+  const day = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+  return `search:agent:guest:ask:${visitorId}:${day}`;
+}
 const LEGACY_TO_ARTICLES =
   "/%e9%a6%96%e4%b8%aagpu%e9%ab%98%e7%ba%a7%e8%af%ad%e8%a8%80%ef%bc%8c%e5%a4%a7%e8%a7%84%e6%a8%a1%e5%b9%b6%e8%a1%8c%e5%b0%b1%e5%83%8f%e5%86%99python%ef%bc%8c%e5%b7%b2%e8%8e%b78500-star/";
 const LEGACY_TO_HOME = "/ai%e8%a7%86%e9%a2%91%e5%b7%a5%e5%85%b7/";
@@ -2612,19 +2625,19 @@ test("29. 批量同步与绑定重置(M17:空/超限 400/旧文 skipped/清 medi
   }
 });
 
-test("30. K2.5 Drawer 深挖会话:线程 API 面(归属/删除)/Drawer 唤起预填/无绑定直发降级/侧栏删除", async ({
+test("30. K2.5/K2.6 Drawer 深挖会话:游客线程面(g_ 前缀/不落行/归属删除)/Drawer 唤起预填/无侧栏直发降级", async ({
   page,
   request,
   playwright,
 }) => {
-  // 30.1 线程 API 面(APIRequestContext 独立 cookie jar:首访下发 ah_av)
+  // 30.1 线程 API 面(APIRequestContext 独立 cookie jar:首访下发 ah_av;K2.6 起一律游客)
   const E2E_ORIGIN = new URL(process.env.E2E_BASE_URL ?? "http://localhost:3000").origin;
   const first = await request.get("/api/search/agent/threads");
   expect(first.status()).toBe(200);
   expect(first.headers()["set-cookie"] ?? "").toContain("ah_av=");
   expect(((await first.json()) as { data: unknown[] }).data).toEqual([]);
 
-  // 新建(同源校验:无 Origin → 403;带 Origin → threadId uuid)
+  // 新建(同源校验:无 Origin → 403;带 Origin → g_ 前缀线程,不落会话行)
   const noOrigin = await request.post("/api/search/agent/threads", { data: {} });
   expect(noOrigin.status()).toBe(403);
   const created = await request.post("/api/search/agent/threads", {
@@ -2633,24 +2646,32 @@ test("30. K2.5 Drawer 深挖会话:线程 API 面(归属/删除)/Drawer 唤起�
   });
   expect(created.status()).toBe(200);
   const threadId = ((await created.json()) as { data: { threadId: string } }).data.threadId;
-  expect(threadId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(threadId).toMatch(/^g_[0-9a-f-]{36}$/);
+  expect(await prisma.searchAgentSession.findUnique({ where: { id: threadId } })).toBeNull();
   expect(
     ((await (await request.get("/api/search/agent/threads")).json()) as { data: unknown[] }).data,
-  ).toHaveLength(1);
-  // state 空轨迹(建线程后未发送;values.messages 扁平序列化契约)
+  ).toEqual([]);
+  // state 空轨迹(Redis 归属本主;values.messages 扁平序列化契约)
   const state = await request.get(`/api/search/agent/threads/${threadId}/state`);
   expect(state.status()).toBe(200);
   expect(
     ((await state.json()) as { data: { values: { messages: unknown[] } } }).data.values.messages,
   ).toEqual([]);
 
-  // 越权:另一访客(API jar 隔离)对他人的线程删/state → 一律 404(不泄露存在性)
+  // 越权:另一访客(API jar 隔离)对他人的线程删/state → 一律 404(不泄露存在性;
+  // 带 Origin 过同源关,断言落到归属校验层)
   const outsider = await playwright.request.newContext();
-  expect((await outsider.delete(`/api/search/agent/threads/${threadId}`)).status()).toBe(404);
+  expect(
+    (
+      await outsider.delete(`/api/search/agent/threads/${threadId}`, {
+        headers: { origin: E2E_ORIGIN },
+      })
+    ).status(),
+  ).toBe(404);
   expect((await outsider.get(`/api/search/agent/threads/${threadId}/state`)).status()).toBe(404);
   await outsider.dispose();
 
-  // 本主删除 → 200;再 state 404;列表回空
+  // 本主删除 → 200;再 state 404(归属键已解绑)
   expect(
     (
       await request.delete(`/api/search/agent/threads/${threadId}`, {
@@ -2659,41 +2680,29 @@ test("30. K2.5 Drawer 深挖会话:线程 API 面(归属/删除)/Drawer 唤起�
     ).status(),
   ).toBe(200);
   expect((await request.get(`/api/search/agent/threads/${threadId}/state`)).status()).toBe(404);
-  expect(
-    ((await (await request.get("/api/search/agent/threads")).json()) as { data: unknown[] }).data,
-  ).toHaveLength(0);
 
-  // 30.2 Drawer UI(浏览器上下文独立访客):预建带标题会话 → 唤起事件 →
-  // 侧栏行可见 + ah_av cookie 下发 + 预填不直发
-  const testStart = new Date();
+  // 30.2 Drawer UI(浏览器上下文独立访客):唤起事件 → 游客模式无侧栏/
+  // 无新建入口 + 限额口径 hint + ah_av cookie 下发 + 预填不直发
+  // (dispatch 带 toPass 重试:hydration 完成前监听器未挂,事件会丢)
   await page.goto("/search/");
-  const ownThreadId = await page.evaluate(async () => {
-    const res = await fetch("/api/search/agent/threads", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    return ((await res.json()) as { data: { threadId: string } }).data.threadId;
-  });
-  await prisma.searchAgentSession.update({
-    where: { id: ownThreadId },
-    data: { title: "k25agent 会话甲", lastMessageAt: new Date() },
-  });
-  await page.evaluate(() =>
-    window.dispatchEvent(
-      new CustomEvent("search:agent-ask", {
-        detail: { question: "k25agent 深挖预填问题", send: false },
-      }),
-    ),
-  );
+  await expect(async () => {
+    await page.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent("search:agent-ask", {
+          detail: { question: "k25agent 深挖预填问题", send: false },
+        }),
+      ),
+    );
+    await expect(page.getByRole("dialog", { name: "问助手" })).toBeVisible();
+  }).toPass({ timeout: 15_000 });
   const drawer = page.getByRole("dialog", { name: "问助手" });
   await expect(drawer).toBeVisible();
-  const cookies = await page.context().cookies();
-  expect(cookies.some((c) => c.name === "ah_av")).toBe(true);
   await expect(page.getByPlaceholder(/继续深挖/)).toHaveValue("k25agent 深挖预填问题");
-  await expect(drawer.getByText("k25agent 会话甲")).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "新会话" })).toHaveCount(0);
+  await expect(drawer.getByText(/游客模式 · 每日 3 问 · 会话 2 小时未活动自动清退/)).toBeVisible();
 
-  // 直发无绑定模型:run 秒败收束(错误帧)——用户气泡落屏、发送钮回位、无 AI 回复
+  // 直发无绑定模型:run 秒败收束(错误帧)——用户气泡落屏、发送钮回位、无 AI 回复;
+  // 建线程调用回包下发 ah_av cookie(游客身份锚)
   await page.evaluate(() =>
     window.dispatchEvent(
       new CustomEvent("search:agent-ask", {
@@ -2703,13 +2712,97 @@ test("30. K2.5 Drawer 深挖会话:线程 API 面(归属/删除)/Drawer 唤起�
   );
   await expect(drawer.getByText("k25agent 无绑定直发问题")).toBeVisible();
   await expect(drawer.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 15_000 });
+  const cookies = await page.context().cookies();
+  expect(cookies.some((c) => c.name === "ah_av")).toBe(true);
 
-  // 侧栏两步删除:点删 → 确认? → 行消失
-  const row = drawer.locator('div[role="button"]', { hasText: "k25agent 会话甲" });
-  await row.getByTitle("删除会话").click();
-  await row.getByTitle("删除会话").click();
-  await expect(row).toBeHidden();
+  // 30.3 清场:游客无会话行;清游客 Redis 归属键与失败 run 残留的 checkpoint
+  const gkeys = await e2eRedis.keys("search:agent:gthread:*");
+  if (gkeys.length > 0) await e2eRedis.del(...gkeys);
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM checkpoints WHERE thread_id LIKE 'g\\_%' AND checkpoint_ns = ''`,
+  );
+});
 
-  // 30.3 清退日清单测覆盖 purger;此处清场:本测创建的会话行
-  await prisma.searchAgentSession.deleteMany({ where: { createdAt: { gte: testStart } } });
+test("31. K2.6 游客模式:归属隔离/3 问日限 429/后台会话管理(列表 API+页面+侧栏激活)", async ({
+  page,
+  request,
+}) => {
+  const E2E_ORIGIN = new URL(process.env.E2E_BASE_URL ?? "http://localhost:3000").origin;
+  const GUEST_A = "e2e5a7e0-1111-4111-8111-00000000a031";
+  const GUEST_B = "e2e5b7e0-2222-4222-8222-00000000b032";
+  // lazyConnect:命令级自连(30 号段可能已建连,显式 connect 会重复报错)
+
+  // 31.1 游客 A 建线程(固定 ah_av 身份)→ g_ 前缀 + 不落会话行
+  await page.context().addCookies([{ name: "ah_av", value: GUEST_A, url: E2E_ORIGIN }]);
+  await page.goto("/search/");
+  const guestThreadId = await page.evaluate(async () => {
+    const res = await fetch("/api/search/agent/threads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    return ((await res.json()) as { data: { threadId: string } }).data.threadId;
+  });
+  expect(guestThreadId).toMatch(/^g_[0-9a-f-]{36}$/);
+  expect(await prisma.searchAgentSession.findUnique({ where: { id: guestThreadId } })).toBeNull();
+  expect(await e2eRedis.get(`search:agent:gthread:${guestThreadId}`)).toBe(GUEST_A);
+
+  // 游客 B 对 A 的线程 state → 404(信息隔离,上下文互不影响)
+  await page.context().addCookies([{ name: "ah_av", value: GUEST_B, url: E2E_ORIGIN }]);
+  const bState = await page.evaluate(async (id) => {
+    const res = await fetch(`/api/search/agent/threads/${id}/state`);
+    return res.status;
+  }, guestThreadId);
+  expect(bState).toBe(404);
+
+  // 回身份 A:种子游客日限 3 → 第 4 问 runs/stream 429(配额在模型调用前,终败也计数口径)
+  await page.context().addCookies([{ name: "ah_av", value: GUEST_A, url: E2E_ORIGIN }]);
+  await e2eRedis.set(guestAskKey(GUEST_A), "3");
+  const quotaRes = await page.evaluate(async (id) => {
+    const res = await fetch(`/api/search/agent/threads/${id}/runs/stream`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: { messages: [{ type: "human", content: "k26 配额验证" }] } }),
+    });
+    return { status: res.status, body: (await res.json()) as { code: number; message: string } };
+  }, guestThreadId);
+  expect(quotaRes.status).toBe(429);
+  expect(quotaRes.body.message).toContain("今日游客提问次数已用完");
+
+  // 31.2 后台会话管理:无会话 401;admin 登录后列表契约 + 页面/侧栏激活
+  const anon = await request.get("/api/agent-sessions");
+  expect(anon.status()).toBe(401);
+
+  await page.goto("/admin/login");
+  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.waitForURL(/\/admin\/?$/);
+
+  // 侧栏「会话管理」激活(不再禁用占位)
+  await expect(page.getByRole("link", { name: "会话管理" })).toBeVisible();
+  await page.goto("/admin/agent-sessions/");
+  await expect(page.getByRole("heading", { name: "会话管理" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^全部 \d+$/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^成员会话 \d+$/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^游客会话 \d+$/ })).toBeVisible();
+
+  // 列表 API 契约(code 0,items+counts);detail 对无台账无归属键的线程 404
+  const list = await page.evaluate(async () => {
+    const res = await fetch("/api/agent-sessions?page=1&kind=all");
+    return (await res.json()) as {
+      code: number;
+      data?: { items: unknown[]; counts: { all: number; member: number; guest: number } };
+    };
+  });
+  expect(list.code).toBe(0);
+  expect(Array.isArray(list.data?.items)).toBe(true);
+  expect(list.data?.counts).toHaveProperty("guest");
+
+  // 31.3 清场:种子键 + 游客归属键 + 残留 checkpoint
+  await e2eRedis.del(guestAskKey(GUEST_A), `search:agent:gthread:${guestThreadId}`);
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM checkpoints WHERE thread_id LIKE 'g\\_%' AND checkpoint_ns = ''`,
+  );
+  await e2eRedis.quit();
 });

@@ -45,7 +45,7 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       { icon: "i-robot", label: "模型配置", href: "/admin/models" },
       { icon: "i-piechart", label: "用量统计", href: "/admin/usage" },
-      { icon: "i-comment", label: "会话管理", tag: "二期" },
+      { icon: "i-comment", label: "会话管理", href: "/admin/agent-sessions" },
     ],
   },
   { label: "用户", items: [{ icon: "i-user", label: "用户管理", href: "/admin/users" }] },

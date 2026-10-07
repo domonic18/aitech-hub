@@ -23,6 +23,8 @@ interface AgentRuntimeProviderProps {
   onTodos: (todos: AgentTodo[]) => void;
   /** 自有端点失败人话提示(Drawer 横幅) */
   onError: (message: string) => void;
+  /** 会话过期(K2.6 游客清退)自愈:复位新会话 + 横幅 */
+  onSessionExpired: () => void;
 }
 
 export default function AgentRuntimeProvider({
@@ -31,10 +33,11 @@ export default function AgentRuntimeProvider({
   onThreadIdChange,
   onTodos,
   onError,
+  onSessionExpired,
 }: AgentRuntimeProviderProps): React.ReactElement {
   const adapter = useMemo(
-    () => createAgentRuntimeAdapter({ onTodos, onError }),
-    [onTodos, onError],
+    () => createAgentRuntimeAdapter({ onTodos, onError, onSessionExpired }),
+    [onTodos, onError, onSessionExpired],
   );
 
   const runtime = useLangGraphRuntime({

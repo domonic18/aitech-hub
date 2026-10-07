@@ -33,7 +33,7 @@ import {
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
-import { purgeAgentSessions } from "../src/lib/agent/purge";
+import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/purge";
 import { ensureAgentCheckpointer } from "../src/lib/agent/checkpointer";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
@@ -78,13 +78,17 @@ const PROCESSORS: Record<string, Processor> = {
       }
       return { removed };
     }
-    // Drawer 会话 30 天自动清退(K2.5;行+checkpoint 同删,残留由下轮再扫)
+    // Drawer 会话清退(K2.5 member 30 天 + K2.6 游客 TTL 键消失;checkpoint 残留由下轮再扫)
     if (job.name === STATS_JOB_AGENT_PURGE) {
       const removed = await purgeAgentSessions();
       if (removed > 0) {
         console.log(JSON.stringify({ event: "agent.session.purge", removed }));
       }
-      return { removed };
+      const guestRemoved = await purgeExpiredGuestThreads();
+      if (guestRemoved > 0) {
+        console.log(JSON.stringify({ event: "agent.guest_thread.purge", removed: guestRemoved }));
+      }
+      return { removed, guestRemoved };
     }
     const summary = await flushStatsBuffer();
     if (summary.keysFlushed > 0) {

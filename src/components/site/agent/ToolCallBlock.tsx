@@ -7,11 +7,12 @@
  */
 import { useState } from "react";
 
-/** 站内三工具 + 计划工具的图标(sprite 体系,禁手绘) */
+/** 站内三工具 + 时间/计划工具的图标(sprite 体系,禁手绘) */
 const TOOL_ICON: Record<string, string> = {
   search_site: "#i-search",
   read_post: "#i-read",
   read_repo: "#i-github",
+  get_time: "#i-clock",
   write_todos: "#i-bars",
 };
 

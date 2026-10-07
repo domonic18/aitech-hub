@@ -1,9 +1,10 @@
 /**
- * 会话 run SSE 端点(K2.5 核心,arch/04 §3.3):SDK runs.stream 契约的
- * 自实现——POST /threads/{threadId}/runs/stream,input 只收 human 消息。
- * 流级护栏:归属校验 404、会话累计 50k 前置拒绝、IP 10 次/分;run 编排在
- * runAgentTurn(帧序列 metadata→messages|updates*→end)。业务降级一律
- * SSE error 帧(前端挂到末条 AI 消息 incomplete/error),不占 HTTP 状态。
+ * 会话 run SSE 端点(K2.5 核心,arch/04 §3.3;K2.6 身份分流):SDK
+ * runs.stream 契约的自实现——POST /threads/{threadId}/runs/stream,input 只收
+ * human 消息。admin:归属查会话行、会话累计 50k 前置拒绝、标题回填;
+ * 游客:归属查 Redis 活跃键(过期 404 自愈)、3 问/日/游客 + 30 问/日/IP
+ * 双闸。共用工级护栏:IP 10 次/分;run 编排在 runAgentTurn(帧序列
+ * metadata→messages|updates*→end)。业务降级一律 SSE error 帧,不占 HTTP 状态。
  * SSE 头 no-store + x-accel-buffering:no(nginx ^~ /api/search/ 已关缓冲)。
  */
 import { type NextRequest } from "next/server";
@@ -11,13 +12,18 @@ import { z } from "zod";
 
 import { AGENT_MAX_TOKENS, recordAgentRun, runAgentTurn } from "@/lib/agent/run";
 import { backfillSessionTitle } from "@/lib/agent/sessions";
-import { tryConsumeAgentRunQuota } from "@/lib/agent/quota";
+import { tryConsumeAgentRunQuota, tryConsumeGuestAskQuota } from "@/lib/agent/quota";
+import {
+  isGuestThreadId,
+  getGuestThreadOwner,
+  refreshGuestThread,
+} from "@/lib/agent/guest-threads";
+import { resolveAgentIdentity } from "@/lib/agent/identity";
 import { prisma } from "@/lib/db";
 import { isSameOrigin } from "@/lib/http/origin";
 import { clientIp } from "@/lib/http/request";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
-import { resolveVisitorId } from "@/lib/agent/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -64,13 +70,22 @@ export async function POST(
 ): Promise<Response> {
   if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
   const { threadId } = await params;
-  const visitor = resolveVisitorId(req);
+  const identity = await resolveAgentIdentity(req);
 
-  const row = await prisma.searchAgentSession.findUnique({
-    where: { id: threadId },
-    select: { visitorId: true, tokensTotal: true },
-  });
-  if (!row || row.visitorId !== visitor.id) return apiEnvelope(404, "会话不存在");
+  // 归属校验 + 护栏基线:admin 查行(50k 累计);游客查 Redis 键(fail-closed)
+  let tokensTotal = 0;
+  if (identity.kind === "guest") {
+    if (!isGuestThreadId(threadId)) return apiEnvelope(404, "会话不存在");
+    const owner = await getGuestThreadOwner(threadId);
+    if (owner !== identity.key) return apiEnvelope(404, "会话已过期,请开启新会话");
+  } else {
+    const row = await prisma.searchAgentSession.findUnique({
+      where: { id: threadId },
+      select: { visitorId: true, tokensTotal: true },
+    });
+    if (!row || row.visitorId !== identity.key) return apiEnvelope(404, "会话不存在");
+    tokensTotal = row.tokensTotal;
+  }
 
   let rawBody: unknown;
   try {
@@ -85,8 +100,11 @@ export async function POST(
   const message = extractText(parsed.data.input.messages[0].content);
   if (message === "") return apiEnvelope(400, "消息不能为空");
 
-  if (row.tokensTotal >= AGENT_MAX_TOKENS) {
+  if (identity.kind === "admin" && tokensTotal >= AGENT_MAX_TOKENS) {
     return apiEnvelope(429, "本会话用量已达上限,请新建会话继续");
+  }
+  if (identity.kind === "guest" && !(await tryConsumeGuestAskQuota(identity.key, clientIp(req)))) {
+    return apiEnvelope(429, "今日游客提问次数已用完,明天再来吧");
   }
   if (!(await tryConsumeAgentRunQuota(clientIp(req)))) {
     return apiEnvelope(429, "操作过于频繁,请稍后再试");
@@ -123,7 +141,11 @@ export async function POST(
           durationMs: Date.now() - startedAt,
           outcome,
         });
-        await backfillSessionTitle(threadId, message);
+        if (identity.kind === "guest") {
+          await refreshGuestThread(threadId); // 活跃滑动 TTL
+        } else {
+          await backfillSessionTitle(threadId, message);
+        }
         if (outcome.truncatedReason !== null) {
           // 护栏收束:error 帧人话(前端挂末条 AI 消息 incomplete/error)
           push(`event: error\ndata: ${JSON.stringify({ message: outcome.truncatedReason })}\n\n`);

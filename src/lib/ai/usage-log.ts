@@ -28,6 +28,8 @@ export interface AiUsageInput {
   durationMs?: number;
   /** degraded=切备用/降级(降级次数 KPI 口径);failed=终败 */
   status?: AiUsageStatus;
+  /** 关联会话/线程锚(K2.6 后台会话管理聚合 guest/member 口径;其他调用缺省) */
+  sessionId?: string;
 }
 
 export async function recordAiUsage(input: AiUsageInput): Promise<void> {
@@ -42,6 +44,7 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
         audioSeconds: Math.max(0, Math.round(input.audioSeconds ?? 0)),
         durationMs: Math.max(0, Math.round(input.durationMs ?? 0)),
         status: input.status ?? "ok",
+        sessionId: input.sessionId?.slice(0, 40),
       },
     });
   } catch (e) {
