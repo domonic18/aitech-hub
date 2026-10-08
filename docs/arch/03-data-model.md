@@ -231,6 +231,11 @@ CREATE TABLE legacy_url_map (
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 - `stats_search_log`(搜索词明细,行级,2026-10-06 排行需求):`term varchar(100)/created_at`;索引 `created_at DESC`。口径:/search 页 counted PV 携带的 q(trim + 空白折叠截 100 字,`classify.ts#normalizeSearchTerm`,保留原样大小写),仅 path 为 /search 记;无 PII(不存 IP/访客哈希);行级直插不经缓冲(不 await 不阻断 beacon,失败仅 warn),worker `visit-log-purge` 同 job 清 180 天前行——排行「全部」窗口的实际上界
 
+**混合检索向量表已落地(2026-10-08 M20 批①迁移 `20261008110000_hybrid_search_pgvector`,检索架构见 [arch/04 §3.2](04-ai-agent.md))**:
+
+- `search_embedding`:`entity_type varchar(20)`(post/telegram/repo)/`entity_id bigint`/`model varchar(100)`/`dims int`/`embedding vector(1024) NOT NULL`/`updated_at`;唯一约束 `(entity_type, entity_id)`(upsert 锚),三个分部 HNSW 索引(`vector_cosine_ops`,`WHERE entity_type = '…'` 每域一个);迁移同批 `CREATE EXTENSION IF NOT EXISTS vector`
+- 纪律:向量列 pgvector 自定义类型,Prisma 侧 `Unsupported("vector(1024)")` 仅锚 DDL 防 migrate 漂移(field 必须 required,optional 会 diff 出漂移),**读写一律 raw SQL**(`src/lib/search/embedding-repo.ts` 唯一出口;`serializeVector` 产文本字面量经参数化注入);生命周期 = worker 15 分钟对账自愈(缺/陈旧重嵌:post/repo 源时钟 `updated_at`,telegram 无 updated_at 取 `COALESCE(ai_ran_at, created_at)`)+ 孤儿清理(下架/隐藏/回草稿即删);**换绑 embedding 模型 = 维度/语义空间双变,对账时钟感知不到,需手动清表重嵌**
+
 **内容分发域三表已落地(2026-10-06 M17 批①迁移 `20261006122422_publish_channel_wechat`,多渠道分发首渠道=微信公众号,requirement §4)**:
 
 - `publish_wechat_config`(渠道配置单例 `id=1`,get-or-create,镜像 `asr_config`):`appid/app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`author?`(图文作者,缺省「一起AI」)/`theme 默认 "default"`(渠道默认正文主题 id,wechat-themes 注册表)/`auto_sync_enabled 默认 false`(发布即推,用户定调默认关)/`enabled 默认 false`(渠道总开关)+ `last_test` 四件套
