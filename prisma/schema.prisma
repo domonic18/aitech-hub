@@ -27,6 +27,8 @@ model Post {
   contentOrigin   String        @default("human") @map("content_origin") @db.VarChar(20) // 创作方式:human/ai_assisted/ai_generated(AI 生成内容显式标识,2026-10-05 合规;合法值应用层枚举,见 content/post-schema)
   isPinned        Boolean       @default(false) @map("is_pinned")
   viewsCount      BigInt        @default(0) @map("views_count")
+  isPurchasable   Boolean       @default(false) @map("is_purchasable") // M21 批①:付费解锁开关
+  purchasePrice   Decimal?      @map("purchase_price") @db.Decimal(10, 2) // M21 批①:解锁价 CNY(仅 isPurchasable 时有意义)
   seoTitle        String?       @map("seo_title") @db.VarChar(255)
   seoDescription  String?       @map("seo_description") @db.Text
   publishedAt     DateTime?     @map("published_at") @db.Timestamptz(6)
@@ -193,6 +195,99 @@ model EmailConfig {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("email_config")
+}
+
+// ── pay_(支付域,M21 批①,提案 §4;arch/03 §2.4 补记)──────────────
+
+/// 支付订单(M21):状态机 pending→paid/closed→refunded 显式迁移(提案 §5.2,
+/// 只允许图中迁移);金额全程 Decimal 禁 float;orderNo 下单生成幂等键。
+/// userId 不设 FK(支付域与账号域解耦,应用层归属校验)。
+model PayOrder {
+  id                   BigInt    @id @default(autoincrement())
+  orderNo              String    @unique(map: "uq_pay_order_order_no") @map("order_no") @db.VarChar(32)
+  userId               BigInt    @map("user_id")
+  status               String    @db.VarChar(16) // pending | paid | closed | refunded(显式状态机,应用层 Zod 管控)
+  amount               Decimal   @db.Decimal(10, 2) // CNY,字符串化处理,禁 float
+  gateway              String    @db.VarChar(24) // xunhu | mock | legacy_xunhu(历史导入)
+  gatewayTransactionId String?   @map("gateway_transaction_id") @db.VarChar(64) // 微信流水,索引级对账锚点(旧系统缺失项)
+  gatewayOpenOrderId   String?   @map("gateway_open_order_id") @db.VarChar(64) // 虎皮椒内部单号
+  paidAt               DateTime? @map("paid_at") @db.Timestamptz(6)
+  closedAt             DateTime? @map("closed_at") @db.Timestamptz(6)
+  refundedAt           DateTime? @map("refunded_at") @db.Timestamptz(6)
+  expiresAt            DateTime  @map("expires_at") @db.Timestamptz(6) // pending 超时关单依据(下单+30min)
+  clientIp             String?   @map("client_ip") @db.VarChar(45)
+  operatorNote         String?   @map("operator_note") @db.VarChar(200) // 人工/导入场景备注
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  items PayOrderItem[]
+
+  @@index([userId, status], map: "idx_pay_order_user_status")
+  @@index([status, expiresAt], map: "idx_pay_order_status_expires") // 对账 job 扫描路径
+  @@map("pay_order")
+}
+
+/// 订单行(M21):一文一单;标题/单价为下单时快照(防文章后续改名改价追溯失真)
+model PayOrderItem {
+  id        BigInt  @id @default(autoincrement())
+  orderId   BigInt  @map("order_id")
+  postId    BigInt  @map("post_id")
+  title     String  @db.VarChar(200) // 下单时文章标题快照
+  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
+  quantity  Int     @default(1)
+
+  order PayOrder @relation(fields: [orderId], references: [id])
+
+  @@index([postId], map: "idx_pay_order_item_post_id")
+  @@map("pay_order_item")
+}
+
+/// 付费权益(M21):一文一用户一条,授予=upsert revokedAt=null;
+/// 软撤销(退款 CD 回调)审计可恢复;orderId 仅 order 来源必有,import/manual 可空
+model ContentPostPurchase {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  postId        BigInt    @map("post_id")
+  orderId       BigInt?   @map("order_id") // order 来源指向订单;import/manual/admin_restore 可空
+  source        String    @db.VarChar(16) // order | import | manual | admin_restore(应用层枚举)
+  grantedAt     DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6) // 软撤销(退款 CD 回调),审计可恢复
+  revokedReason String?   @map("revoked_reason") @db.VarChar(200)
+
+  @@unique([userId, postId], map: "uq_content_post_purchase_user_post")
+  @@index([postId], map: "idx_content_post_purchase_post_id")
+  @@map("content_post_purchase")
+}
+
+/// 网关回调留痕(M21):含被拒回调全量落库(可追溯伪造尝试,安全清单 #5);
+/// 回调原文不含密钥字段,可全量存
+model PayNotifyLog {
+  id            BigInt   @id @default(autoincrement())
+  orderNo       String   @map("order_no") @db.VarChar(32)
+  gatewayStatus String   @map("gateway_status") @db.VarChar(8) // OD/WP/CD/RD/UD
+  signValid     Boolean  @map("sign_valid")
+  payload       Json
+  handled       Boolean  @default(false) // 是否触发状态迁移
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([orderNo], map: "idx_pay_notify_log_order_no")
+  @@map("pay_notify_log")
+}
+
+/// 网关凭据(M21,2026-10-08 拍板入数据库):admin 专属页唯一写入口(批⑤),
+/// 读取一律脱敏,明文不进日志/API 响应/git;enabled=收银台总开关
+/// (过渡期 D1-A off 的落点)。appSecret 明文列,日后可升级应用层加密
+model PayGatewayConfig {
+  id            BigInt   @id @default(autoincrement())
+  gateway       String   @unique(map: "uq_pay_gateway_config_gateway") @db.VarChar(24) // xunhu | mock
+  appId         String   @map("app_id") @db.VarChar(64)
+  appSecret     String   @map("app_secret") @db.VarChar(128) // 明文列:admin 页维护,读取脱敏
+  apiBase       String   @map("api_base") @db.VarChar(128) // 主用 https://api.dpweixin.com(2026-10-08 实证)
+  apiBaseBackup String?  @map("api_base_backup") @db.VarChar(128) // 备用域,下单失败自动切换
+  enabled       Boolean  @default(false) // 收银台总开关(过渡期 off 的落点)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("pay_gateway_config")
 }
 
 // ── stats_(统计域)──────────────────────────────────────────────
