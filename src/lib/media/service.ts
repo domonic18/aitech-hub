@@ -16,7 +16,7 @@ import {
   type MediaStatus,
 } from "@/lib/media/media-schema";
 import { getQueue, QUEUE_MEDIA_PROCESS } from "@/lib/queue";
-import { mediaStorage, relToUploadsUrl } from "@/lib/media/storage";
+import { mediaStorage, mediaStorageKind, relToUploadsUrl } from "@/lib/media/storage";
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type MediaErrorCode = "not_found" | "referenced" | "invalid" | "too_large" | "unsupported";
@@ -109,7 +109,7 @@ export async function uploadMedia(input: {
       status: "processing" satisfies MediaStatus,
       sizeBytes: BigInt(input.data.byteLength),
       sha1,
-      storage: "local",
+      storage: mediaStorageKind,
     },
   });
   await enqueueMediaProcess(row.id, sha1);

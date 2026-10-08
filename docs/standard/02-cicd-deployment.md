@@ -83,17 +83,20 @@ make migrate   # npx prisma migrate deploy
 
 ```
 nginx        80/443(唯一对外;SSL 终结,证书卷挂载 workspace/ssl;80 全量 301 https)
-  ├── /wp-content/uploads/*  → 静态 media/ 卷直服(immutable 长缓存;二期切 COS 反代,URL 不变)
+  ├── /wp-content/uploads/*  → COS 媒体桶反代(M19 批④,URL 不变;proxy_cache 2g/365d;
+  │                            静态 proxy_pass 原始 URI 透传,桶 key 与 URL 路径同构,arch/08 §1)
   ├── /feed、/feed/          → 301 /feed.xml(nginx 层)
   └── 其余全量反代 web:3000(原始请求串原样透传,中文编码 slug 不经 nginx 归一化)
 web:3000     内网 + 宿主回环发布 127.0.0.1:3000(切换日 runbook curl 验证用)
-worker       仅内网(同镜像,SERVICE_ROLE=worker;媒体卷读写)
+worker       仅内网(同镜像,SERVICE_ROLE=worker;媒体卷读写 + backups/ssl 卷,db-backup M19)
 douyin-gateway  仅内网(独立网关镜像;无 ports,worker 经服务名 :8010 访问;M8 批①,§3.2)
 redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 ```
 
 - **legacy 兜底差异(实现沉淀)**:兜底已前移到应用层路由——单段旧路径由 `(site)/[slug]` 页承接,`/category/*`、`/tag/*` 页内 fallback,`/legacy/[...path]` 路由保留;实测 `legacy_url_map` 内多段路径仅 3 条且全落在专用路由,nginx 无需 error_page 拦截(还会误伤 API 404)
-- **媒体直服两个 nginx 坑(实测沉淀)**:①磁盘文件名为 percent-encoded(与应用侧 normalizeUrlPath 同因),`alias` 按解码后 URI 找文件必 404 → 用 `map $request_uri` 取未解码原始串拼路径;②alias 带变量时 nginx 仍追加"location 匹配后剩余 URI(已解码)",location 必须正则吃满整个 URI
+- **媒体直服两个 nginx 坑(实测沉淀,M6)**:①磁盘文件名为 percent-encoded(与应用侧 normalizeUrlPath 同因),`alias` 按解码后 URI 找文件必 404 → 用 `map $request_uri` 取未解码原始串拼路径;②alias 带变量时 nginx 仍追加"location 匹配后剩余 URI(已解码)",location 必须正则吃满整个 URI。M19 批④ 反代后该组坑整体消解:静态 `proxy_pass`(无 URI)对原始请求串零处理透传,COS 服务端 decode 一次即命中(桶 key 与 URL 路径同构)
+- **站点 conf 模板化(M19 批④)**:`docker/nginx/templates/aitech-hub.conf.template` 经 nginx 官方镜像 templates 机制启动时 envsubst 生成(仅替换已定义环境变量,nginx `$var` 原样保留),消费 `COS_MEDIA_HOST`(.env);镜像自带 default.conf 由 `conf.d/default.conf.mask` 文件级挂载顶替;`workspace/media` ro 挂载保留为回滚通道
+- **COS(M19)**:媒体桶(MEDIA_STORAGE=cos 时 web/worker 读写;nginx 匿名反代读)+ 备份桶(db-backup 每日 03:23);地域与服务器同域走内网;密钥子账号最小权限仅 `.env`;桶 lifecycle 由 `npm run cos:setup` 一次性设置(备份 30 天/杂项 90 天)
 - compose prod:project 名隔离 + `mem_limit` 全线(web 768m / worker 512m / pg 512m / redis 128m / nginx 128m,2C4G 起步值)+ `restart: unless-stopped` + 日志轮转(json-file 10m×3)+ healthcheck(web `node fetch /api/health/`(slim 无 curl)、pg `pg_isready`、redis `ping`)
 - **部署顺序纪律由编排表达**:web/worker `depends_on` pg+redis healthy;worker 额外等 web healthy(web entrypoint 先跑 `prisma migrate deploy`,healthy 即 schema 就绪);nginx 等 web healthy
 - 镜像:`image: ${APP_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub:latest}`,服务器默认拉 TCR,本地验证 `APP_IMAGE=<local> 覆盖`;pg 口令经 `.env` 的 `POSTGRES_PASSWORD` 插值(web/worker 的 DATABASE_URL 由 compose 拼出,覆盖 .env 里的 dev 地址)
@@ -125,15 +128,28 @@ redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 
 **回滚**:入口(反代/监听)切回旧栈 upstream(127.0.0.1:9000),分钟级;切换窗口为低峰,新 PG 侧增量(浏览计数)可忽略,记录在案即可。
 
-## 6. 备份与恢复
+## 6. 备份与恢复(M19 起落 COS 异机存放)
 
 | 对象 | 频率 | 方式 | 保留 |
 |------|------|------|------|
-| PostgreSQL | 每日 03:30(容器 cron) | `pg_dump -Fc` → `workspace/backups/` | 本地 14 天 + 每周一份拉回开发机 |
-| workspace/media/ | 每周日 | rsync 增量到备份盘 | 4 版本 |
-| .env / ssl | 变更时 | 手动归档(密钥不入 git) | 永久 |
+| PostgreSQL | 每日 03:23(worker BullMQ `db-backup`,M19 批②) | `pg_dump -Fc` → `workspace/backups/` → 上传备份桶 `backups/db/` | 本地 3 份 + 桶侧 lifecycle 30 天 |
+| workspace/ssl | 每日(随 db-backup 顺带) | tar → 备份桶 `backups/misc/ssl-<date>.tgz` | 桶侧 lifecycle 90 天 |
+| workspace/media/ | M19 批③ 起 | 媒体桶即异机副本(全量迁移,upload 幂等续传);本地卷保留为反代回滚通道 | 桶侧永久(immutable,不设 lifecycle) |
+| .env | 变更时 | 手动归档(密钥不入 git 不入桶) | 永久 |
 
-恢复演练:M6 前做一次"备份 → 空目录恢复 → verify 全绿"完整演练(含 `migrate deploy` 重放)。
+- Redis 不备份:队列与调度器 upsert 幂等自愈,数据语义可重建。
+- 桶初始化(新环境一次性):`npm run cos:setup`(双桶连通探测 + lifecycle 设置)。
+- dump 文件名 `aitech_hub-<YYYYMMDD-HHmm>.dump`,字典序即时间序,桶内取"最大名"即最新。
+
+**恢复步骤**(演练与真灾同序;演练 = 本机空 PG 容器走一遍,M19 批⑤):
+
+1. 取最近 dump:备份桶 `backups/db/` 下载最新对象(控制台或 SDK 列举)
+2. 起空 PG(与服务端同 major):`docker run -d --name restore-drill -e POSTGRES_PASSWORD=x -p 55432:5432 postgres:16`
+3. 恢复:`pg_restore -h localhost -p 55432 -U postgres -d postgres --no-owner --no-privileges --clean --if-exists <dump>`
+4. 校验:指向该库跑 `npx prisma migrate deploy`(台账应零 pending)+ 关键表行数抽查(`content_post`/`content_media`/`user` 对比生产)
+5. 演练通过记录日期与结果;真灾时把 compose `DATABASE_URL` 指向恢复库重启即服务
+
+手动触发(不等 03:23):`npm run backup:run`(入队即轮询到终态)→ 桶内见 dump → 走 2-4 步。
 
 ## 7. 观测(一期最小集)
 

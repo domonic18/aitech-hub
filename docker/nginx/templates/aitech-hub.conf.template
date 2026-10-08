@@ -1,0 +1,88 @@
+# 站点配置(standard/02-cicd-deployment §4):legacy 承接在应用层路由((site)/[slug] 单段 + category/tag
+# 页内 fallback),nginx 不做 error_page 拦截。
+# 模板化(M19 批④):nginx 官方镜像 templates 机制,启动时 envsubst 生成
+# /etc/nginx/conf.d/aitech-hub.conf;只替换已定义环境变量(nginx $var 原样保留),
+# 本文件仅消费 ${COS_MEDIA_HOST}(媒体桶公网域名,compose 自 .env 注入)。
+
+# 媒体反代缓存(http 域):inactive 对齐 immutable 一年;use_temp_path=off 免跨盘
+# rename。缓存目录 compose 挂 ./workspace/nginx-cache(宿主属主须 101:101,见
+# runbook;属主不对仅缓存写不进、回源直服,不拒服务)。
+proxy_cache_path /var/cache/nginx/media levels=1:2 keys_zone=media_cache:10m
+                 max_size=2g inactive=365d use_temp_path=off;
+
+server {
+  listen 80;
+  server_name 17aitech.com www.17aitech.com;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name 17aitech.com www.17aitech.com;
+
+  # 媒体直传(POST /api/media 单文件上限 10MB,media-schema)+ MCP/发文 JSON 通道;
+  # 缺省 1m 会让大截图在代理层 413(HTML),应用层结构化校验(415/413 JSON)接不住
+  client_max_body_size 12m;
+
+  # 证书沿用旧站 workspace/ssl 目录(compose 卷挂载);文件名须为 letsencrypt 惯例
+  ssl_certificate /etc/nginx/ssl/fullchain.pem;
+  ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+
+  # 旧 WP feed(:/feed/ → 301 /feed.xml,原站约定)
+  location = /feed {
+    return 301 /feed.xml;
+  }
+  location = /feed/ {
+    return 301 /feed.xml;
+  }
+
+  # 媒体(M19 批④ 起 COS 反代,URL 不变——arch/08 §1 红线):
+  # 静态 proxy_pass 不带 URI → 原始请求串(percent-encoded 中文原样)透传,
+  # COS 服务端恰好 decode 一次 → 对象 key 与 URL 路径(含 wp-content/uploads/ 前缀)
+  # 同构;host 启动时解析,免 resolver、请求线零变量。缓存 immutable 头由 COS 对象
+  # 元数据透传,proxy_cache_valid 仅对无缓存头响应兜底;stale 容灾(COS 抖动仍回图)。
+  # 回滚通道:workspace/media 只读挂载保留——git revert 批④提交 + up -d nginx 即回
+  # alias 直服(runbook 有步骤)。
+  location ^~ /wp-content/uploads/ {
+    proxy_pass https://${COS_MEDIA_HOST};
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    # 虚拟主机桶域名必须带 SNI,否则 TLS 握手拿默认证书、校验失败
+    proxy_ssl_server_name on;
+    proxy_ssl_protocols TLSv1.2 TLSv1.3;
+    proxy_cache media_cache;
+    proxy_cache_valid 200 301 365d;
+    proxy_cache_lock on;
+    proxy_cache_background_update on;
+    proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+    # 验收观测:冷 MISS → 热 HIT;COS 异常时 STALE 可读
+    add_header X-Cache-Status $upstream_cache_status always;
+  }
+
+  # AI 答案卡 SSE(K2,arch/04 §3.4):流式透传必须关缓冲,否则 nginx 攒满
+  # buffer 才下发、答案成段蹦出;location 内指令不继承,proxy_set_header 整套重抄
+  location ^~ /api/search/ {
+    proxy_pass http://web:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 120s;
+  }
+
+  # proxy_pass 无 URI 部分:原始请求串(含中文 percent-encoded slug)原样透传
+  location / {
+    proxy_pass http://web:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+  }
+}
