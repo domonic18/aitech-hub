@@ -133,6 +133,13 @@ describe("邮箱通道(M21 批⓪,dev compose 真实 PG/Redis)", () => {
   const EMAIL = "it-email-user@example.com";
   const EMAIL_KEY = `auth:reg:email:${EMAIL}`;
 
+  beforeAll(async () => {
+    // 测试请求无 x-forwarded-for → clientIp 为空串,reg 配额桶固定;
+    // 多轮集成跑累计(成功也 +1)会顶满 10 次/日,先清再注册
+    await redis.del("auth:reg:ip:");
+    await redis.del(EMAIL_KEY);
+  });
+
   afterAll(async () => {
     await prisma.userAccount.deleteMany({
       where: { OR: [{ username: USERNAME }, { email: EMAIL }] },
