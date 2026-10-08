@@ -77,7 +77,8 @@ describe("verifySign(常量时间比较)", () => {
 
     expect(verifySign({ ...signed, total_fee: "0.01" }, SECRET)).toBe(false); // 金额篡改
     expect(verifySign({ ...signed, hash: "f".repeat(32) }, SECRET)).toBe(false); // hash 篡改
-    const { hash: _drop, ...unsigned } = signed;
+    const unsigned: Record<string, string> = { ...signed };
+    delete unsigned.hash;
     expect(verifySign(unsigned, SECRET)).toBe(false); // 缺签
     expect(verifySign({ ...signed, hash: "short" }, SECRET)).toBe(false); // 长度不符(不给 timingSafeEqual 抛错面)
     expect(verifySign(signed, "ffffffffffffffffffffffffffffffff")).toBe(false); // 错密钥

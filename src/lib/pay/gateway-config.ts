@@ -127,17 +127,6 @@ export async function getPayGatewayRuntimeConfig(
   return cached.cfg;
 }
 
-type XunhuRow = {
-  appId: string;
-  appSecret: string;
-  apiBase: string;
-  apiBaseBackup: string | null;
-  notifyUrl: string;
-  returnUrl: string;
-  orderTtlMin: number;
-  updatedAt: Date;
-};
-
 /** admin 页/GET API:脱敏视图。mode 读自 enabled 行(生产忽略 mock 行,
  * fail-closed 显示 off);凭据字段恒读 xunhu 行——off/mock 模式下 admin
  * 仍能看到凭据配置状态。未配置 → 空表单 secretSet:false。 */
