@@ -49,8 +49,8 @@ export function relToUploadsUrl(relPath: string): string {
 /** 存储后端类型(M19 批①;与 content_media.storage 列同词表 local/cos) */
 export type MediaStorageKind = "local" | "cos";
 
-/** 扩展名 → mime(put 侧定对象 Content-Type,反代透传/浏览器直开两用) */
-const MIME_BY_EXT: Record<string, string> = {
+/** 扩展名 → mime(put 侧定对象 Content-Type,反代透传/浏览器直开两用;迁移脚本同用) */
+export const MEDIA_MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -134,7 +134,8 @@ export class CosProvider implements MediaStorage {
       Region: this.region,
       Key: relPath,
       Body: Buffer.from(data),
-      ContentType: MIME_BY_EXT[path.extname(relPath).toLowerCase()] ?? "application/octet-stream",
+      ContentType:
+        MEDIA_MIME_BY_EXT[path.extname(relPath).toLowerCase()] ?? "application/octet-stream",
       CacheControl: "public, max-age=31536000, immutable",
     });
   }

@@ -22,7 +22,10 @@
     "qa:acceptance": "tsx --env-file=.env scripts/qa/acceptance.ts",
     "prepare": "husky",
     "cos:setup": "tsx scripts/cos-setup.ts",
-    "backup:run": "tsx scripts/trigger-db-backup.ts"
+    "backup:run": "tsx scripts/trigger-db-backup.ts",
+    "cos:migrate": "tsx scripts/cos-migrate/upload.ts",
+    "cos:verify": "tsx scripts/cos-migrate/verify.ts",
+    "cos:mark": "tsx scripts/cos-migrate/mark.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
