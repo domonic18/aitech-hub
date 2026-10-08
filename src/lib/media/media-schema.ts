@@ -51,8 +51,8 @@ export const MEDIA_STATUSES = [
 ] as const;
 export type MediaStatus = (typeof MEDIA_STATUSES)[number];
 
-/** 媒体库引用状态过滤(断链为引用侧视图,不入此过滤) */
-export const MEDIA_REF_FILTERS = ["all", "referenced", "orphan"] as const;
+/** 媒体库引用状态过滤(trash=回收站:deletedAt 非空视图;断链为引用侧视图,不入此过滤) */
+export const MEDIA_REF_FILTERS = ["all", "referenced", "orphan", "trash"] as const;
 export type MediaRefFilter = (typeof MEDIA_REF_FILTERS)[number];
 
 /** 图片 mime 白名单(arch/08-media §3.4;gif 保动画:worker 以 animated webp 出副本) */
@@ -100,6 +100,20 @@ export const mediaBatchDeleteSchema = z.object({
 export interface BatchDeleteResult {
   deleted: number;
   skipped: Array<{ id: string; filename: string; refCount: number }>;
+}
+
+/** 回收站恢复响应 data(service 返回、restore 路由透传、MediaGrid 消费同源) */
+export interface MediaRestoreResult {
+  id: string;
+  path: string;
+  /** 恢复时按实时引用口径重算(有引用 active / 无引用 orphan) */
+  status: MediaStatus;
+}
+
+/** 回收站立即清除响应 data(物理删文件家族 + 记录,绕过 7 天等待;admin 显式动作) */
+export interface MediaPurgeResult {
+  id: string;
+  path: string;
 }
 
 /** 重复检测合并入参(同 sha1 组;2026-10-06 验收反馈问题1) */

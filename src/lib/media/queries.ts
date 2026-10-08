@@ -61,6 +61,10 @@ export interface MediaListItem {
   createdAt: Date;
   refCount: number;
   isOrphan: boolean;
+  /** 回收站视图:软删时间(live 行 null) */
+  deletedAt: Date | null;
+  /** 回收站视图:距物理清退剩余天数(向上取整,已到期 0;live 行 null) */
+  daysLeft: number | null;
 }
 
 export interface MediaListResult {
@@ -69,7 +73,7 @@ export interface MediaListResult {
   page: number;
   kind: MediaKind;
   refFilter: MediaRefFilter;
-  counts: Record<MediaKind, { all: number; referenced: number; orphan: number }>;
+  counts: Record<MediaKind, { all: number; referenced: number; orphan: number; trash: number }>;
 }
 
 /** 媒体库列表:kind Tab × 引用状态过滤 + 文件名/sha1 搜索;引用计数实时计算(refs+cover 双查) */
@@ -87,9 +91,9 @@ export async function listMediaAdmin(query: {
   const orphanOf = (path: string): boolean => !refCount.has(path) && !coverSet.has(path);
 
   const counts = {
-    image: { all: 0, referenced: 0, orphan: 0 },
-    video: { all: 0, referenced: 0, orphan: 0 },
-    file: { all: 0, referenced: 0, orphan: 0 },
+    image: { all: 0, referenced: 0, orphan: 0, trash: 0 },
+    video: { all: 0, referenced: 0, orphan: 0, trash: 0 },
+    file: { all: 0, referenced: 0, orphan: 0, trash: 0 },
   } as MediaListResult["counts"];
   for (const row of live) {
     const c = counts[row.kind as MediaKind];
@@ -98,8 +102,21 @@ export async function listMediaAdmin(query: {
     if (refCount.has(row.path)) c.referenced += 1;
     else if (!coverSet.has(row.path)) c.orphan += 1;
   }
+  // 回收站计数(Tab 按钮徽标;软删行不进 live 口径,单独 groupBy)
+  const trashGroups = await prisma.media.groupBy({
+    by: ["kind"],
+    where: { deletedAt: { not: null } },
+    _count: { kind: true },
+  });
+  for (const g of trashGroups) {
+    const c = counts[g.kind as MediaKind];
+    if (c) c.trash = g._count.kind;
+  }
 
-  const where: Prisma.MediaWhereInput = { deletedAt: null, kind: query.kind };
+  const where: Prisma.MediaWhereInput =
+    query.refFilter === "trash"
+      ? { deletedAt: { not: null }, kind: query.kind }
+      : { deletedAt: null, kind: query.kind };
   if (query.q) {
     where.OR = [{ filename: { contains: query.q } }, { sha1: { contains: query.q } }];
   }
@@ -134,6 +151,16 @@ export async function listMediaAdmin(query: {
       createdAt: r.createdAt,
       refCount: refCount.get(r.path) ?? 0,
       isOrphan: orphanOf(r.path),
+      deletedAt: r.deletedAt,
+      daysLeft:
+        r.deletedAt === null
+          ? null
+          : Math.max(
+              0,
+              Math.ceil(
+                (r.deletedAt.getTime() + MEDIA_LIMITS.trashDays * DAY_MS - Date.now()) / DAY_MS,
+              ),
+            ),
     })),
     total,
     page: query.page,
