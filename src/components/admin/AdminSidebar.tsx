@@ -54,7 +54,9 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       { icon: "i-key", label: "PAT 令牌", href: "/admin/pats" },
       { icon: "i-send", label: "邮件配置", href: "/admin/email" },
-      { icon: "i-aim", label: "支付配置", href: "/admin/pay" },
+      // exact:/admin/pay 是 /admin/pay/orders 的前缀,只按全等点亮
+      { icon: "i-aim", label: "支付配置", href: "/admin/pay", exact: true },
+      { icon: "i-checkcircle", label: "支付订单", href: "/admin/pay/orders" },
     ],
   },
 ];
