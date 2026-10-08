@@ -35,6 +35,10 @@ export const CONTENT_ORIGIN_BADGES: Record<ContentOrigin, string> = {
 /** 合法值应用层枚举(arch/03 枚举演进条款):非法值拒绝,缺省 human */
 export const contentOriginSchema = z.enum(CONTENT_ORIGINS).default("human");
 
+/** 付费价格边界(M21 批⑤,提案 §8):元;Zod 边界与编辑器 UI(min/max/step)共用 */
+export const PURCHASE_PRICE_MIN = 0.01;
+export const PURCHASE_PRICE_MAX = 999.99;
+
 /** 读侧宽容归一(展示/编辑器取数,与 postDisplayState 同哲学):历史脏值回退 human */
 export function asContentOrigin(v: string): ContentOrigin {
   return (CONTENT_ORIGINS as readonly string[]).includes(v) ? (v as ContentOrigin) : "human";
@@ -118,40 +122,61 @@ export const coverPathSchema = z
   .transform((s) => s.trim())
   .refine((s) => s === "" || s.startsWith("/"), "封面须为 / 开头的站内路径");
 
-export const postCreateSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "标题不能为空")
-    .max(POST_LIMITS.title, `标题最长 ${POST_LIMITS.title} 字符`),
-  /** 缺省时由 service 以标题派生 ASCII token(纯中文标题 → bare-id URL) */
-  slug: postSlugSchema,
-  categorySlug: slugSchema,
-  /** 按名自动建(原型 admin-editor:upsert_article 同规则),去重由 service 做 */
-  tags: z
-    .array(
-      z
-        .string()
-        .trim()
-        .min(1, "标签不能为空")
-        .max(POST_LIMITS.tag, `单个标签最长 ${POST_LIMITS.tag} 字符`),
-    )
-    .max(POST_LIMITS.tagsMax, `标签最多 ${POST_LIMITS.tagsMax} 个`)
-    .max(100) // 序列化护栏:5 个标签本身不会超,防异常请求
-    .default([]),
-  contentMd: z
-    .string()
-    .min(1, "正文不能为空")
-    .max(POST_LIMITS.contentMd, `正文过长(上限 ${POST_LIMITS.contentMd / 10_000} 万字符)`),
-  excerpt: optionalText(POST_LIMITS.excerpt),
-  coverPath: coverPathSchema.optional(),
-  seoTitle: optionalText(POST_LIMITS.seoTitle),
-  seoDescription: optionalText(POST_LIMITS.seoDescription),
-  contentOrigin: contentOriginSchema,
-});
+export const postCreateSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1, "标题不能为空")
+      .max(POST_LIMITS.title, `标题最长 ${POST_LIMITS.title} 字符`),
+    /** 缺省时由 service 以标题派生 ASCII token(纯中文标题 → bare-id URL) */
+    slug: postSlugSchema,
+    categorySlug: slugSchema,
+    /** 按名自动建(原型 admin-editor:upsert_article 同规则),去重由 service 做 */
+    tags: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1, "标签不能为空")
+          .max(POST_LIMITS.tag, `单个标签最长 ${POST_LIMITS.tag} 字符`),
+      )
+      .max(POST_LIMITS.tagsMax, `标签最多 ${POST_LIMITS.tagsMax} 个`)
+      .max(100) // 序列化护栏:5 个标签本身不会超,防异常请求
+      .default([]),
+    contentMd: z
+      .string()
+      .min(1, "正文不能为空")
+      .max(POST_LIMITS.contentMd, `正文过长(上限 ${POST_LIMITS.contentMd / 10_000} 万字符)`),
+    excerpt: optionalText(POST_LIMITS.excerpt),
+    coverPath: coverPathSchema.optional(),
+    seoTitle: optionalText(POST_LIMITS.seoTitle),
+    seoDescription: optionalText(POST_LIMITS.seoDescription),
+    contentOrigin: contentOriginSchema,
+    /** 付费阅读(M21 批⑤):开启即门禁截断预览;价格服务端定价,客户端不可传价下单 */
+    isPurchasable: z.boolean().default(false),
+    purchasePrice: z
+      .number()
+      .min(PURCHASE_PRICE_MIN, `价格最低 ${PURCHASE_PRICE_MIN} 元`)
+      .max(PURCHASE_PRICE_MAX, `价格最高 ${PURCHASE_PRICE_MAX} 元`)
+      .nullable()
+      .optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.isPurchasable && (v.purchasePrice === null || v.purchasePrice === undefined)) {
+      ctx.addIssue({ code: "custom", message: "开启付费阅读须填写价格", path: ["purchasePrice"] });
+    }
+  });
 
 /** 更新含 slug(可改):id 锚定 URL,改 slug 后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改 */
 export const postUpdateSchema = postCreateSchema;
 
 export type PostCreateInput = z.infer<typeof postCreateSchema>;
-export type PostUpdateInput = z.infer<typeof postUpdateSchema>;
+/** 更新入参:付费两列可省略(省略 = 不动付费配置;MCP 外部通道不触付费面) */
+export type PostUpdateInput = Omit<
+  z.infer<typeof postUpdateSchema>,
+  "isPurchasable" | "purchasePrice"
+> & {
+  isPurchasable?: boolean;
+  purchasePrice?: number | null;
+};

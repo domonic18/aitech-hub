@@ -26,6 +26,9 @@ export interface PostMetaValue {
   seoTitle: string;
   seoDescription: string;
   contentOrigin: ContentOrigin;
+  /** 付费阅读(M21 批⑤):开关 + 价格文本(提交时 parseFloat,校验在 Zod schema) */
+  isPurchasable: boolean;
+  purchasePriceText: string;
 }
 
 /** 创作方式选项(值域唯一真相源 CONTENT_ORIGINS;合规要求见 post-schema 注) */
@@ -145,6 +148,47 @@ export default function PostMetaPanel({
         <div className="mt-1 font-mono text-[11px] text-text-3">
           {value.excerpt.length} / {POST_LIMITS.excerpt}
         </div>
+      </div>
+
+      <div>
+        <label className={LABEL} htmlFor="post-paid">
+          付费阅读(M21)
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-1">
+          <input
+            id="post-paid"
+            type="checkbox"
+            checked={value.isPurchasable}
+            onChange={(e) =>
+              onChange({
+                isPurchasable: e.target.checked,
+                ...(e.target.checked ? {} : { purchasePriceText: "" }), // 关闭即清价
+              })
+            }
+            className="h-4 w-4 accent-[var(--accent)]"
+          />
+          开启后前台仅展示截断预览,读者支付解锁全文
+        </label>
+        {value.isPurchasable && (
+          <div className="mt-2">
+            <label className={LABEL} htmlFor="post-price">
+              价格(元)
+            </label>
+            <input
+              id="post-price"
+              type="number"
+              inputMode="decimal"
+              min={0.01}
+              max={999.99}
+              step={0.01}
+              value={value.purchasePriceText}
+              onChange={set("purchasePriceText")}
+              placeholder="5.00"
+              className={INPUT}
+            />
+            <div className="mt-1 text-[11px] text-text-3">0.01 ~ 999.99 元;下单按此服务端定价</div>
+          </div>
+        )}
       </div>
 
       <details>
