@@ -56,9 +56,13 @@
 
 ### 3.3 媒体库后台(src/app/(admin)/admin/media)
 
-- 三 Tab(图片/视频/文件)× 引用状态过滤(全部/已引用/未引用/断链);网格视图,缩略图用 `thumb_path`
+- 三 Tab(图片/视频/文件)× 引用状态过滤(全部/已引用/未引用/回收站);网格视图,缩略图用 `thumb_path`
 - 单条详情:预览、尺寸/大小/时长/sha1、**引用方文章列表**(点进即达)、删除/替换
 - 批量操作:删除孤儿、导出重复清单;操作全部走确认弹窗 + 操作日志(pino 记 admin 事件)
+- **回收站视图**(2026-10-08):软删行(`deleted_at` 非空)独立过滤,卡片挂「剩 N 天」徽标,行内
+  「恢复」(清 `deleted_at`,status 按实时引用重算 active/orphan,原 URL 零拷贝复活;
+  `POST /api/media/[id]/restore`)与「立即清除」(物理删文件家族 + 记录,与 audit 清退共用
+  `purgeDeletedMedia`,`DELETE /api/media/[id]/purge`);回收站行不进详情抽屉、不参与勾选
 - 存储统计卡:按 kind 的数量/体积、近 30 天增量(数据来自 stats 端点,audit 任务落 Redis 缓存)
 
 ### 3.4 图片处理管线(一期唯一常驻异步任务)

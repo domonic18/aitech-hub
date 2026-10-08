@@ -37,6 +37,7 @@ const REF_LABELS: Record<MediaRefFilter, string> = {
   all: "全部",
   referenced: "已引用",
   orphan: "未引用",
+  trash: "回收站",
 };
 
 interface PageProps {
@@ -129,6 +130,11 @@ export default async function AdminMediaPage({
               }`}
             >
               {REF_LABELS[f]}
+              {f === "trash" && list.counts[kind].trash > 0 && (
+                <span className="ml-1 font-mono text-[11px] text-red">
+                  {list.counts[kind].trash}
+                </span>
+              )}
             </Link>
           ))}
         </div>
@@ -159,6 +165,19 @@ export default async function AdminMediaPage({
           <span>
             未引用 = 无文章正文/封面引用;勾选后可批量删除(被引用的会自动跳过)。软删入回收站,
             {MEDIA_LIMITS.trashDays} 天后物理清除。
+          </span>
+        </div>
+      )}
+
+      {refFilter === "trash" && (
+        <div className="flex items-center gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-xs text-text-2">
+          <svg className="ic text-amber" aria-hidden="true">
+            <use href="#i-warning" />
+          </svg>
+          <span>
+            回收站 = 软删待清退,保留 {MEDIA_LIMITS.trashDays} 天,到期由 audit 定时物理清除(COS
+            同步删文件家族)。「恢复」清软删标记按实时引用重算状态、原 URL 零拷贝复活;「立即清除」
+            跳过等待,不可撤销。
           </span>
         </div>
       )}
@@ -196,7 +215,8 @@ export default async function AdminMediaPage({
 
       <div className="font-mono text-[11px] text-text-3">
         POST /api/media · GET/DELETE /api/media/[id] · POST /api/media/import|batch-delete|audit ·
-        POST /api/media/dupes/merge · audit cron {MEDIA_AUDIT_CRON}
+        POST /api/media/[id]/restore · DELETE /api/media/[id]/purge · POST /api/media/dupes/merge ·
+        audit cron {MEDIA_AUDIT_CRON}
       </div>
     </div>
   );

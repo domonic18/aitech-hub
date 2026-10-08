@@ -4,6 +4,8 @@
  * 媒体库网格(原型 admin-media §3):卡片 + 引用徽标 + 未引用过滤下的勾选批量删除;
  * 点卡片开详情抽屉(MediaDrawer)。批量删除走 POST /api/media/batch-delete
  * (逐条引用检查,被引用的自动跳过并列出),成功后 router.refresh 重拉本页 RSC。
+ * 回收站过滤(2026-10-08):卡片不进抽屉(详情 404)、不可勾选,改挂「剩 N 天」徽标与
+ * 恢复/立即清除行内动作(POST /api/media/[id]/restore · DELETE /api/media/[id]/purge)。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -62,8 +64,11 @@ export default function MediaGrid({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [trashMsg, setTrashMsg] = useState<string | null>(null);
 
   const selectable = refFilter === "orphan";
+  const trashMode = refFilter === "trash";
   const toggle = (id: string): void => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -72,6 +77,33 @@ export default function MediaGrid({
       return next;
     });
   };
+
+  /** 回收站行内动作:恢复(清软删标记)/ 立即清除(物理删,确认后执行) */
+  async function trashAction(id: string, action: "restore" | "purge"): Promise<void> {
+    if (action === "purge" && !window.confirm("立即清除将物理删除文件且不可恢复,确定?")) return;
+    setBusyId(id);
+    setTrashMsg(null);
+    try {
+      const res = await fetch(`/api/media/${id}/${action}`, {
+        method: action === "restore" ? "POST" : "DELETE",
+      });
+      const body = (await res.json().catch(() => null)) as ApiEnvelope<{
+        id: string;
+        path: string;
+        status?: string;
+      } | null> | null;
+      if (res.ok && body?.code === 0) {
+        setTrashMsg(action === "restore" ? "已恢复" : "已清除");
+        router.refresh();
+      } else {
+        setTrashMsg(body?.message ?? `操作失败(${res.status})`);
+      }
+    } catch {
+      setTrashMsg("网络错误,请重试");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function batchDelete(): Promise<void> {
     setBatchBusy(true);
@@ -128,6 +160,12 @@ export default function MediaGrid({
         </div>
       )}
 
+      {trashMode && trashMsg && (
+        <div className="rounded-sm border border-line bg-panel px-4 py-2 text-xs text-text-2">
+          {trashMsg}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         {items.map((item) => {
           const statusBadge = STATUS_LABELS[item.status];
@@ -142,7 +180,10 @@ export default function MediaGrid({
               <div className="relative">
                 <button
                   type="button"
-                  className="block h-28 w-full cursor-pointer overflow-hidden bg-panel-2"
+                  disabled={trashMode}
+                  className={`block h-28 w-full overflow-hidden bg-panel-2 ${
+                    trashMode ? "cursor-default" : "cursor-pointer"
+                  }`}
                   onClick={() => setOpenId(item.id)}
                   title={item.filename}
                 >
@@ -155,11 +196,23 @@ export default function MediaGrid({
                   />
                 </button>
                 <div className="pointer-events-none absolute left-1.5 top-1.5 flex gap-1">
-                  <RefBadge item={item} />
-                  {statusBadge && (
-                    <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${statusBadge.cls}`}>
-                      {statusBadge.text}
+                  {trashMode ? (
+                    <span
+                      className={`rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] ${
+                        (item.daysLeft ?? 0) <= 1 ? "text-red" : "text-text-2"
+                      }`}
+                    >
+                      剩 {item.daysLeft ?? 0} 天
                     </span>
+                  ) : (
+                    <>
+                      <RefBadge item={item} />
+                      {statusBadge && (
+                        <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${statusBadge.cls}`}>
+                          {statusBadge.text}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -187,6 +240,26 @@ export default function MediaGrid({
                   <span>{item.width !== null ? `${item.width}×${item.height}` : ""}</span>
                   <span>{formatBytes(item.sizeBytes ?? 0)}</span>
                 </div>
+                {trashMode && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      disabled={busyId !== null}
+                      className="cursor-pointer text-accent hover:underline disabled:opacity-50"
+                      onClick={() => void trashAction(item.id, "restore")}
+                    >
+                      {busyId === item.id ? "处理中…" : "恢复"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId !== null}
+                      className="cursor-pointer text-red hover:underline disabled:opacity-50"
+                      onClick={() => void trashAction(item.id, "purge")}
+                    >
+                      立即清除
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );
