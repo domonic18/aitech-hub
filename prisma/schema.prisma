@@ -274,17 +274,22 @@ model PayNotifyLog {
   @@map("pay_notify_log")
 }
 
-/// 网关凭据(M21,2026-10-08 拍板入数据库):admin 专属页唯一写入口(批⑤),
-/// 读取一律脱敏,明文不进日志/API 响应/git;enabled=收银台总开关
-/// (过渡期 D1-A off 的落点)。appSecret 明文列,日后可升级应用层加密
+/// 网关凭据 + 支付模式(M21,2026-10-08/09 拍板全部入数据库,env 无支付
+/// 变量):admin 专属页唯一写入口,读取一律脱敏,明文不进日志/API 响应/git。
+/// 支付模式落表形态:enabled=true 的行即当前生效网关(至多一行;全 false
+/// = 收银台关闭);mock 行仅开发环境可启用(生产保存拒绝+运行时忽略)。
+/// appSecret 明文列,日后可升级应用层加密
 model PayGatewayConfig {
   id            BigInt   @id @default(autoincrement())
-  gateway       String   @unique(map: "uq_pay_gateway_config_gateway") @db.VarChar(24) // xunhu | mock
+  gateway       String   @unique(map: "uq_pay_gateway_config_gateway") @db.VarChar(24) // xunhu | mock(仅开发)
   appId         String   @map("app_id") @db.VarChar(64)
   appSecret     String   @map("app_secret") @db.VarChar(128) // 明文列:admin 页维护,读取脱敏
   apiBase       String   @map("api_base") @db.VarChar(128) // 主用 https://api.dpweixin.com(2026-10-08 实证)
   apiBaseBackup String?  @map("api_base_backup") @db.VarChar(128) // 备用域,下单失败自动切换
-  enabled       Boolean  @default(false) // 收银台总开关(过渡期 off 的落点)
+  notifyUrl     String   @default("") @map("notify_url") @db.VarChar(500) // 异步回调(https 生产域名;空=未配置,下单前校验)
+  returnUrl     String   @default("") @map("return_url") @db.VarChar(500) // 支付完成前端跳转(仅展示,不入账依据)
+  orderTtlMin   Int      @default(30) @map("order_ttl_min") // pending 超时关单(分钟);无行时业务层回落 30
+  enabled       Boolean  @default(false) // 生效网关标记:enabled=true 的行即当前支付模式(至多一行)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("pay_gateway_config")
