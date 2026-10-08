@@ -1,22 +1,31 @@
 /**
  * 媒体写侧 service(M5-b;arch/08-media §3.4 + arch/05-services §4.2):
  * 上传入库(sha1 去重 → 本地卷 → enqueue sharp 管线)、删除(引用检查 + 软删回收站)、
- * 批量删除(孤儿处置)。读侧(列表/详情/统计/断链)见同目录 queries.ts。
+ * 批量删除(孤儿处置)、回收站恢复/立即清除/清退(2026-10-08 回收站视图)。
+ * 读侧(列表/详情/统计/断链)见同目录 queries.ts。
  * 副作用编排(enqueue)与 revalidate 同款纪律:写库成功后再投递,任务幂等可重放。
  */
 import { createHash } from "node:crypto";
 
 import { prisma } from "@/lib/db";
+import { loadReferencedPathSet } from "@/lib/media/queries";
 import {
   IMAGE_MIME_WHITELIST,
   MEDIA_LIMITS,
   extByMime,
   type BatchDeleteResult,
   type DupeMergeResult,
+  type MediaPurgeResult,
+  type MediaRestoreResult,
   type MediaStatus,
 } from "@/lib/media/media-schema";
 import { getQueue, QUEUE_MEDIA_PROCESS } from "@/lib/queue";
-import { mediaStorage, mediaStorageKind, relToUploadsUrl } from "@/lib/media/storage";
+import {
+  mediaStorage,
+  mediaStorageKind,
+  relToUploadsUrl,
+  uploadsUrlToRel,
+} from "@/lib/media/storage";
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type MediaErrorCode = "not_found" | "referenced" | "invalid" | "too_large" | "unsupported";
@@ -214,4 +223,47 @@ export async function mergeDupeGroup(sha1: string): Promise<DupeMergeResult> {
     });
   }
   return { keptId: keeper.id.toString(), keptPath: keeper.path, movedRefs, removed: dupes.length };
+}
+
+/** 一个媒体行的全部落盘文件(主文件 + WebP 副本 + 缩略图,同目录 sha1 家族) */
+function diskFamily(relMain: string): string[] {
+  const dot = relMain.lastIndexOf(".");
+  const stem = dot > 0 ? relMain.slice(0, dot) : relMain;
+  return [relMain, `${stem}.webp`, `${stem}.thumb.webp`];
+}
+
+/**
+ * 回收站清退(物理删除;audit 定时清退与后台「立即清除」共用):
+ * 先删文件家族再删记录——先删记录会丢文件线索,失败重跑补删。返回清退行数。
+ */
+export async function purgeDeletedMedia(
+  rows: Array<{ id: bigint; path: string }>,
+): Promise<number> {
+  for (const row of rows) {
+    const rel = uploadsUrlToRel(row.path);
+    if (rel) {
+      for (const f of diskFamily(rel)) await mediaStorage.delete(f);
+    }
+    await prisma.media.delete({ where: { id: row.id } });
+  }
+  return rows.length;
+}
+
+/** 回收站恢复:清 deletedAt,status 按实时引用口径重算(有引用 active / 无引用 orphan);
+ *  文件在回收站窗口内未被清退,恢复即原 URL 复活,零拷贝。不在回收站的行 404。 */
+export async function restoreMedia(id: bigint): Promise<MediaRestoreResult> {
+  const media = await prisma.media.findFirst({ where: { id, deletedAt: { not: null } } });
+  if (!media) throw new MediaError("not_found", "媒体不在回收站中");
+  const refSet = await loadReferencedPathSet();
+  const status: MediaStatus = refSet.has(media.path) ? "active" : "orphan";
+  await prisma.media.update({ where: { id }, data: { deletedAt: null, status } });
+  return { id: media.id.toString(), path: media.path, status };
+}
+
+/** 回收站立即清除(单条 admin 显式动作;定时/批量清退走 audit → purgeDeletedMedia) */
+export async function purgeMedia(id: bigint): Promise<MediaPurgeResult> {
+  const media = await prisma.media.findFirst({ where: { id, deletedAt: { not: null } } });
+  if (!media) throw new MediaError("not_found", "媒体不在回收站中");
+  await purgeDeletedMedia([{ id: media.id, path: media.path }]);
+  return { id: media.id.toString(), path: media.path };
 }

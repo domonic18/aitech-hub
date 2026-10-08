@@ -66,6 +66,9 @@ vi.mock("@/lib/queue", () => ({
 
 const mediaRoot = await mkdtemp(path.join(tmpdir(), "ah-media-it-"));
 process.env.MEDIA_DIR = mediaRoot; // env 模块在 import 时读,先改再引
+// 封闭在本地 tmp 盘:开发者 .env 常配 MEDIA_STORAGE=cos,不锁死会把 put/exists/清退
+// 全部打进真桶(1347 行逐个 HEAD 必超时,临时对象泄漏到公有桶)
+process.env.MEDIA_STORAGE = "local";
 
 import { prisma } from "@/lib/db";
 import { type ApiEnvelope } from "@/lib/http/response";
@@ -75,6 +78,8 @@ const { POST: mediaPOST } = await import("@/app/api/media/route");
 const { GET: mediaIdGET, DELETE: mediaIdDELETE } = await import("@/app/api/media/[id]/route");
 const { POST: batchPOST } = await import("@/app/api/media/batch-delete/route");
 const { POST: auditPOST } = await import("@/app/api/media/audit/route");
+const { POST: restorePOST } = await import("@/app/api/media/[id]/restore/route");
+const { DELETE: purgeDELETE } = await import("@/app/api/media/[id]/purge/route");
 const { POST: importPOST, GET: importGET } = await import("@/app/api/media/import/route");
 const { listMediaAdmin, mediaStats, brokenRefs, getMediaDetail } =
   await import("@/lib/media/queries");
@@ -464,6 +469,103 @@ describe("体检(孤儿/复活/断链/回收站清退)", () => {
         });
       }
     }
+  });
+});
+
+describe("回收站(视图/恢复/立即清除)", () => {
+  it("恢复:trash 视图列软删行带 daysLeft,restore 清 deletedAt 按引用重算 status", async () => {
+    const stem = `2026/09/${crypto.randomUUID().replace(/-/g, "")}`;
+    await mediaStorage.put(`${stem}.png`, png);
+    const row = await prisma.media.create({
+      data: {
+        path: `/wp-content/uploads/${stem}.png`,
+        filename: "it-m5b-trash-restore.png",
+        kind: "image",
+        status: "active",
+      },
+    });
+    createdMedia.push(row.id);
+    await mediaIdDELETE(jsonReq(`/api/media/${row.id}`, "DELETE", cookie), {
+      params: Promise.resolve({ id: row.id.toString() }),
+    });
+
+    const trash = await listMediaAdmin({ kind: "image", refFilter: "trash", page: 1 });
+    const item = trash.items.find((i) => i.id === row.id.toString());
+    expect(item).toBeDefined();
+    expect(item?.deletedAt).not.toBeNull();
+    expect(item?.daysLeft).toBe(7); // 刚软删,7 天窗口整
+    expect(trash.counts.image.trash).toBeGreaterThanOrEqual(1);
+    expect(trash.items.every((i) => i.deletedAt !== null)).toBe(true); // live 行不入视图
+
+    const res = await restorePOST(jsonReq(`/api/media/${row.id}/restore`, "POST", cookie), {
+      params: Promise.resolve({ id: row.id.toString() }),
+    });
+    expect(res.status).toBe(200);
+    const { code, data } = await envelope(res);
+    expect(code).toBe(0);
+    const restored = data as { id: string; path: string; status: string };
+    expect(restored.path).toBe(`/wp-content/uploads/${stem}.png`);
+    expect(restored.status).toBe("orphan"); // 无引用 → orphan 而非删除前快照
+    const after = await prisma.media.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after.deletedAt).toBeNull();
+    expect(await mediaStorage.exists(`${stem}.png`)).toBe(true); // 文件原样,零拷贝复活
+    const gone = await restorePOST(jsonReq(`/api/media/${row.id}/restore`, "POST", cookie), {
+      params: Promise.resolve({ id: row.id.toString() }),
+    });
+    expect(gone.status).toBe(404); // 已不在回收站
+  });
+
+  it("立即清除:物理删文件家族与记录,绕过 7 天;未软删行 404", async () => {
+    const stem = `2026/09/${crypto.randomUUID().replace(/-/g, "")}`;
+    await mediaStorage.put(`${stem}.png`, png);
+    await mediaStorage.put(`${stem}.webp`, png);
+    await mediaStorage.put(`${stem}.thumb.webp`, png);
+    const row = await prisma.media.create({
+      data: {
+        path: `/wp-content/uploads/${stem}.png`,
+        filename: "it-m5b-trash-purge.png",
+        kind: "image",
+        status: "active",
+      },
+    });
+    createdMedia.push(row.id);
+    await mediaIdDELETE(jsonReq(`/api/media/${row.id}`, "DELETE", cookie), {
+      params: Promise.resolve({ id: row.id.toString() }),
+    });
+
+    const res = await purgeDELETE(jsonReq(`/api/media/${row.id}/purge`, "DELETE", cookie), {
+      params: Promise.resolve({ id: row.id.toString() }),
+    });
+    expect(res.status).toBe(200);
+    const { code, data } = await envelope(res);
+    expect(code).toBe(0);
+    expect(data).toEqual({ id: row.id.toString(), path: `/wp-content/uploads/${stem}.png` });
+    expect(await prisma.media.findUnique({ where: { id: row.id } })).toBeNull();
+    for (const f of [`${stem}.png`, `${stem}.webp`, `${stem}.thumb.webp`]) {
+      expect(await mediaStorage.exists(f)).toBe(false); // 文件家族随删
+    }
+    const again = await purgeDELETE(jsonReq(`/api/media/${row.id}/purge`, "DELETE", cookie), {
+      params: Promise.resolve({ id: row.id.toString() }),
+    });
+    expect(again.status).toBe(404); // 记录已物理删除
+    // 未软删行不可清除:自建 live 行验证(不碰共享 uploadedId——它在删除守卫用例后处于软删态,
+    // 对它 purge 会真物理删除,污染后续转存用例的 sha1 去重前提)
+    const liveStem = `2026/09/${crypto.randomUUID().replace(/-/g, "")}`;
+    await mediaStorage.put(`${liveStem}.png`, png);
+    const liveRow = await prisma.media.create({
+      data: {
+        path: `/wp-content/uploads/${liveStem}.png`,
+        filename: "it-m5b-trash-live.png",
+        kind: "image",
+        status: "active",
+      },
+    });
+    createdMedia.push(liveRow.id);
+    const live = await purgeDELETE(jsonReq(`/api/media/${liveRow.id}/purge`, "DELETE", cookie), {
+      params: Promise.resolve({ id: liveRow.id.toString() }),
+    });
+    expect(live.status).toBe(404); // 未软删行不可清除
+    expect(await prisma.media.findUnique({ where: { id: liveRow.id } })).not.toBeNull();
   });
 });
 
