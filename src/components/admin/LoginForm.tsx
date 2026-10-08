@@ -2,6 +2,7 @@
 
 /**
  * admin 登录表单(arch/05-services §3.1):POST /api/auth/login;
+ * M21 批⓪ 标识符登录(手机号/用户名/邮箱),admin 惯用手机号不受影响;
  * 失败提示直接用服务端模糊文案(不区分锁定/密码错);成功回跳 next(仅 /admin 路径)。
  */
 import { useState } from "react";
@@ -13,7 +14,7 @@ function safeNext(): string {
 }
 
 export default function LoginForm(): React.ReactElement {
-  const [phone, setPhone] = useState("");
+  const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +27,7 @@ export default function LoginForm(): React.ReactElement {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ account, password }),
       });
       const body: ApiEnvelope = await res.json();
       if (body.code === 0) {
@@ -44,15 +45,15 @@ export default function LoginForm(): React.ReactElement {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs text-text-2">手机号</span>
+        <span className="text-xs text-text-2">账号</span>
         <input
-          type="tel"
+          type="text"
           required
           autoFocus
           autoComplete="username"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="11 位手机号"
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+          placeholder="手机号 / 用户名 / 邮箱"
           className="rounded-sm border border-line bg-panel-2 px-3 py-2 font-mono text-sm text-text-1 outline-none placeholder:text-text-3 focus:border-accent"
         />
       </label>

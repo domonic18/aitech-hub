@@ -83,7 +83,7 @@ beforeAll(async () => {
   await prisma.post.deleteMany({ where: { slug: LEGACY_SLUG } });
 
   const login = await loginPOST(
-    req("/api/auth/login", "POST", "", { phone: PHONE, password: PASSWORD }),
+    req("/api/auth/login", "POST", "", { account: PHONE, password: PASSWORD }),
   );
   expect(login.status).toBe(200);
   cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
