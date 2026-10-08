@@ -34,6 +34,7 @@ scripts/migrate-wp/artifacts/
 !/workspace/backups/
 !/workspace/backups/.gitkeep
 workspace/backups/*.tgz
+workspace/backups/db/
 
 # Playwright 本地产物
 /.test-results/
