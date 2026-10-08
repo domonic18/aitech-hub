@@ -4,7 +4,9 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/env", () => ({ env: { MEDIA_DIR: "/tmp/ah-media-unused" } }));
+vi.mock("@/lib/env", () => ({
+  env: { MEDIA_DIR: "/tmp/ah-media-unused", MEDIA_STORAGE: "local" },
+}));
 
 import { LocalDiskProvider, relToUploadsUrl, uploadsUrlToRel } from "./storage";
 

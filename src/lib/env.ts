@@ -18,6 +18,19 @@ const serverEnvSchema = z.object({
   /** 媒体目录(默认 workspace/media 宿主机持久化约定;生产容器由 compose x-app-env 钉死为挂载点;standard/02-cicd-deployment §3 不打进镜像) */
   MEDIA_DIR: z.string().default("workspace/media"),
 
+  /** 媒体存储后端(M19 批①,arch/08-media §1 演进):local=本地卷(缺省,dev 零依赖);
+   *  cos=腾讯 COS(CosProvider,URL 仍 /wp-content/uploads/ 不变,nginx 反代直服) */
+  MEDIA_STORAGE: z.enum(["local", "cos"]).default("local"),
+
+  /** 腾讯云 COS(M19:媒体存储 + 数据库备份异机存放;密钥仅 env 不入库不打日志。
+   *  MEDIA_STORAGE=cos 时媒体四项必配(缺项 provider 构造即抛);备份桶仅 db-backup 用,
+   *  未配置时备份 job 显式失败进队列可见) */
+  COS_SECRET_ID: z.string().default(""),
+  COS_SECRET_KEY: z.string().default(""),
+  COS_REGION: z.string().default(""),
+  COS_MEDIA_BUCKET: z.string().default(""),
+  COS_BACKUP_BUCKET: z.string().default(""),
+
   /** jose 会话签名密钥;setup 脚本自动生成,生产必配。
    *  同时经 HKDF-SHA256 派生应用密钥箱主密钥(Cookie 池/模型 API Key 加密,批⑥);
    *  轮换会使已存密文失效,需重导 Cookie、重录 API Key。 */
