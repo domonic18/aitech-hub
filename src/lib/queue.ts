@@ -32,6 +32,9 @@ export const QUEUE_SEO_BATCH = "seo-batch";
 /** 内容分发(M17,requirement §4 多渠道分发):公众号推草稿;
  * 并发 1 全局串行(微信接口频控),lockDuration 900s 覆盖单批 30 篇 × ~15s */
 export const QUEUE_DISTRIBUTE = "distribute";
+/** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
+ * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */
+export const QUEUE_DB_BACKUP = "db-backup";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -45,6 +48,7 @@ export const QUEUE_NAMES = [
   QUEUE_COVER_GEN,
   QUEUE_SEO_BATCH,
   QUEUE_DISTRIBUTE,
+  QUEUE_DB_BACKUP,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -86,6 +90,12 @@ export const USAGE_LOG_PURGE_CRON = "52 4 * * *";
 
 /** Drawer 会话 30 天自动清退(凌晨档错峰:audit 03:41 / visit 04:14 / agent 04:33 / usage 04:52) */
 export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
+
+/** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
+export const DB_BACKUP_CRON = "23 3 * * *";
+
+/** db-backup 队列 job name 契约(run 为缺省路径;手动触发 scripts/trigger-db-backup.ts 同名) */
+export const DB_BACKUP_JOB_RUN = "run";
 
 /** github 队列 job name 契约(生产:tick 调度/sync.ts/repos-admin.ts;消费:worker 按
  * job.name 分流,sync 为缺省路径)。改名需与 worker 同批。 */

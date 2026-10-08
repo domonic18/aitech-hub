@@ -51,7 +51,16 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends openssl \
+  && apt-get install -y --no-install-recommends openssl curl ca-certificates gnupg \
+  # pgdg 源装 postgresql-client-16(db-backup 每日 pg_dump;bookworm 缺省 client 15 < 服务端 16,
+  # 版本不齐 pg_dump 拒跑);M19 批②
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update -y \
+  && apt-get install -y --no-install-recommends postgresql-client-16 \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs next

@@ -5,6 +5,8 @@ import { SITE_TZ } from "../src/lib/datetime";
 import {
   AGENT_SESSION_PURGE_CRON,
   CRAWL_JOB_AI_BACKFILL,
+  DB_BACKUP_CRON,
+  DB_BACKUP_JOB_RUN,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
   DISTRIBUTE_JOB_WECHAT_BATCH,
@@ -13,6 +15,7 @@ import {
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_DISTRIBUTE,
+  QUEUE_DB_BACKUP,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
@@ -47,6 +50,7 @@ import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/in
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
+import { dbBackupJob } from "../src/lib/backup/db-backup";
 
 /** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
 const PROCESSORS: Record<string, Processor> = {
@@ -150,6 +154,19 @@ const PROCESSORS: Record<string, Processor> = {
     console.log(JSON.stringify({ event: "github.sync", ...summary }));
     return summary;
   },
+  // 数据库每日备份(M19 批②):pg_dump -Fc → 备份桶;结果事件在 job 内落日志
+  [QUEUE_DB_BACKUP]: async () => {
+    const r = await dbBackupJob();
+    console.log(
+      JSON.stringify({
+        event: "db.backup_job_done",
+        key: r.key,
+        sizeBytes: r.sizeBytes,
+        ms: r.durationMs,
+      }),
+    );
+    return r;
+  },
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
   [QUEUE_DISTRIBUTE]: async (job) => {
     if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
@@ -244,6 +261,20 @@ async function scheduleAgentSessionPurge(): Promise<void> {
   );
 }
 
+/** 数据库每日备份:03:23 pg_dump → 备份桶(M19 批②,M6 异机存放落地) */
+async function scheduleDbBackup(): Promise<void> {
+  const queue = getQueue(QUEUE_DB_BACKUP);
+  await queue.upsertJobScheduler(
+    "db-backup",
+    { pattern: DB_BACKUP_CRON, tz: SITE_TZ },
+    {
+      name: DB_BACKUP_JOB_RUN,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -318,7 +349,9 @@ async function main(): Promise<void> {
           ? { concurrency: 1, lockDuration: 600_000 }
           : name === QUEUE_DISTRIBUTE
             ? { concurrency: 1, lockDuration: 900_000 }
-            : {};
+            : name === QUEUE_DB_BACKUP
+              ? { concurrency: 1, lockDuration: 600_000 }
+              : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
@@ -329,6 +362,7 @@ async function main(): Promise<void> {
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();
   await scheduleAgentSessionPurge();
+  await scheduleDbBackup();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
