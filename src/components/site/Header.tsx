@@ -4,6 +4,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 
 import { getSiteTitle } from "@/lib/config/site-config";
 
+import HeaderSession from "./HeaderSession";
 import SiteSprite from "./SiteSprite";
 
 const NAV = [
@@ -63,6 +64,7 @@ export default async function Header(): Promise<React.ReactElement> {
             <use href="#i-search" />
           </svg>
         </Link>
+        <HeaderSession />
         <ThemeToggle />
       </div>
     </header>
