@@ -40,6 +40,10 @@ export const QUEUE_EMBED = "embed-content";
 /** 事务邮件(M21 批⓪,D1 邮箱通道):注册验证/绑定/找回密码;SMTP 外呼秒级,
  *  请求内只 enqueue(worker 发送);SMTP 未配置时发送侧显式跳过并打 warn */
 export const QUEUE_EMAIL = "email";
+/** 支付对账补偿(M21 批④,提案 §5.2):sweep 5min 收敛近过期 pending 单
+ * (先查单:已付补发货/确认未付过 TTL 才关单)+ 每日 04:13 近 7 天 paid
+ * 查单比对流水锚;不一致只告警不动账。并发 1 防双拍交错查单 */
+export const QUEUE_PAY_RECONCILE = "pay-reconcile";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -56,6 +60,7 @@ export const QUEUE_NAMES = [
   QUEUE_DB_BACKUP,
   QUEUE_EMBED,
   QUEUE_EMAIL,
+  QUEUE_PAY_RECONCILE,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -110,6 +115,13 @@ export const EMBED_JOB_RECONCILE = "reconcile";
 
 /** email 队列 job name 契约(send 为缺省路径;M21 批⓪) */
 export const EMAIL_JOB_SEND = "send";
+
+/** pay-reconcile 队列 job name 契约(sweep 为缺省路径;daily-audit 日对账;M21 批④) */
+export const PAY_JOB_SWEEP = "sweep";
+export const PAY_JOB_DAILY_AUDIT = "daily-audit";
+
+/** 支付日对账 04:13(提案 §5.2;凌晨档,与其他清理任务不同队列不冲突) */
+export const PAY_DAILY_AUDIT_CRON = "13 4 * * *";
 
 /** embedding 对账调度:每 15 分钟错峰(7/22/37/52 分,避开各整点任务与 crawl tick) */
 export const EMBED_RECONCILE_CRON = "7,22,37,52 * * * *";
