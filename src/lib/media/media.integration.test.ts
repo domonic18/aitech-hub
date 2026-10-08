@@ -66,6 +66,9 @@ vi.mock("@/lib/queue", () => ({
 
 const mediaRoot = await mkdtemp(path.join(tmpdir(), "ah-media-it-"));
 process.env.MEDIA_DIR = mediaRoot; // env 模块在 import 时读,先改再引
+// 封闭在本地 tmp 盘:开发者 .env 常配 MEDIA_STORAGE=cos,不锁死会把 put/exists/清退
+// 全部打进真桶(1347 行逐个 HEAD 必超时,临时对象泄漏到公有桶)
+process.env.MEDIA_STORAGE = "local";
 
 import { prisma } from "@/lib/db";
 import { type ApiEnvelope } from "@/lib/http/response";
