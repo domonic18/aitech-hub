@@ -19,6 +19,7 @@ import {
   QUEUE_DISTRIBUTE,
   QUEUE_DB_BACKUP,
   QUEUE_EMBED,
+  QUEUE_EMAIL,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
@@ -54,6 +55,7 @@ import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/sum
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 import { dbBackupJob } from "../src/lib/backup/db-backup";
+import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 
 /** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
@@ -178,6 +180,16 @@ const PROCESSORS: Record<string, Processor> = {
       console.log(JSON.stringify({ event: "embed.reconcile_job", ...r }));
     }
     return r;
+  },
+  // 事务邮件(M21 批⓪,D1 邮箱通道):SMTP 未配置显式 skipped(dev 兜底;生产必配);
+  // 日志只记事件与主题,收件人不落日志(PII)
+  [QUEUE_EMAIL]: async (job) => {
+    const data = job.data as EmailJobData;
+    const { skipped } = await sendMail(data);
+    console.log(
+      JSON.stringify({ event: skipped ? "email.skipped" : "email.sent", subject: data.subject }),
+    );
+    return { skipped };
   },
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
   [QUEUE_DISTRIBUTE]: async (job) => {
