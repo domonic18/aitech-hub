@@ -13,9 +13,17 @@
        ——内容在自家库,一条 UPDATE 的事;新上传直接写 COS 域路径
 ```
 
-- `lib/media/storage.ts` 定义 `MediaStorage` 接口(`put/get/delete/stat`),`LocalDiskProvider` 一期实现,`CosProvider` 二期实现——**上层代码零改动**
+**二期落地实况(M19,2026-10)**:按上槽位切到 COS 反代,**URL 不变**——
+
+- `MediaStorage` 接口已双实现:`LocalDiskProvider`(一期)/ `CosProvider`(二期,`MEDIA_STORAGE=cos` 启用,dev 缺省 local 零依赖);`content_media.storage` 落库记录实际后端
+- **桶 key 与公网 URL 路径逐字节同构**:`wp-content/uploads/<rel>`(解码 UTF-8 形态)。nginx 静态 `proxy_pass`(无 URI)把原始请求串(percent-encoded 原样)透传,COS 服务端恰好 decode 一次即命中——免 resolver、请求线零变量;中文文件名 1158 条天然兼容。桶树 = URL 树,日后升级 CDN 直链 = 一条 UPDATE(§1 末行路径),零映射成本
+- **key 红线的 COS 例外**(`lib/media/storage.ts` / `lib/backup/cos-bucket.ts`):盘名/DB/URL 侧 percent-encoded byte 形态不变(2026-10-03 误判断链教训);仅经 `cosWireKey` 在 COS 边界转解码形态(SDK 线上会再编码回去)
+- 反代缓存:`proxy_cache media_cache`(2g / 365d inactive 对齐 immutable)+ lock/stale 容灾;`X-Cache-Status` 响应头供验收;模板经 nginx 官方 templates 机制注入 `COS_MEDIA_HOST`(compose 自 .env)
+- 迁移/对账脚本:`scripts/cos-migrate/`(upload 幂等续传 → verify 全量 size + 抽样 sha1 → mark 切 storage 标记)
+- 回滚通道:生产 compose 保留 `workspace/media` ro 挂载,conf 换回 alias + `up -d nginx` 即回本地直服
+
 - 新上传的图片路径规则:一期沿用 `/wp-content/uploads/YYYY/MM/<sha1>.<ext>`(与旧站路径风格一致,前台无差别);切 COS 后改写为 CDN 域路径
-- 流量账:一期图片直出服务器(月流量包 1TB 量级,154 篇文章的图量级完全够);**视频从第一天就不落服务器**(下一节)
+- 流量账:一期图片直出服务器(月流量包 1TB 量级,154 篇文章的图量级完全够);二期反代后源站在 COS(同地域内网取数,175 流量包不耗);**视频从第一天就不落服务器**(下一节)
 
 ## 2. 视频:COS 直链 + B 站嵌入(2026-09-29 决策)
 
