@@ -20,7 +20,9 @@
     "seed": "tsx prisma/seed.ts",
     "admin": "tsx scripts/admin.ts",
     "qa:acceptance": "tsx --env-file=.env scripts/qa/acceptance.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "cos:setup": "tsx scripts/cos-setup.ts",
+    "backup:run": "tsx scripts/trigger-db-backup.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

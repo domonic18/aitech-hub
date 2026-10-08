@@ -96,6 +96,10 @@ services:
       - .env
     volumes:
       - ./workspace/media:/app/media # 媒体异步任务(M4)读写
+      # M19 批② db-backup:备份落盘 + ssl 证书档;挂回 /app/workspace/* 与
+      # cwd 相对路径约定(workspace/backups、workspace/ssl)对齐,零 env 覆盖
+      - ./workspace/backups:/app/workspace/backups
+      - ./workspace/ssl:/app/workspace/ssl:ro
     depends_on:
       postgres:
         condition: service_healthy
