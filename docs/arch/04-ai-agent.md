@@ -27,6 +27,14 @@
 
 - 一次 query 并发检索三域——`telegram`(资讯,含短视频解读)/ `content_post`(教程,博主文章)/ `github_repo`(项目),合并分组返回;**给人搜索 = 给智能体检索**:同层供 K2 答案卡、K2.5 agent 工具与 K3 站点内容 MCP「搜索」工具,同源不漂移
 - ~~PG 全文(tsvector)起步;中文分词实效待测~~ **实施定稿(2026-10-06,第一迭代)**:ILIKE 词项计分起步——PG simple 分词器对中文无效(无空格整段一个 token),tsvector 全文对中文查询无召回;q 切词(`src/lib/search/tokenize.ts`,CJK 连续段整词、≤8 词)逐词 `contains insensitive`(OR)取候选(每域 50 条预排),JS 侧加权计分重排(title 3 > 摘要 2 > 正文 1,`search-view.ts#scoreTerms`),命中度 = 词项覆盖率%。零迁移零扩展;已知限制:长无空格 CJK 问句召回弱,实测差再追加 bigram 词项(仍零迁移),zhparser/pgvector 升级路径不变。落点 `src/lib/search/unified-search.ts#searchAll`(唯一碰 Prisma 的检索入口)
+- **混合检索定稿(2026-10-08,M20 批①~③,`feature/search-hybrid`)**:立项依据 = 生产数据实证(3 天仅有的 1 条真实查询词三域 ILIKE 全零命中而语料含词,词项检索对自然语句召回失效);用户定调「借助 agent 能力提供更智能的搜索答案」,且 embedding 选智谱 embedding-3、向量存储选 pgvector(与所辖项目技术栈统一)、不做多跳 agentic loop(搜索及时性优先,答案卡维持「一次检索+生成」节奏)。分层:
+  - **词项层不变**(上述 ILIKE 词项计分,序与命中率口径不动);
+  - **语义层**:查询向量化(`query-embedding.ts`:embedding-3 1024 维,Redis 缓存 24h,key 绑 modelId+sha1(q);未绑定/失败 → null 降级,台账记 degraded)→ pgvector 余弦召回(`search_embedding` 表,三域分部 HNSW 索引,每域 top 30,`embedding-repo.ts#topVectorMatches`);
+  - **融合**:`unified-search.ts#fuseDomain` 双榜 RRF(k=60)+ 词法证据 tiebreak(RRF 同分时字面词项命中压过纯语义)→ 截组限量;语义命中 UI 以「语义匹配」标替代命中百分比;组头 total = 词项命中数 + 语义补召可见数;
+  - **降级纪律**:embedding 未绑定(功能关闭)或查询向量化失败 = 语义层整体缺席,结果与纯词项逐字节一致——检索永不因 AI 挂而挂;
+  - **内容向量供给**:worker 每 15 分钟对账自愈(`embed-reconcile.ts` + `embed-content` 队列:扫 stale → 批量 embed → upsert,孤儿清理同 job)——发布/入库管道零侵入,新内容最迟一个周期可被语义召回;`npm run embed:run` 手动回填;
+  - **基建红线**:现网 PG 是 alpine(musl,`datcollversion=NULL`),禁用官方 Debian pgvector 镜像原位替换(文本排序静默变更),一律自编译镜像(standard/02 §3.3);
+  - 已知边界:换绑 embedding 模型(维度/语义空间双变)需手动清 `search_embedding` 重嵌;长尾查询向量质量随语料规模增长,实效上线后按 /admin/usage 与查询日志回调
 - 生成选型定稿:**直连 LLM(进程内),不经自有 MCP 复用**——与 §2 站点内容 MCP 的关系保持「同检索层、不同鉴权与工具面」
 
 ### 3.3 技术栈定稿:全 TS,无 Python sidecar(2026-10-06)
@@ -102,6 +110,6 @@
 - ~~agent 编排形态:单 agent 工具集 vs 多 agent 流水线~~ **已定(2026-10-06,§3)**:K2 答案卡为单轮 RAG;K2.5 Drawer 为 deepagents 单 agent + 工具循环,子 agent 能力框架预留、首版不启用
 - ~~agent 身份与配额:复用 PAT 还是独立主体、计量口径~~ **已定(2026-10-06,§3.3/§3.4)**:无独立主体——复用 `search` 任务绑定(model/key/daily_max)与 `ai_usage_log`(role=search)计量,与 interpret/summarize 同一套治理
 - ~~安全边界:哪些 mutation 允许 agent 触达、审计要求~~ **已定(2026-10-06,§3)**:K 系列只读(检索/读站内内容),不触达任何 mutation;审计 = `ai_usage_log` 逐次落行 + 会话管理(admin-schemas 余项,归 arch §4 二期范围)
-- ~~Agent 搜索的检索/生成选型(§3,随二期立项)~~ **已定并实施(2026-10-06,§3.2)**:检索 ILIKE 词项计分起步(PG simple 分词对中文无效,tsvector 弃);生成直连 LLM 进程内;zhparser/pgvector 混合留实效实测后再评审
+- ~~Agent 搜索的检索/生成选型(§3,随二期立项)~~ **已定并实施(2026-10-06,§3.2)**:检索 ILIKE 词项计分起步(PG simple 分词对中文无效,tsvector 弃);生成直连 LLM 进程内;zhparser/pgvector 混合留实效实测后再评审——**2026-10-08 M20 已升混合检索**(pgvector + RRF,§3.2),生成侧不变
 - ~~会话留存期与清退(Drawer 线程 checkpoint 数据保留多久、是否给用户「删除会话」)~~ **已定(2026-10-07 用户拍板)**:30 天自动清退(worker 日清,行+checkpoint 同删)+ 用户可删(DELETE 路由归属校验)
 - ~~Drawer 抽屉在 /search 之外的入口范围(全局 FAB vs 仅搜索场景)~~ **已定(2026-10-07 用户拍板)**:仅 /search 场景——答案卡追问 chips 唤起(直发)+「继续深挖」按钮(预填),不做全局 FAB

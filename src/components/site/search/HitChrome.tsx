@@ -26,22 +26,31 @@ export function HitChip({
   );
 }
 
-/** h-top 行:章 + 日期 + 右侧命中度(原型 .h-top / .h-score) */
+/** h-top 行:章 + 日期 + 右侧命中度(原型 .h-top / .h-score);语义命中(M20
+ * 词项零命中、向量召回)以「语义匹配」标替代百分比 */
 export function HitTop({
   chip,
   date,
   hitPct,
+  semanticOnly,
 }: {
   chip: React.ReactNode;
   date: string;
   hitPct: number;
+  semanticOnly?: boolean;
 }): React.ReactElement {
   return (
     <div className="mb-1.5 flex flex-wrap items-center gap-2.5">
       {chip}
       <span className="font-mono text-xs text-text-3">{date}</span>
       <span className="ml-auto font-mono text-[11px] text-text-3">
-        命中 <b className="font-semibold text-green-hi">{hitPct}%</b>
+        {semanticOnly ? (
+          <b className="font-semibold text-green-hi">语义匹配</b>
+        ) : (
+          <>
+            命中 <b className="font-semibold text-green-hi">{hitPct}%</b>
+          </>
+        )}
       </span>
     </div>
   );

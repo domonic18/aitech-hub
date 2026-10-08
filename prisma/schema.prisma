@@ -244,6 +244,23 @@ model StatsSearchLog {
   @@map("stats_search_log")
 }
 
+/// 混合检索语义向量(M20,arch/04 §3.2):三域内容 embedding(pgvector 余弦召回,
+/// 与关键词计分 RRF 融合)。向量列类型 Prisma 不识别(Unsupported)——读写一律 raw SQL
+/// (pgvector 文本序列化),本模型仅锚定 DDL 防 migrate 漂移;换 embedding 模型 =
+/// dims/模型列不兼容,需新表或全量重嵌,届时报迁移评审
+model SearchEmbedding {
+  id         BigInt                      @id @default(autoincrement())
+  entityType String                      @map("entity_type") @db.VarChar(20) // post/telegram/repo
+  entityId   BigInt                      @map("entity_id")
+  model      String                      @db.VarChar(100) // 生成模型 id(embedding-3);对账与灰度排查用
+  dims       Int // 锁 1024(embedding-3 支持档 256/512/1024/2048 取衡)
+  embedding  Unsupported("vector(1024)") // 读写走 raw SQL;client 不暴露
+  updatedAt  DateTime                    @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([entityType, entityId], map: "search_embedding_entity_type_entity_id_key")
+  @@map("search_embedding")
+}
+
 // ── legacy_(旧站承接域)─────────────────────────────────────────
 
 /// 旧 URL 301 映射(迁移脚本灌入;legacy 路由 + Redis 缓存消费)

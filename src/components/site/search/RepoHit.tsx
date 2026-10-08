@@ -21,6 +21,7 @@ export default function RepoHit({
         chip={<HitChip tone="accent">GitHub</HitChip>}
         date={`更新于 ${hit.dateIso ? timeAgo(hit.dateIso) : "—"}`}
         hitPct={hit.hitPct}
+        semanticOnly={hit.semanticOnly}
       />
       <HitTitle>
         <span className="font-mono font-semibold">

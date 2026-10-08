@@ -3,7 +3,10 @@
 # 持久化:全部收敛到 ./workspace/(PG 数据库;dev redis 无持久化,重启即失)
 services:
   postgres:
-    image: postgres:16-alpine
+    # M20 混合检索:pgvector 自编译(alpine 底座,见 docker/postgres-pgvector.Dockerfile);
+    # 镜像缺失时 docker compose build postgres(需 git 网络)
+    build: { context: ./docker, dockerfile: postgres-pgvector.Dockerfile }
+    image: aitech-hub-local/pg-pgvector:16
     container_name: aitech_hub_pg
     environment:
       POSTGRES_USER: aitech
@@ -12,7 +15,9 @@ services:
     ports:
       - "5434:5432"
     volumes:
-      - ./workspace/postgres:/var/lib/postgresql/data
+      # dev 与本地 prod 镜像栈(aitech-hub-prod-*,docker-compose.prod.yml)数据隔离:
+      # dev 用 postgres-dev,严禁共挂 workspace/postgres(2026-10-04 幻影损坏教训)
+      - ./workspace/postgres-dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aitech -d aitech_hub"]
       interval: 3s

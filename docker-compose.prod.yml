@@ -143,7 +143,10 @@ services:
     logging: *logging
 
   postgres:
-    image: postgres:16-alpine
+    # M20 混合检索:pgvector 自编译(alpine 底座,同 docker/postgres-pgvector.Dockerfile)。
+    # 镜像发布:本机 --platform linux/amd64 build → save|ssh load 175 → 175 内网 tag+push TCR
+    # (standard/02 §? 发布 runbook);禁用官方 pgvector Debian 镜像——musl→glibc collation 错配
+    image: ccr.ccs.tencentyun.com/domonic18/aitech-hub-pgvector:pg16
     environment:
       POSTGRES_USER: aitech
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}

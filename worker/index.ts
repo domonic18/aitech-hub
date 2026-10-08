@@ -10,12 +10,15 @@ import {
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
   DISTRIBUTE_JOB_WECHAT_BATCH,
+  EMBED_JOB_RECONCILE,
+  EMBED_RECONCILE_CRON,
   GITHUB_JOB_TICK,
   MEDIA_AUDIT_CRON,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_DISTRIBUTE,
   QUEUE_DB_BACKUP,
+  QUEUE_EMBED,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
@@ -51,6 +54,7 @@ import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/sum
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 import { dbBackupJob } from "../src/lib/backup/db-backup";
+import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 
 /** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
 const PROCESSORS: Record<string, Processor> = {
@@ -167,6 +171,14 @@ const PROCESSORS: Record<string, Processor> = {
     );
     return r;
   },
+  // embedding 对账(M20 批②):扫 stale 三域 → 批 embed → upsert;汇总事件在 reconcile 内落日志
+  [QUEUE_EMBED]: async () => {
+    const r = await reconcileEmbeddings();
+    if (r.embedded > 0 || r.failed > 0 || r.cleaned > 0 || r.skipped) {
+      console.log(JSON.stringify({ event: "embed.reconcile_job", ...r }));
+    }
+    return r;
+  },
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
   [QUEUE_DISTRIBUTE]: async (job) => {
     if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
@@ -275,6 +287,20 @@ async function scheduleDbBackup(): Promise<void> {
   );
 }
 
+/** embedding 对账:每 15 分钟扫 stale 三域向量(M20 批②;批 120 条,存量回填多轮收敛) */
+async function scheduleEmbedReconcile(): Promise<void> {
+  const queue = getQueue(QUEUE_EMBED);
+  await queue.upsertJobScheduler(
+    "embed-reconcile",
+    { pattern: EMBED_RECONCILE_CRON, tz: SITE_TZ },
+    {
+      name: EMBED_JOB_RECONCILE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -363,6 +389,7 @@ async function main(): Promise<void> {
   await scheduleUsageLogPurge();
   await scheduleAgentSessionPurge();
   await scheduleDbBackup();
+  await scheduleEmbedReconcile();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();

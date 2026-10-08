@@ -9,7 +9,7 @@
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
 ├── job gateway   Python 3.11 + pip 缓存 → pytest services/douyin-gateway/tests(M8 批①;纯单测无网依赖)
-├── job migration 起 postgres:16 → migrate deploy 全量 →
+├── job migration 起 pgvector/pgvector:pg16(M20 批①,search_embedding 迁移需 vector 扩展)→
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 
 push(develop, main)/ 手动
@@ -76,6 +76,13 @@ make migrate   # npx prisma migrate deploy
 - dev compose 走 `--profile douyin` 按需起(build 本地,`127.0.0.1:8010` 仅回环,便于 curl 冒烟),不影响日常 pg/redis 起;契约见 arch/05 §4.4
 - **网关镜像升级步骤**(契约护栏):黄金样本双侧对拍已进 CI(pytest `test_contract_fixtures.py` + vitest `gateway-contract.test.ts`),升级后另跑一次实弹对拍——`docker compose --profile douyin up -d douyin-gateway` 起本地网关,`npm run test:integration`(gateway 未起自动跳过;真实拉取对拍设 `DOUYIN_INTEGRATION_SEC_UID`/`DOUYIN_INTEGRATION_SHARE_URL` 开启)
 - 镜像现状 ≈2.4GB → 消除 chown 复制层后 ≈1.4GB(runner 全量 node_modules 为既有取舍:worker 与 prisma CLI 同镜像所需——web 启动即跑 `npx prisma migrate deploy`,CLI 必须在);进一步瘦身方向:`npm ci --omit=dev` 拆 prod-deps 层 + tsx 入 dependencies,非一期阻塞(2026-10-03 评估)
+
+### 3.3 PG pgvector 镜像(M20 批①,docker/postgres-pgvector.Dockerfile)
+
+- **为什么自编译**:dev/prod PG 现网 postgres:16-alpine(musl),`datcollversion` 为 NULL(musl 不记录 collation 版本);官方 `pgvector/pgvector` 镜像是 Debian(glibc)——原位换镜像 = 既有 PGDATA 文本排序**静默**变更(locale 无版本锚,不报错),禁用官方镜像直换现网。自编译 = postgres:16-alpine 基座 + 源码编 pgvector v0.8.7(`make with_llvm=no`——alpine pgxs 缺省要 clang 出 LLVM bitcode,构建必挂),基座不变零 collation 风险;CI 迁移重放库无历史数据,直接用官方 `pgvector/pgvector:pg16` 无碍
+- 构建推送(175 无 buildx 不能构建,本机出):`docker build --platform linux/amd64 -f docker/postgres-pgvector.Dockerfile -t <TCR>/<namespace>/aitech-hub-pgvector:pg16 docker/` → `docker save | ssh <prod> docker load` → 服务器内网 `docker tag` + `docker push` TCR(内网秒级);本机直推 TCR 无权限
+- compose:dev postgres `build: {context: ./docker, dockerfile: postgres-pgvector.Dockerfile}`(卷 `./workspace/postgres-dev`,dev/prod 卷禁共挂);prod 引 TCR `aitech-hub-pgvector:pg16`
+- **175 换 PG 容器 runbook(M20 部署批执行,变更操作先批准;实参以 `docker inspect` 旧容器为准)**:①`pg_dump` 全量安全留档 → ②`docker stop`+`docker rm` 旧 postgres(数据卷 `workspace/postgres` 不动)→ ③`docker run` 同参重建(仅镜像换 pgvector 版;挂载/端口/env 逐项对齐)→ ④`psql -c "CREATE EXTENSION IF NOT EXISTS vector"` 验证 → ⑤部署新版应用镜像(启动即 `migrate deploy` 落 `search_embedding` 表)→ ⑥admin 绑定 embedding-3 → `npm run embed:run` 回填 → ⑦线上混合检索抽查(含降级:停绑定后纯词项回归)
 
 ## 4. 生产拓扑与 Nginx(compose 服务)
 
