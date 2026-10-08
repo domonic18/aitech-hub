@@ -20,6 +20,8 @@ interface SearchHitBase {
   dateIso: string | null;
   /** 命中度百分比(词项覆盖率,下限 1——SQL OR 已保证至少命中一处) */
   hitPct: number;
+  /** 语义命中(M20 混合检索):词项零命中、向量召回;UI 以「语义」标替代百分比 */
+  semanticOnly?: boolean;
 }
 
 export interface TelegramSearchHit extends SearchHitBase {
@@ -135,6 +137,44 @@ export function rankAndCut<T>(
   return scored
     .slice(0, limit)
     .map(({ row, coverage }) => ({ ...row, hitPct: hitPercent(coverage) }));
+}
+
+/** 每域向量召回条数上限(M20;HNSW 近邻,与词项候选独立取前 N) */
+export const VECTOR_RECALL_LIMIT = 30;
+
+/** RRF 常数 k(论文原值;越大排名差对分数影响越平缓) */
+export const RRF_K = 60;
+
+/** 融合候选项(词项/向量双榜排名 + 词法证据 tiebreak 字段) */
+export interface FusedCandidate {
+  id: string;
+  /** 词项榜排名(0 起;null=纯语义,不在词项候选中) */
+  kwRank: number | null;
+  /** 向量榜排名(0 起;null=向量层未命中) */
+  vecRank: number | null;
+  /** 词项计分分(scoreTerms.score;词法证据优先 tiebreak) */
+  kwScore: number;
+  date: number;
+}
+
+/** 单条 RRF 分数:双榜贡献取和,单榜命中只计一榜(降级时严格随排名递减) */
+export function rrfScore(c: FusedCandidate, k: number = RRF_K): number {
+  const kw = c.kwRank === null ? 0 : 1 / (k + c.kwRank + 1);
+  const vec = c.vecRank === null ? 0 : 1 / (k + c.vecRank + 1);
+  return kw + vec;
+}
+
+/**
+ * 融合排序比较器:RRF 降序;同分 tiebreak 词法证据(kwScore)优先 → 日期 →
+ * id 数值 desc(与 rankAndCut 同口径)。RRF 同分的典型形态是「词项榜 rank n 的
+ * 单榜命中 vs 向量榜 rank n 的纯语义命中」——字面实词命中更可能是用户所指,置前。
+ */
+export function fuseCompare(a: FusedCandidate, b: FusedCandidate, k: number = RRF_K): number {
+  const diff = rrfScore(b, k) - rrfScore(a, k);
+  if (diff !== 0) return diff;
+  if (b.kwScore !== a.kwScore) return b.kwScore - a.kwScore;
+  if (b.date !== a.date) return b.date - a.date;
+  return BigInt(b.id) >= BigInt(a.id) ? 1 : -1;
 }
 
 export type TelegramRow = {

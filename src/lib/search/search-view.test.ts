@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  fuseCompare,
   hitPercent,
   postScoreFields,
   rankAndCut,
   repoScoreFields,
+  rrfScore,
   scoreTerms,
   telegramScoreFields,
   toPostHit,
   toRepoHit,
   toTelegramHit,
+  type FusedCandidate,
 } from "./search-view";
 
 describe("scoreTerms", () => {
@@ -86,6 +89,45 @@ describe("rankAndCut", () => {
       { key: "b", id: "10", dateIso: null, title: "x", summary: "", body: "" },
     ];
     expect(rankAndCut(tied, ["x"], 2, (r) => r).map((r) => r.key)).toEqual(["b", "a"]);
+  });
+});
+
+describe("rrfScore / fuseCompare(M20 双榜融合)", () => {
+  const c = (p: Partial<FusedCandidate>): FusedCandidate => ({
+    id: "x",
+    kwRank: null,
+    vecRank: null,
+    kwScore: 0,
+    date: 0,
+    ...p,
+  });
+
+  it("RRF:双榜命中 > 任一单榜;榜内越靠前分越高;k=60 排名公式", () => {
+    expect(rrfScore(c({ kwRank: 0, vecRank: 2 }))).toBeGreaterThan(rrfScore(c({ kwRank: 0 })));
+    expect(rrfScore(c({ kwRank: 0 }))).toBeCloseTo(1 / 61, 9);
+    expect(rrfScore(c({ vecRank: 0 }))).toBeCloseTo(1 / 61, 9);
+    expect(rrfScore(c({ kwRank: 1 }))).toBeCloseTo(1 / 62, 9);
+    expect(rrfScore(c({ kwRank: 0, vecRank: 1 }))).toBeCloseTo(1 / 61 + 1 / 62, 9);
+  });
+
+  it("降级形态(仅词项榜):RRF 严格随排名递减,排序不变(行为不回归)", () => {
+    const rows = [0, 1, 2].map((kwRank) => c({ id: String(2 - kwRank), kwRank }));
+    expect([...rows].sort(fuseCompare).map((r) => r.id)).toEqual(["2", "1", "0"]);
+  });
+
+  it("RRF 同分 tiebreak:词法证据(kwScore)优先 → date → id 数值", () => {
+    // 词项榜 rank 0 单榜 vs 向量榜 rank 0 纯语义:同分,字面命中在前
+    const kw = c({ id: "1", kwRank: 0, kwScore: 3 });
+    const vec = c({ id: "2", vecRank: 0 });
+    expect(fuseCompare(kw, vec)).toBeLessThan(0);
+    // 同分同 kwScore:date 新者在前
+    const older = c({ id: "1", vecRank: 3, date: 100 });
+    const newer = c({ id: "2", vecRank: 3, date: 200 });
+    expect(fuseCompare(newer, older)).toBeLessThan(0);
+    // 全同:id 数值 desc(非字典序,9 vs 10)
+    const id9 = c({ id: "9", vecRank: 3 });
+    const id10 = c({ id: "10", vecRank: 3 });
+    expect(fuseCompare(id10, id9)).toBeLessThan(0);
   });
 });
 

@@ -48,6 +48,7 @@ export default function TelegramHit({
             }
             date={`${hitDate(hit.dateIso ?? "")} · @${v.blogger}`}
             hitPct={hit.hitPct}
+            semanticOnly={hit.semanticOnly}
           />
           <HitTitle>
             <Marked text={hit.title} terms={terms} />

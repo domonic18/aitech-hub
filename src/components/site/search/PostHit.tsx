@@ -29,6 +29,7 @@ export default function PostHit({
         }
         date={hit.dateIso ? formatCnDate(new Date(hit.dateIso)) : ""}
         hitPct={hit.hitPct}
+        semanticOnly={hit.semanticOnly}
       />
       <HitTitle>
         <Marked text={hit.title} terms={terms} />
