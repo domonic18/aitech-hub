@@ -1,14 +1,16 @@
 /**
  * 媒体全量/增量上传 COS(M19 批③):npm run cos:migrate [-- --dry-run]
- * walk MEDIA_DIR 全部文件 → key=相对路径原样(percent-encoded 不 decode)→ 媒体桶;
+ * walk MEDIA_DIR 全部文件 → 桶 key = wp-content/uploads/ 前缀 + 相对路径(URL 树
+ * 同构,nginx 反代透传即命中;percent-encoded 不 decode,CosBucket 内部转 COS 语义);
  * 桶内同 key 同字节数跳过(可中断重跑 = 断点续传);4 并发,单文件失败重试 2 次。
  */
 import { loadEnvConfig } from "@next/env";
 
-import { CosBucket } from "../../src/lib/backup/cos-bucket";
+import { CosBucket, cosWireKey } from "../../src/lib/backup/cos-bucket";
 import {
   humanBytes,
   assertMediaCosEnv,
+  cosKeyOf,
   localInventory,
   mediaBucket,
   mimeOf,
@@ -32,13 +34,14 @@ async function main(): Promise<void> {
   );
   if (items.size === 0) return;
 
+  // 桶内 key 是前缀+解码形态,本地清点是 byte 形态:cosWireKey 归一后比 size
   const remote = bucket
-    ? new Map((await bucket.listAll("")).map((o) => [o.key, o.sizeBytes]))
+    ? new Map((await bucket.listAll("")).map((o) => [cosWireKey(o.key), o.sizeBytes]))
     : new Map<string, number>();
   const todo: string[] = [];
   let skipped = 0;
   for (const [key, size] of items) {
-    if (remote.get(key) === size) {
+    if (remote.get(cosWireKey(cosKeyOf(key))) === size) {
       skipped += 1;
     } else {
       todo.push(key);
@@ -62,7 +65,7 @@ async function main(): Promise<void> {
   const uploadOne = async (key: string): Promise<void> => {
     for (let attempt = 0; attempt <= RETRIES; attempt += 1) {
       try {
-        await put(key, await readLocal(root, key), mimeOf(key));
+        await put(cosKeyOf(key), await readLocal(root, key), mimeOf(key));
         uploaded += 1;
         return;
       } catch (err) {

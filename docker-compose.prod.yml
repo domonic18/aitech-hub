@@ -30,11 +30,19 @@ services:
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
       - "${NGINX_HTTPS_PORT:-443}:443"
+    # M19 批④:COS_MEDIA_HOST(媒体桶公网域名 <bucket>.cos.<region>.myqcloud.com)
+    # 经官方镜像 templates 机制 envsubst 注入站点模板,生成容器内 conf.d/aitech-hub.conf
+    environment:
+      COS_MEDIA_HOST: ${COS_MEDIA_HOST:?请在 .env 配置 COS_MEDIA_HOST(媒体桶公网域名,不含 https://)}
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro # 目录挂载遮盖镜像自带 default.conf
+      - ./docker/nginx/templates:/etc/nginx/templates:ro # 启动时 envsubst → 容器内 /etc/nginx/conf.d/
+      - ./docker/nginx/conf.d/default.conf.mask:/etc/nginx/conf.d/default.conf:ro # 遮盖镜像自带 default.conf
       - ./workspace/ssl:/etc/nginx/ssl:ro
+      # 回滚通道:反代观察期保留本地媒体卷只读挂载,conf 换回 alias + up -d nginx 即回
       - ./workspace/media:/var/www/media:ro
+      # M19 批④ 反代缓存;宿主目录属主须 101:101(nginx worker),否则仅缓存不可写、不拒服务
+      - ./workspace/nginx-cache:/var/cache/nginx
     depends_on:
       web:
         condition: service_healthy

@@ -12,7 +12,7 @@ import path from "node:path";
 
 import { env } from "../../src/lib/env";
 import { CosBucket } from "../../src/lib/backup/cos-bucket";
-import { MEDIA_MIME_BY_EXT } from "../../src/lib/media/storage";
+import { COS_MEDIA_KEY_PREFIX, MEDIA_MIME_BY_EXT } from "../../src/lib/media/storage";
 import { walkFiles } from "../../src/lib/backup/media-inventory";
 
 export function assertMediaCosEnv(): void {
@@ -22,6 +22,15 @@ export function assertMediaCosEnv(): void {
   if (missing.length > 0) {
     throw new Error(`COS 配置缺失:${missing.join("/")}(见 .env.example COS 段)`);
   }
+}
+
+/**
+ * 本地 rel(URL 段 byte 形态)→ 桶对象 key:加 wp-content/uploads/ 前缀,
+ * 与公网 URL 路径同构(nginx 静态反代透传原始路径,COS decode 一次即命中);
+ * 前缀 ASCII,decode 恰好落在 rel 段内,与 CosProvider 桶内布局一致。
+ */
+export function cosKeyOf(rel: string): string {
+  return COS_MEDIA_KEY_PREFIX + rel;
 }
 
 export function mediaBucket(): CosBucket {

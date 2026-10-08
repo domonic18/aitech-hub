@@ -6,9 +6,11 @@
 import { loadEnvConfig } from "@next/env";
 
 import { env } from "../../src/lib/env";
+import { cosWireKey } from "../../src/lib/backup/cos-bucket";
 import { diffInventory, pickSamples } from "../../src/lib/backup/media-inventory";
 import {
   assertMediaCosEnv,
+  cosKeyOf,
   humanBytes,
   localInventory,
   mediaBucket,
@@ -28,12 +30,14 @@ async function main(): Promise<void> {
     `本地:${items.size} 个文件 / ${humanBytes([...items.values()].reduce((a, b) => a + b, 0))}`,
   );
   console.log(`桶:${env.COS_MEDIA_BUCKET},列举中…`);
-  const remote = new Map((await bucket.listAll("")).map((o) => [o.key, o.sizeBytes]));
+  // 两侧归一到 cosWireKey 空间对账(桶内解码形态 vs 本地 byte 形态)
+  const remote = new Map((await bucket.listAll("")).map((o) => [cosWireKey(o.key), o.sizeBytes]));
   console.log(
     `桶内:${remote.size} 个对象 / ${humanBytes([...remote.values()].reduce((a, b) => a + b, 0))}`,
   );
+  const normItems = new Map([...items].map(([k, s]) => [cosWireKey(cosKeyOf(k)), s]));
 
-  const diff = diffInventory(items, remote);
+  const diff = diffInventory(normItems, remote);
   console.log(
     `对账:缺失(仅本地)${diff.missing.length} / 多余(仅桶)${diff.extra.length} / 字节数不符 ${diff.mismatch.length}`,
   );
@@ -46,13 +50,15 @@ async function main(): Promise<void> {
     if (list.length > 20) console.log(`  [${label}] … 共 ${list.length} 项`);
   }
 
-  // 抽样整字节比对:下载回读 sha1(内容级校验,size 相同仍可能内容坏)
-  const candidates = [...items.keys()].filter((k) => !diff.missing.includes(k));
+  // 抽样整字节比对:下载回读 sha1(内容级校验,size 相同仍可能内容坏);
+  // 候选取本地原始 key(盘名,readLocal 用),排除归一后缺失项;get 走桶 key(带前缀)
+  const missingNorm = new Set(diff.missing);
+  const candidates = [...items.keys()].filter((k) => !missingNorm.has(cosWireKey(cosKeyOf(k))));
   const samples = pickSamples(candidates, Math.min(SAMPLES, candidates.length));
   let sampleBad = 0;
   for (const key of samples) {
     const localSha = sha1Hex(await readLocal(root, key));
-    const remoteBuf = await bucket.get(key);
+    const remoteBuf = await bucket.get(cosKeyOf(key));
     if (!remoteBuf || sha1Hex(remoteBuf) !== localSha) {
       sampleBad += 1;
       console.error(`  [sha1 不符] ${key}`);
