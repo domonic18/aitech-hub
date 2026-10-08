@@ -49,7 +49,13 @@ const GROUPS: ReadonlyArray<Group> = [
     ],
   },
   { label: "用户", items: [{ icon: "i-user", label: "用户管理", href: "/admin/users" }] },
-  { label: "系统", items: [{ icon: "i-key", label: "PAT 令牌", href: "/admin/pats" }] },
+  {
+    label: "系统",
+    items: [
+      { icon: "i-key", label: "PAT 令牌", href: "/admin/pats" },
+      { icon: "i-send", label: "邮件配置", href: "/admin/email" },
+    ],
+  },
 ];
 
 export default function AdminSidebar({

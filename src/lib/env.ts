@@ -44,6 +44,9 @@ const serverEnvSchema = z.object({
   TENCENT_SMS_SDK_APP_ID: z.string().default(""),
   TENCENT_SMS_SIGN_NAME: z.string().default(""),
 
+  /** 事务邮件 SMTP(M21 批⓪)已入数据库 email_config(admin 后台维护,
+   *  用户拍板不入 env——与支付网关凭据同规则),此处不再有 SMTP 变量。 */
+
   /** 抖音数据网关(M8):dev 经 compose 映射 127.0.0.1:8010;prod 容器网内服务名 */
   DOUYIN_GATEWAY_URL: z.string().default("http://127.0.0.1:8010"),
 
