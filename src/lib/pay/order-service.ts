@@ -192,6 +192,41 @@ export async function getOrderView(
 }
 
 /**
+ * OD 入账(回调与对账补发共用,§5.1/§5.2):状态迁移+发货同事务,updateMany
+ * 竞态护栏(并发双路仅首笔迁移发货)。closed→paid 兜底:宁多发货不吞单。
+ * 返回是否本调用完成迁移(状态已被并发方迁移/不符 → false)。
+ */
+export async function markOrderPaidAndGrant(input: {
+  orderId: bigint;
+  userId: bigint;
+  postId: bigint;
+  transactionId?: string;
+  openOrderId?: string;
+}): Promise<boolean> {
+  const bumped = await prisma.$transaction(async (tx) => {
+    const r = await tx.payOrder.updateMany({
+      where: { id: input.orderId, status: { in: ["pending", "closed"] } },
+      data: {
+        status: "paid",
+        paidAt: new Date(),
+        gatewayTransactionId: input.transactionId ?? null,
+        gatewayOpenOrderId: input.openOrderId ?? undefined,
+      },
+    });
+    if (r.count > 0) {
+      await grantPurchase(tx, {
+        userId: input.userId,
+        postId: input.postId,
+        orderId: input.orderId,
+        source: "order",
+      });
+    }
+    return r.count;
+  });
+  return bumped > 0;
+}
+
+/**
  * 回调入账(提案 §5.1/§6 #4-#6):验签 → 全量落 notify_log(含被拒,可追溯
  * 伪造尝试)→ 状态机迁移。OD:pending/closed→paid(兜底迁移,宁多发货不吞
  * 单)+ 发货;paid 幂等。CD:paid→refunded + 软撤销;refunded 幂等;其余
@@ -266,29 +301,20 @@ export async function handleNotify(
     if (order.status === "paid") {
       handled = true; // 重放/重复通知幂等
     } else if (order.status === "pending" || order.status === "closed") {
-      // closed→paid 兜底迁移(提案 §5.2:宁多发货不吞单);updateMany 竞态护栏,
-      // 并发双回调仅首笔迁移,发货随事务原子落库
-      await prisma.$transaction(async (tx) => {
-        const bumped = await tx.payOrder.updateMany({
-          where: { id: order.id, status: { in: ["pending", "closed"] } },
-          data: {
-            status: "paid",
-            paidAt: new Date(),
-            gatewayTransactionId: verified.transactionId ?? null,
-            gatewayOpenOrderId: verified.openOrderId ?? undefined,
-          },
+      // closed→paid 兜底迁移(提案 §5.2:宁多发货不吞单);迁移+发货收敛进
+      // markOrderPaidAndGrant(与对账补发共用,updateMany 竞态护栏)
+      if (postId !== undefined) {
+        const migrated = await markOrderPaidAndGrant({
+          orderId: order.id,
+          userId: order.userId,
+          postId,
+          transactionId: verified.transactionId,
+          openOrderId: verified.openOrderId,
         });
-        if (bumped.count > 0 && postId !== undefined) {
-          await grantPurchase(tx, {
-            userId: order.userId,
-            postId,
-            orderId: order.id,
-            source: "order",
-          });
-        }
-      });
+        if (migrated)
+          logger.info({ event: "pay.order_paid", orderNo: verified.orderNo, via: "notify" });
+      }
       handled = true; // 状态已与通知一致(本笔或并发方迁移)
-      logger.info({ event: "pay.order_paid", orderNo: verified.orderNo });
     }
   } else if (verified.status === "CD") {
     if (order.status === "refunded") {

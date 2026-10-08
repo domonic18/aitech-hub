@@ -16,6 +16,10 @@ import type {
 
 export const MOCK_SECRET = "mock-secret-local-only";
 
+/** 已付单集合(模块级:同进程跨实例一致——对账 sweep 经工厂新实例也能查到
+ * markPaid 的单;进程重启即清零,mock 仅本地态,无持久化语义) */
+const paidOrders = new Set<string>();
+
 /** 构造一条模拟回调(集成测试/本地联调用):status 同网关枚举 OD/WP/CD */
 export function buildMockNotify(
   orderNo: string,
@@ -41,7 +45,6 @@ export function buildMockNotify(
 
 export class MockGateway implements PayGateway {
   readonly name = "mock";
-  private paid = new Set<string>();
 
   async create(input: GatewayCreateInput): Promise<GatewayCreateResult> {
     return {
@@ -54,17 +57,17 @@ export class MockGateway implements PayGateway {
 
   async query(orderNo: string): Promise<GatewayQueryResult> {
     return {
-      status: this.paid.has(orderNo) ? "paid" : "unpaid",
+      status: paidOrders.has(orderNo) ? "paid" : "unpaid",
       transactionId: `mock_txn_${orderNo}`,
       openOrderId: `mock_open_${orderNo}`,
-      raw: { errcode: 0, data: { status: this.paid.has(orderNo) ? "OD" : "WP" } },
+      raw: { errcode: 0, data: { status: paidOrders.has(orderNo) ? "OD" : "WP" } },
     };
   }
 
   /** 模拟支付完成(测试驱动状态);返回是否新标记(幂等) */
   markPaid(orderNo: string): boolean {
-    if (this.paid.has(orderNo)) return false;
-    this.paid.add(orderNo);
+    if (paidOrders.has(orderNo)) return false;
+    paidOrders.add(orderNo);
     return true;
   }
 
