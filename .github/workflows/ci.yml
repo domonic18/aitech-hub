@@ -5,11 +5,23 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  # 强制 GitHub Actions 使用 Node.js 24 runtime(checkout/setup-node 等,消弃用警告;同范例仓)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  REGISTRY: ccr.ccs.tencentyun.com
 
 jobs:
   app:
     name: app(格式/lint/类型/单测)
     runs-on: ubuntu-latest
+    env:
+      # 单测导入链(src/lib/ai/* → logger → env.ts)加载即做 zod 形校验;
+      # CI 无 .env,补占位值仅为通过形校验,不连任何服务(真实值由部署环境提供)
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/aitech_hub_ci?schema=public
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_SECRET: ci-placeholder-secret-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,13 +34,30 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
 
+  # 抖音网关(M8):pytest 黄金样本对拍(a_bogus 冻结时间逐字节)+ 归因矩阵;仅网关目录变更时跑
+  gateway:
+    name: gateway(python 单测)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: services/douyin-gateway/requirements*.txt
+      - run: pip install -r services/douyin-gateway/requirements.txt -r services/douyin-gateway/requirements-dev.txt
+      - working-directory: services/douyin-gateway
+        run: python -m pytest tests/ -q
+
   migrate-replay:
     name: 迁移重放守卫
     runs-on: ubuntu-latest
-    if: hashFiles('prisma/migrations/**') != ''
+    # 无条件执行(承袭范例 db-migration-guard):hashFiles 不支持 job 级 if,
+    # 曾致 workflow 加载即失败;守卫本身仅 ~1 分钟,换取任何变更都能兜住 schema 漂移
     services:
       postgres:
-        image: postgres:16
+        # M20 混合检索:CI 库是一次性卷(无 collation 惯性),直接用官方 pgvector 镜像
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -49,9 +78,131 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # 从零全量应用(06 文档 §5)
+      # 从零全量应用(standard/01-testing §5)
       - run: npx prisma migrate deploy
       # 第二次 deploy 必须无错(exactly-once 台账幂等)
       - run: npx prisma migrate deploy
-      # introspect 断言:实际 schema 与 schema.prisma 一致(differ 有差异则非零退出)
+      # introspect 断言:实际 schema 与 schema.prisma 一致(有差异则非零退出)
       - run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+  # 镜像发布线:三检查 job 全绿后,app 与网关镜像各自独立 job 并行构建推送
+  # (2026-10-04 拆分,仿 ai-invest-assisstant 每镜像一 job:互不拖累,失败可
+  #  re-run failed jobs 单镜像重试;standard/02-cicd-deployment §1;
+  #  跨境推送偶发 stall → 步骤级超时 + 失败重推一次)
+  # develop 出 develop-<sha> 供演练;latest 只从 main 出,保证 compose pull 默认拉到发布版
+  docker-release:
+    name: release(app 镜像构建推送 TCR)
+    runs-on: ubuntu-latest
+    needs: [app, gateway, migrate-replay]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+            echo "build_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      # id + 重试条件:登录失败属配置错误,不进重试(避免白建镜像且盖住真错;2026-10-02 首跑实测教训)
+      - id: login
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+      # provenance: false——TCR 不认 OCI attestation 附加清单
+      # continue-on-error:首试失败不染红 job,成败由重试步裁定(run 37106851119 教训:
+      # 冷缓存首试超时→重试推图成功,job 仍红,误导发布判断)。连带:重试条件必须用
+      # outcome 而非 failure()(continue-on-error 会把 failure() 归 false)
+      - name: Build and Push / 构建并推送(第 1 次尝试)
+        id: build1
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        timeout-minutes: 25
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+          build-args: |
+            BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and Push / 构建并推送(重试)
+        if: steps.build1.outcome == 'failure' && steps.login.conclusion == 'success'
+        uses: docker/build-push-action@v6
+        timeout-minutes: 30
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+          build-args: |
+            BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 网关镜像(M8,独立 Dockerfile):与 app 镜像同语义的独立 job,cache scope=gateway 隔离。
+  # 登录守卫/continue-on-error + outcome 重试/provenance:false 语义与 docker-release 同款
+  # (逐条教训注释见上,勿只改一处)
+  docker-release-gateway:
+    name: release(网关镜像构建推送 TCR)
+    runs-on: ubuntu-latest
+    needs: [app, gateway, migrate-replay]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - id: login
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+      - name: Build and Push gateway / 网关镜像(第 1 次尝试)
+        id: gbuild1
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        timeout-minutes: 25
+        with:
+          context: ./services/douyin-gateway
+          file: services/douyin-gateway/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-gateway:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,mode=max,scope=gateway
+      - name: Build and Push gateway / 网关镜像(重试)
+        if: steps.gbuild1.outcome == 'failure' && steps.login.conclusion == 'success'
+        uses: docker/build-push-action@v6
+        timeout-minutes: 30
+        with:
+          context: ./services/douyin-gateway
+          file: services/douyin-gateway/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-gateway:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,mode=max,scope=gateway

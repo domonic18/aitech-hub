@@ -1,5 +1,5 @@
 /**
- * WP 正文 HTML 清洗(03 文档 §4 规则的唯一实现)。
+ * WP 正文 HTML 清洗(标签/属性白名单规则的唯一实现,单测钉死)。
  *
  * 迁移脚本(scripts/migrate-wp)与运行时(后台粘贴 HTML, M5)共用,
  * 保证"迁移后的旧文"与"新贴的富文本"走同一套净化口径:
@@ -9,21 +9,46 @@
 import * as cheerio from "cheerio";
 import type { Comment, Element, ParentNode } from "domhandler";
 
+import { rewriteBase64Images } from "./data-uri-image";
+
 /** 旧站域名(内链/媒体相对化);dev 是 wp_options siteurl 的实际值 */
-export const WP_ORIGINS = [
-  "17aitech.com",
-  "www.17aitech.com",
-  "dev.17aitech.com",
-] as const;
+export const WP_ORIGINS = ["17aitech.com", "www.17aitech.com", "dev.17aitech.com"] as const;
 
 /** 保留播放器的 iframe 域白名单(03 §4;其余 iframe 删除并记报告) */
 const IFRAME_SRC_ALLOW = /^https?:\/\/(player\.bilibili\.com|www\.youtube\.com)\//;
 
 /** 标签白名单(03 §4;b/i/s/strike 先语义改名再入白名单;iframe 仅域白名单内保留) */
 const ALLOWED_TAGS = new Set([
-  "h1", "h2", "h3", "h4", "h5", "h6", "p", "a", "img", "ul", "ol", "li",
-  "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "th", "td",
-  "figure", "figcaption", "strong", "em", "del", "hr", "br", "span", "iframe",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "p",
+  "a",
+  "img",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "pre",
+  "code",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+  "figure",
+  "figcaption",
+  "strong",
+  "em",
+  "del",
+  "hr",
+  "br",
+  "span",
+  "iframe",
 ]);
 
 /** b/i/s/strike → 语义等价标签(保留加粗/斜体/删除线,避免剥壳丢语义) */
@@ -112,24 +137,24 @@ function unwrapNode(el: Element): void {
 /** [caption] → figure/figcaption;su_* 剥壳留内;其余成对短码删除并记报告 */
 function convertShortcodes(html: string, report: CleanHtmlReport): string {
   // 已知可转换:caption → figure(inner = img + 说明文字)
+  html = html.replace(/\[caption[^\]]*\]([\s\S]*?)\[\/caption\]/gi, (_m, inner: string) => {
+    report.shortcodesConverted.push("caption");
+    const imgMatch = inner.match(/<img[^>]*>/i);
+    if (!imgMatch) {
+      report.warnings.push(`caption 短码内无 <img>,整块删除(${inner.length} 字符)`);
+      return "";
+    }
+    const text = inner.replace(imgMatch[0], "").trim();
+    return `<figure>${imgMatch[0]}<figcaption>${text}</figcaption></figure>`;
+  });
+  // su_* 短码:剥壳留内(实库无;防御)
   html = html.replace(
-    /\[caption[^\]]*\]([\s\S]*?)\[\/caption\]/gi,
-    (_m, inner: string) => {
-      report.shortcodesConverted.push("caption");
-      const imgMatch = inner.match(/<img[^>]*>/i);
-      if (!imgMatch) {
-        report.warnings.push(`caption 短码内无 <img>,整块删除(${inner.length} 字符)`);
-        return "";
-      }
-      const text = inner.replace(imgMatch[0], "").trim();
-      return `<figure>${imgMatch[0]}<figcaption>${text}</figcaption></figure>`;
+    /\[(su_[a-z_]+)[^\]]*\]([\s\S]*?)\[\/\1\]/gi,
+    (_m, code: string, inner: string) => {
+      report.shortcodesConverted.push(code);
+      return inner;
     },
   );
-  // su_* 短码:剥壳留内(实库无;防御)
-  html = html.replace(/\[(su_[a-z_]+)[^\]]*\]([\s\S]*?)\[\/\1\]/gi, (_m, code: string, inner: string) => {
-    report.shortcodesConverted.push(code);
-    return inner;
-  });
   // 其余成对短码:删除并记报告(疑似内容丢失时告警)
   html = html.replace(
     /\[([a-z_][a-z0-9_-]{2,})[^\]]*\]([\s\S]*?)\[\/\1\]/gi,
@@ -152,48 +177,19 @@ function convertShortcodes(html: string, report: CleanHtmlReport): string {
   return html;
 }
 
-// ── data: URI 图片(49 篇实库存在,base64 解码落盘策略,2026-09-29 用户确认)──
-
-export interface Base64Image {
-  mime: string;
-  /** 原始 base64 载荷(不含 data: 前缀) */
-  base64: string;
-  ext: string;
-}
-
-const DATA_URI_RE = /data:image\/(png|jpe?g|gif|webp|avif);base64,([A-Za-z0-9+/=]+)/g;
-
-const MIME_EXT: Record<string, string> = {
-  png: "png", jpeg: "jpg", jpg: "jpg", gif: "gif", webp: "webp", avif: "avif",
-};
-
-/**
- * 把 data: URI 图片替换为 replacer 返回的 URL(迁移:落盘为新 URL;
- * 运行时 M5:进上传管线)。返回改写后 HTML 与提取到的图片清单。
- */
-export function rewriteBase64Images(
-  html: string,
-  replacer: (img: Base64Image, index: number) => string,
-): { html: string; images: Base64Image[] } {
-  const images: Base64Image[] = [];
-  const out = html.replace(DATA_URI_RE, (_m, mime: string, base64: string) => {
-    const img: Base64Image = { mime, base64, ext: MIME_EXT[mime] ?? "png" };
-    images.push(img);
-    return replacer(img, images.length - 1);
-  });
-  return { html: out, images };
-}
-
 // ── 主清洗流程 ────────────────────────────────────────────────────
 
 function isInternalUrl(u: string): boolean {
-  return /^https?:\/\//i.test(u) && WP_ORIGINS.some((o) => {
-    try {
-      return new URL(u).hostname === o;
-    } catch {
-      return false;
-    }
-  });
+  return (
+    /^https?:\/\//i.test(u) &&
+    WP_ORIGINS.some((o) => {
+      try {
+        return new URL(u).hostname === o;
+      } catch {
+        return false;
+      }
+    })
+  );
 }
 
 function toRelative(u: string): string {
@@ -290,8 +286,7 @@ export function cleanPostHtml(html: string): { html: string; report: CleanHtmlRe
     const allow = ALLOWED_ATTRS[el.tagName];
     for (const attr of el.attribs ? Object.keys(el.attribs) : []) {
       const keep =
-        allow?.has(attr) &&
-        (attr !== "class" || CODE_CLASS_RE.test(el.attribs.class ?? ""));
+        allow?.has(attr) && (attr !== "class" || CODE_CLASS_RE.test(el.attribs.class ?? ""));
       if (!keep) {
         delete el.attribs[attr];
         report.attributesStripped++;

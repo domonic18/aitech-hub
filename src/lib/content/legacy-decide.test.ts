@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildLegacyPath, decideLegacy } from "./legacy-decide";
 
-describe("decideLegacy(06 文档 §2.5:命中 301 / NULL→410 / 未命中 404)", () => {
+describe("decideLegacy(standard/01-testing §2.5:命中 301 / NULL→410 / 未命中 404)", () => {
   it("命中且有目标 → redirect", () => {
     expect(decideLegacy({ targetUrl: "/articles", httpStatus: 301 })).toBe("redirect");
   });

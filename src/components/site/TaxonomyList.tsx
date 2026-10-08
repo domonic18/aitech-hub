@@ -1,3 +1,4 @@
+import { getSiteTitle } from "@/lib/config/site-config";
 import { legacyRedirectOrNotFound } from "@/lib/content/legacy";
 import { listPostsPage } from "@/lib/content/posts";
 import { getCategoryBySlug, getTagBySlug } from "@/lib/content/taxonomy";
@@ -34,12 +35,13 @@ export async function taxonomyPosts(kind: TaxonomyKind, slug: string, page: numb
   });
 }
 
-export function taxonomyMetadata(kind: TaxonomyKind, info: TaxonomyInfo, page: number) {
+export async function taxonomyMetadata(kind: TaxonomyKind, info: TaxonomyInfo, page: number) {
   const base = `/${kind}/${info.slug}/`;
   const title = kind === "category" ? `${info.name}分类文章` : `「${info.name}」标签文章`;
+  const siteTitle = await getSiteTitle();
   return {
     title: page > 1 ? `${title} 第 ${page} 页` : title,
-    description: `${title}——一起AI技术原创内容。`,
+    description: `${title}——${siteTitle}原创内容。`,
     alternates: { canonical: page > 1 ? `${base}page/${page}/` : base },
   };
 }

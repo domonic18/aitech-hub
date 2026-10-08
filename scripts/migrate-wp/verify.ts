@@ -1,5 +1,5 @@
 /**
- * verify 阶段(03 文档 §11 七条验收)。
+ * verify 阶段(requirement §7 七条验收)。
  * 全部落 artifacts/verify_report.json;任一 FAIL 退出码非 0,阻断切换(M6 前提)。
  * 第 4 条默认 DB 层抽样;--http 升级为 HTTP 实测(需服务已起,NEXT_PUBLIC_SITE_URL 为基准)。
  */

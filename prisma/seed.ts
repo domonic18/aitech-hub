@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 /**
- * 种子数据(02 文档 §1):四分类,幂等 upsert,可反复执行。
+ * 种子数据(arch/03-data-model §1):四分类,幂等 upsert,可反复执行。
  * slug 沿用旧站四分类(3314 篇资讯分类路由由新站承接,内容不迁移);
  * admin 不预置,首次部署用脚本创建(M4 交付)。
  */

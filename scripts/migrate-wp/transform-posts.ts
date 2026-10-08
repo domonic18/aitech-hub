@@ -1,14 +1,11 @@
 /**
- * transform 核心映射(纯函数,单测主战场;03 文档 §3/§4/§5/§8)。
+ * transform 核心映射(纯函数,单测主战场)。
  * 输入 extract 产物,输出 load 计划;副作用仅经注入的 onBase64 回调(落盘解码图)。
  */
 import { createHash } from "node:crypto";
 
-import {
-  cleanPostHtml,
-  rewriteBase64Images,
-  type Base64Image,
-} from "../../src/lib/content/clean-html";
+import { cleanPostHtml } from "../../src/lib/content/clean-html";
+import { rewriteBase64Images, type Base64Image } from "../../src/lib/content/data-uri-image";
 import { normalizeSlug, normalizeUrlPath } from "../../src/lib/slug";
 import type {
   LegacyMapPlan,
@@ -107,9 +104,7 @@ export function transformPosts(input: TransformPostsInput): TransformPostsOutput
     attachmentPath.set(p.ID, normalizeUrlPath(`/wp-content/uploads/${file}`));
   }
   /** URL 路径 → attachment ID(闭包回溯溯源用) */
-  const attachmentIdByPath = new Map(
-    [...attachmentPath.entries()].map(([id, path]) => [path, id]),
-  );
+  const attachmentIdByPath = new Map([...attachmentPath.entries()].map(([id, path]) => [path, id]));
 
   const yoastByPostId = new Map(
     yoast.filter((y) => y.object_id != null).map((y) => [y.object_id, y]),
@@ -176,7 +171,11 @@ export function transformPosts(input: TransformPostsInput): TransformPostsOutput
     if (thumbId) {
       coverPath = attachmentPath.get(thumbId) ?? null;
       if (!coverPath) {
-        warnings.push({ scope: "post.cover", wpId: p.ID, message: `封面 attachment ${thumbId} 无 _wp_attached_file` });
+        warnings.push({
+          scope: "post.cover",
+          wpId: p.ID,
+          message: `封面 attachment ${thumbId} 无 _wp_attached_file`,
+        });
       }
     }
 
@@ -240,16 +239,27 @@ export function transformPosts(input: TransformPostsInput): TransformPostsOutput
 /** 公开页面 slug → 承接路径;未列出的页面默认 '/' */
 const PAGE_RULES: Record<string, string> = {
   "%e4%b8%bb%e9%a1%b5": "/", // 主页
-  shop: "/", cart: "/", checkout: "/", "my-account": "/",
-  ai_knowledge: "/articles", ai_news: "/articles", ai_resources: "/articles",
+  shop: "/",
+  cart: "/",
+  checkout: "/",
+  "my-account": "/",
+  ai_knowledge: "/articles",
+  ai_news: "/articles",
+  ai_resources: "/articles",
   "%e5%bc%80%e5%8f%91%e6%97%a5%e5%bf%97": "/", // 开发日志
   "%e7%94%a8%e6%88%b7%e5%8d%8f%e8%ae%ae": "/agreement", // 用户协议
   "%e9%9a%90%e7%a7%81%e6%94%bf%e7%ad%96": "/privacy", // 隐私政策
   "%e5%a4%a7%e6%a8%a1%e5%9e%8b%e4%b8%93%e9%a2%98%e9%a1%b5": "/", // 大模型专题页
-  register: "/login", login: "/login", lostpassword: "/login", "social-login": "/login",
-  account: "/account", profile: "/account",
+  register: "/login",
+  login: "/login",
+  lostpassword: "/login",
+  "social-login": "/login",
+  account: "/account",
+  profile: "/account",
   "embed-link": "/",
-  ai_qa: "/", ai_qa_list: "/", ai_qa_ask: "/",
+  ai_qa: "/",
+  ai_qa_list: "/",
+  ai_qa_ask: "/",
 };
 
 export function buildLegacyMap(input: {
@@ -267,7 +277,10 @@ export function buildLegacyMap(input: {
   const put = (oldPath: string, target: string, note: string): void => {
     if (map.has(oldPath)) {
       if (map.get(oldPath)!.targetUrl !== target) {
-        warnings.push({ scope: "legacy.conflict", message: `${oldPath} 目标冲突:${map.get(oldPath)!.targetUrl} vs ${target},保留前者` });
+        warnings.push({
+          scope: "legacy.conflict",
+          message: `${oldPath} 目标冲突:${map.get(oldPath)!.targetUrl} vs ${target},保留前者`,
+        });
       }
       return;
     }

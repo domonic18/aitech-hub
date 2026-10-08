@@ -6,7 +6,7 @@ function reqWith(headers: Record<string, string>): Request {
   return new Request("https://17aitech.com/api/view", { method: "POST", headers });
 }
 
-describe("isSameOrigin(mutation 类 Handler 的 CSRF 补位,04 文档 §4)", () => {
+describe("isSameOrigin(mutation 类 Handler 的 CSRF 补位,arch/07-frontend §4)", () => {
   it("Origin 与 Host 一致 → true", () => {
     expect(isSameOrigin(reqWith({ host: "17aitech.com", origin: "https://17aitech.com" }))).toBe(
       true,

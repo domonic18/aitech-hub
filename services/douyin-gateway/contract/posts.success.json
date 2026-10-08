@@ -1,0 +1,21 @@
+{
+  "status": 200,
+  "body": {
+    "videos": [
+      {
+        "video_id": "7301234567890123456",
+        "caption": "一分钟掌握今日 AI 大事\n#AI #大模型",
+        "topic_tags": ["AI", "大模型"],
+        "cover_url": "https://p3-sign.douyinpic.com/cover.jpeg",
+        "play_url": "https://v.douyinvod.com/preview.mp4",
+        "duration_seconds": 51,
+        "published_at": "2026-10-03T23:05:00Z",
+        "digg_count": 116,
+        "comment_count": 12,
+        "share_count": 3
+      }
+    ],
+    "has_more": true,
+    "max_cursor": 7301234567890123456
+  }
+}

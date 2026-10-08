@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI — 绑定手机号 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
+<style>
+/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+.avatar-svg { border-radius: 50%; flex: none; }
+body {
+  background: var(--bg); color: var(--text-1);
+  font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased; min-height: 100vh;
+  display: flex; flex-direction: column;
+  background-image: radial-gradient(ellipse 900px 480px at 50% -8%, rgba(94,106,210,.16), transparent 62%);
+}
+a { color: inherit; text-decoration: none; }
+.mono { font-family: var(--font-mono); }
+
+.header { height: 64px; border-bottom: 1px solid var(--border); }
+.header-in { max-width: 1200px; margin: 0 auto; height: 100%; padding: 0 24px; display: flex; align-items: center; }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+.logo .logo-mark {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px;
+  height: 26px; background: var(--accent); border-radius: var(--r-sm); color: #fff;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700; letter-spacing: -0.5px;
+  box-shadow: 0 0 12px var(--glow);
+}
+.logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 13px; }
+.back { font-size: 13.5px; color: var(--text-2); }
+.back:hover { color: var(--text-1); }
+
+/* ==== 主体 ==== */
+.main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.bind-card {
+  width: 560px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 36px 40px 32px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.45);
+}
+.bind-head { text-align: center; margin-bottom: 28px; }
+.bind-head .glyph {
+  width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px;
+  background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  display: flex; align-items: center; justify-content: center; font-size: 26px;
+}
+.bind-head h1 { font-size: 21px; }
+.bind-head p { font-size: 13px; color: var(--text-3); margin-top: 6px; }
+
+/* 步骤条 */
+.steps { display: flex; align-items: flex-start; margin: 0 8px 30px; }
+.step { flex: 1; text-align: center; position: relative; }
+.step .dot {
+  width: 30px; height: 30px; margin: 0 auto 8px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 13px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-3);
+}
+.step.active .dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 16px rgba(94,106,210,.4); }
+.step.done .dot { background: color-mix(in srgb, var(--green) 15%, transparent); border-color: color-mix(in srgb, var(--green) 50%, transparent); color: var(--green-hi); }
+.step .lbl { font-size: 12.5px; color: var(--text-3); }
+.step.active .lbl { color: var(--text-1); }
+.step:not(:last-child)::after {
+  content: ''; position: absolute; top: 14px; left: calc(50% + 22px); width: calc(100% - 44px);
+  height: 1px; background: var(--border);
+}
+.step.done:not(:last-child)::after { background: color-mix(in srgb, var(--green) 50%, transparent); }
+
+/* 账号识别卡 */
+.id-box {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 14px 16px; margin-bottom: 22px;
+}
+.id-box .av {
+  width: 44px; height: 44px; border-radius: 50%; background: var(--panel-2);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: var(--text-3); overflow: hidden;
+}
+.id-box .av img { width: 100%; height: 100%; object-fit: cover; }
+.id-box .info { flex: 1; }
+.id-box .info .nm { font-size: 14.5px; font-weight: 600; }
+.id-box .info .sub { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); margin-top: 2px; }
+.id-box .badge {
+  font-family: var(--font-mono); font-size: 11px; color: var(--amber-hi);
+  background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+  padding: 2px 8px; border-radius: 4px;
+}
+
+/* 表单 */
+.field { margin-bottom: 18px; }
+.field label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  transition: border-color .15s, box-shadow .15s;
+}
+.input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94,106,210,.15); }
+.input-wrap .prefix { font-family: var(--font-mono); font-size: 14px; color: var(--text-2); padding-left: 14px; }
+.input-wrap input {
+  flex: 1; height: 46px; background: transparent; border: none; outline: none;
+  color: var(--text-1); font-size: 15.5px; font-family: var(--font-mono);
+}
+.input-wrap input::placeholder { color: var(--text-3); }
+.send-btn {
+  margin: 0 6px; height: 34px; padding: 0 14px; font-size: 13px; white-space: nowrap;
+  color: var(--accent-hover); background: var(--accent-dim);
+  border: 1px solid rgba(94,106,210,.35); border-radius: var(--r-sm); cursor: pointer;
+}
+.send-btn:disabled { color: var(--text-3); background: var(--panel-2); border-color: var(--border); cursor: not-allowed; }
+.submit {
+  width: 100%; height: 48px; font-size: 15.5px; font-weight: 600; color: #fff;
+  background: linear-gradient(135deg, var(--accent), #4d58c0);
+  border: none; border-radius: var(--r-md); cursor: pointer;
+  box-shadow: 0 8px 24px rgba(94,106,210,.3);
+}
+.submit:hover { transform: translateY(-1px); }
+
+/* 说明区 */
+.note-list { margin-top: 24px; padding: 16px 18px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); }
+.note-list h4 { font-size: 13px; color: var(--text-2); margin-bottom: 10px; }
+.note-list li { list-style: none; font-size: 12.5px; color: var(--text-3); padding: 3px 0 3px 20px; position: relative; }
+.note-list li::before { content: '›'; position: absolute; left: 6px; color: var(--accent); font-family: var(--font-mono); }
+
+/* 成功态(预置,演示切换) */
+.done-view { display: none; text-align: center; padding: 8px 0 4px; }
+.done-view.show { display: block; }
+.done-view .ok-glyph {
+  width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 50%;
+  background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 50%, transparent);
+  display: flex; align-items: center; justify-content: center; font-size: 30px; color: var(--green-hi);
+}
+.done-view h2 { font-size: 20px; margin-bottom: 8px; }
+.done-view p { font-size: 13.5px; color: var(--text-2); margin-bottom: 22px; }
+.btn-accent {
+  display: inline-block; padding: 12px 34px; font-size: 14.5px; font-weight: 600; color: #fff;
+  background: var(--accent); border-radius: var(--r-md);
+}
+.btn-accent:hover { background: var(--accent-hover); }
+
+.bind-foot { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--text-3); }
+.bind-foot .mono { font-size: 11px; }
+
+.footer { padding: 20px 24px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+.proto-note {
+  position: fixed; left: 16px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.9); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+
+/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
+.theme-toggle {
+  margin-left: auto;
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
+}
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
+</style>
+</head>
+<body>
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+  <symbol id="i-link" viewBox="64 64 896 896"><path d="M574 665.4a8.03 8.03 0 00-11.3 0L446.5 781.6c-53.8 53.8-144.6 59.5-204 0-59.5-59.5-53.8-150.2 0-204l116.2-116.2c3.1-3.1 3.1-8.2 0-11.3l-39.8-39.8a8.03 8.03 0 00-11.3 0L191.4 526.5c-84.6 84.6-84.6 221.5 0 306s221.5 84.6 306 0l116.2-116.2c3.1-3.1 3.1-8.2 0-11.3L574 665.4zm258.6-474c-84.6-84.6-221.5-84.6-306 0L410.3 307.6a8.03 8.03 0 000 11.3l39.7 39.7c3.1 3.1 8.2 3.1 11.3 0l116.2-116.2c53.8-53.8 144.6-59.5 204 0 59.5 59.5 53.8 150.2 0 204L665.3 562.6a8.03 8.03 0 000 11.3l39.8 39.8c3.1 3.1 8.2 3.1 11.3 0l116.2-116.2c84.5-84.6 84.5-221.5 0-306.1zM610.1 372.3a8.03 8.03 0 00-11.3 0L372.3 598.7a8.03 8.03 0 000 11.3l39.6 39.6c3.1 3.1 8.2 3.1 11.3 0l226.4-226.4c3.1-3.1 3.1-8.2 0-11.3l-39.5-39.6z"/></symbol>
+
+  <symbol id="i-check" viewBox="64 64 896 896"><path d="M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z"/></symbol>
+  <symbol id="i-avatar" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
+    <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
+    <path d="M512 628c-176 0-316 106-316 238v158h632v-158c0-132-140-238-316-238z" style="fill:var(--av-fg,#5e6ad2)"/>
+  </symbol>
+</svg>
+
+<header class="header">
+  <div class="header-in">
+    <a class="logo" href="site-home.html">
+      <span class="logo-mark">17</span>一起AI<span class="tld">17aitech.com</span>
+    </a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
+    <a class="back" href="login.html">← 返回登录</a>
+  </div>
+</header>
+
+<div class="main">
+  <div class="bind-card">
+
+    <!-- 绑定流程态(默认展示) -->
+    <div id="bindView">
+      <div class="bind-head">
+        <div class="glyph"><svg class="ic" style="width:26px;height:26px" aria-hidden="true"><use href="#i-link"/></svg></div>
+        <h1>绑定手机号</h1>
+        <p>老站账号升级:绑定后即可短信验证码登录</p>
+      </div>
+
+      <div class="steps">
+        <div class="step active"><div class="dot">1</div><div class="lbl">验证身份</div></div>
+        <div class="step"><div class="dot">2</div><div class="lbl">绑定手机号</div></div>
+        <div class="step"><div class="dot">3</div><div class="lbl">完成激活</div></div>
+      </div>
+
+      <div class="id-box">
+        <svg class="avatar-svg" style="width:44px;height:44px" aria-hidden="true"><use href="#i-avatar"/></svg>
+        <div class="info">
+          <div class="nm">诸葛东明</div>
+          <div class="sub">user_id: 10086 · 注册于 2023-05-11</div>
+        </div>
+        <span class="badge">pending_binding</span>
+      </div>
+
+      <form onsubmit="event.preventDefault(); showDone()">
+        <div class="field">
+          <label>本机手机号</label>
+          <div class="input-wrap">
+            <span class="prefix">+86</span>
+            <input type="tel" maxlength="11" placeholder="请输入要绑定的手机号">
+            <button type="button" class="send-btn" onclick="sendCode(this)">获取验证码</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>短信验证码</label>
+          <div class="input-wrap">
+            <input type="text" inputmode="numeric" maxlength="6" placeholder="······" style="padding-left:14px; letter-spacing:.35em; font-size:18px">
+          </div>
+        </div>
+        <button class="submit" type="submit">验证并绑定</button>
+      </form>
+
+      <div class="note-list">
+        <h4>为什么需要绑定?</h4>
+        <ul>
+          <li>老站账号没有手机号字段,短信登录是唯一登录方式</li>
+          <li>绑定信息仅用于登录凭证,不会用于任何营销触达</li>
+          <li>历史数据(文章收藏、评论)绑定后原样保留</li>
+        </ul>
+      </div>
+
+      <div class="bind-foot">
+        <span class="mono">POST /api/auth/bind-phone · 绑定成功后 pending_binding → active</span>
+      </div>
+    </div>
+
+    <!-- 成功态(演示切换) -->
+    <div class="done-view" id="doneView">
+      <div class="ok-glyph"><svg class="ic" style="width:30px;height:30px" aria-hidden="true"><use href="#i-check"/></svg></div>
+      <h2>绑定成功,账号已激活</h2>
+      <p>下次登录直接使用 手机号 + 短信验证码,无需再走绑定流程。<br>你的历史数据已全部保留。</p>
+      <a class="btn-accent" href="account.html">进入个人中心 →</a>
+      <div class="bind-foot" style="margin-top:26px">
+        <span class="mono">user.status: pending_binding → active · 安全事件已记录(auth 事件日志)</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer class="footer">© 2021-2026 17aitech.com · 一起AI</footer>
+
+<div class="proto-note">PROTOTYPE v0.5.0 · M4 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+function sendCode(btn) {
+  var left = 60;
+  btn.disabled = true;
+  btn.textContent = left + 's 后重发';
+  var t = setInterval(function () {
+    left--;
+    if (left <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = '重新获取'; return; }
+    btn.textContent = left + 's 后重发';
+  }, 1000);
+}
+function showDone() {
+  document.getElementById('bindView').style.display = 'none';
+  document.getElementById('doneView').classList.add('show');
+}
+</script>
+
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+</script>
+</body>
+</html>

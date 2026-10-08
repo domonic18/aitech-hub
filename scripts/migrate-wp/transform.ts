@@ -1,5 +1,5 @@
 /**
- * transform 阶段编排(03 文档 §10):读 extract 产物 → 纯函数映射 →
+ * transform 阶段编排:读 extract 产物 → 纯函数映射 →
  * 写 transform-result.json(load 计划)与 migration_report.json(对账/警告)。
  * --dry-run 到此为止,不落库不拷贝媒体。
  */
@@ -75,7 +75,9 @@ export async function runTransform(): Promise<TransformResult> {
   });
 
   // views 日明细:仅范围内文章
-  const viewsDailyAll = await read<Array<{ id: number; period: string; count: number }>>(ARTIFACTS.viewsDaily);
+  const viewsDailyAll = await read<Array<{ id: number; period: string; count: number }>>(
+    ARTIFACTS.viewsDaily,
+  );
   const viewsDaily = viewsDailyAll
     .filter((v) => postsOut.scopedWpIds.has(v.id))
     .map((v) => ({
@@ -95,11 +97,7 @@ export async function runTransform(): Promise<TransformResult> {
     warnings: [...postsOut.warnings, ...usersOut.warnings, ...legacy.warnings],
   };
 
-  await writeFile(
-    join(dir, ARTIFACTS.transform.result),
-    JSON.stringify(result),
-    "utf8",
-  );
+  await writeFile(join(dir, ARTIFACTS.transform.result), JSON.stringify(result), "utf8");
 
   // migration_report:汇总 + 每篇清洗报告(无未确认警告 = 疑似丢失类告警需人工过目)
   const lossWarnings = result.warnings.filter(
@@ -123,11 +121,7 @@ export async function runTransform(): Promise<TransformResult> {
     warnings: result.warnings,
     lossWarningsNeedingReview: lossWarnings,
   };
-  await writeFile(
-    join(dir, ARTIFACTS.transform.report),
-    JSON.stringify(report, null, 2),
-    "utf8",
-  );
+  await writeFile(join(dir, ARTIFACTS.transform.report), JSON.stringify(report, null, 2), "utf8");
 
   console.log(JSON.stringify({ event: "transform.done", summary: report.summary }));
   return result;

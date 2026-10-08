@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI — 后台 · 文章编辑器 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
+<style>
+/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --red-hi: #ff8f88; --amber: #d29922; --amber-hi: #ecc06a; --blue: #3b82f6; --accent-hi: #8b96e8;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --header-bg: rgba(12,14,18,.82); --border-hover: #3d4260;
+  --cover-a: #171a26; --cover-b: #20243c;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --red-hi: #cf222e; --amber: #9a6700; --amber-hi: #9a6700; --blue: #0969da; --accent-hi: #4c56b8;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --header-bg: rgba(255,255,255,.85); --border-hover: #c9cdd4;
+  --cover-a: #e9ebf2; --cover-b: #dfe3ec;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+.avatar-svg { border-radius: 50%; flex: none; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--bg); color: var(--text-1); }
+a { text-decoration: none; color: inherit; }
+.mono { font-family: var(--font-mono); }
+
+/* 深色侧栏 */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .logo-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: var(--accent); border-radius: var(--r-sm); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: -0.5px; box-shadow: 0 0 10px var(--glow); }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: var(--border-hover); }
+
+/* ==== 编辑器布局:全高度三段 ==== */
+.content { margin-left: var(--admin-sidebar-w); height: 100vh; display: flex; flex-direction: column; }
+.ed-top {
+  height: 52px; background: var(--panel); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; padding: 0 20px; flex-shrink: 0;
+}
+.ed-top .back { font-size: 13px; color: var(--text-3); }
+.ed-top .back:hover { color: var(--accent); }
+.title-input {
+  flex: 1; max-width: 560px; height: 34px; border: 1px solid transparent; border-radius: var(--r-sm);
+  font-size: 15.5px; font-weight: 600; color: var(--text-1); background: transparent;
+  padding: 0 10px; outline: none; transition: all .15s;
+}
+.title-input:hover { border-color: var(--border); }
+.title-input:focus { border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px rgba(94,106,210,.12); }
+.slug-chip { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); background: var(--bg); border: 1px solid var(--border); padding: 3px 10px; border-radius: 4px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.btn-ghost-a { height: 34px; padding: 0 14px; font-size: 13.5px; color: var(--text-1); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer; }
+.btn-ghost-a:hover { color: var(--accent); border-color: var(--accent); }
+.btn-ghost-a.accent { color: var(--accent); border-color: rgba(94,106,210,.5); background: var(--accent-dim); }
+.btn-primary-a { height: 34px; padding: 0 20px; font-size: 13.5px; font-weight: 600; color: #fff; background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; }
+.btn-primary-a:hover { background: var(--accent-hover); }
+
+.ed-main { flex: 1; display: flex; min-height: 0; }
+
+/* 编辑区 */
+.ed-pane { flex: 1.2; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border); }
+.pane-head {
+  height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 16px;
+  background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.pane-head .t { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.pane-head .tools { margin-left: auto; display: flex; gap: 2px; }
+.tool-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: var(--text-2); font-size: 14px; }
+.tool-btn:hover { background: var(--bg); color: var(--text-1); }
+.md-textarea {
+  flex: 1; width: 100%; border: none; outline: none; resize: none;
+  padding: 20px 22px; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.8;
+  color: #33394d; background: #fcfcfd;
+}
+.md-textarea::selection { background: rgba(94,106,210,.18); }
+.ed-foot {
+  display: flex; align-items: center; gap: 14px; padding: 8px 16px;
+  border-top: 1px solid var(--border); background: var(--panel);
+  font-size: 12px; color: var(--text-3); font-family: var(--font-mono); flex-shrink: 0;
+}
+.paste-tip { color: var(--accent); cursor: pointer; }
+
+/* 预览区 */
+.pv-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--panel); }
+.pv-body { flex: 1; overflow-y: auto; padding: 26px 30px; }
+.pv-body h1.pv-title { font-size: 24px; margin-bottom: 8px; }
+.pv-meta { font-size: 12.5px; color: var(--text-3); padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.pv-body h2 { font-size: 19px; margin: 26px 0 12px; }
+.pv-body h3 { font-size: 16px; margin: 20px 0 10px; }
+.pv-body p { margin: 10px 0; line-height: 1.85; color: var(--text-2); }
+.pv-body blockquote { margin: 14px 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: #f7f7fd; color: var(--text-2); border-radius: 0 6px 6px 0; }
+.pv-body code.inline { font-family: var(--font-mono); font-size: .88em; background: #f2f3f8; border: 1px solid #e3e5ef; border-radius: 4px; padding: 1px 5px; color: #4a55b0; }
+.pv-body pre { background: #0c0e12; color: #d6d9e0; border-radius: var(--r-md); padding: 16px 18px; margin: 14px 0; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.75; }
+.pv-body .tk-kw { color: #c792ea; } .pv-body .tk-str { color: var(--green-hi); } .pv-body .tk-fn { color: #82aaff; } .pv-body .tk-cm { color: var(--text-3); }
+.pv-body ul { padding-left: 22px; margin: 10px 0; }
+.pv-body li { margin: 4px 0; color: var(--text-2); }
+.pv-body img.pv-img { max-width: 100%; border-radius: var(--r-md); border: 1px solid var(--border); }
+.pv-foot-note {
+  margin-top: 22px; padding: 10px 14px; font-size: 12px; color: var(--accent);
+  background: var(--accent-dim); border: 1px dashed rgba(94,106,210,.4); border-radius: var(--r-sm);
+  line-height: 1.7;
+}
+
+/* 右侧元信息栏 */
+.meta-pane { width: 300px; background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+.meta-sec { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.meta-sec h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.meta-sec h4 .opt { font-size: 11px; color: var(--text-3); font-weight: 400; }
+.m-input, .m-select {
+  width: 100%; height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 0 10px; font-size: 13px; outline: none; background: var(--panel); color: var(--text-1);
+  font-family: var(--font-sans);
+}
+.m-input:focus, .m-select:focus, .tags-box:focus-within { border-color: var(--accent); }
+textarea.m-input { height: auto; min-height: 66px; padding: 8px 10px; resize: vertical; line-height: 1.6; }
+.m-hint { font-size: 11.5px; color: var(--text-3); margin-top: 5px; }
+.m-hint .mono { font-size: 11px; }
+.cover-pick {
+  border: 1px dashed var(--border); border-radius: var(--r-sm); padding: 12px; text-align: center;
+  cursor: pointer; transition: all .15s;
+}
+.cover-pick:hover { border-color: var(--accent); background: var(--accent-dim); }
+.cover-pick img { width: 100%; border-radius: 4px; display: block; }
+.cover-pick .cp-txt { font-size: 12.5px; color: var(--text-3); padding: 8px 0 2px; }
+.cover-pick.has img + .cp-txt { display: none; }
+.cover-ops { display: flex; gap: 8px; margin-top: 8px; }
+.cover-ops button { flex: 1; height: 28px; font-size: 12px; border: 1px solid var(--border); background: var(--panel); border-radius: 4px; cursor: pointer; color: var(--text-2); }
+.cover-ops button:hover { color: var(--accent); border-color: var(--accent); }
+.tags-box { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 5px 8px; cursor: text; }
+.tag-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(94,106,210,.3); border-radius: 4px; padding: 2px 8px; }
+.tag-chip i { cursor: pointer; font-style: normal; opacity: .6; }
+.tag-chip i:hover { opacity: 1; }
+.tags-box input { flex: 1; min-width: 90px; border: none; outline: none; font-size: 12.5px; height: 22px; }
+.seo-row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; color: var(--text-3); }
+.seo-row .mono { font-size: 11px; }
+
+/* ==== 一键发文弹窗(状态流:选文件 → 解析/上传 → 替换完成) ==== */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200;
+  display: none; align-items: center; justify-content: center;
+}
+.modal-mask.show { display: flex; }
+.modal {
+  width: 640px; max-height: 82vh; overflow-y: auto;
+  background: var(--panel); border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px rgba(0,0,0,.3);
+}
+.mo-head { display: flex; align-items: center; padding: 18px 22px 0; }
+.mo-head h3 { font-size: 16px; font-weight: 600; }
+.mo-head .x { margin-left: auto; border: none; background: transparent; font-size: 17px; color: var(--text-3); cursor: pointer; }
+.mo-steps { display: flex; align-items: center; gap: 6px; padding: 14px 22px 0; }
+.mo-step { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-3); }
+.mo-step .n {
+  width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-family: var(--font-mono); background: var(--border); color: var(--text-3);
+  border: 1px solid var(--border);
+}
+.mo-step.active { color: var(--accent); font-weight: 600; }
+.mo-step.active .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mo-step.done { color: var(--green); }
+.mo-step.done .n { background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 50%, transparent); color: var(--green); }
+.mo-step .arr { color: var(--border); margin: 0 4px; }
+.mo-body { padding: 18px 22px 22px; }
+
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: var(--r-md); padding: 28px 20px;
+  text-align: center; cursor: pointer; transition: all .15s; margin-bottom: 14px;
+}
+.drop-zone:hover, .drop-zone.drag { border-color: var(--accent); background: var(--accent-dim); }
+.drop-zone .dz-ico { font-size: 30px; }
+.drop-zone .dz-t { font-size: 14px; margin-top: 8px; color: var(--text-1); }
+.drop-zone .dz-s { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.drop-zone .mono { font-size: 11px; }
+
+.mo-file {
+  display: flex; align-items: center; gap: 10px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px 14px; margin-bottom: 14px;
+}
+.mo-file .f-ico { font-size: 17px; }
+.mo-file .f-nm { flex: 1; font-size: 13px; }
+.mo-file .f-nm small { display: block; font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
+.mo-file .f-ok { color: var(--green); font-size: 13px; }
+
+.up-item { display: grid; grid-template-columns: 26px 1fr 200px 84px; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--border); }
+.up-item:last-child { border-bottom: none; }
+.up-item .u-ico { font-size: 15px; text-align: center; }
+.up-item .u-nm { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-item .u-nm .src { font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); display: block; }
+.prog-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.prog-fill.local { background: var(--blue); }
+.prog-fill.remote { background: #8b5cf6; }
+.prog-fill.done { background: var(--green); }
+.up-st { font-size: 11.5px; font-family: var(--font-mono); color: var(--text-3); text-align: right; }
+.up-st.ok { color: var(--green); }
+.up-st.err { color: var(--red); }
+
+.mo-summary {
+  margin-top: 14px; padding: 12px 16px; background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
+  border-radius: var(--r-sm); font-size: 13px; color: var(--green); line-height: 1.7;
+}
+.mo-summary b { font-weight: 700; }
+.mo-warn {
+  margin-top: 10px; padding: 10px 16px; background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+  border-radius: var(--r-sm); font-size: 12.5px; color: var(--amber); line-height: 1.7;
+}
+.mo-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 0 22px 20px; }
+.btn-lg { height: 38px; padding: 0 22px; font-size: 14px; border-radius: var(--r-sm); cursor: pointer; }
+.btn-lg.ghost { background: var(--panel); border: 1px solid var(--border); color: var(--text-1); }
+.btn-lg.primary { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+.btn-lg.primary:hover { background: var(--accent-hover); }
+
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 300;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+
+/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
+.theme-toggle {
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
+}
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
+
+/* ==== 顶栏头像菜单(下拉:个人设置/退出登录) ==== */
+.a-header .theme-toggle { margin-left: auto; }
+.a-header .avatar-btn .avatar-svg, .ed-top .avatar-btn .avatar-svg { width: 30px; height: 30px; --av-bg: var(--accent-dim); --av-fg: var(--accent); }
+.user-menu { position: relative; display: flex; align-items: center; }
+.avatar-btn {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+  border-radius: 999px; transition: color .15s;
+}
+.avatar-btn:hover { color: var(--text-1); }
+.user-drop {
+  position: absolute; right: 0; top: calc(100% + 12px); min-width: 172px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 6px; z-index: 200;
+}
+.user-drop[hidden] { display: none; }
+.ud-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; flex-direction: column; }
+.ud-head b { font-size: 13.5px; }
+.ud-head span { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.user-drop a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); }
+.user-drop a:hover { background: var(--panel-2); color: var(--text-1); }
+.user-drop a.ud-danger { color: var(--red); }
+.user-drop a.ud-danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); }
+
+/* ==== 侧栏图标(v0.4.0 SVG 化) ==== */
+.sb-item .ico { display: inline-flex; align-items: center; justify-content: center; }
+.sb-item .ico .ic { width: 15px; height: 15px; }
+.sb-item .tag-2 { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; line-height: 16px; }
+.sb-item.active .tag-2 { color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.4); }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
+</style>
+</head>
+<body>
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-aim" viewBox="64 64 896 896"><path d="M952 474H829.8C812.5 327.6 696.4 211.5 550 194.2V72c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v122.2C327.6 211.5 211.5 327.6 194.2 474H72c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h122.2C211.5 696.4 327.6 812.5 474 829.8V952c0 4.4 3.6 8 8 8h60c4.4 0 8-3.6 8-8V829.8C696.4 812.5 812.5 696.4 829.8 550H952c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8zM512 756c-134.8 0-244-109.2-244-244s109.2-244 244-244 244 109.2 244 244-109.2 244-244 244z"/><path d="M512 392c-32.1 0-62.1 12.4-84.8 35.2-22.7 22.7-35.2 52.7-35.2 84.8s12.5 62.1 35.2 84.8C449.9 619.4 480 632 512 632s62.1-12.5 84.8-35.2C619.4 574.1 632 544 632 512s-12.5-62.1-35.2-84.8A118.57 118.57 0 00512 392z"/></symbol>
+  <symbol id="i-api" viewBox="64 64 896 896"><path d="M917.7 148.8l-42.4-42.4c-1.6-1.6-3.6-2.3-5.7-2.3s-4.1.8-5.7 2.3l-76.1 76.1a199.27 199.27 0 00-112.1-34.3c-51.2 0-102.4 19.5-141.5 58.6L432.3 308.7a8.03 8.03 0 000 11.3L704 591.7c1.6 1.6 3.6 2.3 5.7 2.3 2 0 4.1-.8 5.7-2.3l101.9-101.9c68.9-69 77-175.7 24.3-253.5l76.1-76.1c3.1-3.2 3.1-8.3 0-11.4zM769.1 441.7l-59.4 59.4-186.8-186.8 59.4-59.4c24.9-24.9 58.1-38.7 93.4-38.7 35.3 0 68.4 13.7 93.4 38.7 24.9 24.9 38.7 58.1 38.7 93.4 0 35.3-13.8 68.4-38.7 93.4zm-190.2 105a8.03 8.03 0 00-11.3 0L501 613.3 410.7 523l66.7-66.7c3.1-3.1 3.1-8.2 0-11.3L441 408.6a8.03 8.03 0 00-11.3 0L363 475.3l-43-43a7.85 7.85 0 00-5.7-2.3c-2 0-4.1.8-5.7 2.3L206.8 534.2c-68.9 69-77 175.7-24.3 253.5l-76.1 76.1a8.03 8.03 0 000 11.3l42.4 42.4c1.6 1.6 3.6 2.3 5.7 2.3s4.1-.8 5.7-2.3l76.1-76.1c33.7 22.9 72.9 34.3 112.1 34.3 51.2 0 102.4-19.5 141.5-58.6l101.9-101.9c3.1-3.1 3.1-8.2 0-11.3l-43-43 66.7-66.7c3.1-3.1 3.1-8.2 0-11.3l-36.6-36.2zM441.7 769.1a131.32 131.32 0 01-93.4 38.7c-35.3 0-68.4-13.7-93.4-38.7a131.32 131.32 0 01-38.7-93.4c0-35.3 13.7-68.4 38.7-93.4l59.4-59.4 186.8 186.8-59.4 59.4z"/></symbol>
+
+  <symbol id="i-bulb" viewBox="64 64 896 896"><path d="M632 888H392c-4.4 0-8 3.6-8 8v32c0 17.7 14.3 32 32 32h192c17.7 0 32-14.3 32-32v-32c0-4.4-3.6-8-8-8zM512 64c-181.1 0-328 146.9-328 328 0 121.4 66 227.4 164 284.1V792c0 17.7 14.3 32 32 32h264c17.7 0 32-14.3 32-32V676.1c98-56.7 164-162.7 164-284.1 0-181.1-146.9-328-328-328zm127.9 549.8L604 634.6V752H420V634.6l-35.9-20.8C305.4 568.3 256 484.5 256 392c0-141.4 114.6-256 256-256s256 114.6 256 256c0 92.5-49.4 176.3-128.1 221.8z"/></symbol>
+  <symbol id="i-caret-down" viewBox="64 64 896 896"><path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z"/></symbol>
+  <symbol id="i-check" viewBox="64 64 896 896"><path d="M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z"/></symbol>
+  <symbol id="i-close" viewBox="64 64 896 896"><path d="M799.86 166.31c.02 0 .04.02.08.06l57.69 57.7c.04.03.05.05.06.08a.12.12 0 010 .06c0 .03-.02.05-.06.09L569.93 512l287.7 287.7c.04.04.05.06.06.09a.12.12 0 010 .07c0 .02-.02.04-.06.08l-57.7 57.69c-.03.04-.05.05-.07.06a.12.12 0 01-.07 0c-.03 0-.05-.02-.09-.06L512 569.93l-287.7 287.7c-.04.04-.06.05-.09.06a.12.12 0 01-.07 0c-.02 0-.04-.02-.08-.06l-57.69-57.7c-.04-.03-.05-.05-.06-.07a.12.12 0 010-.07c0-.03.02-.05.06-.09L454.07 512l-287.7-287.7c-.04-.04-.05-.06-.06-.09a.12.12 0 010-.07c0-.02.02-.04.06-.08l57.7-57.69c.03-.04.05-.05.07-.06a.12.12 0 01.07 0c.03 0 .05.02.09.06L512 454.07l287.7-287.7c.04-.04.06-.05.09-.06a.12.12 0 01.07 0z"/></symbol>
+  <symbol id="i-cloudserver" viewBox="64 64 896 896"><path d="M704 446H320c-4.4 0-8 3.6-8 8v402c0 4.4 3.6 8 8 8h384c4.4 0 8-3.6 8-8V454c0-4.4-3.6-8-8-8zm-328 64h272v117H376V510zm272 290H376V683h272v117z"/><path d="M424 748a32 32 0 1064 0 32 32 0 10-64 0zm0-178a32 32 0 1064 0 32 32 0 10-64 0z"/><path d="M811.4 368.9C765.6 248 648.9 162 512.2 162S258.8 247.9 213 368.8C126.9 391.5 63.5 470.2 64 563.6 64.6 668 145.6 752.9 247.6 762c4.7.4 8.7-3.3 8.7-8v-60.4c0-4-3-7.4-7-7.9-27-3.4-52.5-15.2-72.1-34.5-24-23.5-37.2-55.1-37.2-88.6 0-28 9.1-54.4 26.2-76.4 16.7-21.4 40.2-36.9 66.1-43.7l37.9-10 13.9-36.7c8.6-22.8 20.6-44.2 35.7-63.5 14.9-19.2 32.6-36 52.4-50 41.1-28.9 89.5-44.2 140-44.2s98.9 15.3 140 44.3c19.9 14 37.5 30.8 52.4 50 15.1 19.3 27.1 40.7 35.7 63.5l13.8 36.6 37.8 10c54.2 14.4 92.1 63.7 92.1 120 0 33.6-13.2 65.1-37.2 88.6-19.5 19.2-44.9 31.1-71.9 34.5-4 .5-6.9 3.9-6.9 7.9V754c0 4.7 4.1 8.4 8.8 8 101.7-9.2 182.5-94 183.2-198.2.6-93.4-62.7-172.1-148.6-194.9z"/></symbol>
+  <symbol id="i-cloudupload" viewBox="64 64 896 896"><path d="M518.3 459a8 8 0 00-12.6 0l-112 141.7a7.98 7.98 0 006.3 12.9h73.9V856c0 4.4 3.6 8 8 8h60c4.4 0 8-3.6 8-8V613.7H624c6.7 0 10.4-7.7 6.3-12.9L518.3 459z"/><path d="M811.4 366.7C765.6 245.9 648.9 160 512.2 160S258.8 245.8 213 366.6C127.3 389.1 64 467.2 64 560c0 110.5 89.5 200 199.9 200H304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8h-40.1c-33.7 0-65.4-13.4-89-37.7-23.5-24.2-36-56.8-34.9-90.6.9-26.4 9.9-51.2 26.2-72.1 16.7-21.3 40.1-36.8 66.1-43.7l37.9-9.9 13.9-36.6c8.6-22.8 20.6-44.1 35.7-63.4a245.6 245.6 0 0152.4-49.9c41.1-28.9 89.5-44.2 140-44.2s98.9 15.3 140 44.2c19.9 14 37.5 30.8 52.4 49.9 15.1 19.3 27.1 40.7 35.7 63.4l13.8 36.5 37.8 10C846.1 454.5 884 503.8 884 560c0 33.1-12.9 64.3-36.3 87.7a123.07 123.07 0 01-87.6 36.3H720c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h40.1C870.5 760 960 670.5 960 560c0-92.7-63.1-170.7-148.6-193.3z"/></symbol>
+  <symbol id="i-comment" viewBox="64 64 896 896"><path d="M464 512a48 48 0 1096 0 48 48 0 10-96 0zm200 0a48 48 0 1096 0 48 48 0 10-96 0zm-400 0a48 48 0 1096 0 48 48 0 10-96 0zm661.2-173.6c-22.6-53.7-55-101.9-96.3-143.3a444.35 444.35 0 00-143.3-96.3C630.6 75.7 572.2 64 512 64h-2c-60.6.3-119.3 12.3-174.5 35.9a445.35 445.35 0 00-142 96.5c-40.9 41.3-73 89.3-95.2 142.8-23 55.4-34.6 114.3-34.3 174.9A449.4 449.4 0 00112 714v152a46 46 0 0046 46h152.1A449.4 449.4 0 00510 960h2.1c59.9 0 118-11.6 172.7-34.3a444.48 444.48 0 00142.8-95.2c41.3-40.9 73.8-88.7 96.5-142 23.6-55.2 35.6-113.9 35.9-174.5.3-60.9-11.5-120-34.8-175.6zm-151.1 438C704 845.8 611 884 512 884h-1.7c-60.3-.3-120.2-15.3-173.1-43.5l-8.4-4.5H188V695.2l-4.5-8.4C155.3 633.9 140.3 574 140 513.7c-.4-99.7 37.7-193.3 107.6-263.8 69.8-70.5 163.1-109.5 262.8-109.9h1.7c50 0 98.5 9.7 144.2 28.9 44.6 18.7 84.6 45.6 119 80 34.3 34.3 61.3 74.4 80 119 19.4 46.2 29.1 95.2 28.9 145.8-.6 99.6-39.7 192.9-110.1 262.7z"/></symbol>
+  <symbol id="i-copy" viewBox="64 64 896 896"><path d="M832 64H296c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h496v688c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8V96c0-17.7-14.3-32-32-32zM704 192H192c-17.7 0-32 14.3-32 32v530.7c0 8.5 3.4 16.6 9.4 22.6l173.3 173.3c2.2 2.2 4.7 4 7.4 5.5v1.9h4.2c3.5 1.3 7.2 2 11 2H704c17.7 0 32-14.3 32-32V224c0-17.7-14.3-32-32-32zM350 856.2L263.9 770H350v86.2zM664 888H414V746c0-22.1-17.9-40-40-40H232V264h432v624z"/></symbol>
+  <symbol id="i-dashboard" viewBox="64 64 896 896"><path d="M924.8 385.6a446.7 446.7 0 00-96-142.4 446.7 446.7 0 00-142.4-96C631.1 123.8 572.5 112 512 112s-119.1 11.8-174.4 35.2a446.7 446.7 0 00-142.4 96 446.7 446.7 0 00-96 142.4C75.8 440.9 64 499.5 64 560c0 132.7 58.3 257.7 159.9 343.1l1.7 1.4c5.8 4.8 13.1 7.5 20.6 7.5h531.7c7.5 0 14.8-2.7 20.6-7.5l1.7-1.4C901.7 817.7 960 692.7 960 560c0-60.5-11.9-119.1-35.2-174.4zM761.4 836H262.6A371.12 371.12 0 01140 560c0-99.4 38.7-192.8 109-263 70.3-70.3 163.7-109 263-109 99.4 0 192.8 38.7 263 109 70.3 70.3 109 163.7 109 263 0 105.6-44.5 205.5-122.6 276zM623.5 421.5a8.03 8.03 0 00-11.3 0L527.7 506c-18.7-5-39.4-.2-54.1 14.5a55.95 55.95 0 000 79.2 55.95 55.95 0 0079.2 0 55.87 55.87 0 0014.5-54.1l84.5-84.5c3.1-3.1 3.1-8.2 0-11.3l-28.3-28.3zM490 320h44c4.4 0 8-3.6 8-8v-80c0-4.4-3.6-8-8-8h-44c-4.4 0-8 3.6-8 8v80c0 4.4 3.6 8 8 8zm260 218v44c0 4.4 3.6 8 8 8h80c4.4 0 8-3.6 8-8v-44c0-4.4-3.6-8-8-8h-80c-4.4 0-8 3.6-8 8zm12.7-197.2l-31.1-31.1a8.03 8.03 0 00-11.3 0l-56.6 56.6a8.03 8.03 0 000 11.3l31.1 31.1c3.1 3.1 8.2 3.1 11.3 0l56.6-56.6c3.1-3.1 3.1-8.2 0-11.3zm-458.6-31.1a8.03 8.03 0 00-11.3 0l-31.1 31.1a8.03 8.03 0 000 11.3l56.6 56.6c3.1 3.1 8.2 3.1 11.3 0l31.1-31.1c3.1-3.1 3.1-8.2 0-11.3l-56.6-56.6zM262 530h-80c-4.4 0-8 3.6-8 8v44c0 4.4 3.6 8 8 8h80c4.4 0 8-3.6 8-8v-44c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-edit" viewBox="64 64 896 896"><path d="M257.7 752c2 0 4-.2 6-.5L431.9 722c2-.4 3.9-1.3 5.3-2.8l423.9-423.9a9.96 9.96 0 000-14.1L694.9 114.9c-1.9-1.9-4.4-2.9-7.1-2.9s-5.2 1-7.1 2.9L256.8 538.8c-1.5 1.5-2.4 3.3-2.8 5.3l-29.5 168.2a33.5 33.5 0 009.4 29.8c6.6 6.4 14.9 9.9 23.8 9.9zm67.4-174.4L687.8 215l73.3 73.3-362.7 362.6-88.9 15.7 15.6-89zM880 836H144c-17.7 0-32 14.3-32 32v36c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-36c0-17.7-14.3-32-32-32z"/></symbol>
+  <symbol id="i-eye" viewBox="64 64 896 896"><path d="M942.2 486.2C847.4 286.5 704.1 186 512 186c-192.2 0-335.4 100.5-430.2 300.3a60.3 60.3 0 000 51.5C176.6 737.5 319.9 838 512 838c192.2 0 335.4-100.5 430.2-300.3 7.7-16.2 7.7-35 0-51.5zM512 766c-161.3 0-279.4-81.8-362.7-254C232.6 339.8 350.7 258 512 258c161.3 0 279.4 81.8 362.7 254C791.5 684.2 673.4 766 512 766zm-4-430c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176zm0 288c-61.9 0-112-50.1-112-112s50.1-112 112-112 112 50.1 112 112-50.1 112-112 112z"/></symbol>
+  <symbol id="i-filetext" viewBox="64 64 896 896"><path d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326zm1.8 562H232V136h302v216a42 42 0 0042 42h216v494zM504 618H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8h184c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8zM312 490v48c0 4.4 3.6 8 8 8h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8z"/></symbol>
+  <symbol id="i-global" viewBox="64 64 896 896"><path d="M854.4 800.9c.2-.3.5-.6.7-.9C920.6 722.1 960 621.7 960 512s-39.4-210.1-104.8-288c-.2-.3-.5-.5-.7-.8-1.1-1.3-2.1-2.5-3.2-3.7-.4-.5-.8-.9-1.2-1.4l-4.1-4.7-.1-.1c-1.5-1.7-3.1-3.4-4.6-5.1l-.1-.1c-3.2-3.4-6.4-6.8-9.7-10.1l-.1-.1-4.8-4.8-.3-.3c-1.5-1.5-3-2.9-4.5-4.3-.5-.5-1-1-1.6-1.5-1-1-2-1.9-3-2.8-.3-.3-.7-.6-1-1C736.4 109.2 629.5 64 512 64s-224.4 45.2-304.3 119.2c-.3.3-.7.6-1 1-1 .9-2 1.9-3 2.9-.5.5-1 1-1.6 1.5-1.5 1.4-3 2.9-4.5 4.3l-.3.3-4.8 4.8-.1.1c-3.3 3.3-6.5 6.7-9.7 10.1l-.1.1c-1.6 1.7-3.1 3.4-4.6 5.1l-.1.1c-1.4 1.5-2.8 3.1-4.1 4.7-.4.5-.8.9-1.2 1.4-1.1 1.2-2.1 2.5-3.2 3.7-.2.3-.5.5-.7.8C103.4 301.9 64 402.3 64 512s39.4 210.1 104.8 288c.2.3.5.6.7.9l3.1 3.7c.4.5.8.9 1.2 1.4l4.1 4.7c0 .1.1.1.1.2 1.5 1.7 3 3.4 4.6 5l.1.1c3.2 3.4 6.4 6.8 9.6 10.1l.1.1c1.6 1.6 3.1 3.2 4.7 4.7l.3.3c3.3 3.3 6.7 6.5 10.1 9.6 80.1 74 187 119.2 304.5 119.2s224.4-45.2 304.3-119.2a300 300 0 0010-9.6l.3-.3c1.6-1.6 3.2-3.1 4.7-4.7l.1-.1c3.3-3.3 6.5-6.7 9.6-10.1l.1-.1c1.5-1.7 3.1-3.3 4.6-5 0-.1.1-.1.1-.2 1.4-1.5 2.8-3.1 4.1-4.7.4-.5.8-.9 1.2-1.4a99 99 0 003.3-3.7zm4.1-142.6c-13.8 32.6-32 62.8-54.2 90.2a444.07 444.07 0 00-81.5-55.9c11.6-46.9 18.8-98.4 20.7-152.6H887c-3 40.9-12.6 80.6-28.5 118.3zM887 484H743.5c-1.9-54.2-9.1-105.7-20.7-152.6 29.3-15.6 56.6-34.4 81.5-55.9A373.86 373.86 0 01887 484zM658.3 165.5c39.7 16.8 75.8 40 107.6 69.2a394.72 394.72 0 01-59.4 41.8c-15.7-45-35.8-84.1-59.2-115.4 3.7 1.4 7.4 2.9 11 4.4zm-90.6 700.6c-9.2 7.2-18.4 12.7-27.7 16.4V697a389.1 389.1 0 01115.7 26.2c-8.3 24.6-17.9 47.3-29 67.8-17.4 32.4-37.8 58.3-59 75.1zm59-633.1c11 20.6 20.7 43.3 29 67.8A389.1 389.1 0 01540 327V141.6c9.2 3.7 18.5 9.1 27.7 16.4 21.2 16.7 41.6 42.6 59 75zM540 640.9V540h147.5c-1.6 44.2-7.1 87.1-16.3 127.8l-.3 1.2A445.02 445.02 0 00540 640.9zm0-156.9V383.1c45.8-2.8 89.8-12.5 130.9-28.1l.3 1.2c9.2 40.7 14.7 83.5 16.3 127.8H540zm-56 56v100.9c-45.8 2.8-89.8 12.5-130.9 28.1l-.3-1.2c-9.2-40.7-14.7-83.5-16.3-127.8H484zm-147.5-56c1.6-44.2 7.1-87.1 16.3-127.8l.3-1.2c41.1 15.6 85 25.3 130.9 28.1V484H336.5zM484 697v185.4c-9.2-3.7-18.5-9.1-27.7-16.4-21.2-16.7-41.7-42.7-59.1-75.1-11-20.6-20.7-43.3-29-67.8 37.2-14.6 75.9-23.3 115.8-26.1zm0-370a389.1 389.1 0 01-115.7-26.2c8.3-24.6 17.9-47.3 29-67.8 17.4-32.4 37.8-58.4 59.1-75.1 9.2-7.2 18.4-12.7 27.7-16.4V327zM365.7 165.5c3.7-1.5 7.3-3 11-4.4-23.4 31.3-43.5 70.4-59.2 115.4-21-12-40.9-26-59.4-41.8 31.8-29.2 67.9-52.4 107.6-69.2zM165.5 365.7c13.8-32.6 32-62.8 54.2-90.2 24.9 21.5 52.2 40.3 81.5 55.9-11.6 46.9-18.8 98.4-20.7 152.6H137c3-40.9 12.6-80.6 28.5-118.3zM137 540h143.5c1.9 54.2 9.1 105.7 20.7 152.6a444.07 444.07 0 00-81.5 55.9A373.86 373.86 0 01137 540zm228.7 318.5c-39.7-16.8-75.8-40-107.6-69.2 18.5-15.8 38.4-29.7 59.4-41.8 15.7 45 35.8 84.1 59.2 115.4-3.7-1.4-7.4-2.9-11-4.4zm292.6 0c-3.7 1.5-7.3 3-11 4.4 23.4-31.3 43.5-70.4 59.2-115.4 21 12 40.9 26 59.4 41.8a373.81 373.81 0 01-107.6 69.2z"/></symbol>
+  <symbol id="i-key" viewBox="64 64 896 896"><path d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5L255.8 713.6l-62.3-62.3a8.19 8.19 0 00-11.4 0l-39.8 39.8a8.19 8.19 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.19 8.19 0 00-11.4 0l-39.8 39.8a8.19 8.19 0 000 11.4l110.3 111.2c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.1 304.1 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112m161.2 465.2C726.2 620.3 668.9 644 608 644s-118.2-23.7-161.2-66.8C403.7 534.2 380 476.9 380 416s23.7-118.2 66.8-161.2c43-43.1 100.3-66.8 161.2-66.8s118.2 23.7 161.2 66.8c43.1 43 66.8 100.3 66.8 161.2s-23.7 118.2-66.8 161.2"/></symbol>
+  <symbol id="i-link" viewBox="64 64 896 896"><path d="M574 665.4a8.03 8.03 0 00-11.3 0L446.5 781.6c-53.8 53.8-144.6 59.5-204 0-59.5-59.5-53.8-150.2 0-204l116.2-116.2c3.1-3.1 3.1-8.2 0-11.3l-39.8-39.8a8.03 8.03 0 00-11.3 0L191.4 526.5c-84.6 84.6-84.6 221.5 0 306s221.5 84.6 306 0l116.2-116.2c3.1-3.1 3.1-8.2 0-11.3L574 665.4zm258.6-474c-84.6-84.6-221.5-84.6-306 0L410.3 307.6a8.03 8.03 0 000 11.3l39.7 39.7c3.1 3.1 8.2 3.1 11.3 0l116.2-116.2c53.8-53.8 144.6-59.5 204 0 59.5 59.5 53.8 150.2 0 204L665.3 562.6a8.03 8.03 0 000 11.3l39.8 39.8c3.1 3.1 8.2 3.1 11.3 0l116.2-116.2c84.5-84.6 84.5-221.5 0-306.1zM610.1 372.3a8.03 8.03 0 00-11.3 0L372.3 598.7a8.03 8.03 0 000 11.3l39.6 39.6c3.1 3.1 8.2 3.1 11.3 0l226.4-226.4c3.1-3.1 3.1-8.2 0-11.3l-39.5-39.6z"/></symbol>
+  <symbol id="i-logout" viewBox="64 64 896 896"><path d="M868 732h-70.3c-4.8 0-9.3 2.1-12.3 5.8-7 8.5-14.5 16.7-22.4 24.5a353.84 353.84 0 01-112.7 75.9A352.8 352.8 0 01512.4 866c-47.9 0-94.3-9.4-137.9-27.8a353.84 353.84 0 01-112.7-75.9 353.28 353.28 0 01-76-112.5C167.3 606.2 158 559.9 158 512s9.4-94.2 27.8-137.8c17.8-42.1 43.4-80 76-112.5s70.5-58.1 112.7-75.9c43.6-18.4 90-27.8 137.9-27.8 47.9 0 94.3 9.3 137.9 27.8 42.2 17.8 80.1 43.4 112.7 75.9 7.9 7.9 15.3 16.1 22.4 24.5 3 3.7 7.6 5.8 12.3 5.8H868c6.3 0 10.2-7 6.7-12.3C798 160.5 663.8 81.6 511.3 82 271.7 82.6 79.6 277.1 82 516.4 84.4 751.9 276.2 942 512.4 942c152.1 0 285.7-78.8 362.3-197.7 3.4-5.3-.4-12.3-6.7-12.3zm88.9-226.3L815 393.7c-5.3-4.2-13-.4-13 6.3v76H488c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+  <symbol id="i-picture" viewBox="64 64 896 896"><path d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zm-40 632H136v-39.9l138.5-164.3 150.1 178L658.1 489 888 761.6V792zm0-129.8L664.2 396.8c-3.2-3.8-9-3.8-12.2 0L424.6 666.4l-144-170.7c-3.2-3.8-9-3.8-12.2 0L136 652.7V232h752v430.2zM304 456a88 88 0 100-176 88 88 0 000 176zm0-116c15.5 0 28 12.5 28 28s-12.5 28-28 28-28-12.5-28-28 12.5-28 28-28z"/></symbol>
+  <symbol id="i-piechart" viewBox="64 64 896 896"><path d="M864 518H506V160c0-4.4-3.6-8-8-8h-26a398.46 398.46 0 00-282.8 117.1 398.19 398.19 0 00-85.7 127.1A397.61 397.61 0 0072 552a398.46 398.46 0 00117.1 282.8c36.7 36.7 79.5 65.6 127.1 85.7A397.61 397.61 0 00472 952a398.46 398.46 0 00282.8-117.1c36.7-36.7 65.6-79.5 85.7-127.1A397.61 397.61 0 00872 552v-26c0-4.4-3.6-8-8-8zM705.7 787.8A331.59 331.59 0 01470.4 884c-88.1-.4-170.9-34.9-233.2-97.2C174.5 724.1 140 640.7 140 552c0-88.7 34.5-172.1 97.2-234.8 54.6-54.6 124.9-87.9 200.8-95.5V586h364.3c-7.7 76.3-41.3 147-96.6 201.8zM952 462.4l-2.6-28.2c-8.5-92.1-49.4-179-115.2-244.6A399.4 399.4 0 00589 74.6L560.7 72c-4.7-.4-8.7 3.2-8.7 7.9V464c0 4.4 3.6 8 8 8l384-1c4.7 0 8.4-4 8-8.6zm-332.2-58.2V147.6a332.24 332.24 0 01166.4 89.8c45.7 45.6 77 103.6 90 166.1l-256.4.7z"/></symbol>
+  <symbol id="i-robot" viewBox="64 64 896 896"><path d="M300 328a60 60 0 10120 0 60 60 0 10-120 0zM852 64H172c-17.7 0-32 14.3-32 32v660c0 17.7 14.3 32 32 32h680c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-32 660H204V128h616v596zM604 328a60 60 0 10120 0 60 60 0 10-120 0zm250.2 556H169.8c-16.5 0-29.8 14.3-29.8 32v36c0 4.4 3.3 8 7.4 8h729.1c4.1 0 7.4-3.6 7.4-8v-36c.1-17.7-13.2-32-29.7-32zM664 508H360c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-scissor" viewBox="64 64 896 896"><path d="M567.1 512l318.5-319.3c5-5 1.5-13.7-5.6-13.7h-90.5c-2.1 0-4.2.8-5.6 2.3l-273.3 274-90.2-90.5c12.5-22.1 19.7-47.6 19.7-74.8 0-83.9-68.1-152-152-152s-152 68.1-152 152 68.1 152 152 152c27.7 0 53.6-7.4 75.9-20.3l90 90.3-90.1 90.3A151.04 151.04 0 00288 582c-83.9 0-152 68.1-152 152s68.1 152 152 152 152-68.1 152-152c0-27.2-7.2-52.7-19.7-74.8l90.2-90.5 273.3 274c1.5 1.5 3.5 2.3 5.6 2.3H880c7.1 0 10.7-8.6 5.6-13.7L567.1 512zM288 370c-44.1 0-80-35.9-80-80s35.9-80 80-80 80 35.9 80 80-35.9 80-80 80zm0 444c-44.1 0-80-35.9-80-80s35.9-80 80-80 80 35.9 80 80-35.9 80-80 80z"/></symbol>
+  <symbol id="i-send" viewBox="64 64 896 896"><path d="M931.4 498.9L94.9 79.5c-3.4-1.7-7.3-2.1-11-1.2a15.99 15.99 0 00-11.7 19.3l86.2 352.2c1.3 5.3 5.2 9.6 10.4 11.3l147.7 50.7-147.6 50.7c-5.2 1.8-9.1 6-10.3 11.3L72.2 926.5c-.9 3.7-.5 7.6 1.2 10.9 3.9 7.9 13.5 11.1 21.5 7.2l836.5-417c3.1-1.5 5.6-4.1 7.2-7.1 3.9-8 .7-17.6-7.2-21.6zM170.8 826.3l50.3-205.6 295.2-101.3c2.3-.8 4.2-2.6 5-5 1.4-4.2-.8-8.7-5-10.2L221.1 403 171 198.2l628 314.9-628.2 313.2z"/></symbol>
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-table" viewBox="64 64 896 896"><path d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zm-40 208H676V232h212v136zm0 224H676V432h212v160zM412 432h200v160H412V432zm200-64H412V232h200v136zm-476 64h212v160H136V432zm0-200h212v136H136V232zm0 424h212v136H136V656zm276 0h200v136H412V656zm476 136H676V656h212v136z"/></symbol>
+  <symbol id="i-user" viewBox="64 64 896 896"><path d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></symbol>
+  <symbol id="i-warning" viewBox="64 64 896 896"><path d="M464 720a48 48 0 1096 0 48 48 0 10-96 0zm16-304v184c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V416c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8zm475.7 440l-416-720c-6.2-10.7-16.9-16-27.7-16s-21.6 5.3-27.7 16l-416 720C56 877.4 71.4 904 96 904h832c24.6 0 40-26.6 27.7-48zm-783.5-27.9L512 239.9l339.8 588.2H172.2z"/></symbol>
+  <symbol id="i-avatar" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
+    <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
+    <path d="M512 628c-176 0-316 106-316 238v158h632v-158c0-132-140-238-316-238z" style="fill:var(--av-fg,#5e6ad2)"/>
+  </symbol>
+</svg>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="logo-mark">17</span>一起AI<span class="tld">admin</span></div>
+<nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg></span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item active" href="admin-posts.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-filetext"/></svg></span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-picture"/></svg></span>媒体库</a>
+    <a class="sb-item" href="admin-telegram.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-send"/></svg></span>电报流治理<span class="tag-2">二期</span></a>
+    <div class="sb-group">采集</div>
+    <a class="sb-item" href="admin-spider.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-cloudserver"/></svg></span>采集总览<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-channels.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-api"/></svg></span>渠道配置<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-bloggers.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-aim"/></svg></span>博主管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">AI 服务</div>
+    <a class="sb-item" href="admin-models.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-robot"/></svg></span>模型配置<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-usage.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-piechart"/></svg></span>用量统计<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-sessions.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-comment"/></svg></span>会话管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg></span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-home.html">返回前台站点</a></div>
+</aside>
+
+<div class="content">
+  <!-- 顶栏 -->
+  <div class="ed-top">
+    <a class="back" href="admin-posts.html">← 文章管理</a>
+    <input class="title-input" value="智能体军团指挥手册:多 Agent 协作的拆解与编排" placeholder="输入文章标题…(自动生成 slug)">
+    <span class="slug-chip" title="由标题自动生成,可改">/agents-%E6%8C%87%E6%8C%A5%E6%89%8B%E5%86%8C</span>
+    <div class="ed-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
+      <div class="user-menu">
+        <button class="avatar-btn" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false" title="账号菜单">
+          <svg class="avatar-svg" aria-hidden="true"><use href="#i-avatar"/></svg>
+          <svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-down"/></svg>
+        </button>
+        <div class="user-drop" id="userDrop" hidden>
+          <div class="ud-head"><b>诸葛东明</b><span>admin · 站长</span></div>
+          <a href="account.html"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>个人设置</a>
+          <a href="login.html" class="ud-danger"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>退出登录</a>
+        </div>
+      </div>
+      <span class="mono" style="font-size:12px; color:var(--text-3)">已自动保存 · 14:32</span>
+      <button class="btn-ghost-a accent" onclick="openModal()"><svg class="ic" aria-hidden="true"><use href="#i-cloudupload"/></svg> 一键发文</button>
+      <button class="btn-ghost-a">存草稿</button>
+      <button class="btn-primary-a">发 布</button>
+    </div>
+  </div>
+
+  <div class="ed-main">
+    <!-- Markdown 编辑 -->
+    <div class="ed-pane">
+      <div class="pane-head">
+        <span class="t"><svg class="ic" style="width:12px;height:12px" aria-hidden="true"><use href="#i-edit"/></svg> Markdown</span>
+        <div class="tools">
+          <button class="tool-btn" title="加粗">B</button>
+          <button class="tool-btn" title="斜体">I</button>
+          <button class="tool-btn" title="链接"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg></button>
+          <button class="tool-btn" title="图片"><svg class="ic" aria-hidden="true"><use href="#i-picture"/></svg></button>
+          <button class="tool-btn" title="代码块">&lt;/&gt;</button>
+          <button class="tool-btn" title="表格"><svg class="ic" aria-hidden="true"><use href="#i-table"/></svg></button>
+        </div>
+      </div>
+      <textarea class="md-textarea" spellcheck="false">## 为什么要多 Agent
+
+单 agent 长上下文的三大痛点:**注意力稀释**、工具选择混乱、失败难定位。
+把任务拆给专职 agent,每个只带自己需要的工具集——
+
+> 指挥官不写代码,指挥官读地图。
+
+## 三种编排模式
+
+1. **主从模式**:一个 planner 拆任务,N 个 worker 领任务
+2. **流水线模式**:需求 → 实现 → 评审 → 修复,串行传递
+3. **评审环**:worker 产出,reviewer 打回,直到通过
+
+## 代码示例
+
+```typescript
+// planner 派发任务(节选)
+const tasks = await planner.split(requirement)
+const results = await Promise.allSettled(
+  tasks.map(t => workers.dispatch(t))
+)
+```
+
+## 失败案例
+
+第一次跑评审环时,reviewer 和 worker 用了同一个模型同一份系统提示,
+结果互相"客气"了三轮全过——**评审环必须信息不对称**。</textarea>
+      <div class="ed-foot">
+        <span>1,246 字 · 8,420 字符</span>
+        <span>Markdown · GFM</span>
+        <span class="paste-tip" title="截图后直接 Ctrl+V,自动上传替换为站内 URL"><svg class="ic" style="width:12px;height:12px" aria-hidden="true"><use href="#i-copy"/></svg> 支持截图粘贴直传</span>
+        <span style="margin-left:auto">Ln 24, Col 10</span>
+      </div>
+    </div>
+
+    <!-- 实时预览 -->
+    <div class="pv-pane">
+      <div class="pane-head"><span class="t"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg> 预览(前台渲染形态)</span></div>
+      <div class="pv-body">
+        <h1 class="pv-title">智能体军团指挥手册:多 Agent 协作的拆解与编排</h1>
+        <div class="pv-meta">AI 实战 · Agents · ≈ 18 min · 草稿预览</div>
+
+        <h2>为什么要多 Agent</h2>
+        <p>单 agent 长上下文的三大痛点:<b>注意力稀释</b>、工具选择混乱、失败难定位。把任务拆给专职 agent,每个只带自己需要的工具集——</p>
+        <blockquote><p>指挥官不写代码,指挥官读地图。</p></blockquote>
+
+        <h2>三种编排模式</h2>
+        <ul>
+          <li><b>主从模式</b>:一个 planner 拆任务,N 个 worker 领任务</li>
+          <li><b>流水线模式</b>:需求 → 实现 → 评审 → 修复,串行传递</li>
+          <li><b>评审环</b>:worker 产出,reviewer 打回,直到通过</li>
+        </ul>
+
+        <h2>代码示例</h2>
+        <pre><span class="tk-cm">// planner 派发任务(节选)</span>
+<span class="tk-kw">const</span> tasks = <span class="tk-kw">await</span> planner.<span class="tk-fn">split</span>(requirement)
+<span class="tk-kw">const</span> results = <span class="tk-kw">await</span> Promise.<span class="tk-fn">allSettled</span>(
+  tasks.<span class="tk-fn">map</span>(t => workers.<span class="tk-fn">dispatch</span>(t))
+)</pre>
+
+        <div class="pv-foot-note">
+          <svg class="ic" aria-hidden="true"><use href="#i-bulb"/></svg> 发布后此预览即前台真实形态:代码高亮(rehype-highlight)、图片走 <code class="inline">/wp-content/uploads/</code> 同源路径、文末自动追加「智能体开放」条(见 site-article 原型)。
+        </div>
+      </div>
+    </div>
+
+    <!-- 元信息栏 -->
+    <aside class="meta-pane">
+      <div class="meta-sec">
+        <h4>分类 <span class="opt">必选 · 单选</span></h4>
+        <select class="m-select">
+          <option>AI 实战</option><option>建站</option><option>数据库</option>
+          <option>开源</option><option>产品</option><option>产品评测</option>
+        </select>
+        <div class="m-hint">按 slug 挂载;tags 按名自动建(<span class="mono">upsert_article</span> 同规则)</div>
+      </div>
+      <div class="meta-sec">
+        <h4>标签 <span class="opt">回车添加 · 最多 5 个</span></h4>
+        <div class="tags-box">
+          <span class="tag-chip">Agents <i><svg class="ic" style="width:10px;height:10px;vertical-align:-2px" aria-hidden="true"><use href="#i-close"/></svg></i></span>
+          <span class="tag-chip">Claude Code <i><svg class="ic" style="width:10px;height:10px;vertical-align:-2px" aria-hidden="true"><use href="#i-close"/></svg></i></span>
+          <span class="tag-chip">编排 <i><svg class="ic" style="width:10px;height:10px;vertical-align:-2px" aria-hidden="true"><use href="#i-close"/></svg></i></span>
+          <input placeholder="添加标签…">
+        </div>
+      </div>
+      <div class="meta-sec">
+        <h4>封面 <span class="opt">必选</span></h4>
+        <div class="cover-pick has">
+          <img src="assets/cover-agent-legion.jpg" alt="" onerror="this.parentElement.classList.remove('has')">
+          <div class="cp-txt">拖拽 / 点击上传,或从媒体库选用</div>
+        </div>
+        <div class="cover-ops">
+          <button onclick="location.href='admin-cover.html'"><svg class="ic" style="width:12px;height:12px" aria-hidden="true"><use href="#i-scissor"/></svg> 裁剪工作流</button>
+          <button><svg class="ic" style="width:12px;height:12px" aria-hidden="true"><use href="#i-picture"/></svg> 媒体库选用</button>
+        </div>
+      </div>
+      <div class="meta-sec">
+        <h4>摘要 <span class="opt">SEO 与列表共用</span></h4>
+        <textarea class="m-input" maxlength="120">把一个模糊需求拆成多个 agent 的任务图:主从模式、流水线模式、评审环,附真实项目失败案例。</textarea>
+        <div class="seo-row"><span>0-120 字,超长截断</span><span class="mono">42/120</span></div>
+      </div>
+      <div class="meta-sec">
+        <h4>SEO <span class="opt">可选</span></h4>
+        <input class="m-input" placeholder="SEO 标题(默认用文章标题)" style="margin-bottom:8px">
+        <input class="m-input" placeholder="SEO 描述(默认用摘要)">
+        <div class="m-hint">留空自动回退;<span class="mono">canonical / OG / JSON-LD</span> 自动生成</div>
+      </div>
+      <div class="meta-sec" style="border-bottom:none">
+        <div class="m-hint" style="margin:0">
+          <span class="mono">POST /api/posts → 201(草稿)<br>POST /api/posts/[id]/publish → ISR revalidate,前台即时可见</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- 一键发文弹窗:状态流展示(默认停在「上传中」态,含完成汇总) -->
+<div class="modal-mask show" id="modal">
+  <div class="modal">
+    <div class="mo-head">
+      <h3><svg class="ic" aria-hidden="true"><use href="#i-cloudupload"/></svg> 一键发文 · 导入本地 Markdown</h3>
+      <button class="x" onclick="closeModal()"><svg class="ic" style="width:16px;height:16px;vertical-align:-2px" aria-hidden="true"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="mo-steps">
+      <div class="mo-step done"><span class="n"><svg class="ic" style="width:11px;height:11px;vertical-align:-2px" aria-hidden="true"><use href="#i-check"/></svg></span>选择文件</div><span class="mo-step arr">›</span>
+      <div class="mo-step active"><span class="n">2</span>图片上传 / 外链转存</div><span class="mo-step arr">›</span>
+      <div class="mo-step"><span class="n">3</span>引用替换 · 进入编辑器</div>
+    </div>
+    <div class="mo-body">
+      <div class="mo-file">
+        <span class="f-ico"><svg class="ic" style="width:17px;height:17px;vertical-align:-2px" aria-hidden="true"><use href="#i-filetext"/></svg></span>
+        <div class="f-nm">agents-playbook.md<small>18.4 KB · 解析出图片引用 6 张(本地 4 / 外链 2)</small></div>
+        <span class="f-ok"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-check"/></svg> 解析完成</span>
+      </div>
+
+      <div class="up-item">
+        <span class="u-ico"><svg class="ic" style="width:15px;height:15px" aria-hidden="true"><use href="#i-picture"/></svg></span>
+        <div class="u-nm">cover-arch.png<span class="src">本地 · sha1 去重命中,复用已有</span></div>
+        <div class="prog-track"><div class="prog-fill done" style="width:100%"></div></div>
+        <span class="up-st ok"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-check"/></svg> 复用 100%</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico"><svg class="ic" style="width:15px;height:15px" aria-hidden="true"><use href="#i-picture"/></svg></span>
+        <div class="u-nm">seq-main-from-planner.png<span class="src">本地 · 新上传 → sharp WebP+缩略图</span></div>
+        <div class="prog-track"><div class="prog-fill local done" style="width:100%"></div></div>
+        <span class="up-st ok"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-check"/></svg> 已入库</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico"><svg class="ic" style="width:15px;height:15px" aria-hidden="true"><use href="#i-picture"/></svg></span>
+        <div class="u-nm">loop-reviewer.png<span class="src">本地 · 上传中</span></div>
+        <div class="prog-track"><div class="prog-fill local" style="width:64%"></div></div>
+        <span class="up-st">64%</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico"><svg class="ic" style="width:15px;height:15px;vertical-align:-2px" aria-hidden="true"><use href="#i-global"/></svg></span>
+        <div class="u-nm">cdn.example.com/img/flow.png<span class="src">外链转存 · media.transfer 队列</span></div>
+        <div class="prog-track"><div class="prog-fill remote done" style="width:100%"></div></div>
+        <span class="up-st ok"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-check"/></svg> 已转存</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico"><svg class="ic" style="width:15px;height:15px;vertical-align:-2px" aria-hidden="true"><use href="#i-global"/></svg></span>
+        <div class="u-nm">img.twitter.com/p/AbCdEf.png<span class="src">外链转存 · 排队中(jobId: mt:8842)</span></div>
+        <div class="prog-track"><div class="prog-fill remote" style="width:12%"></div></div>
+        <span class="up-st">12%</span>
+      </div>
+      <div class="up-item">
+        <span class="u-ico"><svg class="ic" style="width:15px;height:15px;vertical-align:-2px" aria-hidden="true"><use href="#i-warning"/></svg></span>
+        <div class="u-nm">old-blog.net/pic.png<span class="src">外链转存 · 404</span></div>
+        <div class="prog-track"><div class="prog-fill" style="width:100%; background:var(--red)"></div></div>
+        <span class="up-st err"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-close"/></svg> 失败,保留原链</span>
+      </div>
+
+      <div class="mo-summary">
+        <svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-check"/></svg> 完成 <b>4 / 6</b>:新建 2 · 复用 1 · 转存 1。全部成功后自动把 Markdown 内引用替换为站内 URL,并勾选封面候选。
+      </div>
+      <div class="mo-warn">
+        <svg class="ic" style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-warning"/></svg> 1 张外链转存失败(old-blog.net 404):进入编辑器后将保留原链并以断链标记提醒,可手动替换或移除。
+      </div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn-lg ghost" onclick="closeModal()">后台继续,先去编辑</button>
+      <button class="btn-lg primary">完成替换,进入编辑器 →</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.5.0 · M5 · 弹窗为「一键发文」上传中态 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+function openModal() { document.getElementById('modal').classList.add('show'); }
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+</script>
+
+<script>
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+
+/* ---- 用户菜单(点外关闭 + Esc) ---- */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const drop = document.getElementById("userDrop");
+  const btn = e.currentTarget;
+  if (drop.hasAttribute("hidden")) { drop.removeAttribute("hidden"); btn.setAttribute("aria-expanded", "true"); }
+  else { drop.setAttribute("hidden", ""); btn.setAttribute("aria-expanded", "false"); }
+}
+document.addEventListener("click", (e) => {
+  const drop = document.getElementById("userDrop");
+  if (drop && !drop.hasAttribute("hidden") && !e.target.closest(".user-menu")) {
+    drop.setAttribute("hidden", "");
+    document.querySelector(".avatar-btn")?.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.getElementById("userDrop")?.setAttribute("hidden", "");
+});
+</script>
+</body>
+</html>

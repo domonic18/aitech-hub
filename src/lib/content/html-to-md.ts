@@ -1,6 +1,6 @@
 /**
  * HTML → Markdown 转换(GEO,requirement §3.2:文章 .md 直出 + llms-full.txt)。
- * 输入是清洗后的 WP 正文(标签/属性白名单内,03 文档 §4),按已知标签集做结构映射;
+ * 输入是清洗后的 WP 正文(标签/属性白名单内),按已知标签集做结构映射;
  * 不做 markdown 特殊字符转义(技术正文 CJK 为主,转义噪声大于收益)。
  * 纯函数;单测见 html-to-md.test.ts。
  */

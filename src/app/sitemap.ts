@@ -1,22 +1,27 @@
 import type { MetadataRoute } from "next";
 
 import { listAllPostsForSeo } from "@/lib/content/posts";
+import { postPath } from "@/lib/content/post-path";
 import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
+import { listProjectsForSeo } from "@/lib/github/public";
+import { projectPath } from "@/lib/github/project-path";
 import { absoluteUrl } from "@/lib/seo/site";
 
-/** sitemap(04 文档 §3:全部 published 文章 + 分类 + 标签 + 静态页;lastModified 取 updated_at) */
+/** sitemap(arch/07-frontend §3:全部 published 文章 + 分类 + 标签 + 项目 + 静态页;lastModified 取 updated_at) */
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [posts, categories, tags] = await Promise.all([
+  const [posts, categories, tags, projects] = await Promise.all([
     listAllPostsForSeo(),
     listCategories(),
     listTagsWithCount(),
+    listProjectsForSeo(),
   ]);
 
   const staticPages: MetadataRoute.Sitemap = [
     "",
     "/articles/",
+    "/projects/",
     "/archive/",
     "/about/",
     "/agreement/",
@@ -33,11 +38,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
   const postPages: MetadataRoute.Sitemap = posts.map((p) => ({
-    url: absoluteUrl(`/${p.slug}/`),
+    url: absoluteUrl(postPath(p.id, p.slug)),
     lastModified: p.updatedAt,
     changeFrequency: "monthly",
     priority: 0.8,
   }));
+  // 项目详情 lastModified 跟 README/meta 同步跳写(无变化轮次不 bump,见 sync.ts)
+  const projectPages: MetadataRoute.Sitemap = projects.map((p) => ({
+    url: absoluteUrl(projectPath(p.slug)),
+    lastModified: p.updatedAt,
+    changeFrequency: "daily",
+    priority: 0.7,
+  }));
 
-  return [...staticPages, ...categoryPages, ...tagPages, ...postPages];
+  return [...staticPages, ...categoryPages, ...tagPages, ...projectPages, ...postPages];
 }

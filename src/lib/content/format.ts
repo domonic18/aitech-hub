@@ -1,4 +1,4 @@
-/** 展示层纯函数:列表摘要/正文的派生文案,不回写库(03 文档 §3) */
+/** 展示层纯函数:列表摘要/正文的派生文案,不回写库 */
 
 /** HTML 转纯文本(卡片摘要用,非安全清洗——安全清洗唯一实现是 clean-html.ts) */
 export function plainText(html: string): string {

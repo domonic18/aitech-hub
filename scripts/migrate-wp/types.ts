@@ -1,5 +1,5 @@
 /**
- * 迁移管线共享类型(03 文档 §10)。
+ * 迁移管线共享类型。
  * extract 产物(源库行)→ transform 产物(load 计划)两层,
  * transform 为纯函数,单测见 transform-posts.test.ts。
  */

@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一起AI — 后台 · 渠道配置 · aitech-hub 原型</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
+<style>
+/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;admin 与前台同一体系,双主题) ==== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
+  --accent: #5e6ad2; --accent-hover: #6e7ae2; --accent-dim: rgba(94,106,210,.14);
+  --green: #2ea043; --green-hi: #7ee2a0; --red: #f85149; --amber: #d29922; --blue: #3b82f6;
+  --text-1: #e6e8ee; --text-2: #9aa1ad; --text-3: #6b7280;
+  --glow: rgba(94,106,210,.55); --shadow-lg: 0 24px 64px rgba(0,0,0,.45); --shadow-sm: 0 12px 40px rgba(0,0,0,.35);
+  --border-hover: #3d4260;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --admin-sidebar-w: 220px; --admin-header-h: 56px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f2f3f6; --border: #e3e6eb;
+  --accent: #5e6ad2; --accent-hover: #4c56b8; --accent-dim: rgba(94,106,210,.10);
+  --green: #1a7f37; --green-hi: #1a7f37; --red: #cf222e; --amber: #9a6700; --blue: #0969da;
+  --text-1: #1f2328; --text-2: #57606a; --text-3: #8c959f;
+  --glow: rgba(94,106,210,.35); --shadow-lg: 0 8px 24px rgba(30,35,60,.08); --shadow-sm: 0 4px 16px rgba(30,35,60,.06);
+  --border-hover: #c9cdd4;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
+.ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
+.ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
+.ic-lg { width: 18px; height: 18px; vertical-align: -3px; }
+.avatar-svg { border-radius: 50%; flex: none; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5715; background: var(--bg); color: var(--text-1); }
+a { text-decoration: none; color: inherit; }
+img { display: block; }
+.mono { font-family: var(--font-mono); }
+
+/* 侧栏(暗=深色现状;亮=浅色白侧栏) */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--admin-sidebar-w); background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; }
+[data-theme="light"] .sidebar { background: var(--panel); }
+.sb-logo { height: var(--admin-header-h); display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--border); color: var(--text-1); font-weight: 700; font-size: 15px; }
+.sb-logo .logo-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: var(--accent); border-radius: var(--r-sm); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: -0.5px; box-shadow: 0 0 10px var(--glow); }
+.sb-logo .tld { color: var(--text-3); font-weight: 400; font-family: var(--font-mono); font-size: 11px; }
+.sb-nav { flex: 1; padding: 12px 10px; }
+.sb-group { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; padding: 14px 10px 6px; }
+.sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 1px 0; border-radius: var(--r-sm); color: var(--text-2); font-size: 13.5px; }
+.sb-item .ico { width: 18px; text-align: center; font-size: 14px; opacity: .85; }
+.sb-item:hover { color: var(--text-1); background: var(--panel-2); }
+.sb-item.active { color: #fff; background: var(--accent); }
+.sb-foot { padding: 12px; border-top: 1px solid var(--border); }
+.sb-site-link { display: block; text-align: center; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border); color: var(--text-3); font-size: 12px; font-family: var(--font-mono); }
+.sb-site-link:hover { color: var(--text-2); border-color: var(--border-hover); }
+
+.content { margin-left: var(--admin-sidebar-w); min-height: 100vh; }
+.a-header { height: var(--admin-header-h); background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 90; }
+.a-header h1 { font-size: 16px; font-weight: 600; }
+.a-header .crumb { font-size: 13px; color: var(--text-3); }
+.a-header .crumb b { color: var(--text-1); font-weight: 600; }
+
+/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
+.theme-toggle {
+  width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-2); position: relative;
+  transition: border-color .15s;
+}
+.theme-toggle:hover { border-color: var(--border-hover); }
+.tt-track { position: absolute; inset: 2px; }
+.tt-thumb {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; border-radius: 9px;
+  background: var(--accent); box-shadow: 0 0 8px var(--glow); transition: transform .2s ease;
+}
+[data-theme="light"] .tt-thumb { transform: translateX(20px); }
+.tt-ic { position: absolute; top: 2px; width: 14px; height: 14px; color: var(--text-3); transition: color .2s; }
+.tt-moon { left: 3px; }
+.tt-sun { right: 3px; }
+[data-theme="dark"] .tt-moon,
+[data-theme="light"] .tt-sun { color: #fff; }
+
+/* ==== 顶栏头像菜单(下拉:个人设置/退出登录) ==== */
+.a-header .theme-toggle { margin-left: auto; }
+.a-header .avatar-btn .avatar-svg { width: 30px; height: 30px; --av-bg: var(--accent-dim); --av-fg: var(--accent); }
+.user-menu { position: relative; display: flex; align-items: center; }
+.avatar-btn {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+  border-radius: 999px; transition: color .15s;
+}
+.avatar-btn:hover { color: var(--text-1); }
+.user-drop {
+  position: absolute; right: 0; top: calc(100% + 12px); min-width: 172px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 6px; z-index: 200;
+}
+.user-drop[hidden] { display: none; }
+.ud-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; flex-direction: column; }
+.ud-head b { font-size: 13.5px; }
+.ud-head span { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.user-drop a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); }
+.user-drop a:hover { background: var(--panel-2); color: var(--text-1); }
+.user-drop a.ud-danger { color: var(--red); }
+.user-drop a.ud-danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); }
+
+/* ==== 侧栏图标(v0.4.0 SVG 化) ==== */
+.sb-item .ico { display: inline-flex; align-items: center; justify-content: center; }
+.sb-item .ico .ic { width: 15px; height: 15px; }
+.sb-item .tag-2 { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; line-height: 16px; }
+.sb-item.active .tag-2 { color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.4); }
+
+.a-body { padding: 20px 24px 40px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); }
+
+/* ==== Tabs ==== */
+.tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { display: flex; align-items: center; gap: 7px; padding: 10px 2px; font-size: 14px; color: var(--text-2); cursor: pointer; border: none; background: transparent; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab .cnt { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; line-height: 16px; }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab.on .cnt { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-dim); }
+.tab-pane[hidden] { display: none; }
+
+/* ==== 表格 ==== */
+.a-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.a-table th { text-align: left; font-weight: 600; color: var(--text-2); background: var(--panel-2); padding: 12px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.a-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.a-table tr:last-child td { border-bottom: none; }
+.a-table tr:hover td { background: var(--panel-2); }
+
+.m-name { font-weight: 600; }
+.m-name .sub { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); font-weight: 400; margin-top: 1px; white-space: nowrap; }
+.num { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+
+/* 协议 / 用途 Tag */
+.use-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); background: var(--panel-2); white-space: nowrap; }
+.use-core { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.use-agent { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+.use-cover { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+.use-vis { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 35%, transparent); }
+
+/* 定位徽标:默认 / 备用 */
+.pos-badge { font-size: 12px; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+.pos-default { color: var(--accent); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.pos-backup { color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border); }
+.pos-none { color: var(--text-3); }
+
+/* 启用开关 */
+.sw { width: 36px; height: 20px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); position: relative; cursor: pointer; flex: none; transition: background .2s, border-color .2s; padding: 0; }
+.sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-3); transition: transform .2s, background .2s; }
+.sw.on { background: var(--accent); border-color: var(--accent); }
+.sw.on::after { transform: translateX(16px); background: #fff; }
+.sw.off-force { opacity: .45; }
+
+/* 最后测试 */
+.test-ok { color: var(--green); font-family: var(--font-mono); font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.test-fail { color: var(--red); font-family: var(--font-mono); font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+.ops { display: flex; gap: 2px; justify-content: flex-end; flex-wrap: wrap; }
+.op-link { border: none; background: transparent; font-size: 12.5px; color: var(--accent); cursor: pointer; padding: 3px 7px; border-radius: 4px; white-space: nowrap; }
+.op-link:hover { background: var(--accent-dim); }
+.op-link.danger { color: var(--red); }
+.op-link.danger:hover { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.op-link[disabled] { color: var(--text-3); cursor: not-allowed; background: transparent; }
+
+/* 提示条 */
+.mig-tip {
+  margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  background: var(--accent-dim); border: 1px solid rgba(94,106,210,.35); border-radius: var(--r-sm);
+  padding: 10px 16px; font-size: 13px; color: var(--accent-hover);
+}
+
+/* ==== ASR 渠道:Descriptions 2col bordered ==== */
+.desc { display: grid; grid-template-columns: 150px 1fr 150px 1fr; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; font-size: 13.5px; }
+.desc > div { padding: 11px 16px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); min-width: 0; }
+.desc > div:nth-child(4n) { border-right: none; }
+.desc > div:nth-last-child(-n+4) { border-bottom: none; }
+.desc .lb { background: var(--panel-2); color: var(--text-2); font-weight: 500; }
+.card-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 14.5px; font-weight: 600; }
+.card-head .sp { margin-left: auto; display: flex; gap: 8px; }
+
+/* ==== 任务绑定:角色槽 ==== */
+.bind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.bind-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px; }
+.bind-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.bind-head .b-ico { width: 32px; height: 32px; border-radius: var(--r-sm); background: var(--accent-dim); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.bind-head b { font-size: 14.5px; }
+.bind-head .cnt { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.bind-sub { font-size: 12.5px; color: var(--text-3); margin-bottom: 14px; }
+.bind-row { display: grid; grid-template-columns: 52px 1fr 1fr; gap: 8px; align-items: center; }
+.bind-row + .bind-row { margin-top: 10px; }
+.bind-row .rl { font-size: 12px; color: var(--text-2); }
+.sel { height: 34px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-1); font-size: 13px; padding: 0 10px; width: 100%; font-family: var(--font-mono); }
+.sel:focus { outline: none; border-color: var(--accent); }
+.bind-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ==== 按钮 ==== */
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--panel); color: var(--text-2); font-size: 13px; cursor: pointer; transition: .15s; }
+.btn:hover { color: var(--text-1); border-color: var(--border-hover); }
+.btn-pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.btn-pri:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+
+/* ==== Modal:新增模型 ==== */
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); z-index: 300; display: none; align-items: flex-start; justify-content: center; padding: 8vh 16px 16px; }
+.modal-mask.open { display: flex; }
+.modal { width: 660px; max-width: 100%; max-height: 82vh; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+.mo-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 15.5px; font-weight: 600; }
+.mo-head .x { margin-left: auto; border: none; background: transparent; color: var(--text-3); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; }
+.mo-head .x:hover { color: var(--text-1); background: var(--panel-2); }
+.mo-body { padding: 18px 20px 6px; }
+.mo-sec { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .08em; margin: 14px 0 10px; display: flex; align-items: center; gap: 8px; }
+.mo-sec::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.f-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.f-item { display: flex; flex-direction: column; gap: 5px; }
+.f-item.full { grid-column: 1 / -1; }
+.f-item label { font-size: 12.5px; color: var(--text-2); }
+.f-item label .req { color: var(--red); margin-left: 2px; }
+.f-item input, .f-item select { height: 34px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-1); font-size: 13px; padding: 0 10px; width: 100%; }
+.f-item input:focus, .f-item select:focus { outline: none; border-color: var(--accent); }
+.f-item input.mono { font-family: var(--font-mono); }
+.f-item .hint { font-size: 11.5px; color: var(--text-3); }
+.f-item .hint.warn { color: var(--amber); }
+.cap-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.cap-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text-2); cursor: pointer; user-select: none; }
+.cap-chip.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); }
+.sw-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.sw-row .lb { font-size: 12.5px; color: var(--text-2); }
+.mo-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px 18px; }
+
+.proto-note {
+  position: fixed; left: 232px; bottom: 16px; z-index: 99;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  background: rgba(24,26,33,.92); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 6px;
+}
+.proto-note a { color: var(--accent-hover); }
+[data-theme="light"] .proto-note { background: rgba(255,255,255,.92); }
+
+/* ==== 渠道配置页 ==== */
+.use-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); background: var(--panel-2); white-space: nowrap; }
+.tag-rss { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.tag-web { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 35%, transparent); }
+.tag-api { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+.st-tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 9px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); background: var(--panel-2); white-space: nowrap; }
+.st-healthy { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+.st-degraded { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+.st-error { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 35%, transparent); }
+.c-name { font-weight: 600; }
+.c-name .sub { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); font-weight: 400; margin-top: 1px; white-space: nowrap; }
+.num { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+.sw { width: 36px; height: 20px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); position: relative; cursor: pointer; flex: none; transition: background .2s, border-color .2s; padding: 0; }
+.sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-3); transition: transform .2s, background .2s; }
+.sw.on { background: var(--accent); border-color: var(--accent); }
+.sw.on::after { transform: translateX(16px); background: #fff; }
+.ops { display: flex; gap: 2px; justify-content: flex-end; }
+.op-link { border: none; background: transparent; font-size: 12.5px; color: var(--accent); cursor: pointer; padding: 3px 7px; border-radius: 4px; white-space: nowrap; }
+.op-link:hover { background: var(--accent-dim); }
+.op-link.danger { color: var(--red); }
+.op-link.danger:hover { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.err-note { font-size: 12px; font-family: var(--font-mono); color: var(--amber); }
+.err-note.bad { color: var(--red); }
+.toolbar2 { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--panel); color: var(--text-2); font-size: 13px; cursor: pointer; transition: .15s; }
+.btn:hover { color: var(--text-1); border-color: var(--border-hover); }
+.btn-pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.btn-pri:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.cnt-chip { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+
+/* Modal(新增渠道) */
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); z-index: 300; display: none; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+.modal-mask.open { display: flex; }
+.modal { width: 560px; max-width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+.mo-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 15.5px; font-weight: 600; }
+.mo-head .x { margin-left: auto; border: none; background: transparent; color: var(--text-3); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; }
+.mo-head .x:hover { color: var(--text-1); background: var(--panel-2); }
+.mo-body { padding: 18px 20px 6px; }
+.f-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.f-item { display: flex; flex-direction: column; gap: 5px; }
+.f-item.full { grid-column: 1 / -1; }
+.f-item label { font-size: 12.5px; color: var(--text-2); }
+.f-item label .req { color: var(--red); margin-left: 2px; }
+.f-item input, .f-item select { height: 34px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-1); font-size: 13px; padding: 0 10px; width: 100%; }
+.f-item input:focus, .f-item select:focus { outline: none; border-color: var(--accent); }
+.f-item input.mono { font-family: var(--font-mono); }
+.f-item .hint { font-size: 11.5px; color: var(--text-3); }
+.sw-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.sw-row .lb { font-size: 12.5px; color: var(--text-2); }
+.mo-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px 18px; }
+
+</style>
+</head>
+
+
+<!--iconsprite: v0.4.0 矢量图标(来源 ai-invest-assisstant antd icons,MIT;真相源 common.css §图标系统)-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-aim" viewBox="64 64 896 896"><path d="M952 474H829.8C812.5 327.6 696.4 211.5 550 194.2V72c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v122.2C327.6 211.5 211.5 327.6 194.2 474H72c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h122.2C211.5 696.4 327.6 812.5 474 829.8V952c0 4.4 3.6 8 8 8h60c4.4 0 8-3.6 8-8V829.8C696.4 812.5 812.5 696.4 829.8 550H952c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8zM512 756c-134.8 0-244-109.2-244-244s109.2-244 244-244 244 109.2 244 244-109.2 244-244 244z"/><path d="M512 392c-32.1 0-62.1 12.4-84.8 35.2-22.7 22.7-35.2 52.7-35.2 84.8s12.5 62.1 35.2 84.8C449.9 619.4 480 632 512 632s62.1-12.5 84.8-35.2C619.4 574.1 632 544 632 512s-12.5-62.1-35.2-84.8A118.57 118.57 0 00512 392z"/></symbol>
+  <symbol id="i-api" viewBox="64 64 896 896"><path d="M917.7 148.8l-42.4-42.4c-1.6-1.6-3.6-2.3-5.7-2.3s-4.1.8-5.7 2.3l-76.1 76.1a199.27 199.27 0 00-112.1-34.3c-51.2 0-102.4 19.5-141.5 58.6L432.3 308.7a8.03 8.03 0 000 11.3L704 591.7c1.6 1.6 3.6 2.3 5.7 2.3 2 0 4.1-.8 5.7-2.3l101.9-101.9c68.9-69 77-175.7 24.3-253.5l76.1-76.1c3.1-3.2 3.1-8.3 0-11.4zM769.1 441.7l-59.4 59.4-186.8-186.8 59.4-59.4c24.9-24.9 58.1-38.7 93.4-38.7 35.3 0 68.4 13.7 93.4 38.7 24.9 24.9 38.7 58.1 38.7 93.4 0 35.3-13.8 68.4-38.7 93.4zm-190.2 105a8.03 8.03 0 00-11.3 0L501 613.3 410.7 523l66.7-66.7c3.1-3.1 3.1-8.2 0-11.3L441 408.6a8.03 8.03 0 00-11.3 0L363 475.3l-43-43a7.85 7.85 0 00-5.7-2.3c-2 0-4.1.8-5.7 2.3L206.8 534.2c-68.9 69-77 175.7-24.3 253.5l-76.1 76.1a8.03 8.03 0 000 11.3l42.4 42.4c1.6 1.6 3.6 2.3 5.7 2.3s4.1-.8 5.7-2.3l76.1-76.1c33.7 22.9 72.9 34.3 112.1 34.3 51.2 0 102.4-19.5 141.5-58.6l101.9-101.9c3.1-3.1 3.1-8.2 0-11.3l-43-43 66.7-66.7c3.1-3.1 3.1-8.2 0-11.3l-36.6-36.2zM441.7 769.1a131.32 131.32 0 01-93.4 38.7c-35.3 0-68.4-13.7-93.4-38.7a131.32 131.32 0 01-38.7-93.4c0-35.3 13.7-68.4 38.7-93.4l59.4-59.4 186.8 186.8-59.4 59.4z"/></symbol>
+
+  <symbol id="i-caret-down" viewBox="64 64 896 896"><path d="M840.4 300H183.6c-19.7 0-30.7 20.8-18.5 35l328.4 380.8c9.4 10.9 27.5 10.9 37 0L858.9 335c12.2-14.2 1.2-35-18.5-35z"/></symbol>
+  <symbol id="i-check" viewBox="64 64 896 896"><path d="M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z"/></symbol>
+  <symbol id="i-close" viewBox="64 64 896 896"><path d="M799.86 166.31c.02 0 .04.02.08.06l57.69 57.7c.04.03.05.05.06.08a.12.12 0 010 .06c0 .03-.02.05-.06.09L569.93 512l287.7 287.7c.04.04.05.06.06.09a.12.12 0 010 .07c0 .02-.02.04-.06.08l-57.7 57.69c-.03.04-.05.05-.07.06a.12.12 0 01-.07 0c-.03 0-.05-.02-.09-.06L512 569.93l-287.7 287.7c-.04.04-.06.05-.09.06a.12.12 0 01-.07 0c-.02 0-.04-.02-.08-.06l-57.69-57.7c-.04-.03-.05-.05-.06-.07a.12.12 0 010-.07c0-.03.02-.05.06-.09L454.07 512l-287.7-287.7c-.04-.04-.05-.06-.06-.09a.12.12 0 010-.07c0-.02.02-.04.06-.08l57.7-57.69c.03-.04.05-.05.07-.06a.12.12 0 01.07 0c.03 0 .05.02.09.06L512 454.07l287.7-287.7c.04-.04.06-.05.09-.06a.12.12 0 01.07 0z"/></symbol>
+  <symbol id="i-cloudserver" viewBox="64 64 896 896"><path d="M704 446H320c-4.4 0-8 3.6-8 8v402c0 4.4 3.6 8 8 8h384c4.4 0 8-3.6 8-8V454c0-4.4-3.6-8-8-8zm-328 64h272v117H376V510zm272 290H376V683h272v117z"/><path d="M424 748a32 32 0 1064 0 32 32 0 10-64 0zm0-178a32 32 0 1064 0 32 32 0 10-64 0z"/><path d="M811.4 368.9C765.6 248 648.9 162 512.2 162S258.8 247.9 213 368.8C126.9 391.5 63.5 470.2 64 563.6 64.6 668 145.6 752.9 247.6 762c4.7.4 8.7-3.3 8.7-8v-60.4c0-4-3-7.4-7-7.9-27-3.4-52.5-15.2-72.1-34.5-24-23.5-37.2-55.1-37.2-88.6 0-28 9.1-54.4 26.2-76.4 16.7-21.4 40.2-36.9 66.1-43.7l37.9-10 13.9-36.7c8.6-22.8 20.6-44.2 35.7-63.5 14.9-19.2 32.6-36 52.4-50 41.1-28.9 89.5-44.2 140-44.2s98.9 15.3 140 44.3c19.9 14 37.5 30.8 52.4 50 15.1 19.3 27.1 40.7 35.7 63.5l13.8 36.6 37.8 10c54.2 14.4 92.1 63.7 92.1 120 0 33.6-13.2 65.1-37.2 88.6-19.5 19.2-44.9 31.1-71.9 34.5-4 .5-6.9 3.9-6.9 7.9V754c0 4.7 4.1 8.4 8.8 8 101.7-9.2 182.5-94 183.2-198.2.6-93.4-62.7-172.1-148.6-194.9z"/></symbol>
+  <symbol id="i-comment" viewBox="64 64 896 896"><path d="M464 512a48 48 0 1096 0 48 48 0 10-96 0zm200 0a48 48 0 1096 0 48 48 0 10-96 0zm-400 0a48 48 0 1096 0 48 48 0 10-96 0zm661.2-173.6c-22.6-53.7-55-101.9-96.3-143.3a444.35 444.35 0 00-143.3-96.3C630.6 75.7 572.2 64 512 64h-2c-60.6.3-119.3 12.3-174.5 35.9a445.35 445.35 0 00-142 96.5c-40.9 41.3-73 89.3-95.2 142.8-23 55.4-34.6 114.3-34.3 174.9A449.4 449.4 0 00112 714v152a46 46 0 0046 46h152.1A449.4 449.4 0 00510 960h2.1c59.9 0 118-11.6 172.7-34.3a444.48 444.48 0 00142.8-95.2c41.3-40.9 73.8-88.7 96.5-142 23.6-55.2 35.6-113.9 35.9-174.5.3-60.9-11.5-120-34.8-175.6zm-151.1 438C704 845.8 611 884 512 884h-1.7c-60.3-.3-120.2-15.3-173.1-43.5l-8.4-4.5H188V695.2l-4.5-8.4C155.3 633.9 140.3 574 140 513.7c-.4-99.7 37.7-193.3 107.6-263.8 69.8-70.5 163.1-109.5 262.8-109.9h1.7c50 0 98.5 9.7 144.2 28.9 44.6 18.7 84.6 45.6 119 80 34.3 34.3 61.3 74.4 80 119 19.4 46.2 29.1 95.2 28.9 145.8-.6 99.6-39.7 192.9-110.1 262.7z"/></symbol>
+  <symbol id="i-dashboard" viewBox="64 64 896 896"><path d="M924.8 385.6a446.7 446.7 0 00-96-142.4 446.7 446.7 0 00-142.4-96C631.1 123.8 572.5 112 512 112s-119.1 11.8-174.4 35.2a446.7 446.7 0 00-142.4 96 446.7 446.7 0 00-96 142.4C75.8 440.9 64 499.5 64 560c0 132.7 58.3 257.7 159.9 343.1l1.7 1.4c5.8 4.8 13.1 7.5 20.6 7.5h531.7c7.5 0 14.8-2.7 20.6-7.5l1.7-1.4C901.7 817.7 960 692.7 960 560c0-60.5-11.9-119.1-35.2-174.4zM761.4 836H262.6A371.12 371.12 0 01140 560c0-99.4 38.7-192.8 109-263 70.3-70.3 163.7-109 263-109 99.4 0 192.8 38.7 263 109 70.3 70.3 109 163.7 109 263 0 105.6-44.5 205.5-122.6 276zM623.5 421.5a8.03 8.03 0 00-11.3 0L527.7 506c-18.7-5-39.4-.2-54.1 14.5a55.95 55.95 0 000 79.2 55.95 55.95 0 0079.2 0 55.87 55.87 0 0014.5-54.1l84.5-84.5c3.1-3.1 3.1-8.2 0-11.3l-28.3-28.3zM490 320h44c4.4 0 8-3.6 8-8v-80c0-4.4-3.6-8-8-8h-44c-4.4 0-8 3.6-8 8v80c0 4.4 3.6 8 8 8zm260 218v44c0 4.4 3.6 8 8 8h80c4.4 0 8-3.6 8-8v-44c0-4.4-3.6-8-8-8h-80c-4.4 0-8 3.6-8 8zm12.7-197.2l-31.1-31.1a8.03 8.03 0 00-11.3 0l-56.6 56.6a8.03 8.03 0 000 11.3l31.1 31.1c3.1 3.1 8.2 3.1 11.3 0l56.6-56.6c3.1-3.1 3.1-8.2 0-11.3zm-458.6-31.1a8.03 8.03 0 00-11.3 0l-31.1 31.1a8.03 8.03 0 000 11.3l56.6 56.6c3.1 3.1 8.2 3.1 11.3 0l31.1-31.1c3.1-3.1 3.1-8.2 0-11.3l-56.6-56.6zM262 530h-80c-4.4 0-8 3.6-8 8v44c0 4.4 3.6 8 8 8h80c4.4 0 8-3.6 8-8v-44c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-filetext" viewBox="64 64 896 896"><path d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326zm1.8 562H232V136h302v216a42 42 0 0042 42h216v494zM504 618H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8h184c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8zM312 490v48c0 4.4 3.6 8 8 8h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8z"/></symbol>
+  <symbol id="i-infocircle" viewBox="64 64 896 896"><path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"/><path d="M464 336a48 48 0 1096 0 48 48 0 10-96 0zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-key" viewBox="64 64 896 896"><path d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5L255.8 713.6l-62.3-62.3a8.19 8.19 0 00-11.4 0l-39.8 39.8a8.19 8.19 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.19 8.19 0 00-11.4 0l-39.8 39.8a8.19 8.19 0 000 11.4l110.3 111.2c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.1 304.1 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112m161.2 465.2C726.2 620.3 668.9 644 608 644s-118.2-23.7-161.2-66.8C403.7 534.2 380 476.9 380 416s23.7-118.2 66.8-161.2c43-43.1 100.3-66.8 161.2-66.8s118.2 23.7 161.2 66.8c43.1 43 66.8 100.3 66.8 161.2s-23.7 118.2-66.8 161.2"/></symbol>
+  <symbol id="i-logout" viewBox="64 64 896 896"><path d="M868 732h-70.3c-4.8 0-9.3 2.1-12.3 5.8-7 8.5-14.5 16.7-22.4 24.5a353.84 353.84 0 01-112.7 75.9A352.8 352.8 0 01512.4 866c-47.9 0-94.3-9.4-137.9-27.8a353.84 353.84 0 01-112.7-75.9 353.28 353.28 0 01-76-112.5C167.3 606.2 158 559.9 158 512s9.4-94.2 27.8-137.8c17.8-42.1 43.4-80 76-112.5s70.5-58.1 112.7-75.9c43.6-18.4 90-27.8 137.9-27.8 47.9 0 94.3 9.3 137.9 27.8 42.2 17.8 80.1 43.4 112.7 75.9 7.9 7.9 15.3 16.1 22.4 24.5 3 3.7 7.6 5.8 12.3 5.8H868c6.3 0 10.2-7 6.7-12.3C798 160.5 663.8 81.6 511.3 82 271.7 82.6 79.6 277.1 82 516.4 84.4 751.9 276.2 942 512.4 942c152.1 0 285.7-78.8 362.3-197.7 3.4-5.3-.4-12.3-6.7-12.3zm88.9-226.3L815 393.7c-5.3-4.2-13-.4-13 6.3v76H488c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></symbol>
+  <symbol id="i-moon" viewBox="64 64 896 896"><path d="M489.5 111.66c30.65-1.8 45.98 36.44 22.58 56.33A243.35 243.35 0 00426 354c0 134.76 109.24 244 244 244 72.58 0 139.9-31.83 186.01-86.08 19.87-23.38 58.07-8.1 56.34 22.53C900.4 745.82 725.15 912 512.5 912 291.31 912 112 732.69 112 511.5c0-211.39 164.29-386.02 374.2-399.65l.2-.01zm-81.15 79.75l-4.11 1.36C271.1 237.94 176 364.09 176 511.5 176 697.34 326.66 848 512.5 848c148.28 0 274.94-96.2 319.45-230.41l.63-1.93-.11.07a307.06 307.06 0 01-159.73 46.26L670 662c-170.1 0-308-137.9-308-308 0-58.6 16.48-114.54 46.27-162.47z"/></symbol>
+  <symbol id="i-picture" viewBox="64 64 896 896"><path d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zm-40 632H136v-39.9l138.5-164.3 150.1 178L658.1 489 888 761.6V792zm0-129.8L664.2 396.8c-3.2-3.8-9-3.8-12.2 0L424.6 666.4l-144-170.7c-3.2-3.8-9-3.8-12.2 0L136 652.7V232h752v430.2zM304 456a88 88 0 100-176 88 88 0 000 176zm0-116c15.5 0 28 12.5 28 28s-12.5 28-28 28-28-12.5-28-28 12.5-28 28-28z"/></symbol>
+  <symbol id="i-piechart" viewBox="64 64 896 896"><path d="M864 518H506V160c0-4.4-3.6-8-8-8h-26a398.46 398.46 0 00-282.8 117.1 398.19 398.19 0 00-85.7 127.1A397.61 397.61 0 0072 552a398.46 398.46 0 00117.1 282.8c36.7 36.7 79.5 65.6 127.1 85.7A397.61 397.61 0 00472 952a398.46 398.46 0 00282.8-117.1c36.7-36.7 65.6-79.5 85.7-127.1A397.61 397.61 0 00872 552v-26c0-4.4-3.6-8-8-8zM705.7 787.8A331.59 331.59 0 01470.4 884c-88.1-.4-170.9-34.9-233.2-97.2C174.5 724.1 140 640.7 140 552c0-88.7 34.5-172.1 97.2-234.8 54.6-54.6 124.9-87.9 200.8-95.5V586h364.3c-7.7 76.3-41.3 147-96.6 201.8zM952 462.4l-2.6-28.2c-8.5-92.1-49.4-179-115.2-244.6A399.4 399.4 0 00589 74.6L560.7 72c-4.7-.4-8.7 3.2-8.7 7.9V464c0 4.4 3.6 8 8 8l384-1c4.7 0 8.4-4 8-8.6zm-332.2-58.2V147.6a332.24 332.24 0 01166.4 89.8c45.7 45.6 77 103.6 90 166.1l-256.4.7z"/></symbol>
+  <symbol id="i-plus" viewBox="64 64 896 896"><path d="M482 152h60q8 0 8 8v704q0 8-8 8h-60q-8 0-8-8V160q0-8 8-8z"/><path d="M192 474h672q8 0 8 8v60q0 8-8 8H160q-8 0-8-8v-60q0-8 8-8z"/></symbol>
+  <symbol id="i-robot" viewBox="64 64 896 896"><path d="M300 328a60 60 0 10120 0 60 60 0 10-120 0zM852 64H172c-17.7 0-32 14.3-32 32v660c0 17.7 14.3 32 32 32h680c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-32 660H204V128h616v596zM604 328a60 60 0 10120 0 60 60 0 10-120 0zm250.2 556H169.8c-16.5 0-29.8 14.3-29.8 32v36c0 4.4 3.3 8 7.4 8h729.1c4.1 0 7.4-3.6 7.4-8v-36c.1-17.7-13.2-32-29.7-32zM664 508H360c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z"/></symbol>
+  <symbol id="i-send" viewBox="64 64 896 896"><path d="M931.4 498.9L94.9 79.5c-3.4-1.7-7.3-2.1-11-1.2a15.99 15.99 0 00-11.7 19.3l86.2 352.2c1.3 5.3 5.2 9.6 10.4 11.3l147.7 50.7-147.6 50.7c-5.2 1.8-9.1 6-10.3 11.3L72.2 926.5c-.9 3.7-.5 7.6 1.2 10.9 3.9 7.9 13.5 11.1 21.5 7.2l836.5-417c3.1-1.5 5.6-4.1 7.2-7.1 3.9-8 .7-17.6-7.2-21.6zM170.8 826.3l50.3-205.6 295.2-101.3c2.3-.8 4.2-2.6 5-5 1.4-4.2-.8-8.7-5-10.2L221.1 403 171 198.2l628 314.9-628.2 313.2z"/></symbol>
+  <symbol id="i-sun" viewBox="64 64 896 896"><path d="M548 818v126a16 16 0 01-16 16h-40a16 16 0 01-16-16V818c15.85 1.64 27.84 2.46 36 2.46 8.15 0 20.16-.82 36-2.46m205.25-115.66l89.1 89.1a16 16 0 010 22.62l-28.29 28.29a16 16 0 01-22.62 0l-89.1-89.1c12.37-10.04 21.43-17.95 27.2-23.71 5.76-5.77 13.67-14.84 23.71-27.2m-482.5 0c10.04 12.36 17.95 21.43 23.71 27.2 5.77 5.76 14.84 13.67 27.2 23.71l-89.1 89.1a16 16 0 01-22.62 0l-28.29-28.29a16 16 0 010-22.63zM512 278c129.24 0 234 104.77 234 234S641.24 746 512 746 278 641.24 278 512s104.77-234 234-234m0 72c-89.47 0-162 72.53-162 162s72.53 162 162 162 162-72.53 162-162-72.53-162-162-162M206 476c-1.64 15.85-2.46 27.84-2.46 36 0 8.15.82 20.16 2.46 36H80a16 16 0 01-16-16v-40a16 16 0 0116-16zm738 0a16 16 0 0116 16v40a16 16 0 01-16 16H818c1.64-15.85 2.46-27.84 2.46-36 0-8.15-.82-20.16-2.46-36zM814.06 180.65l28.29 28.29a16 16 0 010 22.63l-89.1 89.09c-10.04-12.37-17.95-21.43-23.71-27.2-5.77-5.76-14.84-13.67-27.2-23.71l89.1-89.1a16 16 0 0122.62 0m-581.5 0l89.1 89.1c-12.37 10.04-21.43 17.95-27.2 23.71-5.76 5.77-13.67 14.84-23.71 27.2l-89.1-89.1a16 16 0 010-22.62l28.29-28.29a16 16 0 0122.62 0M532 64a16 16 0 0116 16v126c-15.85-1.64-27.84-2.46-36-2.46-8.15 0-20.16.82-36 2.46V80a16 16 0 0116-16z"/></symbol>
+  <symbol id="i-user" viewBox="64 64 896 896"><path d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></symbol>
+  <symbol id="i-avatar" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="512" style="fill:var(--av-bg,rgba(94,106,210,.14))"/>
+    <circle cx="512" cy="400" r="168" style="fill:var(--av-fg,#5e6ad2)"/>
+    <path d="M512 628c-176 0-316 106-316 238v158h632v-158c0-132-140-238-316-238z" style="fill:var(--av-fg,#5e6ad2)"/>
+  </symbol>
+</svg>
+
+<aside class="sidebar">
+  <div class="sb-logo"><span class="logo-mark">17</span>一起AI<span class="tld">admin</span></div>
+<nav class="sb-nav">
+    <div class="sb-group">OVERVIEW</div>
+    <a class="sb-item" href="admin-stats.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg></span>站点统计</a>
+    <div class="sb-group">内容管理</div>
+    <a class="sb-item" href="admin-posts.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-filetext"/></svg></span>文章管理</a>
+    <a class="sb-item" href="admin-media.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-picture"/></svg></span>媒体库</a>
+    <a class="sb-item" href="admin-telegram.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-send"/></svg></span>电报流治理<span class="tag-2">二期</span></a>
+    <div class="sb-group">采集</div>
+    <a class="sb-item" href="admin-spider.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-cloudserver"/></svg></span>采集总览<span class="tag-2">二期</span></a>
+    <a class="sb-item active" href="admin-channels.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-api"/></svg></span>渠道配置<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-bloggers.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-aim"/></svg></span>博主管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">AI 服务</div>
+    <a class="sb-item" href="admin-models.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-robot"/></svg></span>模型配置<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-usage.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-piechart"/></svg></span>用量统计<span class="tag-2">二期</span></a>
+    <a class="sb-item" href="admin-sessions.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-comment"/></svg></span>会话管理<span class="tag-2">二期</span></a>
+    <div class="sb-group">用户</div>
+    <a class="sb-item" href="admin-users.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg></span>用户管理</a>
+    <div class="sb-group">系统</div>
+    <a class="sb-item" href="admin-tokens.html"><span class="ico"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span>PAT 令牌</a>
+  </nav>
+  <div class="sb-foot"><a class="sb-site-link" href="site-home.html">返回前台站点</a></div>
+</aside>
+
+<div class="content">
+  <header class="a-header">
+    <h1>渠道配置</h1>
+    <span class="crumb">/ 采集 · <b>文字资讯渠道 · 二期提案</b></span>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
+    <div class="user-menu">
+      <button class="avatar-btn" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false" title="账号菜单">
+        <svg class="avatar-svg" aria-hidden="true"><use href="#i-avatar"/></svg>
+        <svg class="ic ic-sm" aria-hidden="true"><use href="#i-caret-down"/></svg>
+      </button>
+      <div class="user-drop" id="userDrop" hidden>
+        <div class="ud-head"><b>诸葛东明</b><span>admin · 站长</span></div>
+        <a href="account.html"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>个人设置</a>
+        <a href="login.html" class="ud-danger"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>退出登录</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="a-body">
+
+    <div class="mig-tip">
+      <svg class="ic ic-sm" aria-hidden="true"><use href="#i-infocircle"/></svg> 渠道为<b>文字资讯</b>入口:RSS / Web / API 三类,由 worker crawler 按 频控 轮询;全局频控 60 req/min,遵循 robots.txt。<b>视频博主渠道(抖音 / X)在 博主管理 维护</b>。停用渠道不删除已入流数据。
+    </div>
+
+    <div class="toolbar2">
+      <span style="font-family:var(--font-mono); font-size:12px; color:var(--text-3)">6 个渠道 · 5 启用 · 24h 共入流 164 条</span>
+      <span style="margin-left:auto">
+        <button class="btn btn-pri" onclick="openModal()"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-plus"/></svg> 新增渠道</button>
+      </span>
+    </div>
+
+    <div class="card">
+      <table class="a-table">
+        <thead><tr>
+          <th>名称</th><th>类型</th><th>URL</th><th>频控</th><th>启用</th><th>状态</th><th>最近采集</th><th style="text-align:right">24h 条数</th><th style="text-align:right; width:130px">操作</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="c-name">Hacker News<span class="sub">front page + best</span></td>
+            <td><span class="use-tag tag-api">api</span></td>
+            <td class="num" style="color:var(--text-2)">hn.algolia.com/api/v1</td>
+            <td class="num">30min</td>
+            <td><button class="sw on" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td><span class="st-tag st-healthy">healthy</span></td>
+            <td class="num">14:02</td>
+            <td class="num" style="text-align:right">42</td>
+            <td><div class="ops"><button class="op-link" onclick="alert('原型:调试 —— 拉取最新 3 条 + 响应头 / 耗时(二期实现)')">调试</button><button class="op-link">编辑</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td class="c-name">机器之心<span class="sub">全站 RSS</span></td>
+            <td><span class="use-tag tag-rss">rss</span></td>
+            <td class="num" style="color:var(--text-2)">jiqizhixin.com/rss</td>
+            <td class="num">30min</td>
+            <td><button class="sw on" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td><span class="st-tag st-healthy">healthy</span></td>
+            <td class="num">13:45</td>
+            <td class="num" style="text-align:right">18</td>
+            <td><div class="ops"><button class="op-link" onclick="alert('原型:调试 —— 拉取最新 3 条 + 响应头 / 耗时(二期实现)')">调试</button><button class="op-link">编辑</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td class="c-name">量子位<span class="sub">全站 RSS</span></td>
+            <td><span class="use-tag tag-rss">rss</span></td>
+            <td class="num" style="color:var(--text-2)">qbitai.com/feed</td>
+            <td class="num">30min</td>
+            <td><button class="sw on" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td><span class="st-tag st-healthy">healthy</span></td>
+            <td class="num">13:45</td>
+            <td class="num" style="text-align:right">15</td>
+            <td><div class="ops"><button class="op-link" onclick="alert('原型:调试 —— 拉取最新 3 条 + 响应头 / 耗时(二期实现)')">调试</button><button class="op-link">编辑</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td class="c-name">GitHub Blog<span class="sub">product · changelog</span></td>
+            <td><span class="use-tag tag-rss">rss</span></td>
+            <td class="num" style="color:var(--text-2)">github.blog/feed</td>
+            <td class="num">60min</td>
+            <td><button class="sw on" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td><span class="st-tag st-degraded">degraded</span></td>
+            <td class="num">11:05</td>
+            <td class="num" style="text-align:right">3</td>
+            <td><div class="ops"><button class="op-link" onclick="alert('原型:调试 —— 拉取最新 3 条 + 响应头 / 耗时(二期实现)')">调试</button><button class="op-link">编辑</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr style="opacity:.7">
+            <td class="c-name">TechCrunch AI<span class="sub">栏目列表页解析</span></td>
+            <td><span class="use-tag tag-web">web</span></td>
+            <td class="num" style="color:var(--text-2)">techcrunch.com/category/ai</td>
+            <td class="num">60min</td>
+            <td><button class="sw" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td><span class="st-tag st-error">error</span></td>
+            <td class="num">2 天前</td>
+            <td class="num" style="text-align:right">0</td>
+            <td><div class="ops"><button class="op-link" onclick="alert('原型:调试 —— 拉取最新 3 条 + 响应头 / 耗时(二期实现)')">调试</button><button class="op-link">编辑</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td class="c-name">arXiv cs.AI<span class="sub">daily new submissions</span></td>
+            <td><span class="use-tag tag-api">api</span></td>
+            <td class="num" style="color:var(--text-2)">export.arxiv.org/api/query</td>
+            <td class="num">120min</td>
+            <td><button class="sw on" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td><span class="st-tag st-healthy">healthy</span></td>
+            <td class="num">09:12</td>
+            <td class="num" style="text-align:right">86</td>
+            <td><div class="ops"><button class="op-link" onclick="alert('原型:调试 —— 拉取最新 3 条 + 响应头 / 耗时(二期实现)')">调试</button><button class="op-link">编辑</button><button class="op-link danger">删除</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="padding:12px 16px; font-size:12px; color:var(--text-3); font-family:var(--font-mono); border-top:1px solid var(--border)">
+        GET /api/admin/channels · POST /api/admin/channels · POST /api/admin/channels/[id]/debug — 连续 3 次失败自动降级并邮件告警;删除仅软删,历史条目保留
+      </div>
+    </div>
+
+    <div style="margin-top:14px; display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-3)">
+      <svg class="ic ic-sm" style="color:var(--accent)" aria-hidden="true"><use href="#i-aim"/></svg>
+      抖音 / X 等视频博主渠道不在此维护 — 见 <a href="admin-bloggers.html" style="color:var(--accent)">博主管理</a>;入流后的 治理 与 解读 在 <a href="admin-telegram.html" style="color:var(--accent)">电报流治理</a>。
+    </div>
+
+<!-- ===== Modal:新增渠道 ===== -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="moTitle">
+    <div class="mo-head"><span id="moTitle">新增渠道</span><button class="x" onclick="closeModal()" aria-label="关闭"><svg class="ic" style="width:16px;height:16px;vertical-align:0" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="mo-body">
+      <div class="f-grid">
+        <div class="f-item">
+          <label>类型<span class="req">*</span></label>
+          <select><option>rss</option><option>web</option><option>api</option></select>
+        </div>
+        <div class="f-item">
+          <label>名称<span class="req">*</span></label>
+          <input placeholder="如:机器之心">
+        </div>
+        <div class="f-item full">
+          <label>URL / Endpoint<span class="req">*</span></label>
+          <input class="mono" placeholder="https://…(rss/api 为 feed 或 endpoint,web 为列表页)">
+        </div>
+        <div class="f-item">
+          <label>频控</label>
+          <select><option>30 分钟</option><option>60 分钟</option><option>120 分钟</option></select>
+        </div>
+        <div class="f-item">
+          <label>备注</label>
+          <input placeholder="选择器 / 字段映射说明(web 类型)">
+        </div>
+      </div>
+      <div class="sw-row" style="margin-top:10px">
+        <button class="sw on" onclick="this.classList.toggle('on')" aria-label="立即启用"></button>
+        <span class="lb">保存后立即启用并首采</span>
+      </div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn btn-pri" onclick="closeModal()"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg> 保存</button>
+    </div>
+  </div>
+</div>
+
+  </div>
+</div>
+
+<div class="proto-note">PROTOTYPE v0.5.0 · 二期提案 · <a href="index.html">← 原型索引</a></div>
+
+<script>
+
+function toggleTheme() {
+  const el = document.documentElement;
+  const t = el.dataset.theme === "light" ? "dark" : "light";
+  el.dataset.theme = t;
+  localStorage.setItem("proto-theme", t);
+}
+
+/* ---- 用户菜单(点外关闭 + Esc) ---- */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const drop = document.getElementById("userDrop");
+  const btn = e.currentTarget;
+  if (drop.hasAttribute("hidden")) { drop.removeAttribute("hidden"); btn.setAttribute("aria-expanded", "true"); }
+  else { drop.setAttribute("hidden", ""); btn.setAttribute("aria-expanded", "false"); }
+}
+document.addEventListener("click", (e) => {
+  const drop = document.getElementById("userDrop");
+  if (drop && !drop.hasAttribute("hidden") && !e.target.closest(".user-menu")) {
+    drop.setAttribute("hidden", "");
+    document.querySelector(".avatar-btn")?.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { document.getElementById("userDrop")?.setAttribute("hidden", ""); closeModal(); }
+});
+function openModal() { document.getElementById("modalMask")?.classList.add("open"); }
+function closeModal() { document.getElementById("modalMask")?.classList.remove("open"); }
+
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 /**
- * mutation 类 Route Handler 的 Origin/Host 校验(04 文档 §4):
+ * mutation 类 Route Handler 的 Origin/Host 校验(arch/07-frontend §4):
  * Route Handlers 没有 Server Actions 的内建 CSRF 防护,这一步补位。
  * 纯函数,便于单测。
  */

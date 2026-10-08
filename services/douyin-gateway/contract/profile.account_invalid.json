@@ -1,0 +1,7 @@
+{
+  "status": 404,
+  "body": {
+    "error": "AccountInvalidError",
+    "detail": "sec_uid=MS4wLjABAAAAdead000000000000000000000 主页为空或转私密"
+  }
+}
