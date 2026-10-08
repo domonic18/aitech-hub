@@ -61,15 +61,14 @@ export default function PayGateCard({
       const body = (await res.json()) as {
         code: number;
         message?: string;
-        data?: { payUrl: string };
+        data?: { orderNo: string; payUrl: string };
       };
       if (body.code !== 0 || !body.data) {
         setError(body.message ?? `HTTP ${res.status}`);
         return;
       }
-      const { payUrl } = body.data;
+      const { orderNo, payUrl } = body.data;
       if (payUrl.startsWith("mock://")) {
-        const orderNo = payUrl.replace("mock://pay/", "");
         const done = await fetch("/api/pay/mock/checkout", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -83,7 +82,8 @@ export default function PayGateCard({
         window.location.reload(); // mock 全链路完成,刷新走已解锁态
         return;
       }
-      window.location.href = payUrl; // xunhu 收银链(H5/二维码页)
+      // xunhu → 本站收银台页(§8 批⑤):倒计时+二维码+轮询,完成自动跳回本文
+      window.location.href = `/pay/${orderNo}`;
     } catch (e) {
       setError(String(e));
     } finally {
