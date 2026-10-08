@@ -120,11 +120,14 @@ model MediaRef {
 // ── user_(账号域)───────────────────────────────────────────────
 
 model UserAccount {
-  id             BigInt    @id @default(autoincrement())
-  phone          String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
-  nickname       String?   @db.VarChar(100)
-  avatarPath     String?   @map("avatar_path") @db.VarChar(500)
-  bio            String?   @db.VarChar(500)
+  id              BigInt    @id @default(autoincrement())
+  phone           String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
+  username        String?   @unique(map: "uq_user_account_username") @db.VarChar(100) // M21 批⓪:邮箱注册用户名,登录标识之一
+  email           String?   @unique(map: "uq_user_account_email") @db.VarChar(255) // M21 批⓪:邮箱通道(D1)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  nickname        String?   @db.VarChar(100)
+  avatarPath      String?   @map("avatar_path") @db.VarChar(500)
+  bio             String?   @db.VarChar(500)
   role           String    @default("user") @db.VarChar(20) // user/admin
   status         String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
   passwordHash   String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
@@ -135,6 +138,7 @@ model UserAccount {
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   pats UserPat[]
+  verificationTokens UserVerificationToken[]
 
   @@index([status], map: "idx_user_account_status")
   @@map("user_account")
@@ -154,6 +158,41 @@ model UserPat {
 
   @@index([userId], map: "idx_user_pat_user")
   @@map("user_pat")
+}
+
+/// 邮箱通道一次性令牌(M21 批⓪,D1):注册认证/绑定邮箱/找回密码共用;
+/// 库中只存 sha256,原始令牌仅出现在邮件链接里;单次消费 + TTL 过期
+model UserVerificationToken {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  purpose    String    @db.VarChar(20) // register_verify | bind_email | password_reset
+  tokenHash  String    @map("token_hash") @db.Char(64)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose], map: "idx_user_verification_token_user_purpose")
+  @@map("user_verification_token")
+}
+
+/// 事务邮件 SMTP 配置(M21 批⓪;用户拍板 2026-10-08:入数据库 admin 后台
+/// 维护,不入 env——与支付网关凭据同规则)。单行语义:代码恒读首行,admin
+/// 保存整行覆盖。password 同 pay_gateway_config 纪律:API 读侧永不回传,
+/// 表单留空 = 保留原值;不入日志。enabled=false 时发送显式跳过(可存配置
+/// 暂停发送)。from 用 from_addr 列名(FROM 为 SQL 保留字)。
+model EmailConfig {
+  id        BigInt   @id @default(autoincrement())
+  host      String   @db.VarChar(255)
+  port      Int      @default(465) // 465 走 implicit TLS,其余 STARTTLS
+  username  String   @db.VarChar(255)
+  password  String   @db.VarChar(255)
+  fromAddr  String   @map("from_addr") @db.VarChar(255) // 如 "一起AI <noreply@17aitech.com>"
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("email_config")
 }
 
 // ── stats_(统计域)──────────────────────────────────────────────
