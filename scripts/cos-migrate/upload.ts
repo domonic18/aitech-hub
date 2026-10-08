@@ -7,15 +7,6 @@
 import { loadEnvConfig } from "@next/env";
 
 import { CosBucket, cosWireKey } from "../../src/lib/backup/cos-bucket";
-import {
-  humanBytes,
-  assertMediaCosEnv,
-  cosKeyOf,
-  localInventory,
-  mediaBucket,
-  mimeOf,
-  readLocal,
-} from "./lib";
 
 loadEnvConfig(process.cwd());
 
@@ -23,6 +14,16 @@ const CONCURRENCY = 4;
 const RETRIES = 2;
 
 async function main(): Promise<void> {
+  // ./lib 静态依赖 env(import 即校验):须等 loadEnvConfig 落好 process.env 再求值,动态 import 兜时序
+  const {
+    assertMediaCosEnv,
+    cosKeyOf,
+    humanBytes,
+    localInventory,
+    mediaBucket,
+    mimeOf,
+    readLocal,
+  } = await import("./lib");
   assertMediaCosEnv();
   const dryRun = process.argv.includes("--dry-run");
   // dry-run 只读(list 对账增量),不触发任何 put

@@ -7,8 +7,6 @@
 import { loadEnvConfig } from "@next/env";
 import COS from "cos-nodejs-sdk-v5";
 
-import { env } from "../src/lib/env";
-
 loadEnvConfig(process.cwd());
 
 const promisified = (cos: COS) => ({
@@ -33,6 +31,8 @@ const promisified = (cos: COS) => ({
 });
 
 async function main(): Promise<void> {
+  // env 模块 import 即校验:须等 loadEnvConfig 落好 process.env 再求值,动态 import 兜时序
+  const { env } = await import("../src/lib/env");
   if (!env.COS_SECRET_ID || !env.COS_SECRET_KEY || !env.COS_REGION) {
     throw new Error("COS_SECRET_ID/COS_SECRET_KEY/COS_REGION 未配置(见 .env.example COS 段)");
   }

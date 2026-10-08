@@ -5,24 +5,25 @@
  */
 import { loadEnvConfig } from "@next/env";
 
-import { env } from "../../src/lib/env";
 import { cosWireKey } from "../../src/lib/backup/cos-bucket";
 import { diffInventory, pickSamples } from "../../src/lib/backup/media-inventory";
-import {
-  assertMediaCosEnv,
-  cosKeyOf,
-  humanBytes,
-  localInventory,
-  mediaBucket,
-  readLocal,
-  sha1Hex,
-} from "./lib";
 
 loadEnvConfig(process.cwd());
 
 const SAMPLES = 20;
 
 async function main(): Promise<void> {
+  // env 与 ./lib 均 import 即校验:须等 loadEnvConfig 落好 process.env 再求值,动态 import 兜时序
+  const { env } = await import("../../src/lib/env");
+  const {
+    assertMediaCosEnv,
+    cosKeyOf,
+    humanBytes,
+    localInventory,
+    mediaBucket,
+    readLocal,
+    sha1Hex,
+  } = await import("./lib");
   assertMediaCosEnv();
   const bucket = mediaBucket();
   const { root, items } = await localInventory();

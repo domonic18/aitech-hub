@@ -6,11 +6,11 @@
  */
 import { loadEnvConfig } from "@next/env";
 
-import { DB_BACKUP_JOB_RUN, QUEUE_DB_BACKUP, getQueue } from "../src/lib/queue";
-
 loadEnvConfig(process.cwd());
 
 async function main(): Promise<void> {
+  // queue 模块静态依赖 env(import 即校验):须等 loadEnvConfig 落好 process.env 再求值,动态 import 兜时序
+  const { DB_BACKUP_JOB_RUN, QUEUE_DB_BACKUP, getQueue } = await import("../src/lib/queue");
   const queue = getQueue(QUEUE_DB_BACKUP);
   const job = await queue.add(DB_BACKUP_JOB_RUN, {}, { jobId: `db-backup-manual-${Date.now()}` });
   console.log(`已入队 db-backup job id=${job.id},等待 worker 执行…`);

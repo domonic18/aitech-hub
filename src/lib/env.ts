@@ -3,6 +3,8 @@ import { z } from "zod";
 /**
  * 环境变量唯一出口(arch/00-overview §6):Zod 校验,缺项/非法启动即报。
  * 仅服务端使用;客户端组件禁止 import(密钥不进 bundle)。
+ * tsx 脚本注意:本模块 import 即校验——脚本须先 loadEnvConfig 再动态 import 本模块
+ * (静态 import 会在 .env 装载前求值而误报缺项;Next 应用无此问题,env 由框架先装载)。
  */
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
