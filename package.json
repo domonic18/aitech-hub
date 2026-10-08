@@ -23,6 +23,7 @@
     "prepare": "husky",
     "cos:setup": "tsx scripts/cos-setup.ts",
     "backup:run": "tsx scripts/trigger-db-backup.ts",
+    "embed:run": "tsx scripts/embed-backfill.ts",
     "cos:migrate": "tsx scripts/cos-migrate/upload.ts",
     "cos:verify": "tsx scripts/cos-migrate/verify.ts",
     "cos:mark": "tsx scripts/cos-migrate/mark.ts"

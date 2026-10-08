@@ -35,6 +35,8 @@ export const QUEUE_DISTRIBUTE = "distribute";
 /** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
  * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */
 export const QUEUE_DB_BACKUP = "db-backup";
+/** 混合检索 embedding 对账(M20 批②):扫 stale 三域 → 批 embed → upsert 向量 */
+export const QUEUE_EMBED = "embed-content";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -49,6 +51,7 @@ export const QUEUE_NAMES = [
   QUEUE_SEO_BATCH,
   QUEUE_DISTRIBUTE,
   QUEUE_DB_BACKUP,
+  QUEUE_EMBED,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -96,6 +99,13 @@ export const DB_BACKUP_CRON = "23 3 * * *";
 
 /** db-backup 队列 job name 契约(run 为缺省路径;手动触发 scripts/trigger-db-backup.ts 同名) */
 export const DB_BACKUP_JOB_RUN = "run";
+
+/** embed-content 队列 job name 契约(reconcile 为缺省路径;手动触发
+ * scripts/embed-backfill.ts 同名,回填与日常对账同一入口) */
+export const EMBED_JOB_RECONCILE = "reconcile";
+
+/** embedding 对账调度:每 15 分钟错峰(7/22/37/52 分,避开各整点任务与 crawl tick) */
+export const EMBED_RECONCILE_CRON = "7,22,37,52 * * * *";
 
 /** github 队列 job name 契约(生产:tick 调度/sync.ts/repos-admin.ts;消费:worker 按
  * job.name 分流,sync 为缺省路径)。改名需与 worker 同批。 */
