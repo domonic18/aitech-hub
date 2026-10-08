@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 
 import ArticleBody from "@/components/article/ArticleBody";
+import PayGateCard from "@/components/pay/PayGateCard";
 import { excerptOf } from "@/lib/content/format";
 import { getPostById, listPostSegmentsForPrerender } from "@/lib/content/posts";
 import { parsePostSegment, postPath, postPathSegment } from "@/lib/content/post-path";
@@ -14,6 +15,7 @@ import {
   asContentOrigin,
 } from "@/lib/content/post-schema";
 import { formatCnDate } from "@/lib/datetime";
+import { previewMarkdown } from "@/lib/pay/preview";
 import { absoluteUrl } from "@/lib/seo/site";
 
 /**
@@ -77,6 +79,13 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
     publisher: { "@type": "Person", name: "domonic18" },
     mainEntityOfPage: absoluteUrl(postPath(post.id, post.slug)),
     image: post.coverPath ? absoluteUrl(post.coverPath) : undefined,
+    // 付费文章如实声明(M21):对爬虫与用户下发同一份截断预览,无 cloaking
+    ...(post.isPurchasable
+      ? {
+          isAccessibleForFree: false,
+          hasPart: { "@type": "WebPageElement", isAccessibleForFree: false, cssSelector: ".prose" },
+        }
+      : {}),
   };
 
   return (
@@ -137,7 +146,18 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
       ) : null}
 
       <div className="mt-8">
-        <ArticleBody contentMd={post.contentMd} contentHtml={post.contentHtml} />
+        {post.isPurchasable ? (
+          /* 付费门禁(M21,提案 §5.4):ISR 缓存页只含服务端截断预览,
+             全文仅 /api/pay/content 凭权益下发;解锁卡为客户端 island */
+          <PayGateCard
+            postId={post.id.toString()}
+            price={post.purchasePrice?.toFixed(2) ?? ""}
+            previewMd={post.contentMd ? previewMarkdown(post.contentMd) : null}
+            previewHtml={post.contentMd ? null : post.contentHtml}
+          />
+        ) : (
+          <ArticleBody contentMd={post.contentMd} contentHtml={post.contentHtml} />
+        )}
       </div>
 
       <footer className="mt-12 border-t border-line/60 pt-4 text-sm text-text-3">
