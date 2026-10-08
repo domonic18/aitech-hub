@@ -18,12 +18,14 @@ export const AI_PURPOSE_INTERPRET = "interpret";
 export const AI_PURPOSE_SUMMARIZE = "summarize";
 export const AI_PURPOSE_SEARCH = "search";
 export const AI_PURPOSE_COVER = "cover";
-/** 模型用途 = 任务角色(四角色,arch/04 §4 任务绑定) */
+export const AI_PURPOSE_EMBEDDING = "embedding";
+/** 模型用途 = 任务角色(五角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化) */
 export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SUMMARIZE,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_COVER,
+  AI_PURPOSE_EMBEDDING,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -49,6 +51,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "封面生图",
     icon: "i-picture",
     sub: "文章题图 + OG 图生成",
+  },
+  [AI_PURPOSE_EMBEDDING]: {
+    label: "语义向量",
+    icon: "i-aim",
+    sub: "混合检索:三域内容 embedding + 查询向量化(pgvector 余弦召回)",
   },
 };
 

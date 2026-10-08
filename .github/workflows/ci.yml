@@ -56,7 +56,8 @@ jobs:
     # 曾致 workflow 加载即失败;守卫本身仅 ~1 分钟,换取任何变更都能兜住 schema 漂移
     services:
       postgres:
-        image: postgres:16
+        # M20 混合检索:CI 库是一次性卷(无 collation 惯性),直接用官方 pgvector 镜像
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
