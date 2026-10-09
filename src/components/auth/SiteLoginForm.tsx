@@ -87,9 +87,14 @@ export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-text-2" htmlFor="login-password">
-          密码
-        </label>
+        <div className="mb-1 flex items-baseline justify-between">
+          <label className="block text-xs font-medium text-text-2" htmlFor="login-password">
+            密码
+          </label>
+          <Link href="/forgot-password" className="text-[11px] text-accent hover:underline">
+            忘记密码?
+          </Link>
+        </div>
         <input
           id="login-password"
           type="password"
