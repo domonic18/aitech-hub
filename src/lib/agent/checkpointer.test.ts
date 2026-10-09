@@ -18,12 +18,7 @@ vi.mock("../logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import {
-  ensureAgentCheckpointer,
-  getAgentCheckpointer,
-  getAgentPgPool,
-  getThreadState,
-} from "./checkpointer";
+import { ensureAgentCheckpointer, getAgentCheckpointer, getAgentPgPool } from "./checkpointer";
 
 beforeEach(() => {
   // 清 globalThis 单例状态(模块级缓存跨用例泄漏)
@@ -91,78 +86,5 @@ describe("agent checkpointer", () => {
     setupMock.mockResolvedValue(undefined);
     await expect(ensureAgentCheckpointer()).resolves.toBeUndefined();
     expect(setupMock).toHaveBeenCalledTimes(2);
-  });
-
-  describe("getThreadState", () => {
-    function mockSaver(tuple: unknown): void {
-      poolCtor.mockImplementation(function () {
-        return { on: vi.fn() };
-      });
-      saverCtor.mockImplementation(function () {
-        return { setup: setupMock, getTuple: vi.fn().mockResolvedValue(tuple) };
-      });
-      setupMock.mockResolvedValue(undefined);
-    }
-
-    it("消息轨迹 + __interrupt__ pendingWrites 窄化为水合结构", async () => {
-      mockSaver({
-        checkpoint: { channel_values: { messages: [{ id: "m1" }] } },
-        pendingWrites: [
-          [
-            "t1",
-            "__interrupt__",
-            {
-              value: { kind: "ask_user", question: "q?" },
-              resumable: true,
-              when: "during",
-              ns: ["ns:x"],
-            },
-          ],
-          ["t2", "messages", { id: "ignored" }], // 非中断通道,忽略
-        ],
-      });
-      const view = await getThreadState("th1");
-      expect(view.messages).toEqual([{ id: "m1" }]);
-      expect(view.interrupts).toEqual([
-        {
-          value: { kind: "ask_user", question: "q?" },
-          resumable: true,
-          when: "during",
-          ns: ["ns:x"],
-        },
-      ]);
-    });
-
-    it("中断值数组形状逐项展开;非对象项丢弃", async () => {
-      mockSaver({
-        checkpoint: { channel_values: {} },
-        pendingWrites: [
-          ["t1", "__interrupt__", [{ value: { kind: "ask_user", question: "a" } }, "garbage"]],
-        ],
-      });
-      const view = await getThreadState("th2");
-      expect(view.interrupts).toEqual([{ value: { kind: "ask_user", question: "a" } }]);
-    });
-
-    it("无线程/无中断:messages null,interrupts 空数组", async () => {
-      mockSaver(undefined);
-      const view = await getThreadState("th3");
-      expect(view.messages).toBeNull();
-      expect(view.interrupts).toEqual([]);
-    });
-
-    it("非对象中断值/畸形字段安全窄化", async () => {
-      mockSaver({
-        checkpoint: { channel_values: { messages: [] } },
-        pendingWrites: [
-          ["t1", "__interrupt__", { resumable: "yes", ns: ["a", 3, "b"], when: 7 }],
-          ["t2", "__interrupt__", 42],
-        ],
-      });
-      const view = await getThreadState("th4");
-      // 首项:非法类型字段丢弃,value 缺省不带;ns 只留字符串
-      expect(view.interrupts[0]).toEqual({ ns: ["a", "b"] });
-      expect(view.interrupts).toHaveLength(1); // 42 非对象丢弃
-    });
   });
 });

@@ -1,20 +1,17 @@
 /**
  * Agent 工具面(K2.5,arch/04 §3;K2.6 收紧):站内三域检索 + 文章/项目
- * 正文补读 + 当前时间锚定 + ask_user 结构化提问(2026-10-09 验收反馈,HITL
- * 中断卡片);M22 批⑤起唯一可写口 submit_feedback(用户反馈落库)。检索复用
- * K1 unified-search#searchAll(给人搜索 = 给智能体检索,同源不漂移);除反馈
- * 外维持只读红线:无站外网络/文件/代码执行能力(系统提示明示边界)。返回串
- * 直接进模型上下文,一律 JSON.stringify 且正文截断(50k tokens 会话护栏的
- * 口径基础)。
+ * 正文补读 + 当前时间锚定;M22 批⑤起唯一可写口 submit_feedback(用户反馈落
+ * 库)。检索复用 K1 unified-search#searchAll(给人搜索 = 给智能体检索,同源
+ * 不漂移);除反馈外维持只读红线:无站外网络/文件/代码执行能力(系统提示
+ * 明示边界)。返回串直接进模型上下文,一律 JSON.stringify 且正文截断(50k
+ * tokens 会话护栏的口径基础)。
  */
 import { tool } from "@langchain/core/tools";
-import { interrupt } from "@langchain/langgraph";
 import { z } from "zod";
 
 import { PUBLISHED } from "../content/posts";
 import { submitFeedbackSchema } from "../feedback/feedback-schema";
 import { prisma } from "../db";
-import { AGENT_ASK_USER_TOOL, type AgentAskUserResume } from "./hitl";
 import { logger } from "../logger";
 import { searchAll } from "../search/unified-search";
 
@@ -114,58 +111,6 @@ export const getTimeTool = tool(
 );
 
 /**
- * ask_user 结构化提问(2026-10-09 验收反馈):工具体内裸调 langgraph
- * interrupt() 暂停图(checkpointer 持久),前端渲染提问卡片,回答经
- * Command({resume}) 灌回——interrupt() 返回 resume 值,工具以正常 ToolMessage
- * 回给模型。恢复时工具体从头重放(中断点前无副作用,安全)。resume 值形状
- * 由 stream 路由 zod 把关,此处防御性规整(旧客户端/绕道路径兜底)。
- */
-export const askUserTool = tool(
-  async ({ question, options }) => {
-    const answer = interrupt({
-      kind: AGENT_ASK_USER_TOOL,
-      question,
-      ...(options && options.length > 0 ? { options } : {}),
-    });
-    let message = "";
-    let option: string | undefined;
-    if (typeof answer === "object" && answer !== null) {
-      const a = answer as Partial<AgentAskUserResume>;
-      if (typeof a.message === "string") message = a.message;
-      if (typeof a.option === "string") option = a.option;
-    } else if (typeof answer === "string") {
-      message = answer; // 老式纯文本 resume 兜底
-    }
-    if (message.trim() === "") {
-      return JSON.stringify({ ok: false, answer: "(用户未作答)" });
-    }
-    return JSON.stringify({
-      ok: true,
-      answer: message,
-      ...(option ? { selected_option: option } : {}),
-    });
-  },
-  {
-    name: AGENT_ASK_USER_TOOL,
-    description:
-      "向用户提问并等待回答:需要用户确认、拍板或补充关键信息时调用,用户会在前端看到交互卡片并作答," +
-      "答案作为本工具结果返回。不要用普通对话文本提问——纯文本问法前端弹不出卡片,用户无法结构化作答。" +
-      "规则:一次只问一个问题,不要并行发起多个;question 为问题文本(≤500 字);options 为候选选项" +
-      "(2-4 个,每个 ≤100 字,推荐项放第一个,可省略);用户回答后先简要确认理解再继续;" +
-      "仅当关键信息缺失且无法靠 search_site 检索补足时使用。",
-    schema: z.object({
-      question: z.string().min(1).max(500).describe("要问用户的问题"),
-      options: z
-        .array(z.string().min(1).max(100))
-        .min(2)
-        .max(4)
-        .optional()
-        .describe("候选选项,用户可直接点选;无可选项则省略"),
-    }),
-  },
-);
-
-/**
  * 用户反馈提交(M22 批⑤,需求8):工具面唯一可写口——把对话中识别出的反馈
  * 落 Feedback 表(admin 后台流转,无邮件通知)。sessionId 取 run 注入的
  * LangChain config(configurable.thread_id,LangGraph 工具调用自动透传,
@@ -215,6 +160,5 @@ export const AGENT_TOOLS = [
   readPostTool,
   readRepoTool,
   getTimeTool,
-  askUserTool,
   submitFeedbackTool,
 ];
