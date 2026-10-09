@@ -1,11 +1,13 @@
 /**
- * 会话 run SSE 端点(K2.5 核心,arch/04 §3.3;K2.6 身份分流):SDK
- * runs.stream 契约的自实现——POST /threads/{threadId}/runs/stream,input 只收
- * human 消息。admin:归属查会话行、会话累计 50k 前置拒绝、标题回填;
- * 游客:归属查 Redis 活跃键(过期 404 自愈)、3 问/日/游客 + 30 问/日/IP
- * 双闸。共用工级护栏:IP 10 次/分;run 编排在 runAgentTurn(帧序列
- * metadata→messages|updates*→end)。业务降级一律 SSE error 帧,不占 HTTP 状态。
- * SSE 头 no-store + x-accel-buffering:no(nginx ^~ /api/search/ 已关缓冲)。
+ * 会话 run SSE 端点(K2.5 核心,arch/04 §3.3;K2.6 身份分流,M22 批④扩
+ * 三路):SDK runs.stream 契约的自实现——POST /threads/{threadId}/runs/stream,
+ * input 只收 human 消息。登录身份(admin/user):归属查会话行、会话累计
+ * 50k 前置拒绝、标题回填;user 另走 Token 余额链路——run 前 hasTokenBalance
+ * 预检(≤0 拒),run 后按实际用量 consumeTokens 实扣(流水 reason=consume,
+ * 扣减失败只告警不反噬已完成的 run);admin 与游客不扣余额。游客:归属查
+ * Redis 活跃键(过期 404 自愈)、3 问/日/游客 + 30 问/日/IP 双闸。共用
+ * 工级护栏:IP 10 次/分;run 编排在 runAgentTurn。业务降级一律 SSE error
+ * 帧,不占 HTTP 状态。SSE 头 no-store + x-accel-buffering:no。
  */
 import { type NextRequest } from "next/server";
 import { z } from "zod";
@@ -19,6 +21,7 @@ import {
   refreshGuestThread,
 } from "@/lib/agent/guest-threads";
 import { resolveAgentIdentity } from "@/lib/agent/identity";
+import { hasTokenBalance, consumeTokens } from "@/lib/users/token-balance";
 import { prisma } from "@/lib/db";
 import { isSameOrigin } from "@/lib/http/origin";
 import { clientIp } from "@/lib/http/request";
@@ -100,11 +103,15 @@ export async function POST(
   const message = extractText(parsed.data.input.messages[0].content);
   if (message === "") return apiEnvelope(400, "消息不能为空");
 
-  if (identity.kind === "admin" && tokensTotal >= AGENT_MAX_TOKENS) {
+  if (identity.kind !== "guest" && tokensTotal >= AGENT_MAX_TOKENS) {
     return apiEnvelope(429, "本会话用量已达上限,请新建会话继续");
   }
   if (identity.kind === "guest" && !(await tryConsumeGuestAskQuota(identity.key, clientIp(req)))) {
     return apiEnvelope(429, "今日游客提问次数已用完,明天再来吧");
+  }
+  // M22 user 余额预检(免费额度制:>0 放行,实扣在 run 后;穿仓下限=单轮护栏)
+  if (identity.kind === "user" && !(await hasTokenBalance(identity.userId))) {
+    return apiEnvelope(429, "本月 AI 额度已用完,将于下月 1 日自动重置");
   }
   if (!(await tryConsumeAgentRunQuota(clientIp(req)))) {
     return apiEnvelope(429, "操作过于频繁,请稍后再试");
@@ -140,7 +147,21 @@ export async function POST(
           sessionId: threadId,
           durationMs: Date.now() - startedAt,
           outcome,
+          userId: identity.kind === "user" ? identity.userId : undefined,
         });
+        // user 实扣(append-only 流水同事务;失败只告警——计费异常不反噬已完成的 run)
+        if (identity.kind === "user") {
+          try {
+            await consumeTokens(identity.userId, outcome.tokensIn + outcome.tokensOut, threadId);
+          } catch (e) {
+            logger.warn({
+              event: "token_wallet.consume_failed",
+              threadId,
+              userId: identity.userId.toString(),
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
         if (identity.kind === "guest") {
           await refreshGuestThread(threadId); // 活跃滑动 TTL
         } else {
