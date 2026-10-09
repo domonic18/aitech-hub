@@ -5,6 +5,7 @@
  * 未知单号),重放幂等。前置:dev compose;测试自清理(mode 恢复 off)。
  */
 import { loadEnvConfig } from "@next/env";
+import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -50,7 +51,7 @@ function call(
   ctx?: unknown,
 ): Promise<Response> {
   return handler(
-    new Request(`http://localhost:3000${url}`, {
+    new NextRequest(`http://localhost:3000${url}`, {
       method,
       headers: { ...HEADERS, ...(cookie ? { cookie } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -61,7 +62,7 @@ function call(
 
 async function notify(payload: Record<string, string>): Promise<Response> {
   return notifyPOST(
-    new Request("http://localhost:3000/api/pay/notify", {
+    new NextRequest("http://localhost:3000/api/pay/notify", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -73,7 +74,7 @@ const cookies = new Map<string, string>();
 
 async function loginAs(phone: string): Promise<string> {
   const res = await loginPOST(
-    new Request("http://localhost:3000/api/auth/login", {
+    new NextRequest("http://localhost:3000/api/auth/login", {
       method: "POST",
       headers: HEADERS,
       body: JSON.stringify({ account: phone, password: PASSWORD }),
@@ -180,7 +181,7 @@ describe("下单 API 门禁(批③)", () => {
     expect(
       (await call(ordersPOST, "/api/pay/orders", "POST", null, { postId: paidPostId })).status,
     ).toBe(401);
-    const evil = new Request("http://localhost:3000/api/pay/orders", {
+    const evil = new NextRequest("http://localhost:3000/api/pay/orders", {
       method: "POST",
       headers: { ...HEADERS, origin: "https://evil.example.com", cookie: ck("BUYER") ?? "" },
       body: JSON.stringify({ postId: paidPostId }),
@@ -347,7 +348,7 @@ describe("Mock 模拟支付端点(开发收银台)", () => {
     });
     expect(((await ok.json()) as { code: number }).code).toBe(0);
 
-    const other = new Request("http://localhost:3000/api/pay/mock/checkout", {
+    const other = new NextRequest("http://localhost:3000/api/pay/mock/checkout", {
       method: "POST",
       headers: { ...HEADERS, cookie: ck("BUYER2") ?? "" },
       body: JSON.stringify({ orderNo }),

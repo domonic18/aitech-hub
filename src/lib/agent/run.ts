@@ -136,6 +136,8 @@ export async function recordAgentRun(params: {
   sessionId: string;
   durationMs: number;
   outcome: AgentRunOutcome;
+  /** 登录用户锚(M22 透传 ai_usage_log.user_id;游客/admin 之外的站点级调用缺省) */
+  userId?: bigint;
 }): Promise<void> {
   const { sessionId, durationMs, outcome } = params;
   await recordAiUsage({
@@ -147,6 +149,7 @@ export async function recordAgentRun(params: {
     durationMs,
     status: outcome.truncatedReason ? "degraded" : "ok",
     sessionId,
+    userId: params.userId,
   });
   if (sessionId.startsWith(GUEST_THREAD_PREFIX)) return;
   try {

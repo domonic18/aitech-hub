@@ -30,6 +30,8 @@ export interface AiUsageInput {
   status?: AiUsageStatus;
   /** 关联会话/线程锚(K2.6 后台会话管理聚合 guest/member 口径;其他调用缺省) */
   sessionId?: string;
+  /** 登录用户锚(M22:悬浮助手 run 归属/个人消耗页;站点级调用缺省) */
+  userId?: bigint;
 }
 
 export async function recordAiUsage(input: AiUsageInput): Promise<void> {
@@ -45,6 +47,7 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
         durationMs: Math.max(0, Math.round(input.durationMs ?? 0)),
         status: input.status ?? "ok",
         sessionId: input.sessionId?.slice(0, 40),
+        userId: input.userId,
       },
     });
   } catch (e) {

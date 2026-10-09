@@ -131,6 +131,7 @@ model UserAccount {
   nickname        String?   @db.VarChar(100)
   avatarPath      String?   @map("avatar_path") @db.VarChar(500)
   bio             String?   @db.VarChar(500)
+  assistantVisible Boolean  @default(true) @map("assistant_visible") // M22:悬浮助手 FAB 显隐(账号级,跨设备;游客走 localStorage)
   role           String    @default("user") @db.VarChar(20) // user/admin
   status         String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
   passwordHash   String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
@@ -142,6 +143,8 @@ model UserAccount {
 
   pats UserPat[]
   verificationTokens UserVerificationToken[]
+  tokenWallet UserTokenWallet?
+  tokenLedger UserTokenLedger[]
 
   @@index([status], map: "idx_user_account_status")
   @@map("user_account")
@@ -644,11 +647,13 @@ model AiUsageLog {
   durationMs   Int      @default(0) @map("duration_ms")
   status       String   @default("ok") @db.VarChar(10) // ok/degraded/failed
   sessionId    String?  @map("session_id") @db.VarChar(40) // K2.6:会话/线程锚(后台会话管理聚合口径;他类调用缺省)
+  userId       BigInt?  @map("user_id") // M22:登录用户锚(悬浮助手 run 归属/个人消耗页;站点级调用缺省;无 FK,账号删除不回删台账)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([createdAt], map: "idx_ai_usage_log_created")
   @@index([role, modelId], map: "idx_ai_usage_log_role_model")
   @@index([sessionId], map: "idx_ai_usage_log_session")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_ai_usage_log_user_created")
   @@map("ai_usage_log")
 }
 
@@ -825,4 +830,61 @@ model SearchAgentSession {
   @@index([visitorId, lastMessageAt(sort: Desc)], map: "idx_search_agent_session_visitor_recent")
   @@index([lastMessageAt], map: "idx_search_agent_session_last_message")
   @@map("search_agent_session")
+}
+
+/// 用户 Token 钱包(M22 批①,免费额度制,用户拍板 2026-10-09):每账号一行,
+/// userId 即主键;开户与月度重置均走读时惰性判定(periodKey≠当月则重置回
+/// 月赠额并落 ledger,免 cron)。余额变更一律经 src/lib/users/token-balance.ts
+/// 事务入口(行锁 FOR UPDATE 串行化,防并发扣穿);本表禁止散在直写。
+model UserTokenWallet {
+  userId    BigInt   @id @map("user_id")
+  balance   Int      @default(0)
+  periodKey String   @map("period_key") @db.Char(7) // "YYYY-MM" 北京月界(statsMonth 同源口径)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_token_wallet")
+}
+
+/// Token 流水(M22 批①,append-only 只增不改):grant=开户/月重置发放,
+/// consume=会话 run 实扣(允许微穿仓,单轮护栏为下限),reset=上月余量回收,
+/// adjust=admin 人工调整;balanceAfter 为本笔落账后余额快照(审计对账锚点)。
+model UserTokenLedger {
+  id           BigInt   @id @default(autoincrement())
+  userId       BigInt   @map("user_id")
+  delta        Int // 正=入账 负=扣减
+  balanceAfter Int      @map("balance_after")
+  reason       String   @db.VarChar(16) // grant | consume | reset | adjust(应用层枚举)
+  sessionId    String?  @map("session_id") @db.VarChar(40) // consume 溯源:agent 线程 id
+  note         String?  @db.VarChar(200) // adjust 说明等
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_user_token_ledger_user_recent")
+  @@map("user_token_ledger")
+}
+
+// ── feedback_(反馈域,M22 批①,需求7/9:联系我们→助手落库+admin 流转)──
+
+/// 站点反馈:助手识别联系诉求后 submit_feedback 结构化落库(登录带 userId,
+/// 游客仅 visitorId=ah_av 溯源);contact 用户自愿留(助手对话内询问,可拒)。
+/// status 状态机 open → processing → resolved(应用层 Zod 管控,仿 pay 纪律);
+/// sessionId 溯源 agent 线程;两归属列均无 FK,账号/游客过期不回删反馈。
+model Feedback {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt?  @map("user_id")
+  visitorId String?  @map("visitor_id") @db.VarChar(36) // 游客 ah_av
+  category  String   @db.VarChar(20) // requirement | issue | suggestion | other(应用层枚举)
+  content   String   @db.VarChar(2000)
+  contact   String?  @db.VarChar(200) // 用户自愿留的联系方式
+  status    String   @default("open") @db.VarChar(16) // open | processing | resolved
+  adminNote String?  @map("admin_note") @db.VarChar(500) // 处理备注
+  sessionId String?  @map("session_id") @db.VarChar(40) // agent 线程溯源
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_feedback_status_recent")
+  @@map("feedback")
 }
