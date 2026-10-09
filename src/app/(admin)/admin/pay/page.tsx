@@ -19,8 +19,7 @@ export default async function AdminPayPage(): Promise<React.ReactElement> {
       <div>
         <h2 className="text-base font-semibold">支付配置</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          支付模式(总闸)与虎皮椒凭据(appid/appsecret)存 pay_gateway_config 表; secret
-          只写不读,保存即时生效,无需重启;env 中无支付开关。
+          支付收款总闸与网关凭据,均存库维护(与邮件配置同规则);模式切换与凭据保存即时生效。
           {process.env.NODE_ENV === "production"
             ? ""
             : "当前为开发环境,可选「模拟」网关联调全链路。"}
