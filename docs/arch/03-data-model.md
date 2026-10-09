@@ -136,6 +136,49 @@ CREATE UNIQUE INDEX uq_user_pat_token_hash ON user_pat (token_hash);
 CREATE INDEX idx_user_pat_user ON user_pat (user_id);
 ```
 
+```sql
+-- 用户 Token 额度钱包(M22 批①迁移 20261009190234,免费额度制):
+-- 注册送 20 万 tokens/月,读时惰性月重置(period_key≠当月即重置回赠额),零 cron
+CREATE TABLE user_token_wallet (
+    user_id     BIGINT PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE,
+    balance     INTEGER NOT NULL DEFAULT 0,   -- 当前余额(实扣可微穿仓,下限=单轮 50k 护栏)
+    period_key  CHAR(7) NOT NULL,             -- 额度所属月 "YYYY-MM"(北京月界)
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- append-only 流水(余额变化全留痕;余额行 + 本表同事务更新,防并发扣穿)
+CREATE TABLE user_token_ledger (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+    delta         INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    reason        VARCHAR(16) NOT NULL,  -- grant | consume | reset | adjust
+    session_id    VARCHAR(40),           -- 溯源 agent 线程(consume 时)
+    note          VARCHAR(200),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_user_token_ledger_user_recent ON user_token_ledger (user_id, created_at DESC);
+
+-- 用户反馈(M22 批⑤;助手 submit_feedback 落库 + admin 后台流转,无删除无邮件)
+CREATE TABLE feedback (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT,                 -- 无 FK:账号删除留档可读(归属经 session_id 溯源)
+    visitor_id  VARCHAR(36),            -- 游客 ah_av(工具面未落,预留)
+    category    VARCHAR(20) NOT NULL,   -- requirement | issue | suggestion | other
+    content     VARCHAR(2000) NOT NULL,
+    contact     VARCHAR(200),           -- 用户自愿留的联系方式
+    status      VARCHAR(16) NOT NULL DEFAULT 'open',  -- open | processing | resolved
+    admin_note  VARCHAR(500),
+    session_id  VARCHAR(40),            -- agent 线程溯源(取 run 的 configurable.thread_id)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_feedback_status_recent ON feedback (status, created_at DESC);
+```
+
+- `user_account.assistant_visible`(M22 批①增列,`boolean not null default true`):悬浮 AI 助手显隐偏好,账号级跨设备(`PATCH /api/account/assistant-visible`);游客走 localStorage 不落库
+- `ai_usage_log.user_id`(M22 批①增列 + `idx_ai_usage_log_user_created`):Agent 会话 run 台账行记登录用户锚(`recordAgentRun` 透传;admin/游客缺省)——/account/usage 本月消耗与 /admin/usage 共用本表按 user 维度聚合
+
 ### 2.3 stats_ 与 legacy_
 
 ```sql
