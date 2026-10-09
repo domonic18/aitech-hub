@@ -48,7 +48,13 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-comment", label: "会话管理", href: "/admin/agent-sessions" },
     ],
   },
-  { label: "用户", items: [{ icon: "i-user", label: "用户管理", href: "/admin/users" }] },
+  {
+    label: "用户",
+    items: [
+      { icon: "i-user", label: "用户管理", href: "/admin/users" },
+      { icon: "i-comment", label: "反馈管理", href: "/admin/feedback" },
+    ],
+  },
   {
     label: "系统",
     items: [

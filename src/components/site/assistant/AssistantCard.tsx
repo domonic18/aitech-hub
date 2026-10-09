@@ -20,13 +20,21 @@ const SESSION_STATE_URL = "/api/auth/session";
 
 export type AssistantAuth = "loading" | "member" | "guest";
 
+/** FAB 转交的预置问题(agent:open detail;nonce 变化即重新注入) */
+type InjectAsk = PendingAsk & { nonce: number };
+
 interface AssistantCardProps {
   /** FAB 侧已判身份(开卡时复判一次,登录态可能已变) */
   onClose: () => void;
   onHide: () => void;
+  injectAsk?: InjectAsk | null;
 }
 
-export default function AssistantCard({ onClose, onHide }: AssistantCardProps): React.ReactElement {
+export default function AssistantCard({
+  onClose,
+  onHide,
+  injectAsk,
+}: AssistantCardProps): React.ReactElement {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<PendingAsk | null>(null);
   const [todos, setTodos] = useState<AgentTodo[]>([]);
@@ -87,6 +95,12 @@ export default function AssistantCard({ onClose, onHide }: AssistantCardProps): 
   useEffect(() => {
     if (auth === "member") void refreshSessions();
   }, [auth, refreshSessions]);
+
+  // agent:open 预置问题(批⑤「联系我们」直发引导;nonce 变化可重复注入,
+  // 不整卡重挂——保留当前线程与输入态)
+  useEffect(() => {
+    if (injectAsk) setPending({ question: injectAsk.question, send: injectAsk.send });
+  }, [injectAsk]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

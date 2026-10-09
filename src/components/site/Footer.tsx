@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import packageInfo from "../../../package.json";
+import ContactLauncher from "@/components/site/ContactLauncher";
 import { getSiteIcp, getSiteTitle } from "@/lib/config/site-config";
 
 export default async function Footer(): Promise<React.ReactElement> {
@@ -22,6 +23,7 @@ export default async function Footer(): Promise<React.ReactElement> {
           <Link href="/privacy/" className="hover:text-text-1">
             隐私政策
           </Link>
+          <ContactLauncher />
           <Link href="/archive/" className="hover:text-text-1">
             归档
           </Link>

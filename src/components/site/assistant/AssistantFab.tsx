@@ -10,12 +10,17 @@
  */
 import { useCallback, useEffect, useState } from "react";
 
+import type { PendingAsk } from "@/components/site/agent/AgentThread";
+
 import AssistantCard from "./AssistantCard";
 
 const SESSION_STATE_URL = "/api/auth/session";
 const ASSISTANT_VISIBLE_URL = "/api/account/assistant-visible";
 /** 游客显隐 localStorage 键(登录身份不用它) */
 const GUEST_VISIBLE_KEY = "assistant.guest.visible";
+
+/** 唤起时注入卡片的问题(nonce 驱动 Card 侧 effect,同问句可重复注入) */
+type InjectAsk = PendingAsk & { nonce: number };
 
 export default function AssistantFab(): React.ReactElement | null {
   const [ready, setReady] = useState(false);
@@ -24,6 +29,8 @@ export default function AssistantFab(): React.ReactElement | null {
   const [open, setOpen] = useState(false);
   /** member 身份缓存(决定隐藏写库还是 localStorage) */
   const [isMember, setIsMember] = useState(false);
+  /** agent:open 携带的预置问题(批⑤「联系我们」;空 detail 不注入) */
+  const [injectAsk, setInjectAsk] = useState<InjectAsk | null>(null);
 
   // 挂载判身份与显隐初值(登录=服务端字段;游客=localStorage 默认显)
   useEffect(() => {
@@ -60,9 +67,19 @@ export default function AssistantFab(): React.ReactElement | null {
     if (!isMember) window.localStorage.setItem(GUEST_VISIBLE_KEY, "0");
   }, [isMember]);
 
-  // 全局唤起协议(批⑤ Footer「联系我们」等消费;隐藏态同样响应)
+  // 全局唤起协议(detail.ask 有值则注入卡片直发;隐藏态同样响应)
   useEffect(() => {
-    const onOpen = (): void => setOpen(true);
+    const onOpen = (e: Event): void => {
+      const detail = (e as CustomEvent<{ ask?: { question?: unknown; send?: unknown } }>).detail;
+      if (typeof detail?.ask?.question === "string" && detail.ask.question.trim() !== "") {
+        setInjectAsk({
+          question: detail.ask.question,
+          send: detail.ask.send === true,
+          nonce: Date.now(),
+        });
+      }
+      setOpen(true);
+    };
     window.addEventListener("agent:open", onOpen);
     return () => window.removeEventListener("agent:open", onOpen);
   }, []);
@@ -101,7 +118,9 @@ export default function AssistantFab(): React.ReactElement | null {
 
   return (
     <>
-      {open && <AssistantCard onClose={() => setOpen(false)} onHide={onHide} />}
+      {open && (
+        <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
+      )}
       <button
         type="button"
         aria-label="打开 AI 助手"
