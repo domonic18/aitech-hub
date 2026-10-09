@@ -48,9 +48,10 @@ export interface EditorPost {
   seoDescription: string;
   /** 创作方式(合规标识):human/ai_assisted/ai_generated,缺省人工 */
   contentOrigin: ContentOrigin;
-  /** 付费阅读(M21 批⑤):price 为 Decimal 序列化前的 number(无付费为 null) */
+  /** 阅读门禁(M21 批⑤ + 补齐批):付费 price 为 number(无付费 null);登录可见与付费互斥 */
   isPurchasable: boolean;
   purchasePrice: number | null;
+  isLoginRequired: boolean;
   /** 展示态(server 端 postDisplayState 派生):published/draft/unpublished */
   status: PostDisplayState;
 }
@@ -107,6 +108,7 @@ export default function PostEditor({
     contentOrigin: post?.contentOrigin ?? "human",
     isPurchasable: post?.isPurchasable ?? false,
     purchasePriceText: post?.purchasePrice != null ? post.purchasePrice.toFixed(2) : "",
+    isLoginRequired: post?.isLoginRequired ?? false,
   });
   const [status, setStatus] = useState(post?.status ?? "draft");
   const [tab, setTab] = useState<"edit" | "preview">("edit");
@@ -163,6 +165,7 @@ export default function PostEditor({
         isPurchasable: meta.isPurchasable,
         // 关闭付费 → null(服务端同步清价列);价格文本非法由 schema 报首个 issue
         purchasePrice: meta.isPurchasable ? Number.parseFloat(meta.purchasePriceText) : null,
+        isLoginRequired: meta.isLoginRequired,
         ...(slugText.trim() ? { slug: slugText.trim() } : {}), // 缺省:创建=按标题派生/更新=不改
       });
       if (!parsed.success) {

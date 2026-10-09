@@ -29,6 +29,7 @@ model Post {
   viewsCount      BigInt        @default(0) @map("views_count")
   isPurchasable   Boolean       @default(false) @map("is_purchasable") // M21 批①:付费解锁开关
   purchasePrice   Decimal?      @map("purchase_price") @db.Decimal(10, 2) // M21 批①:解锁价 CNY(仅 isPurchasable 时有意义)
+  isLoginRequired Boolean       @default(false) @map("is_login_required") // M21 补齐批:登录可见(仿旧站 unlock_type=1;与付费互斥,应用层校验)
   seoTitle        String?       @map("seo_title") @db.VarChar(255)
   seoDescription  String?       @map("seo_description") @db.Text
   publishedAt     DateTime?     @map("published_at") @db.Timestamptz(6)

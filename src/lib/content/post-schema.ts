@@ -161,10 +161,19 @@ export const postCreateSchema = z
       .max(PURCHASE_PRICE_MAX, `价格最高 ${PURCHASE_PRICE_MAX} 元`)
       .nullable()
       .optional(),
+    /** 登录可见(M21 补齐批,仿旧站 unlock_type=1):免费但须登录;与付费互斥 */
+    isLoginRequired: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if (v.isPurchasable && (v.purchasePrice === null || v.purchasePrice === undefined)) {
       ctx.addIssue({ code: "custom", message: "开启付费阅读须填写价格", path: ["purchasePrice"] });
+    }
+    if (v.isPurchasable && v.isLoginRequired) {
+      ctx.addIssue({
+        code: "custom",
+        message: "付费与登录可见不可同时开启",
+        path: ["isLoginRequired"],
+      });
     }
   });
 
@@ -172,11 +181,12 @@ export const postCreateSchema = z
 export const postUpdateSchema = postCreateSchema;
 
 export type PostCreateInput = z.infer<typeof postCreateSchema>;
-/** 更新入参:付费两列可省略(省略 = 不动付费配置;MCP 外部通道不触付费面) */
+/** 更新入参:门禁三列可省略(省略 = 不动付费/登录可见配置;MCP 外部通道不触付费面) */
 export type PostUpdateInput = Omit<
   z.infer<typeof postUpdateSchema>,
-  "isPurchasable" | "purchasePrice"
+  "isPurchasable" | "purchasePrice" | "isLoginRequired"
 > & {
   isPurchasable?: boolean;
   purchasePrice?: number | null;
+  isLoginRequired?: boolean;
 };

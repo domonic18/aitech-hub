@@ -26,9 +26,10 @@ export interface PostMetaValue {
   seoTitle: string;
   seoDescription: string;
   contentOrigin: ContentOrigin;
-  /** 付费阅读(M21 批⑤):开关 + 价格文本(提交时 parseFloat,校验在 Zod schema) */
+  /** 阅读门禁(M21 批⑤ + 补齐批):付费开关 + 价格文本 + 登录可见;付费/登录可见互斥 */
   isPurchasable: boolean;
   purchasePriceText: string;
+  isLoginRequired: boolean;
 }
 
 /** 创作方式选项(值域唯一真相源 CONTENT_ORIGINS;合规要求见 post-schema 注) */
@@ -151,24 +152,35 @@ export default function PostMetaPanel({
       </div>
 
       <div>
-        <label className={LABEL} htmlFor="post-paid">
-          付费阅读(M21)
+        <label className={LABEL} htmlFor="post-gate">
+          阅读门禁(M21)
         </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-1">
-          <input
-            id="post-paid"
-            type="checkbox"
-            checked={value.isPurchasable}
-            onChange={(e) =>
-              onChange({
-                isPurchasable: e.target.checked,
-                ...(e.target.checked ? {} : { purchasePriceText: "" }), // 关闭即清价
-              })
+        <select
+          id="post-gate"
+          value={value.isPurchasable ? "paid" : value.isLoginRequired ? "login" : "free"}
+          onChange={(e) => {
+            const gate = e.target.value;
+            if (gate === "paid") {
+              onChange({ isPurchasable: true, isLoginRequired: false });
+            } else if (gate === "login") {
+              onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: true });
+            } else {
+              onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: false });
             }
-            className="h-4 w-4 accent-[var(--accent)]"
-          />
-          开启后前台仅展示截断预览,读者支付解锁全文
-        </label>
+          }}
+          className={INPUT}
+        >
+          <option value="free">免费阅读</option>
+          <option value="login">登录可见(免费,须登录)</option>
+          <option value="paid">付费解锁</option>
+        </select>
+        <div className="mt-1 text-[11px] text-text-3">
+          {value.isPurchasable
+            ? "前台仅展示截断预览,读者支付解锁全文"
+            : value.isLoginRequired
+              ? "前台仅展示截断预览,登录后免费阅读全文"
+              : "全文对所有人可见"}
+        </div>
         {value.isPurchasable && (
           <div className="mt-2">
             <label className={LABEL} htmlFor="post-price">

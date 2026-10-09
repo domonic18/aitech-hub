@@ -205,6 +205,25 @@ describe("付费阅读字段(M21 批⑤:isPurchasable/purchasePrice)", () => {
       postUpdateSchema.safeParse({ ...base, isPurchasable: true, purchasePrice: null }).success,
     ).toBe(false);
   });
+
+  it("登录可见(补齐批):缺省关;与付费互斥(同开拒,提示落 isLoginRequired)", () => {
+    expect(postCreateSchema.parse(base).isLoginRequired).toBe(false);
+    const both = postCreateSchema.safeParse({
+      ...base,
+      isPurchasable: true,
+      purchasePrice: 5,
+      isLoginRequired: true,
+    });
+    expect(both.success).toBe(false);
+    if (!both.success) {
+      expect(both.error.issues[0]?.message).toBe("付费与登录可见不可同时开启");
+      expect(both.error.issues[0]?.path).toEqual(["isLoginRequired"]);
+    }
+    expect(postCreateSchema.parse({ ...base, isLoginRequired: true }).isLoginRequired).toBe(true);
+    expect(
+      postCreateSchema.safeParse({ ...base, isLoginRequired: true, purchasePrice: 5 }).success,
+    ).toBe(true); // 未开付费时残留价合法(清价是服务层职责)
+  });
 });
 
 describe("ADMIN_LIST_SEGMENTS(四分段与原型一致)", () => {

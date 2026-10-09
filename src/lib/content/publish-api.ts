@@ -164,7 +164,8 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
         seoTitle,
         seoDescription,
         contentOrigin: "human", // 外部发布通道缺省人工;AI 系标识在后台编辑器补记
-        isPurchasable: false, // 付费字段只在后台编辑器开放(M21 批⑤)
+        isPurchasable: false, // 付费/登录可见字段只在后台编辑器开放(M21 批⑤/补齐批)
+        isLoginRequired: false,
       });
       id = created.id;
       finalSlug = created.slug;

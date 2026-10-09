@@ -197,6 +197,7 @@ export async function createPost(
         // 付费两列(M21 批⑤):关闭即清价(开关与价格原子一致)
         isPurchasable: input.isPurchasable,
         purchasePrice: input.isPurchasable ? (input.purchasePrice ?? null) : null,
+        isLoginRequired: input.isLoginRequired, // M21 补齐批:登录可见(与付费互斥,schema 层校验)
         ...(tags.length > 0 ? { tags: { create: tags } } : {}),
       },
     });
@@ -268,6 +269,7 @@ export async function updatePost(
               isPurchasable: input.isPurchasable,
               purchasePrice: input.isPurchasable ? (input.purchasePrice ?? null) : null,
             }),
+        ...(input.isLoginRequired === undefined ? {} : { isLoginRequired: input.isLoginRequired }),
         tags: { deleteMany: {}, ...(tags.length > 0 ? { create: tags } : {}) },
       },
     });
