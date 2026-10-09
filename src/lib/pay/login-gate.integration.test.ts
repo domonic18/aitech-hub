@@ -5,6 +5,7 @@
  * (档位不串)。前置:dev compose;测试自清理。
  */
 import { loadEnvConfig } from "@next/env";
+import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -35,7 +36,7 @@ async function callGet(
   cookie: string | null,
 ): Promise<Response> {
   return handler(
-    new Request(`http://localhost:3000/api/pay/gate?postId=${postId}`, {
+    new NextRequest(`http://localhost:3000/api/pay/gate?postId=${postId}`, {
       headers: { ...HEADERS, ...(cookie ? { cookie } : {}) },
     }) as never,
   );
@@ -119,7 +120,7 @@ describe("登录可见门禁(补齐批,dev compose 真实 PG/Redis)", () => {
 
   it("前置登录取 Cookie", async () => {
     const res = await loginPOST(
-      new Request("http://localhost:3000/api/auth/login", {
+      new NextRequest("http://localhost:3000/api/auth/login", {
         method: "POST",
         headers: { ...HEADERS, "content-type": "application/json" },
         body: JSON.stringify({ account: PHONE, password: PASSWORD }),
