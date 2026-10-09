@@ -11,11 +11,7 @@
  * 纪律:本模块不订阅任何 React 状态,todos 经 onTodos 回调上抛 Drawer。
  */
 import { InMemoryThreadListAdapter } from "@assistant-ui/react";
-import type {
-  LangChainMessage,
-  LangGraphInterruptState,
-  LangGraphStreamCallback,
-} from "@assistant-ui/react-langgraph";
+import type { LangChainMessage, LangGraphStreamCallback } from "@assistant-ui/react-langgraph";
 
 import { createSseEventReader } from "@/lib/agent/sse";
 import { extractTodos, type AgentTodo } from "@/lib/agent/todos";
@@ -101,12 +97,7 @@ export interface AgentRuntimeAdapter {
   load: (
     threadId: string,
     config?: { signal: AbortSignal },
-  ) => Promise<{
-    messages: LangChainMessage[];
-    /** 挂起中断(state 路由水合;SDK reconcileInterrupt 恢复提问卡) */
-    interrupts?: LangGraphInterruptState[];
-    uiMessages?: never;
-  }>;
+  ) => Promise<{ messages: LangChainMessage[]; interrupts?: never; uiMessages?: never }>;
   stream: LangGraphStreamCallback<LangChainMessage>;
   eventHandlers: {
     onUpdates: (updates: unknown) => void;
@@ -146,16 +137,10 @@ export function createAgentRuntimeAdapter(
     threadListAdapter,
     load: async (externalId: string) => {
       try {
-        const { values, interrupts } = await apiJson<{
+        const { values } = await apiJson<{
           values: { messages?: unknown[] };
-          interrupts?: LangGraphInterruptState[];
         }>(`${API_BASE}/threads/${externalId}/state`);
-        return {
-          messages: (values.messages ?? []) as LangChainMessage[],
-          // 刷新/切会话恢复 ask_user 提问卡(SDK reconcileInterrupt;无中断
-          // 时后端返回空数组,置 undefined 走无中断路径)
-          ...(interrupts && interrupts.length > 0 ? { interrupts } : {}),
-        };
+        return { messages: (values.messages ?? []) as LangChainMessage[] };
       } catch (e) {
         if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
         throw e;
