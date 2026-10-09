@@ -45,6 +45,10 @@ export default function AssistantCard({
   const [auth, setAuth] = useState<AssistantAuth>("loading");
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
+  // run 活跃态与 runtime 上报值:运行中受控回写会触发 SDK 线程切换并 abort
+  // 在跑 run(FAB 首条消息闪断根因),故暂缓到 run 收尾再对账追平
+  const runActiveRef = useRef(false);
+  const reportedThreadIdRef = useRef<string | undefined>(undefined);
 
   const refreshSessions = useCallback(async (): Promise<void> => {
     setSessionPhase("loading");
@@ -86,11 +90,23 @@ export default function AssistantCard({
 
   const onThreadIdChange = useCallback(
     (id: string | undefined) => {
+      reportedThreadIdRef.current = id;
+      // 会话列表刷新即时(纯 GET 无害);受控回写运行中暂缓
+      if (id !== undefined && auth === "member") void refreshSessions();
+      if (runActiveRef.current) return;
       setThreadId(id);
-      if (id !== undefined) void refreshSessions();
     },
-    [refreshSessions],
+    [refreshSessions, auth],
   );
+
+  /** run 收尾对账:追平运行期间暂缓的受控 thread id(SDK 已收敛,回写即 no-op) */
+  const onRunActiveChange = useCallback((active: boolean) => {
+    runActiveRef.current = active;
+    if (active) return;
+    if (reportedThreadIdRef.current !== threadIdRef.current) {
+      setThreadId(reportedThreadIdRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (auth === "member") void refreshSessions();
@@ -116,6 +132,7 @@ export default function AssistantCard({
   }, [onHide]);
 
   const handleNewThread = useCallback((): void => {
+    reportedThreadIdRef.current = undefined;
     setThreadId(undefined);
     setTodos([]);
     setBanner(null);
@@ -123,6 +140,7 @@ export default function AssistantCard({
 
   const handleSwitchThread = useCallback((id: string): void => {
     if (id === threadIdRef.current) return;
+    reportedThreadIdRef.current = id;
     setThreadId(id);
     setTodos([]);
     setBanner(null);
@@ -218,7 +236,9 @@ export default function AssistantCard({
             onThreadIdChange={onThreadIdChange}
             onTodos={setTodos}
             onError={setBanner}
+            onRunActiveChange={onRunActiveChange}
             onSessionExpired={() => {
+              reportedThreadIdRef.current = undefined;
               setThreadId(undefined);
               setTodos([]);
               setBanner("会话已过期,已开启新会话,请重新发送");
