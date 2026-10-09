@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import ArticleBody from "@/components/article/ArticleBody";
+import { withNext } from "@/lib/auth/next-path";
 
 interface AccessState {
   loggedIn: boolean;
@@ -52,10 +53,13 @@ export default function PayGateCard({
       .catch(() => setAccess(null));
   }, [postId]);
 
+  // 登录链带 next 回跳(2026-10-09 验收反馈:登录/注册后回原文章,不再落首页)
+  const loginHref = withNext("/login", nextPath);
+
   const unlock = useCallback(async () => {
     if (!access) return;
     if (!access.loggedIn) {
-      window.location.href = "/login";
+      window.location.href = loginHref;
       return;
     }
     setBusy(true);
@@ -97,7 +101,7 @@ export default function PayGateCard({
     } finally {
       setBusy(false);
     }
-  }, [access, postId]);
+  }, [access, postId, loginHref]);
 
   // 权益就绪 → 拉全文(显式 no-store,门禁最后防线在服务端)
   useEffect(() => {
@@ -115,8 +119,6 @@ export default function PayGateCard({
       </div>
     );
   }
-
-  const loginHref = nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login";
 
   if (gate === "login") {
     return (
@@ -183,7 +185,7 @@ export default function PayGateCard({
         {access && !access.loggedIn && (
           <p className="text-[11px] text-text-3">
             已有账号?
-            <Link href="/login" className="text-accent hover:underline">
+            <Link href={loginHref} className="text-accent hover:underline">
               直接登录
             </Link>
             ;没有账号?解锁时按引导注册。

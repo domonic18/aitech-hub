@@ -4,9 +4,19 @@
  * 前台登录表单(M21 批⑤,提案 §8):账号=手机号/用户名/邮箱 + 密码;成功
  * 整跳 next(服务端已验 startsWith("/"))。未认证邮箱账号 403 → 原地展开
  * 「重发验证邮件」(凭据已验过,同值重发;D1 注册→认证→登录)。
+ * 回跳意图(2026-10-09 验收反馈):URL 无 next 时从 sessionStorage 便签兜底
+ * 恢复(注册→离站点邮件验证链接→回来登录不丢目标);403 未认证也落便签;
+ * 登录成功整跳前消费。注册链带 next 续传。
  */
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+import {
+  clearPostLoginNext,
+  readPostLoginNext,
+  savePostLoginNext,
+  withNext,
+} from "@/lib/auth/next-path";
 
 const FIELD =
   "w-full rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-text-1 placeholder:text-text-3 focus:border-line-hover focus:outline-none";
@@ -20,6 +30,17 @@ export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
   const [error, setError] = useState<string | null>(null);
   const [unverified, setUnverified] = useState(false);
   const [resendNote, setResendNote] = useState<string | null>(null);
+  // 整跳目标:URL next 优先(显式意图最新,同时清便签防旧值回魂);否则便签兜底
+  const [target, setTarget] = useState(nextPath);
+
+  useEffect(() => {
+    if (nextPath !== "/") {
+      clearPostLoginNext();
+      return;
+    }
+    const saved = readPostLoginNext();
+    if (saved) setTarget(saved);
+  }, [nextPath]);
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -38,12 +59,15 @@ export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
         data?: { role: string };
       };
       if (body.code === 0) {
-        // 整跳:cookie 已设,服务端组件(含文章页门禁)全量刷新
-        window.location.href = nextPath;
+        // 整跳:cookie 已设,服务端组件(含文章页门禁)全量刷新;便签意图已消费
+        clearPostLoginNext();
+        window.location.href = target;
         return;
       }
       if (res.status === 403 && (body.message ?? "").includes("邮箱认证")) {
         setUnverified(true);
+        // 即将离站点去邮箱点验证链接,落便签防回来登录时丢目标
+        savePostLoginNext(target);
       }
       setError(body.message ?? `登录失败(${res.status})`);
     } catch {
@@ -124,7 +148,7 @@ export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
       </button>
       <p className="text-center text-xs text-text-3">
         没有账号?
-        <Link href="/register" className="text-accent hover:underline">
+        <Link href={withNext("/register", target)} className="text-accent hover:underline">
           注册
         </Link>
       </p>
