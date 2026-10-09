@@ -310,6 +310,20 @@ model StatsPostViewDaily {
   @@map("stats_post_view_daily")
 }
 
+/// GEO 机器面抓取:llms.txt 索引/llms-full 全文/文章 .md 直出 × 爬虫(2026-10-09 方案A;
+/// middleware 对 GEO 路径不分名单内外一律上报,未识别 UA 记 unknown-agent)。
+/// post_id 无外键:llms 两面以空串占位(空串不撞 NULL 语义的唯一键),文章名查询侧按 id 反解。
+model StatsGeoDaily {
+  statDate DateTime @map("stat_date") @db.Date
+  surface  String   @db.VarChar(20) // llms_index/llms_full/post_md
+  botName  String   @map("bot_name") @db.VarChar(50) // bots.ts 稳定名;unknown-agent=未识别 UA
+  postId   String   @default("") @map("post_id") @db.VarChar(20) // 文章 BigInt id 文本;索引面空串
+  pv       BigInt   @default(0)
+
+  @@id([statDate, surface, botName, postId])
+  @@map("stats_geo_daily")
+}
+
 /// 站点总览:全站 PV/UV(requirement §3.5;beacon 上报 → Redis 缓冲 → worker 聚合)
 model StatsVisitDaily {
   statDate DateTime @id @map("stat_date") @db.Date

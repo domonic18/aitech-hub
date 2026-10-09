@@ -1,7 +1,7 @@
 /**
  * 统计缓冲落库(worker 每 60s 调用,批C 从 service 平移):
  * 读取 Redis 日缓冲键(stats:buf:*),RENAME 私有键后落聚合表
- * (stats_visit/referrer/page/client/post_view_daily + views_count 累加)。
+ * (stats_visit/referrer/page/client/post_view_daily/geo_daily + views_count 累加)。
  * 键形契约:写入侧见 service.ts ingestView(`stats:buf:<kind>:<day>[:pv|uv]`),
  * 两侧改名需同批;复杂聚合 SQL 集中本文件($executeRaw 仅 service 层内合法,arch/05-services §2)。
  */
@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis";
+import { isGeoSurface, type GeoSurface } from "./geo";
 
 async function scanBufferKeys(): Promise<string[]> {
   const keys: string[] = [];
@@ -81,6 +82,9 @@ async function applyBufferKey(key: string, fields: Record<string, string>): Prom
       }
       return ids.length;
     }
+    case "geo":
+      await upsertGeo(day, fields);
+      return 0;
     default:
       return 0;
   }
@@ -158,6 +162,32 @@ async function upsertClients(day: string, fields: Record<string, string>): Promi
       VALUES (${day}::date, ${r.browser.slice(0, 50)}, ${r.os.slice(0, 50)}, ${r.deviceType.slice(0, 20)}, ${r.pv})
       ON CONFLICT (stat_date, browser, os, device_type)
       DO UPDATE SET pv = stats_client_daily.pv + EXCLUDED.pv`,
+    ),
+  );
+}
+
+/**
+ * GEO 机器面抓取(2026-10-09 方案A):缓冲字段 `surface|botName|postId`,
+ * 面别经 isGeoSurface 收窄防脏键;post_id 空串占位(llms 两面/非 id 形态段)。
+ */
+async function upsertGeo(day: string, fields: Record<string, string>): Promise<void> {
+  const rows = Object.entries(fields)
+    .map(([k, v]) => {
+      const [surface, botName, postId] = k.split("|");
+      return { surface, botName, postId, pv: num(v) };
+    })
+    .filter(
+      (r): r is typeof r & { surface: GeoSurface } =>
+        r.surface !== undefined && isGeoSurface(r.surface) && !!r.botName && r.pv > 0,
+    );
+  if (rows.length === 0) return;
+  await prisma.$transaction(
+    rows.map(
+      (r) => prisma.$executeRaw`
+      INSERT INTO stats_geo_daily (stat_date, surface, bot_name, post_id, pv)
+      VALUES (${day}::date, ${r.surface}, ${r.botName.slice(0, 50)}, ${r.postId.slice(0, 20)}, ${r.pv})
+      ON CONFLICT (stat_date, surface, bot_name, post_id)
+      DO UPDATE SET pv = stats_geo_daily.pv + EXCLUDED.pv`,
     ),
   );
 }
