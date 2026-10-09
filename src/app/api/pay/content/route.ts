@@ -6,7 +6,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { readSessionUser } from "@/lib/auth/session";
+import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { apiEnvelope } from "@/lib/http/response";
 import { hasValidPurchase } from "@/lib/pay/entitlement";
@@ -18,7 +18,7 @@ const QuerySchema = z.object({ postId: z.coerce.bigint().positive() });
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const parsed = QuerySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
   if (!parsed.success) return apiEnvelope(400, "invalid postId");
-  const session = await readSessionUser(req.headers.get("cookie"));
+  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
   if (!session) return apiEnvelope(401, "请先登录后解锁");
 
   const isAdmin = session.role === "admin";

@@ -2,7 +2,7 @@
  * Agent 身份分流(K2.6):一期「登录账号」= admin(手机号+密码,ah_at JWT),
  * 其余一律游客(ah_av 匿名 cookie)。admin 走会话行路径(visitorId 存
  * `admin:<sub>`);游客走 Redis 线程生命周期(不落行)。读侧验签最小实现
- * (readSessionUser 同款口径:验签通过即认,完整校验含 Redis jti 不在此处)。
+ * (verifyAccessToken 同款口径:验签通过即认,完整校验含 Redis jti 不在此处)。
  */
 import type { NextRequest } from "next/server";
 

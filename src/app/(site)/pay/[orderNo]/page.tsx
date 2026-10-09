@@ -9,7 +9,7 @@ import { cookies } from "next/headers";
 
 import CheckoutPanel from "@/components/pay/CheckoutPanel";
 import { ACCESS_COOKIE_NAME } from "@/lib/auth/constants";
-import { readSessionUser } from "@/lib/auth/session";
+import { verifyAccessToken } from "@/lib/auth/session";
 import { postPath } from "@/lib/content/post-path";
 import { prisma } from "@/lib/db";
 import { getOrderView } from "@/lib/pay/order-service";
@@ -27,7 +27,9 @@ export default async function CheckoutPage({
   if (!ORDER_NO_RE.test(orderNo)) notFound();
 
   const store = await cookies();
-  const session = await readSessionUser(store.get(ACCESS_COOKIE_NAME)?.value ?? null);
+  // 单一契约(session.ts):只吃裸 token 值,解析交给框架 cookies();
+  // 曾传完整 Cookie 头给读侧解析器 → 恒判未登录,收银台死循环弹登录(生产实证)
+  const session = await verifyAccessToken(store.get(ACCESS_COOKIE_NAME)?.value ?? null);
   if (!session) redirect(`/login?next=${encodeURIComponent(`/pay/${orderNo}`)}`);
 
   const view = await getOrderView(orderNo, BigInt(session.sub), session.role === "admin");

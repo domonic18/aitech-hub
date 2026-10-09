@@ -2,6 +2,10 @@
  * 会话读侧最小实现(arch/05-services §3.2):jose 校验 access token,供统计去管理员
  * 口径(M3)复用。签发/登记/吊销/续期在 issuer.ts(M4,含 Redis jti 双查);
  * 本文件只读不写、不依赖 Redis——验签通过即认,完整校验不走这里。
+ * ⚠️ 单一契约(2026-10-09 收银台死循环事故):只吃**裸 token 值**。cookie 解析
+ * 一律交给框架(NextRequest.cookies / cookies()),禁止再传完整 Cookie 头
+ * 字符串——曾有 readSessionUser(header) 与本函数双形态并存,类型不可区分、
+ * 传错静默降级为未登录,/pay 页踩雷(已删,教训入 session.test.ts)。
  */
 import { jwtVerify } from "jose";
 
@@ -30,15 +34,4 @@ export async function verifyAccessToken(
   } catch {
     return null;
   }
-}
-
-/** 从 Cookie 头解析出当前会话身份(无会话/无效 → null) */
-export async function readSessionUser(cookieHeader: string | null): Promise<AccessClaims | null> {
-  if (!cookieHeader) return null;
-  const token = cookieHeader
-    .split(";")
-    .map((c) => c.trim())
-    .find((c) => c.startsWith(`${ACCESS_COOKIE_NAME}=`))
-    ?.slice(ACCESS_COOKIE_NAME.length + 1);
-  return verifyAccessToken(token);
 }

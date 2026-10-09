@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { ADMIN_ROLE } from "@/lib/auth/constants";
-import { readSessionUser } from "@/lib/auth/session";
+import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { isSameOrigin } from "@/lib/http/origin";
 import { clientIp } from "@/lib/http/request";
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }
 
-  const session = await readSessionUser(req.headers.get("cookie"));
+  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
   await ingestView({
     path: parsed.data.path,
     referrer: parsed.data.referrer ?? "",
