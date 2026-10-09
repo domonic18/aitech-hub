@@ -46,6 +46,7 @@ export interface AdminUserListQuery {
 const USER_LIST_SELECT = {
   id: true,
   phone: true,
+  email: true,
   nickname: true,
   avatarPath: true,
   role: true,
@@ -56,6 +57,7 @@ const USER_LIST_SELECT = {
 export type AdminUserRow = {
   id: string;
   phone: string | null;
+  email: string | null;
   nickname: string | null;
   avatarPath: string | null;
   role: string;
@@ -101,6 +103,7 @@ export async function listUsersAdmin({ page, segment, q }: AdminUserListQuery) {
     items: items.map((r): AdminUserRow => ({
       id: r.id.toString(),
       phone: r.phone,
+      email: r.email,
       nickname: r.nickname,
       avatarPath: r.avatarPath,
       role: r.role,
