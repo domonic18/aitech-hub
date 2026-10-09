@@ -15,6 +15,7 @@ process.env.LOG_LEVEL = "silent";
 import { prisma } from "@/lib/db";
 
 const { GET: configGET, PUT: configPUT } = await import("@/app/api/email-config/route");
+const { POST: testPOST } = await import("@/app/api/email-config/test/route");
 const { POST: loginPOST } = await import("@/app/api/auth/login/route");
 const { sendMail } = await import("@/lib/email/mailer");
 
@@ -183,5 +184,46 @@ describe("sendMail 门控(不触真实 SMTP)", () => {
     await expect(sendMail({ to: "a@b.c", subject: "s", text: "t" })).rejects.toThrow(
       /ECONNREFUSED|connect/i,
     );
+  });
+});
+
+describe("SMTP 测试发送 API(验收反馈问题1 配套;不触真实 SMTP)", () => {
+  function callTest(body?: object, headers = HEADERS, withCookie = true): Promise<Response> {
+    return testPOST(
+      new Request(`${ORIGIN}/api/email-config/test`, {
+        method: "POST",
+        headers: { ...headers, ...(withCookie && cookie ? { cookie } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      }) as never,
+    );
+  }
+
+  it("未登录 401;跨域 403;非法收件人 400", async () => {
+    expect((await callTest({}, HEADERS, false)).status).toBe(401);
+    expect((await callTest({}, { ...HEADERS, origin: "https://evil.example.com" })).status).toBe(
+      403,
+    );
+    expect((await callTest({ to: "不是邮箱" })).status).toBe(400);
+  });
+
+  it("无配置行 400;已配置(127.0.0.1:1)缺省收件人取发件人 → 502 快速连通失败", async () => {
+    await prisma.emailConfig.deleteMany();
+    const noConfig = await callTest();
+    expect(noConfig.status).toBe(400);
+    expect(((await noConfig.json()) as { message: string }).message).toContain("尚未配置");
+
+    await prisma.emailConfig.create({
+      data: {
+        host: "127.0.0.1",
+        port: 1,
+        username: "u",
+        password: "p",
+        fromAddr: "一起AI <noreply@example.com>",
+        enabled: true,
+      },
+    });
+    const failed = await callTest();
+    expect(failed.status).toBe(502);
+    expect(((await failed.json()) as { message: string }).message).toContain("发送失败");
   });
 });

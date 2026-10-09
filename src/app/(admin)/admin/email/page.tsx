@@ -18,7 +18,8 @@ export default async function AdminEmailPage(): Promise<React.ReactElement> {
       <div>
         <h2 className="text-base font-semibold">邮件配置</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          事务邮件 SMTP(注册验证等);配置存 email_config 表,保存即时生效,无需重启。
+          事务邮件 SMTP(注册验证等);配置存 email_config
+          表,保存即时生效,支持就地发送测试邮件验证连通。
         </p>
       </div>
       <EmailConfigForm initial={initial} />
