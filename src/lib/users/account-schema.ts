@@ -26,6 +26,11 @@ export const passwordChangeSchema = z.object({
   newPassword: z.string(),
 });
 
+/** 悬浮助手显隐(M22 批④,账号级跨设备;游客走 localStorage 不经此) */
+export const assistantVisibleSchema = z.object({
+  visible: z.boolean(),
+});
+
 /** 业务错误 → Handler 按码映射 HTTP(UserAdminError 同款) */
 export type AccountErrorCode =
   | "not_found"
