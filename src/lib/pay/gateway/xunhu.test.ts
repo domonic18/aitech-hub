@@ -65,10 +65,10 @@ describe("buildCreateParams/buildQueryParams(提案 §2.2/§2.5)", () => {
   });
 });
 
-describe("parseCreateResponse(先验签后取链,§6 #11)", () => {
-  it("验签通过且 errno=0 → 取 url/url_qrcode/openid(历史命名=网关单号)", () => {
+describe("parseCreateResponse(先验签后取链,§6 #11;errcode 判定,2026-10-09 实证)", () => {
+  it("验签通过且 errcode=0 → 取 url/url_qrcode/openid(历史命名=网关单号)", () => {
     const body: Record<string, string> = {
-      errno: "0",
+      errcode: "0",
       errmsg: "成功",
       openid: "202610090001",
       url: "https://pay.example.com/h5",
@@ -82,16 +82,40 @@ describe("parseCreateResponse(先验签后取链,§6 #11)", () => {
     });
   });
 
-  it("验签失败/errno≠0/缺签名 全拒", () => {
-    const body: Record<string, string> = { errno: "0", errmsg: "成功", url: "https://x" };
+  it("2026-10-09 生产 ¥1 真实成功响应回归钉(全字段签名+数值 openid)", () => {
+    // 当日容器探针捕获的网关原样响应(商户密钥不入 git,验签用 CFG.appSecret
+    // 重算比对);钉死:响应 hash 覆盖全部平铺字段(含 errcode/errmsg)、
+    // openid 为数值型、url/url_qrcode 域名为 api.dpweixin.com。
+    const real: Record<string, string> = {
+      openid: "202120258801",
+      url_qrcode:
+        "https://api.dpweixin.com/payments/wechat/qrcode_v3?id=202120258801&nonce_str=0997512310&time=1791529003&appid=20211117567&hash=42531f02c7d1bc252d67911a8bd4f56d",
+      url: "https://api.dpweixin.com/payments/wechat/index?id=202120258801&nonce_str=9907103152&time=1791529003&appid=20211117567&hash=e813215f42f34561919f72fe160abbca",
+      errcode: "0",
+      errmsg: "success!",
+    };
+    real.hash = makeSign(real, CFG.appSecret);
+    expect(parseCreateResponse(real, CFG.appSecret)).toMatchObject({
+      payUrl: real.url,
+      qrUrl: real.url_qrcode,
+      openOrderId: "202120258801",
+    });
+  });
+
+  it("验签失败/errcode≠0/缺签名 全拒(errcode≠0 上抛真实 errmsg)", () => {
+    const body: Record<string, string> = { errcode: "0", errmsg: "成功", url: "https://x" };
     body.hash = makeSign(body, "ffffffffffffffffffffffffffffffff");
     expect(() => parseCreateResponse(body, CFG.appSecret)).toThrow(/验签失败/);
 
-    const bad: Record<string, string> = { errno: "1", errmsg: "签名错误", url: "https://x" };
+    const bad: Record<string, string> = {
+      errcode: "40029",
+      errmsg: "错误的签名！",
+      url: "https://x",
+    };
     bad.hash = makeSign(bad, CFG.appSecret);
-    expect(() => parseCreateResponse(bad, CFG.appSecret)).toThrow(/签名错误/);
+    expect(() => parseCreateResponse(bad, CFG.appSecret)).toThrow(/40029|错误的签名/);
 
-    expect(() => parseCreateResponse({ errno: "0", url: "https://x" }, CFG.appSecret)).toThrow(
+    expect(() => parseCreateResponse({ errcode: "0", url: "https://x" }, CFG.appSecret)).toThrow(
       /验签失败/,
     );
   });

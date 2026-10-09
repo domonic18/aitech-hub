@@ -5,7 +5,7 @@
  * 常量时间;查询响应对 errcode 判定(data 为嵌套结构,平铺签名算法不适
  * 用,通道 HTTPS 服务端直连无明文伪造面;入账以回调验签为准)。
  * 主备域名切换:仅网络层失败(请求抛错/非 200)切备用重试一次——业务
- * errno≠0 不重试,防同单号重复下单歧义。
+ * errcode≠0 不重试,防同单号重复下单歧义。
  */
 import { randomBytes } from "node:crypto";
 
@@ -103,7 +103,12 @@ export function buildQueryParams(
   return params;
 }
 
-/** 下单响应解析:先验签(平铺参数),errno=0 才取链接 */
+/**
+ * 下单响应解析:先验签(平铺参数,网关对全部字段含 errcode/errmsg 签名,
+ * 2026-10-09 线上实证),errcode=0 才取链接。errcode≠0(如签名错 40029)
+ * 时 hash 可验真(网关用真 secret 签),验签通过后进错误分支上抛真实
+ * errmsg,不再被"验签失败"掩盖。
+ */
 export function parseCreateResponse(raw: unknown, secret: string): GatewayCreateResult {
   const res = raw as Record<string, unknown>;
   const flat: Record<string, string> = {};
@@ -113,7 +118,7 @@ export function parseCreateResponse(raw: unknown, secret: string): GatewayCreate
   if (!verifySign(flat, secret)) {
     throw new Error("虎皮椒下单响应验签失败(拒绝取链接,防篡改/钓鱼)");
   }
-  if (String(res.errno) !== "0") {
+  if (String(res.errcode) !== "0") {
     throw new Error(`虎皮椒下单失败: ${String(res.errmsg ?? "unknown")}`);
   }
   return {
