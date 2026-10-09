@@ -1,5 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- 品牌「一起AI」favicon:17 monogram 芯片(DESIGN-SPEC §5 / common.css §Logo;accent=#5e6ad2 即 --accent token 值) -->
+  <!-- 品牌「一起AI」favicon:17 monogram 芯片(DESIGN-SPEC §5 / common.css §Logo;accent=#5e6ad2 即 --accent token 值)。
+       「17」为 64 网格几何描边路径(笔画 7/64,等宽粗体神),不依赖设备字体;
+       favicon.ico(16/32/48,16px 档笔画加粗补偿)与 apple-icon.png(180 全出血)与本文件同源。 -->
   <rect width="64" height="64" rx="14" fill="#5e6ad2"/>
-  <text x="32" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700" letter-spacing="-2" fill="#ffffff">17</text>
+  <g stroke="#ffffff" stroke-width="7" fill="none">
+    <path d="M 13.5 23.5 L 20 19 L 20 45"/>
+    <path d="M 29 19 L 49.5 19 L 36.5 45"/>
+  </g>
 </svg>

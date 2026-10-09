@@ -106,11 +106,11 @@ export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
 /** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
 export const DB_BACKUP_CRON = "23 3 * * *";
 
-/** db-backup 队列 job name 契约(run 为缺省路径;手动触发 scripts/trigger-db-backup.ts 同名) */
+/** db-backup 队列 job name 契约(run 为缺省路径;手动触发 scripts/ops/db-backup-trigger.ts 同名) */
 export const DB_BACKUP_JOB_RUN = "run";
 
 /** embed-content 队列 job name 契约(reconcile 为缺省路径;手动触发
- * scripts/embed-backfill.ts 同名,回填与日常对账同一入口) */
+ * scripts/ops/embed-reconcile-trigger.ts 同名,回填与日常对账同一入口) */
 export const EMBED_JOB_RECONCILE = "reconcile";
 
 /** email 队列 job name 契约(send 为缺省路径;M21 批⓪) */

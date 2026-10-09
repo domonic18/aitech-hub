@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { cleanPostHtml } from "./clean-html";
 import { rewriteBase64Images } from "./data-uri-image";
 
-const FIXTURES = join(__dirname, "../../../scripts/migrate-wp/fixtures/wp-content");
+const FIXTURES = join(__dirname, "__fixtures__/wp-content");
 const readFixture = (name: string): string => readFileSync(join(FIXTURES, name), "utf8");
 
 describe("cleanPostHtml:注释规则(03 §4)", () => {

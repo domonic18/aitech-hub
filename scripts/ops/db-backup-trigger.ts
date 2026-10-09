@@ -1,5 +1,6 @@
 /**
  * 手动触发一次数据库备份(M19 批②):npm run backup:run
+ * @status ops
  * 入队 db-backup 队列 run job(与每日 03:23 调度同一路径),worker 进程执行
  * pg_dump → 备份桶;本脚本只入队并轮询结果,便于验收/恢复演练不等 cron。
  * 前置:.env 配 COS_* 五项;worker 进程在跑(npm run worker / compose worker)。
@@ -10,7 +11,7 @@ loadEnvConfig(process.cwd());
 
 async function main(): Promise<void> {
   // queue 模块静态依赖 env(import 即校验):须等 loadEnvConfig 落好 process.env 再求值,动态 import 兜时序
-  const { DB_BACKUP_JOB_RUN, QUEUE_DB_BACKUP, getQueue } = await import("../src/lib/queue");
+  const { DB_BACKUP_JOB_RUN, QUEUE_DB_BACKUP, getQueue } = await import("../../src/lib/queue");
   const queue = getQueue(QUEUE_DB_BACKUP);
   const job = await queue.add(DB_BACKUP_JOB_RUN, {}, { jobId: `db-backup-manual-${Date.now()}` });
   console.log(`已入队 db-backup job id=${job.id},等待 worker 执行…`);

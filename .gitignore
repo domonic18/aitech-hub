@@ -19,6 +19,9 @@ coverage/
 !/public/vditor/dist/
 !/public/vditor/dist/**
 
+# 品牌 favicon/apple-icon 资产入库(覆盖全局 ~/.gitignore_global 的 *.png)
+!src/app/apple-icon.png
+
 # 系统与日志
 .DS_Store
 *.log
@@ -27,7 +30,6 @@ coverage/
 # !/workspace/ 与 !/workspace/backups/ 用于覆盖全局 ~/.gitignore_global 的 workspace 规则
 /workspace/*
 !/workspace/
-scripts/migrate-wp/artifacts/
 *.tsbuildinfo
 
 # 备份目录保留占位(M6 pg_dump cron 落盘处);包体档案不入库,目录仅留 .gitkeep

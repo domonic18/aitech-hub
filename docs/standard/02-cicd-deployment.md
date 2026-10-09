@@ -49,9 +49,9 @@ make migrate   # npx prisma migrate deploy
 ## 3. 镜像(docker/Dockerfile)
 
 - 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
-- **构建信息注入**(2026-10-05):`npm run build` 经 `scripts/build-with-info.sh` 包装,`NEXT_PUBLIC_BUILD_REF`/`NEXT_PUBLIC_BUILD_TIME` 构建期内联客户端 bundle,页脚展示版本追踪行;CI build-args 传 `branch-sha` 与 UTC 时间,本地直跑回退 `git describe --always --dirty`(`.dockerignore` 排除 `.git`,容器内必须显式传参),均缺省页脚显示 dev
+- **构建信息注入**(2026-10-05):`npm run build` 经 `scripts/ops/build-with-info.sh` 包装,`NEXT_PUBLIC_BUILD_REF`/`NEXT_PUBLIC_BUILD_TIME` 构建期内联客户端 bundle,页脚展示版本追踪行;CI build-args 传 `branch-sha` 与 UTC 时间,本地直跑回退 `git describe --always --dirty`(`.dockerignore` 排除 `.git`,容器内必须显式传参),均缺省页脚显示 dev
 - 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema)+ `scripts/` 与 `src/`(ops 脚本如 `npm run admin` 以 tsx 直跑,依赖 src 源码;显式整拷,勿依赖 standalone 追踪);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
-- `.dockerignore` 排除 `.env`/`docs`/`e2e`/`scripts/migrate-wp/artifacts`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
+- `.dockerignore` 排除 `.env`/`docs`/`tests`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
 - **媒体目录不打进镜像**:compose 卷挂载,独立于发版
 
 ### 3.1 构建期无 DB 降级与启动预热(2026-09-30 实测定型)
@@ -103,7 +103,7 @@ redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 - **legacy 兜底差异(实现沉淀)**:兜底已前移到应用层路由——单段旧路径由 `(site)/[slug]` 页承接,`/category/*`、`/tag/*` 页内 fallback,`/legacy/[...path]` 路由保留;实测 `legacy_url_map` 内多段路径仅 3 条且全落在专用路由,nginx 无需 error_page 拦截(还会误伤 API 404)
 - **媒体直服两个 nginx 坑(实测沉淀,M6)**:①磁盘文件名为 percent-encoded(与应用侧 normalizeUrlPath 同因),`alias` 按解码后 URI 找文件必 404 → 用 `map $request_uri` 取未解码原始串拼路径;②alias 带变量时 nginx 仍追加"location 匹配后剩余 URI(已解码)",location 必须正则吃满整个 URI。M19 批④ 反代后该组坑整体消解:静态 `proxy_pass`(无 URI)对原始请求串零处理透传,COS 服务端 decode 一次即命中(桶 key 与 URL 路径同构)
 - **站点 conf 模板化(M19 批④)**:`docker/nginx/templates/aitech-hub.conf.template` 经 nginx 官方镜像 templates 机制启动时 envsubst 生成(仅替换已定义环境变量,nginx `$var` 原样保留),消费 `COS_MEDIA_HOST`(.env);镜像自带 default.conf 由 `conf.d/default.conf.mask` 文件级挂载顶替;`workspace/media` ro 挂载保留为回滚通道
-- **COS(M19)**:媒体桶(MEDIA_STORAGE=cos 时 web/worker 读写;nginx 匿名反代读)+ 备份桶(db-backup 每日 03:23);地域与服务器同域走内网;密钥子账号最小权限仅 `.env`;桶 lifecycle 由 `npm run cos:setup` 一次性设置(备份 30 天/杂项 90 天)
+- **COS(M19)**:媒体桶(MEDIA_STORAGE=cos 时 web/worker 读写;nginx 匿名反代读)+ 备份桶(db-backup 每日 03:23);地域与服务器同域走内网;密钥子账号最小权限仅 `.env`;桶 lifecycle 一次性设置已完成(备份 30 天/杂项 90 天;cos-setup 脚本 2026-10-09 随迁移完结清理,git 历史可查)
 - compose prod:project 名隔离 + `mem_limit` 全线(web 768m / worker 512m / pg 512m / redis 128m / nginx 128m,2C4G 起步值)+ `restart: unless-stopped` + 日志轮转(json-file 10m×3)+ healthcheck(web `node fetch /api/health/`(slim 无 curl)、pg `pg_isready`、redis `ping`)
 - **部署顺序纪律由编排表达**:web/worker `depends_on` pg+redis healthy;worker 额外等 web healthy(web entrypoint 先跑 `prisma migrate deploy`,healthy 即 schema 就绪);nginx 等 web healthy
 - 镜像:`image: ${APP_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub:latest}`,服务器默认拉 TCR,本地验证 `APP_IMAGE=<local> 覆盖`;pg 口令经 `.env` 的 `POSTGRES_PASSWORD` 插值(web/worker 的 DATABASE_URL 由 compose 拼出,覆盖 .env 里的 dev 地址)
@@ -126,7 +126,7 @@ redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 
 **切换验收清单**(全部通过才算切完;任一失败 → 立即回滚):
 
-- [ ] 抽 30 篇旧文章 URL(中文编码 slug)→ 200 且正文/图片完整(脚本自动跑:`npm run qa:acceptance -- --base https://17aitech.com --count 30 --seed 20261003`;默认 base localhost:3000,同 seed 可重放)
+- [ ] 抽 30 篇旧文章 URL(中文编码 slug)→ 200 且正文/图片完整(脚本自动跑:`npm run qa:acceptance -- --base https://17aitech.com --count 30 --seed 20261003`;qa 脚本 2026-10-09 已从仓库清理,重放自 git 历史恢复;默认 base localhost:3000,同 seed 可重放)
 - [ ] 抽 30 个资讯 slug → 301 /articles;`/feed/` → 301 `/feed.xml`
 - [ ] 首页/列表/归档/搜索/关于 200;sitemap.xml、robots.txt、feed.xml 内容正确
 - [ ] admin 密码登录 + 后台守卫可见(用户短信登录三期开启——短信资质解锁后,requirement §3.3)
@@ -145,7 +145,7 @@ redis / postgres  仅内网,不发布端口(redis 开 AOF + 数据卷)
 | .env | 变更时 | 手动归档(密钥不入 git 不入桶) | 永久 |
 
 - Redis 不备份:队列与调度器 upsert 幂等自愈,数据语义可重建。
-- 桶初始化(新环境一次性):`npm run cos:setup`(双桶连通探测 + lifecycle 设置)。
+- 桶初始化(新环境一次性):cos-setup 脚本已随 M19 完结清理(git 历史可查)——在 COS 控制台手工设 lifecycle(备份桶 30 天/杂项 90 天),或自 git 历史恢复脚本执行(含双桶连通探测)。
 - dump 文件名 `aitech_hub-<YYYYMMDD-HHmm>.dump`,字典序即时间序,桶内取"最大名"即最新。
 
 **恢复步骤**(演练与真灾同序;演练 = 本机空 PG 容器走一遍,M19 批⑤):

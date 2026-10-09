@@ -8,9 +8,11 @@
  * 自包含脚本:不用 @/ 别名(worker 容器无 tsconfig 解不开),PrismaClient
  * 直连;连接串只从 env 读,不打印。幂等:已无实体的行天然不命中。
  *
+ * @status oneoff(生产存量清洗执行后删除本目录,git 历史存档)
+ *
  * 用法:
- *   npx tsx scripts/decode-telegram-titles.ts           # dry-run(默认,只读)
- *   npx tsx scripts/decode-telegram-titles.ts --apply   # 写库
+ *   npx tsx scripts/oneoff/telegram-decode/run.ts           # dry-run(默认,只读)
+ *   npx tsx scripts/oneoff/telegram-decode/run.ts --apply   # 写库
  */
 import { createHash } from "node:crypto";
 
