@@ -1,9 +1,9 @@
 /**
  * 数据库每日备份(M19 批②;M6「备份异机存放」落地,standard/02 §6):
  * pg_dump -Fc(镜像内置 postgresql-client-16)→ 本地 backups/db/ → 备份桶
- * backups/db/<名>(桶侧 30 天 lifecycle 清,scripts/cos-setup 设);本地保留最近 3 份;
- * 顺带 ssl 证书档(KB 级)入桶 misc/。Redis 不备份:队列/调度器 upsert 幂等自愈,
- * 统计缓冲可重建。失败抛错 → BullMQ failed 队列可见,不静默。
+ * backups/db/<名>(桶侧 30 天 lifecycle 清,M19 批② 一次性设置);
+ * 本地保留最近 3 份;顺带 ssl 证书档(KB 级)入桶 misc/。Redis 不备份:队列/调度器
+ * upsert 幂等自愈,统计缓冲可重建。失败抛错 → BullMQ failed 队列可见,不静默。
  * 副作用注入(deps):单测不起真库真桶;生产走缺省装配。
  */
 import { execFile } from "node:child_process";

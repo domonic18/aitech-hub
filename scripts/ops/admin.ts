@@ -1,6 +1,7 @@
 /**
  * admin 账号创建/重置密码(arch/05-services §3.1,M4 交付):
  *   npm run admin
+ * @status ops
  * 交互式输入手机号与密码;手机号已存在则重置密码并提为 admin(upsert 语义,重跑即改密)。
  * 密码不回显;bcrypt 10 轮;`legacy_phpass` 不参与校验(纯审计)。
  */
@@ -8,9 +9,9 @@ import { loadEnvConfig } from "@next/env";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { stdin, stdout } from "node:process";
-import { ADMIN_ROLE } from "../src/lib/auth/constants";
-import { maskPhone } from "../src/lib/auth/mask";
-import { PHONE_RE, validatePassword } from "../src/lib/auth/rules";
+import { ADMIN_ROLE } from "../../src/lib/auth/constants";
+import { maskPhone } from "../../src/lib/auth/mask";
+import { PHONE_RE, validatePassword } from "../../src/lib/auth/rules";
 
 loadEnvConfig(process.cwd());
 

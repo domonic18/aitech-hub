@@ -27,7 +27,6 @@ coverage/
 # !/workspace/ 与 !/workspace/backups/ 用于覆盖全局 ~/.gitignore_global 的 workspace 规则
 /workspace/*
 !/workspace/
-scripts/migrate-wp/artifacts/
 *.tsbuildinfo
 
 # 备份目录保留占位(M6 pg_dump cron 落盘处);包体档案不入库,目录仅留 .gitkeep

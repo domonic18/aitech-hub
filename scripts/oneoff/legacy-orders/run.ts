@@ -8,10 +8,12 @@
  * 损坏);order_no 唯一索引天然幂等,--apply 重跑对已导入单只跳过。
  * 文章映射走 content_post.wp_post_id;wp_user_id 命中 user_account。
  *
+ * @status oneoff(生产导入执行后删除本目录,git 历史存档;7 单 36131 等 D2 补迁后重跑补齐)
+ *
  * 用法:
  *   LEGACY_WP_DB_URL=mysql://user:pass@host:port/wordpress \
- *     npx tsx scripts/import-legacy-orders.ts            # dry-run(默认,只读双侧)
- *   LEGACY_WP_DB_URL=… npx tsx scripts/import-legacy-orders.ts --apply
+ *     npx tsx scripts/oneoff/legacy-orders/run.ts            # dry-run(默认,只读双侧)
+ *   LEGACY_WP_DB_URL=… npx tsx scripts/oneoff/legacy-orders/run.ts --apply
  *
  * 报告输出:可导入/跳过/阻塞明细 + 金额合计;36131 未补迁(D2)前其订单
  * 阻塞,补迁后重跑自动补齐。连接串只从 env 读,不打印不入库。
@@ -45,7 +47,7 @@ async function main(): Promise<void> {
 
   const [{ createConnection }, { prisma }] = await Promise.all([
     import("mysql2/promise"),
-    import("../src/lib/db"),
+    import("../../../src/lib/db"),
   ]);
 
   // ── 1. 读旧库(bigint 全字符串化;utf8mb4 显式声明) ──

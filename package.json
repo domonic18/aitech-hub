@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3000",
-    "build": "sh scripts/build-with-info.sh",
+    "build": "sh scripts/ops/build-with-info.sh",
     "start": "next start -p 3000",
     "worker": "tsx --env-file=.env worker/index.ts",
     "worker:build": "tsc -p tsconfig.worker.json && tsc-alias -p tsconfig.worker.json",
@@ -18,15 +18,10 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "admin": "tsx scripts/admin.ts",
-    "qa:acceptance": "tsx --env-file=.env scripts/qa/acceptance.ts",
+    "admin": "tsx scripts/ops/admin.ts",
     "prepare": "husky",
-    "cos:setup": "tsx scripts/cos-setup.ts",
-    "backup:run": "tsx scripts/trigger-db-backup.ts",
-    "embed:run": "tsx scripts/embed-backfill.ts",
-    "cos:migrate": "tsx scripts/cos-migrate/upload.ts",
-    "cos:verify": "tsx scripts/cos-migrate/verify.ts",
-    "cos:mark": "tsx scripts/cos-migrate/mark.ts"
+    "backup:run": "tsx scripts/ops/db-backup-trigger.ts",
+    "embed:run": "tsx scripts/ops/embed-reconcile-trigger.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

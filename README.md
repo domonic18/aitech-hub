@@ -22,7 +22,7 @@ make dev     # http://localhost:3000(健康检查:/api/health)
 ## 结构速览
 
 - `src/app/(site|user|admin)/` 页面;`src/app/api/` Route Handlers;`src/lib/` 业务库
-- `prisma/` schema 唯一真相源 + 迁移 SQL;`worker/` 异步任务;`scripts/migrate-wp/` WP 迁移(一期 M2,已完成)
+- `prisma/` schema 唯一真相源 + 迁移 SQL;`worker/` 异步任务;`scripts/` 分 ops/(长期运维)与 oneoff/(一次性,应用后删除)
 - `docs/` 设计文档(requirement 需求基准 / arch 终态方案 / standard 稳定规范 / plan 迭代状态)
 
 ## 文档

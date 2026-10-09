@@ -7,18 +7,18 @@
 
 | 层 | 框架 | 位置 | 依赖 | CI |
 |----|------|------|------|-----|
-| 单测 | Vitest | `src/**/*.test.ts`、`scripts/migrate-wp/**/*.test.ts` | 无 | 每次提交 |
+| 单测 | Vitest | `src/**/*.test.ts`、`scripts/**/*.test.ts` | 无 | 每次提交 |
 | 集成/API | Vitest | 与单测同层 `src/**/*.integration.test.ts`(M4 引入;vitest include 天然覆盖,`test:unit` 按文件名排除) | dev compose 的 PG/Redis | 本地跑;CI 接入随 M4 |
-| E2E 冒烟 | Playwright | `e2e/` | 本地全栈(web+worker+pg+redis) | 本地 + 切换日前必跑;CI 接入随 M6 |
-| 迁移对账 | verify.ts | `scripts/migrate-wp/` | 源 WP 库 + 目标 PG | 切换日前必跑(人工触发) |
+| E2E 冒烟 | Playwright | `tests/e2e/` | 本地全栈(web+worker+pg+redis) | 本地 + 切换日前必跑;CI 接入随 M6 |
+| 迁移对账 | verify.ts | `scripts/migrate-wp/`(M6 切换完成后已清理,git 历史存档) | 源 WP 库 + 目标 PG | 已完成(M2 七条全 PASS) |
 | 迁移重放守卫 | CI job | `.github/workflows/ci.yml` | 临时 PG 容器 | 每次 push/PR(无条件,同范例 db-migration-guard) |
 
 ## 2. 单测(Vitest,质量红线,缺一不绿)
 
 > 环境加载:根 `vitest.setup.ts`(`vitest.config.ts` setupFiles)显式 `loadEnvConfig` 载入 `.env`——`vi.mock("../db")` 会切断 @prisma/client 运行时隐式 dotenv 的加载副作用,env 校验必须显式化,否则 mock 协作方的套件级炸 DATABASE_URL undefined(2026-10-06 K2 实修)。
 
-1. **`normalizeSlug` 全边界**(编码↔解码往返、二次编码、`%` 字面量、`+`/空格)——arch/07-frontend §2 红线;`scripts/migrate-wp` 引用同一实现,天然同源
-2. **HTML 清洗每条规则**(src/lib/content/clean-html.ts 白名单规则):Gutenberg 注释剥离、短码转换、标签/属性白名单、内链相对化——正例+反例各一;测试数据用 WP 导出真实切片(脱敏 fixtures)
+1. **`normalizeSlug` 全边界**(编码↔解码往返、二次编码、`%` 字面量、`+`/空格)——arch/07-frontend §2 红线
+2. **HTML 清洗每条规则**(src/lib/content/clean-html.ts 白名单规则):Gutenberg 注释剥离、短码转换、标签/属性白名单、内链相对化——正例+反例各一;测试数据用 WP 导出真实切片(脱敏 fixtures,`src/lib/content/__fixtures__/wp-content/`)
 3. 会话:签发/校验/轮换/吊销(jose + mock Redis);频控计数边界
 4. 引用解析 `lib/media/refs.ts`:从 md/html 提取媒体路径、封面纳入、去重
 5. legacy 映射:命中 301 / NULL→410 / 未命中 404
@@ -51,11 +51,10 @@
 
 > seed 不在 CI 门禁内:幂等性由 upsert 实现保证,本地 `make seed` 重复执行可验证(2026-09-30 与 ci.yml 对齐)。
 
-## 6. 迁移对账(scripts/migrate-wp/verify.ts)
+## 6. 迁移对账(M2/M6,已完成)
 
-- 带**退出码的验收脚本**:PASS→0,FAIL→非 0,报告落 `artifacts/verify_report.json`
-- 与 requirement §7 七条验收一一对应;`run.ts` 实跑后全绿才允许 M6 切换
-- 抽样可复现:`--seed` 固定随机种子,报告记录种子与命中清单
+- M2 迁移对账脚本(verify.ts,带退出码:PASS→0 / FAIL→非 0,报告落 `artifacts/verify_report.json`;`--seed` 抽样可复现)与 requirement §7 七条验收一一对应,切换前实跑全绿
+- 脚本已随 M6 切换完结从仓库清理(2026-10-09,git 历史存档);后续数据对账按 arch/03 §4 订正规范走 `scripts/oneoff/`
 
 ## 7. 发布门槛(与范例同款口径)
 

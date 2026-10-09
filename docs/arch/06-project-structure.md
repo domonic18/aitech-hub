@@ -83,12 +83,13 @@ aitech-hub/
 │   ├── index.ts                  # 队列注册、优雅退出
 │   └── processors/               # media-process.ts(sharp 缩略图/WebP)、二期: cos-sync、crawler
 │
-├── scripts/
-│   ├── setup-local.sh            # cp .env / npm install / compose up pg,redis / migrate / seed
-│   └── migrate-wp/               # TS 一次性迁移:extract(mysql2)/ transform(cheerio,共享 src/lib/slug)/
-│                                 #   media-manifest / load(pg)/ verify / run(dry-run 支持)
-│                                 #   fixtures/ WP 真实导出 HTML(clean-html 等单测共用)
-├── e2e/                          # Playwright:首页/中文 slug 文章页/301/登录/sitemap
+├── scripts/                      # 两层纪律:ops/ 长期运维(npm 绑定)/ oneoff/ 一次性(应用后删,git 历史存档)
+│   ├── ops/                      # admin.ts(建号)/ db-backup-trigger.ts / embed-reconcile-trigger.ts /
+│   │                             #   build-with-info.sh / setup-local.sh(cp .env / install / compose up / migrate / seed)
+│   └── oneoff/                   # 一次性订正/清洗脚本(按 feature 子目录,docblock @status oneoff)
+│       ├── legacy-orders/        # 旧 WP 订单导入(M21 批⑥,生产导入执行后删)
+│       └── telegram-decode/      # 电报流存量标题实体解码(2026-10-09,生产清洗执行后删)
+├── tests/e2e/                    # Playwright:首页/中文 slug 文章页/301/登录/sitemap
 ├── docker/
 │   ├── Dockerfile                # 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)
 │   ├── entrypoint.sh             # 容器入口:web 先 migrate deploy + ISR 预热;worker 直起

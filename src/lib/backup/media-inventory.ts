@@ -1,6 +1,7 @@
 /**
- * 媒体 COS 迁移对账纯函数(M19 批③):目录清点、本地/桶清单差集、抽样。
- * scripts/cos-migrate/* 消费;独立成库便于单测与 worker/脚本两侧共用。
+ * 媒体清单对账纯函数(M19 批③):目录清点、本地/桶清单差集、抽样。
+ * 原消费方 scripts/cos-migrate/* 已随媒体迁移完结删除(git 历史可查);
+ * 当前仅单测消费,留作后续媒体对账场景复用。
  * key 约定:相对 MEDIA_DIR 的 POSIX 路径,percent-encoded 原样不 decode(storage.ts 红线)。
  */
 import { readdir } from "node:fs/promises";
