@@ -1,6 +1,7 @@
 /**
- * tools 单测(prisma/unified-search 必 mock):只读工具面构成(四工具,名字
- * 收口)+ get_time 输出形状(iso/beijing/timezone,北京时区显式锚定不随机器漂)。
+ * tools 单测(prisma/unified-search 必 mock):工具面构成(名字收口;K2.6 四
+ * 只读工具 + M22 批⑤ submit_feedback 唯一可写口)+ get_time 输出形状
+ * (iso/beijing/timezone,北京时区显式锚定不随机器漂)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,13 +23,14 @@ beforeEach(() => {
 });
 
 describe("AGENT_TOOLS", () => {
-  it("只读面收口为四工具,名字与顺序固定", () => {
-    expect(AGENT_TOOLS).toHaveLength(4);
+  it("工具面收口为五只(四只读 + submit_feedback 唯一可写),名字与顺序固定", () => {
+    expect(AGENT_TOOLS).toHaveLength(5);
     expect(AGENT_TOOLS.map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
       "read_repo",
       "get_time",
+      "submit_feedback",
     ]);
   });
 });
