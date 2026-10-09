@@ -25,7 +25,7 @@ import {
   type VideoPlatform,
 } from "./constants";
 import { matchBlocklist, matchHeuristics, type BlocklistWord, type FilterHit } from "./filter";
-import { canonicalUrl, contentHash, truncateSummary } from "./normalize";
+import { canonicalUrl, contentHash, decodeHtmlEntities, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
 import { douyinAdapter } from "./adapters/video/douyin";
 import {
@@ -76,7 +76,8 @@ async function ingestVideoItem(
   interpretReady: boolean,
 ): Promise<"inserted" | "filtered" | "duplicated"> {
   const url = canonicalUrl(item.url);
-  const title = item.title.slice(0, 500);
+  // 实体解码先行(与 ingest.ts 同口径,2026-10-09 验收反馈问题3)
+  const title = decodeHtmlEntities(item.title).trim().slice(0, 500);
   const hash = contentHash(title, url);
 
   const exists = await prisma.telegram.findUnique({
@@ -85,9 +86,10 @@ async function ingestVideoItem(
   });
   if (exists) return "duplicated";
 
-  const summary = truncateSummary(item.caption || item.title);
+  const caption = decodeHtmlEntities(item.caption ?? "").trim();
+  const summary = truncateSummary(caption || title);
   const hit: FilterHit | null =
-    matchBlocklist(title, summary, words) ?? matchHeuristics(title, item.caption ?? "");
+    matchBlocklist(title, summary, words) ?? matchHeuristics(title, caption);
 
   try {
     const created = await prisma.telegram.create({

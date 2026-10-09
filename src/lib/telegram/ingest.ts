@@ -32,7 +32,7 @@ import {
   type FilterHit,
 } from "./filter";
 import { describeCrawlError } from "./crawl-error";
-import { canonicalUrl, contentHash, truncateSummary } from "./normalize";
+import { canonicalUrl, contentHash, decodeHtmlEntities, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
 import { isSummarizeReady, markPendingAndEnqueueSummarize } from "./summarize-text";
 
@@ -67,8 +67,12 @@ async function ingestItem(
   words: readonly BlocklistWord[],
   summarizeReady: boolean,
 ): Promise<IngestVerdict> {
+  // 实体解码先行(2026-10-09 验收反馈问题3):feed 双重转义致标题残留
+  // &#8217; 类数字实体,入库/去重/过滤/摘要统一用解码后的归一形态
+  const title = decodeHtmlEntities(item.title).trim();
+  const summaryCandidate = decodeHtmlEntities(item.summaryCandidate ?? "").trim();
   const url = canonicalUrl(item.url);
-  const hash = contentHash(item.title, url);
+  const hash = contentHash(title, url);
 
   const exists = await prisma.telegram.findUnique({
     where: { contentHash: hash },
@@ -76,16 +80,15 @@ async function ingestItem(
   });
   if (exists) return "duplicated";
 
-  const summary = truncateSummary(item.summaryCandidate || item.title);
+  const summary = truncateSummary(summaryCandidate || title);
   const hit: FilterHit | null =
-    matchBlocklist(item.title, summary, words) ??
-    matchHeuristics(item.title, item.summaryCandidate);
+    matchBlocklist(title, summary, words) ?? matchHeuristics(title, summaryCandidate);
 
   try {
     const created = await prisma.telegram.create({
       data: {
         sourceId,
-        title: item.title,
+        title,
         summary,
         url,
         publishedAt: item.publishedAt,
@@ -162,8 +165,15 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     // summarize 就绪整轮 resolve 一次(镜像 ingest-video 的 interpretReady,省逐条双查)
     const summarizeReady = await isSummarizeReady();
     for (const item of items.slice(0, CRAWL_MAX_ITEMS_PER_RUN)) {
-      // 主题外直接跳过(查重/落库都不做;观测走 topicSkipped 计数)
-      if (!matchesIncludeKeywords(item.title, item.summaryCandidate ?? "", includeKeywords)) {
+      // 主题外直接跳过(查重/落库都不做;观测走 topicSkipped 计数;
+      // 准入匹配同用解码后形态,与 ingestItem 口径一致)
+      if (
+        !matchesIncludeKeywords(
+          decodeHtmlEntities(item.title),
+          decodeHtmlEntities(item.summaryCandidate ?? ""),
+          includeKeywords,
+        )
+      ) {
         outcome.topicSkipped += 1;
         continue;
       }

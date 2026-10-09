@@ -53,6 +53,23 @@ const ENTITIES: Record<string, string> = {
   "&nbsp;": " ",
 };
 
+/**
+ * HTML 实体解码(2026-10-09 验收反馈问题3):feed 双重转义(fast-xml-parser
+ * 解一层后标题仍残留 &#8217; 等数字实体)→ 入库前归一。命名实体取常用集,
+ * 数字(&#nnn;)/十六进制(&#xhhh;)全收;替换链式递进,「&amp;#8217;」这类
+ * 二次编码随之落到意图字符(’),正文里合法的「&amp;」文本不受影响。
+ */
+export function decodeHtmlEntities(text: string): string {
+  if (!text.includes("&")) return text;
+  return text
+    .replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (m) => ENTITIES[m] ?? m)
+    .replace(/&#x?([0-9a-fA-F]+);/gi, (m, h: string) => {
+      // 数字(缺省十进制)/十六进制码点;越界码点(非法实体)原样保留
+      const n = /^&#x/i.test(m) ? Number.parseInt(h, 16) : Number(h);
+      return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    });
+}
+
 /** HTML 剥离 + 实体解码 + 空白折叠(摘要候选清洗) */
 export function stripHtml(html: string): string {
   return html
