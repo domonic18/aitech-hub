@@ -3,16 +3,20 @@
 /**
  * 前台注册表单(M21 批⑤,提案 §8 /register):用户名+邮箱+密码 → 注册成功
  * 即提示查收验证邮件(D1:注册→认证→登录,注册不自动登录)。
+ * 回跳意图(2026-10-09 验收反馈):站内链接带 next 续传;注册成功时写入
+ * sessionStorage 便签,兜底「离站点邮件链接→回来登录」丢参的一段。
  */
 import Link from "next/link";
 import { useState } from "react";
+
+import { savePostLoginNext, withNext } from "@/lib/auth/next-path";
 
 const FIELD =
   "w-full rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-text-1 placeholder:text-text-3 focus:border-line-hover focus:outline-none";
 const BTN =
   "w-full cursor-pointer rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60";
 
-export default function SiteRegisterForm(): React.ReactElement {
+export default function SiteRegisterForm({ nextPath }: { nextPath: string }): React.ReactElement {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,7 +36,9 @@ export default function SiteRegisterForm(): React.ReactElement {
       });
       const body = (await res.json()) as { code: number; message?: string };
       if (body.code === 0) {
-        setSent(true); // 验证邮件已发(worker 异步),不自动登录
+        // 验证邮件已发(worker 异步),不自动登录;回跳意图入便签,登录页兜底恢复
+        savePostLoginNext(nextPath);
+        setSent(true);
         return;
       }
       setError(body.message ?? `注册失败(${res.status})`);
@@ -50,7 +56,7 @@ export default function SiteRegisterForm(): React.ReactElement {
         <p className="text-xs text-text-2">
           请查收邮箱(含垃圾箱)完成认证,30 分钟内有效;认证后即可登录。
         </p>
-        <Link href="/login" className="text-xs text-accent hover:underline">
+        <Link href={withNext("/login", nextPath)} className="text-xs text-accent hover:underline">
           返回登录
         </Link>
       </div>
@@ -106,7 +112,7 @@ export default function SiteRegisterForm(): React.ReactElement {
       </button>
       <p className="text-center text-xs text-text-3">
         已有账号?
-        <Link href="/login" className="text-accent hover:underline">
+        <Link href={withNext("/login", nextPath)} className="text-accent hover:underline">
           直接登录
         </Link>
       </p>

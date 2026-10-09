@@ -5,6 +5,7 @@
 import type { Metadata } from "next";
 
 import SiteLoginForm from "@/components/auth/SiteLoginForm";
+import { normalizeNextPath } from "@/lib/auth/next-path";
 
 export const metadata: Metadata = {
   title: "登录",
@@ -18,8 +19,7 @@ export default async function LoginPage({
 }): Promise<React.ReactElement> {
   const { next } = await searchParams;
   // open redirect 防线:仅接受站内根相对路径(拒 //、/\、外链)
-  const nextPath =
-    next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+  const nextPath = normalizeNextPath(next);
 
   return (
     <section className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-16">
