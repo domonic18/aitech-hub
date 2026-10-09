@@ -19,6 +19,9 @@ coverage/
 !/public/vditor/dist/
 !/public/vditor/dist/**
 
+# 品牌 favicon/apple-icon 资产入库(覆盖全局 ~/.gitignore_global 的 *.png)
+!src/app/apple-icon.png
+
 # 系统与日志
 .DS_Store
 *.log
