@@ -16,3 +16,18 @@ export function previewMarkdown(md: string, limit: number = PREVIEW_CHAR_LIMIT):
   const fences = (head.match(/^```/gm) ?? []).length;
   return fences % 2 === 1 ? `${head}\n\`\`\`` : head;
 }
+
+/**
+ * 门禁文章的 GEO 截断说明(2026-10-09 验收反馈问题2):/post/<id>-<slug>.md
+ * 与 llms-full 对门禁文只给同一份服务端预览(与 ISR 页同源,无 cloaking),
+ * 尾部附本说明告知智能体全文获取条件。md:纯 markdown 供 md 直出;
+ * text:llms.txt 目录行的行内标注。
+ */
+export function gateNoticeMd(gate: "paid" | "login", url: string): string {
+  const reason = gate === "paid" ? "本文为付费内容" : "本文为登录可见内容(登录后免费阅读)";
+  return `---\n> ${reason},以上为预览。全文请访问:${url}${gate === "paid" ? "(解锁后阅读)" : ""}`;
+}
+
+export function gateNoticeText(gate: "paid" | "login"): string {
+  return gate === "paid" ? "[付费文章,仅预览]" : "[登录可见,仅预览]";
+}

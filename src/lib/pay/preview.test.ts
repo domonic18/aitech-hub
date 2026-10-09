@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { previewMarkdown } from "@/lib/pay/preview";
+import { gateNoticeMd, gateNoticeText, previewMarkdown } from "@/lib/pay/preview";
 
 describe("previewMarkdown(M21 门禁预览)", () => {
   it("短文原样返回", () => {
@@ -28,5 +28,18 @@ describe("previewMarkdown(M21 门禁预览)", () => {
     const md = `${"a".repeat(150)}\n\`\`\`\ncode\n\`\`\`\n${"b".repeat(150)} 泄漏词`;
     const out = previewMarkdown(md, 200);
     expect(out.match(/^```/gm)?.length).toBe(2);
+  });
+});
+
+describe("gateNotice(GEO 门禁说明,2026-10-09 验收反馈问题2)", () => {
+  it("paid/login 文案与链接形态", () => {
+    expect(gateNoticeMd("paid", "https://17aitech.com/post/1-a/")).toBe(
+      "---\n> 本文为付费内容,以上为预览。全文请访问:https://17aitech.com/post/1-a/(解锁后阅读)",
+    );
+    expect(gateNoticeMd("login", "https://x/post/1/")).toBe(
+      "---\n> 本文为登录可见内容(登录后免费阅读),以上为预览。全文请访问:https://x/post/1/",
+    );
+    expect(gateNoticeText("paid")).toBe("[付费文章,仅预览]");
+    expect(gateNoticeText("login")).toBe("[登录可见,仅预览]");
   });
 });
