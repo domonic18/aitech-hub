@@ -28,3 +28,8 @@ export function formatCnTime(date: Date): string {
 export function statsDay(now: Date = new Date()): string {
   return formatCnDate(now);
 }
+
+/** 当前统计月(YYYY-MM,北京时区):Token 月度额度 periodKey 同源口径(M22) */
+export function statsMonth(now: Date = new Date()): string {
+  return statsDay(now).slice(0, 7);
+}
