@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * 解锁卡(M21 批③,门禁客户端 island):ISR 预览页挂载后查 /api/pay/access
- * ——已持有权益 → 拉全文(/api/pay/content,no-store)原位替换预览;未持有
- * 按收银台形态渲染:off=联系站长 / 未登录=登录引导(D1)/ mock=模拟支付 /
- * xunhu=创建订单跳收银链。预览正文由服务端组件传入,本组件永不回退展示全文。
+ * 解锁卡(M21 批③;补齐批加登录可见档与销量):ISR 预览页挂载后查
+ * /api/pay/access——已持有权益(付费权益/登录可见文已登录/admin)→ 拉全文
+ * (/api/pay/content,no-store)原位替换预览;未持有按档位渲染:
+ * login=登录引导(仿旧站 unlock_type=1)/ paid=off 联系站长、未登录引导、
+ * mock 模拟支付、xunhu 跳收银链。预览由服务端传入,本组件永不回退展示全文。
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -20,15 +21,22 @@ interface AccessState {
 const FALLBACK_PRICE = "5.00";
 
 export default function PayGateCard({
+  gate = "paid",
   postId,
   price,
+  salesCount = 0,
+  nextPath,
   previewMd,
-  previewHtml,
 }: {
+  gate?: "paid" | "login";
   postId: string;
   price: string;
+  /** 有效购买人数(付费档展示「N 人已购买」,仿旧站 unlock_sales;ISR 滞后可接受) */
+  salesCount?: number;
+  /** 登录成功回跳路径(登录档按钮) */
+  nextPath?: string;
+  /** 服务端截断预览(md 形态);全文永不进 RSC payload(2026-10-09 收口) */
   previewMd: string | null;
-  previewHtml: string | null;
 }) {
   const [access, setAccess] = useState<AccessState | null>(null);
   const [full, setFull] = useState<{ contentMd: string | null; contentHtml: string | null } | null>(
@@ -108,14 +116,51 @@ export default function PayGateCard({
     );
   }
 
+  const loginHref = nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login";
+
+  if (gate === "login") {
+    return (
+      <div className="mt-8">
+        <div className="prose pointer-events-none select-none opacity-60">
+          <ArticleBody contentMd={previewMd} contentHtml={null} />
+        </div>
+        <div className="relative -mt-10 flex flex-col items-center gap-2 rounded-md border border-line bg-panel px-6 py-5">
+          <p className="text-sm text-text-2">本文为登录可见内容,登录后免费阅读全文</p>
+          {access === null ? (
+            <button
+              type="button"
+              disabled
+              className="rounded-sm bg-accent/50 px-4 py-2 text-xs text-white"
+            >
+              加载中…
+            </button>
+          ) : access.loggedIn ? (
+            <p className="text-[11px] text-text-3">{error ?? "正在加载正文…"}</p>
+          ) : (
+            <Link
+              href={loginHref}
+              className="rounded-sm bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent-hover"
+            >
+              登录后查看全文
+            </Link>
+          )}
+          {error && access !== null && !access.loggedIn && (
+            <p className="font-mono text-[11px] text-red">{error}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-8">
       <div className="prose pointer-events-none select-none opacity-60">
-        <ArticleBody contentMd={previewMd} contentHtml={previewHtml} />
+        <ArticleBody contentMd={previewMd} contentHtml={null} />
       </div>
       <div className="relative -mt-10 flex flex-col items-center gap-2 rounded-md border border-line bg-panel px-6 py-5">
         <p className="text-sm text-text-2">本文为付费内容,剩余部分解锁后阅读</p>
         <p className="font-mono text-lg font-semibold text-accent">¥{price || FALLBACK_PRICE}</p>
+        {salesCount > 0 && <p className="text-[11px] text-text-3">{salesCount} 人已购买</p>}
         {access && !access.hasAccess ? (
           <button
             type="button"

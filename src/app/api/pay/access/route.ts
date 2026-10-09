@@ -8,6 +8,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { readSessionUser } from "@/lib/auth/session";
+import { prisma } from "@/lib/db";
 import { apiEnvelope } from "@/lib/http/response";
 import { hasValidPurchase } from "@/lib/pay/entitlement";
 import { getPayGateway } from "@/lib/pay/gateway";
@@ -26,8 +27,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!session) {
     return apiEnvelope(0, "ok", { loggedIn: false, hasAccess: false, mode });
   }
-  // admin 与 content API 同口径豁免(后台抽检付费内容展示)
+  // 门禁档位(补齐批):登录可见文已登录即放行;付费文验权益;admin 豁免(content API 同口径)
+  const post = await prisma.post.findUnique({
+    where: { id: parsed.data.postId },
+    select: { isPurchasable: true, isLoginRequired: true },
+  });
   const hasAccess =
-    session.role === "admin" || (await hasValidPurchase(BigInt(session.sub), parsed.data.postId));
+    session.role === "admin" ||
+    post?.isLoginRequired === true ||
+    (post?.isPurchasable === true &&
+      (await hasValidPurchase(BigInt(session.sub), parsed.data.postId)));
   return apiEnvelope(0, "ok", { loggedIn: true, hasAccess, mode });
 }

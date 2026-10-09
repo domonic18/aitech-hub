@@ -55,3 +55,8 @@ export async function hasValidPurchase(userId: bigint, postId: bigint): Promise<
   });
   return row !== null && row.revokedAt === null;
 }
+
+/** 有效购买人数(补齐批:详情页解锁卡「N 人已购买」,仿旧站 unlock_sales;ISR 快照滞后可接受) */
+export async function countValidPurchases(postId: bigint): Promise<number> {
+  return prisma.contentPostPurchase.count({ where: { postId, revokedAt: null } });
+}

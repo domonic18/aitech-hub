@@ -23,15 +23,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const isAdmin = session.role === "admin";
   const userId = BigInt(session.sub);
-  if (!isAdmin && !(await hasValidPurchase(userId, parsed.data.postId))) {
-    return apiEnvelope(403, "未持有该文章权益");
-  }
 
   const post = await prisma.post.findFirst({
     where: { id: parsed.data.postId, status: "published", publishedAt: { not: null } },
-    select: { contentMd: true, contentHtml: true },
+    select: { contentMd: true, contentHtml: true, isPurchasable: true },
   });
   if (!post) return apiEnvelope(404, "文章不存在");
+  // 仅付费文验权益;登录可见文(补齐批)已登录即放行(本 API 已要求登录)
+  if (!isAdmin && post.isPurchasable && !(await hasValidPurchase(userId, parsed.data.postId))) {
+    return apiEnvelope(403, "未持有该文章权益");
+  }
 
   return NextResponse.json(
     { code: 0, message: "ok", data: { contentMd: post.contentMd, contentHtml: post.contentHtml } },

@@ -16,6 +16,7 @@ const LIST_SELECT = {
   coverPath: true,
   viewsCount: true,
   isPinned: true,
+  isPurchasable: true, // M21 补齐批:列表卡付费徽标
   publishedAt: true,
   updatedAt: true,
   seoDescription: true,
@@ -128,7 +129,7 @@ export async function listPostSegmentsForPrerender(): Promise<string[]> {
   }
 }
 
-/** sitemap/feed/llms 全量投影(轻字段;updatedAt 作 lastmod) */
+/** sitemap/feed/llms 全量投影(轻字段;updatedAt 作 lastmod;门禁字段供 GEO 面截断) */
 export async function listAllPostsForSeo() {
   return prerenderSafe("posts.allForSeo", [], () =>
     prisma.post.findMany({
@@ -141,6 +142,8 @@ export async function listAllPostsForSeo() {
         seoDescription: true,
         contentMd: true,
         contentHtml: true,
+        isPurchasable: true,
+        isLoginRequired: true,
         updatedAt: true,
         publishedAt: true,
       },
