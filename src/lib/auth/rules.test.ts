@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, PHONE_RE, validatePassword } from "./rules";
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PHONE_RE,
+  validateEmail,
+  validatePassword,
+  validateUsername,
+} from "./rules";
 
 describe("PHONE_RE(11 位大陆手机号,登录/建号/脱敏共用)", () => {
   it.each(["13812341234", "19900000000", "17012345678"])("合法:%s", (phone) => {
@@ -44,5 +51,40 @@ describe("validatePassword(≥8 位且同时含字母与数字;≤72 字节)", (
 
   it("大小写混合通过", () => {
     expect(validatePassword("AbCdEf12")).toBeNull();
+  });
+});
+
+describe("validateUsername(M21 批⓪:3-30 位字母/数字/下划线/连字符)", () => {
+  it.each(["abc", "a-b_c9", "A".repeat(30)])("合法:%s", (name) => {
+    expect(validateUsername(name)).toBeNull();
+  });
+
+  it.each([
+    "ab", // 过短
+    "a".repeat(31), // 过长
+    "中文用户名", // 非 ASCII
+    "has space", // 空格
+    "a@b", // 特殊符号
+    "", // 空串
+  ])("非法:%s", (name) => {
+    expect(validateUsername(name)).not.toBeNull();
+  });
+});
+
+describe("validateEmail(M21 批⓪:local@domain 宽松实用型,须含点号域)", () => {
+  it.each(["u@example.com", "first.last@mail.example.com", "u+tag@io.io"])("合法:%s", (email) => {
+    expect(validateEmail(email)).toBeNull();
+  });
+
+  it.each([
+    "no-at-sign", // 无 @
+    "u@nodot", // 域无点号(拒纯内网形态)
+    "@example.com", // 空 local
+    "u@", // 空域
+    "u u@example.com", // 空格
+    `${"a".repeat(250)}@example.com`, // 超长(>254)
+    "", // 空串
+  ])("非法:%s", (email) => {
+    expect(validateEmail(email)).not.toBeNull();
   });
 });

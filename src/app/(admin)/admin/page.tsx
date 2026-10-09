@@ -8,6 +8,7 @@
  */
 import BotPanel from "@/components/admin/stats/BotPanel";
 import EnvPanel from "@/components/admin/stats/EnvPanel";
+import GeoPanel from "@/components/admin/stats/GeoPanel";
 import HotPagesTable from "@/components/admin/stats/HotPagesTable";
 import HotSearchTermsTable from "@/components/admin/stats/HotSearchTermsTable";
 import KpiCards from "@/components/admin/stats/KpiCards";
@@ -17,6 +18,7 @@ import TrendChart from "@/components/admin/stats/TrendChart";
 import {
   getBotPanel,
   getClientPanel,
+  getGeoPanel,
   getHotPages,
   getHotSearchTerms,
   getRecentVisits,
@@ -49,13 +51,14 @@ export default async function AdminStatsPage({
   const trend = parseTrend(sp.trend);
   const hot = parseHot(sp.hot);
 
-  const [overview, series, referrers, clients, bots, hotPages, hotTerms, recentVisits] =
+  const [overview, series, referrers, clients, bots, geo, hotPages, hotTerms, recentVisits] =
     await Promise.all([
       getVisitOverview(),
       getVisitSeries(trend),
       getReferrerPanel(7),
       getClientPanel(7),
       getBotPanel(7),
+      getGeoPanel(7),
       getHotPages(hot),
       getHotSearchTerms(hot),
       getRecentVisits(30),
@@ -71,6 +74,8 @@ export default async function AdminStatsPage({
       </div>
       {/* 爬虫流量(2026-10-07 方案B):人机区分的「机」侧;与真人四分类同表分账 */}
       <BotPanel panel={bots} humanPv={overview.last7.pv} />
+      {/* GEO 机器面(2026-10-09 方案A):llms/.md 机器消费观测,stats_geo_daily */}
+      <GeoPanel panel={geo} />
       <HotPagesTable rows={hotPages} range={hot} trend={trend} />
       {/* 搜索词排行(2026-10-06):与热门页面共用 hot 分段;行级直插准实时 */}
       <HotSearchTermsTable rows={hotTerms} range={hot} trend={trend} />

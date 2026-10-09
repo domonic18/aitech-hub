@@ -85,10 +85,10 @@ afterAll(async () => {
 describe("认证流(dev compose 真实 PG/Redis)", () => {
   it("错密 5 次 → 第 6 次锁号 429(提示语模糊,正确密码也被锁)", async () => {
     for (let i = 0; i < 5; i++) {
-      const res = await callLogin({ phone: PHONE, password: "nope-wrong-1" });
+      const res = await callLogin({ account: PHONE, password: "nope-wrong-1" });
       expect(res.status).toBe(401);
     }
-    const locked = await callLogin({ phone: PHONE, password: PASSWORD });
+    const locked = await callLogin({ account: PHONE, password: PASSWORD });
     expect(locked.status).toBe(429);
     const body = (await locked.json()) as { message: string };
     expect(body.message).not.toMatch(/密码|锁定|账号/); // 不泄漏锁定原因
@@ -96,7 +96,7 @@ describe("认证流(dev compose 真实 PG/Redis)", () => {
 
   it("清锁后正确密码 → 200 + httpOnly Cookie + 失败计数清零", async () => {
     await redis.del(LOCK_KEY);
-    const res = await callLogin({ phone: PHONE, password: PASSWORD });
+    const res = await callLogin({ account: PHONE, password: PASSWORD });
     expect(res.status).toBe(200);
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain("ah_at=");
@@ -105,7 +105,7 @@ describe("认证流(dev compose 真实 PG/Redis)", () => {
   });
 
   it("Cookie 换会话身份;登出吊销后旧 Cookie 复放被拒(jti 双查)", async () => {
-    const login = await callLogin({ phone: PHONE, password: PASSWORD });
+    const login = await callLogin({ account: PHONE, password: PASSWORD });
     const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
 
     const session = await callSession(cookie);
@@ -128,12 +128,66 @@ describe("认证流(dev compose 真实 PG/Redis)", () => {
   });
 });
 
+describe("邮箱通道(M21 批⓪,dev compose 真实 PG/Redis)", () => {
+  const USERNAME = "it_email_user";
+  const EMAIL = "it-email-user@example.com";
+  const EMAIL_KEY = `auth:reg:email:${EMAIL}`;
+
+  beforeAll(async () => {
+    // 测试请求无 x-forwarded-for → clientIp 为空串,reg 配额桶固定;
+    // 多轮集成跑累计(成功也 +1)会顶满 10 次/日,先清再注册
+    await redis.del("auth:reg:ip:");
+    await redis.del(EMAIL_KEY);
+  });
+
+  afterAll(async () => {
+    await prisma.userAccount.deleteMany({
+      where: { OR: [{ username: USERNAME }, { email: EMAIL }] },
+    });
+    await redis.del(EMAIL_KEY);
+  });
+
+  it("注册 → 未认证登录 403 → 消费令牌 → 登录 200(邮箱大小写折叠)", async () => {
+    const { POST: registerPOST } = await import("@/app/api/auth/register/route");
+    const reg = await registerPOST(
+      new Request("http://localhost:3000/api/auth/register", {
+        method: "POST",
+        headers: ORIGIN_HEADERS,
+        body: JSON.stringify({ username: USERNAME, email: EMAIL, password: PASSWORD }),
+      }) as never,
+    );
+    expect(reg.status).toBe(200);
+
+    // 未完成邮件认证:用户名/邮箱登录均被拒(邮箱通道账号无手机号,D1 门)
+    expect((await callLogin({ account: USERNAME, password: PASSWORD })).status).toBe(403);
+    expect((await callLogin({ account: EMAIL.toUpperCase(), password: PASSWORD })).status).toBe(
+      403,
+    );
+
+    const user = await prisma.userAccount.findUnique({ where: { email: EMAIL } });
+    const { issueEmailToken, consumeEmailToken, TOKEN_PURPOSE_REGISTER } =
+      await import("@/lib/auth/email-verify");
+    const raw = await issueEmailToken(user!.id, TOKEN_PURPOSE_REGISTER);
+    // 同 verify-email 路由:消费与置验证态同事务
+    expect(
+      await consumeEmailToken(raw, TOKEN_PURPOSE_REGISTER, (tx, uid) =>
+        tx.userAccount.update({ where: { id: uid }, data: { emailVerifiedAt: new Date() } }),
+      ),
+    ).toMatchObject({ status: "ok", userId: user!.id });
+    // 单次消费:第二次 invalid
+    expect((await consumeEmailToken(raw, TOKEN_PURPOSE_REGISTER)).status).toBe("invalid");
+
+    const ok = await callLogin({ account: EMAIL, password: PASSWORD });
+    expect(ok.status).toBe(200);
+  });
+});
+
 async function callLoginWithOrigin(origin: string): Promise<Response> {
   return loginPOST(
     new Request("http://localhost:3000/api/auth/login", {
       method: "POST",
       headers: { ...ORIGIN_HEADERS, origin },
-      body: JSON.stringify({ phone: PHONE, password: PASSWORD }),
+      body: JSON.stringify({ account: PHONE, password: PASSWORD }),
     }) as never,
   );
 }

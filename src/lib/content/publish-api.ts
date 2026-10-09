@@ -164,6 +164,8 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
         seoTitle,
         seoDescription,
         contentOrigin: "human", // 外部发布通道缺省人工;AI 系标识在后台编辑器补记
+        isPurchasable: false, // 付费/登录可见字段只在后台编辑器开放(M21 批⑤/补齐批)
+        isLoginRequired: false,
       });
       id = created.id;
       finalSlug = created.slug;
@@ -183,6 +185,7 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
       seoTitle,
       seoDescription,
       contentOrigin: asContentOrigin(existing?.contentOrigin ?? "human"), // 更新不携带标识,保留后台改标不被冲掉
+      // 付费两列省略 = 不动(M21 批⑤:外部通道不触付费面,已配付费文更新不丢配置)
     });
     id = verdict.id;
     finalSlug = r.slug;

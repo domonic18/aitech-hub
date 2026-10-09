@@ -14,16 +14,21 @@ import {
   EMBED_RECONCILE_CRON,
   GITHUB_JOB_TICK,
   MEDIA_AUDIT_CRON,
+  PAY_DAILY_AUDIT_CRON,
+  PAY_JOB_DAILY_AUDIT,
+  PAY_JOB_SWEEP,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_DISTRIBUTE,
   QUEUE_DB_BACKUP,
   QUEUE_EMBED,
+  QUEUE_EMAIL,
   QUEUE_GITHUB,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
+  QUEUE_PAY_RECONCILE,
   QUEUE_STATS,
   QUEUE_SEO_BATCH,
   QUEUE_SUMMARIZER,
@@ -54,7 +59,9 @@ import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/sum
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 import { dbBackupJob } from "../src/lib/backup/db-backup";
+import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
+import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 /** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
 const PROCESSORS: Record<string, Processor> = {
@@ -179,6 +186,16 @@ const PROCESSORS: Record<string, Processor> = {
     }
     return r;
   },
+  // 事务邮件(M21 批⓪,D1 邮箱通道):SMTP 未配置显式 skipped(dev 兜底;生产必配);
+  // 日志只记事件与主题,收件人不落日志(PII)
+  [QUEUE_EMAIL]: async (job) => {
+    const data = job.data as EmailJobData;
+    const { skipped } = await sendMail(data);
+    console.log(
+      JSON.stringify({ event: skipped ? "email.skipped" : "email.sent", subject: data.subject }),
+    );
+    return { skipped };
+  },
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
   [QUEUE_DISTRIBUTE]: async (job) => {
     if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
@@ -197,6 +214,21 @@ const PROCESSORS: Record<string, Processor> = {
         mediaId: r.mediaId ?? null,
       }),
     );
+    return r;
+  },
+  // 支付对账(M21 批④,§5.2):sweep 5min 收敛近过期 pending(先查单:已付
+  // 补发/确认未付过 TTL 才关单);daily-audit 每日 04:13 paid 单流水锚比对。
+  // 明细事件(reconcile_error/mismatch 等)在服务内落日志,这里只报汇总
+  [QUEUE_PAY_RECONCILE]: async (job) => {
+    if (job.name === PAY_JOB_DAILY_AUDIT) {
+      const r = await dailyAuditOrders();
+      console.log(JSON.stringify({ event: "pay.reconcile_daily_audit", ...r }));
+      return r;
+    }
+    const r = await sweepExpiredOrders();
+    if (r.scanned > 0 || r.errors > 0) {
+      console.log(JSON.stringify({ event: "pay.reconcile_sweep", ...r }));
+    }
     return r;
   },
 };
@@ -301,6 +333,31 @@ async function scheduleEmbedReconcile(): Promise<void> {
   );
 }
 
+/** 支付对账 sweep:每 5 分钟收敛近过期 pending 单(提案 §5.2;tick 粒度同 github) */
+const PAY_SWEEP_EVERY_MS = 300_000;
+
+async function schedulePayReconcile(): Promise<void> {
+  const queue = getQueue(QUEUE_PAY_RECONCILE);
+  await queue.upsertJobScheduler(
+    "pay-reconcile-sweep",
+    { every: PAY_SWEEP_EVERY_MS },
+    {
+      name: PAY_JOB_SWEEP,
+      data: {},
+      opts: { removeOnComplete: 50 },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "pay-reconcile-daily-audit",
+    { pattern: PAY_DAILY_AUDIT_CRON, tz: SITE_TZ },
+    {
+      name: PAY_JOB_DAILY_AUDIT,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -377,7 +434,9 @@ async function main(): Promise<void> {
             ? { concurrency: 1, lockDuration: 900_000 }
             : name === QUEUE_DB_BACKUP
               ? { concurrency: 1, lockDuration: 600_000 }
-              : {};
+              : name === QUEUE_PAY_RECONCILE
+                ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
+                : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
@@ -390,6 +449,7 @@ async function main(): Promise<void> {
   await scheduleAgentSessionPurge();
   await scheduleDbBackup();
   await scheduleEmbedReconcile();
+  await schedulePayReconcile();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();

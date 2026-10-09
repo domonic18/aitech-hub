@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalUrl, contentHash, looksGarbled, stripHtml, truncateSummary } from "./normalize";
+import {
+  canonicalUrl,
+  contentHash,
+  decodeHtmlEntities,
+  looksGarbled,
+  stripHtml,
+  truncateSummary,
+} from "./normalize";
 
 describe("canonicalUrl", () => {
   it("去 tracking 参数与尾斜杠,host 小写", () => {
@@ -55,5 +62,25 @@ describe("looksGarbled", () => {
 
   it("替换符超 5% 判乱码", () => {
     expect(looksGarbled("�".repeat(10) + "ab")).toBe(true);
+  });
+});
+
+describe("decodeHtmlEntities(2026-10-09 验收反馈问题3)", () => {
+  it("数字实体解码(TechCrunch 双重转义残留形态)", () => {
+    expect(decodeHtmlEntities("Pretend you&#8217;re sitting")).toBe("Pretend you’re sitting");
+    expect(decodeHtmlEntities("A &amp;#8217; B")).toBe("A ’ B"); // 二次编码递进落到意图字符
+    expect(decodeHtmlEntities("Tom &amp; Jerry")).toBe("Tom & Jerry"); // 合法 & 文本不受影响
+  });
+
+  it("十六进制与命名实体;非法越界码点原样保留", () => {
+    expect(decodeHtmlEntities("&#x4e2d;&#x6587;")).toBe("中文");
+    expect(decodeHtmlEntities("A &amp; B &lt;tag&gt; &quot;q&quot;&nbsp;")).toBe(
+      'A & B <tag> "q" ',
+    );
+    expect(decodeHtmlEntities("bad &#999999999999; ent")).toBe("bad &#999999999999; ent");
+  });
+
+  it("无 & 快路径原样返回", () => {
+    expect(decodeHtmlEntities("纯中文标题")).toBe("纯中文标题");
   });
 });

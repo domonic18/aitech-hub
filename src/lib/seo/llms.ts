@@ -12,19 +12,37 @@ import { postPath } from "@/lib/content/post-path";
 import { listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import { formatCnDate } from "@/lib/datetime";
+import { gateNoticeMd, gateNoticeText, previewMarkdown } from "@/lib/pay/preview";
 import { absoluteUrl } from "@/lib/seo/site";
 
 const PART_MAX_CHARS = 400_000;
 
-function postMarkdown(p: {
+interface SeoPost {
   id: bigint;
   slug: string | null;
   title: string;
+  excerpt: string | null;
+  seoDescription: string | null;
   contentMd: string | null;
   contentHtml: string | null;
+  isPurchasable: boolean;
+  isLoginRequired: boolean;
   publishedAt: Date | null;
-}): string {
-  const body = p.contentMd ?? (p.contentHtml ? htmlToMarkdown(p.contentHtml) : "");
+}
+
+/** 门禁档:付费 > 登录可见(互斥,应用层校验;双 true 按付费从严) */
+function gateOf(p: Pick<SeoPost, "isPurchasable" | "isLoginRequired">): "paid" | "login" | null {
+  return p.isPurchasable ? "paid" : p.isLoginRequired ? "login" : null;
+}
+
+function postMarkdown(p: SeoPost): string {
+  const gate = gateOf(p);
+  const source = p.contentMd ?? (p.contentHtml ? htmlToMarkdown(p.contentHtml) : "");
+  // 门禁文只发同一份服务端预览(与 ISR 页/.md 直出口径一致,无 cloaking),
+  // 全文永不进 GEO 分发面(2026-10-09 验收反馈问题2)
+  const body = gate
+    ? `${previewMarkdown(source)}\n\n${gateNoticeMd(gate, absoluteUrl(postPath(p.id, p.slug)))}`
+    : source;
   const meta = [
     `URL: ${absoluteUrl(postPath(p.id, p.slug))}`,
     p.publishedAt ? `发布: ${formatCnDate(p.publishedAt)}` : null,
@@ -46,7 +64,7 @@ export async function buildLlmsIndex(): Promise<string> {
   const lines: string[] = [
     `# ${siteTitle}(17aitech.com)`,
     "",
-    "> domonic18 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文;全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起)。",
+    "> domonic18 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文(付费/登录可见文章仅返回预览);全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起,同样不含门禁文全文)。",
     "",
     "## 站点",
     "",
@@ -78,8 +96,10 @@ export async function buildLlmsIndex(): Promise<string> {
   ];
   for (const p of posts) {
     const summary = excerptOf(p).replace(/\s+/g, " ").slice(0, 80);
+    const gate = gateOf(p);
+    const marker = gate ? ` ${gateNoticeText(gate)}` : "";
     lines.push(
-      `- [${p.title}](${absoluteUrl(postPath(p.id, p.slug))})${summary ? `: ${summary}` : ""}`,
+      `- [${p.title}](${absoluteUrl(postPath(p.id, p.slug))})${marker}${summary ? `: ${summary}` : ""}`,
     );
   }
   return lines.join("\n") + "\n";

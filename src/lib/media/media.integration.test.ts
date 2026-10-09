@@ -176,7 +176,7 @@ beforeAll(async () => {
         origin: "http://localhost:3000",
         "x-forwarded-host": "localhost:3000", // undici Request 不暴露 host 头,Origin 校验走此头
       },
-      body: JSON.stringify({ phone: PHONE, password: PASSWORD }),
+      body: JSON.stringify({ account: PHONE, password: PASSWORD }),
     }) as never,
   );
   expect(login.status).toBe(200);

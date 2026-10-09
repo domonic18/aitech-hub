@@ -14,6 +14,14 @@ export default function PostCard({ post }: { post: PostListItem }): React.ReactE
         <Link href={postPath(post.id, post.slug)} className="hover:text-accent-hover">
           {post.title}
         </Link>
+        {post.isPurchasable && (
+          <span
+            title="付费文章,解锁后阅读全文"
+            className="ml-2 inline-block translate-y-[-1px] rounded-sm border border-accent/30 bg-accent/10 px-1.5 py-0.5 align-middle font-mono text-[11px] font-medium text-accent"
+          >
+            ¥ 付费
+          </span>
+        )}
       </h2>
       {excerpt ? <p className="mt-2 line-clamp-2 text-sm text-text-2">{excerpt}</p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-3">

@@ -8,6 +8,8 @@ import {
   ADMIN_LIST_SEGMENTS,
   CONTENT_ORIGIN_BADGES,
   CONTENT_ORIGIN_LABELS,
+  PURCHASE_PRICE_MAX,
+  PURCHASE_PRICE_MIN,
   asContentOrigin,
   coverPathSchema,
   postCreateSchema,
@@ -156,6 +158,71 @@ describe("contentOrigin(合规标识三值)", () => {
     expect(CONTENT_ORIGIN_BADGES.ai_generated).toBe("AI 生成");
     expect(CONTENT_ORIGIN_LABELS.ai_assisted.length).toBeGreaterThan(0);
     expect(CONTENT_ORIGIN_LABELS.ai_generated.length).toBeGreaterThan(0);
+  });
+});
+
+describe("付费阅读字段(M21 批⑤:isPurchasable/purchasePrice)", () => {
+  const base = { title: "T", categorySlug: "blog", contentMd: "x" };
+
+  it("缺省关闭:isPurchasable 默认 false,无价合法(存量文章零影响)", () => {
+    const r = postCreateSchema.parse(base);
+    expect(r.isPurchasable).toBe(false);
+    expect(r.purchasePrice).toBeUndefined();
+  });
+
+  it("开付费必须带价:缺价/显式 null 均拒,提示落 purchasePrice 路径", () => {
+    for (const purchasePrice of [undefined, null]) {
+      const r = postCreateSchema.safeParse({ ...base, isPurchasable: true, purchasePrice });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(r.error.issues[0]?.message).toBe("开启付费阅读须填写价格");
+        expect(r.error.issues[0]?.path).toEqual(["purchasePrice"]);
+      }
+    }
+  });
+
+  it("开付费带价通过;关付费残留价不拒(清价是服务层职责)", () => {
+    expect(
+      postCreateSchema.parse({ ...base, isPurchasable: true, purchasePrice: 5 }).purchasePrice,
+    ).toBe(5);
+    expect(
+      postCreateSchema.parse({ ...base, isPurchasable: false, purchasePrice: 5 }).purchasePrice,
+    ).toBe(5);
+  });
+
+  it(`价格边界:[${PURCHASE_PRICE_MIN}, ${PURCHASE_PRICE_MAX}] 闭区间,越界拒绝`, () => {
+    const paid = { ...base, isPurchasable: true };
+    expect(postCreateSchema.safeParse({ ...paid, purchasePrice: 0 }).success).toBe(false);
+    expect(postCreateSchema.safeParse({ ...paid, purchasePrice: 0.01 }).success).toBe(true);
+    expect(postCreateSchema.safeParse({ ...paid, purchasePrice: 999.99 }).success).toBe(true);
+    expect(postCreateSchema.safeParse({ ...paid, purchasePrice: 1000 }).success).toBe(false);
+    expect(postCreateSchema.safeParse({ ...paid, purchasePrice: -1 }).success).toBe(false);
+  });
+
+  it("postUpdateSchema 与创建同口径(= 同一 schema),开付费缺价同样拒", () => {
+    expect(postUpdateSchema).toBe(postCreateSchema);
+    expect(
+      postUpdateSchema.safeParse({ ...base, isPurchasable: true, purchasePrice: null }).success,
+    ).toBe(false);
+  });
+
+  it("登录可见(补齐批):缺省关;与付费互斥(同开拒,提示落 isLoginRequired)", () => {
+    expect(postCreateSchema.parse(base).isLoginRequired).toBe(false);
+    const both = postCreateSchema.safeParse({
+      ...base,
+      isPurchasable: true,
+      purchasePrice: 5,
+      isLoginRequired: true,
+    });
+    expect(both.success).toBe(false);
+    if (!both.success) {
+      expect(both.error.issues[0]?.message).toBe("付费与登录可见不可同时开启");
+      expect(both.error.issues[0]?.path).toEqual(["isLoginRequired"]);
+    }
+    expect(postCreateSchema.parse({ ...base, isLoginRequired: true }).isLoginRequired).toBe(true);
+    expect(
+      postCreateSchema.safeParse({ ...base, isLoginRequired: true, purchasePrice: 5 }).success,
+    ).toBe(true); // 未开付费时残留价合法(清价是服务层职责)
   });
 });
 

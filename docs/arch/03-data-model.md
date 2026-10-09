@@ -247,6 +247,18 @@ CREATE TABLE legacy_url_map (
 - `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(匿名 cookie `ah_av`,归属校验锚——非本人 404 不泄露存在性;K2.6 起仅 admin 会话落行,key=`admin:<sub>`);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
 - `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。**游客不落会话行**:thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库),checkpoint 由日清按「键已消失」清扫;后台游客统计 = 本表按 session_id 聚合
 
+**账号邮箱通道与支付域已落地(2026-10-08 M21 批⓪/批①迁移 `20261008221317_m21_batch0_email_auth` + `20261008143451_m21_batch0_email_config` + `20261008145247_m21_payment_schema`,方案定稿 M21 付费阅读提案 v1.6,批⑦ 落 arch/09)**:
+
+- `user_account` 增列(批⓪,D1 邮箱通道——注册→邮件认证→用户名/邮箱/手机号任一标识登录):`username? varchar(100)` 唯一(`uq_user_account_username`)/`email? varchar(255)` 唯一(`uq_user_account_email`)/`email_verified_at?`
+- `user_verification_token`(批⓪,一次性令牌):`user_id+purpose+token_hash char(64)`(sha256,原始令牌只出现在邮件链接)/`expires_at/consumed_at`;purpose 枚举 `register_verify|bind_email|password_reset`(应用层管控);单次消费 + 同 purpose 重签作废未消费旧令牌;索引 `(user_id, purpose)`
+- `email_config`(批⓪,SMTP 配置单行语义——2026-10-08 拍板入数据库,不入 env,与网关凭据同规则):`host/port(默认 465)/username/password/from_addr/enabled 默认 false`;password 只写不读(API 永不回传,留空=保留),明文不入日志;消费方 transport 按 `id:updated_at` 换新,保存即时生效
+- `pay_order`(订单):`order_no varchar(32)` 唯一(幂等键)/`user_id`(**无 FK,支付域与账号域解耦,应用层归属校验**)/`status varchar(16)` 枚举 `pending|paid|closed|refunded`(显式状态机,提案 §5.2 只允许图中迁移)/`amount decimal(10,2)`(**金额全程 Decimal 禁 float**)/`gateway varchar(24)` 枚举 `xunhu|mock|legacy_xunhu`/`gateway_transaction_id?`(微信流水,对账锚点——旧系统缺失项)/`gateway_open_order_id?`(虎皮椒内部单号)/`paid_at?/closed_at?/refunded_at?/expires_at`(pending 超时关单依据)/`client_ip?/operator_note?`;索引 `(user_id,status)` + `(status,expires_at)`(对账 job 扫描路径)
+- `pay_order_item`(订单行):`order_id` FK→pay_order(唯一 FK,默认名);`post_id` 标量无 FK/`title varchar(200)`(下单时标题快照)/`unit_price decimal(10,2)`/`quantity 默认 1`;索引 `post_id`
+- `content_post_purchase`(付费权益):`(user_id,post_id)` 唯一(一文一用户一条,授予=upsert `revoked_at=null`);`order_id?`(仅 order 来源必有,import/manual/admin_restore 可空)/`source varchar(16)` 枚举 `order|import|manual|admin_restore`/`revoked_at?/revoked_reason?`(退款 CD 回调软撤销,审计可恢复);索引 `post_id`
+- `pay_notify_log`(回调留痕):`order_no/gateway_status varchar(8)` 枚举 `OD|WP|CD|RD|UD`/`sign_valid/payload jsonb`(回调原文全量存,可追溯伪造尝试)/`handled 默认 false`(是否触发状态迁移);索引 `order_no`
+- `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
+- `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
