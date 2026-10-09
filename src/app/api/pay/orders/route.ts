@@ -7,7 +7,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { isOverLimit, recordHit } from "@/lib/auth/rate-limit";
-import { readSessionUser } from "@/lib/auth/session";
+import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
 import { clientIp } from "@/lib/http/request";
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
@@ -26,7 +26,7 @@ const WINDOW_SECONDS = 3600;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
-  const session = await readSessionUser(req.headers.get("cookie"));
+  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
   if (!session) return apiEnvelope(401, "请先登录后解锁");
 
   const parsed = CreateOrderSchema.safeParse(await req.json().catch(() => null));

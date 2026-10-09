@@ -4,7 +4,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
-import { readSessionUser } from "@/lib/auth/session";
+import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
 import { apiEnvelope } from "@/lib/http/response";
 import { getOrderView } from "@/lib/pay/order-service";
 
@@ -14,7 +14,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ orderNo: string }> },
 ): Promise<NextResponse> {
-  const session = await readSessionUser(req.headers.get("cookie"));
+  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
   if (!session) return apiEnvelope(401, "unauthorized");
   const { orderNo } = await params;
   if (!/^[A-Za-z0-9]{8,32}$/.test(orderNo)) return apiEnvelope(400, "invalid orderNo");

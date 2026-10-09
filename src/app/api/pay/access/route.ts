@@ -7,7 +7,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { readSessionUser } from "@/lib/auth/session";
+import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { apiEnvelope } from "@/lib/http/response";
 import { hasValidPurchase } from "@/lib/pay/entitlement";
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const parsed = QuerySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
   if (!parsed.success) return apiEnvelope(400, "invalid postId");
 
-  const session = await readSessionUser(req.headers.get("cookie"));
+  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
   const gateway = await getPayGateway();
   const mode = (gateway?.name ?? "off") as "off" | "mock" | "xunhu";
   if (!session) {
