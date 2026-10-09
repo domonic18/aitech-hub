@@ -1,10 +1,8 @@
 /**
- * stream 路由 user 余额链路 + HITL resume 分支单测(M22 批④;resume 为
- * 2026-10-09 验收反馈):run 前 hasTokenBalance 预检(≤0 → 429 且不进 run);
- * run 后 consumeTokens 按实际用量实扣(user 专属,admin/游客不扣);扣减失败
- * 只告警不反噬。resume:透传 Command 值、不计游客提问配额、不回填标题、空
- * message 400。重依赖(run/sessions/quota/prisma/token-balance)全 mock,
- * 只验路由接线与护栏次序。
+ * stream 路由 user 余额链路单测(M22 批④):run 前 hasTokenBalance 预检
+ * (≤0 → 429 且不进 run);run 后 consumeTokens 按实际用量实扣(user 专属,
+ * admin/游客不扣);扣减失败只告警不反噬。重依赖(run/sessions/quota/prisma/
+ * token-balance)全 mock,只验路由接线与护栏次序。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -154,68 +152,5 @@ describe("user 余额链路(M22 批④)", () => {
     expect(loggerMock.warn).toHaveBeenCalledWith(
       expect.objectContaining({ event: "token_wallet.consume_failed" }),
     );
-  });
-});
-
-describe("command.resume 分支(HITL 提问卡回答,2026-10-09 验收反馈)", () => {
-  const resumeBody = {
-    command: { resume: { message: "报问题", option: "报问题" } },
-  };
-
-  it("resume 放行 run:透传 resume 值,不计游客提问配额、不回填标题", async () => {
-    identityMock.resolveAgentIdentity.mockResolvedValue(USER);
-    balanceMock.hasTokenBalance.mockResolvedValue(true);
-    runMock.runAgentTurn.mockResolvedValue({
-      tokensIn: 3,
-      tokensOut: 3,
-      toolCalls: 0,
-      truncatedReason: null,
-      resolved: null,
-    });
-
-    const res = await POST(req(resumeBody), { params: Promise.resolve({ threadId: TID }) });
-    expect(res.status).toBe(200);
-    await res.text();
-
-    expect(runMock.runAgentTurn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        threadId: TID,
-        message: null,
-        resume: { message: "报问题", option: "报问题" },
-      }),
-    );
-    expect(balanceMock.consumeTokens).toHaveBeenCalled(); // resume 照实扣模型消耗
-    expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
-  });
-
-  it("游客 resume:跳过 3 问/日配额,滑动活跃 TTL 照旧", async () => {
-    identityMock.resolveAgentIdentity.mockResolvedValue({ kind: "guest", key: "g-uuid" });
-    runMock.runAgentTurn.mockResolvedValue({
-      tokensIn: 1,
-      tokensOut: 1,
-      toolCalls: 0,
-      truncatedReason: null,
-      resolved: null,
-    });
-    const { refreshGuestThread, getGuestThreadOwner } = await import("@/lib/agent/guest-threads");
-    vi.mocked(getGuestThreadOwner).mockResolvedValue("g-uuid");
-
-    const res = await POST(req(resumeBody), { params: Promise.resolve({ threadId: "g_t1" }) });
-    expect(res.status).toBe(200);
-    await res.text();
-
-    expect(quotaMock.tryConsumeGuestAskQuota).not.toHaveBeenCalled();
-    expect(refreshGuestThread).toHaveBeenCalledWith("g_t1");
-    expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
-  });
-
-  it("resume.message 为空:400 不进 run", async () => {
-    identityMock.resolveAgentIdentity.mockResolvedValue(USER);
-
-    const res = await POST(req({ command: { resume: { message: "" } } }), {
-      params: Promise.resolve({ threadId: TID }),
-    });
-    expect(res.status).toBe(400);
-    expect(runMock.runAgentTurn).not.toHaveBeenCalled();
   });
 });

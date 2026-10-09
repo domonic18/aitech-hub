@@ -1,15 +1,13 @@
 /**
  * 会话 run SSE 端点(K2.5 核心,arch/04 §3.3;K2.6 身份分流,M22 批④扩
  * 三路):SDK runs.stream 契约的自实现——POST /threads/{threadId}/runs/stream,
- * body 二选一:input.messages 单条 human 文本,或 command.resume(HITL 提问
- * 卡回答,2026-10-09 验收反馈)。登录身份(admin/user):归属查会话行、会话
- * 累计 50k 前置拒绝、标题回填(resume 不回填);user 另走 Token 余额链路——
- * run 前 hasTokenBalance 预检(≤0 拒),run 后按实际用量 consumeTokens 实扣
- * (流水 reason=consume,扣减失败只告警不反噬已完成的 run);admin 与游客不
- * 扣余额。游客:归属查 Redis 活跃键(过期 404 自愈)、3 问/日/游客(resume
- * 不计——非新提问)+ 30 问/日/IP 双闸。共用工级护栏:IP 10 次/分(resume
- * 照计——真模型消耗);run 编排在 runAgentTurn。业务降级一律 SSE error 帧,
- * 不占 HTTP 状态。SSE 头 no-store + x-accel-buffering:no。
+ * input 只收 human 消息。登录身份(admin/user):归属查会话行、会话累计
+ * 50k 前置拒绝、标题回填;user 另走 Token 余额链路——run 前 hasTokenBalance
+ * 预检(≤0 拒),run 后按实际用量 consumeTokens 实扣(流水 reason=consume,
+ * 扣减失败只告警不反噬已完成的 run);admin 与游客不扣余额。游客:归属查
+ * Redis 活跃键(过期 404 自愈)、3 问/日/游客 + 30 问/日/IP 双闸。共用
+ * 工级护栏:IP 10 次/分;run 编排在 runAgentTurn。业务降级一律 SSE error
+ * 帧,不占 HTTP 状态。SSE 头 no-store + x-accel-buffering:no。
  */
 import { type NextRequest } from "next/server";
 import { z } from "zod";
@@ -33,33 +31,25 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 /** input.messages 只收单条 human 文本(K2.5 无附件/无多模态面) */
-const inputSchema = z.object({
-  messages: z
-    .array(
-      z.object({
-        type: z.literal("human"),
-        content: z.union([
-          z.string().min(1).max(2000),
-          z
-            .array(z.object({ type: z.literal("text"), text: z.string().min(1).max(2000) }))
-            .min(1)
-            .max(4),
-        ]),
-      }),
-    )
-    .min(1)
-    .max(1),
-});
-
-/** HITL 恢复:ask_user 提问卡的用户回答(hitl.ts 形状的 zod 把关) */
-const resumeSchema = z.object({
-  resume: z.object({
-    message: z.string().min(1).max(2000),
-    option: z.string().min(1).max(100).optional(),
+const bodySchema = z.object({
+  input: z.object({
+    messages: z
+      .array(
+        z.object({
+          type: z.literal("human"),
+          content: z.union([
+            z.string().min(1).max(2000),
+            z
+              .array(z.object({ type: z.literal("text"), text: z.string().min(1).max(2000) }))
+              .min(1)
+              .max(4),
+          ]),
+        }),
+      )
+      .min(1)
+      .max(1),
   }),
 });
-
-const bodySchema = z.union([z.object({ input: inputSchema }), z.object({ command: resumeSchema })]);
 
 function extractText(content: string | { text: string }[]): string {
   if (typeof content === "string") return content.trim();
@@ -110,26 +100,13 @@ export async function POST(
   if (!parsed.success) {
     return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }
-  // 二分支:resume(HITL 提问卡回答)或新提问。resume 不计游客提问配额、
-  // 不回填标题(非新 ask;原 ask 已消费配额并回填过)。
-  let resume: { message: string; option?: string } | undefined;
-  let message: string | null = null;
-  if ("command" in parsed.data) {
-    resume = parsed.data.command.resume;
-  } else {
-    const text = extractText(parsed.data.input.messages[0].content);
-    if (text === "") return apiEnvelope(400, "消息不能为空");
-    message = text;
-  }
+  const message = extractText(parsed.data.input.messages[0].content);
+  if (message === "") return apiEnvelope(400, "消息不能为空");
 
   if (identity.kind !== "guest" && tokensTotal >= AGENT_MAX_TOKENS) {
     return apiEnvelope(429, "本会话用量已达上限,请新建会话继续");
   }
-  if (
-    resume === undefined &&
-    identity.kind === "guest" &&
-    !(await tryConsumeGuestAskQuota(identity.key, clientIp(req)))
-  ) {
+  if (identity.kind === "guest" && !(await tryConsumeGuestAskQuota(identity.key, clientIp(req)))) {
     return apiEnvelope(429, "今日游客提问次数已用完,明天再来吧");
   }
   // M22 user 余额预检(免费额度制:>0 放行,实扣在 run 后;穿仓下限=单轮护栏)
@@ -163,7 +140,6 @@ export async function POST(
         const outcome = await runAgentTurn({
           threadId,
           message,
-          ...(resume !== undefined ? { resume } : {}),
           signal: abort.signal,
           onFrame: push,
         });
@@ -188,8 +164,8 @@ export async function POST(
         }
         if (identity.kind === "guest") {
           await refreshGuestThread(threadId); // 活跃滑动 TTL
-        } else if (message !== null) {
-          await backfillSessionTitle(threadId, message); // resume 无新消息,不回填
+        } else {
+          await backfillSessionTitle(threadId, message);
         }
         if (outcome.truncatedReason !== null) {
           // 护栏收束:error 帧人话(前端挂末条 AI 消息 incomplete/error)
