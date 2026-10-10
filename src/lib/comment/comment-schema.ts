@@ -30,6 +30,11 @@ export const commentCreateSchema = z.object({
   parentId: z.coerce.number().int().positive().optional(),
 });
 
+/** 路由面:POST /api/post-comments 整包入参(提交字段 + 目标文章) */
+export const commentCreateBodySchema = commentCreateSchema.extend({
+  postId: z.coerce.bigint().positive(),
+});
+
 /** admin 流转入参:隐藏/恢复(先发后审,无 through-pending) */
 export const commentStatusSchema = z.object({
   status: z.enum(COMMENT_STATUSES),

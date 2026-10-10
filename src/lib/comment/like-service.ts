@@ -1,8 +1,10 @@
 /**
- * 点赞域(M23):文章/评论同构 toggle(identityKey 单列去重,唯一约束冲突
- * 即已赞 → 删除行=取消)。identityKey:"u:<userId>"(登录含 admin,同为人
- * 账号一行一赞)| "v:<ah_av uuid>"(游客)。计数现查 COUNT,不加冗余列。
- * 已知边界:游客首赞双击各持新 uuid 理论可双赞——按钮 busy 防抖 + IP 闸兜底。
+ * 点赞域(M23):文章/评论同构 toggle(identityKey 单列去重)。identityKey:
+ * "u:<userId>"(登录含 admin,同为人账号一行一赞)| "v:<ah_av uuid>"(游客)。
+ * 计数现查 COUNT,不加冗余列。toggle 取「先删后建」而非事务内 catch P2002
+ * 再删——PG 唯一冲突即中止事务,同事务续行必 25P02;先删后建各语句自洽,
+ * 并发同击收敛为单行(唯一约束兜底),语义=意图归并。已知边界:游客首赞
+ * 双击各持新 uuid 理论可双赞——按钮 busy 防抖 + IP 闸兜底。
  */
 import { prisma, isP2002 } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -50,16 +52,17 @@ export async function togglePostLike(
   const post = await prisma.post.findUnique({ where: { id: postId }, select: { status: true } });
   if (!post || post.status !== "published") throw new LikeError("not_found", "文章不存在或未发布");
   await assertNotRateLimited(identityKey, ip);
-  const state = await prisma.$transaction(async (tx) => {
+  const state = await (async (): Promise<{ liked: boolean }> => {
+    const gone = await prisma.postLike.deleteMany({ where: { postId, identityKey } });
+    if (gone.count > 0) return { liked: false };
     try {
-      await tx.postLike.create({ data: { postId, identityKey } });
+      await prisma.postLike.create({ data: { postId, identityKey } });
       return { liked: true };
     } catch (e) {
       if (!isP2002(e)) throw e;
-      await tx.postLike.delete({ where: { postId_identityKey: { postId, identityKey } } });
-      return { liked: false };
+      return { liked: true }; // 并发对手已建行,同为「赞」意图
     }
-  });
+  })();
   const count = await prisma.postLike.count({ where: { postId } });
   logger.info({
     event: "post_like.toggled",
@@ -86,18 +89,17 @@ export async function toggleCommentLike(
     throw new LikeError("not_found", "评论不存在");
   }
   await assertNotRateLimited(identityKey, ip);
-  const state = await prisma.$transaction(async (tx) => {
+  const state = await (async (): Promise<{ liked: boolean }> => {
+    const gone = await prisma.postCommentLike.deleteMany({ where: { commentId, identityKey } });
+    if (gone.count > 0) return { liked: false };
     try {
-      await tx.postCommentLike.create({ data: { commentId, identityKey } });
+      await prisma.postCommentLike.create({ data: { commentId, identityKey } });
       return { liked: true };
     } catch (e) {
       if (!isP2002(e)) throw e;
-      await tx.postCommentLike.delete({
-        where: { commentId_identityKey: { commentId, identityKey } },
-      });
-      return { liked: false };
+      return { liked: true }; // 并发对手已建行,同为「赞」意图
     }
-  });
+  })();
   const count = await prisma.postCommentLike.count({ where: { commentId } });
   logger.info({
     event: "comment_like.toggled",

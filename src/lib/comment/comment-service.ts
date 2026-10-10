@@ -188,11 +188,11 @@ export async function guardCommentList(ip: string): Promise<void> {
 /**
  * 登录发评(先发后审):文 published → 父校验(同文+visible+父为根,两级封顶)
  * → 屏蔽词 → 双闸限流 → create(status=visible) 即时可见。
+ * authorName 为写侧快照:取账号昵称,缺省兜底「用户+id 尾 4 位」;渲染零 join。
  */
 export async function createPostComment(input: {
   postId: bigint;
   userId: bigint;
-  authorName: string;
   content: string;
   parentId?: bigint;
   ip: string;
@@ -224,11 +224,16 @@ export async function createPostComment(input: {
   if (await commentWriteOverLimit(input.userId, input.ip)) {
     throw new CommentError("rate_limited", "操作过于频繁,请稍后再试");
   }
+  const account = await prisma.userAccount.findUnique({
+    where: { id: input.userId },
+    select: { nickname: true },
+  });
+  const authorName = account?.nickname?.trim() || `用户${input.userId.toString().slice(-4)}`;
   const created = await prisma.postComment.create({
     data: {
       postId: input.postId,
       userId: input.userId,
-      authorName: input.authorName,
+      authorName,
       content: input.content,
       status: "visible",
       parentId: input.parentId ?? null,

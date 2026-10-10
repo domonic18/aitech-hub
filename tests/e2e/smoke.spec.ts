@@ -16,7 +16,8 @@ import sharp from "sharp";
  * 站点设置扩展·文章视图切换·菜单精简·带文字行 AI 轻解读·摘要要点/关键词双列(M12)/
  * 用量统计看板与牌价·封面工作流冒烟(M14)/K1 三域统一检索分组命中(K1)/
  * 公众号同步草稿:配置卡+未就绪 400+弹窗预填+批量 skipped+绑定重置(M17)/
- * K2.5 Drawer 深挖会话:线程 API 面+唤起预填+无绑定降级+侧栏删除(K2.5)。
+ * K2.5 Drawer 深挖会话:线程 API 面+唤起预填+无绑定降级+侧栏删除(K2.5)/
+ * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -2805,4 +2806,115 @@ test("31. K2.6 游客模式:归属隔离/3 问日限 429/后台会话管理(列�
     `DELETE FROM checkpoints WHERE thread_id LIKE 'g\\_%' AND checkpoint_ns = ''`,
   );
   await e2eRedis.quit();
+});
+
+test("32. 文章评论与点赞(M23 批②:评论区渲染/两级楼层/游客点赞去重回退/未登录引导)", async ({
+  page,
+  request,
+}) => {
+  const TITLE = "E2E 冒烟 M23 评论点赞";
+  const SLUG = "e2e-m23-post";
+  const CAT_SLUG = "e2e-m23-cat";
+  // 自播种:独立已发布文 + 根评论/楼中楼/隐藏根(重跑幂等)
+  await prisma.post.deleteMany({ where: { OR: [{ title: TITLE }, { slug: SLUG }] } });
+  const category = await prisma.category.upsert({
+    where: { slug: CAT_SLUG },
+    update: {},
+    create: { slug: CAT_SLUG, name: "e2e-M23" },
+  });
+  const post = await prisma.post.create({
+    data: {
+      slug: SLUG,
+      title: TITLE,
+      contentMd: "M23 评论区冒烟正文。",
+      categoryId: category.id,
+      status: "published",
+      publishedAt: new Date(),
+    },
+  });
+  const root = await prisma.postComment.create({
+    data: {
+      postId: post.id,
+      authorName: "e2e旧站友",
+      content: "e2e 根评论甲",
+      status: "visible",
+      parentId: null,
+      wpCommentId: BigInt(900001),
+    },
+  });
+  await prisma.postComment.create({
+    data: {
+      postId: post.id,
+      authorName: "e2e站长",
+      content: "e2e 楼中楼乙",
+      status: "visible",
+      parentId: root.id,
+    },
+  });
+  await prisma.postComment.create({
+    data: {
+      postId: post.id,
+      authorName: "e2e隐藏者",
+      content: "e2e 隐藏根丙",
+      status: "hidden",
+      parentId: null,
+    },
+  });
+
+  try {
+    // API 契约:total 只数根;BigInt 已字符串化;hidden 不出境
+    const api = await request.get(`/api/post-comments?postId=${post.id}`);
+    expect(api.status()).toBe(200);
+    const body = (await api.json()) as {
+      code: number;
+      data: { total: number; items: Array<{ id: string; replies: Array<{ content: string }> }> };
+    };
+    expect(body.code).toBe(0);
+    expect(body.data.total).toBe(1);
+    expect(body.data.items[0]!.id).toBe(root.id.toString());
+    expect(body.data.items[0]!.replies.map((r) => r.content)).toEqual(["e2e 楼中楼乙"]);
+
+    // 详情页:评论区壳 + 种子评论(含「旧站」迁移徽标)+ 隐藏根不上屏 + 未登录引导
+    await page.goto(`/post/${post.id}-${SLUG}/`);
+    await expect(page.getByRole("heading", { name: /评论 \d+/ })).toBeVisible();
+    await expect(page.getByText("e2e 根评论甲")).toBeVisible();
+    await expect(page.getByText("e2e 楼中楼乙")).toBeVisible();
+    await expect(page.getByText("旧站", { exact: true })).toBeVisible();
+    await expect(page.getByText("e2e 隐藏根丙")).toHaveCount(0);
+    await expect(page.getByText("登录后即可评论")).toBeVisible();
+
+    // 未登录 POST 评论 401(写侧门)
+    const anonPost = await page.evaluate(async (pid) => {
+      const res = await fetch("/api/post-comments", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ postId: pid, content: "游客不许" }),
+      });
+      return res.status;
+    }, post.id.toString());
+    expect(anonPost).toBe(401);
+
+    // 游客点赞:点击 → 已赞+1;刷新(cookie 身份持久)仍赞;再点 → 取消回退。
+    // 注意:点赞后按钮文案翻转为「已赞 N」,原「点赞」定位符随之失配——
+    // 用 /已赞/ 正则取翻转后的按钮(计数并入可访问名,不能 exact)
+    const likeBtn = page.getByRole("button", { name: "点赞", exact: true });
+    await expect(likeBtn).toBeVisible();
+    await likeBtn.click();
+    const likedBtn = page.getByRole("button", { name: /已赞/ });
+    await expect(likedBtn).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+    await expect(likedBtn).toContainText("1");
+    await page.reload();
+    const likedBtn2 = page.getByRole("button", { name: /已赞/ });
+    await expect(likedBtn2).toBeVisible({ timeout: 10_000 });
+    await likedBtn2.click();
+    await expect(page.getByRole("button", { name: "点赞", exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+    expect(await prisma.postLike.count({ where: { postId: post.id } })).toBe(0); // toggle 语义:取消即删行,同游客同文仅一行
+  } finally {
+    await prisma.postComment.deleteMany({ where: { postId: post.id } });
+    await prisma.postLike.deleteMany({ where: { postId: post.id } });
+    await prisma.post.deleteMany({ where: { id: post.id } });
+    await prisma.category.deleteMany({ where: { slug: CAT_SLUG } });
+  }
 });

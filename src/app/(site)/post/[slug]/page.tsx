@@ -6,6 +6,8 @@ import { notFound, permanentRedirect } from "next/navigation";
 
 import ArticleBody from "@/components/article/ArticleBody";
 import PayGateCard from "@/components/pay/PayGateCard";
+import PostComments from "@/components/site/comment/PostComments";
+import PostLikeButton from "@/components/site/comment/PostLikeButton";
 import { excerptOf } from "@/lib/content/format";
 import { getPostById, listPostSegmentsForPrerender } from "@/lib/content/posts";
 import { htmlToMarkdown } from "@/lib/content/html-to-md";
@@ -172,6 +174,12 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
           <ArticleBody contentMd={post.contentMd} contentHtml={post.contentHtml} />
         )}
       </div>
+
+      {/* 互动区(M23):点赞 + 评论区,均为 client island 不进 ISR(arch/07 §2) */}
+      <div className="mt-8 border-t border-line/60 pt-4">
+        <PostLikeButton postId={post.id.toString()} />
+      </div>
+      <PostComments postId={post.id.toString()} />
 
       <footer className="mt-12 border-t border-line/60 pt-4 text-sm text-text-3">
         <Link href="/articles/" className="hover:text-text-1">
