@@ -60,3 +60,6 @@ __pycache__/
 # douyin-gateway 依赖清单(全局 *.txt 误伤;CI gateway job 与镜像构建依赖)
 !services/douyin-gateway/requirements.txt
 !services/douyin-gateway/requirements-dev.txt
+
+# 搜索引擎验证文件(全局 *.txt 误伤;public/ 静态资产本就全部纳管)
+!public/*.txt
