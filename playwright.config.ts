@@ -11,7 +11,7 @@ import { defineConfig } from "@playwright/test";
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "./tests/e2e",
   outputDir: ".test-results", // 点前缀隐藏:临时产物不占根目录视线(每次运行自动清空重建)
   timeout: 30_000,
   workers: 1, // 顺序执行:共享 ISR 缓存与统计缓冲,避免并发干扰

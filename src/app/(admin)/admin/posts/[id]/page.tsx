@@ -67,6 +67,9 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
         seoTitle: post.seoTitle ?? "",
         seoDescription: post.seoDescription ?? "",
         contentOrigin: asContentOrigin(post.contentOrigin),
+        isPurchasable: post.isPurchasable,
+        purchasePrice: post.purchasePrice === null ? null : Number(post.purchasePrice),
+        isLoginRequired: post.isLoginRequired,
         status: postDisplayState(post),
       }}
     />

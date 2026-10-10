@@ -194,6 +194,10 @@ export async function createPost(
         contentOrigin: input.contentOrigin,
         categoryId: category.id,
         status: "draft",
+        // 付费两列(M21 批⑤):关闭即清价(开关与价格原子一致)
+        isPurchasable: input.isPurchasable,
+        purchasePrice: input.isPurchasable ? (input.purchasePrice ?? null) : null,
+        isLoginRequired: input.isLoginRequired, // M21 补齐批:登录可见(与付费互斥,schema 层校验)
         ...(tags.length > 0 ? { tags: { create: tags } } : {}),
       },
     });
@@ -257,6 +261,15 @@ export async function updatePost(
         seoDescription: input.seoDescription ?? null,
         contentOrigin: input.contentOrigin,
         categoryId: category.id,
+        // 付费两列(M21 批⑤):关闭即清价;省略 = 不动付费配置(MCP 外部通道);
+        // 已发布文改动后走下方 revalidate 刷新门禁面
+        ...(input.isPurchasable === undefined
+          ? {}
+          : {
+              isPurchasable: input.isPurchasable,
+              purchasePrice: input.isPurchasable ? (input.purchasePrice ?? null) : null,
+            }),
+        ...(input.isLoginRequired === undefined ? {} : { isLoginRequired: input.isLoginRequired }),
         tags: { deleteMany: {}, ...(tags.length > 0 ? { create: tags } : {}) },
       },
     });

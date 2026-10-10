@@ -1,7 +1,7 @@
 .PHONY: setup dev worker lint typecheck test check build migrate seed format
 
 setup:            ## 初始化:cp .env / 装依赖 / 起 pg,redis / 迁移 / 种子
-	bash scripts/setup-local.sh
+	bash scripts/ops/setup-local.sh
 
 dev:              ## 启动 web(next dev :3000)
 	npm run dev

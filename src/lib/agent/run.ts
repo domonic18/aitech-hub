@@ -6,6 +6,7 @@
  * 客户端断开经 AbortSignal 中止 agent,已产 usage 照记。
  */
 import { HumanMessage } from "@langchain/core/messages";
+import { Command } from "@langchain/langgraph";
 
 import { recordAiUsage, AI_USAGE_ROLE_SEARCH_AGENT } from "../ai/usage-log";
 import { logger } from "../logger";
@@ -41,7 +42,10 @@ function collectToolCallIds(updates: unknown, into: Set<string>): void {
 
 export interface AgentRunParams {
   threadId: string;
-  message: string;
+  /** 新提问文本(resume 分支为 null,两者必居其一,路由层把关) */
+  message: string | null;
+  /** HITL 恢复值(ask_user 提问卡回答;经 Command({resume}) 灌回中断的工具) */
+  resume?: unknown;
   signal: AbortSignal;
   /** 流帧出口(路由侧只管 encode 后下发) */
   onFrame: (frame: string) => void;
@@ -68,7 +72,7 @@ interface UsageMeta {
  * 收尾);帧序列 metadata → (messages|updates)* → end。
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
-  const { threadId, message, signal, onFrame } = params;
+  const { threadId, message, resume, signal, onFrame } = params;
   const { graph, resolved } = await getAgentGraph();
   const runId = crypto.randomUUID();
 
@@ -83,15 +87,18 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
 
   onFrame(encodeWireEvent("metadata", { run_id: runId, thread_id: threadId }));
 
-  const stream = await graph.stream(
-    { messages: [new HumanMessage(message)] },
-    {
-      configurable: { thread_id: threadId },
-      streamMode: ["messages", "updates"] as ["messages", "updates"],
-      recursionLimit: AGENT_RECURSION_LIMIT,
-      signal,
-    },
-  );
+  // resume 分支(HITL):Command 作图输入,中断的 ask_user 工具重放并拿到回
+  // 答继续;正常分支注入单条 human 消息。streamMode/护栏两分支一致。
+  const input =
+    resume !== undefined
+      ? new Command({ resume })
+      : { messages: [new HumanMessage(message ?? "")] };
+  const stream = await graph.stream(input, {
+    configurable: { thread_id: threadId },
+    streamMode: ["messages", "updates"] as ["messages", "updates"],
+    recursionLimit: AGENT_RECURSION_LIMIT,
+    signal,
+  });
 
   for await (const entry of stream) {
     if (signal.aborted) break;
@@ -136,6 +143,8 @@ export async function recordAgentRun(params: {
   sessionId: string;
   durationMs: number;
   outcome: AgentRunOutcome;
+  /** 登录用户锚(M22 透传 ai_usage_log.user_id;游客/admin 之外的站点级调用缺省) */
+  userId?: bigint;
 }): Promise<void> {
   const { sessionId, durationMs, outcome } = params;
   await recordAiUsage({
@@ -147,6 +156,7 @@ export async function recordAgentRun(params: {
     durationMs,
     status: outcome.truncatedReason ? "degraded" : "ok",
     sessionId,
+    userId: params.userId,
   });
   if (sessionId.startsWith(GUEST_THREAD_PREFIX)) return;
   try {

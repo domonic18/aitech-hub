@@ -69,7 +69,7 @@
 
 - **wire 契约以已装 SDK 实测钉死**(`@langchain/langgraph-sdk` 1.12.1 dist 逐行核对,不信旧文档):SDK 透传原始 `{event,data}` SSE 帧;前端 `useLangGraphMessages` 识别 `messages`(tuple `[message, metadata]`)/`messages/partial`/`updates`/`values`/`metadata`/`error` 等,未知事件走 custom;chunk 形态要求 `tool_call_chunks[].index` 为 number——序列化单点收敛 `src/lib/agent/wire.ts`;客户端解码单点 `src/lib/agent/sse.ts`(K2.6 修复批,见下)
 - **会话 30 天自动清退 + 用户可删(2026-10-07 用户拍板)**:行 `lastMessageAt` 超 30 天 worker 日清(STATS 队列 `purge-agent-session`,04:33 错峰)行+checkpoint 同删;用户删除走 DELETE 路由(归属校验 404 不泄露存在性,checkpoint 删失败不反噬)
-- **入口仅 /search 场景(2026-10-07 用户拍板)**:答案卡追问 chips(直发)+「继续深挖」按钮(仅预填)派发 `search:agent-ask` 事件唤起 Drawer;不做全局 FAB
+- **入口仅 /search 场景(2026-10-07 用户拍板;~~不做全局 FAB~~——**2026-10-09 M22 批④ 推翻,全站悬浮助手上线,见 K2.7 注记**)**:答案卡追问 chips(直发)+「继续深挖」按钮(仅预填)派发 `search:agent-ask` 事件唤起 Drawer
 - **身份**:匿名 cookie `ah_av`(uuid,365d,httpOnly)即 visitor,会话行与其绑定;换设备/清 cookie 失联,30 天清退兜底;三期登录后再议账号绑定
 - **模型绑定即时性**:agent 图进程级缓存按 `${resolved.id}:${resolved.source}` 键控,admin 改 search 绑定下一次 run 即生效(rebuild 落 `agent.graph_rebuilt` 日志);台账记独立角色 `search_agent`(与答案卡 `search` 的 100/日 互不侵占)
 - **前端**:ai-invest 自绘件结构平移(`src/components/site/agent/` 七件),终端风 token 换装,不引 antd/zustand/react-query;threads 建删与 state 走自有 fetch(apiEnvelope);`runs.stream` K2.6 起亦为自有 fetch+SSE 解析(SDK AsyncCaller 对非 2xx reject Response 且包装 `new Error(response)`,apiEnvelope 人话/状态码全丢 → 429 配额/404 过期无法分流还会盲重试等待,用户实测 3 问后静默停止);程序化发送直写 `thread.append`(composer.setText 同 tick send 会静默 no-op);todos 提取零依赖模块 `lib/agent/todos` 客户端可安全引入;Drawer 左缘可拖拽调宽(420~920px 夹取,localStorage `agent.drawer.width` 记忆)
@@ -84,11 +84,22 @@
 - **工具面收紧 + get_time**:AGENT_TOOLS 收口四只读工具(search_site/read_post/read_repo/get_time),系统提示明示「四工具之外无任何能力(无站外网页/文件系统/代码执行/写入)」超范围直说做不到;`get_time` 返回北京时区 `{iso,beijing,timezone}` 锚定相对时间
 - **后台会话管理**(`src/lib/agent/admin-sessions.ts` + `/api/agent-sessions*` + `/admin/agent-sessions`):成员=会话行+台账 runs 计数;游客=`ai_usage_log` 按 session_id 聚合(`LIKE 'g%'`——成员 uuid 首字符必为 hex 不会撞 g)还原统计,活跃态查 Redis 归属键(只查当前页);两源合并按最近活动倒排内存分页;详情读 checkpoint 时间线,游客过期只留台账统计标「已过期」;侧栏「会话管理」占位激活
 
+**K2.7 实施注记(2026-10-09,M22 迭代批①~⑤,全站悬浮 AI 助手 + 用户额度 + 反馈系统)**:
+
+- **入口全局化(M22 批④,推翻 2026-10-07「不做全局 FAB」决策)**:`AssistantFab` 挂 `(site)/layout.tsx`(SSR 恒 null,身份/显隐判定全在客户端),点开 ≈400px 悬浮聊天卡片(非全高抽屉;`AssistantCard` 编排复用 AgentRuntimeProvider/AgentThread/AgentSidebar,懒挂载纪律同 Drawer);/search 的 `search:agent-ask` Drawer 原样保留,新全局协议为 `CustomEvent("agent:open", {detail:{mode, ask}})`(Footer「联系我们」等消费;ask 直发/预填经 nonce 注入 pending,不整卡重挂)
+- **身份三路**(`identity.ts`):admin(`admin:<sub>`)/ **user(`user:<sub>`,M22 起普通用户不再是游客)**/ 游客(`ah_av`)——user 复用会话行路径(threads 列表/创建/删除与 admin 同构,30 天日清统一),游客 K2.6 双闸配额照旧
+- **余额扣减(免费额度制,M22 批①定稿,不接支付)**:`user_token_wallet` 余额行 + `user_token_ledger` append-only 流水(同事务防并发扣穿),注册送 20 万 tokens/月、读时惰性月重置(periodKey,零 cron);run 前 `hasTokenBalance` 预检(≤0 → SSE 429「本月 AI 额度已用完」不进 run),run 后 `consumeTokens` 按实际 tokens 实扣(可微穿仓至单轮 50k 护栏下限;扣减失败只告警不反噬已完成 run);**admin/游客不扣余额;答案卡不扣余额(范围红线)**——答案卡是站点级公共检索增强,走 100 次/日站配额,非个人资产
+- **显隐偏好(需求7)**:登录账号写 `user_account.assistant_visible`(PATCH `/api/account/assistant-visible`,账号级跨设备);游客 localStorage 键独立互不影响;隐藏后右下角留极小唤起点兜底
+- **反馈系统(M22 批⑤,需求8/9)**:`submit_feedback` 为工具面唯一可写口(入参共用 `feedback-schema.ts` submitFeedbackSchema;sessionId 取 run 注入 LangChain config 的 `configurable.thread_id`,不在模型参数面不可伪造,归属经会话表溯源,不直落 userId/visitorId);系统提示六工具口径(2026-10-10 ask_user 恢复后)+ 联系话术(ask_user 确认内容→ask_user 询问联系方式可拒→落库后简短告知不复述);Footer「联系我们」派发 `agent:open` 直发引导(未登录可用,游客配额天然覆盖);admin `/admin/feedback` 四分段 + 搜索 + 分页 + 行内流转(open→processing→resolved,可回退重开;无删除无邮件——用户声音留档);API 按仓库惯例落顶层域目录 `/api/feedback`(GET 列表)+ `/api/feedback/[id]`(PUT 流转,requireAdminRequest)
+- **ask_user 结构化提问(HITL,2026-10-09 验收反馈)**:工具面第五只 `ask_user`(六工具口径)——工具体内裸调 langgraph `interrupt()` 暂停图(checkpointer 持久),`__interrupt__` updates 帧经 wire 原样透传,前端 `AgentInterruptCard`(问题 + 候选选项点选 + 自由文本)替换输入区(中断期间禁言,防新消息打到悬空 tool_call);回答经 `useLangGraphSendCommand` → POST `command.resume`(`{message,option?}`,resume run 以 `new Command({resume})` 作图输入,工具重放后以正常 ToolMessage 拿到答案继续)。**选型注记**:deepagents TS 版 HITL 中间件(`interruptOn`)的 reject 决策会把回复合成 `status:"error"` 的 ToolMessage(语义错),故不用;裸 interrupt 回传即成功结果,载荷形状收口 `src/lib/agent/hitl.ts`(零依赖前后端共用)。护栏口径:resume 不计游客 3 问/日(非新 ask)、不回填标题;IP 10 次/分与余额/50k 累计照计(真模型消耗)。**可靠性收口(2026-10-10,SasanAgent 范式)**:中断水合——刷新/切会话经 state 路由透出挂起中断(checkpointer getTuple pendingWrites 的 `__interrupt__` 通道防御性窄化),SDK load 契约 `interrupts` 字段恢复提问卡;悬空 tool_calls/孤儿 ToolMessage(中止打断工具节点、提问挂起后弃答、存量脏会话 → OpenAI 兼容端点 400)由 `tool_call_repair` 中间件模型调用前修复(wrapModelCall 请求副本改写,不落持久化,无脏数据零开销透传);并行 ask_user 由 `ask_user_guard` 单飞守卫拦截(只放行触发 AIMessage 按序第一个,其余拦「请合并」;state 异常 fail-closed,防 resume 批重执行答案错位)。
+- **dev 注意**:turbopack 下 langsmith 可选依赖 `ws` 缺失使 `/api/search/agent/*/runs/stream` 编译失败;分支切换触发全量重编译时该错误会全站化(所有路由 500),重启 dev server 即恢复按路由隔离(prod webpack standalone 不受影响,未加依赖)
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
 - **第二迭代:K2.5 Drawer 会话 Agent**——**已交付(2026-10-07,批①~⑤)**:deepagents + assistant-ui + checkpoint(落点 `src/lib/agent/*` + `/api/search/agent/*` + `src/components/site/agent/`;实施注记见上)
 - **第三迭代:K2.6 游客模式 + 后台会话管理 + 工具面收紧**——**已交付开发(2026-10-07,分支 feature/agent-guest-mode 批①~④,用户六项需求;实施注记见上)**
+- **M22 迭代:K2.7 全站悬浮助手 + 用户 Token 额度 + 反馈系统**——**已交付开发(2026-10-09,批①~⑤;账号中心/订单/消耗页为 user 域,见 arch/03 §2.2;实施注记见上)**
 - K3 站点内容 MCP 随 K1 就绪解锁(同检索层,对外只读工具面)
 
 ## 4. AI 服务治理后台(2026-09-30 原型锚点;模型配置 M8 批⑥ 已提前落地,余项二期)
@@ -112,4 +123,4 @@
 - ~~安全边界:哪些 mutation 允许 agent 触达、审计要求~~ **已定(2026-10-06,§3)**:K 系列只读(检索/读站内内容),不触达任何 mutation;审计 = `ai_usage_log` 逐次落行 + 会话管理(admin-schemas 余项,归 arch §4 二期范围)
 - ~~Agent 搜索的检索/生成选型(§3,随二期立项)~~ **已定并实施(2026-10-06,§3.2)**:检索 ILIKE 词项计分起步(PG simple 分词对中文无效,tsvector 弃);生成直连 LLM 进程内;zhparser/pgvector 混合留实效实测后再评审——**2026-10-08 M20 已升混合检索**(pgvector + RRF,§3.2),生成侧不变
 - ~~会话留存期与清退(Drawer 线程 checkpoint 数据保留多久、是否给用户「删除会话」)~~ **已定(2026-10-07 用户拍板)**:30 天自动清退(worker 日清,行+checkpoint 同删)+ 用户可删(DELETE 路由归属校验)
-- ~~Drawer 抽屉在 /search 之外的入口范围(全局 FAB vs 仅搜索场景)~~ **已定(2026-10-07 用户拍板)**:仅 /search 场景——答案卡追问 chips 唤起(直发)+「继续深挖」按钮(预填),不做全局 FAB
+- ~~Drawer 抽屉在 /search 之外的入口范围(全局 FAB vs 仅搜索场景)~~ **已定(2026-10-07 用户拍板)**:仅 /search 场景——答案卡追问 chips 唤起(直发)+「继续深挖」按钮(预填),不做全局 FAB **(2026-10-09 M22 批④ 推翻:全站悬浮助手上线,入口决策见 K2.7 注记)**

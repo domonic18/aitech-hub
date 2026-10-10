@@ -7,6 +7,8 @@
  *  - purgeVisitLogs / purgeSearchLogs:worker 日调度清理保留窗口外明细行。
  *  - ingestBotFetch:爬虫抓取入账(2026-10-07 方案B,middleware→内部端点→
  *    同一 ref 日缓冲 source_class='bot';识别名单见同目录 bots.ts)。
+ *  - ingestGeoFetch:GEO 机器面抓取入账(2026-10-09 方案A,面别分类见 geo.ts,
+ *    独立 geo 日缓冲 → stats_geo_daily)。
  * 缓冲落库(flushStatsBuffer)在同级 flush.ts(worker 每 60s;
  * 缓冲键形 stats:buf:<kind>:<day> 由本文件写入、flush.ts 消费,改名需同批)。
  */
@@ -17,6 +19,7 @@ import { statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
+import { geoPostIdOf, type GeoSurface } from "./geo";
 import {
   classifyReferrer,
   isBotUa,
@@ -129,6 +132,29 @@ export async function ingestBotFetch(botName: string): Promise<void> {
   await redis
     .pipeline()
     .hincrby(key, `bot|${botName}|pv`, 1)
+    .expire(key, BUFFER_TTL_SECONDS)
+    .exec();
+}
+
+/**
+ * GEO 机器面抓取入账(2026-10-09 方案A,GEO 统计):llms.txt 索引 / llms-full
+ * 全文 / 文章 .md 直出三个机器专属面的抓取计数,独立 geo 日缓冲 → flush 落
+ * stats_geo_daily(面 × 爬虫 × 文章粒度)。middleware 对 GEO 路径不分名单内外
+ * 一律上报(长尾 Agent 不可枚举,未识别 UA 记 unknown-agent);只记 PV 不去重
+ * (抓取频次即信号)。.md 抓取刻意不计入 content_post.views_count——那是真人
+ * 阅读口径(方案A决策点②);命名爬虫的页面抓取总账仍走 ingestBotFetch。
+ */
+export async function ingestGeoFetch(
+  surface: GeoSurface,
+  botName: string,
+  rawPath: string,
+): Promise<void> {
+  const day = statsDay();
+  const key = `stats:buf:geo:${day}`;
+  const postId = geoPostIdOf(surface, rawPath) ?? "";
+  await redis
+    .pipeline()
+    .hincrby(key, `${surface}|${botName}|${postId}`, 1)
     .expire(key, BUFFER_TTL_SECONDS)
     .exec();
 }

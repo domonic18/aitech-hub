@@ -140,6 +140,7 @@ export default async function AdminUsersPage({
           <thead>
             <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
               <th className="px-4 py-2.5 font-medium">用户</th>
+              <th className="px-3 py-2.5 font-medium">邮箱</th>
               <th className="px-3 py-2.5 font-medium">角色</th>
               <th className="px-3 py-2.5 font-medium">状态</th>
               <th className="px-3 py-2.5 font-medium">注册时间</th>
@@ -178,6 +179,12 @@ export default async function AdminUsersPage({
                       </div>
                     </div>
                   </td>
+                  <td
+                    className="max-w-[200px] truncate px-3 py-2.5 font-mono text-xs text-text-2"
+                    title={u.email ?? undefined}
+                  >
+                    {u.email ?? <span className="text-text-3">—</span>}
+                  </td>
                   <td className="px-3 py-2.5">
                     {u.role === "admin" ? (
                       <span className="rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] text-accent">
@@ -207,7 +214,7 @@ export default async function AdminUsersPage({
             })}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-xs text-text-3">
+                <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
                   没有符合条件的用户
                 </td>
               </tr>

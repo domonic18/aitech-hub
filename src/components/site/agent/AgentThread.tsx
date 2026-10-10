@@ -2,16 +2,19 @@
 /**
  * 会话主区(K2.5,平移 ai-invest AssistantThread):消息流(MessagePrimitive,
  * tools.Fallback→ToolCallBlock,正文 AnswerMarkdown 受约束渲染)、历史骨架、
- * 运行中跳动点、末条消息中断提示。程序化发送直写 thread.append——
+ * 运行中跳动点、末条消息中断提示。ask_user HITL 中断时提问卡替换输入区
+ * (2026-10-09 验收反馈)。程序化发送直写 thread.append——
  * composer.setText 经 flushTapSync 延迟生效,同 tick 的 send 会静默 no-op。
  */
 import { AuiIf, MessagePrimitive, ThreadPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react";
+import { useLangGraphInterruptState } from "@assistant-ui/react-langgraph";
 import { useCallback, useEffect } from "react";
 
 import AnswerMarkdown from "@/components/site/search/AnswerMarkdown";
 
 import AgentComposer, { GUEST_COMPOSER_HINT } from "./AgentComposer";
+import AgentInterruptCard from "./AgentInterruptCard";
 import ToolCallBlock from "./ToolCallBlock";
 
 export interface PendingAsk {
@@ -163,6 +166,9 @@ export default function AgentThread({
   guestMode = false,
 }: AgentThreadProps): React.ReactElement {
   const isLoading = useAuiState((s) => s.thread.isLoading);
+  // HITL 提问卡(ask_user 中断)替换输入区:中断期间禁言,防新消息打到悬空
+  // tool_call 上;回答经卡片 resume,首个 updates 帧即清位、输入区回归
+  const interrupted = useLangGraphInterruptState() !== undefined;
   // 计划条由 Drawer 承载(横贯侧栏+主区),此处仅消息流编排
   const onConsumed = useCallback(() => onPendingConsumed(), [onPendingConsumed]);
 
@@ -181,7 +187,11 @@ export default function AgentThread({
           </>
         )}
       </ThreadPrimitive.Viewport>
-      <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
+      {interrupted ? (
+        <AgentInterruptCard />
+      ) : (
+        <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
+      )}
       <PendingAskSender pending={pending} onConsumed={onConsumed} />
     </ThreadPrimitive.Root>
   );

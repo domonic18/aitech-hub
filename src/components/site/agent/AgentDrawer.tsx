@@ -51,6 +51,10 @@ export default function AgentDrawer(): React.ReactElement {
   const resizeStart = useRef({ x: 0, w: 520 });
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
+  // run 活跃态与 runtime 上报值:运行中受控回写会触发 SDK 线程切换并 abort
+  // 在跑 run(首条消息闪断根因),故暂缓到 run 收尾再对账追平(AssistantCard 同款)
+  const runActiveRef = useRef(false);
+  const reportedThreadIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const saved = Number(window.localStorage.getItem(DRAWER_WIDTH_KEY));
@@ -118,13 +122,25 @@ export default function AgentDrawer(): React.ReactElement {
 
   const onThreadIdChange = useCallback(
     (id: string | undefined) => {
-      // 首条消息真实建线程后回填;新会话置 undefined 由 runtime 自建
-      setThreadId(id);
-      // 游客无线程列表(Guest GET 恒空),不空转
+      reportedThreadIdRef.current = id;
+      // 游客无线程列表(Guest GET 恒空),不空转;列表刷新即时(纯 GET 无害)
       if (id !== undefined && auth === "admin") void refreshSessions();
+      // 首条消息真实建线程后回填;新会话置 undefined 由 runtime 自建。
+      // 运行中暂缓受控回写(防 SDK 切换 abort 在跑 run),收尾由 onRunActiveChange 对账
+      if (runActiveRef.current) return;
+      setThreadId(id);
     },
     [refreshSessions, auth],
   );
+
+  /** run 收尾对账:追平运行期间暂缓的受控 thread id(SDK 已收敛,回写即 no-op) */
+  const onRunActiveChange = useCallback((active: boolean) => {
+    runActiveRef.current = active;
+    if (active) return;
+    if (reportedThreadIdRef.current !== threadIdRef.current) {
+      setThreadId(reportedThreadIdRef.current);
+    }
+  }, []);
 
   // search:agent-ask 入口(chips 直发 / 深挖预填);打开时拉会话列表
   useEffect(() => {
@@ -152,6 +168,7 @@ export default function AgentDrawer(): React.ReactElement {
   }, [open]);
 
   const handleNewThread = useCallback((): void => {
+    reportedThreadIdRef.current = undefined;
     setThreadId(undefined);
     setTodos([]);
     setBanner(null);
@@ -159,6 +176,7 @@ export default function AgentDrawer(): React.ReactElement {
 
   const handleSwitchThread = useCallback((id: string): void => {
     if (id === threadIdRef.current) return;
+    reportedThreadIdRef.current = id;
     setThreadId(id);
     setTodos([]); // 计划条随会话切换重置(历史计划不恢复,见 arch/04 §3.2)
     setBanner(null);
@@ -186,6 +204,7 @@ export default function AgentDrawer(): React.ReactElement {
   const onPendingConsumed = useCallback((): void => setPending(null), []);
   /** K2.6 游客过期自愈:复位新会话 + 横幅指引重发 */
   const onSessionExpired = useCallback((): void => {
+    reportedThreadIdRef.current = undefined;
     setThreadId(undefined);
     setTodos([]);
     setBanner("会话已过期,已开启新会话,请重新发送");
@@ -273,6 +292,7 @@ export default function AgentDrawer(): React.ReactElement {
                 onThreadIdChange={onThreadIdChange}
                 onTodos={onTodos}
                 onError={onError}
+                onRunActiveChange={onRunActiveChange}
                 onSessionExpired={onSessionExpired}
               >
                 <AgentThread

@@ -2,38 +2,25 @@
 
 /**
  * 站点设置表单(M10 批② 电报带条数;M12 批② 键族:首页项目/文章条数、
- * 站点标题、hub 主文案 markdown;2026-10-05 反馈:关于页内容 markdown)。
- * 空/越界由服务端 Zod 校验返回 400 文案原样展示;PUT /api/site-config
- * 多键 partial 一次保存,保存后 revalidatePath("/","layout") 全站即时再生。
+ * 站点标题、hub 主文案 markdown;2026-10-05 反馈:关于页内容 markdown。
+ * 2026-10-09 验收反馈问题1:重构为分区设置形态——首页展示/站点标识/关于页
+ * 三分区卡 + 底部 sticky 保存条)。空/越界由服务端 Zod 校验返回 400 文案原样
+ * 展示;PUT /api/site-config 多键 partial 一次保存,保存后 revalidatePath
+ * ("/","layout") 全站即时再生。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+  BTN_PRIMARY,
+  INPUT,
+  SettingsActions,
+  SettingsField,
+  SettingsGrid,
+  SettingsSection,
+} from "@/components/admin/settings-controls";
 import { ABOUT_MD_MAX, type SiteSettings } from "@/lib/config/site-config";
 import type { ApiEnvelope } from "@/lib/http/response";
-
-const inputField =
-  "w-32 rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs text-text-1 outline-none focus:border-accent";
-const wideField =
-  "w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs text-text-1 outline-none focus:border-accent";
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <label className="block text-[11px] text-text-3">
-      {label}
-      {children}
-      {hint ? <span className="mt-1 block leading-relaxed">{hint}</span> : null}
-    </label>
-  );
-}
 
 export default function SiteSettingsForm({ initial }: { initial: SiteSettings }) {
   const router = useRouter();
@@ -80,138 +67,143 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
     }
   };
 
+  const message = error ? (
+    <p className="text-[11px] leading-relaxed text-red">{error}</p>
+  ) : notice ? (
+    <p className="text-[11px] leading-relaxed text-accent">{notice}</p>
+  ) : null;
+
   return (
-    <div className="rounded-md border border-line bg-panel p-4">
-      <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-accent/10 text-accent">
-          <svg className="ic ic-sm" aria-hidden="true">
-            <use href="#i-setting" />
-          </svg>
-        </span>
-        <b className="text-[13px] text-text-1">前台展示</b>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-4">
-        <Field label="首页电报流条数(1-50,默认 12)">
-          <input
-            type="number"
-            min={1}
-            max={50}
-            step={1}
-            value={bandCount}
-            onChange={(e) => setBandCount(e.target.value)}
-            aria-label="首页电报流条数"
-            className={`mt-1 ${inputField}`}
-          />
-        </Field>
-        <Field label="首页项目卡条数(1-12,默认 3)">
-          <input
-            type="number"
-            min={1}
-            max={12}
-            step={1}
-            value={repoCount}
-            onChange={(e) => setRepoCount(e.target.value)}
-            aria-label="首页项目卡条数"
-            className={`mt-1 ${inputField}`}
-          />
-        </Field>
-        <Field label="首页博主文章条数(1-12,默认 5)">
-          <input
-            type="number"
-            min={1}
-            max={12}
-            step={1}
-            value={postCount}
-            onChange={(e) => setPostCount(e.target.value)}
-            aria-label="首页博主文章条数"
-            className={`mt-1 ${inputField}`}
-          />
-        </Field>
-      </div>
-      <p className="mt-2 text-[11px] leading-relaxed text-text-3">
-        电报流条数控制 LIVE 带展示条数(带内固定一页,新条目经 60s
-        轮询前插并截回该上限);项目/文章条数控制 aside 两张 rail
-        卡的行数,非法/低于下限按默认值兜底,超上限取上限。
-      </p>
+    <div className="flex flex-col gap-4">
+      <SettingsSection
+        icon="i-eye"
+        title="首页展示"
+        description="控制首页 LIVE 带、项目卡与博主文章 rail 的展示条数;非法或越界值按默认兜底。"
+      >
+        <SettingsGrid cols={3}>
+          <SettingsField label="电报流条数" htmlFor="cfg-band" hint="1-50,默认 12">
+            <input
+              id="cfg-band"
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              value={bandCount}
+              onChange={(e) => setBandCount(e.target.value)}
+              aria-label="首页电报流条数"
+              className={INPUT}
+            />
+          </SettingsField>
+          <SettingsField label="项目卡条数" htmlFor="cfg-repo" hint="1-12,默认 3">
+            <input
+              id="cfg-repo"
+              type="number"
+              min={1}
+              max={12}
+              step={1}
+              value={repoCount}
+              onChange={(e) => setRepoCount(e.target.value)}
+              aria-label="首页项目卡条数"
+              className={INPUT}
+            />
+          </SettingsField>
+          <SettingsField label="博主文章条数" htmlFor="cfg-post" hint="1-12,默认 5">
+            <input
+              id="cfg-post"
+              type="number"
+              min={1}
+              max={12}
+              step={1}
+              value={postCount}
+              onChange={(e) => setPostCount(e.target.value)}
+              aria-label="首页博主文章条数"
+              className={INPUT}
+            />
+          </SettingsField>
+        </SettingsGrid>
+      </SettingsSection>
 
-      <div className="mt-5 flex items-center gap-2 border-t border-line pt-4">
-        <b className="text-[13px] text-text-1">站点标识</b>
-      </div>
-      <div className="mt-3 flex flex-col gap-3">
-        <Field label="站点标题(1-50 字,默认「一起AI」;作用于浏览器标题、顶栏/页脚、RSS 与 llms.txt)">
-          <input
-            type="text"
-            value={siteTitle}
-            onChange={(e) => setSiteTitle(e.target.value)}
-            aria-label="站点标题"
-            className={`mt-1 ${inputField} w-full sm:w-64`}
-          />
-        </Field>
-        <Field
-          label="ICP 备案号(留空不展示;作用于页脚,链工信部备案系统)"
-          hint="如「京ICP备2022035466号-2」,保存后页脚出现指向 beian.miit.gov.cn 的备案链接。"
-        >
-          <input
-            type="text"
-            value={icp}
-            onChange={(e) => setIcp(e.target.value)}
-            aria-label="ICP 备案号"
-            maxLength={60}
-            className={`mt-1 ${inputField} w-full sm:w-64`}
-          />
-        </Field>
-        <Field
-          label="首页 Hub 主文案(留空用默认;支持 Markdown 行内样式:链接、加粗、斜体、行内代码)"
-          hint="展示于首页终端窗的品牌语一行,块级语法会被折叠为行内文本。"
+      <SettingsSection
+        icon="i-aim"
+        title="站点标识"
+        description="浏览器标题、顶栏/页脚、RSS 与 llms.txt 共用的站点身份;备案号展示于页脚。"
+      >
+        <SettingsGrid>
+          <SettingsField label="站点标题" htmlFor="cfg-title" hint="1-50 字,默认「一起AI」">
+            <input
+              id="cfg-title"
+              type="text"
+              value={siteTitle}
+              onChange={(e) => setSiteTitle(e.target.value)}
+              aria-label="站点标题"
+              className={INPUT}
+            />
+          </SettingsField>
+          <SettingsField
+            label="ICP 备案号"
+            htmlFor="cfg-icp"
+            hint="留空不展示;保存后页脚出现指向工信部备案系统的链接。"
+          >
+            <input
+              id="cfg-icp"
+              type="text"
+              value={icp}
+              onChange={(e) => setIcp(e.target.value)}
+              aria-label="ICP 备案号"
+              maxLength={60}
+              placeholder="京ICP备XXXXXXXX号-X"
+              className={INPUT}
+            />
+          </SettingsField>
+        </SettingsGrid>
+        <div className="mt-4">
+          <SettingsField
+            label="首页 Hub 主文案"
+            htmlFor="cfg-hero"
+            hint="首页终端窗品牌语一行;支持行内 Markdown(链接、加粗、斜体、行内代码),块级语法折叠为行内文本。"
+          >
+            <textarea
+              id="cfg-hero"
+              value={heroMd}
+              onChange={(e) => setHeroMd(e.target.value)}
+              aria-label="首页 Hub 主文案"
+              rows={3}
+              maxLength={2000}
+              placeholder="例:# AI 信息 Hub — 资讯 · 教程 · 项目,连接人与快速变化的 AI"
+              className={`font-mono ${INPUT} resize-y`}
+            />
+          </SettingsField>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        icon="i-checkcircle"
+        title="关于页"
+        description="展示于前台 /about/;保存后随全站配置即时再生。"
+      >
+        <SettingsField
+          label="关于页内容"
+          htmlFor="cfg-about"
+          hint="留空用内置默认文案;支持完整 Markdown(标题、列表、链接、加粗、行内代码、代码块)。"
         >
           <textarea
-            value={heroMd}
-            onChange={(e) => setHeroMd(e.target.value)}
-            aria-label="首页 Hub 主文案"
-            rows={3}
-            maxLength={2000}
-            placeholder="例:# AI 信息 Hub — 资讯 · 教程 · 项目,连接人与快速变化的 AI"
-            className={`mt-1 font-mono ${wideField}`}
-          />
-        </Field>
-      </div>
-
-      <div className="mt-5 flex items-center gap-2 border-t border-line pt-4">
-        <b className="text-[13px] text-text-1">关于页</b>
-      </div>
-      <div className="mt-3 flex flex-col gap-3">
-        <Field
-          label="关于页内容(留空用内置默认文案;支持完整 Markdown:标题、列表、链接、加粗、行内代码、代码块)"
-          hint="展示于前台 /about/;保存后随全站配置即时再生。"
-        >
-          <textarea
+            id="cfg-about"
             value={aboutMd}
             onChange={(e) => setAboutMd(e.target.value)}
             aria-label="关于页内容"
-            rows={8}
+            rows={10}
             maxLength={ABOUT_MD_MAX}
             placeholder="留空回退内置默认文案;支持完整 Markdown。"
-            className={`mt-1 font-mono ${wideField}`}
+            className={`font-mono ${INPUT} resize-y`}
           />
-        </Field>
-      </div>
+        </SettingsField>
+      </SettingsSection>
 
-      {error && <p className="mt-2 font-mono text-[11px] text-red">{error}</p>}
-      {notice && <p className="mt-2 font-mono text-[11px] text-text-2">{notice}</p>}
-      <div className="mt-3 flex justify-end">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void save()}
-          className="cursor-pointer rounded-sm bg-accent px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-        >
-          {busy ? "保存中…" : "保存"}
+      <SettingsActions message={message} sticky>
+        <button type="button" disabled={busy} onClick={() => void save()} className={BTN_PRIMARY}>
+          {busy ? "保存中…" : "保存设置"}
         </button>
-      </div>
-      <p className="mt-3 font-mono text-[11px] text-text-3">
-        GET/PUT /api/site-config — 配置存 site_config kv(band.item_count / home.repo_count /
-        home.post_count / site.title / home.hero_md / about.content)。
-      </p>
+      </SettingsActions>
     </div>
   );
 }

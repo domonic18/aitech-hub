@@ -3,23 +3,39 @@ import { NextResponse } from "next/server";
 import { htmlToMarkdown } from "@/lib/content/html-to-md";
 import { buildLegacyPath, lookupLegacyPath } from "@/lib/content/legacy";
 import { getPostById } from "@/lib/content/posts";
-import { parsePostSegment } from "@/lib/content/post-path";
+import { parsePostSegment, postPath } from "@/lib/content/post-path";
+import { gateNoticeMd, previewMarkdown } from "@/lib/pay/preview";
 import { absoluteUrl } from "@/lib/seo/site";
 
 /**
  * 文章 Markdown 直出(GEO,requirement §3.2):GET /post/<id>-<slug>.md
  * (next.config rewrite 转发到本路由,与 /post/<id>-<slug>/ 同语义);
  * content_md 优先(新文),迁移旧文由清洗后 HTML 转换。ISR 1h。
- * 旧单段 /<slug>.md(llms.txt 早期分发的形态)经映射表 301 到新形态 .md;弃用/未命中 404。
+ * 门禁文(付费/登录可见,2026-10-09 验收反馈问题2)只发同一份服务端截断
+ * 预览 + 获取条件说明——与 ISR 页口径一致(无 cloaking),全文仍仅经
+ * /api/pay/content 凭权益下发。旧单段 /<slug>.md(llms.txt 早期分发的形态)
+ * 经映射表 301 到新形态 .md;弃用/未命中 404。
  */
 export const revalidate = 3600;
 
 function serveMarkdown(post: {
   contentMd: string | null;
   contentHtml: string | null;
+  isPurchasable: boolean;
+  isLoginRequired: boolean;
+  id: bigint;
+  slug: string | null;
 }): NextResponse | null {
-  const body = post.contentMd ?? (post.contentHtml ? htmlToMarkdown(post.contentHtml) : "");
-  if (!body.trim()) return null;
+  const gate: "paid" | "login" | null = post.isPurchasable
+    ? "paid"
+    : post.isLoginRequired
+      ? "login"
+      : null;
+  const source = post.contentMd ?? (post.contentHtml ? htmlToMarkdown(post.contentHtml) : "");
+  if (!source.trim()) return null;
+  const body = gate
+    ? `${previewMarkdown(source)}\n\n${gateNoticeMd(gate, absoluteUrl(postPath(post.id, post.slug)))}\n`
+    : source;
   return new NextResponse(body, {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },
   }) as NextResponse;

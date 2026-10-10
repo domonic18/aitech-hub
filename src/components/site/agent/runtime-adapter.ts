@@ -11,7 +11,11 @@
  * 纪律:本模块不订阅任何 React 状态,todos 经 onTodos 回调上抛 Drawer。
  */
 import { InMemoryThreadListAdapter } from "@assistant-ui/react";
-import type { LangChainMessage, LangGraphStreamCallback } from "@assistant-ui/react-langgraph";
+import type {
+  LangChainMessage,
+  LangGraphInterruptState,
+  LangGraphStreamCallback,
+} from "@assistant-ui/react-langgraph";
 
 import { createSseEventReader } from "@/lib/agent/sse";
 import { extractTodos, type AgentTodo } from "@/lib/agent/todos";
@@ -84,6 +88,9 @@ export interface AgentRuntimeAdapterOptions {
   onError?: (message: string) => void;
   /** 会话已过期/不存在(K2.6 游客 2h 清退)→ Drawer 复位新会话自愈 */
   onSessionExpired?: () => void;
+  /** run 起止上报(stream 生成器进出;宿主运行中暂缓受控 threadId 回写,
+   * 防 SDK 受控切换 abort 在跑的 run——2026-10-09 FAB 首条消息闪断根因) */
+  onRunActiveChange?: (active: boolean) => void;
 }
 
 /** 后端 404 话术(身份路由统一);命中即走自愈而非当普通错误挂横幅 */
@@ -94,7 +101,12 @@ export interface AgentRuntimeAdapter {
   load: (
     threadId: string,
     config?: { signal: AbortSignal },
-  ) => Promise<{ messages: LangChainMessage[]; interrupts?: never; uiMessages?: never }>;
+  ) => Promise<{
+    messages: LangChainMessage[];
+    /** 挂起中断(state 路由水合;SDK reconcileInterrupt 恢复提问卡) */
+    interrupts?: LangGraphInterruptState[];
+    uiMessages?: never;
+  }>;
   stream: LangGraphStreamCallback<LangChainMessage>;
   eventHandlers: {
     onUpdates: (updates: unknown) => void;
@@ -134,65 +146,76 @@ export function createAgentRuntimeAdapter(
     threadListAdapter,
     load: async (externalId: string) => {
       try {
-        const { values } = await apiJson<{
+        const { values, interrupts } = await apiJson<{
           values: { messages?: unknown[] };
+          interrupts?: LangGraphInterruptState[];
         }>(`${API_BASE}/threads/${externalId}/state`);
-        return { messages: (values.messages ?? []) as LangChainMessage[] };
+        return {
+          messages: (values.messages ?? []) as LangChainMessage[],
+          // 刷新/切会话恢复 ask_user 提问卡(SDK reconcileInterrupt;无中断
+          // 时后端返回空数组,置 undefined 走无中断路径)
+          ...(interrupts && interrupts.length > 0 ? { interrupts } : {}),
+        };
       } catch (e) {
         if (isSessionExpired(e)) throw selfHealError(options.onSessionExpired);
         throw e;
       }
     },
     stream: async function* (messages, config) {
-      const { externalId } = await config.initialize();
-      if (!externalId) throw new Error("会话尚未初始化");
-      // 自有 fetch 替代官方 SDK(头注:错误包装丢人话 + 盲重试)。载荷与 SDK
-      // 同形:后端 bodySchema 只消费 input,command(resume/regenerate)透传备用。
-      let res: Response;
+      options.onRunActiveChange?.(true);
       try {
-        res = await fetch(`${apiOrigin()}${API_BASE}/threads/${externalId}/runs/stream`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            input: messages.length ? { messages } : null,
-            ...(config.command ? { command: config.command } : {}),
-          }),
-          signal: config.abortSignal,
-        });
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") throw e; // 用户主动停,静默
-        const message = "网络连接异常,请稍后重试";
-        options.onError?.(message);
-        throw new Error(message);
-      }
-      if (!res.ok || !res.body) {
-        // 护栏前置拒绝(429 配额/频控、404 过期等)全走这里:人话分流
-        const message = await envelopeMessage(res);
-        if (isSessionExpired(message)) throw selfHealError(options.onSessionExpired);
-        options.onError?.(message);
-        throw new Error(message);
-      }
-      // 帧原样透传(sse.ts 按 encodeWireEvent 逆变换;error 帧已带人话,前端挂末条消息)
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      const frames = createSseEventReader();
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const frame of frames.push(decoder.decode(value, { stream: true }))) {
+        const { externalId } = await config.initialize();
+        if (!externalId) throw new Error("会话尚未初始化");
+        // 自有 fetch 替代官方 SDK(头注:错误包装丢人话 + 盲重试)。载荷与 SDK
+        // 同形:后端 bodySchema 只消费 input,command(resume/regenerate)透传备用。
+        let res: Response;
+        try {
+          res = await fetch(`${apiOrigin()}${API_BASE}/threads/${externalId}/runs/stream`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input: messages.length ? { messages } : null,
+              ...(config.command ? { command: config.command } : {}),
+            }),
+            signal: config.abortSignal,
+          });
+        } catch (e) {
+          if (e instanceof Error && e.name === "AbortError") throw e; // 用户主动停,静默
+          const message = "网络连接异常,请稍后重试";
+          options.onError?.(message);
+          throw new Error(message);
+        }
+        if (!res.ok || !res.body) {
+          // 护栏前置拒绝(429 配额/频控、404 过期等)全走这里:人话分流
+          const message = await envelopeMessage(res);
+          if (isSessionExpired(message)) throw selfHealError(options.onSessionExpired);
+          options.onError?.(message);
+          throw new Error(message);
+        }
+        // 帧原样透传(sse.ts 按 encodeWireEvent 逆变换;error 帧已带人话,前端挂末条消息)
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        const frames = createSseEventReader();
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            for (const frame of frames.push(decoder.decode(value, { stream: true }))) {
+              yield frame;
+            }
+          }
+          for (const frame of frames.end()) {
             yield frame;
           }
-        }
-        for (const frame of frames.end()) {
-          yield frame;
+        } finally {
+          try {
+            reader.releaseLock();
+          } catch {
+            /* 流已断 */
+          }
         }
       } finally {
-        try {
-          reader.releaseLock();
-        } catch {
-          /* 流已断 */
-        }
+        options.onRunActiveChange?.(false); // 正常收尾/中断/异常全路径覆盖
       }
     },
     eventHandlers: {

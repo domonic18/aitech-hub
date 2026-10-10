@@ -58,6 +58,7 @@
 
 - **主题胶囊**:44×24 分段控件,左月右日两个 SVG 图标,滑块 200ms 滑动;`aria-pressed` + `title`;状态存 `localStorage("proto-theme")`(站点实现为 `ah-theme`),优先级:显式选择 > 系统偏好 > 亮色;无显式选择时实时跟随系统变化。全站唯一实现(在 common.css),禁止页内自造变体。
 - **Logo(品牌「一起AI」,2026-10-02 定稿)**:17 monogram 芯片(圆角方块 `var(--accent)` 底 + mono 粗体「17」白字 + `--glow` 光)+ 名称「一起AI」+ 弱色 mono tld(前台 `17aitech.com`、admin `admin`);尺寸三档 26/22/32px(footer 24px),全站唯一形态(site header / admin sb-logo / index head),规格见 common.css §Logo;静态无闪烁,闪烁 caret 只允许出现在控制台输入框(site-home/site-search:原生 `caret-color: var(--accent)` + 镜像 ▍ 随输入移动)。站点口号:**一起,看懂 AI**。
+- **favicon 同源(2026-10-09)**:`src/app/icon.svg`(「17」以 64 网格几何描边路径绘制,笔画 7/64,不依赖设备字体)+ `favicon.ico`(16/32/48 三档,16px 档笔画 9/64 加粗补偿)+ `apple-icon.png`(180 全出血直角,iOS 自带遮罩);三者为同一芯片设计的再生成,改芯片形态须三处同步。
 - **站点 header**(唯一形态):左 logo;右 nav `首页 / 电报流 / 文章` + 搜索图标按钮 + 主题胶囊 + 头像下拉(SVG 头像 + caret;菜单:个人设置 → account.html、退出登录 → login.html;点外关闭 + Esc)。**归档/关于不放 header**,固定在 footer。
 - **admin 侧栏 v2**(唯一形态,消除漂移;M8-M14 陆续点亮,现状以 `AdminSidebar.tsx` 为准):`OVERVIEW 站点统计·站点设置 / 内容管理 文章管理·媒体库·电报流治理 / 采集 采集总览·渠道配置·博主管理·GitHub 仓库 / AI 服务 模型配置·用量统计·会话管理(二期) / 用户 用户管理 / 系统 PAT 令牌`;底部 sb-foot「返回前台站点」。图标全 SVG,禁占位项。
 - 可交互元素最低要求:hover 态、`cursor:pointer`、下拉/弹窗支持点外关闭与 Esc;`alert()` 允许作为原型演示动作(标注真实交互由开发实现)。

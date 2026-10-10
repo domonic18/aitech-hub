@@ -136,6 +136,49 @@ CREATE UNIQUE INDEX uq_user_pat_token_hash ON user_pat (token_hash);
 CREATE INDEX idx_user_pat_user ON user_pat (user_id);
 ```
 
+```sql
+-- 用户 Token 额度钱包(M22 批①迁移 20261009190234,免费额度制):
+-- 注册送 20 万 tokens/月,读时惰性月重置(period_key≠当月即重置回赠额),零 cron
+CREATE TABLE user_token_wallet (
+    user_id     BIGINT PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE,
+    balance     INTEGER NOT NULL DEFAULT 0,   -- 当前余额(实扣可微穿仓,下限=单轮 50k 护栏)
+    period_key  CHAR(7) NOT NULL,             -- 额度所属月 "YYYY-MM"(北京月界)
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- append-only 流水(余额变化全留痕;余额行 + 本表同事务更新,防并发扣穿)
+CREATE TABLE user_token_ledger (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+    delta         INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    reason        VARCHAR(16) NOT NULL,  -- grant | consume | reset | adjust
+    session_id    VARCHAR(40),           -- 溯源 agent 线程(consume 时)
+    note          VARCHAR(200),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_user_token_ledger_user_recent ON user_token_ledger (user_id, created_at DESC);
+
+-- 用户反馈(M22 批⑤;助手 submit_feedback 落库 + admin 后台流转,无删除无邮件)
+CREATE TABLE feedback (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT,                 -- 无 FK:账号删除留档可读(归属经 session_id 溯源)
+    visitor_id  VARCHAR(36),            -- 游客 ah_av(工具面未落,预留)
+    category    VARCHAR(20) NOT NULL,   -- requirement | issue | suggestion | other
+    content     VARCHAR(2000) NOT NULL,
+    contact     VARCHAR(200),           -- 用户自愿留的联系方式
+    status      VARCHAR(16) NOT NULL DEFAULT 'open',  -- open | processing | resolved
+    admin_note  VARCHAR(500),
+    session_id  VARCHAR(40),            -- agent 线程溯源(取 run 的 configurable.thread_id)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_feedback_status_recent ON feedback (status, created_at DESC);
+```
+
+- `user_account.assistant_visible`(M22 批①增列,`boolean not null default true`):悬浮 AI 助手显隐偏好,账号级跨设备(`PATCH /api/account/assistant-visible`);游客走 localStorage 不落库
+- `ai_usage_log.user_id`(M22 批①增列 + `idx_ai_usage_log_user_created`):Agent 会话 run 台账行记登录用户锚(`recordAgentRun` 透传;admin/游客缺省)——/account/usage 本月消耗与 /admin/usage 共用本表按 user 维度聚合
+
 ### 2.3 stats_ 与 legacy_
 
 ```sql
@@ -247,6 +290,18 @@ CREATE TABLE legacy_url_map (
 - `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(匿名 cookie `ah_av`,归属校验锚——非本人 404 不泄露存在性;K2.6 起仅 admin 会话落行,key=`admin:<sub>`);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
 - `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。**游客不落会话行**:thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库),checkpoint 由日清按「键已消失」清扫;后台游客统计 = 本表按 session_id 聚合
 
+**账号邮箱通道与支付域已落地(2026-10-08 M21 批⓪/批①迁移 `20261008221317_m21_batch0_email_auth` + `20261008143451_m21_batch0_email_config` + `20261008145247_m21_payment_schema`,方案定稿 M21 付费阅读提案 v1.6,批⑦ 落 arch/09)**:
+
+- `user_account` 增列(批⓪,D1 邮箱通道——注册→邮件认证→用户名/邮箱/手机号任一标识登录):`username? varchar(100)` 唯一(`uq_user_account_username`)/`email? varchar(255)` 唯一(`uq_user_account_email`)/`email_verified_at?`
+- `user_verification_token`(批⓪,一次性令牌):`user_id+purpose+token_hash char(64)`(sha256,原始令牌只出现在邮件链接)/`expires_at/consumed_at`;purpose 枚举 `register_verify|bind_email|password_reset`(应用层管控);单次消费 + 同 purpose 重签作废未消费旧令牌;索引 `(user_id, purpose)`
+- `email_config`(批⓪,SMTP 配置单行语义——2026-10-08 拍板入数据库,不入 env,与网关凭据同规则):`host/port(默认 465)/username/password/from_addr/enabled 默认 false`;password 只写不读(API 永不回传,留空=保留),明文不入日志;消费方 transport 按 `id:updated_at` 换新,保存即时生效
+- `pay_order`(订单):`order_no varchar(32)` 唯一(幂等键)/`user_id`(**无 FK,支付域与账号域解耦,应用层归属校验**)/`status varchar(16)` 枚举 `pending|paid|closed|refunded`(显式状态机,提案 §5.2 只允许图中迁移)/`amount decimal(10,2)`(**金额全程 Decimal 禁 float**)/`gateway varchar(24)` 枚举 `xunhu|mock|legacy_xunhu`/`gateway_transaction_id?`(微信流水,对账锚点——旧系统缺失项)/`gateway_open_order_id?`(虎皮椒内部单号)/`paid_at?/closed_at?/refunded_at?/expires_at`(pending 超时关单依据)/`client_ip?/operator_note?`;索引 `(user_id,status)` + `(status,expires_at)`(对账 job 扫描路径)
+- `pay_order_item`(订单行):`order_id` FK→pay_order(唯一 FK,默认名);`post_id` 标量无 FK/`title varchar(200)`(下单时标题快照)/`unit_price decimal(10,2)`/`quantity 默认 1`;索引 `post_id`
+- `content_post_purchase`(付费权益):`(user_id,post_id)` 唯一(一文一用户一条,授予=upsert `revoked_at=null`);`order_id?`(仅 order 来源必有,import/manual/admin_restore 可空)/`source varchar(16)` 枚举 `order|import|manual|admin_restore`/`revoked_at?/revoked_reason?`(退款 CD 回调软撤销,审计可恢复);索引 `post_id`
+- `pay_notify_log`(回调留痕):`order_no/gateway_status varchar(8)` 枚举 `OD|WP|CD|RD|UD`/`sign_valid/payload jsonb`(回调原文全量存,可追溯伪造尝试)/`handled 默认 false`(是否触发状态迁移);索引 `order_no`
+- `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
+- `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
@@ -258,6 +313,6 @@ CREATE TABLE legacy_url_map (
 
 ## 4. 数据订正规范(生产修数)
 
-- 订正一律走**一次性 TS 脚本**放 `scripts/`(pg Pool + SQL,可评审可重放);**禁止直连生产 psql 手改**,禁止在应用运行时热修数据
+- 订正一律走**一次性 TS 脚本**放 `scripts/oneoff/`(pg Pool + SQL,可评审可重放);**禁止直连生产 psql 手改**,禁止在应用运行时热修数据
 - 脚本结构:先打印影响行预览(默认 dry-run,显式传参才执行)→ 单事务执行 → 打印结果;**破坏性订正(批量 UPDATE/DELETE)执行前先 `pg_dump -Fc -t <表>`** 落 `workspace/backups/`
-- 订正不改变 schema 语义——涉及表/列/约束的变更走 §1 迁移,不得以订正绕过;订正脚本完成后留存入库不删除(溯源)
+- 订正不改变 schema 语义——涉及表/列/约束的变更走 §1 迁移,不得以订正绕过;订正脚本应用完成后从仓库删除,git 历史存档溯源

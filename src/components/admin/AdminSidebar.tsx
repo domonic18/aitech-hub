@@ -48,8 +48,23 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-comment", label: "会话管理", href: "/admin/agent-sessions" },
     ],
   },
-  { label: "用户", items: [{ icon: "i-user", label: "用户管理", href: "/admin/users" }] },
-  { label: "系统", items: [{ icon: "i-key", label: "PAT 令牌", href: "/admin/pats" }] },
+  {
+    label: "用户",
+    items: [
+      { icon: "i-user", label: "用户管理", href: "/admin/users" },
+      { icon: "i-comment", label: "反馈管理", href: "/admin/feedback" },
+    ],
+  },
+  {
+    label: "系统",
+    items: [
+      { icon: "i-key", label: "PAT 令牌", href: "/admin/pats" },
+      { icon: "i-send", label: "邮件配置", href: "/admin/email" },
+      // exact:/admin/pay 是 /admin/pay/orders 的前缀,只按全等点亮
+      { icon: "i-aim", label: "支付配置", href: "/admin/pay", exact: true },
+      { icon: "i-checkcircle", label: "支付订单", href: "/admin/pay/orders" },
+    ],
+  },
 ];
 
 export default function AdminSidebar({

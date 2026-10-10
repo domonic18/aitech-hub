@@ -26,6 +26,10 @@ export interface PostMetaValue {
   seoTitle: string;
   seoDescription: string;
   contentOrigin: ContentOrigin;
+  /** 阅读门禁(M21 批⑤ + 补齐批):付费开关 + 价格文本 + 登录可见;付费/登录可见互斥 */
+  isPurchasable: boolean;
+  purchasePriceText: string;
+  isLoginRequired: boolean;
 }
 
 /** 创作方式选项(值域唯一真相源 CONTENT_ORIGINS;合规要求见 post-schema 注) */
@@ -145,6 +149,58 @@ export default function PostMetaPanel({
         <div className="mt-1 font-mono text-[11px] text-text-3">
           {value.excerpt.length} / {POST_LIMITS.excerpt}
         </div>
+      </div>
+
+      <div>
+        <label className={LABEL} htmlFor="post-gate">
+          阅读门禁(M21)
+        </label>
+        <select
+          id="post-gate"
+          value={value.isPurchasable ? "paid" : value.isLoginRequired ? "login" : "free"}
+          onChange={(e) => {
+            const gate = e.target.value;
+            if (gate === "paid") {
+              onChange({ isPurchasable: true, isLoginRequired: false });
+            } else if (gate === "login") {
+              onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: true });
+            } else {
+              onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: false });
+            }
+          }}
+          className={INPUT}
+        >
+          <option value="free">免费阅读</option>
+          <option value="login">登录可见(免费,须登录)</option>
+          <option value="paid">付费解锁</option>
+        </select>
+        <div className="mt-1 text-[11px] text-text-3">
+          {value.isPurchasable
+            ? "前台仅展示截断预览,读者支付解锁全文"
+            : value.isLoginRequired
+              ? "前台仅展示截断预览,登录后免费阅读全文"
+              : "全文对所有人可见"}
+        </div>
+        {value.isPurchasable && (
+          <div className="mt-2">
+            <label className={LABEL} htmlFor="post-price">
+              价格(元)
+            </label>
+            <input
+              id="post-price"
+              type="number"
+              inputMode="decimal"
+              min={0.01}
+              max={999.99}
+              step={0.01}
+              value={value.purchasePriceText}
+              onChange={set("purchasePriceText")}
+              placeholder="5.00"
+              className={INPUT}
+            />
+            <div className="mt-1 text-[11px] text-text-3">0.01 ~ 999.99 元;下单按此服务端定价</div>
+          </div>
+        )}
       </div>
 
       <details>

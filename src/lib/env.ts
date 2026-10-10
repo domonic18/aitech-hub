@@ -44,6 +44,13 @@ const serverEnvSchema = z.object({
   TENCENT_SMS_SDK_APP_ID: z.string().default(""),
   TENCENT_SMS_SIGN_NAME: z.string().default(""),
 
+  /** 支付域(M21)已全部入数据库 pay_gateway_config(admin「支付配置」页
+   *  唯一控制面:模式 off|mock|xunhu + 凭据 + 回调地址 + 关单 TTL;
+   *  2026-10-08/09 两次拍板,env 无任何支付变量),此处不再有支付变量。 */
+
+  /** 事务邮件 SMTP(M21 批⓪)已入数据库 email_config(admin 后台维护,
+   *  用户拍板不入 env——与支付网关凭据同规则),此处不再有 SMTP 变量。 */
+
   /** 抖音数据网关(M8):dev 经 compose 映射 127.0.0.1:8010;prod 容器网内服务名 */
   DOUYIN_GATEWAY_URL: z.string().default("http://127.0.0.1:8010"),
 

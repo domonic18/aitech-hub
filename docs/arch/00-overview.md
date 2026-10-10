@@ -30,8 +30,8 @@ aitech-hub/                      # 一个 Next.js 应用 + 一个 BullMQ worker(
 ├── src/lib/                     # db(prisma 单例)/ redis / auth / media / slug / seo / queue
 ├── prisma/                      # schema.prisma + migrations/(SQL)+ seed.ts —— schema 唯一真相源
 ├── worker/                      # BullMQ worker 进程:媒体后处理(缩略图/WebP)、二期爬虫与 COS 同步
-├── scripts/migrate-wp/          # WP→PG 一次性迁移(TS:cheerio + mysql2 + pg,与主应用共享 slug/清洗工具)
-├── e2e/                         # Playwright
+├── scripts/                     # ops/ 长期运维 + oneoff/ 一次性脚本(应用后删,git 历史存档)
+├── tests/e2e/                   # Playwright
 ├── docker/                      # Dockerfile(多阶段)+ nginx/
 ├── docs/                        # 本文档体系 + UI 原型(docs/prototypes/index.html)
 ├── docker-compose.yml           # dev:仅 pg(5434)/redis(6380),应用本地跑保热更

@@ -5,7 +5,7 @@ vi.mock("@/lib/env", () => ({
   env: { AUTH_SECRET: "test-secret-0123456789-abcdef" },
 }));
 
-import { ACCESS_COOKIE_NAME, readSessionUser, verifyAccessToken } from "./session";
+import { ACCESS_COOKIE_NAME, verifyAccessToken } from "./session";
 
 const secret = new TextEncoder().encode("test-secret-0123456789-abcdef");
 
@@ -43,15 +43,14 @@ describe("verifyAccessToken(读侧最小实现,M4 扩展签发)", () => {
   });
 });
 
-describe("readSessionUser(从 Cookie 头解析)", () => {
-  it("取出 ah_at 并校验", async () => {
-    const token = await sign({ sub: "7", role: "admin" }, "2h");
-    const header = `other=1; ${ACCESS_COOKIE_NAME}=${token}; x=2`;
-    expect(await readSessionUser(header)).toEqual({ sub: "7", role: "admin" });
-  });
+describe("单一契约钉死(2026-10-09 收银台死循环事故)", () => {
+  it("只吃裸 token 值;完整 Cookie 头形态一律拒验(防双契约复活)", async () => {
+    const token = await sign({ sub: "7", role: "user" }, "2h");
+    expect(await verifyAccessToken(token)).toEqual({ sub: "7", role: "user" });
 
-  it("无会话 Cookie → null", async () => {
-    expect(await readSessionUser(null)).toBeNull();
-    expect(await readSessionUser("other=1")).toBeNull();
+    // 曾有 readSessionUser(完整头) 并存:把裸值误当头解析 → 恒 null,
+    // 已登录被当未登录,/pay 死循环弹登录。此形态必须保持不可解析。
+    expect(await verifyAccessToken(`${ACCESS_COOKIE_NAME}=${token}`)).toBeNull();
+    expect(await verifyAccessToken(`other=1; ${ACCESS_COOKIE_NAME}=${token}`)).toBeNull();
   });
 });
