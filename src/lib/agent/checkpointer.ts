@@ -65,17 +65,63 @@ export async function deleteThread(threadId: string): Promise<void> {
   await getAgentCheckpointer().deleteThread(threadId);
 }
 
+/** 前端中断态水合契约(assistant-ui LangGraphInterruptState 的结构子集)。 */
+export interface ThreadInterruptState {
+  value?: unknown;
+  resumable?: boolean;
+  when?: string;
+  ns?: string[];
+}
+
+/** state 路由水合视图(单次 getTuple 同时取消息轨迹与挂起中断)。 */
+export interface ThreadStateView {
+  /** 消息轨迹(channel_values.messages;无线程为 null) */
+  messages: unknown[] | null;
+  /** 挂起中断(assistant-ui LangGraphInterruptState 结构子集;无中断为空) */
+  interrupts: ThreadInterruptState[];
+}
+
 /**
  * 读线程消息轨迹(state 路由:切线程恢复历史)。走 saver.getTuple 公开 API
  * (DeepAgent.getState 为 private);channel_values.messages 经 serde 反序列化
- * 为 BaseMessage 实例。无线程返回 null。
+ * 为 BaseMessage 实例。无线程返回 messages=null。
  */
 export async function getThreadMessages(threadId: string): Promise<unknown[] | null> {
+  return (await getThreadState(threadId)).messages;
+}
+
+/**
+ * 读线程 state 视图(消息 + 挂起中断,单次 getTuple)。interrupt 以
+ * `__interrupt__` 通道的 pending write 持久化,getTuple 已 serde 反序列化
+ * (Interrupt 实例),此处窄化为 SDK 水合结构;非对象/缺损项丢弃(前端落
+ * 通用兜底卡,见 parseAgentAskUserInterrupt)。无中断返回空数组。
+ */
+export async function getThreadState(threadId: string): Promise<ThreadStateView> {
   await ensureAgentCheckpointer();
   const tuple = await getAgentCheckpointer().getTuple({
     configurable: { thread_id: threadId },
   });
   const messages = (tuple?.checkpoint.channel_values as { messages?: unknown } | undefined)
     ?.messages;
-  return Array.isArray(messages) ? messages : null;
+  const writes = tuple?.pendingWrites ?? [];
+  const interrupts: ThreadInterruptState[] = [];
+  for (const write of writes) {
+    const [, channel, raw] = write as [string, string, unknown];
+    if (channel !== "__interrupt__" || typeof raw !== "object" || raw === null) continue;
+    // Interrupt 实例(value=工具 interrupt() 载荷)与实例数组两种形状都收
+    const items = Array.isArray(raw) ? raw : [raw];
+    for (const item of items) {
+      if (typeof item !== "object" || item === null) continue;
+      const it = item as { value?: unknown; resumable?: unknown; when?: unknown; ns?: unknown };
+      interrupts.push({
+        ...(it.value !== undefined ? { value: it.value } : {}),
+        ...(typeof it.resumable === "boolean" ? { resumable: it.resumable } : {}),
+        ...(typeof it.when === "string" ? { when: it.when } : {}),
+        ...(Array.isArray(it.ns)
+          ? { ns: it.ns.filter((n): n is string => typeof n === "string") }
+          : {}),
+      });
+    }
+  }
+  return { messages: Array.isArray(messages) ? messages : null, interrupts };
 }
