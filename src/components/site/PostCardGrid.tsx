@@ -59,6 +59,8 @@ export default function PostCardGrid({ posts }: { posts: PostListItem[] }): Reac
                   </time>
                 ) : null}
                 <span>阅读 {post.viewsCount.toLocaleString("zh-CN")}</span>
+                <span>评论 {post.commentCount}</span>
+                <span>赞 {post.likeCount}</span>
               </div>
             </div>
           </article>

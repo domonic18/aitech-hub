@@ -29,6 +29,38 @@ export type PostListItem = Awaited<ReturnType<typeof listLatestPosts>>[number];
 export const PUBLISHED = { status: "published", publishedAt: { not: null } } as const;
 const ORDER = [{ publishedAt: "desc" }, { id: "desc" }] as const;
 
+/**
+ * 列表交互计数(M23 延伸需求:列表卡显示评论数/点赞数)。量级 154 文 × ISR
+ * 600s,两次索引 groupBy 现查零漂移,不做冗余计数列(arch/03 决策②:计数列
+ * 待量级真起来再议)。评论只数 visible——治理隐藏即从公开计数消失,与详情页
+ * 口径一致;点赞无状态全数。须在 prerenderSafe 回调内调用(构建期无库随宿主降级)。
+ */
+async function attachInteractionCounts<T extends { id: bigint }>(
+  items: T[],
+): Promise<(T & { commentCount: number; likeCount: number })[]> {
+  if (items.length === 0) return [];
+  const ids = items.map((i) => i.id);
+  const [comments, likes] = await Promise.all([
+    prisma.postComment.groupBy({
+      by: ["postId"],
+      where: { postId: { in: ids }, status: "visible" },
+      _count: { postId: true },
+    }),
+    prisma.postLike.groupBy({
+      by: ["postId"],
+      where: { postId: { in: ids } },
+      _count: { postId: true },
+    }),
+  ]);
+  const commentMap = new Map(comments.map((g) => [g.postId, g._count.postId]));
+  const likeMap = new Map(likes.map((g) => [g.postId, g._count.postId]));
+  return items.map((item) => ({
+    ...item,
+    commentCount: commentMap.get(item.id) ?? 0,
+    likeCount: likeMap.get(item.id) ?? 0,
+  }));
+}
+
 /** 详情:id 直取(2026-10 URL 终态,id 是唯一解析锚;slug 仅装饰);仅已发布 */
 export async function getPostById(id: bigint) {
   return prisma.post.findFirst({
@@ -41,25 +73,27 @@ export async function getPostById(id: bigint) {
 }
 
 export async function listLatestPosts(limit: number) {
-  return prerenderSafe("posts.latest", [], () =>
-    prisma.post.findMany({
+  return prerenderSafe("posts.latest", [], async () => {
+    const items = await prisma.post.findMany({
       where: PUBLISHED,
       select: LIST_SELECT,
       orderBy: [...ORDER],
       take: limit,
-    }),
-  );
+    });
+    return attachInteractionCounts(items);
+  });
 }
 
 export async function listPinnedPosts(limit: number) {
-  return prerenderSafe("posts.pinned", [], () =>
-    prisma.post.findMany({
+  return prerenderSafe("posts.pinned", [], async () => {
+    const items = await prisma.post.findMany({
       where: { ...PUBLISHED, isPinned: true },
       select: LIST_SELECT,
       orderBy: [...ORDER],
       take: limit,
-    }),
-  );
+    });
+    return attachInteractionCounts(items);
+  });
 }
 
 /** 已发布文章总数(首页 Hub whoami 状态行用;ISR 600s 内低频 count) */
@@ -92,7 +126,7 @@ export async function listPostsPage({ page, pageSize, categorySlug, tagSlug }: L
       }),
       prisma.post.count({ where }),
     ]);
-    return { items, total, page, pageSize };
+    return { items: await attachInteractionCounts(items), total, page, pageSize };
   });
 }
 

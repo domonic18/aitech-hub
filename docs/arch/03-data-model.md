@@ -97,6 +97,51 @@ CREATE TABLE content_media_ref (
     PRIMARY KEY (media_path, post_id)
 );
 CREATE INDEX idx_content_media_ref_post ON content_media_ref (post_id);
+
+-- 评论 + 点赞(M23,迁移 20261010120000_m23_post_comment_like)。三表设计决策:
+-- ① 点赞去重 = identity_key 单列("u:<userId>"|"v:<ah_av uuid>",最长 21/38),
+--    不用 (user_id?, visitor_id?) 双列——PG unique 中 NULL 互不判重,双列拦不住
+--    游客重复赞;两表分立(文章/评论)而非多态单表,FK Cascade 自动收尸;
+-- ② 不加 likes_count/comments_count 冗余计数列:前台全走 force-dynamic API
+--    现查 COUNT(量级 154 文/百级评论);列表卡显数(2026-10-10 M23 延伸需求)
+--    同走现查——listPostsPage/latest/pinned 出口按页内 id 两次索引 groupBy
+--    附带计数(posts.attachInteractionCounts,评论只数 visible),零写路径
+--    耦合零漂移;冗余列待列表量级真起来再按单事务入口补列;
+-- ③ parent_id 自引用无 FK:两级封顶(仅挂根)由应用层校验;admin 删根连带
+--    直接子在事务内显式收集(FK 不级联自引用);
+-- ④ user_id 无 FK(feedback 纪律:账号删除评论留档),author_name 为写侧快照
+--    (登录=昵称、迁移=WP 原名),渲染零 join;wp_comment_id unique = 迁移幂等键;
+-- ⑤ status 仅 visible|hidden 两态(先发后审,无 pending),应用层 Zod 管控;
+-- ⑥ content 列宽 4000 容旧站迁移实测 max 2143(dry-run 2026-10-10),
+--    新提交 zod 限 1..1000。
+CREATE TABLE content_post_comment (
+    id            BIGSERIAL PRIMARY KEY,
+    post_id       BIGINT NOT NULL REFERENCES content_post(id) ON DELETE CASCADE,
+    user_id       BIGINT,
+    author_name   VARCHAR(100) NOT NULL,
+    content       VARCHAR(4000) NOT NULL,
+    status        VARCHAR(16) NOT NULL DEFAULT 'visible',
+    parent_id     BIGINT,
+    wp_comment_id BIGINT UNIQUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_content_post_comment_post_visible ON content_post_comment (post_id, status, created_at);
+CREATE INDEX idx_content_post_comment_status_recent ON content_post_comment (status, created_at DESC);
+
+CREATE TABLE content_post_like (
+    post_id      BIGINT NOT NULL REFERENCES content_post(id) ON DELETE CASCADE,
+    identity_key VARCHAR(42) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (post_id, identity_key)
+);
+
+CREATE TABLE content_post_comment_like (
+    comment_id   BIGINT NOT NULL REFERENCES content_post_comment(id) ON DELETE CASCADE,
+    identity_key VARCHAR(42) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (comment_id, identity_key)
+);
 ```
 
 ### 2.2 user_(账号域)

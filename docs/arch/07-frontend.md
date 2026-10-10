@@ -7,9 +7,9 @@
 | 路由 | 策略 | 说明 |
 |------|------|------|
 | `/`(首页) | ISR 600s | 最新/精选文章 + 电报流 LIVE 带(M7 批⑤:SSR 首屏,岛内 60s 轮询;M10 批②:条数后台可配 `site_config.band.item_count` 默认 12,钳 1..50,滚动到底按服务端 `nextOffset` 游标翻页——保底视频只占展示位不占游标,被替换项由后续页补达;客户端 id 去重防轮询前插与翻页追加打架;保存条数即 `revalidatePath("/", "layout")`;M12 批②:项目/文章 rail 条数 `home.repo_count` 默认 3、`home.post_count` 默认 5(均钳 1..12)、站名 `site.title` 与 hub 主文案 `home.hero_md`(行内 markdown,空回退内置)同键族后台可配,站名传播 generateMetadata/Header/Footer/feed.xml/llms.txt) |
-| `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath` |
+| `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath`;M23:评论区(`PostComments`)+ 点赞(`PostLikeButton`)为 client island——挂载后 fetch `force-dynamic` API 直查(含个人化 liked),**不进 ISR、治理动作零 revalidate**(隐藏/恢复对访客即时收敛) |
 | `/[slug]`(旧中文链承接) | ISR 600s | 纯 legacy 引擎:查 `legacy_url_map` 命中 → 308,否则 404(不再直接供文) |
-| `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族;M12 批①:条目区客户端「列表 ⇄ 封面卡」视图切换(两视图皆服务端渲染、切换纯显隐零二次请求;localStorage `articles-view` 记忆,默认列表——SSR HTML 即列表,SEO/LCP 不受影响;视图记忆是个人偏好不进 URL,可分享的筛选走 /category、/tag 路由)+ /articles 头部 tag 筛选条(chip 链既有 `/tag/<slug>/` 静态路由,零 searchParams 不破 ISR/canonical) |
+| `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族;M12 批①:条目区客户端「列表 ⇄ 封面卡」视图切换(两视图皆服务端渲染、切换纯显隐零二次请求;localStorage `articles-view` 记忆,默认列表——SSR HTML 即列表,SEO/LCP 不受影响;视图记忆是个人偏好不进 URL,可分享的筛选走 /category、/tag 路由)+ /articles 头部 tag 筛选条(chip 链既有 `/tag/<slug>/` 静态路由,零 searchParams 不破 ISR/canonical);M23 延伸:列表卡 meta 行带 评论数/点赞数(列表出口按页内 id groupBy 现查,评论只数 visible,随 ISR 600s 刷新——与详情页实时计数口径差异见 arch/03 决策②) |
 | `/projects/`(开源项目列表,M11) | ISR 600s | 白名单展示仓全量卡片(sortOrder→stars),不分页;admin 写侧即时 revalidate,同步新鲜度走本窗口;首页右栏同源 rail 卡(空白名单整卡不渲染) |
 | `/projects/[slug]/`(项目详情,M11) | ISR 600s + 按需 revalidate | slug 是唯一解析键(登记时派生此后冻结;**无 id 锚点,错 slug 直接 404 不做 308 归一**,构造唯一出口 `src/lib/github/project-path.ts`);README 渲染 + 进展动态 + 配套文章;下架(display=false)即 404 |
 | `/search` | 动态 SSR | 每请求查询;K1 三域分组 + K2 AI 答案卡(arch/04 §3,2026-10-06 第一迭代):分组命中即时 SSR(mark 高亮 + 渠道 chip + 命中度),答案卡 `AnswerCard` 客户端 **fetch + getReader 手解 SSE**(站内流式消费先例;**禁 EventSource**——自动重连会重复计费)流式增强不阻塞命中;0 命中同样挂答案卡(「AI 直接作答」标注);组件 `src/components/site/search/`:SearchConsole/SearchHits/TelegramHit/PostHit/RepoHit/SearchEmpty/AnswerCard/GenTime;noindex 仅页内 robots meta(不在 middleware `X-Robots-Tag` 名单) |
@@ -88,6 +88,7 @@
   - Markdown 导入:「导入 .md / 粘贴」→ 解析全部图片引用 → 弹窗批量上传本地图片(选择文件夹/拖拽/zip,sha1 去重)+ 外链图调 `POST /api/media/import` 转存 → 以返回映射自动替换 md 中的引用为站内 URL → 进编辑器;编辑器内截图粘贴直接走上传管线
   - 封面工作流(M14 批⑤⑥ 已交付):`CoverDialog` 双源选图(本地上传 / 媒体库轻列表 `GET /api/media/pick`)+ 内置裁剪器(react-easy-crop),五模板一次裁剪多尺寸导出——微信公众号 2.35:1 / OG 1200×630 / CSDN 16:9 / 通用横图 / 列表缩略图(前端 canvas 裁剪压缩后按 `cover` 变体上传);AI 文生图已点亮(`cover-gen` 队列 attempts=1 按张计费,coverContext 无标题禁用,逐张落 ai_usage_log 台账)
 - 编辑旧文:content_html 只读展示(提示"旧文保真,如需改写请转 Markdown 重发布"),避免双向转换损毁
+- **评论管理页 `/admin/comments`(M23 批③,照 /admin/feedback 模板)**:RSC 直调 service(不开列表 API);三分段 tab(全部/显示/隐藏——先发后审无 pending 段)+ 内容/作者关键词搜索 + 分页;行内状态流转(隐藏/恢复两态互切)+ 删根连带(confirm 明示回复数,物理不可逆);WP 迁移评论带「WP」徽标;写 API `PUT/DELETE /api/post-comments/[id]`(仅会话)
 - **媒体库页(重点,详见 arch/08-media)**:图片/视频/文件 Tab + 引用状态过滤(已引用/未引用孤儿/断链)+ 重复检测 + 批量操作 + 存储统计
 - 用户/数据页:AntD Table + 服务端分页
 - 用量统计页 `/admin/usage`(M14 批⑦):RSC 直聚合一屏出数(`lib/ai/usage-queries`,轻聚合不进 BullMQ);KPI×4(tokens/估算费用/ASR 转写/降级次数)+ CN 日趋势 + 任务·模型分布 + 明细 spark;窗口 7/30/90 天链接切换;费用读时按牌价现折,台账 `ai_usage_log` 逐次落行、90 天保留期(worker 04:52 日清 + 手动清理按钮)
