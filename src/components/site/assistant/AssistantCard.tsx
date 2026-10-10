@@ -147,6 +147,16 @@ export default function AssistantCard({
     setListOpen(false);
   }, []);
 
+  // K2.6 游客过期自愈:复位新会话 + 横幅指引重发。引用必须稳定(内联箭头会让
+  // adapter useMemo 每渲染重建,SDK 视为 threadListAdapter 更换→列表重载→stop
+  // 在跑线程运行时,FAB 首条消息闪断根因;Drawer 同款 useCallback 收敛)
+  const onSessionExpired = useCallback((): void => {
+    reportedThreadIdRef.current = undefined;
+    setThreadId(undefined);
+    setTodos([]);
+    setBanner("会话已过期,已开启新会话,请重新发送");
+  }, []);
+
   const handleDeleteThread = useCallback(
     (id: string): void => {
       void (async () => {
@@ -237,12 +247,7 @@ export default function AssistantCard({
             onTodos={setTodos}
             onError={setBanner}
             onRunActiveChange={onRunActiveChange}
-            onSessionExpired={() => {
-              reportedThreadIdRef.current = undefined;
-              setThreadId(undefined);
-              setTodos([]);
-              setBanner("会话已过期,已开启新会话,请重新发送");
-            }}
+            onSessionExpired={onSessionExpired}
           >
             <AgentThread
               pending={pending}
