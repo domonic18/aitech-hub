@@ -1,0 +1,16 @@
+{
+  "status": 422,
+  "body": {
+    "detail": [
+      {
+        "type": "literal_error",
+        "loc": ["body", "platform"],
+        "msg": "Input should be 'bilibili'",
+        "input": "douyin",
+        "ctx": {
+          "expected": "'bilibili'"
+        }
+      }
+    ]
+  }
+}

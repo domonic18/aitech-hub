@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol, cast
 from urllib.parse import urlencode
 
+from app.adapters.common.jar_pool import CookieJar, JarPool
 from app.adapters.douyin.exceptions import (
     RiskControlError,
     SignatureError,
@@ -67,33 +66,6 @@ def _default_session_factory() -> _AsyncHttpSession:
     return cast("_AsyncHttpSession", session)
 
 
-@dataclass
-class _CookieJar:
-    """一份 Cookie 身份；命中风控后按指数退避冷却（基数/上限来自 config）。"""
-
-    cookie: str
-    cooldown_base_seconds: int
-    cooldown_max_seconds: int
-    cool_until: datetime | None = None
-    strikes: int = 0
-
-    def is_available(self, now: datetime) -> bool:
-        return self.cool_until is None or self.cool_until <= now
-
-    def cool_down(self) -> None:
-        self.strikes += 1
-        seconds = min(
-            self.cooldown_base_seconds * (2 ** (self.strikes - 1)),
-            self.cooldown_max_seconds,
-        )
-        self.cool_until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-
-    def revive(self) -> None:
-        """请求成功后重置退避。"""
-        self.strikes = 0
-        self.cool_until = None
-
-
 class DouyinTransport:
     """有状态传输会话：UA/指纹与签名绑定，多 jar 轮换，命中风控自动冷却。"""
 
@@ -110,8 +82,6 @@ class DouyinTransport:
         settings = settings or DouyinSettings()
         self._base_url = settings.base_url
         self._request_timeout = settings.request_timeout
-        self._cooldown_base = settings.jar_cooldown_base_seconds
-        self._cooldown_max = settings.jar_cooldown_max_seconds
         self._user_agent = user_agent or DEFAULT_USER_AGENT
         self._fingerprint = fingerprint or generate_fingerprint()
         self._abogus = ABogus(
@@ -126,18 +96,11 @@ class DouyinTransport:
             if rate_limit_retry_delays is not None
             else settings.rate_limit_retry_delays
         )
-        self._jars: list[_CookieJar] = self._make_jars(cookies or [])
-        self._cursor = 0
-
-    def _make_jars(self, cookies: list[str]) -> list[_CookieJar]:
-        return [
-            _CookieJar(
-                c,
-                cooldown_base_seconds=self._cooldown_base,
-                cooldown_max_seconds=self._cooldown_max,
-            )
-            for c in cookies
-        ]
+        self._pool = JarPool(
+            cookies or [],
+            cooldown_base_seconds=settings.jar_cooldown_base_seconds,
+            cooldown_max_seconds=settings.jar_cooldown_max_seconds,
+        )
 
     @property
     def user_agent(self) -> str:
@@ -145,31 +108,25 @@ class DouyinTransport:
 
     @property
     def jars_available(self) -> int:
-        now = datetime.now(timezone.utc)
-        return sum(1 for jar in self._jars if jar.is_available(now))
+        return self._pool.jars_available
 
     @property
     def jars_total(self) -> int:
-        return len(self._jars)
+        return self._pool.jars_total
 
     def replace_jars(self, cookies: list[str]) -> None:
         """整体替换 jar 池（自举/手动导入后调用）。"""
-        self._jars = self._make_jars(cookies)
-        self._cursor = 0
+        self._pool.replace_all(cookies)
 
-    def _next_available_jar(self) -> _CookieJar:
-        now = datetime.now(timezone.utc)
-        total = len(self._jars)
-        for offset in range(total):
-            jar = self._jars[(self._cursor + offset) % total]
-            if jar.is_available(now):
-                self._cursor = (self._cursor + offset + 1) % total
-                return jar
-        raise RiskControlError(
-            f"无可用 Cookie jar（共 {total} 份，全部冷却或未配置）"
-        )
+    def _next_available_jar(self) -> CookieJar:
+        jar = self._pool.next_available()
+        if jar is None:
+            raise RiskControlError(
+                f"无可用 Cookie jar（共 {self._pool.jars_total} 份，全部冷却或未配置）"
+            )
+        return jar
 
-    def _headers(self, jar: _CookieJar) -> dict[str, str]:
+    def _headers(self, jar: CookieJar) -> dict[str, str]:
         return {
             "User-Agent": self._user_agent,
             "Referer": f"{self._base_url}/",
@@ -238,7 +195,7 @@ class DouyinTransport:
             f"限速/扣发重试耗尽（{len(self._retry_delays) + 1} 次）: {last_body[:200]}"
         )
 
-    def _parse_json(self, status: int, text: str, jar: _CookieJar) -> dict[str, Any]:
+    def _parse_json(self, status: int, text: str, jar: CookieJar) -> dict[str, Any]:
         """解析 2xx body；验证页 HTML 判风控（jar 冷却），其余非 JSON 判结构漂移。"""
         try:
             data = json.loads(text)

@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 import {
   gatewayErrorSchema,
   gatewayHealthSchema,
+  playUrlRequestSchema,
+  playUrlResponseSchema,
   postsRequestSchema,
   postsResponseSchema,
   profileResponseSchema,
@@ -32,7 +34,7 @@ function fixture(name: string): Fixture {
 }
 
 describe("契约黄金样本:成功响应 strict 对拍", () => {
-  it("posts.success:VideoOut 全字段 + has_more/max_cursor 包络", () => {
+  it("posts.success(douyin):VideoOut 全字段 + has_more/max_cursor 包络", () => {
     const f = fixture("posts.success");
     expect(f.status).toBe(200);
     const parsed = postsResponseSchema.strict().parse(f.body);
@@ -46,6 +48,7 @@ describe("契约黄金样本:成功响应 strict 对拍", () => {
         "cover_url",
         "digg_count",
         "duration_seconds",
+        "play_count",
         "play_url",
         "published_at",
         "share_count",
@@ -55,6 +58,7 @@ describe("契约黄金样本:成功响应 strict 对拍", () => {
     );
     expect(typeof video.video_id).toBe("string");
     expect(typeof video.published_at).toBe("string"); // ISO 字符串
+    expect(video.play_count).toBeNull(); // douyin 恒 null
     expect(typeof parsed.max_cursor).toBe("number"); // 可超 JS safe-integer,仅翻页游标不回写
   });
 
@@ -67,6 +71,58 @@ describe("契约黄金样本:成功响应 strict 对拍", () => {
     );
     const health = gatewayHealthSchema.strict().parse(fixture("health.success").body);
     expect(health).toMatchObject({ jars_total: 3, jars_available: 2 });
+    // per-platform 段:顶层 jars_* 仍 = douyin
+    expect(Object.keys(health.platforms).sort()).toEqual(["bilibili", "douyin"]);
+    expect(health.platforms.douyin).toMatchObject({ jars_total: 3, jars_available: 2 });
+    expect(health.platforms.bilibili).toMatchObject({
+      jars_total: 1,
+      jars_available: 1,
+      wbi_age_seconds: 3600,
+    });
+  });
+});
+
+describe("契约黄金样本:bilibili 面 strict 对拍", () => {
+  it("posts.bilibili.success:bvid 主键 + play_count 有值 + listing 无直链", () => {
+    const f = fixture("posts.bilibili.success");
+    expect(f.status).toBe(200);
+    const parsed = postsResponseSchema.strict().parse(f.body);
+    const video = parsed.videos[0]!;
+    expect(video.video_id).toMatch(/^BV/);
+    expect(video.play_count).toBe(52341); // 仅 bilibili 有值
+    expect(video.digg_count).toBeNull(); // vlist 无点赞
+    expect(video.play_url).toBeNull(); // 解读现查,listing 不带直链
+  });
+
+  it("posts.bilibili.risk_control:错误名与 douyin 同构(归因零感知)", () => {
+    const f = fixture("posts.bilibili.risk_control");
+    expect(f.status).toBe(502);
+    expect(gatewayErrorSchema.parse(f.body)).toMatchObject({ error: "RiskControlError" });
+  });
+
+  it("profile.bilibili.success / resolve.bilibili.success", () => {
+    const profile = profileResponseSchema.strict().parse(fixture("profile.bilibili.success").body);
+    expect(profile.sec_uid).toMatch(/^\d{1,16}$/);
+    expect(profile.nickname).toBe("AI 技术漫谈");
+    const resolved = resolveResponseSchema.strict().parse(fixture("resolve.bilibili.success").body);
+    expect(resolved.sec_uid).toBe("9469941");
+  });
+
+  it("playurl.success:{video_id, play_url|null}(play_url 版权红线仅过境)", () => {
+    const f = fixture("playurl.success");
+    expect(f.status).toBe(200);
+    const parsed = playUrlResponseSchema.strict().parse(f.body);
+    expect(parsed.video_id).toMatch(/^BV/);
+    expect(typeof parsed.play_url).toBe("string");
+    expect(parsed.play_url).toContain("bilivideo.com");
+  });
+
+  it("error.bilibili.validation:douyin 请求 /play-url 被 422 拒", () => {
+    const f = fixture("error.bilibili.validation");
+    expect(f.status).toBe(422);
+    const parsed = gatewayErrorSchema.parse(f.body);
+    expect(Array.isArray(parsed.detail)).toBe(true);
+    expect(parsed.error).toBeUndefined();
   });
 });
 
@@ -93,12 +149,34 @@ describe("契约黄金样本:错误包络对拍", () => {
 });
 
 describe("边界负例:schema 拒绝面", () => {
-  it("postsRequest:sec_uid 过短/max_pages 越界拒绝;max_pages 默认 1", () => {
+  it("postsRequest(douyin):sec_uid 过短/max_pages 越界拒绝;max_pages 默认 1", () => {
     expect(postsRequestSchema.safeParse({ sec_uid: "short" }).success).toBe(false);
     expect(
       postsRequestSchema.safeParse({ sec_uid: "MS4wLjABAAAA1234567890", max_pages: 4 }).success,
     ).toBe(false);
     expect(postsRequestSchema.parse({ sec_uid: "MS4wLjABAAAA1234567890" }).max_pages).toBe(1);
+  });
+
+  it("postsRequest(bilibili):mid 形态矩阵与网关一致", () => {
+    expect(postsRequestSchema.safeParse({ platform: "bilibili", sec_uid: "9469941" }).success).toBe(
+      true,
+    );
+    expect(
+      postsRequestSchema.safeParse({ platform: "bilibili", sec_uid: "BV1xx411c7mD" }).success,
+    ).toBe(false);
+    // douyin 默认平台不受 bilibili 分支影响
+    expect(
+      postsRequestSchema.safeParse({ platform: "bilibili", sec_uid: "MS4wLjABAAAA1234567890" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("playUrlRequest:BV 形态 + 仅 bilibili", () => {
+    expect(playUrlRequestSchema.safeParse({ video_id: "BV1xx411c7mD" }).success).toBe(true);
+    expect(playUrlRequestSchema.safeParse({ video_id: "av170001" }).success).toBe(false);
+    expect(
+      playUrlRequestSchema.safeParse({ platform: "douyin", video_id: "BV1xx411c7mD" }).success,
+    ).toBe(false);
   });
 
   it("postsResponse 包络必填:缺 has_more/max_cursor 拒绝", () => {
