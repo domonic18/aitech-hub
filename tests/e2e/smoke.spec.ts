@@ -865,7 +865,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     // 台账页:双状态卡 + 播种行(平台行停用 → 健康列「平台已停用」徽标)
     await page.goto("/admin/bloggers/");
     await expect(page.getByRole("button", { name: "登记博主" })).toBeVisible();
-    await expect(page.getByText("抖音网关(douyin-gateway)")).toBeVisible();
+    await expect(page.getByText("采集网关(douyin-gateway · 抖音/B站)")).toBeVisible();
     const row = page.getByRole("row", { name: new RegExp(NICK) });
     await expect(row).toBeVisible();
     await expect(row.getByText("平台已停用")).toBeVisible();

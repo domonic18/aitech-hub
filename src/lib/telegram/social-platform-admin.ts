@@ -66,7 +66,7 @@ export interface CookiePoolView {
   platform: string;
   enabled: boolean;
   jarCount: number;
-  masked: Array<{ ttwidPrefix: string }>;
+  masked: Array<{ essentialKey: string; essentialPrefix: string }>;
   dailyMaxRequests: number | null;
 }
 
@@ -78,12 +78,13 @@ export async function getCookiePoolView(): Promise<{ pools: CookiePoolView[] }> 
   });
   return {
     pools: rows.map((r) => {
+      const platform = r.platform ?? r.name;
       const jars = jarsFromConfig(r.config);
       return {
-        platform: r.platform ?? r.name,
+        platform,
         enabled: r.enabled,
         jarCount: jars.length,
-        masked: maskJars(jars),
+        masked: maskJars(jars, platform),
         dailyMaxRequests: r.dailyMaxRequests,
       };
     }),
@@ -105,7 +106,7 @@ export async function importCookieJar(
   const existing = jarsFromConfig(row.config);
   let merged: string[];
   try {
-    merged = mergeImportedJar(existing, cookie);
+    merged = mergeImportedJar(existing, cookie, platform);
   } catch (e) {
     if (e instanceof CookiePoolError) throw new BloggerAdminError("invalid", e.message);
     throw e;
@@ -139,11 +140,20 @@ export async function clearCookieJars(platform: string): Promise<void> {
 
 // ── 网关健康(RSC 状态卡) ─────────────────────────────────────────────────────
 
+export interface PlatformHealthView {
+  jarsTotal: number;
+  jarsAvailable: number;
+  /** wbi 密钥年龄(bilibili 专属观测;douyin 恒 null) */
+  wbiAgeSeconds: number | null;
+}
+
 export interface GatewayHealthView {
   reachable: boolean;
   status?: string;
   jarsTotal?: number;
   jarsAvailable?: number;
+  /** per-platform jar 池(M24;键 = 平台名) */
+  platforms?: Record<string, PlatformHealthView>;
 }
 
 /** 网关 /health 带短超时;不可达或响应不合契约返回降级视图(不阻塞页面渲染) */
@@ -159,11 +169,20 @@ export async function fetchGatewayHealth(): Promise<GatewayHealthView> {
       logger.warn({ event: "gateway.health.contract_drift", issue: parsed.error.message });
       return { reachable: false };
     }
+    const platforms: Record<string, PlatformHealthView> = {};
+    for (const [name, p] of Object.entries(parsed.data.platforms)) {
+      platforms[name] = {
+        jarsTotal: p.jars_total,
+        jarsAvailable: p.jars_available,
+        wbiAgeSeconds: p.wbi_age_seconds,
+      };
+    }
     return {
       reachable: true,
       status: parsed.data.status,
       jarsTotal: parsed.data.jars_total,
       jarsAvailable: parsed.data.jars_available,
+      platforms,
     };
   } catch {
     return { reachable: false };

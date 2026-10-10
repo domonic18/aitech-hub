@@ -13,16 +13,34 @@ import {
   TELEGRAM_AI_DONE,
   TELEGRAM_AI_MISSING_TRANSCRIPT,
   TELEGRAM_MEDIA_VIDEO,
+  VIDEO_PLATFORM_BILIBILI,
   VIDEO_PLATFORM_DOUYIN,
 } from "./constants";
 import { fetchDouyinProfile, resolveDouyinSecUid } from "./adapters/video/douyin";
+import { fetchBilibiliProfile, resolveBilibiliMid } from "./adapters/video/bilibili";
 import { BloggerAdminError } from "./bloggers-errors";
 import { activeJars, ensurePlatformRow } from "./social-platform-admin";
 
 export { BloggerAdminError, type BloggerAdminErrorCode } from "./bloggers-errors";
 
-/** 抖音 sec_uid 形态(与网关 SEC_UID_PATTERN 同口径) */
-const SEC_UID_PATTERN = /MS4wLjABAAAA[A-Za-z0-9_-]{20,}/;
+/** 已开放登记的平台(登记面;xhs 规划中不开放;缺省 douyin 平滑旧调用) */
+const REGISTERABLE_PLATFORMS = [VIDEO_PLATFORM_DOUYIN, VIDEO_PLATFORM_BILIBILI] as const;
+
+/** 身份形态 per-platform(M24,arch/03 secUid 语义):抖音=sec_uid;B站=纯数字 mid。
+ * 与网关 per-platform validator 同口径 */
+const IDENTITY_PATTERNS: Record<string, RegExp> = {
+  [VIDEO_PLATFORM_DOUYIN]: /MS4wLjABAAAA[A-Za-z0-9_-]{20,}/,
+  [VIDEO_PLATFORM_BILIBILI]: /^\d{1,16}$/,
+};
+
+/** B站主页链接 mid 提取(space.bilibili.com/<mid>;b23.tv 短链走网关 /resolve) */
+const BILIBILI_SPACE_PATTERN = /space\.bilibili\.com\/(\d{1,16})/;
+
+/** 身份中文标签(报错文案用) */
+const IDENTITY_LABELS: Record<string, string> = {
+  [VIDEO_PLATFORM_DOUYIN]: "sec_uid",
+  [VIDEO_PLATFORM_BILIBILI]: "纯数字 mid",
+};
 
 // ── 台账 ──────────────────────────────────────────────────────────────────────
 
@@ -94,8 +112,10 @@ export type BloggerRow = Awaited<ReturnType<typeof listBloggersAdmin>>[number];
 
 // ── 登记与编辑 ────────────────────────────────────────────────────────────────
 
-/** 登记:input=主页链接/分享口令/裸 sec_uid;nickname 手填兜底(网关不可达降级路径) */
+/** 登记:platform 择道(M24,缺省 douyin 平滑旧调用);input=主页链接/分享口令/
+ * 裸身份标识;nickname 手填兜底(网关不可达降级路径) */
 export const BloggerCreateSchema = z.object({
+  platform: z.enum(REGISTERABLE_PLATFORMS).default(VIDEO_PLATFORM_DOUYIN),
   input: z.string().trim().min(1).max(500),
   nickname: z.string().trim().max(100).optional(),
   category: z.string().trim().max(50).nullable().optional(),
@@ -110,22 +130,44 @@ export const BloggerUpdateSchema = z.object({
   remark: z.string().trim().max(200).nullable().optional(),
 });
 
-function extractSecUid(input: string): string | null {
-  return input.match(SEC_UID_PATTERN)?.[0] ?? null;
+/** 链接 → 身份标识 per-platform:B站先提 space 链接 mid 再认裸 mid;抖音走 sec_uid 形态 */
+function extractIdentity(platform: string, input: string): string | null {
+  if (platform === VIDEO_PLATFORM_BILIBILI) {
+    const fromLink = input.match(BILIBILI_SPACE_PATTERN)?.[1];
+    if (fromLink) return fromLink;
+    const bare = input.trim();
+    return IDENTITY_PATTERNS[platform]!.test(bare) ? bare : null;
+  }
+  return input.match(IDENTITY_PATTERNS[platform] ?? IDENTITY_PATTERNS.douyin!)?.[0] ?? null;
+}
+
+/** 网关 /resolve 分发(bilibili 含 b23.tv 短链展开) */
+async function resolveIdentity(platform: string, input: string): Promise<string> {
+  if (platform === VIDEO_PLATFORM_BILIBILI) return resolveBilibiliMid(input);
+  return resolveDouyinSecUid(input);
+}
+
+/** 网关 /profile 分发 */
+async function fetchPlatformProfile(platform: string, identity: string, jars: string[]) {
+  if (platform === VIDEO_PLATFORM_BILIBILI) return fetchBilibiliProfile(identity, jars);
+  return fetchDouyinProfile(identity, jars);
 }
 
 export async function createBlogger(
   raw: z.infer<typeof BloggerCreateSchema>,
 ): Promise<{ id: number }> {
-  // 链接 → sec_uid:裸 sec_uid 直用,否则必须经网关 /resolve
-  let secUid = extractSecUid(raw.input);
+  const platform = raw.platform ?? VIDEO_PLATFORM_DOUYIN;
+  const identityLabel = IDENTITY_LABELS[platform] ?? "sec_uid";
+
+  // 链接 → 身份标识:裸身份直用,否则必须经网关 /resolve
+  let secUid = extractIdentity(platform, raw.input);
   if (!secUid) {
     try {
-      secUid = await resolveDouyinSecUid(raw.input);
+      secUid = await resolveIdentity(platform, raw.input);
     } catch (err) {
       throw new BloggerAdminError(
         "gateway",
-        `无法解析主页链接(网关不可达或链接无效),请直接粘贴博主主页 URL 中的 sec_uid:${err instanceof Error ? err.message : String(err)}`,
+        `无法解析主页链接(网关不可达或链接无效),请直接粘贴博主主页 URL 中的 ${identityLabel}:${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -134,7 +176,7 @@ export async function createBlogger(
   let nickname = raw.nickname ?? "";
   let avatarUrl: string | null = null;
   try {
-    const profile = await fetchDouyinProfile(secUid, await activeJars(VIDEO_PLATFORM_DOUYIN));
+    const profile = await fetchPlatformProfile(platform, secUid, await activeJars(platform));
     nickname = raw.nickname || profile.nickname;
     avatarUrl = profile.avatarUrl;
   } catch (err) {
@@ -146,12 +188,12 @@ export async function createBlogger(
     }
   }
 
-  const platformRow = await ensurePlatformRow(VIDEO_PLATFORM_DOUYIN);
+  const platformRow = await ensurePlatformRow(platform);
   try {
     const created = await prisma.socialAccount.create({
       data: {
         platformRowId: platformRow.id,
-        platform: VIDEO_PLATFORM_DOUYIN,
+        platform,
         secUid,
         nickname,
         avatarUrl,
@@ -164,7 +206,7 @@ export async function createBlogger(
     logger.info({
       event: "blogger.created",
       bloggerId: created.id,
-      platform: VIDEO_PLATFORM_DOUYIN,
+      platform,
       nickname,
     });
     return created;
