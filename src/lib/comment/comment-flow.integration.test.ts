@@ -3,8 +3,9 @@
  * 同层;`npm run test:integration`,不进 test:unit/make check/CI——依赖 dev
  * compose 的 PG/Redis)。直调路由函数覆盖:GET 仅 visible+分页+liked 随身份;
  * POST 401/成功即时 visible/父校验/屏蔽词/限流 429;点赞身份去重(u:/v: 两空间)
- * 与 404 面。前置:docker compose up -d postgres redis && npx prisma migrate
- * deploy;测试自清理数据与限流桶。
+ * 与 404 面;批③治理:PUT/DELETE 401/400/404 面、隐藏→前台即时收敛、删根
+ * 连带直接子与点赞行、listCommentsAdmin 分段/replyCount/q。前置:docker
+ * compose up -d postgres redis && npx prisma migrate deploy;测试自清理数据与限流桶。
  */
 import { loadEnvConfig } from "@next/env";
 import bcrypt from "bcryptjs";
@@ -22,6 +23,9 @@ const { GET: commentsGET, POST: commentsPOST } = await import("@/app/api/post-co
 const { POST: postLikePOST, GET: postLikeGET } = await import("@/app/api/post-like/route");
 const { POST: commentLikePOST, GET: commentLikeGET } = await import("@/app/api/comment-like/route");
 const { POST: loginPOST } = await import("@/app/api/auth/login/route");
+const { PUT: commentPUT, DELETE: commentDELETE } =
+  await import("@/app/api/post-comments/[id]/route");
+const { listCommentsAdmin } = await import("@/lib/comment/comment-admin");
 
 const PHONE = "13900000003";
 const PASSWORD = "it-m23-pass1";
@@ -74,6 +78,16 @@ const commentLikeState = (commentId: string, cookie?: string): Promise<Response>
   commentLikeGET(
     req(`http://localhost:3000/api/comment-like?commentId=${commentId}`, "GET", cookie),
   );
+
+const putCommentStatus = (id: string, body: object, cookie?: string): Promise<Response> =>
+  commentPUT(req(`http://localhost:3000/api/post-comments/${id}`, "PUT", cookie, body), {
+    params: Promise.resolve({ id }),
+  });
+
+const deleteComment = (id: string, cookie?: string): Promise<Response> =>
+  commentDELETE(req(`http://localhost:3000/api/post-comments/${id}`, "DELETE", cookie), {
+    params: Promise.resolve({ id }),
+  });
 
 /** 从 like 响应种下的 ah_av 取游客 cookie(并登记限流桶便于清理) */
 function guestCookieOf(res: Response): string {
@@ -387,5 +401,83 @@ describe("点赞(dev compose 真实 PG/Redis)", () => {
   it("隐藏评论点赞/查态一律 404(评论区随治理即时收敛)", async () => {
     expect((await toggleCommentLike(hiddenRootId)).status).toBe(404);
     expect((await commentLikeState(hiddenRootId)).status).toBe(404);
+  });
+});
+
+describe("评论治理 admin API(M23 批③,仅会话 PAT 拒)", () => {
+  it("未登录 401;非数字 id 400;非法 status 400;不存在 404", async () => {
+    expect((await putCommentStatus(newestRootId, { status: "hidden" })).status).toBe(401);
+    expect((await deleteComment(newestRootId)).status).toBe(401);
+
+    expect((await putCommentStatus("abc", { status: "hidden" }, adminCookie)).status).toBe(400);
+    expect((await deleteComment("12x", adminCookie)).status).toBe(400);
+    expect((await putCommentStatus(newestRootId, { status: "pending" }, adminCookie)).status).toBe(
+      400,
+    );
+    expect((await putCommentStatus("999999", { status: "hidden" }, adminCookie)).status).toBe(404);
+    expect((await deleteComment("999999", adminCookie)).status).toBe(404);
+  });
+
+  it("admin 隐藏→前台即时消失;恢复→再现(client fetch 零 revalidate 收敛)", async () => {
+    const put = await putCommentStatus(midRootId, { status: "hidden" }, adminCookie);
+    expect(put.status).toBe(200);
+    expect(((await put.json()) as { data: { item: { status: string } } }).data.item.status).toBe(
+      "hidden",
+    );
+    let list = (await (await getComments(postId)).json()) as {
+      data: { items: Array<Record<string, unknown>> };
+    };
+    expect(list.data.items.some((c) => c["id"] === midRootId)).toBe(false);
+
+    const restore = await putCommentStatus(midRootId, { status: "visible" }, adminCookie);
+    expect(restore.status).toBe(200);
+    list = (await (await getComments(postId)).json()) as {
+      data: { items: Array<Record<string, unknown>> };
+    };
+    expect(list.data.items.some((c) => c["id"] === midRootId)).toBe(true);
+  });
+
+  it("DELETE 删根连带直接子与点赞行(物理不可逆,deleted=2)", async () => {
+    // 自建根+回复+两条点赞,自包含不踩前序用例数据
+    const root = await prisma.postComment.create({
+      data: { postId: BigInt(postId), authorName: "待删根", content: "待删根", status: "visible" },
+    });
+    const reply = await prisma.postComment.create({
+      data: {
+        postId: BigInt(postId),
+        authorName: "待删回复",
+        content: "待删回复",
+        status: "visible",
+        parentId: root.id,
+      },
+    });
+    for (let i = 0; i < 2; i += 1) {
+      // 各匿名请求=独立游客身份,落两条 like 行验证连带
+      const likeRes = await toggleCommentLike(root.id.toString());
+      expect(((await likeRes.json()) as Envelope).code).toBe(0);
+      guestCookieOf(likeRes);
+    }
+    expect(await prisma.postCommentLike.count({ where: { commentId: root.id } })).toBe(2);
+
+    const res = await deleteComment(root.id.toString(), adminCookie);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { deleted: number } }).data.deleted).toBe(2);
+    expect(await prisma.postComment.count({ where: { id: { in: [root.id, reply.id] } } })).toBe(0);
+    expect(await prisma.postCommentLike.count({ where: { commentId: root.id } })).toBe(0);
+  });
+
+  it("listCommentsAdmin:分段计数自洽 + replyCount 直接子计数 + q 命中", async () => {
+    const all = await listCommentsAdmin({ page: 1, segment: "all" });
+    expect(all.counts.all).toBe(all.counts.visible + all.counts.hidden);
+
+    const hidden = await listCommentsAdmin({ page: 1, segment: "hidden" });
+    expect(hidden.items.every((r) => r.status === "hidden")).toBe(true);
+
+    const mid = all.items.find((r) => r.id === midRootId);
+    expect(mid?.replyCount).toBe(2); // 楼中楼回复(visible)+ 隐藏回复
+
+    const hit = await listCommentsAdmin({ page: 1, segment: "all", q: "集成测试新评论" });
+    expect(hit.items).toHaveLength(1);
+    expect(hit.items[0]!.postSlug).toBe(POST_SLUG);
   });
 });

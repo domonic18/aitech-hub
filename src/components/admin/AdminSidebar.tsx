@@ -26,6 +26,7 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "内容管理",
     items: [
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
+      { icon: "i-comment", label: "评论管理", href: "/admin/comments" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
       { icon: "i-cloudupload", label: "内容分发", href: "/admin/distribute" },

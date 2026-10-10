@@ -35,6 +35,8 @@ export interface AdminCommentRow {
   /** WP 迁移评论(wpCommentId 非空),列「WP 迁移」徽标 */
   migrated: boolean;
   createdAt: Date;
+  /** 直接子评论数(根评论 > 0;删除连带提示用) */
+  replyCount: number;
 }
 
 function segmentWhere(segment: CommentListSegment, q?: string) {
@@ -86,7 +88,19 @@ export async function listCommentsAdmin({ page, segment, q }: CommentListQuery) 
     status: r.status as CommentStatus,
     migrated: r.wpCommentId !== null,
     createdAt: r.createdAt,
+    replyCount: 0,
   }));
+  // 直接子计数随行(根评论删除连带提示;两级封顶 ⇒ 一次 groupBy 即齐)
+  const rootIds = items.filter((r) => r.parentId === null).map((r) => r.id);
+  if (rootIds.length > 0) {
+    const grouped = await prisma.postComment.groupBy({
+      by: ["parentId"],
+      where: { parentId: { in: rootIds } },
+      _count: { parentId: true },
+    });
+    const counts = new Map(grouped.map((g) => [g.parentId!.toString(), g._count.parentId]));
+    for (const row of rows) row.replyCount = counts.get(row.id) ?? 0;
+  }
   return {
     items: rows,
     total: all,
@@ -135,6 +149,7 @@ export async function updateCommentStatus(
     status: updated.status as CommentStatus,
     migrated: updated.wpCommentId !== null,
     createdAt: updated.createdAt,
+    replyCount: 0, // 流转响应不消费该列(行内提示走列表行的实值)
   };
 }
 
