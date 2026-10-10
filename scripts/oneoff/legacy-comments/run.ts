@@ -7,7 +7,8 @@
  * 映射与保真:文章走 content_post.wp_post_id;作者 user_id>0 走
  * user_account.wp_user_id 挂 userId,authorName 一律取 WP comment_author
  * 原名(登录者昵称可能已改,保旧站观感);email/IP/agent 不迁。
- * 时间取 comment_date_gmt(UTC,连接 timezone:"Z")。
+ * 内容:WP 编辑器 HTML 剥标签+解实体转纯文字(评论纯文字口径,见
+ * normalizeContent);时间取 comment_date_gmt(UTC,连接 timezone:"Z")。
  * 嵌套:WP 任意深度 → 沿祖先链找根,parentId 一律挂根新 id(两级封顶),
  * 跨层子标 promoted;祖先链断裂(父不在候选集)标 orphan_parent 阻塞。
  * 幂等:wpCommentId 唯一,--apply 重跑对已导入只跳过。
@@ -42,8 +43,28 @@ interface LegacyCommentRow {
 /** WP 原文换行归一(库内 \r\n → \n)后超列宽即阻塞(列 VarChar(4000)) */
 const CONTENT_COLUMN_MAX = 4000;
 
+/**
+ * WP 原文 → 纯文本(评论纯文字口径,requirement §4:前台 React 转义渲染,
+ * 标签/实体会当字面文字显示,须入库前清洗)。顺序敏感:先剥标签再解实体——
+ * 反过来会把作者写的 `&lt;code&gt;` 字面文本误当标签剥掉。块级闭标签与 br
+ * 折行,3+ 连续空行压 2;内容只缩不涨,列宽阻塞检查在归一后判断。
+ */
 function normalizeContent(raw: string): string {
-  return raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  const noTags = raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|pre|li|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+  return noTags
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function main(): Promise<void> {
