@@ -43,6 +43,8 @@ model Post {
   mediaRefs MediaRef[]
   githubRepos GithubRepoPost[]
   channels PublishChannel[]
+  comments PostComment[]
+  likes    PostLike[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -118,6 +120,57 @@ model MediaRef {
   @@id([mediaPath, postId])
   @@index([postId], map: "idx_content_media_ref_post")
   @@map("content_media_ref")
+}
+
+/// 文章评论(M23;先发后审:无 pending 态,新发即 visible,治理=隐藏/恢复)。
+/// 仅登录用户可评论;userId 无 FK(账号删除留档,feedback 同纪律),authorName
+/// 为写侧快照(登录=nickname,迁移=WP 原名),渲染零 join。parentId 自引用无 FK,
+/// 应用层两级封顶(子回复一律挂根 id),删根连带直接子由 service 事务显式收集。
+/// wpCommentId 为旧站 wp_comments 迁移幂等键(legacy-comments oneoff 脚本)。
+model PostComment {
+  id          BigInt   @id @default(autoincrement())
+  postId      BigInt   @map("post_id")
+  userId      BigInt?  @map("user_id")
+  authorName  String   @map("author_name") @db.VarChar(100)
+  content     String   @db.VarChar(4000) // 列宽 4000 容旧站迁移实测 max 2143(dry-run 2026-10-10);新提交 zod 限 1..1000
+  status      String   @default("visible") @db.VarChar(16) // visible | hidden(应用层 Zod 管控)
+  parentId    BigInt?  @map("parent_id") // 自引用无 FK:两级封顶由应用层校验(仅挂根)
+  wpCommentId BigInt?  @unique(map: "uq_content_post_comment_wp_comment_id") @map("wp_comment_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  post  Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  likes PostCommentLike[]
+
+  @@index([postId, status, createdAt], map: "idx_content_post_comment_post_visible")
+  @@index([status, createdAt(sort: Desc)], map: "idx_content_post_comment_status_recent")
+  @@map("content_post_comment")
+}
+
+/// 文章点赞(M23):游客可赞;identityKey 单列去重("u:<userId>" | "v:<ah_av uuid>"),
+/// 不用 (userId?, visitorId?) 双列——PG unique 中 NULL 互不判重,双列拦不住游客
+/// 重复赞。不加冗余计数列:计数由 API 现查 COUNT(arch/03 决策注记)。
+model PostLike {
+  postId      BigInt   @map("post_id")
+  identityKey String   @map("identity_key") @db.VarChar(42)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, identityKey], map: "uq_content_post_like_post_identity")
+  @@map("content_post_like")
+}
+
+/// 评论点赞(M23):与 PostLike 同构;commentId FK Cascade 随评论收尸。
+model PostCommentLike {
+  commentId   BigInt   @map("comment_id")
+  identityKey String   @map("identity_key") @db.VarChar(42)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  comment PostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, identityKey], map: "uq_content_post_comment_like_comment_identity")
+  @@map("content_post_comment_like")
 }
 
 // ── user_(账号域)───────────────────────────────────────────────

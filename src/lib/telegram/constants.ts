@@ -99,10 +99,12 @@ export const TELEGRAM_ID_RE = /^\d{1,19}$/;
 export const BLOCKLIST_SCOPE_TITLE = "title";
 export const BLOCKLIST_SCOPE_SUMMARY = "summary";
 export const BLOCKLIST_SCOPE_ALL = "all";
+export const BLOCKLIST_SCOPE_COMMENT = "comment"; // M23:文章评论先发后审的自动闸
 export const BLOCKLIST_SCOPES = [
   BLOCKLIST_SCOPE_TITLE,
   BLOCKLIST_SCOPE_SUMMARY,
   BLOCKLIST_SCOPE_ALL,
+  BLOCKLIST_SCOPE_COMMENT,
 ] as const;
 export type BlocklistScope = (typeof BLOCKLIST_SCOPES)[number];
 
