@@ -18,3 +18,7 @@ src/lib/content/__fixtures__/
 
 # vditor 第三方运行时资源(随包拷贝,不参与格式门禁)
 public/vditor/
+
+# 搜索引擎验证文件(IndexNow key / 字节站长验证:平台按字节比对,不参与格式门禁)
+public/ByteDanceVerify.html
+public/*.txt
