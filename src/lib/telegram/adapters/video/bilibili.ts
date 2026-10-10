@@ -8,6 +8,7 @@
 import { VIDEO_PLATFORM_BILIBILI } from "../../constants";
 
 import {
+  playUrlResponseSchema,
   postsResponseSchema,
   profileResponseSchema,
   resolveResponseSchema,
@@ -66,6 +67,17 @@ export const bilibiliAdapter: VideoAdapter = {
       if (item) items.push(item);
     }
     return items;
+  },
+
+  // M24 批④:listing(vlist)无直链,解读侧现查——网关内 view→cid→playurl;
+  // play_url 版权红线仅 job data 过境即焚,禁落库禁分发
+  async resolvePlayUrl({ videoId, cookies }) {
+    const data = await gatewayPost(
+      "/play-url",
+      { platform: VIDEO_PLATFORM_BILIBILI, video_id: videoId, cookies },
+      playUrlResponseSchema,
+    );
+    return data.play_url ?? null;
   },
 };
 

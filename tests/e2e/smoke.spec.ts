@@ -853,6 +853,55 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
       aiRanAt: new Date(),
     },
   });
+  // M24:B站播种(平台行停用 + 纯数字 mid 博主 + 已解读视频行)——sec_uid 语义
+  // per-platform,前台/后台平台链路与「B站」角标零适配器依赖,直接断言呈现
+  const BILI_NICK = "e2e-B站博主";
+  const BILI_MID = "12345678";
+  const MARK_BILI = "e2e-B站视频-mark";
+  const biliRow = await prisma.crawlSource.upsert({
+    where: { name: "e2e-social:bilibili" },
+    update: { enabled: false },
+    create: {
+      name: "e2e-social:bilibili",
+      type: "social-video",
+      platform: "bilibili",
+      url: "https://e2e.invalid/bilibili",
+      enabled: false,
+      remark: "e2e 专用",
+    },
+  });
+  await prisma.socialAccount.deleteMany({ where: { secUid: BILI_MID } });
+  await prisma.socialAccount.create({
+    data: {
+      platformRowId: biliRow.id,
+      platform: "bilibili",
+      secUid: BILI_MID,
+      nickname: BILI_NICK,
+      category: "AI 资讯",
+    },
+  });
+  await prisma.telegram.deleteMany({ where: { sourceId: biliRow.id, title: MARK_BILI } });
+  await prisma.telegram.create({
+    data: {
+      sourceId: biliRow.id,
+      title: MARK_BILI,
+      summary: "e2e B站视频卡冒烟",
+      url: "https://www.bilibili.com/video/BV1e2e000001",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      mediaType: "video",
+      videoPlatform: "bilibili",
+      videoBlogger: BILI_NICK,
+      videoCoverUrl: "https://e2e.invalid/cover-bv1e2e.jpg",
+      videoDuration: 305,
+      videoEngagement: { play: 8000, like: 234, comment: 45 },
+      aiStatus: "done",
+      aiTopic: "e2e B站解读主题",
+      aiSummary: "e2e B站解读摘要:该视频内容的概括文本。",
+      aiPoints: ["要点一", "要点二"],
+      aiRanAt: new Date(),
+    },
+  });
 
   try {
     // 登录(同前序用例 UI 流)
@@ -919,6 +968,16 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
       await prisma.telegram.count({ where: { sourceId: platformRow.id, title: MARK_V } }),
     ).toBe(1);
 
+    // M24 B站行:平台停用徽标 + 作品入口 space.bilibili.com/{mid}
+    // (sec_uid 语义 per-platform,bilibili=纯数字 mid)
+    const biliRowEl = page.getByRole("row", { name: new RegExp(BILI_NICK) });
+    await expect(biliRowEl).toBeVisible();
+    await expect(biliRowEl.getByText("平台已停用")).toBeVisible();
+    await expect(biliRowEl.getByRole("link", { name: `打开 ${BILI_NICK} 的主页` })).toHaveAttribute(
+      "href",
+      `https://space.bilibili.com/${BILI_MID}`,
+    );
+
     // 后台媒体筛选(批⑦):video 页含播种行(封面/原视频链/平台·博主),text 页不含
     await page.goto("/admin/telegram/?media=video");
     const vRow = page.getByRole("row", { name: new RegExp(MARK_V) });
@@ -926,6 +985,10 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await expect(vRow.getByRole("img", { name: MARK_V })).toBeVisible();
     await expect(vRow.getByRole("link", { name: /打开原视频/ })).toBeVisible();
     await expect(vRow.getByText(`抖音 · ${NICK}`)).toBeVisible();
+    // M24:B站行同管道呈现(来源列「B站 · 博主」)
+    const biliVRow = page.getByRole("row", { name: new RegExp(MARK_BILI) });
+    await expect(biliVRow).toBeVisible();
+    await expect(biliVRow.getByText(`B站 · ${BILI_NICK}`)).toBeVisible();
     // M9:已解读徽章 + 行内解读按钮在(不点击——真按会下载/转写入队);
     // M12 批⑥:done 行按钮为重生成语义「重解读」
     await expect(vRow.getByText("已解读")).toBeVisible();
@@ -952,6 +1015,8 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     const videoHtml = await (await request.get("/telegram/?media=video")).text();
     expect(videoHtml).toContain(MARK_V);
     expect(videoHtml).toContain(`抖音 · ${NICK}`);
+    expect(videoHtml).toContain(MARK_BILI); // M24:B站条同管道
+    expect(videoHtml).toContain(`B站 · ${BILI_NICK}`);
     expect(await (await request.get("/telegram/?media=text")).text()).not.toContain(MARK_V);
     expect(await (await request.get("/telegram/?media=junk")).text()).toContain(MARK_V);
 
@@ -971,6 +1036,15 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await aiCard.getByText(/关键要点 ×3/).click();
     await expect(aiCard.getByText("要点甲")).toBeVisible();
     await expect(aiCard.getByText("AI 生成 · 摘要与要点,内容版权归原作者")).toBeVisible();
+
+    // M24:B站视频卡(「B站」平台角标 + 时长角标),同一卡片形态零适配分支
+    const biliCard = page.getByRole("article").filter({ hasText: MARK_BILI });
+    await expect(biliCard.getByRole("heading", { name: MARK_BILI })).toBeVisible();
+    await expect(biliCard.getByRole("link", { name: /打开原视频/ })).toBeVisible();
+    await expect(biliCard.getByText("B站", { exact: true })).toBeVisible();
+    await expect(biliCard.getByText("5:05", { exact: true })).toBeVisible(); // 305s
+    await expect(biliCard.getByText("8000", { exact: true })).toBeVisible(); // 播放(未过万直出)
+    await expect(biliCard.getByText("AI 解读")).toBeVisible();
 
     // 公共 API media 参数:video 过滤命中且视频字段投影齐备;text 过滤不含
     const apiV = await request.get("/api/telegram/public/?media=video&limit=50");
@@ -996,6 +1070,15 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(hit!.mediaType).toBe("video");
     expect(hit!.video).toMatchObject({ platform: "douyin", blogger: NICK, durationSeconds: 213 });
     expect(hit!.video!.engagement.like).toBe(345);
+    // M24:B站条投影(平台字段如实透出)
+    const biliHit = bv.data.items.find((i) => i.title === MARK_BILI);
+    expect(biliHit).toBeTruthy();
+    expect(biliHit!.mediaType).toBe("video");
+    expect(biliHit!.video).toMatchObject({
+      platform: "bilibili",
+      blogger: BILI_NICK,
+      durationSeconds: 305,
+    });
     // M9:公共 API 投影带 ai 解读结论(白名单三字段)
     expect(hit!.video!.ai).toEqual({
       topic: AI_TOPIC,
@@ -1011,6 +1094,10 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await prisma.socialAccount.deleteMany({ where: { secUid: SEC_UID } });
     await prisma.telegram.deleteMany({ where: { sourceId: platformRow.id } });
     await prisma.crawlSource.deleteMany({ where: { name: "e2e-social:douyin" } });
+    // M24:B站播种清理
+    await prisma.socialAccount.deleteMany({ where: { secUid: BILI_MID } });
+    await prisma.telegram.deleteMany({ where: { sourceId: biliRow.id } });
+    await prisma.crawlSource.deleteMany({ where: { name: "e2e-social:bilibili" } });
   }
 });
 

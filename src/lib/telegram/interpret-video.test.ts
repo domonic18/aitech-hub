@@ -71,8 +71,21 @@ const fetchVideosMock = vi.hoisted(() =>
     async () => [],
   ),
 );
-vi.mock("./adapters/video/douyin", () => ({
-  douyinAdapter: { fetchRecentVideos: fetchVideosMock },
+// douyin 只 mock fetchRecentVideos,resolvePlayUrl 用真实现(M24 分发后直链重拉
+// 走 adapter.resolvePlayUrl → this.fetchRecentVideos → 本 mock,保住「翻 3 页
+// listing 匹配」的既有语义测试)
+vi.mock("./adapters/video/douyin", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./adapters/video/douyin")>();
+  return {
+    douyinAdapter: { ...actual.douyinAdapter, fetchRecentVideos: fetchVideosMock },
+  };
+});
+
+const bilibiliResolveMock = vi.hoisted(() =>
+  vi.fn<(args: unknown) => Promise<string | null>>(async () => null),
+);
+vi.mock("./adapters/video/bilibili", () => ({
+  bilibiliAdapter: { fetchRecentVideos: vi.fn(), resolvePlayUrl: bilibiliResolveMock },
 }));
 
 // 媒体操作整桩(下载走全局 fetch 桩保留「直链过期重拉」语义;即删/抽轨记录调用)。
@@ -148,6 +161,7 @@ beforeEach(() => {
   transcribeMock.mockResolvedValue("转写全文");
   chatJsonMock.mockResolvedValue(GOOD_JSON);
   fetchVideosMock.mockResolvedValue([]);
+  bilibiliResolveMock.mockResolvedValue(null);
   mediaMock.writeCalls.length = 0;
   mediaMock.removeTmpDir.mockResolvedValue(undefined);
   mediaMock.readAudioFile.mockResolvedValue(Buffer.from("audio-bytes"));
@@ -342,6 +356,48 @@ describe("interpretVideoJob 状态机", () => {
     expect(prismaMock.telegram.update).toHaveBeenCalledWith({
       where: { id: BigInt(1) },
       data: { aiStatus: "failed", lastAiError: "fetch failed" },
+    });
+  });
+
+  it("B站:过境直链缺失 → 分发 bilibili resolvePlayUrl 现查,下载透传 Referer(M24)", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockResolvedValue("https://bilivideo.com/x");
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "done", transcriptUsed: true });
+    expect(bilibiliResolveMock).toHaveBeenCalledWith({
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      cookies: ["ck"],
+    });
+    expect(fetchVideosMock).not.toHaveBeenCalled(); // 不串台 douyin listing
+    expect(mediaMock.downloadVideoToTmp).toHaveBeenLastCalledWith(
+      "https://bilivideo.com/x",
+      "/tmp/interpret-fake/video.mp4",
+      { Referer: "https://www.bilibili.com/" }, // B站 CDN 防盗链(douyin 传空对象)
+    );
+  });
+
+  it("B站:现查无直链(play_url null)→ missing_transcript 降级,不触下载", async () => {
+    const calls = stubDownload();
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
+    expect(bilibiliResolveMock).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(0);
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({ aiStatus: "missing_transcript" }),
     });
   });
 });
