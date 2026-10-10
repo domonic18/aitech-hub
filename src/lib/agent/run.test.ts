@@ -4,6 +4,7 @@
  * 断开(signal aborted)即停不产 end 前的更多帧。
  */
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
+import { Command, isCommand } from "@langchain/langgraph";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getAgentGraphMock = vi.hoisted(() => vi.fn());
@@ -155,6 +156,31 @@ describe("runAgentTurn", () => {
       onFrame,
     });
     expect(frames).toHaveLength(1); // 仅 metadata
+    expect(outcome.truncatedReason).toBeNull();
+  });
+
+  it("resume(HITL):Command 作图输入,帧序列与新提问同构", async () => {
+    const g = fakeGraph([
+      [
+        "updates",
+        { tools: { messages: [new ToolMessage({ content: "答", tool_call_id: "c1" })] } },
+      ],
+      ["messages", [new AIMessageChunk({ id: "ai-3", content: "继续" }), {}]],
+    ]);
+    getAgentGraphMock.mockResolvedValue(g);
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: null,
+      resume: { message: "报问题", option: "报问题" },
+      signal: signalSettled(false),
+      onFrame,
+    });
+    const input = (g.graph.stream.mock.calls as unknown as [[unknown]])[0]?.[0] as Command;
+    expect(isCommand(input)).toBe(true);
+    expect(input.resume).toEqual({ message: "报问题", option: "报问题" });
+    const events = frames.map((f) => f.split("\n")[0].replace("event: ", ""));
+    expect(events).toEqual(["metadata", "updates", "messages", "end"]);
     expect(outcome.truncatedReason).toBeNull();
   });
 });
