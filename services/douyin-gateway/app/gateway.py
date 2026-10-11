@@ -249,12 +249,23 @@ def create_app(
     async def _bili_account_invalid(
         _: Request, exc: bili_exceptions.AccountInvalidError
     ) -> JSONResponse:
+        logger.warning(
+            "social_bilibili_adapter_error",
+            error="AccountInvalidError",
+            detail=str(exc)[:200],
+        )
         return JSONResponse(status_code=404, content={"error": "AccountInvalidError", "detail": str(exc)})
 
     @app.exception_handler(bili_exceptions.BilibiliAdapterError)
     async def _bili_adapter_error(
         _: Request, exc: bili_exceptions.BilibiliAdapterError
     ) -> JSONResponse:
+        # 观测(2026-10-11 排查缺口):网关侧对适配层错误留痕,不再只有 access log
+        logger.warning(
+            "social_bilibili_adapter_error",
+            error=type(exc).__name__,
+            detail=str(exc)[:200],
+        )
         return JSONResponse(
             status_code=502,
             content={"error": type(exc).__name__, "detail": str(exc)},

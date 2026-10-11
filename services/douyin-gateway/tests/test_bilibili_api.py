@@ -323,6 +323,46 @@ class TestTransportAttribution:
         with pytest.raises(RiskControlError):
             await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
 
+    async def test_voucher_body_is_risk_control_and_cools_jar(self) -> None:
+        """code=0 + v_voucher(无 durl)= B 站软风控挑战:矩阵归一 RiskControl
+        并冷却 jar(2026-10-11 playurl 实测形态,非零码通道捕不到)。"""
+        transport, _ = make_transport(
+            [
+                FakeResponse(
+                    payload={
+                        "code": 0,
+                        "message": "OK",
+                        "ttl": 1,
+                        "data": {"v_voucher": "voucher_x"},
+                    }
+                )
+            ]
+        )
+        with pytest.raises(RiskControlError, match="v_voucher"):
+            await transport.get_json(
+                "/x/player/wbi/playurl", "bvid=BV1xx411c7mD&cid=1"
+            )
+        assert transport.jars_available == 0
+
+    async def test_durl_with_voucher_still_returns_data(self) -> None:
+        """v_voucher 与可用 durl 并存时不误伤:成功路径原样放行,不冷却。"""
+        transport, _ = make_transport(
+            [
+                FakeResponse(
+                    payload={
+                        "code": 0,
+                        "data": {
+                            "v_voucher": "voucher_x",
+                            "durl": [{"url": "https://cdn.example/360p.mp4"}],
+                        },
+                    }
+                )
+            ]
+        )
+        data = await transport.get_json("/x/player/wbi/playurl", "bvid=BV1xx411c7mD")
+        assert data["data"]["durl"][0]["url"] == "https://cdn.example/360p.mp4"
+        assert transport.jars_available == 1
+
     async def test_plain_html_is_structure_drift(self) -> None:
         transport, _ = make_transport([FakeResponse(payload="<html>ok</html>")])
         with pytest.raises(StructureDriftError):
@@ -406,6 +446,26 @@ class TestPlayUrl:
             ]
         )
         assert await api.get_play_url("BV1xx411c7mD") is None
+
+    async def test_voucher_gate_is_risk_control(self) -> None:
+        """playurl 链遇 code=0 + v_voucher(无 durl):transport 矩阵归一风控
+        (冷却 jar),不再落 None 降级。"""
+        api, _ = make_api(
+            [
+                FakeResponse(payload=self.VIEW_OK),
+                nav_response(),
+                FakeResponse(
+                    payload={
+                        "code": 0,
+                        "message": "OK",
+                        "ttl": 1,
+                        "data": {"v_voucher": "voucher_x"},
+                    }
+                ),
+            ]
+        )
+        with pytest.raises(RiskControlError, match="v_voucher"):
+            await api.get_play_url("BV1xx411c7mD")
 
 
 class TestShortLink:

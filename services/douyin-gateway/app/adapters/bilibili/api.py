@@ -25,6 +25,9 @@ from app.adapters.bilibili.wbi import (
     sign_wbi_params,
     wbi_key_from_url,
 )
+from app.log import get_logger
+
+logger = get_logger(__name__)
 
 # 2026-10 社区实测:投稿列表已迁 wbi 变体(旧 /x/space/arc/search 返回 -412)
 _POSTS_PATH = "/x/space/wbi/arc/search"
@@ -233,11 +236,14 @@ class BilibiliWebApi:
         """解读时现查播放直链(view→cid→playurl,未登录 360p mp4)。
 
         Returns:
-            直链(durl 自带 expires,调用方即取即用);空 durl 返回 None。
+            直链(durl 自带 expires,调用方即取即用);空 durl 且无 v_voucher
+            (非风控形态)返回 None。v_voucher 软风控由 transport 归因矩阵
+            归一为 RiskControlError(冷却 jar),不会落到 None。
 
         Raises:
             AccountInvalidError: 视频 -404(删除/审核中)。
             StructureDriftError: 结构不符。
+            RiskControlError: v_voucher 软风控(transport 矩阵)。
         """
         view = await self._transport.get_json(_VIEW_PATH, urlencode({"bvid": bvid}))
         view_payload = view.get("data")
@@ -262,7 +268,13 @@ class BilibiliWebApi:
         if not isinstance(payload, dict):
             raise StructureDriftError(f"playurl 缺少 data: {str(data)[:160]}")
         durl = payload.get("durl")
-        if not isinstance(durl, list) or not durl or not isinstance(durl[0], dict):
-            return None
-        url = durl[0].get("url")
+        url = (
+            durl[0].get("url")
+            if isinstance(durl, list) and durl and isinstance(durl[0], dict)
+            else None
+        )
+        # 观测(2026-10-11 v_voucher 排查补的缺口):只记事件形态,直链值禁落日志
+        logger.info(
+            "social_bilibili_playurl", bvid=bvid, outcome="ok" if url else "no_durl"
+        )
         return str(url) if url else None

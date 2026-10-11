@@ -136,7 +136,7 @@ class BilibiliTransport:
                 wbi_img 有效;资源类接口一律 True)。
 
         Raises:
-            RiskControlError: 412/403 风控墙/-352/-412/-116/限速与空 body 重试耗尽。
+            RiskControlError: 412/403 风控墙/-352/-412/-116/v_voucher 软风控(code=0)/限速与空 body 重试耗尽。
             AccountInvalidError: -404/-400。
             StructureDriftError: 未知 code 或 2xx 响应非 JSON。
         """
@@ -173,7 +173,7 @@ class BilibiliTransport:
             else:
                 data = self._parse_json(status, text, jar)
                 if interpret_code:
-                    self._interpret_body(data, jar)
+                    self._interpret_body(data, jar, path=path)
                 jar.revive()
                 return data
             if attempt < len(self._retry_delays):
@@ -195,10 +195,31 @@ class BilibiliTransport:
             raise StructureDriftError(f"响应顶层不是对象（HTTP {status}）")
         return data
 
-    def _interpret_body(self, data: dict[str, Any], jar: CookieJar) -> dict[str, Any]:
-        """HTTP 200 但 code≠0 的归因矩阵;code=0 原样返回。"""
+    def _interpret_body(
+        self, data: dict[str, Any], jar: CookieJar, *, path: str = ""
+    ) -> dict[str, Any]:
+        """HTTP 200 body 归因矩阵:code≠0 按码分流;code=0 但 data 带 v_voucher
+        (无 durl)是 B 站软风控挑战——不走非零码通道(2026-10-11 实测 playurl
+        整段返回 code=0 + v_voucher),同按风控冷却 jar,防止突发期持续喂门。
+
+        Args:
+            data: 响应 body(顶层含 code)。
+            jar: 本次请求使用的 jar(风控就地冷却)。
+            path: 接口路径(仅日志上下文)。
+        """
         code = data.get("code")
         if code == 0 or code is None:
+            payload = data.get("data")
+            if (
+                isinstance(payload, dict)
+                and payload.get("v_voucher")
+                and not payload.get("durl")
+            ):
+                jar.cool_down()
+                logger.warning(
+                    "social_bilibili_voucher_gate", path=path, body=str(data)[:200]
+                )
+                raise RiskControlError(f"code=0 v_voucher 软风控: {str(data)[:160]}")
             return data
         message = str(data.get("message") or "")
         if code in _RISK_CONTROL_CODES:
