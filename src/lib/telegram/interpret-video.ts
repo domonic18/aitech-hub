@@ -6,7 +6,9 @@
  * 即增强。版权红线:「转写是输入,不是资产」——不设 transcript 列,play_url 仅经
  * job data 过境(removeOnComplete/Fail 50 压 Redis 痕迹),临时音视频文件判读
  * try/finally 即删。ASR 终败(重试≤2)→ missing_transcript 降级,不阻塞入流。
- * 两层重试语义:ASR/LLM 解析失败在管道内兜住;下载/网关/LLM 网络层上抛给 BullMQ attempts。
+ * 三层重试语义:ASR/LLM 解析失败在管道内兜住;下载/网关/LLM 网络层上抛给 BullMQ
+ * attempts;B站 playurl 风控门(M24)为分钟~小时级上下文门,60s 退避跨不过——
+ * 延迟重投顺延(RISK_CONTROL_*)跨门自愈,顺延耗尽才终败。
  */
 import { getAsrRuntimeConfig } from "../ai/asr-admin";
 import { transcribeAudio, type TranscribeInput } from "../ai/asr-client";
@@ -37,7 +39,7 @@ import {
   TELEGRAM_MEDIA_VIDEO,
   type VideoPlatform,
 } from "./constants";
-import { downloadHeadersFor } from "./adapters/video";
+import { downloadHeadersFor, GatewayUpstreamError } from "./adapters/video";
 import { ADAPTERS } from "./adapters/video/registry";
 import { jarsFromConfig } from "./cookies";
 import { countTodayAiDone } from "./spider-queries";
@@ -53,6 +55,8 @@ export interface InterpretJobData {
   platform: string;
   /** 博主台账 secUid(直链重拉用);null=博主已删,只能吃过境直链 */
   secUid: string | null;
+  /** B站 playurl 风控门顺延计数(延迟重投自增;≥RISK_CONTROL_MAX_DEFERS 终败) */
+  deferCount?: number;
 }
 
 /** 解读就绪 = interpret 角色已绑定可用模型(M12 起不再前置 ASR:未配 ASR 走文案
@@ -99,7 +103,8 @@ export interface InterpretOutcome {
     | "skipped_not_found"
     | "skipped_done"
     | "skipped_not_ready"
-    | "deferred_quota";
+    | "deferred_quota"
+    | "deferred_riskcontrol";
   transcriptUsed: boolean;
   error?: string;
 }
@@ -108,6 +113,11 @@ const ASR_RETRIES = 2; // 管道内重试(首次 + 2 重试);终败降级不抛
 const ASR_RETRY_DELAY_MS = 3_000;
 const QUOTA_DEFER_MS = 30 * 60_000;
 const ASR_TIMEOUT_SEC = 120;
+/** B站 playurl 软风控门顺延(M24 验收期收口):门为分钟~小时级上下文门
+ * (2026-10-11 生产实证:首条解读过后即门,60s attempts 全灭),延迟重投
+ * 20min × 3 覆盖 ~1h 衰减窗;冷却期内网关「无可用 jar」快速拒绝不喂门 */
+const RISK_CONTROL_DEFER_MS = 20 * 60_000;
+const RISK_CONTROL_MAX_DEFERS = 3;
 
 /** 经适配器现查直链(存量补读/过境链过期两路;M24 起按平台分发:
  * douyin=重拉 listing 匹配,bilibili=网关 /play-url),查不得返回 null
@@ -266,6 +276,40 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
         transcriptError = "无可用播放直链(过境直链缺失且网关重拉未命中),基于文案概括";
       }
     } catch (err) {
+      // B站 playurl 软风控门(v_voucher,经 resolvePlayUrl 唯一来源):分钟~小时级
+      // 上下文门,BullMQ 60s 退避跨不过 → 延迟重投顺延跨门(行留 processing),
+      // 耗尽仍门才终败(可治理台「重解读」)。下载/其余网关网络层照旧上抛 attempts
+      if (
+        err instanceof GatewayUpstreamError &&
+        err.kind === "RiskControlError" &&
+        (data.deferCount ?? 0) < RISK_CONTROL_MAX_DEFERS
+      ) {
+        const deferCount = (data.deferCount ?? 0) + 1;
+        await prisma.telegram.update({
+          where: { id },
+          data: {
+            lastAiError: `风控门顺延重试中(${deferCount}/${RISK_CONTROL_MAX_DEFERS})`,
+          },
+        });
+        await getQueue(QUEUE_INTERPRETER).add(
+          INTERPRET_JOB_NAME,
+          { ...data, deferCount },
+          aiJobOpts({
+            jobId: interpretJobId(data.telegramId, `rc${Date.now()}`),
+            delayMs: RISK_CONTROL_DEFER_MS,
+          }),
+        );
+        logger.warn({
+          event: "interpret.video.riskcontrol_deferred",
+          telegramId: data.telegramId,
+          deferCount,
+        });
+        return {
+          telegramId: data.telegramId,
+          status: "deferred_riskcontrol",
+          transcriptUsed: false,
+        };
+      }
       await markAiFailed(id, err);
       throw err; // 下载/网关网络层 → BullMQ attempts 兜重试
     } finally {

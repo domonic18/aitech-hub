@@ -115,6 +115,7 @@ import {
   markPendingAndEnqueue,
   type InterpretJobData,
 } from "./interpret-video";
+import { GatewayUpstreamError } from "./adapters/video";
 
 const ASR_ROW = {
   id: 1,
@@ -399,6 +400,57 @@ describe("interpretVideoJob 状态机", () => {
       where: { id: BigInt(1) },
       data: expect.objectContaining({ aiStatus: "missing_transcript" }),
     });
+  });
+
+  it("B站:playurl 风控门 → 不烧 attempts,延迟 20min 重投顺延(deferCount 自增,行留 processing)", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
+    );
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "deferred_riskcontrol", transcriptUsed: false });
+    expect(queueMock.add).toHaveBeenCalledTimes(1);
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      expect.objectContaining({ telegramId: "1", deferCount: 1, videoId: "BV1xx411c7mD" }),
+      expect.objectContaining({
+        jobId: expect.stringMatching(/^interpret-1-rc\d+$/),
+        delay: 20 * 60_000,
+      }),
+    );
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: { lastAiError: "风控门顺延重试中(1/3)" },
+    });
+    expect(mediaMock.downloadVideoToTmp).not.toHaveBeenCalled();
+  });
+
+  it("B站:风控门顺延耗尽(deferCount≥3)→ 标 failed 上抛(attempts 终兜)", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
+    );
+    await expect(
+      interpretVideoJob({
+        ...DATA,
+        platform: "bilibili",
+        videoId: "BV1xx411c7mD",
+        secUid: "9469941",
+        playUrl: null,
+        deferCount: 3,
+      }),
+    ).rejects.toThrow("RiskControlError");
+    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
+      where: { id: BigInt(1) },
+      data: { aiStatus: "failed", lastAiError: expect.stringContaining("RiskControlError") },
+    });
+    expect(queueMock.add).not.toHaveBeenCalled();
   });
 });
 
