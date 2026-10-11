@@ -170,7 +170,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
                 助手引用即流量。
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
-                {["/llms.txt", "/llms-full.txt", "/feed.xml"].map((href) => (
+                {["/llms.txt", "/feed.xml"].map((href) => (
                   <a
                     key={href}
                     href={href}
