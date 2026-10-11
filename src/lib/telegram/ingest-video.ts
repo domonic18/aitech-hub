@@ -27,18 +27,8 @@ import {
 import { matchBlocklist, matchHeuristics, type BlocklistWord, type FilterHit } from "./filter";
 import { canonicalUrl, contentHash, decodeHtmlEntities, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
-import { douyinAdapter } from "./adapters/video/douyin";
-import {
-  GatewayUnavailableError,
-  GatewayUpstreamError,
-  type VideoAdapter,
-  type VideoItem,
-} from "./adapters/video";
-
-/** 平台适配器注册表(B站后补只加一行) */
-const ADAPTERS: Partial<Record<VideoPlatform, VideoAdapter>> = {
-  douyin: douyinAdapter,
-};
+import { ADAPTERS } from "./adapters/video/registry";
+import { GatewayUnavailableError, GatewayUpstreamError, type VideoItem } from "./adapters/video";
 
 export interface VideoCrawlOutcome {
   accountId: number;

@@ -28,17 +28,17 @@ import {
 } from "../media/interpret-media";
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
 
-import { douyinAdapter } from "./adapters/video/douyin";
 import { aiJobOpts, errMessage, markAiFailed, markAiPendingAndEnqueue } from "./ai-shared";
 import {
-  SOCIAL_BACKFILL_MAX_PAGES,
   TELEGRAM_AI_DONE,
   TELEGRAM_AI_MISSING_TRANSCRIPT,
   TELEGRAM_AI_PENDING,
   TELEGRAM_AI_PROCESSING,
   TELEGRAM_MEDIA_VIDEO,
-  VIDEO_PLATFORM_DOUYIN,
+  type VideoPlatform,
 } from "./constants";
+import { downloadHeadersFor } from "./adapters/video";
+import { ADAPTERS } from "./adapters/video/registry";
 import { jarsFromConfig } from "./cookies";
 import { countTodayAiDone } from "./spider-queries";
 
@@ -109,21 +109,19 @@ const ASR_RETRY_DELAY_MS = 3_000;
 const QUOTA_DEFER_MS = 30 * 60_000;
 const ASR_TIMEOUT_SEC = 120;
 
-/** 经网关重拉 listing(maxPages=3)按 videoId 匹配直链(存量补读/过境链过期两路) */
+/** 经适配器现查直链(存量补读/过境链过期两路;M24 起按平台分发:
+ * douyin=重拉 listing 匹配,bilibili=网关 /play-url),查不得返回 null
+ * → 调用方既有 missing_transcript 降级 */
 async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Promise<string | null> {
-  if (data.platform !== VIDEO_PLATFORM_DOUYIN || !data.secUid || !data.videoId) return null;
+  const adapter = ADAPTERS[data.platform as VideoPlatform];
+  if (!adapter?.resolvePlayUrl || !data.secUid || !data.videoId) return null;
   const platformRow = await prisma.crawlSource.findUnique({
     where: { id: sourceId },
     select: { config: true },
   });
   const jars = jarsFromConfig(platformRow?.config);
   if (jars.length === 0) return null;
-  const items = await douyinAdapter.fetchRecentVideos({
-    secUid: data.secUid,
-    cookies: jars,
-    maxPages: SOCIAL_BACKFILL_MAX_PAGES,
-  });
-  return items.find((it) => it.videoId === data.videoId)?.playUrl ?? null;
+  return adapter.resolvePlayUrl({ videoId: data.videoId, secUid: data.secUid, cookies: jars });
 }
 
 /** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛。
@@ -238,13 +236,15 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       if (!playUrl) playUrl = await fetchFreshPlayUrl(row.sourceId, data);
       if (playUrl) {
         const { videoPath, audioPath } = tmpMediaPaths(tmpDir);
+        // B站 CDN 防盗链校验 Referer(douyin 空对象,douyin 行为不变)
+        const headers = downloadHeadersFor(data.platform);
         try {
-          await downloadVideoToTmp(playUrl, videoPath);
+          await downloadVideoToTmp(playUrl, videoPath, headers);
         } catch (err) {
           // 过境直链是数小时有效的签名 URL,积压 job 会过期:重拉一次再试
           const fresh = await fetchFreshPlayUrl(row.sourceId, data);
           if (!fresh) throw err;
-          await downloadVideoToTmp(fresh, videoPath);
+          await downloadVideoToTmp(fresh, videoPath, headers);
         }
         await extractAudioMp3(videoPath, audioPath, asr.maxAudioSeconds);
         const asrResult = await runTranscribeWithRetry(

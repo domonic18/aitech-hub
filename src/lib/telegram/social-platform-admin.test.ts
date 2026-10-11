@@ -67,6 +67,11 @@ describe("fetchGatewayHealth", () => {
       status: "starting",
       jarsTotal: 3,
       jarsAvailable: 2,
+      // per-platform 段(M24):顶层 jars_* 仍 = douyin
+      platforms: {
+        douyin: { jarsTotal: 3, jarsAvailable: 2, wbiAgeSeconds: null },
+        bilibili: { jarsTotal: 1, jarsAvailable: 1, wbiAgeSeconds: 3600 },
+      },
     });
   });
 

@@ -64,14 +64,40 @@ describe("mergeImportedJar 导入校验", () => {
     const merged = mergeImportedJar([JAR_A, JAR_B], newer);
     expect(merged).toEqual([JAR_B, newer]); // 旧 aaa-bbb 被替换,ccc-ddd 保留
   });
+
+  it("bilibili 规则:单组 buvid3 即收(游客 jar 有效);缺 buvid3 拒收", () => {
+    expect(mergeImportedJar([], "buvid3=abc12345", "bilibili")).toEqual(["buvid3=abc12345"]);
+    expect(() => mergeImportedJar([], "a=1; b=2", "bilibili")).toThrow(CookiePoolError);
+    expect(() => mergeImportedJar([], "ttwid=x; sessionid=y; msToken=z", "bilibili")).toThrow(
+      /buvid3/,
+    );
+  });
+
+  it("bilibili 同 buvid3 覆盖旧值(身份去重与 douyin 同构)", () => {
+    const merged = mergeImportedJar(["buvid3=old-value; buvid4=o"], "buvid3=old-value", "bilibili");
+    expect(merged).toEqual(["buvid3=old-value"]);
+  });
+
+  it("未知平台回落 douyin 规则(保守防呆)", () => {
+    expect(() => mergeImportedJar([], "ttwid=only", "xhs")).toThrow(CookiePoolError);
+    expect(mergeImportedJar([], "ttwid=a; b=2; c=3", "xhs")).toEqual(["ttwid=a; b=2; c=3"]);
+  });
 });
 
 describe("maskJars 脱敏", () => {
-  it("只出 ttwid 前 8 位,无 ttwid 空串", () => {
+  it("只出关键 cookie 前 8 位,无值空串(douyin 默认 ttwid)", () => {
     expect(maskJars([JAR_A, JAR_B])).toEqual([
-      { ttwidPrefix: "aaa-bbb" },
-      { ttwidPrefix: "ccc-ddd" },
+      { essentialKey: "ttwid", essentialPrefix: "aaa-bbb" },
+      { essentialKey: "ttwid", essentialPrefix: "ccc-ddd" },
     ]);
-    expect(maskJars(["sessionid=x; other=y"])).toEqual([{ ttwidPrefix: "" }]);
+    expect(maskJars(["sessionid=x; other=y"])).toEqual([
+      { essentialKey: "ttwid", essentialPrefix: "" },
+    ]);
+  });
+
+  it("bilibili 出 buvid3 前缀", () => {
+    expect(maskJars(["buvid3=abc12345xyz"], "bilibili")).toEqual([
+      { essentialKey: "buvid3", essentialPrefix: "abc12345" },
+    ]);
   });
 });

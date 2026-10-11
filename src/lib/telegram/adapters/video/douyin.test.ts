@@ -164,6 +164,37 @@ describe("douyinAdapter.fetchRecentVideos", () => {
   });
 });
 
+describe("douyinAdapter.resolvePlayUrl", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("重拉 listing(max_pages=3)按 videoId 匹配直链;未命中 null", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      void url;
+      const payload = JSON.parse(String(init?.body)) as { max_pages?: number };
+      expect(payload.max_pages).toBe(3); // 存量补读翻满 3 页
+      return new Response(gatewayBody(), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(
+      await douyinAdapter.resolvePlayUrl?.({
+        videoId: "7301234567890",
+        secUid: "sec-abc",
+        cookies: JARS,
+      }),
+    ).toBe("https://v.douyinvod.com/x");
+    expect(
+      await douyinAdapter.resolvePlayUrl?.({
+        videoId: "not-in-listing",
+        secUid: "sec-abc",
+        cookies: JARS,
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("profile / resolve", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -31,9 +31,17 @@ export function removeTmpDir(dir: string): Promise<void> {
   return fs.rm(dir, { recursive: true, force: true }).then(() => undefined);
 }
 
-/** 无水印直链下载落 tmp(内存缓冲;超限二次校验防 content-length 缺失谎报) */
-export async function downloadVideoToTmp(playUrl: string, destPath: string): Promise<void> {
-  const res = await fetch(playUrl, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_SEC * 1000) });
+/** 无水印直链下载落 tmp(内存缓冲;超限二次校验防 content-length 缺失谎报)。
+ * headers:B站 CDN 防盗链须 Referer(M24 downloadHeadersFor 透传),douyin 裸 fetch */
+export async function downloadVideoToTmp(
+  playUrl: string,
+  destPath: string,
+  headers: Record<string, string> = {},
+): Promise<void> {
+  const res = await fetch(playUrl, {
+    headers,
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_SEC * 1000),
+  });
   if (!res.ok || !res.body) throw new Error(`直链下载失败 HTTP ${res.status}`);
   const len = Number(res.headers.get("content-length") ?? "0");
   if (len > DOWNLOAD_MAX_BYTES) {

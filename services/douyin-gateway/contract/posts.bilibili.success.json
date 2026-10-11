@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "body": {
+    "videos": [
+      {
+        "video_id": "BV1xx411c7mD",
+        "caption": "10分钟看懂大模型推理\n本期聊 KV Cache 与量化",
+        "topic_tags": [],
+        "cover_url": "https://i0.hdslb.com/bfs/archive/cover.jpg",
+        "play_url": null,
+        "duration_seconds": 603,
+        "published_at": "2026-10-03T12:00:00Z",
+        "digg_count": null,
+        "comment_count": 214,
+        "share_count": null,
+        "play_count": 52341
+      }
+    ],
+    "has_more": false,
+    "max_cursor": 1
+  }
+}

@@ -257,6 +257,12 @@ img { display: block; }
 .pf-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
 .pf-dy::before { background: var(--amber); }
 .pf-x::before { background: var(--blue); }
+.pf-bili::before { background: var(--blue); }
+/* 登记平台单选(M24:抖音/B站可登记,小红书灰「规划中」) */
+.plat-seg { display: flex; gap: 8px; }
+.plat-seg button { height: 30px; padding: 0 14px; font-size: 12.5px; color: var(--text-2); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer; }
+.plat-seg button.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-weight: 600; }
+.plat-seg button:disabled { color: var(--text-3); background: var(--panel-2); cursor: not-allowed; opacity: .7; }
 .pf-bili::before { background: var(--red); }
 .b-cell { display: flex; align-items: center; gap: 10px; }
 .b-cell .avatar-svg { width: 34px; height: 34px; --av-bg: var(--accent-dim); --av-fg: var(--accent); }
@@ -389,17 +395,17 @@ img { display: block; }
   <div class="a-body">
 
     <div class="mig-tip">
-      <svg class="ic ic-sm" aria-hidden="true"><use href="#i-infocircle"/></svg> 视频博主台账(二期):抖音等平台经 <b>signer sidecar + Cookie 池</b>采集;X/时间线类走 RSS/API 渠道(在 渠道配置 维护)。账号停用后才能物理删除(两步武装删除)。
+      <svg class="ic ic-sm" aria-hidden="true"><use href="#i-infocircle"/></svg> 视频博主台账(二期):抖音 / B站经 <b>采集网关(douyin-gateway)+ 平台级 Cookie 池</b>采集;X/时间线类走 RSS/API 渠道(在 渠道配置 维护)。账号停用后才能物理删除(两步武装删除)。
     </div>
 
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="sc-head"><span class="st-dot warn"></span>采集适配层<span class="sc-tag">signer sidecar · douyin-tiktok-api v2</span></div>
+        <div class="sc-head"><span class="st-dot warn"></span>采集适配层<span class="sc-tag">采集网关 · douyin-gateway(抖音/B站)</span></div>
         <div class="sc-grid">
-          <div class="sc-item"><div class="k">sidecar 状态</div><div class="v" style="color:var(--green)">运行中</div></div>
+          <div class="sc-item"><div class="k">网关状态</div><div class="v" style="color:var(--green)">运行中</div></div>
           <div class="sc-item"><div class="k">今日采集</div><div class="v">214</div></div>
           <div class="sc-item"><div class="k">今日失败</div><div class="v" style="color:var(--amber)">6</div></div>
-          <div class="sc-item"><div class="k">Cookie 池</div><div class="v">5 <small>· 2 待续期</small></div></div>
+          <div class="sc-item"><div class="k">Cookie 池</div><div class="v">抖音 5 <small>· 2 待续期</small> / B站 2</div></div>
         </div>
         <div class="sc-alert"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-warning"/></svg> a_bogus 算法版本 v2·2026-09-12,落后官方 2 天 — 已自动降频至 30min/次</div>
       </div>
@@ -468,6 +474,18 @@ img { display: block; }
             <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">作品</button><button class="op-link">回填</button><button class="op-link danger" disabled title="两步武装删除:先停用,再物理删除">删除</button></div></td>
           </tr>
           <tr>
+            <td><div class="b-cell"><svg class="avatar-svg" style="--av-bg:color-mix(in srgb, var(--blue) 12%, transparent); --av-fg:var(--blue)" aria-hidden="true"><use href="#i-avatar"/></svg><div><div class="nm">AI工具评测室</div><div class="hd">mid 9469941</div></div></div></td>
+            <td><span class="pf-chip pf-bili">B站</span></td>
+            <td><span class="use-tag">AI / 评测</span></td>
+            <td class="num">180min</td>
+            <td><button class="sw on" onclick="this.classList.toggle('on')" aria-label="启用开关"></button></td>
+            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">2026 年度 AI 工具横评</td>
+            <td class="num">12:05</td>
+            <td class="num" style="text-align:right">3 / 0.5h</td>
+            <td class="num" style="color:var(--text-3)">—</td>
+            <td><div class="ops"><button class="op-link">编辑</button><button class="op-link">作品</button><button class="op-link">回填</button><button class="op-link danger" disabled title="两步武装删除:先停用,再物理删除">删除</button></div></td>
+          </tr>
+          <tr>
             <td><div class="b-cell"><svg class="avatar-svg" style="--av-bg:color-mix(in srgb, var(--green) 12%, transparent); --av-fg:var(--green)" aria-hidden="true"><use href="#i-avatar"/></svg><div><div class="nm">歸藏</div><div class="hd">@Guizang</div></div></div></td>
             <td><span class="pf-chip pf-x">X</span></td>
             <td><span class="use-tag">AI / 创作</span></td>
@@ -505,9 +523,17 @@ img { display: block; }
     <div class="mo-body">
       <div class="f-grid">
         <div class="f-item full">
-          <label>主页链接或 sec_uid<span class="req">*</span></label>
-          <input class="mono" placeholder="https://www.douyin.com/user/MS4wLjAB… 或 sec_uid">
-          <span class="hint">登记时校验唯一性,重复返回 <b>409</b>;抖音账号自动拉取昵称与头像。</span>
+          <label>平台<span class="req">*</span></label>
+          <div class="plat-seg" id="platSeg">
+            <button type="button" class="on" onclick="pickPlat(this,'douyin')" aria-pressed="true">抖音</button>
+            <button type="button" onclick="pickPlat(this,'bilibili')" aria-pressed="false">B站</button>
+            <button type="button" disabled title="规划中">小红书 · 规划中</button>
+          </div>
+        </div>
+        <div class="f-item full">
+          <label>主页链接或平台身份 ID<span class="req">*</span></label>
+          <input class="mono" id="identityInput" placeholder="https://www.douyin.com/user/MS4wLjAB… 或 sec_uid">
+          <span class="hint" id="identityHint">登记时校验唯一性,重复返回 <b>409</b>;抖音账号自动拉取昵称与头像。</span>
         </div>
         <div class="f-item">
           <label>别名(站点内展示)</label>
@@ -519,12 +545,12 @@ img { display: block; }
         </div>
         <div class="f-item">
           <label>轮询间隔</label>
-          <select><option>20 分钟</option><option>30 分钟</option><option>60 分钟</option></select>
+          <select><option>20 分钟</option><option>30 分钟</option><option>60 分钟</option><option>180 分钟(B站默认)</option></select>
         </div>
         <div class="f-item">
-          <label>Cookie(可选,加入 Cookie 池)</label>
-          <input type="password" class="mono" placeholder="粘贴该账号 Cookie">
-          <span class="hint">加密落库;池内 2 个待续期时会自动轮换。</span>
+          <label>Cookie(可选,加入平台 Cookie 池)</label>
+          <input type="password" class="mono" id="cookieInput" placeholder="ttwid=…; sessionid=…; msToken=…">
+          <span class="hint" id="cookieHint">平台级共享、加密落库;抖音校验 ≥3 对且含 ttwid。</span>
         </div>
         <div class="f-item">
           <label>备注</label>
@@ -574,6 +600,34 @@ document.addEventListener("keydown", (e) => {
 });
 function openModal() { document.getElementById("modalMask")?.classList.add("open"); }
 function closeModal() { document.getElementById("modalMask")?.classList.remove("open"); }
+
+/* ---- 登记平台单选 → 身份输入/Cookie 占位与提示切换(M24 per-platform) ---- */
+const PLAT_META = {
+  douyin: {
+    identity: "https://www.douyin.com/user/MS4wLjAB… 或 sec_uid",
+    identityHint: '登记时校验唯一性,重复返回 <b>409</b>;抖音账号自动拉取昵称与头像。',
+    cookie: "ttwid=…; sessionid=…; msToken=…",
+    cookieHint: "平台级共享、加密落库;抖音校验 ≥3 对且含 ttwid。",
+  },
+  bilibili: {
+    identity: "https://space.bilibili.com/9469941 或纯数字 mid(b23.tv 短链亦可)",
+    identityHint: '登记时校验唯一性,重复返回 <b>409</b>;B 站身份是纯数字 mid,自动拉取昵称与头像。',
+    cookie: "buvid3=…; buvid4=…; b_nut=…",
+    cookieHint: "平台级共享、加密落库;B 站游客 Cookie 即有效(buvid3),登录态更稳。",
+  },
+};
+function pickPlat(btn, key) {
+  const meta = PLAT_META[key];
+  document.querySelectorAll("#platSeg button:not(:disabled)").forEach((b) => {
+    b.classList.toggle("on", b === btn);
+    b.setAttribute("aria-pressed", String(b === btn));
+  });
+  const idInput = document.getElementById("identityInput");
+  idInput.placeholder = meta.identity;
+  document.getElementById("identityHint").innerHTML = meta.identityHint;
+  document.getElementById("cookieInput").placeholder = meta.cookie;
+  document.getElementById("cookieHint").textContent = meta.cookieHint;
+}
 
 </script>
 </body>

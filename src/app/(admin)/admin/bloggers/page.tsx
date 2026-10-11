@@ -14,7 +14,11 @@ import { formatCnDateTime } from "@/lib/datetime";
 import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
 import { getAsrOverview } from "@/lib/telegram/spider-queries";
 import { fetchGatewayHealth, getCookiePoolView } from "@/lib/telegram/social-platform-admin";
-import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_DOUYIN } from "@/lib/telegram/constants";
+import {
+  SOCIAL_CRAWL_INTERVAL_MIN,
+  VIDEO_PLATFORM_BILIBILI,
+  VIDEO_PLATFORM_DOUYIN,
+} from "@/lib/telegram/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +26,11 @@ function secUidShort(secUid: string): string {
   return secUid.length > 18 ? `${secUid.slice(0, 14)}…` : secUid;
 }
 
-/** 作品入口链接:抖音主页由 sec_uid 派生(库内不存主页 URL);其余平台未上线不出链接 */
+/** 作品入口链接:抖音/B站主页由身份标识派生(库内不存主页 URL);其余平台未上线不出链接 */
 function profileUrl(b: { platform: string; secUid: string }): string | null {
-  return b.platform === VIDEO_PLATFORM_DOUYIN ? `https://www.douyin.com/user/${b.secUid}` : null;
+  if (b.platform === VIDEO_PLATFORM_DOUYIN) return `https://www.douyin.com/user/${b.secUid}`;
+  if (b.platform === VIDEO_PLATFORM_BILIBILI) return `https://space.bilibili.com/${b.secUid}`;
+  return null;
 }
 
 function asrHours(sec: number): string {
@@ -61,16 +67,40 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
             <svg className="ic text-accent" aria-hidden="true">
               <use href="#i-cloudserver" />
             </svg>
-            抖音网关(douyin-gateway)
+            采集网关(douyin-gateway · 抖音/B站)
           </div>
           {gateway.reachable ? (
             <>
               <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-green">
                 {gateway.status ?? "ok"}
               </div>
-              <div className="mt-1.5 font-mono text-[11px] text-text-3">
-                签名 jar:可用 <b className="text-text-2">{gateway.jarsAvailable ?? 0}</b> / 共{" "}
-                <b className="text-text-2">{gateway.jarsTotal ?? 0}</b>(网关内存风控冷却态)
+              {/* per-platform jar 池(M24);platforms 缺失时回落顶层(douyin 旧网关兼容) */}
+              <div className="mt-1.5 space-y-0.5 font-mono text-[11px] text-text-3">
+                {(Object.entries(gateway.platforms ?? {}).length > 0
+                  ? Object.entries(gateway.platforms ?? {})
+                  : [
+                      [
+                        "douyin",
+                        {
+                          jarsTotal: gateway.jarsTotal ?? 0,
+                          jarsAvailable: gateway.jarsAvailable ?? 0,
+                          wbiAgeSeconds: null,
+                        },
+                      ] as const,
+                    ]
+                ).map(([name, p]) => (
+                  <div key={name}>
+                    {name}:可用 <b className="text-text-2">{p.jarsAvailable}</b> / 共{" "}
+                    <b className="text-text-2">{p.jarsTotal}</b>
+                    {name === VIDEO_PLATFORM_BILIBILI && p.wbiAgeSeconds != null && (
+                      <span title="wbi 签名密钥缓存年龄">
+                        {" "}
+                        · wbi {Math.floor(p.wbiAgeSeconds / 3600)}h
+                      </span>
+                    )}
+                  </div>
+                ))}
+                <div className="text-[10px]">(网关内存风控冷却态)</div>
               </div>
             </>
           ) : (

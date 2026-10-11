@@ -3,12 +3,14 @@
   "body": {
     "detail": [
       {
-        "type": "string_too_short",
-        "loc": ["body", "sec_uid"],
-        "msg": "String should have at least 10 characters",
-        "input": "short",
+        "type": "value_error",
+        "loc": ["body"],
+        "msg": "Value error, sec_uid too short",
+        "input": {
+          "sec_uid": "short"
+        },
         "ctx": {
-          "min_length": 10
+          "error": {}
         }
       }
     ]

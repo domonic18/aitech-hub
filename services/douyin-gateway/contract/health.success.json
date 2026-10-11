@@ -7,6 +7,18 @@
     "in_use": 0,
     "last_error": null,
     "jars_total": 3,
-    "jars_available": 2
+    "jars_available": 2,
+    "platforms": {
+      "douyin": {
+        "jars_total": 3,
+        "jars_available": 2,
+        "wbi_age_seconds": null
+      },
+      "bilibili": {
+        "jars_total": 1,
+        "jars_available": 1,
+        "wbi_age_seconds": 3600
+      }
+    }
   }
 }
