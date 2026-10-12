@@ -38,6 +38,7 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
       { icon: "i-cloudserver", label: "渠道配置", href: "/admin/channels" },
       { icon: "i-aim", label: "博主管理", href: "/admin/bloggers" },
+      { icon: "i-experiment", label: "发现治理", href: "/admin/discovery" },
       { icon: "i-github", label: "项目展示", href: "/admin/github" },
     ],
   },
