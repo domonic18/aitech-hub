@@ -1,7 +1,8 @@
 /**
  * discovery_candidate 仓储(M25 任务B):身份幂等落库((type,platform,externalId)
- * 唯一)、飞书回写标记、人工终审状态流转(批③治理台同用)。
+ * 唯一)与人工终审状态流转(批③治理台同用)。
  * 幂等语义:重复发现刷新指标与 round,不动人工终审结论。
+ * 数据唯一真相源在本系统;外部分发经 MCP 由 Claude Code 打通,系统内不耦合。
  */
 import type { DiscoveryCandidate } from "@prisma/client";
 
@@ -27,7 +28,7 @@ export interface CandidateInput {
   l0Reason?: string | null;
 }
 
-/** 落库结果:created=本轮新落库(飞书只推新 pass 视频,防重复轮重推) */
+/** 落库结果:created=本轮新落库(轮次统计口径) */
 export interface SavedCandidate {
   id: bigint;
   created: boolean;
@@ -132,7 +133,7 @@ export async function saveCandidates(
     await prisma.discoveryCandidate.createMany({ data: newData, skipDuplicates: true });
   }
 
-  // 回查拿 id(新插行需要 id 回写飞书 record)
+  // 回查拿 id(新插行 createMany 不返回 id)
   const after = await prisma.discoveryCandidate.findMany({
     where: { OR: identityFilter },
     select: { id: true, type: true, platform: true, externalId: true },
@@ -152,18 +153,10 @@ export async function saveCandidates(
   return saved;
 }
 
-/** 飞书回写标记(防重推的判据:feishuRecordId 已置即跳过) */
-export async function markCandidateFeishu(id: bigint, feishuRecordId: string): Promise<void> {
-  await prisma.discoveryCandidate.update({ where: { id }, data: { feishuRecordId } });
-}
-
-/** 人工终审(治理台批③):approved/rejected;回退 pending 清回写标记(重审后可重推) */
+/** 人工终审(治理台批③):approved/rejected;pending 供回退重审 */
 export async function setCandidateStatus(
   id: bigint,
   status: CandidateReviewStatus,
 ): Promise<DiscoveryCandidate> {
-  return prisma.discoveryCandidate.update({
-    where: { id },
-    data: { status, ...(status === "pending" ? { feishuRecordId: null } : {}) },
-  });
+  return prisma.discoveryCandidate.update({ where: { id }, data: { status } });
 }

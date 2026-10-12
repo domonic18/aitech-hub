@@ -1,7 +1,8 @@
 /**
  * 任务B·B站发现周频(M25,discovery-plan §4):active 词双窗 search
  * (90d 找博主 / 7d 找热点视频)→ 聚合(博主 topN / 视频≥5万播放)→ L0 预筛 →
- * 身份幂等落库 → L0 pass 的新视频推飞书选题库(回写 record 防重推)。
+ * 身份幂等落库。数据唯一真相源在本系统,产出由批③治理台人工终审;
+ * 外部分发(如飞书)后续经 MCP 由 Claude Code 打通,系统内不耦合。
  * 风控纪律(constants 固化):search 词间 6-9s、412 退避 15s×3、card 拆阶段
  * 延迟 30s + 条间 3-4.2s;单窗失败按词留痕不弃整轮。
  */
@@ -24,8 +25,7 @@ import {
   DISCOVERY_VIDEO_WINDOW_DAYS,
 } from "./constants";
 import { aggregateBloggers, aggregateVideos, type WordResult } from "./aggregate";
-import { saveCandidates, markCandidateFeishu, type CandidateInput } from "./candidates";
-import { isFeishuPushConfigured, pushVideoToBitable } from "./feishu";
+import { saveCandidates, type CandidateInput } from "./candidates";
 import { takeActiveWords, touchWords } from "./keywords";
 import { l0Check } from "./l0";
 import { randomGapMs, sleep } from "./timing";
@@ -40,10 +40,6 @@ export interface BiliOutcome {
   videoCandidates: number;
   /** 本轮新落库数 */
   inserted: number;
-  /** 飞书推送:pushed 成功 / skipped=true=未配置跳过 / failed 失败数 */
-  feishuPushed: number;
-  feishuSkipped: boolean;
-  feishuFailed: number;
 }
 
 /** 单窗搜索 + 412 退避重试(纪律:15s × ≤3,仍败抛给调用方按词留痕) */
@@ -86,9 +82,6 @@ export async function runBiliDiscovery(cap: number): Promise<BiliOutcome> {
     bloggerCandidates: 0,
     videoCandidates: 0,
     inserted: 0,
-    feishuPushed: 0,
-    feishuSkipped: false,
-    feishuFailed: 0,
   };
   if (words.length === 0) return outcome;
 
@@ -202,37 +195,6 @@ export async function runBiliDiscovery(cap: number): Promise<BiliOutcome> {
     round,
   );
   outcome.inserted = saved.filter((s) => s.created).length;
-
-  // 飞书推送:仅本轮新落库的 L0 pass 视频(既有候选不重推;未配置整段跳过)
-  const pushTargets = saved.filter(
-    (s) => s.created && s.input.type === "video" && s.input.l0Verdict === "pass",
-  );
-  if (pushTargets.length > 0) {
-    if (!isFeishuPushConfigured()) {
-      outcome.feishuSkipped = true;
-    } else {
-      for (const t of pushTargets) {
-        try {
-          const recordId = await pushVideoToBitable({
-            title: t.input.title ?? "",
-            bvid: t.input.externalId,
-            play: t.input.totalPlay ?? 0,
-            author: t.input.author ?? "",
-            hitKeywords: t.input.hitKeywords,
-          });
-          await markCandidateFeishu(t.id, recordId);
-          outcome.feishuPushed += 1;
-        } catch (e) {
-          outcome.feishuFailed += 1;
-          logger.warn({
-            event: "discovery.bili.feishu_failed",
-            bvid: t.input.externalId,
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }
-    }
-  }
 
   await touchWords(words.map((w) => w.id));
   logger.info({ event: "discovery.bili.done", ...outcome });
