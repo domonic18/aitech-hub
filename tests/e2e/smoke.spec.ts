@@ -19,6 +19,7 @@ import sharp from "sharp";
  * K2.5 Drawer 深挖会话:线程 API 面+唤起预填+无绑定降级+侧栏删除(K2.5)/
  * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)/
  * 优质内容发现治理台:词库管理与候选人工终审(M25)。
+ * 专题治理台:新建/挂载素材(仅已解读)/批注/人工状态流转/权限防线(M26 批③)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -175,11 +176,11 @@ test("4. admin 登录流(M4:守卫预检/密码登录/爆破提示/会话吊销)
   await page.goto("/admin");
   expect(new URL(page.url()).pathname).toMatch(/^\/admin\/login\/?$/);
 
-  // 4.2 错误密码 → 模糊提示(不区分账号锁定/密码错)
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  // 4.2 错误密码 → 模糊提示(不区分账号锁定/密码错;M21批⓪ 起文案为「账号或密码」)
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill("wrong-pass-9");
   await page.getByRole("button", { name: "登录控制台" }).click();
-  await expect(page.getByText("手机号或密码不正确")).toBeVisible();
+  await expect(page.getByText("账号或密码不正确")).toBeVisible();
 
   // 4.3 正确密码 → 回跳 /admin(登录成功同时清空失败计数)
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
@@ -239,7 +240,7 @@ test("6. 后台发布 → 前台闭环(M5a:新建/存草稿/发布/on-demand rev
 
   // 登录(同用例 4 的 UI 流)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -294,7 +295,7 @@ test("7. 媒体库闭环(M5b:上传/卡片/详情抽屉/软删)", async ({ page 
   await prisma.media.deleteMany({ where: { filename: NAME } });
 
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -348,7 +349,7 @@ test("8. 一键发文闭环(M5b:md+本地图导入 → 引用替换 → 编辑�
 
   // 登录(同用例 4/6 的 UI 流)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -409,7 +410,7 @@ test("9. 站点统计页六模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
 
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -493,7 +494,7 @@ test("10. PAT 生命周期:UI 创建→Bearer PUT 落草稿→同 slug 重发更
 
   // 登录 → PAT 页 UI 创建(明文一次性展示)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -769,7 +770,7 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
 test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", async ({ page }) => {
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -907,7 +908,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
   try {
     // 登录(同前序用例 UI 流)
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -938,9 +939,9 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     expect(bf.status()).toBe(409); // 播种平台行停用 → disabled,零 worker 依赖
 
     // 两步武装删除·UI 侧(批③原型口径):启停移交「启用」列 StatusSwitch,
-    // 启用中删除钮直接 disabled(旧 alert 客户端守卫退役),行仍在
+    // 启用中删除钮可点(2026-10-11 验收反馈:禁用无反馈改点击提示),武装判断在服务端
     const delBtn = row.getByRole("button", { name: "删除" });
-    await expect(delBtn).toBeDisabled();
+    await expect(delBtn).toBeEnabled();
     await expect(delBtn).toHaveAttribute("title", "两步武装删除:先停用,再物理删除");
     await expect(row).toBeVisible();
     // 两步武装删除·服务端同判:session DELETE 直打启用中博主 → 409
@@ -1124,7 +1125,7 @@ test("15. AI 模型治理后台(M8 批⑥:三 Tab/Key 脱敏与留空保留/绑�
 
   try {
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -1381,7 +1382,7 @@ test("17. 首页带条数可配置(2026-10-05 统筹改版对齐:site_config/设
   try {
     // admin 登录 → 设置页:初值=默认 12,改成 3 保存
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -1524,7 +1525,7 @@ test("18. GitHub 项目展示(M11:首页卡/列表/详情 README 重写与时间
   try {
     // 登录 admin,经 update API 触发 admin 写侧 revalidateProjectPaths(直插 prisma 不失效 ISR)
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -1713,7 +1714,7 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
   try {
     // ── admin 登录 → 设置页:项目卡 1 / 文章 2 / 站点标题 / hero_md,保存
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -1861,7 +1862,7 @@ test("20. M13 移动端走查:壳层抽屉/表格横滚/弹层不溢出/设置�
 
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -1878,7 +1879,7 @@ test("20. M13 移动端走查:壳层抽屉/表格横滚/弹层不溢出/设置�
   await expect(sidebar).not.toBeInViewport();
   await menuBtn.click();
   await expect(sidebar).toBeInViewport();
-  await page.getByRole("link", { name: "电报流治理" }).click();
+  await page.getByRole("link", { name: "电报管理" }).click();
   await page.waitForURL(/\/admin\/telegram/);
   await expect(sidebar).not.toBeInViewport();
 
@@ -1978,7 +1979,7 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
 
   try {
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -2093,7 +2094,7 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
 test("22. 编辑器右栏收起(M16:完全隐藏/localStorage 持久化/展开恢复)", async ({ page }) => {
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -2133,7 +2134,7 @@ test("23. 一键发文补选交互(M16:md 先行/逐引用选图即时上传/多
 
   // 登录(同前序用例 UI 流)
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -2209,7 +2210,7 @@ test("24. 批量 SEO 补全 400 路径(M16:多选批量条/未绑定 summarize �
 
     // 登录(同前序用例 UI 流)
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -2269,7 +2270,7 @@ test("25. 一键发文目录自动配图(M16:webkitdirectory 选文件夹/md 自
 
     // 登录(同前序用例 UI 流)
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -2496,7 +2497,7 @@ async function e2eAdminLogin(page: import("@playwright/test").Page): Promise<voi
     },
   });
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -2863,7 +2864,7 @@ test("31. K2.6 游客模式:归属隔离/3 问日限 429/后台会话管理(列�
   expect(anon.status()).toBe(401);
 
   await page.goto("/admin/login");
-  await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+  await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
@@ -3007,7 +3008,7 @@ test("32. 文章评论与点赞(M23 批②:评论区渲染/两级楼层/游客�
   }
 });
 
-test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状态流转/触发校验,零真网)", async ({
+test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/词库管理/加词与状态流转/触发校验,零真网)", async ({
   page,
   request,
 }) => {
@@ -3062,7 +3063,7 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
   try {
     // 登录(同前序用例 UI 流)
     await page.goto("/admin/login");
-    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
     await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
@@ -3105,14 +3106,65 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
     expect(videoHit?.sampleTitles).toEqual([]);
     const bloggerId = apiBody.data.items.find((i) => i.externalId === BLOGGER_MID)!.id;
 
-    // 终审(同源 PUT):批准博主候选 → 行内徽标翻「已批准」;终审可回退(pending)
+    // 终审(同源 PUT):批准博主候选 → 行内徽标翻「已批准」;批准即自动登记
+    // 进博主管理(M26 批③追加):social_account 落库 enabled=true,出参附 id
     const put = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
       headers: origin,
       data: { status: "approved" },
     });
     expect(put.status()).toBe(200);
+    const putBody = (await put.json()) as {
+      code: number;
+      message: string;
+      data: { socialAccountId: string | null };
+    };
+    expect(putBody.data.socialAccountId).toBeTruthy();
+    expect(putBody.message).toContain("已自动登记");
+    const registered = await prisma.socialAccount.findFirst({
+      where: { platform: "bilibili", secUid: BLOGGER_MID },
+    });
+    expect(registered?.enabled).toBe(true);
+    expect(registered?.nickname).toBe("e2e-发现博主");
+    // 重复批准幂等:跳过登记,不产生第二行
+    const putAgain = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(putAgain.status()).toBe(200);
+    const putAgainBody = (await putAgain.json()) as { message: string };
+    expect(putAgainBody.message).toContain("跳过重复登记");
+    expect(
+      await prisma.socialAccount.count({ where: { platform: "bilibili", secUid: BLOGGER_MID } }),
+    ).toBe(1);
+    // 视频候选批准不触发登记(message 保持 "ok",无 social_account 行)
+    const videoApiId = apiBody.data.items.find((i) => i.externalId === VIDEO_BVID)!.id;
+    const putVideo = await page.request.put(`/api/discovery/candidates/${videoApiId}/`, {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(putVideo.status()).toBe(200);
+    const putVideoBody = (await putVideo.json()) as {
+      message: string;
+      data: { socialAccountId: string | null };
+    };
+    expect(putVideoBody.message).toBe("ok");
+    expect(putVideoBody.data.socialAccountId).toBeNull();
+    expect(
+      await prisma.socialAccount.count({ where: { platform: "bilibili", secUid: VIDEO_BVID } }),
+    ).toBe(0);
+    // 视频候选回退待定(三态可逆),恢复末段「已批准分段不含 pending」断言前提
+    await page.request.put(`/api/discovery/candidates/${videoApiId}/`, {
+      headers: origin,
+      data: { status: "pending" },
+    });
     await page.reload();
-    await expect(page.getByRole("row", { name: /e2e-发现博主/ }).getByText("已批准")).toBeVisible();
+    // 行内两处「已批准」(状态徽标 + 流转钮组当前态),任一在即终审生效
+    await expect(
+      page
+        .getByRole("row", { name: /e2e-发现博主/ })
+        .getByText("已批准")
+        .first(),
+    ).toBeVisible();
 
     // 参数防线:非法 status 400 / 非法 id 400 / 未知 id 404 / 无会话 401
     const badStatus = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
@@ -3157,14 +3209,15 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
     const seedRow = page.getByRole("row", { name: new RegExp(KW_SEED) });
     await expect(seedRow).toBeVisible();
     await expect(seedRow.getByText("联想 · bili-suggest")).toBeVisible();
-    await expect(seedRow.getByText("待定")).toBeVisible();
+    // 行内两处「待定」(状态徽标 + 流转钮组当前态),任一在即
+    await expect(seedRow.getByText("待定").first()).toBeVisible();
 
     const input = page.getByPlaceholder(/人工添加热词/);
     await input.fill(KW_NEW);
     await page.getByRole("button", { name: "添加", exact: true }).click();
     const newRow = page.getByRole("row", { name: new RegExp(KW_NEW) });
     await expect(newRow).toBeVisible({ timeout: 10_000 });
-    await expect(newRow.getByText("生效")).toBeVisible();
+    await expect(newRow.getByText("生效").first()).toBeVisible();
     await expect(newRow.getByText("人工", { exact: true })).toBeVisible();
 
     // 词库 API(active 分段):新词在
@@ -3184,7 +3237,7 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
 
     // 词状态流转(UI 直点,可逆):生效 → 已弃用
     await newRow.getByRole("button", { name: "已弃用" }).click();
-    await expect(newRow.getByText("已弃用")).toBeVisible({ timeout: 10_000 });
+    await expect(newRow.getByText("已弃用").first()).toBeVisible({ timeout: 10_000 });
 
     // 候选分段筛选:已批准段只含终审行,pending 视频不在
     await page.getByRole("link", { name: "候选治理" }).click();
@@ -3194,9 +3247,194 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
     await expect(page.getByRole("row", { name: /e2e-发现博主/ })).toBeVisible();
     await expect(page.getByRole("row", { name: /e2e 发现热点视频/ })).toHaveCount(0);
   } finally {
+    // 自动登记的博主行一并清(平台行 social:bilibili 为共享单例,不删)
+    await prisma.socialAccount.deleteMany({
+      where: { platform: "bilibili", secUid: { in: [BLOGGER_MID, VIDEO_BVID] } },
+    });
     await prisma.discoveryKeyword.deleteMany({ where: { word: { in: [KW_NEW, KW_SEED] } } });
     await prisma.discoveryCandidate.deleteMany({
       where: { OR: [{ externalId: BLOGGER_MID }, { externalId: VIDEO_BVID }] },
+    });
+  }
+});
+
+test("34. 专题治理台(M26 批③:新建/挂载仅已解读/批注/人工状态流转/权限防线,零真网)", async ({
+  page,
+  request,
+}) => {
+  const TOPIC_TITLE = "e2e 专题-端侧AI落地";
+  const TG_DONE = "e2e 专题素材视频·已解读";
+  const TG_PENDING = "e2e 专题素材视频·未解读";
+  const NOTE = "e2e 批注:合成时突出端侧推理成本曲线";
+  // 自播种:独立渠道 + 已解读/未解读视频各一(身份含 e2e 段不撞真数据;重跑幂等)
+  const source = await prisma.crawlSource.upsert({
+    where: { name: "e2e-topics-source" },
+    update: {},
+    create: {
+      name: "e2e-topics-source",
+      type: "rss",
+      url: "https://e2e.invalid/rss-topics",
+      enabled: false,
+      remark: "e2e 专用,采集关闭",
+    },
+  });
+  await prisma.telegram.deleteMany({
+    where: { sourceId: source.id, title: { in: [TG_DONE, TG_PENDING] } },
+  });
+  const tgDone = await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: TG_DONE,
+      summary: "e2e 专题冒烟摘要",
+      url: "https://e2e.invalid/video/34",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      mediaType: "video",
+      videoPlatform: "bilibili",
+      videoBlogger: "e2e-专题UP主",
+      aiStatus: "done",
+      aiSummary: "e2e 短结论:端侧模型落地在成本曲线上过了拐点",
+      aiNote: "## 背景与问题\n端侧部署的算力/成本权衡,e2e 笔记正文段。",
+      aiRanAt: new Date(),
+    },
+  });
+  const tgPending = await prisma.telegram.create({
+    data: {
+      sourceId: source.id,
+      title: TG_PENDING,
+      summary: "e2e 专题冒烟摘要(解读在队列)",
+      url: "https://e2e.invalid/video/35",
+      publishedAt: new Date(),
+      contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+      mediaType: "video",
+      videoPlatform: "bilibili",
+      videoBlogger: "e2e-专题UP主",
+      aiStatus: "pending",
+    },
+  });
+  await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+
+  try {
+    // 登录(同前序用例 UI 流)
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("手机号 / 用户名 / 邮箱").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+    const origin = jsonOrigin(page);
+    const serverOrigin = originOf(page);
+
+    // 列表页:侧栏入口/标题分段签;UI 新建专题 → 直跳详情
+    await page.goto("/admin/topics/");
+    await expect(page.getByRole("link", { name: "专题管理" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "专题管理" })).toBeVisible();
+    await page.getByRole("button", { name: "新建专题" }).click();
+    await page.getByPlaceholder("专题标题(必填,≤200 字符)…").fill(TOPIC_TITLE);
+    await page.getByPlaceholder(/专题定位\(可选/).fill("e2e 定位:面向开发者的端侧落地盘点");
+    await page.getByRole("button", { name: "创建", exact: true }).click();
+    await page.waitForURL(/\/admin\/topics\/\d+\/?$/); // trailingSlash 归一后带尾斜杠
+    const topicId = new URL(page.url()).pathname.split("/").filter(Boolean).pop()!;
+
+    // 详情:定位区(标题/定位/收集中态);人工钮组只有「标记发布」(§10-7 无 drafted)
+    await expect(page.getByLabel("专题标题")).toHaveValue(TOPIC_TITLE);
+    await expect(page.getByText("收集中", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "标记发布" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "撤回合成态" })).toHaveCount(0);
+    await expect(page.getByText("尚未挂载素材")).toBeVisible();
+
+    // 挂载选料:已解读视频在列,未解读不上榜;挂载 → 行翻「已在本专题」+ 素材卡出现
+    const candRow = page.getByRole("row", { name: new RegExp(TG_DONE) });
+    await expect(candRow).toBeVisible();
+    await expect(page.getByRole("row", { name: new RegExp(TG_PENDING) })).toHaveCount(0);
+    await candRow.getByRole("button", { name: "挂载" }).click();
+    await expect(candRow.getByText("已在本专题")).toBeVisible({ timeout: 10_000 });
+    const materialCard = page.getByText("短结论:e2e 短结论:端侧模型落地在成本曲线上过了拐点");
+    await expect(materialCard).toBeVisible();
+    await expect(page.getByText(/解读笔记\(\d+ 字\)/)).toBeVisible();
+
+    // 重挂与未解读防线(会话同源 POST):唯一键冲突 409;未解读 409(invalid_material)
+    const realDup = await page.request.post(`/api/topics/${topicId}/items/`, {
+      headers: origin,
+      data: { itemType: "telegram", itemId: tgDone.id.toString() },
+    });
+    expect(realDup.status()).toBe(409);
+    const notDone = await page.request.post(`/api/topics/${topicId}/items/`, {
+      headers: origin,
+      data: { itemType: "telegram", itemId: tgPending.id.toString() },
+    });
+    expect(notDone.status()).toBe(409);
+
+    // 详情 API:挂载行在,出参 BigInt 已字符串化
+    const detail = await page.request.get(`/api/topics/${topicId}/`);
+    expect(detail.status()).toBe(200);
+    const detailBody = (await detail.json()) as {
+      code: number;
+      data: { items: Array<{ id: string; note: string | null }> };
+    };
+    expect(detailBody.code).toBe(0);
+    expect(detailBody.data.items).toHaveLength(1);
+
+    // 批注:UI 内联编辑 → 保存后按钮翻「改批注」;API 出参带批注
+    await page.getByRole("button", { name: "加批注" }).click();
+    await page.getByPlaceholder(/批注\(给合成的定向提示/).fill(NOTE);
+    await page.getByRole("button", { name: "保存批注" }).click();
+    await expect(page.getByRole("button", { name: "改批注" })).toBeVisible({ timeout: 10_000 });
+    const withNote = await page.request.get(`/api/topics/${topicId}/`);
+    const withNoteBody = (await withNote.json()) as typeof detailBody;
+    expect(withNoteBody.data.items[0]!.note).toBe(NOTE);
+
+    // 人工状态流转全链(UI 直点):收集→已发布→撤回合成态→回到收集
+    await page.getByRole("button", { name: "标记发布" }).click();
+    await expect(page.getByText("已发布", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "撤回合成态" })).toBeVisible();
+    // 防线:published→collecting 逆跳 409
+    const badBack = await page.request.patch(`/api/topics/${topicId}/`, {
+      headers: origin,
+      data: { status: "collecting" },
+    });
+    expect(badBack.status()).toBe(409);
+    await page.getByRole("button", { name: "撤回合成态" }).click();
+    await expect(page.getByText("已合成", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "回到收集" }).click();
+    await expect(page.getByText("收集中", { exact: true })).toBeVisible({ timeout: 10_000 });
+    // §10-7 边界:UI 不出 collecting→drafted 钮(上方 toHaveCount(0) 已验);
+    // API 层按设计不收紧(运营纪律,repo 层流转矩阵放行)→ 200 落 drafted
+    const composePath = await page.request.patch(`/api/topics/${topicId}/`, {
+      headers: origin,
+      data: { status: "drafted" },
+    });
+    expect(composePath.status()).toBe(200);
+    const draftedBody = (await composePath.json()) as { data: { status: string } };
+    expect(draftedBody.data.status).toBe("drafted");
+
+    // 参数与权限防线:非法 id 400 / 未知 id 404 / 匿名 401 / PAT 403
+    const badId = await page.request.patch("/api/topics/nope/", {
+      headers: origin,
+      data: { status: "published" },
+    });
+    expect(badId.status()).toBe(400);
+    const missing = await page.request.get("/api/topics/999999999/");
+    expect(missing.status()).toBe(404);
+    const anonCtx = await page.context().browser()!.newContext();
+    const anon = await anonCtx.request.post("/api/topics/", {
+      headers: { origin: serverOrigin },
+      data: { title: "e2e 匿名专题" },
+    });
+    expect(anon.status()).toBe(401);
+    await anonCtx.close();
+    const pat = await request.post("/api/topics/", {
+      headers: { authorization: "Bearer e2e-not-a-token", origin: serverOrigin },
+      data: { title: "e2e PAT 专题" },
+    });
+    expect(pat.status()).toBe(403);
+
+    // 卸载 → 素材区回空态(可重挂,不做确认步)
+    await page.getByRole("button", { name: "卸载" }).click();
+    await expect(page.getByText("尚未挂载素材")).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+    await prisma.telegram.deleteMany({
+      where: { sourceId: source.id, title: { in: [TG_DONE, TG_PENDING] } },
     });
   }
 });

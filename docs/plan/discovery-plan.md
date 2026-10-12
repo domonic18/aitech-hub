@@ -151,7 +151,7 @@ model discovery_candidate {
 
 `/admin/discovery` 单页两板块:
 
-- **发现候选**:筛选(type/status/round);列:类型/标题·作者/命中词(hits)/最高播放/粉丝/作品数/L0 理由/状态/轮次;行展开标题样本 + 素材外链;操作:批准(approved)/忽略(rejected);blogger approved 行提示「请至 博主管理 登记采集」(v1 不自动建 social_account)
+- **发现候选**:筛选(type/status/round);列:类型/标题·作者/命中词(hits)/最高播放/粉丝/作品数/L0 理由/状态/轮次;行展开标题样本 + 素材外链;操作:批准(approved)/忽略(rejected);批准博主候选**自动登记**进博主管理(2026-10-12 M26 批③追加拍板,取代 v1「不自动建」:幂等 upsert social_account、enabled=true 直接进采集轮询、登记失败附行内提示不阻塞终审,`src/lib/discovery/blogger-registration.ts`)
 - **关键词**:列(词/来源/状态/首次发现);操作:手动添加 / 确认(pending→active)/ 停用(→dismissed);添加撞唯一 = 恢复该词置 active
 
 | 路由 | 方法 | 说明 |
@@ -185,7 +185,7 @@ model discovery_candidate {
 ## 11. 非目标(v1 明确不做)
 
 - 增速二次采样/对比计算、官方热榜 API、跨渠道共振打分(用户定调砍掉)
-- 自动入 `social_account`:批准后人工至「博主管理」登记;「一键转博主」留后续评审
+- ~~自动入 `social_account`~~:已落地(2026-10-12 M26 批③追加拍板,批准即自动登记);「一键转博主」留后续评审
 - 候选池 bitable 自动写
 - 抖音/其他平台发现(v1 仅 B站)
 - L1 ASR 自动甄别:批准博主进入订阅制采集解读管线后,解读产物即更深层质量信号,不重复建设
