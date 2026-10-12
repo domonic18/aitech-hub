@@ -1,7 +1,8 @@
 /**
  * 联想词源插件(M25 任务A,方案 §3:词库 → 各搜索源 suggest 直拉 → 新词回灌):
  * Source 接口插件化,v1 bili + bing 两源,新增源实现接口即可。
- * 契约未经生产实证(批④ 真机验收确认),形状不对按单(源,词)失败跳过,不弃整轮。
+ * 契约批④ 真机实证(2026-10-12,首验两源全偏、按实证修正,形态见各 schema 注);
+ * 形状不对按单(源,词)失败跳过,不弃整轮。
  */
 import { z } from "zod";
 
@@ -39,39 +40,50 @@ async function getJson(url: string): Promise<unknown> {
   }
 }
 
-/** B站搜索联想(s.search.bilibili.com main/suggest;tag[].value) */
+/** B站搜索联想(s.search.bilibili.com main/suggest;真机实证 2026-10-12:
+ *  {exp_str, code:0, result:{tag:[{value,term,ref,name(带<em>),…}]}}——
+ *  联想词在顶层 result,不在 data(tag 可缺省,产出即空) */
 const biliSuggestSchema = z.object({
   code: z.number(),
-  data: z
+  result: z
     .object({ tag: z.array(z.object({ value: z.string() })).optional() })
     .passthrough()
     .optional(),
 });
 
+export function parseBiliSuggest(payload: unknown): string[] {
+  const parsed = biliSuggestSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new BiliApiUnavailableError("bili suggest 响应形态偏离契约");
+  }
+  return (parsed.data.result?.tag ?? []).map((t) => t.value.trim()).filter(Boolean);
+}
+
 export const biliSuggestSource: SuggestSource = {
   id: "bili-suggest",
   async fetch(seed) {
     const url = `https://s.search.bilibili.com/main/suggest?main_ver=v1&term=${encodeURIComponent(seed)}`;
-    const parsed = biliSuggestSchema.safeParse(await getJson(url));
-    if (!parsed.success) {
-      throw new BiliApiUnavailableError("bili suggest 响应形态偏离契约");
-    }
-    return (parsed.data.data?.tag ?? []).map((t) => t.value.trim()).filter(Boolean);
+    return parseBiliSuggest(await getJson(url));
   },
 };
 
-/** 必应联想(osjson OpenSearch 形态:[query, [terms]]);轻接口不打 B站 cookie */
-const bingSuggestSchema = z.tuple([z.string(), z.array(z.string())]);
+/** 必应联想(osjson 真机实证 2026-10-12:五元 [query, terms[], [], [], 相关度元数据];
+ *  只取 [1] 词表,尾缀元素随版本增减故 rest 放行);轻接口不打 B站 cookie */
+const bingSuggestSchema = z.tuple([z.string(), z.array(z.string())]).rest(z.unknown());
+
+export function parseBingSuggest(payload: unknown): string[] {
+  const parsed = bingSuggestSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new BiliApiUnavailableError("bing suggest 响应形态偏离契约");
+  }
+  return parsed.data[1].map((t) => t.trim()).filter(Boolean);
+}
 
 export const bingSuggestSource: SuggestSource = {
   id: "bing-suggest",
   async fetch(seed) {
     const url = `https://api.bing.com/osjson.aspx?query=${encodeURIComponent(seed)}`;
-    const parsed = bingSuggestSchema.safeParse(await getJson(url));
-    if (!parsed.success) {
-      throw new BiliApiUnavailableError("bing suggest 响应形态偏离契约");
-    }
-    return parsed.data[1].map((t) => t.trim()).filter(Boolean);
+    return parseBingSuggest(await getJson(url));
   },
 };
 
