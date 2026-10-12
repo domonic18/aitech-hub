@@ -537,6 +537,7 @@ model Telegram {
   aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
   aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
   aiKeywords  Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
+  aiNote      String?   @map("ai_note") @db.Text // 解读笔记(M26):interpreter 二次调用产出的分析笔记 markdown;null=未产出/存量(转写即删红线不变,笔记是分析产物)
   aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
   lastAiError String?   @map("last_ai_error") @db.VarChar(500)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -993,4 +994,40 @@ model DiscoveryCandidate {
   @@index([status, type], map: "idx_discovery_candidate_status_type")
   @@index([round], map: "idx_discovery_candidate_round")
   @@map("discovery_candidate")
+}
+
+// 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
+// 真相源(零飞书耦合),compose 初稿锚 content_post;itemId 应用层完整性
+// (同 discovery 两表口径,无 FK)
+model Topic {
+  id           BigInt    @id @default(autoincrement())
+  title        String    @db.VarChar(200)
+  positioning  String?   @db.VarChar(1000) // 专题定位/目标读者/文风口径(compose prompt 主输入)
+  status       String    @default("collecting") @db.VarChar(20) // collecting | drafted | published(合法值应用层 Zod,arch/03 枚举演进条款)
+  linkedPostId BigInt?   @map("linked_post_id") // 专题文档 content_post 锚(合成时落,应用层完整性)
+  composedAt   DateTime? @map("composed_at") @db.Timestamptz(6)
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  items TopicItem[]
+
+  @@index([status, updatedAt(sort: Desc)], map: "idx_topic_status_updated")
+  @@map("topic")
+}
+
+model TopicItem {
+  id        BigInt   @id @default(autoincrement())
+  topicId   BigInt   @map("topic_id")
+  itemType  String   @map("item_type") @db.VarChar(20) // telegram | post(合法值应用层 Zod)
+  itemId    BigInt   @map("item_id") // 应用层完整性:telegram.id / content_post.id
+  note      String?  @db.VarChar(500) // 人工批注(compose 取舍指令)
+  sortOrder Int      @default(0) @map("sort_order") // 合成时的叙事顺序
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, itemType, itemId], map: "uq_topic_item_identity")
+  @@index([topicId, sortOrder], map: "idx_topic_item_topic_sort")
+  @@map("topic_item")
 }
