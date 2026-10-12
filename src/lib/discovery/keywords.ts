@@ -12,9 +12,6 @@ export function normalizeWord(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-/** 词长上界(VarChar(100);超长联想词直接丢弃) */
-export const WORD_MAX_LEN = 100;
-
 /** LRU 轮转取用:updatedAt 最久未用优先,单轮上限 cap(防 active 词增长拖长 job) */
 export async function takeActiveWords(cap: number): Promise<DiscoveryKeyword[]> {
   return prisma.discoveryKeyword.findMany({

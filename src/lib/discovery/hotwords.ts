@@ -13,8 +13,8 @@ import {
   normalizeWord,
   takeActiveWords,
   touchWords,
-  WORD_MAX_LEN,
 } from "./keywords";
+import { WORD_MAX_LEN } from "./status";
 
 export interface HotwordsOutcome {
   /** 本轮种子词数 */
