@@ -145,7 +145,7 @@ model discovery_candidate {
 | card 补齐 | **与 search 阶段拆开**:search 全部完成后延迟再逐条补;条间 3-4.2s;失败不阻塞(fans/archives 留空)——实证 search 连发后 session 整体进风控态,card 同级被拦(-352) |
 | 联想词(任务A) | 轻接口仍守词间 ≥3s;**批④ 实证:裸请求(浏览器 UA,无 jar 预热)可通零失败,无需 warmCookies** |
 
-原型实证:10/10 关键词全成、零 GIVE UP(2026-10-11)——**本机出口**。批④ 本地 prod 栈真机验收(2026-10-12)复证:热词任务 10 种子 → 148 新词 pending 零失败(80s 一轮);发现任务双窗 34 候选落库(blogger 18 pass + 2 reject、video 14 pass),search 全词零 GIVE UP。数据中心出口的风控敏感性见 M24 实证(arc/search 对 headless/数据中心上下文整段 -352)——**175 同等上下文手动触发一轮**在生产部署后执行(生产操作先报方案等批准),兜底 = Cookie 池导入 bilibili 登录态 jar。
+原型实证:10/10 关键词全成、零 GIVE UP(2026-10-11)——**本机出口**。批④ 本地 prod 栈真机验收(2026-10-12)复证:热词任务 10 种子 → 148 新词 pending 零失败(80s 一轮);发现任务双窗 34 候选落库(blogger 18 pass + 2 reject、video 14 pass),search 全词零 GIVE UP。数据中心出口的风控敏感性见 M24 实证(arc/search 对 headless/数据中心上下文整段 -352)——**175 同等上下文手动触发一轮已执行(2026-10-12 生产部署后)**:10 种子 → 162 新词 pending 零失败,日志零 412/-352,兜底(Cookie 池导入 bilibili 登录态 jar)未启用;周频 search/card 双窗在数据中心的实际表现仍以首轮定期触发(周一 06:13)为观察点。
 
 ## 9. 治理台与 API
 
@@ -199,7 +199,7 @@ model discovery_candidate {
 | 批① 数据层 | 两表迁移(create-only 评审 SQL + 从零重放)+ 关键词种子 oneoff | 迁移评审过 ✅(0da1eae + f11cc82) |
 | 批② lib/worker | `src/lib/discovery/`(keywords/candidates repo、l0.ts、bili-search、suggest fetchers)+ 队列注册两 processor + 单测(l0/聚合排序纯函数);**批② 追加**:去飞书耦合(§2/§4/§10 修订,feishu.ts 与 env 配置位移除) | `make check` ✅(0f26ab0/497f7ec/b2217c4 + 56e9f83) |
 | 批③ 治理台与出口 | `/admin/discovery` 两板块 + 五路由 + 手动触发 + e2e(零真网:真触发不入 e2e,worker 在场即真出网) | e2e 绿 ✅(69f5dde/e57fa23/651edef) |
-| 批④ 真机验收 | suggest 双源契约真机实证修正(首验两源全偏,§3 已回填)+ 本地栈两任务真机各一轮 → 治理台核验 → 175 同等上下文手动触发一轮(生产部署后)→ `feature/discovery` PR 合 develop | 验收清单全勾(3f98313;175 观察待生产部署后) |
+| 批④ 真机验收 | suggest 双源契约真机实证修正(首验两源全偏,§3 已回填)+ 本地栈两任务真机各一轮 → 治理台核验 → 175 同等上下文手动触发一轮(生产部署后)→ `feature/discovery` PR 合 develop | 验收清单全勾(3f98313;175 观察轮已过:162 词零失败零风控) |
 
 **验收标准**:
 
@@ -209,4 +209,4 @@ model discovery_candidate {
 - 风控纪律落实:search 全词成功、零 GIVE UP ✅
 - 迁移从零重放过;`make check` 全绿 ✅(CI 守卫 + 本地)
 
-**状态:开发与本地验收完成(2026-10-12)**:批①②③④ 全部落地,`feature/discovery` PR #73(feature/discovery,八提交)。方案偏离一处已按实收口:批② 追加系统内零飞书耦合(§2 决策表/§4 通用语义/§10 整章已改写,原 client_token UUIDv5 防重推与 feishuRecordId 双防线随系统内推送一并移除)。待办:生产部署 → 175 同等上下文一轮风控观察(§8 兜底 = bilibili 登录态 jar)→ 生产种子应用后删 oneoff 脚本。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。
+**状态:已完成(2026-10-12 生产上线)**:批①②③④ 全部落地,`feature/discovery` 经 PR #73/#74 合入 develop(生产运行 develop-16351a7)。方案偏离一处已按实收口:批② 追加系统内零飞书耦合(§2 决策表/§4 通用语义/§10 整章已改写,原 client_token UUIDv5 防重推与 feishuRecordId 双防线随系统内推送一并移除)。生产收尾已毕:10 种子词落生产 active(origin=manual;oneoff 应用后删除,3077f56);175 同等上下文手动热词一轮 10 种子 → 162 新词 pending 零失败、零 412/-352,§8 兜底未启用——待人工经治理台确认入 active。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。
