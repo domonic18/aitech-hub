@@ -57,6 +57,15 @@ const serverEnvSchema = z.object({
   /** GitHub API 令牌(M11 项目展示;可选——空=未认证 60 req/h,白名单 ≤10 仓可用;
    *  配 token 提升至 5000/h。密钥仅 env,不入库不打日志) */
   GITHUB_TOKEN: z.string().default(""),
+
+  /** 飞书自建应用(M25 热点视频推选题库;可选——四项全配才启用,
+   *  缺省=推送跳过不阻塞发现主流程;应用需加为选题库 bitable 协作者)。
+   *  密钥仅 env,不入库不打日志;是否入后台配置随批③治理台评审。 */
+  FEISHU_APP_ID: z.string().default(""),
+  FEISHU_APP_SECRET: z.string().default(""),
+  /** 选题库 bitable app_token(目标多维表格)与数据表 id(选题池) */
+  DISCOVERY_FEISHU_BITABLE: z.string().default(""),
+  DISCOVERY_FEISHU_TABLE_ID: z.string().default(""),
 });
 
 const parsed = serverEnvSchema.safeParse(process.env);
