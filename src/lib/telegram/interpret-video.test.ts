@@ -55,10 +55,17 @@ const transcribeMock = vi.hoisted(() =>
 );
 vi.mock("../ai/asr-client", () => ({ transcribeAudio: transcribeMock }));
 
-// LLM 默认回合法 JSON(parseInterpretResult/buildInterpretPrompt 用真实现)
+// LLM 默认回合法 JSON(parseInterpretResult/buildInterpretPrompt 用真实现);
+// M26 批②:笔记调用(system 含「解读笔记」)与主概括调用按 system 分流
 const GOOD_JSON = vi.hoisted(() =>
   JSON.stringify({ topic: "主题", summary: "概括内容", points: ["要点一"] }),
 );
+const NOTE_TEXT = vi.hoisted(() => "## 背景与问题\n" + "细".repeat(320)); // >300 过契约底线
+const NOTE_JSON = vi.hoisted(() => JSON.stringify({ note: NOTE_TEXT }));
+const isNoteCall = (args: unknown): boolean => {
+  const system = (args as { system?: unknown })?.system;
+  return typeof system === "string" && system.includes("解读笔记");
+};
 const chatJsonMock = vi.hoisted(() =>
   vi.fn<(args: unknown) => Promise<string>>(async () => GOOD_JSON),
 );
@@ -115,6 +122,7 @@ import {
   markPendingAndEnqueue,
   type InterpretJobData,
 } from "./interpret-video";
+import { logger } from "../logger";
 import { GatewayUpstreamError } from "./adapters/video";
 
 const ASR_ROW = {
@@ -160,7 +168,9 @@ beforeEach(() => {
   prismaMock.asrConfig.findUnique.mockResolvedValue(ASR_ROW);
   prismaMock.crawlSource.findUnique.mockResolvedValue(null);
   transcribeMock.mockResolvedValue("转写全文");
-  chatJsonMock.mockResolvedValue(GOOD_JSON);
+  chatJsonMock.mockImplementation(async (args: unknown) =>
+    isNoteCall(args) ? NOTE_JSON : GOOD_JSON,
+  );
   fetchVideosMock.mockResolvedValue([]);
   bilibiliResolveMock.mockResolvedValue(null);
   mediaMock.writeCalls.length = 0;
@@ -175,7 +185,7 @@ afterEach(() => {
 });
 
 describe("interpretVideoJob 状态机", () => {
-  it("成功全链:processing → done,ai_* 落库,临时目录即删,不再入队", async () => {
+  it("成功全链:processing → done,ai_* 含解读笔记落库,临时目录即删,不再入队", async () => {
     stubDownload();
     const outcome = await interpretVideoJob(DATA);
     expect(outcome).toMatchObject({ telegramId: "1", status: "done", transcriptUsed: true });
@@ -190,6 +200,7 @@ describe("interpretVideoJob 状态机", () => {
         aiTopic: "主题",
         aiSummary: "概括内容",
         aiPoints: ["要点一"],
+        aiNote: NOTE_TEXT,
         aiRanAt: expect.any(Date),
         lastAiError: null,
       },
@@ -206,6 +217,38 @@ describe("interpretVideoJob 状态机", () => {
         system: expect.stringContaining("JSON"),
       }),
       expect.any(Function),
+    );
+    // M26 批②:第二次调用产解读笔记(透传转写全文,输出预算放大)
+    expect(chatJsonMock).toHaveBeenCalledTimes(2);
+    expect(chatJsonMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        system: expect.stringContaining("解读笔记"),
+        user: expect.stringContaining("——视频转写全文——"),
+        maxTokens: 4000,
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("笔记调用终败 → 解读仍 done,ai_note=null,lastAiError 契约不变(仅事件日志)", async () => {
+    stubDownload();
+    chatJsonMock.mockImplementation(async (args: unknown) => {
+      if (isNoteCall(args)) throw new Error("笔记网关炸了");
+      return GOOD_JSON;
+    });
+    const outcome = await interpretVideoJob(DATA);
+    expect(outcome).toMatchObject({ status: "done", transcriptUsed: true });
+    expect(chatJsonMock).toHaveBeenCalledTimes(3); // 主概括 1 + 笔记首试 1 + 重试 1
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({ aiStatus: "done", aiNote: null, lastAiError: null }),
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "interpret.video.note_retry", attempt: 1 }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "interpret.video.note_failed" }),
     );
   });
 
@@ -235,6 +278,8 @@ describe("interpretVideoJob 状态机", () => {
       where: { id: BigInt(1) },
       data: expect.objectContaining({ aiStatus: "missing_transcript", lastAiError: null }),
     });
+    // 无转写轮不产笔记(缺时间线叙事材料,不硬凑——同存量不补口径)
+    expect(chatJsonMock).toHaveBeenCalledTimes(1);
   });
 
   it("interpret 角色未绑定 → skipped_not_ready", async () => {

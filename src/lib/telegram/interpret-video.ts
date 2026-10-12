@@ -3,7 +3,8 @@
  * 流 → ffmpeg 抽音轨 → 云 ASR 转写 → LLM 结构化概括(topic/summary/points)→
  * telegram.ai_* 列落库。M12 起就绪条件解耦 ASR:仅 interpret 绑定即开动,ASR 未
  * 启用/直链不可得时降级「基于文案」概括(buildInterpretPrompt 既有分支),配 ASR
- * 即增强。版权红线:「转写是输入,不是资产」——不设 transcript 列,play_url 仅经
+ * 即增强。M26 批②起转写可用轮次追加解读笔记二次调用(ai_note,ai/interpret-note;
+ * 失败置 null 不阻塞解读终态)。版权红线:「转写是输入,不是资产」——不设 transcript 列,play_url 仅经
  * job data 过境(removeOnComplete/Fail 50 压 Redis 痕迹),临时音视频文件判读
  * try/finally 即删。ASR 终败(重试≤2)→ missing_transcript 降级,不阻塞入流。
  * 三层重试语义:ASR/LLM 解析失败在管道内兜住;下载/网关/LLM 网络层上抛给 BullMQ
@@ -16,6 +17,7 @@ import { chatJsonTask } from "../ai/chat-json-task";
 import { AI_ERR_DETAIL_MAX, AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-result";
+import { runInterpretNote } from "../ai/interpret-note";
 import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
 import { AI_USAGE_ROLE_ASR, recordAiUsage } from "../ai/usage-log";
 import { prisma } from "../db";
@@ -341,6 +343,18 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     throw err;
   }
 
+  // 解读笔记(M26 批②,方案 §4):仅转写可用轮产出——文案降级缺时间线叙事材料,
+  // 不硬凑(同存量不补口径);失败置 null 不阻塞解读终态,lastAiError 契约不变
+  // (终败详情在 ai/interpret-note 重试事件里)
+  let note: string | null = null;
+  if (transcript !== null) {
+    note = (await runInterpretNote(model, { title: row.title, caption: row.summary, transcript }))
+      .note;
+    if (note === null) {
+      logger.warn({ event: "interpret.video.note_failed", telegramId: data.telegramId });
+    }
+  }
+
   const status = transcript === null ? TELEGRAM_AI_MISSING_TRANSCRIPT : TELEGRAM_AI_DONE;
   await prisma.telegram.update({
     where: { id },
@@ -349,6 +363,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       aiTopic: result.topic,
       aiSummary: result.summary,
       aiPoints: result.points,
+      aiNote: note,
       aiRanAt: new Date(),
       lastAiError: transcriptError,
     },
@@ -358,6 +373,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     telegramId: data.telegramId,
     status,
     transcriptUsed: transcript !== null,
+    noteUsed: note !== null,
   });
   return { telegramId: data.telegramId, status, transcriptUsed: transcript !== null };
 }
