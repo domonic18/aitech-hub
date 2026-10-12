@@ -1,13 +1,16 @@
 /**
  * 候选人工终审 API(M25 批③治理台):PUT { status: approved|rejected|pending }。
- * approved=终审通过(博主候选后续由人工至「博主管理」登记,候选表是发现侧
- * 唯一系统出口);pending 供回退重审。重复发现刷新不动终审结论(仓储语义)。
+ * approved=终审通过;pending 供回退重审。重复发现刷新不动终审结论(仓储语义)。
+ * 批准博主候选时自动登记进博主管理(M26 批③追加,2026-10-12 拍板:同步
+ * upsert social_account,幂等跳过已登记;登记失败仅附行内提示,终审不受阻,
+ * 回退待定再批准可重试)——出参 socialAccountId 附登记结果。
  */
 import { type NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { setCandidateStatus } from "@/lib/discovery/candidates";
+import { registerApprovedBlogger } from "@/lib/discovery/blogger-registration";
 import { CANDIDATE_STATUSES } from "@/lib/discovery/status";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
@@ -30,7 +33,20 @@ export async function PUT(
   if (!parsed.success) return apiEnvelope(400, "status 不合法");
   try {
     const row = await setCandidateStatus(BigInt(id), parsed.data.status);
-    return apiEnvelope(0, "ok", { id: row.id.toString(), status: row.status });
+    // 批准博主候选 → 同步自动登记进博主管理(幂等;失败转行内提示不阻塞终审)
+    let message = "ok";
+    let socialAccountId: string | null = null;
+    if (parsed.data.status === "approved" && row.type === "blogger") {
+      const reg = await registerApprovedBlogger(row);
+      if (reg.outcome !== "failed") socialAccountId = String(reg.socialAccountId);
+      message =
+        reg.outcome === "created"
+          ? "已批准;已自动登记进博主管理(启用,进入采集轮询)"
+          : reg.outcome === "exists"
+            ? "已批准;该博主已在博主管理,跳过重复登记"
+            : `已批准;自动登记失败:${reg.message}(可回退待定后重新批准重试)`;
+    }
+    return apiEnvelope(0, message, { id: row.id.toString(), status: row.status, socialAccountId });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
       return apiEnvelope(404, "候选不存在");

@@ -85,13 +85,13 @@
   │    → 治理台人工确认 → active(下一轮发现输入,滚雪球闭环)
   └─ 任务B 博主/视频发现(discovery-bili,周一 06:13)
        90 天窗 order=click 按 mid 聚合(hitCount/maxPlay 双排序 top20)→ card 补 fans/archives
-       → L0 预筛 → discovery_candidate(type=blogger)→ 治理台人工批准 → admin/bloggers 人工登记
+       → L0 预筛 → discovery_candidate(type=blogger)→ 治理台人工批准(自动登记进博主管理,2026-10-12 拍板)
        7 天窗 order=click ≥5 万播放 → L0(标题)→ discovery_candidate(type=video)
 ```
 
-- **定位**:采集管线的**上游选料器**——博主候选经人工批准 + 「博主管理」登记后进入 §3.2 订阅制采集解读管道;热点视频候选供选题参考。**系统内零飞书耦合**(2026-10-12 批② 追加拍板):数据真相源=系统两表,外部分发(如飞书选题库)不经系统代码,由 Claude Code 经 MCP 按 docs/plan/discovery-plan.md §10 约定手工执行
+- **定位**:采集管线的**上游选料器**——博主候选经人工批准(自动登记进博主管理)后进入 §3.2 订阅制采集解读管道;热点视频候选供选题参考。**系统内零飞书耦合**(2026-10-12 批② 追加拍板):数据真相源=系统两表,外部分发(如飞书选题库)不经系统代码,由 Claude Code 经 MCP 按 docs/plan/discovery-plan.md §10 约定手工执行
 - **联想源契约(2026-10-12 批④ 真机实证,首验两源全偏已修正)**:bili suggest 联想词在顶层 `result.tag[].value`(不在 `data.tag`;tag 可缺省=产出即空);bing osjson 为五元 `[query, terms[], [], [], 元数据]`(取 `[1]`,尾缀 rest 放行);B站 search(page 解析)与 card 契约原型期即验证正确未动。形态不对按(源,词)失败隔离不弃整轮,真机样本单测钉死(`suggest.test.ts`)。联想轻接口裸请求(浏览器 UA)可通,免预热
-- **L0 预筛**(`src/lib/discovery/l0.ts` 纯函数):纯元数据规则(名称/标题营销黑名单、矩阵名模式、教学向信号),结论仅供参考、人工终审可覆盖;博主候选批准**不自动建** social_account(人工闸门,「一键转博主」留后续评审)
+- **L0 预筛**(`src/lib/discovery/l0.ts` 纯函数):纯元数据规则(名称/标题营销黑名单、矩阵名模式、教学向信号),结论仅供参考、人工终审可覆盖;博主候选批准**自动登记** social_account(2026-10-12 拍板,取代此前「人工闸门不自动建」裁决:同步 upsert、幂等跳过已登记、enabled=true 直接进采集轮询、登记失败附行内提示不阻塞终审;`src/lib/discovery/blogger-registration.ts`)
 - **B站风控纪律(常量固化 `src/lib/discovery/constants.ts`)**:search 词间 6-9s 随机、412 退避 15s×3 仍败跳过该词(不弃整轮)、card 与 search 拆阶段(延迟 30s,条间 3-4.2s,失败不阻塞留空)、联想词间 3-4.2s;队列并发 1 / lockDuration 900s / attempts=1(重试纪律在 processor 内,队列层不自动重试防风控风暴)
 - **治理台与可观测**:`/admin/discovery` 两板块(候选终审/词库管理,路由清单见 arch/05 §5);每轮 pino 摘要 `discovery.hotwords.done` / `discovery.bili_job`(种子数/产出/入库/失败);手动触发 `POST /api/discovery/trigger {job}` 入 manual 前缀一次性 job
 

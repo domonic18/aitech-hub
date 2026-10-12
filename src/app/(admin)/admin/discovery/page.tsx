@@ -1,9 +1,9 @@
 /**
  * 发现治理台(M25 批③):候选人工终审 + 热词词库管理,一屏一表(顶层 tab,
- * 共用 status/page 参数)。数据唯一真相源在本系统:批准的博主候选仍需人工至
- * 「博主管理」登记(候选表是发现侧唯一系统出口);手动触发入 discovery 队列
- * 一次性 job,执行与风控节奏在 worker。L0 判定为元数据预筛,结论仅供参考,
- * 人工终审可覆盖。
+ * 共用 status/page 参数)。数据唯一真相源在本系统:批准博主候选即自动登记进
+ * 「博主管理」(M26 批③追加拍板;幂等跳过已登记,失败附行内提示可回退重批);
+ * 手动触发入 discovery 队列一次性 job,执行与风控节奏在 worker。L0 判定为
+ * 元数据预筛,结论仅供参考,人工终审可覆盖。
  */
 import Link from "next/link";
 
@@ -344,10 +344,10 @@ export default async function AdminDiscoveryPage({
 
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:L0 为元数据预筛(名称/标题黑名单与教学信号),reject 结论仅供参考,终审以人工为准;
-        批准的博主候选仍需至「博主管理」人工登记。生效词参与每日热词联想与每周 B站双窗搜索 (LRU
-        轮转,20 词/轮)。API:GET·POST /api/discovery/keywords · PUT /api/discovery/keywords/[id] ·
-        GET /api/discovery/candidates · PUT /api/discovery/candidates/[id] · POST
-        /api/discovery/trigger。
+        批准博主候选即自动登记进「博主管理」(幂等;失败会附行内提示,回退待定后重批可重试)。生效词参与每日热词联想与每周
+        B站双窗搜索 (LRU 轮转,20 词/轮)。API:GET·POST /api/discovery/keywords · PUT
+        /api/discovery/keywords/[id] · GET /api/discovery/candidates · PUT
+        /api/discovery/candidates/[id] · POST /api/discovery/trigger。
       </p>
     </div>
   );

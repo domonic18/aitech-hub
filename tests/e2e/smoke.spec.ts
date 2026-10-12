@@ -3008,7 +3008,7 @@ test("32. 文章评论与点赞(M23 批②:评论区渲染/两级楼层/游客�
   }
 });
 
-test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状态流转/触发校验,零真网)", async ({
+test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/词库管理/加词与状态流转/触发校验,零真网)", async ({
   page,
   request,
 }) => {
@@ -3106,12 +3106,57 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
     expect(videoHit?.sampleTitles).toEqual([]);
     const bloggerId = apiBody.data.items.find((i) => i.externalId === BLOGGER_MID)!.id;
 
-    // 终审(同源 PUT):批准博主候选 → 行内徽标翻「已批准」;终审可回退(pending)
+    // 终审(同源 PUT):批准博主候选 → 行内徽标翻「已批准」;批准即自动登记
+    // 进博主管理(M26 批③追加):social_account 落库 enabled=true,出参附 id
     const put = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
       headers: origin,
       data: { status: "approved" },
     });
     expect(put.status()).toBe(200);
+    const putBody = (await put.json()) as {
+      code: number;
+      message: string;
+      data: { socialAccountId: string | null };
+    };
+    expect(putBody.data.socialAccountId).toBeTruthy();
+    expect(putBody.message).toContain("已自动登记");
+    const registered = await prisma.socialAccount.findFirst({
+      where: { platform: "bilibili", secUid: BLOGGER_MID },
+    });
+    expect(registered?.enabled).toBe(true);
+    expect(registered?.nickname).toBe("e2e-发现博主");
+    // 重复批准幂等:跳过登记,不产生第二行
+    const putAgain = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(putAgain.status()).toBe(200);
+    const putAgainBody = (await putAgain.json()) as { message: string };
+    expect(putAgainBody.message).toContain("跳过重复登记");
+    expect(
+      await prisma.socialAccount.count({ where: { platform: "bilibili", secUid: BLOGGER_MID } }),
+    ).toBe(1);
+    // 视频候选批准不触发登记(message 保持 "ok",无 social_account 行)
+    const videoApiId = apiBody.data.items.find((i) => i.externalId === VIDEO_BVID)!.id;
+    const putVideo = await page.request.put(`/api/discovery/candidates/${videoApiId}/`, {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(putVideo.status()).toBe(200);
+    const putVideoBody = (await putVideo.json()) as {
+      message: string;
+      data: { socialAccountId: string | null };
+    };
+    expect(putVideoBody.message).toBe("ok");
+    expect(putVideoBody.data.socialAccountId).toBeNull();
+    expect(
+      await prisma.socialAccount.count({ where: { platform: "bilibili", secUid: VIDEO_BVID } }),
+    ).toBe(0);
+    // 视频候选回退待定(三态可逆),恢复末段「已批准分段不含 pending」断言前提
+    await page.request.put(`/api/discovery/candidates/${videoApiId}/`, {
+      headers: origin,
+      data: { status: "pending" },
+    });
     await page.reload();
     // 行内两处「已批准」(状态徽标 + 流转钮组当前态),任一在即终审生效
     await expect(
@@ -3202,6 +3247,10 @@ test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状
     await expect(page.getByRole("row", { name: /e2e-发现博主/ })).toBeVisible();
     await expect(page.getByRole("row", { name: /e2e 发现热点视频/ })).toHaveCount(0);
   } finally {
+    // 自动登记的博主行一并清(平台行 social:bilibili 为共享单例,不删)
+    await prisma.socialAccount.deleteMany({
+      where: { platform: "bilibili", secUid: { in: [BLOGGER_MID, VIDEO_BVID] } },
+    });
     await prisma.discoveryKeyword.deleteMany({ where: { word: { in: [KW_NEW, KW_SEED] } } });
     await prisma.discoveryCandidate.deleteMany({
       where: { OR: [{ externalId: BLOGGER_MID }, { externalId: VIDEO_BVID }] },
