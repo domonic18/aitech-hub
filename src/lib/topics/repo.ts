@@ -73,8 +73,12 @@ export interface TopicListQuery {
   pageSize?: number;
 }
 
+export type TopicWithCount = Prisma.TopicGetPayload<{
+  include: { _count: { select: { items: true } } };
+}>;
+
 export async function listTopics(query: TopicListQuery = {}): Promise<{
-  items: Topic[];
+  items: TopicWithCount[];
   total: number;
 }> {
   const page = Math.max(1, query.page ?? 1);
@@ -159,6 +163,89 @@ export async function updateItem(itemId: bigint, patch: ItemUpdateInput): Promis
     where: { id: itemId },
     data: { note: patch.note, sortOrder: patch.sortOrder },
   });
+}
+
+// ── 列表分段计数 + 挂载候选(批③治理台)──────────────────────
+
+/** 状态分段计数(列表页分段签;键为 status 原值) */
+export async function countByStatus(): Promise<Record<string, number>> {
+  const rows = await prisma.topic.groupBy({ by: ["status"], _count: { _all: true } });
+  return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
+}
+
+/** 挂载选料分页大小(详情页内嵌列表,小窗即可) */
+export const MOUNT_PAGE_SIZE = 10;
+
+export interface MountCandidates<T> {
+  items: T[];
+  total: number;
+}
+
+/** 电报流挂载候选:仅解读完成(aiStatus=done)的视频,标题/博主含关键词(忽略
+ * 大小写),近期解读优先(方案 §8 挂载交互口径) */
+export async function listTelegramCandidates(
+  q: string | undefined,
+  page: number,
+): Promise<
+  MountCandidates<{
+    id: bigint;
+    title: string | null;
+    videoBlogger: string | null;
+    aiSummary: string | null;
+    aiRanAt: Date | null;
+  }>
+> {
+  const where: Prisma.TelegramWhereInput = {
+    mediaType: "video",
+    aiStatus: "done",
+    ...(q
+      ? {
+          OR: [
+            { title: { contains: q, mode: "insensitive" } },
+            { videoBlogger: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, total] = await prisma.$transaction([
+    prisma.telegram.findMany({
+      where,
+      orderBy: { aiRanAt: "desc" },
+      skip: (page - 1) * MOUNT_PAGE_SIZE,
+      take: MOUNT_PAGE_SIZE,
+      select: {
+        id: true,
+        title: true,
+        videoBlogger: true,
+        aiSummary: true,
+        aiRanAt: true,
+      },
+    }),
+    prisma.telegram.count({ where }),
+  ]);
+  return { items: rows, total };
+}
+
+/** 文章挂载候选:未软删,标题含关键词,近期更新优先 */
+export async function listPostCandidates(
+  q: string | undefined,
+  page: number,
+): Promise<MountCandidates<{ id: bigint; title: string; status: string; updatedAt: Date }>> {
+  const where: Prisma.PostWhereInput = {
+    status: { not: "deleted" },
+    ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+  };
+  const [rows, total] = await prisma.$transaction([
+    prisma.post.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      skip: (page - 1) * MOUNT_PAGE_SIZE,
+      take: MOUNT_PAGE_SIZE,
+      select: { id: true, title: true, status: true, updatedAt: true },
+    }),
+    prisma.post.count({ where }),
+  ]);
+  return { items: rows, total };
 }
 
 // ── 素材聚合视图取数(批③详情页同用)────────────────────────

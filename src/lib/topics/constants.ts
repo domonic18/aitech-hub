@@ -12,6 +12,18 @@ export const TOPIC_STATUS_LABEL: Record<TopicStatus, string> = {
   published: "已发布",
 };
 
+/** 列表分段白名单(全部 + 三态;?status= 解析用) */
+export const TOPIC_LIST_SEGMENTS = ["all", ...TOPIC_STATUS] as const;
+
+/** 人工可驱动的状态迁移(§10-7:collecting→drafted 仅由合成驱动,治理台不出该钮;
+ * published↔drafted/collecting 为人工回退,collecting→published 为人工关联文章
+ * 发布旁路)。UI 钮组与 API 文档口径同源。 */
+export const MANUAL_STATUS_TARGETS: Record<TopicStatus, readonly TopicStatus[]> = {
+  collecting: ["published"],
+  drafted: ["collecting", "published"],
+  published: ["drafted"],
+};
+
 export const TOPIC_ITEM_TYPE = ["telegram", "post"] as const;
 export type TopicItemType = (typeof TOPIC_ITEM_TYPE)[number];
 

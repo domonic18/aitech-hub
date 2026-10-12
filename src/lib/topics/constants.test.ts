@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { canTransition, TOPIC_STATUS } from "./constants";
+import { canTransition, MANUAL_STATUS_TARGETS, TOPIC_STATUS, type TopicStatus } from "./constants";
 
 describe("canTransition(专题状态机)", () => {
   it("合法路径:collecting→drafted→published 主线 + 人工回退", () => {
@@ -23,5 +23,16 @@ describe("canTransition(专题状态机)", () => {
 
   it("状态枚举完备:三态(合法值应用层 Zod 管控,arch/03 枚举演进条款)", () => {
     expect(TOPIC_STATUS).toEqual(["collecting", "drafted", "published"]);
+  });
+
+  it("人工迁移钮组(§10-7):不含 collecting→drafted(仅合成驱动),均在状态机合法集内", () => {
+    expect(MANUAL_STATUS_TARGETS.collecting).toEqual(["published"]);
+    expect(MANUAL_STATUS_TARGETS.drafted).toEqual(["collecting", "published"]);
+    expect(MANUAL_STATUS_TARGETS.published).toEqual(["drafted"]);
+    for (const [from, targets] of Object.entries(MANUAL_STATUS_TARGETS)) {
+      for (const to of targets) {
+        expect(canTransition(from as TopicStatus, to)).toBe(true);
+      }
+    }
   });
 });
