@@ -11,7 +11,7 @@
 **目标**:两条 repeatable 任务固化进现有 worker,补齐「发现 → 优质视频 → 视频解读 → 专题文章」闭环的发现端:
 
 - **任务A 热词采集(日频)**:联想词等直接取数,零计算;新词人工确认后扩大发现输入
-- **任务B 博主/视频发现(周频)**:90 天窗找博主(候选进治理台人工终审)、7 天窗找热点视频(自动进飞书选题库供选题)
+- **任务B 博主/视频发现(周频)**:90 天窗找博主(候选进治理台人工终审)、7 天窗找热点视频(候选落表,人工终审后经 MCP 手工分发选题库——2026-10-12 解耦定稿)
 
 ## 2. 总体架构(2026-10-11 用户批准)
 
@@ -20,7 +20,7 @@
 | 承载 | 收编现有 BullMQ worker,新队列 `discovery`;无独立脚本/工程 | 用户定调:与现有架构同栈 |
 | 真相源 | PG 两表(§5) | 治理台可查可审计;飞书不是真相源 |
 | 人工关口 | `/admin/discovery` 治理台唯一系统操作面 | L0 只预筛,批准/忽略人工终审 |
-| 飞书定位 | 仅出口:热点视频 → 选题库;博主候选不写飞书 | 用户定调:飞书=需求+后续规划;运营台账人工维护 |
+| 飞书定位 | **系统内零飞书耦合(2026-10-12 批② 追加拍板)**:发现数据真相源=系统两表;热点视频候选的人工分发(如飞书选题库)不经系统代码,由 Claude Code 经飞书 MCP 按本文 §10 约定手工执行 | 数据在治理台可查可审计;外部分发是运营动作不是系统职责,系统内不背飞书 API 耦合 |
 | 渠道范围 | v1 仅 B站;源/fetcher 留扩展位 | B站开放生态(零签名,登录态 jar 即可);search/suggest/card 由 worker **TS 直连**(原型 Node 脚本实证零签名直拉),不经 douyin-gateway——若生产上下文被门,升级路径为网关加 B站 search 端点(复用 curl_cffi/JarPool),不在 TS 侧硬扛;抖音经 douyin-gateway 具备能力,后续按需接入 |
 
 ```
@@ -34,7 +34,7 @@
               90天窗 order=click → 按 mid 聚合 → 双排序 top20 → card 补齐 → L0
               → discovery_candidate(type=blogger)→ 治理台人工批准 → admin/bloggers 手工登记
               7天窗 order=click → 播放达标视频 → L0(标题)
-              → discovery_candidate(type=video)→ 推飞书选题库(来源=热点事件)
+              → discovery_candidate(type=video)→ 治理台终审 → 人工经 MCP 分发(§10)
 ```
 
 **明确砍掉(用户定调,不做)**:增速二次采样/对比计算(热词直接取数即可)、官方热榜 API 接入、跨渠道共振打分。
@@ -42,7 +42,7 @@
 ## 3. 任务A:热词采集(日频)
 
 - **输入**:active 关键词即种子(新词确认后滚雪球扩大输入,即闭环)
-- **数据源(v1 双源,源插件化)**:① B站搜索联想(suggest 轻接口);② 搜索引擎联想词(Bing suggest)。每源一个 fetcher 返回查询词数组,新增源 = 新增 fetcher,主流程不动
+- **数据源(v1 双源,源插件化)**:① B站搜索联想(suggest 轻接口);② 搜索引擎联想词(Bing suggest)。每源一个 fetcher 返回查询词数组,新增源 = 新增 fetcher,主流程不动。**契约真机实证(2026-10-12 批④,首验两源全偏已修正)**:bili suggest 联想词在顶层 `result.tag[].value`(不在 `data.tag`;tag 可缺省 = 产出即空,不报错);bing osjson 为五元 `[query, terms[], [], [], 相关度元数据]`(只取 `[1]`,尾缀元素随版本增减故 rest 放行)。解析层 `parseBiliSuggest`/`parseBingSuggest` 独立导出 + 真机样本单测钉死形态(`suggest.test.ts` 含旧误解形态回归钉点),再漂移报「形态偏离」走单(源,词)失败隔离。**预热实证**:联想轻接口裸请求(浏览器 UA,无 jar 预热)可通,零失败,无需 warmCookies
 - **处理**:归一(trim + lower;英文词段大小写归一,注意 PG 非 C collation,大小写判断用 `lower()` 比对)→ 与现有词**集合查重**(精确匹配,非模糊、非增速)→ 新词 INSERT(`origin=hotword, status=pending, source=<来源标识>, firstSeenAt=now`);撞 `word @unique` 即已存在,忽略不动。**`word` 落库即归一形**(trim+lower 后入库),唯一约束与查重同一口径,避免「查重 lower 比对、INSERT 原词形」两套标准
 - **人工确认**:治理台 pending → active 即加入任务B 输入;误报 → dismissed
 - **产出**:每轮 pino 摘要(种子数/拉取词数/新词数);无新词也正常完成(静默属正常态)
@@ -60,12 +60,11 @@
 **窗口二·找热点视频**(7 天):
 
 1. 同 API,`order=click&pubtime=近7天`,每词取播放达标(≥5 万,常量可调)的前排视频
-2. L0(标题维度)→ upsert `discovery_candidate(type=video)` → **通过者创建即推飞书选题库**(热点时效优先于人工;rejected 不推但留痕)
+2. L0(标题维度)→ upsert `discovery_candidate(type=video)`(与博主候选同表同治理台终审;对外分发为运营动作,人工经 MCP 执行,§10)
 
 **通用语义**:
 
 - upsert 幂等键 `@@unique([type, platform, externalId])`;重复发现刷新统计字段与 round,**不动 status**(人工已终审的不回退)
-- 飞书推送以 `feishuRecordId` 防重推,`client_token` 由 candidate.id **确定性派生**(UUIDv5)兜底——若只随机生成,「推送成功但回写失败」后下轮换 token 重推,bitable 幂等即失效产生重复行;推送单向,人工后续可在飞书侧自行删行
 - 频率:周频(周一早);热点视频若需提高到每周 2-3 次,仅改 cron 表达式,结构不变
 
 ## 5. 数据模型(两张表,不三张)
@@ -102,7 +101,6 @@ model discovery_candidate {
   l0Verdict      String   // pass | reject
   l0Reason       String?  // 人话理由,治理台直读
   status         String   // pending | approved | rejected
-  feishuRecordId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -113,7 +111,7 @@ model discovery_candidate {
 ```
 
 - **种子**:oneoff 脚本把原型 10 词落 `active, origin=manual`:`Cursor 教程 / Claude Code 教程 / AI Agent 实战 / Dify 教程 / Coze 工作流 / MCP 开发 / n8n 教程 / LangChain 实战 / AI 编程 / 大模型应用开发`;应用后删脚本(git 存档)
-- **迁移纪律**:仅经 `prisma/migrations`(forward-only),`npx prisma migrate dev --create-only` 评审 SQL,CI 从零重放守卫
+- **迁移纪律**:仅经 `prisma/migrations`(forward-only),`npx prisma migrate dev --create-only` 评审 SQL,CI 从零重放守卫。实落两迁移:`20261012085745_discovery_tables`(建表)+ `20261012101000_discovery_drop_feishu_record_id`(批② 追加去耦合,原防重推列随系统内推送一并移除;未来若外部同步需要回写标记,forward-only 重加即可)
 
 ## 6. L0 规则(v1 硬编码)
 
@@ -134,8 +132,8 @@ model discovery_candidate {
 
 - BullMQ:`attempts=1`(B站退避在 processor 内实现,队列层不自动重试防风控风暴)、`lockDuration 900s`(双窗全词约 5-10 分钟)
 - **词数上限**:active 词增长后每轮设词数上限(常量,超出部分顺延下轮),防 job 时长失控
-- **手动触发**:`POST /api/discovery/trigger {task:"hotwords"|"discover"}` 入一次性 job(jobId 含 manual+时间戳)——验收与补跑入口
-- 可观测:每轮 pino 摘要;治理台页头「上一轮」摘要(轮次/候选数/新词数,从表聚合;不接 spider 页,保持页面收敛)
+- **手动触发**:`POST /api/discovery/trigger {job:"hotwords"|"bili"}` 入一次性 job(jobId 含 manual+时间戳)——验收与补跑入口;真触发不入 e2e(worker 在场即真出网),触发校验(400 非法 job / 403 PAT)已覆盖
+- 可观测:每轮 pino 摘要(`discovery.hotwords.done` / `discovery.bili_job`,种子数/产出数/入库数/失败数);治理台页头为手动触发按钮组(含一句话提示),「上一轮」摘要行未做——轮次与计数从两表分段计数即可读,页面收敛优先(实现差异,后续按需补)
 
 ## 8. B站风控纪律(实证,固化必守)
 
@@ -145,9 +143,9 @@ model discovery_candidate {
 | search 词间 | sleep 6-9s 随机 |
 | search 412 | 退避 15s 重试 ≤3,仍败该词跳过记日志(不 GIVE UP 整轮) |
 | card 补齐 | **与 search 阶段拆开**:search 全部完成后延迟再逐条补;条间 3-4.2s;失败不阻塞(fans/archives 留空)——实证 search 连发后 session 整体进风控态,card 同级被拦(-352) |
-| 联想词(任务A) | 轻接口仍守词间 ≥3s;起手是否需 warmCookies 未实证,批④ 真机确认(裸请求 412 则任务A 同样预热) |
+| 联想词(任务A) | 轻接口仍守词间 ≥3s;**批④ 实证:裸请求(浏览器 UA,无 jar 预热)可通零失败,无需 warmCookies** |
 
-原型实证:10/10 关键词全成、零 GIVE UP(2026-10-11)——**本机出口**;数据中心出口的风控敏感性见 M24 实证(arc/search 对 headless/数据中心上下文整段 -352),批④ 增 175 同等上下文手动触发一轮,兜底 = Cookie 池导入 bilibili 登录态 jar。
+原型实证:10/10 关键词全成、零 GIVE UP(2026-10-11)——**本机出口**。批④ 本地 prod 栈真机验收(2026-10-12)复证:热词任务 10 种子 → 148 新词 pending 零失败(80s 一轮);发现任务双窗 34 候选落库(blogger 18 pass + 2 reject、video 14 pass),search 全词零 GIVE UP。数据中心出口的风控敏感性见 M24 实证(arc/search 对 headless/数据中心上下文整段 -352)——**175 同等上下文手动触发一轮**在生产部署后执行(生产操作先报方案等批准),兜底 = Cookie 池导入 bilibili 登录态 jar。
 
 ## 9. 治理台与 API
 
@@ -166,9 +164,11 @@ model discovery_candidate {
 
 鉴权:admin 会话;PAT 一律拒绝(对齐 M11 惯例);mutation Origin 校验走既有中间件;外部入参 Zod 校验。
 
-## 10. 飞书出口(热点视频 → 选题库)
+## 10. 外部分发约定(热点视频 → 选题库;系统外手工,2026-10-12 解耦定稿)
 
-目标表:AI选题库 bitable「选题池」。字段映射:
+**定位**:批② 追加拍板系统内零飞书耦合——分发是运营动作不是系统职责,系统内不写飞书代码、不存飞书记录标识。热点视频候选落 `discovery_candidate` 后,由 Claude Code 会话经飞书 MCP 按需手工挑拣推送(建议范围:治理台 approved 或 L0 pass 的 video 候选;推送前按素材链接在 bitable 内人工查重防重复行)。
+
+目标表:AI选题库 bitable「选题池」。字段映射(手工推送同口径):
 
 | bitable 字段 | 写入值 |
 |---|---|
@@ -178,7 +178,7 @@ model discovery_candidate {
 | 创建日期 | 当天 |
 | 类型/优先级/状态 | 留空,人工定 |
 
-写纪律(实证坑,必守):fields 键用真实中文段名(英文键报 1254045);Text 字段纯字符串(分段格式只读不写,1254060);URL 字段必须 `{text, link}` 对象(纯字符串报 1254068);`client_token` 用 UUIDv5(candidate.id 派生)——同一候选重推同 token 才有幂等意义,随机 UUIDv4 在回写失败后会失效。
+写纪律(MCP 写入实证坑,必守):fields 键用真实中文段名(英文键报 1254045);Text 字段纯字符串(分段格式只读不写,1254060);URL 字段必须 `{text, link}` 对象(纯字符串报 1254068)。
 
 博主候选**不写**候选池 bitable(人工维护);治理台是博主候选唯一系统出口。
 
@@ -196,17 +196,17 @@ model discovery_candidate {
 
 | 批 | 内容 | 出口 |
 |---|---|---|
-| 批① 数据层 | 两表迁移(create-only 评审 SQL + 从零重放)+ 关键词种子 oneoff | 迁移评审过 |
-| 批② lib/worker | `src/lib/discovery/`(keywords/candidates repo、l0.ts、bili-search、suggest fetchers)+ 队列注册两 processor + 单测(l0/聚合排序纯函数) | `make check` |
-| 批③ 治理台与出口 | `/admin/discovery` 两板块 + 五路由 + 手动触发 + 飞书选题库推送 + e2e | e2e 绿 |
-| 批④ 真机验收 | 本地栈手动触发两任务各一轮 → 治理台核验 → 选题库收到热点行 → 175 同等上下文手动触发一轮(观察 -352,生产操作先报方案等批准)→ `feature/discovery` PR 合 develop | 验收清单全勾 |
+| 批① 数据层 | 两表迁移(create-only 评审 SQL + 从零重放)+ 关键词种子 oneoff | 迁移评审过 ✅(0da1eae + f11cc82) |
+| 批② lib/worker | `src/lib/discovery/`(keywords/candidates repo、l0.ts、bili-search、suggest fetchers)+ 队列注册两 processor + 单测(l0/聚合排序纯函数);**批② 追加**:去飞书耦合(§2/§4/§10 修订,feishu.ts 与 env 配置位移除) | `make check` ✅(0f26ab0/497f7ec/b2217c4 + 56e9f83) |
+| 批③ 治理台与出口 | `/admin/discovery` 两板块 + 五路由 + 手动触发 + e2e(零真网:真触发不入 e2e,worker 在场即真出网) | e2e 绿 ✅(69f5dde/e57fa23/651edef) |
+| 批④ 真机验收 | suggest 双源契约真机实证修正(首验两源全偏,§3 已回填)+ 本地栈两任务真机各一轮 → 治理台核验 → 175 同等上下文手动触发一轮(生产部署后)→ `feature/discovery` PR 合 develop | 验收清单全勾(3f98313;175 观察待生产部署后) |
 
 **验收标准**:
 
-- 日频热词真机一轮:联想词入库、新词 pending、确认后 active 下一轮生效
-- 周频发现真机一轮:双窗候选落库、L0 理由人话可读;热点视频进选题库且重跑不重推
-- 治理台两板块与手动触发可用
-- 风控纪律落实:search 全词成功、零 GIVE UP
-- 迁移从零重放过;`make check` 全绿
+- 日频热词真机一轮:联想词入库、新词 pending、确认后 active 下一轮生效 ✅(148 新词零失败)
+- 周频发现真机一轮:双窗候选落库、L0 理由人话可读;热点视频落 `discovery_candidate`(选题库分发解耦至系统外人工 MCP,§10)✅(34 候选)
+- 治理台两板块与手动触发可用 ✅(人工验收 + e2e 零真网 33 用例)
+- 风控纪律落实:search 全词成功、零 GIVE UP ✅
+- 迁移从零重放过;`make check` 全绿 ✅(CI 守卫 + 本地)
 
-**状态:未实现**(2026-10-11 方案定稿,待批① 开工;状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定)
+**状态:开发与本地验收完成(2026-10-12)**:批①②③④ 全部落地,`feature/discovery` PR #73(feature/discovery,八提交)。方案偏离一处已按实收口:批② 追加系统内零飞书耦合(§2 决策表/§4 通用语义/§10 整章已改写,原 client_token UUIDv5 防重推与 feishuRecordId 双防线随系统内推送一并移除)。待办:生产部署 → 175 同等上下文一轮风控观察(§8 兜底 = bilibili 登录态 jar)→ 生产种子应用后删 oneoff 脚本。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。

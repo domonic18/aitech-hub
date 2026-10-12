@@ -75,6 +75,26 @@
 
 **落地注记(2026-10-10,M24 已交付;B 站适配器,四批单 PR)**:B 站 UP 主视频接入同一条管道,**零 schema 变更零迁移**(复用 `crawl_source.platform`/`social_account.platform`/`telegram.video_platform` 既有列)。落法:(1) **适配器实现在 douyin-gateway Python sidecar 内**(`app/adapters/bilibili/`,服务名/compose/部署面零变更,见 arch/05 §4.4)——wbi 纯算法签名(无 a_bogus,Playwright signer 子系统不参与)、curl_cffi 同款指纹、JarPool 与抖音共用、HTTP 200 + body code≠0 的 body-code 归因;**环境信誉门禁**(2026-10-09 真机实测:`arc/search` 对 headless/数据中心上下文整段 -352,与请求形状无关)→ 登录态 jar 是生产答案,游客 buvid3 仅够 nav/view/playurl。(2) **sec_uid 语义 per-platform**(arch/03):抖音=`MS4wLjAB…` sec_uid,B 站=纯数字 mid;登记入口 space.bilibili.com 链接直提、b23.tv 短链经网关 `/resolve`。(3) **listing 无直链**——B 站 vlist 不带播放地址,`play_url` 恒 null;直链解读时现查:Node 侧 `adapter.resolvePlayUrl` 按平台分发(douyin=重拉 listing 匹配(既有语义收编),bilibili=网关 `POST /play-url` view→cid→playurl 三跳),查不得 → 既有 missing_transcript 文案概括降级;**playurl 软风控 v_voucher(code=0 无 durl,2026-10-11 验收期实测)按风控处理**——网关矩阵 jar 冷却 + 502;interpret 遇 RiskControl **延迟重投顺延跨门**(20min×3 自愈,生产实证门为分钟~小时级、60s attempts 跨不过),耗尽终败 failed 可重解读,不落 null 降级(契约与观测事件见 arch/05 §4.4)。(4) **下载防盗链**——B 站 CDN 校验 Referer,`downloadHeadersFor(platform)` 透传(`bilibili`→`Referer: https://www.bilibili.com/`,douyin 空对象行为不变)。(5) **红线不变**:play_url 仅 job data 过境即焚、无 transcript 列、临时文件 try/finally 即删、前台只落结论/摘要/封面缩略图(封面域切 hdslb.com,前台 no-referrer 已就绪)/原文外链。(6) **治理台 per-platform 化**:Cookie 池双平台行(douyin ttwid 规则 / bilibili buvid3 游客即有效规则)、登记 Modal 平台单选(小红书灰「规划中」)、网关状态卡 `platforms` 段分平台呈现(douyin 段附 wbi 年龄,B 站行同形)、B 站行作品入口 space.bilibili.com/{mid}。(7) **频控建议**:B 站平台行(`social:bilibili`)显式配 `daily_max_requests`(ps=30 单页,请求密度低于抖音,轮询地板 ≥120min 不变);B 站错误主流形态异于抖音(HTTP 200 + body code≠0),归因矩阵与 /play-url 契约细节见 arch/05 §4.4。
 
+### 3.3 优质内容发现(`discovery` 队列,2026-10-12 M25 新增)
+
+```
+种子词库 discovery_keyword(status=active,LRU 轮转 20 词/轮)
+  ├─ 任务A 热词采集(discovery-hotwords,日频 05:37)
+  │    联想词直拉(bili suggest + bing osjson 双源插件化)→ 归一(trim+lower)
+  │    → 集合查重 → 新词 origin=hotword pending 落库(source 记首见源)
+  │    → 治理台人工确认 → active(下一轮发现输入,滚雪球闭环)
+  └─ 任务B 博主/视频发现(discovery-bili,周一 06:13)
+       90 天窗 order=click 按 mid 聚合(hitCount/maxPlay 双排序 top20)→ card 补 fans/archives
+       → L0 预筛 → discovery_candidate(type=blogger)→ 治理台人工批准 → admin/bloggers 人工登记
+       7 天窗 order=click ≥5 万播放 → L0(标题)→ discovery_candidate(type=video)
+```
+
+- **定位**:采集管线的**上游选料器**——博主候选经人工批准 + 「博主管理」登记后进入 §3.2 订阅制采集解读管道;热点视频候选供选题参考。**系统内零飞书耦合**(2026-10-12 批② 追加拍板):数据真相源=系统两表,外部分发(如飞书选题库)不经系统代码,由 Claude Code 经 MCP 按 docs/plan/discovery-plan.md §10 约定手工执行
+- **联想源契约(2026-10-12 批④ 真机实证,首验两源全偏已修正)**:bili suggest 联想词在顶层 `result.tag[].value`(不在 `data.tag`;tag 可缺省=产出即空);bing osjson 为五元 `[query, terms[], [], [], 元数据]`(取 `[1]`,尾缀 rest 放行);B站 search(page 解析)与 card 契约原型期即验证正确未动。形态不对按(源,词)失败隔离不弃整轮,真机样本单测钉死(`suggest.test.ts`)。联想轻接口裸请求(浏览器 UA)可通,免预热
+- **L0 预筛**(`src/lib/discovery/l0.ts` 纯函数):纯元数据规则(名称/标题营销黑名单、矩阵名模式、教学向信号),结论仅供参考、人工终审可覆盖;博主候选批准**不自动建** social_account(人工闸门,「一键转博主」留后续评审)
+- **B站风控纪律(常量固化 `src/lib/discovery/constants.ts`)**:search 词间 6-9s 随机、412 退避 15s×3 仍败跳过该词(不弃整轮)、card 与 search 拆阶段(延迟 30s,条间 3-4.2s,失败不阻塞留空)、联想词间 3-4.2s;队列并发 1 / lockDuration 900s / attempts=1(重试纪律在 processor 内,队列层不自动重试防风控风暴)
+- **治理台与可观测**:`/admin/discovery` 两板块(候选终审/词库管理,路由清单见 arch/05 §5);每轮 pino 摘要 `discovery.hotwords.done` / `discovery.bili_job`(种子数/产出/入库/失败);手动触发 `POST /api/discovery/trigger {job}` 入 manual 前缀一次性 job
+
 ## 4. 治理(后台 admin/telegram)
 
 - **CRUD**:列表(筛选:渠道/**媒体类型(text|video)**/状态/日期/关键词)+ 编辑(标题/摘要)+ 隐藏/恢复 + 归档 + 删除(软删);视频行展示封面缩略图/平台徽标/博主/解读摘要/原视频链与转写缺失降级态
