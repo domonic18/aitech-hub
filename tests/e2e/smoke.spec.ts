@@ -17,7 +17,8 @@ import sharp from "sharp";
  * 用量统计看板与牌价·封面工作流冒烟(M14)/K1 三域统一检索分组命中(K1)/
  * 公众号同步草稿:配置卡+未就绪 400+弹窗预填+批量 skipped+绑定重置(M17)/
  * K2.5 Drawer 深挖会话:线程 API 面+唤起预填+无绑定降级+侧栏删除(K2.5)/
- * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)。
+ * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)/
+ * 优质内容发现治理台:词库管理与候选人工终审(M25)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -3003,5 +3004,199 @@ test("32. 文章评论与点赞(M23 批②:评论区渲染/两级楼层/游客�
     await prisma.postLike.deleteMany({ where: { postId: post.id } });
     await prisma.post.deleteMany({ where: { id: post.id } });
     await prisma.category.deleteMany({ where: { slug: CAT_SLUG } });
+  }
+});
+
+test("33. 优质内容发现治理台(M25:候选终审/词库管理/加词与状态流转/触发校验,零真网)", async ({
+  page,
+  request,
+}) => {
+  const KW_NEW = "e2e-kw-alpha"; // UI 新增词
+  const KW_SEED = "e2e-kw-beta"; // 预置联想词(origin=hotword pending)
+  const BLOGGER_MID = "e2e-mid-99001";
+  const VIDEO_BVID = "BVe2e000033";
+  // 自播种:一条联想 pending 词 + 博主/视频候选各一(身份含 e2e 段,不撞真数据;重跑幂等)
+  await prisma.discoveryKeyword.deleteMany({ where: { word: { in: [KW_NEW, KW_SEED] } } });
+  await prisma.discoveryKeyword.create({
+    data: { word: KW_SEED, origin: "hotword", status: "pending", source: "bili-suggest" },
+  });
+  await prisma.discoveryCandidate.deleteMany({
+    where: { OR: [{ externalId: BLOGGER_MID }, { externalId: VIDEO_BVID }] },
+  });
+  await prisma.discoveryCandidate.create({
+    data: {
+      type: "blogger",
+      platform: "bilibili",
+      externalId: BLOGGER_MID,
+      round: "20261012",
+      author: "e2e-发现博主",
+      homepageUrl: `https://space.bilibili.com/${BLOGGER_MID}`,
+      hitKeywords: [KW_SEED],
+      hitCount: 3,
+      maxPlay: 120000,
+      fans: 45000,
+      archives: 210,
+      sampleTitles: ["e2e 样本标题一", "e2e 样本标题二"],
+      l0Verdict: "pass",
+      l0Reason: "无负面信号",
+    },
+  });
+  await prisma.discoveryCandidate.create({
+    data: {
+      type: "video",
+      platform: "bilibili",
+      externalId: VIDEO_BVID,
+      round: "20261012",
+      title: "e2e 发现热点视频",
+      author: "e2e-发现UP主",
+      homepageUrl: `https://www.bilibili.com/video/${VIDEO_BVID}`,
+      hitKeywords: [KW_SEED],
+      hitCount: 2,
+      maxPlay: 88000,
+      totalPlay: 88000,
+      l0Verdict: "reject",
+      l0Reason: "标题命中营销特征词:资源",
+    },
+  });
+
+  try {
+    // 登录(同前序用例 UI 流)
+    await page.goto("/admin/login");
+    await page.getByPlaceholder("11 位手机号").fill(E2E_ADMIN_PHONE);
+    await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    await page.waitForURL(/\/admin\/?$/);
+    const origin = jsonOrigin(page);
+    const serverOrigin = originOf(page);
+
+    // 候选 tab(默认):播种两行在,L0 徽标/信号列/拒绝理由如实呈现
+    await page.goto("/admin/discovery/");
+    await expect(page.getByRole("link", { name: "发现治理" })).toBeVisible(); // 侧栏入口
+    await expect(page.getByRole("heading", { name: "发现治理" })).toBeVisible();
+    const bloggerRow = page.getByRole("row", { name: /e2e-发现博主/ });
+    await expect(bloggerRow).toBeVisible();
+    await expect(bloggerRow.getByText(`mid ${BLOGGER_MID}`)).toBeVisible();
+    await expect(bloggerRow.getByText("样本×2")).toBeVisible();
+    await expect(bloggerRow.getByText("pass", { exact: true })).toBeVisible();
+    const videoRow = page.getByRole("row", { name: /e2e 发现热点视频/ });
+    await expect(videoRow).toBeVisible();
+    await expect(videoRow.getByText("reject", { exact: true })).toBeVisible();
+    await expect(videoRow.getByText("标题命中营销特征词:资源")).toBeVisible();
+
+    // 列表 API(会话 GET):出参 BigInt 已字符串化,候选带样本投影
+    const api = await page.request.get("/api/discovery/candidates/");
+    expect(api.status()).toBe(200);
+    const apiBody = (await api.json()) as {
+      code: number;
+      data: {
+        items: Array<{
+          id: string;
+          type: string;
+          status: string;
+          externalId: string;
+          sampleTitles: string[];
+        }>;
+        counts: Record<string, number>;
+      };
+    };
+    expect(apiBody.code).toBe(0);
+    const videoHit = apiBody.data.items.find((i) => i.externalId === VIDEO_BVID);
+    expect(videoHit?.type).toBe("video");
+    expect(videoHit?.sampleTitles).toEqual([]);
+    const bloggerId = apiBody.data.items.find((i) => i.externalId === BLOGGER_MID)!.id;
+
+    // 终审(同源 PUT):批准博主候选 → 行内徽标翻「已批准」;终审可回退(pending)
+    const put = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(put.status()).toBe(200);
+    await page.reload();
+    await expect(page.getByRole("row", { name: /e2e-发现博主/ }).getByText("已批准")).toBeVisible();
+
+    // 参数防线:非法 status 400 / 非法 id 400 / 未知 id 404 / 无会话 401
+    const badStatus = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
+      headers: origin,
+      data: { status: "junk" },
+    });
+    expect(badStatus.status()).toBe(400);
+    const badId = await page.request.put("/api/discovery/candidates/nope/", {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(badId.status()).toBe(400);
+    const missing = await page.request.put("/api/discovery/candidates/999999999/", {
+      headers: origin,
+      data: { status: "approved" },
+    });
+    expect(missing.status()).toBe(404);
+    const anonCtx = await page.context().browser()!.newContext();
+    const anon = await anonCtx.request.put(`/api/discovery/candidates/${bloggerId}/`, {
+      headers: { origin: serverOrigin },
+      data: { status: "approved" },
+    });
+    expect(anon.status()).toBe(401);
+    await anonCtx.close();
+
+    // 触发 API:非法 job 400;PAT 到场 403(发现面仅会话通道)。真触发不入
+    // e2e——worker 在场即会真出网,留待批④真机验收
+    const badJob = await page.request.post("/api/discovery/trigger/", {
+      headers: origin,
+      data: { job: "douyin" },
+    });
+    expect(badJob.status()).toBe(400);
+    const patTrigger = await request.post("/api/discovery/trigger/", {
+      headers: { authorization: "Bearer e2e-not-a-token", origin: serverOrigin },
+      data: { job: "bili" },
+    });
+    expect(patTrigger.status()).toBe(403);
+
+    // 词库 tab:预置联想词在(来源与待定态);UI 加词 → origin=manual 直接生效
+    await page.getByRole("link", { name: "词库管理" }).click();
+    await page.waitForURL(/tab=keywords/);
+    const seedRow = page.getByRole("row", { name: new RegExp(KW_SEED) });
+    await expect(seedRow).toBeVisible();
+    await expect(seedRow.getByText("联想 · bili-suggest")).toBeVisible();
+    await expect(seedRow.getByText("待定")).toBeVisible();
+
+    const input = page.getByPlaceholder(/人工添加热词/);
+    await input.fill(KW_NEW);
+    await page.getByRole("button", { name: "添加", exact: true }).click();
+    const newRow = page.getByRole("row", { name: new RegExp(KW_NEW) });
+    await expect(newRow).toBeVisible({ timeout: 10_000 });
+    await expect(newRow.getByText("生效")).toBeVisible();
+    await expect(newRow.getByText("人工", { exact: true })).toBeVisible();
+
+    // 词库 API(active 分段):新词在
+    const kwApi = await page.request.get("/api/discovery/keywords/?status=active");
+    expect(kwApi.status()).toBe(200);
+    const kwBody = (await kwApi.json()) as {
+      code: number;
+      data: { items: Array<{ word: string; status: string }>; counts: Record<string, number> };
+    };
+    expect(kwBody.code).toBe(0);
+    expect(kwBody.data.items.some((i) => i.word === KW_NEW)).toBe(true);
+
+    // 重复加词 → 409 行内提示(带当前状态,不算故障)
+    await input.fill(KW_NEW);
+    await page.getByRole("button", { name: "添加", exact: true }).click();
+    await expect(page.getByText(/关键词已存在/)).toBeVisible();
+
+    // 词状态流转(UI 直点,可逆):生效 → 已弃用
+    await newRow.getByRole("button", { name: "已弃用" }).click();
+    await expect(newRow.getByText("已弃用")).toBeVisible({ timeout: 10_000 });
+
+    // 候选分段筛选:已批准段只含终审行,pending 视频不在
+    await page.getByRole("link", { name: "候选治理" }).click();
+    await page.waitForURL(/\/admin\/discovery\/$/);
+    await page.getByRole("link", { name: /^已批准/ }).click();
+    await page.waitForURL(/status=approved/);
+    await expect(page.getByRole("row", { name: /e2e-发现博主/ })).toBeVisible();
+    await expect(page.getByRole("row", { name: /e2e 发现热点视频/ })).toHaveCount(0);
+  } finally {
+    await prisma.discoveryKeyword.deleteMany({ where: { word: { in: [KW_NEW, KW_SEED] } } });
+    await prisma.discoveryCandidate.deleteMany({
+      where: { OR: [{ externalId: BLOGGER_MID }, { externalId: VIDEO_BVID }] },
+    });
   }
 });

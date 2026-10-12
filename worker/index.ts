@@ -9,6 +9,10 @@ import {
   DB_BACKUP_JOB_RUN,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
+  DISCOVERY_BILI_CRON,
+  DISCOVERY_HOTWORDS_CRON,
+  DISCOVERY_JOB_BILI,
+  DISCOVERY_JOB_HOTWORDS,
   DISTRIBUTE_JOB_WECHAT_BATCH,
   EMBED_JOB_RECONCILE,
   EMBED_RECONCILE_CRON,
@@ -19,6 +23,7 @@ import {
   PAY_JOB_SWEEP,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
+  QUEUE_DISCOVERY,
   QUEUE_DISTRIBUTE,
   QUEUE_DB_BACKUP,
   QUEUE_EMBED,
@@ -41,6 +46,9 @@ import {
   bullConnection,
   getQueue,
 } from "../src/lib/queue";
+import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
+import { runBiliDiscovery } from "../src/lib/discovery/discover";
+import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
@@ -231,6 +239,21 @@ const PROCESSORS: Record<string, Processor> = {
     }
     return r;
   },
+  // 优质内容发现(M25):hotwords 日频 / B站双窗周频按 job.name 分流;风控纪律
+  // (串行/间隔/退避)在服务内固化,这里只报 job 级汇总。未知 job 显式抛错
+  [QUEUE_DISCOVERY]: async (job) => {
+    if (job.name === DISCOVERY_JOB_BILI) {
+      const r = await runBiliDiscovery(DISCOVERY_MAX_WORDS_PER_ROUND);
+      console.log(JSON.stringify({ event: "discovery.bili_job", ...r }));
+      return r;
+    }
+    if (job.name === DISCOVERY_JOB_HOTWORDS) {
+      const r = await runHotwordsDiscovery(DISCOVERY_MAX_WORDS_PER_ROUND);
+      console.log(JSON.stringify({ event: "discovery.hotwords_job", ...r }));
+      return r;
+    }
+    throw new Error(`未知 discovery job:${job.name}`);
+  },
 };
 
 /** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
@@ -358,6 +381,29 @@ async function schedulePayReconcile(): Promise<void> {
   );
 }
 
+/** 优质内容发现调度(M25):热词 05:37 日频 + B站双窗周一 06:13(cron 见 lib/queue) */
+async function scheduleDiscovery(): Promise<void> {
+  const queue = getQueue(QUEUE_DISCOVERY);
+  await queue.upsertJobScheduler(
+    "discovery-hotwords",
+    { pattern: DISCOVERY_HOTWORDS_CRON, tz: SITE_TZ },
+    {
+      name: DISCOVERY_JOB_HOTWORDS,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "discovery-bili",
+    { pattern: DISCOVERY_BILI_CRON, tz: SITE_TZ },
+    {
+      name: DISCOVERY_JOB_BILI,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
 const CRAWLER_TICK_EVERY_MS = 60_000;
 
@@ -436,7 +482,9 @@ async function main(): Promise<void> {
               ? { concurrency: 1, lockDuration: 600_000 }
               : name === QUEUE_PAY_RECONCILE
                 ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
-                : {};
+                : name === QUEUE_DISCOVERY
+                  ? { concurrency: 1, lockDuration: 900_000 } // B站风控纪律全局串行;双窗全词 5-10min
+                  : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
@@ -453,6 +501,7 @@ async function main(): Promise<void> {
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
+  await scheduleDiscovery();
 
   // checkpoint 表框架双保险(web 侧 getAgentGraph 懒加载为主;失败不拦 boot,
   // 首个 agent 任务内部 ensure 重试)

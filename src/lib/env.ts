@@ -57,6 +57,9 @@ const serverEnvSchema = z.object({
   /** GitHub API 令牌(M11 项目展示;可选——空=未认证 60 req/h,白名单 ≤10 仓可用;
    *  配 token 提升至 5000/h。密钥仅 env,不入库不打日志) */
   GITHUB_TOKEN: z.string().default(""),
+
+  /** 飞书打通不在系统内(M25 批② 拍板):发现数据唯一真相源在本系统,
+   *  外部分发(如飞书选题库)后续经 MCP 接口由 Claude Code 打通,此处无飞书变量。 */
 });
 
 const parsed = serverEnvSchema.safeParse(process.env);

@@ -963,31 +963,31 @@ model DiscoveryKeyword {
 
 /// 发现候选(任务B 产物,L0 元数据预筛 + 治理台人工终审):
 /// blogger=博主候选(治理台唯一系统出口,批准后人工至博主管理登记);
-/// video=热点视频(l0 pass 创建即推飞书选题库,rejected 不推但留痕)。
+/// video=热点视频(治理台人工终审)。数据唯一真相源在本系统;外部分发
+/// (如飞书选题库)不经系统内代码,后续经 MCP 接口由 Claude Code 打通。
 /// upsert 幂等键 (type, platform, externalId);重复发现刷新统计与 round,
-/// 不动 status(人工终审结论不回退);飞书防重推见 feishu_record_id。
+/// 不动 status(人工终审结论不回退)。
 model DiscoveryCandidate {
-  id             BigInt   @id @default(autoincrement())
-  type           String   @db.VarChar(10) // blogger | video
-  platform       String   @db.VarChar(20) // v1: bilibili
-  externalId     String   @map("external_id") @db.VarChar(100) // B站 mid(博主)或 bvid(视频)
-  round          String   @db.VarChar(8) // 发现批次 YYYYMMDD(Asia/Shanghai)
-  title          String?  @db.VarChar(500) // video 标题;blogger 置空(样本见 sample_titles)
-  author         String?  @db.VarChar(100)
-  homepageUrl    String?  @map("homepage_url") @db.VarChar(500) // 博主主页/视频链接
-  hitKeywords    Json?    @map("hit_keywords") // string[] 命中词(多词前排反复出现=强信号)
-  hitCount       Int?     @map("hit_count")
-  maxPlay        Int?     @map("max_play")
-  totalPlay      Int?     @map("total_play")
-  fans           Int? // card 接口补齐,失败可空(后续轮次或人工补)
-  archives       Int? // card 接口补齐,失败可空
-  sampleTitles   Json?    @map("sample_titles") // string[] 标题样本前5
-  l0Verdict      String   @map("l0_verdict") @db.VarChar(10) // pass | reject
-  l0Reason       String?  @map("l0_reason") @db.VarChar(300) // 人话理由,治理台直读(如「名称命中营销特征词:学院」)
-  status         String   @default("pending") @db.VarChar(10) // pending | approved | rejected
-  feishuRecordId String?  @map("feishu_record_id") @db.VarChar(64) // 选题库记录 id,防重推(仅 video 使用)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           BigInt   @id @default(autoincrement())
+  type         String   @db.VarChar(10) // blogger | video
+  platform     String   @db.VarChar(20) // v1: bilibili
+  externalId   String   @map("external_id") @db.VarChar(100) // B站 mid(博主)或 bvid(视频)
+  round        String   @db.VarChar(8) // 发现批次 YYYYMMDD(Asia/Shanghai)
+  title        String?  @db.VarChar(500) // video 标题;blogger 置空(样本见 sample_titles)
+  author       String?  @db.VarChar(100)
+  homepageUrl  String?  @map("homepage_url") @db.VarChar(500) // 博主主页/视频链接
+  hitKeywords  Json?    @map("hit_keywords") // string[] 命中词(多词前排反复出现=强信号)
+  hitCount     Int?     @map("hit_count")
+  maxPlay      Int?     @map("max_play")
+  totalPlay    Int?     @map("total_play")
+  fans         Int? // card 接口补齐,失败可空(后续轮次或人工补)
+  archives     Int? // card 接口补齐,失败可空
+  sampleTitles Json?    @map("sample_titles") // string[] 标题样本前5
+  l0Verdict    String   @map("l0_verdict") @db.VarChar(10) // pass | reject
+  l0Reason     String?  @map("l0_reason") @db.VarChar(300) // 人话理由,治理台直读(如「名称命中营销特征词:学院」)
+  status       String   @default("pending") @db.VarChar(10) // pending | approved | rejected
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([type, platform, externalId], map: "uq_discovery_candidate_identity")
   @@index([status, type], map: "idx_discovery_candidate_status_type")

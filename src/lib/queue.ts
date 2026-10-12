@@ -44,6 +44,9 @@ export const QUEUE_EMAIL = "email";
  * (先查单:已付补发货/确认未付过 TTL 才关单)+ 每日 04:13 近 7 天 paid
  * 查单比对流水锚;不一致只告警不动账。并发 1 防双拍交错查单 */
 export const QUEUE_PAY_RECONCILE = "pay-reconcile";
+/** 优质内容发现(M25,discovery-plan.md):热词日频直拉 + B站发现周频双窗;
+ * 并发 1(B站风控纪律全局串行)+ 锁 900s 覆盖双窗全词 5-10 分钟 */
+export const QUEUE_DISCOVERY = "discovery";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -61,6 +64,7 @@ export const QUEUE_NAMES = [
   QUEUE_EMBED,
   QUEUE_EMAIL,
   QUEUE_PAY_RECONCILE,
+  QUEUE_DISCOVERY,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -130,6 +134,18 @@ export const EMBED_RECONCILE_CRON = "7,22,37,52 * * * *";
  * job.name 分流,sync 为缺省路径)。改名需与 worker 同批。 */
 export const GITHUB_JOB_TICK = "tick";
 export const GITHUB_JOB_SYNC = "sync";
+
+/** discovery 队列 job name 契约(M25:热词日频 + B站发现周频两 repeatable;
+ * 手动触发 /api/discovery/trigger 入同名一次性 job,jobId 带 manual 前缀)。
+ * 改名需与 worker 同批。 */
+export const DISCOVERY_JOB_HOTWORDS = "discovery-hotwords";
+export const DISCOVERY_JOB_BILI = "discovery-bili";
+
+/** 热词采集 05:37 日频(discovery-plan §7:错峰 03:23 backup / 03:41 audit / 04:52 usage) */
+export const DISCOVERY_HOTWORDS_CRON = "37 5 * * *";
+
+/** B站发现 06:13 周一早(双窗全词约 5-10 分钟,避开热词档) */
+export const DISCOVERY_BILI_CRON = "13 6 * * 1";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
