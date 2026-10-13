@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { AI_PURPOSE_INTERPRET, AI_ERR_DETAIL_MAX } from "./constants";
 import { chatJsonTask, type ParsedTask } from "./chat-json-task";
-import { extractJsonBlock } from "./interpret-result";
+import { clipTranscriptForPrompt, extractJsonBlock } from "./interpret-result";
 import { logger } from "../logger";
 import type { ResolvedAiModel } from "./resolver";
 
@@ -74,7 +74,7 @@ export function buildInterpretNotePrompt(src: InterpretNotePromptSource): {
       `标题:${src.title?.trim() || "(无)"}`,
       `口播文案:${src.caption?.trim() || "(无)"}`,
       "——视频转写全文——",
-      src.transcript,
+      clipTranscriptForPrompt(src.transcript),
     ].join("\n"),
   };
 }

@@ -113,6 +113,19 @@ test("2. /post/<id>-<slug> 直开文章:200、标题、图片无 broken;非 cano
     expect(await page.locator("h1").innerText()).not.toBe("");
     const imgs = page.locator("article img");
     if ((await imgs.count()) > 0) {
+      // M27 批⑥ 起正文图 lazy 加载:视口外图片不加载(naturalWidth=0)是预期
+      // 行为而非 broken——先滚动到首图触发加载,等至少一张完成解码再断言
+      await imgs.first().scrollIntoViewIfNeeded();
+      await page
+        .waitForFunction(
+          () =>
+            [...document.querySelectorAll("article img")].some(
+              (i) => (i as HTMLImageElement).naturalWidth > 0,
+            ),
+          undefined,
+          { timeout: 10_000 },
+        )
+        .catch(() => {});
       const widths = await imgs.evaluateAll((els) =>
         els.map((el) => (el as HTMLImageElement).naturalWidth),
       );

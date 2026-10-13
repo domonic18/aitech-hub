@@ -92,4 +92,21 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("文首推荐卡由系统自动带图");
     expect(p).toContain("2~4 张");
   });
+
+  it("写作质量提示(批⑦):背景递进 + 反套话 + 原视频链接 + save 前强制自评审", () => {
+    const p = agentSystemPrompt("admin");
+    // 上下文逻辑:钩子后有背景节;要点要求递进而非罗列
+    expect(p).toContain("背景与来龙去脉");
+    expect(p).toContain("不要平行罗列");
+    // 反 AI 味:开场与全篇两处套话禁令
+    expect(p).toContain("随着…的快速发展");
+    expect(p).toContain("总而言之");
+    // 原视频地址:去看原视频小节给 video_url 行内链接
+    expect(p).toContain("video_url");
+    // 自评审闭环:save 前必做的逐项检查步;轮数封顶 2,防无限重写
+    expect(p).toContain("自评审并优化");
+    expect(p).toContain("不可跳过");
+    expect(p).toContain("至多 2 轮");
+    expect(p).toContain("禁止反复重写");
+  });
 });

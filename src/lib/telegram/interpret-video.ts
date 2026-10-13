@@ -1,6 +1,6 @@
 /**
  * 视频解读(M9,arch/02 §3.2;M12 批③ 默认化):interpreter 队列编排——下载无水印
- * 流 → ffmpeg 抽音轨 → 云 ASR 转写 → LLM 结构化概括(topic/summary/points)→
+ * 流(批⑦ 流式落盘)→ ffmpeg 抽音轨按段切片 → 云 ASR 逐段转写按序拼接(批⑦ 长视频)→
  * telegram.ai_* 列落库。M12 起就绪条件解耦 ASR:仅 interpret 绑定即开动,ASR 未
  * 启用/直链不可得时降级「基于文案」概括(buildInterpretPrompt 既有分支),配 ASR
  * 即增强。M26 批②起转写可用轮次追加解读笔记二次调用(ai_note,ai/interpret-note;
@@ -22,9 +22,11 @@ import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/res
 import { AI_USAGE_ROLE_ASR, recordAiUsage } from "../ai/usage-log";
 import { prisma } from "../db";
 import { logger } from "../logger";
+import path from "node:path";
+
 import {
   downloadVideoToTmp,
-  extractAudioMp3,
+  extractAudioSegments,
   makeInterpretTmpDir,
   readAudioFile,
   removeTmpDir,
@@ -115,6 +117,10 @@ const ASR_RETRIES = 2; // 管道内重试(首次 + 2 重试);终败降级不抛
 const ASR_RETRY_DELAY_MS = 3_000;
 const QUOTA_DEFER_MS = 30 * 60_000;
 const ASR_TIMEOUT_SEC = 120;
+/** 长视频分段转写(M27 批⑦):ffmpeg 按 5min 切片,逐段独立吃 ASR 超时/重试
+ * 预算,按序拼接(单段直传 120s 死线是 10min+ 视频必挂的第二根因);任一段
+ * 终败整体降级 missing_transcript——半篇转写以偏概全,不硬凑 */
+const ASR_SEGMENT_SECONDS = 300;
 /** B站 playurl 软风控门顺延(M24 验收期收口):门为分钟~小时级上下文门
  * (2026-10-11 生产实证:首条解读过后即门,60s attempts 全灭),延迟重投
  * 20min × 3 覆盖 ~1h 衰减窗;冷却期内网关「无可用 jar」快速拒绝不喂门 */
@@ -247,7 +253,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       let playUrl = data.playUrl;
       if (!playUrl) playUrl = await fetchFreshPlayUrl(row.sourceId, data);
       if (playUrl) {
-        const { videoPath, audioPath } = tmpMediaPaths(tmpDir);
+        const { videoPath } = tmpMediaPaths(tmpDir);
         // B站 CDN 防盗链校验 Referer(douyin 空对象,douyin 行为不变)
         const headers = downloadHeadersFor(data.platform);
         try {
@@ -258,22 +264,39 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
           if (!fresh) throw err;
           await downloadVideoToTmp(fresh, videoPath, headers);
         }
-        await extractAudioMp3(videoPath, audioPath, asr.maxAudioSeconds);
-        const asrResult = await runTranscribeWithRetry(
-          {
-            protocol: asr.protocol,
-            baseUrl: asr.baseUrl,
-            modelId: asr.modelId,
-            apiKey: asr.apiKey,
-            audio: await readAudioFile(audioPath),
-            filename: "audio.mp3",
-            hotwords: asr.hotwords,
-            timeoutSec: ASR_TIMEOUT_SEC,
-          },
-          row.videoDuration ?? 0,
+        // 分段转写(M27 批⑦):逐段独立重试/超时预算,按序拼接;usage 按段记账
+        const segPaths = await extractAudioSegments(
+          videoPath,
+          tmpDir,
+          asr.maxAudioSeconds,
+          ASR_SEGMENT_SECONDS,
         );
-        transcript = asrResult.text;
-        transcriptError = asrResult.error;
+        const parts: string[] = [];
+        for (const [i, segPath] of segPaths.entries()) {
+          const segSeconds = Math.max(
+            Math.min(asr.maxAudioSeconds - i * ASR_SEGMENT_SECONDS, ASR_SEGMENT_SECONDS),
+            0,
+          );
+          const asrResult = await runTranscribeWithRetry(
+            {
+              protocol: asr.protocol,
+              baseUrl: asr.baseUrl,
+              modelId: asr.modelId,
+              apiKey: asr.apiKey,
+              audio: await readAudioFile(segPath),
+              filename: path.basename(segPath),
+              hotwords: asr.hotwords,
+              timeoutSec: ASR_TIMEOUT_SEC,
+            },
+            segSeconds,
+          );
+          if (asrResult.text === null) {
+            transcriptError = `分段转写失败(第 ${i + 1}/${segPaths.length} 段):${asrResult.error}`;
+            break; // 半篇转写以偏概全:已得段一并弃用,整体降级文案概括
+          }
+          parts.push(asrResult.text);
+        }
+        if (transcriptError === null) transcript = parts.join("\n");
       } else {
         transcriptError = "无可用播放直链(过境直链缺失且网关重拉未命中),基于文案概括";
       }

@@ -77,6 +77,8 @@
 
 **落地注记(2026-10-12,M26 批②④ 已交付;解读笔记与专题合成下游)**:(1) **解读笔记**——interpret job 在既有结构化解读之外,同管道二次 LLM 调用加产 ~800-1500 字结构化分析笔记落 `telegram.ai_note`(## 分节 markdown;模板 + 解析重试 1 次,失败/存量/降级轮次 = null 诚实留空不回填;时间纪律:年份/时间表述须取自材料,未提写「近期」——批③ 验收发现笔记自行搭旧年份叙事框架后补 prompt 纪律);红线不变:笔记只源于既有 ai_* 结论与元数据,不持久化转写。(2) **专题合成(笔记的下游消费)**——`POST /api/topics/[id]/compose` 同步调 LLM(compose 角色卡,≤15s 不入队,超时受绑定模型 timeoutSec 约束):素材 = 专题定位 + 挂载素材(解读笔记优先,aiNote=null 降级短结论+要点拼装)+ 逐条人工批注就近注入 + 近期已发标题防撞 → 产 {title, excerpt, contentMd}(公众号口语化 2000±500 字,prompt 约束)落 content_post 草稿(contentOrigin=ai_assisted,分类「产品评测」缺则幂等补建,标签带专题标题)→ topic 锚定 linkedPostId+composedAt、collecting→drafted;**重合成保护**:关联文档合成后被人工编辑(或人工关联从未合成)→ 409 needConfirm 客户端确认覆盖;linked 软删弃锚新建。详见 docs/plan/topic-pipeline-plan.md §5/§10。
 
+**落地注记(2026-10-13,M27 批⑦ 已交付;长视频解读修复)**:验收反馈「线上超长视频解读失败」三段根因收口——(1) **下载**:内存缓冲 100MB/60s 全局死线 → **流式落盘**(建连 60s 响应头死线 + 单次 read 30s 卡顿探测死线,有数据流过即续命),大小帽放宽 500MB 且逐块复核防 content-length 谎报(`interpret-media.ts`);(2) **抽轨**:ffmpeg 单 mp3 直传 → `-f segment` 按 5min 切片(`extractAudioSegments`,execFile 进程级 10min 超时护栏),ASR **逐段转写按序拼接**——每段独立吃 120s 超时与 ≤2 重试预算,usage 按段记账;任一段终败整体降级 missing_transcript(半篇转写以偏概全不硬凑),lastAiError 注明「第 N/M 段」;(3) **注入帽**:转写进 LLM prompt(interpret 概括 + 解读笔记两处)统一过 `clipTranscriptForPrompt`(3 万字截断帽,尾部标注防模型误判材料自然结束)。maxAudioSeconds 后台配置帽 7200 不变,分段后长视频在帽内可完整转写。零迁移。
+
 ### 3.3 优质内容发现(`discovery` 队列,2026-10-12 M25 新增)
 
 ```

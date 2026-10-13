@@ -165,7 +165,7 @@ export const transferVideoCoverTool = tool(
       if (covers.length === 0) {
         return JSON.stringify({
           ok: false,
-          error: "封面转存全部失败(B 站图床防盗链或网络抖动),可稍后重试",
+          error: "封面转存全部失败(B 站图床防盗链、网络抖动或图片格式不支持),可稍后重试",
         });
       }
       const failed = assets.filter((a) => a.coverPath === null).map((a) => a.title);
