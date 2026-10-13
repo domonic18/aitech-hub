@@ -212,14 +212,16 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
       {/* 挂载选料(§8:详情页内选挂;电报流仅已解读) */}
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">挂载素材</h2>
       <TopicMountControls topicId={id} tab={tab} q={q ?? ""} />
-      <div className="mt-2 overflow-hidden rounded-sm border border-line">
+      {/* 摘要列 w-full max-w-0:line-clamp 单行在表格自动布局下 min-content 不可缩,
+          会把操作列顶出视口且外层裁剪不可滚(1276 验收发现);max-w-0 让钳制真正生效 */}
+      <div className="mt-2 overflow-x-auto rounded-sm border border-line">
         <table className="w-full text-left text-[13px]">
           <tbody>
             {candidates.items.map((c) => {
               const mounted = mountedKeys.has(`${tab}:${c.id}`);
               return (
                 <tr key={c.id.toString()} className="border-t border-line first:border-t-0">
-                  <td className="px-3 py-2">
+                  <td className="w-full max-w-0 px-3 py-2">
                     <div className="truncate text-text-1">{c.title || "(无标题)"}</div>
                     <div className="mt-0.5 line-clamp-1 text-[11px] text-text-3">
                       {"videoBlogger" in c
