@@ -15,6 +15,7 @@ vi.mock("./tools", () => ({
     { name: "ask_user" },
     { name: "submit_feedback" },
   ],
+  EDIT_TOOLS: [{ name: "read_draft" }, { name: "propose_edits" }],
 }));
 vi.mock("./topic-tools", () => ({
   TOPIC_TOOLS: [
@@ -47,7 +48,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
     }
   });
 
-  it("admin 追加专题生产四件(get_topic_brief/transfer_video_cover/generate_cover_candidates/save_topic_draft)", () => {
+  it("admin 追加编辑域(read_draft/propose_edits)与专题生产四件(get_topic_brief/transfer_video_cover/generate_cover_candidates/save_topic_draft)", () => {
     expect(agentToolsFor("admin").map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
@@ -55,6 +56,8 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "get_time",
       "ask_user",
       "submit_feedback",
+      "read_draft",
+      "propose_edits",
       "get_topic_brief",
       "transfer_video_cover",
       "generate_cover_candidates",
@@ -64,10 +67,12 @@ describe("agentToolsFor(工具面按身份分发)", () => {
 });
 
 describe("agentSystemPrompt(提示按身份分发)", () => {
-  it("guest/user 即基线提示,不含专题生产语义", () => {
+  it("guest/user 即基线提示,不含专题生产与编辑域语义", () => {
     for (const kind of ["guest", "user"] as const) {
       expect(agentSystemPrompt(kind)).toBe(AGENT_SYSTEM_PROMPT);
       expect(agentSystemPrompt(kind)).not.toContain("save_topic_draft");
+      expect(agentSystemPrompt(kind)).not.toContain("read_draft");
+      expect(agentSystemPrompt(kind)).not.toContain("propose_edits");
     }
   });
 
@@ -108,5 +113,28 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("不可跳过");
     expect(p).toContain("至多 2 轮");
     expect(p).toContain("禁止反复重写");
+  });
+
+  it("文章编辑上下文提示(批⑧-b):[页面上下文] edit 段指代 → read_draft 读现稿,不猜内容", () => {
+    const p = agentSystemPrompt("admin");
+    expect(p).toContain("[页面上下文]");
+    expect(p).toContain("edit.postId");
+    expect(p).toContain("read_draft");
+    expect(p).toContain("不要凭空猜测内容");
+  });
+
+  it("改稿纪律提示(批⑧-c):提案不落笔 + S/R 档默认 + resume 回路 + 严禁抢先宣称完成", () => {
+    const p = agentSystemPrompt("admin");
+    expect(p).toContain("提案不落笔");
+    expect(p).toContain("逐字符复制");
+    expect(p).toContain("propose_edits");
+    // resume 决策四态与迭代上限
+    expect(p).toContain("applied");
+    expect(p).toContain("partial");
+    expect(p).toContain("rejected");
+    expect(p).toContain("unavailable");
+    expect(p).toContain("至多连续两轮");
+    // 语义红线:接受前不得宣称已改完
+    expect(p).toContain("严禁在提案被接受前声称");
   });
 });

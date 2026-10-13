@@ -1,18 +1,24 @@
 "use client";
 /**
- * 悬浮助手卡片(M22 批④,需求6):右下角 ≈400px 聊天卡(用户拍板卡片形态,
- * 非 /search 全高抽屉)。编排复用 agent 域件:AgentRuntimeProvider/AgentThread/
- * AgentSidebar(登录身份有会话列表,覆盖式面板;游客单列)。懒挂载:开卡才装
- * Provider(不开零开销,AgentDrawer 同纪律);Escape/收起按钮关闭。「隐藏」
- * 写显隐偏好后关卡(FAB 退化为唤起点)。
+ * 悬浮助手卡片(M22 批④,需求6):右下角聊天卡(用户拍板卡片形态,非 /search
+ * 全高抽屉)。编排复用 agent 域件:AgentRuntimeProvider/AgentThread/
+ * AgentSidebar。M27 批⑧-a 对照 ai-invest 会话侧栏常驻化:member 身份左栏
+ * 176px 常驻(卡 600px),窄屏(<640px)退化为覆盖式面板(汉堡钮唤起);
+ * 游客无列表语义,单列全宽不变。懒挂载:开卡才装 Provider(不开零开销,
+ * AgentDrawer 同纪律);Escape/收起按钮关闭。「隐藏」写显隐偏好后关卡
+ * (FAB 退化为唤起点)。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { buildAgentPageContext } from "@/lib/agent/run-context";
 import type { AgentTodo } from "@/lib/agent/todos";
 
 import AgentRuntimeProvider from "@/components/site/agent/AgentRuntimeProvider";
 import AgentSidebar, { type AgentSessionItem } from "@/components/site/agent/AgentSidebar";
-import AgentThread, { type PendingAsk } from "@/components/site/agent/AgentThread";
+import AgentThread, {
+  type EditSurfaceContext,
+  type PendingAsk,
+} from "@/components/site/agent/AgentThread";
 import TodoListBar from "@/components/site/agent/TodoListBar";
 
 const SESSIONS_URL = "/api/search/agent/threads";
@@ -30,8 +36,8 @@ interface AssistantCardProps {
   injectAsk?: InjectAsk | null;
   /** 嵌入形态(M27 批① 编辑页):无全站 FAB,不渲染「隐藏助手」钮 */
   embedded?: boolean;
-  /** 编辑上下文注入(方案 §3):chip 呈现,批② 工具面挂点 */
-  editContext?: { postId: string; title: string } | null;
+  /** 编辑上下文(M27 批① chip;批⑧-d 扩评审面接线,函数仅客户端在用) */
+  editContext?: EditSurfaceContext | null;
 }
 
 export default function AssistantCard({
@@ -137,6 +143,19 @@ export default function AssistantCard({
     onHide();
   }, [onHide]);
 
+  // 页面上下文 getter(M27 批⑧-b,发送瞬间读取,零订阅——runtime-adapter
+  // 同纪律):page 取自当前路由;edit 段来自编辑页 props(单一真相源,postId
+  // 不走 URL 推导)。上行只带 postId/title——getContent/onApplyContent 是
+  // 函数型客户端 props,不过 wire。引用稳定,Provider adapter useMemo 不因
+  // 渲染重建。
+  const editContextRef = useRef(editContext);
+  editContextRef.current = editContext;
+  const getContext = useCallback((): unknown => {
+    const page = buildAgentPageContext(window.location.pathname);
+    const edit = editContextRef.current;
+    return edit ? { page, edit: { postId: edit.postId, title: edit.title } } : { page };
+  }, []);
+
   const handleNewThread = useCallback((): void => {
     reportedThreadIdRef.current = undefined;
     setThreadId(undefined);
@@ -182,7 +201,7 @@ export default function AssistantCard({
 
   return (
     <div
-      className="fixed bottom-20 right-4 z-40 flex h-[min(620px,calc(100vh-7rem))] w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-line bg-bg shadow-lg sm:right-5"
+      className="fixed bottom-20 right-4 z-40 flex h-[min(620px,calc(100vh-7rem))] w-[600px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-line bg-bg shadow-lg sm:right-5"
       role="dialog"
       aria-label="AI 助手"
     >
@@ -191,12 +210,13 @@ export default function AssistantCard({
           <use href="#i-robot" />
         </svg>
         <span className="font-mono text-[13px] text-text-1">AI 助手</span>
+        {/* 窄屏(<640px)常驻左栏退化为覆盖式,汉堡钮仅窄屏在场 */}
         {auth === "member" && (
           <button
             type="button"
             aria-label="会话列表"
             onClick={() => setListOpen((v) => !v)}
-            className={`ml-1 cursor-pointer rounded p-1 hover:bg-panel-2 ${
+            className={`ml-1 cursor-pointer rounded p-1 hover:bg-panel-2 sm:hidden ${
               listOpen ? "text-accent-hover" : "text-text-3 hover:text-text-1"
             }`}
           >
@@ -248,56 +268,75 @@ export default function AssistantCard({
         </div>
       ) : null}
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <TodoListBar todos={todos} />
-        <div className="min-h-0 flex-1">
-          <AgentRuntimeProvider
-            threadId={threadId}
-            onThreadIdChange={onThreadIdChange}
-            onTodos={setTodos}
-            onError={setBanner}
-            onRunActiveChange={onRunActiveChange}
-            onSessionExpired={onSessionExpired}
+      <div className="flex min-h-0 flex-1">
+        {/* member 常驻会话左栏(宽屏 ≥640px;窄屏由下方覆盖面板接管) */}
+        {auth === "member" && (
+          <aside
+            aria-label="会话列表"
+            className="hidden w-[176px] shrink-0 border-r border-line sm:flex sm:flex-col"
           >
-            <AgentThread
-              pending={pending}
-              onPendingConsumed={() => setPending(null)}
-              guestMode={auth === "guest"}
-              editContext={editContext}
+            <AgentSidebar
+              sessions={sessions}
+              activeThreadId={threadId}
+              isLoading={sessionPhase === "loading"}
+              onNewThread={handleNewThread}
+              onSwitchThread={handleSwitchThread}
+              onDeleteThread={handleDeleteThread}
             />
-          </AgentRuntimeProvider>
-        </div>
-        {/* 会话列表覆盖面板(登录身份;游客无列表语义) */}
-        {auth === "member" && listOpen && (
-          <div className="absolute inset-0 z-10 flex flex-col bg-bg">
-            <div className="flex shrink-0 items-center justify-between border-b border-line px-3.5 py-2">
-              <span className="font-mono text-xs text-text-2">会话列表</span>
-              <button
-                type="button"
-                aria-label="收起列表"
-                onClick={() => setListOpen(false)}
-                className="cursor-pointer rounded p-1 text-text-3 hover:bg-panel-2 hover:text-text-1"
-              >
-                <svg className="ic ic-sm" aria-hidden="true">
-                  <use href="#i-close" />
-                </svg>
-              </button>
-            </div>
-            <div className="min-h-0 flex-1">
-              <AgentSidebar
-                sessions={sessions}
-                activeThreadId={threadId}
-                isLoading={sessionPhase === "loading"}
-                onNewThread={() => {
-                  handleNewThread();
-                  setListOpen(false);
-                }}
-                onSwitchThread={handleSwitchThread}
-                onDeleteThread={handleDeleteThread}
-              />
-            </div>
-          </div>
+          </aside>
         )}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <TodoListBar todos={todos} />
+          <div className="min-h-0 flex-1">
+            <AgentRuntimeProvider
+              threadId={threadId}
+              onThreadIdChange={onThreadIdChange}
+              onTodos={setTodos}
+              onError={setBanner}
+              onRunActiveChange={onRunActiveChange}
+              onSessionExpired={onSessionExpired}
+              getContext={getContext}
+            >
+              <AgentThread
+                pending={pending}
+                onPendingConsumed={() => setPending(null)}
+                guestMode={auth === "guest"}
+                editContext={editContext}
+              />
+            </AgentRuntimeProvider>
+          </div>
+          {/* 会话列表覆盖面板(仅窄屏 <640px;宽屏常驻左栏已在场) */}
+          {auth === "member" && listOpen && (
+            <div className="absolute inset-0 z-10 flex flex-col bg-bg sm:hidden">
+              <div className="flex shrink-0 items-center justify-between border-b border-line px-3.5 py-2">
+                <span className="font-mono text-xs text-text-2">会话列表</span>
+                <button
+                  type="button"
+                  aria-label="收起列表"
+                  onClick={() => setListOpen(false)}
+                  className="cursor-pointer rounded p-1 text-text-3 hover:bg-panel-2 hover:text-text-1"
+                >
+                  <svg className="ic ic-sm" aria-hidden="true">
+                    <use href="#i-close" />
+                  </svg>
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">
+                <AgentSidebar
+                  sessions={sessions}
+                  activeThreadId={threadId}
+                  isLoading={sessionPhase === "loading"}
+                  onNewThread={() => {
+                    handleNewThread();
+                    setListOpen(false);
+                  }}
+                  onSwitchThread={handleSwitchThread}
+                  onDeleteThread={handleDeleteThread}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

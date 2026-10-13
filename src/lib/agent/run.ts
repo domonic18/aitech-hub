@@ -16,6 +16,8 @@ import type { ResolvedAiModel } from "../ai/resolver";
 import { getAgentGraph } from "./agent";
 import { GUEST_THREAD_PREFIX } from "./guest-threads";
 import type { AgentIdentity } from "./identity";
+import type { AgentRunContext } from "./run-context";
+import { withAgentContext } from "./run-context";
 import { touchSessionAfterRun } from "./sessions";
 import { encodeWireEvent, encodeWireMessage } from "./wire";
 
@@ -56,6 +58,9 @@ export interface AgentRunParams {
   message: string | null;
   /** HITL 恢复值(ask_user 提问卡回答;经 Command({resume}) 灌回中断的工具) */
   resume?: unknown;
+  /** 页面上下文(M27 批⑧-b,路由层已按身份 sanitize):仅新提问注入 human
+   * 消息前缀;resume 分支不注入——中断上下文已持久在 checkpoint 历史里 */
+  context?: AgentRunContext | null;
   /** 身份档(决定工具面与护栏档——admin 图才有专题生产四件工具) */
   identityKind: AgentIdentity["kind"];
   signal: AbortSignal;
@@ -84,7 +89,7 @@ interface UsageMeta {
  * 收尾);帧序列 metadata → (messages|updates)* → end。
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
-  const { threadId, message, resume, identityKind, signal, onFrame } = params;
+  const { threadId, message, resume, identityKind, signal, onFrame, context } = params;
   const { graph, resolved } = await getAgentGraph(identityKind);
   const limits = AGENT_LIMITS[identityKind];
   const runId = crypto.randomUUID();
@@ -101,11 +106,12 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
   onFrame(encodeWireEvent("metadata", { run_id: runId, thread_id: threadId }));
 
   // resume 分支(HITL):Command 作图输入,中断的 ask_user 工具重放并拿到回
-  // 答继续;正常分支注入单条 human 消息。streamMode/护栏两分支一致。
+  // 答继续;正常分支注入单条 human 消息(有页面上下文时加 [页面上下文] 前缀,
+  // ai-invest _with_page_context 同款)。streamMode/护栏两分支一致。
   const input =
     resume !== undefined
       ? new Command({ resume })
-      : { messages: [new HumanMessage(message ?? "")] };
+      : { messages: [new HumanMessage(withAgentContext(message ?? "", context ?? null))] };
   const stream = await graph.stream(input, {
     configurable: { thread_id: threadId },
     streamMode: ["messages", "updates"] as ["messages", "updates"],

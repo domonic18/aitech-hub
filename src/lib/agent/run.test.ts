@@ -90,6 +90,35 @@ describe("runAgentTurn", () => {
     expect(outcome.truncatedReason).toBeNull();
   });
 
+  it("页面上下文(批⑧-b):新提问 human 消息加 [页面上下文] 前缀;缺省不注入", async () => {
+    const fg = fakeGraph([]);
+    getAgentGraphMock.mockResolvedValue(fg);
+    await runAgentTurn({
+      threadId: "t1",
+      message: "帮我校对这篇文章",
+      context: { page: "文章编辑", edit: { postId: "123", title: "标题" } },
+      identityKind: "admin",
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    const calls = fg.graph.stream.mock.calls as unknown[][];
+    const withCtx = calls[0][0] as { messages: { content: string }[] };
+    expect(isCommand(withCtx)).toBe(false);
+    expect(withCtx.messages[0].content).toContain("[页面上下文]");
+    expect(withCtx.messages[0].content).toContain('"postId":"123"');
+    expect(withCtx.messages[0].content.endsWith("帮我校对这篇文章")).toBe(true);
+
+    await runAgentTurn({
+      threadId: "t1",
+      message: "普通提问",
+      identityKind: "guest",
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    const plain = calls[1][0] as { messages: { content: string }[] };
+    expect(plain.messages[0].content).toBe("普通提问");
+  });
+
   it("50k 超限:主动收束,truncatedReason 人话,end 帧仍发", async () => {
     const big = new AIMessageChunk({
       content: "",

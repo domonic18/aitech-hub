@@ -11,7 +11,7 @@
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import PostMetaPanel, {
   type EditorCategory,
@@ -153,6 +153,14 @@ export default function PostEditor({
       return next;
     });
   }
+
+  // Agent 评审面接线(M27 批⑧-d):getter 走 ref 快照(评审挂载瞬间读,引用
+  // 稳定不触发子树重渲染);应用 = 整段 setContentMd(与影子恢复同路径,
+  // Vditor 受控 setValue → dirty → 自动保存落库;undo 口径批⑨ 真机验证)
+  const contentMdRef = useRef(contentMd);
+  contentMdRef.current = contentMd;
+  const getAssistantContent = useCallback(() => contentMdRef.current, []);
+  const applyAssistantContent = useCallback((md: string) => setContentMd(md), []);
 
   // 派生预览(创建/编辑同规则):显式输入优先,否则标题 ASCII token;纯中文标题 → bare-id
   const slugPreview = useMemo(() => {
@@ -375,7 +383,14 @@ export default function PostEditor({
           {mode === "create" ? "(新)" : ""}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {mode === "edit" && post && <EditorAssistant postId={post.id} title={title} />}
+          {mode === "edit" && post && (
+            <EditorAssistant
+              postId={post.id}
+              title={title}
+              getContent={getAssistantContent}
+              onApplyContent={applyAssistantContent}
+            />
+          )}
           <button
             type="button"
             aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}

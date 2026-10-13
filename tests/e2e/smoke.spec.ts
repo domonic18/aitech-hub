@@ -1,6 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -3600,5 +3600,79 @@ test("35. 编辑器自动保存与编辑上下文(M27 批①:debounce 落库/乐
     await expect(page.getByRole("dialog", { name: "AI 助手" })).toHaveCount(0);
   } finally {
     await prisma.post.deleteMany({ where: { slug: { startsWith: MARK } } });
+  }
+});
+
+test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过滤/切换回查/编辑路由 FAB 退役/游客单列不回归,零真 LLM)", async ({
+  page,
+}) => {
+  await e2eAdminLogin(page);
+  const admin = await prisma.userAccount.findUniqueOrThrow({ where: { phone: E2E_ADMIN_PHONE } });
+  const mark = `e2e-sess-${Date.now()}`;
+  const s1 = await prisma.searchAgentSession.create({
+    data: { id: randomUUID(), visitorId: `admin:${admin.id}`, title: `${mark} 甲会话` },
+  });
+  const s2 = await prisma.searchAgentSession.create({
+    data: { id: randomUUID(), visitorId: `admin:${admin.id}`, title: `${mark} 乙会话` },
+  });
+  const category = await prisma.category.upsert({
+    where: { slug: "e2e-autosave" },
+    update: { name: "e2e autosave fixture" },
+    create: { slug: "e2e-autosave", name: "e2e autosave fixture" },
+  });
+  const draft = await prisma.post.create({
+    data: {
+      slug: `${mark}-draft`,
+      title: "e2e 会话列表草稿",
+      contentMd: "e2e 会话列表正文。",
+      categoryId: category.id,
+      status: "draft",
+    },
+  });
+  try {
+    // ① 编辑路由 FAB 退役(new 页仍在):/admin/posts/new 有 FAB,编辑页无
+    await page.goto("/admin/posts/new");
+    await expect(page.getByRole("button", { name: "打开 AI 助手" })).toBeVisible();
+    await page.goto(`/admin/posts/${draft.id}`);
+    await expect(page.getByRole("button", { name: "打开 AI 助手" })).toHaveCount(0);
+
+    // ② 常驻左栏:顶栏助手钮开卡 → 会话侧栏在位(新会话钮 + 搜索框 + 分组列表)
+    await page.getByRole("button", { name: "AI 助手" }).click();
+    const dialog = page.getByRole("dialog", { name: "AI 助手" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "新会话" })).toBeVisible();
+    await expect(dialog.getByPlaceholder("搜索会话")).toBeVisible();
+    // 宽屏汉堡钮退役(sm:hidden 在 DOM 但不可见)
+    await expect(dialog.getByRole("button", { name: "会话列表" })).toBeHidden();
+    await expect(dialog.getByText(`${mark} 甲会话`)).toBeVisible();
+    await expect(dialog.getByText(`${mark} 乙会话`)).toBeVisible();
+
+    // ③ 搜索过滤:命中甲则乙不显;清词恢复
+    await dialog.getByPlaceholder("搜索会话").fill("甲会话");
+    await expect(dialog.getByText(`${mark} 甲会话`)).toBeVisible();
+    await expect(dialog.getByText(`${mark} 乙会话`)).toBeHidden();
+    await dialog.getByPlaceholder("搜索会话").fill("");
+
+    // ④ 切换回查:点甲会话 → 拉取该线程 checkpoint state(历史会话可回查)
+    const stateReq = page.waitForRequest((r) =>
+      r.url().includes(`/api/search/agent/threads/${s1.id}/state`),
+    );
+    await dialog.getByText(`${mark} 甲会话`).click();
+    await stateReq;
+
+    // ⑤ 游客单列不回归:独立无痕上下文,前台 FAB 开卡无常驻左栏/新会话钮
+    const ctx = await page.context().browser()!.newContext();
+    const gpage = await ctx.newPage();
+    await gpage.goto("/");
+    await gpage.getByRole("button", { name: "打开 AI 助手" }).click();
+    const gdialog = gpage.getByRole("dialog", { name: "AI 助手" });
+    await expect(gdialog).toBeVisible();
+    await expect(gdialog.getByRole("button", { name: "新会话" })).toHaveCount(0);
+    await ctx.close();
+  } finally {
+    await prisma.searchAgentSession.deleteMany({
+      where: { id: { in: [s1.id, s2.id] } },
+    });
+    await prisma.post.deleteMany({ where: { slug: { startsWith: mark } } });
   }
 });

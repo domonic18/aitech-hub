@@ -3,20 +3,30 @@
 /**
  * 编辑页 AI 助手入口(M27 批①,方案 §3/§9):顶栏按钮唤起 AssistantCard
  * (复用全站 agent 域件,admin 会话即 member 身份),并注入编辑上下文
- * {postId, title}——卡片内以 chip 呈现,批② propose_edits/read_draft 的
- * 工具面挂点。embedded 形态:不渲染「隐藏助手」(无全站 FAB 语义),关闭即收。
+ * {postId, title}——卡片内以 chip 呈现。M27 批⑧-d 扩评审面接线:getContent/
+ * onApplyContent 由 PostEditor 传入(正文 state getter/setter),propose_edits
+ * 提案的「应用」经此写回编辑器 → 既有自动保存链落库;缺省(理论上不会发生,
+ * 编辑页恒传)则提案自动降级。embedded 形态:不渲染「隐藏助手」(无全站 FAB
+ * 语义),关闭即收。
  */
 import { useState } from "react";
 
 import AssistantCard from "@/components/site/assistant/AssistantCard";
 
+interface EditorAssistantProps {
+  postId: string;
+  title: string;
+  /** 评审面接线(M27 批⑧-d):正文读快照 / 写回 */
+  getContent: () => string;
+  onApplyContent: (md: string) => void;
+}
+
 export default function EditorAssistant({
   postId,
   title,
-}: {
-  postId: string;
-  title: string;
-}): React.ReactElement {
+  getContent,
+  onApplyContent,
+}: EditorAssistantProps): React.ReactElement {
   const [open, setOpen] = useState(false);
 
   return (
@@ -41,7 +51,7 @@ export default function EditorAssistant({
           embedded
           onClose={() => setOpen(false)}
           onHide={() => setOpen(false)}
-          editContext={{ postId, title }}
+          editContext={{ postId, title, getContent, onApplyContent }}
         />
       )}
     </>

@@ -91,6 +91,9 @@ export interface AgentRuntimeAdapterOptions {
   /** run 起止上报(stream 生成器进出;宿主运行中暂缓受控 threadId 回写,
    * 防 SDK 受控切换 abort 在跑的 run——2026-10-09 FAB 首条消息闪断根因) */
   onRunActiveChange?: (active: boolean) => void;
+  /** 发送瞬间取页面上下文(M27 批⑧-b,ai-invest page_context 纪律:纯
+   * getter 零订阅,本模块不感知 React;返回值经服务端宽松解析,坏值弃用) */
+  getContext?: () => unknown;
 }
 
 /** 后端 404 话术(身份路由统一);命中即走自愈而非当普通错误挂横幅 */
@@ -181,6 +184,8 @@ export function createAgentRuntimeAdapter(
             body: JSON.stringify({
               input: messages.length ? { messages } : null,
               ...(config.command ? { command: config.command } : {}),
+              // 新提问才附上下文(resume 服务端不注入;checkpoint 历史已含)
+              ...(messages.length && options.getContext ? { context: options.getContext() } : {}),
             }),
             signal: config.abortSignal,
           });
