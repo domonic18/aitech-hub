@@ -26,6 +26,8 @@ function tgBlock(partial: Partial<ComposeMaterialBlock>): ComposeMaterialBlock {
     aiNote: null,
     aiSummary: null,
     aiPoints: [],
+    videoUrl: "https://www.bilibili.com/video/BV1xx",
+    coverUrl: "https://i0.hdslb.com/bfs/archive/cover.jpg",
     excerpt: null,
     contentSample: null,
     ...partial,
@@ -39,6 +41,8 @@ describe("buildMaterialSection(素材拼装)", () => {
     ]);
     expect(s).toContain("【素材1·视频】《e2e 视频》(博主:UP主A)");
     expect(s).toContain("人工批注:重点用第 2 点");
+    expect(s).toContain("视频链接:https://www.bilibili.com/video/BV1xx");
+    expect(s).toContain("封面图:https://i0.hdslb.com/bfs/archive/cover.jpg");
     expect(s).toContain("解读笔记:");
     expect(s).toContain("端侧模型拐点已到");
     expect(s).not.toContain("短结论");
@@ -68,6 +72,8 @@ describe("buildMaterialSection(素材拼装)", () => {
         aiNote: null,
         aiSummary: null,
         aiPoints: [],
+        videoUrl: null,
+        coverUrl: null,
         excerpt: "一句话摘要",
         contentSample: "正文片段",
       },
@@ -194,14 +200,18 @@ describe("buildComposePrompt(输入拼装)", () => {
     expect(p.user).toContain("面向开发者,口语化");
     expect(p.user).toContain("【素材1·视频】《A》");
     expect(p.user).toContain("- 已发文一");
-    expect(p.system).toContain("2000 字左右");
+    // M27 批①合成重构:推荐体固定结构 + 字数硬约束 + 阅读原文 CTA 钉在 system
+    expect(p.system).toContain("推荐短文");
+    expect(p.system).toContain("800~1200 字");
+    expect(p.system).toContain("阅读原文");
+    expect(p.system).toContain("## 视频讲了什么");
     const noPos = buildComposePrompt({
       topicTitle: "t",
       positioning: null,
       materialsSection: "m",
       recentTitles: [],
     });
-    expect(noPos.user).toContain("(未填写,按素材自然组织)");
+    expect(noPos.user).toContain("(未填写,按素材自然发挥)");
     expect(noPos.user).not.toContain("近期已发布文章标题");
   });
 });

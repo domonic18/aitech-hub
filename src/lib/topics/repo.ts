@@ -268,6 +268,7 @@ export interface TopicItemMaterial {
     title: string | null;
     videoBlogger: string | null;
     url: string;
+    videoCoverUrl: string | null; // B 站封面(批①合成重构:素材注入封面供写作/CTA)
     aiSummary: string | null;
     aiPoints: unknown; // Json 列(§10 存量兼容),读侧白名单归一(compose 降级拼装用)
     aiNote: string | null;
@@ -289,6 +290,7 @@ export async function hydrateItems(items: TopicItem[]): Promise<Map<bigint, Topi
             title: true,
             videoBlogger: true,
             url: true,
+            videoCoverUrl: true,
             aiSummary: true,
             aiPoints: true,
             aiNote: true,

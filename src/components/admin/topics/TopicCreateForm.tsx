@@ -8,12 +8,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ApiEnvelope } from "@/lib/http/response";
+import { DEFAULT_TOPIC_POSITIONING } from "@/lib/topics/constants";
 
 export default function TopicCreateForm() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [positioning, setPositioning] = useState("");
+  // 预置推荐体角度底稿(1276 验收反馈:不要每次现填;用户可清空/改写)
+  const [positioning, setPositioning] = useState(DEFAULT_TOPIC_POSITIONING);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 

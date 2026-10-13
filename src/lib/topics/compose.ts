@@ -34,6 +34,10 @@ export interface ComposeMaterialBlock {
   aiNote: string | null;
   aiSummary: string | null;
   aiPoints: string[];
+  /** telegram 块:原视频链接与封面图(批①合成重构起注入,供写作引用/CTA);
+   * post 块恒 null */
+  videoUrl: string | null;
+  coverUrl: string | null;
   /** post 块:摘要与正文取样(telegram 块恒 null) */
   excerpt: string | null;
   contentSample: string | null;
@@ -64,6 +68,8 @@ export function buildMaterialSection(blocks: ComposeMaterialBlock[]): string {
       const lines: string[] = [head];
       if (b.note) lines.push(`人工批注:${b.note}`);
       if (b.kind === "telegram") {
+        if (b.videoUrl) lines.push(`视频链接:${b.videoUrl}`);
+        if (b.coverUrl) lines.push(`封面图:${b.coverUrl}`);
         if (b.aiNote) {
           lines.push(`解读笔记:\n${b.aiNote}`);
         } else {
@@ -142,12 +148,27 @@ export interface ComposePromptSource {
 }
 
 const OUTPUT_SPEC =
-  "输出一个 JSON 对象,字段:title(文章标题,不超过 30 字,具体有信息量、不堆砌)" +
-  "、excerpt(摘要,不超过 120 字,一句话概括文章价值)、contentMd(正文全文," +
-  "markdown 格式,用 ## 二级标题分节)。文风:公众号口语化,面向普通 AI 关注者," +
-  "2000 字左右(±500),观点与事实只依据素材给出,不编造;时间/年份表述必须取自" +
-  "素材原文,素材未提就写「近期」,不得自行推断年份;恰当融合「人工批注」的取舍指令;" +
-  "全部用简体中文。只输出 JSON,不要解释、前后缀或代码围栏。";
+  "输出一个 JSON 对象,字段:title(文章标题,不超过 30 字,像公众号好标题——具体、" +
+  "有钩子、信息真实,不标题党不堆砌)、excerpt(摘要,不超过 120 字,一句话说清" +
+  "「这篇推荐什么、为什么值得看」)、contentMd(正文全文,markdown 格式,用 ## 二级" +
+  "标题分节)。只输出 JSON,不要解释、前后缀或代码围栏。";
+
+/**
+ * 产文结构模板(M27 批①合成重构,1276 验收反馈):公众号「博主×视频」推荐短文,
+ * 固定结构在代码内钉死——专题定位只做补充指令,不再决定文章形态;短段落+要点化+
+ * CTA,治「新闻通稿体/大段文字/无公众号表述」三问题。
+ */
+const STRUCTURE_SPEC = [
+  "正文必须是一篇「博主×视频」推荐短文(公众号种草体),不是新闻通稿。固定结构:",
+  "1)开头钩子:不超过 80 字,用视频里最反差或最具体的一个事实/数据直接抓人,不写背景铺垫;",
+  "2)## 博主是谁:2~4 句,博主的定位、风格、为什么值得关注(只依据素材,不编造履历与称号);",
+  "3)## 视频讲了什么:3~4 个要点,每个要点一个独立小段且不超过 60 字,段首用 **加粗** 点出关键词;严禁把多个要点挤进同一段;",
+  "4)## 值得看的理由:1~2 句金句式收束,不得虚构素材之外的评价;",
+  "5)## 去看原视频:结尾引导段——自然提及视频标题,并告诉读者:点击公众号文章左下角「阅读原文」进入我们的站点,站内视频卡片可一键跳转原视频;",
+  "硬约束:全文 800~1200 字(不含标题与摘要);单个自然段不超过 3 行,多用短句;禁止大段铺陈与罗列式长段;",
+  "事实与观点只依据素材给出,不编造;时间/年份表述必须取自素材原文,素材未提就写「近期」,不得自行推断年份;",
+  "恰当融合「人工批注」的取舍指令;全部用简体中文;正文总码点控制在 18000 以内。",
+].join("\n");
 
 export function buildComposePrompt(src: ComposePromptSource): { system: string; user: string } {
   const recent =
@@ -155,10 +176,10 @@ export function buildComposePrompt(src: ComposePromptSource): { system: string; 
       ? `\n——近期已发布文章标题(选题/表述避免重复)——\n${src.recentTitles.map((t) => `- ${t}`).join("\n")}`
       : "";
   return {
-    system: `你是科技公众号的主笔,根据专题定位与素材库起草一篇专题文章初稿。初稿经人工编辑定稿后才发布,请把素材中的硬信息(数据、产品名、结论、步骤)完整带到。${OUTPUT_SPEC}`,
+    system: `你是头部科技公众号的主编,最擅长把视频内容写成让人愿意点开原视频的推荐短文。初稿经人工编辑定稿后才发布,请把素材中的硬信息(数据、产品名、结论、步骤)完整带到。\n${STRUCTURE_SPEC}\n${OUTPUT_SPEC}`,
     user: [
       `专题:${src.topicTitle}`,
-      `专题定位:${src.positioning?.trim() || "(未填写,按素材自然组织)"}`,
+      `创作指令(选材与口吻的补充,固定结构之上生效):${src.positioning?.trim() || "(未填写,按素材自然发挥)"}`,
       "——素材库——",
       src.materialsSection,
       recent,
@@ -250,6 +271,8 @@ export async function composeTopicDraft(
         aiNote: m.telegram.aiNote,
         aiSummary: m.telegram.aiSummary,
         aiPoints: normalizePoints(m.telegram.aiPoints),
+        videoUrl: m.telegram.url,
+        coverUrl: m.telegram.videoCoverUrl ?? null,
         excerpt: null,
         contentSample: null,
       });
@@ -263,6 +286,8 @@ export async function composeTopicDraft(
         aiNote: null,
         aiSummary: null,
         aiPoints: [],
+        videoUrl: null,
+        coverUrl: null,
         excerpt: detail?.excerpt ?? null,
         contentSample: detail?.contentMd?.slice(0, COMPOSE_POST_SAMPLE_MAX) ?? null,
       });
