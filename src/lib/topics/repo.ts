@@ -108,6 +108,16 @@ export async function getTopic(id: bigint): Promise<TopicWithItems> {
   return topic;
 }
 
+/** 关联文档状态(详情页合成操作区提示口径;行缺返回 null 视为无锚) */
+export async function getLinkedPostState(
+  postId: bigint,
+): Promise<{ status: string; updatedAt: Date } | null> {
+  return prisma.post.findUnique({
+    where: { id: postId },
+    select: { status: true, updatedAt: true },
+  });
+}
+
 // ── 素材挂载 ──────────────────────────────────────────────
 
 /** 挂载前置校验(方案 §3):telegram 须解读完成;post 须存在且未软删 */
@@ -258,7 +268,9 @@ export interface TopicItemMaterial {
     title: string | null;
     videoBlogger: string | null;
     url: string;
+    videoCoverUrl: string | null; // B 站封面(批①合成重构:素材注入封面供写作/CTA)
     aiSummary: string | null;
+    aiPoints: unknown; // Json 列(§10 存量兼容),读侧白名单归一(compose 降级拼装用)
     aiNote: string | null;
   } | null;
   post: { id: bigint; title: string; status: string } | null;
@@ -278,7 +290,9 @@ export async function hydrateItems(items: TopicItem[]): Promise<Map<bigint, Topi
             title: true,
             videoBlogger: true,
             url: true,
+            videoCoverUrl: true,
             aiSummary: true,
+            aiPoints: true,
             aiNote: true,
           },
         })

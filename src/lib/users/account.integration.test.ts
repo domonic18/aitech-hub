@@ -224,8 +224,11 @@ describe("POST /api/account/avatar", () => {
   });
 
   it("合法上传:avatarPath 落库为站内 uploads 路径", async () => {
+    // 批⑦ 起 mime 以魔数嗅探裁决:字节须是真 PNG 头(全零假图会被正确拒收)
+    const png = new Uint8Array(64);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const form = new FormData();
-    form.append("file", new Blob([new Uint8Array(64)], { type: "image/png" }), "me.png");
+    form.append("file", new Blob([png], { type: "image/png" }), "me.png");
     const res = await avatarPOST(
       new NextRequest("http://localhost:3000/api/account/avatar", {
         method: "POST",

@@ -95,14 +95,11 @@ vi.mock("./adapters/video/bilibili", () => ({
   bilibiliAdapter: { fetchRecentVideos: vi.fn(), resolvePlayUrl: bilibiliResolveMock },
 }));
 
-// 媒体操作整桩(下载走全局 fetch 桩保留「直链过期重拉」语义;即删/抽轨记录调用)。
+// 媒体操作整桩(下载走全局 fetch 桩保留「直链过期重拉」语义;即删/切片记录调用)。
 // 真实现的下载护栏/ffmpeg 参数由 lib/media 侧职责,不进本测试面。
 const mediaMock = vi.hoisted(() => ({
   makeInterpretTmpDir: vi.fn(async () => "/tmp/interpret-fake"),
-  tmpMediaPaths: vi.fn((dir: string) => ({
-    videoPath: `${dir}/video.mp4`,
-    audioPath: `${dir}/audio.mp3`,
-  })),
+  tmpMediaPaths: vi.fn((dir: string) => ({ videoPath: `${dir}/video.mp4` })),
   removeTmpDir: vi.fn(async () => undefined),
   downloadVideoToTmp: vi.fn(async (playUrl: string, destPath: string) => {
     const res = await fetch(playUrl);
@@ -110,7 +107,7 @@ const mediaMock = vi.hoisted(() => ({
     const buf = Buffer.from(await res.arrayBuffer());
     mediaMock.writeCalls.push([destPath, buf]);
   }),
-  extractAudioMp3: vi.fn(async () => undefined),
+  extractAudioSegments: vi.fn(async () => ["/tmp/interpret-fake/seg-000.mp3"]),
   readAudioFile: vi.fn(async () => Buffer.from("audio-bytes")),
   writeCalls: [] as Array<[string, Buffer]>,
 }));
@@ -176,6 +173,7 @@ beforeEach(() => {
   mediaMock.writeCalls.length = 0;
   mediaMock.removeTmpDir.mockResolvedValue(undefined);
   mediaMock.readAudioFile.mockResolvedValue(Buffer.from("audio-bytes"));
+  mediaMock.extractAudioSegments.mockResolvedValue(["/tmp/interpret-fake/seg-000.mp3"]);
   queueMock.add.mockResolvedValue(undefined);
 });
 
@@ -320,7 +318,60 @@ describe("interpretVideoJob 状态机", () => {
     );
     expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(1) },
-      data: expect.objectContaining({ aiStatus: "missing_transcript", lastAiError: "ASR 限流" }),
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("ASR 限流"),
+      }),
+    });
+  });
+
+  it("长视频分段转写(批⑦):多段按序拼接进 prompt,逐段独立吃重试预算", async () => {
+    stubDownload();
+    mediaMock.extractAudioSegments.mockResolvedValue([
+      "/tmp/interpret-fake/seg-000.mp3",
+      "/tmp/interpret-fake/seg-001.mp3",
+    ]);
+    transcribeMock.mockResolvedValueOnce("第一段内容").mockResolvedValueOnce("第二段内容");
+    const outcome = await interpretVideoJob(DATA);
+    expect(outcome).toMatchObject({ status: "done", transcriptUsed: true });
+    expect(transcribeMock).toHaveBeenCalledTimes(2);
+    expect(transcribeMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ filename: "seg-000.mp3" }),
+    );
+    expect(transcribeMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ filename: "seg-001.mp3" }),
+    );
+    expect(chatJsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.stringContaining("第一段内容\n第二段内容") }),
+      expect.any(Function),
+    );
+  });
+
+  it("分段转写任一段终败(批⑦)→ 整体降级 missing_transcript,半篇转写弃用", async () => {
+    stubDownload();
+    mediaMock.extractAudioSegments.mockResolvedValue([
+      "/tmp/interpret-fake/seg-000.mp3",
+      "/tmp/interpret-fake/seg-001.mp3",
+    ]);
+    transcribeMock.mockResolvedValueOnce("第一段内容").mockRejectedValue(new Error("ASR 限流"));
+    vi.useFakeTimers();
+    const pending = interpretVideoJob(DATA);
+    await vi.advanceTimersByTimeAsync(10_000); // 第 2 段 2 次 3s 重试间隔
+    const outcome = await pending;
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
+    expect(transcribeMock).toHaveBeenCalledTimes(4); // 段 1 成功 1 次 + 段 2 三连败
+    expect(chatJsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.not.stringContaining("视频转写全文") }),
+      expect.any(Function),
+    );
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("第 2/2 段"),
+      }),
     });
   });
 

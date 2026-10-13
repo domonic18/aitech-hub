@@ -178,7 +178,9 @@ export default function AgentDrawer(): React.ReactElement {
     if (id === threadIdRef.current) return;
     reportedThreadIdRef.current = id;
     setThreadId(id);
-    setTodos([]); // 计划条随会话切换重置(历史计划不恢复,见 arch/04 §3.2)
+    // 先清空再由 load 恢复该会话的历史计划(runtime-adapter 读 values.todos
+    // 走 onTodos 回写);清空防上一会话的计划残显
+    setTodos([]);
     setBanner(null);
   }, []);
 

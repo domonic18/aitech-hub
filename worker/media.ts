@@ -21,6 +21,19 @@ function thumbUrlOf(path: string): string {
 
 export async function processMediaJob(job: Job): Promise<{ id: string; status: string }> {
   const mediaId = BigInt(job.data.mediaId as string);
+  try {
+    return await runProcessMedia(mediaId);
+  } catch (err) {
+    // M27 批⑦:终败落 error(枚举死值启用)——不再永卡 processing(sha1 去重
+    // 命中该行只会「reused 却看不到图」);重传经 uploadMedia error 行重投自愈
+    await prisma.media
+      .update({ where: { id: mediaId }, data: { status: "error" satisfies MediaStatus } })
+      .catch(() => undefined);
+    throw err;
+  }
+}
+
+async function runProcessMedia(mediaId: bigint): Promise<{ id: string; status: string }> {
   const media = await prisma.media.findUnique({ where: { id: mediaId } });
   if (!media || media.deletedAt !== null) {
     return { id: mediaId.toString(), status: "skipped" };

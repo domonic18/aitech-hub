@@ -68,7 +68,11 @@ import {
 const ROW = {
   id: 1,
   title: "标题",
-  summary: "这是一段足够长的 RSS 摘要内容,超过八十字的阈值就不会触发原文抓取逻辑,直接用摘要提炼。",
+  // ≥80 字:纯 LLM 用例不得触发原文抓取(fetchArticleText 是真实 fetch,不 stub 时
+  // 会真连外网,网络不可达环境被 10s AbortSignal 兜底拖死整个用例)
+  summary:
+    "这是一段足够长的 RSS 摘要内容,超过八十字的阈值就不会触发原文抓取逻辑,直接用摘要提炼。" +
+    "补足段落:摘要提炼的全部输入都来自这里,不存在对原文外链的任何网络请求,单测保持零真网。",
   url: "https://example.com/a",
   aiStatus: null,
 };

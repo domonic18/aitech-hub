@@ -69,10 +69,13 @@ M25 发现候选/订阅博主新解读 ──┐
   - `status=draft`、`contentMd`(新文正文通道)、`contentOrigin=ai_assisted`(2026-10-05 合规标识既有枚举)
   - 分类默认落「产品评测」、标签带专题关键词(默认值留决策点 §10-4)
   - `topic.linkedPostId` 锚定 + `composedAt`;topic → drafted
-- **重合成**:v1 重合成直接覆盖草稿 `contentMd`/`title`/`excerpt`,但 linked 文档若 `updatedAt` 晚于 `composedAt`(人工编辑过)需二次确认——保护人工改动,交互文案明说(细节 §10-3)
+- **M27 批①/批②合成重构(1276 验收反馈,2026-10-13)**:文章形态钉死为「博主×视频」推荐短文(固定结构模板 STRUCTURE_SPEC 在代码内:钩子→博主是谁→视频讲了什么→值得看的理由→去看原视频「阅读原文」CTA;800~1200 字/短段落/要点加粗),专题定位降级为补充创作指令(建题表单预填 `DEFAULT_TOPIC_POSITIONING`);首视频封面转存入媒体库落 `post.coverPath`(站点头图+公众号大图+解锁公众号同步缺封面门,转存失败降级不阻塞合成),正文文首确定性注入「视频推荐卡」(~~纯文字引用卡,封面不重复进正文~~ **M27 批⑥推翻:卡升级带图**,见下条);封面生图(cover-generate)仍为可选增强
+- **M27 批⑥正文配图全链路(1276 验收反馈「重合成正文 0 图」,2026-10-13)**:供给→分配→消费→校验四环建链(arch/04 K2.8 补注二)——`transferVideoCovers` 全量转存视频封面;brief 的 materials[] 改输出站内 `cover_path`(替代外链 cover_url)+ `cover_transfer_failed` 失败清单,transfer_video_cover 重定位为重试/补传钮;文首推荐卡升级带图(首视频自己的封面,finalizeCompose 确定性自取,失败降级文字卡),提示层改写(正文直引 cover_path、生图放开为小节概念示意图、头图避让卡图、全文 2~4 张引导);防幻觉校验收窄 uploads-only(`/media/` 无服务路由是幻觉洞);正文图 lazy 加载。同批修 todo 计划条(agent 图显式挂 `todoListMiddleware()` + load 从 values.todos 恢复,deepagents 仅 Codex 档自带是断因)
+- **重合成**:v1 重合成直接覆盖草稿 `contentMd`/`title`/`excerpt`/`coverPath`,但 linked 文档若 `updatedAt` 晚于 `composedAt`(人工编辑过)需二次确认——保护人工改动,交互文案明说(细节 §10-3)
 - **封面**:可走既有 cover-generate(封面生图角色),非本管线必选步骤
 - **成本量级**:单次合成 ≈ 输入 N×2k 字 + 输出 2~3k 字,一篇一次,成本可忽略量级;入台账
 - **人工定稿**:M27 编辑器交付前用现有编辑器(MdEditor/Vditor)人工修订,发布链不受阻;M27 交付后对话式改稿 + diff 评审接管修订效率([editor-ai-plan.md](editor-ai-plan.md))
+- **M27 批⑤ agent 自主生产(退役固定管线,1276 验收反馈,2026-10-13)**:本段确定性合成链(compose 角色卡 → 单调用/四步管线 → compose 进度轮询路由)整体退役;编排权移交会话 agent(admin 身份档,细粒度四工具 `get_topic_brief`/`transfer_video_cover`/`generate_cover_candidates`/`save_topic_draft`,arch/04 K2.8 补注),模型按系统提示工作流自主规划执行,选题沟通走 ask_user。**保留并复用**:落稿锚定核 `finalizeCompose`(扩展 SEO/标签,undefined=不触碰防覆盖人工字段)、重合成保护 `needsRecomposeConfirm`、素材拼装 `buildComposeBlocks`、封面转存 `transferCoverOrNull`、视频推荐卡注入;STRUCTURE_SPEC 固定结构降格为系统提示写作指南。compose AI 角色槽退役(六→五,历史台账读侧回退原值)
 
 ## 6. 段④ 公众号推送(既有通道,零新工程)
 
@@ -122,8 +125,9 @@ model TopicItem {
 
 - `/admin/topics`:列表(状态分段 collecting/drafted/published)+ 新建;`/admin/topics/[id]` 详情三区——素材聚合视图(解读卡:标题/博主/笔记摘要/短结论/批注内联编辑 + 文章卡)、定位编辑、合成操作区(合成初稿/重合成/跳转文档)
 - 挂载交互:详情页内选挂(电报流按博主/时间筛选,仅列 `aiStatus=done`;文章按关键词搜);电报流治理台条目内「加入专题」入口 v1 不做(§10-5)
-- API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`(定位/状态)、`POST/DELETE /api/topics/[id]/items`、`POST /api/topics/[id]/compose`(入队/同步调,见下)。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参
-- **合成执行形态**:N 素材 × 笔记拼装 + 一次长输出,秒级到十几秒——v1 同步调用(Route Handler 内直调,15s 超时人话报错),**不进 BullMQ**(KISS:请求内禁秒级任务红线指秒级以上长任务,合成预期 ≤15s;若实测超限再改入队,契约已按 202 `{jobId}` 预留演进位)。电报流/文章列表页零改动
+- API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`、`POST/DELETE /api/topics/[id]/items`。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参。**M27 批⑤:`POST/GET /api/topics/[id]/compose` 随固定管线退役删除**(合成执行与进度可视性改由会话 agent 工具层承接,见下条)
+- ~~**合成执行形态(M27 批③ agent 化)**:BullMQ 异步四步管线……~~ **已随 M27 批⑤ 退役**(`QUEUE_TOPIC_COMPOSE`/processor/降级单调用一并移除;jobId 去重、轮询路由、409 防重等管线基建不复存在)
+- **合成 agent 交互(M27 批④ 建对话框化入口,批⑤ 换工具面)**:专题页「合成初稿/重合成」唤起侧边栏助手卡并注入合成任务文本(不变);admin 图工具面从单只 `compose_topic_draft`(管线轮询)换为细粒度四件 `get_topic_brief`/`transfer_video_cover`/`generate_cover_candidates`/`save_topic_draft`(arch/04 K2.8 补注),模型自主规划逐步执行、每只工具卡逐个出现提供过程可视性;选题不确定走 ask_user,重合成覆盖确认走 needConfirm → ask_user → confirm=true 回路;落稿由工具层 `finalizeCompose` 直接写库(worker 管线已退役);空素材按钮侧就地拦截保留(零真网防线)
 
 ## 9. e2e 与测试
 
@@ -159,12 +163,18 @@ model TopicItem {
 
 | 批 | 内容 | 出口 |
 |---|---|---|
-| 批① 数据层 | `topic`/`topic_item`/`telegram.ai_note` 迁移(create-only 评审 + 从零重放)+ Zod 状态/类型枚举与 repo 库 | 迁移评审过 |
-| 批② 解读笔记 | interpret job 二次调用产笔记(模板/重试 1 次/null 降级)+ 单测(拼装与降级纯函数) | `make check` |
-| 批③ 治理台 | `/admin/topics` 列表+详情三区 + 五路由 + 挂载/流转/批注;笔记 prompt 补时间纪律(年份/时间表述须取自材料,未提则写「近期」——m26b2 验收发现笔记自行搭「2024年」叙事框架,视频实为 2026-10) | 人工验收 + e2e 零真网 |
-| 批④ 合成 | compose 角色卡 + 合成编排(拼装→调用→落草稿→锚定)+ 重合成保护 + 编辑器衔接 | 本地真机一轮(含降级素材) |
-| 批⑤ 收口 | 文档收口(arch/02 §3.2 注记/arch/05 §4/arch/04 §4/本表)+ e2e 补齐 + PR 合 develop + 生产部署 + 公众号真推一稿 | 全流程真机走通 |
+| 批① 数据层 | `topic`/`topic_item`/`telegram.ai_note` 迁移(create-only 评审 + 从零重放)+ Zod 状态/类型枚举与 repo 库 | 迁移评审过 —— **已交付(PR #75)** |
+| 批② 解读笔记 | interpret job 二次调用产笔记(模板/重试 1 次/null 降级)+ 单测(拼装与降级纯函数) | `make check` —— **已交付(PR #75)** |
+| 批③ 治理台 | `/admin/topics` 列表+详情三区 + 五路由 + 挂载/流转/批注;笔记 prompt 补时间纪律(年份/时间表述须取自材料,未提则写「近期」——m26b2 验收发现笔记自行搭「2024年」叙事框架,视频实为 2026-10) | 人工验收 + e2e 零真网 —— **已交付(PR #75)** |
+| 批④ 合成 | compose 角色卡 + 合成编排(拼装→调用→落草稿→锚定)+ 重合成保护 + 编辑器衔接 | 本地真机一轮(含降级素材)—— 代码已交付(feature/topic-compose,4c8df48),**待真机验收** |
+| 批⑤ 收口 | 文档收口(arch/02 §3.2 注记/arch/05 §4/arch/04 §4/本表)—— **本次已落**;e2e 补齐(用例 34 合成防线)—— **已随批④ 交付**;PR 合 develop + 生产部署 + 公众号真推一稿 —— 待批④ 真机验收后执行 | 全流程真机走通 |
+| M27 批①/② 合成重构 | 「博主×视频」推荐体固定结构 + 预置提示词(DEFAULT_TOPIC_POSITIONING)+ 素材链路(视频链/封面)注入 + 首视频封面转存落 coverPath + 文首视频推荐卡(1276 验收反馈)—— **代码已交付(feature/editor-ai,33fb763/e020886)** | 本地真机验收 |
+| M27 批③ 合成 agent 化 | BullMQ 异步四步管线(角度择优→起草→自检→修订)+ 进度轮询 + 失败降级单调用(1276 验收反馈「agent 智能生产过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
+| M27 批④ 合成对话框化 | 专题页合成按钮唤起侧边栏 agent(compose_topic_draft admin 工具 + 身份档分发 + 工具卡四步进度实时滚动 + needConfirm→ask_user 回路)(1276 验收反馈「点击合成要有过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
+| M27 批⑤ agent 自主生产 | 退役固定管线(四步管线/processor/compose 路由/compose_topic_draft/轮询面板/compose AI 角色槽)+ admin 细粒度四工具(get_topic_brief/transfer_video_cover/generate_cover_candidates/save_topic_draft)+ 工作流提示重写(六步/修订路径/写作指南)+ 护栏按身份档(admin 30 次/150k tokens)+ 落稿核扩展 SEO/标签(undefined=不触碰)+ 防幻觉图片校验(1276 验收反馈「过程要可见、agent 要自主做很多事」)—— **代码已交付(feature/editor-ai)**,文档同步(arch/04 K2.8 补注/§4 五角色/本文件)—— **已落** | 本地真机验收(端到端一轮含修订对话) |
+| M27 批⑥ 正文配图全链路 + todo 计划条 | 供给(transferVideoCovers 全量转存)→ 分配(brief cover_path 富化 + transfer 重试钮)→ 消费(文首卡带图 + 提示层改写:直引 cover_path/生图概念示意图/头图避卡图/2~4 张引导)→ 校验(findNonSiteImageRefs 收窄 uploads-only)+ ArticleBody 图 lazy;todo 修复(图显式挂 todoListMiddleware + load 从 values.todos 恢复)(1276 验收反馈「正文 0 图/todo 不显示」)—— **代码已交付(feature/editor-ai)**,文档同步(arch/04 K2.8 补注二/本文件 §5)—— **已落** | 本地真机验收(brief cover_path 全 uploads + 正文图文混排 + 公众号草箱图全 mmbiz + 计划条显示) |
+| M27 批⑦ 验收反馈四项修复 | ①后台 FAB(admin/layout 挂 AssistantFab,侧边助手卡误关后可再呼);②长视频解读(流式下载 500MB/卡顿探测 + ffmpeg 5min 切片逐段转写按序拼接 + 转写注入 3 万字截断帽,arch/02 §3.2 批⑦ 注记);③写作质量与自评审(反套话/背景递进/原视频链接硬要求 + save 前强制自评审步,封顶 2 轮禁反复重写,arch/04 批⑦ 注记);④封面上传根治(mime 魔数嗅探裁决 + sha1 partial unique 迁移 20261013120000 + sharp 终败落 error 自愈 + 确定性 jobId 查态,arch/08 §3.4 批⑦ 注记)—— **代码已交付(feature/editor-ai),文档同步 —— **已落** | 真机验收(后台 FAB 呼出/长视频重解读成功/合成文背景递进带原链/封面重传不再重复报错) |
 
 **验收标准(预排)**:解读真机出笔记(新条有/存量 null);专题挂载→合成→人工定稿→发布→公众号草箱全链真机走通;素材降级拼装路径(全短结论专题)可合成;`make check` 全绿 + 迁移从零重放;零版权红线破坏(转写不落库断言不放松)。
 
-**状态:方案定稿(2026-10-12),待开发**——四问取向确认 + §10 决策记录九项落定(A/B 路线裁决含内);按 §12 五批推进。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)(M27,建议 M26 后启动)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。
+**状态:方案定稿(2026-10-12),已实施至 M27 批⑦**——M26 五批 + M27 批①~⑥(合成重构→agent 化→对话框化→自主生产→配图全链路)代码全部交付;合成链终态 = 会话 agent 自主编排(arch/04 K2.8 补注),后续 R③ 关键帧/HTML 截图、R④ 工具注册表化(MCP 扩展位)另行立项。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。

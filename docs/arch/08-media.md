@@ -86,6 +86,8 @@ worker:sharp 生成 WebP 副本(质量 80)+ 缩略图 640w(thumb_path)
 - 正文插入编辑器时优先引用 WebP 副本(原格式作为降级 `<picture>` source 由 ArticleBody 处理)
 - 旧迁移图片不做批量 WebP 重生成(正文 HTML 保真原则);后台提供可选的"重压缩"单条操作
 
+**落地注记(2026-10-13,M27 批⑦ 已交付;封面上传「传参错误/重复」根治)**:验收反馈三根因收口——(1) **mime 魔数嗅探裁决**:uploadMedia 不再信任响应头/调用方传参(此前 CDN content-type 缺省漂移、`image/jpg` 类传参错统一炸成 415),字节嗅探(`sniffImageMime`,jpg/png/webp/gif 四魔数)为唯一裁决,声明 mime 仅作展示提示;体积检查先于嗅探(超限 413 优先);(2) **sha1 并发竞态封堵**:去重原为「查后插」无约束,Promise.all 并发转存同封面时双双落空 → 同 ext 撞 path 唯一键报错/跨月双插成重复行。现以 **partial unique index `uq_content_media_sha1`(WHERE deleted_at IS NULL,迁移 20261013120000)** 封并发窗口——全列唯一与回收站语义互斥(merge 副本软删留 trash 7 天,同 sha1 双行合法共存),故 Prisma schema 不表达、约束落迁移 SQL(migrate diff 会视其为多余索引,同 checkpointer 外部表,部署纪律走 migrate deploy 不受影响);create 撞约束判负复用赢家行,判负侧落盘文件即焚(无行孤儿);历史竞态存量由迁移 SQL 手术(引用/封面改指最早行,副本软删入回收站,语义同 mergeDupeGroup);(3) **失败自愈**:sharp 管线终败落 `status=error`(§3.4 原设计,此前枚举死值无人写入、行永卡 processing 被 audit 跳过、去重复用恒「reused 却看不到图」),uploadMedia 命中 error 行重投管线自愈;`enqueueMediaProcess` 确定性 jobId 先查态——在途幂等返回、终态残留先 remove 再 add(防 BullMQ 静默丢弃)。去重 findFirst 加 orderBy id asc(历史重复组判定确定化)。
+
 ## 4. 纪律汇总
 
 - **请求内禁做秒级以上处理**:图片压缩进 BullMQ;视频根本不进服务器

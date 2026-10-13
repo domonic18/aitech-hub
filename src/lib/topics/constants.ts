@@ -28,6 +28,15 @@ export const TOPIC_ITEM_TYPE = ["telegram", "post"] as const;
 export type TopicItemType = (typeof TOPIC_ITEM_TYPE)[number];
 
 /**
+ * 新建专题定位预填(M27 批①合成重构,1276 验收反馈「不要每次现填」):
+ * 缺省角度=博主×视频推荐体;固定结构模板在 compose.ts 代码内,此处只做
+ * 用户可改的补充指令底稿(清空也合法——合成不依赖它)。
+ */
+export const DEFAULT_TOPIC_POSITIONING =
+  "围绕「这个博主值得关注意在什么、这支视频讲透了什么」来选材:" +
+  "优先带出视频里最反差或最具体的事实、数据与结论;口吻口语化,像懂行朋友安利,不写新闻通稿腔。";
+
+/**
  * 状态机(方案 §3/§10-7):collecting→drafted 仅由 compose 驱动;published 钩子
  * 回写;下架/解绑人工回退。publish 钩子允许 collecting→published(人工直接
  * 关联文章发布的旁路,不经合成)。

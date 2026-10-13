@@ -25,3 +25,21 @@ export function extractTodos(updates: unknown): AgentTodo[] {
   }
   return [];
 }
+
+/**
+ * 从图状态 values.todos(原始 unknown)提取 todos(M27 批⑥):load(state)返回
+ * 的 todos 是顶层键的裸数组(非 updates 帧的 {node:{todos}} 形态),白名单字段
+ * 过滤防脏数据入前端计画条。
+ */
+export function extractTodosFromValues(raw: unknown): AgentTodo[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as unknown[]).filter(
+    (t): t is AgentTodo =>
+      typeof t === "object" &&
+      t !== null &&
+      typeof (t as { content?: unknown }).content === "string" &&
+      ((t as { status?: unknown }).status === "pending" ||
+        (t as { status?: unknown }).status === "in_progress" ||
+        (t as { status?: unknown }).status === "completed"),
+  );
+}

@@ -71,7 +71,7 @@
 - **会话 30 天自动清退 + 用户可删(2026-10-07 用户拍板)**:行 `lastMessageAt` 超 30 天 worker 日清(STATS 队列 `purge-agent-session`,04:33 错峰)行+checkpoint 同删;用户删除走 DELETE 路由(归属校验 404 不泄露存在性,checkpoint 删失败不反噬)
 - **入口仅 /search 场景(2026-10-07 用户拍板;~~不做全局 FAB~~——**2026-10-09 M22 批④ 推翻,全站悬浮助手上线,见 K2.7 注记**)**:答案卡追问 chips(直发)+「继续深挖」按钮(仅预填)派发 `search:agent-ask` 事件唤起 Drawer
 - **身份**:匿名 cookie `ah_av`(uuid,365d,httpOnly)即 visitor,会话行与其绑定;换设备/清 cookie 失联,30 天清退兜底;三期登录后再议账号绑定
-- **模型绑定即时性**:agent 图进程级缓存按 `${resolved.id}:${resolved.source}` 键控,admin 改 search 绑定下一次 run 即生效(rebuild 落 `agent.graph_rebuilt` 日志);台账记独立角色 `search_agent`(与答案卡 `search` 的 100/日 互不侵占)
+- **模型绑定即时性**:agent 图进程级缓存按 `${resolved.id}:${resolved.source}` 键控(M27 批④ 起追身份档后缀 `:kind`,见 K2.8 注记),admin 改 search 绑定下一次 run 即生效(重建落 `agent.graph_built` 日志);台账记独立角色 `search_agent`(与答案卡 `search` 的 100/日 互不侵占)
 - **前端**:ai-invest 自绘件结构平移(`src/components/site/agent/` 七件),终端风 token 换装,不引 antd/zustand/react-query;threads 建删与 state 走自有 fetch(apiEnvelope);`runs.stream` K2.6 起亦为自有 fetch+SSE 解析(SDK AsyncCaller 对非 2xx reject Response 且包装 `new Error(response)`,apiEnvelope 人话/状态码全丢 → 429 配额/404 过期无法分流还会盲重试等待,用户实测 3 问后静默停止);程序化发送直写 `thread.append`(composer.setText 同 tick send 会静默 no-op);todos 提取零依赖模块 `lib/agent/todos` 客户端可安全引入;Drawer 左缘可拖拽调宽(420~920px 夹取,localStorage `agent.drawer.width` 记忆)
 
 **K2.6 实施注记(2026-10-07,第三迭代批①~④,游客模式 + 后台会话管理 + 工具面收紧)**:
@@ -94,6 +94,36 @@
 - **ask_user 结构化提问(HITL,2026-10-09 验收反馈)**:工具面第五只 `ask_user`(六工具口径)——工具体内裸调 langgraph `interrupt()` 暂停图(checkpointer 持久),`__interrupt__` updates 帧经 wire 原样透传,前端 `AgentInterruptCard`(问题 + 候选选项点选 + 自由文本)替换输入区(中断期间禁言,防新消息打到悬空 tool_call);回答经 `useLangGraphSendCommand` → POST `command.resume`(`{message,option?}`,resume run 以 `new Command({resume})` 作图输入,工具重放后以正常 ToolMessage 拿到答案继续)。**选型注记**:deepagents TS 版 HITL 中间件(`interruptOn`)的 reject 决策会把回复合成 `status:"error"` 的 ToolMessage(语义错),故不用;裸 interrupt 回传即成功结果,载荷形状收口 `src/lib/agent/hitl.ts`(零依赖前后端共用)。护栏口径:resume 不计游客 3 问/日(非新 ask)、不回填标题;IP 10 次/分与余额/50k 累计照计(真模型消耗)。**可靠性收口(2026-10-10,SasanAgent 范式)**:中断水合——刷新/切会话经 state 路由透出挂起中断(checkpointer getTuple pendingWrites 的 `__interrupt__` 通道防御性窄化),SDK load 契约 `interrupts` 字段恢复提问卡;悬空 tool_calls/孤儿 ToolMessage(中止打断工具节点、提问挂起后弃答、存量脏会话 → OpenAI 兼容端点 400)由 `tool_call_repair` 中间件模型调用前修复(wrapModelCall 请求副本改写,不落持久化,无脏数据零开销透传);并行 ask_user 由 `ask_user_guard` 单飞守卫拦截(只放行触发 AIMessage 按序第一个,其余拦「请合并」;state 异常 fail-closed,防 resume 批重执行答案错位)。
 - **dev 注意**:turbopack 下 langsmith 可选依赖 `ws` 缺失使 `/api/search/agent/*/runs/stream` 编译失败;分支切换触发全量重编译时该错误会全站化(所有路由 500),重启 dev server 即恢复按路由隔离(prod webpack standalone 不受影响,未加依赖)
 
+**K2.8 实施注记(2026-10-13,M27 批④,专题合成 agent 化——admin 工具档 + 对话框可视化执行,1276 验收反馈)**:
+
+- **工具面按身份分发(editor-ai 方案「graph 缓存键身份档」提前落地)**:`agentToolsFor/agentSystemPrompt(kind)` 纯函数收口(agent.ts)——guest/user 维持只读六件 + 基线提示;admin 追加第七只 `compose_topic_draft`(写库型工具只进 admin 图)与合成工作流提示段。图缓存键 `${resolved.id}:${resolved.source}:${kind}`(Map ≤6 FIFO;原单槽缓存在双档混访下会逐请求重建);工具体内再验会话行归属 `admin:` 前缀(纵深防御,fail-closed)
+- **compose_topic_draft(admin 会话)**:共享资格预检 `checkComposeEligibility`(自 POST 路由上提,路由与工具同一真相源:素材非空/重合成 needConfirm)→ `enqueueTopicCompose` 入队 → 工具体内轮询 `getTopicComposeState` 至终态(2.5s × 6min 上限,与专题页按钮同口径)。生产核仍是 worker 四步管线(可视化的是过程,确定性的是生产):关闭对话框/断连只影响对话流,BullMQ job 照常落库。needConfirm 语义 = 工具返回标记 → 模型经 ask_user 征确认 → confirm=true 重调(HITL 回路);未绑模型/409 进行中/素材空均人话回传由模型转述
+- **前端**:专题详情页「合成初稿/重合成」改为唤起 embedded AssistantCard(与编辑页 EditorAssistant 同形态)并注入带专题 id 的合成任务(nonce 机制);`ToolCallBlock` 对 compose 工具恒显过程面板 `ComposeToolProgress`(运行中轮询四步进度,终态摘要 + 跳转文档链接;历史回放按 result 直接渲染终态不轮询)。空素材在按钮侧就地拦截(零真网防线,e2e 34 同文);按钮侧旧轮询逻辑退役(POST /compose/ 路由保留:e2e 防线 + API 面)
+
+**K2.8 补注(2026-10-13,M27 批⑤,专题文章生产重构——编排权移交 agent,固定管线退役;1276 验收反馈「看不到过程/固定管线输出质量差」)**:
+
+- **退役清单**:批③ BullMQ 四步管线(compose-agent + QUEUE_TOPIC_COMPOSE + worker processor)、批④ compose_topic_draft 单工具 + ComposeToolProgress 轮询面板、POST/GET `/api/topics/[id]/compose/` 路由、「专题合成」AI purpose 绑定槽(六角色收五;历史台账 role=compose 行读侧回退原值展示)——生产模型绑定收敛到 search(Agent 搜索),封面生图仍走 cover
+- **admin 工具档换装细粒度四件**(`lib/agent/topic-tools.ts`;工具体内 `admin:` 会话校验沿用):`get_topic_brief`(专题定位 + 素材全集 + 关联文档现状 + 近期已发标题,分析底料)/ `transfer_video_cover`(首视频封面转存,B 站防盗链)/ `generate_cover_candidates`(复用 M14 cover-gen 管线,工具体内轮询 ≤120s 取多候选)/ `save_topic_draft`(落稿锚定核 finalizeCompose 扩 SEO/标签——undefined=不动/null=清空,防覆盖人工已改字段;正文图片防幻觉校验只认站内 `/wp-content/uploads/`、`/media/` 路径,编造外链直接拒)
+- **编排权在模型**:ADMIN_PROMPT_ADDENDUM 重写为工作流指令(write_todos 计划先行 → 读素材 → 选题(拿不准 ask_user)→ 写作 → 配图 → 落库 → 汇报 post_url;修订 = 重读素材直接改再 save,不重跑全流程);批① STRUCTURE_SPEC 固定结构降格为系统提示「写作指南」(五节推荐体保留为指南,图片引用从禁止放开为库内路径)。过程可视性 = 每只工具卡逐个出现(替代轮询面板),不依赖 todo 条(MiniMax write_todos 触发率已知风险)
+- **护栏按身份档**(`run.ts#AGENT_LIMITS`):guest/user 12 步 / 50k tokens / 递归 30 不变;admin 放宽 30 步 / 150k / 递归 60(细粒度多步生产天然多工具),stream 路由会话预检同档
+- **写核保留**:`topics/compose.ts` 收敛为确定性写核(素材块拼装 / 封面转存 / 落稿锚定 / 近期标题),文首视频推荐卡仍确定性注入;后补能力锚点:视频关键帧(douyin-gateway 侧)与 HTML→截图基建(R③,待立项)
+
+**K2.8 补注二(2026-10-13,M27 批⑥,正文配图全链路 + todo 计划条修复;1276 验收反馈「重合成正文 0 图 / 侧边栏 todo 不显示」)**:
+
+- **正文 0 图根因与链路**:批⑤ 分配面缺失(brief 给 B 站外链 cover_url 而 save 拒外链,模型「看得到用不上」,唯一合法通道只转存首条封面)+ 提示层「无合适图不硬插」双杀 + 批② 文首卡纯文字口径。正解是建链路不打 patch:任何进正文的图片路径必来自 uploadMedia(盘上必有文件、sha1 去重幂等)→ 公众号 transloadContentImages 天然转 mmbiz,同步失败面不扩大。四环:**供给** `transferVideoCovers`(compose.ts)全量转存视频封面,brief / transfer_video_cover / finalize 卡图三方共用;**分配** get_topic_brief 现场转存,materials[] 输出站内 `cover_path`(替代外链 cover_url)+ 顶层 `cover_transfer_failed` 失败清单,transfer_video_cover 重定位为重试/补传钮(返回 covers/failed 全量清单);**消费** 文首推荐卡升级带图(首视频自己的封面,图上文下 blockquote;finalizeCompose 确定性自取不依赖模型传参,失败降级文字卡),提示层同步改写(正文直引 cover_path、生图放开为小节概念示意图、头图避让卡图、全文 2~4 张引导、无合适图不硬插);**校验** `findNonSiteImageRefs` 收窄 uploads-only(`isUploadsPath`——`/media/` 无服务路由是幻觉洞;`isSiteMediaPath`/`extractMediaRefs` 引用追踪口径不变),save 的 cover_path 入参同口径。降级三级一致:单素材失败→null+失败清单,卡图失败→文字卡,均不阻塞落稿;ArticleBody 正文图 lazy 加载
+- **todo 计划条修复**:deepagents 1.14.2 仅给 Codex harness 档自动挂 todoListMiddleware,自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带 → write_todos 从未存在于图中(系统提示「计划先行」是无工具可调的空话,侧边栏计划条恒空)。修复 = agent 图显式挂 `todoListMiddleware()`(langchain 导出;guest/user/admin 全身份档) + load 恢复:runtime-adapter 从 state 顶层 `values.todos` 白名单过滤后经 onTodos 回写(切会话先清空防残显;`extractTodos` 只认 updates 帧形态,顶层值用 `extractTodosFromValues`),arch/04 §3.1「执行计划条」自此名实相符
+- R③(关键帧/HTML 截图)维持原排期,悬于版权口径裁决
+
+**K2.8 补注三(2026-10-13,M27 批⑦,验收反馈四项修复之二/之三)**:(1) **后台 AI 助手 FAB**——AssistantFab 挂进 admin/layout(此前仅 (site)/layout,专题/编辑页侧边助手卡误关后无路可回);admin 会话经 /api/search/agent 解析 admin 身份档(生产四工具在位),SSR 恒 null 免水合不一致。(2) **写作质量与自评审闭环**——ADMIN_PROMPT_ADDENDUM 重写:写作指南反模板腔(钩子 ≤80 字禁「随着…的快速发展」式开场、背景与来龙去脉节、要点递进禁平行罗列、禁「总而言之」类套话、具体数字/句式交错);「去看原视频」小节硬要求给 video_url 行内链接(公众号渲染器外链转角标+文末 References,wechat-safe;「阅读原文」指向站内文章,正文带原链是公众号读者抵达视频的唯一通路);第 5 步新增**强制自评审**(不可跳过:挑剔读者视角逐项检查开头钩子/背景完整性/要点逻辑/原链在位/配图合理并直接改写;**轮数封顶 2**——第 1 轮通读改写,仅硬伤才第 2 轮,2 轮后必须进 save,防无限重写烧 token),save 后汇报须说明自评审改动。
+
+**K2.8 补注四(2026-10-13,M27 批⑧-a/b/c/d,编辑页改稿闭环 + 会话侧栏常驻化;方案 v2 锚 editor-ai-plan §2「提案不落笔」/§4 上下文注入/§6 工具面/§7 评审面)**:
+
+- **会话侧栏常驻化(⑧-a)**:AssistantCard member 身份左栏 176px 常驻(AgentSidebar 平移 Drawer 件,新建/切换/删除全量在位),窄屏(<640px)退化为覆盖式面板(头部汉堡钮唤起);游客无列表语义单列不变。会话刷新即时(GET 无害),受控 threadId 回写仍守「运行中暂缓、run 收尾对账」纪律(闪断根因不变量)
+- **页面上下文注入链(⑧-b)**:纯函数 `buildAgentPageContext`(run-context.ts,pathname → 页面语义路由枚举)在 AssistantCard 发送瞬间取 `getContext()`(零订阅、ref 快照,引用稳定防 adapter 重建)→ runtime-adapter stream body 带 `context`(仅 input 分支,resume 跳过——checkpoint 历史已持久化注入)→ stream route 宽松解析(garbage context 不 400)+ `sanitizeAgentRunContext` 按 identity 收敛(**非 admin 剥 edit 段**,fail-safe)→ HumanMessage 前缀 `[页面上下文] {json}`。edit 段仅 `{postId,title}` 上行,getContent/onApplyContent 函数型 props 不过 wire
+- **admin 工具面扩至 12(⑧-b/⑧-c)**:base 6 + `read_draft`(adminThreadDeny 会话级守卫 + status≠deleted 过滤 + TOOL_BODY_MAX 截断)+ `propose_edits` + topic 4。纵深防御:工具体内 `assertAdminThread`(searchAgentSession visitorId `admin:` 前缀)二次校验;ADMIN_PROMPT_ADDENDUM 增「文章编辑上下文/改稿纪律」两节(oldString 逐字符复制且全文唯一、提案不落笔、严禁被接受前声称已修改、unavailable 引导回编辑页、连续提案至多两轮)
+- **propose_edits HITL 链路(⑧-c)**:bare `interrupt()` 双模(edits ≤20 块 S/R,old/new 各 ≤8000;rewrite ≤50000 整档;zod XOR 校验)→ 前台按 interrupt value.kind 分发:有评审接线(embedded + 函数型 props)走评审模态,否则降级卡(ProposeUnavailableCard 自动 resume unavailable,零服务端状态);resume 四态 applied/partial/rejected/unavailable。ask-user-guard 泛化改名 **interrupt_guard**(INTERRUPT_TOOLS = ask_user ∪ propose_edits,judgeInterruptFlight 反向扫描首触发 AIMessage,同类单飞防并行中断 resume 错投);stream resume union 按 kind 判别(kind 省缺 ask_user 向后兼容)
+- **diff 评审面(⑧-d)**:proposal-apply.ts 纯函数定位/合并——精确唯一命中(exact)→ 多处命中歧义直判 miss(不走模糊兜底)→ dmp match_main 模糊兜底(相似度 ≥0.6 才收,fuzzy)→ miss 不阻塞其他块;merge 按起点正序、区间重叠丢弃后者。ProposeReviewCard 全屏模态(overlay 即评审互斥,免编辑器 readOnly 接线):逐块 dmp diff 视图 + 接受/放弃 toggle + 应用所选(经 editContext.onApplyContent 写回编辑器 setContentMd → 既有自动保存链落库)+ 拒绝;rewrite 档 @codemirror/merge 只读对照。undo 口径降级:写回同 shadow restore 路径,undo 历史自写回点重启,真机验证遗留批⑨
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
@@ -106,7 +136,7 @@
 
 所有 LLM/ASR 生产任务(电报解读 / 文字摘要 / Agent 搜索 / 封面生图)共用的治理后台;原型 [admin-models](../prototypes/admin-models.html) / [admin-usage](../prototypes/admin-usage.html) / [admin-sessions](../prototypes/admin-sessions.html):
 
-- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图四角色槽的主力与备用);测试连通性入口
+- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图/向量嵌入五角色槽的主力与备用——M8 四角色起步,M20 增嵌入、M26 增专题合成(该槽已随 M27 批⑤ 退役,合成走 Agent 搜索绑定));测试连通性入口
 - **用量统计(admin-usage)**:近 7/30/90 天 tokens 与估算费用 / ASR 时长 / 降级次数 KPI,日消耗趋势、按任务与按模型分布、按任务明细(含 CSS sparkline)——数据源为调用日志聚合,与成本护栏(arch/02 §3.2)共用口径
 - **会话管理(admin-sessions)**:按任务类型/状态/触发/日期筛选调用记录;详情抽屉展示入参出参 JSON 与垂直执行时间线(listing→下载→抽轨→ASR→LLM 解读→入库→转写即删,节点带耗时),失败记录可重跑
 

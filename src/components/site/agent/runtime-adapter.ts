@@ -18,7 +18,7 @@ import type {
 } from "@assistant-ui/react-langgraph";
 
 import { createSseEventReader } from "@/lib/agent/sse";
-import { extractTodos, type AgentTodo } from "@/lib/agent/todos";
+import { extractTodos, extractTodosFromValues, type AgentTodo } from "@/lib/agent/todos";
 
 const API_BASE = "/api/search/agent";
 
@@ -91,6 +91,9 @@ export interface AgentRuntimeAdapterOptions {
   /** run 起止上报(stream 生成器进出;宿主运行中暂缓受控 threadId 回写,
    * 防 SDK 受控切换 abort 在跑的 run——2026-10-09 FAB 首条消息闪断根因) */
   onRunActiveChange?: (active: boolean) => void;
+  /** 发送瞬间取页面上下文(M27 批⑧-b,ai-invest page_context 纪律:纯
+   * getter 零订阅,本模块不感知 React;返回值经服务端宽松解析,坏值弃用) */
+  getContext?: () => unknown;
 }
 
 /** 后端 404 话术(身份路由统一);命中即走自愈而非当普通错误挂横幅 */
@@ -147,9 +150,14 @@ export function createAgentRuntimeAdapter(
     load: async (externalId: string) => {
       try {
         const { values, interrupts } = await apiJson<{
-          values: { messages?: unknown[] };
+          values: { messages?: unknown[]; todos?: unknown };
           interrupts?: LangGraphInterruptState[];
         }>(`${API_BASE}/threads/${externalId}/state`);
+        // 历史计划恢复(M27 批⑥):todoListMiddleware 存 state.todos(顶层值,
+        // 非 updates 帧),extractTodos 只认帧形态故这里直接读;空数组不上抛,
+        // Drawer 维持既有清空语义
+        const todos = extractTodosFromValues(values.todos);
+        if (todos.length > 0) options.onTodos?.(todos);
         return {
           messages: (values.messages ?? []) as LangChainMessage[],
           // 刷新/切会话恢复 ask_user 提问卡(SDK reconcileInterrupt;无中断
@@ -176,6 +184,8 @@ export function createAgentRuntimeAdapter(
             body: JSON.stringify({
               input: messages.length ? { messages } : null,
               ...(config.command ? { command: config.command } : {}),
+              // 新提问才附上下文(resume 服务端不注入;checkpoint 历史已含)
+              ...(messages.length && options.getContext ? { context: options.getContext() } : {}),
             }),
             signal: config.abortSignal,
           });

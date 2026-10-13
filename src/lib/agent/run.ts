@@ -15,17 +15,29 @@ import type { ResolvedAiModel } from "../ai/resolver";
 
 import { getAgentGraph } from "./agent";
 import { GUEST_THREAD_PREFIX } from "./guest-threads";
+import type { AgentIdentity } from "./identity";
+import type { AgentRunContext } from "./run-context";
+import { withAgentContext } from "./run-context";
 import { touchSessionAfterRun } from "./sessions";
 import { encodeWireEvent, encodeWireMessage } from "./wire";
 
 // todos 提取在零依赖模块(前端计划条共用,客户端 bundle 不经此文件拉 deepagents)
 export { extractTodos, type AgentTodo } from "./todos";
 
-/** 单会话护栏:工具调用次数 / 累计 tokens(arch/04 §3.4 定稿 ≤12 步/≤50k) */
-export const AGENT_MAX_TOOL_CALLS = 12;
-export const AGENT_MAX_TOKENS = 50_000;
-/** recursionLimit 硬兜底(护栏超限主动断,此值防 prompt 失控兜底) */
-export const AGENT_RECURSION_LIMIT = 30;
+/**
+ * 单会话护栏按身份分档(arch/04 §3.4):guest/user 维持 ≤12 步/≤50k;admin 档
+ * 放宽(M27 批⑤:专题文章生产是多步自主编排——素材分析/选题/写作/配图/落库,
+ * 细粒度工具 + 富上下文天然多步)。recursionLimit 为硬兜底(护栏超限主动断,
+ * 此值防 prompt 失控兜底)。
+ */
+export const AGENT_LIMITS: Record<
+  AgentIdentity["kind"],
+  { toolCalls: number; tokens: number; recursion: number }
+> = {
+  guest: { toolCalls: 12, tokens: 50_000, recursion: 30 },
+  user: { toolCalls: 12, tokens: 50_000, recursion: 30 },
+  admin: { toolCalls: 30, tokens: 150_000, recursion: 60 },
+};
 
 /** 从 updates 载荷收集已完成工具调用 id(tool 消息的 tool_call_id,与 chunk 侧同集去重) */
 function collectToolCallIds(updates: unknown, into: Set<string>): void {
@@ -46,6 +58,11 @@ export interface AgentRunParams {
   message: string | null;
   /** HITL 恢复值(ask_user 提问卡回答;经 Command({resume}) 灌回中断的工具) */
   resume?: unknown;
+  /** 页面上下文(M27 批⑧-b,路由层已按身份 sanitize):仅新提问注入 human
+   * 消息前缀;resume 分支不注入——中断上下文已持久在 checkpoint 历史里 */
+  context?: AgentRunContext | null;
+  /** 身份档(决定工具面与护栏档——admin 图才有专题生产四件工具) */
+  identityKind: AgentIdentity["kind"];
   signal: AbortSignal;
   /** 流帧出口(路由侧只管 encode 后下发) */
   onFrame: (frame: string) => void;
@@ -72,8 +89,9 @@ interface UsageMeta {
  * 收尾);帧序列 metadata → (messages|updates)* → end。
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
-  const { threadId, message, resume, signal, onFrame } = params;
-  const { graph, resolved } = await getAgentGraph();
+  const { threadId, message, resume, identityKind, signal, onFrame, context } = params;
+  const { graph, resolved } = await getAgentGraph(identityKind);
+  const limits = AGENT_LIMITS[identityKind];
   const runId = crypto.randomUUID();
 
   const outcome: AgentRunOutcome = {
@@ -88,15 +106,16 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
   onFrame(encodeWireEvent("metadata", { run_id: runId, thread_id: threadId }));
 
   // resume 分支(HITL):Command 作图输入,中断的 ask_user 工具重放并拿到回
-  // 答继续;正常分支注入单条 human 消息。streamMode/护栏两分支一致。
+  // 答继续;正常分支注入单条 human 消息(有页面上下文时加 [页面上下文] 前缀,
+  // ai-invest _with_page_context 同款)。streamMode/护栏两分支一致。
   const input =
     resume !== undefined
       ? new Command({ resume })
-      : { messages: [new HumanMessage(message ?? "")] };
+      : { messages: [new HumanMessage(withAgentContext(message ?? "", context ?? null))] };
   const stream = await graph.stream(input, {
     configurable: { thread_id: threadId },
     streamMode: ["messages", "updates"] as ["messages", "updates"],
-    recursionLimit: AGENT_RECURSION_LIMIT,
+    recursionLimit: limits.recursion,
     signal,
   });
 
@@ -115,13 +134,12 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
         if (tc.id) seenToolCallIds.add(tc.id);
       }
       outcome.toolCalls = seenToolCallIds.size;
-      // 会话累计超 50k / 工具调用超 12 次:主动收束(护栏非计费;检在发前,
-      // 超限帧不外泄)
-      if (outcome.tokensIn + outcome.tokensOut > AGENT_MAX_TOKENS) {
+      // 超身份档 tokens / 工具调用上限:主动收束(护栏非计费;检在发前,超限帧不外泄)
+      if (outcome.tokensIn + outcome.tokensOut > limits.tokens) {
         outcome.truncatedReason = "本会话用量已达上限,请新建会话继续";
         break;
       }
-      if (outcome.toolCalls > AGENT_MAX_TOOL_CALLS) {
+      if (outcome.toolCalls > limits.toolCalls) {
         outcome.truncatedReason = "本条回复的工具调用已达上限,已主动收束";
         break;
       }

@@ -42,9 +42,10 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   }
 
   try {
-    const { slug } = await updatePost(guard.id, parsed.data);
+    const { slug, updatedAt } = await updatePost(guard.id, parsed.data);
     logger.info({ event: "post.update", id: guard.id.toString(), slug });
-    return apiEnvelope(0, "ok", { slug });
+    // updatedAt 随回:M27 批① 自动保存以此为下一次乐观锁基准(写读链条闭环)
+    return apiEnvelope(0, "ok", { slug, updatedAt });
   } catch (e) {
     return postErrorResponse(e);
   }

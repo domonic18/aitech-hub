@@ -19,7 +19,9 @@ export const AI_PURPOSE_SUMMARIZE = "summarize";
 export const AI_PURPOSE_SEARCH = "search";
 export const AI_PURPOSE_COVER = "cover";
 export const AI_PURPOSE_EMBEDDING = "embedding";
-/** 模型用途 = 任务角色(五角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化) */
+/** 模型用途 = 任务角色(五角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化)。
+ * compose(专题合成)已退役(M27 批⑤):合成改走会话 agent(search 绑定),
+ * 历史台账 role=compose 行保留读侧回退原值展示 */
 export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SUMMARIZE,

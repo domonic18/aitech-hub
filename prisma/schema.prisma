@@ -100,7 +100,7 @@ model Media {
   height          Int?
   durationSeconds Int?     @map("duration_seconds") // 视频用;图片 NULL
   thumbPath       String?  @map("thumb_path") @db.VarChar(500)
-  sha1            String?  @db.Char(40) // 重复检测与去重
+  sha1            String?  @db.Char(40) // 重复检测与去重;未软删行唯一约束 uq_content_media_sha1(批⑦ partial unique,Prisma 不表达,见迁移 20261013120000——全列唯一与回收站软删留档语义互斥)
   storage         String   @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
   wpAttachmentId  BigInt?  @map("wp_attachment_id")
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6) // 软删回收站:7 天后 audit 任务物理删除(arch/08-media §3.2)

@@ -9,6 +9,7 @@ import {
   formatBytes,
   parseKind,
   parseRefFilter,
+  sniffImageMime,
 } from "./media-schema";
 
 describe("parseKind / parseRefFilter(RSC 入参兜底)", () => {
@@ -79,5 +80,27 @@ describe("白名单常量(arch/08 §3.4)", () => {
     expect(IMAGE_MIME_WHITELIST).toEqual(["image/jpeg", "image/png", "image/webp", "image/gif"]);
     expect(MEDIA_LIMITS.maxUploadBytes).toBe(10 * 1024 * 1024);
     expect(MEDIA_LIMITS.trashDays).toBe(7);
+  });
+});
+
+describe("sniffImageMime(魔数嗅探裁决,批⑦ 传参错误根治)", () => {
+  it("四类白名单格式按字节识别,声明 mime 不参与裁决", () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+    const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+    expect(sniffImageMime(jpeg)).toBe("image/jpeg");
+    expect(sniffImageMime(png)).toBe("image/png");
+    expect(sniffImageMime(webp)).toBe("image/webp");
+    expect(sniffImageMime(gif)).toBe("image/gif");
+  });
+
+  it("垃圾字节/截断魔数/空字节返回 null(调用方拒收)", () => {
+    expect(sniffImageMime(new Uint8Array([0x3c, 0x73, 0x76, 0x67]))).toBeNull(); // <svg 文本
+    expect(sniffImageMime(new Uint8Array([0xff, 0xd8]))).toBeNull(); // jpeg 魔数截断
+    expect(
+      sniffImageMime(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x41, 0x56, 0x49, 0x53])),
+    ).toBeNull(); // RIFF-AVIS 非 webp
+    expect(sniffImageMime(new Uint8Array())).toBeNull();
   });
 });

@@ -3,6 +3,8 @@
  * 会话侧栏(K2.5,arch/04 §3.1「线程列表 今/昨/更早 + 新建」;平移 ai-invest,
  * Date 原生不引 dayjs)。删除为两步确认(3s 未点确认自动复位),站内无 antd
  * Popconfirm。空态引导唤起式深挖。分组逻辑在 session-groups(纯函数可测)。
+ * M27 批⑧-a:补搜索框(纯前端标题过滤,对照 ai-invest AssistantSidebar;
+ * 列表 ≤100 条全量在客户端,不新增服务端面)。
  */
 import { useEffect, useMemo, useState } from "react";
 
@@ -38,7 +40,14 @@ export default function AgentSidebar({
   onSwitchThread,
   onDeleteThread,
 }: AgentSidebarProps): React.ReactElement {
-  const grouped = useMemo(() => groupSessions(sessions), [sessions]);
+  const [keyword, setKeyword] = useState("");
+  // 搜索:标题 contains(大小写不敏感);空词即全量。列表上限 100 条,纯前端足够
+  const filtered = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (kw === "") return sessions;
+    return sessions.filter((s) => (s.title ?? "").toLowerCase().includes(kw));
+  }, [sessions, keyword]);
+  const grouped = useMemo(() => groupSessions(filtered), [filtered]);
   // 两步删除确认:armedId 为待确认项;3s 未确认自动复位(无全局监听,纯定时)
   const [armedId, setArmedId] = useState<string | null>(null);
   useEffect(() => {
@@ -60,6 +69,14 @@ export default function AgentSidebar({
           </svg>
           新会话
         </button>
+        <input
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="搜索会话"
+          aria-label="搜索会话"
+          maxLength={50}
+          className="mt-2 w-full rounded-md border border-line bg-transparent px-2 py-1 text-xs text-text-1 placeholder:text-text-3 focus:border-accent/50 focus:outline-none"
+        />
       </div>
       <div className="flex-1 overflow-y-auto px-1.5 pb-3">
         {isLoading ? (
@@ -70,6 +87,8 @@ export default function AgentSidebar({
             <br />
             从答案卡「继续深挖」唤起
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-3 py-8 text-center font-mono text-xs text-text-3">无匹配会话</div>
         ) : (
           SECTION_TITLES.map(({ key, label }) =>
             grouped[key].length > 0 ? (
