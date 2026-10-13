@@ -69,7 +69,8 @@ M25 发现候选/订阅博主新解读 ──┐
   - `status=draft`、`contentMd`(新文正文通道)、`contentOrigin=ai_assisted`(2026-10-05 合规标识既有枚举)
   - 分类默认落「产品评测」、标签带专题关键词(默认值留决策点 §10-4)
   - `topic.linkedPostId` 锚定 + `composedAt`;topic → drafted
-- **重合成**:v1 重合成直接覆盖草稿 `contentMd`/`title`/`excerpt`,但 linked 文档若 `updatedAt` 晚于 `composedAt`(人工编辑过)需二次确认——保护人工改动,交互文案明说(细节 §10-3)
+- **M27 批①/批②合成重构(1276 验收反馈,2026-10-13)**:文章形态钉死为「博主×视频」推荐短文(固定结构模板 STRUCTURE_SPEC 在代码内:钩子→博主是谁→视频讲了什么→值得看的理由→去看原视频「阅读原文」CTA;800~1200 字/短段落/要点加粗),专题定位降级为补充创作指令(建题表单预填 `DEFAULT_TOPIC_POSITIONING`);首视频封面转存入媒体库落 `post.coverPath`(站点头图+公众号大图+解锁公众号同步缺封面门,转存失败降级不阻塞合成),正文文首确定性注入「视频推荐卡」(纯文字引用卡,封面不重复进正文);封面生图(cover-generate)仍为可选增强
+- **重合成**:v1 重合成直接覆盖草稿 `contentMd`/`title`/`excerpt`/`coverPath`,但 linked 文档若 `updatedAt` 晚于 `composedAt`(人工编辑过)需二次确认——保护人工改动,交互文案明说(细节 §10-3)
 - **封面**:可走既有 cover-generate(封面生图角色),非本管线必选步骤
 - **成本量级**:单次合成 ≈ 输入 N×2k 字 + 输出 2~3k 字,一篇一次,成本可忽略量级;入台账
 - **人工定稿**:M27 编辑器交付前用现有编辑器(MdEditor/Vditor)人工修订,发布链不受阻;M27 交付后对话式改稿 + diff 评审接管修订效率([editor-ai-plan.md](editor-ai-plan.md))

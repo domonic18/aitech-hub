@@ -69,6 +69,7 @@ export async function POST(
       postId: outcome.postId.toString(),
       postTitle: outcome.postTitle,
       recomposed: outcome.recomposed,
+      coverPath: outcome.coverPath,
     });
   } catch (e) {
     if (e instanceof AiAdminError) return apiEnvelope(aiErrorStatus(e.code), e.message);

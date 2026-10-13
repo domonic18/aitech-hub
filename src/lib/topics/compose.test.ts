@@ -8,14 +8,14 @@ import type { Topic, TopicItem } from "@prisma/client";
 
 vi.mock("../ai/resolver", () => ({ resolveAiModel: async () => null }));
 
-import { composeTopicDraft } from "./compose";
+import { composeTopicDraft, needsRecomposeConfirm } from "./compose";
 import {
   buildComposePrompt,
   buildMaterialSection,
-  needsRecomposeConfirm,
+  buildVideoCard,
   parseComposeResult,
   type ComposeMaterialBlock,
-} from "./compose";
+} from "./compose-prompt";
 
 function tgBlock(partial: Partial<ComposeMaterialBlock>): ComposeMaterialBlock {
   return {
@@ -91,6 +91,41 @@ describe("buildMaterialSection(素材拼装)", () => {
 
   it("空素材返回空串", () => {
     expect(buildMaterialSection([])).toBe("");
+  });
+});
+
+describe("buildVideoCard(文首推荐卡,M27 批②)", () => {
+  it("取首条视频素材拼卡;博主缺失兜底「未知」", () => {
+    const card = buildVideoCard([
+      tgBlock({ title: "端侧实测" }),
+      tgBlock({ title: "第二条不该被取到" }),
+    ]);
+    expect(card).toContain("《端侧实测》");
+    expect(card).toContain("UP主:UP主A");
+    expect(card).toContain("阅读原文");
+    expect(card).not.toContain("第二条");
+  });
+
+  it("博主为 null 兜底;纯文章素材返回 null 不注入", () => {
+    expect(buildVideoCard([tgBlock({ blogger: null })])).toContain("UP主:未知");
+    expect(
+      buildVideoCard([
+        {
+          kind: "post",
+          title: "旧文",
+          blogger: null,
+          note: null,
+          aiNote: null,
+          aiSummary: null,
+          aiPoints: [],
+          videoUrl: null,
+          coverUrl: null,
+          excerpt: null,
+          contentSample: null,
+        },
+      ]),
+    ).toBeNull();
+    expect(buildVideoCard([])).toBeNull();
   });
 });
 
@@ -200,11 +235,13 @@ describe("buildComposePrompt(输入拼装)", () => {
     expect(p.user).toContain("面向开发者,口语化");
     expect(p.user).toContain("【素材1·视频】《A》");
     expect(p.user).toContain("- 已发文一");
-    // M27 批①合成重构:推荐体固定结构 + 字数硬约束 + 阅读原文 CTA 钉在 system
+    // M27 批①合成重构:推荐体固定结构 + 字数硬约束 + 阅读原文 CTA 钉在 system;
+    // 批②排版纪律:封面/推荐卡由系统注入,禁止 LLM 自造图片语法
     expect(p.system).toContain("推荐短文");
     expect(p.system).toContain("800~1200 字");
     expect(p.system).toContain("阅读原文");
     expect(p.system).toContain("## 视频讲了什么");
+    expect(p.system).toContain("禁止使用图片语法");
     const noPos = buildComposePrompt({
       topicTitle: "t",
       positioning: null,

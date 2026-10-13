@@ -14,7 +14,12 @@ import type { ApiEnvelope } from "@/lib/http/response";
 interface ComposeResponse {
   code: number;
   message: string;
-  data?: { postId?: string; recomposed?: boolean; needConfirm?: boolean };
+  data?: {
+    postId?: string;
+    recomposed?: boolean;
+    needConfirm?: boolean;
+    coverPath?: string | null;
+  };
 }
 
 export default function TopicComposeActions({
@@ -63,7 +68,9 @@ export default function TopicComposeActions({
         return;
       }
       if (r.data?.postId) setPostId(r.data.postId);
-      setMsg({ tone: "ok", text: r.message });
+      // 批②:封面转存成功才提示(null=无视频素材或转存降级,可后补不阻塞)
+      const coverHint = r.data?.coverPath ? ";视频封面已转存为文章头图" : "";
+      setMsg({ tone: "ok", text: r.message + coverHint });
       router.refresh();
     } catch {
       setMsg({ tone: "err", text: "网络异常,请重试" });
