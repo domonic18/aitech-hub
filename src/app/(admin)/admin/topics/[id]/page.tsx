@@ -1,8 +1,9 @@
 /**
- * 专题详情(M26 批③,方案 §8 详情三区的前两区;合成操作区随批④落):
- * ① 定位区(标题/定位/关联文章 + 人工状态流转);② 素材区(电报卡:标题/
- * 博主/短结论/解读笔记全文/批注内联编辑;文章卡)+ 页内挂载选料(searchParams
- * 驱动服务端渲染:电报仅 aiStatus=done,文章按标题搜)。数据服务端直取 repo。
+ * 专题详情(M26 批③④,方案 §8 详情三区):① 定位区(标题/定位/关联文章 +
+ * 人工状态流转);② 素材区(电报卡:标题/博主/短结论/解读笔记全文/批注内联
+ * 编辑;文章卡)+ 页内挂载选料(searchParams 驱动服务端渲染:电报仅
+ * aiStatus=done,文章按标题搜);③ 合成操作区(合成初稿/重合成/跳转文档,
+ * 重合成保护预判提示)。数据服务端直取 repo。
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,8 +11,10 @@ import { notFound } from "next/navigation";
 import { parsePage } from "@/lib/admin/list";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
+import { needsRecomposeConfirm } from "@/lib/topics/compose";
 import { MOUNT_PAGE_SIZE, type TopicItemMaterial } from "@/lib/topics/repo";
 import {
+  getLinkedPostState,
   getTopic,
   hydrateItems,
   listPostCandidates,
@@ -19,6 +22,7 @@ import {
 } from "@/lib/topics/repo";
 
 import AdminPagination from "@/components/admin/AdminPagination";
+import TopicComposeActions from "@/components/admin/topics/TopicComposeActions";
 import TopicItemActions from "@/components/admin/topics/TopicItemActions";
 import TopicMetaPanel from "@/components/admin/topics/TopicMetaPanel";
 import TopicMountButton from "@/components/admin/topics/TopicMountButton";
@@ -140,6 +144,7 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
   const topic = await getTopic(BigInt(id)).catch(() => null);
   if (!topic) notFound();
   const materials = await hydrateItems(topic.items);
+  const linkedPost = topic.linkedPostId ? await getLinkedPostState(topic.linkedPostId) : null;
 
   const sp = await searchParams;
   const tab = sp.mount === "post" ? "post" : "telegram";
@@ -172,6 +177,15 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
         {topic.composedAt && ` · 最近合成 ${formatCnDateTime(topic.composedAt)}`}
         {topic.publishedAt && ` · 关联文章发布 ${formatCnDateTime(topic.publishedAt)}`}
       </div>
+
+      {/* ③ 合成操作区(批④:重合成保护在服务端 409 二次确认,这里仅提示预判) */}
+      <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">合成</h2>
+      <TopicComposeActions
+        topicId={id}
+        linkedPostId={topic.linkedPostId?.toString() ?? null}
+        linkedPostStatus={linkedPost?.status ?? null}
+        editedSinceCompose={linkedPost ? needsRecomposeConfirm(topic, linkedPost) : false}
+      />
 
       {/* ② 素材区 */}
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">素材({topic.items.length})</h2>

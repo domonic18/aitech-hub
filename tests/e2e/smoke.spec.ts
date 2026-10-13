@@ -3258,7 +3258,7 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
   }
 });
 
-test("34. 专题治理台(M26 批③:新建/挂载仅已解读/批注/人工状态流转/权限防线,零真网)", async ({
+test("34. 专题治理台(M26 批③④:新建/挂载仅已解读/批注/人工状态流转/合成防线/权限防线,零真网)", async ({
   page,
   request,
 }) => {
@@ -3431,6 +3431,42 @@ test("34. 专题治理台(M26 批③:新建/挂载仅已解读/批注/人工状�
     // 卸载 → 素材区回空态(可重挂,不做确认步)
     await page.getByRole("button", { name: "卸载" }).click();
     await expect(page.getByText("尚未挂载素材")).toBeVisible({ timeout: 10_000 });
+
+    // 合成防线(M26 批④,全部拦在 LLM 调用之前,零真网):合成区已渲染;
+    // UI 点合成 → 空素材 400 人话行内回显;API 层空素材 400 / 非法 id 400 /
+    // 未知 id 404 / 匿名 401 / PAT 403
+    await expect(page.getByRole("button", { name: "合成初稿" })).toBeVisible();
+    await page.getByRole("button", { name: "合成初稿" }).click();
+    await expect(page.getByText("尚未挂载素材——先挂 2~3 条解读/文章再合成")).toBeVisible({
+      timeout: 10_000,
+    });
+    const emptyCompose = await page.request.post(`/api/topics/${topicId}/compose/`, {
+      headers: origin,
+      data: {},
+    });
+    expect(emptyCompose.status()).toBe(400);
+    const badComposeId = await page.request.post("/api/topics/nope/compose/", {
+      headers: origin,
+      data: {},
+    });
+    expect(badComposeId.status()).toBe(400);
+    const missingCompose = await page.request.post("/api/topics/999999999/compose/", {
+      headers: origin,
+      data: {},
+    });
+    expect(missingCompose.status()).toBe(404);
+    const anonComposeCtx = await page.context().browser()!.newContext();
+    const anonCompose = await anonComposeCtx.request.post(`/api/topics/${topicId}/compose/`, {
+      headers: { origin: serverOrigin },
+      data: {},
+    });
+    expect(anonCompose.status()).toBe(401);
+    await anonComposeCtx.close();
+    const patCompose = await request.post(`/api/topics/${topicId}/compose/`, {
+      headers: { authorization: "Bearer e2e-not-a-token", origin: serverOrigin },
+      data: {},
+    });
+    expect(patCompose.status()).toBe(403);
   } finally {
     await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
     await prisma.telegram.deleteMany({
