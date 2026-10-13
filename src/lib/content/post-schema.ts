@@ -177,8 +177,12 @@ export const postCreateSchema = z
     }
   });
 
-/** 更新含 slug(可改):id 锚定 URL,改 slug 后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改 */
-export const postUpdateSchema = postCreateSchema;
+/** 更新含 slug(可改):id 锚定 URL,改 slug 后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改。
+ * expectedUpdatedAt(M27 批① 自动保存乐观锁):编辑器加载时刻的 updatedAt ISO 串,
+ * 与库内不一致 409 不强覆盖;缺省 = 不校验(MCP upsert 等旧通道零感知)。 */
+export const postUpdateSchema = postCreateSchema.extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 export type PostCreateInput = z.infer<typeof postCreateSchema>;
 /** 更新入参:门禁三列可省略(省略 = 不动付费/登录可见配置;MCP 外部通道不触付费面) */

@@ -71,6 +71,8 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
         purchasePrice: post.purchasePrice === null ? null : Number(post.purchasePrice),
         isLoginRequired: post.isLoginRequired,
         status: postDisplayState(post),
+        // 乐观锁基准(M27 批①):编辑器据此携带 expectedUpdatedAt,自动保存链写读闭环
+        updatedAt: post.updatedAt.toISOString(),
       }}
     />
   );

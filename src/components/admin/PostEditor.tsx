@@ -20,6 +20,14 @@ import PostMetaPanel, {
 } from "@/components/admin/PostMetaPanel";
 import MdEditor from "@/components/admin/MdEditor";
 import ArticleBody from "@/components/article/ArticleBody";
+import EditorAssistant from "@/components/admin/EditorAssistant";
+import {
+  clearPostShadow,
+  readPostShadow,
+  type AutosaveResult,
+  type PostShadow,
+} from "@/components/admin/usePostAutosave";
+import usePostAutosave from "@/components/admin/usePostAutosave";
 import {
   POST_LIMITS,
   postCreateSchema,
@@ -54,6 +62,8 @@ export interface EditorPost {
   isLoginRequired: boolean;
   /** 展示态(server 端 postDisplayState 派生):published/draft/unpublished */
   status: PostDisplayState;
+  /** 乐观锁基准(M27 批①):加载时刻 updatedAt ISO,自动保存链随写更新 */
+  updatedAt: string;
 }
 
 const STATUS_LABEL: Record<PostDisplayState, string> = {
@@ -68,7 +78,7 @@ const BTN_PRIMARY =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60";
 
 /** 服务端包络(形态引用 ApiEnvelope,评审 W3:客户端不手写同形接口) */
-type SaveBody = ApiEnvelope<{ id?: string } | null>;
+type SaveBody = ApiEnvelope<{ id?: string; updatedAt?: string; reason?: string } | null>;
 
 /** 标签输入按分隔符切分去重(与 service 的 slug 去重双保险) */
 function splitTags(text: string): string[] {
@@ -116,6 +126,12 @@ export default function PostEditor({
   const [seoBusy, setSeoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  // 乐观锁基准(M27 批①):随每次成功保存以服务端 updatedAt 推进
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(post?.updatedAt ?? null);
+  // 乐观锁冲突:停自动存,人工刷新决策(人话横幅,不强覆盖)
+  const [conflict, setConflict] = useState(false);
+  // 影子副本恢复提示(崩溃/断网后挂载时检测,方案 §5)
+  const [shadowOffer, setShadowOffer] = useState<PostShadow | null>(null);
   // 右栏收起(沉浸编辑,M16):mount 后读 localStorage 防 hydration 分歧;收起=右栏不渲染
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   useEffect(() => {
@@ -146,31 +162,66 @@ export default function PostEditor({
 
   const slugField: SlugField = { text: slugText, preview: slugPreview, onChange: setSlugText };
 
-  async function saveOnly(): Promise<string | null> {
-    setBusy(true);
-    setError(null);
+  /** 表单快照序列化:脏检测(useMemo)与保存基线共用同一构造,保证可比 */
+  function buildPayloadJson(): string {
+    return JSON.stringify({
+      title: title.trim(),
+      categorySlug: meta.categorySlug,
+      contentMd,
+      tags: splitTags(meta.tagsText),
+      excerpt: meta.excerpt,
+      coverPath: meta.coverPath,
+      seoTitle: meta.seoTitle,
+      seoDescription: meta.seoDescription,
+      contentOrigin: meta.contentOrigin,
+      isPurchasable: meta.isPurchasable,
+      purchasePrice: meta.isPurchasable ? Number.parseFloat(meta.purchasePriceText) : null,
+      isLoginRequired: meta.isLoginRequired,
+      slug: slugText.trim() || undefined,
+    });
+  }
+
+  // 字符串按值比较:hook effect 仅在快照真变时重排(debounce 重置),无需 useMemo
+  const payloadJson = buildPayloadJson();
+
+  // 自动保存(仅编辑态草稿;冲突后 enabled 翻 false 停调度,方案 §5)
+  const autosavePhase = usePostAutosave({
+    enabled: mode === "edit" && status === "draft" && !conflict,
+    postId: post?.id ?? "",
+    payloadJson,
+    shadowContent: { title, contentMd },
+    save: () => saveOnly(true),
+  });
+
+  // 影子副本恢复检测:挂载时影子比库内新且内容有差 → 提示恢复(崩溃/断网兜底)
+  useEffect(() => {
+    if (mode !== "edit" || !post) return;
+    const shadow = readPostShadow(post.id);
+    if (shadow && shadow.at > post.updatedAt && shadow.contentMd !== post.contentMd) {
+      setShadowOffer(shadow);
+    }
+  }, [mode, post]);
+
+  /**
+   * 保存唯一通道(手动钮/发布/自动保存共用)。三态结果供自动保存调度;
+   * autosave=true 时失败不上全局横幅(状态行轻提示),冲突仍上横幅须人工介入。
+   */
+  async function saveOnly(autosave = false): Promise<AutosaveResult> {
+    if (!autosave) {
+      setBusy(true);
+      setError(null);
+    }
     try {
       // 边界校验与服务端同源(评审 W2:复用 Zod schema 单轨,不另抄规则)
       const schema = mode === "create" ? postCreateSchema : postUpdateSchema;
-      const parsed = schema.safeParse({
-        title: title.trim(),
-        categorySlug: meta.categorySlug,
-        contentMd,
-        tags: splitTags(meta.tagsText),
-        excerpt: meta.excerpt,
-        coverPath: meta.coverPath,
-        seoTitle: meta.seoTitle,
-        seoDescription: meta.seoDescription,
-        contentOrigin: meta.contentOrigin,
-        isPurchasable: meta.isPurchasable,
-        // 关闭付费 → null(服务端同步清价列);价格文本非法由 schema 报首个 issue
-        purchasePrice: meta.isPurchasable ? Number.parseFloat(meta.purchasePriceText) : null,
-        isLoginRequired: meta.isLoginRequired,
-        ...(slugText.trim() ? { slug: slugText.trim() } : {}), // 缺省:创建=按标题派生/更新=不改
-      });
+      const sentJson = buildPayloadJson();
+      const input = JSON.parse(sentJson) as Record<string, unknown>;
+      if (mode === "edit" && expectedUpdatedAt) input.expectedUpdatedAt = expectedUpdatedAt;
+      const parsed = schema.safeParse(input);
       if (!parsed.success) {
-        setError(parsed.error.issues[0]?.message ?? "输入不合法");
-        return null;
+        const message = parsed.error.issues[0]?.message ?? "输入不合法";
+        if (!autosave) setError(message);
+        return { status: "failed" };
       }
       const res = await fetch(mode === "create" ? "/api/posts" : `/api/posts/${post!.id}`, {
         method: mode === "create" ? "POST" : "PUT",
@@ -179,15 +230,27 @@ export default function PostEditor({
       });
       const json = (await res.json().catch(() => null)) as SaveBody | null;
       if (!res.ok || json?.code !== 0) {
-        setError(json?.message ?? `保存失败(${res.status})`);
-        return null;
+        const stale = json?.data?.reason === "stale_update";
+        if (stale) {
+          setConflict(true); // 停自动存;横幅须人工刷新决策,不强覆盖
+          setError(`${json?.message ?? "文章已在其他端被修改"}(自动保存已暂停)`);
+          return { status: "conflict" };
+        }
+        if (!autosave) setError(json?.message ?? `保存失败(${res.status})`);
+        return { status: "failed" };
       }
-      return json.data?.id ?? post!.id;
+      const id = json.data?.id ?? post!.id;
+      if (mode === "edit" && json.data?.updatedAt) {
+        setExpectedUpdatedAt(json.data.updatedAt); // 写读闭环:下一拍以此为乐观锁基准
+        setSavedAt(new Date());
+        clearPostShadow(post!.id);
+      }
+      return { status: "saved", id, payloadJson: sentJson, updatedAt: json.data?.updatedAt ?? "" };
     } catch {
-      setError("网络错误,请重试");
-      return null;
+      if (!autosave) setError("网络错误,请重试");
+      return { status: "failed" };
     } finally {
-      setBusy(false);
+      if (!autosave) setBusy(false);
     }
   }
 
@@ -233,23 +296,23 @@ export default function PostEditor({
   }
 
   async function saveDraft(): Promise<void> {
-    const id = await saveOnly();
-    if (!id) return;
+    const result = await saveOnly();
+    if (result.status !== "saved") return;
     if (mode === "create") {
-      router.replace(`/admin/posts/${id}`); // 草稿落库后地址切为编辑态(后续保存走 PUT)
+      router.replace(`/admin/posts/${result.id}`); // 草稿落库后地址切为编辑态(后续保存走 PUT)
     } else {
       setSavedAt(new Date());
     }
   }
 
   async function publish(): Promise<void> {
-    const id = await saveOnly();
-    if (!id) return;
+    const result = await saveOnly();
+    if (result.status !== "saved") return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/posts/${id}/publish`, { method: "POST" });
+      const res = await fetch(`/api/posts/${result.id}/publish`, { method: "POST" });
       if (res.ok) {
-        window.location.href = `/admin/posts/${id}`; // 全页跳转:编辑器头部状态整体刷新
+        window.location.href = `/admin/posts/${result.id}`; // 全页跳转:编辑器头部状态整体刷新
         return;
       }
       const json = (await res.json().catch(() => null)) as SaveBody | null;
@@ -280,6 +343,27 @@ export default function PostEditor({
     }
   }
 
+  /** 自动保存状态行(仅编辑态草稿启用自动存;其余形态保持手动「已保存」行) */
+  const autosaveLine = ((): string | null => {
+    if (mode !== "edit" || status !== "draft") {
+      return savedAt ? `已保存 ${formatCnTime(savedAt)}` : null;
+    }
+    switch (autosavePhase) {
+      case "saving":
+        return "自动保存中…";
+      case "saved":
+        return savedAt ? `已自动保存 ${formatCnTime(savedAt)}` : "已自动保存";
+      case "dirty":
+        return "有未保存修改(将自动保存)";
+      case "failed":
+        return "自动保存失败,已留本地底稿(继续编辑将重试)";
+      case "conflict":
+        return "自动保存已暂停";
+      default:
+        return savedAt ? `已保存 ${formatCnTime(savedAt)}` : null;
+    }
+  })();
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -291,6 +375,7 @@ export default function PostEditor({
           {mode === "create" ? "(新)" : ""}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {mode === "edit" && post && <EditorAssistant postId={post.id} title={title} />}
           <button
             type="button"
             aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
@@ -327,8 +412,36 @@ export default function PostEditor({
           {error}
         </div>
       )}
-      {savedAt && !error && (
-        <div className="text-xs text-text-3">已保存 {formatCnTime(savedAt)}</div>
+      {autosaveLine && !error && <div className="text-xs text-text-3">{autosaveLine}</div>}
+      {/* 影子副本恢复提示(M27 批①方案 §5):崩溃/断网留底的本地修改 */}
+      {shadowOffer && (
+        <div className="flex flex-wrap items-center gap-2 rounded-sm border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-amber-hi">
+          <span>
+            检测到未保存的本地修改(留底于 {formatCnTime(new Date(shadowOffer.at))}
+            ),是否恢复正文与标题?
+          </span>
+          <button
+            type="button"
+            className="cursor-pointer font-semibold underline"
+            onClick={() => {
+              setTitle(shadowOffer.title);
+              setContentMd(shadowOffer.contentMd);
+              setShadowOffer(null); // 影子保留至保存成功,期间崩溃可再次恢复
+            }}
+          >
+            恢复
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer underline"
+            onClick={() => {
+              if (post) clearPostShadow(post.id);
+              setShadowOffer(null);
+            }}
+          >
+            丢弃
+          </button>
+        </div>
       )}
 
       <input

@@ -158,12 +158,16 @@ interface AgentThreadProps {
   onPendingConsumed: () => void;
   /** K2.6:游客身份显限额/清退口径 hint */
   guestMode?: boolean;
+  /** 编辑上下文注入(M27 批①,方案 §3):编辑页嵌入时 chip 呈现,
+   * 批② propose_edits/read_draft 工具面的客户端挂点 */
+  editContext?: { postId: string; title: string } | null;
 }
 
 export default function AgentThread({
   pending,
   onPendingConsumed,
   guestMode = false,
+  editContext = null,
 }: AgentThreadProps): React.ReactElement {
   const isLoading = useAuiState((s) => s.thread.isLoading);
   // HITL 提问卡(ask_user 中断)替换输入区:中断期间禁言,防新消息打到悬空
@@ -190,7 +194,21 @@ export default function AgentThread({
       {interrupted ? (
         <AgentInterruptCard />
       ) : (
-        <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
+        <>
+          {editContext && (
+            <div className="flex shrink-0 items-center gap-1.5 border-t border-line bg-panel-2/60 px-4 py-1.5 text-[11px] text-text-3">
+              <svg className="ic ic-sm text-accent-hover" aria-hidden="true">
+                <use href="#i-edit" />
+              </svg>
+              正在编辑:
+              <span className="truncate text-text-2">
+                《{editContext.title.trim() === "" ? "(未命名草稿)" : editContext.title}》
+              </span>
+              <span className="ml-auto shrink-0">改动自动保存</span>
+            </div>
+          )}
+          <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
+        </>
       )}
       <PendingAskSender pending={pending} onConsumed={onConsumed} />
     </ThreadPrimitive.Root>

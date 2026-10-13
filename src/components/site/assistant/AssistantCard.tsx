@@ -28,12 +28,18 @@ interface AssistantCardProps {
   onClose: () => void;
   onHide: () => void;
   injectAsk?: InjectAsk | null;
+  /** 嵌入形态(M27 批① 编辑页):无全站 FAB,不渲染「隐藏助手」钮 */
+  embedded?: boolean;
+  /** 编辑上下文注入(方案 §3):chip 呈现,批② 工具面挂点 */
+  editContext?: { postId: string; title: string } | null;
 }
 
 export default function AssistantCard({
   onClose,
   onHide,
   injectAsk,
+  embedded = false,
+  editContext = null,
 }: AssistantCardProps): React.ReactElement {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<PendingAsk | null>(null);
@@ -199,22 +205,26 @@ export default function AssistantCard({
             </svg>
           </button>
         )}
-        <button
-          type="button"
-          title="隐藏助手(可从右下角唤起点再呼出)"
-          aria-label="隐藏助手"
-          onClick={handleHide}
-          className="ml-auto cursor-pointer rounded p-1 text-text-3 hover:bg-panel-2 hover:text-text-1"
-        >
-          <svg className="ic ic-sm" aria-hidden="true">
-            <use href="#i-eye" />
-          </svg>
-        </button>
+        {!embedded && (
+          <button
+            type="button"
+            title="隐藏助手(可从右下角唤起点再呼出)"
+            aria-label="隐藏助手"
+            onClick={handleHide}
+            className="ml-auto cursor-pointer rounded p-1 text-text-3 hover:bg-panel-2 hover:text-text-1"
+          >
+            <svg className="ic ic-sm" aria-hidden="true">
+              <use href="#i-eye" />
+            </svg>
+          </button>
+        )}
         <button
           type="button"
           aria-label="收起"
           onClick={onClose}
-          className="cursor-pointer rounded p-1 text-text-3 hover:bg-panel-2 hover:text-text-1"
+          className={`cursor-pointer rounded p-1 text-text-3 hover:bg-panel-2 hover:text-text-1 ${
+            embedded ? "ml-auto" : ""
+          }`}
         >
           <svg className="ic ic-sm" aria-hidden="true">
             <use href="#i-close" />
@@ -253,6 +263,7 @@ export default function AssistantCard({
               pending={pending}
               onPendingConsumed={() => setPending(null)}
               guestMode={auth === "guest"}
+              editContext={editContext}
             />
           </AgentRuntimeProvider>
         </div>

@@ -3438,3 +3438,145 @@ test("34. 专题治理台(M26 批③:新建/挂载仅已解读/批注/人工状�
     });
   }
 });
+
+test("35. 编辑器自动保存与编辑上下文(M27 批①:debounce 落库/乐观锁 409/影子恢复/助手 chip/published 不自动存,零真 LLM)", async ({
+  page,
+}) => {
+  const MARK = "e2e-autosave";
+  const category = await prisma.category.upsert({
+    where: { slug: "e2e-autosave" },
+    // 名字避含「自动保存」:④ 断言 published 页无自动保存字样,select 选项也算命中
+    update: { name: "e2e autosave fixture" },
+    create: { slug: "e2e-autosave", name: "e2e autosave fixture" },
+  });
+  await prisma.post.deleteMany({ where: { slug: { startsWith: MARK } } });
+  const draft = await prisma.post.create({
+    data: {
+      slug: `${MARK}-draft`,
+      title: "e2e 自动保存草稿",
+      contentMd: "e2e 自动保存正文 v1。",
+      categoryId: category.id,
+      status: "draft",
+    },
+  });
+  const published = await prisma.post.create({
+    data: {
+      slug: `${MARK}-pub`,
+      title: "e2e 自动保存已发布",
+      contentMd: "e2e 已发布正文。",
+      categoryId: category.id,
+      status: "published",
+      publishedAt: new Date(),
+    },
+  });
+  let putSeen = false;
+  page.on("request", (r) => {
+    if (r.method() === "PUT" && r.url().includes("/api/posts/")) putSeen = true;
+  });
+
+  try {
+    await e2eAdminLogin(page);
+
+    // ① debounce 自动保存:改标题 → PUT(≤10s)→ 「已自动保存」状态行 + 库内落库
+    await page.goto(`/admin/posts/${draft.id}`);
+    await page.getByPlaceholder("文章标题…").fill("e2e 自动保存草稿·改");
+    await page.waitForRequest(
+      (r) => r.method() === "PUT" && r.url().includes(`/api/posts/${draft.id}`),
+      { timeout: 10_000 },
+    );
+    await expect(page.getByText(/已自动保存/)).toBeVisible({ timeout: 10_000 });
+    const savedRow = await prisma.post.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(savedRow.title).toBe("e2e 自动保存草稿·改");
+
+    // ② 乐观锁:他端绕锁直改(无 expectedUpdatedAt,MCP 同形)→ UI 再改 → 自动保存
+    //    409 → 人话横幅 + 自动保存暂停(再改无新 PUT)
+    await page.request.put(`/api/posts/${draft.id}`, {
+      headers: jsonOrigin(page),
+      data: {
+        title: "e2e 自动保存草稿·他端改",
+        categorySlug: "e2e-autosave",
+        contentMd: "e2e 他端写入正文。",
+        contentOrigin: "human",
+      },
+    });
+    await page.getByPlaceholder("文章标题…").fill("e2e 自动保存草稿·冲突拍");
+    await expect(page.getByText(/文章已在其他端被修改/)).toBeVisible({ timeout: 10_000 });
+    putSeen = false;
+    await page.getByPlaceholder("文章标题…").fill("e2e 自动保存草稿·冲突拍2");
+    await page.waitForTimeout(3500); // 越过 debounce 窗:enabled=false 不应再发 PUT
+    expect(putSeen).toBe(false);
+
+    // ③ 乐观锁 API 口径:旧基准 409(带 reason);当前基准 200 且回传新 updatedAt
+    const cur = await prisma.post.findUniqueOrThrow({ where: { id: draft.id } });
+    const stale = await page.request.put(`/api/posts/${draft.id}`, {
+      headers: jsonOrigin(page),
+      data: {
+        title: "e2e 旧基准",
+        categorySlug: "e2e-autosave",
+        contentMd: "e2e 旧基准正文。",
+        contentOrigin: "human",
+        expectedUpdatedAt: "2020-01-01T00:00:00.000Z",
+      },
+    });
+    expect(stale.status()).toBe(409);
+    const staleBody = (await stale.json()) as { data?: { reason?: string }; message: string };
+    expect(staleBody.data?.reason).toBe("stale_update");
+    expect(staleBody.message).toContain("其他端");
+    const fresh = await page.request.put(`/api/posts/${draft.id}`, {
+      headers: jsonOrigin(page),
+      data: {
+        title: "e2e 新基准",
+        categorySlug: "e2e-autosave",
+        contentMd: "e2e 新基准正文。",
+        contentOrigin: "human",
+        expectedUpdatedAt: cur.updatedAt.toISOString(),
+      },
+    });
+    expect(fresh.status()).toBe(200);
+    const freshBody = (await fresh.json()) as { data?: { updatedAt?: string } };
+    expect(freshBody.data?.updatedAt).toBeTruthy();
+
+    // ④ published 不自动保存(手动口径不变):改动越过 debounce 窗无 PUT、无自动存状态行
+    await page.goto(`/admin/posts/${published.id}`);
+    putSeen = false;
+    await page.getByPlaceholder("文章标题…").fill("e2e 已发布·手动改");
+    await page.waitForTimeout(3500);
+    expect(putSeen).toBe(false);
+    await expect(page.getByText(/自动保存/)).toHaveCount(0);
+
+    // ⑤ 影子副本恢复:preset 比库内新的影子 → 挂载提示 → 恢复写回编辑器
+    const shadow = {
+      title: "e2e 影子标题",
+      contentMd: "e2e 影子正文:崩溃前未及保存的修改。",
+      at: new Date(Date.now() + 60_000).toISOString(), // 恒新于库内 updatedAt
+    };
+    await page.goto("/");
+    await page.evaluate(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [`ah:editor:shadow:${published.id}`, JSON.stringify(shadow)],
+    );
+    await page.goto(`/admin/posts/${published.id}`);
+    await expect(page.getByText(/检测到未保存的本地修改/)).toBeVisible();
+    await page.getByRole("button", { name: "恢复" }).click();
+    await expect(page.getByPlaceholder("文章标题…")).toHaveValue("e2e 影子标题");
+    // 正文恢复走前台预览断言(ArticleBody 直读 state;Vditor 异步初始化不做值断言面)
+    await page.getByRole("button", { name: "前台预览" }).click();
+    await expect(page.getByText(/崩溃前未及保存的修改/)).toBeVisible();
+    // 影子按设计保留至保存成功;此处测试链无保存,显式清底防串扰
+    await page.evaluate(
+      ([key]) => window.localStorage.removeItem(key),
+      [`ah:editor:shadow:${published.id}`],
+    );
+
+    // ⑥ 编辑上下文注入:AI 助手钮开卡 → chip 呈现当前编辑文(零 LLM 调用,只开卡)
+    await page.goto(`/admin/posts/${draft.id}`);
+    await page.getByRole("button", { name: "AI 助手" }).click();
+    await expect(page.getByRole("dialog", { name: "AI 助手" })).toBeVisible();
+    await expect(page.getByText(/正在编辑:/)).toBeVisible();
+    await expect(page.getByText(/《e2e 新基准》/)).toBeVisible();
+    await page.getByRole("button", { name: "收起", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "AI 助手" })).toHaveCount(0);
+  } finally {
+    await prisma.post.deleteMany({ where: { slug: { startsWith: MARK } } });
+  }
+});

@@ -31,7 +31,12 @@ export function parsePostId(raw: string): bigint | null {
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type PostAdminErrorCode =
-  "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing" | "invalid_body";
+  | "not_found"
+  | "slug_conflict"
+  | "legacy_readonly"
+  | "category_missing"
+  | "invalid_body"
+  | "stale_update";
 
 export class PostAdminError extends Error {
   constructor(
@@ -215,12 +220,13 @@ export async function createPost(
 /**
  * 更新(草稿含)。旧文保真:WP 迁移的纯 HTML 正文拒绝改写;
  * slug 可改(id 锚定 URL,改后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改);
+ * expectedUpdatedAt(M27 批①):与加载时刻不一致 → stale_update 409,人工刷新决策,不强覆盖;
  * 已发布文章更新后重放 revalidate(slug 变更时新旧缓存面都失效)。
  */
 export async function updatePost(
   id: bigint,
   input: PostUpdateInput,
-): Promise<{ slug: string | null }> {
+): Promise<{ slug: string | null; updatedAt: string }> {
   const post = await prisma.post.findFirst({
     where: { id, status: { not: POST_STATUS_DELETED } },
   });
@@ -230,6 +236,12 @@ export async function updatePost(
       "legacy_readonly",
       "旧文保真:HTML 正文不可改写,请转 Markdown 重新发布",
     );
+  }
+  if (
+    input.expectedUpdatedAt !== undefined &&
+    input.expectedUpdatedAt !== post.updatedAt.toISOString()
+  ) {
+    throw new PostAdminError("stale_update", "文章已在其他端被修改,请刷新页面后重试");
   }
   const category = await prisma.category.findUnique({ where: { slug: input.categorySlug } });
   if (!category) {
@@ -247,9 +259,9 @@ export async function updatePost(
     nextSlug = input.slug;
   }
 
-  await prisma.$transaction(async (tx) => {
+  const updatedAt = await prisma.$transaction(async (tx) => {
     const tags = await upsertTags(tx, input.tags);
-    await tx.post.update({
+    const updated = await tx.post.update({
       where: { id },
       data: {
         title: input.title,
@@ -272,6 +284,7 @@ export async function updatePost(
         ...(input.isLoginRequired === undefined ? {} : { isLoginRequired: input.isLoginRequired }),
         tags: { deleteMany: {}, ...(tags.length > 0 ? { create: tags } : {}) },
       },
+      select: { updatedAt: true },
     });
     // 引用先删后插,与正文/封面原子一致(编辑器封面工作流 M5-b 起真实写 cover_path)
     await syncMediaRefs(
@@ -279,12 +292,13 @@ export async function updatePost(
       id,
       extractMediaRefs({ contentMd: input.contentMd, coverPath: input.coverPath || null }),
     );
+    return updated.updatedAt;
   });
   if (post.status === "published") {
     if (post.slug && post.slug !== nextSlug) revalidatePostPaths({ id, slug: post.slug });
     revalidatePostPaths({ id, slug: nextSlug });
   }
-  return { slug: nextSlug };
+  return { slug: nextSlug, updatedAt: updatedAt.toISOString() };
 }
 
 async function loadMutable(id: bigint) {
