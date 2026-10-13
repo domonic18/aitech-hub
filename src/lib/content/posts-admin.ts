@@ -134,8 +134,9 @@ export async function getPostBySlugAdmin(slug: string) {
   });
 }
 
-/** 标签按名 upsert(Prototype admin-editor:tags 按名自动建),返回关联 id 集 */
-async function upsertTags(
+/** 标签按名 upsert(Prototype admin-editor:tags 按名自动建),返回关联 id 集;
+ * 导出供专题落稿核(compose)在覆盖分支复用 */
+export async function upsertTags(
   tx: Pick<typeof prisma, "tag">,
   names: string[],
 ): Promise<Array<{ tagId: bigint }>> {

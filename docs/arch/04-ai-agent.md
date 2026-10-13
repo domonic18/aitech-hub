@@ -100,6 +100,14 @@
 - **compose_topic_draft(admin 会话)**:共享资格预检 `checkComposeEligibility`(自 POST 路由上提,路由与工具同一真相源:素材非空/重合成 needConfirm)→ `enqueueTopicCompose` 入队 → 工具体内轮询 `getTopicComposeState` 至终态(2.5s × 6min 上限,与专题页按钮同口径)。生产核仍是 worker 四步管线(可视化的是过程,确定性的是生产):关闭对话框/断连只影响对话流,BullMQ job 照常落库。needConfirm 语义 = 工具返回标记 → 模型经 ask_user 征确认 → confirm=true 重调(HITL 回路);未绑模型/409 进行中/素材空均人话回传由模型转述
 - **前端**:专题详情页「合成初稿/重合成」改为唤起 embedded AssistantCard(与编辑页 EditorAssistant 同形态)并注入带专题 id 的合成任务(nonce 机制);`ToolCallBlock` 对 compose 工具恒显过程面板 `ComposeToolProgress`(运行中轮询四步进度,终态摘要 + 跳转文档链接;历史回放按 result 直接渲染终态不轮询)。空素材在按钮侧就地拦截(零真网防线,e2e 34 同文);按钮侧旧轮询逻辑退役(POST /compose/ 路由保留:e2e 防线 + API 面)
 
+**K2.8 补注(2026-10-13,M27 批⑤,专题文章生产重构——编排权移交 agent,固定管线退役;1276 验收反馈「看不到过程/固定管线输出质量差」)**:
+
+- **退役清单**:批③ BullMQ 四步管线(compose-agent + QUEUE_TOPIC_COMPOSE + worker processor)、批④ compose_topic_draft 单工具 + ComposeToolProgress 轮询面板、POST/GET `/api/topics/[id]/compose/` 路由、「专题合成」AI purpose 绑定槽(六角色收五;历史台账 role=compose 行读侧回退原值展示)——生产模型绑定收敛到 search(Agent 搜索),封面生图仍走 cover
+- **admin 工具档换装细粒度四件**(`lib/agent/topic-tools.ts`;工具体内 `admin:` 会话校验沿用):`get_topic_brief`(专题定位 + 素材全集 + 关联文档现状 + 近期已发标题,分析底料)/ `transfer_video_cover`(首视频封面转存,B 站防盗链)/ `generate_cover_candidates`(复用 M14 cover-gen 管线,工具体内轮询 ≤120s 取多候选)/ `save_topic_draft`(落稿锚定核 finalizeCompose 扩 SEO/标签——undefined=不动/null=清空,防覆盖人工已改字段;正文图片防幻觉校验只认站内 `/wp-content/uploads/`、`/media/` 路径,编造外链直接拒)
+- **编排权在模型**:ADMIN_PROMPT_ADDENDUM 重写为工作流指令(write_todos 计划先行 → 读素材 → 选题(拿不准 ask_user)→ 写作 → 配图 → 落库 → 汇报 post_url;修订 = 重读素材直接改再 save,不重跑全流程);批① STRUCTURE_SPEC 固定结构降格为系统提示「写作指南」(五节推荐体保留为指南,图片引用从禁止放开为库内路径)。过程可视性 = 每只工具卡逐个出现(替代轮询面板),不依赖 todo 条(MiniMax write_todos 触发率已知风险)
+- **护栏按身份档**(`run.ts#AGENT_LIMITS`):guest/user 12 步 / 50k tokens / 递归 30 不变;admin 放宽 30 步 / 150k / 递归 60(细粒度多步生产天然多工具),stream 路由会话预检同档
+- **写核保留**:`topics/compose.ts` 收敛为确定性写核(素材块拼装 / 封面转存 / 落稿锚定 / 近期标题),文首视频推荐卡仍确定性注入;后补能力锚点:视频关键帧(douyin-gateway 侧)与 HTML→截图基建(R③,待立项)
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
@@ -112,7 +120,7 @@
 
 所有 LLM/ASR 生产任务(电报解读 / 文字摘要 / Agent 搜索 / 封面生图)共用的治理后台;原型 [admin-models](../prototypes/admin-models.html) / [admin-usage](../prototypes/admin-usage.html) / [admin-sessions](../prototypes/admin-sessions.html):
 
-- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图/向量嵌入/专题合成六角色槽的主力与备用——M8 四角色起步,M20 增嵌入、M26 增专题合成);测试连通性入口
+- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图/向量嵌入五角色槽的主力与备用——M8 四角色起步,M20 增嵌入、M26 增专题合成(该槽已随 M27 批⑤ 退役,合成走 Agent 搜索绑定));测试连通性入口
 - **用量统计(admin-usage)**:近 7/30/90 天 tokens 与估算费用 / ASR 时长 / 降级次数 KPI,日消耗趋势、按任务与按模型分布、按任务明细(含 CSS sparkline)——数据源为调用日志聚合,与成本护栏(arch/02 §3.2)共用口径
 - **会话管理(admin-sessions)**:按任务类型/状态/触发/日期筛选调用记录;详情抽屉展示入参出参 JSON 与垂直执行时间线(listing→下载→抽轨→ASR→LLM 解读→入库→转写即删,节点带耗时),失败记录可重跑
 

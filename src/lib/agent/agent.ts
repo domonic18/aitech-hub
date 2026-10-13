@@ -9,10 +9,10 @@ import { createDeepAgent, type DeepAgent } from "deepagents";
 import type { ResolvedAiModel } from "../ai/resolver";
 import { askUserGuardMiddleware } from "./ask-user-guard";
 import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
-import { composeTopicDraftTool } from "./compose-tool";
 import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
+import { TOPIC_TOOLS } from "./topic-tools";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { AGENT_TOOLS } from "./tools";
 
@@ -46,22 +46,32 @@ export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜�
 - 站内内容与你的知识冲突时,以站内内容为准并指出差异`;
 
 /**
- * admin 专属段(M27 批④,editor-ai 方案「工具按身份注册」):写库型工具只进
- * admin 图——guest/user 图的工具面与系统提示维持 K2.5 只读红线不变。系统提示
- * 只在 admin 图追加,防工具语义泄入无工具会话(模型幻调不存在的工具)。
+ * admin 专属段(M27 批⑤重构:编排权移交 agent——不再有固定管线,模型按工作流
+ * 指令用细粒度工具自主生产专题文章)。写库型工具只进 admin 图——guest/user 图
+ * 的工具面与系统提示维持 K2.5 只读红线不变。系统提示只在 admin 图追加,防工具
+ * 语义泄入无工具会话(模型幻调不存在的工具)。
  */
 const ADMIN_PROMPT_ADDENDUM = `
 
-专题合成(管理员专属能力):
-- 收到「为专题合成/生成推荐文章」类任务:先用 write_todos 列出计划(如检查素材→执行合成→汇报结果),再调用 compose_topic_draft 执行
-- 合成约需 1~3 分钟,工具会一直等到完成,期间不要催促用户、不要中途提问
-- 工具返回 needConfirm 时:先用 ask_user 向用户确认覆盖,同意后带 confirm=true 重新调用
-- 完成后向用户汇报:文章标题、结构(五节推荐体)、封面转存结果,并给出文档链接(postUrl,markdown 链接);fallback=true(管线降级单调用)时如实说明
-- 返回 error 或 timeout 时如实转述,不要编造结果`;
+专题文章生产(管理员专属能力,收到「为专题写文章/合成初稿/改稿」类任务时启用):
+这是多步生产流程,先用 write_todos 列出计划(通常 5~7 步),再逐步执行,每步用对应工具:
+1. get_topic_brief 读取专题定位、素材(博主/视频/解读笔记/人工批注)与关联文档现状;仔细分析素材
+2. 选题:基于素材构思 2~3 个切入角度并自选最优,参考近期已发标题避免重复;方向确实拿不准时用 ask_user 请管理员拍板(一次一问,带 2~4 个选项),素材充分时不必问
+3. 写作:按下方写作指南起草;正文图片只能引用工具返回的站内媒体路径,严禁编造外链图片
+4. 配图:transfer_video_cover 转存视频封面(首选头图);需要原创封面时 generate_cover_candidates 生成候选并择优
+5. save_topic_draft 落库(标题/摘要/正文/封面/SEO 标题与描述/标签一次交付)
+6. 汇报:文章标题、结构与亮点、配图与 SEO 摘要,并给出文档链接(指向 post_url 的 markdown 链接)
+管理员对已落库文章提出修改要求时:按需 get_topic_brief 重读素材,直接修改相关部分后再次 save_topic_draft(返回 needConfirm 时先 ask_user 确认覆盖),不要重跑全流程;工具返回 error/timeout 时如实转述,不要编造结果。
 
-/** 工具面按身份分发(guest/user 只读六件;admin 追加合成工具) */
+写作指南(公众号「博主×视频」推荐短文):
+- 开头钩子不超过 80 字:用素材里最反差或最具体的事实/数据直接抓人,不写背景铺垫
+- 结构:## 博主是谁(2~4 句,只依据素材,不编造履历)→ ## 视频讲了什么(3~4 个要点,每要点独立小段不超过 60 字,段首 **加粗**)→ ## 值得看的理由(1~2 句)→ ## 去看原视频(引导读者点「阅读原文」进站看视频)
+- 全文 800~1200 字,单段不超过 3 行,多用短句;时间/年份只取自素材,素材未提就写「近期」;全部简体中文;恰当融合人工批注的取舍指令
+- 图:可在合适的小节用 ![描述](站内路径) 插入配图(如转存的视频封面),无合适图就不硬插`;
+
+/** 工具面按身份分发(guest/user 只读六件;admin 追加专题生产四件) */
 export function agentToolsFor(kind: AgentIdentity["kind"]) {
-  return kind === "admin" ? [...AGENT_TOOLS, composeTopicDraftTool] : [...AGENT_TOOLS];
+  return kind === "admin" ? [...AGENT_TOOLS, ...TOPIC_TOOLS] : [...AGENT_TOOLS];
 }
 
 /** 系统提示按身份分发(admin 追加合成工作流段) */

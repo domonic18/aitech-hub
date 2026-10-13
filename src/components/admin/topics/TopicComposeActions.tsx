@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * 专题合成操作区 + 侧边栏 agent 承载(M27 批④,1276 验收反馈「点击合成要有
- * 过程」):点「合成初稿/重合成」唤起右下角助手卡(embedded AssistantCard,
- * admin 会话即 member)并注入合成任务——agent 以 write_todos 列计划后调
- * compose_topic_draft 工具,四步管线进度在工具卡实时滚动,完成后在对话框
- * 汇报并给文档链接;回写库由 worker 管线落稿(共享锚定核,与按钮轮询时代
- * 一致)。空素材在按钮侧就地拦截(零真网防线,e2e 34 断言同文);重合成的
- * 覆盖确认由工具 needConfirm → agent ask_user 回路承接。
+ * 专题合成操作区 + 侧边栏 agent 承载(M27 批⑤,agent 自主生产重构):点
+ * 「合成初稿/重合成」唤起右下角助手卡(embedded AssistantCard,admin 会话即
+ * member)并注入合成任务——agent 自主编排:write_todos 列计划 → 读素材/选题/
+ * 写作/配图/落库,每只工具卡逐个出现在对话框(过程天然可视),完成后在对话
+ * 汇报并给文档链接;落库走 save_topic_draft 工具(锚定核与 SEO/标签一次交付)。
+ * 空素材在按钮侧就地拦截(零真网防线,e2e 34 断言同文);重合成的覆盖确认由
+ * 工具 needConfirm → agent ask_user 回路承接。
  */
 import { useRef, useState } from "react";
 import Link from "next/link";
@@ -40,7 +40,7 @@ export default function TopicComposeActions({
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const askSeq = useRef(0);
 
-  /** 唤起助手卡并注入合成任务;素材空就地拦截(与 API 预检同文人话) */
+  /** 唤起助手卡并注入合成任务;素材空就地拦截(与工具层预检同文人话) */
   function compose(): void {
     if (materialsCount === 0) {
       setMsg({ tone: "err", text: "尚未挂载素材——先挂 2~3 条解读/文章再合成" });
@@ -85,8 +85,7 @@ export default function TopicComposeActions({
           </Link>
         )}
         <span className="text-[11px] text-text-3">
-          在右侧 AI 对话框执行:四步生成(角度→起草→自检→修订)约 1~3 分钟;需在 AI
-          配置绑定「专题合成」模型
+          在右侧 AI 对话框执行:agent 自主编排(读素材→选题→写作→配图→落库);模型走 「Agent 搜索」绑定
         </span>
       </div>
       {msg && (

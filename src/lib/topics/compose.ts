@@ -1,67 +1,59 @@
 /**
- * 专题文档合成·共享核(M26 批④,docs/plan/topic-pipeline-plan.md §5):素材块
- * 拼装 + 落稿锚定(linkedPostId/composedAt/状态流转)+ 封面转存,单调用入口
- * composeTopicDraft(同步形态,兼作 agent 管线降级路径)与多步管线
- * (./compose-agent,M27 批③)共用。落稿 = content_post 草稿
- * (contentOrigin=ai_assisted,默认分类 report「产品评测」缺则幂等补建,标签带
- * 专题标题)→ topic 锚定 linkedPostId+composedAt、collecting→drafted(§10-7)。
- * M27 批②(1276 验收反馈):首视频封面转存入站内媒体库落 post.coverPath
- * (站点头图 + 公众号大图 + 解锁公众号同步缺封面门),文首确定性注入视频
- * 推荐卡;封面抓取失败降级不阻塞合成(封面可后补,合成结果不回滚)。
- * 重合成保护(§10-3):linked 文档 updatedAt > composedAt(或从未合成过的人工
- * 关联)即人工动过 → 路由层 409 需 confirm;linked 已软删 → 弃锚新建。
- * 纯函数(素材拼装/输出契约/prompt/推荐卡)在 ./compose-prompt。
+ * 专题文章生产·确定性写核(M26 批④建;M27 批⑤重构为 agent 自主生产的共享库):
+ * 素材块拼装(get_topic_brief 工具消费)+ 封面转存 + 落稿锚定(linkedPostId/
+ * composedAt/状态流转,save_topic_draft 工具消费)。编排权在会话 agent(细粒度
+ * 工具逐项执行,工具面在 lib/agent/topic-tools),本模块只提供写侧确定性核;
+ * 四步固定管线(批③ compose-agent)与单调用合成已退役。落稿 = content_post
+ * 草稿(contentOrigin=ai_assisted,默认分类 report「产品评测」缺则幂等补建,
+ * 标签缺省带专题标题)→ topic 锚定 linkedPostId+composedAt、collecting→drafted
+ * (§10-7)。M27 批②:视频封面转存入站内媒体库落 post.coverPath(站点头图 +
+ * 公众号大图;转存失败降级 null 不阻塞落稿),文首视频推荐卡仍确定性注入
+ * (buildVideoCard)。重合成保护(§10-3):linked 文档 updatedAt > composedAt
+ * (或从未合成过的人工关联)即人工动过 → 工具层需 confirm;linked 已软删 →
+ * 弃锚新建。SEO/标签仅在 save 工具显式提供时触碰(缺省保人工已改字段)。
  */
 import type { Topic, TopicItem } from "@prisma/client";
 
 import { POST_LIMITS } from "../content/post-schema";
-import { PostAdminError, createPost } from "../content/posts-admin";
-import { AI_PURPOSE_COMPOSE } from "../ai/constants";
-import { AiAdminError } from "../ai/errors";
-import { chatJsonTask } from "../ai/chat-json-task";
-import { resolveAiModel } from "../ai/resolver";
+import { PostAdminError, createPost, upsertTags } from "../content/posts-admin";
 import { fetchExternalImage } from "../media/fetch-external";
 import { uploadMedia } from "../media/service";
 import { logger } from "../logger";
 import { prisma } from "../db";
 import { hydrateItems } from "./repo";
-import {
-  buildComposePrompt,
-  buildMaterialSection,
-  buildVideoCard,
-  COMPOSE_POST_SAMPLE_MAX,
-  normalizePoints,
-  parseComposeResult,
-  type ComposeMaterialBlock,
-  type ComposeResult,
-} from "./compose-prompt";
 
-/** 重合成保护判定(§10-3 纯函数):有人工关联但从未合成过,或合成后被编辑过 → 需确认 */
-export function needsRecomposeConfirm(
-  topic: Pick<Topic, "linkedPostId" | "composedAt">,
-  linkedPost: { status: string; updatedAt: Date } | null,
-): boolean {
-  if (!topic.linkedPostId || !linkedPost) return false;
-  if (linkedPost.status === "deleted") return false; // 软删弃锚,路由层走新建
-  if (topic.composedAt === null) return true; // 人工关联未合成过:覆盖即破坏
-  return linkedPost.updatedAt.getTime() > topic.composedAt.getTime();
+// ── 素材块(原 compose-prompt 纯函数段,M27 批⑤并档)──────────────
+
+/** 合成素材块(hydrateItems 同源取数,post 块额外带摘要与正文取样) */
+export interface ComposeMaterialBlock {
+  kind: "telegram" | "post";
+  title: string;
+  blogger: string | null;
+  /** 人工批注(合成取舍指令,原样注入) */
+  note: string | null;
+  /** 解读笔记(§4:优先;null=存量/降级轮次 → 降级拼装) */
+  aiNote: string | null;
+  aiSummary: string | null;
+  aiPoints: string[];
+  /** telegram 块:原视频链接与封面图(供写作引用/CTA);post 块恒 null */
+  videoUrl: string | null;
+  coverUrl: string | null;
+  /** post 块:摘要与正文取样(telegram 块恒 null) */
+  excerpt: string | null;
+  contentSample: string | null;
 }
 
-// ── 共享核(单调用与 agent 管线共用)────────────────────────
+/** post 正文取样上限(get_topic_brief 只需主题级引用,不整篇灌入) */
+export const COMPOSE_POST_SAMPLE_MAX = 2000;
 
-/** 绑定缺失防线(入队/执行两侧同口径):未绑 = 人话 AiAdminError(disabled) */
-export async function requireComposeModel() {
-  const model = await resolveAiModel(AI_PURPOSE_COMPOSE);
-  if (!model) {
-    throw new AiAdminError(
-      "disabled",
-      "未绑定或未启用「专题合成(compose)」模型:先到 AI 配置完成任务绑定",
-    );
-  }
-  return model;
+/** aiPoints Json 列读侧归一(白名单字符串;同 feed-view 投影哲学) */
+export function normalizePoints(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((p): p is string => typeof p === "string" && p.trim() !== "")
+    : [];
 }
 
-/** 素材块拼装(hydrate + post 摘要/正文取样补取;单调用与管线共用) */
+/** 素材块拼装(hydrate + post 摘要/正文取样补取) */
 export async function buildComposeBlocks(
   topic: Topic & { items: TopicItem[] },
 ): Promise<ComposeMaterialBlock[]> {
@@ -113,6 +105,57 @@ export async function buildComposeBlocks(
   return blocks;
 }
 
+/**
+ * 文首推荐卡(M27 批②):确定性注入不依赖模型,置正文最顶。封面不进正文
+ * (站点头图/公众号大图均走 post.coverPath,避免双端重复);纯文字引用卡在
+ * 公众号渲染为主题色块,站点渲染为引用框。无视频素材返回 null 不注入。
+ */
+export function buildVideoCard(blocks: ComposeMaterialBlock[]): string | null {
+  const v = blocks.find((b) => b.kind === "telegram");
+  if (!v) return null;
+  return (
+    `> 📺 本文推荐视频:《${v.title}》· UP主:${v.blogger ?? "未知"}` +
+    " ——文末「阅读原文」可进站直达原视频"
+  );
+}
+
+// ── 落稿锚定核(save_topic_draft 工具消费)────────────────────
+
+/** 重合成保护判定(§10-3 纯函数):有人工关联但从未合成过,或合成后被编辑过 → 需确认 */
+export function needsRecomposeConfirm(
+  topic: Pick<Topic, "linkedPostId" | "composedAt">,
+  linkedPost: { status: string; updatedAt: Date } | null,
+): boolean {
+  if (!topic.linkedPostId || !linkedPost) return false;
+  if (linkedPost.status === "deleted") return false; // 软删弃锚,走新建
+  if (topic.composedAt === null) return true; // 人工关联未合成过:覆盖即破坏
+  return linkedPost.updatedAt.getTime() > topic.composedAt.getTime();
+}
+
+/** 落稿正文(工具入参经列帽截断后传入) */
+export interface TopicDraft {
+  title: string;
+  excerpt: string;
+  contentMd: string;
+}
+
+/** 落稿附加字段(M27 批⑤):undefined = 不触碰(保人工已改);null = 清空 */
+export interface TopicDraftExtra {
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  /** 缺省(undefined)= 更新不动标签 / 新建回退专题标题标签 */
+  tags?: string[];
+}
+
+export interface ComposeOutcome {
+  postId: bigint;
+  postTitle: string;
+  /** true=覆盖既有关联文档;false=新建草稿 */
+  recomposed: boolean;
+  /** 封面结果(null=未提供或转存失败降级;可后补,不回滚落稿) */
+  coverPath: string | null;
+}
+
 /** 封面文件名取 URL 末段(仅展示列,存储路径按 sha1 命名;解析失败兜底常量) */
 function coverFilename(coverUrl: string): string {
   try {
@@ -124,9 +167,9 @@ function coverFilename(coverUrl: string): string {
 }
 
 /**
- * 首视频封面转存(批②):外链抓取 + 入站内媒体库 → /uploads 路径。
+ * 首视频封面转存(M27 批②):外链抓取 + 入站内媒体库 → /uploads 路径。
  * B 站图床有防盗链,站点/公众号直引外链会裂图,转存是双端显示与同步门的地基。
- * 任何失败降级 null 不抛——封面可后补,不回滚整次合成。
+ * 任何失败降级 null 不抛——封面可后补,不回滚落稿。
  */
 export async function transferCoverOrNull(coverUrl: string): Promise<string | null> {
   try {
@@ -142,98 +185,9 @@ export async function transferCoverOrNull(coverUrl: string): Promise<string | nu
   }
 }
 
-export interface ComposeOutcome {
-  postId: bigint;
-  postTitle: string;
-  /** true=覆盖既有关联文档;false=新建草稿 */
-  recomposed: boolean;
-  /** 封面转存结果(null=无视频封面或转存失败降级;人话进返回供 UI 提示) */
-  coverPath: string | null;
-}
-
-/**
- * 落稿锚定(共享核尾部):推荐卡注入 → linked 分流(重合成覆盖 / 新建草稿)→
- * topic 锚定 + 状态流转。落稿失败(PostAdminError 等)可能留下无锚草稿——
- * 重合成会覆盖同一篇(标题派生 slug 撞候选尽抛错),可重试。
- */
-export async function finalizeCompose(
-  topic: Topic & { items: TopicItem[] },
-  result: ComposeResult,
-  blocks: ComposeMaterialBlock[],
-  coverPath: string | null,
-): Promise<ComposeOutcome> {
-  const cardMd = buildVideoCard(blocks);
-  const finalMd = cardMd ? `${cardMd}\n\n${result.contentMd}` : result.contentMd;
-
-  const linkedPostId =
-    topic.linkedPostId !== null
-      ? await prisma.post.findUnique({
-          where: { id: topic.linkedPostId },
-          select: { id: true, status: true },
-        })
-      : null;
-  const recompose = linkedPostId !== null && linkedPostId.status !== "deleted";
-
-  if (recompose && linkedPostId) {
-    const updated = await prisma.post.update({
-      where: { id: linkedPostId.id },
-      data: {
-        title: result.title,
-        excerpt: result.excerpt || null,
-        contentMd: finalMd,
-        coverPath,
-        contentOrigin: "ai_assisted",
-      },
-      select: { id: true, title: true },
-    });
-    await prisma.topic.update({
-      where: { id: topic.id },
-      data: {
-        composedAt: new Date(),
-        ...(topic.status === "collecting" ? { status: "drafted" } : {}),
-      },
-    });
-    return { postId: updated.id, postTitle: updated.title, recomposed: true, coverPath };
-  }
-
-  // createPost 自查分类,这里只负责保证「产品评测」行存在(幂等)
-  await ensureDefaultCategory();
-  const created = await createPost({
-    title: result.title,
-    slug: undefined,
-    categorySlug: DEFAULT_CATEGORY_SLUG,
-    tags: topicTag(topic.title),
-    contentMd: finalMd,
-    coverPath: coverPath ?? undefined,
-    excerpt: result.excerpt || undefined,
-    contentOrigin: "ai_assisted",
-    isPurchasable: false,
-    isLoginRequired: false,
-  });
-  await prisma.topic.update({
-    where: { id: topic.id },
-    data: {
-      linkedPostId: created.id,
-      composedAt: new Date(),
-      ...(topic.status === "collecting" ? { status: "drafted" } : {}),
-    },
-  });
-  return { postId: created.id, postTitle: result.title, recomposed: false, coverPath };
-}
-
-// ── 单调用入口(同步形态;兼作 agent 管线的自动降级路径)──────
-
-/** 正文长输出预算(2000 字 markdown + JSON 包裹,同 interpret-note 放大逻辑;
- * agent 管线起草/修订步骤同预算) */
-export const COMPOSE_MAX_TOKENS = 8000;
 /** 默认分类(§10-4:分类「产品评测」可改;slug 为站内既有种子,缺则幂等补建) */
 const DEFAULT_CATEGORY_SLUG = "report";
 const DEFAULT_CATEGORY_NAME = "产品评测";
-/** 标签=专题标题(§10-4「标签带专题关键词」v1 最直取实现;超列帽截断) */
-function topicTag(title: string): string[] {
-  const t = title.trim();
-  return t === "" ? [] : [t.slice(0, POST_LIMITS.tag)];
-}
 
 async function ensureDefaultCategory(): Promise<void> {
   const existing = await prisma.category.findUnique({
@@ -246,7 +200,94 @@ async function ensureDefaultCategory(): Promise<void> {
   });
 }
 
-/** 近期已发文章标题(防重复选题;数量克制不喧宾夺主) */
+/** 标签缺省=专题标题(§10-4「标签带专题关键词」最直取实现;超列帽截断) */
+function topicTag(title: string): string[] {
+  const t = title.trim();
+  return t === "" ? [] : [t.slice(0, POST_LIMITS.tag)];
+}
+
+/**
+ * 落稿锚定:推荐卡注入 → linked 分流(覆盖 / 新建草稿)→ topic 锚定 + 状态
+ * 流转。覆盖分支:SEO/标签仅在 extra 显式提供时触碰(未提供保人工已改字段),
+ * 与 topic 锚定同事务原子。落稿失败(PostAdminError 等)可能留下无锚草稿——
+ * 重落会覆盖同一篇(标题派生 slug 撞候选尽抛错),可重试。
+ */
+export async function finalizeCompose(
+  topic: Topic & { items: TopicItem[] },
+  draft: TopicDraft,
+  blocks: ComposeMaterialBlock[],
+  coverPath: string | null,
+  extra: TopicDraftExtra = {},
+): Promise<ComposeOutcome> {
+  const cardMd = buildVideoCard(blocks);
+  const finalMd = cardMd ? `${cardMd}\n\n${draft.contentMd}` : draft.contentMd;
+
+  const linked =
+    topic.linkedPostId !== null
+      ? await prisma.post.findUnique({
+          where: { id: topic.linkedPostId },
+          select: { id: true, status: true },
+        })
+      : null;
+
+  if (linked && linked.status !== "deleted") {
+    const tagLinks = extra.tags ? await upsertTags(prisma, extra.tags) : null;
+    const [updated] = await prisma.$transaction([
+      prisma.post.update({
+        where: { id: linked.id },
+        data: {
+          title: draft.title,
+          excerpt: draft.excerpt || null,
+          contentMd: finalMd,
+          coverPath,
+          contentOrigin: "ai_assisted",
+          ...(extra.seoTitle !== undefined ? { seoTitle: extra.seoTitle } : {}),
+          ...(extra.seoDescription !== undefined ? { seoDescription: extra.seoDescription } : {}),
+          ...(tagLinks
+            ? { tags: { deleteMany: {}, ...(tagLinks.length > 0 ? { create: tagLinks } : {}) } }
+            : {}),
+        },
+        select: { id: true, title: true },
+      }),
+      prisma.topic.update({
+        where: { id: topic.id },
+        data: {
+          composedAt: new Date(),
+          ...(topic.status === "collecting" ? { status: "drafted" } : {}),
+        },
+      }),
+    ]);
+    return { postId: updated.id, postTitle: updated.title, recomposed: true, coverPath };
+  }
+
+  // createPost 自查分类,这里只负责保证「产品评测」行存在(幂等)
+  await ensureDefaultCategory();
+  const created = await createPost({
+    title: draft.title,
+    slug: undefined,
+    categorySlug: DEFAULT_CATEGORY_SLUG,
+    tags: extra.tags && extra.tags.length > 0 ? extra.tags : topicTag(topic.title),
+    contentMd: finalMd,
+    coverPath: coverPath ?? undefined,
+    excerpt: draft.excerpt || undefined,
+    seoTitle: extra.seoTitle ?? undefined,
+    seoDescription: extra.seoDescription ?? undefined,
+    contentOrigin: "ai_assisted",
+    isPurchasable: false,
+    isLoginRequired: false,
+  });
+  await prisma.topic.update({
+    where: { id: topic.id },
+    data: {
+      linkedPostId: created.id,
+      composedAt: new Date(),
+      ...(topic.status === "collecting" ? { status: "drafted" } : {}),
+    },
+  });
+  return { postId: created.id, postTitle: draft.title, recomposed: false, coverPath };
+}
+
+/** 近期已发文章标题(防重复选题;get_topic_brief 注入) */
 export async function listRecentPublishedTitles(limit = 20): Promise<string[]> {
   const rows = await prisma.post.findMany({
     where: { status: "published" },
@@ -255,34 +296,6 @@ export async function listRecentPublishedTitles(limit = 20): Promise<string[]> {
     select: { title: true },
   });
   return rows.map((r) => r.title);
-}
-
-/**
- * 单调用合成(同步,预期 ≤15s):拼素材 → 一次 LLM 产 {title,excerpt,contentMd}
- * → 封面转存 + 落稿锚定。解析/LLM 失败原样上抛(AiAdminError / AiClientError)。
- */
-export async function composeTopicDraft(
-  topic: Topic & { items: TopicItem[] },
-): Promise<ComposeOutcome> {
-  const model = await requireComposeModel();
-  const blocks = await buildComposeBlocks(topic);
-  const prompt = buildComposePrompt({
-    topicTitle: topic.title,
-    positioning: topic.positioning,
-    materialsSection: buildMaterialSection(blocks),
-    recentTitles: await listRecentPublishedTitles(),
-  });
-  const result = await chatJsonTask(
-    model,
-    parseComposeResult,
-    prompt.system,
-    prompt.user,
-    AI_PURPOSE_COMPOSE,
-    { maxTokens: COMPOSE_MAX_TOKENS },
-  );
-  const primaryCoverUrl = blocks.find((b) => b.kind === "telegram")?.coverUrl ?? null;
-  const coverPath = primaryCoverUrl ? await transferCoverOrNull(primaryCoverUrl) : null;
-  return finalizeCompose(topic, result, blocks, coverPath);
 }
 
 /** createPost 的 PostAdminError 归 409(slug 候选尽撞等);其余调用方兜底 500 */

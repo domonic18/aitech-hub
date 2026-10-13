@@ -19,16 +19,15 @@ export const AI_PURPOSE_SUMMARIZE = "summarize";
 export const AI_PURPOSE_SEARCH = "search";
 export const AI_PURPOSE_COVER = "cover";
 export const AI_PURPOSE_EMBEDDING = "embedding";
-export const AI_PURPOSE_COMPOSE = "compose";
-/** 模型用途 = 任务角色(六角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
- * compose=M26 专题合成起草) */
+/** 模型用途 = 任务角色(五角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化)。
+ * compose(专题合成)已退役(M27 批⑤):合成改走会话 agent(search 绑定),
+ * 历史台账 role=compose 行保留读侧回退原值展示 */
 export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SUMMARIZE,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_COVER,
   AI_PURPOSE_EMBEDDING,
-  AI_PURPOSE_COMPOSE,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -59,11 +58,6 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "语义向量",
     icon: "i-aim",
     sub: "混合检索:三域内容 embedding + 查询向量化(pgvector 余弦召回)",
-  },
-  [AI_PURPOSE_COMPOSE]: {
-    label: "专题合成",
-    icon: "i-edit",
-    sub: "专题定位 + 解读笔记/短结论 + 人工批注 → LLM 起草专题文档草稿",
   },
 };
 

@@ -74,6 +74,7 @@ M25 发现候选/订阅博主新解读 ──┐
 - **封面**:可走既有 cover-generate(封面生图角色),非本管线必选步骤
 - **成本量级**:单次合成 ≈ 输入 N×2k 字 + 输出 2~3k 字,一篇一次,成本可忽略量级;入台账
 - **人工定稿**:M27 编辑器交付前用现有编辑器(MdEditor/Vditor)人工修订,发布链不受阻;M27 交付后对话式改稿 + diff 评审接管修订效率([editor-ai-plan.md](editor-ai-plan.md))
+- **M27 批⑤ agent 自主生产(退役固定管线,1276 验收反馈,2026-10-13)**:本段确定性合成链(compose 角色卡 → 单调用/四步管线 → compose 进度轮询路由)整体退役;编排权移交会话 agent(admin 身份档,细粒度四工具 `get_topic_brief`/`transfer_video_cover`/`generate_cover_candidates`/`save_topic_draft`,arch/04 K2.8 补注),模型按系统提示工作流自主规划执行,选题沟通走 ask_user。**保留并复用**:落稿锚定核 `finalizeCompose`(扩展 SEO/标签,undefined=不触碰防覆盖人工字段)、重合成保护 `needsRecomposeConfirm`、素材拼装 `buildComposeBlocks`、封面转存 `transferCoverOrNull`、视频推荐卡注入;STRUCTURE_SPEC 固定结构降格为系统提示写作指南。compose AI 角色槽退役(六→五,历史台账读侧回退原值)
 
 ## 6. 段④ 公众号推送(既有通道,零新工程)
 
@@ -123,9 +124,9 @@ model TopicItem {
 
 - `/admin/topics`:列表(状态分段 collecting/drafted/published)+ 新建;`/admin/topics/[id]` 详情三区——素材聚合视图(解读卡:标题/博主/笔记摘要/短结论/批注内联编辑 + 文章卡)、定位编辑、合成操作区(合成初稿/重合成/跳转文档)
 - 挂载交互:详情页内选挂(电报流按博主/时间筛选,仅列 `aiStatus=done`;文章按关键词搜);电报流治理台条目内「加入专题」入口 v1 不做(§10-5)
-- API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`(定位/状态)、`POST/DELETE /api/topics/[id]/items`、`POST /api/topics/[id]/compose`(入队,202)+ `GET /api/topics/[id]/compose`(进度轮询,M27 批③)。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参
-- **合成执行形态(M27 批③ agent 化,1276 验收反馈)**:v1 同步单调用演进为 BullMQ 异步多步管线(`QUEUE_TOPIC_COMPOSE`,并发 1 + 锁 600s;jobId=`topic-compose-<topicId>` 确定性形态,轮询查询与并发防重共用)——①选题角度择优(2~3 候选带钩子自选最优)→ ②固定结构起草 → ③审稿清单自检 → ④按问题修订(自检过则跳过);每步独立 chatJsonTask,role=compose 台账逐次落行。管线任一步失败自动降级 v1 单调用保出稿(降级诚实记 fallback 供 UI 提示);重合成 409 确认保留在入队前;同专题进行中 409 拒重。电报流/文章列表页零改动
-- **合成 agent 交互(M27 批④,1276 验收反馈「点击合成要有过程」)**:专题页「合成初稿/重合成」改为唤起侧边栏助手卡并注入合成任务,admin 图专属工具 `compose_topic_draft`(工具按身份分发,图缓存键加身份档)在对话框内列 todo 计划 → 调工具(工具体轮询管线至终态,四步进度在工具卡实时滚动)→ 完成后模型汇报并给文档链接;回写库仍由 worker 管线落稿。重合成覆盖确认走工具 needConfirm → ask_user HITL 回路;空素材按钮侧就地拦截(零真网防线)。详见 arch/04 §3 K2.8 注记
+- API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`、`POST/DELETE /api/topics/[id]/items`。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参。**M27 批⑤:`POST/GET /api/topics/[id]/compose` 随固定管线退役删除**(合成执行与进度可视性改由会话 agent 工具层承接,见下条)
+- ~~**合成执行形态(M27 批③ agent 化)**:BullMQ 异步四步管线……~~ **已随 M27 批⑤ 退役**(`QUEUE_TOPIC_COMPOSE`/processor/降级单调用一并移除;jobId 去重、轮询路由、409 防重等管线基建不复存在)
+- **合成 agent 交互(M27 批④ 建对话框化入口,批⑤ 换工具面)**:专题页「合成初稿/重合成」唤起侧边栏助手卡并注入合成任务文本(不变);admin 图工具面从单只 `compose_topic_draft`(管线轮询)换为细粒度四件 `get_topic_brief`/`transfer_video_cover`/`generate_cover_candidates`/`save_topic_draft`(arch/04 K2.8 补注),模型自主规划逐步执行、每只工具卡逐个出现提供过程可视性;选题不确定走 ask_user,重合成覆盖确认走 needConfirm → ask_user → confirm=true 回路;落稿由工具层 `finalizeCompose` 直接写库(worker 管线已退役);空素材按钮侧就地拦截保留(零真网防线)
 
 ## 9. e2e 与测试
 
@@ -169,7 +170,8 @@ model TopicItem {
 | M27 批①/② 合成重构 | 「博主×视频」推荐体固定结构 + 预置提示词(DEFAULT_TOPIC_POSITIONING)+ 素材链路(视频链/封面)注入 + 首视频封面转存落 coverPath + 文首视频推荐卡(1276 验收反馈)—— **代码已交付(feature/editor-ai,33fb763/e020886)** | 本地真机验收 |
 | M27 批③ 合成 agent 化 | BullMQ 异步四步管线(角度择优→起草→自检→修订)+ 进度轮询 + 失败降级单调用(1276 验收反馈「agent 智能生产过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
 | M27 批④ 合成对话框化 | 专题页合成按钮唤起侧边栏 agent(compose_topic_draft admin 工具 + 身份档分发 + 工具卡四步进度实时滚动 + needConfirm→ask_user 回路)(1276 验收反馈「点击合成要有过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
+| M27 批⑤ agent 自主生产 | 退役固定管线(四步管线/processor/compose 路由/compose_topic_draft/轮询面板/compose AI 角色槽)+ admin 细粒度四工具(get_topic_brief/transfer_video_cover/generate_cover_candidates/save_topic_draft)+ 工作流提示重写(六步/修订路径/写作指南)+ 护栏按身份档(admin 30 次/150k tokens)+ 落稿核扩展 SEO/标签(undefined=不触碰)+ 防幻觉图片校验(1276 验收反馈「过程要可见、agent 要自主做很多事」)—— **代码已交付(feature/editor-ai)**,文档同步(arch/04 K2.8 补注/§4 五角色/本文件)—— **已落** | 本地真机验收(端到端一轮含修订对话) |
 
 **验收标准(预排)**:解读真机出笔记(新条有/存量 null);专题挂载→合成→人工定稿→发布→公众号草箱全链真机走通;素材降级拼装路径(全短结论专题)可合成;`make check` 全绿 + 迁移从零重放;零版权红线破坏(转写不落库断言不放松)。
 
-**状态:方案定稿(2026-10-12),待开发**——四问取向确认 + §10 决策记录九项落定(A/B 路线裁决含内);按 §12 五批推进。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)(M27,建议 M26 后启动)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。
+**状态:方案定稿(2026-10-12),已实施至 M27 批⑤**——M26 五批 + M27 批①~⑤(合成重构→agent 化→对话框化→自主生产)代码全部交付;合成链终态 = 会话 agent 自主编排(arch/04 K2.8 补注),后续 R③ 关键帧/HTML 截图、R④ 工具注册表化(MCP 扩展位)另行立项。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。

@@ -1,7 +1,7 @@
 /**
  * run 编排单测(getAgentGraph mock):帧序列 metadata→…→end、todos 提取、
- * usage 聚合、工具调用去重计数、50k/12 次护栏主动收束(degraded)、
- * 断开(signal aborted)即停不产 end 前的更多帧。
+ * usage 聚合、工具调用去重计数、护栏按身份档主动收束(12/50k 基础档,
+ * admin 30/150k/递归 60,M27 批⑤)、断开(signal aborted)即停不产 end 前的更多帧。
  */
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
 import { Command, isCommand } from "@langchain/langgraph";
@@ -11,7 +11,7 @@ const getAgentGraphMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./agent", () => ({ getAgentGraph: getAgentGraphMock }));
 
-import { AGENT_MAX_TOKENS, extractTodos, runAgentTurn, type AgentTodo } from "./run";
+import { AGENT_LIMITS, extractTodos, runAgentTurn, type AgentTodo } from "./run";
 
 /** 假图:getAgentGraph 返回形状({graph, resolved}),按序产出 [mode, payload] 元组 */
 function fakeGraph(frames: [string, unknown][], onStream?: () => void) {
@@ -94,9 +94,9 @@ describe("runAgentTurn", () => {
     const big = new AIMessageChunk({
       content: "",
       usage_metadata: {
-        input_tokens: AGENT_MAX_TOKENS,
+        input_tokens: AGENT_LIMITS.guest.tokens,
         output_tokens: 1,
-        total_tokens: AGENT_MAX_TOKENS + 1,
+        total_tokens: AGENT_LIMITS.guest.tokens + 1,
       },
     });
     getAgentGraphMock.mockResolvedValue(
@@ -145,6 +145,39 @@ describe("runAgentTurn", () => {
     expect(outcome.toolCalls).toBe(13); // 第 13 次触发即断(≤12 允许),计数如实
     expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(12);
     expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("admin 档护栏放宽:recursionLimit 60,工具调用上限 30(M27 批⑤)", async () => {
+    const framesIn: [string, unknown][] = [];
+    for (let i = 0; i < 31; i++) {
+      framesIn.push([
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "",
+            tool_call_chunks: [{ name: "get_topic_brief", args: "{}", id: `call-${i}`, index: 0 }],
+          }),
+          {},
+        ],
+      ]);
+    }
+    const g = fakeGraph(framesIn);
+    getAgentGraphMock.mockResolvedValue(g);
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "admin",
+      signal: signalSettled(false),
+      onFrame,
+    });
+    const config = (
+      g.graph.stream.mock.calls as unknown as [[unknown, { recursionLimit: number }]]
+    )[0]?.[1];
+    expect(config?.recursionLimit).toBe(AGENT_LIMITS.admin.recursion);
+    expect(outcome.truncatedReason).toContain("工具调用已达上限");
+    expect(outcome.toolCalls).toBe(31);
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(30);
   });
 
   it("断开(signal 已 abort):循环即停,end 帧不发", async () => {

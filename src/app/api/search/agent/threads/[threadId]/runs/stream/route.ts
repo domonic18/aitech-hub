@@ -14,7 +14,7 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { AGENT_MAX_TOKENS, recordAgentRun, runAgentTurn } from "@/lib/agent/run";
+import { AGENT_LIMITS, recordAgentRun, runAgentTurn } from "@/lib/agent/run";
 import { backfillSessionTitle } from "@/lib/agent/sessions";
 import { tryConsumeAgentRunQuota, tryConsumeGuestAskQuota } from "@/lib/agent/quota";
 import {
@@ -122,7 +122,7 @@ export async function POST(
     message = text;
   }
 
-  if (identity.kind !== "guest" && tokensTotal >= AGENT_MAX_TOKENS) {
+  if (identity.kind !== "guest" && tokensTotal >= AGENT_LIMITS[identity.kind].tokens) {
     return apiEnvelope(429, "本会话用量已达上限,请新建会话继续");
   }
   if (

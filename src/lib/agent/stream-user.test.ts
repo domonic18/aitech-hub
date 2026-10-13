@@ -14,7 +14,11 @@ const balanceMock = vi.hoisted(() => ({
   consumeTokens: vi.fn(),
 }));
 const runMock = vi.hoisted(() => ({
-  AGENT_MAX_TOKENS: 50_000,
+  AGENT_LIMITS: {
+    guest: { toolCalls: 12, tokens: 50_000, recursion: 30 },
+    user: { toolCalls: 12, tokens: 50_000, recursion: 30 },
+    admin: { toolCalls: 30, tokens: 150_000, recursion: 60 },
+  },
   runAgentTurn: vi.fn(),
   recordAgentRun: vi.fn(),
 }));

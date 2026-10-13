@@ -1,26 +1,17 @@
 /**
- * 专题合成纯函数单测(M26 批④,方案 §9):素材拼装(笔记优先/降级短结论+要点/
- * 批注注入/文章取样)/ 重合成保护判定 / 输出契约解析(合法/缺 JSON/结构不符/
- * 列帽截断)/ 未绑模型防线。LLM 调用与落稿不入单测(集成路径由真机验收覆盖)。
+ * 专题落稿核单测(M26 批④建;M27 批⑤随 agent 自主生产重构更新):重合成保护
+ * 判定 / 文首推荐卡 / aiPoints 归一 / media refs 防幻觉校验联调。LLM 与落稿
+ * DB 链不入单测(集成路径由真机验收覆盖);四步管线与单调用合成已退役。
  */
-import { describe, expect, it, vi } from "vitest";
-import type { Topic, TopicItem } from "@prisma/client";
+import { describe, expect, it } from "vitest";
 
-vi.mock("../ai/resolver", () => ({ resolveAiModel: async () => null }));
+import { findNonSiteImageRefs } from "../media/refs";
+import { buildVideoCard, needsRecomposeConfirm, normalizePoints } from "./compose";
 
-import { composeTopicDraft, needsRecomposeConfirm } from "./compose";
-import {
-  buildComposePrompt,
-  buildMaterialSection,
-  buildVideoCard,
-  parseComposeResult,
-  type ComposeMaterialBlock,
-} from "./compose-prompt";
-
-function tgBlock(partial: Partial<ComposeMaterialBlock>): ComposeMaterialBlock {
+function tgBlock() {
   return {
-    kind: "telegram",
-    title: "e2e 视频",
+    kind: "telegram" as const,
+    title: "端侧实测",
     blogger: "UP主A",
     note: null,
     aiNote: null,
@@ -30,76 +21,13 @@ function tgBlock(partial: Partial<ComposeMaterialBlock>): ComposeMaterialBlock {
     coverUrl: "https://i0.hdslb.com/bfs/archive/cover.jpg",
     excerpt: null,
     contentSample: null,
-    ...partial,
   };
 }
 
-describe("buildMaterialSection(素材拼装)", () => {
-  it("笔记优先:有 aiNote 时输出解读笔记,批注紧随标题", () => {
-    const s = buildMaterialSection([
-      tgBlock({ note: "重点用第 2 点", aiNote: "## 背景与问题\n端侧模型拐点已到。" }),
-    ]);
-    expect(s).toContain("【素材1·视频】《e2e 视频》(博主:UP主A)");
-    expect(s).toContain("人工批注:重点用第 2 点");
-    expect(s).toContain("视频链接:https://www.bilibili.com/video/BV1xx");
-    expect(s).toContain("封面图:https://i0.hdslb.com/bfs/archive/cover.jpg");
-    expect(s).toContain("解读笔记:");
-    expect(s).toContain("端侧模型拐点已到");
-    expect(s).not.toContain("短结论");
-  });
-
-  it("降级拼装:无笔记时回退短结论+要点(存量素材口径)", () => {
-    const s = buildMaterialSection([
-      tgBlock({
-        aiNote: null,
-        aiSummary: "端侧成本过了拐点。",
-        aiPoints: ["成本减半", "时延更低"],
-      }),
-    ]);
-    expect(s).toContain("短结论:端侧成本过了拐点。");
-    expect(s).toContain("- 成本减半");
-    expect(s).toContain("- 时延更低");
-    expect(s).not.toContain("解读笔记");
-  });
-
-  it("文章块:标题/摘要/正文节选(取样截断在上游 composeTopicDraft)", () => {
-    const s = buildMaterialSection([
-      {
-        kind: "post",
-        title: "旧文",
-        blogger: null,
-        note: null,
-        aiNote: null,
-        aiSummary: null,
-        aiPoints: [],
-        videoUrl: null,
-        coverUrl: null,
-        excerpt: "一句话摘要",
-        contentSample: "正文片段",
-      },
-    ]);
-    expect(s).toContain("【素材1·文章】《旧文》");
-    expect(s).toContain("摘要:一句话摘要");
-    expect(s).toContain("正文节选:\n正文片段");
-  });
-
-  it("多素材编号递增且双换行分隔", () => {
-    const s = buildMaterialSection([tgBlock({ title: "A" }), tgBlock({ title: "B" })]);
-    expect(s).toContain("【素材1·视频】《A》");
-    expect(s).toContain("【素材2·视频】《B》");
-  });
-
-  it("空素材返回空串", () => {
-    expect(buildMaterialSection([])).toBe("");
-  });
-});
-
-describe("buildVideoCard(文首推荐卡,M27 批②)", () => {
+describe("buildVideoCard(文首推荐卡)", () => {
   it("取首条视频素材拼卡;博主缺失兜底「未知」", () => {
-    const card = buildVideoCard([
-      tgBlock({ title: "端侧实测" }),
-      tgBlock({ title: "第二条不该被取到" }),
-    ]);
+    const second = { ...tgBlock(), title: "第二条不该被取到" };
+    const card = buildVideoCard([tgBlock(), second]);
     expect(card).toContain("《端侧实测》");
     expect(card).toContain("UP主:UP主A");
     expect(card).toContain("阅读原文");
@@ -107,7 +35,7 @@ describe("buildVideoCard(文首推荐卡,M27 批②)", () => {
   });
 
   it("博主为 null 兜底;纯文章素材返回 null 不注入", () => {
-    expect(buildVideoCard([tgBlock({ blogger: null })])).toContain("UP主:未知");
+    expect(buildVideoCard([{ ...tgBlock(), blogger: null }])).toContain("UP主:未知");
     expect(
       buildVideoCard([
         {
@@ -126,6 +54,14 @@ describe("buildVideoCard(文首推荐卡,M27 批②)", () => {
       ]),
     ).toBeNull();
     expect(buildVideoCard([])).toBeNull();
+  });
+});
+
+describe("normalizePoints(aiPoints Json 列读侧归一)", () => {
+  it("白名单字符串;非数组/空串/非串剔除", () => {
+    expect(normalizePoints(["成本减半", "", 3, null])).toEqual(["成本减半"]);
+    expect(normalizePoints("not-array")).toEqual([]);
+    expect(normalizePoints(undefined)).toEqual([]);
   });
 });
 
@@ -165,90 +101,21 @@ describe("needsRecomposeConfirm(重合成保护判定)", () => {
   });
 });
 
-describe("parseComposeResult(输出契约)", () => {
-  it("合法 JSON:三字段透传", () => {
-    const r = parseComposeResult(
-      '```json\n{"title":"端侧模型拐点","excerpt":"一句话。","contentMd":"## 一节\\n' +
-        "x".repeat(120) +
-        '"}\n```',
-    );
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.data.title).toBe("端侧模型拐点");
-      expect(r.data.excerpt).toBe("一句话。");
-    }
+describe("findNonSiteImageRefs(正文图片防幻觉校验,save_topic_draft 消费)", () => {
+  it("站内路径不报;外链与非站内绝对路径报原值", () => {
+    const md = [
+      "![封面](/wp-content/uploads/2026/10/a.png)",
+      "![外链](https://i0.hdslb.com/bfs/x.jpg)",
+      "![其它](/media/videos/b.mp4)",
+      "![伪站内](/wp-content/../evil.png)",
+    ].join("\n");
+    expect(findNonSiteImageRefs(md)).toEqual([
+      "https://i0.hdslb.com/bfs/x.jpg",
+      "/wp-content/../evil.png",
+    ]);
   });
 
-  it("无 JSON / 结构不符 → ok:false 带错误串", () => {
-    expect(parseComposeResult("没有结构化输出").ok).toBe(false);
-    expect(parseComposeResult('{"title":"只有标题"}').ok).toBe(false);
-    const bad = parseComposeResult('{"title":"","excerpt":"","contentMd":"短"}');
-    expect(bad.ok).toBe(false);
-  });
-
-  it("超长截断到列帽(title 500/excerpt 500)不整条判废", () => {
-    const r = parseComposeResult(
-      JSON.stringify({
-        title: "t".repeat(600),
-        excerpt: "e".repeat(600),
-        contentMd: "c".repeat(200),
-      }),
-    );
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.data.title.length).toBe(500);
-      expect(r.data.excerpt.length).toBe(500);
-    }
-  });
-});
-
-describe("composeTopicDraft(未绑模型防线)", () => {
-  it("compose 角色未绑定 → AiAdminError(disabled),先于任何 DB 触达", async () => {
-    const bare = {
-      id: BigInt(1),
-      title: "t",
-      positioning: null,
-      status: "collecting",
-      linkedPostId: null,
-      composedAt: null,
-      publishedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      items: [] as TopicItem[],
-    } as unknown as Topic & { items: TopicItem[] };
-    await expect(composeTopicDraft(bare)).rejects.toMatchObject({
-      code: "disabled",
-      message: expect.stringContaining("专题合成"),
-    });
-  });
-});
-
-describe("buildComposePrompt(输入拼装)", () => {
-  it("含定位/素材区/近期标题清单;定位缺省有占位", () => {
-    const p = buildComposePrompt({
-      topicTitle: "端侧 AI 拐点",
-      positioning: "面向开发者,口语化",
-      materialsSection: "【素材1·视频】《A》",
-      recentTitles: ["已发文一", "已发文二"],
-    });
-    expect(p.user).toContain("专题:端侧 AI 拐点");
-    expect(p.user).toContain("面向开发者,口语化");
-    expect(p.user).toContain("【素材1·视频】《A》");
-    expect(p.user).toContain("- 已发文一");
-    // M27 批①合成重构:推荐体固定结构 + 字数硬约束 + 阅读原文 CTA 钉在 system;
-    // 批②排版纪律:封面/推荐卡由系统注入,禁止 LLM 自造图片语法
-    expect(p.system).toContain("推荐短文");
-    expect(p.system).toContain("800~1200 字");
-    expect(p.system).toContain("阅读原文");
-    expect(p.system).toContain("## 视频讲了什么");
-    expect(p.system).toContain("禁止使用图片语法");
-    const noPos = buildComposePrompt({
-      topicTitle: "t",
-      positioning: null,
-      materialsSection: "m",
-      recentTitles: [],
-    });
-    expect(noPos.user).toContain("(未填写,按素材自然发挥)");
-    expect(noPos.user).not.toContain("近期已发布文章标题");
+  it("无图片语法 → 空数组", () => {
+    expect(findNonSiteImageRefs("纯文本正文,没有图")).toEqual([]);
   });
 });
