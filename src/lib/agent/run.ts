@@ -15,6 +15,7 @@ import type { ResolvedAiModel } from "../ai/resolver";
 
 import { getAgentGraph } from "./agent";
 import { GUEST_THREAD_PREFIX } from "./guest-threads";
+import type { AgentIdentity } from "./identity";
 import { touchSessionAfterRun } from "./sessions";
 import { encodeWireEvent, encodeWireMessage } from "./wire";
 
@@ -46,6 +47,8 @@ export interface AgentRunParams {
   message: string | null;
   /** HITL 恢复值(ask_user 提问卡回答;经 Command({resume}) 灌回中断的工具) */
   resume?: unknown;
+  /** 身份档(M27 批④:决定工具面——admin 图才有 compose_topic_draft) */
+  identityKind: AgentIdentity["kind"];
   signal: AbortSignal;
   /** 流帧出口(路由侧只管 encode 后下发) */
   onFrame: (frame: string) => void;
@@ -72,8 +75,8 @@ interface UsageMeta {
  * 收尾);帧序列 metadata → (messages|updates)* → end。
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
-  const { threadId, message, resume, signal, onFrame } = params;
-  const { graph, resolved } = await getAgentGraph();
+  const { threadId, message, resume, identityKind, signal, onFrame } = params;
+  const { graph, resolved } = await getAgentGraph(identityKind);
   const runId = crypto.randomUUID();
 
   const outcome: AgentRunOutcome = {

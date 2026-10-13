@@ -78,6 +78,7 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
       signal: signalSettled(false),
       onFrame,
     });
@@ -108,6 +109,7 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
       signal: signalSettled(false),
       onFrame,
     });
@@ -135,6 +137,7 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
       signal: signalSettled(false),
       onFrame,
     });
@@ -152,6 +155,7 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
       signal: signalSettled(true),
       onFrame,
     });
@@ -172,6 +176,7 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: null,
+      identityKind: "guest",
       resume: { message: "报问题", option: "报问题" },
       signal: signalSettled(false),
       onFrame,

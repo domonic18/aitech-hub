@@ -20,7 +20,6 @@ vi.mock("../queue", () => ({
 
 import { enqueueTopicCompose, getTopicComposeState } from "./compose-agent";
 import { parseAngle, parseCheck } from "./compose-prompt";
-import { TopicError } from "./repo";
 import { AiAdminError } from "../ai/errors";
 
 // compose 绑定模型打桩(enqueue 防线依赖;unbound 用例单点覆写)

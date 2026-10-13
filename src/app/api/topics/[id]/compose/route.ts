@@ -13,11 +13,12 @@ import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
-import { enqueueTopicCompose, getTopicComposeState } from "@/lib/topics/compose-agent";
-import { getTopic } from "@/lib/topics/repo";
-import { needsRecomposeConfirm } from "@/lib/topics/compose";
+import {
+  checkComposeEligibility,
+  enqueueTopicCompose,
+  getTopicComposeState,
+} from "@/lib/topics/compose-agent";
 import { mapTopicError } from "@/lib/topics/http";
-import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -27,28 +28,19 @@ const ID_RE = /^\d{1,10}$/;
 
 const Body = z.object({ confirm: z.boolean().default(false) });
 
-/** 资格预检(POST 入队前):id 形态 → 素材非空 → 重合成 409 确认判定 */
+/** 资格预检(POST 入队前):id 形态 → 共享资格判定(素材非空/重合成 409) */
 async function precheck(
   rawId: string,
   confirm: boolean,
 ): Promise<{ topicId: bigint } | NextResponse> {
   if (!ID_RE.test(rawId)) return apiEnvelope(400, "invalid id");
-  const topic = await getTopic(BigInt(rawId));
-  if (topic.items.length === 0) {
-    return apiEnvelope(400, "尚未挂载素材——先挂 2~3 条解读/文章再合成");
-  }
-  // 重合成保护:关联文档存在且人工动过 → 409 需确认(软删弃锚直接新建)
-  const linked =
-    topic.linkedPostId !== null
-      ? await prisma.post.findUnique({
-          where: { id: topic.linkedPostId },
-          select: { status: true, updatedAt: true },
-        })
-      : null;
-  if (!confirm && linked && linked.status !== "deleted" && needsRecomposeConfirm(topic, linked)) {
-    return apiEnvelope(409, "关联文档在合成后被人工编辑过,重合成将覆盖这些改动——确认覆盖吗?", {
-      needConfirm: true,
-    });
+  const pre = await checkComposeEligibility(BigInt(rawId), confirm);
+  if (!pre.ok) {
+    return apiEnvelope(
+      pre.needConfirm ? 409 : 400,
+      pre.message,
+      pre.needConfirm ? { needConfirm: true } : undefined,
+    );
   }
   return { topicId: BigInt(rawId) };
 }

@@ -164,6 +164,7 @@ export async function POST(
           threadId,
           message,
           ...(resume !== undefined ? { resume } : {}),
+          identityKind: identity.kind,
           signal: abort.signal,
           onFrame: push,
         });

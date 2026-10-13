@@ -85,7 +85,7 @@ diff 评审面(@codemirror/merge,chunk 级 accept/reject)
 | 批 | 内容 | 出口 |
 |---|---|---|
 | 批① 自动保存 + 编辑上下文 | autosave(debounce PUT/乐观锁/localStorage/角标)+ 编辑页 Drawer 上下文注入 + e2e 扩 | `make check` + 人工验收 |
-| 批② propose_edits 与提案流 | 工具 zod 契约(双档)+ admin-only 注册与 graph 缓存键身份档 + HITL interrupt/回流 + 客户端提案卡与应用器(精确 → 模糊 → 未定位降级)+ 单测 | `make check` |
+| 批② propose_edits 与提案流 | 工具 zod 契约(双档)+ admin-only 注册与 HITL interrupt/回流 + 客户端提案卡与应用器(精确 → 模糊 → 未定位降级)+ 单测(graph 缓存键身份档 **已随 M27 批④ compose 工具提前落地**,`agentToolsFor/agentSystemPrompt` 收口,本批直接挂新工具)| `make check` |
 | 批③ diff 评审面 | @codemirror/merge 评审模态 + chunk 接受/拒绝 + Vditor 写回 spike(undo)+ 终端风样式 | 人工验收(undo/降级路径) |
 | 批④ 收口 | 全链真机(见 §10)+ 文档收口(arch/04 §3 工具清单、arch/06、本表)+ PR 合 develop + 生产部署 | 真机全链走通 |
 

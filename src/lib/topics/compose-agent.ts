@@ -11,8 +11,10 @@ import { AI_PURPOSE_COMPOSE } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { chatJsonTask } from "../ai/chat-json-task";
 import type { ResolvedAiModel } from "../ai/resolver";
+import { prisma } from "../db";
 import { logger } from "../logger";
 import { getQueue, QUEUE_TOPIC_COMPOSE, TOPIC_COMPOSE_JOB } from "../queue";
+import { needsRecomposeConfirm } from "./compose";
 import { getTopic, TopicError } from "./repo";
 import {
   ANGLE_SPEC,
@@ -73,10 +75,41 @@ const COMPOSE_STEP_TOTAL = 4;
 const composeJobId = (topicId: bigint): string => `topic-compose-${topicId}`;
 
 /**
- * 入队(路由消费):绑定缺失先于人话 400(requireComposeModel);同专题
- * active/waiting 拒重 409;completed/failed 旧 job 先删再入——确定性 jobId 在
- * BullMQ 是去重键,removeOnComplete 保留窗口内不清掉会把重合成静默丢弃。
- * attempts=1:管线内部已带降级,BullMQ 重试只会整链翻倍烧 token,失败交用户重按。
+ * 合成资格预检(M27 批④自 POST 路由上提,路由与 agent 工具共用同一真相源):
+ * 素材非空 → 重合成保护判定(关联文档被人工编辑过且未带 confirm → needConfirm,
+ * 软删弃锚直接新建)。
+ */
+export async function checkComposeEligibility(
+  topicId: bigint,
+  confirm: boolean,
+): Promise<{ ok: true } | { ok: false; message: string; needConfirm?: boolean }> {
+  const topic = await getTopic(topicId);
+  if (topic.items.length === 0) {
+    return { ok: false, message: "尚未挂载素材——先挂 2~3 条解读/文章再合成" };
+  }
+  const linked =
+    topic.linkedPostId !== null
+      ? await prisma.post.findUnique({
+          where: { id: topic.linkedPostId },
+          select: { status: true, updatedAt: true },
+        })
+      : null;
+  if (!confirm && linked && linked.status !== "deleted" && needsRecomposeConfirm(topic, linked)) {
+    return {
+      ok: false,
+      message: "关联文档在合成后被人工编辑过,重合成将覆盖这些改动——确认覆盖吗?",
+      needConfirm: true,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * 入队(路由与 agent 工具消费):绑定缺失先于人话 400(requireComposeModel);
+ * 同专题 active/waiting 拒重 409;completed/failed 旧 job 先删再入——确定性
+ * jobId 在 BullMQ 是去重键,removeOnComplete 保留窗口内不清掉会把重合成静默
+ * 丢弃。attempts=1:管线内部已带降级,BullMQ 重试只会整链翻倍烧 token,失败
+ * 交用户重按。
  */
 export async function enqueueTopicCompose(topicId: bigint): Promise<{ jobId: string }> {
   await requireComposeModel();

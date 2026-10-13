@@ -9,6 +9,8 @@ import { createDeepAgent, type DeepAgent } from "deepagents";
 import type { ResolvedAiModel } from "../ai/resolver";
 import { askUserGuardMiddleware } from "./ask-user-guard";
 import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
+import { composeTopicDraftTool } from "./compose-tool";
+import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
@@ -43,35 +45,58 @@ export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜�
 - 引用站内内容时标注来源链接(href);不要编造站内不存在的文章或项目
 - 站内内容与你的知识冲突时,以站内内容为准并指出差异`;
 
+/**
+ * admin 专属段(M27 批④,editor-ai 方案「工具按身份注册」):写库型工具只进
+ * admin 图——guest/user 图的工具面与系统提示维持 K2.5 只读红线不变。系统提示
+ * 只在 admin 图追加,防工具语义泄入无工具会话(模型幻调不存在的工具)。
+ */
+const ADMIN_PROMPT_ADDENDUM = `
+
+专题合成(管理员专属能力):
+- 收到「为专题合成/生成推荐文章」类任务:先用 write_todos 列出计划(如检查素材→执行合成→汇报结果),再调用 compose_topic_draft 执行
+- 合成约需 1~3 分钟,工具会一直等到完成,期间不要催促用户、不要中途提问
+- 工具返回 needConfirm 时:先用 ask_user 向用户确认覆盖,同意后带 confirm=true 重新调用
+- 完成后向用户汇报:文章标题、结构(五节推荐体)、封面转存结果,并给出文档链接(postUrl,markdown 链接);fallback=true(管线降级单调用)时如实说明
+- 返回 error 或 timeout 时如实转述,不要编造结果`;
+
+/** 工具面按身份分发(guest/user 只读六件;admin 追加合成工具) */
+export function agentToolsFor(kind: AgentIdentity["kind"]) {
+  return kind === "admin" ? [...AGENT_TOOLS, composeTopicDraftTool] : [...AGENT_TOOLS];
+}
+
+/** 系统提示按身份分发(admin 追加合成工作流段) */
+export function agentSystemPrompt(kind: AgentIdentity["kind"]): string {
+  return kind === "admin" ? `${AGENT_SYSTEM_PROMPT}${ADMIN_PROMPT_ADDENDUM}` : AGENT_SYSTEM_PROMPT;
+}
+
+/** 图缓存上限(模型 key × 身份档组合空间小;FIFO 淘汰防模型轮换时无限增长) */
+const GRAPH_CACHE_MAX = 6;
+
 const globalForAgent = globalThis as unknown as {
-  agentGraph?: { key: string; graph: DeepAgent; resolved: ResolvedAiModel };
+  agentGraphs?: Map<string, { graph: DeepAgent; resolved: ResolvedAiModel }>;
 };
 
 /**
  * 构造/取用 agent 图(checkpointer 挂 PostgresSaver,线程状态跨请求持久)。
- * 首次调用触发 checkpoint setup(幂等);绑定身份(id:source)变化即重建,
- * 未变化复用——admin 侧主备切换/启停最迟下一次 run 生效。
+ * 首次调用触发 checkpoint setup(幂等);缓存键 = 绑定(id:source)+ 身份档
+ * (M27 批④:admin 图带合成工具,双档分别缓存)——任一变化即重建,未变化
+ * 复用;admin 侧主备切换/启停最迟下一次 run 生效。
  */
-export async function getAgentGraph(): Promise<{
+export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promise<{
   graph: DeepAgent;
   resolved: ResolvedAiModel;
 }> {
   await ensureAgentCheckpointer();
   const { model, resolved } = await resolveAgentModel();
-  const key = `${resolved.id}:${resolved.source}`;
-  const cached = globalForAgent.agentGraph;
-  if (cached) {
-    if (cached.key === key) return { graph: cached.graph, resolved: cached.resolved };
-    logger.info({
-      event: "agent.graph_rebuilt",
-      from: cached.key,
-      to: key,
-    });
-  }
+  const key = `${resolved.id}:${resolved.source}:${identityKind}`;
+  const cache = (globalForAgent.agentGraphs ??= new Map());
+  const cached = cache.get(key);
+  if (cached) return { graph: cached.graph, resolved: cached.resolved };
+  logger.info({ event: "agent.graph_built", key });
   const graph = createDeepAgent({
     model,
-    tools: AGENT_TOOLS,
-    systemPrompt: AGENT_SYSTEM_PROMPT,
+    tools: agentToolsFor(identityKind),
+    systemPrompt: agentSystemPrompt(identityKind),
     checkpointer: getAgentCheckpointer(),
     // ask_user 可靠性双守卫(SasanAgent 范式,2026-10-10):
     // - tool_call_repair:模型调用前剔悬空 tool_calls/孤儿 ToolMessage(abort
@@ -81,6 +106,10 @@ export async function getAgentGraph(): Promise<{
     //   个,其余拦「请合并」;state 异常 fail-closed),防 resume 批重执行答案错位。
     middleware: [toolCallRepairMiddleware, askUserGuardMiddleware],
   });
-  globalForAgent.agentGraph = { key, graph, resolved };
+  if (cache.size >= GRAPH_CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, { graph, resolved });
   return { graph, resolved };
 }

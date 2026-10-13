@@ -7,13 +7,16 @@
  */
 import { useState } from "react";
 
-/** 站内三工具 + 时间/计划工具的图标(sprite 体系,禁手绘) */
+import ComposeToolProgress from "./ComposeToolProgress";
+
+/** 站内三工具 + 时间/计划/合成工具的图标(sprite 体系,禁手绘) */
 const TOOL_ICON: Record<string, string> = {
   search_site: "#i-search",
   read_post: "#i-read",
   read_repo: "#i-github",
   get_time: "#i-clock",
   write_todos: "#i-bars",
+  compose_topic_draft: "#i-robot",
 };
 
 /** 只取渲染所需子集(assistant-ui 完整 part 含 type/toolCallId/argsText) */
@@ -52,6 +55,9 @@ export default function ToolCallBlock({
           )}
         </span>
       </button>
+      {/* compose_topic_draft:过程面板恒显(运行中滚动四步进度,终态摘要+文档
+          链接),不折叠——合成的可视过程是本工具卡的核心体验(1276 验收反馈) */}
+      {toolName === "compose_topic_draft" && <ComposeToolProgress args={args} result={result} />}
       {open ? (
         <div className="space-y-2 border-t border-line px-3 py-2 text-xs text-text-2">
           <div>

@@ -182,6 +182,8 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">合成</h2>
       <TopicComposeActions
         topicId={id}
+        topicTitle={topic.title}
+        materialsCount={topic.items.length}
         linkedPostId={topic.linkedPostId?.toString() ?? null}
         linkedPostStatus={linkedPost?.status ?? null}
         editedSinceCompose={linkedPost ? needsRecomposeConfirm(topic, linkedPost) : false}

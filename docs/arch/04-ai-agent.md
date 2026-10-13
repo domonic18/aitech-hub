@@ -71,7 +71,7 @@
 - **会话 30 天自动清退 + 用户可删(2026-10-07 用户拍板)**:行 `lastMessageAt` 超 30 天 worker 日清(STATS 队列 `purge-agent-session`,04:33 错峰)行+checkpoint 同删;用户删除走 DELETE 路由(归属校验 404 不泄露存在性,checkpoint 删失败不反噬)
 - **入口仅 /search 场景(2026-10-07 用户拍板;~~不做全局 FAB~~——**2026-10-09 M22 批④ 推翻,全站悬浮助手上线,见 K2.7 注记**)**:答案卡追问 chips(直发)+「继续深挖」按钮(仅预填)派发 `search:agent-ask` 事件唤起 Drawer
 - **身份**:匿名 cookie `ah_av`(uuid,365d,httpOnly)即 visitor,会话行与其绑定;换设备/清 cookie 失联,30 天清退兜底;三期登录后再议账号绑定
-- **模型绑定即时性**:agent 图进程级缓存按 `${resolved.id}:${resolved.source}` 键控,admin 改 search 绑定下一次 run 即生效(rebuild 落 `agent.graph_rebuilt` 日志);台账记独立角色 `search_agent`(与答案卡 `search` 的 100/日 互不侵占)
+- **模型绑定即时性**:agent 图进程级缓存按 `${resolved.id}:${resolved.source}` 键控(M27 批④ 起追身份档后缀 `:kind`,见 K2.8 注记),admin 改 search 绑定下一次 run 即生效(重建落 `agent.graph_built` 日志);台账记独立角色 `search_agent`(与答案卡 `search` 的 100/日 互不侵占)
 - **前端**:ai-invest 自绘件结构平移(`src/components/site/agent/` 七件),终端风 token 换装,不引 antd/zustand/react-query;threads 建删与 state 走自有 fetch(apiEnvelope);`runs.stream` K2.6 起亦为自有 fetch+SSE 解析(SDK AsyncCaller 对非 2xx reject Response 且包装 `new Error(response)`,apiEnvelope 人话/状态码全丢 → 429 配额/404 过期无法分流还会盲重试等待,用户实测 3 问后静默停止);程序化发送直写 `thread.append`(composer.setText 同 tick send 会静默 no-op);todos 提取零依赖模块 `lib/agent/todos` 客户端可安全引入;Drawer 左缘可拖拽调宽(420~920px 夹取,localStorage `agent.drawer.width` 记忆)
 
 **K2.6 实施注记(2026-10-07,第三迭代批①~④,游客模式 + 后台会话管理 + 工具面收紧)**:
@@ -93,6 +93,12 @@
 - **反馈系统(M22 批⑤,需求8/9)**:`submit_feedback` 为工具面唯一可写口(入参共用 `feedback-schema.ts` submitFeedbackSchema;sessionId 取 run 注入 LangChain config 的 `configurable.thread_id`,不在模型参数面不可伪造,归属经会话表溯源,不直落 userId/visitorId);系统提示六工具口径(2026-10-10 ask_user 恢复后)+ 联系话术(ask_user 确认内容→ask_user 询问联系方式可拒→落库后简短告知不复述);Footer「联系我们」派发 `agent:open` 直发引导(未登录可用,游客配额天然覆盖);admin `/admin/feedback` 四分段 + 搜索 + 分页 + 行内流转(open→processing→resolved,可回退重开;无删除无邮件——用户声音留档);API 按仓库惯例落顶层域目录 `/api/feedback`(GET 列表)+ `/api/feedback/[id]`(PUT 流转,requireAdminRequest)
 - **ask_user 结构化提问(HITL,2026-10-09 验收反馈)**:工具面第五只 `ask_user`(六工具口径)——工具体内裸调 langgraph `interrupt()` 暂停图(checkpointer 持久),`__interrupt__` updates 帧经 wire 原样透传,前端 `AgentInterruptCard`(问题 + 候选选项点选 + 自由文本)替换输入区(中断期间禁言,防新消息打到悬空 tool_call);回答经 `useLangGraphSendCommand` → POST `command.resume`(`{message,option?}`,resume run 以 `new Command({resume})` 作图输入,工具重放后以正常 ToolMessage 拿到答案继续)。**选型注记**:deepagents TS 版 HITL 中间件(`interruptOn`)的 reject 决策会把回复合成 `status:"error"` 的 ToolMessage(语义错),故不用;裸 interrupt 回传即成功结果,载荷形状收口 `src/lib/agent/hitl.ts`(零依赖前后端共用)。护栏口径:resume 不计游客 3 问/日(非新 ask)、不回填标题;IP 10 次/分与余额/50k 累计照计(真模型消耗)。**可靠性收口(2026-10-10,SasanAgent 范式)**:中断水合——刷新/切会话经 state 路由透出挂起中断(checkpointer getTuple pendingWrites 的 `__interrupt__` 通道防御性窄化),SDK load 契约 `interrupts` 字段恢复提问卡;悬空 tool_calls/孤儿 ToolMessage(中止打断工具节点、提问挂起后弃答、存量脏会话 → OpenAI 兼容端点 400)由 `tool_call_repair` 中间件模型调用前修复(wrapModelCall 请求副本改写,不落持久化,无脏数据零开销透传);并行 ask_user 由 `ask_user_guard` 单飞守卫拦截(只放行触发 AIMessage 按序第一个,其余拦「请合并」;state 异常 fail-closed,防 resume 批重执行答案错位)。
 - **dev 注意**:turbopack 下 langsmith 可选依赖 `ws` 缺失使 `/api/search/agent/*/runs/stream` 编译失败;分支切换触发全量重编译时该错误会全站化(所有路由 500),重启 dev server 即恢复按路由隔离(prod webpack standalone 不受影响,未加依赖)
+
+**K2.8 实施注记(2026-10-13,M27 批④,专题合成 agent 化——admin 工具档 + 对话框可视化执行,1276 验收反馈)**:
+
+- **工具面按身份分发(editor-ai 方案「graph 缓存键身份档」提前落地)**:`agentToolsFor/agentSystemPrompt(kind)` 纯函数收口(agent.ts)——guest/user 维持只读六件 + 基线提示;admin 追加第七只 `compose_topic_draft`(写库型工具只进 admin 图)与合成工作流提示段。图缓存键 `${resolved.id}:${resolved.source}:${kind}`(Map ≤6 FIFO;原单槽缓存在双档混访下会逐请求重建);工具体内再验会话行归属 `admin:` 前缀(纵深防御,fail-closed)
+- **compose_topic_draft(admin 会话)**:共享资格预检 `checkComposeEligibility`(自 POST 路由上提,路由与工具同一真相源:素材非空/重合成 needConfirm)→ `enqueueTopicCompose` 入队 → 工具体内轮询 `getTopicComposeState` 至终态(2.5s × 6min 上限,与专题页按钮同口径)。生产核仍是 worker 四步管线(可视化的是过程,确定性的是生产):关闭对话框/断连只影响对话流,BullMQ job 照常落库。needConfirm 语义 = 工具返回标记 → 模型经 ask_user 征确认 → confirm=true 重调(HITL 回路);未绑模型/409 进行中/素材空均人话回传由模型转述
+- **前端**:专题详情页「合成初稿/重合成」改为唤起 embedded AssistantCard(与编辑页 EditorAssistant 同形态)并注入带专题 id 的合成任务(nonce 机制);`ToolCallBlock` 对 compose 工具恒显过程面板 `ComposeToolProgress`(运行中轮询四步进度,终态摘要 + 跳转文档链接;历史回放按 result 直接渲染终态不轮询)。空素材在按钮侧就地拦截(零真网防线,e2e 34 同文);按钮侧旧轮询逻辑退役(POST /compose/ 路由保留:e2e 防线 + API 面)
 
 ### 3.5 分期
 
