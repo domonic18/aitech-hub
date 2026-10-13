@@ -18,7 +18,15 @@ export default function ArticleBody({
   if (contentMd) {
     return (
       <div className="prose">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+          components={{
+            // 图文混排(M27 批⑥):正文图惰性加载,首屏 LCP 不被文中小图拖累;
+            // 圆角/最大宽度由 prose.css .prose img 既有规则覆盖
+            img: (props) => <img loading="lazy" decoding="async" {...props} />,
+          }}
+        >
           {contentMd}
         </ReactMarkdown>
       </div>

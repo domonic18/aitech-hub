@@ -1,6 +1,7 @@
 /**
- * 专题生产工具面单测(M27 批⑤):admin 会话防线(fail-closed)/ 防幻觉图片
- * 校验 / save 的 needConfirm→confirm 回路 / 封面候选轮询(命中即返/超时人话)/
+ * 专题生产工具面单测(M27 批⑤建;批⑥随配图分配面更新):admin 会话防线
+ * (fail-closed)/ 防幻觉图片校验(uploads-only)/ brief 封面路径富化与降级清单 /
+ * transfer 全量转存清单 / save 的 needConfirm→confirm 回路 / 封面候选轮询 /
  * 落库结果透传与业务降级人话。DB/队列/转存全 mock;LLM 不入单测(e2e 零真网)。
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -16,10 +17,8 @@ vi.mock("../db", () => ({
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const getTopic = vi.hoisted(() => vi.fn());
-const hydrateItems = vi.hoisted(() => vi.fn());
 vi.mock("../topics/repo", () => ({
   getTopic,
-  hydrateItems,
   // 双参签名与真实类一致(code 丢弃,message 即人话),测试可直接 new
   TopicError: class extends Error {
     constructor(_code: string, message: string) {
@@ -32,14 +31,14 @@ const buildComposeBlocks = vi.hoisted(() => vi.fn());
 const finalizeCompose = vi.hoisted(() => vi.fn());
 const listRecentPublishedTitles = vi.hoisted(() => vi.fn());
 const needsRecomposeConfirm = vi.hoisted(() => vi.fn());
-const transferCoverOrNull = vi.hoisted(() => vi.fn());
+const transferVideoCovers = vi.hoisted(() => vi.fn());
 vi.mock("../topics/compose", () => ({
   buildComposeBlocks,
   finalizeCompose,
   isPostAdminError: (e: unknown) => e instanceof Error && e.name === "PostAdminError",
   listRecentPublishedTitles,
   needsRecomposeConfirm,
-  transferCoverOrNull,
+  transferVideoCovers,
 }));
 
 const enqueueCoverGen = vi.hoisted(() => vi.fn());
@@ -120,6 +119,9 @@ describe("get_topic_brief", () => {
       },
     ]);
     listRecentPublishedTitles.mockResolvedValueOnce(["旧文一"]);
+    transferVideoCovers.mockResolvedValueOnce([
+      { title: "视频A", blogger: "UP主A", coverPath: "/wp-content/uploads/2026/10/a.jpg" },
+    ]);
     // linked 行软删 → linked_post 应为 null(弃锚新建口径)
     postFindUnique.mockResolvedValueOnce({ title: "t", status: "deleted", updatedAt: new Date() });
 
@@ -127,9 +129,45 @@ describe("get_topic_brief", () => {
     expect(out.topic).toMatchObject({ id: "7", title: "端侧拐点" });
     expect(out.linked_post).toBeNull();
     const materials = out.materials as Array<Record<string, unknown>>;
-    expect(materials[0]).toMatchObject({ kind: "telegram", title: "视频A", note: "突出成本" });
+    expect(materials[0]).toMatchObject({
+      kind: "telegram",
+      title: "视频A",
+      note: "突出成本",
+      cover_path: "/wp-content/uploads/2026/10/a.jpg",
+    });
+    expect(materials[0]).not.toHaveProperty("cover_url"); // 外链不再进分配面
     expect((materials[0].note_md as string).length).toBe(3000); // BRIEF_NOTE_MAX 截断
+    expect(out.cover_transfer_failed).toEqual([]);
     expect(out.recent_published_titles).toEqual(["旧文一"]);
+  });
+
+  it("封面转存单条失败 → cover_path=null + 顶层失败清单(不阻塞 brief)", async () => {
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({ id: BigInt(7), title: "端侧拐点", items: [{}] });
+    buildComposeBlocks.mockResolvedValueOnce([
+      {
+        kind: "telegram",
+        title: "视频A",
+        blogger: "UP主A",
+        note: null,
+        videoUrl: "https://b23.tv/x",
+        coverUrl: "https://img/x.jpg",
+        aiNote: null,
+        aiSummary: "s",
+        aiPoints: ["p1"],
+        excerpt: null,
+        contentSample: null,
+      },
+    ]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([
+      { title: "视频A", blogger: "UP主A", coverPath: null },
+    ]);
+
+    const out = await invoke(getTopicBriefTool, { topic_id: "7" });
+    const materials = out.materials as Array<Record<string, unknown>>;
+    expect(materials[0].cover_path).toBeNull();
+    expect(out.cover_transfer_failed).toEqual(["视频A"]);
   });
 
   it("专题不存在(TopicError)→ 人话 error", async () => {
@@ -144,29 +182,39 @@ describe("get_topic_brief", () => {
 });
 
 describe("transfer_video_cover", () => {
-  it("取首个视频封面转存,返回站内路径;无封面人话降级", async () => {
+  it("全量转存:成功清单 covers(标题/博主/站内路径),部分失败列 failed", async () => {
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
     getTopic.mockResolvedValueOnce({ id: BigInt(7), items: [{}] });
-    hydrateItems.mockResolvedValueOnce(
-      new Map([
-        [
-          BigInt(1),
-          { itemType: "telegram", telegram: { videoCoverUrl: "https://img/x.jpg" }, post: null },
-        ],
-      ]),
-    );
-    transferCoverOrNull.mockResolvedValueOnce("/wp-content/uploads/2026/10/c.jpg");
+    transferVideoCovers.mockResolvedValueOnce([
+      { title: "视频A", blogger: "UP主A", coverPath: "/wp-content/uploads/2026/10/a.jpg" },
+      { title: "视频B", blogger: null, coverPath: null },
+    ]);
     await expect(invoke(transferVideoCoverTool, { topic_id: "7" })).resolves.toEqual({
       ok: true,
-      cover_path: "/wp-content/uploads/2026/10/c.jpg",
+      covers: [
+        { title: "视频A", blogger: "UP主A", cover_path: "/wp-content/uploads/2026/10/a.jpg" },
+      ],
+      failed: ["视频B"],
+    });
+  });
+
+  it("零视频封面 → ok:false 人话;全部转存失败 → ok:false 人话", async () => {
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({ id: BigInt(7), items: [{}] });
+    transferVideoCovers.mockResolvedValueOnce([]);
+    await expect(invoke(transferVideoCoverTool, { topic_id: "7" })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("没有视频封面"),
     });
 
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
     getTopic.mockResolvedValueOnce({ id: BigInt(7), items: [{}] });
-    hydrateItems.mockResolvedValueOnce(new Map());
+    transferVideoCovers.mockResolvedValueOnce([
+      { title: "视频A", blogger: "UP主A", coverPath: null },
+    ]);
     await expect(invoke(transferVideoCoverTool, { topic_id: "7" })).resolves.toMatchObject({
       ok: false,
-      error: expect.stringContaining("没有视频封面"),
+      error: expect.stringContaining("全部失败"),
     });
   });
 });
@@ -215,6 +263,20 @@ describe("save_topic_draft", () => {
         content_md: "![x](https://evil.com/a.png)",
       }),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("站内媒体路径") });
+    expect(getTopic).not.toHaveBeenCalled();
+  });
+
+  it("cover_path 非 uploads 路径(/media/ 无服务路由)→ 拒", async () => {
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    await expect(
+      invoke(saveTopicDraftTool, {
+        topic_id: "7",
+        title: "t",
+        excerpt: "e",
+        content_md: "正文",
+        cover_path: "/media/videos/b.mp4",
+      }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("cover_path") });
     expect(getTopic).not.toHaveBeenCalled();
   });
 

@@ -69,7 +69,8 @@ M25 发现候选/订阅博主新解读 ──┐
   - `status=draft`、`contentMd`(新文正文通道)、`contentOrigin=ai_assisted`(2026-10-05 合规标识既有枚举)
   - 分类默认落「产品评测」、标签带专题关键词(默认值留决策点 §10-4)
   - `topic.linkedPostId` 锚定 + `composedAt`;topic → drafted
-- **M27 批①/批②合成重构(1276 验收反馈,2026-10-13)**:文章形态钉死为「博主×视频」推荐短文(固定结构模板 STRUCTURE_SPEC 在代码内:钩子→博主是谁→视频讲了什么→值得看的理由→去看原视频「阅读原文」CTA;800~1200 字/短段落/要点加粗),专题定位降级为补充创作指令(建题表单预填 `DEFAULT_TOPIC_POSITIONING`);首视频封面转存入媒体库落 `post.coverPath`(站点头图+公众号大图+解锁公众号同步缺封面门,转存失败降级不阻塞合成),正文文首确定性注入「视频推荐卡」(纯文字引用卡,封面不重复进正文);封面生图(cover-generate)仍为可选增强
+- **M27 批①/批②合成重构(1276 验收反馈,2026-10-13)**:文章形态钉死为「博主×视频」推荐短文(固定结构模板 STRUCTURE_SPEC 在代码内:钩子→博主是谁→视频讲了什么→值得看的理由→去看原视频「阅读原文」CTA;800~1200 字/短段落/要点加粗),专题定位降级为补充创作指令(建题表单预填 `DEFAULT_TOPIC_POSITIONING`);首视频封面转存入媒体库落 `post.coverPath`(站点头图+公众号大图+解锁公众号同步缺封面门,转存失败降级不阻塞合成),正文文首确定性注入「视频推荐卡」(~~纯文字引用卡,封面不重复进正文~~ **M27 批⑥推翻:卡升级带图**,见下条);封面生图(cover-generate)仍为可选增强
+- **M27 批⑥正文配图全链路(1276 验收反馈「重合成正文 0 图」,2026-10-13)**:供给→分配→消费→校验四环建链(arch/04 K2.8 补注二)——`transferVideoCovers` 全量转存视频封面;brief 的 materials[] 改输出站内 `cover_path`(替代外链 cover_url)+ `cover_transfer_failed` 失败清单,transfer_video_cover 重定位为重试/补传钮;文首推荐卡升级带图(首视频自己的封面,finalizeCompose 确定性自取,失败降级文字卡),提示层改写(正文直引 cover_path、生图放开为小节概念示意图、头图避让卡图、全文 2~4 张引导);防幻觉校验收窄 uploads-only(`/media/` 无服务路由是幻觉洞);正文图 lazy 加载。同批修 todo 计划条(agent 图显式挂 `todoListMiddleware()` + load 从 values.todos 恢复,deepagents 仅 Codex 档自带是断因)
 - **重合成**:v1 重合成直接覆盖草稿 `contentMd`/`title`/`excerpt`/`coverPath`,但 linked 文档若 `updatedAt` 晚于 `composedAt`(人工编辑过)需二次确认——保护人工改动,交互文案明说(细节 §10-3)
 - **封面**:可走既有 cover-generate(封面生图角色),非本管线必选步骤
 - **成本量级**:单次合成 ≈ 输入 N×2k 字 + 输出 2~3k 字,一篇一次,成本可忽略量级;入台账
@@ -171,7 +172,8 @@ model TopicItem {
 | M27 批③ 合成 agent 化 | BullMQ 异步四步管线(角度择优→起草→自检→修订)+ 进度轮询 + 失败降级单调用(1276 验收反馈「agent 智能生产过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
 | M27 批④ 合成对话框化 | 专题页合成按钮唤起侧边栏 agent(compose_topic_draft admin 工具 + 身份档分发 + 工具卡四步进度实时滚动 + needConfirm→ask_user 回路)(1276 验收反馈「点击合成要有过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
 | M27 批⑤ agent 自主生产 | 退役固定管线(四步管线/processor/compose 路由/compose_topic_draft/轮询面板/compose AI 角色槽)+ admin 细粒度四工具(get_topic_brief/transfer_video_cover/generate_cover_candidates/save_topic_draft)+ 工作流提示重写(六步/修订路径/写作指南)+ 护栏按身份档(admin 30 次/150k tokens)+ 落稿核扩展 SEO/标签(undefined=不触碰)+ 防幻觉图片校验(1276 验收反馈「过程要可见、agent 要自主做很多事」)—— **代码已交付(feature/editor-ai)**,文档同步(arch/04 K2.8 补注/§4 五角色/本文件)—— **已落** | 本地真机验收(端到端一轮含修订对话) |
+| M27 批⑥ 正文配图全链路 + todo 计划条 | 供给(transferVideoCovers 全量转存)→ 分配(brief cover_path 富化 + transfer 重试钮)→ 消费(文首卡带图 + 提示层改写:直引 cover_path/生图概念示意图/头图避卡图/2~4 张引导)→ 校验(findNonSiteImageRefs 收窄 uploads-only)+ ArticleBody 图 lazy;todo 修复(图显式挂 todoListMiddleware + load 从 values.todos 恢复)(1276 验收反馈「正文 0 图/todo 不显示」)—— **代码已交付(feature/editor-ai)**,文档同步(arch/04 K2.8 补注二/本文件 §5)—— **已落** | 本地真机验收(brief cover_path 全 uploads + 正文图文混排 + 公众号草箱图全 mmbiz + 计划条显示) |
 
 **验收标准(预排)**:解读真机出笔记(新条有/存量 null);专题挂载→合成→人工定稿→发布→公众号草箱全链真机走通;素材降级拼装路径(全短结论专题)可合成;`make check` 全绿 + 迁移从零重放;零版权红线破坏(转写不落库断言不放松)。
 
-**状态:方案定稿(2026-10-12),已实施至 M27 批⑤**——M26 五批 + M27 批①~⑤(合成重构→agent 化→对话框化→自主生产)代码全部交付;合成链终态 = 会话 agent 自主编排(arch/04 K2.8 补注),后续 R③ 关键帧/HTML 截图、R④ 工具注册表化(MCP 扩展位)另行立项。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。
+**状态:方案定稿(2026-10-12),已实施至 M27 批⑥**——M26 五批 + M27 批①~⑥(合成重构→agent 化→对话框化→自主生产→配图全链路)代码全部交付;合成链终态 = 会话 agent 自主编排(arch/04 K2.8 补注),后续 R③ 关键帧/HTML 截图、R④ 工具注册表化(MCP 扩展位)另行立项。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。

@@ -3,8 +3,13 @@
  * 身份缓存(id:source 变了就重建——主备切换/key 轮换即时生效,构造含提示词
  * 组装不值得每次 run 重复)。系统提示定调:计划先行(write_todos)、三域工具
  * 规范、引用作答;内置文件系统工具默认 StateBackend 无磁盘访问,明示禁用防跑偏。
+ * M27 批⑥:todoListMiddleware 显式挂载——deepagents 仅给 Codex harness 档
+ * 自动接 write_todos,自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带,系统提示
+ * 里的「计划先行」此前是无工具可调的空话(侧边栏计划条恒空);load 侧恢复见
+ * runtime-adapter。
  */
 import { createDeepAgent, type DeepAgent } from "deepagents";
+import { todoListMiddleware } from "langchain";
 
 import type { ResolvedAiModel } from "../ai/resolver";
 import { askUserGuardMiddleware } from "./ask-user-guard";
@@ -57,8 +62,8 @@ const ADMIN_PROMPT_ADDENDUM = `
 这是多步生产流程,先用 write_todos 列出计划(通常 5~7 步),再逐步执行,每步用对应工具:
 1. get_topic_brief 读取专题定位、素材(博主/视频/解读笔记/人工批注)与关联文档现状;仔细分析素材
 2. 选题:基于素材构思 2~3 个切入角度并自选最优,参考近期已发标题避免重复;方向确实拿不准时用 ask_user 请管理员拍板(一次一问,带 2~4 个选项),素材充分时不必问
-3. 写作:按下方写作指南起草;正文图片只能引用工具返回的站内媒体路径,严禁编造外链图片
-4. 配图:transfer_video_cover 转存视频封面(首选头图);需要原创封面时 generate_cover_candidates 生成候选并择优
+3. 写作:按下方写作指南起草;正文图片直接引用素材的 cover_path(brief 已转存为站内路径)或 generate_cover_candidates 返回的路径,严禁编造外链图片
+4. 配图:素材 cover_path 已可直接引用;视频封面不足或需概念示意图时 generate_cover_candidates 按小节内容现拟 prompt 生成;cover_path 为 null(转存失败)或 brief 后新挂素材时用 transfer_video_cover 重试。头图建议选生图封面,避免与文首视频卡同图
 5. save_topic_draft 落库(标题/摘要/正文/封面/SEO 标题与描述/标签一次交付)
 6. 汇报:文章标题、结构与亮点、配图与 SEO 摘要,并给出文档链接(指向 post_url 的 markdown 链接)
 管理员对已落库文章提出修改要求时:按需 get_topic_brief 重读素材,直接修改相关部分后再次 save_topic_draft(返回 needConfirm 时先 ask_user 确认覆盖),不要重跑全流程;工具返回 error/timeout 时如实转述,不要编造结果。
@@ -67,7 +72,7 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 开头钩子不超过 80 字:用素材里最反差或最具体的事实/数据直接抓人,不写背景铺垫
 - 结构:## 博主是谁(2~4 句,只依据素材,不编造履历)→ ## 视频讲了什么(3~4 个要点,每要点独立小段不超过 60 字,段首 **加粗**)→ ## 值得看的理由(1~2 句)→ ## 去看原视频(引导读者点「阅读原文」进站看视频)
 - 全文 800~1200 字,单段不超过 3 行,多用短句;时间/年份只取自素材,素材未提就写「近期」;全部简体中文;恰当融合人工批注的取舍指令
-- 图:可在合适的小节用 ![描述](站内路径) 插入配图(如转存的视频封面),无合适图就不硬插`;
+- 图:优先在「视频讲了什么」等小节插入对应素材的封面图(cover_path),全文 2~4 张为宜、每节至多 1 张;文首推荐卡由系统自动带图,正文开头不要再贴同一张;确实无合适图不硬插`;
 
 /** 工具面按身份分发(guest/user 只读六件;admin 追加专题生产四件) */
 export function agentToolsFor(kind: AgentIdentity["kind"]) {
@@ -114,7 +119,7 @@ export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promis
     //   副本改写不落持久化;
     // - ask_user_guard:并行 ask_user 单飞(只放行触发 AIMessage 里按序第一
     //   个,其余拦「请合并」;state 异常 fail-closed),防 resume 批重执行答案错位。
-    middleware: [toolCallRepairMiddleware, askUserGuardMiddleware],
+    middleware: [toolCallRepairMiddleware, askUserGuardMiddleware, todoListMiddleware()],
   });
   if (cache.size >= GRAPH_CACHE_MAX) {
     const oldest = cache.keys().next().value;

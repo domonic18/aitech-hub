@@ -7,8 +7,9 @@
  * 草稿(contentOrigin=ai_assisted,默认分类 report「产品评测」缺则幂等补建,
  * 标签缺省带专题标题)→ topic 锚定 linkedPostId+composedAt、collecting→drafted
  * (§10-7)。M27 批②:视频封面转存入站内媒体库落 post.coverPath(站点头图 +
- * 公众号大图;转存失败降级 null 不阻塞落稿),文首视频推荐卡仍确定性注入
- * (buildVideoCard)。重合成保护(§10-3):linked 文档 updatedAt > composedAt
+ * 公众号大图;转存失败降级 null 不阻塞落稿)。M27 批⑥:文首推荐卡升级带图
+ * (首视频自己的封面,确定性自取),封面全量转存 transferVideoCovers 进分配面
+ * (get_topic_brief 富化站内路径)。重合成保护(§10-3):linked 文档 updatedAt > composedAt
  * (或从未合成过的人工关联)即人工动过 → 工具层需 confirm;linked 已软删 →
  * 弃锚新建。SEO/标签仅在 save 工具显式提供时触碰(缺省保人工已改字段)。
  */
@@ -106,17 +107,49 @@ export async function buildComposeBlocks(
 }
 
 /**
- * 文首推荐卡(M27 批②):确定性注入不依赖模型,置正文最顶。封面不进正文
- * (站点头图/公众号大图均走 post.coverPath,避免双端重复);纯文字引用卡在
- * 公众号渲染为主题色块,站点渲染为引用框。无视频素材返回 null 不注入。
+ * 文首推荐卡(M27 批②建,批⑥升级带图):确定性注入不依赖模型,置正文最顶。
+ * 批⑥:卡内嵌首视频自己的封面(图上文下两段式 blockquote;双端渲染器对块内
+ * md 图片语法原生支持,公众号侧经 transload 转 mmbiz + image 规则内联样式),
+ * 图必须是所推荐视频自己的封面(语义锚定),转存失败/无视频素材降级纯文字卡。
  */
-export function buildVideoCard(blocks: ComposeMaterialBlock[]): string | null {
+export function buildVideoCard(
+  blocks: ComposeMaterialBlock[],
+  cardCoverPath: string | null,
+): string | null {
   const v = blocks.find((b) => b.kind === "telegram");
   if (!v) return null;
+  const imageLine = cardCoverPath ? `> ![${v.title}](${cardCoverPath})\n>\n` : "";
   return (
+    imageLine +
     `> 📺 本文推荐视频:《${v.title}》· UP主:${v.blogger ?? "未知"}` +
     " ——文末「阅读原文」可进站直达原视频"
   );
+}
+
+// ── 封面供给(M27 批⑥:全量转存,brief/transfer/finalize 三方共用)────
+
+/** 单条视频素材的站内封面资产(coverPath null=转存失败,按素材独立降级) */
+export interface VideoCoverAsset {
+  title: string;
+  blogger: string | null;
+  coverPath: string | null;
+}
+
+/**
+ * 全部视频素材封面转存(M27 批⑥):与 telegram 块子序列同序对齐,并行转存、
+ * 单条失败置 null 不抛(sha1 去重幂等,重复调用只浪费一次外链 GET)。brief 里
+ * 直接富化站内路径(分配面),transfer_video_cover 用作显式重试钮。
+ */
+export async function transferVideoCovers(
+  blocks: ComposeMaterialBlock[],
+): Promise<VideoCoverAsset[]> {
+  const videoBlocks = blocks.filter((b) => b.kind === "telegram" && b.coverUrl !== null);
+  const paths = await Promise.all(videoBlocks.map((b) => transferCoverOrNull(b.coverUrl!)));
+  return videoBlocks.map((b, i) => ({
+    title: b.title,
+    blogger: b.blogger,
+    coverPath: paths[i],
+  }));
 }
 
 // ── 落稿锚定核(save_topic_draft 工具消费)────────────────────
@@ -219,7 +252,12 @@ export async function finalizeCompose(
   coverPath: string | null,
   extra: TopicDraftExtra = {},
 ): Promise<ComposeOutcome> {
-  const cardMd = buildVideoCard(blocks);
+  // 卡图确定性自取(批⑥):锚定首视频块自己的封面,不依赖模型传参;与
+  // brief/transfer 的先行转存 sha1 去重,至多重复一次外链 GET;失败降级文字卡
+  const firstVideo = blocks.find((b) => b.kind === "telegram");
+  const cardCoverPath =
+    firstVideo?.coverUrl != null ? await transferCoverOrNull(firstVideo.coverUrl) : null;
+  const cardMd = buildVideoCard(blocks, cardCoverPath);
   const finalMd = cardMd ? `${cardMd}\n\n${draft.contentMd}` : draft.contentMd;
 
   const linked =

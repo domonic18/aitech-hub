@@ -1,10 +1,11 @@
 /**
- * 专题文章生产·admin 细粒度工具面(M27 批⑤,退役批③④固定管线后的替代):
+ * 专题文章生产·admin 细粒度工具面(M27 批⑤建;批⑥补正文配图分配面):
  * 编排权移交会话 agent——模型按系统提示工作流自主规划(write_todos)并逐工具
- * 执行:get_topic_brief(素材全集与分析底料)→ transfer_video_cover(视频封面
- * 转存)/ generate_cover_candidates(文生图封面候选,复用 M14 cover-gen 管线)
- * → save_topic_draft(落稿锚定核,含 SEO/标签与正文图片防幻觉校验)。过程可视
- * 性来自每只工具卡逐个出现(替代旧轮询面板),HITL 选题/覆盖确认走 ask_user。
+ * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面)→
+ * transfer_video_cover(全量封面转存,重试/补传钮)/ generate_cover_candidates
+ * (文生图封面候选与概念示意图,复用 M14 cover-gen 管线)→ save_topic_draft
+ * (落稿锚定核,含 SEO/标签与正文图片防幻觉校验,只认 /wp-content/uploads/)。
+ * 过程可视性来自每只工具卡逐个出现,HITL 选题/覆盖确认走 ask_user。
  * 纵深防御:图侧工具按身份档分发(admin 独占)之外,每只工具体内再验会话行
  * 归属是 admin(fail-closed)。
  */
@@ -23,10 +24,10 @@ import {
   isPostAdminError,
   listRecentPublishedTitles,
   needsRecomposeConfirm,
-  transferCoverOrNull,
+  transferVideoCovers,
 } from "../topics/compose";
-import { getTopic, hydrateItems, TopicError } from "../topics/repo";
-import { findNonSiteImageRefs, isSiteMediaPath } from "../media/refs";
+import { getTopic, TopicError } from "../topics/repo";
+import { findNonSiteImageRefs, isUploadsPath } from "../media/refs";
 import { logger } from "../logger";
 
 /** brief 内单条解读笔记进上下文的截断宽度(素材多条叠加,单条给足不失真) */
@@ -68,6 +69,10 @@ export const getTopicBriefTool = tool(
     try {
       const topic = await getTopic(BigInt(topic_id));
       const blocks = await buildComposeBlocks(topic);
+      // 批⑥分配面:brief 现场全量转存视频封面,站内路径直接进 payload(模型
+      // 「看得到用得上」);单条失败置 null 不阻塞,失败清单顶层随附
+      const coverAssets = await transferVideoCovers(blocks);
+      let coverIdx = 0;
       const linkedId = topic.linkedPostId;
       const linked =
         linkedId !== null
@@ -94,19 +99,26 @@ export const getTopicBriefTool = tool(
                 edited_since_compose: needsRecomposeConfirm(topic, linked),
               }
             : null,
-        materials: blocks.map((b) => ({
-          kind: b.kind,
-          title: b.title,
-          blogger: b.blogger,
-          note: b.note,
-          video_url: b.videoUrl,
-          cover_url: b.coverUrl,
-          ...(b.aiNote !== null
-            ? { note_md: b.aiNote.slice(0, BRIEF_NOTE_MAX) }
-            : { summary: b.aiSummary, points: b.aiPoints }),
-          excerpt: b.excerpt,
-          content_sample: b.contentSample,
-        })),
+        materials: blocks.map((b) => {
+          const coverPath =
+            b.kind === "telegram" && b.coverUrl !== null
+              ? (coverAssets[coverIdx++]?.coverPath ?? null)
+              : null;
+          return {
+            kind: b.kind,
+            title: b.title,
+            blogger: b.blogger,
+            note: b.note,
+            video_url: b.videoUrl,
+            cover_path: coverPath,
+            ...(b.aiNote !== null
+              ? { note_md: b.aiNote.slice(0, BRIEF_NOTE_MAX) }
+              : { summary: b.aiSummary, points: b.aiPoints }),
+            excerpt: b.excerpt,
+            content_sample: b.contentSample,
+          };
+        }),
+        cover_transfer_failed: coverAssets.filter((a) => a.coverPath === null).map((a) => a.title),
         recent_published_titles: await listRecentPublishedTitles(),
       });
     } catch (e) {
@@ -119,8 +131,9 @@ export const getTopicBriefTool = tool(
     name: "get_topic_brief",
     description:
       "读取专题的完整生产底料:专题定位、挂载素材(博主/视频/解读笔记/要点/人工批注/" +
-      "封面图/站内文章节选)、关联文档现状(含是否被人工编辑过)与近期已发文章标题" +
-      "(防重复选题)。写专题文章前必调;仔细分析素材后再选题与写作。",
+      "站内文章节选)、关联文档现状(含是否被人工编辑过)与近期已发文章标题(防重复" +
+      "选题)。视频封面已自动转存为站内路径(materials[].cover_path),可直接在正文" +
+      "引用。写专题文章前必调;仔细分析素材后再选题与写作。",
     schema: z.object({
       topic_id: z
         .string()
@@ -138,24 +151,25 @@ export const transferVideoCoverTool = tool(
       return denyPayload(config?.configurable?.thread_id);
     try {
       const topic = await getTopic(BigInt(topic_id));
-      const materials = await hydrateItems(topic.items);
-      const coverUrl =
-        [...materials.values()].find((m) => m.telegram?.videoCoverUrl)?.telegram?.videoCoverUrl ??
-        null;
-      if (!coverUrl) {
+      const blocks = await buildComposeBlocks(topic);
+      const assets = await transferVideoCovers(blocks);
+      if (assets.length === 0) {
         return JSON.stringify({
           ok: false,
           error: "素材中没有视频封面图(可用 generate_cover_candidates 生成封面)",
         });
       }
-      const coverPath = await transferCoverOrNull(coverUrl);
-      if (!coverPath) {
+      const covers = assets
+        .filter((a) => a.coverPath !== null)
+        .map((a) => ({ title: a.title, blogger: a.blogger, cover_path: a.coverPath }));
+      if (covers.length === 0) {
         return JSON.stringify({
           ok: false,
-          error: "封面转存失败(B 站图床防盗链或网络抖动),可稍后重试",
+          error: "封面转存全部失败(B 站图床防盗链或网络抖动),可稍后重试",
         });
       }
-      return JSON.stringify({ ok: true, cover_path: coverPath });
+      const failed = assets.filter((a) => a.coverPath === null).map((a) => a.title);
+      return JSON.stringify({ ok: true, covers, ...(failed.length > 0 ? { failed } : {}) });
     } catch (e) {
       const msg = humanizeTopicError(e);
       if (msg) return JSON.stringify({ ok: false, error: msg });
@@ -165,9 +179,10 @@ export const transferVideoCoverTool = tool(
   {
     name: "transfer_video_cover",
     description:
-      "把专题首个视频素材的封面图转存入站内媒体库(B 站图床有防盗链,外链直引会裂" +
-      "图),返回站内路径。返回的路径可作 save_topic_draft 的 cover_path(文章头图/" +
-      "公众号大图),也可在正文中以图片语法引用。",
+      "转存专题全部视频素材封面入站内媒体库(B 站图床有防盗链,外链直引会裂图),返回" +
+      "「标题/博主/站内路径」清单,部分失败列在 failed(标题)。brief 里 cover_path " +
+      "为 null(转存失败)或 brief 之后新挂了素材时使用;返回的路径可作 " +
+      "save_topic_draft 的 cover_path(文章头图/公众号大图),也可在正文中以图片语法引用。",
     schema: z.object({
       topic_id: z
         .string()
@@ -208,7 +223,7 @@ export const generateCoverCandidatesTool = tool(
         return JSON.stringify({
           ok: true,
           candidates: rows.map((r) => r.path),
-          note: "从候选中择优一张,把其路径作为 save_topic_draft 的 cover_path 或正文图片引用",
+          note: "从候选中择优,路径可作正文配图或 save_topic_draft 的 cover_path",
         });
       }
       if (Date.now() - startedAt > COVER_POLL_MAX_MS) {
@@ -224,9 +239,9 @@ export const generateCoverCandidatesTool = tool(
   {
     name: "generate_cover_candidates",
     description:
-      "用文生图模型为专题文章生成封面候选图(2 张,约 10-30 秒,本工具会等待到出" +
-      "图),返回站内路径列表。需要原创封面(而非视频截图)时调用;prompt 描述期望" +
-      "的画面风格与主体,省略则按专题标题自动生成。",
+      "用文生图模型为专题文章生成候选图(2 张,约 10-30 秒,本工具会等待到出图)," +
+      "返回站内路径列表。可为封面,也可为正文小节现拟 prompt 生成概念示意图(不限于" +
+      "封面);prompt 描述期望的画面主体与风格,省略则按专题标题自动生成。",
     schema: z.object({
       topic_id: z
         .string()
@@ -262,7 +277,7 @@ export const saveTopicDraftTool = tool(
         error: `${IMG_RULE_HINT};发现无效引用:${badRefs.slice(0, 5).join("、")}`,
       });
     }
-    if (cover_path !== undefined && !isSiteMediaPath(cover_path)) {
+    if (cover_path !== undefined && !isUploadsPath(cover_path)) {
       return JSON.stringify({ ok: false, error: `cover_path ${IMG_RULE_HINT}` });
     }
     try {

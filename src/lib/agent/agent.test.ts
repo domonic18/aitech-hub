@@ -79,4 +79,17 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("ask_user");
     expect(p).toContain("needConfirm");
   });
+
+  it("配图链提示(批⑥):cover_path 直引 + 生图插图 + transfer 重试 + 卡图不重复", () => {
+    const p = agentSystemPrompt("admin");
+    // 分配面:brief 已转存站内路径,正文直引;严禁编造外链
+    expect(p).toContain("素材的 cover_path");
+    expect(p).toContain("严禁编造外链图片");
+    // 生图放开到正文概念示意图;transfer_video_cover 定位为重试/补传钮
+    expect(p).toContain("概念示意图");
+    expect(p).toContain("transfer_video_cover 重试");
+    // 消费口径:头图避让文首卡同图;无合适图不硬插(2~4 张引导仍在)
+    expect(p).toContain("文首推荐卡由系统自动带图");
+    expect(p).toContain("2~4 张");
+  });
 });

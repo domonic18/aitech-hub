@@ -108,6 +108,12 @@
 - **护栏按身份档**(`run.ts#AGENT_LIMITS`):guest/user 12 步 / 50k tokens / 递归 30 不变;admin 放宽 30 步 / 150k / 递归 60(细粒度多步生产天然多工具),stream 路由会话预检同档
 - **写核保留**:`topics/compose.ts` 收敛为确定性写核(素材块拼装 / 封面转存 / 落稿锚定 / 近期标题),文首视频推荐卡仍确定性注入;后补能力锚点:视频关键帧(douyin-gateway 侧)与 HTML→截图基建(R③,待立项)
 
+**K2.8 补注二(2026-10-13,M27 批⑥,正文配图全链路 + todo 计划条修复;1276 验收反馈「重合成正文 0 图 / 侧边栏 todo 不显示」)**:
+
+- **正文 0 图根因与链路**:批⑤ 分配面缺失(brief 给 B 站外链 cover_url 而 save 拒外链,模型「看得到用不上」,唯一合法通道只转存首条封面)+ 提示层「无合适图不硬插」双杀 + 批② 文首卡纯文字口径。正解是建链路不打 patch:任何进正文的图片路径必来自 uploadMedia(盘上必有文件、sha1 去重幂等)→ 公众号 transloadContentImages 天然转 mmbiz,同步失败面不扩大。四环:**供给** `transferVideoCovers`(compose.ts)全量转存视频封面,brief / transfer_video_cover / finalize 卡图三方共用;**分配** get_topic_brief 现场转存,materials[] 输出站内 `cover_path`(替代外链 cover_url)+ 顶层 `cover_transfer_failed` 失败清单,transfer_video_cover 重定位为重试/补传钮(返回 covers/failed 全量清单);**消费** 文首推荐卡升级带图(首视频自己的封面,图上文下 blockquote;finalizeCompose 确定性自取不依赖模型传参,失败降级文字卡),提示层同步改写(正文直引 cover_path、生图放开为小节概念示意图、头图避让卡图、全文 2~4 张引导、无合适图不硬插);**校验** `findNonSiteImageRefs` 收窄 uploads-only(`isUploadsPath`——`/media/` 无服务路由是幻觉洞;`isSiteMediaPath`/`extractMediaRefs` 引用追踪口径不变),save 的 cover_path 入参同口径。降级三级一致:单素材失败→null+失败清单,卡图失败→文字卡,均不阻塞落稿;ArticleBody 正文图 lazy 加载
+- **todo 计划条修复**:deepagents 1.14.2 仅给 Codex harness 档自动挂 todoListMiddleware,自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带 → write_todos 从未存在于图中(系统提示「计划先行」是无工具可调的空话,侧边栏计划条恒空)。修复 = agent 图显式挂 `todoListMiddleware()`(langchain 导出;guest/user/admin 全身份档) + load 恢复:runtime-adapter 从 state 顶层 `values.todos` 白名单过滤后经 onTodos 回写(切会话先清空防残显;`extractTodos` 只认 updates 帧形态,顶层值用 `extractTodosFromValues`),arch/04 §3.1「执行计划条」自此名实相符
+- R③(关键帧/HTML 截图)维持原排期,悬于版权口径裁决
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

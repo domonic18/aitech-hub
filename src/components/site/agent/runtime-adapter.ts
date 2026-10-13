@@ -18,7 +18,7 @@ import type {
 } from "@assistant-ui/react-langgraph";
 
 import { createSseEventReader } from "@/lib/agent/sse";
-import { extractTodos, type AgentTodo } from "@/lib/agent/todos";
+import { extractTodos, extractTodosFromValues, type AgentTodo } from "@/lib/agent/todos";
 
 const API_BASE = "/api/search/agent";
 
@@ -147,9 +147,14 @@ export function createAgentRuntimeAdapter(
     load: async (externalId: string) => {
       try {
         const { values, interrupts } = await apiJson<{
-          values: { messages?: unknown[] };
+          values: { messages?: unknown[]; todos?: unknown };
           interrupts?: LangGraphInterruptState[];
         }>(`${API_BASE}/threads/${externalId}/state`);
+        // 历史计划恢复(M27 批⑥):todoListMiddleware 存 state.todos(顶层值,
+        // 非 updates 帧),extractTodos 只认帧形态故这里直接读;空数组不上抛,
+        // Drawer 维持既有清空语义
+        const todos = extractTodosFromValues(values.todos);
+        if (todos.length > 0) options.onTodos?.(todos);
         return {
           messages: (values.messages ?? []) as LangChainMessage[],
           // 刷新/切会话恢复 ask_user 提问卡(SDK reconcileInterrupt;无中断

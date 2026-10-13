@@ -1,12 +1,30 @@
 /**
- * 专题落稿核单测(M26 批④建;M27 批⑤随 agent 自主生产重构更新):重合成保护
- * 判定 / 文首推荐卡 / aiPoints 归一 / media refs 防幻觉校验联调。LLM 与落稿
- * DB 链不入单测(集成路径由真机验收覆盖);四步管线与单调用合成已退役。
+ * 专题落稿核单测(M26 批④建;M27 批⑤随 agent 自主生产重构更新;批⑥补配图
+ * 供给链):重合成保护判定 / 文首推荐卡(带图+降级)/ 封面全量转存 / aiPoints
+ * 归一 / media refs 防幻觉校验联调。LLM 与落稿 DB 链不入单测(集成路径由真机
+ * 验收覆盖);四步管线与单调用合成已退役。
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { findNonSiteImageRefs } from "../media/refs";
-import { buildVideoCard, needsRecomposeConfirm, normalizePoints } from "./compose";
+import {
+  buildVideoCard,
+  needsRecomposeConfirm,
+  normalizePoints,
+  transferVideoCovers,
+} from "./compose";
+
+const fetchExtMock = vi.hoisted(() =>
+  vi.fn<(url: string) => Promise<{ data: Buffer; mime: string }>>(),
+);
+vi.mock("../media/fetch-external", () => ({ fetchExternalImage: fetchExtMock }));
+
+const uploadMediaMock = vi.hoisted(() =>
+  vi.fn<(args: { data: Buffer; mime: string; filename: string }) => Promise<{ path: string }>>(),
+);
+vi.mock("../media/service", () => ({ uploadMedia: uploadMediaMock }));
+
+vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 function tgBlock() {
   return {
@@ -24,36 +42,75 @@ function tgBlock() {
   };
 }
 
-describe("buildVideoCard(文首推荐卡)", () => {
+function postBlock() {
+  return {
+    kind: "post" as const,
+    title: "旧文",
+    blogger: null,
+    note: null,
+    aiNote: null,
+    aiSummary: null,
+    aiPoints: [],
+    videoUrl: null,
+    coverUrl: null,
+    excerpt: null,
+    contentSample: null,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  fetchExtMock.mockResolvedValue({ data: Buffer.from("img"), mime: "image/jpeg" });
+  let n = 0;
+  uploadMediaMock.mockImplementation(async () => ({
+    path: `/wp-content/uploads/2026/10/${++n}.jpg`,
+  }));
+});
+
+describe("buildVideoCard(文首推荐卡,M27 批⑥带图)", () => {
   it("取首条视频素材拼卡;博主缺失兜底「未知」", () => {
     const second = { ...tgBlock(), title: "第二条不该被取到" };
-    const card = buildVideoCard([tgBlock(), second]);
+    const card = buildVideoCard([tgBlock(), second], null);
     expect(card).toContain("《端侧实测》");
     expect(card).toContain("UP主:UP主A");
     expect(card).toContain("阅读原文");
     expect(card).not.toContain("第二条");
   });
 
-  it("博主为 null 兜底;纯文章素材返回 null 不注入", () => {
-    expect(buildVideoCard([{ ...tgBlock(), blogger: null }])).toContain("UP主:未知");
-    expect(
-      buildVideoCard([
-        {
-          kind: "post",
-          title: "旧文",
-          blogger: null,
-          note: null,
-          aiNote: null,
-          aiSummary: null,
-          aiPoints: [],
-          videoUrl: null,
-          coverUrl: null,
-          excerpt: null,
-          contentSample: null,
-        },
-      ]),
-    ).toBeNull();
-    expect(buildVideoCard([])).toBeNull();
+  it("带封面路径:图行(md 图片语法)在前、文字行在后", () => {
+    const card = buildVideoCard([tgBlock()], "/wp-content/uploads/2026/10/1.jpg");
+    expect(card).toContain("![端侧实测](/wp-content/uploads/2026/10/1.jpg)");
+    expect(card).not.toBeNull();
+    const imgIdx = card!.indexOf("![");
+    const textIdx = card!.indexOf("📺");
+    expect(imgIdx).toBeGreaterThanOrEqual(0);
+    expect(imgIdx).toBeLessThan(textIdx);
+  });
+
+  it("封面 null 降级纯文字卡(无图片语法);纯文章素材/空素材仍 null", () => {
+    expect(buildVideoCard([tgBlock()], null)).not.toContain("![");
+    expect(buildVideoCard([postBlock()], "/wp-content/uploads/2026/10/1.jpg")).toBeNull();
+    expect(buildVideoCard([], null)).toBeNull();
+  });
+});
+
+describe("transferVideoCovers(全量封面转存,M27 批⑥)", () => {
+  it("并行转存全部视频素材封面,与 telegram 带封面子序列同序对齐;post 块不参与", async () => {
+    const second = { ...tgBlock(), title: "第二条", coverUrl: "https://i0.hdslb.com/bfs/b.jpg" };
+    const assets = await transferVideoCovers([tgBlock(), postBlock(), second]);
+    expect(uploadMediaMock).toHaveBeenCalledTimes(2);
+    expect(assets).toEqual([
+      { title: "端侧实测", blogger: "UP主A", coverPath: "/wp-content/uploads/2026/10/1.jpg" },
+      { title: "第二条", blogger: "UP主A", coverPath: "/wp-content/uploads/2026/10/2.jpg" },
+    ]);
+  });
+
+  it("单条失败置 null 不抛(按素材独立降级);无视频素材返回空数组", async () => {
+    fetchExtMock.mockRejectedValueOnce(new Error("404"));
+    const assets = await transferVideoCovers([tgBlock()]);
+    expect(assets).toEqual([{ title: "端侧实测", blogger: "UP主A", coverPath: null }]);
+    expect(uploadMediaMock).not.toHaveBeenCalled();
+    expect(await transferVideoCovers([postBlock()])).toEqual([]);
   });
 });
 
@@ -102,7 +159,7 @@ describe("needsRecomposeConfirm(重合成保护判定)", () => {
 });
 
 describe("findNonSiteImageRefs(正文图片防幻觉校验,save_topic_draft 消费)", () => {
-  it("站内路径不报;外链与非站内绝对路径报原值", () => {
+  it("uploads 路径不报;外链、/media/(无服务路由,批⑥收口)与非站内绝对路径报原值", () => {
     const md = [
       "![封面](/wp-content/uploads/2026/10/a.png)",
       "![外链](https://i0.hdslb.com/bfs/x.jpg)",
@@ -111,6 +168,7 @@ describe("findNonSiteImageRefs(正文图片防幻觉校验,save_topic_draft 消�
     ].join("\n");
     expect(findNonSiteImageRefs(md)).toEqual([
       "https://i0.hdslb.com/bfs/x.jpg",
+      "/media/videos/b.mp4",
       "/wp-content/../evil.png",
     ]);
   });
