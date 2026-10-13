@@ -116,6 +116,14 @@
 
 **K2.8 补注三(2026-10-13,M27 批⑦,验收反馈四项修复之二/之三)**:(1) **后台 AI 助手 FAB**——AssistantFab 挂进 admin/layout(此前仅 (site)/layout,专题/编辑页侧边助手卡误关后无路可回);admin 会话经 /api/search/agent 解析 admin 身份档(生产四工具在位),SSR 恒 null 免水合不一致。(2) **写作质量与自评审闭环**——ADMIN_PROMPT_ADDENDUM 重写:写作指南反模板腔(钩子 ≤80 字禁「随着…的快速发展」式开场、背景与来龙去脉节、要点递进禁平行罗列、禁「总而言之」类套话、具体数字/句式交错);「去看原视频」小节硬要求给 video_url 行内链接(公众号渲染器外链转角标+文末 References,wechat-safe;「阅读原文」指向站内文章,正文带原链是公众号读者抵达视频的唯一通路);第 5 步新增**强制自评审**(不可跳过:挑剔读者视角逐项检查开头钩子/背景完整性/要点逻辑/原链在位/配图合理并直接改写;**轮数封顶 2**——第 1 轮通读改写,仅硬伤才第 2 轮,2 轮后必须进 save,防无限重写烧 token),save 后汇报须说明自评审改动。
 
+**K2.8 补注四(2026-10-13,M27 批⑧-a/b/c/d,编辑页改稿闭环 + 会话侧栏常驻化;方案 v2 锚 editor-ai-plan §2「提案不落笔」/§4 上下文注入/§6 工具面/§7 评审面)**:
+
+- **会话侧栏常驻化(⑧-a)**:AssistantCard member 身份左栏 176px 常驻(AgentSidebar 平移 Drawer 件,新建/切换/删除全量在位),窄屏(<640px)退化为覆盖式面板(头部汉堡钮唤起);游客无列表语义单列不变。会话刷新即时(GET 无害),受控 threadId 回写仍守「运行中暂缓、run 收尾对账」纪律(闪断根因不变量)
+- **页面上下文注入链(⑧-b)**:纯函数 `buildAgentPageContext`(run-context.ts,pathname → 页面语义路由枚举)在 AssistantCard 发送瞬间取 `getContext()`(零订阅、ref 快照,引用稳定防 adapter 重建)→ runtime-adapter stream body 带 `context`(仅 input 分支,resume 跳过——checkpoint 历史已持久化注入)→ stream route 宽松解析(garbage context 不 400)+ `sanitizeAgentRunContext` 按 identity 收敛(**非 admin 剥 edit 段**,fail-safe)→ HumanMessage 前缀 `[页面上下文] {json}`。edit 段仅 `{postId,title}` 上行,getContent/onApplyContent 函数型 props 不过 wire
+- **admin 工具面扩至 12(⑧-b/⑧-c)**:base 6 + `read_draft`(adminThreadDeny 会话级守卫 + status≠deleted 过滤 + TOOL_BODY_MAX 截断)+ `propose_edits` + topic 4。纵深防御:工具体内 `assertAdminThread`(searchAgentSession visitorId `admin:` 前缀)二次校验;ADMIN_PROMPT_ADDENDUM 增「文章编辑上下文/改稿纪律」两节(oldString 逐字符复制且全文唯一、提案不落笔、严禁被接受前声称已修改、unavailable 引导回编辑页、连续提案至多两轮)
+- **propose_edits HITL 链路(⑧-c)**:bare `interrupt()` 双模(edits ≤20 块 S/R,old/new 各 ≤8000;rewrite ≤50000 整档;zod XOR 校验)→ 前台按 interrupt value.kind 分发:有评审接线(embedded + 函数型 props)走评审模态,否则降级卡(ProposeUnavailableCard 自动 resume unavailable,零服务端状态);resume 四态 applied/partial/rejected/unavailable。ask-user-guard 泛化改名 **interrupt_guard**(INTERRUPT_TOOLS = ask_user ∪ propose_edits,judgeInterruptFlight 反向扫描首触发 AIMessage,同类单飞防并行中断 resume 错投);stream resume union 按 kind 判别(kind 省缺 ask_user 向后兼容)
+- **diff 评审面(⑧-d)**:proposal-apply.ts 纯函数定位/合并——精确唯一命中(exact)→ 多处命中歧义直判 miss(不走模糊兜底)→ dmp match_main 模糊兜底(相似度 ≥0.6 才收,fuzzy)→ miss 不阻塞其他块;merge 按起点正序、区间重叠丢弃后者。ProposeReviewCard 全屏模态(overlay 即评审互斥,免编辑器 readOnly 接线):逐块 dmp diff 视图 + 接受/放弃 toggle + 应用所选(经 editContext.onApplyContent 写回编辑器 setContentMd → 既有自动保存链落库)+ 拒绝;rewrite 档 @codemirror/merge 只读对照。undo 口径降级:写回同 shadow restore 路径,undo 历史自写回点重启,真机验证遗留批⑨
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

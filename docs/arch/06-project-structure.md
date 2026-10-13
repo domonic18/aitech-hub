@@ -60,7 +60,7 @@ aitech-hub/
 │   │   │   ├── revalidate/route.ts
 │   │   │   └── health/route.ts
 │   │   └── layout.tsx            # 根布局:字体/主题/providers
-│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘七件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
+│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer;M27 批⑧ 增 ProposeReviewCard 改稿评审模态/ProposeUnavailableCard 降级卡),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
 │   ├── lib/
 │   │   ├── db.ts                 # Prisma client 单例
 │   │   ├── redis.ts              # Redis 单例
@@ -70,7 +70,7 @@ aitech-hub/
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
 │   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)
 │   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队三口+job 数据契约)、wechat-sync-run(执行管线,依赖单向 run→sync)、records(读侧+reset)
-│   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合)
+│   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口;M27 批⑧ 增 read_draft/propose_edits=EDIT_TOOLS,admin 档装配)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏;批⑧ 起携 context 注入)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合);M27 批⑧ 增 run-context(页面/编辑上下文构建注入)、edit-proposal(提案契约/解析)、admin-thread(admin 会话守卫)、ask-user-guard 泛化 interrupt_guard(中断类单飞)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
 │   │   ├── seo/                  # metadata/jsonld/sitemap 构造
 │   │   ├── queue.ts              # BullMQ producer(enqueue 封装)
