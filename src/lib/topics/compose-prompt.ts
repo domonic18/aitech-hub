@@ -181,3 +181,83 @@ export function buildVideoCard(blocks: ComposeMaterialBlock[]): string | null {
     " ——文末「阅读原文」可进站直达原视频"
   );
 }
+
+// ── agent 管线步骤契约与 prompt(M27 批③;编排在 compose-agent)────────
+
+const angleSchema = z.object({
+  candidates: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1),
+        hook: z.string().trim().min(1),
+        reason: z.string().trim().min(1),
+      }),
+    )
+    .min(2)
+    .max(3),
+  chosen: z.number().int().min(1),
+});
+
+const checkSchema = z.object({
+  pass: z.boolean(),
+  issues: z.array(z.string().trim().min(1)).max(6).default([]),
+});
+
+/** 步骤契约公共解析(extractJsonBlock + Zod;与 parseComposeResult 同哲学) */
+function parseJsonAs<T>(raw: string, schema: z.ZodType<T>): ParsedTask<T> {
+  const block = extractJsonBlock(raw);
+  if (!block) return { ok: false, error: "输出中未找到 JSON 对象" };
+  try {
+    const parsed = schema.safeParse(JSON.parse(block));
+    if (!parsed.success) {
+      return { ok: false, error: `结构不符:${parsed.error.issues[0]?.message ?? "unknown"}` };
+    }
+    return { ok: true, data: parsed.data };
+  } catch (err) {
+    return {
+      ok: false,
+      error: `JSON 解析失败:${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+    };
+  }
+}
+
+export function parseAngle(raw: string): ParsedTask<z.infer<typeof angleSchema>> {
+  const r = parseJsonAs(raw, angleSchema);
+  // chosen 越界防护(1-based):防模型数错序号,越界整条判废走重试
+  if (r.ok && r.data.chosen > r.data.candidates.length) {
+    return { ok: false, error: `chosen=${r.data.chosen} 超出候选数` };
+  }
+  return r;
+}
+
+export function parseCheck(raw: string): ParsedTask<z.infer<typeof checkSchema>> {
+  return parseJsonAs(raw, checkSchema);
+}
+
+/** 步① 选题角度择优指令(2~3 候选带钩子自选最优) */
+export const ANGLE_SPEC =
+  "你是公众号选题主编。基于素材给 2~3 个差异化的切入角度,每个含 title(标题方向," +
+  "不超过 30 字)、hook(开头钩子,不超过 80 字,用素材里最反差或最具体的事实/数据)、" +
+  "reason(为什么这个角度更让人想点开,一句话);再选出最适合的一个,chosen 填其序号" +
+  "(从 1 开始)。角度必须忠于素材、不编造。只输出一个 JSON 对象,不要解释。";
+
+/** 步③ 审稿清单(与 STRUCTURE_SPEC 硬约束同源;批①固定结构 + 批②排版纪律) */
+export const CHECKLIST_SPEC = [
+  '按以下清单逐项检查这篇公众号推荐短文,只输出 JSON:{"pass": boolean, "issues": string[]}',
+  "1)五节齐全:开头钩子、## 博主是谁、## 视频讲了什么、## 值得看的理由、## 去看原视频;",
+  "2)开头钩子不超过 80 字,直接抓人无背景铺垫;",
+  "3)「视频讲了什么」3~4 个要点,每要点独立小段不超过 60 字且段首 **加粗**;单段不超过 3 行;全文 800~1200 字;",
+  "4)全文没有图片语法(![…](…));结尾提及「阅读原文」;",
+  "5)时间/年份表述来自素材或写「近期」,无自行推断;无编造素材之外的事实与履历。",
+  "issues 每项一条具体可改的问题(指明位置与改法),最多 6 条;全部通过则 pass=true 且 issues 空数组。",
+].join("\n");
+
+/** 步④ 修订指令(只修清单问题不推倒重写;出口复用 OUTPUT_SPEC) */
+const REVISE_SPEC =
+  "你是严谨的公众号主编。下面的初稿经审稿清单查出了问题:在保持固定结构(开头钩子/" +
+  "## 博主是谁/## 视频讲了什么/## 值得看的理由/## 去看原视频)与硬约束(800~1200 字/" +
+  "单段不超过 3 行/要点段首加粗)的前提下逐条修订,只修问题不推倒重写,不引入素材" +
+  "之外的新事实。\n";
+
+/** 步④ system(修订指令 + 输出出口契约) */
+export const REVISE_SYSTEM = REVISE_SPEC + OUTPUT_SPEC;

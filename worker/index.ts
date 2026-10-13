@@ -37,6 +37,7 @@ import {
   QUEUE_STATS,
   QUEUE_SEO_BATCH,
   QUEUE_SUMMARIZER,
+  QUEUE_TOPIC_COMPOSE,
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
@@ -64,6 +65,7 @@ import { type WechatBatchJobData, type WechatSyncJobData } from "../src/lib/dist
 import { wechatBatchJob, wechatSyncJob } from "../src/lib/distribute/wechat-sync-run";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
+import { topicComposeJob } from "../src/lib/topics/compose-agent";
 import { processMediaJob, transferMediaJob } from "./media";
 import { runAudit } from "../src/lib/media/audit";
 import { dbBackupJob } from "../src/lib/backup/db-backup";
@@ -160,6 +162,9 @@ const PROCESSORS: Record<string, Processor> = {
   // 批量 SEO 补全(M16 问题8,仅补空缺):单批次 job 顺序逐篇 LLM 调用,进度逐篇上报
   [QUEUE_SEO_BATCH]: (job) =>
     seoBatchJob(job.data as SeoBatchJobData, (p) => job.updateProgress(p)),
+  // 专题合成 agent 管线(M27 批③):四步 LLM 串行 + 失败降级单调用,进度逐步上报
+  [QUEUE_TOPIC_COMPOSE]: (job) =>
+    topicComposeJob(job.data as { topicId: string }, (p) => job.updateProgress(p)),
   // GitHub 项目同步(二期③/M11):tick(5min)扫到期白名单仓逐仓入队;sync 为缺省路径
   [QUEUE_GITHUB]: async (job) => {
     if (job.name === GITHUB_JOB_TICK) {
@@ -474,7 +479,7 @@ async function main(): Promise<void> {
     const opts =
       name === QUEUE_MEDIA_TRANSFER || name === QUEUE_SUMMARIZER || name === QUEUE_COVER_GEN
         ? { lockDuration: 300_000 }
-        : name === QUEUE_INTERPRETER || name === QUEUE_SEO_BATCH
+        : name === QUEUE_INTERPRETER || name === QUEUE_SEO_BATCH || name === QUEUE_TOPIC_COMPOSE
           ? { concurrency: 1, lockDuration: 600_000 }
           : name === QUEUE_DISTRIBUTE
             ? { concurrency: 1, lockDuration: 900_000 }

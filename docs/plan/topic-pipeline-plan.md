@@ -123,8 +123,8 @@ model TopicItem {
 
 - `/admin/topics`:列表(状态分段 collecting/drafted/published)+ 新建;`/admin/topics/[id]` 详情三区——素材聚合视图(解读卡:标题/博主/笔记摘要/短结论/批注内联编辑 + 文章卡)、定位编辑、合成操作区(合成初稿/重合成/跳转文档)
 - 挂载交互:详情页内选挂(电报流按博主/时间筛选,仅列 `aiStatus=done`;文章按关键词搜);电报流治理台条目内「加入专题」入口 v1 不做(§10-5)
-- API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`(定位/状态)、`POST/DELETE /api/topics/[id]/items`、`POST /api/topics/[id]/compose`(入队/同步调,见下)。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参
-- **合成执行形态**:N 素材 × 笔记拼装 + 一次长输出,秒级到十几秒——v1 同步调用(Route Handler 内直调,15s 超时人话报错),**不进 BullMQ**(KISS:请求内禁秒级任务红线指秒级以上长任务,合成预期 ≤15s;若实测超限再改入队,契约已按 202 `{jobId}` 预留演进位)。电报流/文章列表页零改动
+- API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`(定位/状态)、`POST/DELETE /api/topics/[id]/items`、`POST /api/topics/[id]/compose`(入队,202)+ `GET /api/topics/[id]/compose`(进度轮询,M27 批③)。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参
+- **合成执行形态(M27 批③ agent 化,1276 验收反馈)**:v1 同步单调用演进为 BullMQ 异步多步管线(`QUEUE_TOPIC_COMPOSE`,并发 1 + 锁 600s;jobId=`topic-compose-<topicId>` 确定性形态,轮询查询与并发防重共用)——①选题角度择优(2~3 候选带钩子自选最优)→ ②固定结构起草 → ③审稿清单自检 → ④按问题修订(自检过则跳过);每步独立 chatJsonTask,role=compose 台账逐次落行。管线任一步失败自动降级 v1 单调用保出稿(降级诚实记 fallback 供 UI 提示);重合成 409 确认保留在入队前;同专题进行中 409 拒重。电报流/文章列表页零改动
 
 ## 9. e2e 与测试
 
@@ -165,6 +165,8 @@ model TopicItem {
 | 批③ 治理台 | `/admin/topics` 列表+详情三区 + 五路由 + 挂载/流转/批注;笔记 prompt 补时间纪律(年份/时间表述须取自材料,未提则写「近期」——m26b2 验收发现笔记自行搭「2024年」叙事框架,视频实为 2026-10) | 人工验收 + e2e 零真网 —— **已交付(PR #75)** |
 | 批④ 合成 | compose 角色卡 + 合成编排(拼装→调用→落草稿→锚定)+ 重合成保护 + 编辑器衔接 | 本地真机一轮(含降级素材)—— 代码已交付(feature/topic-compose,4c8df48),**待真机验收** |
 | 批⑤ 收口 | 文档收口(arch/02 §3.2 注记/arch/05 §4/arch/04 §4/本表)—— **本次已落**;e2e 补齐(用例 34 合成防线)—— **已随批④ 交付**;PR 合 develop + 生产部署 + 公众号真推一稿 —— 待批④ 真机验收后执行 | 全流程真机走通 |
+| M27 批①/② 合成重构 | 「博主×视频」推荐体固定结构 + 预置提示词(DEFAULT_TOPIC_POSITIONING)+ 素材链路(视频链/封面)注入 + 首视频封面转存落 coverPath + 文首视频推荐卡(1276 验收反馈)—— **代码已交付(feature/editor-ai,33fb763/e020886)** | 本地真机验收 |
+| M27 批③ 合成 agent 化 | BullMQ 异步四步管线(角度择优→起草→自检→修订)+ 进度轮询 + 失败降级单调用(1276 验收反馈「agent 智能生产过程」)—— **代码已交付(feature/editor-ai)** | 本地真机验收 |
 
 **验收标准(预排)**:解读真机出笔记(新条有/存量 null);专题挂载→合成→人工定稿→发布→公众号草箱全链真机走通;素材降级拼装路径(全短结论专题)可合成;`make check` 全绿 + 迁移从零重放;零版权红线破坏(转写不落库断言不放松)。
 

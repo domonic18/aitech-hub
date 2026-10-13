@@ -47,6 +47,9 @@ export const QUEUE_PAY_RECONCILE = "pay-reconcile";
 /** 优质内容发现(M25,discovery-plan.md):热词日频直拉 + B站发现周频双窗;
  * 并发 1(B站风控纪律全局串行)+ 锁 900s 覆盖双窗全词 5-10 分钟 */
 export const QUEUE_DISCOVERY = "discovery";
+/** 专题合成 agent 化(M27 批③,1276 验收反馈):多步管线(角度择优→起草→自检→
+ * 修订)LLM 串行调用,并发 1 防打爆绑定模型,锁 600s 覆盖 4 步长输出 */
+export const QUEUE_TOPIC_COMPOSE = "topic-compose";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -65,6 +68,7 @@ export const QUEUE_NAMES = [
   QUEUE_EMAIL,
   QUEUE_PAY_RECONCILE,
   QUEUE_DISCOVERY,
+  QUEUE_TOPIC_COMPOSE,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -87,6 +91,10 @@ export const COVER_JOB_GEN = "generate";
 
 /** seo-batch 队列 job name 契约(M16;batch 为缺省路径,文章管理手动触发) */
 export const SEO_JOB_BATCH = "batch";
+
+/** topic-compose 队列 job name 契约(M27 批③;compose 为缺省路径,专题详情手动触发;
+ * jobId 取 topic-compose-<topicId> 确定性形态,供轮询查询与并发防重)。改名需与 worker 同批。 */
+export const TOPIC_COMPOSE_JOB = "compose";
 
 /** distribute 队列 job name 契约(M17;wechat-sync 单篇为缺省路径——手动一键/发布
  * 自动共用;wechat-batch 批量单 job 顺序逐篇)。改名需与 worker 同批。 */
