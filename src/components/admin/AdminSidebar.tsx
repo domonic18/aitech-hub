@@ -19,7 +19,6 @@ const GROUPS: ReadonlyArray<Group> = [
       // exact:/admin 是所有后台路由的前缀,只按全等点亮,
       // 否则任何 /admin/xxx 页都会让「站点统计」与激活项同时高亮(2026-10-05 反馈)
       { icon: "i-dashboard", label: "站点统计", href: "/admin", exact: true },
-      { icon: "i-setting", label: "站点设置", href: "/admin/settings" },
     ],
   },
   {
@@ -36,8 +35,8 @@ const GROUPS: ReadonlyArray<Group> = [
   {
     label: "采集",
     items: [
+      // 渠道配置已并入采集壳「渠道」页签(/admin/spider/channels,侧栏精简批①)
       { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
-      { icon: "i-cloudserver", label: "渠道配置", href: "/admin/channels" },
       { icon: "i-aim", label: "博主管理", href: "/admin/bloggers" },
       { icon: "i-experiment", label: "发现治理", href: "/admin/discovery" },
       { icon: "i-github", label: "项目展示", href: "/admin/github" },
@@ -56,17 +55,14 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       { icon: "i-user", label: "用户管理", href: "/admin/users" },
       { icon: "i-comment", label: "反馈管理", href: "/admin/feedback" },
+      { icon: "i-checkcircle", label: "支付订单", href: "/admin/pay/orders" },
     ],
   },
   {
     label: "系统",
     items: [
-      { icon: "i-key", label: "PAT 令牌", href: "/admin/pats" },
-      { icon: "i-send", label: "邮件配置", href: "/admin/email" },
-      { icon: "i-scan", label: "飞书免登", href: "/admin/feishu" },
-      // exact:/admin/pay 是 /admin/pay/orders 的前缀,只按全等点亮
-      { icon: "i-aim", label: "支付配置", href: "/admin/pay", exact: true },
-      { icon: "i-checkcircle", label: "支付订单", href: "/admin/pay/orders" },
+      // 配置类五页(常规/邮件/飞书/支付/PAT)合并为壳层页签(侧栏精简批①)
+      { icon: "i-setting", label: "系统设置", href: "/admin/settings" },
     ],
   },
 ];

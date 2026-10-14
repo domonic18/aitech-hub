@@ -1,8 +1,8 @@
 /**
- * 采集总览页(M7 批④c;2026-10-04 按原型 admin-spider 重排):4 KPI 卡 +
- * 队列堆叠条/24h 入库条带(mid-grid 1fr 360px)+ 采集日历热力图 + 最近错误行。
- * 纯只读 RSC;KPI/队列行/热力图在 components/admin/spider,本件只做取数编排。
- * 渠道健康明细在台账页(/admin/channels),治理动作在电报流治理页。
+ * 采集总览页(M7 批④c;2026-10-04 按原型 admin-spider 重排;侧栏精简批①
+ * 起「渠道」为同壳页签):4 KPI 卡 + 队列堆叠条/24h 入库条带(mid-grid
+ * 1fr 360px)+ 采集日历热力图 + 最近错误行。纯只读 RSC;KPI/队列行/热力图
+ * 在 components/admin/spider,本件只做取数编排。治理动作在电报流治理页。
  */
 import Link from "next/link";
 
@@ -64,11 +64,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
       <div>
         <h2 className="text-base font-semibold">采集总览</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          worker 运行态与采集实况;渠道健康度明细见
-          <Link href="/admin/channels/" className="mx-1 text-accent hover:text-accent-hover">
-            渠道台账
-          </Link>
-          ,治理动作见电报管理页。
+          worker 运行态与采集实况;渠道健康度明细切上方「渠道」页签,治理动作见电报管理页。
         </p>
       </div>
 

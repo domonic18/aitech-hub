@@ -11,6 +11,18 @@ const nextConfig: NextConfig = {
       // trailingSlash 规范化先于 redirects 执行,canonical 形态 /feed/ 必须显式列出
       { source: "/feed", destination: "/feed.xml", statusCode: 301 },
       { source: "/feed/", destination: "/feed.xml", statusCode: 301 },
+      // 侧栏精简批①(2026-10-14):配置类页并入 /admin/settings 壳、渠道并入
+      // /admin/spider 壳,旧路径书签 308 承接(两种斜杠形态都列,防双跳)
+      { source: "/admin/email", destination: "/admin/settings/email/", statusCode: 308 },
+      { source: "/admin/email/", destination: "/admin/settings/email/", statusCode: 308 },
+      { source: "/admin/feishu", destination: "/admin/settings/feishu/", statusCode: 308 },
+      { source: "/admin/feishu/", destination: "/admin/settings/feishu/", statusCode: 308 },
+      { source: "/admin/pay", destination: "/admin/settings/pay/", statusCode: 308 },
+      { source: "/admin/pay/", destination: "/admin/settings/pay/", statusCode: 308 },
+      { source: "/admin/pats", destination: "/admin/settings/pats/", statusCode: 308 },
+      { source: "/admin/pats/", destination: "/admin/settings/pats/", statusCode: 308 },
+      { source: "/admin/channels", destination: "/admin/spider/channels/", statusCode: 308 },
+      { source: "/admin/channels/", destination: "/admin/spider/channels/", statusCode: 308 },
     ];
   },
   async headers() {

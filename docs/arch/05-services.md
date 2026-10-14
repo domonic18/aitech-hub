@@ -40,7 +40,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 **飞书工作台免登(M29,2026-10-14 立项;批① 绑定底座已交付开发,批② 登录页免登分支进行中)**:
 
 - **流程**:飞书工作台 H5 打开 `/admin`(已入可信域名)→ 登录页 UA 判飞书容器 → h5sdk(`config` 签名取 `GET /api/auth/feishu/jssign/?url=`)+ `tt.getAuthCode` → `POST /api/auth/feishu/exchange` 服务端 OIDC 兑换(oidc/access_token → user_info)→ `admin_feishu_binding` 按 unionId 精确命中(白名单本体,fail-closed)→ 目标账号复核 role=admin + status=active → 签发既有 jose 会话 Cookie(**不新造会话机制**,§3.2 同款)→ 跳 `/admin/`
-- **绑定**:密码登录后在 `/admin/feishu`(侧栏「系统」组)自绑/换绑/解绑——凭证配置与绑定同页;绑定只要求凭证齐(`enabled` 单独控制兑换通道);跨锚冲突(unionId 已绑他人)409
+- **绑定**:密码登录后在 `/admin/settings/feishu`(系统设置「飞书」页签,侧栏精简批①;旧 /admin/feishu 308 承接)自绑/换绑/解绑——凭证配置与绑定同页;绑定只要求凭证齐(`enabled` 单独控制兑换通道);跨锚冲突(unionId 已绑他人)409
 - **凭证**:`admin_feishu_config` 单例入数据库(不入 env,与邮件/支付同规则),secret-box AES-256-GCM 加密,write-only 脱敏回显;`app_access_token`/`jsapi_ticket` Redis 缓存(expire 预留 5min 余量,缓存故障降级直连)
 - **防滥用**:jssign 仅签本站源 URL(防签名 oracle)+ IP 60/h;exchange IP 30/h + Origin 校验;授权码 5 分钟单次;未绑定一律模糊 403 不给探测面
 - **回落**:非飞书环境 / 未配置 / 未启用 / 兑换任一步失败 → 登录页密码表单兜底,零回归;PC 端 OAuth 扫码授权留二期
