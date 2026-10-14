@@ -353,6 +353,11 @@ CREATE TABLE legacy_url_map (
 - `admin_feishu_config`(应用凭证单例 `id=1`,get-or-create,镜像 `email_config`/`publish_wechat_config` 形态;2026-10-14 拍板凭证入数据库不入 env):`app_id varchar(50) 默认 ''`/`app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`enabled 默认 false`(免登兑换总开关——绑定/签名只要求凭证齐,enabled 可后开)/`last_test` 四件套(探测 app_token+jsapi_ticket 双链路)
 - `admin_feishu_binding`(免登白名单本体,fail-closed:兑换仅 unionId 精确命中行放行):`user_id bigint` 唯一(`uq_admin_feishu_binding_user`,一账号一身份)/`union_id varchar(64)` 唯一(`uq_admin_feishu_binding_union`,一身份一账号)/`open_id varchar(64)`/`feishu_name? varchar(100)`(兑换时姓名快照);**无 DB 外键,应用层完整性**(跨锚冲突 409;目标账号 role/status 兑换时复核,失配拒绝)
 
+**Agent 技能表已落地(2026-10-14 M30 批①迁移 `20261014200000_agent_skill`,机制与工具面见 [arch/04 §3 K2.8 补注五](04-ai-agent.md))**:
+
+- `agent_skill`(通用技能表——写作指南/分发流程等知识型流程纪律,后台「模型配置→Agent 技能」页签建改即时生效零发版):`key varchar(50)` 唯一(`uq_agent_skill_key`,agent 稳定引用,**建后不可改**)/`name varchar(100)`/`scenario varchar(200)`(一行,agent 选 skill 时对号场景)/`guide_md text`(指南正文 markdown,可引用既有工具名)/`enabled bool 默认 true`(停用后 agent 侧 list/get 即时不可见);key 格式 `^[a-z0-9]([a-z0-9-]{0,48}[a-z0-9])?$` 应用层 Zod 管控
+- `topic.skill_key`(批②迁移 `20261014210000_topic_skill_key` 增列):`varchar(50)?` 绑定技能稳定引用——**soft ref 无 FK**(skill 删/停后合成写稿降级为按场景自动匹配,不阻塞);PATCH 存在性+启用核验 400
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**

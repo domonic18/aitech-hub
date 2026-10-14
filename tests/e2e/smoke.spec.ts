@@ -21,6 +21,7 @@ import sharp from "sharp";
  * 优质内容发现治理台:词库管理与候选人工终审(M25)。
  * 专题治理台:新建/挂载素材(仅已解读)/批注/人工状态流转/权限防线(M26 批③)。
  * 飞书免登底座:登录页非飞书零回归/兑换未启用 403/签名外站拒签/bind 未登录 401(M29,零真网)。
+ * Agent 技能:后台页签 CRUD 冒烟(key 建后不可改)/启停落库/专题绑定写作技能/非法 skillKey 400(M30 批④,零真网)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -3753,5 +3754,108 @@ test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 
       await prisma.adminFeishuConfig.deleteMany({ where: { id: 1 } });
     }
     for (const k of quotaKeys) await e2eRedis.del(k);
+  }
+});
+
+test("38. Agent 技能(M30 批④:技能页签 CRUD 冒烟/key 建后不可改/启停落库/专题绑定写作技能/非法 skillKey 400,零真网)", async ({
+  page,
+}) => {
+  const KEY = "e2e-skill-m30";
+  const NAME = "e2e 技能·冒烟";
+  const SCENARIO = "e2e 冒烟场景:验证技能调度取用面";
+  const GUIDE = "- e2e 指南条目:开头直给结论,不写「随着…的发展」式套话\n- 结构:两段递进";
+  const TOPIC_TITLE = "e2e 专题-技能绑定";
+  // 自清理:重跑幂等(agent_skill.key 唯一;topic 按标题)
+  await prisma.agentSkill.deleteMany({ where: { key: KEY } });
+  await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+  const topic = await prisma.topic.create({ data: { title: TOPIC_TITLE } });
+  page.once("dialog", (d) => d.accept()); // 行删除 confirm 自动接受
+
+  try {
+    await e2eAdminLogin(page);
+
+    // 38.1 「Agent 技能」页签:UI 新增技能(全字段)→ 台账行落位,库内 enabled=true
+    await page.goto("/admin/models/");
+    await expect(page.getByRole("tab", { name: "Agent 技能" })).toBeVisible();
+    await page.getByRole("tab", { name: "Agent 技能" }).click();
+    await expect(page.getByRole("button", { name: "+ 新增技能" })).toBeVisible();
+    await page.getByRole("button", { name: "+ 新增技能" }).click();
+    await page.getByPlaceholder("如 blogger-video").fill(KEY);
+    await page.getByPlaceholder("如:博主×视频推荐短文").fill(NAME);
+    await page.getByPlaceholder("如:公众号「博主×视频」推荐短文(专题合成默认场景)").fill(SCENARIO);
+    await page.getByPlaceholder(/开头钩子不超过 80 字/).fill(GUIDE);
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    const row = page.getByRole("row", { name: new RegExp(KEY) });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await expect(row).toContainText(NAME);
+    const created = await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } });
+    expect(created.enabled).toBe(true);
+    expect(created.guideMd).toBe(GUIDE);
+    expect(created.scenario).toBe(SCENARIO);
+
+    // 38.2 编辑弹窗:key 输入 disabled(建后不可改,agent 稳定引用);改名落库
+    await row.getByRole("button", { name: "编辑" }).click();
+    await expect(page.getByPlaceholder("如 blogger-video")).toBeDisabled();
+    await expect(page.getByPlaceholder("如 blogger-video")).toHaveValue(KEY);
+    await page.getByPlaceholder("如:博主×视频推荐短文").fill(`${NAME}·改`);
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(page.getByRole("row", { name: new RegExp(KEY) })).toContainText("·改", {
+      timeout: 10_000,
+    });
+    const renamed = await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } });
+    expect(renamed.name).toBe(`${NAME}·改`);
+
+    // 38.3 启停 switch:关 → enabled=false 落库;再开 → 恢复(绑定 select 只列启用技能)
+    await row.getByRole("switch", { name: /启用 e2e 技能/ }).click();
+    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", "false", {
+      timeout: 10_000,
+    });
+    expect((await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } })).enabled).toBe(
+      false,
+    );
+    await row.getByRole("switch", { name: /启用 e2e 技能/ }).click();
+    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", "true", {
+      timeout: 10_000,
+    });
+
+    // 38.4 专题绑定:详情页「绑定写作技能」select 只列启用技能 → 选 e2e 技能保存
+    //      → 库内 skill_key 落位;解绑回「未绑定」→ null
+    await page.goto(`/admin/topics/${topic.id}/`);
+    const bind = page.getByLabel("绑定写作技能");
+    await expect(bind).toBeVisible();
+    await expect(bind.getByRole("option", { name: new RegExp(KEY) })).toHaveCount(1);
+    await bind.selectOption(KEY);
+    const bindDone = page.waitForResponse(
+      (r) =>
+        r.url().includes(`/api/topics/${topic.id}`) &&
+        r.request().method() === "PATCH" &&
+        r.status() === 200,
+    );
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await bindDone;
+    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBe(KEY);
+
+    await bind.selectOption("");
+    const unbindDone = page.waitForResponse(
+      (r) =>
+        r.url().includes(`/api/topics/${topic.id}`) &&
+        r.request().method() === "PATCH" &&
+        r.status() === 200,
+    );
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await unbindDone;
+    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBeNull();
+
+    // 38.5 服务端防线:PATCH 不存在的 skillKey → 400 人话包络(不落库)
+    const bad = await page.request.patch(`/api/topics/${topic.id}/`, {
+      headers: jsonOrigin(page),
+      data: { skillKey: "e2e-no-such-skill" },
+    });
+    expect(bad.status()).toBe(400);
+    expect(((await bad.json()) as { message: string }).message).toContain("skillKey");
+    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBeNull();
+  } finally {
+    await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+    await prisma.agentSkill.deleteMany({ where: { key: KEY } });
   }
 });
