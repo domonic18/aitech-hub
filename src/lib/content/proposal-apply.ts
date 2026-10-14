@@ -50,6 +50,12 @@ function similarityOf(dmp: Dmp, a: string, b: string): number {
  * S/R 块逐块定位:精确唯一命中(exact);多处命中视为歧义(miss——模型应
  * 加长 oldString 消歧);零命中走 dmp match_main 模糊兜底,命中区间相似度
  * 达门槛才收(fuzzy),否则 miss。miss 不抛错、不阻塞其他块。
+ *
+ * bitap 以机器字长为界(Match_MaxBits 默认 32):超长 pattern 会直接
+ * throw「Pattern too long for this browser」——而 S/R 的 oldString 恒超
+ * 32 字符,该异常曾在评审模态挂载期炸掉整棵渲染树(2026-10-14 生产事故)。
+ * 故长块以前 Match_MaxBits 字符为锚点定位,再按整段相似度验收;兜底全程
+ * try/catch,任何异常降级 miss(本函数禁止抛错)。
  */
 export function locateProposals(original: string, edits: ProposeEditsEdit[]): ProposalChunk[] {
   const dmp = newDmp();
@@ -69,12 +75,21 @@ export function locateProposals(original: string, edits: ProposeEditsEdit[]): Pr
       }
       return { ...base, status: "exact", start: first, end: first + e.oldString.length };
     }
-    const at = dmp.match_main(original, e.oldString, 0);
-    if (at >= 0) {
-      const region = original.slice(at, at + e.oldString.length);
-      if (similarityOf(dmp, region, e.oldString) >= FUZZY_THRESHOLD) {
-        return { ...base, status: "fuzzy", start: at, end: at + e.oldString.length };
+    try {
+      // 超长 pattern 不能直喂 match_main(会 throw);取头部锚点探测
+      const probe =
+        e.oldString.length <= dmp.Match_MaxBits
+          ? e.oldString
+          : e.oldString.slice(0, dmp.Match_MaxBits);
+      const at = dmp.match_main(original, probe, 0);
+      if (at >= 0) {
+        const region = original.slice(at, at + e.oldString.length);
+        if (similarityOf(dmp, region, e.oldString) >= FUZZY_THRESHOLD) {
+          return { ...base, status: "fuzzy", start: at, end: at + e.oldString.length };
+        }
       }
+    } catch {
+      // dmp 内部异常一律降级 miss(评审面为渲染路径,计算层禁止炸树)
     }
     return { ...base, status: "miss", start: -1, end: -1 };
   });
