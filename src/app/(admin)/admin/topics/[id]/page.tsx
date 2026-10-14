@@ -9,6 +9,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { parsePage } from "@/lib/admin/list";
+import { listEnabledSkillMetas } from "@/lib/ai/agent-skills-admin";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { needsRecomposeConfirm } from "@/lib/topics/compose";
@@ -171,6 +172,8 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
         positioning={topic.positioning}
         linkedPostId={topic.linkedPostId?.toString() ?? null}
         status={topic.status}
+        skillKey={topic.skillKey}
+        skills={await listEnabledSkillMetas()}
       />
       <div className="mt-1 text-[11px] text-text-3">
         创建于 {formatCnDateTime(topic.createdAt)} · 更新于 {formatCnDateTime(topic.updatedAt)}
