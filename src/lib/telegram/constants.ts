@@ -52,6 +52,9 @@ export const VIDEO_PLATFORM_LABELS: Record<string, string> = {
 export const SOCIAL_CRAWL_INTERVAL_MIN = 120;
 /** 博主连续失败阈值(语义同渠道侧 ≥3 → 观测降级;写 last_error 供博主台账) */
 export const SOCIAL_MAX_CONSECUTIVE_FAILS = 3;
+/** 池耗尽(NoJarAvailable)顺延重试间隔:风控冷却分钟~小时级,15min 短延探恢复;
+ * 不计博主连续失败(2026-10-14:单视频门冷却唯一 jar 连带 9 博主连败的免疫) */
+export const SOCIAL_POOL_COOLDOWN_RETRY_MIN = 15;
 /** 首采回填窗口(天)与条数上限:防新登记博主刷屏(arch/02 §3.2 shell 降级可见) */
 export const SOCIAL_BACKFILL_DAYS = 7;
 export const SOCIAL_BACKFILL_MAX_ITEMS = 10;

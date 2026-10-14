@@ -116,6 +116,43 @@ def test_runtime_keeps_cooldown_state_when_identity_unchanged() -> None:
     assert runtime.replacements == 2
 
 
+def test_runtime_hot_swaps_proxy_without_rebuilding_transport() -> None:
+    """M33 批B:代理热切换不重建 transport(冷却态保留);/health 只出布尔。"""
+    runtime = GatewayRuntime(SignerSettings(log_level="warning"))
+    t1 = runtime.transport_for(["ttwid=a"])
+    assert runtime.jar_stats()["egress_proxy"] is False
+    t2 = runtime.transport_for(["ttwid=a"], "http://192.0.2.1:7890")
+    assert t2 is t1  # 同一单例,jar 池原样
+    assert t2.proxy == "http://192.0.2.1:7890"
+    assert runtime.jar_stats()["egress_proxy"] is True
+    t3 = runtime.transport_for(["ttwid=a"], None)
+    assert t3 is t1
+    assert t3.proxy is None
+    assert runtime.jar_stats()["egress_proxy"] is False
+
+
+def test_proxy_test_endpoint_mirrors_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """/proxy-test 经注入桩零真网;代理 URL 不回显。"""
+
+    async def _fake_probe(proxy: str) -> tuple[bool, int, str]:
+        return proxy == "http://good:7890", 42, "HTTP 200"
+
+    monkeypatch.setattr("app.gateway._probe_runner", _fake_probe)
+    with _client() as client:
+        resp = client.post("/proxy-test", json={"proxy": "http://good:7890"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == {"ok": True, "latency_ms": 42, "detail": "HTTP 200"}
+        bad = client.post("/proxy-test", json={"proxy": "http://bad:7890"})
+        assert bad.json()["ok"] is False
+
+
+def test_proxy_test_rejects_short_proxy() -> None:
+    with _client() as client:
+        resp = client.post("/proxy-test", json={"proxy": "short"})
+        assert resp.status_code == 422
+
+
 def _client() -> TestClient:
     from app.gateway import create_app
 

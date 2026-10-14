@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 from urllib.parse import urlencode
 
+from app.adapters.common.egress import egress_get, make_session_factory
 from app.adapters.common.jar_pool import CookieJar, JarPool
 from app.adapters.douyin.exceptions import (
+    NoJarAvailableError,
     RiskControlError,
     SignatureError,
     StructureDriftError,
@@ -60,10 +62,8 @@ class _AsyncHttpSession(Protocol):
 
 
 def _default_session_factory() -> _AsyncHttpSession:
-    from curl_cffi.requests import AsyncSession
-
-    session: Any = AsyncSession(impersonate="chrome")
-    return cast("_AsyncHttpSession", session)
+    """直连缺省工厂(M33 批B 起代理感知缺省见 __init__/set_proxy)。"""
+    return make_session_factory()
 
 
 class DouyinTransport:
@@ -78,6 +78,7 @@ class DouyinTransport:
         signer: DouyinSignerProtocol | None = None,
         rate_limit_retry_delays: tuple[float, ...] | None = None,
         settings: DouyinSettings | None = None,
+        proxy: str | None = None,
     ) -> None:
         settings = settings or DouyinSettings()
         self._base_url = settings.base_url
@@ -87,7 +88,9 @@ class DouyinTransport:
         self._abogus = ABogus(
             user_agent=self._user_agent, fp=self._fingerprint, options=[0, 1, 8]
         )
-        self._session_factory = session_factory or _default_session_factory
+        self._proxy = proxy
+        self._injected_factory = session_factory is not None
+        self._session_factory = session_factory or make_session_factory(proxy)
         self._signer = signer
         # 限速型 403/429 与 200 空 body 是瞬时的（douyin-downloader 实测同
         # cookie 秒级恢复）：冷却会杀死秒级重试，sleep 后换 jar 重签重发
@@ -111,6 +114,18 @@ class DouyinTransport:
         return self._pool.jars_available
 
     @property
+    def proxy(self) -> str | None:
+        """当前出站代理(观测用;值本身不进日志)。"""
+        return self._proxy
+
+    def set_proxy(self, proxy: str | None) -> None:
+        """热切换出站代理(M33 批B):仅换会话工厂,jar 池与冷却态原样保留。
+        注入 session_factory 的场景(测试)代理不生效,由桩自证。"""
+        self._proxy = proxy
+        if not self._injected_factory:
+            self._session_factory = make_session_factory(proxy)
+
+    @property
     def jars_total(self) -> int:
         return self._pool.jars_total
 
@@ -121,7 +136,9 @@ class DouyinTransport:
     def _next_available_jar(self) -> CookieJar:
         jar = self._pool.next_available()
         if jar is None:
-            raise RiskControlError(
+            # 池耗尽独立归因(≠真风控):请求未发出,不冷却不喂门,Node 侧
+            # 采集免疫顺延;类名即网关 error 字段
+            raise NoJarAvailableError(
                 f"无可用 Cookie jar（共 {self._pool.jars_total} 份，全部冷却或未配置）"
             )
         return jar
@@ -155,7 +172,8 @@ class DouyinTransport:
             url = f"{self._base_url}{path}?{await self._sign(path, params, jar)}"
 
             async with self._session_factory() as session:
-                response = await session.get(
+                response = await egress_get(
+                    session,
                     url,
                     headers=self._headers(jar),
                     timeout=self._request_timeout,
@@ -226,7 +244,8 @@ class DouyinTransport:
     async def resolve_redirect(self, url: str) -> str:
         """跟随一次 302 取最终地址（分享短链展开用，不带 Cookie 不签名）。"""
         async with self._session_factory() as session:
-            response = await session.get(
+            response = await egress_get(
+                session,
                 url,
                 headers={"User-Agent": self._user_agent},
                 timeout=self._request_timeout,

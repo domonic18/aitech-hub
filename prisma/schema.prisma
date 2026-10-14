@@ -858,6 +858,25 @@ model AdminFeishuConfig {
   @@map("admin_feishu_config")
 }
 
+/// 系统出口代理单例(M33 批B,plan M33):采集网关全部出站走家宽代理
+/// (全局单点,用户定调);proxyUrl write-only AES-256-GCM(secret-box,
+/// 循 admin_feishu_config 同口径),URL 只过境不回显;enabled=代理通道
+/// 总开关(连通测试通过后再开)。网关零密钥不变:worker 解密后随请求携带。
+model SystemProxyConfig {
+  id                Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  proxyUrlEnc       String?   @map("proxy_url_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  proxyUrlMask      String?   @map("proxy_url_mask") @db.VarChar(60) // 脱敏回显冗余列(scheme://host:port 形)
+  enabled           Boolean   @default(false) // 代理通道总开关
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_proxy_config")
+}
+
 /// admin 账号 ↔ 飞书身份绑定(M29 批①):免登白名单本体——fail-closed,
 /// 仅本表 unionId 可静默兑换 admin 会话;无 DB 外键,应用层完整性
 /// (userId 由 requireAdminRequest 会话锚定,unionId 由服务端兑换锚定)。

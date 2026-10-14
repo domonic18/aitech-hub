@@ -46,6 +46,7 @@ import {
 import { downloadHeadersFor, GatewayUpstreamError } from "./adapters/video";
 import { ADAPTERS } from "./adapters/video/registry";
 import { jarsFromConfig } from "./cookies";
+import { getEgressProxyRuntime } from "./egress-proxy";
 import { countTodayAiDone } from "./spider-queries";
 
 /** interpret job data:playUrl 过境字段(job 消费完随保留窗口即焚),禁落库 */
@@ -59,7 +60,7 @@ export interface InterpretJobData {
   platform: string;
   /** 博主台账 secUid(直链重拉用);null=博主已删,只能吃过境直链 */
   secUid: string | null;
-  /** B站 playurl 风控门顺延计数(延迟重投自增;≥RISK_CONTROL_MAX_DEFERS 终败) */
+  /** B站 playurl 风控门顺延计数(延迟重投自增;超出 RISK_CONTROL_DEFER_SCHEDULE_MS 即放弃重试降级) */
   deferCount?: number;
 }
 
@@ -121,11 +122,12 @@ const ASR_TIMEOUT_SEC = 120;
  * 预算,按序拼接(单段直传 120s 死线是 10min+ 视频必挂的第二根因);任一段
  * 终败整体降级 missing_transcript——半篇转写以偏概全,不硬凑 */
 const ASR_SEGMENT_SECONDS = 300;
-/** B站 playurl 软风控门顺延(M24 验收期收口):门为分钟~小时级上下文门
- * (2026-10-11 生产实证:首条解读过后即门,60s attempts 全灭),延迟重投
- * 20min × 3 覆盖 ~1h 衰减窗;冷却期内网关「无可用 jar」快速拒绝不喂门 */
-const RISK_CONTROL_DEFER_MS = 20 * 60_000;
-const RISK_CONTROL_MAX_DEFERS = 3;
+/** B站 playurl 软风控门顺延节奏(M30 批A 收口):门为分钟~小时级上下文门,
+ * 延迟重投跨门——20min 跨短门、2h 跨长门,仍门即放弃重试降级「基于文案概括」。
+ * 2026-10-14 生产实证:单视频 voucher 门 3 天 48 趟(20min×3 无上限顺延=全天候
+ * 喂门训练),每趟冷却池里唯一 jar,采集被连带全灭——顺延必须有终点。
+ * 池耗尽(NoJarAvailableError)同路顺延:等的就是同一份冷却,归因不同节奏同 */
+const RISK_CONTROL_DEFER_SCHEDULE_MS = [20 * 60_000, 2 * 60 * 60_000];
 
 /** 经适配器现查直链(存量补读/过境链过期两路;M24 起按平台分发:
  * douyin=重拉 listing 匹配,bilibili=网关 /play-url),查不得返回 null
@@ -139,7 +141,14 @@ async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Prom
   });
   const jars = jarsFromConfig(platformRow?.config);
   if (jars.length === 0) return null;
-  return adapter.resolvePlayUrl({ videoId: data.videoId, secUid: data.secUid, cookies: jars });
+  // 出口代理(M33 批B):同采集一路,启用即随网关请求携带(未配置=直连)
+  const egress = await getEgressProxyRuntime();
+  return adapter.resolvePlayUrl({
+    videoId: data.videoId,
+    secUid: data.secUid,
+    cookies: jars,
+    ...(egress ? { proxy: egress.proxyUrl } : {}),
+  });
 }
 
 /** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛。
@@ -301,19 +310,19 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
         transcriptError = "无可用播放直链(过境直链缺失且网关重拉未命中),基于文案概括";
       }
     } catch (err) {
-      // B站 playurl 软风控门(v_voucher,经 resolvePlayUrl 唯一来源):分钟~小时级
-      // 上下文门,BullMQ 60s 退避跨不过 → 延迟重投顺延跨门(行留 processing),
-      // 耗尽仍门才终败(可治理台「重解读」)。下载/其余网关网络层照旧上抛 attempts
-      if (
+      // B站 playurl 软风控门(v_voucher,经 resolvePlayUrl 唯一来源)与池耗尽
+      // (NoJarAvailable,等的就是同一份冷却):按节奏延迟重投顺延跨门(行留
+      // processing);节奏耗尽仍门 → 放弃重试降级「基于文案概括」(可治理台
+      // 「重解读」)。下载/其余网关网络层照旧上抛 attempts
+      const riskGate =
         err instanceof GatewayUpstreamError &&
-        err.kind === "RiskControlError" &&
-        (data.deferCount ?? 0) < RISK_CONTROL_MAX_DEFERS
-      ) {
+        (err.kind === "RiskControlError" || err.kind === "NoJarAvailableError");
+      if (riskGate && (data.deferCount ?? 0) < RISK_CONTROL_DEFER_SCHEDULE_MS.length) {
         const deferCount = (data.deferCount ?? 0) + 1;
         await prisma.telegram.update({
           where: { id },
           data: {
-            lastAiError: `风控门顺延重试中(${deferCount}/${RISK_CONTROL_MAX_DEFERS})`,
+            lastAiError: `风控门顺延重试中(${deferCount}/${RISK_CONTROL_DEFER_SCHEDULE_MS.length})`,
           },
         });
         await getQueue(QUEUE_INTERPRETER).add(
@@ -321,12 +330,13 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
           { ...data, deferCount },
           aiJobOpts({
             jobId: interpretJobId(data.telegramId, `rc${Date.now()}`),
-            delayMs: RISK_CONTROL_DEFER_MS,
+            delayMs: RISK_CONTROL_DEFER_SCHEDULE_MS[data.deferCount ?? 0],
           }),
         );
         logger.warn({
           event: "interpret.video.riskcontrol_deferred",
           telegramId: data.telegramId,
+          kind: err.kind,
           deferCount,
         });
         return {
@@ -335,8 +345,13 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
           transcriptUsed: false,
         };
       }
-      await markAiFailed(id, err);
-      throw err; // 下载/网关网络层 → BullMQ attempts 兜重试
+      if (riskGate) {
+        // 顺延节奏耗尽:不硬失败烧 attempts,降级缺转写概括,终态可见 lastAiError
+        transcriptError = "风控门未过(顺延重试耗尽),基于文案概括";
+      } else {
+        await markAiFailed(id, err);
+        throw err; // 下载/网关网络层 → BullMQ attempts 兜重试
+      }
     } finally {
       await removeTmpDir(tmpDir).catch(() => undefined);
     }

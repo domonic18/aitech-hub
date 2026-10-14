@@ -62,10 +62,10 @@ class _FakeRuntime:
     async def close(self) -> None:
         return None
 
-    def transport_for(self, _cookies: list[str]) -> Any:
+    def transport_for(self, _cookies: list[str], _proxy: str | None = None) -> Any:
         return self.transport
 
-    def transport_for_bilibili(self, _cookies: list[str]) -> Any:
+    def transport_for_bilibili(self, _cookies: list[str], _proxy: str | None = None) -> Any:
         return self.transport
 
     def wbi_cache(self) -> None:

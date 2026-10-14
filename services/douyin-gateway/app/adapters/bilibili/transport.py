@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 from app.adapters.bilibili.exceptions import (
     AccountInvalidError,
+    NoJarAvailableError,
     RiskControlError,
     StructureDriftError,
 )
 from app.adapters.bilibili.settings import BilibiliSettings
+from app.adapters.common.egress import egress_get, make_session_factory
 from app.adapters.common.jar_pool import CookieJar, JarPool
 from app.log import get_logger
 
@@ -57,10 +59,8 @@ class _AsyncHttpSession(Protocol):
 
 
 def _default_session_factory() -> _AsyncHttpSession:
-    from curl_cffi.requests import AsyncSession
-
-    session: Any = AsyncSession(impersonate="chrome")
-    return cast("_AsyncHttpSession", session)
+    """直连缺省工厂(M33 批B 起代理感知缺省见 __init__/set_proxy)。"""
+    return make_session_factory()
 
 
 class BilibiliTransport:
@@ -73,13 +73,16 @@ class BilibiliTransport:
         rate_limit_retry_delays: tuple[float, ...] | None = None,
         settings: BilibiliSettings | None = None,
         user_agent: str | None = None,
+        proxy: str | None = None,
     ) -> None:
         settings = settings or BilibiliSettings()
         self._api_base = settings.api_base_url
         self._web_base = settings.web_base_url
         self._request_timeout = settings.request_timeout
         self._user_agent = user_agent or DEFAULT_USER_AGENT
-        self._session_factory = session_factory or _default_session_factory
+        self._proxy = proxy
+        self._injected_factory = session_factory is not None
+        self._session_factory = session_factory or make_session_factory(proxy)
         self._retry_delays = (
             rate_limit_retry_delays
             if rate_limit_retry_delays is not None
@@ -90,6 +93,18 @@ class BilibiliTransport:
             cooldown_base_seconds=settings.jar_cooldown_base_seconds,
             cooldown_max_seconds=settings.jar_cooldown_max_seconds,
         )
+
+    @property
+    def proxy(self) -> str | None:
+        """当前出站代理(观测用;值本身不进日志)。"""
+        return self._proxy
+
+    def set_proxy(self, proxy: str | None) -> None:
+        """热切换出站代理(M33 批B):仅换会话工厂,jar 池与冷却态原样保留。
+        注入 session_factory 的场景(测试)代理不生效,由桩自证。"""
+        self._proxy = proxy
+        if not self._injected_factory:
+            self._session_factory = make_session_factory(proxy)
 
     @property
     def user_agent(self) -> str:
@@ -110,7 +125,9 @@ class BilibiliTransport:
     def _next_available_jar(self) -> CookieJar:
         jar = self._pool.next_available()
         if jar is None:
-            raise RiskControlError(
+            # 池耗尽独立归因(≠真风控):请求未发出,不冷却不喂门,Node 侧
+            # 采集免疫顺延/解读同路等冷却;类名即网关 error 字段
+            raise NoJarAvailableError(
                 f"无可用 Cookie jar（共 {self._pool.jars_total} 份，全部冷却或未配置）"
             )
         return jar
@@ -146,7 +163,8 @@ class BilibiliTransport:
             url = f"{self._api_base}{path}?{params}"
 
             async with self._session_factory() as session:
-                response = await session.get(
+                response = await egress_get(
+                    session,
                     url,
                     headers=self._headers(jar),
                     timeout=self._request_timeout,
@@ -232,7 +250,8 @@ class BilibiliTransport:
     async def resolve_redirect(self, url: str) -> str:
         """跟随一次 302 取最终地址(b23.tv 短链展开用,不带 Cookie 不签名)。"""
         async with self._session_factory() as session:
-            response = await session.get(
+            response = await egress_get(
+                session,
                 url,
                 headers={"User-Agent": self._user_agent},
                 timeout=self._request_timeout,

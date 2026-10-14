@@ -11,9 +11,11 @@ from app.adapters.bilibili.api import (
 )
 from app.adapters.bilibili.exceptions import (
     AccountInvalidError,
+    NoJarAvailableError,
     RiskControlError,
     StructureDriftError,
 )
+from app.adapters.common.egress import EgressError
 from app.adapters.bilibili.transport import BilibiliTransport
 
 pytestmark = pytest.mark.unit
@@ -368,11 +370,28 @@ class TestTransportAttribution:
         with pytest.raises(StructureDriftError):
             await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
 
-    async def test_no_jar_raises_risk_control(self) -> None:
+    async def test_no_jar_raises_no_jar_available(self) -> None:
+        """池耗尽 ≠ 真风控(2026-10-14 拆分):独立异常类,不冷却任何 jar。"""
         session = FakeSession([])
         transport = BilibiliTransport(cookies=[], session_factory=lambda: session)
-        with pytest.raises(RiskControlError, match="无可用 Cookie jar"):
+        with pytest.raises(NoJarAvailableError, match="无可用 Cookie jar"):
             await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
+        assert not isinstance(NoJarAvailableError("x"), RiskControlError)
+
+    async def test_network_failure_raises_egress_error_without_cooling(self) -> None:
+        """网络/代理层故障(M33 批B)→ EgressError(503 基建语义),jar 不冷却。"""
+        session = FakeSession([])
+
+        async def _boom(*args: Any, **kwargs: Any) -> FakeResponse:
+            raise OSError("Proxy CONNECT aborted")
+
+        session.get = _boom  # type: ignore[method-assign]
+        transport = BilibiliTransport(
+            cookies=["buvid3=a"], session_factory=lambda: session, rate_limit_retry_delays=()
+        )
+        with pytest.raises(EgressError, match="出站请求失败"):
+            await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
+        assert transport.jars_available == 1  # 未冷却
 
     async def test_rotates_to_next_jar_after_risk_control(self) -> None:
         session = FakeSession(

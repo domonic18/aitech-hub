@@ -114,6 +114,14 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
                     {jarCount}
                   </span>
                   <span className="ml-0.5 text-[10px] text-text-3">份 jar</span>
+                  {jarCount === 1 && (
+                    <span
+                      className="ml-1.5 rounded-sm bg-amber/10 px-1 py-px text-[10px] text-amber"
+                      title="单份 jar 是单点:任一视频触发风控冷却,该平台采集/解读全部暂停直至冷却到期;建议再导入一份不同身份的 Cookie 分摊风险"
+                    >
+                      单点:建议 ≥2 份
+                    </span>
+                  )}
                   {!pool?.enabled && pool && (
                     <span className="ml-1.5 rounded-sm bg-amber/10 px-1 py-px text-[10px] text-amber">
                       平台已停用

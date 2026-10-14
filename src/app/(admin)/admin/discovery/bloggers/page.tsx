@@ -1,16 +1,19 @@
 /**
  * 博主台账页(M8 批③;侧栏精简批② 起为发现中心「博主」页签,channels 页同款骨架):
- * 页顶 Cookie 池 + 网关健康 + ASR 转写三状态卡,博主台账表(账号/频率/启停/
- * ASR 7d/健康/调度/操作)。Cookie 只出脱敏 ttwid 前缀;网关不可达降级展示,
- * 不阻塞页面。2026-10-06 验收反馈问题3/4:补启用开关列与 ASR 统计。
+ * 页顶 Cookie 池 + 网关健康 + ASR 转写 + 出口代理四状态卡,博主台账表(账号/
+ * 频率/启停/ASR 7d/健康/调度/操作)。Cookie 只出脱敏 ttwid 前缀;网关不可达
+ * 降级展示,不阻塞页面。2026-10-06 验收反馈问题3/4:补启用开关列与 ASR 统计。
+ * M33 批B:增出口代理卡(全局单点家宽出口,URL 只写不读)。
  */
 import StatusSwitch from "@/components/admin/StatusSwitch";
 import { getAsrConfigAdmin } from "@/lib/ai/asr-admin";
 import BloggerDialog from "@/components/admin/BloggerDialog";
 import BloggerRowOps from "@/components/admin/BloggerRowOps";
 import CookiePoolCard from "@/components/admin/CookiePoolCard";
+import EgressProxyCard from "@/components/admin/EgressProxyCard";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
+import { getEgressProxyConfigAdmin } from "@/lib/telegram/egress-proxy";
 import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
 import { getAsrOverview } from "@/lib/telegram/spider-queries";
 import { fetchGatewayHealth, getCookiePoolView } from "@/lib/telegram/social-platform-admin";
@@ -39,12 +42,13 @@ function asrHours(sec: number): string {
 
 export default async function AdminBloggersPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [bloggers, pool, gateway, asr, asrConfig] = await Promise.all([
+  const [bloggers, pool, gateway, asr, asrConfig, egressProxy] = await Promise.all([
     listBloggersAdmin(),
     getCookiePoolView(),
     fetchGatewayHealth(),
     getAsrOverview(),
     getAsrConfigAdmin(),
+    getEgressProxyConfigAdmin(),
   ]);
 
   return (
@@ -59,9 +63,10 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
         <BloggerDialog label="登记博主" />
       </div>
 
-      {/* 状态卡 ×3(原型 kpi 三卡):Cookie 池(客户端)+ 网关健康(RSC)+ ASR 转写 */}
+      {/* 状态卡 ×4(原型 kpi 卡):Cookie 池(客户端)+ 网关健康(RSC)+ ASR 转写 + 出口代理(客户端) */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <CookiePoolCard pools={pool.pools} />
+        <EgressProxyCard config={egressProxy} />
         <div className="rounded-md border border-line bg-panel px-4 py-4">
           <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
             <svg className="ic text-accent" aria-hidden="true">
@@ -301,7 +306,8 @@ export default async function AdminBloggersPage(): Promise<React.ReactElement> {
         409,停用后可物理删,已入库视频不受影响。 ASR 7d 为近 7 天转写条数/时长(按平台+昵称
         冗余名匹配),↓N 为缺转写降级数。 API:GET/POST /api/bloggers · PUT/DELETE /api/bloggers/[id] ·
         PUT /api/bloggers/[id]/status · POST /api/bloggers/[id]/crawl · POST
-        /api/bloggers/[id]/backfill · GET/POST/DELETE /api/bloggers/cookies。
+        /api/bloggers/[id]/backfill · GET/POST/DELETE /api/bloggers/cookies · GET/PUT
+        /api/admin/proxy/config · POST /api/admin/proxy/test。
       </p>
     </div>
   );

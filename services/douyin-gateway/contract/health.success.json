@@ -3,6 +3,7 @@
   "body": {
     "status": "starting",
     "driver": null,
+    "egress_proxy": false,
     "warm_slots": 0,
     "in_use": 0,
     "last_error": null,

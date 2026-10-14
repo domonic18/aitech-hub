@@ -10,6 +10,10 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn<(args?: unknown) => Promise<unknown>>(async () => []),
     create: vi.fn<(args?: unknown) => Promise<unknown>>(async () => ({ id: 77 })),
   },
+  // 出口代理单例(M33 批B):默认未配置(findUnique→null)= 直连
+  systemProxyConfig: {
+    findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
+  },
 }));
 vi.mock("../db", () => ({
   prisma: prismaMock,
@@ -130,7 +134,7 @@ describe("createBlogger 登记分发(M24 per-platform)", () => {
     });
     expect(created).toEqual({ id: 77 });
     expect(resolveBilibiliMid).not.toHaveBeenCalled(); // 链接已含 mid
-    expect(fetchBilibiliProfile).toHaveBeenCalledWith("9469941", ["jar-a"]);
+    expect(fetchBilibiliProfile).toHaveBeenCalledWith("9469941", ["jar-a"], undefined);
     expect(ensurePlatformRow).toHaveBeenCalledWith("bilibili");
     expect(activeJars).toHaveBeenCalledWith("bilibili");
     expect(prismaMock.socialAccount.create).toHaveBeenCalledWith({
@@ -150,7 +154,7 @@ describe("createBlogger 登记分发(M24 per-platform)", () => {
 
     vi.mocked(resolveBilibiliMid).mockResolvedValue("9469941");
     await createBlogger({ platform: "bilibili", input: "https://b23.tv/abc/" });
-    expect(resolveBilibiliMid).toHaveBeenCalledWith("https://b23.tv/abc/");
+    expect(resolveBilibiliMid).toHaveBeenCalledWith("https://b23.tv/abc/", undefined);
   });
 
   it("douyin(缺省平台):sec_uid 提取与 profile 分发不变(回归)", async () => {
@@ -163,7 +167,11 @@ describe("createBlogger 登记分发(M24 per-platform)", () => {
       platform: "douyin",
       input: "https://www.douyin.com/user/MS4wLjABAAAA1234567890abcdefghij",
     });
-    expect(fetchDouyinProfile).toHaveBeenCalledWith("MS4wLjABAAAA1234567890abcdefghij", ["jar-a"]);
+    expect(fetchDouyinProfile).toHaveBeenCalledWith(
+      "MS4wLjABAAAA1234567890abcdefghij",
+      ["jar-a"],
+      undefined,
+    );
     expect(ensurePlatformRow).toHaveBeenCalledWith("douyin");
     expect(prismaMock.socialAccount.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

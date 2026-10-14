@@ -29,6 +29,8 @@ export interface VideoFetchInput {
   cookies: string[];
   /** 单轮翻页上限(默认 1;批⑧手动回填传 3——各适配器按网关上限自行钳制,B站后补同契约) */
   maxPages?: number;
+  /** 出口代理 URL(M33 批B,随请求携带;undefined=直连。编排层经 getEgressProxyRuntime 取,本层不解密不落日志) */
+  proxy?: string;
 }
 
 /** 直链现查输入:常规拉取输入 + listing 匹配锚 */
