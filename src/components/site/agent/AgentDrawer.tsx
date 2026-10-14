@@ -3,8 +3,10 @@
  * 「问助手」右侧抽屉(K2.5,arch/04 §3.1;挂载 /search page):
  * 答案卡追问 chips / 「继续深挖」派发 search:agent-ask(detail {question, send})
  * 唤起并预填/直发。编排:受控 threadId + 会话列表(plain fetch,无 react-query)
- * + todos 状态,内部装配 AgentRuntimeProvider。开抽屉才挂 Provider
- * (不打开零开销);Escape / 遮罩点击关闭;左缘拖拽调宽(localStorage 记忆)。
+ * + todos 状态,内部装配 AgentRuntimeProvider。首开才挂 Provider(零前置开销),
+ * 此后常驻:关闭仅 display:none——在跑 agent run 不随抽屉卸载中断,再开即回
+ * (2026-10-14 常驻化,ai-invest 同款;身份判定仍按 open 逐次复判);
+ * Escape / 遮罩点击关闭;左缘拖拽调宽(localStorage 记忆)。
  * K2.6 身份分流:GET /api/auth/session 判 admin——游客不渲染会话侧栏/
  * 新建入口(单列全宽),composer 显限额口径;会话过期(游客 2h 清退)横幅
  * +复位新会话自愈。
@@ -36,6 +38,8 @@ type AuthPhase = "loading" | "admin" | "guest";
 
 export default function AgentDrawer(): React.ReactElement {
   const [open, setOpen] = useState(false);
+  /** 首开后恒挂载:关闭仅隐藏(见 docstring 常驻化) */
+  const [everOpened, setEverOpened] = useState(false);
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<PendingAsk | null>(null);
   const [todos, setTodos] = useState<AgentTodo[]>([]);
@@ -148,6 +152,7 @@ export default function AgentDrawer(): React.ReactElement {
       const detail = (e as CustomEvent<{ question?: unknown; send?: unknown }>).detail;
       if (typeof detail?.question !== "string" || detail.question.trim() === "") return;
       setPending({ question: detail.question, send: detail.send === true });
+      setEverOpened(true);
       setOpen(true);
     };
     window.addEventListener("search:agent-ask", onAsk);
@@ -212,10 +217,10 @@ export default function AgentDrawer(): React.ReactElement {
     setBanner("会话已过期,已开启新会话,请重新发送");
   }, []);
 
-  if (!open) return <div />;
+  if (!everOpened) return <div />;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-label="问助手">
+    <div className={`fixed inset-0 z-50 ${open ? "" : "hidden"}`} role="dialog" aria-label="问助手">
       <button
         type="button"
         aria-label="关闭抽屉"
