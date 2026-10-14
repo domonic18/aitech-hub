@@ -512,7 +512,7 @@ test("10. PAT 生命周期:UI 创建→Bearer PUT 落草稿→同 slug 重发更
   await page.getByPlaceholder("••••••••").fill(E2E_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
-  await page.goto("/admin/pats/");
+  await page.goto("/admin/settings/pats/");
   await page.getByRole("button", { name: "新建令牌" }).click();
   await page.getByPlaceholder("令牌备注(必填,≤100 字)").fill(PAT_NAME);
   await page.getByRole("button", { name: "创建", exact: true }).click();
@@ -561,7 +561,7 @@ test("10. PAT 生命周期:UI 创建→Bearer PUT 落草稿→同 slug 重发更
   expect(b2.data.id).toBe(b1.data.id);
 
   // UI 吊销(原生 confirm)→ 行变已吊销
-  await page.goto("/admin/pats/");
+  await page.goto("/admin/settings/pats/");
   const patRow = page.getByRole("row", { name: new RegExp(PAT_NAME) });
   page.once("dialog", (d) => d.accept());
   await patRow.getByRole("button", { name: "吊销" }).click();
@@ -790,7 +790,7 @@ test("13. 电报流后台三页可见(M7:渠道台账/流治理/采集总览)", 
   await page.waitForURL(/\/admin\/?$/);
 
   // 渠道台账:页头说明 + 新增入口
-  await page.goto("/admin/channels/");
+  await page.goto("/admin/spider/channels/");
   await expect(page.getByText("采集渠道台账")).toBeVisible();
   await expect(page.getByRole("button", { name: "新增渠道" })).toBeVisible();
 
