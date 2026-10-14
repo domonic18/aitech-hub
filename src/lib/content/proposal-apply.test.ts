@@ -57,6 +57,25 @@ describe("locateProposals", () => {
     ]);
     expect(chunks.map((c) => c.status)).toEqual(["exact", "miss", "exact"]);
   });
+
+  it("超长 oldString 单字符漂移:头部锚点模糊命中,不抛「Pattern too long」", () => {
+    // 生产事故回归(2026-10-14):模型转写 percent-encode 单字节误差致精确
+    // miss,旧实现直喂 match_main 超 Match_MaxBits(32) throw,炸评审挂载
+    const longOld =
+      "本条视频系统讲解了".padEnd(200, "推理成本与开源生态的观察") + "张三是资深创作者";
+    const drifted = longOld.replace("张三是资深创作者", "张三是知明创作者"); // 尾部一字之差
+    const chunks = locateProposals(longOld, [{ oldString: drifted, newString: "x" }]);
+    expect(chunks[0]?.status).toBe("fuzzy");
+    expect(chunks[0]!.start).toBe(0);
+  });
+
+  it("超长 oldString 完全不相关:降级 miss 不抛错(锚点命中不过门槛)", () => {
+    const chunks = locateProposals(DOC, [
+      { oldString: "完全无关的幻觉文本".padEnd(300, "甲"), newString: "x" },
+    ]);
+    expect(chunks[0]?.status).toBe("miss");
+    expect(chunks[0]!.start).toBe(-1);
+  });
 });
 
 describe("mergeProposals", () => {
