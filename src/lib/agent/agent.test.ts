@@ -1,8 +1,9 @@
 /**
  * agent 图装配纯函数单测(工具面/系统提示按身份档分发,M27 批④建、批⑤随
- * agent 自主生产重构更新):guest/user 维持 K2.5 只读六件与基线提示;admin
- * 追加专题生产四件工具与工作流段。重 IO 装配(getAgentGraph/checkpointer/
- * 模型解析)不入单测,由真机验收。
+ * agent 自主生产重构更新;M30 批② 随技能化更新——写作指南提取为 agent_skill
+ * 资产,提示改「技能调度」条款):guest/user 维持 K2.5 只读六件与基线提示;
+ * admin 追加专题生产四件、编辑域两件与技能两件工具。重 IO 装配
+ * (getAgentGraph/checkpointer/模型解析)不入单测,由真机验收。
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,9 @@ vi.mock("./topic-tools", () => ({
     { name: "generate_cover_candidates" },
     { name: "save_topic_draft" },
   ],
+}));
+vi.mock("./skill-tools", () => ({
+  SKILL_TOOLS: [{ name: "list_skills" }, { name: "get_skill" }],
 }));
 vi.mock("./checkpointer", () => ({
   ensureAgentCheckpointer: vi.fn(),
@@ -48,7 +52,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
     }
   });
 
-  it("admin 追加编辑域(read_draft/propose_edits)与专题生产四件(get_topic_brief/transfer_video_cover/generate_cover_candidates/save_topic_draft)", () => {
+  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件与技能两件(list_skills/get_skill)", () => {
     expect(agentToolsFor("admin").map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
@@ -62,6 +66,8 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "transfer_video_cover",
       "generate_cover_candidates",
       "save_topic_draft",
+      "list_skills",
+      "get_skill",
     ]);
   });
 });
@@ -93,21 +99,23 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     // 生图放开到正文概念示意图;transfer_video_cover 定位为重试/补传钮
     expect(p).toContain("概念示意图");
     expect(p).toContain("transfer_video_cover 重试");
-    // 消费口径:头图避让文首卡同图;无合适图不硬插(2~4 张引导仍在)
+    // 消费口径:头图避让文首卡同图(卡自动带图属系统行为,留在工作流段;
+    // 张数引导属 skill 风格,已迁种子指南)
     expect(p).toContain("文首推荐卡由系统自动带图");
-    expect(p).toContain("2~4 张");
+    expect(p).toContain("正文开头不要再贴同一张");
   });
 
-  it("写作质量提示(批⑦):背景递进 + 反套话 + 原视频链接 + save 前强制自评审", () => {
+  it("技能调度提示(M30 批②):写前必取 skill + skill_key 直取 + 无命中说明 + 自评审闭环仍在", () => {
     const p = agentSystemPrompt("admin");
-    // 上下文逻辑:钩子后有背景节;要点要求递进而非罗列
-    expect(p).toContain("背景与来龙去脉");
-    expect(p).toContain("不要平行罗列");
-    // 反 AI 味:开场与全篇两处套话禁令
-    expect(p).toContain("随着…的快速发展");
-    expect(p).toContain("总而言之");
-    // 原视频地址:去看原视频小节给 video_url 行内链接
-    expect(p).toContain("video_url");
+    // 渐进披露调度:动笔前先 list_skills,绑定/命中即 get_skill 取全文
+    expect(p).toContain("list_skills");
+    expect(p).toContain("get_skill");
+    expect(p).toContain("topic.skill_key");
+    expect(p).toContain("技能调度");
+    // 降级路径与指南优先级;具体风格纪律(钩子/反套话/字数)已迁种子 skill
+    expect(p).toContain("清单为空或无命中");
+    expect(p).toContain("未命中适用技能");
+    expect(p).toContain("优先于本提示的通用写法");
     // 自评审闭环:save 前必做的逐项检查步;轮数封顶 2,防无限重写
     expect(p).toContain("自评审并优化");
     expect(p).toContain("不可跳过");

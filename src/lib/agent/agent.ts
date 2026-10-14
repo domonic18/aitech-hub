@@ -17,6 +17,7 @@ import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
 import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
+import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { AGENT_TOOLS, EDIT_TOOLS } from "./tools";
@@ -54,7 +55,9 @@ export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜�
  * admin 专属段(M27 批⑤重构:编排权移交 agent——不再有固定管线,模型按工作流
  * 指令用细粒度工具自主生产专题文章)。写库型工具只进 admin 图——guest/user 图
  * 的工具面与系统提示维持 K2.5 只读红线不变。系统提示只在 admin 图追加,防工具
- * 语义泄入无工具会话(模型幻调不存在的工具)。
+ * 语义泄入无工具会话(模型幻调不存在的工具)。M30 批②:写作指南自本提示
+ * 提取为 agent_skill 资产(后台建改即时生效),提示只留「技能调度」条款,
+ * 指南正文经 list_skills/get_skill 渐进披露取用。
  */
 const ADMIN_PROMPT_ADDENDUM = `
 
@@ -62,8 +65,8 @@ const ADMIN_PROMPT_ADDENDUM = `
 这是多步生产流程,先用 write_todos 列出计划(通常 6~7 步),再逐步执行,每步用对应工具:
 1. get_topic_brief 读取专题定位、素材(博主/视频/解读笔记/人工批注)与关联文档现状;仔细分析素材
 2. 选题:基于素材构思 2~3 个切入角度并自选最优,参考近期已发标题避免重复;方向确实拿不准时用 ask_user 请管理员拍板(一次一问,带 2~4 个选项),素材充分时不必问
-3. 写作:按下方写作指南起草;正文图片直接引用素材的 cover_path(brief 已转存为站内路径)或 generate_cover_candidates 返回的路径,严禁编造外链图片
-4. 配图:素材 cover_path 已可直接引用;视频封面不足或需概念示意图时 generate_cover_candidates 按小节内容现拟 prompt 生成;cover_path 为 null(转存失败)或 brief 后新挂素材时用 transfer_video_cover 重试。头图建议选生图封面,避免与文首视频卡同图
+3. 写作:按技能指南起草(动笔前先经下方「技能调度」取用);正文图片直接引用素材的 cover_path(brief 已转存为站内路径)或 generate_cover_candidates 返回的路径,严禁编造外链图片
+4. 配图:素材 cover_path 已可直接引用;视频封面不足或需概念示意图时 generate_cover_candidates 按小节内容现拟 prompt 生成;cover_path 为 null(转存失败)或 brief 后新挂素材时用 transfer_video_cover 重试。头图建议选生图封面;文首推荐卡由系统自动带图,正文开头不要再贴同一张
 5. 自评审并优化(必做,不可跳过):以挑剔读者视角通读初稿,逐项检查并直接改写——① 开头是否用素材里的具体事实/数据抓人,有无「随着…的发展」式套话;② 背景交代是否完整,不了解这条视频的读者能否无障碍读下去;③ 要点之间是否有递进/因果逻辑,而非并列罗列;④ 「去看原视频」小节是否给出了视频原地址链接;⑤ 配图位置与全文数量是否合理、有无图文不符。自评审至多 2 轮:第 1 轮通读改写,仅当仍有硬伤(编造事实/缺原链/图文不符)才做第 2 轮;2 轮后无论是否满意都立即进入下一步,禁止反复重写
 6. save_topic_draft 落库(标题/摘要/正文/封面/SEO 标题与描述/标签一次交付)
 7. 汇报:文章标题、结构与亮点、配图与 SEO 摘要,并给出文档链接(指向 post_url 的 markdown 链接);汇报里说明自评审改了哪些地方
@@ -78,16 +81,16 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 提案提交后会挂起等待管理员在评审界面逐块确认:applied=全部接受,partial=部分接受,rejected=拒绝——收到 rejected/partial 时按管理员评语调整后再提案,至多连续两轮,仍未获接受就停止并询问管理员意见;unavailable=当前页面无评审界面,向管理员说明并请其到文章编辑页唤起编辑助手
 - 严禁在提案被接受前声称「已修改完成」——写入编辑器需管理员逐块确认,你只能如实报告提案状态(applied/partial 时告知改动已写入编辑器、尚未落库)
 
-写作指南(公众号「博主×视频」推荐短文,反对模板腔):
-- 开头钩子不超过 80 字:用素材里最反差或最具体的事实/数据直接抓人;严禁「随着…的快速发展/在当今时代/众所周知」式开场
-- 结构(递进式,节名可按素材微调):钩子后先用 2~4 句交代背景与来龙去脉(读者带着什么困惑、行业正发生什么,这条视频为什么此时值得看)→ ## 博主是谁(2~4 句,只依据素材,不编造履历)→ ## 视频讲了什么(3~4 个要点,要点之间体现递进或因果,不要平行罗列;段首 **加粗**)→ ## 值得看的理由(1~2 句,具体到能落地的好处)→ ## 去看原视频(用素材里的视频原地址 video_url 给出行内链接,如 [▶ B 站观看:标题](video_url),并引导公众号读者点「阅读原文」进站后直达)
-- 生动性硬要求:每个论断尽量带素材里的具体数字/事实/例子;句式长短交错,允许口语化;不堆砌形容词,全篇不出现「总而言之/综上所述/不容忽视」类套话
-- 全文 800~1200 字,单段不超过 3 行;时间/年份只取自素材,素材未提就写「近期」;全部简体中文;恰当融合人工批注的取舍指令
-- 图:优先在「视频讲了什么」等小节插入对应素材的封面图(cover_path),全文 2~4 张为宜、每节至多 1 张;文首推荐卡由系统自动带图,正文开头不要再贴同一张;确实无合适图不硬插`;
+技能调度(M30:流程纪律为后台可管理资产,「Agent 技能」页建改即时生效零发版):
+- 写作动笔前必先 list_skills 查看技能清单;专题 brief 的 topic.skill_key 已指定时直接 get_skill 该 key,不再自行匹配
+- 按清单 scenario 对号本次任务场景,命中即 get_skill 取指南全文;起草、自评审、改稿全程以指南为准——结构/口吻/字数/配图/码点预算等指南要求优先于本提示的通用写法;指南中引用的工具(如码点计量)按其说明调用
+- 清单为空或无命中时按素材常识写作(具体、反模板腔、简体中文),并在汇报中说明「未命中适用技能」`;
 
-/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域与专题生产工具) */
+/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产与技能工具) */
 export function agentToolsFor(kind: AgentIdentity["kind"]) {
-  return kind === "admin" ? [...AGENT_TOOLS, ...EDIT_TOOLS, ...TOPIC_TOOLS] : [...AGENT_TOOLS];
+  return kind === "admin"
+    ? [...AGENT_TOOLS, ...EDIT_TOOLS, ...TOPIC_TOOLS, ...SKILL_TOOLS]
+    : [...AGENT_TOOLS];
 }
 
 /** 系统提示按身份分发(admin 追加合成工作流段) */

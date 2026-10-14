@@ -74,6 +74,7 @@ export const getTopicBriefTool = tool(
           title: topic.title,
           positioning: topic.positioning,
           status: topic.status,
+          skill_key: topic.skillKey,
           composed_at: topic.composedAt?.toISOString() ?? null,
         },
         linked_post:
@@ -117,10 +118,11 @@ export const getTopicBriefTool = tool(
   {
     name: "get_topic_brief",
     description:
-      "读取专题的完整生产底料:专题定位、挂载素材(博主/视频/解读笔记/要点/人工批注/" +
-      "站内文章节选)、关联文档现状(含是否被人工编辑过)与近期已发文章标题(防重复" +
-      "选题)。视频封面已自动转存为站内路径(materials[].cover_path),可直接在正文" +
-      "引用。写专题文章前必调;仔细分析素材后再选题与写作。",
+      "读取专题的完整生产底料:专题定位、绑定技能(topic.skill_key,写前经 get_skill " +
+      "取指南)、挂载素材(博主/视频/解读笔记/要点/人工批注/站内文章节选)、关联文档" +
+      "现状(含是否被人工编辑过)与近期已发文章标题(防重复选题)。视频封面已自动转存" +
+      "为站内路径(materials[].cover_path),可直接在正文引用。写专题文章前必调;仔细" +
+      "分析素材后再选题与写作。",
     schema: z.object({
       topic_id: z
         .string()
