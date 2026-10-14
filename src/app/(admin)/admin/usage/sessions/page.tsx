@@ -1,5 +1,6 @@
 /**
- * 会话管理页(K2.6 需求5,原型参照 admin/users):成员(admin 登录)与游客
+ * 会话管理页(K2.6 需求5;侧栏精简批② 起为 AI 用量「会话」页签,原型参照
+ * admin/users):成员(admin 登录)与游客
  * 会话一屏可见——成员=会话行,游客=台账聚合(不落行,过期仅留统计)。分段
  * + 搜索 + 分页整页服务端渲染;详情走行内弹窗(checkpoint 时间线)。
  */
@@ -29,7 +30,7 @@ interface PageProps {
 }
 
 function listHref(kind: AgentSessionKindFilter, page: number, q?: string): string {
-  return adminListHref("/admin/agent-sessions/", {
+  return adminListHref("/admin/usage/sessions/", {
     status: kind === "all" ? undefined : kind,
     page,
     q,
@@ -117,7 +118,7 @@ export default async function AdminAgentSessionsPage({
         </div>
         <form
           method="GET"
-          action="/admin/agent-sessions/"
+          action="/admin/usage/sessions/"
           className="ml-auto flex w-full items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent sm:w-auto"
         >
           <input type="hidden" name="status" value={kind} />

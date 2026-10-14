@@ -82,7 +82,7 @@
 - **过期自愈**:worker 日清扫 `checkpoints` 表 `g_%` 线程,Redis 键已消失 → deleteThread(并入 04:33 job);前端 adapter 识别 404「会话已过期/不存在」→ 复位新会话 + 横幅指引重发
 - **审计锚**:迁移 `20261007045121_ai_usage_log_session_id` 增 `session_id varchar(40)` + 索引——`recordAgentRun` 带 threadId,游客不触碰会话行但台账照落;后台会话管理以此聚合游客统计(见 §4 会话管理)
 - **工具面收紧 + get_time**:AGENT_TOOLS 收口四只读工具(search_site/read_post/read_repo/get_time),系统提示明示「四工具之外无任何能力(无站外网页/文件系统/代码执行/写入)」超范围直说做不到;`get_time` 返回北京时区 `{iso,beijing,timezone}` 锚定相对时间
-- **后台会话管理**(`src/lib/agent/admin-sessions.ts` + `/api/agent-sessions*` + `/admin/agent-sessions`):成员=会话行+台账 runs 计数;游客=`ai_usage_log` 按 session_id 聚合(`LIKE 'g%'`——成员 uuid 首字符必为 hex 不会撞 g)还原统计,活跃态查 Redis 归属键(只查当前页);两源合并按最近活动倒排内存分页;详情读 checkpoint 时间线,游客过期只留台账统计标「已过期」;侧栏「会话管理」占位激活
+- **后台会话管理**(`src/lib/agent/admin-sessions.ts` + `/api/agent-sessions*` + `/admin/usage/sessions`,侧栏精简批② 起为 AI 用量「会话」页签):成员=会话行+台账 runs 计数;游客=`ai_usage_log` 按 session_id 聚合(`LIKE 'g%'`——成员 uuid 首字符必为 hex 不会撞 g)还原统计,活跃态查 Redis 归属键(只查当前页);两源合并按最近活动倒排内存分页;详情读 checkpoint 时间线,游客过期只留台账统计标「已过期」;侧栏「会话管理」占位激活
 
 **K2.7 实施注记(2026-10-09,M22 迭代批①~⑤,全站悬浮 AI 助手 + 用户额度 + 反馈系统)**:
 

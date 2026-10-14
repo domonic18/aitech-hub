@@ -37,17 +37,16 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       // 渠道配置已并入采集壳「渠道」页签(/admin/spider/channels,侧栏精简批①)
       { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
-      { icon: "i-aim", label: "博主管理", href: "/admin/bloggers" },
-      { icon: "i-experiment", label: "发现治理", href: "/admin/discovery" },
-      { icon: "i-github", label: "项目展示", href: "/admin/github" },
+      // 博主/项目已并入发现中心壳页签(/admin/discovery/bloggers|github,侧栏精简批②)
+      { icon: "i-experiment", label: "发现中心", href: "/admin/discovery" },
     ],
   },
   {
     label: "AI 服务",
     items: [
       { icon: "i-robot", label: "模型配置", href: "/admin/models" },
-      { icon: "i-piechart", label: "用量统计", href: "/admin/usage" },
-      { icon: "i-comment", label: "会话管理", href: "/admin/agent-sessions" },
+      // 会话管理已并入 AI 用量壳「会话」页签(/admin/usage/sessions,侧栏精简批②)
+      { icon: "i-piechart", label: "AI 用量", href: "/admin/usage" },
     ],
   },
   {

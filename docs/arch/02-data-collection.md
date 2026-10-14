@@ -115,7 +115,7 @@
 
 - **采集总览(admin/spider)**:worker 心跳与存活、`crawler` / `interpreter` 双队列深度(completed/failed/active/delayed)与排队实况、各渠道最近 24h 采集条带图、**采集日历**(月网格,按日聚合采集量色阶——回答"哪天采了什么、哪个渠道断了")、最近错误列表;数据全部来自 BullMQ 队列 API 与 crawl_source/telegram 聚合,不引第三方监控
 - **渠道配置(admin/channels)**:文字资讯渠道台账——类型(rss|web|api)/URL/频控 interval/启停/健康状态(healthy|degraded|error)/最近采集与 24h 条数,调试·编辑·删除;停用不删数据;视频博主不在此表(见博主管理)
-- **博主管理(admin/bloggers)**:短视频博主台账——登记(主页链接或 sec_uid + 别名 + 分类 + 轮询间隔 + Cookie 加密落库,409 重复)/启停/最新作品与最近采集/**ASR 7d 观测**(成功率/转写缺失告警)/最近错误(a_bogus 签名失效等);页顶双状态卡 = 采集适配层(signer sidecar/Cookie 池)+ ASR 转写队列;删除两步武装(先停用再物理删)+ 版权边界注记(§3.2 红线)。**落地注记(2026-10-04,M8 批③ 已交付)**:登记即「主页链接/口令/sec_uid」三态输入,经网关 `/resolve`+`/profile` 自动拉昵称头像(不可达时昵称手填兜底);Cookie **平台级**导入而非随博主落库(§2 注记);页顶状态卡 = Cookie 池(脱敏 ttwid 前缀 + 导入/清空)+ 网关健康(/health 探测);健康列 = N 连败徽标(last_error);ASR 观测列随解读批后置
+- **博主台账(admin/discovery/bloggers,发现中心「博主」页签,侧栏精简批② 起)**:短视频博主台账——登记(主页链接或 sec_uid + 别名 + 分类 + 轮询间隔 + Cookie 加密落库,409 重复)/启停/最新作品与最近采集/**ASR 7d 观测**(成功率/转写缺失告警)/最近错误(a_bogus 签名失效等);页顶双状态卡 = 采集适配层(signer sidecar/Cookie 池)+ ASR 转写队列;删除两步武装(先停用再物理删)+ 版权边界注记(§3.2 红线)。**落地注记(2026-10-04,M8 批③ 已交付)**:登记即「主页链接/口令/sec_uid」三态输入,经网关 `/resolve`+`/profile` 自动拉昵称头像(不可达时昵称手填兜底);Cookie **平台级**导入而非随博主落库(§2 注记);页顶状态卡 = Cookie 池(脱敏 ttwid 前缀 + 导入/清空)+ 网关健康(/health 探测);健康列 = N 连败徽标(last_error);ASR 观测列随解读批后置
 
 ## 6. 前台展示
 
