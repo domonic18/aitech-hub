@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import AdminSprite from "@/components/admin/AdminSprite";
+import FeishuSilentLogin from "@/components/admin/FeishuSilentLogin";
 import LoginForm from "@/components/admin/LoginForm";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -24,6 +25,7 @@ export default function AdminLoginPage(): React.ReactElement {
           <span className="text-base font-semibold">一起AI 控制台</span>
         </div>
         <p className="mb-6 font-mono text-xs text-text-3">$ ssh admin@17aitech.com</p>
+        <FeishuSilentLogin />
         <LoginForm />
       </div>
 

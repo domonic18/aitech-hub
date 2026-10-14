@@ -348,6 +348,11 @@ CREATE TABLE legacy_url_map (
 - `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
 - `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
 
+**飞书免登域两表已落地(2026-10-14 M29 批①迁移 `20261014160000_admin_feishu_sso`,交互与兑换链见 [arch/05 §3.1](05-services.md))**:
+
+- `admin_feishu_config`(应用凭证单例 `id=1`,get-or-create,镜像 `email_config`/`publish_wechat_config` 形态;2026-10-14 拍板凭证入数据库不入 env):`app_id varchar(50) 默认 ''`/`app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`enabled 默认 false`(免登兑换总开关——绑定/签名只要求凭证齐,enabled 可后开)/`last_test` 四件套(探测 app_token+jsapi_ticket 双链路)
+- `admin_feishu_binding`(免登白名单本体,fail-closed:兑换仅 unionId 精确命中行放行):`user_id bigint` 唯一(`uq_admin_feishu_binding_user`,一账号一身份)/`union_id varchar(64)` 唯一(`uq_admin_feishu_binding_union`,一身份一账号)/`open_id varchar(64)`/`feishu_name? varchar(100)`(兑换时姓名快照);**无 DB 外键,应用层完整性**(跨锚冲突 409;目标账号 role/status 兑换时复核,失配拒绝)
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
