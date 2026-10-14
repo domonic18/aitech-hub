@@ -12,6 +12,7 @@ import {
   postsResponseSchema,
   profileResponseSchema,
   resolveResponseSchema,
+  subtitleResponseSchema,
   type GatewayVideo,
 } from "./gateway-contract";
 import { gatewayPost } from "./gateway-http";
@@ -79,6 +80,18 @@ export const bilibiliAdapter: VideoAdapter = {
       playUrlResponseSchema,
     );
     return data.play_url ?? null;
+  },
+
+  // M33 批C 字幕优先:view→cid→player/wbi/v2→字幕 JSON(ai-zh 优先,登录态
+  // 才见 AI 字表);null=无字幕 → 编排层落回直链+ASR;文本禁落库(转写同红线)
+  async resolveSubtitleText({ videoId, cookies, proxy }) {
+    const data = await gatewayPost(
+      "/subtitle",
+      { platform: VIDEO_PLATFORM_BILIBILI, video_id: videoId, cookies, proxy },
+      subtitleResponseSchema,
+    );
+    if (!data.subtitle_text) return null;
+    return { text: data.subtitle_text, lang: data.lang };
   },
 };
 

@@ -39,6 +39,13 @@ export interface PlayUrlResolveInput extends VideoFetchInput {
   videoId: string;
 }
 
+/** 字幕文本现查输入(M33 批C 字幕优先;与直链现查同型但无需 secUid) */
+export interface SubtitleFetchInput {
+  videoId: string;
+  cookies: string[];
+  proxy?: string;
+}
+
 export interface VideoAdapter {
   readonly platform: VideoPlatform;
   /** 拉取博主最新作品一页(增量/翻页由编排层决定是否续拉) */
@@ -46,6 +53,11 @@ export interface VideoAdapter {
   /** 现查单条直链(M24;存量补读/过境链过期两路):douyin=重拉 listing 匹配,
    * bilibili=/play-url 端点;查不得返回 null → 既有 missing_transcript 降级 */
   resolvePlayUrl?(input: PlayUrlResolveInput): Promise<string | null>;
+  /** 现查字幕文本(M33 批C 字幕优先,B站先行):null=无字幕/未登录态拿不到
+   * AI 字表 → 调用方落回直链+ASR 既有管道;RiskControl/池耗尽照常上抛走顺延 */
+  resolveSubtitleText?(
+    input: SubtitleFetchInput,
+  ): Promise<{ text: string; lang: string | null } | null>;
 }
 
 /** 解读下载请求头(B站 CDN 防盗链校验 Referer,缺则 403;抖音直链裸 fetch 即可) */

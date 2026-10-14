@@ -3,12 +3,12 @@
   "body": {
     "status": "starting",
     "driver": null,
-    "egress_proxy": false,
     "warm_slots": 0,
     "in_use": 0,
     "last_error": null,
     "jars_total": 3,
     "jars_available": 2,
+    "egress_proxy": false,
     "platforms": {
       "douyin": {
         "jars_total": 3,

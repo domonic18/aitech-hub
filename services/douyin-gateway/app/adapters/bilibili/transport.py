@@ -261,3 +261,24 @@ class BilibiliTransport:
         if not location:
             raise StructureDriftError(f"短链未返回跳转目标: {url}")
         return str(location)
+
+    async def get_json_url(self, url: str) -> dict[str, Any]:
+        """绝对 URL 拉 JSON(M33 批C 字幕文件在 aisubtitle.hdslb.com,不在 api
+        域):带 jar 头(Referer 防盗链同源),不签名不解释 body code;非 2xx/
+        非 JSON 归结构漂移(不冷却 jar——CDN 拿不到文件不是账号风控形态)。"""
+        jar = self._next_available_jar()
+        async with self._session_factory() as session:
+            response = await egress_get(
+                session, url, headers=self._headers(jar), timeout=self._request_timeout
+            )
+        status = getattr(response, "status_code", 0)
+        text = getattr(response, "text", "") or ""
+        if not 200 <= status < 300:
+            raise StructureDriftError(f"字幕下载 HTTP {status}: {text[:160]}")
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise StructureDriftError(f"字幕文件非 JSON: {text[:160]}") from exc
+        if not isinstance(data, dict):
+            raise StructureDriftError("字幕文件顶层不是对象")
+        return data

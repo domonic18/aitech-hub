@@ -96,6 +96,25 @@ export const playUrlResponseSchema = z.object({
   play_url: z.string().nullable().default(null),
 });
 
+/** /subtitle 请求(M33 批C 字幕优先,仅 bilibili;字幕文本是「转写输入非
+ * 资产」,与转写同红线:禁落库,仅 job 内存消费) */
+export const subtitleRequestSchema = z.object({
+  platform: z.literal("bilibili").default("bilibili"),
+  video_id: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^BV[1-9A-HJ-NP-Za-km-z]{10}$/, "bilibili video_id 须为 BV 号"),
+  cookies: z.array(z.string()).default([]),
+  proxy: egressProxySchema,
+});
+
+export const subtitleResponseSchema = z.object({
+  video_id: z.string(),
+  subtitle_text: z.string().nullable().default(null),
+  lang: z.string().nullable().default(null),
+});
+
 /** /health 分平台 jar 池观测(wbi_age_seconds 仅 bilibili 有值) */
 export const platformHealthSchema = z.object({
   jars_total: z.number().int().default(0),

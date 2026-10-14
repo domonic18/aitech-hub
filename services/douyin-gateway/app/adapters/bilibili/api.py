@@ -34,7 +34,11 @@ _POSTS_PATH = "/x/space/wbi/arc/search"
 _PROFILE_PATH = "/x/web-interface/card"
 _VIEW_PATH = "/x/web-interface/view"
 _PLAY_URL_PATH = "/x/player/wbi/playurl"
+_PLAYER_V2_PATH = "/x/player/wbi/v2"
 _NAV_PATH = "/x/web-interface/nav"
+
+#: 字幕语言优先级(M33 批C:ai-zh=B 站 AI 生成中文字幕,登录态可见)
+_SUBTITLE_LANG_PRIORITY = ("ai-zh", "zh-CN", "zh-Hans")
 
 # 未登录上限:360p mp4(fnval=1 mp4 容器;platform=html5 免登录;高画质需大会员)
 _PLAY_QN = 32
@@ -232,6 +236,17 @@ class BilibiliWebApi:
         """展开 b23.tv 分享短链,取跳转目标地址。"""
         return await self._transport.resolve_redirect(url)
 
+    async def _view_cid(self, bvid: str) -> int:
+        """view→cid 公共提取(get_play_url/get_subtitle_text 共用首跳)。"""
+        view = await self._transport.get_json(_VIEW_PATH, urlencode({"bvid": bvid}))
+        view_payload = view.get("data")
+        if not isinstance(view_payload, dict):
+            raise StructureDriftError(f"view 缺少 data: {str(view)[:160]}")
+        cid = _to_int(view_payload.get("cid"))
+        if cid is None:
+            raise StructureDriftError(f"view 缺少 cid: {str(view_payload)[:160]}")
+        return cid
+
     async def get_play_url(self, bvid: str) -> str | None:
         """解读时现查播放直链(view→cid→playurl,未登录 360p mp4)。
 
@@ -245,13 +260,7 @@ class BilibiliWebApi:
             StructureDriftError: 结构不符。
             RiskControlError: v_voucher 软风控(transport 矩阵)。
         """
-        view = await self._transport.get_json(_VIEW_PATH, urlencode({"bvid": bvid}))
-        view_payload = view.get("data")
-        if not isinstance(view_payload, dict):
-            raise StructureDriftError(f"view 缺少 data: {str(view)[:160]}")
-        cid = _to_int(view_payload.get("cid"))
-        if cid is None:
-            raise StructureDriftError(f"view 缺少 cid: {str(view_payload)[:160]}")
+        cid = await self._view_cid(bvid)
         mixin = await self._wbi.get(self._fetch_nav_mixin)
         params = {
             "bvid": bvid,
@@ -278,3 +287,62 @@ class BilibiliWebApi:
             "social_bilibili_playurl", bvid=bvid, outcome="ok" if url else "no_durl"
         )
         return str(url) if url else None
+
+    @staticmethod
+    def _pick_subtitle(subtitles: list) -> dict:
+        """按语言优先级择一(ai-zh > zh-CN > zh-Hans > 首个),非 dict 条目跳过。"""
+        items = [s for s in subtitles if isinstance(s, dict)]
+        for lan in _SUBTITLE_LANG_PRIORITY:
+            for s in items:
+                if s.get("lan") == lan:
+                    return s
+        return items[0]
+
+    async def get_subtitle_text(self, bvid: str) -> tuple[str | None, str | None]:
+        """字幕文本现查(M33 批C 字幕优先:view→cid→player/wbi/v2→字幕 JSON)。
+
+        Returns:
+            (文本, 语言);视频无字幕(游客常见,AI 字表需登录态)返回
+            (None, None),调用方落回直链+ASR 既有管道。字幕文本是「转写
+            输入非资产」,调用方禁落库(与转写同红线)。
+
+        Raises:
+            AccountInvalidError: 视频 -404(删除/审核中)。
+            StructureDriftError: 结构不符/字幕文件损坏。
+            RiskControlError: -352/-412/风控墙/限速重试耗尽(transport 矩阵)。
+        """
+        cid = await self._view_cid(bvid)
+        mixin = await self._wbi.get(self._fetch_nav_mixin)
+        params = {"bvid": bvid, "cid": str(cid)}
+        data = await self._transport.get_json(
+            _PLAYER_V2_PATH, urlencode(sign_wbi_params(params, mixin))
+        )
+        payload = data.get("data")
+        if not isinstance(payload, dict):
+            raise StructureDriftError(f"player v2 缺少 data: {str(data)[:160]}")
+        subtitles = (payload.get("subtitle") or {}).get("subtitles")
+        if not isinstance(subtitles, list) or not subtitles:
+            logger.info("social_bilibili_subtitle", bvid=bvid, outcome="none")
+            return None, None
+        pick = self._pick_subtitle(subtitles)
+        url = str(pick.get("subtitle_url") or "")
+        if url.startswith("//"):
+            url = f"https:{url}"  # 协议相对形(//aisubtitle.hdslb.com/…)
+        if not url:
+            raise StructureDriftError(f"字幕条目缺 subtitle_url: {str(pick)[:160]}")
+        body = await self._transport.get_json_url(url)
+        raw_lines = body.get("body")
+        lines = [
+            str(item.get("content") or "")
+            for item in (raw_lines if isinstance(raw_lines, list) else [])
+            if isinstance(item, dict)
+        ]
+        text = "\n".join(line for line in lines if line.strip()) or None
+        lang = str(pick.get("lan") or "") or None
+        logger.info(
+            "social_bilibili_subtitle",
+            bvid=bvid,
+            outcome="ok" if text else "empty",
+            lang=lang,
+        )
+        return text, lang

@@ -184,6 +184,31 @@ class PlayUrlResponse(BaseModel):
     play_url: str | None = None
 
 
+class SubtitleRequest(BaseModel):
+    """字幕文本现查(M33 批C,仅 bilibili:字幕优先于直链+ASR 的取材通道)。
+
+    登录态(含 SESSDATA)才见 AI 字表(ai-zh);字幕文本是「转写输入」非
+    资产,调用方禁落库(与转写同红线)。
+    """
+
+    platform: Literal["bilibili"] = "bilibili"
+    video_id: str = Field(min_length=1, max_length=64)
+    cookies: list[str] = Field(default_factory=list)
+    proxy: str | None = Field(default=None, min_length=8, max_length=500)
+
+    @model_validator(mode="after")
+    def _check_bvid(self) -> "SubtitleRequest":
+        if not BVID_PATTERN.fullmatch(self.video_id.strip()):
+            raise ValueError("bilibili video_id 须为 BV 号(BV + 10 位)")
+        return self
+
+
+class SubtitleResponse(BaseModel):
+    video_id: str
+    subtitle_text: str | None = None
+    lang: str | None = None
+
+
 class PlatformHealth(BaseModel):
     jars_total: int = 0
     jars_available: int = 0
@@ -423,6 +448,19 @@ def create_app(
             transport, wbi_cache=runtime.wbi_cache()
         ).get_play_url(payload.video_id.strip())
         return PlayUrlResponse(video_id=payload.video_id.strip(), play_url=url)
+
+    @app.post("/subtitle", response_model=SubtitleResponse)
+    async def subtitle(payload: SubtitleRequest) -> SubtitleResponse:
+        """B 站字幕文本现查(M33 批C 字幕优先:view→cid→player/wbi/v2→字幕
+        JSON 下载,择 ai-zh→zh-Hans/zh-CN→首个;无字幕返回 null 调用方落回
+        直链+ASR;风险归因矩阵同路)。"""
+        transport = runtime.transport_for_bilibili(payload.cookies, payload.proxy)
+        text, lang = await BilibiliWebApi(
+            transport, wbi_cache=runtime.wbi_cache()
+        ).get_subtitle_text(payload.video_id.strip())
+        return SubtitleResponse(
+            video_id=payload.video_id.strip(), subtitle_text=text, lang=lang
+        )
 
     @app.post("/proxy-test", response_model=ProxyTestResponse)
     async def proxy_test(payload: ProxyTestRequest) -> ProxyTestResponse:

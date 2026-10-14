@@ -18,6 +18,8 @@ import {
   postsResponseSchema,
   profileResponseSchema,
   resolveResponseSchema,
+  subtitleRequestSchema,
+  subtitleResponseSchema,
 } from "./gateway-contract";
 
 const CONTRACT_DIR = fileURLToPath(
@@ -117,6 +119,15 @@ describe("契约黄金样本:bilibili 面 strict 对拍", () => {
     expect(parsed.play_url).toContain("bilivideo.com");
   });
 
+  it("subtitle.success:{video_id, subtitle_text, lang}(文本是转写输入非资产,禁落库)", () => {
+    const f = fixture("subtitle.success");
+    expect(f.status).toBe(200);
+    const parsed = subtitleResponseSchema.strict().parse(f.body);
+    expect(parsed.video_id).toMatch(/^BV/);
+    expect(typeof parsed.subtitle_text).toBe("string");
+    expect(parsed.lang).toBe("ai-zh"); // 择优后语种:ai-zh > zh-CN > zh-Hans > 首个
+  });
+
   it("error.bilibili.validation:douyin 请求 /play-url 被 422 拒", () => {
     const f = fixture("error.bilibili.validation");
     expect(f.status).toBe(422);
@@ -177,6 +188,18 @@ describe("边界负例:schema 拒绝面", () => {
     expect(
       playUrlRequestSchema.safeParse({ platform: "douyin", video_id: "BV1xx411c7mD" }).success,
     ).toBe(false);
+  });
+
+  it("subtitleRequest:与 playUrl 同矩阵(BV 形态 + 仅 bilibili + 代理可选)", () => {
+    expect(subtitleRequestSchema.safeParse({ video_id: "BV1xx411c7mD" }).success).toBe(true);
+    expect(subtitleRequestSchema.safeParse({ video_id: "av170001" }).success).toBe(false);
+    expect(
+      subtitleRequestSchema.safeParse({ platform: "douyin", video_id: "BV1xx411c7mD" }).success,
+    ).toBe(false);
+    expect(
+      subtitleRequestSchema.safeParse({ video_id: "BV1xx411c7mD", proxy: "http://192.0.2.1:7890" })
+        .success,
+    ).toBe(true);
   });
 
   it("postsResponse 包络必填:缺 has_more/max_cursor 拒绝", () => {
