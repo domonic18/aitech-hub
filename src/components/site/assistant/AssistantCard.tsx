@@ -6,7 +6,8 @@
  * 176px 常驻(卡 600px),窄屏(<640px)退化为覆盖式面板(汉堡钮唤起);
  * 游客无列表语义,单列全宽不变。懒挂载:开卡才装 Provider(不开零开销,
  * AgentDrawer 同纪律);Escape/收起按钮关闭。「隐藏」写显隐偏好后关卡
- * (FAB 退化为唤起点)。
+ * (FAB 退化为唤起点)。关闭语义=宿主侧常驻化(2026-10-14):调用方对卡
+ * 仅 display:none 不卸载,在跑 run 不中断(本组件自身只上报 onClose 意图)。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 

@@ -10,6 +10,8 @@
  * 整体退役——该页唯一助手入口 = 顶栏 EditorAssistant(带编辑上下文与写回
  * 接线;FAB 形态两不当:无上下文复现「AI 不知道哪篇文章」,有上下文也无
  * 写回面),新建页 /admin/posts/new 不在隐藏列(无 postId,照旧 FAB)。
+ * 常驻化(2026-10-14):卡片首开才挂(零前置开销),此后关闭/隐藏仅
+ * display:none——在跑 agent run 不随卡卸载中断,再开即回(ai-invest 同款)。
  */
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -36,6 +38,8 @@ export default function AssistantFab(): React.ReactElement | null {
   /** null=加载中;true/false=显/隐(FAB 退化唤起点) */
   const [visible, setVisible] = useState(false);
   const [open, setOpen] = useState(false);
+  /** 首开后卡片恒挂载:关闭/隐藏仅 display:none,在跑 run 不中断(常驻化) */
+  const [everOpened, setEverOpened] = useState(false);
   /** member 身份缓存(决定隐藏写库还是 localStorage) */
   const [isMember, setIsMember] = useState(false);
   /** agent:open 携带的预置问题(批⑤「联系我们」;空 detail 不注入) */
@@ -87,6 +91,7 @@ export default function AssistantFab(): React.ReactElement | null {
           nonce: Date.now(),
         });
       }
+      setEverOpened(true);
       setOpen(true);
     };
     window.addEventListener("agent:open", onOpen);
@@ -112,30 +117,46 @@ export default function AssistantFab(): React.ReactElement | null {
   if (!ready) return null;
 
   if (!visible) {
-    // 极小唤起点:隐藏后的兜底入口(点它直开卡片,显隐态不变)
+    // 极小唤起点:隐藏后的兜底入口(点它直开卡片,显隐态不变;卡片若已挂载
+    // 则保持常驻仅转显,在跑 run 不中断)
     return (
-      <button
-        type="button"
-        aria-label="唤起 AI 助手"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-4 z-40 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-text-3 opacity-50 transition-opacity hover:opacity-100 sm:right-5"
-      >
-        <svg className="ic" aria-hidden="true">
-          <use href="#i-robot" />
-        </svg>
-      </button>
+      <>
+        {everOpened && (
+          <div className={open ? "contents" : "hidden"}>
+            <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
+          </div>
+        )}
+        <button
+          type="button"
+          aria-label="唤起 AI 助手"
+          onClick={() => {
+            setEverOpened(true);
+            setOpen(true);
+          }}
+          className="fixed bottom-5 right-4 z-40 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-text-3 opacity-50 transition-opacity hover:opacity-100 sm:right-5"
+        >
+          <svg className="ic" aria-hidden="true">
+            <use href="#i-robot" />
+          </svg>
+        </button>
+      </>
     );
   }
 
   return (
     <>
-      {open && (
-        <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
+      {everOpened && (
+        <div className={open ? "contents" : "hidden"}>
+          <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
+        </div>
       )}
       <button
         type="button"
         aria-label="打开 AI 助手"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setEverOpened(true);
+          setOpen((v) => !v);
+        }}
         className="fixed bottom-5 right-4 z-40 flex h-12 w-12 cursor-pointer items-center justify-center rounded-full bg-accent text-white shadow-md transition-transform hover:scale-105 hover:bg-accent-hover sm:right-5"
       >
         <svg className="ic ic-lg" aria-hidden="true">
