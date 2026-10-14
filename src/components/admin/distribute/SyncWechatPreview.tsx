@@ -18,12 +18,15 @@ export default function SyncWechatPreview({
   postId,
   theme,
   onTheme,
+  onChars,
 }: {
   postId: string;
   /** undefined = 未手动指定(服务端按 行快照 > 渠道默认 解析) */
   theme: string | undefined;
   /** 每次渲染成功回传生效主题(高亮回显;父组件需 useCallback 稳定传入) */
   onTheme?: (theme: string) => void;
+  /** 渲染成功回传正文 HTML 码点(与推送校验同口径,M30 批③ 实时计数) */
+  onChars?: (chars: number) => void;
 }) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +51,7 @@ export default function SyncWechatPreview({
         } else {
           setHtml(body.data.html);
           onTheme?.(body.data.theme);
+          onChars?.([...body.data.html].length);
         }
       } catch {
         if (alive) {
