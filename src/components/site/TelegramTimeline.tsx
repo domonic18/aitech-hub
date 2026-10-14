@@ -24,6 +24,7 @@ import {
   type FeedMediaFilter,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
+import { trackEntryClick } from "@/lib/stats/track-click";
 
 const POLL_MS = 60_000;
 
@@ -166,6 +167,14 @@ export default function TelegramTimeline({
                       href={t.url}
                       target="_blank"
                       rel="noopener nofollow"
+                      onClick={() =>
+                        trackEntryClick({
+                          surface: "telegram",
+                          kind: "telegram",
+                          ref: t.id,
+                          target: t.url,
+                        })
+                      }
                       className="text-text-1 hover:text-accent-hover"
                     >
                       {t.title}
@@ -220,6 +229,14 @@ export default function TelegramTimeline({
                       href={t.url}
                       target="_blank"
                       rel="noopener nofollow"
+                      onClick={() =>
+                        trackEntryClick({
+                          surface: "telegram",
+                          kind: "telegram",
+                          ref: t.id,
+                          target: t.url,
+                        })
+                      }
                       className="text-text-2 hover:text-accent-hover"
                     >
                       原文 →

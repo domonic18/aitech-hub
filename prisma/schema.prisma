@@ -454,6 +454,22 @@ model StatsSearchLog {
   @@map("stats_search_log")
 }
 
+/// 条目点击明细(M28 批①):首页/电报流条目点击行为统计,行级直插不经缓冲;
+/// 无 PII(无 IP/无访客哈希,行为聚合不需要访客维度),循 stats_search_log 先例
+/// 180 天保留(worker 日清)。ref 无外键:telegram/post 存 BigInt id 文本、
+/// project 存冻结 slug,标题查询侧反解(删文/删条目 title 兜底占位)
+model StatsClickLog {
+  id        BigInt   @id @default(autoincrement())
+  surface   String   @db.VarChar(20) // home/telegram(点击发生的页面)
+  kind      String   @db.VarChar(20) // telegram/project/post(条目类型)
+  ref       String   @db.VarChar(100) // 条目键:telegram/post=BigInt id 文本,project=slug
+  domain    String   @default("") @db.VarChar(100) // 外链域名(服务端从 target 解析;站内链接空串)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "idx_stats_click_log_created_at")
+  @@map("stats_click_log")
+}
+
 /// 混合检索语义向量(M20,arch/04 §3.2):三域内容 embedding(pgvector 余弦召回,
 /// 与关键词计分 RRF 融合)。向量列类型 Prisma 不识别(Unsupported)——读写一律 raw SQL
 /// (pgvector 文本序列化),本模型仅锚定 DDL 防 migrate 漂移;换 embedding 模型 =
