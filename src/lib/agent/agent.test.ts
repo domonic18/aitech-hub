@@ -29,6 +29,9 @@ vi.mock("./topic-tools", () => ({
 vi.mock("./skill-tools", () => ({
   SKILL_TOOLS: [{ name: "list_skills" }, { name: "get_skill" }],
 }));
+vi.mock("./wechat-budget-tool", () => ({
+  WECHAT_BUDGET_TOOLS: [{ name: "measure_wechat_budget" }],
+}));
 vi.mock("./checkpointer", () => ({
   ensureAgentCheckpointer: vi.fn(),
   getAgentCheckpointer: vi.fn(),
@@ -52,7 +55,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
     }
   });
 
-  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件与技能两件(list_skills/get_skill)", () => {
+  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件、技能两件与预算工具", () => {
     expect(agentToolsFor("admin").map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
@@ -68,6 +71,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "save_topic_draft",
       "list_skills",
       "get_skill",
+      "measure_wechat_budget",
     ]);
   });
 });

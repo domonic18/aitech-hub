@@ -19,6 +19,7 @@ import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
 import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
+import { WECHAT_BUDGET_TOOLS } from "./wechat-budget-tool";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { AGENT_TOOLS, EDIT_TOOLS } from "./tools";
 
@@ -83,13 +84,13 @@ const ADMIN_PROMPT_ADDENDUM = `
 
 技能调度(M30:流程纪律为后台可管理资产,「Agent 技能」页建改即时生效零发版):
 - 写作动笔前必先 list_skills 查看技能清单;专题 brief 的 topic.skill_key 已指定时直接 get_skill 该 key,不再自行匹配
-- 按清单 scenario 对号本次任务场景,命中即 get_skill 取指南全文;起草、自评审、改稿全程以指南为准——结构/口吻/字数/配图/码点预算等指南要求优先于本提示的通用写法;指南中引用的工具(如码点计量)按其说明调用
+- 按清单 scenario 对号本次任务场景,命中即 get_skill 取指南全文;起草、自评审、改稿全程以指南为准——结构/口吻/字数/配图/码点预算等指南要求优先于本提示的通用写法;指南中引用的工具按其说明调用(码点预算自查用 measure_wechat_budget,超预算必精简后复核再交稿)
 - 清单为空或无命中时按素材常识写作(具体、反模板腔、简体中文),并在汇报中说明「未命中适用技能」`;
 
-/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产与技能工具) */
+/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产、技能与预算工具) */
 export function agentToolsFor(kind: AgentIdentity["kind"]) {
   return kind === "admin"
-    ? [...AGENT_TOOLS, ...EDIT_TOOLS, ...TOPIC_TOOLS, ...SKILL_TOOLS]
+    ? [...AGENT_TOOLS, ...EDIT_TOOLS, ...TOPIC_TOOLS, ...SKILL_TOOLS, ...WECHAT_BUDGET_TOOLS]
     : [...AGENT_TOOLS];
 }
 
