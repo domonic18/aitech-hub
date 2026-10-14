@@ -20,6 +20,7 @@ import sharp from "sharp";
  * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)/
  * 优质内容发现治理台:词库管理与候选人工终审(M25)。
  * 专题治理台:新建/挂载素材(仅已解读)/批注/人工状态流转/权限防线(M26 批③)。
+ * 飞书免登底座:登录页非飞书零回归/兑换未启用 403/签名外站拒签/bind 未登录 401(M29,零真网)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -3674,5 +3675,83 @@ test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过
       where: { id: { in: [s1.id, s2.id] } },
     });
     await prisma.post.deleteMany({ where: { slug: { startsWith: mark } } });
+  }
+});
+
+test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 未启用 403/jssign 外站拒签+未配置 403/bind 未登录 401,零真网)", async ({
+  page,
+  request,
+}) => {
+  // mutation 同源 Origin 运行时派生(e2e 可在备用端口起服,写死 :3000 会 403)
+  const SITE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+  // jssign 同站点源白名单 = 服务端 build 烙的 NEXT_PUBLIC_SITE_URL,与旁路端口可不同;
+  // 签名 url 参数须对准服务端白名单,而非请求 host
+  const SIGN_ORIGIN = new URL(process.env.NEXT_PUBLIC_SITE_URL ?? SITE).origin;
+  // 共享单例行快照恢复(与集成测试同纪律:测前快照,finally 原样还原)
+  const snap = await prisma.adminFeishuConfig.findUnique({ where: { id: 1 } });
+  const quotaKeys = ["auth:feishu:exch:203.0.113.91", "auth:feishu:jssign:203.0.113.91"];
+  try {
+    // 37.1 登录页(普通浏览器 UA)→ 密码表单在位、无免登横幅(非飞书渲染 null,零回归)
+    await page.goto("/admin/login/");
+    await expect(page.getByPlaceholder("手机号 / 用户名 / 邮箱")).toBeVisible();
+    await expect(page.getByText("正在通过飞书免登")).toHaveCount(0);
+
+    // 37.2 配置了凭证但未启用 → exchange 403(不触飞书;未启用门在兑换之前)
+    await prisma.adminFeishuConfig.upsert({
+      where: { id: 1 },
+      update: {
+        appId: "cli_e2e_smoke",
+        appSecretEnc: "smoke",
+        appSecretMask: "sm****",
+        enabled: false,
+      },
+      create: {
+        id: 1,
+        appId: "cli_e2e_smoke",
+        appSecretEnc: "smoke",
+        appSecretMask: "sm****",
+        enabled: false,
+      },
+    });
+    const off = await request.post("/api/auth/feishu/exchange/", {
+      headers: {
+        "content-type": "application/json",
+        origin: SITE,
+        "x-forwarded-host": new URL(SITE).host,
+        "x-forwarded-for": "203.0.113.91",
+      },
+      data: { code: "e2e-code" },
+    });
+    expect(off.status()).toBe(403);
+
+    // 37.3 jssign 外站 URL → 400 拒签(签名 oracle 防线,先于取 ticket,零出网)
+    const foreign = await request.get(
+      `/api/auth/feishu/jssign/?url=${encodeURIComponent("https://evil.example.com/admin")}`,
+    );
+    expect(foreign.status()).toBe(400);
+
+    // 37.4 行删除(未配置)→ jssign 同源 403;bind API 未登录 401
+    await prisma.adminFeishuConfig.deleteMany({ where: { id: 1 } });
+    const blank = await request.get(
+      `/api/auth/feishu/jssign/?url=${encodeURIComponent(`${SIGN_ORIGIN}/admin/login/`)}`,
+    );
+    expect(blank.status()).toBe(403);
+    const bindAnon = await request.get("/api/admin/feishu/bind/");
+    expect(bindAnon.status()).toBe(401);
+  } finally {
+    if (snap) {
+      await prisma.adminFeishuConfig.update({
+        where: { id: 1 },
+        data: {
+          appId: snap.appId,
+          appSecretEnc: snap.appSecretEnc,
+          appSecretMask: snap.appSecretMask,
+          enabled: snap.enabled,
+        },
+      });
+    } else {
+      await prisma.adminFeishuConfig.deleteMany({ where: { id: 1 } });
+    }
+    for (const k of quotaKeys) await e2eRedis.del(k);
   }
 });
