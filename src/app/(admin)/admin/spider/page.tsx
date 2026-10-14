@@ -80,7 +80,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
         enabledChannels={enabledChannels}
       />
 
-      {/* 短视频观测细带(M8;博主明细与 Cookie 池在 /admin/bloggers) */}
+      {/* 短视频观测细带(M8;博主明细与 Cookie 池在发现中心「博主」页签) */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-md border border-line bg-panel px-4 py-3 text-xs text-text-3">
         <span className="font-semibold text-text-2">短视频</span>
         <span>
@@ -95,7 +95,10 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
           条
         </span>
         <span>最新 {video.lastVideoAt ? hhmm(video.lastVideoAt) : "—"}</span>
-        <Link href="/admin/bloggers/" className="ml-auto text-accent hover:text-accent-hover">
+        <Link
+          href="/admin/discovery/bloggers/"
+          className="ml-auto text-accent hover:text-accent-hover"
+        >
           博主台账 →
         </Link>
       </div>

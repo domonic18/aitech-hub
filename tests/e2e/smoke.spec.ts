@@ -928,7 +928,7 @@ test("14. 博主台账与视频混合流(M8:bloggers 页/两步武装删除/启�
     await page.waitForURL(/\/admin\/?$/);
 
     // 台账页:双状态卡 + 播种行(平台行停用 → 健康列「平台已停用」徽标)
-    await page.goto("/admin/bloggers/");
+    await page.goto("/admin/discovery/bloggers/");
     await expect(page.getByRole("button", { name: "登记博主" })).toBeVisible();
     await expect(page.getByText("采集网关(douyin-gateway · 抖音/B站)")).toBeVisible();
     const row = page.getByRole("row", { name: new RegExp(NICK) });
@@ -1593,7 +1593,7 @@ test("18. GitHub 项目展示(M11:首页卡/列表/详情 README 重写与时间
     expect((await request.get("/projects/E2E_Demo/")).status()).toBe(404);
 
     // admin 台账:播种行可见,「立即同步」在(不点击——真按会经 worker 出网)
-    await page.goto("/admin/github/");
+    await page.goto("/admin/discovery/github/");
     const row = page.getByRole("row", { name: new RegExp(SLUG) });
     await expect(row).toBeVisible();
     await expect(row.getByRole("button", { name: "立即同步" })).toBeVisible();
@@ -1998,9 +1998,9 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
     await page.getByRole("button", { name: "登录控制台" }).click();
     await page.waitForURL(/\/admin\/?$/);
 
-    // 21.1 侧栏新项进看板(批⑦启用):KPI 四卡 + 趋势 + 双分布 + 明细
+    // 21.1 侧栏入口进看板(批⑦启用;侧栏精简批② 起项名「AI 用量」):KPI 四卡 + 趋势 + 双分布 + 明细
     await page.goto("/admin/");
-    await page.getByRole("link", { name: "用量统计" }).click();
+    await page.getByRole("link", { name: "AI 用量" }).click();
     await page.waitForURL(/\/admin\/usage/);
     await expect(page.getByText("Tokens 消耗")).toBeVisible();
     await expect(page.getByText("2.0M").first()).toBeVisible();
@@ -2883,9 +2883,9 @@ test("31. K2.6 游客模式:归属隔离/3 问日限 429/后台会话管理(列�
   await page.getByRole("button", { name: "登录控制台" }).click();
   await page.waitForURL(/\/admin\/?$/);
 
-  // 侧栏「会话管理」激活(不再禁用占位)
-  await expect(page.getByRole("link", { name: "会话管理" })).toBeVisible();
-  await page.goto("/admin/agent-sessions/");
+  // 侧栏「AI 用量」在(会话已并入其「会话」页签,侧栏精简批②)
+  await expect(page.getByRole("link", { name: "AI 用量" })).toBeVisible();
+  await page.goto("/admin/usage/sessions/");
   await expect(page.getByRole("heading", { name: "会话管理" })).toBeVisible();
   await expect(page.getByRole("link", { name: /^全部 \d+$/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /^成员会话 \d+$/ })).toBeVisible();
@@ -3086,7 +3086,7 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
 
     // 候选 tab(默认):播种两行在,L0 徽标/信号列/拒绝理由如实呈现
     await page.goto("/admin/discovery/");
-    await expect(page.getByRole("link", { name: "发现治理" })).toBeVisible(); // 侧栏入口
+    await expect(page.getByRole("link", { name: "发现中心" })).toBeVisible(); // 侧栏入口(侧栏精简批② 起项名)
     await expect(page.getByRole("heading", { name: "发现治理" })).toBeVisible();
     const bloggerRow = page.getByRole("row", { name: /e2e-发现博主/ });
     await expect(bloggerRow).toBeVisible();
@@ -3121,7 +3121,7 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
     const bloggerId = apiBody.data.items.find((i) => i.externalId === BLOGGER_MID)!.id;
 
     // 终审(同源 PUT):批准博主候选 → 行内徽标翻「已批准」;批准即自动登记
-    // 进博主管理(M26 批③追加):social_account 落库 enabled=true,出参附 id
+    // 进发现中心「博主」页签台账(M26 批③追加):social_account 落库 enabled=true,出参附 id
     const put = await page.request.put(`/api/discovery/candidates/${bloggerId}/`, {
       headers: origin,
       data: { status: "approved" },

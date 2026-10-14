@@ -23,6 +23,22 @@ const nextConfig: NextConfig = {
       { source: "/admin/pats/", destination: "/admin/settings/pats/", statusCode: 308 },
       { source: "/admin/channels", destination: "/admin/spider/channels/", statusCode: 308 },
       { source: "/admin/channels/", destination: "/admin/spider/channels/", statusCode: 308 },
+      // 侧栏精简批②(2026-10-14):博主/项目并入 /admin/discovery 壳、会话并入
+      // /admin/usage 壳,旧路径 308 承接(同上双斜杠形态都列)
+      { source: "/admin/bloggers", destination: "/admin/discovery/bloggers/", statusCode: 308 },
+      { source: "/admin/bloggers/", destination: "/admin/discovery/bloggers/", statusCode: 308 },
+      { source: "/admin/github", destination: "/admin/discovery/github/", statusCode: 308 },
+      { source: "/admin/github/", destination: "/admin/discovery/github/", statusCode: 308 },
+      {
+        source: "/admin/agent-sessions",
+        destination: "/admin/usage/sessions/",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/agent-sessions/",
+        destination: "/admin/usage/sessions/",
+        statusCode: 308,
+      },
     ];
   },
   async headers() {

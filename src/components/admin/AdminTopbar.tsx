@@ -22,6 +22,9 @@ interface Crumb {
 const SEG_LABEL: Record<string, string> = {
   posts: "文章管理",
   media: "媒体库",
+  comments: "评论管理",
+  distribute: "内容分发",
+  topics: "专题管理",
   users: "用户管理",
   feedback: "反馈管理",
   pats: "PAT 令牌",
@@ -35,10 +38,12 @@ const SEG_LABEL: Record<string, string> = {
   telegram: "电报管理",
   spider: "采集总览",
   channels: "渠道",
-  bloggers: "博主管理",
-  github: "项目展示",
+  discovery: "发现中心",
+  bloggers: "博主",
+  github: "项目",
   models: "模型配置",
-  usage: "用量统计",
+  usage: "AI 用量",
+  sessions: "会话",
 };
 
 /** 数字段 = 文章 id(编辑页);其余未知段解码展示 */
