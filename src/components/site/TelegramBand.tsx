@@ -46,6 +46,7 @@ import {
   type FeedChipTone,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
+import { trackEntryClick } from "@/lib/stats/track-click";
 
 /** 行网格统一口径——BandPoints 依赖同模板取标题列,改动时两处同改(见文件头)。 */
 const ROW_GRID = "grid grid-cols-[54px_1fr] gap-x-3 px-5 sm:grid-cols-[74px_164px_1fr_auto]";
@@ -253,6 +254,9 @@ export default function TelegramBand({
                 href={t.url}
                 target="_blank"
                 rel="noopener nofollow"
+                onClick={() =>
+                  trackEntryClick({ surface: "home", kind: "telegram", ref: t.id, target: t.url })
+                }
                 className={`${ROW_GRID} items-start py-3 ${points.length > 0 ? "pb-1" : ""}`}
               >
                 <BandTime fresh={fresh} text={hhmm(t.publishedAt)} />
@@ -299,6 +303,9 @@ export default function TelegramBand({
               href={t.url}
               target="_blank"
               rel="noopener nofollow"
+              onClick={() =>
+                trackEntryClick({ surface: "home", kind: "telegram", ref: t.id, target: t.url })
+              }
               className={`${ROW_GRID} items-start py-2.5 ${points.length > 0 ? "pb-1.5" : ""}`}
             >
               {/* 文字行首列时间双断点常显;渠道章 sm+ 落 164px 元信息列,

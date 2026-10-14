@@ -50,6 +50,7 @@ import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
 import { runBiliDiscovery } from "../src/lib/discovery/discover";
 import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
+import { purgeClickLogs } from "../src/lib/stats/clicks";
 import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
 import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/purge";
@@ -81,7 +82,8 @@ const PROCESSORS: Record<string, Processor> = {
     return summary;
   },
   [QUEUE_STATS]: async (job) => {
-    // 明细保留期清理(M10 批⑥ 访问 7 天;2026-10-06 搜索词 180 天;与 flush 同队列按 job.name 分流)
+    // 明细保留期清理(M10 批⑥ 访问 7 天;2026-10-06 搜索词 180 天;M28 批① 点击 180 天;
+    // 与 flush 同队列按 job.name 分流)
     if (job.name === STATS_JOB_PURGE) {
       const visitRemoved = await purgeVisitLogs();
       if (visitRemoved > 0) {
@@ -91,7 +93,11 @@ const PROCESSORS: Record<string, Processor> = {
       if (searchRemoved > 0) {
         console.log(JSON.stringify({ event: "stats.search_log.purge", removed: searchRemoved }));
       }
-      return { removed: visitRemoved + searchRemoved };
+      const clickRemoved = await purgeClickLogs();
+      if (clickRemoved > 0) {
+        console.log(JSON.stringify({ event: "stats.click_log.purge", removed: clickRemoved }));
+      }
+      return { removed: visitRemoved + searchRemoved + clickRemoved };
     }
     // AI 用量台账 90 天保留期清理(M14 批⑦;与手动清理同口径 usage-log.ts)
     if (job.name === STATS_JOB_USAGE_PURGE) {

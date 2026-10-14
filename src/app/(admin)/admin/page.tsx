@@ -4,17 +4,22 @@
  * 分段切换全 URL 驱动:trend=7|30|90、hot=today|7d|30d|all(非法值回落默认)。
  * 口径:站点级统计自新站上线起算(WP 明细不迁移);「今日」读日聚合表,
  * 经 60s worker flush,最长延迟约 2 分钟。M10 批⑥:尾部加最近访问明细
- * (行级,近 7 天,全量 IP 短留存)。
+ * (行级,近 7 天,全量 IP 短留存)。M28:条目点击排行(行级直插准实时)+
+ * 在线用户卡(Redis 5 分钟滑窗,直读实时)。
  */
 import BotPanel from "@/components/admin/stats/BotPanel";
 import EnvPanel from "@/components/admin/stats/EnvPanel";
 import GeoPanel from "@/components/admin/stats/GeoPanel";
+import HotClicksTable from "@/components/admin/stats/HotClicksTable";
 import HotPagesTable from "@/components/admin/stats/HotPagesTable";
 import HotSearchTermsTable from "@/components/admin/stats/HotSearchTermsTable";
 import KpiCards from "@/components/admin/stats/KpiCards";
+import OnlinePanel from "@/components/admin/stats/OnlinePanel";
 import RecentVisitsTable from "@/components/admin/stats/RecentVisitsTable";
 import SourcePanel from "@/components/admin/stats/SourcePanel";
 import TrendChart from "@/components/admin/stats/TrendChart";
+import { getClickDomains, getHotClicks } from "@/lib/stats/clicks";
+import { getOnlinePresence } from "@/lib/stats/online";
 import {
   getBotPanel,
   getClientPanel,
@@ -51,18 +56,34 @@ export default async function AdminStatsPage({
   const trend = parseTrend(sp.trend);
   const hot = parseHot(sp.hot);
 
-  const [overview, series, referrers, clients, bots, geo, hotPages, hotTerms, recentVisits] =
-    await Promise.all([
-      getVisitOverview(),
-      getVisitSeries(trend),
-      getReferrerPanel(7),
-      getClientPanel(7),
-      getBotPanel(7),
-      getGeoPanel(7),
-      getHotPages(hot),
-      getHotSearchTerms(hot),
-      getRecentVisits(30),
-    ]);
+  const [
+    overview,
+    series,
+    referrers,
+    clients,
+    bots,
+    geo,
+    hotPages,
+    hotTerms,
+    recentVisits,
+    hotClicks,
+    clickDomains,
+    online,
+  ] = await Promise.all([
+    getVisitOverview(),
+    getVisitSeries(trend),
+    getReferrerPanel(7),
+    getClientPanel(7),
+    getBotPanel(7),
+    getGeoPanel(7),
+    getHotPages(hot),
+    getHotSearchTerms(hot),
+    getRecentVisits(30),
+    getHotClicks(hot),
+    getClickDomains(hot),
+    // 在线用户直读 Redis(5 分钟滑窗);Redis 故障不拖垮整页——降级空快照
+    getOnlinePresence().catch(() => ({ total: 0, pages: [] })),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -79,6 +100,9 @@ export default async function AdminStatsPage({
       <HotPagesTable rows={hotPages} range={hot} trend={trend} />
       {/* 搜索词排行(2026-10-06):与热门页面共用 hot 分段;行级直插准实时 */}
       <HotSearchTermsTable rows={hotTerms} range={hot} trend={trend} />
+      {/* 条目点击(M28 批①)+ 在线用户(M28 批②):行为与在线观测 */}
+      <HotClicksTable rows={hotClicks} domains={clickDomains} range={hot} trend={trend} />
+      <OnlinePanel presence={online} />
       <RecentVisitsTable rows={recentVisits} />
     </div>
   );

@@ -12,6 +12,7 @@ import HeroConsole from "@/components/site/HeroConsole";
 import HeroBrandLine from "@/components/site/HeroBrandLine";
 import SiteSprite from "@/components/site/SiteSprite";
 import TelegramBand from "@/components/site/TelegramBand";
+import TrackedLink from "@/components/site/TrackedLink";
 
 /**
  * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
@@ -72,9 +73,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
                 </span>
               </div>
               {repos.map((repo) => (
-                <Link
+                <TrackedLink
                   key={repo.id}
                   href={projectPath(repo.slug)}
+                  surface="home"
+                  kind="project"
+                  entryKey={repo.slug}
                   className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
                 >
                   <span className="flex items-center gap-2">
@@ -106,7 +110,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
                       {repo._count.posts > 0 ? `配套文章 ×${repo._count.posts}` : "查看详情 →"}
                     </span>
                   </span>
-                </Link>
+                </TrackedLink>
               ))}
               <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
                 <Link href="/projects/" className="text-[13px] text-text-2 hover:text-accent-hover">
@@ -126,9 +130,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
               </span>
             </div>
             {latest.map((post) => (
-              <Link
+              <TrackedLink
                 key={post.id}
                 href={postPath(post.id, post.slug)}
+                surface="home"
+                kind="post"
+                entryKey={post.id.toString()}
                 className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
               >
                 <span className="block truncate text-[13px] font-semibold leading-normal text-text-1 hover:text-accent-hover">
@@ -146,7 +153,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
                     {post.viewsCount.toLocaleString("zh-CN")}
                   </span>
                 </span>
-              </Link>
+              </TrackedLink>
             ))}
             <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
               <Link href="/articles/" className="text-[13px] text-text-2 hover:text-accent-hover">
