@@ -5,6 +5,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
+import { prisma } from "@/lib/db";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { toItemDto, toTopicDto } from "@/lib/topics/dto";
@@ -56,6 +57,14 @@ export async function PATCH(
   const status = topicStatusSchema.safeParse(body);
   if (!parsed.success && !status.success) {
     return apiEnvelope(400, "字段不合法(标题 1-200 / 定位 ≤1000 / 文章 id 纯数字 / status 枚举)");
+  }
+  // skillKey 存在性核(soft ref 可解绑,但指向必须落在启用的 agent_skill 上)
+  if (parsed.success && parsed.data.skillKey) {
+    const skill = await prisma.agentSkill.findUnique({
+      where: { key: parsed.data.skillKey },
+      select: { enabled: true },
+    });
+    if (!skill || !skill.enabled) return apiEnvelope(400, "skillKey 不存在或已停用");
   }
   try {
     let topic = await updateTopic(BigInt(id), parsed.success ? parsed.data : {});

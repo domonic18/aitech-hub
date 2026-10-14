@@ -1054,6 +1054,7 @@ model Topic {
   title        String    @db.VarChar(200)
   positioning  String?   @db.VarChar(1000) // 专题定位/目标读者/文风口径(compose prompt 主输入)
   status       String    @default("collecting") @db.VarChar(20) // collecting | drafted | published(合法值应用层 Zod,arch/03 枚举演进条款)
+  skillKey     String?   @map("skill_key") @db.VarChar(50) // 绑定 agent_skill 的稳定引用(M30 批②;合成写稿按它取指南,soft ref 随 skill 删降级)
   linkedPostId BigInt?   @map("linked_post_id") // 专题文档 content_post 锚(合成时落,应用层完整性)
   composedAt   DateTime? @map("composed_at") @db.Timestamptz(6)
   publishedAt  DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
