@@ -32,6 +32,10 @@ function refineIdentity(
   }
 }
 
+/** 出口代理字段(M33 批B):worker 解密随请求携带(网关零密钥);缺省=直连。
+ * 边界与网关 pydantic 一致(min 8 / max 500),形态校验在 egress-proxy 入库侧。 */
+const egressProxySchema = z.string().min(8).max(500).optional();
+
 /** /posts 请求(边界与网关一致:sec_uid 1-128 + 平台身份矩阵、max_pages 1-3) */
 export const postsRequestSchema = z
   .object({
@@ -39,6 +43,7 @@ export const postsRequestSchema = z
     sec_uid: z.string().min(1).max(128),
     cookies: z.array(z.string()).default([]),
     max_pages: z.number().int().min(1).max(3).default(1),
+    proxy: egressProxySchema,
   })
   .superRefine(refineIdentity);
 
@@ -83,11 +88,31 @@ export const playUrlRequestSchema = z.object({
     .max(64)
     .regex(/^BV[1-9A-HJ-NP-Za-km-z]{10}$/, "bilibili video_id 须为 BV 号"),
   cookies: z.array(z.string()).default([]),
+  proxy: egressProxySchema,
 });
 
 export const playUrlResponseSchema = z.object({
   video_id: z.string(),
   play_url: z.string().nullable().default(null),
+});
+
+/** /subtitle 请求(M33 批C 字幕优先,仅 bilibili;字幕文本是「转写输入非
+ * 资产」,与转写同红线:禁落库,仅 job 内存消费) */
+export const subtitleRequestSchema = z.object({
+  platform: z.literal("bilibili").default("bilibili"),
+  video_id: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^BV[1-9A-HJ-NP-Za-km-z]{10}$/, "bilibili video_id 须为 BV 号"),
+  cookies: z.array(z.string()).default([]),
+  proxy: egressProxySchema,
+});
+
+export const subtitleResponseSchema = z.object({
+  video_id: z.string(),
+  subtitle_text: z.string().nullable().default(null),
+  lang: z.string().nullable().default(null),
 });
 
 /** /health 分平台 jar 池观测(wbi_age_seconds 仅 bilibili 有值) */
@@ -98,7 +123,8 @@ export const platformHealthSchema = z.object({
 });
 
 /** /health(永远 200;驱动未就绪时 driver=null/槽位 0)。
- * 顶层 jars_* 保留 = douyin 段(旧消费方兼容);platforms 为 per-platform 全量。 */
+ * 顶层 jars_* 保留 = douyin 段(旧消费方兼容);platforms 为 per-platform 全量;
+ * egress_proxy(M33 批B)= 网关内存里有出口代理(只出布尔,永不出 URL)。 */
 export const gatewayHealthSchema = z.object({
   status: z.string(),
   driver: z.string().nullable().default(null),
@@ -107,6 +133,7 @@ export const gatewayHealthSchema = z.object({
   last_error: z.string().nullable().default(null),
   jars_total: z.number().int().default(0),
   jars_available: z.number().int().default(0),
+  egress_proxy: z.boolean().default(false),
   platforms: z.record(gatewayPlatformSchema, platformHealthSchema).default({
     douyin: { jars_total: 0, jars_available: 0, wbi_age_seconds: null },
     bilibili: { jars_total: 0, jars_available: 0, wbi_age_seconds: null },

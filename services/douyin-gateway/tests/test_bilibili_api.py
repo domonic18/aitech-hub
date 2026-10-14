@@ -11,9 +11,11 @@ from app.adapters.bilibili.api import (
 )
 from app.adapters.bilibili.exceptions import (
     AccountInvalidError,
+    NoJarAvailableError,
     RiskControlError,
     StructureDriftError,
 )
+from app.adapters.common.egress import EgressError
 from app.adapters.bilibili.transport import BilibiliTransport
 
 pytestmark = pytest.mark.unit
@@ -368,11 +370,28 @@ class TestTransportAttribution:
         with pytest.raises(StructureDriftError):
             await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
 
-    async def test_no_jar_raises_risk_control(self) -> None:
+    async def test_no_jar_raises_no_jar_available(self) -> None:
+        """池耗尽 ≠ 真风控(2026-10-14 拆分):独立异常类,不冷却任何 jar。"""
         session = FakeSession([])
         transport = BilibiliTransport(cookies=[], session_factory=lambda: session)
-        with pytest.raises(RiskControlError, match="无可用 Cookie jar"):
+        with pytest.raises(NoJarAvailableError, match="无可用 Cookie jar"):
             await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
+        assert not isinstance(NoJarAvailableError("x"), RiskControlError)
+
+    async def test_network_failure_raises_egress_error_without_cooling(self) -> None:
+        """网络/代理层故障(M33 批B)→ EgressError(503 基建语义),jar 不冷却。"""
+        session = FakeSession([])
+
+        async def _boom(*args: Any, **kwargs: Any) -> FakeResponse:
+            raise OSError("Proxy CONNECT aborted")
+
+        session.get = _boom  # type: ignore[method-assign]
+        transport = BilibiliTransport(
+            cookies=["buvid3=a"], session_factory=lambda: session, rate_limit_retry_delays=()
+        )
+        with pytest.raises(EgressError, match="出站请求失败"):
+            await transport.get_json("/x/web-interface/view", "bvid=BV1xx411c7mD")
+        assert transport.jars_available == 1  # 未冷却
 
     async def test_rotates_to_next_jar_after_risk_control(self) -> None:
         session = FakeSession(
@@ -466,6 +485,78 @@ class TestPlayUrl:
         )
         with pytest.raises(RiskControlError, match="v_voucher"):
             await api.get_play_url("BV1xx411c7mD")
+
+
+class TestSubtitle:
+    """字幕优先链(M33 批C):view→cid→player/wbi/v2→字幕 JSON 下载。"""
+
+    VIEW_OK = TestPlayUrl.VIEW_OK
+
+    @staticmethod
+    def player_v2(subtitles: "list[dict[str, Any]]") -> FakeResponse:
+        return FakeResponse(
+            payload={"code": 0, "data": {"subtitle": {"subtitles": subtitles}}}
+        )
+
+    SUBTITLE_JSON = {
+        "body": [
+            {"from": 0.0, "to": 2.4, "content": "大家好,今天聊 KV Cache"},
+            {"from": 2.4, "to": 5.1, "content": "先从推理瓶颈说起"},
+        ]
+    }
+
+    async def test_chain_and_language_priority(self) -> None:
+        """ai-zh 优先于 zh-CN,协议相对 URL 补 https,行文按序拼接。"""
+        api, session = make_api(
+            [
+                FakeResponse(payload=self.VIEW_OK),
+                nav_response(),
+                self.player_v2(
+                    [
+                        {"lan": "zh-CN", "lan_doc": "中文", "subtitle_url": "//aisubtitle.hdslb.com/zh.json"},
+                        {"lan": "ai-zh", "lan_doc": "AI字幕", "subtitle_url": "//aisubtitle.hdslb.com/ai.json"},
+                    ]
+                ),
+                FakeResponse(payload=self.SUBTITLE_JSON),
+            ]
+        )
+        text, lang = await api.get_subtitle_text("BV1xx411c7mD")
+        assert text == "大家好,今天聊 KV Cache\n先从推理瓶颈说起"
+        assert lang == "ai-zh"
+        assert "/x/player/wbi/v2?" in session.requested_urls[2]
+        assert "cid=1234567" in session.requested_urls[2] and "w_rid=" in session.requested_urls[2]
+        assert session.requested_urls[3] == "https://aisubtitle.hdslb.com/ai.json"
+
+    async def test_no_subtitles_returns_none_pair(self) -> None:
+        """游客常见:空字幕表 → (None, None),调用方落回直链+ASR。"""
+        api, _ = make_api(
+            [FakeResponse(payload=self.VIEW_OK), nav_response(), self.player_v2([])]
+        )
+        assert await api.get_subtitle_text("BV1xx411c7mD") == (None, None)
+
+    async def test_missing_subtitle_url_is_structure_drift(self) -> None:
+        api, _ = make_api(
+            [
+                FakeResponse(payload=self.VIEW_OK),
+                nav_response(),
+                self.player_v2([{"lan": "ai-zh", "subtitle_url": ""}]),
+            ]
+        )
+        with pytest.raises(StructureDriftError, match="subtitle_url"):
+            await api.get_subtitle_text("BV1xx411c7mD")
+
+    async def test_download_failure_is_structure_drift(self) -> None:
+        """字幕文件 HTTP 404:结构漂移上抛(不冷却 jar,CDN 拿不到≠账号风控)。"""
+        api, _ = make_api(
+            [
+                FakeResponse(payload=self.VIEW_OK),
+                nav_response(),
+                self.player_v2([{"lan": "ai-zh", "subtitle_url": "https://aisubtitle.hdslb.com/x.json"}]),
+                FakeResponse(status_code=404, payload=""),
+            ]
+        )
+        with pytest.raises(StructureDriftError, match="HTTP 404"):
+            await api.get_subtitle_text("BV1xx411c7mD")
 
 
 class TestShortLink:

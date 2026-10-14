@@ -29,12 +29,21 @@ export interface VideoFetchInput {
   cookies: string[];
   /** 单轮翻页上限(默认 1;批⑧手动回填传 3——各适配器按网关上限自行钳制,B站后补同契约) */
   maxPages?: number;
+  /** 出口代理 URL(M33 批B,随请求携带;undefined=直连。编排层经 getEgressProxyRuntime 取,本层不解密不落日志) */
+  proxy?: string;
 }
 
 /** 直链现查输入:常规拉取输入 + listing 匹配锚 */
 export interface PlayUrlResolveInput extends VideoFetchInput {
   /** 待匹配的平台作品 id(douyin=aweme_id/bilibili=BV 号) */
   videoId: string;
+}
+
+/** 字幕文本现查输入(M33 批C 字幕优先;与直链现查同型但无需 secUid) */
+export interface SubtitleFetchInput {
+  videoId: string;
+  cookies: string[];
+  proxy?: string;
 }
 
 export interface VideoAdapter {
@@ -44,6 +53,11 @@ export interface VideoAdapter {
   /** 现查单条直链(M24;存量补读/过境链过期两路):douyin=重拉 listing 匹配,
    * bilibili=/play-url 端点;查不得返回 null → 既有 missing_transcript 降级 */
   resolvePlayUrl?(input: PlayUrlResolveInput): Promise<string | null>;
+  /** 现查字幕文本(M33 批C 字幕优先,B站先行):null=无字幕/未登录态拿不到
+   * AI 字表 → 调用方落回直链+ASR 既有管道;RiskControl/池耗尽照常上抛走顺延 */
+  resolveSubtitleText?(
+    input: SubtitleFetchInput,
+  ): Promise<{ text: string; lang: string | null } | null>;
 }
 
 /** 解读下载请求头(B站 CDN 防盗链校验 Referer,缺则 403;抖音直链裸 fetch 即可) */

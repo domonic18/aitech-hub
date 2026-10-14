@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 
+import { AGENT_SKILL_KEY_RE } from "../ai/agent-skills-admin";
 import { TOPIC_ITEM_TYPE, TOPIC_STATUS } from "./constants";
 
 const BIGINT_ID = z.string().regex(/^\d+$/, "id 须为纯数字字符串");
@@ -19,6 +20,14 @@ export const topicUpdateSchema = z
     title: z.string().trim().min(1).max(200).optional(),
     positioning: z.string().trim().max(1000).nullable().optional(),
     linkedPostId: BIGINT_ID.nullable().optional(),
+    // 绑定 agent_skill(M30 批②):null=解绑;存在性在 API 路由核(需查启用技能)
+    skillKey: z
+      .string()
+      .trim()
+      .max(50)
+      .regex(AGENT_SKILL_KEY_RE, "skillKey 仅限小写字母/数字/连字符")
+      .nullable()
+      .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "至少提供一个更新字段");
 export type TopicUpdateInput = z.infer<typeof topicUpdateSchema>;

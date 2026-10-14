@@ -62,10 +62,10 @@ class _FakeRuntime:
     async def close(self) -> None:
         return None
 
-    def transport_for(self, _cookies: list[str]) -> Any:
+    def transport_for(self, _cookies: list[str], _proxy: str | None = None) -> Any:
         return self.transport
 
-    def transport_for_bilibili(self, _cookies: list[str]) -> Any:
+    def transport_for_bilibili(self, _cookies: list[str], _proxy: str | None = None) -> Any:
         return self.transport
 
     def wbi_cache(self) -> None:
@@ -155,6 +155,9 @@ class _StubBilibiliApi:
     async def get_play_url(self, bvid: str) -> str | None:
         return "https://upos-sz-mirror08c.bilivideo.com/360p.mp4?e=lgUPgXmzXvmrEXq"
 
+    async def get_subtitle_text(self, bvid: str) -> tuple[str | None, str | None]:
+        return ("大家好,今天聊 KV Cache\n先从推理瓶颈说起", "ai-zh")
+
 
 @contextmanager
 def _patched_gateway() -> Iterator[None]:
@@ -226,6 +229,11 @@ def collect_samples() -> dict[str, dict[str, Any]]:
         record(
             "error.bilibili.validation",
             client.post("/play-url", json={"platform": "douyin", "video_id": "BV1xx411c7mD"}),
+        )
+        # M33 批C 字幕优先:/subtitle 形状钉死(text/lang 可 null)
+        record(
+            "subtitle.success",
+            client.post("/subtitle", json={"platform": "bilibili", "video_id": "BV1xx411c7mD", "cookies": []}),
         )
     return out
 

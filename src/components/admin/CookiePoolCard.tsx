@@ -2,8 +2,9 @@
 
 /**
  * Cookie 池状态卡(M8 批③;M24 每平台一行):jar 数/脱敏关键 cookie 前缀/
- * 导入/清空。导入弹窗锚定平台(bilibili 游客 jar 即有效,文案与 placeholder
- * per-platform);Cookie 值只写不读:textarea 粘完整 Cookie,提交后即刻清空不回显。
+ * 导入/清空。导入弹窗锚定平台(bilibili 推荐已登录完整复制,字幕优先依赖登录态,
+ * 文案与 placeholder per-platform);Cookie 值只写不读:textarea 粘完整 Cookie,
+ * 提交后即刻清空不回显。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -22,8 +23,8 @@ const PLATFORM_META: Record<string, { label: string; placeholder: string; hint: 
   },
   [VIDEO_PLATFORM_BILIBILI]: {
     label: "B站",
-    placeholder: "buvid3=…; buvid4=…; b_nut=…",
-    hint: "从浏览器复制 B 站 Cookie(游客即可:访问过 B 站即含 buvid3,登录后更稳); 同 buvid3 视为同身份,重复导入覆盖旧值。保存后立即加密,不再回显。",
+    placeholder: "SESSDATA=…; buvid3=…; buvid4=…; b_nut=…",
+    hint: "推荐从已登录 B 站的浏览器完整复制 Cookie 请求头(含 SESSDATA:字幕优先通道依赖登录态才能拿到 AI 字幕;游客 Cookie 仅够直链兜底); 同 buvid3 视为同身份,重复导入覆盖旧值。保存后立即加密,不再回显。",
   },
 };
 
@@ -114,6 +115,14 @@ export default function CookiePoolCard({ pools }: { pools: CookiePoolView[] }) {
                     {jarCount}
                   </span>
                   <span className="ml-0.5 text-[10px] text-text-3">份 jar</span>
+                  {jarCount === 1 && (
+                    <span
+                      className="ml-1.5 rounded-sm bg-amber/10 px-1 py-px text-[10px] text-amber"
+                      title="单份 jar 是单点:任一视频触发风控冷却,该平台采集/解读全部暂停直至冷却到期;建议再导入一份不同身份的 Cookie 分摊风险"
+                    >
+                      单点:建议 ≥2 份
+                    </span>
+                  )}
                   {!pool?.enabled && pool && (
                     <span className="ml-1.5 rounded-sm bg-amber/10 px-1 py-px text-[10px] text-amber">
                       平台已停用

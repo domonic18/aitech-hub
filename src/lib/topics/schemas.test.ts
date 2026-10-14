@@ -20,6 +20,14 @@ describe("topicUpdateSchema", () => {
     expect(topicUpdateSchema.safeParse({ linkedPostId: null }).success).toBe(true);
     expect(topicUpdateSchema.safeParse({ linkedPostId: "12a" }).success).toBe(false);
   });
+
+  it("skillKey(M30 批②):合法 key / 解绑 null;大写与非法字符拒绝", () => {
+    expect(topicUpdateSchema.safeParse({ skillKey: "blogger-video" }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ skillKey: null }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ skillKey: "Blogger" }).success).toBe(false);
+    expect(topicUpdateSchema.safeParse({ skillKey: "-lead" }).success).toBe(false);
+    expect(topicUpdateSchema.safeParse({ skillKey: " " }).success).toBe(false);
+  });
 });
 
 describe("itemMountSchema", () => {

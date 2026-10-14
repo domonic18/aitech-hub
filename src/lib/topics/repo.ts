@@ -45,6 +45,7 @@ export async function updateTopic(id: bigint, patch: TopicUpdateInput): Promise<
     data: {
       title: patch.title,
       positioning: patch.positioning,
+      skillKey: patch.skillKey,
       linkedPostId:
         patch.linkedPostId === undefined
           ? undefined

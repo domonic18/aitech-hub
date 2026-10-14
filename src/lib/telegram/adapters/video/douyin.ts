@@ -46,7 +46,7 @@ function toVideoItem(raw: GatewayVideo): VideoItem | null {
 export const douyinAdapter: VideoAdapter = {
   platform: VIDEO_PLATFORM_DOUYIN,
 
-  async fetchRecentVideos({ secUid, cookies, maxPages }) {
+  async fetchRecentVideos({ secUid, cookies, maxPages, proxy }) {
     // 翻页上限由编排层传入(常规增量 1,手动回填 3);网关侧 POSTS_MAX_PAGES=3 兜底钳制
     const data = await gatewayPost(
       "/posts",
@@ -54,6 +54,7 @@ export const douyinAdapter: VideoAdapter = {
         sec_uid: secUid,
         cookies,
         max_pages: Math.min(Math.max(maxPages ?? 1, 1), MAX_PAGES),
+        proxy,
       },
       postsResponseSchema,
     );
@@ -67,8 +68,8 @@ export const douyinAdapter: VideoAdapter = {
 
   // M24 批②收编 interpret-video fetchFreshPlayUrl 的 listing 匹配(行为不变):
   // 翻页拉满(存量补读可能要翻 3 页),按 videoId 匹配取网关透传直链
-  async resolvePlayUrl({ videoId, secUid, cookies }) {
-    const items = await this.fetchRecentVideos({ secUid, cookies, maxPages: MAX_PAGES });
+  async resolvePlayUrl({ videoId, secUid, cookies, proxy }) {
+    const items = await this.fetchRecentVideos({ secUid, cookies, maxPages: MAX_PAGES, proxy });
     return items.find((it) => it.videoId === videoId)?.playUrl ?? null;
   },
 };
@@ -76,12 +77,17 @@ export const douyinAdapter: VideoAdapter = {
 export async function fetchDouyinProfile(
   secUid: string,
   cookies: string[],
+  proxy?: string,
 ): Promise<{ secUid: string; nickname: string; avatarUrl: string | null }> {
-  const data = await gatewayPost("/profile", { sec_uid: secUid, cookies }, profileResponseSchema);
+  const data = await gatewayPost(
+    "/profile",
+    { sec_uid: secUid, cookies, proxy },
+    profileResponseSchema,
+  );
   return { secUid: data.sec_uid, nickname: data.nickname, avatarUrl: data.avatar_url ?? null };
 }
 
-export async function resolveDouyinSecUid(raw: string): Promise<string> {
-  const data = await gatewayPost("/resolve", { url: raw }, resolveResponseSchema);
+export async function resolveDouyinSecUid(raw: string, proxy?: string): Promise<string> {
+  const data = await gatewayPost("/resolve", { url: raw, proxy }, resolveResponseSchema);
   return data.sec_uid;
 }

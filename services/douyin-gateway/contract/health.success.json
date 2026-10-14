@@ -8,6 +8,7 @@
     "last_error": null,
     "jars_total": 3,
     "jars_available": 2,
+    "egress_proxy": false,
     "platforms": {
       "douyin": {
         "jars_total": 3,

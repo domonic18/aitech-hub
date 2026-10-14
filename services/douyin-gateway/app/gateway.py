@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime
@@ -23,6 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.bilibili import exceptions as bili_exceptions
 from app.adapters.bilibili.api import BilibiliWebApi
+from app.adapters.common.egress import EgressError
 from app.adapters.douyin.api import DouyinWebApi
 from app.adapters.douyin.exceptions import (
     AccountInvalidError,
@@ -55,6 +57,9 @@ BVID_PATTERN = re.compile(r"BV[1-9A-HJ-NP-Za-km-z]{10}")
 #: 单次 /posts 最大翻页数(上游 SOCIAL_MAX_LIST_PAGES 同值)
 POSTS_MAX_PAGES = 3
 
+#: 代理探针可注入点(测试零真网;None=真实 curl_cffi 探测)
+_probe_runner: Callable[[str], Awaitable[tuple[bool, int, str]]] | None = None
+
 
 def extract_mid(text: str) -> str | None:
     """从 space 主页链接提取 B 站 mid;裸数字串原样视为 mid。"""
@@ -76,6 +81,8 @@ class PostsRequest(BaseModel):
     sec_uid: str = Field(min_length=1, max_length=128)
     cookies: list[str] = Field(default_factory=list)
     max_pages: int = Field(default=1, ge=1, le=POSTS_MAX_PAGES)
+    #: 出站代理(M33 批B,可选):随请求携带网关零密钥;None=直连
+    proxy: str | None = Field(default=None, min_length=8, max_length=500)
 
     @model_validator(mode="after")
     def _check_identity(self) -> "PostsRequest":
@@ -116,6 +123,7 @@ class ProfileRequest(BaseModel):
     platform: Literal["douyin", "bilibili"] = "douyin"
     sec_uid: str = Field(min_length=1, max_length=128)
     cookies: list[str] = Field(default_factory=list)
+    proxy: str | None = Field(default=None, min_length=8, max_length=500)
 
     @model_validator(mode="after")
     def _check_identity(self) -> "ProfileRequest":
@@ -139,6 +147,7 @@ class ResolveRequest(BaseModel):
     platform: Literal["douyin", "bilibili"] = "douyin"
     url: str = Field(min_length=1, max_length=2000)
     cookies: list[str] = Field(default_factory=list)
+    proxy: str | None = Field(default=None, min_length=8, max_length=500)
 
     @model_validator(mode="after")
     def _check_url_floor(self) -> "ResolveRequest":
@@ -161,6 +170,7 @@ class PlayUrlRequest(BaseModel):
     platform: Literal["bilibili"] = "bilibili"
     video_id: str = Field(min_length=1, max_length=64)
     cookies: list[str] = Field(default_factory=list)
+    proxy: str | None = Field(default=None, min_length=8, max_length=500)
 
     @model_validator(mode="after")
     def _check_bvid(self) -> "PlayUrlRequest":
@@ -172,6 +182,31 @@ class PlayUrlRequest(BaseModel):
 class PlayUrlResponse(BaseModel):
     video_id: str
     play_url: str | None = None
+
+
+class SubtitleRequest(BaseModel):
+    """字幕文本现查(M33 批C,仅 bilibili:字幕优先于直链+ASR 的取材通道)。
+
+    登录态(含 SESSDATA)才见 AI 字表(ai-zh);字幕文本是「转写输入」非
+    资产,调用方禁落库(与转写同红线)。
+    """
+
+    platform: Literal["bilibili"] = "bilibili"
+    video_id: str = Field(min_length=1, max_length=64)
+    cookies: list[str] = Field(default_factory=list)
+    proxy: str | None = Field(default=None, min_length=8, max_length=500)
+
+    @model_validator(mode="after")
+    def _check_bvid(self) -> "SubtitleRequest":
+        if not BVID_PATTERN.fullmatch(self.video_id.strip()):
+            raise ValueError("bilibili video_id 须为 BV 号(BV + 10 位)")
+        return self
+
+
+class SubtitleResponse(BaseModel):
+    video_id: str
+    subtitle_text: str | None = None
+    lang: str | None = None
 
 
 class PlatformHealth(BaseModel):
@@ -188,7 +223,20 @@ class GatewayHealthResponse(HealthResponse):
 
     jars_total: int = 0
     jars_available: int = 0
+    egress_proxy: bool = False
     platforms: dict[str, PlatformHealth] = Field(default_factory=dict)
+
+
+class ProxyTestRequest(BaseModel):
+    """出口代理连通性探针请求(M33 批B):代理 URL 仅过境即测,网关不落盘。"""
+
+    proxy: str = Field(min_length=8, max_length=500)
+
+
+class ProxyTestResponse(BaseModel):
+    ok: bool
+    latency_ms: int
+    detail: str
 
 
 def extract_sec_uid(text: str) -> str | None:
@@ -231,6 +279,13 @@ def create_app(
 
     @app.exception_handler(BrowserUnavailableError)
     async def _backend_unavailable(_: Request, exc: BrowserUnavailableError) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+    @app.exception_handler(EgressError)
+    async def _egress_unavailable(_: Request, exc: EgressError) -> JSONResponse:
+        # 网络层/代理断连(M33 批B):请求未到达对端,基建错误语义 503——
+        # Node 侧 GatewayUnavailable 顺延不计失败,jar 冷却态不受影响
+        logger.warning("social_egress_error", detail=str(exc)[:200])
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     @app.exception_handler(AccountInvalidError)
@@ -303,7 +358,7 @@ def create_app(
         if payload.platform == "bilibili":
             return await _posts_bilibili(payload)
         sec_uid = extract_sec_uid(payload.sec_uid) or payload.sec_uid.strip()
-        transport = runtime.transport_for(payload.cookies)
+        transport = runtime.transport_for(payload.cookies, payload.proxy)
         api = DouyinWebApi(transport)
         videos = []
         has_more = False
@@ -322,7 +377,7 @@ def create_app(
         )
 
     async def _posts_bilibili(payload: PostsRequest) -> PostsResponse:
-        transport = runtime.transport_for_bilibili(payload.cookies)
+        transport = runtime.transport_for_bilibili(payload.cookies, payload.proxy)
         api = BilibiliWebApi(
             transport,
             wbi_cache=runtime.wbi_cache(),
@@ -347,7 +402,7 @@ def create_app(
     @app.post("/profile", response_model=ProfileResponse)
     async def profile(payload: ProfileRequest) -> ProfileResponse:
         if payload.platform == "bilibili":
-            transport = runtime.transport_for_bilibili(payload.cookies)
+            transport = runtime.transport_for_bilibili(payload.cookies, payload.proxy)
             result = await BilibiliWebApi(
                 transport, wbi_cache=runtime.wbi_cache()
             ).get_user_profile(payload.sec_uid.strip())
@@ -355,7 +410,7 @@ def create_app(
                 sec_uid=result.mid, nickname=result.nickname, avatar_url=result.avatar_url
             )
         sec_uid = extract_sec_uid(payload.sec_uid) or payload.sec_uid.strip()
-        transport = runtime.transport_for(payload.cookies)
+        transport = runtime.transport_for(payload.cookies, payload.proxy)
         result = await DouyinWebApi(transport).get_user_profile(sec_uid)
         return ProfileResponse(
             sec_uid=result.sec_uid, nickname=result.nickname, avatar_url=result.avatar_url
@@ -367,7 +422,7 @@ def create_app(
             mid = extract_mid(payload.url)
             if mid:
                 return ResolveResponse(sec_uid=mid)
-            transport = runtime.transport_for_bilibili(payload.cookies)
+            transport = runtime.transport_for_bilibili(payload.cookies, payload.proxy)
             expanded = await BilibiliWebApi(
                 transport, wbi_cache=runtime.wbi_cache()
             ).expand_short_link(payload.url.strip())
@@ -378,7 +433,7 @@ def create_app(
         sec_uid = extract_sec_uid(payload.url)
         if sec_uid:
             return ResolveResponse(sec_uid=sec_uid)
-        transport = runtime.transport_for(payload.cookies)
+        transport = runtime.transport_for(payload.cookies, payload.proxy)
         expanded = await DouyinWebApi(transport).expand_short_link(payload.url.strip())
         sec_uid = extract_sec_uid(expanded)
         if not sec_uid:
@@ -388,11 +443,49 @@ def create_app(
     @app.post("/play-url", response_model=PlayUrlResponse)
     async def play_url(payload: PlayUrlRequest) -> PlayUrlResponse:
         """B 站播放直链现查(模型层限 bilibili;仅解读 job 消费,过境即焚)。"""
-        transport = runtime.transport_for_bilibili(payload.cookies)
+        transport = runtime.transport_for_bilibili(payload.cookies, payload.proxy)
         url = await BilibiliWebApi(
             transport, wbi_cache=runtime.wbi_cache()
         ).get_play_url(payload.video_id.strip())
         return PlayUrlResponse(video_id=payload.video_id.strip(), play_url=url)
+
+    @app.post("/subtitle", response_model=SubtitleResponse)
+    async def subtitle(payload: SubtitleRequest) -> SubtitleResponse:
+        """B 站字幕文本现查(M33 批C 字幕优先:view→cid→player/wbi/v2→字幕
+        JSON 下载,择 ai-zh→zh-Hans/zh-CN→首个;无字幕返回 null 调用方落回
+        直链+ASR;风险归因矩阵同路)。"""
+        transport = runtime.transport_for_bilibili(payload.cookies, payload.proxy)
+        text, lang = await BilibiliWebApi(
+            transport, wbi_cache=runtime.wbi_cache()
+        ).get_subtitle_text(payload.video_id.strip())
+        return SubtitleResponse(
+            video_id=payload.video_id.strip(), subtitle_text=text, lang=lang
+        )
+
+    @app.post("/proxy-test", response_model=ProxyTestResponse)
+    async def proxy_test(payload: ProxyTestRequest) -> ProxyTestResponse:
+        """出口代理连通性探针(M33 批B):经该代理访问 B 站首页一跳。
+        代理 URL 仅过境即测不落盘;4xx 视为通(网络路径已建立,风控墙另计),
+        5xx/异常视为不通;探测目标可注入(测试零真网)。"""
+        if _probe_runner is not None:
+            ok, latency_ms, detail = await _probe_runner(payload.proxy)
+            return ProxyTestResponse(ok=ok, latency_ms=latency_ms, detail=detail)
+        started = time.monotonic()
+        try:
+            from curl_cffi.requests import AsyncSession
+
+            async with AsyncSession(impersonate="chrome", proxy=payload.proxy) as session:
+                response = await session.get(
+                    runtime.bilibili_settings.web_base_url + "/",
+                    timeout=10,
+                )
+            status = getattr(response, "status_code", 0)
+            latency_ms = int((time.monotonic() - started) * 1000)
+            ok = 0 < status < 500
+            return ProxyTestResponse(ok=ok, latency_ms=latency_ms, detail=f"HTTP {status}")
+        except Exception as exc:  # noqa: BLE001 - curl_cffi 异常类型随版本漂移
+            latency_ms = int((time.monotonic() - started) * 1000)
+            return ProxyTestResponse(ok=False, latency_ms=latency_ms, detail=str(exc)[:200])
 
     return app
 

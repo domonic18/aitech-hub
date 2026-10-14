@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * 专题定位编辑 + 人工状态流转(M26 批③治理台):标题/定位/关联文章 id 可改
- * (PATCH /api/topics/[id]);状态钮组只出人工迁移目标(MANUAL_STATUS_TARGETS,
- * §10-7 collecting→drafted 仅合成驱动不出钮),流转失败(如逆跳)行内红字。
+ * 专题定位编辑 + 人工状态流转(M26 批③治理台):标题/定位/关联文章 id/绑定
+ * 技能(M30 批②)可改(PATCH /api/topics/[id]);状态钮组只出人工迁移目标
+ * (MANUAL_STATUS_TARGETS,§10-7 collecting→drafted 仅合成驱动不出钮),流转
+ * 失败(如逆跳)行内红字。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import type { AgentSkillMeta } from "@/lib/ai/agent-skills-admin";
 import {
   MANUAL_STATUS_TARGETS,
   TOPIC_STATUS_LABEL,
@@ -21,24 +23,30 @@ export default function TopicMetaPanel({
   positioning,
   linkedPostId,
   status,
+  skillKey,
+  skills,
 }: {
   id: string;
   title: string;
   positioning: string | null;
   linkedPostId: string | null;
   status: string;
+  skillKey: string | null;
+  skills: AgentSkillMeta[];
 }) {
   const router = useRouter();
   const [titleDraft, setTitleDraft] = useState(title);
   const [positioningDraft, setPositioningDraft] = useState(positioning ?? "");
   const [linkedDraft, setLinkedDraft] = useState(linkedPostId ?? "");
+  const [skillDraft, setSkillDraft] = useState(skillKey ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
   const dirty =
     titleDraft.trim() !== title ||
     positioningDraft !== (positioning ?? "") ||
-    linkedDraft !== (linkedPostId ?? "");
+    linkedDraft !== (linkedPostId ?? "") ||
+    skillDraft !== (skillKey ?? "");
 
   async function patch(body: Record<string, unknown>, okText: string): Promise<boolean> {
     setBusy(true);
@@ -75,6 +83,9 @@ export default function TopicMetaPanel({
           : {}),
         ...(linkedDraft !== (linkedPostId ?? "")
           ? { linkedPostId: linkedDraft.trim() === "" ? null : linkedDraft.trim() }
+          : {}),
+        ...(skillDraft !== (skillKey ?? "")
+          ? { skillKey: skillDraft === "" ? null : skillDraft }
           : {}),
       },
       "已保存",
@@ -116,6 +127,22 @@ export default function TopicMetaPanel({
             placeholder="合成后自动回填;人工关联可直填 id"
             className="w-40 rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent placeholder:text-text-3"
           />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-text-2">
+          绑定技能
+          <select
+            value={skillDraft}
+            onChange={(e) => setSkillDraft(e.target.value)}
+            className="max-w-52 rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent"
+            aria-label="绑定写作技能"
+          >
+            <option value="">未绑定(合成时按场景自动匹配)</option>
+            {skills.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.name}({s.key})
+              </option>
+            ))}
+          </select>
         </label>
         <button
           type="button"

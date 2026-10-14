@@ -14,6 +14,10 @@ const prismaMock = vi.hoisted(() => ({
   },
   asrConfig: { findUnique: vi.fn<(args?: unknown) => Promise<unknown>>() },
   crawlSource: { findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null) },
+  // 出口代理单例(M33 批B):默认未配置(findUnique→null)= 直连
+  systemProxyConfig: {
+    findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
+  },
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
 
@@ -522,31 +526,74 @@ describe("interpretVideoJob 状态机", () => {
     );
     expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(1) },
-      data: { lastAiError: "风控门顺延重试中(1/3)" },
+      data: { lastAiError: "风控门顺延重试中(1/2)" },
     });
     expect(mediaMock.downloadVideoToTmp).not.toHaveBeenCalled();
   });
 
-  it("B站:风控门顺延耗尽(deferCount≥3)→ 标 failed 上抛(attempts 终兜)", async () => {
+  it("B站:池耗尽(NoJarAvailableError)同路顺延——等的就是同一份冷却", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("NoJarAvailableError", "无可用 Cookie jar(共 1 份,全部冷却)"),
+    );
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "deferred_riskcontrol", transcriptUsed: false });
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      expect.objectContaining({ deferCount: 1 }),
+      expect.objectContaining({ delay: 20 * 60_000 }),
+    );
+  });
+
+  it("B站:第二轮顺延拉长到 2h(节奏 20min → 2h)", async () => {
     stubDownload();
     bilibiliResolveMock.mockRejectedValue(
       new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
     );
-    await expect(
-      interpretVideoJob({
-        ...DATA,
-        platform: "bilibili",
-        videoId: "BV1xx411c7mD",
-        secUid: "9469941",
-        playUrl: null,
-        deferCount: 3,
-      }),
-    ).rejects.toThrow("RiskControlError");
-    expect(prismaMock.telegram.update).toHaveBeenCalledWith({
-      where: { id: BigInt(1) },
-      data: { aiStatus: "failed", lastAiError: expect.stringContaining("RiskControlError") },
+    await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+      deferCount: 1,
     });
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      expect.objectContaining({ deferCount: 2 }),
+      expect.objectContaining({ delay: 2 * 60 * 60_000 }),
+    );
+  });
+
+  it("B站:风控门顺延节奏耗尽(deferCount=2)→ 放弃重试降级 missing_transcript,不烧 attempts", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
+    );
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+      deferCount: 2,
+    });
+    // 48 趟/3 天全天候喂门实证:顺延必须有终点——降级概括而非 failed 重投
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
     expect(queueMock.add).not.toHaveBeenCalled();
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("顺延重试耗尽"),
+      }),
+    });
   });
 });
 

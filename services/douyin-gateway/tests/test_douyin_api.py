@@ -5,9 +5,11 @@ from typing import Any
 
 import pytest
 
+from app.adapters.common.egress import EgressError
 from app.adapters.douyin.api import DouyinWebApi, normalize_aweme
 from app.adapters.douyin.exceptions import (
     AccountInvalidError,
+    NoJarAvailableError,
     RiskControlError,
     SignatureError,
     StructureDriftError,
@@ -298,13 +300,32 @@ class TestTransportAttribution:
         with pytest.raises(RiskControlError):
             await transport.get_json("/aweme/v1/web/aweme/post/", "aid=6383")
 
-    async def test_no_jar_raises_risk_control(self) -> None:
+    async def test_no_jar_raises_no_jar_available(self) -> None:
+        """池耗尽 ≠ 真风控(与 B 站同构拆分):独立异常类,不冷却任何 jar。"""
         session = FakeSession([])
         transport = DouyinTransport(
             cookies=[], fingerprint=generate_fingerprint(), session_factory=lambda: session
         )
-        with pytest.raises(RiskControlError, match="无可用 Cookie jar"):
+        with pytest.raises(NoJarAvailableError, match="无可用 Cookie jar"):
             await transport.get_json("/aweme/v1/web/aweme/post/", "aid=6383")
+
+    async def test_network_failure_raises_egress_error_without_cooling(self) -> None:
+        """网络/代理层故障(M33 批B)→ EgressError(503 基建语义),jar 不冷却。"""
+        session = FakeSession([])
+
+        async def _boom(*args: Any, **kwargs: Any) -> FakeResponse:
+            raise OSError("Proxy CONNECT aborted")
+
+        session.get = _boom  # type: ignore[method-assign]
+        transport = DouyinTransport(
+            cookies=["ttwid=a"],
+            fingerprint=generate_fingerprint(),
+            session_factory=lambda: session,
+            rate_limit_retry_delays=(),
+        )
+        with pytest.raises(EgressError, match="出站请求失败"):
+            await transport.get_json("/aweme/v1/web/aweme/post/", "aid=6383")
+        assert transport.jars_available == 1  # 未冷却
 
     async def test_rotates_to_next_jar_after_risk_control(self) -> None:
         session = FakeSession(

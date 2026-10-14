@@ -46,6 +46,7 @@ import {
 import { downloadHeadersFor, GatewayUpstreamError } from "./adapters/video";
 import { ADAPTERS } from "./adapters/video/registry";
 import { jarsFromConfig } from "./cookies";
+import { getEgressProxyRuntime } from "./egress-proxy";
 import { countTodayAiDone } from "./spider-queries";
 
 /** interpret job data:playUrl 过境字段(job 消费完随保留窗口即焚),禁落库 */
@@ -59,7 +60,7 @@ export interface InterpretJobData {
   platform: string;
   /** 博主台账 secUid(直链重拉用);null=博主已删,只能吃过境直链 */
   secUid: string | null;
-  /** B站 playurl 风控门顺延计数(延迟重投自增;≥RISK_CONTROL_MAX_DEFERS 终败) */
+  /** B站 playurl 风控门顺延计数(延迟重投自增;超出 RISK_CONTROL_DEFER_SCHEDULE_MS 即放弃重试降级) */
   deferCount?: number;
 }
 
@@ -121,11 +122,12 @@ const ASR_TIMEOUT_SEC = 120;
  * 预算,按序拼接(单段直传 120s 死线是 10min+ 视频必挂的第二根因);任一段
  * 终败整体降级 missing_transcript——半篇转写以偏概全,不硬凑 */
 const ASR_SEGMENT_SECONDS = 300;
-/** B站 playurl 软风控门顺延(M24 验收期收口):门为分钟~小时级上下文门
- * (2026-10-11 生产实证:首条解读过后即门,60s attempts 全灭),延迟重投
- * 20min × 3 覆盖 ~1h 衰减窗;冷却期内网关「无可用 jar」快速拒绝不喂门 */
-const RISK_CONTROL_DEFER_MS = 20 * 60_000;
-const RISK_CONTROL_MAX_DEFERS = 3;
+/** B站 playurl 软风控门顺延节奏(M30 批A 收口):门为分钟~小时级上下文门,
+ * 延迟重投跨门——20min 跨短门、2h 跨长门,仍门即放弃重试降级「基于文案概括」。
+ * 2026-10-14 生产实证:单视频 voucher 门 3 天 48 趟(20min×3 无上限顺延=全天候
+ * 喂门训练),每趟冷却池里唯一 jar,采集被连带全灭——顺延必须有终点。
+ * 池耗尽(NoJarAvailableError)同路顺延:等的就是同一份冷却,归因不同节奏同 */
+const RISK_CONTROL_DEFER_SCHEDULE_MS = [20 * 60_000, 2 * 60 * 60_000];
 
 /** 经适配器现查直链(存量补读/过境链过期两路;M24 起按平台分发:
  * douyin=重拉 listing 匹配,bilibili=网关 /play-url),查不得返回 null
@@ -139,7 +141,37 @@ async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Prom
   });
   const jars = jarsFromConfig(platformRow?.config);
   if (jars.length === 0) return null;
-  return adapter.resolvePlayUrl({ videoId: data.videoId, secUid: data.secUid, cookies: jars });
+  // 出口代理(M33 批B):同采集一路,启用即随网关请求携带(未配置=直连)
+  const egress = await getEgressProxyRuntime();
+  return adapter.resolvePlayUrl({
+    videoId: data.videoId,
+    secUid: data.secUid,
+    cookies: jars,
+    ...(egress ? { proxy: egress.proxyUrl } : {}),
+  });
+}
+
+/** 字幕文本现查(M33 批C 字幕优先,适配器声明 resolveSubtitleText 的平台
+ * 才走,B站先行):null=无字幕/缺 jars/不支持 → 调用方落回直链+ASR 既有
+ * 管道;RiskControl/NoJarAvailable 照常上抛,进既有风控门顺延分支 */
+async function fetchSubtitleText(
+  sourceId: number,
+  data: InterpretJobData,
+): Promise<{ text: string; lang: string | null } | null> {
+  const adapter = ADAPTERS[data.platform as VideoPlatform];
+  if (!adapter?.resolveSubtitleText || !data.videoId) return null;
+  const platformRow = await prisma.crawlSource.findUnique({
+    where: { id: sourceId },
+    select: { config: true },
+  });
+  const jars = jarsFromConfig(platformRow?.config);
+  if (jars.length === 0) return null;
+  const egress = await getEgressProxyRuntime();
+  return adapter.resolveSubtitleText({
+    videoId: data.videoId,
+    cookies: jars,
+    ...(egress ? { proxy: egress.proxyUrl } : {}),
+  });
 }
 
 /** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛。
@@ -245,104 +277,117 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
   // 下载/抽轨/ASR(M12 起整段可选):ASR 未启用直接跳过;直链过境缺失且网关重拉
   // 未命中也不再硬失败——两者都降级「基于文案」概括(missing_transcript)。
   // 临时文件 try/finally 即删(版权红线);下载/网关网络层失败上抛给 BullMQ 重试
+  // M33 批C 字幕优先:适配器支持的平台(B站)先现查字幕,拿得到则整段跳过
+  // playurl(voucher 门)/下载/ASR,ASR 未启用也受益;无字幕落回既有管道
   let transcript: string | null = null;
   let transcriptError: string | null = null;
-  if (asr?.enabled) {
-    const tmpDir = await makeInterpretTmpDir();
-    try {
-      let playUrl = data.playUrl;
-      if (!playUrl) playUrl = await fetchFreshPlayUrl(row.sourceId, data);
-      if (playUrl) {
-        const { videoPath } = tmpMediaPaths(tmpDir);
-        // B站 CDN 防盗链校验 Referer(douyin 空对象,douyin 行为不变)
-        const headers = downloadHeadersFor(data.platform);
-        try {
-          await downloadVideoToTmp(playUrl, videoPath, headers);
-        } catch (err) {
-          // 过境直链是数小时有效的签名 URL,积压 job 会过期:重拉一次再试
-          const fresh = await fetchFreshPlayUrl(row.sourceId, data);
-          if (!fresh) throw err;
-          await downloadVideoToTmp(fresh, videoPath, headers);
-        }
-        // 分段转写(M27 批⑦):逐段独立重试/超时预算,按序拼接;usage 按段记账
-        const segPaths = await extractAudioSegments(
-          videoPath,
-          tmpDir,
-          asr.maxAudioSeconds,
-          ASR_SEGMENT_SECONDS,
-        );
-        const parts: string[] = [];
-        for (const [i, segPath] of segPaths.entries()) {
-          const segSeconds = Math.max(
-            Math.min(asr.maxAudioSeconds - i * ASR_SEGMENT_SECONDS, ASR_SEGMENT_SECONDS),
-            0,
-          );
-          const asrResult = await runTranscribeWithRetry(
-            {
-              protocol: asr.protocol,
-              baseUrl: asr.baseUrl,
-              modelId: asr.modelId,
-              apiKey: asr.apiKey,
-              audio: await readAudioFile(segPath),
-              filename: path.basename(segPath),
-              hotwords: asr.hotwords,
-              timeoutSec: ASR_TIMEOUT_SEC,
-            },
-            segSeconds,
-          );
-          if (asrResult.text === null) {
-            transcriptError = `分段转写失败(第 ${i + 1}/${segPaths.length} 段):${asrResult.error}`;
-            break; // 半篇转写以偏概全:已得段一并弃用,整体降级文案概括
+  try {
+    const subtitle = await fetchSubtitleText(row.sourceId, data);
+    if (subtitle) {
+      transcript = subtitle.text;
+    } else if (asr?.enabled) {
+      const tmpDir = await makeInterpretTmpDir();
+      try {
+        let playUrl = data.playUrl;
+        if (!playUrl) playUrl = await fetchFreshPlayUrl(row.sourceId, data);
+        if (playUrl) {
+          const { videoPath } = tmpMediaPaths(tmpDir);
+          // B站 CDN 防盗链校验 Referer(douyin 空对象,douyin 行为不变)
+          const headers = downloadHeadersFor(data.platform);
+          try {
+            await downloadVideoToTmp(playUrl, videoPath, headers);
+          } catch (err) {
+            // 过境直链是数小时有效的签名 URL,积压 job 会过期:重拉一次再试
+            const fresh = await fetchFreshPlayUrl(row.sourceId, data);
+            if (!fresh) throw err;
+            await downloadVideoToTmp(fresh, videoPath, headers);
           }
-          parts.push(asrResult.text);
+          // 分段转写(M27 批⑦):逐段独立重试/超时预算,按序拼接;usage 按段记账
+          const segPaths = await extractAudioSegments(
+            videoPath,
+            tmpDir,
+            asr.maxAudioSeconds,
+            ASR_SEGMENT_SECONDS,
+          );
+          const parts: string[] = [];
+          for (const [i, segPath] of segPaths.entries()) {
+            const segSeconds = Math.max(
+              Math.min(asr.maxAudioSeconds - i * ASR_SEGMENT_SECONDS, ASR_SEGMENT_SECONDS),
+              0,
+            );
+            const asrResult = await runTranscribeWithRetry(
+              {
+                protocol: asr.protocol,
+                baseUrl: asr.baseUrl,
+                modelId: asr.modelId,
+                apiKey: asr.apiKey,
+                audio: await readAudioFile(segPath),
+                filename: path.basename(segPath),
+                hotwords: asr.hotwords,
+                timeoutSec: ASR_TIMEOUT_SEC,
+              },
+              segSeconds,
+            );
+            if (asrResult.text === null) {
+              transcriptError = `分段转写失败(第 ${i + 1}/${segPaths.length} 段):${asrResult.error}`;
+              break; // 半篇转写以偏概全:已得段一并弃用,整体降级文案概括
+            }
+            parts.push(asrResult.text);
+          }
+          if (transcriptError === null) transcript = parts.join("\n");
+        } else {
+          transcriptError = "无可用播放直链(过境直链缺失且网关重拉未命中),基于文案概括";
         }
-        if (transcriptError === null) transcript = parts.join("\n");
-      } else {
-        transcriptError = "无可用播放直链(过境直链缺失且网关重拉未命中),基于文案概括";
+      } finally {
+        await removeTmpDir(tmpDir).catch(() => undefined);
       }
-    } catch (err) {
-      // B站 playurl 软风控门(v_voucher,经 resolvePlayUrl 唯一来源):分钟~小时级
-      // 上下文门,BullMQ 60s 退避跨不过 → 延迟重投顺延跨门(行留 processing),
-      // 耗尽仍门才终败(可治理台「重解读」)。下载/其余网关网络层照旧上抛 attempts
-      if (
-        err instanceof GatewayUpstreamError &&
-        err.kind === "RiskControlError" &&
-        (data.deferCount ?? 0) < RISK_CONTROL_MAX_DEFERS
-      ) {
-        const deferCount = (data.deferCount ?? 0) + 1;
-        await prisma.telegram.update({
-          where: { id },
-          data: {
-            lastAiError: `风控门顺延重试中(${deferCount}/${RISK_CONTROL_MAX_DEFERS})`,
-          },
-        });
-        await getQueue(QUEUE_INTERPRETER).add(
-          INTERPRET_JOB_NAME,
-          { ...data, deferCount },
-          aiJobOpts({
-            jobId: interpretJobId(data.telegramId, `rc${Date.now()}`),
-            delayMs: RISK_CONTROL_DEFER_MS,
-          }),
-        );
-        logger.warn({
-          event: "interpret.video.riskcontrol_deferred",
-          telegramId: data.telegramId,
-          deferCount,
-        });
-        return {
-          telegramId: data.telegramId,
-          status: "deferred_riskcontrol",
-          transcriptUsed: false,
-        };
-      }
+    }
+  } catch (err) {
+    // B站 playurl 软风控门(v_voucher,经 resolvePlayUrl)与字幕链/player v2
+    // 风控、池耗尽(NoJarAvailable,等的就是同一份冷却):按节奏延迟重投顺延
+    // 跨门(行留 processing);节奏耗尽仍门 → 放弃重试降级「基于文案概括」
+    // (可治理台「重解读」)。下载/其余网关网络层照旧上抛 attempts
+    const riskGate =
+      err instanceof GatewayUpstreamError &&
+      (err.kind === "RiskControlError" || err.kind === "NoJarAvailableError");
+    if (riskGate && (data.deferCount ?? 0) < RISK_CONTROL_DEFER_SCHEDULE_MS.length) {
+      const deferCount = (data.deferCount ?? 0) + 1;
+      await prisma.telegram.update({
+        where: { id },
+        data: {
+          lastAiError: `风控门顺延重试中(${deferCount}/${RISK_CONTROL_DEFER_SCHEDULE_MS.length})`,
+        },
+      });
+      await getQueue(QUEUE_INTERPRETER).add(
+        INTERPRET_JOB_NAME,
+        { ...data, deferCount },
+        aiJobOpts({
+          jobId: interpretJobId(data.telegramId, `rc${Date.now()}`),
+          delayMs: RISK_CONTROL_DEFER_SCHEDULE_MS[data.deferCount ?? 0],
+        }),
+      );
+      logger.warn({
+        event: "interpret.video.riskcontrol_deferred",
+        telegramId: data.telegramId,
+        kind: err.kind,
+        deferCount,
+      });
+      return {
+        telegramId: data.telegramId,
+        status: "deferred_riskcontrol",
+        transcriptUsed: false,
+      };
+    }
+    if (riskGate) {
+      // 顺延节奏耗尽:不硬失败烧 attempts,降级缺转写概括,终态可见 lastAiError
+      transcriptError = "风控门未过(顺延重试耗尽),基于文案概括";
+    } else {
       await markAiFailed(id, err);
       throw err; // 下载/网关网络层 → BullMQ attempts 兜重试
-    } finally {
-      await removeTmpDir(tmpDir).catch(() => undefined);
     }
   }
 
-  // LLM 概括(ASR 终败降级:仅基于文案元数据,公开信息不触红线)
+  // LLM 概括(ASR/字幕终败降级:仅基于文案元数据,公开信息不触红线)
   const prompt = buildInterpretPrompt({
     title: row.title,
     caption: row.summary,

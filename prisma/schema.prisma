@@ -15,36 +15,36 @@ datasource db {
 
 /// 文章主表;wpPostId 是与旧站的溯源锚点
 model Post {
-  id              BigInt        @id @default(autoincrement())
-  slug            String?       @unique(map: "uq_content_post_slug") @db.VarChar(255) // 装饰性 ASCII slug(可空可改;URL 由 id 锚定 /post/<id>-<slug>,2026-10 迁移自 percent-encoded 中文)
-  title           String        @db.VarChar(500)
-  excerpt         String?       @db.Text
-  contentHtml     String?       @map("content_html") @db.Text // 旧文正文(清洗后 HTML,只读保真)
-  contentMd       String?       @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
-  coverPath       String?       @map("cover_path") @db.VarChar(500)
-  categoryId      BigInt        @map("category_id")
-  status          String        @default("draft") @db.VarChar(20) // draft/published/deleted(软删;下架=回 draft 保留 published_at;合法值应用层 Zod 管控,arch/03 枚举演进条款)
-  contentOrigin   String        @default("human") @map("content_origin") @db.VarChar(20) // 创作方式:human/ai_assisted/ai_generated(AI 生成内容显式标识,2026-10-05 合规;合法值应用层枚举,见 content/post-schema)
-  isPinned        Boolean       @default(false) @map("is_pinned")
-  viewsCount      BigInt        @default(0) @map("views_count")
-  isPurchasable   Boolean       @default(false) @map("is_purchasable") // M21 批①:付费解锁开关
-  purchasePrice   Decimal?      @map("purchase_price") @db.Decimal(10, 2) // M21 批①:解锁价 CNY(仅 isPurchasable 时有意义)
-  isLoginRequired Boolean       @default(false) @map("is_login_required") // M21 补齐批:登录可见(仿旧站 unlock_type=1;与付费互斥,应用层校验)
-  seoTitle        String?       @map("seo_title") @db.VarChar(255)
-  seoDescription  String?       @map("seo_description") @db.Text
-  publishedAt     DateTime?     @map("published_at") @db.Timestamptz(6)
-  wpPostId        BigInt?       @unique(map: "uq_content_post_wp_post_id") @map("wp_post_id")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              BigInt    @id @default(autoincrement())
+  slug            String?   @unique(map: "uq_content_post_slug") @db.VarChar(255) // 装饰性 ASCII slug(可空可改;URL 由 id 锚定 /post/<id>-<slug>,2026-10 迁移自 percent-encoded 中文)
+  title           String    @db.VarChar(500)
+  excerpt         String?   @db.Text
+  contentHtml     String?   @map("content_html") @db.Text // 旧文正文(清洗后 HTML,只读保真)
+  contentMd       String?   @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
+  coverPath       String?   @map("cover_path") @db.VarChar(500)
+  categoryId      BigInt    @map("category_id")
+  status          String    @default("draft") @db.VarChar(20) // draft/published/deleted(软删;下架=回 draft 保留 published_at;合法值应用层 Zod 管控,arch/03 枚举演进条款)
+  contentOrigin   String    @default("human") @map("content_origin") @db.VarChar(20) // 创作方式:human/ai_assisted/ai_generated(AI 生成内容显式标识,2026-10-05 合规;合法值应用层枚举,见 content/post-schema)
+  isPinned        Boolean   @default(false) @map("is_pinned")
+  viewsCount      BigInt    @default(0) @map("views_count")
+  isPurchasable   Boolean   @default(false) @map("is_purchasable") // M21 批①:付费解锁开关
+  purchasePrice   Decimal?  @map("purchase_price") @db.Decimal(10, 2) // M21 批①:解锁价 CNY(仅 isPurchasable 时有意义)
+  isLoginRequired Boolean   @default(false) @map("is_login_required") // M21 补齐批:登录可见(仿旧站 unlock_type=1;与付费互斥,应用层校验)
+  seoTitle        String?   @map("seo_title") @db.VarChar(255)
+  seoDescription  String?   @map("seo_description") @db.Text
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  wpPostId        BigInt?   @unique(map: "uq_content_post_wp_post_id") @map("wp_post_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  category Category            @relation(fields: [categoryId], references: [id])
-  tags     PostTag[]
-  viewDays StatsPostViewDaily[]
-  mediaRefs MediaRef[]
+  category    Category             @relation(fields: [categoryId], references: [id])
+  tags        PostTag[]
+  viewDays    StatsPostViewDaily[]
+  mediaRefs   MediaRef[]
   githubRepos GithubRepoPost[]
-  channels PublishChannel[]
-  comments PostComment[]
-  likes    PostLike[]
+  channels    PublishChannel[]
+  comments    PostComment[]
+  likes       PostLike[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -90,21 +90,21 @@ model PostTag {
 
 /// 媒体统一资产(图片+视频+文件;kind 现在就位,二期视频零迁移)
 model Media {
-  id              BigInt   @id @default(autoincrement())
-  path            String   @unique(map: "uq_content_media_path") @db.VarChar(500) // URL 路径;/wp-content/uploads/... 或 /media/videos/...
-  filename        String   @db.VarChar(255)
-  kind            String   @default("image") @db.VarChar(20) // image/video/file
-  status          String   @default("active") @db.VarChar(20) // active/orphan/missing/processing/error/deleted(应用层 Zod 管控,arch/03 枚举演进条款)
-  sizeBytes       BigInt?  @map("size_bytes")
+  id              BigInt    @id @default(autoincrement())
+  path            String    @unique(map: "uq_content_media_path") @db.VarChar(500) // URL 路径;/wp-content/uploads/... 或 /media/videos/...
+  filename        String    @db.VarChar(255)
+  kind            String    @default("image") @db.VarChar(20) // image/video/file
+  status          String    @default("active") @db.VarChar(20) // active/orphan/missing/processing/error/deleted(应用层 Zod 管控,arch/03 枚举演进条款)
+  sizeBytes       BigInt?   @map("size_bytes")
   width           Int?
   height          Int?
-  durationSeconds Int?     @map("duration_seconds") // 视频用;图片 NULL
-  thumbPath       String?  @map("thumb_path") @db.VarChar(500)
-  sha1            String?  @db.Char(40) // 重复检测与去重;未软删行唯一约束 uq_content_media_sha1(批⑦ partial unique,Prisma 不表达,见迁移 20261013120000——全列唯一与回收站软删留档语义互斥)
-  storage         String   @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
-  wpAttachmentId  BigInt?  @map("wp_attachment_id")
+  durationSeconds Int?      @map("duration_seconds") // 视频用;图片 NULL
+  thumbPath       String?   @map("thumb_path") @db.VarChar(500)
+  sha1            String?   @db.Char(40) // 重复检测与去重;未软删行唯一约束 uq_content_media_sha1(批⑦ partial unique,Prisma 不表达,见迁移 20261013120000——全列唯一与回收站软删留档语义互斥)
+  storage         String    @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
+  wpAttachmentId  BigInt?   @map("wp_attachment_id")
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6) // 软删回收站:7 天后 audit 任务物理删除(arch/08-media §3.2)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([kind, status], map: "idx_content_media_kind_status")
   @@map("content_media")
@@ -176,28 +176,28 @@ model PostCommentLike {
 // ── user_(账号域)───────────────────────────────────────────────
 
 model UserAccount {
-  id              BigInt    @id @default(autoincrement())
-  phone           String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
-  username        String?   @unique(map: "uq_user_account_username") @db.VarChar(100) // M21 批⓪:邮箱注册用户名,登录标识之一
-  email           String?   @unique(map: "uq_user_account_email") @db.VarChar(255) // M21 批⓪:邮箱通道(D1)
-  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
-  nickname        String?   @db.VarChar(100)
-  avatarPath      String?   @map("avatar_path") @db.VarChar(500)
-  bio             String?   @db.VarChar(500)
-  assistantVisible Boolean  @default(true) @map("assistant_visible") // M22:悬浮助手 FAB 显隐(账号级,跨设备;游客走 localStorage)
-  role           String    @default("user") @db.VarChar(20) // user/admin
-  status         String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
-  passwordHash   String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
-  wpUserId       BigInt?   @unique(map: "uq_user_account_wp_user_id") @map("wp_user_id")
-  legacyUsername String?   @map("legacy_username") @db.VarChar(100)
-  legacyPhpass   String?   @map("legacy_phpass") @db.VarChar(255) // 仅审计留存,登录永不使用
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               BigInt    @id @default(autoincrement())
+  phone            String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
+  username         String?   @unique(map: "uq_user_account_username") @db.VarChar(100) // M21 批⓪:邮箱注册用户名,登录标识之一
+  email            String?   @unique(map: "uq_user_account_email") @db.VarChar(255) // M21 批⓪:邮箱通道(D1)
+  emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  nickname         String?   @db.VarChar(100)
+  avatarPath       String?   @map("avatar_path") @db.VarChar(500)
+  bio              String?   @db.VarChar(500)
+  assistantVisible Boolean   @default(true) @map("assistant_visible") // M22:悬浮助手 FAB 显隐(账号级,跨设备;游客走 localStorage)
+  role             String    @default("user") @db.VarChar(20) // user/admin
+  status           String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
+  passwordHash     String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
+  wpUserId         BigInt?   @unique(map: "uq_user_account_wp_user_id") @map("wp_user_id")
+  legacyUsername   String?   @map("legacy_username") @db.VarChar(100)
+  legacyPhpass     String?   @map("legacy_phpass") @db.VarChar(255) // 仅审计留存,登录永不使用
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  pats UserPat[]
+  pats               UserPat[]
   verificationTokens UserVerificationToken[]
-  tokenWallet UserTokenWallet?
-  tokenLedger UserTokenLedger[]
+  tokenWallet        UserTokenWallet?
+  tokenLedger        UserTokenLedger[]
 
   @@index([status], map: "idx_user_account_status")
   @@map("user_account")
@@ -522,7 +522,7 @@ model CrawlSource {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  telegrams Telegram[]
+  telegrams      Telegram[]
   socialAccounts SocialAccount[]
 
   @@map("crawl_source")
@@ -530,33 +530,33 @@ model CrawlSource {
 
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
 model Telegram {
-  id          BigInt    @id @default(autoincrement())
-  sourceId    Int       @map("source_id")
-  title       String?   @db.VarChar(500)
-  summary     String    @db.VarChar(1000) // 1-3 句(一期规则截断,LLM 摘要后置开关)
-  url         String    @db.VarChar(1000) // 原文外链(一律跳原站)
-  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
-  contentHash String    @unique(map: "uq_telegram_content_hash") @map("content_hash") @db.Char(40) // sha1(title+url 规范化)
-  status      String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
-  filterHit   String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
-  mediaType   String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
+  id              BigInt    @id @default(autoincrement())
+  sourceId        Int       @map("source_id")
+  title           String?   @db.VarChar(500)
+  summary         String    @db.VarChar(1000) // 1-3 句(一期规则截断,LLM 摘要后置开关)
+  url             String    @db.VarChar(1000) // 原文外链(一律跳原站)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  contentHash     String    @unique(map: "uq_telegram_content_hash") @map("content_hash") @db.Char(40) // sha1(title+url 规范化)
+  status          String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
+  filterHit       String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
+  mediaType       String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
   // 视频字段组(media_type=video;解读列组见下——不设 transcript/play_url,版权红线 arch/02 §3.2)
-  videoPlatform   String? @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
-  videoBlogger    String? @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
-  videoCoverUrl   String? @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
-  videoDuration   Int?    @map("video_duration") // 秒
-  videoEngagement Json?   @map("video_engagement") // {play,like,comment}
+  videoPlatform   String?   @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
+  videoBlogger    String?   @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
+  videoCoverUrl   String?   @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
+  videoDuration   Int?      @map("video_duration") // 秒
+  videoEngagement Json?     @map("video_engagement") // {play,like,comment}
   // AI 解读列组(M9,interpreter 队列产物):仅持久化分析结论(topic/summary/points),
   // 转写文本是输入不是资产、play_url 不落库(临时音视频文件判读即删)
-  aiStatus    String?   @map("ai_status") @db.VarChar(20) // null=未解读/pending/processing/done/missing_transcript/failed
-  aiTopic     String?   @map("ai_topic") @db.VarChar(50)
-  aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
-  aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
-  aiKeywords  Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
-  aiNote      String?   @map("ai_note") @db.Text // 解读笔记(M26):interpreter 二次调用产出的分析笔记 markdown;null=未产出/存量(转写即删红线不变,笔记是分析产物)
-  aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
-  lastAiError String?   @map("last_ai_error") @db.VarChar(500)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  aiStatus        String?   @map("ai_status") @db.VarChar(20) // null=未解读/pending/processing/done/missing_transcript/failed
+  aiTopic         String?   @map("ai_topic") @db.VarChar(50)
+  aiSummary       String?   @map("ai_summary") @db.VarChar(1000)
+  aiPoints        Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
+  aiKeywords      Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
+  aiNote          String?   @map("ai_note") @db.Text // 解读笔记(M26):interpreter 二次调用产出的分析笔记 markdown;null=未产出/存量(转写即删红线不变,笔记是分析产物)
+  aiRanAt         DateTime? @map("ai_ran_at") @db.Timestamptz(6)
+  lastAiError     String?   @map("last_ai_error") @db.VarChar(500)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
@@ -758,9 +758,9 @@ model GithubRepo {
   homepage         String?   @db.VarChar(500)
   defaultBranch    String    @default("main") @map("default_branch") @db.VarChar(100)
   // README 缓存(base64 解码后 md;渲染时相对链接按 fullName/defaultBranch 重写)
-  readmeMd        String?   @map("readme_md") @db.Text
-  readmeSha       String?   @map("readme_sha") @db.Char(40) // sha 不变跳写,防 updatedAt/sitemap lastmod 空转
-  readmeFetchedAt DateTime? @map("readme_fetched_at") @db.Timestamptz(6)
+  readmeMd         String?   @map("readme_md") @db.Text
+  readmeSha        String?   @map("readme_sha") @db.Char(40) // sha 不变跳写,防 updatedAt/sitemap lastmod 空转
+  readmeFetchedAt  DateTime? @map("readme_fetched_at") @db.Timestamptz(6)
   // 展示与调度
   display          Boolean   @default(true) // 前台展示开关(下架不删数据)
   sortOrder        Int       @default(0) @map("sort_order") // 展示排序(小在前)
@@ -856,6 +856,25 @@ model AdminFeishuConfig {
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("admin_feishu_config")
+}
+
+/// 系统出口代理单例(M33 批B,plan M33):采集网关全部出站走家宽代理
+/// (全局单点,用户定调);proxyUrl write-only AES-256-GCM(secret-box,
+/// 循 admin_feishu_config 同口径),URL 只过境不回显;enabled=代理通道
+/// 总开关(连通测试通过后再开)。网关零密钥不变:worker 解密后随请求携带。
+model SystemProxyConfig {
+  id                Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  proxyUrlEnc       String?   @map("proxy_url_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  proxyUrlMask      String?   @map("proxy_url_mask") @db.VarChar(60) // 脱敏回显冗余列(scheme://host:port 形)
+  enabled           Boolean   @default(false) // 代理通道总开关
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_proxy_config")
 }
 
 /// admin 账号 ↔ 飞书身份绑定(M29 批①):免登白名单本体——fail-closed,
@@ -1054,6 +1073,7 @@ model Topic {
   title        String    @db.VarChar(200)
   positioning  String?   @db.VarChar(1000) // 专题定位/目标读者/文风口径(compose prompt 主输入)
   status       String    @default("collecting") @db.VarChar(20) // collecting | drafted | published(合法值应用层 Zod,arch/03 枚举演进条款)
+  skillKey     String?   @map("skill_key") @db.VarChar(50) // 绑定 agent_skill 的稳定引用(M30 批②;合成写稿按它取指南,soft ref 随 skill 删降级)
   linkedPostId BigInt?   @map("linked_post_id") // 专题文档 content_post 锚(合成时落,应用层完整性)
   composedAt   DateTime? @map("composed_at") @db.Timestamptz(6)
   publishedAt  DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
@@ -1080,4 +1100,23 @@ model TopicItem {
   @@unique([topicId, itemType, itemId], map: "uq_topic_item_identity")
   @@index([topicId, sortOrder], map: "idx_topic_item_topic_sort")
   @@map("topic_item")
+}
+
+/// Agent skill(M30 批①):业务流程纪律从 agent 系统提示提取为可管理资产——
+/// 写作指南、分发流程等「知识型」扩展均落此表,后台建改即时生效零发版;
+/// agent 经统一两工具渐进披露取用(批② 接线:list 元数据先行、get 按需全文)。
+/// key 为 agent 侧/topic.skillKey 的稳定引用名;scenario 为适用场景(一行,
+/// 供 agent 选 skill 对号);guideMd 为指南正文(markdown,可引用既有工具名);
+/// 种子收编「博主×视频」指南 + 码点预算段(幂等 seed,不覆盖后台后续编辑)。
+model AgentSkill {
+  id        BigInt   @id @default(autoincrement())
+  key       String   @unique(map: "uq_agent_skill_key") @db.VarChar(50)
+  name      String   @db.VarChar(100)
+  scenario  String   @db.VarChar(200) // 适用场景(供 agent/管理员选 skill 时对号)
+  guideMd   String   @map("guide_md") @db.Text // 指南正文(markdown,流程纪律;机械执行归工具/管线)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("agent_skill")
 }

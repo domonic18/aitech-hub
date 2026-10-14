@@ -124,6 +124,14 @@
 - **propose_edits HITL 链路(⑧-c)**:bare `interrupt()` 双模(edits ≤20 块 S/R,old/new 各 ≤8000;rewrite ≤50000 整档;zod XOR 校验)→ 前台按 interrupt value.kind 分发:有评审接线(embedded + 函数型 props)走评审模态,否则降级卡(ProposeUnavailableCard 自动 resume unavailable,零服务端状态);resume 四态 applied/partial/rejected/unavailable。ask-user-guard 泛化改名 **interrupt_guard**(INTERRUPT_TOOLS = ask_user ∪ propose_edits,judgeInterruptFlight 反向扫描首触发 AIMessage,同类单飞防并行中断 resume 错投);stream resume union 按 kind 判别(kind 省缺 ask_user 向后兼容)
 - **diff 评审面(⑧-d)**:proposal-apply.ts 纯函数定位/合并——精确唯一命中(exact)→ 多处命中歧义直判 miss(不走模糊兜底)→ dmp match_main 模糊兜底(相似度 ≥0.6 才收,fuzzy)→ miss 不阻塞其他块;merge 按起点正序、区间重叠丢弃后者。ProposeReviewCard 全屏模态(overlay 即评审互斥,免编辑器 readOnly 接线):逐块 dmp diff 视图 + 接受/放弃 toggle + 应用所选(经 editContext.onApplyContent 写回编辑器 setContentMd → 既有自动保存链落库)+ 拒绝;rewrite 档 @codemirror/merge 只读对照。undo 口径降级:写回同 shadow restore 路径,undo 历史自写回点重启,真机验证遗留批⑨
 
+**K2.8 补注五(2026-10-14,M30 批①~④,Agent 技能化——流程纪律为后台可管理资产;skill 扩展性三层定调)**:用户定调未来 agent 写作等功能持续扩展(「公众号文章必须提炼要点渲染 HTML 以配图加入」类业务过程会越来越多),扩展性做系统考量以支撑更多 skill、MCP 与工具调用。落成三层:**知识层** = `agent_skill` 表(流程纪律 markdown,后台「模型配置→Agent 技能」页签建改即时生效零发版);**能力层** = 代码工具(agentToolsFor 单点装配,机械执行不进 skill);**接入层** = MCP(未来在同一点挂 adapter,不预建)。分工纪律:skill 教 agent **决策与纪律**(markdown 引用工具名),工具/管线做机械执行。
+
+- **`agent_skill` 通用技能表(批①,迁移 `20261014200000_agent_skill`)**:`key varchar(50)` 唯一(agent 稳定引用,建后不可改)/`name/scenario(一行,agent 对号场景)/guide_md text(指南正文)/enabled`(停用后 agent 侧即时不可见)。**通用表定位**:写作指南、分发流程等知识型纪律均落此表,不预建 kind/结构化匹配(YAGNI);种子(upsert `update:{}` 不覆盖后台编辑)收编原 ADMIN_PROMPT_ADDENDUM 硬编码「博主×视频」指南并增**码点预算段**(markdown ≤4500 码点/表格每张 ~2200/超限删除优先级);soft ref 语义:skill 删/停后专题绑定降级为按场景自动匹配,不阻塞
+- **渐进披露工具(批②,`skill-tools.ts`)**:`list_skills`(元数据清单 key/name/scenario,写前对号)/`get_skill`(按 key 取全文)——与 deepagents 1.14.2 `createSkillsMiddleware`(SKILL.md frontmatter → 元数据缓存 → wrapModelCall 注入 → read_file 按需)同范式,差异:真相源为 DB 行非静态文件(后台建改即时生效),每次 list 恒新(无线程级缓存陈旧风险);prompt 注入换显式中文时序条款(系统提示只留「技能调度」段:动笔前必先 list_skills → 按 scenario 对号 → 命中 get_skill 全文,**指南优先于提示通用写法**;topic.skill_key 已指定直取不自行匹配;清单为空按常识写并汇报「未命中适用技能」)
+- **专题定向绑定(批②,`topic.skill_key` 可空列,迁移 `20261014210000_topic_skill_key`)**:专题面板 select 绑定(仅列启用技能,PATCH 存在性核验 400);get_topic_brief 载荷携 skill_key,合成写稿定向取指南
+- **码点预算自查(批③,`measure_wechat_budget` 工具 + `wechat-budget.ts`)**:落稿前对拟交 markdown 服务端真跑 renderWechatHtml 计码点(与推送校验同口径,非文字数估算),返回总/纯文本/表格/标记四段分解 + usagePct + 超限判定与精简建议(超预算必精简后复核再交稿);同步弹窗正文码点实时计数复用 preview HTML(客户端 `[...html].length`,与服务端同口径零新 API)
+- **admin 防线同构**:两批工具体内 `assertAdminThread` + fail-closed deny(纵深防御同 topic-tools);e2e 38 钉技能页签 CRUD/启停落库/专题绑定/非法 skillKey 400(零真网)
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
@@ -140,7 +148,7 @@
 - **用量统计(admin-usage)**:近 7/30/90 天 tokens 与估算费用 / ASR 时长 / 降级次数 KPI,日消耗趋势、按任务与按模型分布、按任务明细(含 CSS sparkline)——数据源为调用日志聚合,与成本护栏(arch/02 §3.2)共用口径
 - **会话管理(admin-sessions)**:按任务类型/状态/触发/日期筛选调用记录;详情抽屉展示入参出参 JSON 与垂直执行时间线(listing→下载→抽轨→ASR→LLM 解读→入库→转写即删,节点带耗时),失败记录可重跑
 
-> **落地注记(2026-10-04,M8 批⑥)**:三 Tab 中「模型条目/ASR 渠道/任务绑定」已随 `/admin/models` 提前交付(三表见 [arch/03 §2.4](03-data-model.md);7 路由见 arch/05 §5)。
+> **落地注记(2026-10-04,M8 批⑥)**:三 Tab 中「模型条目/ASR 渠道/任务绑定」已随 `/admin/models` 提前交付(三表见 [arch/03 §2.4](03-data-model.md);7 路由见 arch/05 §5)。**M30 批① 起增第 4 页签「Agent 技能」**(`agent_skill` CRUD,机制见 §3 K2.8 补注五;路由见 arch/05 §5 agent-skills 行)。
 > - 密钥口径:Cookie 池与 API Key 同箱——主钥 HKDF-SHA256 从必有 env `AUTH_SECRET` 派生(`src/lib/crypto/secret-box.ts`),AES-256-GCM 密文落库,write-only 只回显掩码;**轮换 AUTH_SECRET = 存量密文失效**(Cookie 重导、Key 重录)
 > - 探针支持面:LLM openai(Bearer,`{base}/chat/completions` max_tokens=1 ping)/ anthropic(`x-api-key`,`/v1/messages`);ASR openai(`{base}/audio/transcriptions`)/ minimax(`/v1/speech_to_text`,`base_resp.status_code` 业务错归因)——1s 正弦波实调转写,转写空文本属成功;`protocol=other` 诚实 skipped 不落 last_test;探针永不 throw,15s 超时
 > - 消费入口(**M9 已消费**):`src/lib/ai/resolver.ts#resolveAiModel(role)` 按绑定解析主力/备用(主力停用回落备用),apiKey 解密仅在服务内存——interpret 角色(ASR 走 `asr_config` 直查)已在视频解读管道(`src/lib/telegram/interpret-video.ts`)与 ASR/LLM client(`src/lib/ai/asr-client.ts`/`llm-client.ts`)落地

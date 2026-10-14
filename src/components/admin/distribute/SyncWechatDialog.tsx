@@ -14,7 +14,11 @@ import { useCallback, useState } from "react";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 import MediaPicker from "@/components/admin/cover/MediaPicker";
 import { field } from "@/components/admin/form-fields";
-import { WECHAT_DIGEST_MAX, WECHAT_TITLE_MAX } from "@/lib/distribute/channels";
+import {
+  WECHAT_CONTENT_MAX_CHARS,
+  WECHAT_DIGEST_MAX,
+  WECHAT_TITLE_MAX,
+} from "@/lib/distribute/channels";
 import { WECHAT_THEMES } from "@/lib/distribute/wechat-themes";
 import type { ApiEnvelope } from "@/lib/http/response";
 import SyncWechatPreview from "./SyncWechatPreview";
@@ -58,6 +62,9 @@ export default function SyncWechatDialog({
   const [theme, setTheme] = useState<string | null>(null);
   const [activeTheme, setActiveTheme] = useState<string>("default");
   const handleThemeEcho = useCallback((t: string) => setActiveTheme(t), []);
+  // 正文码点实时计数(M30 批③):预览渲染成功回传,与推送校验同口径
+  const [contentChars, setContentChars] = useState<number | null>(null);
+  const handleChars = useCallback((n: number) => setContentChars(n), []);
 
   const titleLen = [...title].length;
   const digestLen = [...digest].length;
@@ -228,8 +235,25 @@ export default function SyncWechatDialog({
             </div>
           </div>
         </div>
-        <SyncWechatPreview postId={post.id} theme={theme ?? undefined} onTheme={handleThemeEcho} />
+        <SyncWechatPreview
+          postId={post.id}
+          theme={theme ?? undefined}
+          onTheme={handleThemeEcho}
+          onChars={handleChars}
+        />
       </div>
+      {contentChars !== null && (
+        <p
+          className={`mt-2 text-[11px] ${
+            contentChars > WECHAT_CONTENT_MAX_CHARS ? "text-red" : "text-text-3"
+          }`}
+        >
+          正文码点:{contentChars}/{WECHAT_CONTENT_MAX_CHARS}
+          {contentChars > WECHAT_CONTENT_MAX_CHARS
+            ? " · 已超预算(样式属性与表格占大头),精简正文后再推送"
+            : ""}
+        </p>
+      )}
       {msg && <p className="mt-2 text-xs text-accent">{msg}</p>}
       {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
       <DialogActions>

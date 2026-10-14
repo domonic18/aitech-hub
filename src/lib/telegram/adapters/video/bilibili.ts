@@ -12,6 +12,7 @@ import {
   postsResponseSchema,
   profileResponseSchema,
   resolveResponseSchema,
+  subtitleResponseSchema,
   type GatewayVideo,
 } from "./gateway-contract";
 import { gatewayPost } from "./gateway-http";
@@ -48,7 +49,7 @@ function toVideoItem(raw: GatewayVideo): VideoItem | null {
 export const bilibiliAdapter: VideoAdapter = {
   platform: VIDEO_PLATFORM_BILIBILI,
 
-  async fetchRecentVideos({ secUid, cookies, maxPages }) {
+  async fetchRecentVideos({ secUid, cookies, maxPages, proxy }) {
     // sec_uid 语义 per-platform(arch/03):bilibili = 纯数字 mid(契约 superRefine 同矩阵);
     // 翻页上限由编排层传入(常规增量 1,手动回填 3),网关侧兜底钳制
     const data = await gatewayPost(
@@ -58,6 +59,7 @@ export const bilibiliAdapter: VideoAdapter = {
         sec_uid: secUid,
         cookies,
         max_pages: Math.min(Math.max(maxPages ?? 1, 1), MAX_PAGES),
+        proxy,
       },
       postsResponseSchema,
     );
@@ -71,32 +73,45 @@ export const bilibiliAdapter: VideoAdapter = {
 
   // M24 批④:listing(vlist)无直链,解读侧现查——网关内 view→cid→playurl;
   // play_url 版权红线仅 job data 过境即焚,禁落库禁分发
-  async resolvePlayUrl({ videoId, cookies }) {
+  async resolvePlayUrl({ videoId, cookies, proxy }) {
     const data = await gatewayPost(
       "/play-url",
-      { platform: VIDEO_PLATFORM_BILIBILI, video_id: videoId, cookies },
+      { platform: VIDEO_PLATFORM_BILIBILI, video_id: videoId, cookies, proxy },
       playUrlResponseSchema,
     );
     return data.play_url ?? null;
+  },
+
+  // M33 批C 字幕优先:view→cid→player/wbi/v2→字幕 JSON(ai-zh 优先,登录态
+  // 才见 AI 字表);null=无字幕 → 编排层落回直链+ASR;文本禁落库(转写同红线)
+  async resolveSubtitleText({ videoId, cookies, proxy }) {
+    const data = await gatewayPost(
+      "/subtitle",
+      { platform: VIDEO_PLATFORM_BILIBILI, video_id: videoId, cookies, proxy },
+      subtitleResponseSchema,
+    );
+    if (!data.subtitle_text) return null;
+    return { text: data.subtitle_text, lang: data.lang };
   },
 };
 
 export async function fetchBilibiliProfile(
   mid: string,
   cookies: string[],
+  proxy?: string,
 ): Promise<{ secUid: string; nickname: string; avatarUrl: string | null }> {
   const data = await gatewayPost(
     "/profile",
-    { platform: VIDEO_PLATFORM_BILIBILI, sec_uid: mid, cookies },
+    { platform: VIDEO_PLATFORM_BILIBILI, sec_uid: mid, cookies, proxy },
     profileResponseSchema,
   );
   return { secUid: data.sec_uid, nickname: data.nickname, avatarUrl: data.avatar_url ?? null };
 }
 
-export async function resolveBilibiliMid(raw: string): Promise<string> {
+export async function resolveBilibiliMid(raw: string, proxy?: string): Promise<string> {
   const data = await gatewayPost(
     "/resolve",
-    { platform: VIDEO_PLATFORM_BILIBILI, url: raw },
+    { platform: VIDEO_PLATFORM_BILIBILI, url: raw, proxy },
     resolveResponseSchema,
   );
   return data.sec_uid;

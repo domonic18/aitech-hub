@@ -18,6 +18,7 @@ import {
 } from "./constants";
 import { fetchDouyinProfile, resolveDouyinSecUid } from "./adapters/video/douyin";
 import { fetchBilibiliProfile, resolveBilibiliMid } from "./adapters/video/bilibili";
+import { getEgressProxyRuntime } from "./egress-proxy";
 import { BloggerAdminError } from "./bloggers-errors";
 import { activeJars, ensurePlatformRow } from "./social-platform-admin";
 
@@ -141,16 +142,20 @@ function extractIdentity(platform: string, input: string): string | null {
   return input.match(IDENTITY_PATTERNS[platform] ?? IDENTITY_PATTERNS.douyin!)?.[0] ?? null;
 }
 
-/** 网关 /resolve 分发(bilibili 含 b23.tv 短链展开) */
+/** 网关 /resolve 分发(bilibili 含 b23.tv 短链展开;出口代理启用即随请求携带) */
 async function resolveIdentity(platform: string, input: string): Promise<string> {
-  if (platform === VIDEO_PLATFORM_BILIBILI) return resolveBilibiliMid(input);
-  return resolveDouyinSecUid(input);
+  const egress = await getEgressProxyRuntime();
+  if (platform === VIDEO_PLATFORM_BILIBILI) return resolveBilibiliMid(input, egress?.proxyUrl);
+  return resolveDouyinSecUid(input, egress?.proxyUrl);
 }
 
-/** 网关 /profile 分发 */
+/** 网关 /profile 分发(出口代理同上,M33 批B 全局单点) */
 async function fetchPlatformProfile(platform: string, identity: string, jars: string[]) {
-  if (platform === VIDEO_PLATFORM_BILIBILI) return fetchBilibiliProfile(identity, jars);
-  return fetchDouyinProfile(identity, jars);
+  const egress = await getEgressProxyRuntime();
+  if (platform === VIDEO_PLATFORM_BILIBILI) {
+    return fetchBilibiliProfile(identity, jars, egress?.proxyUrl);
+  }
+  return fetchDouyinProfile(identity, jars, egress?.proxyUrl);
 }
 
 export async function createBlogger(

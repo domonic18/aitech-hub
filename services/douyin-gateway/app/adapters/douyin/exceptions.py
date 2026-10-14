@@ -19,6 +19,12 @@ class RiskControlError(DouyinAdapterError):
     """命中风控（403/429/captcha/频控状态码），可冷却后重试。"""
 
 
+class NoJarAvailableError(DouyinAdapterError):
+    """Cookie 池耗尽（全部冷却或未配置），尚未发出请求——不是真风控：
+    不冷却任何 jar，池恢复（冷却到期/导入新 jar）即自愈（与 B 站同构，
+    2026-10-14 采集侧免烧口径拆分）。"""
+
+
 class AccountInvalidError(DouyinAdapterError):
     """追踪账号不存在、注销或转私密。"""
 

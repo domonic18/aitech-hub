@@ -18,6 +18,10 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn<(args?: unknown) => Promise<unknown>>(async () => ({})),
   },
   blocklist: { findMany: vi.fn<(args?: unknown) => Promise<unknown>>(async () => []) },
+  // 出口代理单例(M33 批B):默认未配置(findUnique→null)= 直连
+  systemProxyConfig: {
+    findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
+  },
 }));
 vi.mock("../db", () => ({
   prisma: prismaMock,
@@ -383,6 +387,25 @@ describe("crawlVideoAccount 失败归因", () => {
         lastError: expect.stringContaining("AccountInvalidError"),
       }),
     );
+  });
+
+  it("池耗尽(NoJarAvailableError)→ 免疫:15min 短延重探,不计连败不上抛", async () => {
+    // 2026-10-14 实证:单视频 voucher 门冷却唯一 jar,同池 9 博主被连带计连败
+    fetchVideosMock.mockRejectedValue(
+      new GatewayUpstreamError("NoJarAvailableError", "无可用 Cookie jar(共 1 份,全部冷却)"),
+    );
+    const outcome = await run(makeAccount({ consecutiveFails: 2, crawlIntervalMin: 120 }));
+    expect(outcome).toMatchObject({ deferredPoolCooldown: true });
+    expect(lastUpdateData()).toEqual(
+      expect.objectContaining({
+        lastError: expect.stringContaining("Cookie 池冷却中"),
+      }),
+    );
+    expect(lastUpdateData()).not.toHaveProperty("consecutiveFails"); // 池耗尽不累计
+    // 顺延锚 15min(≠常规 120min 轮询间隔)
+    const nextRunAt = lastUpdateData().nextRunAt as Date;
+    expect(nextRunAt.getTime() - Date.now()).toBeGreaterThan(14 * 60_000);
+    expect(nextRunAt.getTime() - Date.now()).toBeLessThanOrEqual(15 * 60_000);
   });
 
   it("成功清零连续失败并清 last_error", async () => {
