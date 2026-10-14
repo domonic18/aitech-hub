@@ -82,7 +82,7 @@ export default async function AdminStatsPage({
     getHotClicks(hot),
     getClickDomains(hot),
     // 在线用户直读 Redis(5 分钟滑窗);Redis 故障不拖垮整页——降级空快照
-    getOnlinePresence().catch(() => ({ total: 0, pages: [] })),
+    getOnlinePresence().catch(() => ({ total: 0, visitors: [] })),
   ]);
 
   return (

@@ -45,6 +45,9 @@ export interface IngestInput {
   isAdmin: boolean;
   /** /search 页携带的查询词原文(可选;仅在 path 为 /search 且 counted 时记入排行) */
   q?: string;
+  /** 在线用户展示标识(可选):登录用户传用户名/邮箱,未登录不传——presence 心跳
+   * 落 IP(M28 批②增量,标识解析在路由侧) */
+  presenceLabel?: string;
 }
 
 export interface IngestResult {
@@ -119,10 +122,15 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
   const postCounted = await countPostView(path, vhash, day);
 
   // 在线用户 presence(M28 批②):5 分钟滑窗心跳(去 bot/管理员后的真实访客);
-  // fire-and-forget 失败仅告警(在线数少刷一次可接受)
-  touchPresence(vhash, path).catch((e: unknown) =>
-    logger.warn({ event: "stats.presence.failed", error: String(e) }),
-  );
+  // 标识=登录用户名/邮箱,未登录落明文 IP(仅 Redis 内存键不入表);fire-and-forget
+  // 失败仅告警(在线数少刷一次可接受)
+  touchPresence(
+    vhash,
+    path,
+    input.presenceLabel
+      ? { kind: "user", label: input.presenceLabel }
+      : { kind: "guest", label: input.ip },
+  ).catch((e: unknown) => logger.warn({ event: "stats.presence.failed", error: String(e) }));
 
   return { counted: true, reason: "ok", postCounted };
 }
