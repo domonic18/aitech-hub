@@ -4,10 +4,11 @@
  * Markdown 文章编辑器(M5-a 立骨,M5-d 换 Vditor 分屏编辑):左编辑/前台预览 + 右元信息栏。
  * 右栏可整体收起(M16,localStorage 持久化)便于沉浸编辑;左卡与右栏同网格行
  * stretch 对齐(SEO 选项展开时编辑器同步长高,不留空白)。
- * 保存走 POST /api/posts(新建,slug 缺省由标题派生,冲突自动 -2…-9 后缀)/
- * PUT /api/posts/[id](更新,slug 只读);发布 = 先保存再 POST publish(全页跳转刷新)。
- * 「前台预览」Tab 复用线上渲染链 ArticleBody(react-markdown + GFM + 高亮)——
- * Vditor 内置预览与其有细微差异,发布前以此做最终核对(单一渲染链不变式)。
+ * 保存链(保存通道/发布/下架/SEO 补全/乐观锁冲突)收口在 usePostEditorSave,
+ * 横幅组(EditorBanners)与正文双 Tab 卡(EditorBodyCard)已拆子件(技术债
+ * 批③),本件留表单态、影子副本与编排。保存走 POST /api/posts(新建,slug
+ * 缺省由标题派生,冲突自动 -2…-9 后缀)/ PUT /api/posts/[id](更新,slug
+ * 只读);发布 = 先保存再 POST publish(全页跳转刷新)。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,27 +19,19 @@ import PostMetaPanel, {
   type PostMetaValue,
   type SlugField,
 } from "@/components/admin/PostMetaPanel";
-import MdEditor from "@/components/admin/MdEditor";
-import ArticleBody from "@/components/article/ArticleBody";
+import EditorBanners from "@/components/admin/EditorBanners";
+import EditorBodyCard from "@/components/admin/EditorBodyCard";
 import EditorAssistant, { type AssistantLaunch } from "@/components/admin/EditorAssistant";
-import {
-  clearPostShadow,
-  readPostShadow,
-  type AutosaveResult,
-  type PostShadow,
-} from "@/components/admin/usePostAutosave";
+import { readPostShadow, type PostShadow } from "@/components/admin/usePostAutosave";
 import usePostAutosave from "@/components/admin/usePostAutosave";
-import EditorWechatSyncButton from "@/components/admin/distribute/EditorWechatSyncButton";
 import {
-  POST_LIMITS,
-  postCreateSchema,
-  postUpdateSchema,
-  type ContentOrigin,
-  type PostDisplayState,
-} from "@/lib/content/post-schema";
-import { type ApiEnvelope } from "@/lib/http/response";
+  autosaveStatusLine,
+  splitTags,
+  usePostEditorSave,
+} from "@/components/admin/usePostEditorSave";
+import EditorWechatSyncButton from "@/components/admin/distribute/EditorWechatSyncButton";
+import { POST_LIMITS, type ContentOrigin, type PostDisplayState } from "@/lib/content/post-schema";
 import { asciiSlugFromTitle } from "@/lib/content/post-path";
-import { formatCnTime } from "@/lib/datetime";
 
 import { INPUT } from "./editor-controls";
 
@@ -78,21 +71,6 @@ const BTN_SECONDARY =
 const BTN_PRIMARY =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60";
 
-/** 服务端包络(形态引用 ApiEnvelope,评审 W3:客户端不手写同形接口) */
-type SaveBody = ApiEnvelope<{ id?: string; updatedAt?: string; reason?: string } | null>;
-
-/** 标签输入按分隔符切分去重(与 service 的 slug 去重双保险) */
-function splitTags(text: string): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const t of text.split(/[,，、\s]+/).map((s) => s.trim())) {
-    if (!t || seen.has(t)) continue;
-    seen.add(t);
-    out.push(t);
-  }
-  return out;
-}
-
 export default function PostEditor({
   categories,
   post,
@@ -125,15 +103,6 @@ export default function PostEditor({
     isLoginRequired: post?.isLoginRequired ?? false,
   });
   const [status, setStatus] = useState(post?.status ?? "draft");
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
-  const [busy, setBusy] = useState(false);
-  const [seoBusy, setSeoBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
-  // 乐观锁基准(M27 批①):随每次成功保存以服务端 updatedAt 推进
-  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(post?.updatedAt ?? null);
-  // 乐观锁冲突:停自动存,人工刷新决策(人话横幅,不强覆盖)
-  const [conflict, setConflict] = useState(false);
   // 影子副本恢复提示(崩溃/断网后挂载时检测,方案 §5)
   const [shadowOffer, setShadowOffer] = useState<PostShadow | null>(null);
   // 右栏收起(沉浸编辑,M16):mount 后读 localStorage 防 hydration 分歧;收起=右栏不渲染
@@ -206,6 +175,33 @@ export default function PostEditor({
   // 字符串按值比较:hook effect 仅在快照真变时重排(debounce 重置),无需 useMemo
   const payloadJson = buildPayloadJson();
 
+  // 保存链(手动/发布/下架/SEO 补全/乐观锁冲突;技术债批③收口)
+  const {
+    busy,
+    seoBusy,
+    error,
+    savedAt,
+    conflict,
+    saveOnly,
+    saveDraft,
+    publish,
+    unpublish,
+    seoSuggest,
+  } = usePostEditorSave({
+    mode,
+    postId: post?.id,
+    title,
+    contentMd,
+    meta,
+    setMeta,
+    buildPayloadJson,
+    onCreateSaved: (id) => router.replace(`/admin/posts/${id}`),
+    onUnpublished: () => {
+      setStatus("draft");
+      router.refresh();
+    },
+  });
+
   // 自动保存(仅编辑态草稿;冲突后 enabled 翻 false 停调度,方案 §5)
   const autosavePhase = usePostAutosave({
     enabled: mode === "edit" && status === "draft" && !conflict,
@@ -224,167 +220,7 @@ export default function PostEditor({
     }
   }, [mode, post]);
 
-  /**
-   * 保存唯一通道(手动钮/发布/自动保存共用)。三态结果供自动保存调度;
-   * autosave=true 时失败不上全局横幅(状态行轻提示),冲突仍上横幅须人工介入。
-   */
-  async function saveOnly(autosave = false): Promise<AutosaveResult> {
-    if (!autosave) {
-      setBusy(true);
-      setError(null);
-    }
-    try {
-      // 边界校验与服务端同源(评审 W2:复用 Zod schema 单轨,不另抄规则)
-      const schema = mode === "create" ? postCreateSchema : postUpdateSchema;
-      const sentJson = buildPayloadJson();
-      const input = JSON.parse(sentJson) as Record<string, unknown>;
-      if (mode === "edit" && expectedUpdatedAt) input.expectedUpdatedAt = expectedUpdatedAt;
-      const parsed = schema.safeParse(input);
-      if (!parsed.success) {
-        const message = parsed.error.issues[0]?.message ?? "输入不合法";
-        if (!autosave) setError(message);
-        return { status: "failed" };
-      }
-      const res = await fetch(mode === "create" ? "/api/posts" : `/api/posts/${post!.id}`, {
-        method: mode === "create" ? "POST" : "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(parsed.data),
-      });
-      const json = (await res.json().catch(() => null)) as SaveBody | null;
-      if (!res.ok || json?.code !== 0) {
-        const stale = json?.data?.reason === "stale_update";
-        if (stale) {
-          setConflict(true); // 停自动存;横幅须人工刷新决策,不强覆盖
-          setError(`${json?.message ?? "文章已在其他端被修改"}(自动保存已暂停)`);
-          return { status: "conflict" };
-        }
-        if (!autosave) setError(json?.message ?? `保存失败(${res.status})`);
-        return { status: "failed" };
-      }
-      const id = json.data?.id ?? post!.id;
-      if (mode === "edit" && json.data?.updatedAt) {
-        setExpectedUpdatedAt(json.data.updatedAt); // 写读闭环:下一拍以此为乐观锁基准
-        setSavedAt(new Date());
-        clearPostShadow(post!.id);
-      }
-      return { status: "saved", id, payloadJson: sentJson, updatedAt: json.data?.updatedAt ?? "" };
-    } catch {
-      if (!autosave) setError("网络错误,请重试");
-      return { status: "failed" };
-    } finally {
-      if (!autosave) setBusy(false);
-    }
-  }
-
-  /** SEO 一键补全(2026-10-06 验收反馈问题7):同步轻调用,正文取样前 4000 字;
-   * 生成值直接覆盖两个 SEO 字段(重按即重新生成),不影响其他表单态。 */
-  async function seoSuggest(): Promise<void> {
-    if (title.trim() === "" && contentMd.trim() === "") {
-      setError("请先填写标题或正文,再点 AI 填充");
-      return;
-    }
-    setSeoBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/posts/seo-suggest", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          contentMd: contentMd.slice(0, 4000),
-          excerpt: meta.excerpt,
-          tags: splitTags(meta.tagsText),
-          categorySlug: meta.categorySlug,
-        }),
-      });
-      const json = (await res.json().catch(() => null)) as ApiEnvelope<{
-        seoTitle: string;
-        seoDescription: string;
-      }> | null;
-      if (!res.ok || json?.code !== 0 || !json.data) {
-        setError(json?.message ?? `生成失败(${res.status})`);
-        return;
-      }
-      setMeta((m) => ({
-        ...m,
-        seoTitle: json.data!.seoTitle,
-        seoDescription: json.data!.seoDescription,
-      }));
-    } catch {
-      setError("网络错误,请重试");
-    } finally {
-      setSeoBusy(false);
-    }
-  }
-
-  async function saveDraft(): Promise<void> {
-    const result = await saveOnly();
-    if (result.status !== "saved") return;
-    if (mode === "create") {
-      router.replace(`/admin/posts/${result.id}`); // 草稿落库后地址切为编辑态(后续保存走 PUT)
-    } else {
-      setSavedAt(new Date());
-    }
-  }
-
-  async function publish(): Promise<void> {
-    const result = await saveOnly();
-    if (result.status !== "saved") return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/posts/${result.id}/publish`, { method: "POST" });
-      if (res.ok) {
-        window.location.href = `/admin/posts/${result.id}`; // 全页跳转:编辑器头部状态整体刷新
-        return;
-      }
-      const json = (await res.json().catch(() => null)) as SaveBody | null;
-      setError(json?.message ?? `发布失败(${res.status})`);
-    } catch {
-      setError("网络错误,请重试");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unpublish(): Promise<void> {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/posts/${post!.id}/unpublish`, { method: "POST" });
-      if (res.ok) {
-        setStatus("draft");
-        router.refresh();
-        return;
-      }
-      const json = (await res.json().catch(() => null)) as SaveBody | null;
-      setError(json?.message ?? `下架失败(${res.status})`);
-    } catch {
-      setError("网络错误,请重试");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** 自动保存状态行(仅编辑态草稿启用自动存;其余形态保持手动「已保存」行) */
-  const autosaveLine = ((): string | null => {
-    if (mode !== "edit" || status !== "draft") {
-      return savedAt ? `已保存 ${formatCnTime(savedAt)}` : null;
-    }
-    switch (autosavePhase) {
-      case "saving":
-        return "自动保存中…";
-      case "saved":
-        return savedAt ? `已自动保存 ${formatCnTime(savedAt)}` : "已自动保存";
-      case "dirty":
-        return "有未保存修改(将自动保存)";
-      case "failed":
-        return "自动保存失败,已留本地底稿(继续编辑将重试)";
-      case "conflict":
-        return "自动保存已暂停";
-      default:
-        return savedAt ? `已保存 ${formatCnTime(savedAt)}` : null;
-    }
-  })();
+  const autosaveLine = autosaveStatusLine(mode, status, autosavePhase, savedAt);
 
   return (
     <div className="flex flex-col gap-4">
@@ -451,42 +287,18 @@ export default function PostEditor({
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-sm border border-red/40 bg-red/10 px-3 py-2 text-xs text-red">
-          {error}
-        </div>
-      )}
-      {autosaveLine && !error && <div className="text-xs text-text-3">{autosaveLine}</div>}
-      {/* 影子副本恢复提示(M27 批①方案 §5):崩溃/断网留底的本地修改 */}
-      {shadowOffer && (
-        <div className="flex flex-wrap items-center gap-2 rounded-sm border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-amber-hi">
-          <span>
-            检测到未保存的本地修改(留底于 {formatCnTime(new Date(shadowOffer.at))}
-            ),是否恢复正文与标题?
-          </span>
-          <button
-            type="button"
-            className="cursor-pointer font-semibold underline"
-            onClick={() => {
-              setTitle(shadowOffer.title);
-              setContentMd(shadowOffer.contentMd);
-              setShadowOffer(null); // 影子保留至保存成功,期间崩溃可再次恢复
-            }}
-          >
-            恢复
-          </button>
-          <button
-            type="button"
-            className="cursor-pointer underline"
-            onClick={() => {
-              if (post) clearPostShadow(post.id);
-              setShadowOffer(null);
-            }}
-          >
-            丢弃
-          </button>
-        </div>
-      )}
+      <EditorBanners
+        error={error}
+        autosaveLine={autosaveLine}
+        shadowOffer={shadowOffer}
+        postId={post?.id}
+        onShadowRecover={(s) => {
+          setTitle(s.title);
+          setContentMd(s.contentMd);
+          setShadowOffer(null); // 影子保留至保存成功,期间崩溃可再次恢复
+        }}
+        onShadowDismiss={() => setShadowOffer(null)}
+      />
 
       <input
         value={title}
@@ -500,32 +312,7 @@ export default function PostEditor({
       <div
         className={`grid grid-cols-1 gap-4 ${sidebarCollapsed ? "" : "lg:grid-cols-[1fr_300px]"}`}
       >
-        <div className="flex flex-col rounded-md border border-line bg-panel">
-          <div className="flex border-b border-line text-xs">
-            {(["edit", "preview"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`cursor-pointer border-r border-line px-4 py-2 ${
-                  tab === t
-                    ? "bg-accent-dim font-semibold text-accent"
-                    : "text-text-2 hover:bg-panel-2"
-                }`}
-              >
-                {t === "edit" ? "编辑(分屏)" : "前台预览"}
-              </button>
-            ))}
-          </div>
-
-          {tab === "edit" ? (
-            <MdEditor value={contentMd} onChange={setContentMd} imported={imported ?? false} />
-          ) : (
-            <div className="min-h-[520px] max-h-[720px] overflow-y-auto p-4">
-              <ArticleBody contentMd={contentMd} contentHtml={null} />
-            </div>
-          )}
-        </div>
+        <EditorBodyCard value={contentMd} onChange={setContentMd} imported={imported ?? false} />
 
         {!sidebarCollapsed && (
           <PostMetaPanel
