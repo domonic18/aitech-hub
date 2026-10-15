@@ -28,13 +28,20 @@ describe("parseFrontmatter", () => {
     expect(fm.seoTitle).toBe("单引号");
   });
 
-  it("tags 行内数组与多行列表两式等价;裸串按中英逗号切分", () => {
+  it("tags 行内数组与多行列表两式等价;裸串按中英逗号/顿号切分", () => {
     const inline = parseFrontmatter("---\ntags: [ai, tool, dev]\n---\nB");
     const block = parseFrontmatter("---\ntags:\n  - ai\n  - tool\n  - dev\n---\nB");
     const bare = parseFrontmatter("---\ntags: ai, tool, dev\n---\nB");
     expect(inline.fm.tags).toEqual(["ai", "tool", "dev"]);
     expect(block.fm.tags).toEqual(["ai", "tool", "dev"]);
     expect(fmStringArray(bare.fm, "tags")).toEqual(["ai", "tool", "dev"]);
+  });
+
+  it("裸串顿号分隔切分(LLM 生成 frontmatter 惯用形,防整串落成一个标签)", () => {
+    const dunhao = parseFrontmatter("---\ntags: AI、教程、实战\n---\nB");
+    const mixed = parseFrontmatter("---\ntags: AI、教程, 实战\n---\nB");
+    expect(fmStringArray(dunhao.fm, "tags")).toEqual(["AI", "教程", "实战"]);
+    expect(fmStringArray(mixed.fm, "tags")).toEqual(["AI", "教程", "实战"]);
   });
 
   it("畸形行忽略;CRLF 兼容;围栏后无换行(文件末尾直 ---)", () => {

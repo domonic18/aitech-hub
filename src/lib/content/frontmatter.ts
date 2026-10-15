@@ -68,7 +68,8 @@ export function fmString(fm: Record<string, FrontmatterValue>, key: string): str
   return typeof v === "string" && v.trim() !== "" ? v.trim() : undefined;
 }
 
-/** fm 取字符串数组字段:行内/多行列表原样;裸串按中英逗号切分 */
+/** fm 取字符串数组字段:行内/多行列表原样;裸串按中英逗号/顿号切分(LLM 生成
+ * frontmatter 惯用顿号,漏切会把整串落成一个超长标签) */
 export function fmStringArray(
   fm: Record<string, FrontmatterValue>,
   key: string,
@@ -77,7 +78,7 @@ export function fmStringArray(
   if (Array.isArray(v)) return v;
   if (typeof v === "string" && v.trim() !== "")
     return v
-      .split(/[,，]/)
+      .split(/[,，、]/)
       .map((s) => s.trim())
       .filter((s) => s !== "");
   return undefined;
