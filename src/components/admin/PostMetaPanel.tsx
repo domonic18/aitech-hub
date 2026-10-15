@@ -52,6 +52,7 @@ export default function PostMetaPanel({
   onSeoSuggest,
   seoSuggesting = false,
   coverContext,
+  onAgentCoverGen,
 }: {
   categories: EditorCategory[];
   value: PostMetaValue;
@@ -63,6 +64,8 @@ export default function PostMetaPanel({
   seoSuggesting?: boolean;
   /** AI 文生图上下文(标题/摘要/标签快照;缺省不出 AI 生图入口) */
   coverContext?: CoverGenContext;
+  /** M31:封面 agent 唤起(弹窗「生成候选」→ 侧边栏助手);随 coverContext 同发 */
+  onAgentCoverGen?: () => void;
 }): React.ReactElement {
   const set =
     (key: keyof PostMetaValue) =>
@@ -131,6 +134,7 @@ export default function PostMetaPanel({
           coverPath={value.coverPath}
           onChange={(p) => onChange({ coverPath: p })}
           coverContext={coverContext}
+          onAgentCoverGen={onAgentCoverGen}
         />
       </div>
 

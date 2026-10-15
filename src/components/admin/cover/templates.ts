@@ -53,6 +53,8 @@ export const OG_KEY = "og";
 
 /** AI 生图上下文(编辑器表单快照;PostEditor→PostMetaPanel→CoverUploader→CoverDialog 透传) */
 export interface CoverGenContext {
+  /** 编辑态文章 id(字符串化 BigInt;创建态缺省):生成时服务端直读库内上下文 */
+  postId?: string;
   title: string;
   excerpt: string;
   tags: string[];

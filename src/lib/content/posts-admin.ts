@@ -118,6 +118,8 @@ export async function getPostForAdmin(id: bigint) {
     include: {
       category: { select: { slug: true, name: true } },
       tags: { select: { tag: { select: { slug: true, name: true } } } },
+      // M31:编辑页顶栏公众号同步入口回显渠道行状态
+      channels: { select: { channel: true, status: true } },
     },
   });
   return post;

@@ -12,11 +12,13 @@ import { useLangGraphInterruptState } from "@assistant-ui/react-langgraph";
 import { useCallback, useEffect } from "react";
 
 import { parseProposeEditsInterrupt } from "@/lib/agent/edit-proposal";
+import { parseAgentCoverInterrupt } from "@/lib/agent/cover-tool";
 
 import AnswerMarkdown from "@/components/site/search/AnswerMarkdown";
 
 import AgentComposer, { GUEST_COMPOSER_HINT } from "./AgentComposer";
 import AgentInterruptCard from "./AgentInterruptCard";
+import CoverCandidatesCard from "./CoverCandidatesCard";
 import ProposeReviewCard from "./ProposeReviewCard";
 import ProposeUnavailableCard from "./ProposeUnavailableCard";
 import ToolCallBlock from "./ToolCallBlock";
@@ -191,6 +193,7 @@ export default function AgentThread({
   const interrupt = useLangGraphInterruptState();
   const interrupted = interrupt !== undefined;
   const proposeEdits = parseProposeEditsInterrupt(interrupt?.value);
+  const coverCandidates = parseAgentCoverInterrupt(interrupt?.value);
   const getContent = editContext?.getContent;
   const onApplyContent = editContext?.onApplyContent;
   // 计划条由 Drawer 承载(横贯侧栏+主区),此处仅消息流编排
@@ -222,6 +225,8 @@ export default function AgentThread({
           ) : (
             <ProposeUnavailableCard payload={proposeEdits} />
           )
+        ) : coverCandidates ? (
+          <CoverCandidatesCard />
         ) : (
           <AgentInterruptCard />
         )

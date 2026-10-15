@@ -27,7 +27,10 @@ export default function QueueLane({
   legend: React.ReactNode;
 }) {
   const waiting = counts.waiting + counts.delayed;
-  const busyTotal = Math.max(1, waiting + counts.active + counts.failed);
+  // 分母含 completed(M31 验收反馈「红色看不懂」):留存窗口内 1 条历史失败
+  // 曾把整条染红(failed/(active+waiting+failed) 在空队列时分母≈0)。四段全量
+  // 作分母后红段=留存失败占比,真实数量看标题行 failed N。
+  const busyTotal = Math.max(1, waiting + counts.active + counts.completed + counts.failed);
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-text-1">

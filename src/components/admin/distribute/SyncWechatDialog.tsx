@@ -13,6 +13,7 @@ import { useCallback, useState } from "react";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 import MediaPicker from "@/components/admin/cover/MediaPicker";
+import CopyWechatButton from "@/components/admin/distribute/CopyWechatButton";
 import { field } from "@/components/admin/form-fields";
 import {
   WECHAT_CONTENT_MAX_CHARS,
@@ -257,6 +258,7 @@ export default function SyncWechatDialog({
       {msg && <p className="mt-2 text-xs text-accent">{msg}</p>}
       {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
       <DialogActions>
+        <CopyWechatButton postId={post.id} coverPath={coverPath} theme={theme} />
         <button
           type="button"
           disabled={busy}

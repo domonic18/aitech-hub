@@ -1,10 +1,12 @@
 /**
  * 电报流治理筛选栏(批C 从 page 抽出):分段胶囊(带计数)+ 博主活动 chip +
- * 媒体/解读态/来源下拉 + 搜索框(GET form 整页刷新,无客户端 JS)。
+ * 媒体/解读态/来源下拉 + 搜索框。下拉即选即查(M31 验收反馈,交互收口
+ * TelegramFilterForm 客户端组件);分段/博主 chip 为 Link 即时导航。
  * 链接由调用方 hrefFor 生成;标签表是本页 UI 词汇,不进 domain constants。
  */
 import Link from "next/link";
 
+import TelegramFilterForm from "@/components/admin/TelegramFilterForm";
 import {
   TELEGRAM_AI_FILTERS,
   TELEGRAM_LIST_SEGMENTS,
@@ -57,8 +59,19 @@ export default function TelegramFilterBar({
   /** 分段/页码 → 链接(保持既有筛选;omit 指定要去掉的键) */
   hrefFor: (seg: TelegramListSegment, p: number, omit?: "blogger") => string;
 }) {
-  const selectCls =
-    "rounded-sm border border-line bg-panel px-2 py-1.5 text-xs text-text-2 outline-none focus:border-accent";
+  const mediaOptions = [
+    { value: "", label: MEDIA_LABELS.all },
+    { value: "text", label: MEDIA_LABELS.text },
+    { value: "video", label: MEDIA_LABELS.video },
+  ];
+  const aiOptions = [
+    { value: "", label: "全部解读态" },
+    ...TELEGRAM_AI_FILTERS.map((f) => ({ value: f, label: AI_FILTER_LABELS[f] })),
+  ];
+  const sourceOptions = [
+    { value: "", label: "全部来源" },
+    ...sources.map((s) => ({ value: String(s.id), label: s.name })),
+  ];
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="flex overflow-hidden rounded-sm border border-line">
@@ -85,61 +98,17 @@ export default function TelegramFilterBar({
           博主:{blogger} ✕
         </Link>
       )}
-      <form
-        method="GET"
-        action="/admin/telegram/"
-        className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto"
-      >
-        {segment !== "all" && <input type="hidden" name="status" value={segment} />}
-        {blogger && <input type="hidden" name="blogger" value={blogger} />}
-        <select
-          name="media"
-          defaultValue={media === "all" ? "" : media}
-          aria-label="媒体类型筛选"
-          className={selectCls}
-        >
-          <option value="">{MEDIA_LABELS.all}</option>
-          <option value="text">{MEDIA_LABELS.text}</option>
-          <option value="video">{MEDIA_LABELS.video}</option>
-        </select>
-        <select
-          name="ai"
-          defaultValue={aiFilter ?? ""}
-          aria-label="解读态筛选"
-          className={selectCls}
-        >
-          <option value="">全部解读态</option>
-          {TELEGRAM_AI_FILTERS.map((f) => (
-            <option key={f} value={f}>
-              {AI_FILTER_LABELS[f]}
-            </option>
-          ))}
-        </select>
-        <select
-          name="source"
-          defaultValue={sourceRaw ?? ""}
-          aria-label="来源渠道筛选"
-          className={selectCls}
-        >
-          <option value="">全部来源</option>
-          {sources.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent">
-          <svg className="ic ic-sm text-text-3" aria-hidden="true">
-            <use href="#i-search" />
-          </svg>
-          <input
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="搜索标题 / 摘要…"
-            className="w-full bg-transparent text-[13px] outline-none placeholder:text-text-3 sm:w-52"
-          />
-        </div>
-      </form>
+      <TelegramFilterForm
+        segment={segment}
+        blogger={blogger}
+        mediaValue={media === "all" ? "" : media}
+        aiValue={aiFilter ?? ""}
+        sourceValue={sourceRaw ?? ""}
+        q={q}
+        mediaOptions={mediaOptions}
+        aiOptions={aiOptions}
+        sourceOptions={sourceOptions}
+      />
     </div>
   );
 }

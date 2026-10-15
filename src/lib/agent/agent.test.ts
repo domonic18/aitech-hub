@@ -55,7 +55,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
     }
   });
 
-  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件、技能两件与预算工具", () => {
+  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件、封面 HITL、技能两件与预算工具", () => {
     expect(agentToolsFor("admin").map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
@@ -69,6 +69,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "transfer_video_cover",
       "generate_cover_candidates",
       "save_topic_draft",
+      "generate_post_cover",
       "list_skills",
       "get_skill",
       "measure_wechat_budget",

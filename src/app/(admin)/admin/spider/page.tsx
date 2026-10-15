@@ -137,7 +137,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
                   </span>
                   <span>
                     <i className="mr-1.5 inline-block h-2 w-2 rounded-sm bg-red" />
-                    failed
+                    failed(留存累计,非当前失败)
                   </span>
                   <span className="text-text-3/80">视频博主 crawl-video 与文字渠道同队列调度</span>
                 </>

@@ -89,9 +89,11 @@ export const COVER_JOB_GEN = "generate";
 export const SEO_JOB_BATCH = "batch";
 
 /** distribute 队列 job name 契约(M17;wechat-sync 单篇为缺省路径——手动一键/发布
- * 自动共用;wechat-batch 批量单 job 顺序逐篇)。改名需与 worker 同批。 */
+ * 自动共用;wechat-batch 批量单 job 顺序逐篇)。改名需与 worker 同批。
+ * wechat-copy = 复制公众号格式(M31 批④备用通道,无码点门)。 */
 export const DISTRIBUTE_JOB_WECHAT = "wechat-sync";
 export const DISTRIBUTE_JOB_WECHAT_BATCH = "wechat-batch";
+export const DISTRIBUTE_JOB_WECHAT_COPY = "wechat-copy";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细;
  * purge-usage-log 清理 AI 用量台账,M14 批⑦;purge-agent-session 清退

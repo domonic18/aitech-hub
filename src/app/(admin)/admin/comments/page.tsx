@@ -1,24 +1,21 @@
 /**
  * 评论管理页(M23 批③,照 /admin/feedback 模板):三分段 tab(all/visible/
- * hidden,先发后审无 pending 段)+ 关键词搜索(内容/作者)+ 分页。列:作者
- * (WP 迁移徽标)、内容、所属文章、楼层(根/回复)、状态、时间、操作
- * (隐藏/恢复/删根连带)。RSC 直调 listCommentsAdmin,不开列表 API。
+ * hidden,先发后审无 pending 段)+ 关键词搜索(内容/作者)+ 分页。表体客户端
+ * 化(M31 验收反馈:多选批量删除,CommentsTable),本页留 tab/搜索/分页编排。
+ * RSC 直调 listCommentsAdmin,不开列表 API。
  */
 import Link from "next/link";
 
 import { requireAdminPage } from "@/lib/auth/guard";
-import { formatCnDateTime } from "@/lib/datetime";
-import { postPath } from "@/lib/content/post-path";
 import {
   COMMENT_ADMIN_PAGE_SIZE,
   COMMENT_LIST_SEGMENTS,
   listCommentsAdmin,
   type CommentListSegment,
 } from "@/lib/comment/comment-admin";
-import { COMMENT_STATUS_LABELS, type CommentStatus } from "@/lib/comment/comment-schema";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
-import CommentStatusControl from "@/components/admin/CommentStatusControl";
+import CommentsTable from "@/components/admin/CommentsTable";
 import AdminPagination from "@/components/admin/AdminPagination";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +24,6 @@ const SEG_LABELS: Record<CommentListSegment, string> = {
   all: "全部",
   visible: "显示",
   hidden: "隐藏",
-};
-
-const STATUS_TONES: Record<CommentStatus, string> = {
-  visible: "bg-green/12 text-green",
-  hidden: "bg-amber/12 text-amber-hi",
 };
 
 interface PageProps {
@@ -102,87 +94,7 @@ export default async function AdminCommentsPage({
       </div>
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
-              <th className="px-4 py-2.5 font-medium">作者</th>
-              <th className="px-3 py-2.5 font-medium">内容</th>
-              <th className="px-3 py-2.5 font-medium">所属文章</th>
-              <th className="px-3 py-2.5 font-medium">楼层</th>
-              <th className="px-3 py-2.5 font-medium">状态</th>
-              <th className="px-3 py-2.5 font-medium">时间</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((c) => (
-              <tr key={c.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-1.5 text-text-1">
-                    <span className="max-w-[120px] truncate" title={c.authorName}>
-                      {c.authorName}
-                    </span>
-                    {c.migrated ? (
-                      <span className="rounded-sm border border-line px-1 py-px font-mono text-[10px] text-text-3">
-                        WP
-                      </span>
-                    ) : null}
-                  </div>
-                  {c.userId ? (
-                    <div className="mt-0.5 font-mono text-[11px] text-text-3">uid {c.userId}</div>
-                  ) : null}
-                </td>
-                <td className="max-w-[300px] px-3 py-2.5">
-                  <div className="truncate text-text-1" title={c.content}>
-                    {c.content}
-                  </div>
-                </td>
-                <td className="max-w-[200px] truncate px-3 py-2.5">
-                  <Link
-                    href={postPath(BigInt(c.postId), c.postSlug)}
-                    className="text-text-2 hover:text-accent"
-                    title={c.postTitle}
-                  >
-                    {c.postTitle}
-                  </Link>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-text-2">
-                  {c.parentId === null ? (
-                    <span>
-                      根
-                      {c.replyCount > 0 ? (
-                        <span className="ml-1 font-mono text-text-3">+{c.replyCount}</span>
-                      ) : null}
-                    </span>
-                  ) : (
-                    <span className="text-text-3">回复</span>
-                  )}
-                </td>
-                <td className="px-3 py-2.5">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-xs font-medium ${STATUS_TONES[c.status] ?? ""}`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-                    {COMMENT_STATUS_LABELS[c.status] ?? c.status}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 font-mono text-xs text-text-2">
-                  {formatCnDateTime(c.createdAt)}
-                </td>
-                <td className="px-4 py-2.5">
-                  <CommentStatusControl id={c.id} status={c.status} replyCount={c.replyCount} />
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
-                  没有符合条件的评论
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <CommentsTable items={items} />
 
         <AdminPagination
           page={page}
@@ -195,7 +107,8 @@ export default async function AdminCommentsPage({
 
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:「WP」徽标 = 旧站迁移评论(作者名取 WP 原名留档);隐藏即时收敛(前台 client fetch 不经
-        ISR);删除连带直接回复与两点赞表行。API:PUT/DELETE /api/post-comments/[id]。
+        ISR);删除连带直接回复与两点赞表行。API:PUT/DELETE /api/post-comments/[id];批量删除 POST
+        /api/post-comments/batch-delete。
       </p>
     </div>
   );

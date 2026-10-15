@@ -43,7 +43,12 @@ vi.mock("../topics/compose", () => ({
 
 const enqueueCoverGen = vi.hoisted(() => vi.fn());
 const listCoverCandidates = vi.hoisted(() => vi.fn());
-vi.mock("../ai/cover-generate", () => ({ enqueueCoverGen, listCoverCandidates }));
+vi.mock("../ai/cover-generate", () => ({
+  enqueueCoverGen,
+  listCoverCandidates,
+  // M31:工具侧取关联稿正文供 agent 提示词步骤;测试场景无关联稿,返回 null
+  loadCoverPostContext: vi.fn().mockResolvedValue(null),
+}));
 
 import { TopicError } from "../topics/repo";
 import {

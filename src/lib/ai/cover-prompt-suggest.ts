@@ -48,12 +48,18 @@ export function parseCoverPrompt(raw: string): ParsedTask<CoverPromptResult> {
   return { ok: true, data: { prompt: parsed.data.prompt.slice(0, COVER_PROMPT_MAX) } };
 }
 
-/** 路由入参边界校验(编辑器字段快照;正文超长在 prompt 侧取样,不整拒) */
+/** 路由入参边界校验(编辑器字段快照;正文超长在 prompt 侧取样,不整拒)。
+ * tags 不限个数:主题稿(agent 撰写)可超编辑器 5 枚上限,数量级 50 兜底;
+ * postId 命中时路由层改以库内文章为上下文真相源,以下字段仅创建态兜底 */
 export const coverPromptInputSchema = z.object({
+  postId: z
+    .string()
+    .regex(/^\d{1,19}$/)
+    .optional(),
   title: z.string().trim().max(POST_LIMITS.title).default(""),
   contentMd: z.string().max(POST_LIMITS.contentMd).default(""),
   excerpt: z.string().trim().max(POST_LIMITS.excerpt).default(""),
-  tags: z.array(z.string().trim().max(POST_LIMITS.tag)).max(POST_LIMITS.tagsMax).default([]),
+  tags: z.array(z.string().trim().max(POST_LIMITS.tag)).max(50).default([]),
 });
 
 export type CoverPromptInput = z.infer<typeof coverPromptInputSchema>;

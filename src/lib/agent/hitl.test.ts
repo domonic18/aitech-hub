@@ -4,7 +4,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { AGENT_ASK_USER_TOOL, buildAskUserResumeCommand, parseAgentAskUserInterrupt } from "./hitl";
+import {
+  AGENT_ASK_USER_TOOL,
+  buildAskUserResumeCommand,
+  normalizeAskUserOptions,
+  parseAgentAskUserInterrupt,
+} from "./hitl";
 
 describe("parseAgentAskUserInterrupt", () => {
   it("合法载荷(kind=ask_user)解析出问题与选项", () => {
@@ -58,5 +63,39 @@ describe("buildAskUserResumeCommand", () => {
 
   it("工具名常量与 kind 同源(防两处字面量漂移)", () => {
     expect(AGENT_ASK_USER_TOOL).toBe("ask_user");
+  });
+});
+
+describe("normalizeAskUserOptions(M31 弱模型漂移归一)", () => {
+  it("checkpoint 实证形态:对象数组 [{content}] 抽字段成 string[]", () => {
+    expect(normalizeAskUserOptions([{ content: "极简科技风" }, { content: "对比叙事风" }])).toEqual(
+      ["极简科技风", "对比叙事风"],
+    );
+  });
+
+  it("对象数组别名字段(label/text/value/title/name/option)同样命中", () => {
+    expect(normalizeAskUserOptions([{ label: "A" }, { text: "B" }])).toEqual(["A", "B"]);
+    expect(normalizeAskUserOptions([{ value: "C" }, { title: "D" }])).toEqual(["C", "D"]);
+    expect(normalizeAskUserOptions([{ name: "E" }, { option: "F" }])).toEqual(["E", "F"]);
+  });
+
+  it("JSON 串整体解析后递归;分隔符串按分号/换行切", () => {
+    expect(normalizeAskUserOptions('[{"content":"甲"},{"content":"乙"}]')).toEqual(["甲", "乙"]);
+    expect(normalizeAskUserOptions('["甲","乙"]')).toEqual(["甲", "乙"]);
+    expect(normalizeAskUserOptions("甲;乙\n丙")).toEqual(["甲", "乙", "丙"]);
+  });
+
+  it("有效项不足 2 → undefined(降级无选项提问);空串/非数组原样交 zod", () => {
+    expect(normalizeAskUserOptions([{ content: "只有一条" }])).toBeUndefined();
+    expect(normalizeAskUserOptions("仅一句无分隔")).toBeUndefined();
+    expect(normalizeAskUserOptions("")).toBeUndefined();
+    expect(normalizeAskUserOptions([{ nope: 1 }, { content: "" }])).toBeUndefined();
+    expect(normalizeAskUserOptions(42)).toBe(42);
+  });
+
+  it("合法 string[] 照常通过:trim、截 100、超 4 取前 4", () => {
+    const long = "字".repeat(120);
+    const out = normalizeAskUserOptions([` ${long} `, "乙", "丙", "丁", "戊"]);
+    expect(out).toEqual(["字".repeat(100), "乙", "丙", "丁"]);
   });
 });
