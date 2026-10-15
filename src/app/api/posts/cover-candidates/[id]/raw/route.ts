@@ -1,8 +1,9 @@
 /**
- * GET /api/posts/cover-candidates/[id]/raw?token=<uuid>(M31 验收反馈):agent
- * 封面候选预览——hold 临时件按字节回图(<img> 同源带会话 cookie);已入库行
- * 302 到正式媒体路径(卡片在 adopt 后仍可显示)。token 须与候选行匹配;
- * 会话鉴权(编辑器交互面)。
+ * GET /api/posts/cover-candidates/[id]/raw(M31 验收反馈;批④ token 挪
+ * x-cover-token 头——query 会落访问/代理日志):agent 封面候选预览——hold
+ * 临时件按字节回图(卡片 fetch→blob 再进 <img>);已入库行 302 到正式媒体
+ * 路径(同源跟随,取图不受影响)。token 须与候选行匹配;会话鉴权(编辑器
+ * 交互面)。
  */
 import { type NextRequest } from "next/server";
 
@@ -28,7 +29,7 @@ export async function GET(
 
   const { id } = await params;
   if (!/^\d{1,19}$/.test(id)) return apiEnvelope(400, "候选 id 不合法");
-  const token = req.nextUrl.searchParams.get("token") ?? "";
+  const token = req.headers.get("x-cover-token") ?? "";
   if (!/^[0-9a-f-]{8,64}$/.test(token)) return apiEnvelope(400, "token 缺失或不合法");
 
   const row = await prisma.coverCandidate.findUnique({
