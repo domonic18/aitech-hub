@@ -1,16 +1,25 @@
 /**
- * 公众号 HTML 管线单测(纯函数):内联样式元素覆盖、代码转义、
- * 外链编号与 References(去重/上限/内链不编号)、h5+ 降级加粗段。
+ * 公众号 HTML 管线单测(纯函数):全局继承节+差异声明(体积纪律)、元素内联
+ * 样式覆盖、代码转义、外链编号与 References(去重/上限/内链不编号)、h5+
+ * 降级加粗段、嵌套列表展平(微信兼容)。
  */
 import { describe, expect, it } from "vitest";
 
 import { WECHAT_REFERENCE_MAX } from "./channels";
 import { renderWechatHtml } from "./wechat-html";
 
-describe("renderWechatHtml 元素内联样式", () => {
+describe("renderWechatHtml 全局节与差异声明", () => {
+  it("全局节一次性声明可继承属性;段落只写 margin 差异", () => {
+    const { html } = renderWechatHtml("正文一段");
+    expect(html).toMatch(
+      /^<section style="font-size:15px;color:#3f3f46;line-height:1\.75;"><p style="margin:12px 0;">正文一段<\/p><\/section>$/,
+    );
+    // 可继承声明不得在元素级重复(体积纪律)
+    expect(html).not.toContain('style="margin:12px 0;font-size:15px');
+  });
+
   it("段落/加粗/行内码/引用", () => {
     const { html } = renderWechatHtml("正文**加粗**与`code`。\n\n> 引用一句");
-    expect(html).toContain('<p style="margin:12px 0;font-size:15px');
     expect(html).toContain('<strong style="font-weight:600;color:#1f2328;">加粗</strong>');
     expect(html).toContain("<code style=");
     expect(html).toContain(">code</code>");
@@ -18,12 +27,14 @@ describe("renderWechatHtml 元素内联样式", () => {
     expect(html).toContain("引用一句");
   });
 
-  it("标题阶梯:h2 有样式;h5 降级为加粗段 <p>", () => {
+  it("标题阶梯:h2 带主题色左竖条;h5 降级为加粗段 <p>(字号继承)", () => {
     const { html } = renderWechatHtml("## 二级\n\n##### 五级");
-    expect(html).toContain('<h2 style="margin:22px 0 10px;font-size:16px');
+    expect(html).toContain(
+      '<h2 style="margin:24px 0 12px;font-size:17px;font-weight:600;color:#1f2328;line-height:1.4;border-left:3px solid #1f2328;padding-left:10px;">',
+    );
     expect(html).toContain("</h2>");
     expect(html).not.toContain("<h5");
-    expect(html).toContain('<p style="margin:16px 0 8px;font-size:14px;font-weight:600;');
+    expect(html).toContain('<p style="margin:16px 0 8px;font-weight:600;color:#1f2328;">');
     expect(html).toContain("五级</p>");
   });
 
@@ -34,11 +45,13 @@ describe("renderWechatHtml 元素内联样式", () => {
     expect(html).not.toContain("<script>");
   });
 
-  it("表格全内联(th 底色/td 边框);hr 转边框 section", () => {
+  it("表格全内联(th 底色+td 边框);hr 转边框 section", () => {
     const { html } = renderWechatHtml("| a | b |\n| - | - |\n| 1 | 2 |\n\n---");
     expect(html).toContain("<table");
-    expect(html).toContain('<th style="border:1px solid #d0d7de;background-color:#f6f8fa');
-    expect(html).toContain('<td style="border:1px solid #d0d7de');
+    expect(html).toContain(
+      '<th style="padding:6px 10px;text-align:left;border:1px solid #ddd;background-color:#f6f8fa;">',
+    );
+    expect(html).toContain('<td style="padding:6px 10px;border:1px solid #ddd;">');
     expect(html).toContain('<section style="border:none;border-top:1px solid #d0d7de');
   });
 
@@ -49,11 +62,42 @@ describe("renderWechatHtml 元素内联样式", () => {
     expect(html).toContain('src="https://mmbiz.qpic.cn/x.png"');
   });
 
-  it("列表 ul/ol/li 内联样式", () => {
+  it("列表 ul/ol/li 内联样式(li 不再重复可继承声明)", () => {
     const { html } = renderWechatHtml("- 甲\n- 乙\n\n1. 丙");
     expect(html).toContain('<ul style="margin:12px 0;padding-left:24px;">');
-    expect(html).toContain('<li style="margin:4px 0');
+    expect(html).toContain('<li style="margin:4px 0;">');
     expect(html).toContain('<ol style="margin:12px 0;padding-left:24px;">');
+  });
+});
+
+describe("嵌套列表展平(微信兼容)", () => {
+  it("ul 嵌 ul:内层转 section+• 标记,仅剩外层一个 <ul>", () => {
+    const { html } = renderWechatHtml("- 甲\n  - 甲一\n  - 甲二\n- 乙");
+    expect(html.match(/<ul\b/g)).toHaveLength(1);
+    expect(html).toContain('<section style="margin-left:1em;">• 甲一</section>');
+    expect(html).toContain('<section style="margin-left:1em;">• 甲二</section>');
+    expect(html).toContain("乙");
+  });
+
+  it("ol 嵌 ul:内层 • 标记;ol 嵌 ol:内层数字标记按 start 接续", () => {
+    const { html } = renderWechatHtml("1. 一\n   - 子一\n   - 子二\n2. 二");
+    expect(html).toContain('<section style="margin-left:1em;">• 子一</section>');
+    expect(html).toContain('<section style="margin-left:1em;">• 子二</section>');
+    const { html: html2 } = renderWechatHtml("1. 一\n\n   3. 子甲\n   4. 子乙\n\n2. 二");
+    expect(html2).toContain('<section style="margin-left:1em;">3. 子甲</section>');
+    expect(html2).toContain('<section style="margin-left:1em;">4. 子乙</section>');
+  });
+
+  it("顶层列表不展平(微信对顶层 ul/ol 渲染正常)", () => {
+    const { html } = renderWechatHtml("- 甲\n- 乙");
+    expect(html).toContain('<li style="margin:4px 0;">甲</li>');
+    expect(html).not.toContain('style="margin-left:1em;"');
+  });
+
+  it("引用块内嵌套列表同样展平", () => {
+    const { html } = renderWechatHtml("> 引述\n> - 甲\n>   - 子");
+    expect(html).toContain("<blockquote");
+    expect(html).toContain('<section style="margin-left:1em;">• 子</section>');
   });
 });
 
@@ -65,7 +109,6 @@ describe("外链编号与 References", () => {
     expect(html).toContain("[1] Google(https://google.com)</p>");
     expect(refs).toEqual(["https://google.com"]);
     expect(html).toContain('<span style="color:#576b95;">站内</span>');
-    expect(html).not.toContain("References 节内链"); // sanity
   });
 
   it("同 href 去重同号", () => {
@@ -102,13 +145,13 @@ describe("renderWechatHtml 主题(wechat-themes)", () => {
 
   it("green 主题:标题/加粗/引用/行内码/链接角标随主题变色,正文段落保持深灰", () => {
     const { html } = renderWechatHtml(MD, "green");
-    expect(html).toContain("font-size:16px;font-weight:600;color:#2b9939;"); // h2
+    expect(html).toContain("font-size:17px;font-weight:600;color:#2b9939;"); // h2
     expect(html).toContain('<strong style="font-weight:600;color:#2b9939;">重点</strong>');
     expect(html).toContain("border-left:3px solid #2b9939;background-color:#f0f9f1");
     expect(html).toContain("color:#1e7e34;"); // 行内码
     expect(html).toContain('<span style="color:#2b9939;">'); // 链接
     expect(html).toContain('<sup style="color:#2b9939;font-size:11px;">[1]</sup>');
-    expect(html).toContain("color:#3f3f46;line-height:1.75;"); // 正文深灰不变
+    expect(html).toContain('style="font-size:15px;color:#3f3f46;line-height:1.75;"'); // 全局深灰不变
     expect(html).not.toContain("#1f2328"); // 默认标题色不出现
   });
 
