@@ -20,13 +20,11 @@ import SourcePanel from "@/components/admin/stats/SourcePanel";
 import TrendChart from "@/components/admin/stats/TrendChart";
 import { getClickDomains, getHotClicks } from "@/lib/stats/clicks";
 import { getOnlinePresence } from "@/lib/stats/online";
+import { getHotSearchTerms, getRecentVisits } from "@/lib/stats/queries-log";
+import { getBotPanel, getGeoPanel } from "@/lib/stats/queries-machine";
 import {
-  getBotPanel,
   getClientPanel,
-  getGeoPanel,
   getHotPages,
-  getHotSearchTerms,
-  getRecentVisits,
   getReferrerPanel,
   getVisitOverview,
   getVisitSeries,

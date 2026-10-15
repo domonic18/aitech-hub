@@ -5,7 +5,7 @@
  * (未识别记 unknown-agent);.md 抓取不计入真人阅读数。纯 RSC。
  */
 import { GEO_SURFACE_LABELS } from "@/lib/stats/geo";
-import type { GeoPanel as GeoPanelData } from "@/lib/stats/queries";
+import type { GeoPanel as GeoPanelData } from "@/lib/stats/queries-machine";
 
 const KIND_META: Record<"ai" | "search" | "other", { label: string; color: string; chip: string }> =
   {
