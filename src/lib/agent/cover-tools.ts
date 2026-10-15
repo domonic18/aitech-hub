@@ -17,11 +17,13 @@ import {
   adoptCoverCandidate,
   deleteCoverTemp,
   enqueueCoverGen,
-  listCoverCandidates,
   loadCoverPostContext,
+  probeCoverGen,
+  type CoverGenProbeHit,
 } from "../ai/cover-generate";
 import { AiAdminError } from "../ai/errors";
 import { logger } from "../logger";
+import { updatePostCover } from "../content/posts-admin";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
 import {
@@ -40,8 +42,9 @@ export const generatePostCoverTool = tool(
     if (!ctx) return JSON.stringify({ ok: false, error: "文章不存在或已删除" });
 
     const token = randomUUID();
+    let jobId: string;
     try {
-      await enqueueCoverGen({
+      ({ jobId } = await enqueueCoverGen({
         token,
         postId: id,
         title: ctx.title,
@@ -50,24 +53,30 @@ export const generatePostCoverTool = tool(
         contentMd: ctx.contentMd,
         prompt: prompt ?? "",
         hold: true, // 不进媒体库;adopt 确认后才 uploadMedia
-      });
+      }));
     } catch (e) {
       if (e instanceof AiAdminError) return JSON.stringify({ ok: false, error: e.message });
       throw e;
     }
     logger.info({ event: "agent.post_cover_started", token, postId: id });
 
-    const rows = await pollUntil(async () => {
-      const hit = await listCoverCandidates(token);
-      return hit.length > 0 ? hit : null;
-    });
-    if (rows === null) {
+    // 单拍探测:候选出图即收工;job 失败立刻断路(不傻等满预算,问题二)
+    const outcome = await pollUntil<CoverGenProbeHit>(() => probeCoverGen(token, jobId));
+    if (outcome === null) {
       return JSON.stringify({
         ok: false,
         timeout: true,
         error: "封面生成超时(云厂商生图通常 10-30 秒),可重试",
       });
     }
+    if ("failure" in outcome) {
+      await deleteCoverTemp(token); // 清可能的半成品临时件
+      return JSON.stringify({
+        ok: false,
+        error: `生图失败:${outcome.failure}(可重试,或在 AI 配置调大生图模型超时)`,
+      });
+    }
+    const rows = outcome.rows;
 
     // token 不进 URL(会落访问/代理日志,批④加固):载荷单独携带,卡片经
     // x-cover-token 头取图;url 只留候选 id。
@@ -87,12 +96,26 @@ export const generatePostCoverTool = tool(
     if (resume?.decision === "adopt") {
       try {
         const path = await adoptCoverCandidate(resume.candidateId);
-        return JSON.stringify({
-          ok: true,
-          decision: "adopt",
-          path,
-          summary: `已入媒体库:${path}(可在封面设置处从媒体库选用为文章封面)`,
-        });
+        // 入库即设为文章封面(2026-10-15 验收反馈问题二:两步操作并一步);
+        // 设封面失败不回滚入库,降级汇报由管理员在封面设置处手动选用
+        try {
+          await updatePostCover(BigInt(id), path);
+          return JSON.stringify({
+            ok: true,
+            decision: "adopt",
+            path,
+            summary: `已入媒体库并设为文章封面:${path}`,
+          });
+        } catch (e) {
+          return JSON.stringify({
+            ok: true,
+            decision: "adopt",
+            path,
+            summary: `已入媒体库:${path};设为文章封面失败(${
+              e instanceof Error ? e.message : "未知错误"
+            }),可在封面设置处从媒体库手动选用`,
+          });
+        }
       } catch (e) {
         return JSON.stringify({
           ok: false,
@@ -109,11 +132,10 @@ export const generatePostCoverTool = tool(
     name: "generate_post_cover",
     description:
       "为当前编辑的文章生成封面候选(2 张,约 10-30 秒,本工具会等待到出图),随后挂起" +
-      "等待管理员在预览卡上确认:点「入库」的候选才存入媒体库,「全部放弃」则不落库。" +
-      "调用前必须先用 ask_user 与管理员对齐提示词方向(风格/主体/配色,给出 2-4 个" +
-      "方向选项);对齐后把方向写成生图 prompt 传入(prompt 可空,空则按文章内容" +
-      "自动撰写)。管理员确认入库后,工具结果含站内路径,提示其到封面设置处从" +
-      "媒体库选用。id 取页面上下文 edit.postId。",
+      "等待管理员在预览卡上确认:点「入库」的候选存入媒体库并直接设为该文章封面," +
+      "「全部放弃」则不落库。调用前必须先用 ask_user 与管理员对齐提示词方向(风格/" +
+      "主体/配色,给出 2-4 个方向选项);对齐后把方向写成生图 prompt 传入(prompt 可空," +
+      "空则按文章内容自动撰写)。id 取页面上下文 edit.postId。",
     schema: z.object({
       id: z.string().regex(/^\d+$/).describe("文章 id(纯数字,即页面上下文的 edit.postId)"),
       prompt: z
