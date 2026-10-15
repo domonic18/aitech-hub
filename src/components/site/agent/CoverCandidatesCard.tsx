@@ -2,23 +2,52 @@
 
 /**
  * 封面候选 HITL 卡(M31 验收反馈):agent generate_post_cover 中断的确认面——
- * 候选图预览(<img> 走预览接口,同源会话 cookie)+ 每张「入库」钮 + 整批
- * 「全部放弃」。点选经 useLangGraphSendCommand 回灌 Command({resume});adopt
- * 才真正入媒体库(工具体内执行)。中断清位同 ask_user:resume run 首个
- * updates 帧自动消卡。
+ * 候选图预览 + 每张「入库」钮 + 整批「全部放弃」。取图经 fetch 带
+ * x-cover-token 头再转 blob(批④:token 不进 URL,不落访问/代理日志),点选
+ * 经 useLangGraphSendCommand 回灌 Command({resume});adopt 才真正入媒体库
+ * (工具体内执行)。中断清位同 ask_user:resume run 首个 updates 帧自动消卡。
  */
 import {
   useLangGraphInterruptState,
   useLangGraphSendCommand,
   type LangGraphCommand,
 } from "@assistant-ui/react-langgraph";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   buildCoverResumeCommand,
   parseAgentCoverInterrupt,
   type AgentCoverResume,
 } from "@/lib/agent/cover-tool";
+
+/** 单张候选取图(blob 进 objectURL;失败留占位,决策面兜底) */
+function CandidateImage({ url, token }: { url: string; token: string }): React.ReactElement {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let alive = true;
+    fetch(url, { headers: { "x-cover-token": token } })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`取图失败(${r.status})`))))
+      .then((b) => {
+        if (!alive) return;
+        objectUrl = URL.createObjectURL(b);
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        // 取图失败:占位块示意,不影响「放弃」决策;入库须图在,失败态可重开线程重生成
+      });
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url, token]);
+
+  if (src === null) {
+    return <div className="aspect-video w-full animate-pulse bg-panel-2" aria-label="候选加载中" />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element -- blob 本地回显,无优化面
+  return <img src={src} alt="封面候选" className="aspect-video w-full object-cover" />;
+}
 
 export default function CoverCandidatesCard(): React.ReactElement | null {
   const interrupt = useLangGraphInterruptState();
@@ -56,8 +85,7 @@ export default function CoverCandidatesCard(): React.ReactElement | null {
       <div className="mb-2 grid grid-cols-2 gap-2">
         {payload.candidates.map((c) => (
           <div key={c.id} className="overflow-hidden rounded-sm border border-line">
-            {/* eslint-disable-next-line @next/next/no-img-element -- 站内预览接口,会话鉴权 */}
-            <img src={c.url} alt="封面候选" className="aspect-video w-full object-cover" />
+            <CandidateImage url={c.url} token={payload.token} />
             <button
               type="button"
               disabled={submitting}

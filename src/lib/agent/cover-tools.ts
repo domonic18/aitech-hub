@@ -24,11 +24,12 @@ import { AiAdminError } from "../ai/errors";
 import { logger } from "../logger";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
-import { AGENT_COVER_CANDIDATES_TOOL, type AgentCoverCandidate } from "./cover-tool";
-
-/** 生图轮询:10-30s × 多候选,3s 步进 120s 兜底(topic 同款) */
-const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_MS = 120_000;
+import {
+  AGENT_COVER_CANDIDATES_TOOL,
+  parseAgentCoverResume,
+  type AgentCoverCandidate,
+} from "./cover-tool";
+import { pollUntil } from "./poll";
 
 export const generatePostCoverTool = tool(
   async ({ id, prompt }, config) => {
@@ -56,52 +57,46 @@ export const generatePostCoverTool = tool(
     }
     logger.info({ event: "agent.post_cover_started", token, postId: id });
 
-    const startedAt = Date.now();
-    let rows: Array<{ id: string; path: string }> = [];
-    for (;;) {
-      rows = await listCoverCandidates(token);
-      if (rows.length > 0) break;
-      if (Date.now() - startedAt > POLL_MAX_MS) {
-        return JSON.stringify({
-          ok: false,
-          timeout: true,
-          error: "封面生成超时(云厂商生图通常 10-30 秒),可重试",
-        });
-      }
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const rows = await pollUntil(async () => {
+      const hit = await listCoverCandidates(token);
+      return hit.length > 0 ? hit : null;
+    });
+    if (rows === null) {
+      return JSON.stringify({
+        ok: false,
+        timeout: true,
+        error: "封面生成超时(云厂商生图通常 10-30 秒),可重试",
+      });
     }
 
+    // token 不进 URL(会落访问/代理日志,批④加固):载荷单独携带,卡片经
+    // x-cover-token 头取图;url 只留候选 id。
     const candidates: AgentCoverCandidate[] = rows.map((r) => ({
       id: r.id,
-      url: `/api/posts/cover-candidates/${r.id}/raw?token=${encodeURIComponent(token)}`,
+      url: `/api/posts/cover-candidates/${r.id}/raw`,
     }));
     // HITL 挂起:预览卡确认;resume = {decision:"adopt",candidateId} | {decision:"discard"}
     const answer = interrupt({
       kind: AGENT_COVER_CANDIDATES_TOOL,
       prompt: prompt ?? "(空——由 agent 依文章内容自动撰写)",
+      token,
       candidates,
     });
-    let decision = "";
-    let candidateId = "";
-    if (typeof answer === "object" && answer !== null) {
-      const a = answer as { decision?: unknown; candidateId?: unknown };
-      if (a.decision === "adopt" || a.decision === "discard") decision = a.decision;
-      if (typeof a.candidateId === "string") candidateId = a.candidateId;
-    }
+    const resume = parseAgentCoverResume(answer);
 
-    if (decision === "adopt" && candidateId !== "") {
+    if (resume?.decision === "adopt") {
       try {
-        const path = await adoptCoverCandidate(candidateId);
+        const path = await adoptCoverCandidate(resume.candidateId);
         return JSON.stringify({
           ok: true,
-          decision,
+          decision: "adopt",
           path,
           summary: `已入媒体库:${path}(可在封面设置处从媒体库选用为文章封面)`,
         });
       } catch (e) {
         return JSON.stringify({
           ok: false,
-          decision,
+          decision: "adopt",
           error: e instanceof Error ? e.message : "入库失败",
         });
       }
