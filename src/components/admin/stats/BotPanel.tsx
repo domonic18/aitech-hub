@@ -3,7 +3,7 @@
  * 样式镜像 SourcePanel。数据同表分账(stats_referrer_daily source_class='bot'),
  * 不进流量来源卡;抓取 PV 不计入真人 KPI(人机区分的「机」侧)。纯 RSC。
  */
-import type { BotPanel as BotPanelData } from "@/lib/stats/queries";
+import type { BotPanel as BotPanelData } from "@/lib/stats/queries-machine";
 
 const KIND_META: Record<
   BotPanelData["rows"][number]["kind"],

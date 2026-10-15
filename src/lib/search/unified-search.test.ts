@@ -41,7 +41,9 @@ vi.mock("../db", () => ({
 vi.mock("./query-embedding", () => ({ embedQueryForSearch: hoisted.embedQuery }));
 vi.mock("./embedding-repo", () => ({ topVectorMatches: hoisted.topVec }));
 
-import { buildTermOr, fuseDomain, loadCitationBodies, searchAll } from "./unified-search";
+import { buildTermOr, searchAll } from "./unified-search";
+import { fuseDomain } from "./fuse-domain";
+import { loadCitationBodies } from "./citation-bodies";
 
 function reset(rows: {
   telegram?: unknown[];

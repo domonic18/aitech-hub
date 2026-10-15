@@ -1,21 +1,19 @@
 /**
- * 站点统计读侧(M5-c):五张日聚合表 + 行级明细(搜索词/访问)的查询函数,仅供 admin 统计页。
+ * 站点统计读侧·访问面(M5-c):日聚合表(概览/序列/来源/环境/热门页)的查询函数,
+ * 仅供 admin 统计页。机器面(爬虫/GEO)与行级明细已拆 queries-machine /
+ * queries-log(技术债批⑤),本件留真人访问面板与共享窗口基元。
  * 口径纪律:
  * - 日期边界一律在 JS 侧按 Asia/Shanghai 算好(statsDay,src/lib/datetime.ts)
  *   作参数传入,SQL 内禁 now()/CURRENT_DATE,避免与采集侧日界漂移;
  * - 「今日」读纯 PG(60s worker flush 已是准实时),不并读 Redis 缓冲,
  *   与验收口径「与日聚合表一致」一致,页面注记最长延迟约 2 分钟;
- * - 行级表(stats_search_log/stats_visit_log)按 createdAt 绝对时刻比窗口,
- *   北京日界换 `T00:00:00+08:00`(搜索词直插准实时,访问明细 7 天保留);
  * - 全部出口为 number(BigInt/Decimal 在本层收口),调用方可直接渲染。
  */
 import { prisma } from "@/lib/db";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { statsDay } from "@/lib/datetime";
 
-import { botKindOf } from "./bots";
 import type { SourceClass } from "./classify";
-import { isGeoSurface, type GeoSurface } from "./geo";
 
 export interface DayWindow {
   pv: number;
@@ -69,13 +67,13 @@ export interface HotPageRow {
   kind: "article" | "page" | "list";
 }
 
-/** 相对今日偏移 N 天的统计日(北京时区),N 为负表示过去 */
-function dayStr(offsetDays: number): string {
+/** 相对今日偏移 N 天的统计日(北京时区),N 为负表示过去(@internal 姊妹查询模块同用) */
+export function dayStr(offsetDays: number): string {
   return statsDay(new Date(Date.now() - offsetDays * 86_400_000));
 }
 
-/** @db.Date 列的 Prisma 比较参数:UTC 午夜即该日 */
-function dayDate(day: string): Date {
+/** @db.Date 列的 Prisma 比较参数:UTC 午夜即该日(@internal 姊妹查询模块同用) */
+export function dayDate(day: string): Date {
   return new Date(`${day}T00:00:00.000Z`);
 }
 
@@ -231,184 +229,4 @@ export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageR
   });
   out.sort((a, b) => b.pv - a.pv);
   return out.slice(0, limit);
-}
-
-// ── 爬虫流量(2026-10-07 方案B:人机区分,middleware 捕获)────────────
-
-export interface BotRow {
-  name: string;
-  kind: "ai" | "search" | "other";
-  pv: number;
-}
-
-export interface BotPanel {
-  /** 爬虫抓取 PV 合计(近 N 日) */
-  totalPv: number;
-  aiPv: number;
-  searchPv: number;
-  rows: BotRow[];
-}
-
-/**
- * 爬虫抓取细分(source_class='bot' 落在 stats_referrer_daily,与真人四分类
- * 同表分账;流量来源面板不受影响——本类目单独出卡)。类别由展示侧按
- * bots.ts 名单回查(改名兜 other),表里只存名字与 PV。
- */
-export async function getBotPanel(days: 7 | 30 | 90): Promise<BotPanel> {
-  const rows = await prisma.statsReferrerDaily.groupBy({
-    by: ["sourceName"],
-    where: {
-      sourceClass: "bot",
-      statDate: { gte: dayDate(dayStr(days - 1)), lte: dayDate(dayStr(0)) },
-    },
-    _sum: { pv: true },
-    orderBy: { _sum: { pv: "desc" } },
-  });
-  const mapped: BotRow[] = rows.map((r) => ({
-    name: r.sourceName,
-    kind: botKindOf(r.sourceName),
-    pv: Number(r._sum.pv ?? 0),
-  }));
-  return {
-    totalPv: mapped.reduce((acc, r) => acc + r.pv, 0),
-    aiPv: mapped.filter((r) => r.kind === "ai").reduce((acc, r) => acc + r.pv, 0),
-    searchPv: mapped.filter((r) => r.kind === "search").reduce((acc, r) => acc + r.pv, 0),
-    rows: mapped,
-  };
-}
-
-// ── GEO 机器面(2026-10-09 方案A:llms/.md 直出的机器消费观测)────────
-
-export interface GeoPanel {
-  /** GEO 抓取 PV 合计(近 N 日) */
-  totalPv: number;
-  /** 按面聚合(llms_index/llms_full/post_md) */
-  bySurface: { surface: GeoSurface; pv: number }[];
-  /** 按爬虫聚合(含 unknown-agent) */
-  byBot: { name: string; kind: BotRow["kind"]; pv: number }[];
-  /** post_md 面文章 TopN(标题查询侧反解;已删文 title=null) */
-  topPosts: { postId: string; title: string | null; pv: number }[];
-}
-
-/**
- * GEO 机器面面板:三组聚合同表(stats_geo_daily)分查。post_id 无外键,
- * TopN 标题按 id 反解(删文不在结果里,标题置 null 由展示层兜底)。
- */
-export async function getGeoPanel(days: 7 | 30 | 90): Promise<GeoPanel> {
-  const where = { statDate: { gte: dayDate(dayStr(days - 1)), lte: dayDate(dayStr(0)) } };
-  const [surfaceRows, botRows, postRows] = await Promise.all([
-    prisma.statsGeoDaily.groupBy({
-      by: ["surface"],
-      where,
-      _sum: { pv: true },
-      orderBy: { _sum: { pv: "desc" } },
-    }),
-    prisma.statsGeoDaily.groupBy({
-      by: ["botName"],
-      where,
-      _sum: { pv: true },
-      orderBy: { _sum: { pv: "desc" } },
-    }),
-    prisma.statsGeoDaily.groupBy({
-      by: ["postId"],
-      where: { ...where, postId: { not: "" } },
-      _sum: { pv: true },
-      orderBy: { _sum: { pv: "desc" } },
-      take: 10,
-    }),
-  ]);
-  const postIds = postRows.map((r) => BigInt(r.postId));
-  const posts = postIds.length
-    ? await prisma.post.findMany({
-        where: { id: { in: postIds } },
-        select: { id: true, title: true },
-      })
-    : [];
-  const byId = new Map(posts.map((p) => [p.id, p.title]));
-  const bySurface = surfaceRows
-    .filter((r): r is typeof r & { surface: GeoSurface } => isGeoSurface(r.surface))
-    .map((r) => ({ surface: r.surface, pv: Number(r._sum.pv ?? 0) }));
-  const byBot = botRows.map((r) => ({
-    name: r.botName,
-    kind: botKindOf(r.botName),
-    pv: Number(r._sum.pv ?? 0),
-  }));
-  return {
-    totalPv: bySurface.reduce((acc, r) => acc + r.pv, 0),
-    bySurface,
-    byBot,
-    topPosts: postRows.map((r) => ({
-      postId: r.postId,
-      title: byId.get(BigInt(r.postId)) ?? null,
-      pv: Number(r._sum.pv ?? 0),
-    })),
-  };
-}
-
-// ── 搜索词排行(2026-10-06,行级 180 天保留)────────────────────────
-
-export interface HotSearchTermRow {
-  term: string;
-  count: number;
-}
-
-/** 北京日界 → 行级 createdAt 可比较的绝对时刻(Timestamptz,非 @db.Date 日聚合) */
-function cnDayStart(day: string): Date {
-  return new Date(`${day}T00:00:00+08:00`);
-}
-
-/** 搜索词排行:stats_search_log 行级 GROUP BY(count 降序,同次数按词字典序稳定);
- * 窗口语义与热门页面一致(近 N 天 = 含今日 N 个北京日;「全部」受 180 天保留界) */
-export async function getHotSearchTerms(range: HotRange, limit = 10): Promise<HotSearchTermRow[]> {
-  const rows = await prisma.statsSearchLog.groupBy({
-    by: ["term"],
-    where:
-      range === "all"
-        ? undefined
-        : {
-            createdAt: { gte: cnDayStart(dayStr(range === "today" ? 0 : range === "7d" ? 6 : 29)) },
-          },
-    _count: { _all: true },
-    orderBy: [{ _count: { term: "desc" } }, { term: "asc" }],
-    take: limit,
-  });
-  return rows.map((r) => ({ term: r.term, count: r._count._all }));
-}
-
-// ── 访问明细(M10 批⑥,近 7 天保留)────────────────────────────────
-
-export interface RecentVisitRow {
-  id: string;
-  createdAt: Date;
-  path: string;
-  ip: string;
-  browser: string;
-  os: string;
-  deviceType: string;
-  sourceClass: SourceClass;
-  sourceName: string;
-}
-
-/** 最近访问明细:倒序取 N 行(stats_visit_log,worker 日清 7 天前) */
-export async function getRecentVisits(limit = 30): Promise<RecentVisitRow[]> {
-  const rows = await prisma.statsVisitLog.findMany({
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit,
-    select: {
-      id: true,
-      createdAt: true,
-      path: true,
-      ip: true,
-      browser: true,
-      os: true,
-      deviceType: true,
-      sourceClass: true,
-      sourceName: true,
-    },
-  });
-  return rows.map((r) => ({
-    ...r,
-    id: r.id.toString(),
-    sourceClass: r.sourceClass as SourceClass,
-  }));
 }

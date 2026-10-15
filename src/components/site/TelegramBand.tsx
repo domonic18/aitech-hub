@@ -5,24 +5,13 @@
  * M10 批② 条数后台可配;M12 批③ 文字行加「AI · 中心思想 + #关键词」、
  * 批⑤ 视频行 AI 行改直出 summary;批⑥ 关键词蓝系与 AI 徽章区分;
  * 2026-10-05 验收反馈统筹改版:行网格统一 + 要点折叠块重做):
- * 头部 live-chip + 标题 + 巡检统计 + more。
+ * 头部 live-chip + 标题 + 巡检统计 + more。行网格口径与行级子件
+ * (BandTime/BandAgo/BandChip/BandCover/BandPoints)已拆 TelegramBandRows
+ * (技术债批⑤,行网格口径详见彼件文件头)。
  *
- * 行网格统一口径(ROW_GRID,文字/视频行共用一套模板,子元素按列序渲染、
- * 免 col-start 显式定位;隐藏项随断点进出网格不破坏 auto-placement):
- *   sm+ [74px 时间 | 164px 元信息 | 1fr 标题 | auto 相对时间] gap-x-3 px-5
- *     → 标题列起点 20+74+12+164+12 = 282px;
- *   窄屏 [54px | 1fr 标题] → 20+54+12 = 86px。
- *   文字行:首列时间(双断点常显)/ 元信息列渠道章(窄屏并入标题区首行)/
- *   标题+「AI 解读 · 摘要 #关键词」;视频行:元信息列 = 封面 + 平台/博主
- *   (窄屏仅封面,博主信息并入标题区首行),封面 54×95 撑行高。
- *   两类行标题列起点逐断点一致(2026-10-05 反馈:视频标题与文字标题不对齐)。
- *
- * AI 要点折叠块(BandPoints):默认展开(<details open>);summary 用 chevron
- * 随开合旋转 90° + hover 反馈 + ×N 计数章替代原生 ▶(反馈:交互不醒目);
- * 块复用 ROW_GRID 取标题列(col-start-2/3 结构对齐,行网格改动零联动);
- * 有要点时行锚 pb 收窄,消解要点与 AI 解读间大留白(反馈:间距过大)。
- * 块挂行锚外(2026-10-05 反馈:要点此前只在电报流页可见;wrapper+锚分离
- * 防交互元素嵌套进 <a>)。行点击直达外链;文字行解读标识统一「AI 解读」。
+ * AI 要点折叠块:默认展开(<details open>);块挂行锚外(2026-10-05 反馈:
+ * 要点此前只在电报流页可见;wrapper+锚分离防交互元素嵌套进 <a>)。
+ * 行点击直达外链;文字行解读标识统一「AI 解读」。
  *
  * SSR 初值 + 60s 轮询(band=1 第一页与 SSR 同源——新条目 id 去重后按服务端
  * 同构序重排(M15 批③ mergeFeedItems),再截回一页上限:长驻标签页只展示
@@ -42,120 +31,11 @@ import {
   mergeFeedItems,
   platformLabel,
   timeAgo,
-  FEED_CHIP_TONE_CLASSES,
-  type FeedChipTone,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
 import { trackEntryClick } from "@/lib/stats/track-click";
 
-/** 行网格统一口径——BandPoints 依赖同模板取标题列,改动时两处同改(见文件头)。 */
-const ROW_GRID = "grid grid-cols-[54px_1fr] gap-x-3 px-5 sm:grid-cols-[74px_164px_1fr_auto]";
-
-/** 发布时间戳:视频行首列仅 sm+(窄屏首列让给封面,时间并入标题区首行);
- * 文字行首列双断点常显(always)。fresh 绿色高亮。 */
-function BandTime({ fresh, text, always }: { fresh: boolean; text: string; always?: boolean }) {
-  return (
-    <span
-      className={`flex-none font-mono text-xs ${always ? "" : "hidden sm:block"} ${
-        fresh ? "text-green-hi" : "text-text-3"
-      }`}
-    >
-      {text}
-    </span>
-  );
-}
-
-/** 相对时间(尾部列,窄屏隐;fresh 加 NEW 前缀绿色高亮) */
-function BandAgo({ fresh, text }: { fresh: boolean; text: string }) {
-  return (
-    <span
-      className={`hidden flex-none justify-self-end whitespace-nowrap font-mono text-[11px] sm:block ${
-        fresh ? "text-green-hi" : "text-text-3"
-      }`}
-    >
-      {text}
-    </span>
-  );
-}
-
-/** 渠道/平台章(带边框浅底色章,色调随渠道类型/平台;定宽列内随列宽,窄屏标题区内收口) */
-function BandChip({ label, tone }: { label: string; tone: FeedChipTone }) {
-  return (
-    <span
-      className={`max-w-full truncate rounded-sm border px-1.5 py-px text-center text-[11px] ${FEED_CHIP_TONE_CLASSES[tone]}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-/** 带内竖版封面(原型 .tg-row.video .thumb 口径:54×95 圆角 6、play 蒙层、
- * 底部时长横条 inset 3px);失败/无封面降级为播放占位块(不叠蒙层)。 */
-function BandCover({ src, duration }: { src: string | null; duration: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (src === null || failed) {
-    return (
-      <span className="flex h-[95px] w-[54px] flex-none items-center justify-center rounded-md border border-line bg-panel-2 text-text-3">
-        <svg className="ic ic-lg" aria-hidden="true">
-          <use href="#i-caret-right-fill" />
-        </svg>
-      </span>
-    );
-  }
-  return (
-    <span className="relative h-[95px] w-[54px] flex-none overflow-hidden rounded-md border border-line bg-panel-2">
-      {/* eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域 */}
-      <img
-        src={src}
-        alt=""
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-        className="h-full w-full object-cover"
-      />
-      <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
-        <svg className="ic" aria-hidden="true">
-          <use href="#i-caret-right-fill" />
-        </svg>
-      </span>
-      {duration && (
-        <span className="absolute inset-x-[3px] bottom-[3px] rounded-[3px] bg-black/70 text-center font-mono text-[9.5px] leading-[14px] text-white">
-          {duration}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** AI 要点折叠块(与电报流页「关键要点 ×N」同款数据):默认展开;复用 ROW_GRID
- * 取标题列(窄屏 col2/sm+ col3)与行标题结构化对齐;summary chevron 旋转 +
- * hover 反馈(-mx-1.5 抵消内边距,使 caret 落在标题列起点)。 */
-function BandPoints({ points }: { points: readonly string[] }) {
-  if (points.length === 0) return null;
-  return (
-    <div className={`${ROW_GRID} pb-2.5`}>
-      <details open className="group col-start-2 sm:col-start-3">
-        <summary className="-mx-1.5 flex cursor-pointer list-none items-center gap-1.5 rounded-sm px-1.5 py-1 text-[11px] text-text-3 transition-colors hover:bg-panel hover:text-text-1 [&::-webkit-details-marker]:hidden">
-          <svg
-            className="ic ic-sm flex-none text-text-3 transition-transform duration-200 group-open:rotate-90"
-            aria-hidden="true"
-          >
-            <use href="#i-caret-right-fill" />
-          </svg>
-          <span className="font-medium">关键要点</span>
-          <span className="rounded-full bg-panel-2 px-1.5 font-mono text-[10px] leading-4">
-            ×{points.length}
-          </span>
-        </summary>
-        <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
-          {points.map((p, i) => (
-            <li key={i}>{p}</li>
-          ))}
-        </ul>
-      </details>
-    </div>
-  );
-}
+import { BandAgo, BandChip, BandCover, BandPoints, BandTime, ROW_GRID } from "./TelegramBandRows";
 
 export default function TelegramBand({
   initialItems,

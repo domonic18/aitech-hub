@@ -5,14 +5,15 @@
  * 多次选择累积合并(跨目录补选不互清);引用列表逐条「选图」补选(立即上传)/
  * 失败行「重试」。「选择文件夹(自动配图)」走 webkitdirectory 目录选择,一次选中
  * 文章目录即自动收集其中全部图片并入、目录内 md 自动选为文章,免逐张挑图。
- * 本地图按文件名匹配上传(sha1 去重)/ 外链交 media.transfer
- * 批量转存 → 引用替换为站内 URL → sessionStorage 交接给编辑器。
- * 逐图容错:失败保留原链并在交接 warning 中列出,不阻断整篇导入。
+ * 本地图按文件名匹配上传(sha1 去重)/ 外链交 runImportTransfer 批量转存
+ * (技术债批⑤拆 import-transfer-client)→ 引用替换为站内 URL → sessionStorage
+ * 交接给编辑器。逐图容错:失败保留原链并在交接 warning 中列出,不阻断整篇导入。
  */
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { type ApiEnvelope } from "@/lib/http/response";
+import ImportRefsList, { type RefState } from "@/components/admin/ImportRefsList";
+import ImportSourceButtons from "@/components/admin/ImportSourceButtons";
 import {
   type ImportMapping,
   type MdImageRef,
@@ -21,19 +22,9 @@ import {
   refBasename,
   replaceImageRefs,
 } from "@/lib/media/import-md";
-import { type TransferResult, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { runImportTransfer } from "@/lib/media/import-transfer-client";
+import { MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
-
-type RefState = { status: "pending" | "uploading" | "done" | "failed"; target?: string };
-
-/** 轮询节奏 1.5s 一次;次数按最坏转存时长(单张超时 × 张数)+ 缓冲推导,
- *  避免客户端先于 worker 放弃(评审 S2:30 张 × 15s 最坏 450s > 固定 180s 预算) */
-const POLL_INTERVAL_MS = 1_500;
-const POLL_BUFFER_MS = 30_000;
-
-function pollTriesFor(count: number): number {
-  return Math.ceil((count * MEDIA_LIMITS.fetchTimeoutMs + POLL_BUFFER_MS) / POLL_INTERVAL_MS);
-}
 
 const MD_RE = /\.(md|markdown)$/i;
 const IMAGE_RE = /\.(jpe?g|png|webp|gif)$/i;
@@ -133,7 +124,7 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
   /** 单外链重试:走同一转存通道单条入队并轮询 */
   async function transferOne(url: string): Promise<void> {
     patch(url, { status: "uploading" });
-    const mapping = await transferExternals([url]);
+    const mapping = await runImportTransfer([url]);
     const target = mapping[url] ?? null;
     if (target) {
       overridesRef.current[url] = target;
@@ -141,35 +132,6 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
     } else {
       patch(url, { status: "failed" });
     }
-  }
-
-  async function transferExternals(urls: string[]): Promise<ImportMapping> {
-    const post = await fetch("/api/media/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-    });
-    if (!post.ok) return Object.fromEntries(urls.map((u) => [u, null]));
-    const postBody = (await post.json().catch(() => null)) as ApiEnvelope<{
-      jobId?: string;
-    } | null> | null;
-    const jobId = postBody?.data?.jobId;
-    if (!jobId) return Object.fromEntries(urls.map((u) => [u, null]));
-    // 轮询直至完成(转存任务在 worker 执行;超时预算按最坏抓取时长推导)
-    for (let i = 0; i < pollTriesFor(urls.length); i += 1) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const poll = await fetch(`/api/media/import?job=${encodeURIComponent(jobId)}`);
-      if (!poll.ok) continue;
-      const body = (await poll.json().catch(() => null)) as ApiEnvelope<{
-        state?: string;
-        result?: TransferResult | null;
-      } | null> | null;
-      if (body?.data?.state === "completed" && body.data.result) {
-        return body.data.result.mapping;
-      }
-      if (body?.data?.state === "failed") break;
-    }
-    return Object.fromEntries(urls.map((u) => [u, null]));
   }
 
   async function run(): Promise<void> {
@@ -222,7 +184,7 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
       );
     } else if (pendingExt.length > 0) {
       for (const r of pendingExt) patch(r.src, { status: "uploading" });
-      const tMapping = await transferExternals(pendingExt.map((r) => r.src));
+      const tMapping = await runImportTransfer(pendingExt.map((r) => r.src));
       Object.assign(overridesRef.current, tMapping);
     }
     for (const r of externals) {
@@ -332,42 +294,14 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
           }}
         />
 
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            disabled={running}
-            onClick={() => mdRef.current?.click()}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-3 py-2 text-[13px] text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-60"
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-paperclip" />
-            </svg>
-            {mdName ? "重选 md" : "选择 md"}
-          </button>
-          <button
-            type="button"
-            disabled={running}
-            onClick={() => dirRef.current?.click()}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-3 py-2 text-[13px] text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-60"
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-folder" />
-            </svg>
-            选择文件夹(自动配图)
-          </button>
-          <button
-            type="button"
-            disabled={running}
-            onClick={() => imgRef.current?.click()}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-3 py-2 text-[13px] text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-60"
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-picture" />
-            </svg>
-            添加图片
-          </button>
-          {error && <span className="text-xs text-red">{error}</span>}
-        </div>
+        <ImportSourceButtons
+          hasMd={!!mdName}
+          running={running}
+          error={error}
+          onPickMd={() => mdRef.current?.click()}
+          onPickDir={() => dirRef.current?.click()}
+          onPickImages={() => imgRef.current?.click()}
+        />
 
         {mdName && (
           <>
@@ -379,76 +313,18 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
               </span>
             </div>
             {refs.length > 0 && (
-              <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto text-xs">
-                {refs.map((r) => {
-                  const s = states[r.src] ?? { status: "pending" };
-                  const hit = r.external ? undefined : byName.get(refBasename(r.src));
-                  const canRetryLocal = !r.external && s.status === "failed" && !!hit;
-                  const canPick = !r.external && s.status !== "done" && !hit;
-                  const action = canRetryLocal ? (
-                    <button
-                      type="button"
-                      className="cursor-pointer rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-3 hover:text-text-1"
-                      onClick={() => void uploadRefNow(r.src, hit as File)}
-                    >
-                      重试
-                    </button>
-                  ) : canPick ? (
-                    <button
-                      type="button"
-                      disabled={running}
-                      className="cursor-pointer rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-3 hover:text-text-1 disabled:opacity-60"
-                      onClick={() => {
-                        setPickTarget(r.src);
-                        pickRefRef.current?.click();
-                      }}
-                    >
-                      选图
-                    </button>
-                  ) : r.external && s.status === "failed" ? (
-                    <button
-                      type="button"
-                      className="cursor-pointer rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-3 hover:text-text-1"
-                      onClick={() => void transferOne(r.src)}
-                    >
-                      重试
-                    </button>
-                  ) : null;
-                  return (
-                    <li key={r.src} className="flex items-center gap-2">
-                      <span
-                        className={
-                          s.status === "done"
-                            ? "text-accent"
-                            : s.status === "failed"
-                              ? "text-red"
-                              : "text-text-3"
-                        }
-                      >
-                        {s.status === "done"
-                          ? "✓"
-                          : s.status === "failed"
-                            ? "✗"
-                            : s.status === "uploading"
-                              ? "…"
-                              : "·"}
-                      </span>
-                      <span className="truncate font-mono text-[11px] text-text-2" title={r.src}>
-                        {r.external ? "[外链] " : ""}
-                        {r.src}
-                      </span>
-                      <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                        {s.target && (
-                          <span className="max-w-[160px] truncate font-mono text-[10px] text-text-3">
-                            {s.target}
-                          </span>
-                        )}
-                        {action}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <ImportRefsList
+                refs={refs}
+                states={states}
+                byName={byName}
+                running={running}
+                onRetryLocal={(src, file) => void uploadRefNow(src, file)}
+                onPick={(src) => {
+                  setPickTarget(src);
+                  pickRefRef.current?.click();
+                }}
+                onRetryExternal={(src) => void transferOne(src)}
+              />
             )}
           </>
         )}

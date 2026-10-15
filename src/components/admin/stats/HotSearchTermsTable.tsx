@@ -5,7 +5,8 @@
  */
 import Link from "next/link";
 
-import type { HotRange, HotSearchTermRow } from "@/lib/stats/queries";
+import type { HotRange } from "@/lib/stats/queries";
+import type { HotSearchTermRow } from "@/lib/stats/queries-log";
 
 const RANGES: Array<{ key: HotRange; label: string }> = [
   { key: "today", label: "今日" },
