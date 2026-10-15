@@ -5,6 +5,7 @@
  * summary,解读态由 AiBadge 表达),与用户「这行应是解读内容」的预期一致。
  */
 import TelegramRowOps from "@/components/admin/TelegramRowOps";
+import { RowCheckbox } from "@/components/admin/batch/SelectionCheckbox";
 import { AiBadge, MediaBadge, StatusBadge } from "@/components/admin/TelegramBadges";
 import { formatCnDateTime } from "@/lib/datetime";
 import { compactCount, formatDuration, platformLabel } from "@/lib/telegram/feed-view";
@@ -28,12 +29,10 @@ export default function TelegramItemRow({
     <tr className="border-b border-line last:border-b-0 hover:bg-panel-2">
       {checkbox && (
         <td className="w-10 px-3 py-2.5 align-middle">
-          <input
-            type="checkbox"
-            aria-label={`选择 ${t.title ?? t.id}`}
-            className="accent-[var(--accent)]"
+          <RowCheckbox
+            label={`选择 ${t.title ?? t.id}`}
             checked={checkbox.checked}
-            onChange={checkbox.onToggle}
+            onToggle={checkbox.onToggle}
           />
         </td>
       )}

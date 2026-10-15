@@ -8,9 +8,10 @@
  * 服务端 hrefFor 函数,不能跨客户端边界)。
  */
 import Link from "next/link";
-import { useState } from "react";
 
+import BatchButton from "./batch/BatchButton";
 import BatchActionBar from "./batch/BatchActionBar";
+import { RowCheckbox, SelectAllTh } from "./batch/SelectionCheckbox";
 import { useBatchSelection } from "./batch/useBatchSelection";
 import { usePostsBatchJobs } from "./posts-batch";
 import PostRowOps from "./PostRowOps";
@@ -68,52 +69,47 @@ export default function PostsTable({
         error={error}
         onCancel={clear}
       >
-        <button
-          type="button"
+        <BatchButton
+          variant="primary"
+          label="批量 SEO 补全(仅补空缺)"
+          busyLabel="批量补全中…"
+          busy={busy}
           disabled={busy || selected.size === 0}
-          onClick={runSeoBatch}
           title="对选中文章调用 LLM 生成缺失的 SEO 标题/描述;已有值不覆盖"
-          className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "批量补全中…" : "批量 SEO 补全(仅补空缺)"}
-        </button>
-        <button
-          type="button"
+          onClick={runSeoBatch}
+        />
+        <BatchButton
+          variant="outline"
+          label="同步公众号"
+          busyLabel="同步中…"
+          busy={busy}
           disabled={busy || !wechatReady}
-          onClick={runWechatBatch}
           title={
             wechatReady
               ? `推送选中文章到公众号草稿箱(单批 ≤${DISTRIBUTE_BATCH_MAX} 篇,顺序逐篇)`
               : "先到「内容分发」完成公众号配置并启用渠道"
           }
-          className="cursor-pointer rounded-sm border border-accent/50 bg-transparent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "同步中…" : "同步公众号"}
-        </button>
-        <button
-          type="button"
+          onClick={runWechatBatch}
+        />
+        <BatchButton
+          variant="danger"
+          label="批量删除"
+          busyLabel="删除中…"
+          busy={busy}
           disabled={busy || selected.size === 0}
-          onClick={runDeleteBatch}
           title="软删选中文章:前台即刻不可见,与单条删除同语义"
-          className="cursor-pointer rounded-sm border border-red/50 bg-transparent px-3 py-1.5 text-xs font-medium text-red hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "删除中…" : "批量删除"}
-        </button>
+          onClick={runDeleteBatch}
+        />
       </BatchActionBar>
 
       <table className="w-full text-left text-[13px]">
         <thead>
           <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
-            <th className="w-10 px-3 py-2.5">
-              <input
-                type="checkbox"
-                aria-label="全选本页"
-                className="accent-[var(--accent)]"
-                checked={allSelected}
-                onChange={toggleAll}
-                disabled={rows.length === 0}
-              />
-            </th>
+            <SelectAllTh
+              allSelected={allSelected}
+              disabled={rows.length === 0}
+              onToggle={toggleAll}
+            />
             <th className="px-4 py-2.5 font-medium">文章</th>
             <th className="px-3 py-2.5 font-medium">分类 / 标签</th>
             <th className="px-3 py-2.5 font-medium">状态</th>
@@ -131,12 +127,10 @@ export default function PostsTable({
               }`}
             >
               <td className="px-3 py-3">
-                <input
-                  type="checkbox"
-                  aria-label={`选择 ${row.title}`}
-                  className="accent-[var(--accent)]"
+                <RowCheckbox
+                  label={`选择 ${row.title}`}
                   checked={selected.has(row.id)}
-                  onChange={() => toggle(row.id)}
+                  onToggle={() => toggle(row.id)}
                 />
               </td>
               <td className="max-w-[420px] px-4 py-3">
