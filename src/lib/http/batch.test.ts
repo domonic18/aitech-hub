@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { batchIdsSchema, dedupeIds } from "./batch";
+import { batchIdsBodySchema, batchIdsSchema, dedupeIds } from "./batch";
 
 describe("batchIdsSchema", () => {
   it("数字串通过;非数字串/空串拒;超上限拒", () => {
@@ -13,6 +13,15 @@ describe("batchIdsSchema", () => {
     expect(batchIdsSchema().safeParse([""]).success).toBe(false);
     expect(batchIdsSchema(2).safeParse(["1", "2", "3"]).success).toBe(false);
     expect(batchIdsSchema().safeParse([]).success).toBe(false);
+  });
+});
+
+describe("batchIdsBodySchema", () => {
+  it("{ids:[…]} 对象壳通过;根数组 body 拒(曾误把整 body 喂根数组 schema)", () => {
+    expect(batchIdsBodySchema().safeParse({ ids: ["1", "2"] }).success).toBe(true);
+    expect(batchIdsBodySchema().safeParse(["1", "2"]).success).toBe(false);
+    expect(batchIdsBodySchema().safeParse({ ids: ["12a"] }).success).toBe(false);
+    expect(batchIdsBodySchema().safeParse(null).success).toBe(false);
   });
 });
 

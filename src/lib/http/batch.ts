@@ -12,6 +12,11 @@ export function batchIdsSchema(max = 200) {
     .max(max);
 }
 
+/** {ids:[…]} 载荷对象壳(纯删除类路由 body 直用;带 action/status 的路由自行组 z.object) */
+export function batchIdsBodySchema(max = 200) {
+  return z.object({ ids: batchIdsSchema(max) });
+}
+
 /** 去重保序(幂等提交防重;客户端已 dedupe 仍兜底) */
 export function dedupeIds(ids: string[]): string[] {
   return [...new Set(ids)];

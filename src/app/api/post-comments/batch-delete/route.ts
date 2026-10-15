@@ -8,7 +8,7 @@ import { type NextRequest } from "next/server";
 import { requireAdminRequest } from "@/lib/auth/guard";
 import { deleteCommentWithReplies } from "@/lib/comment/comment-admin";
 import { CommentError } from "@/lib/comment/comment-service";
-import { batchIdsSchema, dedupeIds, type BatchOutcome } from "@/lib/http/batch";
+import { batchIdsBodySchema, dedupeIds, type BatchOutcome } from "@/lib/http/batch";
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
 import { logger } from "@/lib/logger";
@@ -20,11 +20,11 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdminRequest(req);
   if (!admin) return apiEnvelope(401, "unauthorized");
 
-  const parsed = batchIdsSchema().safeParse(await req.json().catch(() => null));
+  const parsed = batchIdsBodySchema().safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }
-  const ids = dedupeIds(parsed.data);
+  const ids = dedupeIds(parsed.data.ids);
   const out: BatchOutcome = { updated: 0, skipped: [] };
   let cascadeTotal = 0;
   for (const id of ids) {
