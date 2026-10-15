@@ -21,6 +21,7 @@ import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
 import { WECHAT_BUDGET_TOOLS } from "./wechat-budget-tool";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
+import { toolArgsFeedbackMiddleware } from "./tool-args-feedback";
 import { COVER_TOOLS } from "./cover-tools";
 import { AGENT_TOOLS, EDIT_TOOLS } from "./tools";
 
@@ -136,14 +137,22 @@ export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promis
     tools: agentToolsFor(identityKind),
     systemPrompt: agentSystemPrompt(identityKind),
     checkpointer: getAgentCheckpointer(),
-    // interrupt 类工具(ask_user/propose_edits)可靠性双守卫(SasanAgent 范式):
+    // interrupt 类工具(ask_user/propose_edits)可靠性三守卫(SasanAgent 范式):
     // - tool_call_repair:模型调用前剔悬空 tool_calls/孤儿 ToolMessage(abort
     //   打断工具节点/中断挂起后弃答/存量脏会话 → OpenAI 兼容端点 400),请求
     //   副本改写不落持久化;
     // - interrupt_guard:并行 interrupt 单飞(只放行触发 AIMessage 里按序第一
     //   个,其余拦「请合并」;state 异常 fail-closed),防 resume 批重执行错位
-    //   (M27 批⑧-c 白名单扩 propose_edits,原 ask_user_guard 改名口径)。
-    middleware: [toolCallRepairMiddleware, interruptGuardMiddleware, todoListMiddleware()],
+    //   (M27 批⑧-c 白名单扩 propose_edits,原 ask_user_guard 改名口径);
+    // - tool_args_feedback:参数漂移归一(ask_user options 对象数组/JSON 串等
+    //   弱模型漂移形态执行前收敛)+ 全工具面 zod 失败中文修正反馈与落日志
+    //   (M31 验收:MiniMax options 三连败弃问实证,报错自纠对弱模型不可靠)。
+    middleware: [
+      toolCallRepairMiddleware,
+      interruptGuardMiddleware,
+      toolArgsFeedbackMiddleware,
+      todoListMiddleware(),
+    ],
   });
   if (cache.size >= GRAPH_CACHE_MAX) {
     const oldest = cache.keys().next().value;

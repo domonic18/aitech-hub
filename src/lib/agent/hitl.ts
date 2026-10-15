@@ -55,3 +55,51 @@ export function parseAgentAskUserInterrupt(value: unknown): AgentAskUserPayload 
 export function buildAskUserResumeCommand(resume: AgentAskUserResume): AgentAskUserResumeCommand {
   return { resume };
 }
+
+/**
+ * options 入参归一化(M31 验收反馈 2026-10-15:MiniMax 三连败 checkpoint 实证
+ * ——options 反复发成对象数组 [{content:"…"}],严 schema 硬拒后模型无自纠能力,
+ * 弃问降级自动出图)。模型侧工具 spec 保持纯 string[] 不变,归一在执行前做,
+ * 容忍漂移形态:
+ * - 对象数组:按 content/label/text/value/title/name/option 首个命中字段取值;
+ * - JSON 串(以 [ 开头):整体解析后递归;
+ * - 普通串:按分号/换行切分;
+ * 归一后 trim、每项截 100、最多取 4;有效项不足 2 → undefined(降级为无选项
+ * 提问,卡片自由文本可答),不硬拒。其余形状原样交 zod(反馈中间件兜底)。
+ */
+export function normalizeAskUserOptions(value: unknown): unknown {
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (s === "") return undefined;
+    if (s.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(s);
+        if (Array.isArray(parsed)) return normalizeAskUserOptions(parsed);
+      } catch {
+        /* 非 JSON 落分隔符切分 */
+      }
+    }
+    const parts = s
+      .split(/[;;\n]+/)
+      .map((t) => t.trim())
+      .filter((t) => t !== "");
+    return parts.length >= 2 ? parts : undefined;
+  }
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (typeof item === "object" && item !== null) {
+          const o = item as Record<string, unknown>;
+          for (const key of ["content", "label", "text", "value", "title", "name", "option"]) {
+            const v = o[key];
+            if (typeof v === "string" && v.trim() !== "") return v.trim();
+          }
+        }
+        return "";
+      })
+      .filter((t) => t !== "");
+    return items.length >= 2 ? items.slice(0, 4).map((t) => t.slice(0, 100)) : undefined;
+  }
+  return value;
+}
