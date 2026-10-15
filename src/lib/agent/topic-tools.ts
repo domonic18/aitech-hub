@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { enqueueCoverGen, listCoverCandidates } from "../ai/cover-generate";
+import { enqueueCoverGen, listCoverCandidates, loadCoverPostContext } from "../ai/cover-generate";
 import { AiAdminError } from "../ai/errors";
 import { POST_LIMITS } from "../content/post-schema";
 import { prisma } from "../db";
@@ -190,12 +190,17 @@ export const generateCoverCandidatesTool = tool(
     let token: string;
     try {
       const topic = await getTopic(BigInt(topic_id));
+      // 关联稿正文一并供给(M31:agent 提示词步骤吃全文;无关联稿留空)
+      const linkedCtx = topic.linkedPostId
+        ? await loadCoverPostContext(topic.linkedPostId.toString())
+        : null;
       ({ token } = await enqueueCoverGen({
         token: randomUUID(),
         postId: topic.linkedPostId?.toString() ?? null,
         title: topic.title,
         excerpt: topic.positioning ?? "",
         tags: [],
+        contentMd: linkedCtx?.contentMd ?? "",
         prompt: prompt ?? "",
       }));
     } catch (e) {
