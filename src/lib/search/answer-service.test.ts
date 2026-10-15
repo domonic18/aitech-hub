@@ -29,6 +29,8 @@ vi.mock("@/lib/ai/usage-log", () => ({ recordAiUsage: hoisted.recordAiUsage }));
 vi.mock("@/lib/ai/llm-stream", () => ({ chatStream: hoisted.chatStream }));
 vi.mock("./unified-search", () => ({
   searchAll: hoisted.searchAll,
+}));
+vi.mock("./citation-bodies", () => ({
   loadCitationBodies: hoisted.loadCitationBodies,
   CITATION_SNIPPET_MAX: 300,
 }));
