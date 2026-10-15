@@ -2,6 +2,8 @@
  * 文章管理写侧 + 管理列表 service(M5-a;arch/05-services §1/§2):
  * 事务只在 service 层;revalidatePath 在事务提交成功后编排(revalidate.ts 是唯一落点)。
  * 旧文保真红线:WP 迁移的 HTML 正文(contentHtml 且无 contentMd)不可经后台改写。
+ * 管理列表(listPostsAdmin)已拆 posts-admin-list(技术债批⑤),此处 re-export
+ * 维持消费面同入口。
  */
 import { prisma } from "@/lib/db";
 // M17 发布自动分发(渠道开关默认关):跨域单向依赖(distribute 不回头依赖 content 写侧)
@@ -14,7 +16,7 @@ import { revalidatePostPaths } from "./revalidate";
 import { asciiSlugCandidates, asciiSlugFromTitle } from "./post-path";
 import { POST_STATUS_DELETED, type PostCreateInput, type PostUpdateInput } from "./post-schema";
 
-export const ADMIN_PAGE_SIZE = 15;
+export { ADMIN_PAGE_SIZE, listPostsAdmin, type AdminListQuery } from "./posts-admin-list";
 
 /**
  * 路径/字符串 id → BigInt(管理 API 与编辑页共用,评审 W4 收口双轨):
@@ -45,70 +47,6 @@ export class PostAdminError extends Error {
   ) {
     super(message);
   }
-}
-
-/** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString)。
- * M17 批④:同步弹窗默认值需 coverPath/seoTitle/seoDescription/excerpt,
- * 行操作「同步公众号」需 channels 状态(pending 禁点/synced 提示覆盖)。 */
-const ADMIN_LIST_SELECT = {
-  id: true,
-  slug: true,
-  title: true,
-  status: true,
-  publishedAt: true,
-  updatedAt: true,
-  viewsCount: true,
-  wpPostId: true,
-  contentMd: true,
-  coverPath: true,
-  seoTitle: true,
-  seoDescription: true,
-  excerpt: true,
-  category: { select: { slug: true, name: true } },
-  tags: { select: { tag: { select: { name: true } } } },
-  channels: { select: { channel: true, status: true } },
-} as const;
-
-export type AdminPostRow = Awaited<ReturnType<typeof listPostsAdmin>>["items"][number];
-
-export interface AdminListQuery {
-  page: number;
-  segment: "all" | "published" | "draft" | "unpublished";
-  q?: string;
-}
-
-function segmentWhere(segment: AdminListQuery["segment"], q?: string) {
-  const text = q
-    ? {
-        OR: [{ title: { contains: q } }, { slug: { contains: q } }],
-      }
-    : {};
-  // 软删(deleted)任何分段都不可见;下架 = draft 且 publishedAt 非空
-  const base = { status: { not: POST_STATUS_DELETED }, ...text };
-  if (segment === "published") return { ...base, status: "published" };
-  if (segment === "draft") return { ...base, status: "draft", publishedAt: null };
-  if (segment === "unpublished") return { ...base, status: "draft", publishedAt: { not: null } };
-  return base;
-}
-
-/** 管理列表(草稿含)+ 四分段计数;updatedAt 倒序(最近改动优先) */
-export async function listPostsAdmin({ page, segment, q }: AdminListQuery) {
-  const where = segmentWhere(segment, q);
-  const countWhere = (seg: AdminListQuery["segment"]) => segmentWhere(seg, q);
-  const [items, all, published, draft, unpublished] = await prisma.$transaction([
-    prisma.post.findMany({
-      where,
-      select: ADMIN_LIST_SELECT,
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      skip: (page - 1) * ADMIN_PAGE_SIZE,
-      take: ADMIN_PAGE_SIZE,
-    }),
-    prisma.post.count({ where: countWhere("all") }),
-    prisma.post.count({ where: countWhere("published") }),
-    prisma.post.count({ where: countWhere("draft") }),
-    prisma.post.count({ where: countWhere("unpublished") }),
-  ]);
-  return { items, total: all, counts: { all, published, draft, unpublished }, page, segment };
 }
 
 /** 编辑器取稿:草稿含;软删不可取 */
