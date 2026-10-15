@@ -331,3 +331,22 @@ export async function listCoverCandidates(
     createdAt: r.createdAt,
   }));
 }
+
+/** 轮询单拍命中:候选已出 → rows;生图 job 已失败 → failure(agent 工具轮询
+ * 用,失败立刻断路,不傻等满轮询预算——2026-10-15 验收反馈问题二) */
+export type CoverGenProbeHit =
+  { rows: Awaited<ReturnType<typeof listCoverCandidates>> } | { failure: string };
+
+/**
+ * 轮询单拍探测(pollUntil probe 供体):先查候选(出图即收工),再查 job 失败态
+ * (BullMQ failedReason;attempts=1 不自动重试,失败态即终态)。都在途 → null。
+ */
+export async function probeCoverGen(
+  token: string,
+  jobId: string,
+): Promise<CoverGenProbeHit | null> {
+  const rows = await listCoverCandidates(token);
+  if (rows.length > 0) return { rows };
+  const failedReason = (await getQueue(QUEUE_COVER_GEN).getJob(jobId))?.failedReason;
+  return failedReason ? { failure: failedReason } : null;
+}

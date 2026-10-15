@@ -14,7 +14,13 @@ import { randomUUID } from "node:crypto";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { enqueueCoverGen, listCoverCandidates, loadCoverPostContext } from "../ai/cover-generate";
+import {
+  deleteCoverTemp,
+  enqueueCoverGen,
+  loadCoverPostContext,
+  probeCoverGen,
+  type CoverGenProbeHit,
+} from "../ai/cover-generate";
 import { AiAdminError } from "../ai/errors";
 import { prisma } from "../db";
 import {
@@ -175,13 +181,14 @@ export const generateCoverCandidatesTool = tool(
     if (!(await assertAdminThread(config?.configurable?.thread_id)))
       return denyPayload(config?.configurable?.thread_id);
     let token: string;
+    let jobId: string;
     try {
       const topic = await getTopic(BigInt(topic_id));
       // 关联稿正文一并供给(M31:agent 提示词步骤吃全文;无关联稿留空)
       const linkedCtx = topic.linkedPostId
         ? await loadCoverPostContext(topic.linkedPostId.toString())
         : null;
-      ({ token } = await enqueueCoverGen({
+      ({ token, jobId } = await enqueueCoverGen({
         token: randomUUID(),
         postId: topic.linkedPostId?.toString() ?? null,
         title: topic.title,
@@ -197,20 +204,25 @@ export const generateCoverCandidatesTool = tool(
       throw e;
     }
     logger.info({ event: "agent.cover_gen_started", token });
-    const paths = await pollUntil(async () => {
-      const rows = await listCoverCandidates(token);
-      return rows.length > 0 ? rows.map((r) => r.path) : null;
-    });
-    if (paths === null) {
+    // 单拍探测:候选出图即收工;job 失败立刻断路(不傻等满预算,问题二)
+    const outcome = await pollUntil<CoverGenProbeHit>(() => probeCoverGen(token, jobId));
+    if (outcome === null) {
       return JSON.stringify({
         ok: false,
         timeout: true,
         error: "封面生成超时(云厂商生图通常 10-30 秒),可重试或改用 transfer_video_cover",
       });
     }
+    if ("failure" in outcome) {
+      await deleteCoverTemp(token); // 清可能的半成品临时件
+      return JSON.stringify({
+        ok: false,
+        error: `生图失败:${outcome.failure}(可重试,或在 AI 配置调大生图模型超时)`,
+      });
+    }
     return JSON.stringify({
       ok: true,
-      candidates: paths,
+      candidates: outcome.rows.map((r) => r.path),
       note: "从候选中择优,路径可作正文配图或 save_topic_draft 的 cover_path",
     });
   },

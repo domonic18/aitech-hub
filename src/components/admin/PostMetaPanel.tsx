@@ -115,7 +115,7 @@ export default function PostMetaPanel({
 
       <div>
         <label className={LABEL} htmlFor="post-tags">
-          标签(逗号分隔,最多 {POST_LIMITS.tagsMax} 个)
+          标签(顿号或逗号分隔,最多 {POST_LIMITS.tagsMax} 个)
         </label>
         <input
           id="post-tags"

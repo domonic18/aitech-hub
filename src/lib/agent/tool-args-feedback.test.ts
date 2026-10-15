@@ -61,6 +61,33 @@ describe("toolArgsFeedbackMiddleware", () => {
     expect((received() as { options: unknown }).options).toBeUndefined();
   });
 
+  it("save_topic_draft tags 顿号/逗号单串执行前拆为 string[]", async () => {
+    const { fn, received } = echoHandler();
+    const request = makeRequest({
+      name: "save_topic_draft",
+      args: { topic_id: "1", title: "T", content_md: "B", tags: "AI、教程, 实战" },
+    });
+    await wrap(request, fn);
+    expect((received() as { tags: string[] }).tags).toEqual(["AI", "教程", "实战"]);
+  });
+
+  it("save_topic_draft tags 数组逐项 trim 去空;无 tags 与其他工具透传", async () => {
+    const { fn, received } = echoHandler();
+    const arr = makeRequest({
+      name: "save_topic_draft",
+      args: { topic_id: "1", title: "T", content_md: "B", tags: [" AI ", "", "教程"] },
+    });
+    await wrap(arr, fn);
+    expect((received() as { tags: string[] }).tags).toEqual(["AI", "教程"]);
+
+    const passthrough = makeRequest({ name: "save_topic_draft", args: { topic_id: "1" } });
+    const spy = vi.fn(async () => ({ stub: true }) as unknown as ToolMessage) as unknown as Handler;
+    await wrap(passthrough, spy);
+    expect((spy as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0]).toBe(
+      passthrough,
+    );
+  });
+
   it("无 options 的 ask_user 与其他工具原样透传", async () => {
     const spy = vi.fn(async () => ({ stub: true }) as unknown as ToolMessage) as unknown as {
       mock: { calls: unknown[][] };

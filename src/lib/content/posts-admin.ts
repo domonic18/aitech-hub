@@ -14,7 +14,12 @@ import { normalizeSlug } from "@/lib/slug";
 
 import { revalidatePostPaths } from "./revalidate";
 import { asciiSlugCandidates, asciiSlugFromTitle } from "./post-path";
-import { POST_STATUS_DELETED, type PostCreateInput, type PostUpdateInput } from "./post-schema";
+import {
+  POST_STATUS_DELETED,
+  coverPathSchema,
+  type PostCreateInput,
+  type PostUpdateInput,
+} from "./post-schema";
 
 export { ADMIN_PAGE_SIZE, listPostsAdmin, type AdminListQuery } from "./posts-admin-list";
 
@@ -240,6 +245,21 @@ export async function updatePost(
     revalidatePostPaths({ id, slug: nextSlug });
   }
   return { slug: nextSlug, updatedAt: updatedAt.toISOString() };
+}
+
+/**
+ * 封面窄口更新(2026-10-15 验收反馈问题二:agent 封面候选「入库」即设为文章
+ * 封面):只动 coverPath 一列,不触 slug/分类/标签/分发面。路径走
+ * coverPathSchema 单轨校验;@updatedAt 随写推进(编辑器下次保存会正当地收到
+ * 乐观锁冲突横幅,人工刷新即同步)。
+ */
+export async function updatePostCover(id: bigint, coverPath: string): Promise<void> {
+  const parsed = coverPathSchema.safeParse(coverPath);
+  if (!parsed.success) {
+    throw new PostAdminError("invalid_body", parsed.error.issues[0]?.message ?? "封面路径不合法");
+  }
+  await loadMutable(id);
+  await prisma.post.update({ where: { id }, data: { coverPath: parsed.data } });
 }
 
 async function loadMutable(id: bigint) {
