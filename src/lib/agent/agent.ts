@@ -21,6 +21,7 @@ import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
 import { WECHAT_BUDGET_TOOLS } from "./wechat-budget-tool";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
+import { COVER_TOOLS } from "./cover-tools";
 import { AGENT_TOOLS, EDIT_TOOLS } from "./tools";
 
 export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜索助手,帮助用户深挖 AI 资讯、教程与开源项目。
@@ -87,10 +88,17 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 按清单 scenario 对号本次任务场景,命中即 get_skill 取指南全文;起草、自评审、改稿全程以指南为准——结构/口吻/字数/配图/码点预算等指南要求优先于本提示的通用写法;指南中引用的工具按其说明调用(码点预算自查用 measure_wechat_budget,超预算必精简后复核再交稿)
 - 清单为空或无命中时按素材常识写作(具体、反模板腔、简体中文),并在汇报中说明「未命中适用技能」`;
 
-/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产、技能与预算工具) */
+/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产、封面 HITL、技能与预算工具) */
 export function agentToolsFor(kind: AgentIdentity["kind"]) {
   return kind === "admin"
-    ? [...AGENT_TOOLS, ...EDIT_TOOLS, ...TOPIC_TOOLS, ...SKILL_TOOLS, ...WECHAT_BUDGET_TOOLS]
+    ? [
+        ...AGENT_TOOLS,
+        ...EDIT_TOOLS,
+        ...TOPIC_TOOLS,
+        ...COVER_TOOLS,
+        ...SKILL_TOOLS,
+        ...WECHAT_BUDGET_TOOLS,
+      ]
     : [...AGENT_TOOLS];
 }
 

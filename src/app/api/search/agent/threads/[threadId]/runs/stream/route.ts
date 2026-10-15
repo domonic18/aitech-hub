@@ -16,6 +16,7 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { AGENT_COVER_CANDIDATES_TOOL } from "@/lib/agent/cover-tool";
 import { AGENT_PROPOSE_EDITS_TOOL } from "@/lib/agent/edit-proposal";
 import { AGENT_LIMITS, recordAgentRun, runAgentTurn } from "@/lib/agent/run";
 import { backfillSessionTitle } from "@/lib/agent/sessions";
@@ -70,6 +71,15 @@ const resumeSchema = z.object({
       decision: z.enum(["applied", "partial", "rejected", "unavailable"]),
       applied: z.number().int().min(0).max(20).optional(),
       comment: z.string().min(1).max(2000).optional(),
+    }),
+    z.object({
+      // 封面候选 HITL(M31):adopt 必带 candidateId;discard 整批弃
+      kind: z.literal(AGENT_COVER_CANDIDATES_TOOL).optional(),
+      decision: z.enum(["adopt", "discard"]),
+      candidateId: z
+        .string()
+        .regex(/^\d{1,19}$/)
+        .optional(),
     }),
   ]),
 });

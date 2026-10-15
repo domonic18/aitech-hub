@@ -17,6 +17,7 @@ import { AIMessage, ToolMessage, createMiddleware } from "langchain";
 
 import { logger } from "../logger";
 
+import { AGENT_COVER_CANDIDATES_TOOL } from "./cover-tool";
 import { AGENT_PROPOSE_EDITS_TOOL } from "./edit-proposal";
 import { AGENT_ASK_USER_TOOL } from "./hitl";
 
@@ -24,7 +25,11 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentMiddleware } from "langchain";
 
 /** interrupt 类工具面(并行触发会 resume 错位,单飞放行按序第一个) */
-const INTERRUPT_TOOLS = new Set<string>([AGENT_ASK_USER_TOOL, AGENT_PROPOSE_EDITS_TOOL]);
+const INTERRUPT_TOOLS = new Set<string>([
+  AGENT_ASK_USER_TOOL,
+  AGENT_PROPOSE_EDITS_TOOL,
+  AGENT_COVER_CANDIDATES_TOOL,
+]);
 
 /** 并行第二个 interrupt 调用的拦截文案(模型能据此合并重试)。 */
 const MERGE_HINT =

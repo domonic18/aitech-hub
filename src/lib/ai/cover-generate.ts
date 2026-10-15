@@ -5,12 +5,17 @@
  * 云厂商生图 10-30s,走 QUEUE_COVER_GEN worker,不占请求(请求内禁秒级任务)。
  */
 import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { prisma } from "../db";
+import { env } from "../env";
 import { logger } from "../logger";
 import { COVER_JOB_GEN, getQueue, QUEUE_COVER_GEN } from "../queue";
+import { parsePostId } from "../content/posts-admin";
 import { AI_PURPOSE_COVER } from "./constants";
 import { buildCoverPrompt, COVER_CANDIDATE_COUNT, COVER_IMAGE_SIZE } from "./cover-prompt";
+import { suggestCoverPrompt } from "./cover-prompt-suggest";
 import { decodeImageB64, downloadImage, generateImages, sniffImageMime } from "./image-client";
 import { AiAdminError, AiClientError } from "./errors";
 import { resolveAiModel } from "./resolver";
@@ -26,8 +31,112 @@ export interface CoverGenJobData {
   title: string;
   excerpt: string;
   tags: string[];
-  /** 生图 prompt(M16 问题2:前端 AI 建议/手填;空串回退 buildCoverPrompt 兜底) */
+  /** 正文 markdown(取样后供 agent 提示词步骤;创建态来自编辑器快照,可空) */
+  contentMd: string;
+  /** 生图 prompt(M16 问题2:前端 AI 建议/手填;空串走 agent 概要提取,再兜底模板) */
   prompt: string;
+  /**
+   * hold 模式(M31 验收反馈:agent 封面候选):只落临时盘不进媒体库,
+   * 候选经预览接口 + HITL 卡交管理员确认,adopt 时才 uploadMedia。
+   */
+  hold?: boolean;
+}
+
+/** hold 候选虚拟路径前缀(candidate.mediaPath 以此开头 = 未入库临时件) */
+export const COVER_TEMP_PREFIX = "/.cover-gen-tmp/";
+
+function coverTempAbs(virtualPath: string): string {
+  // 虚拟路径形如 /.cover-gen-tmp/<token>/<file>;盘上 = $MEDIA_DIR 同构相对
+  return path.resolve(env.MEDIA_DIR, virtualPath.slice(1));
+}
+
+/** hold 候选落盘(worker 消费):写 $MEDIA_DIR/.cover-gen-tmp/<token>/,返回虚拟路径 */
+async function writeHoldCandidate(
+  token: string,
+  index: number,
+  bytes: Uint8Array,
+  mime: string,
+): Promise<string> {
+  const ext = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
+  const name = `candidate-${index + 1}.${ext}`;
+  const dir = coverTempAbs(`${COVER_TEMP_PREFIX}${token}`);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, name), bytes);
+  return `${COVER_TEMP_PREFIX}${token}/${name}`;
+}
+
+/** 读 hold 候选字节(preview 路由 / adopt 消费;越界路径防御性拒读) */
+export async function readHoldCandidate(virtualPath: string): Promise<Uint8Array | null> {
+  if (!virtualPath.startsWith(COVER_TEMP_PREFIX)) return null;
+  const abs = path.resolve(coverTempAbs(virtualPath));
+  if (!abs.startsWith(path.resolve(env.MEDIA_DIR, COVER_TEMP_PREFIX.slice(1)))) return null;
+  try {
+    return await readFile(abs);
+  } catch {
+    return null;
+  }
+}
+
+/** 清空一批 hold 候选(整批放弃/入库完成后调用;目录不存在静默) */
+export async function deleteCoverTemp(token: string): Promise<void> {
+  await rm(coverTempAbs(`${COVER_TEMP_PREFIX}${token}`), { recursive: true, force: true });
+}
+
+/**
+ * 入库确认(工具体 adopt 分支消费):临时件读出 → uploadMedia 入媒体库 →
+ * 候选行 mediaPath 切正式路径 → 清临时文件。已入库行幂等返回现路径。
+ */
+export async function adoptCoverCandidate(candidateId: string): Promise<string> {
+  const row = await prisma.coverCandidate.findUnique({
+    where: { id: BigInt(candidateId) },
+    select: { mediaPath: true, token: true },
+  });
+  if (!row) throw new Error("候选不存在或已清理");
+  if (!row.mediaPath.startsWith(COVER_TEMP_PREFIX)) return row.mediaPath;
+  const bytes = await readHoldCandidate(row.mediaPath);
+  if (bytes === null) throw new Error("候选临时文件已失效,请重新生成");
+  const mime = sniffImageMime(bytes) ?? "image/webp";
+  const ext = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
+  const saved = await uploadMedia({
+    data: bytes,
+    mime,
+    filename: `cover-adopt-${row.token.slice(0, 8)}-${candidateId}.${ext}`,
+  });
+  await prisma.coverCandidate.update({
+    where: { id: BigInt(candidateId) },
+    data: { mediaPath: saved.path },
+  });
+  await deleteCoverTemp(row.token);
+  logger.info({ event: "cover.candidate_adopted", candidateId, path: saved.path });
+  return saved.path;
+}
+
+/**
+ * 编辑态上下文真相源切换(M31 验收反馈):客户端只传 postId,服务端直读库内
+ * 标题/摘要/全部标签/正文——主题稿等标签数超编辑器 5 枚上限的文章照常生成,
+ * 且 agent 提示词步骤吃到全文(客户端快照可能过期)。软删/不存在 → null。
+ */
+export async function loadCoverPostContext(
+  postId: string,
+): Promise<{ title: string; excerpt: string; tags: string[]; contentMd: string } | null> {
+  const id = parsePostId(postId);
+  if (id === null) return null;
+  const post = await prisma.post.findUnique({
+    where: { id },
+    select: {
+      title: true,
+      excerpt: true,
+      contentMd: true,
+      tags: { select: { tag: { select: { name: true } } } },
+    },
+  });
+  if (!post) return null;
+  return {
+    title: post.title,
+    excerpt: post.excerpt ?? "",
+    tags: post.tags.map(({ tag }) => tag.name),
+    contentMd: post.contentMd ?? "",
+  };
 }
 
 /** 入队(路由消费):绑定缺失即抛 disabled(400 明示),不产生无效 job */
@@ -57,11 +166,35 @@ export async function enqueueCoverGen(
   return { jobId, token };
 }
 
+/**
+ * agent 提示词步骤(M31 验收反馈:空 prompt 不再走死模板):LLM 依标题/摘要/
+ * 全部标签/正文取样概要提取画面提示词;失败(未绑定/LLM 异常)回退模板兜底,
+ * 不废生图 job。
+ */
+async function agentCoverPrompt(data: CoverGenJobData): Promise<string> {
+  try {
+    const r = await suggestCoverPrompt({
+      title: data.title,
+      excerpt: data.excerpt,
+      tags: data.tags,
+      contentMd: data.contentMd ?? "",
+    });
+    return r.prompt;
+  } catch (e) {
+    logger.warn({
+      event: "cover.gen_prompt_agent_fallback",
+      postId: data.postId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return buildCoverPrompt(data);
+  }
+}
+
 /** worker 消费:生图 → 入媒体库 → 候选落库。失败上抛(BullMQ 记 failedReason,轮询透出) */
 export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: number }> {
   const model = await resolveAiModel(AI_PURPOSE_COVER);
   if (!model) throw new AiClientError("unsupported", "cover 角色绑定已缺失");
-  const prompt = data.prompt.trim() !== "" ? data.prompt.trim() : buildCoverPrompt(data);
+  const prompt = data.prompt.trim() !== "" ? data.prompt.trim() : await agentCoverPrompt(data); // agent 概要提取(M31),失败落模板
   const startedAt = Date.now();
   let images;
   try {
@@ -104,19 +237,25 @@ export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: n
       // b64 直解;url 形态服务端转存(智谱 CogView 等只回 url,M16 问题1)
       const bytes =
         "b64" in img ? decodeImageB64(img.b64) : await downloadImage(img.url, model.timeoutSec);
-      const mime = sniffImageMime(bytes);
-      const ext = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
-      const saved = await uploadMedia({
-        data: bytes,
-        mime,
-        filename: `cover-gen-${data.token.slice(0, 8)}-${generated + 1}.${ext}`,
-      });
+      const mime = sniffImageMime(bytes) ?? "image/webp";
+      // hold 模式(M31):临时盘 + 虚拟路径,不进媒体库;确认入库走 adoptCoverCandidate
+      const mediaPath = data.hold
+        ? await writeHoldCandidate(data.token, generated, bytes, mime)
+        : (
+            await uploadMedia({
+              data: bytes,
+              mime,
+              filename: `cover-gen-${data.token.slice(0, 8)}-${generated + 1}.${
+                mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp"
+              }`,
+            })
+          ).path;
       await prisma.coverCandidate.create({
         data: {
           token: data.token,
           postId,
           prompt,
-          mediaPath: saved.path,
+          mediaPath,
           modelId: model.id,
         },
       });

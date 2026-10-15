@@ -10,9 +10,15 @@
  * 语义)。常驻化(2026-10-14):首开才挂(零前置开销),此后关闭仅 display:none
  * ——在跑 agent run 不随卡卸载中断,再开即回(ai-invest 同款;卸载只随页面离开)。
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import AssistantCard from "@/components/site/assistant/AssistantCard";
+
+/** 外部唤醒载荷(封面生成等入口):question 直发,nonce 防同文重触发不生效 */
+export interface AssistantLaunch {
+  question: string;
+  nonce: number;
+}
 
 interface EditorAssistantProps {
   postId: string;
@@ -20,6 +26,8 @@ interface EditorAssistantProps {
   /** 评审面接线(M27 批⑧-d):正文读快照 / 写回 */
   getContent: () => string;
   onApplyContent: (md: string) => void;
+  /** 程序化唤起(M31):弹窗「生成候选」等入口直发消息并自动开卡 */
+  launch?: AssistantLaunch | null;
 }
 
 export default function EditorAssistant({
@@ -27,10 +35,18 @@ export default function EditorAssistant({
   title,
   getContent,
   onApplyContent,
+  launch,
 }: EditorAssistantProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   /** 首开后恒挂载:关闭仅隐藏(见 docstring 常驻化) */
   const [everOpened, setEverOpened] = useState(false);
+
+  // 程序化唤起:开卡 + 注入直发消息(AssistantCard injectAsk → pending → append)
+  useEffect(() => {
+    if (!launch) return;
+    setEverOpened(true);
+    setOpen(true);
+  }, [launch]);
 
   return (
     <>
@@ -58,6 +74,9 @@ export default function EditorAssistant({
             embedded
             onClose={() => setOpen(false)}
             onHide={() => setOpen(false)}
+            injectAsk={
+              launch ? { question: launch.question, send: true, nonce: launch.nonce } : null
+            }
             editContext={{ postId, title, getContent, onApplyContent }}
           />
         </div>

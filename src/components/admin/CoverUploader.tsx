@@ -14,11 +14,14 @@ export default function CoverUploader({
   coverPath,
   onChange,
   coverContext,
+  onAgentCoverGen,
 }: {
   coverPath: string;
   onChange: (path: string) => void;
   /** AI 文生图上下文(缺省不出 AI 生图入口,如非编辑器调用点) */
   coverContext?: CoverGenContext;
+  /** M31:封面 agent 唤起(弹窗内「生成候选」→ 侧边栏助手) */
+  onAgentCoverGen?: () => void;
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
 
@@ -67,7 +70,12 @@ export default function CoverUploader({
         </button>
       )}
       {open && (
-        <CoverDialog onClose={() => setOpen(false)} onSet={onChange} coverContext={coverContext} />
+        <CoverDialog
+          onClose={() => setOpen(false)}
+          onSet={onChange}
+          coverContext={coverContext}
+          onAgentCoverGen={onAgentCoverGen}
+        />
       )}
     </div>
   );

@@ -20,7 +20,7 @@ import PostMetaPanel, {
 } from "@/components/admin/PostMetaPanel";
 import MdEditor from "@/components/admin/MdEditor";
 import ArticleBody from "@/components/article/ArticleBody";
-import EditorAssistant from "@/components/admin/EditorAssistant";
+import EditorAssistant, { type AssistantLaunch } from "@/components/admin/EditorAssistant";
 import {
   clearPostShadow,
   readPostShadow,
@@ -28,6 +28,7 @@ import {
   type PostShadow,
 } from "@/components/admin/usePostAutosave";
 import usePostAutosave from "@/components/admin/usePostAutosave";
+import EditorWechatSyncButton from "@/components/admin/distribute/EditorWechatSyncButton";
 import {
   POST_LIMITS,
   postCreateSchema,
@@ -96,11 +97,14 @@ export default function PostEditor({
   categories,
   post,
   imported,
+  wechat,
 }: {
   categories: EditorCategory[];
   post?: EditorPost;
   /** 一键发文交接(/admin/posts/new?import=1):EditorTextarea mount 时消费 sessionStorage */
   imported?: boolean;
+  /** 公众号同步入口(M31):ready=渠道配置就绪;status=该稿微信渠道行状态 */
+  wechat?: { ready: boolean; status: string | null };
 }): React.ReactElement {
   const router = useRouter();
   const mode = post ? ("edit" as const) : ("create" as const);
@@ -134,6 +138,16 @@ export default function PostEditor({
   const [shadowOffer, setShadowOffer] = useState<PostShadow | null>(null);
   // 右栏收起(沉浸编辑,M16):mount 后读 localStorage 防 hydration 分歧;收起=右栏不渲染
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // 封面 agent 唤起(M31 验收反馈):弹窗「生成候选」→ 开侧边栏助手直发生成指令
+  const [assistantLaunch, setAssistantLaunch] = useState<AssistantLaunch | null>(null);
+  const launchCoverAgent = useCallback((): void => {
+    setAssistantLaunch({
+      question:
+        "为本文生成封面候选。请先用 ask_user 给我 2-4 个提示词方向(风格/主体/配色)选择," +
+        "再按选定方向生成 2 张候选,等我确认入库。",
+      nonce: Date.now(),
+    });
+  }, []);
   useEffect(() => {
     try {
       setSidebarCollapsed(localStorage.getItem("ah:editor:sidebar-collapsed") === "1");
@@ -389,6 +403,7 @@ export default function PostEditor({
               title={title}
               getContent={getAssistantContent}
               onApplyContent={applyAssistantContent}
+              launch={assistantLaunch}
             />
           )}
           <button
@@ -402,6 +417,20 @@ export default function PostEditor({
               <use href="#i-menu" />
             </svg>
           </button>
+          {wechat && post && (
+            <EditorWechatSyncButton
+              wechatReady={wechat.ready}
+              post={{
+                id: post.id,
+                title,
+                seoTitle: meta.seoTitle,
+                excerpt: meta.excerpt,
+                seoDescription: meta.seoDescription,
+                coverPath: meta.coverPath,
+                wechatStatus: wechat.status,
+              }}
+            />
+          )}
           {status === "published" && (
             <button type="button" disabled={busy} className={BTN_SECONDARY} onClick={unpublish}>
               下架
@@ -508,11 +537,13 @@ export default function PostEditor({
             onSeoSuggest={() => void seoSuggest()}
             seoSuggesting={seoBusy}
             coverContext={{
+              postId: post?.id,
               title,
               excerpt: meta.excerpt,
               tags: splitTags(meta.tagsText),
               contentMd: contentMd.slice(0, 4000),
             }}
+            onAgentCoverGen={launchCoverAgent}
           />
         )}
       </div>
