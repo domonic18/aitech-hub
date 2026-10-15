@@ -42,10 +42,13 @@ vi.mock("../topics/compose", () => ({
 }));
 
 const enqueueCoverGen = vi.hoisted(() => vi.fn());
-const listCoverCandidates = vi.hoisted(() => vi.fn());
+const probeCoverGen = vi.hoisted(() => vi.fn());
+const deleteCoverTemp = vi.hoisted(() => vi.fn());
 vi.mock("../ai/cover-generate", () => ({
   enqueueCoverGen,
-  listCoverCandidates,
+  // 2026-10-15 验收反馈问题二:轮询改单拍探测(候选即收工/失败即断路),mock 随之
+  probeCoverGen,
+  deleteCoverTemp,
   // M31:工具侧取关联稿正文供 agent 提示词步骤;测试场景无关联稿,返回 null
   loadCoverPostContext: vi.fn().mockResolvedValue(null),
 }));
@@ -234,9 +237,11 @@ describe("generate_cover_candidates", () => {
       linkedPostId: BigInt(9),
     });
     enqueueCoverGen.mockResolvedValueOnce({ jobId: "j", token: "tok-1" });
-    listCoverCandidates.mockResolvedValueOnce([
-      { id: "1", path: "/wp-content/uploads/2026/10/g1.png", prompt: "", createdAt: new Date() },
-    ]);
+    probeCoverGen.mockResolvedValueOnce({
+      rows: [
+        { id: "1", path: "/wp-content/uploads/2026/10/g1.png", prompt: "", createdAt: new Date() },
+      ],
+    });
     await expect(invoke(generateCoverCandidatesTool, { topic_id: "7" })).resolves.toEqual({
       ok: true,
       candidates: ["/wp-content/uploads/2026/10/g1.png"],

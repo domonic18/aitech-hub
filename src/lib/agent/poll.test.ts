@@ -3,7 +3,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { pollUntil } from "./poll";
+import { POLL_INTERVAL_MS, POLL_MAX_MS, pollUntil } from "./poll";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -37,7 +37,7 @@ describe("pollUntil", () => {
     vi.useFakeTimers();
     const p = pollUntil<string>(async () => null);
     const settled = expect(p).resolves.toBeNull();
-    await vi.advanceTimersByTimeAsync(130_000);
+    await vi.advanceTimersByTimeAsync(POLL_MAX_MS + POLL_INTERVAL_MS);
     await settled;
   });
 });
