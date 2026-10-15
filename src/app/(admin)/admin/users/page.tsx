@@ -1,7 +1,8 @@
 /**
  * 用户管理页(M5-c;原型 admin-users.html):四分段 + 搜索 + 分页,整页服务端
- * 渲染;行内操作唯一(禁用/启用),当前登录行不提供操作。列定稿砍原型的
- * 「评论/最近登录/批量勾选」(无采集来源,注记页脚);手机号按掩码展示。
+ * 渲染;行内操作唯一(禁用/启用),当前登录行不提供操作。M31 验收反馈起
+ * 加多选批量启用/停用(UsersTable,自行动作;当前登录行禁勾+服务端跳过)。
+ * 手机号按掩码展示。
  */
 import Link from "next/link";
 
@@ -21,7 +22,7 @@ import {
 } from "@/lib/users/user-status";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
-import UserStatusButton from "@/components/admin/UserStatusButton";
+import UsersTable from "@/components/admin/UsersTable";
 import AdminPagination from "@/components/admin/AdminPagination";
 
 export const dynamic = "force-dynamic";
@@ -136,91 +137,7 @@ export default async function AdminUsersPage({
       </div>
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
-              <th className="px-4 py-2.5 font-medium">用户</th>
-              <th className="px-3 py-2.5 font-medium">邮箱</th>
-              <th className="px-3 py-2.5 font-medium">角色</th>
-              <th className="px-3 py-2.5 font-medium">状态</th>
-              <th className="px-3 py-2.5 font-medium">注册时间</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((u) => {
-              const self = u.id === claims.sub;
-              return (
-                <tr
-                  key={u.id}
-                  className={`border-b border-line last:border-b-0 hover:bg-panel-2 ${
-                    u.status === USER_STATUS_DISABLED ? "opacity-70" : ""
-                  }`}
-                >
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-3">
-                      {u.avatarPath ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- 管理端内部头像,src 为站内动态路径
-                        <img
-                          src={u.avatarPath}
-                          alt=""
-                          className="h-9 w-9 rounded-full border border-line object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-panel-2 text-sm text-text-3">
-                          {(u.nickname ?? "?").slice(0, 1)}
-                        </span>
-                      )}
-                      <div>
-                        <div className="font-medium text-text-1">{u.nickname ?? "未命名"}</div>
-                        <div className="mt-0.5 font-mono text-[11px] text-text-3">
-                          {maskPhone(u.phone)} · uid {u.id}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td
-                    className="max-w-[200px] truncate px-3 py-2.5 font-mono text-xs text-text-2"
-                    title={u.email ?? undefined}
-                  >
-                    {u.email ?? <span className="text-text-3">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {u.role === "admin" ? (
-                      <span className="rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] text-accent">
-                        admin
-                      </span>
-                    ) : (
-                      <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
-                        user
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <StatusBadge status={u.status} />
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
-                    {formatCnDateTime(u.createdAt)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    {self ? (
-                      <span className="font-mono text-[11px] text-text-3">当前登录</span>
-                    ) : (
-                      <UserStatusButton id={u.id} nickname={u.nickname} status={u.status} />
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
-                  没有符合条件的用户
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <UsersTable items={items} selfId={claims.sub} />
 
         <AdminPagination
           page={page}

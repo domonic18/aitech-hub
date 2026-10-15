@@ -25,6 +25,7 @@ import {
 
 import AdminPagination from "@/components/admin/AdminPagination";
 import KeywordAddForm from "@/components/admin/discovery/KeywordAddForm";
+import KeywordTable from "@/components/admin/discovery/KeywordTable";
 import StatusControl from "@/components/admin/discovery/StatusControl";
 import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
 
@@ -171,64 +172,7 @@ export default async function AdminDiscoveryPage({
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
         {kwTab ? (
-          <table className="w-full text-left text-[13px]">
-            <thead>
-              <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
-                <th className="px-4 py-2.5 font-medium">词</th>
-                <th className="px-3 py-2.5 font-medium">来源</th>
-                <th className="px-3 py-2.5 font-medium">状态</th>
-                <th className="px-3 py-2.5 font-medium">首见时间</th>
-                <th className="px-3 py-2.5 font-medium">确认时间</th>
-                <th className="px-4 py-2.5 text-right font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kw!.items.map((k) => (
-                <tr key={k.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
-                  <td className="px-4 py-2.5 font-medium text-text-1">{k.word}</td>
-                  <td className="px-3 py-2.5 text-xs text-text-2">
-                    {k.origin === "manual" ? (
-                      "人工"
-                    ) : (
-                      <span title={k.source ?? undefined}>
-                        联想{k.source ? ` · ${k.source}` : ""}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <StatusChip
-                      tone={KEYWORD_TONES[k.status] ?? "bg-panel-2 text-text-2"}
-                      label={
-                        KEYWORD_STATUS_LABELS[k.status as keyof typeof KEYWORD_STATUS_LABELS] ??
-                        k.status
-                      }
-                    />
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
-                    {formatCnDateTime(k.firstSeenAt)}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
-                    {k.confirmedAt ? formatCnDateTime(k.confirmedAt) : "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusControl
-                      endpoint="keywords"
-                      id={k.id}
-                      status={k.status}
-                      name={`词「${k.word}」`}
-                    />
-                  </td>
-                </tr>
-              ))}
-              {kw!.items.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
-                    暂无关键词,可在上方人工添加或触发热词发现
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <KeywordTable items={kw!.items} tones={KEYWORD_TONES} />
         ) : (
           <table className="w-full text-left text-[13px]">
             <thead>

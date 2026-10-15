@@ -12,13 +12,31 @@ import type { TelegramAdminList } from "@/lib/telegram/telegram-admin";
 
 type Item = TelegramAdminList["items"][number];
 
-export default function TelegramItemRow({ item: t }: { item: Item }) {
+export default function TelegramItemRow({
+  item: t,
+  checkbox,
+}: {
+  item: Item;
+  /** 多选勾选格(M31 验收反馈):批量条在场时由 TelegramTable 传入,渲染为行首格 */
+  checkbox?: { checked: boolean; onToggle: () => void };
+}) {
   const isVideo = t.mediaType === "video";
   const duration = isVideo ? formatDuration(t.videoDuration) : null;
   const like = isVideo ? compactCount(t.videoEngagement?.like) : null;
   const comment = isVideo ? compactCount(t.videoEngagement?.comment) : null;
   return (
     <tr className="border-b border-line last:border-b-0 hover:bg-panel-2">
+      {checkbox && (
+        <td className="w-10 px-3 py-2.5 align-middle">
+          <input
+            type="checkbox"
+            aria-label={`选择 ${t.title ?? t.id}`}
+            className="accent-[var(--accent)]"
+            checked={checkbox.checked}
+            onChange={checkbox.onToggle}
+          />
+        </td>
+      )}
       <td className="max-w-[380px] px-4 py-2.5">
         {isVideo ? (
           <div className="flex gap-3">

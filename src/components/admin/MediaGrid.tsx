@@ -67,7 +67,7 @@ export default function MediaGrid({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [trashMsg, setTrashMsg] = useState<string | null>(null);
 
-  const selectable = refFilter === "orphan";
+  const selectable = refFilter !== "trash"; // M31 验收反馈:全部视图可多选批量删(trash 行除外)
   const trashMode = refFilter === "trash";
   const toggle = (id: string): void => {
     setSelected((prev) => {
@@ -76,6 +76,10 @@ export default function MediaGrid({
       else next.add(id);
       return next;
     });
+  };
+  const allSelected = items.length > 0 && items.every((i) => selected.has(i.id));
+  const toggleAll = (): void => {
+    setSelected(allSelected ? new Set() : new Set(items.map((i) => i.id)));
   };
 
   /** 回收站行内动作:恢复(清软删标记)/ 立即清除(物理删,确认后执行) */
@@ -138,8 +142,26 @@ export default function MediaGrid({
 
   return (
     <>
+      {selectable && (
+        <div className="mb-2 flex items-center gap-3 text-xs text-text-3">
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              aria-label="全选本页"
+              className="accent-[var(--accent)]"
+              checked={allSelected}
+              onChange={toggleAll}
+              disabled={items.length === 0}
+            />
+            全选本页
+          </label>
+          <span>
+            勾选后可批量删除;被文章引用的项自动跳过,删除进回收站保留 {MEDIA_LIMITS.trashDays} 天
+          </span>
+        </div>
+      )}
       {selectable && selected.size > 0 && (
-        <div className="flex items-center gap-3 rounded-sm border border-line bg-panel px-4 py-2.5 text-xs">
+        <div className="mb-2 flex items-center gap-3 rounded-sm border border-line bg-panel px-4 py-2.5 text-xs">
           <span className="text-text-2">已选 {selected.size} 项</span>
           <button
             type="button"
@@ -147,7 +169,7 @@ export default function MediaGrid({
             className="cursor-pointer text-red hover:underline disabled:opacity-50"
             onClick={() => void batchDelete()}
           >
-            {batchBusy ? "删除中…" : "批量删除未引用项"}
+            {batchBusy ? "删除中…" : "批量删除(引用项自动跳过)"}
           </button>
           <button
             type="button"
