@@ -66,7 +66,7 @@ export default function HeroConsole({
           {/* h1 承载品牌语(SEO 首页需 h1),视觉上即终端注释行;服务端渲染下传 */}
           <h1 className="whitespace-pre-wrap font-normal text-text-3">{children}</h1>
           <div className="whitespace-pre-wrap">
-            <span className="text-accent-hi">hub.17aitech.com</span>{" "}
+            <span className="text-accent-hi">17aitech.com</span>{" "}
             <span className="text-text-3">--status=</span>
             <span className="text-green">active</span> <span className="text-text-3">--posts=</span>
             {postCount} <span className="text-text-3">--since=</span>2021
