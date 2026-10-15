@@ -31,13 +31,10 @@ import { findNonSiteImageRefs, isUploadsPath } from "../media/refs";
 import { logger } from "../logger";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
+import { pollUntil } from "./poll";
 
 /** brief 内单条解读笔记进上下文的截断宽度(素材多条叠加,单条给足不失真) */
 const BRIEF_NOTE_MAX = 3000;
-
-/** 封面生成轮询:生图 10-30s × 多候选,3s 步进 120s 兜底 */
-const COVER_POLL_INTERVAL_MS = 3000;
-const COVER_POLL_MAX_MS = 120_000;
 
 /** 纵深防御收口(M27 批⑧-b 上提 admin-thread 共用;deny 固定 topic 域) */
 const denyPayload = (threadId: unknown): string => adminThreadDeny(threadId, "topic");
@@ -210,25 +207,22 @@ export const generateCoverCandidatesTool = tool(
       throw e;
     }
     logger.info({ event: "agent.cover_gen_started", token });
-    const startedAt = Date.now();
-    for (;;) {
+    const paths = await pollUntil(async () => {
       const rows = await listCoverCandidates(token);
-      if (rows.length > 0) {
-        return JSON.stringify({
-          ok: true,
-          candidates: rows.map((r) => r.path),
-          note: "从候选中择优,路径可作正文配图或 save_topic_draft 的 cover_path",
-        });
-      }
-      if (Date.now() - startedAt > COVER_POLL_MAX_MS) {
-        return JSON.stringify({
-          ok: false,
-          timeout: true,
-          error: "封面生成超时(云厂商生图通常 10-30 秒),可重试或改用 transfer_video_cover",
-        });
-      }
-      await new Promise((r) => setTimeout(r, COVER_POLL_INTERVAL_MS));
+      return rows.length > 0 ? rows.map((r) => r.path) : null;
+    });
+    if (paths === null) {
+      return JSON.stringify({
+        ok: false,
+        timeout: true,
+        error: "封面生成超时(云厂商生图通常 10-30 秒),可重试或改用 transfer_video_cover",
+      });
     }
+    return JSON.stringify({
+      ok: true,
+      candidates: paths,
+      note: "从候选中择优,路径可作正文配图或 save_topic_draft 的 cover_path",
+    });
   },
   {
     name: "generate_cover_candidates",
