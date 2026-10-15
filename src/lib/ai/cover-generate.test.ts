@@ -38,19 +38,28 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => undefined),
   readFile: vi.fn(async () => new Uint8Array([9, 9, 9])),
   rm: vi.fn(async () => undefined),
+  readdir: vi.fn(async () => [] as never[]),
+  stat: vi.fn(async () => ({ mtimeMs: 0 })),
   default: {
     mkdir: vi.fn(async () => undefined),
     writeFile: vi.fn(async () => undefined),
     readFile: vi.fn(async () => new Uint8Array([9, 9, 9])),
     rm: vi.fn(async () => undefined),
+    readdir: vi.fn(async () => [] as never[]),
+    stat: vi.fn(async () => ({ mtimeMs: 0 })),
   },
 }));
 
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 
 import { prisma } from "../db";
 import { uploadMedia } from "../media/service";
-import { adoptCoverCandidate, coverGenJob, COVER_TEMP_PREFIX } from "./cover-generate";
+import {
+  adoptCoverCandidate,
+  coverGenJob,
+  COVER_TEMP_PREFIX,
+  sweepStaleCoverTemp,
+} from "./cover-generate";
 
 const mockedCreate = vi.mocked(prisma.coverCandidate.create);
 const mockedFind = vi.mocked(prisma.coverCandidate.findUnique);
@@ -118,5 +127,37 @@ describe("adoptCoverCandidate", () => {
     } as never);
     vi.mocked(readFile).mockRejectedValueOnce(new Error("ENOENT"));
     await expect(adoptCoverCandidate("12")).rejects.toThrow("临时文件已失效");
+  });
+});
+
+describe("sweepStaleCoverTemp(技术债批①:hold 孤儿目录日频清扫)", () => {
+  function dirent(name: string): { name: string; isDirectory: () => boolean } {
+    return { name, isDirectory: () => true };
+  }
+
+  it("超龄 token 目录整删,新鲜目录与文件项跳过", async () => {
+    vi.mocked(readdir).mockResolvedValue([
+      dirent("tok-old"),
+      dirent("tok-new"),
+      dirent("stray.png"),
+    ] as never);
+    vi.mocked(stat).mockImplementation(
+      async (p) => ({ mtimeMs: String(p).includes("tok-old") ? 1 : Date.now() }) as never,
+    );
+    await expect(sweepStaleCoverTemp()).resolves.toEqual({ removed: 1, failed: 0 });
+    expect(vi.mocked(rm)).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(rm).mock.calls[0]?.[0])).toContain("tok-old");
+  });
+
+  it("临时根不存在静默零清扫;单目录失败计 failed 不废整轮", async () => {
+    vi.mocked(readdir).mockRejectedValueOnce(new Error("ENOENT"));
+    await expect(sweepStaleCoverTemp()).resolves.toEqual({ removed: 0, failed: 0 });
+
+    vi.mocked(readdir).mockResolvedValue([dirent("tok-a"), dirent("tok-b")] as never);
+    vi.mocked(stat).mockImplementation(async (p) => {
+      if (String(p).includes("tok-a")) throw new Error("EACCES");
+      return { mtimeMs: 1 } as never;
+    });
+    await expect(sweepStaleCoverTemp()).resolves.toEqual({ removed: 1, failed: 1 });
   });
 });

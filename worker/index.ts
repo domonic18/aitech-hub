@@ -4,6 +4,8 @@ import { env } from "../src/lib/env";
 import { SITE_TZ } from "../src/lib/datetime";
 import {
   AGENT_SESSION_PURGE_CRON,
+  COVER_JOB_TEMP_SWEEP,
+  COVER_TEMP_SWEEP_CRON,
   CRAWL_JOB_AI_BACKFILL,
   DB_BACKUP_CRON,
   DB_BACKUP_JOB_RUN,
@@ -60,7 +62,11 @@ import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
-import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
+import {
+  coverGenJob,
+  sweepStaleCoverTemp,
+  type CoverGenJobData,
+} from "../src/lib/ai/cover-generate";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
   type WechatBatchJobData,
@@ -168,7 +174,15 @@ const PROCESSORS: Record<string, Processor> = {
   // 文字资讯轻解读(M12 批③):中心思想 + 关键词,LLM 网络调用为主(默认并发 2)
   [QUEUE_SUMMARIZER]: (job) => summarizeTextJob(job.data as SummarizeJobData),
   // 文生图封面(M14 批⑥):云厂商生图 10-30s,按张计费不自动重试(attempts=1 入队侧钉)
-  [QUEUE_COVER_GEN]: (job) => coverGenJob(job.data as CoverGenJobData),
+  [QUEUE_COVER_GEN]: async (job) => {
+    // temp-sweep:hold 候选孤儿目录日频清扫(技术债批①);generate 为缺省路径
+    if (job.name === COVER_JOB_TEMP_SWEEP) {
+      const r = await sweepStaleCoverTemp();
+      console.log(JSON.stringify({ event: "cover.temp_sweep_job", ...r }));
+      return r;
+    }
+    return coverGenJob(job.data as CoverGenJobData);
+  },
   // 批量 SEO 补全(M16 问题8,仅补空缺):单批次 job 顺序逐篇 LLM 调用,进度逐篇上报
   [QUEUE_SEO_BATCH]: (job) =>
     seoBatchJob(job.data as SeoBatchJobData, (p) => job.updateProgress(p)),
@@ -298,6 +312,21 @@ async function scheduleMediaAudit(): Promise<void> {
     { pattern: MEDIA_AUDIT_CRON, tz: SITE_TZ },
     {
       name: "audit",
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
+/** hold 候选临时件清扫:每日 04:23 清 24h+ 孤儿 token 目录(悬空中断/顶替遗留,
+ * 技术债批①;清扫逻辑 lib/ai/cover-generate#sweepStaleCoverTemp) */
+async function scheduleCoverTempSweep(): Promise<void> {
+  const queue = getQueue(QUEUE_COVER_GEN);
+  await queue.upsertJobScheduler(
+    "cover-temp-sweep",
+    { pattern: COVER_TEMP_SWEEP_CRON, tz: SITE_TZ },
+    {
+      name: COVER_JOB_TEMP_SWEEP,
       data: {},
       opts: { removeOnComplete: 7 },
     },
@@ -510,6 +539,7 @@ async function main(): Promise<void> {
 
   await scheduleStatsFlush();
   await scheduleMediaAudit();
+  await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();
   await scheduleAgentSessionPurge();
