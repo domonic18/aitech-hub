@@ -7,9 +7,10 @@
  * 选择态与按钮渲染留 PostsTable,本模块只管动作与反馈文案。
  */
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 
 import { postBatch, outcomeText } from "./batch/batch-client";
+import { useBatchState } from "./batch/useBatchAction";
 import { runBatchJob } from "./batch-job";
 
 /** 轮询 3s × 240 ≈ 12min:50 篇 × LLM 最坏十几秒,先于 worker 锁超时收敛 */
@@ -32,9 +33,7 @@ export function usePostsBatchJobs({ selectedIds, syncedCount, clearSelected }: P
   runDeleteBatch: () => void;
 } {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, msg, error, setBusy, setMsg, setError } = useBatchState();
 
   const runSeoBatch = useCallback((): void => {
     const ids = selectedIds;
@@ -68,7 +67,7 @@ export function usePostsBatchJobs({ selectedIds, syncedCount, clearSelected }: P
         setBusy(false);
       },
     });
-  }, [selectedIds, clearSelected, router]);
+  }, [selectedIds, clearSelected, router, setBusy, setError, setMsg]);
 
   const runWechatBatch = useCallback((): void => {
     const ids = selectedIds;
@@ -126,7 +125,7 @@ export function usePostsBatchJobs({ selectedIds, syncedCount, clearSelected }: P
         setBusy(false);
       },
     });
-  }, [selectedIds, syncedCount, clearSelected, router]);
+  }, [selectedIds, syncedCount, clearSelected, router, setBusy, setError, setMsg]);
 
   const runDeleteBatch = useCallback((): void => {
     const ids = selectedIds;
@@ -146,7 +145,7 @@ export function usePostsBatchJobs({ selectedIds, syncedCount, clearSelected }: P
       }
       setBusy(false);
     });
-  }, [selectedIds, clearSelected, router]);
+  }, [selectedIds, clearSelected, router, setBusy, setError, setMsg]);
 
   return { busy, msg, error, runSeoBatch, runWechatBatch, runDeleteBatch };
 }
