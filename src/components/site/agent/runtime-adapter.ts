@@ -174,6 +174,15 @@ export function createAgentRuntimeAdapter(
       try {
         const { externalId } = await config.initialize();
         if (!externalId) throw new Error("会话尚未初始化");
+        // M31 验收反馈修复:中断卡挂起时再触发程序化发送(PendingAskSender 只
+        // gate isRunning 不 gate 中断态,如封面候选在挂再次点「生成候选」),
+        // SDK runUserMessage 会把悬空 tool_call 打包成 type:"tool" 取消桩前置
+        // (autoCancelPendingToolCalls 默认开);后端 inputSchema 只收单条
+        // human 文本,桩入线即 union 全败 → 400 "invalid body: Invalid input"。
+        // 取消桩是 SDK 本地簿记(本地历史照记),工具全在服务端,出线收敛为
+        // 最后一条 human 即可;resume(空消息批)不受影响。
+        const humanOnly = messages.filter((m) => m.type === "human");
+        const wireMessages = humanOnly.length > 0 ? humanOnly.slice(-1) : messages;
         // 自有 fetch 替代官方 SDK(头注:错误包装丢人话 + 盲重试)。载荷与 SDK
         // 同形:后端 bodySchema 只消费 input,command(resume/regenerate)透传备用。
         let res: Response;
@@ -182,10 +191,12 @@ export function createAgentRuntimeAdapter(
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              input: messages.length ? { messages } : null,
+              input: wireMessages.length ? { messages: wireMessages } : null,
               ...(config.command ? { command: config.command } : {}),
               // 新提问才附上下文(resume 服务端不注入;checkpoint 历史已含)
-              ...(messages.length && options.getContext ? { context: options.getContext() } : {}),
+              ...(wireMessages.length && options.getContext
+                ? { context: options.getContext() }
+                : {}),
             }),
             signal: config.abortSignal,
           });
