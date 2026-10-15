@@ -6,45 +6,35 @@
  * 检索取向(M20 混合检索,2026-10-08 定稿):词项层 DB 逐词 contains insensitive
  * (OR)取候选 + JS 加权计分重排(title 3 > 摘要 2 > 正文 1,search-view);
  * 语义层查询向量化(query-embedding)→ pgvector 余弦召回(HNSW 分部索引);
- * 两榜 RRF 融合(k=60,词法证据 tiebreak,fuseDomain)。embedding 未绑定或调用
- * 失败 → 语义层整体降级,结果与单榜逐字节一致。消费方 /search 与 answer 路由均
- * force-dynamic,构建期不执行,故不包 prerenderSafe。
+ * 两榜 RRF 融合(k=60,词法证据 tiebreak,fuseDomain 已拆 fuse-domain)。
+ * embedding 未绑定或调用失败 → 语义层整体降级,结果与单榜逐字节一致。
+ * 消费方 /search 与 answer 路由均 force-dynamic,构建期不执行,故不包 prerenderSafe。
+ * K2 引用正文补取已拆 citation-bodies(技术债批⑤)。
  */
 import { prisma } from "../db";
 import { PUBLISHED } from "../content/posts";
 import { TELEGRAM_AI_TERMINAL } from "../telegram/constants";
-import { topVectorMatches, type VectorMatch } from "./embedding-repo";
+import { topVectorMatches } from "./embedding-repo";
 import { embedQueryForSearch } from "./query-embedding";
 import { tokenizeQuery } from "./tokenize";
+import { CANDIDATE_LIMIT, fuseDomain } from "./fuse-domain";
 import {
-  fuseCompare,
   postScoreFields,
-  rankAndCut,
   repoScoreFields,
   telegramScoreFields,
   toPostHit,
   toRepoHit,
   toTelegramHit,
   VECTOR_RECALL_LIMIT,
-  scoreTerms,
   type PostRow,
   type RepoRow,
-  type RankedFields,
-  type ScoreFields,
-  type SearchHit,
   type SearchGroup,
   type TelegramRow,
   type UnifiedSearchResult,
 } from "./search-view";
 
-/** 每域候选上限(DB take,预排后 JS 计分重排;万行级表取新 50 条足够) */
-export const CANDIDATE_LIMIT = 50;
-
 /** 每组展示限量(原型同页三组纵排,组头 total 为库内全命中数) */
 export const GROUP_LIMITS = { telegram: 6, post: 4, repo: 4 } as const;
-
-/** K2 引用 snippet 截断长度(loadCitationBodies 出口) */
-export const CITATION_SNIPPET_MAX = 300;
 
 /**
  * 词项 × 字段 → Prisma OR contains insensitive 数组(纯函数,单测锚点)。
@@ -56,69 +46,6 @@ export function buildTermOr(terms: string[], fields: readonly string[]): Record<
     for (const f of fields) out.push({ [f]: { contains: t, mode: "insensitive" as const } });
   }
   return out;
-}
-
-/**
- * 单域双榜融合(M20,fetchSemanticRows 注入便于单测):词项候选 rankAndCut 全量
- * 排名(CANDIDATE_LIMIT)→ 向量榜剔除词项命中后,纯语义 id 按"同可见性条件"
- * 补取源行 → RRF 融合重排(fuseCompare)→ 截组限量。降级(vectorTop=null)时候选
- * 仅词项榜且 RRF 严格随排名递减,序与单榜一致(行为不回归)。extraTotal = 语义
- * 补召仍可见条数(并入组头 total;上限向量榜 VECTOR_RECALL_LIMIT 内)。
- */
-export async function fuseDomain<Row, Hit extends { id: string; semanticOnly?: boolean }>(args: {
-  keywordRows: Row[];
-  vectorTop: VectorMatch[] | null;
-  terms: string[];
-  limit: number;
-  fieldOf: (r: Row) => ScoreFields & RankedFields;
-  toHit: (r: Row & { hitPct: number }) => Hit;
-  fetchSemanticRows: (ids: bigint[]) => Promise<Row[]>;
-}): Promise<{ items: Hit[]; extraTotal: number }> {
-  const { keywordRows, vectorTop, terms, limit, fieldOf, toHit, fetchSemanticRows } = args;
-  const ranked = rankAndCut(keywordRows, terms, CANDIDATE_LIMIT, fieldOf);
-  const vecRankById = new Map((vectorTop ?? []).map((m, i) => [m.entityId.toString(), i] as const));
-  const scored = ranked.map((row, kwRank) => {
-    const f = fieldOf(row);
-    return {
-      row,
-      hitPct: row.hitPct,
-      id: f.id,
-      kwRank,
-      vecRank: vecRankById.get(f.id) ?? null,
-      kwScore: scoreTerms(terms, f).score,
-      date: f.dateIso ? Date.parse(f.dateIso) : 0,
-    };
-  });
-
-  // 纯语义 id(向量榜有、词项榜无;保距降序)→ 补取源行(已下架/隐藏自然缺位)
-  const kwIdSet = new Set(scored.map((c) => c.id));
-  const semanticIds = (vectorTop ?? [])
-    .filter((m) => !kwIdSet.has(m.entityId.toString()))
-    .map((m) => m.entityId);
-  const semanticRows = semanticIds.length > 0 ? await fetchSemanticRows(semanticIds) : [];
-  const semantic = semanticRows.map((row) => {
-    const f = fieldOf(row);
-    return {
-      row,
-      hitPct: 0, // 语义命中不显百分比(UI 以「语义匹配」标替代)
-      id: f.id,
-      kwRank: null,
-      vecRank: vecRankById.get(f.id) ?? null,
-      kwScore: scoreTerms(terms, f).score, // 仅作词法证据 tiebreak
-      date: f.dateIso ? Date.parse(f.dateIso) : 0,
-    };
-  });
-
-  const candidates = [...scored, ...semantic];
-  candidates.sort((a, b) => fuseCompare(a, b));
-  return {
-    items: candidates.slice(0, limit).map((c) => {
-      const hit = toHit({ ...c.row, hitPct: c.hitPct });
-      if (c.kwRank === null) hit.semanticOnly = true;
-      return hit;
-    }),
-    extraTotal: semanticRows.length,
-  };
 }
 
 function emptyGroup(domain: SearchGroup["domain"], meta: GroupMeta): SearchGroup {
@@ -350,56 +277,4 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
       repoFuse.extraTotal,
     groups,
   };
-}
-
-/** markdown 首段提取:剥 frontmatter/标题行/引用块,取首个非空段落 */
-function firstMarkdownParagraph(md: string): string {
-  const body = md.replace(/^---\n[\s\S]*?\n---\n/, "");
-  for (const para of body.split(/\n{2,}/)) {
-    const line = para
-      .split("\n")
-      .filter((l) => !/^(#{1,6}\s|>|\s*[-*+]\s|\s*\d+\.\s)/.test(l.trim()))
-      .join(" ")
-      .trim();
-    if (line !== "") return line;
-  }
-  return "";
-}
-
-/**
- * K2 引用正文补取:仅对选中引用(picks)补取 contentMd/readmeMd 大字段,
- * 截 CITATION_SNIPPET_MAX(首段优先,空回落 excerpt/description)。
- * 键 `${domain}:${id}` 与 SearchHit.id 对齐。
- */
-export async function loadCitationBodies(
-  picks: readonly SearchHit[],
-): Promise<Map<string, string>> {
-  const postIds = picks.filter((p) => p.domain === "post").map((p) => BigInt(p.id));
-  const repoIds = picks.filter((p) => p.domain === "repo").map((p) => Number(p.id));
-  const [posts, repos] = await Promise.all([
-    postIds.length > 0
-      ? prisma.post.findMany({
-          where: { id: { in: postIds }, ...PUBLISHED },
-          select: { id: true, excerpt: true, contentMd: true },
-        })
-      : Promise.resolve([]),
-    repoIds.length > 0
-      ? prisma.githubRepo.findMany({
-          where: { id: { in: repoIds } },
-          select: { id: true, description: true, readmeMd: true },
-        })
-      : Promise.resolve([]),
-  ]);
-  const map = new Map<string, string>();
-  const put = (key: string, text: string | null): void => {
-    const t = (text ?? "").trim();
-    if (t !== "") map.set(key, t.slice(0, CITATION_SNIPPET_MAX));
-  };
-  for (const p of posts) {
-    put(`post:${p.id.toString()}`, firstMarkdownParagraph(p.contentMd ?? "") || p.excerpt);
-  }
-  for (const r of repos) {
-    put(`repo:${r.id}`, firstMarkdownParagraph(r.readmeMd ?? "") || r.description);
-  }
-  return map;
 }

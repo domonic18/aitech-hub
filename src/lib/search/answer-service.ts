@@ -5,7 +5,7 @@
  * 只数 ok/degraded)。客户端中途断开:已发增量按 done 收尾(degraded,不写缓存)。
  */
 import { AI_PURPOSE_SEARCH } from "@/lib/ai/constants";
-import { chatStream } from "@/lib/ai/llm-client";
+import { chatStream } from "@/lib/ai/llm-stream";
 import { getRoleDailyMax, resolveAiModel } from "@/lib/ai/resolver";
 import { recordAiUsage } from "@/lib/ai/usage-log";
 import { countTodayRoleUsage } from "@/lib/ai/usage-queries";
@@ -23,7 +23,8 @@ import {
   citeKindOf,
   pickCitations,
 } from "./answer-prompt";
-import { CITATION_SNIPPET_MAX, loadCitationBodies, searchAll } from "./unified-search";
+import { CITATION_SNIPPET_MAX, loadCitationBodies } from "./citation-bodies";
+import { searchAll } from "./unified-search";
 
 /** 终态降级帧流(无绑定/超配额:单帧 unavailable,不落 usage 行——无 LLM 调用) */
 function unavailableStream(

@@ -177,9 +177,9 @@ describe("chatJson 错误归因", () => {
   });
 });
 
-// ---------- 流式 chat(K2 答案卡) ----------
+// ---------- 流式 chat(K2 答案卡;实现拆 llm-stream,技术债批⑤) ----------
 
-import { chatStream, parseAnthropicSseBuffer, parseOpenAiSseBuffer } from "./llm-client";
+import { chatStream, parseAnthropicSseBuffer, parseOpenAiSseBuffer } from "./llm-stream";
 
 function sseFrame(payloads: string[]): string {
   return payloads.map((p) => `data: ${p}\n\n`).join("");
