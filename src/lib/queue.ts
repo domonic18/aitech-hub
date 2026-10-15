@@ -82,8 +82,14 @@ export const CRAWL_JOB_SOURCE = "crawl";
 export const CRAWL_JOB_VIDEO = "crawl-video";
 export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
 
-/** cover-gen 队列 job name 契约(M14 批⑥;generate 为缺省路径,编辑器手动触发) */
+/** cover-gen 队列 job name 契约(M14 批⑥;generate 为缺省路径,agent 两工具面
+ * ——编辑页 generate_post_cover 与 topic 域 generate_cover_candidates——入队)。
+ * temp-sweep = hold 候选临时件日频清扫(技术债批①;改名需与 worker 同批)。 */
 export const COVER_JOB_GEN = "generate";
+export const COVER_JOB_TEMP_SWEEP = "temp-sweep";
+
+/** hold 候选临时件清扫:每日 04:23(避开 4:14 访问清理 / 4:33 会话清退档) */
+export const COVER_TEMP_SWEEP_CRON = "23 4 * * *";
 
 /** seo-batch 队列 job name 契约(M16;batch 为缺省路径,文章管理手动触发) */
 export const SEO_JOB_BATCH = "batch";

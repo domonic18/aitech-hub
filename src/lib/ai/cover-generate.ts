@@ -5,7 +5,8 @@
  * 云厂商生图 10-30s,走 QUEUE_COVER_GEN worker,不占请求(请求内禁秒级任务)。
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 
 import { prisma } from "../db";
@@ -80,6 +81,46 @@ export async function readHoldCandidate(virtualPath: string): Promise<Uint8Array
 /** 清空一批 hold 候选(整批放弃/入库完成后调用;目录不存在静默) */
 export async function deleteCoverTemp(token: string): Promise<void> {
   await rm(coverTempAbs(`${COVER_TEMP_PREFIX}${token}`), { recursive: true, force: true });
+}
+
+/** hold 候选保留期:交互流(生成→确认)分钟级完成,24h 已足够宽 */
+export const COVER_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 定时清扫 hold 候选孤儿目录(技术债批①):悬空中断/被顶替的 run 无人
+ * adopt/discard,临时盘只增不减;逐 token 目录按 mtime 判陈旧,超龄整目录
+ * 删除。清扫后迟到的 adopt 报「候选临时文件已失效,请重新生成」(人话已有)。
+ * 临时根不存在 = 从无临时件,静默零清扫;单目录失败计 failed 不废整轮。
+ */
+export async function sweepStaleCoverTemp(
+  maxAgeMs = COVER_TEMP_MAX_AGE_MS,
+): Promise<{ removed: number; failed: number }> {
+  const root = path.resolve(env.MEDIA_DIR, COVER_TEMP_PREFIX.slice(1));
+  let entries: Dirent[];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return { removed: 0, failed: 0 };
+  }
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  let failed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const abs = path.join(root, entry.name);
+    try {
+      const st = await stat(abs);
+      if (st.mtimeMs > cutoff) continue;
+      await rm(abs, { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  if (removed > 0 || failed > 0) {
+    logger.info({ event: "cover.temp_swept", removed, failed, maxAgeMs });
+  }
+  return { removed, failed };
 }
 
 /**
