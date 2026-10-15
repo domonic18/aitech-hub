@@ -14,6 +14,7 @@ import {
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
   DISTRIBUTE_JOB_WECHAT_BATCH,
+  DISTRIBUTE_JOB_WECHAT_COPY,
   EMBED_JOB_RECONCILE,
   EMBED_RECONCILE_CRON,
   GITHUB_JOB_TICK,
@@ -61,7 +62,12 @@ import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
-import { type WechatBatchJobData, type WechatSyncJobData } from "../src/lib/distribute/wechat-sync";
+import {
+  type WechatBatchJobData,
+  type WechatCopyJobData,
+  type WechatSyncJobData,
+} from "../src/lib/distribute/wechat-sync";
+import { wechatCopyJob } from "../src/lib/distribute/wechat-copy-run";
 import { wechatBatchJob, wechatSyncJob } from "../src/lib/distribute/wechat-sync-run";
 import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
 import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
@@ -210,7 +216,8 @@ const PROCESSORS: Record<string, Processor> = {
     );
     return { skipped };
   },
-  // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
+  // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量;
+  // wechat-copy 复制公众号格式(M31 批④备用通道,无码点门不落库)
   [QUEUE_DISTRIBUTE]: async (job) => {
     if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
       const progress = await wechatBatchJob(job.data as WechatBatchJobData, (p) =>
@@ -218,6 +225,11 @@ const PROCESSORS: Record<string, Processor> = {
       );
       console.log(JSON.stringify({ event: "wechat.batch_result", ...progress }));
       return progress;
+    }
+    if (job.name === DISTRIBUTE_JOB_WECHAT_COPY) {
+      const r = await wechatCopyJob(job.data as WechatCopyJobData);
+      console.log(JSON.stringify({ event: "wechat.copy_result", postId: r.postId, ok: r.ok }));
+      return r;
     }
     const r = await wechatSyncJob(job.data as WechatSyncJobData);
     console.log(
