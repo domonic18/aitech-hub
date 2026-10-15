@@ -4,15 +4,20 @@
  * 封面设置弹窗(M5-d 起步;M14 批⑤对齐原型 admin-cover「一次裁剪·多尺寸导出」):
  * 三源选图(本地上传 / 媒体库选用 / AI 生成)→ 左裁剪器(react-easy-crop 拖拽/
  * 缩放/旋转)→ 右模板卡(激活卡定裁剪比例,勾选定导出集)→ 导出队列(逐模板
- * cover-fit canvas 导出上传,行级状态)→ OG 变体 onSet。本弹窗即走 POST
- * /api/media,导出即入库(原型「存入媒体库」按钮由此天然满足,不再单列)。
- * AI 生成(M31 验收反馈 agent 化):弹窗内不再有直连生图面——入口唤起编辑页
- * 侧边栏 Agent(ask_user 对齐方向 → 生成候选 → 预览卡确认后才入库)。
+ * cover-fit canvas 导出上传,行级状态)→ OG 变体 onSet。三源卡/模板网格/导出
+ * 队列已拆 cover/ 子件(技术债批③),本件留编排与画布逻辑。AI 生成(M31 验收
+ * 反馈 agent 化):弹窗内不再有直连生图面——入口唤起编辑页侧边栏 Agent
+ * (ask_user 对齐方向 → 生成候选 → 预览卡确认后才入库)。本弹窗即走 POST
+ * /api/media,导出即入库。
  */
 import { useEffect, useRef, useState } from "react";
 import type { Area } from "react-easy-crop";
 
 import CropStage from "./cover/CropStage";
+import CoverAgentEntry from "./cover/CoverAgentEntry";
+import CoverExportQueue, { type QueueState } from "./cover/CoverExportQueue";
+import CoverSourcePicker from "./cover/CoverSourcePicker";
+import CoverTemplateGrid from "./cover/CoverTemplateGrid";
 import MediaPicker, { type PickItem } from "./cover/MediaPicker";
 import {
   aspectOf,
@@ -26,8 +31,6 @@ import {
 } from "./cover/templates";
 import { MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
-
-type QueueState = "pending" | "running" | "done" | "failed";
 
 interface SourceImage {
   bmp: ImageBitmap;
@@ -201,30 +204,11 @@ export default function CoverDialog({
     }
   }
 
-  const pendingCount = COVER_TEMPLATES.filter((t) => checked.has(t.key)).length;
-
-  /** AI 生成入口块(M31 agent 化,未选源首屏与已选源模板卡下两处复用):
-   * 唤起侧边栏 Agent 走 ask_user 对齐方向 → 生成候选 → 预览卡确认入库 */
-  const agentGenInner = coverContext ? (
-    <>
-      <div className="text-[11px] font-medium text-text-2">
-        AI 生成封面 <span className="ml-1 font-normal text-text-3">(侧边栏 Agent)</span>
-      </div>
-      <p className="mt-1 text-[10px] leading-relaxed text-text-3">
-        Agent 先读文章内容并与你确认提示词方向,生成候选后在侧边栏预览,确认后才会入库
-      </p>
-      <button
-        type="button"
-        onClick={() => {
-          onAgentCoverGen?.();
-          onClose();
-        }}
-        className="mt-1.5 flex-none cursor-pointer rounded-sm border border-accent px-2 py-1 text-[11px] text-accent hover:bg-accent-dim"
-      >
-        唤起 Agent 生成候选
-      </button>
-    </>
-  ) : null;
+  /** AI 生成入口(唤起侧边栏 Agent 走 ask_user 对齐方向 → 候选确认入库) */
+  const launchAgent = (): void => {
+    onAgentCoverGen?.();
+    onClose();
+  };
 
   return (
     <div
@@ -267,51 +251,12 @@ export default function CoverDialog({
         />
 
         {!source ? (
-          <>
-            {/* 三源并列(M31:AI 源 = 唤起侧边栏 Agent,不再直连生成) */}
-            <div
-              className={`mt-4 grid gap-3 ${coverContext ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
-            >
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
-              >
-                <svg className="ic-lg" aria-hidden="true">
-                  <use href="#i-cloudupload" />
-                </svg>
-                <span className="text-xs">本地上传(jpg / png / webp)</span>
-                <span className="text-[11px]">将按模板比例交互裁剪</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
-              >
-                <svg className="ic-lg" aria-hidden="true">
-                  <use href="#i-picture" />
-                </svg>
-                <span className="text-xs">从媒体库选图</span>
-                <span className="text-[11px]">复用已上传素材,无需重复占用空间</span>
-              </button>
-              {coverContext && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onAgentCoverGen?.();
-                    onClose();
-                  }}
-                  className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line text-text-3 hover:border-accent hover:text-accent"
-                >
-                  <svg className="ic-lg" aria-hidden="true">
-                    <use href="#i-robot" />
-                  </svg>
-                  <span className="text-xs">AI 生成封面(Agent)</span>
-                  <span className="text-[11px]">侧边栏对齐方向 → 候选确认入库</span>
-                </button>
-              )}
-            </div>
-          </>
+          <CoverSourcePicker
+            hasAgent={!!coverContext}
+            onLocal={() => fileRef.current?.click()}
+            onMedia={() => setPickerOpen(true)}
+            onAgent={launchAgent}
+          />
         ) : (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_300px]">
             {/* 左:裁剪器 */}
@@ -361,110 +306,30 @@ export default function CoverDialog({
             {/* 右:模板 + 导出队列 */}
             <div className="flex flex-col gap-4">
               <div className="rounded-md border border-line bg-panel p-3">
-                <div className="text-xs font-medium text-text-2">裁剪模板</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {COVER_TEMPLATES.map((t) => (
-                    <div
-                      key={t.key}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setActiveKey(t.key)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") setActiveKey(t.key);
-                      }}
-                      className={`relative cursor-pointer rounded-sm border p-1.5 ${
-                        activeKey === t.key
-                          ? "border-accent"
-                          : "border-line hover:border-line-hover"
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="block w-full rounded-sm border border-line bg-panel-2 bg-center"
-                        style={{
-                          aspectRatio: `${t.w} / ${t.h}`,
-                          backgroundImage: `url(${source.url})`,
-                          backgroundSize: "cover",
-                        }}
-                      />
-                      <div className="mt-1 flex items-start gap-1">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 accent-[var(--accent)]"
-                          checked={checked.has(t.key)}
-                          onChange={() => toggleCheck(t.key)}
-                          disabled={busy}
-                        />
-                        <div className="min-w-0">
-                          <div className="truncate text-[11px] font-medium text-text-1">
-                            {t.label}
-                          </div>
-                          <div className="truncate font-mono text-[10px] text-text-3">
-                            {t.w}×{t.h}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-0.5 truncate text-[10px] text-text-3" title={t.use}>
-                        {t.use}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 text-[10px] leading-relaxed text-text-3">
-                  点卡切换裁剪比例;勾选卡进导出集(多尺寸从同一选区 cover-fit 适配)
-                </div>
-
-                {/* AI 生成入口(agent 唤起;未选源首屏同款) */}
+                <CoverTemplateGrid
+                  sourceUrl={source.url}
+                  activeKey={activeKey}
+                  onActivate={setActiveKey}
+                  checked={checked}
+                  onToggleCheck={toggleCheck}
+                  busy={busy}
+                />
+                {/* AI 生成入口(agent 唤起) */}
                 {coverContext && (
-                  <div className="mt-3 border-t border-line pt-3">{agentGenInner}</div>
+                  <div className="mt-3 border-t border-line pt-3">
+                    <CoverAgentEntry onLaunch={launchAgent} />
+                  </div>
                 )}
               </div>
 
               <div className="rounded-md border border-line bg-panel p-3">
-                <div className="text-xs font-medium text-text-2">导出队列</div>
-                <ul className="mt-2 flex flex-col gap-1.5">
-                  {COVER_TEMPLATES.filter((t) => checked.has(t.key)).map((t) => {
-                    const st = queue[t.key];
-                    return (
-                      <li key={t.key} className="flex items-center gap-2 text-[11px]">
-                        <span
-                          className={`w-14 flex-none rounded-sm px-1 py-px text-center text-[10px] ${
-                            st === "done"
-                              ? "bg-green/10 text-green"
-                              : st === "failed"
-                                ? "bg-red/10 text-red"
-                                : st === "running"
-                                  ? "bg-amber/10 text-amber"
-                                  : "bg-panel-2 text-text-3"
-                          }`}
-                        >
-                          {st === "done"
-                            ? "已导出"
-                            : st === "failed"
-                              ? "失败"
-                              : st === "running"
-                                ? "处理中"
-                                : "待导出"}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-text-2">{t.label}</span>
-                        <span className="flex-none font-mono text-text-3">
-                          {t.w}×{t.h}
-                        </span>
-                      </li>
-                    );
-                  })}
-                  {pendingCount === 0 && (
-                    <li className="text-[11px] text-text-3">未勾选任何模板</li>
-                  )}
-                </ul>
-                <button
-                  type="button"
-                  disabled={busy || pendingCount === 0 || !areaPx}
-                  onClick={() => void generate()}
-                  className="mt-3 w-full cursor-pointer rounded-sm bg-accent px-3 py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busy ? "导出上传中…" : `⤓ 按模板一键导出 ${pendingCount} 尺寸`}
-                </button>
+                <CoverExportQueue
+                  checked={checked}
+                  queue={queue}
+                  busy={busy}
+                  canGenerate={!!areaPx}
+                  onGenerate={() => void generate()}
+                />
               </div>
             </div>
           </div>
