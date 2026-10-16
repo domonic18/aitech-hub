@@ -20,7 +20,7 @@ import sharp from "sharp";
  * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)/
  * 优质内容发现治理台:词库管理与候选人工终审(M25)。
  * 专题治理台:新建/挂载素材(仅已解读)/批注/人工状态流转/权限防线(M26 批③)。
- * 飞书免登底座:登录页非飞书零回归/兑换未启用 403/签名外站拒签/bind 未登录 401(M29,零真网)。
+ * 飞书免登底座:登录页非飞书零回归/兑换未启用 403/status 凭证齐透传·未配置 403/bind 未登录 401(M29,零真网)。
  * Agent 技能:后台页签 CRUD 冒烟(key 建后不可改)/启停落库/专题绑定写作技能/非法 skillKey 400(M30 批④,零真网)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
@@ -2905,11 +2905,12 @@ test("31. K2.6 游客模式:归属隔离/3 问日限 429/后台会话管理(列�
   expect(list.data?.counts).toHaveProperty("guest");
 
   // 31.3 清场:种子键 + 游客归属键 + 残留 checkpoint
+  // (e2eRedis 是全文件共享夹具,禁在本用例 quit——曾致 37 的 finally 撞
+  // "Connection is closed";生命周期统一由 afterAll disconnect 收口)
   await e2eRedis.del(guestAskKey(GUEST_A), `search:agent:gthread:${guestThreadId}`);
   await prisma.$executeRawUnsafe(
     `DELETE FROM checkpoints WHERE thread_id LIKE 'g\\_%' AND checkpoint_ns = ''`,
   );
-  await e2eRedis.quit();
 });
 
 test("32. 文章评论与点赞(M23 批②:评论区渲染/两级楼层/游客点赞去重回退/未登录引导)", async ({
@@ -3679,37 +3680,39 @@ test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过
   }
 });
 
-test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 未启用 403/jssign 外站拒签+未配置 403/bind 未登录 401,零真网)", async ({
+test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 未启用 403/status 凭证齐透传+未配置 403/bind 未登录 401,零真网)", async ({
   page,
   request,
 }) => {
   // mutation 同源 Origin 运行时派生(e2e 可在备用端口起服,写死 :3000 会 403)
   const SITE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
-  // jssign 同站点源白名单 = 服务端 build 烙的 NEXT_PUBLIC_SITE_URL,与旁路端口可不同;
-  // 签名 url 参数须对准服务端白名单,而非请求 host
-  const SIGN_ORIGIN = new URL(process.env.NEXT_PUBLIC_SITE_URL ?? SITE).origin;
   // 共享单例行快照恢复(与集成测试同纪律:测前快照,finally 原样还原)
   const snap = await prisma.adminFeishuConfig.findUnique({ where: { id: 1 } });
-  const quotaKeys = ["auth:feishu:exch:203.0.113.91", "auth:feishu:jssign:203.0.113.91"];
+  const quotaKeys = ["auth:feishu:exch:203.0.113.91"];
   try {
     // 37.1 登录页(普通浏览器 UA)→ 密码表单在位、无免登横幅(非飞书渲染 null,零回归)
     await page.goto("/admin/login/");
     await expect(page.getByPlaceholder("手机号 / 用户名 / 邮箱")).toBeVisible();
     await expect(page.getByText("正在通过飞书免登")).toHaveCount(0);
 
-    // 37.2 配置了凭证但未启用 → exchange 403(不触飞书;未启用门在兑换之前)
+    // 37.2 配置了凭证但未启用 → exchange 403(不触飞书;未启用门在兑换之前)。
+    // appSecretEnc 须为真密文:status/兑换链经 getFeishuRuntimeConfig 解密,
+    // 解密失败归 null 会误触「未配置」fail-closed(动态 import——env 校验在
+    // loadEnvConfig 之后才可求值,静态引会炸)
+    const { encryptSecret } = await import("../../src/lib/crypto/secret-box");
+    const appSecretEnc = encryptSecret("smoke-e2e-secret");
     await prisma.adminFeishuConfig.upsert({
       where: { id: 1 },
       update: {
         appId: "cli_e2e_smoke",
-        appSecretEnc: "smoke",
+        appSecretEnc,
         appSecretMask: "sm****",
         enabled: false,
       },
       create: {
         id: 1,
         appId: "cli_e2e_smoke",
-        appSecretEnc: "smoke",
+        appSecretEnc,
         appSecretMask: "sm****",
         enabled: false,
       },
@@ -3725,17 +3728,16 @@ test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 
     });
     expect(off.status()).toBe(403);
 
-    // 37.3 jssign 外站 URL → 400 拒签(签名 oracle 防线,先于取 ticket,零出网)
-    const foreign = await request.get(
-      `/api/auth/feishu/jssign/?url=${encodeURIComponent("https://evil.example.com/admin")}`,
-    );
-    expect(foreign.status()).toBe(400);
+    // 37.3 凭证齐(未启用)→ status 透传 appId+enabled(H5 免登取 appId 入口,零出网)
+    const st = await request.get("/api/auth/feishu/status/");
+    expect(st.status()).toBe(200);
+    const stBody = (await st.json()) as { code: number; data: { enabled: boolean; appId: string } };
+    expect(stBody.code).toBe(0);
+    expect(stBody.data).toEqual({ enabled: false, appId: "cli_e2e_smoke" });
 
-    // 37.4 行删除(未配置)→ jssign 同源 403;bind API 未登录 401
+    // 37.4 行删除(未配置)→ status 403 fail-closed;bind API 未登录 401
     await prisma.adminFeishuConfig.deleteMany({ where: { id: 1 } });
-    const blank = await request.get(
-      `/api/auth/feishu/jssign/?url=${encodeURIComponent(`${SIGN_ORIGIN}/admin/login/`)}`,
-    );
+    const blank = await request.get("/api/auth/feishu/status/");
     expect(blank.status()).toBe(403);
     const bindAnon = await request.get("/api/admin/feishu/bind/");
     expect(bindAnon.status()).toBe(401);

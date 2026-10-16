@@ -1,6 +1,7 @@
 /**
  * 飞书工作台免登兑换端点(M29 批② 的服务端底座,批① 先行交付):POST {code}
- * (h5sdk tt.getAuthCode 取得,5 分钟单次)→ 飞书 OIDC 换身份 → admin_feishu_
+ * (h5sdk requestAccess/requestAuthCode 取得,5 分钟单次)→ 飞书 OAuth v2 换
+ * 身份 → admin_feishu_
  * binding 白名单精确命中 → 目标账号仍为 active admin → 签发既有 jose 会话
  * Cookie(不新造会话机制)。fail-closed:未配置/未启用/未绑定/角色变更一律拒;
  * upstream 细节仅日志不外吐。IP 30/hour 限频防爆破(授权码本身单次有效)。

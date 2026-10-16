@@ -350,7 +350,7 @@ CREATE TABLE legacy_url_map (
 
 **飞书免登域两表已落地(2026-10-14 M29 批①迁移 `20261014160000_admin_feishu_sso`,交互与兑换链见 [arch/05 §3.1](05-services.md))**:
 
-- `admin_feishu_config`(应用凭证单例 `id=1`,get-or-create,镜像 `email_config`/`publish_wechat_config` 形态;2026-10-14 拍板凭证入数据库不入 env):`app_id varchar(50) 默认 ''`/`app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`enabled 默认 false`(免登兑换总开关——绑定/签名只要求凭证齐,enabled 可后开)/`last_test` 四件套(探测 app_token+jsapi_ticket 双链路)
+- `admin_feishu_config`(应用凭证单例 `id=1`,get-or-create,镜像 `email_config`/`publish_wechat_config` 形态;2026-10-14 拍板凭证入数据库不入 env):`app_id varchar(50) 默认 ''`/`app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`enabled 默认 false`(免登兑换总开关——绑定/appId 下发只要求凭证齐,enabled 可后开)/`last_test` 四件套(探测 app_token+jsapi_ticket 双链路)
 - `admin_feishu_binding`(免登白名单本体,fail-closed:兑换仅 unionId 精确命中行放行):`user_id bigint` 唯一(`uq_admin_feishu_binding_user`,一账号一身份)/`union_id varchar(64)` 唯一(`uq_admin_feishu_binding_union`,一身份一账号)/`open_id varchar(64)`/`feishu_name? varchar(100)`(兑换时姓名快照);**无 DB 外键,应用层完整性**(跨锚冲突 409;目标账号 role/status 兑换时复核,失配拒绝)
 
 **Agent 技能表已落地(2026-10-14 M30 批①迁移 `20261014200000_agent_skill`,机制与工具面见 [arch/04 §3 K2.8 补注五](04-ai-agent.md))**:

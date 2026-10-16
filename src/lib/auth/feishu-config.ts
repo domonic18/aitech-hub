@@ -1,8 +1,9 @@
 /**
  * 飞书免登配置单例(M29 批①,镜像 publish_wechat_config):admin_feishu_config
  * (id=1)get-or-create;appSecret write-only + 脱敏回显(secret-box AES-256-GCM,
- * AUTH_SECRET 派生——轮换使密文失效需重录)。enabled=免登通道总开关;绑定流程
- * 只要求凭证齐(enabled 可后开),jssign 同口径——签名/绑定是启用前置。
+ * AUTH_SECRET 派生——轮换使密文失效需重录)。enabled=免登通道总开关;绑定
+ * 流程只要求凭证齐(enabled 可后开),status 下发同口径——appId 下发/绑定
+ * 是启用前置。
  */
 import { z } from "zod";
 

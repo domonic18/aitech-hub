@@ -1,13 +1,11 @@
 /**
- * 飞书 OpenAPI 客户端(M29 批①):自建应用 app_access_token / jsapi_ticket
- * 各带 Redis 缓存(按返回有效期预留 5min 余量;缓存故障降级直连不阻断);
- * H5 签名 verifyStr 拼接顺序冻结(jsapi_ticket→noncestr→timestamp→url)取
- * sha1;免登授权码兑换 = OIDC access_token → user_info 取 unionId/openId。
- * fetcher 参数注入保证零真网单测;超时 8s;飞书 code!==0 / 非 200 一律
+ * 飞书 OpenAPI 客户端(M29 批①;2026-10-16 免登修复):自建应用
+ * app_access_token 带 Redis 缓存(按返回有效期预留 5min 余量;缓存故障降级
+ * 直连不阻断);免登授权码兑换 = OAuth v2 token(client_id/secret 直换,
+ * 旧 authen/v1/oidc 已废弃)→ user_info 取 unionId/openId。fetcher 参数
+ * 注入保证零真网单测;超时 8s;飞书 code!==0 / 非 200 一律
  * FeishuError("upstream"),细节进日志不外吐。
  */
-import { createHash, randomBytes } from "node:crypto";
-
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 
@@ -18,7 +16,6 @@ const FEISHU_TIMEOUT_MS = 8_000;
 /** 凭证缓存余量:官方有效期(≤7200s)内预留 5min,防临界过期 */
 const TTL_MARGIN_SECONDS = 300;
 const APP_TOKEN_KEY = "feishu:app_token";
-const TICKET_KEY = "feishu:jsapi_ticket";
 
 export type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -98,82 +95,34 @@ export async function getAppAccessToken(
   return token;
 }
 
-/** jsapi_ticket(h5sdk.config 签名材料;POST /jssdk/ticket/get) */
-export async function getJsapiTicket(
-  cfg: FeishuCredentials,
-  fetcher: Fetcher = fetch,
-): Promise<string> {
-  try {
-    const cached = await redis.get(TICKET_KEY);
-    if (cached) return cached;
-  } catch {
-    // 缓存故障降级直连
-  }
-  const token = await getAppAccessToken(cfg, fetcher);
-  const json = await requestJson<{
-    data?: { ticket?: string; expire_sec?: number };
-    ticket?: string;
-    expire_sec?: number;
-  }>(fetcher, `${FEISHU_OPEN}/jssdk/ticket/get`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ app_id: cfg.appId }),
-  });
-  const ticket = json.data?.ticket ?? json.ticket;
-  if (!ticket) throw new FeishuError("upstream", "飞书未返回 jsapi_ticket");
-  const ttl = Math.max(60, (json.data?.expire_sec ?? json.expire_sec ?? 7200) - TTL_MARGIN_SECONDS);
-  try {
-    await redis.set(TICKET_KEY, ticket, "EX", ttl);
-  } catch {
-    // 缓存故障不影响本次
-  }
-  return ticket;
-}
-
-export interface JsSign {
-  appId: string;
-  timestamp: string;
-  nonceStr: string;
-  signature: string;
-}
-
-/** H5 签名:verifyStr 四段顺序冻结(与 h5sdk.config 入参同值,10 分钟有效) */
-export function signJsapi(cfg: FeishuCredentials, ticket: string, url: string): JsSign {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const nonceStr = randomBytes(8).toString("hex");
-  const signature = createHash("sha1")
-    .update(`jsapi_ticket=${ticket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}`)
-    .digest("hex");
-  return { appId: cfg.appId, timestamp, nonceStr, signature };
-}
-
 export interface FeishuIdentity {
   unionId: string;
   openId: string;
   name: string;
 }
 
-/** 免登授权码兑换身份(授权码 5 分钟单次有效):OIDC access_token → user_info。
- * union_id 为绑定键(fail-closed:缺失即拒,应用需开通「获取用户 union ID」权限)。 */
+/** 免登授权码兑换身份(授权码 5 分钟单次有效):OAuth v2 token 端点以
+ * client_id/client_secret 直换 user_access_token(H5 免登 code 非重定向流,
+ * 不携带 redirect_uri;2026-10-16 自已废弃的 authen/v1/oidc 迁移)→
+ * user_info 取身份。union_id 为绑定键(fail-closed:缺失即拒,应用需开通
+ * 「获取用户 union ID」权限)。 */
 export async function exchangeFeishuIdentity(
   cfg: FeishuCredentials,
   code: string,
   fetcher: Fetcher = fetch,
 ): Promise<FeishuIdentity> {
-  const appToken = await getAppAccessToken(cfg, fetcher);
   const at = await requestJson<{ data?: { access_token?: string } }>(
     fetcher,
-    `${FEISHU_OPEN}/authen/v1/oidc/access_token`,
+    `${FEISHU_OPEN}/authen/v2/oauth/token`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        Authorization: `Bearer ${appToken}`,
-      },
-      body: JSON.stringify({ grant_type: "authorization_code", code }),
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        client_id: cfg.appId,
+        client_secret: cfg.appSecret,
+        code,
+      }),
     },
   );
   const userToken = at.data?.access_token;

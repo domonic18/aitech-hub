@@ -1,11 +1,9 @@
 /**
- * 飞书 OpenAPI 客户端单测(redis mock + fetcher 注入,零真网):app_token /
- * jsapi_ticket 缓存命中与回写、H5 签名四段顺序 sha1 复算、OIDC 兑换链
- * (token→user_info)union_id 缺失拒、上游 code!==0 / 非 JSON / 网络失败
- * 归一 upstream。
+ * 飞书 OpenAPI 客户端单测(redis mock + fetcher 注入,零真网):app_token
+ * 缓存命中与回写、OAuth v2 兑换链(token→user_info)请求契约
+ * (client_id/secret 直换)与 union_id 缺失拒、上游 code!==0 / 非 JSON /
+ * 网络失败归一 upstream。
  */
-import { createHash } from "node:crypto";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../redis", () => ({
@@ -14,13 +12,7 @@ vi.mock("../redis", () => ({
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { redis } from "../redis";
-import {
-  exchangeFeishuIdentity,
-  getAppAccessToken,
-  getJsapiTicket,
-  signJsapi,
-  type Fetcher,
-} from "./feishu-client";
+import { exchangeFeishuIdentity, getAppAccessToken, type Fetcher } from "./feishu-client";
 
 const mockedRedis = vi.mocked(redis);
 
@@ -71,67 +63,42 @@ describe("getAppAccessToken", () => {
   });
 });
 
-describe("getJsapiTicket", () => {
-  it("ticket 回写(嵌套 data 形态);缺 ticket → upstream", async () => {
-    const f = fetcherBy({
-      "jssdk/ticket/get": { code: 0, data: { ticket: "TICKET", expire_sec: 7200 } },
-      "app_access_token/internal": { app_access_token: "AT", expire: 7200 },
-    });
-    expect(await getJsapiTicket(CREDS, f)).toBe("TICKET");
-    expect(mockedRedis.set).toHaveBeenCalledWith("feishu:jsapi_ticket", "TICKET", "EX", 6900);
-
-    const f2 = fetcherBy({
-      "jssdk/ticket/get": { code: 0, data: {} },
-      "app_access_token/internal": { app_access_token: "AT" },
-    });
-    await expect(getJsapiTicket(CREDS, f2)).rejects.toMatchObject({ code: "upstream" });
-  });
-});
-
-describe("signJsapi", () => {
-  it("四段顺序冻结:sha1(jsapi_ticket=..&noncestr=..&timestamp=..&url=..)", () => {
-    const sign = signJsapi(CREDS, "T", "https://17aitech.com/admin?x=1");
-    const expected = createHash("sha1")
-      .update(
-        `jsapi_ticket=T&noncestr=${sign.nonceStr}&timestamp=${sign.timestamp}&url=https://17aitech.com/admin?x=1`,
-      )
-      .digest("hex");
-    expect(sign.signature).toBe(expected);
-    expect(sign.appId).toBe("cli_x");
-    expect(sign.timestamp).toMatch(/^\d{10}$/);
-  });
-});
-
 describe("exchangeFeishuIdentity", () => {
-  it("OIDC 两跳成功 → unionId/openId/name", async () => {
+  it("v2 两跳成功 → unionId/openId/name;token 请求契约 client_id/secret 直换(零 app_token 前置)", async () => {
     const f = fetcherBy({
-      "oidc/access_token": { code: 0, data: { access_token: "UT" } },
+      "authen/v2/oauth/token": { code: 0, data: { access_token: "UT" } },
       "authen/v1/user_info": {
         code: 0,
         data: { union_id: "ou-union", open_id: "ou-open", name: "张三" },
       },
-      "app_access_token/internal": { app_access_token: "AT" },
     });
     expect(await exchangeFeishuIdentity(CREDS, "authcode", f)).toEqual({
       unionId: "ou-union",
       openId: "ou-open",
       name: "张三",
     });
+    // v2 契约冻结:grant/client_id/client_secret 直换,不携带 app_token/redirect_uri
+    const calls = (f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls;
+    const tokenCall = calls.find(([url]) => url.includes("oauth/token"));
+    expect(JSON.parse(String(tokenCall?.[1]?.body))).toEqual({
+      grant_type: "authorization_code",
+      client_id: "cli_x",
+      client_secret: "secret",
+      code: "authcode",
+    });
   });
 
   it("授权码无效(无 user token)→ upstream;union_id 缺失 → invalid", async () => {
     const f = fetcherBy({
-      "oidc/access_token": { code: 0, data: {} },
-      "app_access_token/internal": { app_access_token: "AT" },
+      "authen/v2/oauth/token": { code: 0, data: {} },
     });
     await expect(exchangeFeishuIdentity(CREDS, "bad", f)).rejects.toMatchObject({
       code: "upstream",
     });
 
     const f2 = fetcherBy({
-      "oidc/access_token": { code: 0, data: { access_token: "UT" } },
+      "authen/v2/oauth/token": { code: 0, data: { access_token: "UT" } },
       "authen/v1/user_info": { code: 0, data: { open_id: "ou-open" } },
-      "app_access_token/internal": { app_access_token: "AT" },
     });
     await expect(exchangeFeishuIdentity(CREDS, "code", f2)).rejects.toMatchObject({
       code: "invalid",

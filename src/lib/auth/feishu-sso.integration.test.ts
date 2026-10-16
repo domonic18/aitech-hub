@@ -2,13 +2,12 @@
  * 飞书免登全链集成测试(standard/01-testing:*.integration.test.ts 同层;
  * `npm run test:integration`,不进 test:unit/make check/CI——依赖 dev compose
  * 的 PG/Redis)。**零真网**:global fetch 桩按 open.feishu.cn 路径分流返回
- * 定型响应,M29 批②「mock 兑换」验收主线:配置+绑定 → jssign 签名复算 →
+ * 定型响应,M29 批②「mock 兑换」验收主线:配置+绑定 → status 下发 appId →
  * exchange 兑换发既有会话 Cookie → session 复核;未绑定 403 / 未启用 403 /
  * 限频 429 / bind 自绑+解绑幂等。admin_feishu_config 是共享单例行,测试前
  * 快照、afterAll 原样恢复。
  */
 import { loadEnvConfig } from "@next/env";
-import { createHash } from "node:crypto";
 import { afterAll, beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 
 loadEnvConfig(process.cwd());
@@ -22,7 +21,7 @@ import { encryptSecret } from "@/lib/crypto/secret-box";
 import { readFullSessionUser } from "@/lib/auth/issuer";
 import { env } from "@/lib/env";
 
-const { GET: jssignGET } = await import("@/app/api/auth/feishu/jssign/route");
+const { GET: statusGET } = await import("@/app/api/auth/feishu/status/route");
 const { POST: exchangePOST } = await import("@/app/api/auth/feishu/exchange/route");
 const {
   GET: bindGET,
@@ -37,15 +36,13 @@ const IP = "203.0.113.77"; // TEST-NET-3 专用测试 IP,避免撞真实限频�
 /** 飞书侧定型桩:按路径分流;user_info 的 union 可在用例内切换 */
 let fakeUnion = { union_id: "ou_e2e_bound", open_id: "ou_e2e_open", name: "e2e管理员" };
 const fetchStub = vi.fn(async (url: string): Promise<Response> => {
-  const body = url.includes("app_access_token/internal")
-    ? { app_access_token: "AT_e2e", expire: 7200 }
-    : url.includes("jssdk/ticket/get")
-      ? { code: 0, data: { ticket: "TICKET_e2e", expire_sec: 7200 } }
-      : url.includes("oidc/access_token")
-        ? { code: 0, data: { access_token: "UT_e2e" } }
-        : url.includes("authen/v1/user_info")
-          ? { code: 0, data: fakeUnion }
-          : { code: 0 };
+  const body = url.includes("authen/v2/oauth/token")
+    ? { code: 0, data: { access_token: "UT_e2e" } }
+    : url.includes("authen/v1/user_info")
+      ? { code: 0, data: fakeUnion }
+      : url.includes("app_access_token/internal")
+        ? { app_access_token: "AT_e2e", expire: 7200 }
+        : { code: 0 };
   return new Response(JSON.stringify(body), { status: 200 });
 });
 
@@ -98,12 +95,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  await redis.del(
-    "feishu:app_token",
-    "feishu:jsapi_ticket",
-    `auth:feishu:exch:${IP}`,
-    `auth:feishu:jssign:${IP}`,
-  );
+  await redis.del("feishu:app_token", `auth:feishu:exch:${IP}`);
 });
 
 afterAll(async () => {
@@ -118,12 +110,7 @@ afterAll(async () => {
     await prisma.adminFeishuBinding.deleteMany({ where: { userId: user.id } });
   }
   await prisma.userAccount.deleteMany({ where: { phone: ADMIN_PHONE } });
-  await redis.del(
-    "feishu:app_token",
-    "feishu:jsapi_ticket",
-    `auth:feishu:exch:${IP}`,
-    `auth:feishu:jssign:${IP}`,
-  );
+  await redis.del("feishu:app_token", `auth:feishu:exch:${IP}`);
   await prisma.$disconnect();
   vi.unstubAllGlobals();
 });
@@ -155,34 +142,21 @@ async function adminCookie(): Promise<string> {
 }
 
 describe("飞书免登全链(dev compose 真实 PG/Redis + 飞书桩)", () => {
-  it("jssign:凭证齐(未启用也行)→ 签名四元组,sha1 四段复算命中", async () => {
+  it("status:凭证齐(未启用也行)→ appId+enabled 透传;行删除未配置 → 403 fail-closed", async () => {
     await saveConfig(false);
-    const res = await jssignGET(
-      req(
-        `/api/auth/feishu/jssign/?url=${encodeURIComponent(`${SITE_ORIGIN}/admin/login?next=/admin`)}`,
-      ),
-    );
+    const res = await statusGET();
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       code: number;
-      data: { appId: string; timestamp: string; nonceStr: string; signature: string };
+      data: { enabled: boolean; appId: string };
     };
     expect(body.code).toBe(0);
-    expect(body.data.appId).toBe("cli_e2e");
-    expect(body.data.signature).toBe(
-      createHash("sha1")
-        .update(
-          `jsapi_ticket=TICKET_e2e&noncestr=${body.data.nonceStr}&timestamp=${body.data.timestamp}&url=${SITE_ORIGIN}/admin/login?next=/admin`,
-        )
-        .digest("hex"),
-    );
-  });
+    expect(body.data).toEqual({ enabled: false, appId: "cli_e2e" });
 
-  it("jssign:外站 URL 拒签 400(签名 oracle 防线)", async () => {
-    const res = await jssignGET(
-      req(`/api/auth/feishu/jssign/?url=${encodeURIComponent("https://evil.example.com/admin")}`),
-    );
-    expect(res.status).toBe(400);
+    await prisma.adminFeishuConfig.deleteMany({ where: { id: 1 } });
+    const blank = await statusGET();
+    expect(blank.status).toBe(403);
+    await saveConfig(false); // 后续用例依赖配置行在位,恢复
   });
 
   it("exchange:enabled+白名单命中 → 200+会话 Cookie,readFullSessionUser 复核 admin", async () => {
