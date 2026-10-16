@@ -16,12 +16,18 @@ push(develop, main)/ 手动
 ├── job docker-release          [依赖 app+gateway+migration 全绿] app 镜像 buildx 构建推送 TCR
 └── job docker-release-gateway  [同上依赖] 网关镜像 buildx 构建推送 TCR(services/douyin-gateway/Dockerfile,M8 批①)
                                 两镜像 job 并行互不拖累;tag = <branch>-<短 sha>;latest 仅 main(保证 compose pull 默认即发布版)
+                                构建/推送跑 Mac mini self-hosted runner(2026-10-16 起,见下)
 ```
 
 > 实装(M6,2026-10-02):`app` + `migrate-replay` + `docker-release` 三 job(见 `.github/workflows/ci.yml`)。
 > docker-release 支持 `workflow_dispatch` 手动触发(首次打通 TCR 用);build 构建在镜像内完成,不设独立 build job。
 > 跨境推送(美国 runner → 大陆 TCR)偶发 stall:构建步骤级超时 25 分钟,失败自动重推一次(同范例仓实测经验;gha cache 网关走 scope=gateway 独立)。
 > 2026-10-04:发布线拆分为 `docker-release`(app)+ `docker-release-gateway`(网关)两个独立并行 job(仿 ai-invest-assisstant 每镜像一 job,互不拖累,失败可 re-run failed jobs 单镜像重试);触发条件/依赖门/tag 规则不变。
+> 2026-10-16:两个 release job 迁 Mac mini self-hosted runner(`runs-on: [self-hosted]`,仿 acore-manager):
+> GitHub 托管 runner 跨境推 TCR 偶发 stall,曾逼出本地 save/scp/load 兜底通道;自托管机直推国内 TCR 链路快且稳,兜底通道随之退役。
+> 机内前置(仓外一次性,参照 acore-manager 同名设施):① 注册 self-hosted runner(repo Settings → Actions → Runners,标签含默认 `self-hosted`);② 预建持久 builder `docker buildx create --name ci-builder --driver docker-container --config ~/actions-runner/buildkitd.toml`(buildkitd.toml 配国内 docker.io 镜像源;本地缓存跨 job 复用,**弃 gha cache**;workflow 里 `docker buildx use ci-builder` 选择,不用 setup-buildx-action——它会另建临时 builder 顶掉选择)。
+> Apple Silicon 构建机出 175 所需 amd64:build-push 显式 `platforms: linux/amd64`(Rosetta/QEMU 模拟,冷缓存首跑偏慢属预期;步骤级超时 25/30 分钟与登录守卫保留)。
+> 首推 `continue-on-error` + 末尾 gate 裁定步(任一次尝试成功即绿):此前无 gate,首推超时→重试成功 job 仍染红,误导发布判断(run 37106851119 教训,同 acore-manager 方案收口)。
 
 - Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
