@@ -1,13 +1,16 @@
 /**
  * 探针单测:WAV 样例形态、openai/anthropic 请求形状(URL/头/体)、
  * 无 key 不带 Authorization、HTTP 错误归因截断、minimax 业务错包装、
- * other 协议诚实 skipped;fetch 经 vi.stubGlobal 注入(先例 rss.test.ts)。
+ * other 协议诚实 skipped;probeModel 用途分流(2026-10-16 反馈问题3:cover→
+ * /images/generations 真实最小生成、embedding→/embeddings 维度校验、文本→chat,
+ * 全过才 ok;fetch 经 vi.stubGlobal 注入(先例 rss.test.ts)。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../env", () => ({ env: { AUTH_SECRET: "unit-test-auth-secret-0123456789" } }));
 
-import { buildSineWav, probeAsr, probeLlm } from "./probe";
+import { buildSineWav, probeAsr, probeLlm, probeModel } from "./probe";
+import { COVER_IMAGE_SIZE } from "./cover-prompt";
 
 interface CapturedCall {
   url: string;
@@ -104,6 +107,134 @@ describe("probeLlm", () => {
     expect(skipped.skipped).toBe(true);
     expect(skipped.ok).toBe(false);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("probeModel(用途感知分流)", () => {
+  const base = {
+    modelId: "m",
+    apiKey: "sk-t",
+    protocol: "openai",
+    baseUrl: "https://api.x.com/v1",
+  };
+
+  it("绑 cover:真实打 /images/generations(n=1/1344x768/b64_json),2xx 且 data[0] 有图即通", async () => {
+    const calls = stubFetch(200, JSON.stringify({ data: [{ b64_json: "AAAA" }] }));
+    const r = await probeModel({ ...base, purposes: ["cover"] });
+    expect(r.ok).toBe(true);
+    expect(r.detail).toContain("生图连通");
+    expect(calls[0].url).toBe("https://api.x.com/v1/images/generations");
+    const body = JSON.parse(String(calls[0].init.body)) as {
+      n: number;
+      size: string;
+      prompt: string;
+    };
+    expect(body.n).toBe(1);
+    expect(body.size).toBe(COVER_IMAGE_SIZE); // 与真实管线同尺寸(不再写死 1024x1024)
+    expect(body.prompt.length).toBeGreaterThan(0);
+  });
+
+  it("生图探针带台账 extraParams 浅合并,保留键不可被覆盖(与 image-client 同纪律)", async () => {
+    const calls = stubFetch(200, JSON.stringify({ data: [{ url: "https://cdn.x.com/a.jpg" }] }));
+    const r = await probeModel({
+      ...base,
+      purposes: ["cover"],
+      timeoutSec: 90,
+      extraParams: { watermark_enabled: false, size: "999x999", n: 9, response_format: "url" },
+    });
+    expect(r.ok).toBe(true);
+    const body = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>;
+    expect(body.watermark_enabled).toBe(false); // 扩展参数透传
+    expect(body.size).toBe(COVER_IMAGE_SIZE); // 保留键恒覆盖扩展参数
+    expect(body.n).toBe(1);
+    expect(body.response_format).toBe("b64_json");
+  });
+
+  it("生图 url 形态须 https 且长度合规(与 image-client 转存口径一致)", async () => {
+    stubFetch(200, JSON.stringify({ data: [{ url: "http:// insecure.example/a.jpg" }] }));
+    const r = await probeModel({ ...base, purposes: ["cover"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("契约漂移");
+  });
+
+  it("生图响应缺 data 图片数据 → 契约漂移明确失败(非 2xx 误报)", async () => {
+    stubFetch(200, JSON.stringify({ data: [] }));
+    const r = await probeModel({ ...base, purposes: ["cover"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("契约漂移");
+  });
+
+  it("anthropic + cover → 生图协议门禁失败(与生图管线同门禁)", async () => {
+    stubFetch(200, "{}");
+    const r = await probeModel({ ...base, protocol: "anthropic", purposes: ["cover"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("生图协议不支持");
+  });
+
+  it("绑 embedding:POST /embeddings 校验向量字段,detail 报维度", async () => {
+    const calls = stubFetch(200, JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3] }] }));
+    const r = await probeModel({ ...base, purposes: ["embedding"] });
+    expect(r.ok).toBe(true);
+    expect(r.detail).toContain("(3 维)");
+    expect(calls[0].url).toBe("https://api.x.com/v1/embeddings");
+    const body = JSON.parse(String(calls[0].init.body)) as { input: string[] };
+    expect(body.input).toEqual(["ping"]);
+  });
+
+  it("embedding 2xx 缺向量字段 → 失败(aitech-hub 旧探针误报重灾区)", async () => {
+    stubFetch(200, JSON.stringify({ data: [{ embedding: null }] }));
+    const r = await probeModel({ ...base, purposes: ["embedding"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("缺少向量字段");
+  });
+
+  it("文本类用途(interpret)仍走 chat;未绑用途回退 chat", async () => {
+    const a = stubFetch(200, "{}");
+    const r1 = await probeModel({ ...base, purposes: ["interpret"] });
+    expect(r1.ok).toBe(true);
+    expect(a[0].url).toContain("/chat/completions");
+    const b = stubFetch(200, "{}");
+    const r2 = await probeModel({ ...base });
+    expect(r2.ok).toBe(true);
+    expect(b[0].url).toContain("/chat/completions");
+  });
+
+  it("多用途混合:逐端点全跑,全过 ok 汇总;任一失败 ok:false 失败带种类前缀", async () => {
+    // 第一遍:chat 与 embedding 都通
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        const u = String(url);
+        return new Response(
+          u.endsWith("/embeddings") ? JSON.stringify({ data: [{ embedding: [1, 2] }] }) : "{}",
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }),
+    );
+    const r1 = await probeModel({ ...base, purposes: ["interpret", "embedding"] });
+    expect(r1.ok).toBe(true);
+    expect(r1.detail).toContain("向量连通");
+    // 第二遍:embedding 端点 500 → 整体失败,detail 归因到种类
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) =>
+        String(url).endsWith("/embeddings")
+          ? new Response("boom", { status: 500 })
+          : new Response("{}", { status: 200 }),
+      ),
+    );
+    const r2 = await probeModel({ ...base, purposes: ["interpret", "embedding"] });
+    expect(r2.ok).toBe(false);
+    expect(r2.detail).toContain("embeddings");
+    expect(r2.detail).toContain("HTTP 500");
+  });
+
+  it("other 协议 skipped / 无 baseUrl 明确失败(与旧语义一致)", async () => {
+    stubFetch(200, "{}");
+    const skipped = await probeModel({ ...base, protocol: "other" });
+    expect(skipped.skipped).toBe(true);
+    const noBase = await probeModel({ ...base, baseUrl: null });
+    expect(noBase.detail).toContain("Base URL 未配置");
   });
 });
 

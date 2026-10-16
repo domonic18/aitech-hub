@@ -1,22 +1,37 @@
 /**
- * 连通性探针(M8 批⑥,arch/04 §4「测试连通性入口」):LLM openai/anthropic
- * 双协议 chat ping;ASR openai/minimax 双协议 1s 正弦波实调转写。
- * 结果只落 ProbeResult(持久化在 admin service),永不 throw;
+ * 连通性探针(M8 批⑥,arch/04 §4「测试连通性入口」;2026-10-16 反馈问题3
+ * 用途感知):按模型绑定的用途分流到**真实业务端点**——文本类走 chat ping
+ * (openai/anthropic 双协议),cover 走 /images/generations 真实最小生成一张,
+ * embedding 走 /embeddings 并校验向量维度(与 ai-invest 同思路:测试=真实冒烟,
+ * 不再用 chat ping 一刀切误报可用模型)。ASR openai/minimax 双协议 1s 正弦波
+ * 实调转写。结果只落 ProbeResult(持久化在 admin service),永不 throw;
  * detail 不含密钥(响应体可能回显鉴权错,截 200 字符且不主动拼凭据)。
  */
 import { logger } from "../logger";
 import {
   AI_PROTOCOL_ANTHROPIC,
   AI_PROTOCOL_OPENAI,
+  AI_PURPOSE_COVER,
+  AI_PURPOSE_EMBEDDING,
+  AI_PURPOSE_INTERPRET,
+  AI_PURPOSE_SEARCH,
+  AI_PURPOSE_SUMMARIZE,
   ASR_PROTOCOL_MINIMAX,
   ASR_PROTOCOL_OPENAI,
 } from "./constants";
+import { COVER_IMAGE_SIZE } from "./cover-prompt";
 
 export interface ProbeInput {
   protocol: string;
   baseUrl: string | null;
   modelId: string;
   apiKey: string | null;
+  /** 模型绑定的用途(2026-10-16 反馈问题3):决定探针走哪些真实端点;空=仅 chat */
+  purposes?: string[];
+  /** 模型台账超时秒(生图探针随模型配置,与真实管线同源;缺省 60) */
+  timeoutSec?: number;
+  /** 模型台账扩展参数(生图探针浅合并进请求体,保留键后展开,与生图管线同形状) */
+  extraParams?: Record<string, unknown>;
 }
 
 export interface ProbeResult {
@@ -121,6 +136,175 @@ export async function probeLlm(input: ProbeInput): Promise<ProbeResult> {
       : { "content-type": "application/json", ...authHeaders(input.apiKey) };
   const raw = await runProbe(url, { method: "POST", headers, body });
   return { ok: raw.ok, latencyMs: raw.latencyMs, detail: raw.detail };
+}
+
+/** 生图探针超时下限/上限:生图本身比 chat 慢一个量级,15s 会误报超时(实测
+ * 5~15s 常态);随模型台账 timeoutSec 走(与真实管线同源),收敛在 15~120s */
+const IMAGE_PROBE_TIMEOUT_MIN_SEC = 15;
+const IMAGE_PROBE_TIMEOUT_MAX_SEC = 120;
+
+/** 生图探针:真实最小生成一张(计费一张,测试按钮低频可接受),
+ * 2xx 且 data[0] 含 b64_json/url 即通——请求形状与 image-client 全对齐
+ * (extraParams 浅合并保留键后展开/尺寸 1344x768/双形态校验含 https 前缀),
+ * 探针比管线严或松都会造成「测试失败但实际可用」或反向误报 */
+async function probeImages(input: ProbeInput, baseUrl: string): Promise<ProbeResult> {
+  if (input.protocol !== AI_PROTOCOL_OPENAI) {
+    return {
+      ok: false,
+      latencyMs: 0,
+      detail: "生图协议不支持(需 OpenAI images/generations 兼容端点,与生图管线同门禁)",
+    };
+  }
+  const timeoutSec = Math.min(
+    Math.max(input.timeoutSec ?? 60, IMAGE_PROBE_TIMEOUT_MIN_SEC),
+    IMAGE_PROBE_TIMEOUT_MAX_SEC,
+  );
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/images/generations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders(input.apiKey) },
+      body: JSON.stringify({
+        ...(input.extraParams ?? {}),
+        model: input.modelId,
+        prompt: "连通性测试",
+        n: 1,
+        size: COVER_IMAGE_SIZE,
+        response_format: "b64_json",
+      }),
+      signal: AbortSignal.timeout(timeoutSec * 1000),
+    });
+    const latencyMs = Date.now() - startedAt;
+    const text = await res.text().catch(() => "");
+    if (!res.ok) {
+      return {
+        ok: false,
+        latencyMs,
+        detail: `HTTP ${res.status}: ${text.slice(0, 200) || "(空响应)"}`,
+      };
+    }
+    let body: { data?: unknown };
+    try {
+      body = JSON.parse(text) as { data?: unknown };
+    } catch {
+      return { ok: false, latencyMs, detail: "生图响应不是 JSON(契约漂移)" };
+    }
+    const rows = body.data;
+    const row = Array.isArray(rows)
+      ? (rows[0] as { b64_json?: unknown; url?: unknown } | undefined)
+      : undefined;
+    // 双形态校验与 image-client 同口径:b64 非空串 / url 须 https 且长度合规
+    const hasB64 = typeof row?.b64_json === "string" && row.b64_json.length > 0;
+    const hasUrl =
+      typeof row?.url === "string" && /^https:\/\//.test(row.url) && row.url.length < 2000;
+    if (!row || (!hasB64 && !hasUrl)) {
+      return { ok: false, latencyMs, detail: "生图响应无 b64_json/url 图片数据(契约漂移)" };
+    }
+    return { ok: true, latencyMs, detail: `生图连通 ${latencyMs}ms(计费 1 张)` };
+  } catch (e) {
+    const latencyMs = Date.now() - startedAt;
+    const detail =
+      e instanceof Error && e.name === "TimeoutError"
+        ? `超时 ${timeoutSec}s(生图慢,可重试或在模型台账调大超时)`
+        : String(e);
+    return { ok: false, latencyMs, detail };
+  }
+}
+
+/** 向量探针:与 embedding-client 同请求形状;2xx 且 data[0].embedding 非空即通,报维度 */
+async function probeEmbedding(input: ProbeInput, baseUrl: string): Promise<ProbeResult> {
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/embeddings`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders(input.apiKey) },
+      body: JSON.stringify({ model: input.modelId, input: ["ping"] }),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    const latencyMs = Date.now() - startedAt;
+    const text = await res.text().catch(() => "");
+    if (!res.ok) {
+      return {
+        ok: false,
+        latencyMs,
+        detail: `HTTP ${res.status}: ${text.slice(0, 200) || "(空响应)"}`,
+      };
+    }
+    let body: { data?: unknown };
+    try {
+      body = JSON.parse(text) as { data?: unknown };
+    } catch {
+      return { ok: false, latencyMs, detail: "embedding 响应不是 JSON(契约漂移)" };
+    }
+    const rows = body.data;
+    const emb = Array.isArray(rows)
+      ? (rows[0] as { embedding?: unknown } | undefined)?.embedding
+      : undefined;
+    if (!Array.isArray(emb) || emb.length === 0) {
+      return { ok: false, latencyMs, detail: "响应缺少向量字段(契约漂移)" };
+    }
+    return { ok: true, latencyMs, detail: `向量连通 ${latencyMs}ms(${emb.length} 维)` };
+  } catch (e) {
+    const latencyMs = Date.now() - startedAt;
+    const detail =
+      e instanceof Error && e.name === "TimeoutError"
+        ? `超时 ${PROBE_TIMEOUT_MS / 1000}s`
+        : String(e);
+    return { ok: false, latencyMs, detail };
+  }
+}
+
+/** 用途→探针种类:文本类(interpret/summarize/search)共享 chat;cover→images;
+ * embedding→embeddings;未绑用途回退 chat(M8 旧语义) */
+function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "embeddings"> {
+  const has = (p: string): boolean => purposes?.includes(p) ?? false;
+  const kinds: Array<"chat" | "images" | "embeddings"> = [];
+  if (
+    !purposes ||
+    purposes.length === 0 ||
+    has(AI_PURPOSE_INTERPRET) ||
+    has(AI_PURPOSE_SUMMARIZE) ||
+    has(AI_PURPOSE_SEARCH)
+  ) {
+    kinds.push("chat");
+  }
+  if (has(AI_PURPOSE_COVER)) kinds.push("images");
+  if (has(AI_PURPOSE_EMBEDDING)) kinds.push("embeddings");
+  return kinds;
+}
+
+/** 用途感知模型探针(2026-10-16 反馈问题3):按绑定用途逐个打真实端点,
+ * 全部通过才算 ok;detail 分种类汇总(chat 首选人话,失败带种类前缀可归因) */
+export async function probeModel(input: ProbeInput): Promise<ProbeResult> {
+  if (input.protocol !== AI_PROTOCOL_OPENAI && input.protocol !== AI_PROTOCOL_ANTHROPIC) {
+    logger.info({ event: "ai_probe.skipped", kind: "model", protocol: input.protocol });
+    return {
+      ok: false,
+      latencyMs: 0,
+      detail: "该协议暂不支持连通性测试(仅 openai/anthropic)",
+      skipped: true,
+    };
+  }
+  if (!input.baseUrl) return { ok: false, latencyMs: 0, detail: "Base URL 未配置" };
+  const baseUrl = input.baseUrl;
+  const oks: string[] = [];
+  const fails: string[] = [];
+  let latencyMs = 0;
+  for (const kind of probeKinds(input.purposes)) {
+    const r =
+      kind === "chat"
+        ? await probeLlm(input)
+        : kind === "images"
+          ? await probeImages(input, baseUrl)
+          : await probeEmbedding(input, baseUrl);
+    latencyMs = Math.max(latencyMs, r.latencyMs);
+    (r.ok ? oks : fails).push(kind === "chat" ? r.detail : `${kind} ${r.detail}`);
+  }
+  return {
+    ok: fails.length === 0,
+    latencyMs,
+    detail: fails.length > 0 ? fails.join(" ; ") : oks.join(" · "),
+  };
 }
 
 /** ASR 转写探针:正弦波无语音,转写文本为空属成功(UI 注明防误报) */
