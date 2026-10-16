@@ -143,7 +143,10 @@ export const saveTopicDraftTool = tool(
         .trim()
         .max(POST_LIMITS.coverPath)
         .optional()
-        .describe("封面图站内路径(transfer_video_cover 或 generate_cover_candidates 的返回)"),
+        .describe(
+          "封面图站内路径(默认流程省略——头图由落库后的 generate_post_cover 按管理员确认的" +
+            "方向 AI 生成;仅管理员明确要求沿用已有图片时才传 transfer_video_cover 的返回)",
+        ),
       seo_title: z
         .string()
         .trim()

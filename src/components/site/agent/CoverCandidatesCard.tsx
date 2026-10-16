@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 
 import {
   buildCoverResumeCommand,
+  COVER_ADOPTED_EVENT,
   parseAgentCoverInterrupt,
   type AgentCoverResume,
 } from "@/lib/agent/cover-tool";
@@ -63,6 +64,13 @@ export default function CoverCandidatesCard(): React.ReactElement | null {
     setSubmitting(true);
     try {
       await sendCommand(buildCoverResumeCommand(resume) as unknown as LangGraphCommand);
+      // resume run 已结束(adopt+设封面已在服务端落库):广播编辑器同步封面显示
+      // 与乐观锁基线(PostEditor 监听,同页面解耦;2026-10-16 反馈问题一)
+      if (resume.decision === "adopt") {
+        window.dispatchEvent(
+          new CustomEvent(COVER_ADOPTED_EVENT, { detail: { postId: payload.postId } }),
+        );
+      }
     } finally {
       setSubmitting(false);
     }

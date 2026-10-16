@@ -124,6 +124,35 @@ export async function sweepStaleCoverTemp(
 }
 
 /**
+ * 取该文仍存活的 hold 候选批次(工具体 resume 重放防重消费,2026-10-16 反馈
+ * 问题一):mediaPath 以临时前缀开头且临时文件仍在(adopt 切正式路径、discard
+ * /清扫删文件,悬空行不误判);只看近 30 分钟交互窗口,更老的孤儿不拦新一次
+ * 生成。按 id 升序保持候选展示序,token 取首行(同批)。
+ */
+export async function listHeldCandidatesForPost(
+  postId: string,
+): Promise<Array<{ id: string; token: string; mediaPath: string }>> {
+  const id = parsePostId(postId);
+  if (id === null) return [];
+  const rows = await prisma.coverCandidate.findMany({
+    where: {
+      postId: id,
+      mediaPath: { startsWith: COVER_TEMP_PREFIX },
+      createdAt: { gte: new Date(Date.now() - 30 * 60 * 1000) },
+    },
+    orderBy: { id: "asc" },
+    select: { id: true, token: true, mediaPath: true },
+  });
+  const alive: Array<{ id: string; token: string; mediaPath: string }> = [];
+  for (const r of rows) {
+    if ((await readHoldCandidate(r.mediaPath)) !== null) {
+      alive.push({ id: r.id.toString(), token: r.token, mediaPath: r.mediaPath });
+    }
+  }
+  return alive;
+}
+
+/**
  * 入库确认(工具体 adopt 分支消费):临时件读出 → uploadMedia 入媒体库 →
  * 候选行 mediaPath 切正式路径 → 清临时文件。已入库行幂等返回现路径。
  */

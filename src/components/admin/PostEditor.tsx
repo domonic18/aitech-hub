@@ -14,6 +14,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { COVER_ADOPTED_EVENT } from "@/lib/agent/cover-tool";
+
 import PostMetaPanel, {
   type EditorCategory,
   type PostMetaValue,
@@ -112,8 +114,10 @@ export default function PostEditor({
   const launchCoverAgent = useCallback((): void => {
     setAssistantLaunch({
       question:
-        "为本文生成封面候选。请先用 ask_user 给我 2-4 个提示词方向(风格/主体/配色)选择," +
-        "再按选定方向生成 2 张候选,等我确认入库。",
+        "为本文生成封面候选。请先读文章内容,推理 2-4 个差异化的封面方向(风格/主体/配色/" +
+        "拟融入画面的主题文字),用 ask_user 让我选择;我选定后把该方向写成完整生图提示词" +
+        "(要求画面融入文章主题的简短中文文字),用 ask_user 的 detail 字段附提示词全文让我确认;" +
+        "确认后再生成 2 张候选,等我挑一张入库。",
       nonce: Date.now(),
     });
   }, []);
@@ -187,6 +191,7 @@ export default function PostEditor({
     publish,
     unpublish,
     seoSuggest,
+    syncExpectedUpdatedAt,
   } = usePostEditorSave({
     mode,
     postId: post?.id,
@@ -201,6 +206,32 @@ export default function PostEditor({
       router.refresh();
     },
   });
+
+  // 封面 agent 入库回写(2026-10-16 反馈问题一):adopt+设封面在 agent 会话内
+  // 完成,编辑器状态感知不到。候选卡在 resume run 结束后广播事件,这里刷新
+  // 服务端 props(库内新封面 + 新 updatedAt),下方两个 effect 只同步这两项。
+  const postId = post?.id;
+  useEffect(() => {
+    if (mode !== "edit" || !postId) return;
+    const onCoverAdopted = (e: Event): void => {
+      const detail = (e as CustomEvent<{ postId?: string }>).detail;
+      if (detail?.postId && detail.postId !== postId) return;
+      router.refresh();
+    };
+    window.addEventListener(COVER_ADOPTED_EVENT, onCoverAdopted);
+    return () => window.removeEventListener(COVER_ADOPTED_EVENT, onCoverAdopted);
+  }, [mode, postId, router]);
+
+  // refresh 后的定向同步:只跟随封面显示与乐观锁基线,不碰正文/标题等本地
+  // 编辑态(防覆盖未保存输入);基线仅在已有锁时跟随(usePostEditorSave 内收口)
+  useEffect(() => {
+    if (!post?.updatedAt) return;
+    syncExpectedUpdatedAt(post.updatedAt);
+  }, [post?.updatedAt, syncExpectedUpdatedAt]);
+  useEffect(() => {
+    const server = post?.coverPath ?? "";
+    setMeta((m) => (m.coverPath === server ? m : { ...m, coverPath: server }));
+  }, [post?.coverPath]);
 
   // 自动保存(仅编辑态草稿;冲突后 enabled 翻 false 停调度,方案 §5)
   const autosavePhase = usePostAutosave({

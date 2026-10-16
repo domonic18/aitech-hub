@@ -123,11 +123,12 @@ export const getTimeTool = tool(
  * 由 stream 路由 zod 把关,此处防御性规整(旧客户端/绕道路径兜底)。
  */
 export const askUserTool = tool(
-  async ({ question, options }) => {
+  async ({ question, options, detail }) => {
     const answer = interrupt({
       kind: AGENT_ASK_USER_TOOL,
       question,
       ...(options && options.length > 0 ? { options } : {}),
+      ...(detail && detail.trim() !== "" ? { detail: detail.trim().slice(0, 2000) } : {}),
     });
     let message = "";
     let option: string | undefined;
@@ -154,7 +155,10 @@ export const askUserTool = tool(
       "答案作为本工具结果返回。不要用普通对话文本提问——纯文本问法前端弹不出卡片,用户无法结构化作答。" +
       "规则:一次只问一个问题,不要并行发起多个;question 为问题文本(≤500 字);options 为候选选项" +
       "(2-4 个纯字符串,不要用对象包裹,每个 ≤100 字,推荐项放第一个,可省略);用户回答后先简要确认理解再继续;" +
-      "仅当关键信息缺失且无法靠 search_site 检索补足时使用。",
+      "仅当关键信息缺失且无法靠 search_site 检索补足时使用。" +
+      "两段式确认模式(产出类任务适用):先问方向选项;用户选定后,把据此撰写的完整产出内容" +
+      "(如生图提示词)放进 detail 字段(≤2000 字,卡片会完整展示供逐字确认),options 给" +
+      "「确认执行/再调整」类选项,获明确确认后才执行产出动作。",
     schema: z.object({
       question: z.string().min(1).max(500).describe("要问用户的问题"),
       options: z
@@ -163,6 +167,13 @@ export const askUserTool = tool(
         .max(4)
         .optional()
         .describe("候选选项,用户可直接点选;无可选项则省略"),
+      detail: z
+        .string()
+        .max(2000)
+        .optional()
+        .describe(
+          "附属详情全文(卡片以独立文本块完整展示):需要用户逐字确认的产出内容,如待确认的生图提示词",
+        ),
     }),
   },
 );

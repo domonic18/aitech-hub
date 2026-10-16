@@ -250,16 +250,20 @@ export async function updatePost(
 /**
  * 封面窄口更新(2026-10-15 验收反馈问题二:agent 封面候选「入库」即设为文章
  * 封面):只动 coverPath 一列,不触 slug/分类/标签/分发面。路径走
- * coverPathSchema 单轨校验;@updatedAt 随写推进(编辑器下次保存会正当地收到
- * 乐观锁冲突横幅,人工刷新即同步)。
+ * coverPathSchema 单轨校验;@updatedAt 随写推进(编辑器经 adopt 事件 +
+ * router.refresh() 跟随新基线,2026-10-16 反馈问题一)。已发布文同步刷前台
+ * ISR 缓存(与 update 全量路径同口径,详情页不再滞留旧封面)。
  */
 export async function updatePostCover(id: bigint, coverPath: string): Promise<void> {
   const parsed = coverPathSchema.safeParse(coverPath);
   if (!parsed.success) {
     throw new PostAdminError("invalid_body", parsed.error.issues[0]?.message ?? "封面路径不合法");
   }
-  await loadMutable(id);
+  const post = await loadMutable(id);
   await prisma.post.update({ where: { id }, data: { coverPath: parsed.data } });
+  if (post.status === "published") {
+    revalidatePostPaths({ id, slug: post.slug });
+  }
 }
 
 async function loadMutable(id: bigint) {

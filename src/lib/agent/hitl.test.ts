@@ -49,6 +49,20 @@ describe("parseAgentAskUserInterrupt", () => {
       parseAgentAskUserInterrupt({ kind: "ask_user", question: "q", options: [1, 2] }),
     ).toEqual({ kind: "ask_user", question: "q" });
   });
+
+  it("detail 载荷 trim 透传并截 2000(提示词确认通道);空白归缺省", () => {
+    expect(
+      parseAgentAskUserInterrupt({ kind: "ask_user", question: "q", detail: " 提示词全文 " }),
+    ).toEqual({ kind: "ask_user", question: "q", detail: "提示词全文" });
+    expect(
+      parseAgentAskUserInterrupt({ kind: "ask_user", question: "q", detail: "字".repeat(2100) })
+        ?.detail,
+    ).toBe("字".repeat(2000));
+    expect(parseAgentAskUserInterrupt({ kind: "ask_user", question: "q", detail: "   " })).toEqual({
+      kind: "ask_user",
+      question: "q",
+    });
+  });
 });
 
 describe("buildAskUserResumeCommand", () => {

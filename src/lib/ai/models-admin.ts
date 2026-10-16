@@ -17,6 +17,7 @@ import {
   TEST_STATUS_OK,
 } from "./constants";
 import { AiAdminError } from "./errors";
+import { normalizeExtraParams } from "./resolver";
 
 /** 脱敏行视图(永不含 apiKeyEnc;RSC 页与 GET /api/models 共用) */
 export interface AiModelRow {
@@ -222,12 +223,26 @@ export async function deleteAiModel(id: number): Promise<void> {
 }
 
 /** 探针取数(内部解密;仅供 probe 调用,不回客户端不入日志) */
-export async function getModelForTest(
-  id: number,
-): Promise<{ protocol: string; baseUrl: string | null; modelId: string; apiKey: string | null }> {
+export async function getModelForTest(id: number): Promise<{
+  protocol: string;
+  baseUrl: string | null;
+  modelId: string;
+  apiKey: string | null;
+  purposes: string[];
+  timeoutSec: number;
+  extraParams: Record<string, unknown>;
+}> {
   const row = await prisma.aiModel.findUnique({
     where: { id },
-    select: { protocol: true, baseUrl: true, modelId: true, apiKeyEnc: true },
+    select: {
+      protocol: true,
+      baseUrl: true,
+      modelId: true,
+      apiKeyEnc: true,
+      purposes: true,
+      timeoutSec: true,
+      extraParams: true,
+    },
   });
   if (!row) throw new AiAdminError("not_found", "模型不存在");
   return {
@@ -235,6 +250,12 @@ export async function getModelForTest(
     baseUrl: row.baseUrl,
     modelId: row.modelId,
     apiKey: row.apiKeyEnc ? decryptSecret(row.apiKeyEnc) : null,
+    purposes: row.purposes,
+    // 生图探针与真实管线同形状的最后一环:超时与扩展参数随台账走
+    // (2026-10-16 复盘:探针写死 1024x1024 且不带 extraParams,供应商
+    // 不支持该尺寸时报「测试失败但实际可用」)
+    timeoutSec: row.timeoutSec,
+    extraParams: normalizeExtraParams(row.extraParams),
   };
 }
 

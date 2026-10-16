@@ -59,6 +59,12 @@ describe("askUserTool", () => {
     );
     expect(schema.safeParse({}).success).toBe(false);
   });
+
+  it("schema:detail 可选 ≤2000(两段式确认的提示词全文通道)", () => {
+    const schema = askUserTool.schema;
+    expect(schema.safeParse({ question: "q", detail: "提示词全文" }).success).toBe(true);
+    expect(schema.safeParse({ question: "q", detail: "字".repeat(2001) }).success).toBe(false);
+  });
 });
 
 describe("getTimeTool", () => {

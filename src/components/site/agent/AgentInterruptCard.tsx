@@ -51,6 +51,14 @@ export default function AgentInterruptCard(): React.ReactElement | null {
         助手提问 · 等待你的回答
       </div>
       <p className="mb-2.5 text-[13.5px] leading-[1.7] text-text-1">{question}</p>
+      {payload?.detail && (
+        <pre
+          className="mb-2.5 max-h-48 overflow-y-auto rounded-md border border-line bg-panel-2 p-2.5 font-mono text-[12px] leading-[1.7] whitespace-pre-wrap text-text-2"
+          aria-label="待确认内容全文"
+        >
+          {payload.detail}
+        </pre>
+      )}
       {options && (
         <div className="mb-2.5 flex flex-wrap gap-1.5">
           {options.map((opt) => (

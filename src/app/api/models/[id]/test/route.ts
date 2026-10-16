@@ -1,6 +1,7 @@
 /**
  * 模型连通性测试(M8 批⑥,arch/04 §4「测试连通性入口」):探针内部解密取钥,
  * 结果落 last_test 四件套;probe 永不 throw,skipped(不支持的协议)不覆盖既有结果。
+ * 2026-10-16 反馈问题3:按绑定用途打真实端点(chat/images/embeddings),全过才算 ok。
  */
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -8,7 +9,7 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { getModelForTest, recordModelTest } from "@/lib/ai/models-admin";
-import { probeLlm } from "@/lib/ai/probe";
+import { probeModel } from "@/lib/ai/probe";
 import { AI_CONFIG_PAT_DENY } from "@/lib/ai/constants";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function POST(
   if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
   try {
     const target = await getModelForTest(Number(id));
-    const result = await probeLlm(target);
+    const result = await probeModel(target);
     await recordModelTest(Number(id), result);
     return apiEnvelope(0, result.ok ? "ok" : "fail", result);
   } catch (e) {

@@ -1,7 +1,8 @@
 /**
  * 封面候选 HITL 契约单测(M31):interrupt 载荷解析(kind 防串线/形状缺损
  * 返 null)、resume 决策解析(批④:形状异常可见,工具体同 discard 清临时
- * 件)、resume 命令体构造。
+ * 件)、resume 命令体构造;postId 透传(2026-10-16 反馈问题一:adopt 后
+ * 定向通知编辑器刷新,异常形状省略该字段不阻塞解析)。
  */
 import { describe, expect, it } from "vitest";
 
@@ -46,6 +47,15 @@ describe("parseAgentCoverInterrupt", () => {
     ).toBeNull();
     expect(parseAgentCoverInterrupt("text")).toBeNull();
     expect(parseAgentCoverInterrupt(null)).toBeNull();
+  });
+
+  it("postId 透传;异常形状(非串/空串)省略字段不阻塞解析", () => {
+    expect(parseAgentCoverInterrupt({ ...PAYLOAD, postId: "42" })).toEqual({
+      ...PAYLOAD,
+      postId: "42",
+    });
+    expect(parseAgentCoverInterrupt({ ...PAYLOAD, postId: 42 })).toEqual(PAYLOAD);
+    expect(parseAgentCoverInterrupt({ ...PAYLOAD, postId: "" })).toEqual(PAYLOAD);
   });
 });
 

@@ -9,6 +9,9 @@
 /** 工具名(工具面与 interrupt.value.kind 同源) */
 export const AGENT_COVER_CANDIDATES_TOOL = "generate_cover_candidates";
 
+/** 入库完成广播事件名(卡片 → PostEditor,同页面解耦同步;2026-10-16 反馈问题一) */
+export const COVER_ADOPTED_EVENT = "ah:cover-adopted";
+
 /** 候选预览项(id 供入库回传;url 为预览接口路径,取图另带 payload.token) */
 export interface AgentCoverCandidate {
   id: string;
@@ -21,6 +24,8 @@ export interface AgentCoverPayload {
   prompt: string;
   token: string;
   candidates: AgentCoverCandidate[];
+  /** 编辑态文章 id(2026-10-16 反馈问题一:adopt 完成后定向通知编辑器刷新) */
+  postId?: string;
 }
 
 /** 用户决策的 resume 值(判别联合:adopt 必带 candidateId;discard 弃整批) */
@@ -46,7 +51,13 @@ export function parseAgentCoverInterrupt(value: unknown): AgentCoverPayload | nu
     if (typeof item.id !== "string" || typeof item.url !== "string") return null;
     candidates.push({ id: item.id, url: item.url });
   }
-  return { kind: AGENT_COVER_CANDIDATES_TOOL, prompt: v.prompt, token: v.token, candidates };
+  return {
+    kind: AGENT_COVER_CANDIDATES_TOOL,
+    prompt: v.prompt,
+    token: v.token,
+    candidates,
+    ...(typeof v.postId === "string" && v.postId !== "" ? { postId: v.postId } : {}),
+  };
 }
 
 /**
