@@ -101,33 +101,38 @@ export interface FeishuIdentity {
   name: string;
 }
 
-/** 免登授权码兑换身份(授权码 5 分钟单次有效):OAuth v2 token 端点以
+/** 免登授权码兑换身份(授权码一次性有效,分钟级):OAuth v2 token 端点以
  * client_id/client_secret 直换 user_access_token(H5 免登 code 非重定向流,
  * 不携带 redirect_uri;2026-10-16 自已废弃的 authen/v1/oidc 迁移)→
- * user_info 取身份。union_id 为绑定键(fail-closed:缺失即拒,应用需开通
- * 「获取用户 union ID」权限)。 */
+ * user_info 取身份。注意 v2 端点响应为扁平 OAuth 结构
+ * {access_token,error,error_description},无 code/data 信封(2026-10-16
+ * 真机实证,误按信封解析恒取 undefined)。union_id 为绑定键(fail-closed:
+ * 缺失即拒,应用需开通「获取用户 union ID」权限)。 */
 export async function exchangeFeishuIdentity(
   cfg: FeishuCredentials,
   code: string,
   fetcher: Fetcher = fetch,
 ): Promise<FeishuIdentity> {
-  const at = await requestJson<{ data?: { access_token?: string } }>(
-    fetcher,
-    `${FEISHU_OPEN}/authen/v2/oauth/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({
-        grant_type: "authorization_code",
-        client_id: cfg.appId,
-        client_secret: cfg.appSecret,
-        code,
-      }),
-    },
-  );
-  const userToken = at.data?.access_token;
+  const at = await requestJson<{
+    access_token?: string;
+    error?: string;
+    error_description?: string;
+  }>(fetcher, `${FEISHU_OPEN}/authen/v2/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      client_id: cfg.appId,
+      client_secret: cfg.appSecret,
+      code,
+    }),
+  });
+  const userToken = at.access_token;
   if (!userToken)
-    throw new FeishuError("upstream", "飞书未返回 user_access_token(授权码无效或已用过)");
+    throw new FeishuError(
+      "upstream",
+      `飞书未返回 user_access_token:${at.error_description ?? at.error ?? "授权码无效或已用过"}`,
+    );
 
   const ui = await requestJson<{ data?: { union_id?: string; open_id?: string; name?: string } }>(
     fetcher,

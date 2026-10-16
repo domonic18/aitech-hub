@@ -37,7 +37,7 @@ const IP = "203.0.113.77"; // TEST-NET-3 专用测试 IP,避免撞真实限频�
 let fakeUnion = { union_id: "ou_e2e_bound", open_id: "ou_e2e_open", name: "e2e管理员" };
 const fetchStub = vi.fn(async (url: string): Promise<Response> => {
   const body = url.includes("authen/v2/oauth/token")
-    ? { code: 0, data: { access_token: "UT_e2e" } }
+    ? { access_token: "UT_e2e" } // v2 端点扁平 OAuth 结构,无 code/data 信封
     : url.includes("authen/v1/user_info")
       ? { code: 0, data: fakeUnion }
       : url.includes("app_access_token/internal")
