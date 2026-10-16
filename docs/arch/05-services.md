@@ -37,12 +37,12 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 - 日志安全:手机号掩码(`138****1234`);密码/哈希永不落日志;登录成功/失败/锁定/登出记 `auth` 事件(pino,后台可视化属 M5+)
 - 三期启用短信登录时恢复原设计(sms-code 频控同号 60s/次日 10 条、腾讯云下发、未注册自动注册);BullMQ 周期任务实现注见 §4(upsertJobScheduler)
 
-**飞书工作台免登(M29,2026-10-14 立项;批① 绑定底座已交付开发,批② 登录页免登分支进行中)**:
+**飞书工作台免登(M29,2026-10-14 立项;批①② 已上线;2026-10-16 免登修复:SDK 死链换新、废弃 getAuthCode 签名流换 requestAccess、v1 OIDC 换 v2 兑换,仿 acore-manager 实证)**:
 
-- **流程**:飞书工作台 H5 打开 `/admin`(已入可信域名)→ 登录页 UA 判飞书容器 → h5sdk(`config` 签名取 `GET /api/auth/feishu/jssign/?url=`)+ `tt.getAuthCode` → `POST /api/auth/feishu/exchange` 服务端 OIDC 兑换(oidc/access_token → user_info)→ `admin_feishu_binding` 按 unionId 精确命中(白名单本体,fail-closed)→ 目标账号复核 role=admin + status=active → 签发既有 jose 会话 Cookie(**不新造会话机制**,§3.2 同款)→ 跳 `/admin/`
+- **流程**:飞书工作台 H5 打开 `/admin`(已入可信域名)→ 登录页 UA 判飞书容器 → h5sdk 脚本(bytegoofy 官方 CDN 1.5.26)ready → `tt.requestAccess`(appId 取 `GET /api/auth/feishu/status`,免 config 签名鉴权;客户端 ≥6.9.0,旧客户端静默丢弃新 API → 8s 无响应回退 `tt.requestAuthCode`)→ `POST /api/auth/feishu/exchange` 服务端 OAuth v2 兑换(authen/v2/oauth/token → user_info)→ `admin_feishu_binding` 按 unionId 精确命中(白名单本体,fail-closed)→ 目标账号复核 role=admin + status=active → 签发既有 jose 会话 Cookie(**不新造会话机制**,§3.2 同款)→ 跳 `/admin/`
 - **绑定**:密码登录后在 `/admin/settings/feishu`(系统设置「飞书」页签,侧栏精简批①;旧 /admin/feishu 308 承接)自绑/换绑/解绑——凭证配置与绑定同页;绑定只要求凭证齐(`enabled` 单独控制兑换通道);跨锚冲突(unionId 已绑他人)409
-- **凭证**:`admin_feishu_config` 单例入数据库(不入 env,与邮件/支付同规则),secret-box AES-256-GCM 加密,write-only 脱敏回显;`app_access_token`/`jsapi_ticket` Redis 缓存(expire 预留 5min 余量,缓存故障降级直连)
-- **防滥用**:jssign 仅签本站源 URL(防签名 oracle)+ IP 60/h;exchange IP 30/h + Origin 校验;授权码 5 分钟单次;未绑定一律模糊 403 不给探测面
+- **凭证**:`admin_feishu_config` 单例入数据库(不入 env,与邮件/支付同规则),secret-box AES-256-GCM 加密,write-only 脱敏回显;`app_access_token` Redis 缓存(expire 预留 5min 余量,缓存故障降级直连;仅 admin 探针消费——v2 兑换以 client_id/secret 直换不取 app_token)
+- **防滥用**:status 仅透传 appId(非密,本就进客户端请求参数),凭证不齐 403 fail-closed;exchange IP 30/h + Origin 校验;授权码 5 分钟单次;未绑定一律模糊 403 不给探测面
 - **回落**:非飞书环境 / 未配置 / 未启用 / 兑换任一步失败 → 登录页密码表单兜底,零回归;PC 端 OAuth 扫码授权留二期
 
 ### 3.2 会话机制(httpOnly Cookie,单体自然形态)
@@ -121,8 +121,8 @@ Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 
 
 | 域 | 端点 | 鉴权 |
 |----|------|------|
-| auth | login / logout / session、`GET /api/auth/feishu/jssign/?url=`(M29:h5sdk 签名四元组;本站源白名单 + IP 60/h;凭证齐即可,enabled 不管)、`POST /api/auth/feishu/exchange`(M29:免登授权码兑换会话;白名单命中 + role/status 复核 + IP 30/h;未启用 403,未绑定模糊 403,upstream 502 不外吐细节) | login/session/exchange 公开(均有防滥用,§3.1);jssign 公开(限频) |
-| feishu(管理) | `GET/PUT /api/admin/feishu/config`(脱敏视图/保存,secret 留空=保留)、`POST /api/admin/feishu/test`(探测 app_token+jsapi_ticket 双链路,落 lastTest)、`GET /api/admin/feishu/bind`(当前绑定视图)、`POST /api/admin/feishu/bind`(授权码自绑/换绑,跨锚 409)、`DELETE /api/admin/feishu/bind`(自解绑,幂等) | admin 仅会话(mutation Origin 校验,§3.1) |
+| auth | login / logout / session、`GET /api/auth/feishu/status`(M29:下发 `{enabled, appId}` 供 H5 `tt.requestAccess`;凭证齐即可,enabled 透传不设门——兑换由 exchange 把关;凭证不齐 403)、`POST /api/auth/feishu/exchange`(M29:免登授权码兑换会话;白名单命中 + role/status 复核 + IP 30/h;未启用 403,未绑定模糊 403,upstream 502 不外吐细节) | login/session/exchange/status 公开(exchange 有防滥用,status 零外呼零签名) |
+| feishu(管理) | `GET/PUT /api/admin/feishu/config`(脱敏视图/保存,secret 留空=保留)、`POST /api/admin/feishu/test`(探测 app_token 链路,落 lastTest)、`GET /api/admin/feishu/bind`(当前绑定视图)、`POST /api/admin/feishu/bind`(授权码自绑/换绑,跨锚 409)、`DELETE /api/admin/feishu/bind`(自解绑,幂等) | admin 仅会话(mutation Origin 校验,§3.1) |
 | content | `GET /api/posts`(管理列表,草稿含;q 搜索)、`PUT /api/posts`(发布 API upsert:slug 幂等,原始 md 服务端解析 frontmatter,图片随文 base64 复用 M5-b 上传管线,publish=true 直发;legacy 纯 HTML 旧文 409 保真)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish`(POST 建文 slug 缺省由标题派生 ASCII、冲突自动追加 `-2…-9` 后缀、纯中文标题 → NULL;显式指定冲突仍 409;PUT 可改 slug——URL 由 id 锚定不破链)、`POST /api/posts/seo-suggest`(SEO 字段一键 LLM 补全,复用 summarize 绑定同步轻调用,M14 批④)、`POST /api/posts/seo-suggest-batch` + `GET /api/posts/seo-suggest-batch/[jobId]?token=`(文章列表多选批量 SEO 补全:仅补空缺不覆盖已有值,入 `seo-batch` 队列顺序逐篇 + 单篇失败隔离 `failedIds`;summarize 绑定缺失 400 前置拒绝不产生无效 job;ids 上限 50,M16)、`GET /api/posts/cover-candidates/[id]/raw`(agent 封面候选预览:token 走 x-cover-token 头(技术债批④,不落访问日志),hold 临时件按字节回图,已入库行 302 正式路径;会话鉴权,M31;hold/adopt 见 arch/04 封面候选 HITL;hold 孤儿目录(悬空中断/顶替遗留)由 cover-gen 队列 `temp-sweep` job 日频清扫,24h 过期回收) | admin(管理路会话或 PAT 双路,§3.1;seo-suggest* 仅会话) |
 | pats | `GET/POST /api/pats`、`POST /api/pats/[id]/revoke`(仅会话——PAT 不得自我增殖;明文仅签发时返回一次,库存 sha256) | admin |
 | mcp | `POST /api/mcp`(Streamable HTTP stateless,每请求新建 transport;Bearer PAT 鉴权在 MCP 协议层之前;六工具 upsert_article/upload_media/get_article/list_articles/publish/unpublish,一律 slug 为键;GET/DELETE 405;接入串 arch/04 §2) | admin(PAT) |

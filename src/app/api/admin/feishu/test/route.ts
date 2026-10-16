@@ -1,13 +1,14 @@
 /**
  * 飞书凭证连通性探针 API(M29 批①,镜像 /api/email-config/test):admin 保存
- * 配置后就地验证 app_access_token + jsapi_ticket 两条 OpenAPI 链路,结果落
- * lastTest 四件套。web 内联外呼是「请求内禁秒级任务」的受控例外(仅 admin、
- * 低频、8s 超时兜底);错误原文回显 admin(排障需要,secret 不出现在错误里)。
+ * 配置后就地验证 app_access_token 链路(凭证有效性代证;兑换链 v2 需真实
+ * 授权码无独立探针),结果落 lastTest 四件套。web 内联外呼是「请求内禁秒级
+ * 任务」的受控例外(仅 admin、低频、8s 超时兜底);错误原文回显 admin
+ * (排障需要,secret 不出现在错误里)。
  */
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireAdminRequest } from "@/lib/auth/guard";
-import { getJsapiTicket, getAppAccessToken } from "@/lib/auth/feishu-client";
+import { getAppAccessToken } from "@/lib/auth/feishu-client";
 import { getFeishuRuntimeConfig, recordFeishuTest } from "@/lib/auth/feishu-config";
 import { FeishuError } from "@/lib/auth/feishu-errors";
 import { isSameOrigin } from "@/lib/http/origin";
@@ -29,7 +30,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const startedAt = Date.now();
   try {
     await getAppAccessToken(creds);
-    await getJsapiTicket(creds);
   } catch (e) {
     const detail = e instanceof FeishuError ? e.message : "未知错误";
     await recordFeishuTest({ ok: false, latencyMs: Date.now() - startedAt, detail });
