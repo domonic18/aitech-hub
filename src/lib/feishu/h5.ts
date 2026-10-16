@@ -21,24 +21,27 @@ interface StatusPayload {
   data?: { enabled: boolean; appId: string };
 }
 
+/** 取码 API 归属随客户端 bridge 版本而异(tt 优先、h5sdk 兜底;2026-10-16 真机
+ * 实证:该客户端 requestAccess 仅在 tt 上,查 h5sdk 恒 undefined)。 */
+interface AuthCodeFnOptions {
+  success: (res: { code: string }) => void;
+  fail: (err: unknown) => void;
+}
+
 interface H5Sdk {
   ready(callback: () => void): void;
-  requestAccess(options: {
-    /** 官方参数名即大写 D 的 appID */
-    appID: string;
-    scopeList: string[];
-    state: string;
-    success: (res: { code: string }) => void;
-    fail: (err: unknown) => void;
-  }): void;
+  /** 官方参数名即大写 D 的 appID */
+  requestAccess?(
+    options: AuthCodeFnOptions & { appID: string; scopeList: string[]; state: string },
+  ): void;
+  requestAuthCode?(options: AuthCodeFnOptions & { appId: string }): void;
 }
 
 interface TtApi {
-  requestAuthCode(options: {
-    appId: string;
-    success: (res: { code: string }) => void;
-    fail: (err: unknown) => void;
-  }): void;
+  requestAccess?(
+    options: AuthCodeFnOptions & { appID: string; scopeList: string[]; state: string },
+  ): void;
+  requestAuthCode?(options: AuthCodeFnOptions & { appId: string }): void;
 }
 
 declare global {
@@ -88,7 +91,8 @@ function loadH5Sdk(): Promise<void> {
 function h5Diag(sdk: H5Sdk, tt: TtApi): string {
   return (
     `sdk=1.5.26 h5sdk=${window.h5sdk ? 1 : 0} tt=${window.tt ? 1 : 0} ` +
-    `access=${typeof sdk.requestAccess} authcode=${typeof tt.requestAuthCode} ` +
+    `access=${typeof (tt.requestAccess ?? sdk.requestAccess)} ` +
+    `authcode=${typeof (tt.requestAuthCode ?? sdk.requestAuthCode)} ` +
     `ready=${typeof sdk.ready}`
   );
 }
@@ -135,17 +139,19 @@ export async function requestFeishuAuthCode(): Promise<string> {
       TOTAL_TIMEOUT_MS,
     );
     // 旧客户端(<6.9.0)不识别 requestAccess 静默丢弃 → 无响应即回旧接口
+    const authCodeFn = tt.requestAuthCode ?? sdk.requestAuthCode;
     const fallbackTimer = window.setTimeout(() => {
-      if (settled) return;
-      tt.requestAuthCode({
+      if (settled || typeof authCodeFn !== "function") return;
+      authCodeFn({
         appId,
         success: (r) => finish(r.code),
         fail: (err) => failure("requestAuthCode", err),
       });
     }, ACCESS_FALLBACK_MS);
 
-    if (typeof sdk.requestAccess !== "function") return; // 等回退分支
-    sdk.requestAccess({
+    const accessFn = tt.requestAccess ?? sdk.requestAccess;
+    if (typeof accessFn !== "function") return; // 等回退分支
+    accessFn({
       appID: appId,
       scopeList: [],
       state: "",
