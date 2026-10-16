@@ -4,8 +4,9 @@
  * Vditor 分屏编辑器实现(M5-d):浏览器端库,经 MdEditor 的 dynamic(ssr:false) 分包加载。
  * mode "sv" 左编辑右预览(工具栏可切即时渲染 ir/所见即所得 wysiwyg);截图粘贴/拖拽/
  * 工具栏上传统一走 upload.handler → uploadImageFile(POST /api/media,sha1 去重);
- * 工具栏「从媒体库插入」自定义钮(2026-10-15 验收反馈问题三,MediaInsertDialog 选图
- * 后 insertValue 光标处插图片语法)。
+ * 「从媒体库插入」双入口(2026-10-15 反馈建,2026-10-16 反馈显性化):编辑区上方
+ * 文字钮 + 工具栏自定义图标钮,均开 MediaInsertDialog 选图后 insertValue 光标处
+ * 插图片语法。
  * 窄屏(<1024,M13):初始化切 ir 单栏 + 13 项精简工具栏(转屏不重初始化,edit-mode 手动出口)。
  * 运行时懒加载资源已本地化至 public/vditor(lute WASM/i18n/highlight/预览主题,
  * 以及按内容触发懒加载的 mermaid/katex——库内 6 篇 mermaid 围栏、69 篇含数学定界符,
@@ -205,8 +206,23 @@ export default function VditorEditor({
   }, []);
 
   // ah-editor-fill:.vditor 高度随容器(globals.css);min-h 兜底非拉伸场景(右栏收起时)
+  // 顶部文字钮(2026-10-16 验收反馈问题一:纯图标埋在 22 个工具栏钮里找不到;
+  // vditor 全屏时本行滚出视口,工具栏同款图标钮仍可用,双入口保留)
   return (
     <>
+      <div className="flex items-center gap-2.5 pb-2">
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel px-2.5 py-1.5 text-xs text-text-1 transition-colors hover:border-accent/50 hover:text-accent"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+            <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v14h14V5H5zm3 2.5A1.5 1.5 0 1 1 8 10.5 1.5 1.5 0 0 1 8 7.5zM6.5 18l3.5-4.5 2.5 3 3-4 3.5 5.5h-9z" />
+          </svg>
+          从媒体库插入图片
+        </button>
+        <span className="text-[11px] text-text-3">截图可直接粘贴或拖拽进正文</span>
+      </div>
       <div ref={ref} className="ah-editor-fill min-h-[480px] flex-1 lg:min-h-[560px]" />
       {pickerOpen && (
         <MediaInsertDialog
