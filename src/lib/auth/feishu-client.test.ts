@@ -66,7 +66,7 @@ describe("getAppAccessToken", () => {
 describe("exchangeFeishuIdentity", () => {
   it("v2 两跳成功 → unionId/openId/name;token 请求契约 client_id/secret 直换(零 app_token 前置)", async () => {
     const f = fetcherBy({
-      "authen/v2/oauth/token": { code: 0, data: { access_token: "UT" } },
+      "authen/v2/oauth/token": { access_token: "UT" },
       "authen/v1/user_info": {
         code: 0,
         data: { union_id: "ou-union", open_id: "ou-open", name: "张三" },
@@ -88,16 +88,17 @@ describe("exchangeFeishuIdentity", () => {
     });
   });
 
-  it("授权码无效(无 user token)→ upstream;union_id 缺失 → invalid", async () => {
+  it("授权码无效(扁平 OAuth 错误体)→ upstream 且透出 error_description;union_id 缺失 → invalid", async () => {
     const f = fetcherBy({
-      "authen/v2/oauth/token": { code: 0, data: {} },
+      "authen/v2/oauth/token": { error: "InvalidCode", error_description: "code has been used" },
     });
     await expect(exchangeFeishuIdentity(CREDS, "bad", f)).rejects.toMatchObject({
       code: "upstream",
+      message: expect.stringContaining("code has been used"),
     });
 
     const f2 = fetcherBy({
-      "authen/v2/oauth/token": { code: 0, data: { access_token: "UT" } },
+      "authen/v2/oauth/token": { access_token: "UT" },
       "authen/v1/user_info": { code: 0, data: { open_id: "ou-open" } },
     });
     await expect(exchangeFeishuIdentity(CREDS, "code", f2)).rejects.toMatchObject({
