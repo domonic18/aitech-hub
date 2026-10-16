@@ -12,12 +12,15 @@ import type { AgentSkillRow } from "@/lib/ai/agent-skills-admin";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 import SkillDialog from "./SkillDialog";
+import SkillViewDialog from "./SkillViewDialog";
 
 const opLink = "cursor-pointer text-xs text-text-2 hover:text-accent disabled:opacity-50";
 
 function Row({ skill }: { skill: AgentSkillRow }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  // 只读查看(2026-10-16 验收反馈问题二):正文不必进编辑弹窗即可读
+  const [viewing, setViewing] = useState(false);
 
   async function call(url: string, init: RequestInit): Promise<void> {
     setBusy(true);
@@ -81,6 +84,9 @@ function Row({ skill }: { skill: AgentSkillRow }) {
       </td>
       <td className="px-4 py-2.5 text-right">
         <div className="flex justify-end gap-2.5">
+          <button type="button" onClick={() => setViewing(true)} className={opLink}>
+            查看
+          </button>
           <SkillDialog label="编辑" skill={skill} buttonClass={opLink} />
           <button
             type="button"
@@ -92,6 +98,7 @@ function Row({ skill }: { skill: AgentSkillRow }) {
           </button>
         </div>
       </td>
+      {viewing && <SkillViewDialog skill={skill} onClose={() => setViewing(false)} />}
     </tr>
   );
 }
