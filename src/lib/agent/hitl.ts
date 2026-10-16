@@ -18,6 +18,9 @@ export interface AgentAskUserPayload {
   question: string;
   /** 候选选项(用户可直接点选;缺省 = 纯自由文本回答) */
   options?: string[];
+  /** 附属详情长文本(2026-10-16 验收反馈问题三):需用户逐字确认的内容全文,
+   * 如待确认的生图提示词;卡片以等宽文本块完整展示。schema 上限 2000 字 */
+  detail?: string;
 }
 
 /** 用户回答的 resume 值(interrupt() 在恢复后原样返回给工具体) */
@@ -44,10 +47,15 @@ export function parseAgentAskUserInterrupt(value: unknown): AgentAskUserPayload 
   const options = Array.isArray(v.options)
     ? v.options.filter((o): o is string => typeof o === "string" && o.trim() !== "")
     : undefined;
+  const detail =
+    typeof v.detail === "string" && v.detail.trim() !== ""
+      ? v.detail.trim().slice(0, 2000)
+      : undefined;
   return {
     kind: AGENT_ASK_USER_TOOL,
     question: v.question,
     ...(options && options.length > 0 ? { options } : {}),
+    ...(detail ? { detail } : {}),
   };
 }
 

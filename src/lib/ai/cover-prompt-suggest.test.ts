@@ -68,6 +68,9 @@ describe("buildCoverPromptSuggestPrompt", () => {
     });
     expect(withContent.user).toContain("正文(可能截断)");
     expect(withContent.user).toContain("正文内容");
+    // 2026-10-16 反馈问题四:spec 要求画面融入主题词文字(原全禁字令反转)
+    expect(withContent.system).toContain("主题词");
+    expect(withContent.system).toContain("简体中文文字");
 
     const noContent = buildCoverPromptSuggestPrompt({
       title: "标题",
