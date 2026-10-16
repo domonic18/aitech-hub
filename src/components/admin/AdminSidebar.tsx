@@ -25,6 +25,7 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "内容管理",
     items: [
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
+      { icon: "i-book", label: "文章分类", href: "/admin/categories" },
       { icon: "i-comment", label: "评论管理", href: "/admin/comments" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
@@ -45,6 +46,8 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "AI 服务",
     items: [
       { icon: "i-robot", label: "模型配置", href: "/admin/models" },
+      // 写作技能自「模型配置」第 4 页签提升为独立页(2026-10-16 验收反馈问题二)
+      { icon: "i-filetext", label: "写作技能", href: "/admin/skills" },
       // 会话管理已并入 AI 用量壳「会话」页签(/admin/usage/sessions,侧栏精简批②)
       { icon: "i-piechart", label: "AI 用量", href: "/admin/usage" },
     ],

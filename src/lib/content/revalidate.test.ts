@@ -4,7 +4,7 @@ const revalidatePath = vi.fn();
 
 vi.mock("next/cache", () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }));
 
-import { revalidatePostPaths } from "./revalidate";
+import { revalidateCategoryPaths, revalidatePostPaths } from "./revalidate";
 
 describe("revalidatePostPaths(保存时按需失效,arch/07-frontend §1)", () => {
   beforeEach(() => {
@@ -27,5 +27,18 @@ describe("revalidatePostPaths(保存时按需失效,arch/07-frontend §1)", () =
     const paths = revalidatePath.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/post/58/");
     expect(paths).toContain("/post/58.md");
+  });
+});
+
+describe("revalidateCategoryPaths(分类写侧失效,2026-10-16 增删改查)", () => {
+  beforeEach(() => {
+    revalidatePath.mockClear();
+  });
+
+  it("覆盖分类页/首页/sitemap;sitemap 用 layout 型打中 Metadata Route tag", () => {
+    revalidateCategoryPaths("ai-agents");
+    expect(revalidatePath).toHaveBeenCalledWith("/category/ai-agents/");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+    expect(revalidatePath).toHaveBeenCalledWith("/sitemap.xml", "layout");
   });
 });
