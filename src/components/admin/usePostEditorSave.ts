@@ -6,7 +6,7 @@
  * 人工决策横幅)+ 存草稿/发布/下架/SEO 一键补全,与 busy/error/savedAt/
  * conflict 状态。自动保存状态行文案由纯函数 autosaveStatusLine 派生(可单测)。
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   postCreateSchema,
@@ -91,6 +91,8 @@ export function usePostEditorSave(deps: UsePostEditorSaveDeps): {
   publish: () => Promise<void>;
   unpublish: () => Promise<void>;
   seoSuggest: () => Promise<void>;
+  /** 乐观锁基线跟随服务端旁路写(editor 经 router.refresh 后对齐,防误报 409) */
+  syncExpectedUpdatedAt: (iso: string) => void;
 } {
   const [busy, setBusy] = useState(false);
   const [seoBusy, setSeoBusy] = useState(false);
@@ -247,6 +249,13 @@ export function usePostEditorSave(deps: UsePostEditorSaveDeps): {
     }
   }
 
+  /** 乐观锁基线跟随服务端旁路写(2026-10-16 反馈问题一):封面 agent 入库等
+   * 带 router.refresh() 的写会推进库内 updatedAt,编辑器据此对齐基线防误报
+   * 409。仅在已有基线时跟随——从未保存过的稿子保持「首存无锁」语义不变。 */
+  const syncExpectedUpdatedAt = useCallback((iso: string): void => {
+    setExpectedUpdatedAt((prev) => (prev === null ? prev : iso));
+  }, []);
+
   return {
     busy,
     seoBusy,
@@ -259,5 +268,6 @@ export function usePostEditorSave(deps: UsePostEditorSaveDeps): {
     publish,
     unpublish,
     seoSuggest,
+    syncExpectedUpdatedAt,
   };
 }
