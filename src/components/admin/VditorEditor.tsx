@@ -3,7 +3,9 @@
 /**
  * Vditor 分屏编辑器实现(M5-d):浏览器端库,经 MdEditor 的 dynamic(ssr:false) 分包加载。
  * mode "sv" 左编辑右预览(工具栏可切即时渲染 ir/所见即所得 wysiwyg);截图粘贴/拖拽/
- * 工具栏上传统一走 upload.handler → uploadImageFile(POST /api/media,sha1 去重)。
+ * 工具栏上传统一走 upload.handler → uploadImageFile(POST /api/media,sha1 去重);
+ * 工具栏「从媒体库插入」自定义钮(2026-10-15 验收反馈问题三,MediaInsertDialog 选图
+ * 后 insertValue 光标处插图片语法)。
  * 窄屏(<1024,M13):初始化切 ir 单栏 + 13 项精简工具栏(转屏不重初始化,edit-mode 手动出口)。
  * 运行时懒加载资源已本地化至 public/vditor(lute WASM/i18n/highlight/预览主题,
  * 以及按内容触发懒加载的 mermaid/katex——库内 6 篇 mermaid 围栏、69 篇含数学定界符,
@@ -11,9 +13,10 @@
  * echarts/graphviz 等其余渲染器全库零使用未纳入,内容用到时再随库补拷。
  */
 import "vditor/dist/index.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Vditor from "vditor";
 
+import MediaInsertDialog from "@/components/admin/MediaInsertDialog";
 import { MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
 
@@ -61,6 +64,25 @@ const TOOLBAR_COMPACT = [
   "fullscreen",
 ];
 
+/** 工具栏「从媒体库插入」自定义钮(2026-10-15 验收反馈问题三):紧随「上传」,
+ * 图标 SVG 字符串与内置钮同观感;click 在 effect 初始化时闭包注入(经 ref 转
+ * React state——mount 一次的初始化闭包持有不了后续 state) */
+const MEDIA_PICKER_ITEM: IMenuItem = {
+  name: "insert-media",
+  tip: "从媒体库插入",
+  icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v14h14V5H5zm3 2.5A1.5 1.5 0 1 1 8 10.5 1.5 1.5 0 0 1 8 7.5zM6.5 18l3.5-4.5 2.5 3 3-4 3.5 5.5h-9z"/></svg>',
+};
+
+/** 在「upload」后插入自定义钮(两条工具栏同位;IMenuItem 为 vditor 全局环境类型) */
+function withMediaPicker(items: string[], onClick: () => void): Array<string | IMenuItem> {
+  const at = items.indexOf("upload");
+  return [
+    ...items.slice(0, at + 1),
+    { ...MEDIA_PICKER_ITEM, click: () => onClick() },
+    ...items.slice(at + 1),
+  ];
+}
+
 export default function VditorEditor({
   value,
   onChange,
@@ -76,6 +98,12 @@ export default function VditorEditor({
   const latestRef = useRef(value);
   /** vditor 异步初始化完成前不调 setValue(实例方法依赖内部 DOM) */
   const initedRef = useRef(false);
+  /** 媒体库选图弹窗(工具栏自定义钮开;IMenuItem.click 经 openPickerRef 会合) */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const openPickerRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    openPickerRef.current = () => setPickerOpen(true);
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -94,7 +122,7 @@ export default function VditorEditor({
       // 内容真相源是 React state,禁 localStorage 缓存,防旧稿复活覆盖交接/回填内容
       cache: { enable: false },
       placeholder: "正文(Markdown;支持 GFM 表格/任务列表/代码块,可直接粘贴截图)…",
-      toolbar: compact ? TOOLBAR_COMPACT : TOOLBAR,
+      toolbar: withMediaPicker(compact ? TOOLBAR_COMPACT : TOOLBAR, () => openPickerRef.current()),
       preview: {
         delay: 150,
         theme: { current: dark ? "dark" : "light", path: "/vditor/dist/css/content-theme" },
@@ -177,5 +205,20 @@ export default function VditorEditor({
   }, []);
 
   // ah-editor-fill:.vditor 高度随容器(globals.css);min-h 兜底非拉伸场景(右栏收起时)
-  return <div ref={ref} className="ah-editor-fill min-h-[480px] flex-1 lg:min-h-[560px]" />;
+  return (
+    <>
+      <div ref={ref} className="ah-editor-fill min-h-[480px] flex-1 lg:min-h-[560px]" />
+      {pickerOpen && (
+        <MediaInsertDialog
+          // 选图在光标处插入独立成段(与粘贴直传同款换行包裹);关弹窗由组件内 onInsert 后自调
+          onInsert={(path, filename) =>
+            vditorRef.current?.insertValue(
+              `\n![${filename.replace(/\.[a-z0-9]+$/i, "")}](${path})\n`,
+            )
+          }
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </>
+  );
 }

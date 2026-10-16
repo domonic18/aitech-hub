@@ -73,7 +73,7 @@ export default function MediaInsertDialog({
   }
 
   return (
-    <DialogShell width="2xl" scroll title="从媒体库插入图片">
+    <DialogShell width="2xl" scroll title="从媒体库插入图片" zClass="z-[100]">
       <div className="mt-3 flex gap-2">
         <input
           value={qDraft}

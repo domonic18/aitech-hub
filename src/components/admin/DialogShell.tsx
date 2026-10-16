@@ -23,6 +23,8 @@ export default function DialogShell({
   scroll = false,
   title,
   children,
+  /** 遮罩 z 档;默认 z-50,压不住更高层(如 Vditor 全屏 z-90)的调用方自行提档 */
+  zClass = "z-50",
 }: {
   width?: keyof typeof WIDTH_CLASS;
   /** 长表单限高滚动(默认关:短内容面板不设 max-h,避免无谓滚动) */
@@ -30,13 +32,14 @@ export default function DialogShell({
   /** 面板标题 h3;无标题弹窗(如 PAT 创建结果)不传 */
   title?: ReactNode;
   children: ReactNode;
+  zClass?: string;
 }) {
   // SSR 无 document;弹窗均由交互打开,挂载后才渲染即可
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className={`fixed inset-0 ${zClass} flex items-center justify-center bg-black/40 p-4`}>
       <div
         className={`w-full ${WIDTH_CLASS[width]} rounded-md border border-line bg-panel p-5 shadow-xl ${
           scroll ? "max-h-[90vh] overflow-y-auto" : ""
