@@ -2,14 +2,12 @@
 
 /**
  * 编辑器正文域(M5-b):markdown textarea + 截图粘贴直传(clipboard image →
- * POST /api/media → 光标处插入 `![截图](站内URL)`)+ 媒体库选图插入
- * (2026-10-15 验收反馈问题三,MediaInsertDialog 点选光标处插图片语法)+
- * 一键发文交接消费(sessionStorage IMPORT_MD_STORE_KEY,由 ImportPostsModal 写入)。
+ * POST /api/media → 光标处插入 `![截图](站内URL)`)+ 一键发文交接消费
+ * (sessionStorage IMPORT_MD_STORE_KEY,由 ImportPostsModal 写入)。
  * 粘贴非图片内容不拦截,走浏览器默认行为。
  */
 import { useEffect, useRef, useState } from "react";
 
-import MediaInsertDialog from "@/components/admin/MediaInsertDialog";
 import { IMPORT_MD_STORE_KEY } from "@/lib/media/import-md";
 import { MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
@@ -26,7 +24,6 @@ export default function EditorTextarea({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   // 一键发文交接:mount 时消费一次,取完即删(刷新不重放)
   useEffect(() => {
@@ -94,23 +91,6 @@ export default function EditorTextarea({
         <div className="border-b border-line px-4 py-1.5 font-mono text-[11px] text-text-3">
           {note}
         </div>
-      )}
-      <div className="flex justify-end border-b border-line px-4 py-1.5">
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="rounded-sm border border-line px-2.5 py-1 text-xs text-text-2 hover:bg-panel-2"
-        >
-          从媒体库插入
-        </button>
-      </div>
-      {pickerOpen && (
-        <MediaInsertDialog
-          onInsert={(path, filename) =>
-            insertAtCursor(`![${filename.replace(/\.[a-z0-9]+$/i, "")}](${path})`)
-          }
-          onClose={() => setPickerOpen(false)}
-        />
       )}
       <textarea
         ref={taRef}
