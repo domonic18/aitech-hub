@@ -108,6 +108,8 @@ const PRESETS: Record<CardPresetId, PresetDef> = {
   },
 };
 
+type Rec = Record<string, unknown>;
+
 const CN_TYPE: Record<string, string> = {
   array: "数组",
   object: "对象",
@@ -118,8 +120,17 @@ const CN_TYPE: Record<string, string> = {
   undefined: "undefined",
 };
 
-/** zod issue → 中文短句(弱模型读不懂英文原话就不会自纠,见 ask_user 前科)。
- *  注:zod v4 的 invalid_type issue 只带 expected,received 仅在文案里,取不到。 */
+/** 按 issue.path 取原始入参值(用于「收到了什么」的形态诊断;zod v4 path 元素可为 symbol) */
+function resolvePath(data: unknown, path: ReadonlyArray<PropertyKey>): unknown {
+  let cur: unknown = data;
+  for (const seg of path) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Rec)[seg as string];
+  }
+  return cur;
+}
+
+/** zod issue → 中文短句(弱模型读不懂英文原话就不会自纠,见 ask_user 前科) */
 function humanizeIssue(issue: z.core.$ZodIssue): string {
   const d = issue as unknown as {
     expected?: string;
@@ -141,17 +152,60 @@ function humanizeIssue(issue: z.core.$ZodIssue): string {
   return issue.message;
 }
 
-/** 首个问题字段的人话报错;类型漂移(应为数组收到对象)附直接传数组的修正示例。 */
-function formatPresetError(preset: CardPresetId, error: z.ZodError): string {
+/** 首个问题字段的人话报错:用原始入参诊断「收到了什么形态」并给直接可抄的
+ *  修正示例——弱模型凭具体原因 1~2 轮自纠(checkpoint 实证:模糊报错会让它
+ *  越修越歪,见 arch/04 工具参数漂移归一层)。 */
+function formatPresetError(preset: CardPresetId, error: z.ZodError, data: unknown): string {
   const issue = error.issues[0];
   const where = issue.path.join(".");
   const d = issue as unknown as { expected?: string };
-  const arrDrift = issue.code === "invalid_type" && d.expected === "array";
-  const hint = arrDrift
-    ? ';数组字段直接传 JSON 数组(如 "rows":[{"k":"键","v":"值"}]),' +
-      "不要包进对象,也不要拆成对象逐条传"
-    : "";
-  return `${preset} 模板数据不合法:${where || "(根)"} ${humanizeIssue(issue)}${hint}`;
+  const raw = resolvePath(data, issue.path);
+  if (issue.code === "invalid_type") {
+    if (d.expected === "array") {
+      if (typeof raw === "string" && /^[[{]/.test(raw.trimStart())) {
+        return (
+          `${preset} 模板数据不合法:${where} 传成了 JSON 字符串——` +
+          '去掉外层引号直接写数组,如 "rows":[{"k":"键","v":"值"}]'
+        );
+      }
+      return (
+        `${preset} 模板数据不合法:${where} 应为数组,收到了${typeName(raw)};` +
+        '数组字段直接传 JSON 数组(如 "rows":[{"k":"键","v":"值"}]),不要包进对象'
+      );
+    }
+    if (d.expected === "object" && Array.isArray(raw)) {
+      // 行级报错但整体是二元数组模式时,把外层形态一并点破(逐行修不收敛)
+      const parent = resolvePath(data, issue.path.slice(0, -1));
+      if (
+        Array.isArray(parent) &&
+        parent.length > 0 &&
+        parent.every(
+          (x) => Array.isArray(x) && x.length === 2 && x.every((c) => typeof c === "string"),
+        )
+      ) {
+        return (
+          `${preset} 模板数据不合法:${String(issue.path[0])} 是嵌套数组——每行要` +
+          '写成对象 {"k":"键","v":"值"},不要用 ["键","值"] 二元数组,也不要多套一层 []'
+        );
+      }
+      return `${preset} 模板数据不合法:${where} 收到了数组——要写成对象,` + '如 {"k":"键","v":"值"}';
+    }
+    if (d.expected === "string" && raw !== undefined && raw !== null) {
+      return `${preset} 模板数据不合法:${where} 应为字符串,收到了${typeName(raw)}`;
+    }
+  }
+  return `${preset} 模板数据不合法:${where || "(根)"} ${humanizeIssue(issue)}`;
+}
+
+/** 形态中文名(null/undefined 之外的裸类型;数组单列) */
+function typeName(v: unknown): string {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "数组";
+  if (typeof v === "object") return "对象";
+  if (typeof v === "string") return "字符串";
+  if (typeof v === "number") return "数字";
+  if (typeof v === "boolean") return "布尔";
+  return "其他类型";
 }
 
 /**
@@ -167,7 +221,7 @@ export function renderPreset(
   const p = PRESETS[preset];
   const parsed = p.schema.safeParse(data);
   if (!parsed.success) {
-    return { ok: false, error: formatPresetError(preset, parsed.error) };
+    return { ok: false, error: formatPresetError(preset, parsed.error, data) };
   }
   return { ok: true, html: p.build(parsed.data, accentSeed ?? JSON.stringify(parsed.data)) };
 }
