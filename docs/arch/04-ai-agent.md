@@ -159,6 +159,7 @@
 - **去 AI 味视觉纪律(frontend-design 清单校准)**:去发光光斑/渐变强调字/全大写字距眉题;「越大越轻」字重(display 700 非 800/900),数值 tabular-nums;编号只用于真序列(steps/timeline),并列要点用方点/图标标记;单装饰原则(.ac-line 顶条+.ring 弱圆);stats 首条自动放大为主指标 + delta 涨跌自动着色(▲绿▼红)
 - **结构拆分**:`preset-schemas.ts`(11 zod schema 即数据契约)/`preset-samples.ts`(样张,CardTemplateLab 调试台同源)/`templates/data-cards.ts`+`templates/photo-cards.ts`(新卡面);presets.ts 只留注册表与分发。渲染管线与消毒不变
 - **知识层归位**:卡片选型纪律此前只存 DB(M31 旧文本,五卡型口径已过时)——M38 起指南文本真相源在 `src/lib/ai/writing-guides.ts`(`CARD_RENDERING_GUIDE` 常量,与 seed 同源),DB 行走 oneoff(`scripts/oneoff/blogger-guide-m38/`)整体替换;卡型路由/信息设计纪律(压缩阶梯/标题动词后果/结构即信息/版面节奏禁连续同型)只住指南 L2,agent.ts 提示词不 hardcode(既有测试断言锁)
+- **全站统一深空(2026-10-18,用户裁定:一篇文章配图风格必须统一——M38 双主题/内容定系口径退役)**:根因复盘:①「同色系不混彩」写成指南纪律(跨系以小节为界)即依赖模型自觉,实测模型循指南跨节混用产出暗浅混排文章;② per-card `pickAccent(hash(数据))` 按卡轮换是第二不一致源(同篇各卡强调色各自为政)。修正属确定性机制,不入指南 L2(harness-vs-hardcode 分层判据——改规则要发版的进代码):(a) 11 卡型全量统一深空主题:`light-cards/light-flow` 更名 `structure-cards/swimlane-cards` 并深空重皮,`wrapDocLight`/浅色 accent 组退役,`PRESET_META` 去 theme 字段;(b) accent 改**按文章锚定**:工具层传 `thread_id` 作 accentSeed(`renderPreset(preset, data, seed)`),同篇恒同 accent 组、跨篇轮换破「每篇同款」,缺省(admin 实验室预览)退回按卡内容取组;(c) 指南同步:卡型路由去(深色)/(浅色) 标注、主题系纪律条目退役、html 自由卡底色口径对齐深空系(#0b1220 系),oneoff `scripts/oneoff/guide-dark-unify/` 落库;回归锚:11 卡型输出必含 #0b1220 + 同 seed 同 accent 组单测
 
 ### 3.5 分期
 
