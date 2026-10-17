@@ -143,7 +143,7 @@ export default function ChannelDialog({
                 ))}
               </select>
             </label>
-            <label className="col-span-2 text-xs text-text-3">
+            <label className="sm:col-span-2 text-xs text-text-3">
               端点(feed/API 地址;勿携带凭证参数) *
               <input
                 value={url}
@@ -193,7 +193,7 @@ export default function ChannelDialog({
                 className={`mt-1 ${field}`}
               />
             </label>
-            <label className="col-span-2 text-xs text-text-3">
+            <label className="sm:col-span-2 text-xs text-text-3">
               备注
               <input
                 value={remark}

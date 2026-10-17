@@ -102,7 +102,7 @@ export default function WechatConfigDialog({
             标题/引用/链接等强调色;单篇可覆盖
           </span>
         </label>
-        <label className="col-span-2 text-xs text-text-3">
+        <label className="sm:col-span-2 text-xs text-text-3">
           AppSecret{" "}
           <span className="text-amber">(留空 = 保留 {config.appSecretMask ?? "现有密钥"})</span>
           <input

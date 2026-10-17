@@ -101,7 +101,7 @@ export default function RepoDialog({
         <DialogShell title={editing ? "编辑仓库" : "登记仓库"}>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {!editing && (
-              <label className="col-span-2 text-xs text-text-3">
+              <label className="sm:col-span-2 text-xs text-text-3">
                 仓库 owner/name *
                 <input
                   ref={inputRef}
@@ -136,7 +136,7 @@ export default function RepoDialog({
                 />
               </label>
             )}
-            <label className={`text-xs text-text-3 ${editing ? "col-span-2" : "col-span-1"}`}>
+            <label className={`text-xs text-text-3 ${editing ? "sm:col-span-2" : ""}`}>
               备注
               <input
                 value={remark ?? ""}

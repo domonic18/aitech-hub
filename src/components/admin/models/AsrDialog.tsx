@@ -99,7 +99,7 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
             <option value="other">其他(不支持测试)</option>
           </select>
         </label>
-        <label className="col-span-2 text-xs text-text-3">
+        <label className="sm:col-span-2 text-xs text-text-3">
           Base URL
           <input
             value={baseUrl}
@@ -130,7 +130,7 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
             className={`mt-1 ${field}`}
           />
         </label>
-        <label className="col-span-2 text-xs text-text-3">
+        <label className="sm:col-span-2 text-xs text-text-3">
           API Key <span className="text-amber">(留空 = 保留 {asr.apiKeyMask ?? "现有密钥"})</span>
           <input
             type="password"
@@ -157,7 +157,7 @@ export default function AsrDialog({ asr, onClose }: { asr: AsrConfigView; onClos
             className={`mt-1 ${field}`}
           />
         </label>
-        <label className="col-span-2 text-xs text-text-3">
+        <label className="sm:col-span-2 text-xs text-text-3">
           热词(顿号/逗号分隔,至多 50 条)
           <input
             value={hotwords}
