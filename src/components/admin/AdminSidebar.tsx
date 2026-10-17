@@ -40,6 +40,8 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
       // 博主/项目已并入发现中心壳页签(/admin/discovery/bloggers|github,侧栏精简批②)
       { icon: "i-experiment", label: "发现中心", href: "/admin/discovery" },
+      // 洞察中心(M34):发现功能升格热点舆情+痛点挖掘;M25 治理台保留不动
+      { icon: "i-aim", label: "洞察中心", href: "/admin/insight" },
     ],
   },
   {
