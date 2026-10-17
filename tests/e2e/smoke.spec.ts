@@ -3606,7 +3606,7 @@ test("35. 编辑器自动保存与编辑上下文(M27 批①:debounce 落库/乐
   }
 });
 
-test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过滤/切换回查/编辑路由 FAB 退役/游客单列不回归,零真 LLM)", async ({
+test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过滤/切换回查/编辑路由 FAB 藏钮不卸卡(M35)/游客单列不回归,零真 LLM)", async ({
   page,
 }) => {
   await e2eAdminLogin(page);
@@ -3633,7 +3633,7 @@ test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过
     },
   });
   try {
-    // ① 编辑路由 FAB 退役(new 页仍在):/admin/posts/new 有 FAB,编辑页无
+    // ① 编辑路由 FAB 藏钮不卸卡(M35 路由策略;new 页仍在):/admin/posts/new 有 FAB,编辑页无
     await page.goto("/admin/posts/new");
     await expect(page.getByRole("button", { name: "打开 AI 助手" })).toBeVisible();
     await page.goto(`/admin/posts/${draft.id}`);
@@ -3859,5 +3859,74 @@ test("38. Agent 技能(M30 批④:技能页签 CRUD 冒烟/key 建后不可改/�
   } finally {
     await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
     await prisma.agentSkill.deleteMany({ where: { key: KEY } });
+  }
+});
+
+test("39. Agent 宿主唯一化(M35:协议唤起开卡/跨页常驻 run 不断面/编辑页登录页藏钮不卸卡/ask 预填不直发,零真 LLM)", async ({
+  page,
+}) => {
+  await e2eAdminLogin(page);
+  const category = await prisma.category.upsert({
+    where: { slug: "e2e-autosave" },
+    update: { name: "e2e autosave fixture" },
+    create: { slug: "e2e-autosave", name: "e2e autosave fixture" },
+  });
+  const mark = `e2e-host-${Date.now()}`;
+  const draft = await prisma.post.create({
+    data: {
+      slug: `${mark}-draft`,
+      title: "e2e 宿主唯一化草稿",
+      contentMd: "e2e 宿主唯一化正文。",
+      categoryId: category.id,
+      status: "draft",
+    },
+  });
+  try {
+    // ① 懒挂载:专题页初始无卡;协议唤起(agent:open 空 detail)开卡
+    await page.goto("/admin/topics");
+    await expect(page.getByRole("dialog", { name: "AI 助手" })).toHaveCount(0);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("agent:open", { detail: {} })));
+    const dialog = page.getByRole("dialog", { name: "AI 助手" });
+    await expect(dialog).toBeVisible();
+
+    // ② 宿主跨页常驻(M35 核心断言):侧栏 next/link 客户端切页 → 卡仍在
+    //    (旧实现页面自持卡在此处随路由卸载,run 被服务端 abort——M31 验收事故)
+    await page.getByRole("link", { name: "文章管理" }).click();
+    await expect(page).toHaveURL(/\/admin\/posts\/?$/);
+    await expect(dialog).toBeVisible();
+
+    // ③ 协议 ask 注入(send:false=仅预填输入框,不直发 → 零 LLM 调用)
+    await page.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent("agent:open", {
+          detail: { ask: { question: "e2e 宿主唤起预填", send: false } },
+        }),
+      ),
+    );
+    await expect(dialog.getByPlaceholder(/继续深挖/)).toHaveValue("e2e 宿主唤起预填");
+
+    // ④ 编辑页藏钮不卸卡(FAB 整页 reload 后懒挂载重置,顶栏入口开的是宿主卡):
+    //    FAB 钮 count 0(路由策略),顶栏「AI 助手」开卡 → chip 在场(能力注册)
+    await page.goto(`/admin/posts/${draft.id}`);
+    await expect(page.getByRole("button", { name: "打开 AI 助手" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "AI 助手" })).toHaveCount(0);
+    await page.getByRole("button", { name: "AI 助手" }).click();
+    await expect(page.getByRole("dialog", { name: "AI 助手" })).toBeVisible();
+    await expect(page.getByText(/正在编辑:/)).toBeVisible();
+    await expect(page.getByText(/《e2e 宿主唯一化草稿》/)).toBeVisible();
+
+    // ⑤ 编辑页顶栏入口开的也是宿主卡:客户端切页(侧栏 → 站点统计)卡不卸载,
+    //    能力注销 → chip 消失(run 语义:编辑面接线不在场,评审降级既有语义)
+    await page.getByRole("navigation").getByRole("link", { name: "站点统计" }).click();
+    await expect(page).toHaveURL(/\/admin\/?$/);
+    await expect(page.getByRole("dialog", { name: "AI 助手" })).toBeVisible();
+    await expect(page.getByText(/正在编辑:/)).toHaveCount(0);
+
+    // ⑥ 登录页全隐:无 FAB 钮、无唤起点(登录流程聚焦)
+    await page.goto("/admin/login");
+    await expect(page.getByRole("button", { name: "打开 AI 助手" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "唤起 AI 助手" })).toHaveCount(0);
+  } finally {
+    await prisma.post.deleteMany({ where: { slug: { startsWith: mark } } });
   }
 });
