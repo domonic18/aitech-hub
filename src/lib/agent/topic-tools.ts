@@ -22,6 +22,7 @@ import {
   type CoverGenProbeHit,
 } from "../ai/cover-generate";
 import { AiAdminError } from "../ai/errors";
+import { getEnabledSkillByKey } from "../ai/agent-skills-admin";
 import { prisma } from "../db";
 import {
   buildComposeBlocks,
@@ -35,10 +36,7 @@ import { logger } from "../logger";
 import { assertAdminThread } from "./admin-thread";
 import { pollUntil } from "./poll";
 import { saveTopicDraftTool } from "./topic-draft-tool";
-import { denyPayload, humanizeTopicError } from "./topic-tool-common";
-
-/** brief 内单条解读笔记进上下文的截断宽度(素材多条叠加,单条给足不失真) */
-const BRIEF_NOTE_MAX = 3000;
+import { BRIEF_NOTE_MAX, denyPayload, humanizeTopicError } from "./topic-tool-common";
 
 // ── ① get_topic_brief:专题定位 + 素材全集(分析底料)──────────────
 
@@ -61,6 +59,10 @@ export const getTopicBriefTool = tool(
               select: { title: true, status: true, updatedAt: true },
             })
           : null;
+      // 绑定技能预装(deepagents pinned skills 同款:编排层已确知适用技能时
+      // 确定性注入全文,不等模型自发 get_skill;内容来自 agent_skill 资产,
+      // 后台改指南即时生效,提示词零硬编码)
+      const boundSkill = topic.skillKey ? await getEnabledSkillByKey(topic.skillKey) : null;
       return JSON.stringify({
         topic: {
           id: topic.id.toString(),
@@ -70,6 +72,19 @@ export const getTopicBriefTool = tool(
           skill_key: topic.skillKey,
           composed_at: topic.composedAt?.toISOString() ?? null,
         },
+        skill: boundSkill
+          ? {
+              key: boundSkill.key,
+              name: boundSkill.name,
+              scenario: boundSkill.scenario,
+              guide_md: boundSkill.guideMd,
+            }
+          : null,
+        note: boundSkill
+          ? `绑定技能《${boundSkill.name}》已随本载荷自动装载,起草/自评审/改稿全程以其为准,无需再 get_skill`
+          : topic.skillKey
+            ? `绑定技能 ${topic.skillKey} 不存在或已停用,动笔前先 list_skills 匹配并 get_skill 取指南`
+            : "专题未绑定技能,动笔前先 list_skills 按场景匹配,命中即 get_skill 取指南",
         linked_post:
           linkedId !== null && linked && linked.status !== "deleted"
             ? {
@@ -111,11 +126,11 @@ export const getTopicBriefTool = tool(
   {
     name: "get_topic_brief",
     description:
-      "读取专题的完整生产底料:专题定位、绑定技能(topic.skill_key,写前经 get_skill " +
-      "取指南)、挂载素材(博主/视频/解读笔记/要点/人工批注/站内文章节选)、关联文档" +
-      "现状(含是否被人工编辑过)与近期已发文章标题(防重复选题)。视频封面已自动转存" +
-      "为站内路径(materials[].cover_path),可直接在正文引用。写专题文章前必调;仔细" +
-      "分析素材后再选题与写作。",
+      "读取专题的完整生产底料:专题定位、绑定技能(topic.skill_key 已自动随载荷全文" +
+      "装载,字段 skill)、挂载素材(博主/视频/解读笔记/要点/人工批注/站内文章节选)、" +
+      "关联文档现状(含是否被人工编辑过)与近期已发文章标题(防重复选题)。视频封面" +
+      "已自动转存为站内路径(materials[].cover_path),可直接在正文引用。写专题文章前" +
+      "必调;仔细分析素材后再选题与写作。",
     schema: z.object({
       topic_id: z
         .string()

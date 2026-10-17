@@ -236,6 +236,10 @@ export async function POST(
           // 护栏收束:error 帧人话(前端挂末条 AI 消息 incomplete/error)
           push(`event: error\ndata: ${JSON.stringify({ message: outcome.truncatedReason })}\n\n`);
         }
+        if (outcome.deadEndReason) {
+          // 死端(max_tokens 截断零产出):消灭静默中断——UI 不再恒「运行中」
+          push(`event: error\ndata: ${JSON.stringify({ message: outcome.deadEndReason })}\n\n`);
+        }
       } catch (e) {
         logger.warn({
           event: "agent.run_failed",

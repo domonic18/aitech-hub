@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { chatJson } from "./llm-client";
+import { chatJson, chatText } from "./llm-client";
 import { AiClientError } from "./errors";
 
 interface CapturedCall {
@@ -373,5 +373,66 @@ describe("chatStream", () => {
     expect(calls).toHaveLength(2);
     expect((JSON.parse(String(calls[0]!.init.body)) as { stream: boolean }).stream).toBe(true);
     expect(String(calls[1]!.init.body)).not.toContain("stream");
+  });
+});
+
+describe("chatText 纯文本通道(write_article 长文起草)", () => {
+  it("openai:POST /chat/completions,Bearer 头,无 response_format,预算透传", async () => {
+    const calls = stubFetch([
+      {
+        status: 200,
+        body: JSON.stringify({
+          choices: [{ message: { content: "# 正文" } }],
+          usage: { prompt_tokens: 100, completion_tokens: 500 },
+        }),
+      },
+    ]);
+    let usage: { tokensIn: number; tokensOut: number } | null = null;
+    const out = await chatText({ ...base, maxTokens: 131_072 }, (u) => {
+      usage = u;
+    });
+    expect(out).toBe("# 正文");
+    expect(usage).toEqual({ tokensIn: 100, tokensOut: 500 });
+    const body = JSON.parse(String(calls[0]!.init.body)) as {
+      max_tokens: number;
+      response_format?: unknown;
+      messages: Array<{ role: string }>;
+    };
+    expect(body.max_tokens).toBe(131_072);
+    expect(body.response_format).toBeUndefined();
+    expect(body.messages.map((m) => m.role)).toEqual(["system", "user"]);
+  });
+
+  it("anthropic:POST /v1/messages,x-api-key 头,text 块拼接", async () => {
+    const calls = stubFetch([
+      {
+        status: 200,
+        body: JSON.stringify({
+          content: [
+            { type: "text", text: "# 正文" },
+            { type: "text", text: "续" },
+          ],
+          usage: { input_tokens: 10, output_tokens: 20 },
+        }),
+      },
+    ]);
+    const out = await chatText({
+      ...base,
+      protocol: "anthropic",
+      baseUrl: "https://llm.test",
+      maxTokens: 4096,
+    });
+    expect(out).toBe("# 正文续");
+    expect(calls[0]!.url).toBe("https://llm.test/v1/messages");
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe("sk-llm-1");
+    expect((JSON.parse(String(calls[0]!.init.body)) as { max_tokens: number }).max_tokens).toBe(
+      4096,
+    );
+  });
+
+  it("HTTP 非 2xx → AiClientError http(响应体摘要)", async () => {
+    stubFetch([{ status: 429, body: '{"error":"rate limited"}' }]);
+    await expect(chatText({ ...base })).rejects.toBeInstanceOf(AiClientError);
   });
 });
