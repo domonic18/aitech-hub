@@ -54,6 +54,14 @@ const serverEnvSchema = z.object({
   /** 抖音数据网关(M8):dev 经 compose 映射 127.0.0.1:8010;prod 容器网内服务名 */
   DOUYIN_GATEWAY_URL: z.string().default("http://127.0.0.1:8010"),
 
+  /** 卡片渲染服务(M31):dev 本地裸跑/经 compose 映射 127.0.0.1:8011;prod 容器网内服务名。
+   *  服务不可达时 render_card 工具报错降级,不影响其它能力 */
+  CARD_RENDERER_URL: z.string().default("http://127.0.0.1:8011"),
+
+  /** 卡片渲染服务的媒体卷根(须与服务的 MEDIA_ROOT 及 compose 挂载一致):
+   *  站内引图 /wp-content/uploads/* 据此改写 file:/// 绝对路径供 chromium 直读 */
+  CARD_RENDERER_MEDIA_ROOT: z.string().default("/app/media"),
+
   /** GitHub API 令牌(M11 项目展示;可选——空=未认证 60 req/h,白名单 ≤10 仓可用;
    *  配 token 提升至 5000/h。密钥仅 env,不入库不打日志) */
   GITHUB_TOKEN: z.string().default(""),
