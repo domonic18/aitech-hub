@@ -1,7 +1,8 @@
 /**
  * run 编排单测(getAgentGraph mock):帧序列 metadata→…→end、todos 提取、
  * usage 聚合、工具调用去重计数、护栏按身份档主动收束(12/50k 基础档,
- * admin 30/150k/递归 60,M27 批⑤)、断开(signal aborted)即停不产 end 前的更多帧。
+ * admin 档放宽见 AGENT_LIMITS 注记,M27 批⑤/2026-10-17 验收反馈)、
+ * 断开(signal aborted)即停不产 end 前的更多帧。
  */
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
 import { Command, isCommand } from "@langchain/langgraph";
@@ -176,9 +177,10 @@ describe("runAgentTurn", () => {
     expect(frames.at(-1)).toContain("event: end");
   });
 
-  it("admin 档护栏放宽:recursionLimit 60,工具调用上限 30(M27 批⑤)", async () => {
+  it("admin 档护栏放宽:recursionLimit 跟档,工具调用超限(档+1)主动收束", async () => {
+    const adminToolCalls = AGENT_LIMITS.admin.toolCalls;
     const framesIn: [string, unknown][] = [];
-    for (let i = 0; i < 31; i++) {
+    for (let i = 0; i < adminToolCalls + 1; i++) {
       framesIn.push([
         "messages",
         [
@@ -205,8 +207,8 @@ describe("runAgentTurn", () => {
     )[0]?.[1];
     expect(config?.recursionLimit).toBe(AGENT_LIMITS.admin.recursion);
     expect(outcome.truncatedReason).toContain("工具调用已达上限");
-    expect(outcome.toolCalls).toBe(31);
-    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(30);
+    expect(outcome.toolCalls).toBe(adminToolCalls + 1);
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(adminToolCalls);
   });
 
   it("断开(signal 已 abort):循环即停,end 帧不发", async () => {

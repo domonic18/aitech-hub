@@ -27,8 +27,10 @@ export { extractTodos, type AgentTodo } from "./todos";
 /**
  * 单会话护栏按身份分档(arch/04 §3.4):guest/user 维持 ≤12 步/≤50k;admin 档
  * 放宽(M27 批⑤:专题文章生产是多步自主编排——素材分析/选题/写作/配图/落库,
- * 细粒度工具 + 富上下文天然多步)。recursionLimit 为硬兜底(护栏超限主动断,
- * 此值防 prompt 失控兜底)。
+ * 细粒度工具 + 富上下文天然多步;M34 验收反馈 2026-10-17 实测 30 步/150k/
+ * recursion 60 仍中途打满——细粒度工具链 + HITL resume + 每轮 LLM 重灌全量
+ * 历史,再放宽至 80/400k/200)。recursionLimit 为硬兜底(护栏超限主动断,
+ * 此值防 prompt 失控兜底;须随 toolCalls 同步放大,≈2×步数留裕量)。
  */
 export const AGENT_LIMITS: Record<
   AgentIdentity["kind"],
@@ -36,7 +38,7 @@ export const AGENT_LIMITS: Record<
 > = {
   guest: { toolCalls: 12, tokens: 50_000, recursion: 30 },
   user: { toolCalls: 12, tokens: 50_000, recursion: 30 },
-  admin: { toolCalls: 30, tokens: 150_000, recursion: 60 },
+  admin: { toolCalls: 80, tokens: 400_000, recursion: 200 },
 };
 
 /** 从 updates 载荷收集已完成工具调用 id(tool 消息的 tool_call_id,与 chunk 侧同集去重) */
