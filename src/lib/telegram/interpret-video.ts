@@ -20,6 +20,7 @@ import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-resu
 import { runInterpretNote } from "../ai/interpret-note";
 import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
 import { prisma } from "../db";
+import { ingestInsightSignal } from "../insight/ingest";
 import { logger } from "../logger";
 
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
@@ -126,6 +127,8 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       aiStatus: true,
       sourceId: true,
       videoDuration: true,
+      publishedAt: true, // 洞察信号 signalAt 锚(M34 批①,发表时间优先于解读时间)
+      createdAt: true,
     },
   });
   if (!row)
@@ -284,5 +287,16 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     transcriptUsed: transcript !== null,
     noteUsed: note !== null,
   });
+  // 洞察信号入池(M34 批①):AI 解读产物=行业动态信号(热点引擎主料),
+  // 仅终态 done 记;fire-and-forget(ingest 自吞异常,解读主链路不感知)
+  if (status === TELEGRAM_AI_DONE) {
+    void ingestInsightSignal({
+      source: "telegram-ai",
+      refId: id.toString(),
+      rawText: result.summary,
+      signalAt: row.publishedAt ?? row.createdAt,
+      meta: { title: row.title, topic: result.topic },
+    });
+  }
   return { telegramId: data.telegramId, status, transcriptUsed: transcript !== null };
 }

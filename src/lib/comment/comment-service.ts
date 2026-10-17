@@ -5,6 +5,7 @@
  * 字符串化在本文件序列化层完成,路由零转换。
  */
 import { prisma } from "@/lib/db";
+import { ingestInsightSignal } from "@/lib/insight/ingest";
 import { logger } from "@/lib/logger";
 
 import type { BlocklistWord, FilterHit } from "@/lib/telegram/filter";
@@ -246,6 +247,15 @@ export async function createPostComment(input: {
     postId: input.postId.toString(),
     userId: input.userId.toString(),
     reply: input.parentId !== undefined,
+  });
+  // 洞察信号入池(M34 批①):visible 评论是「声音」介质原始素材,fire-and-forget
+  // (ingest 自吞异常,评论主链路不感知)
+  void ingestInsightSignal({
+    source: "internal-comment",
+    refId: created.id.toString(),
+    rawText: input.content,
+    signalAt: created.createdAt,
+    meta: { postId: input.postId.toString() },
   });
   await recordCommentWrite(input.userId, input.ip);
   return toDto(created, 0, false);

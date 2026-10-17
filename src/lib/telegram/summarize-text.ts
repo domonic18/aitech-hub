@@ -19,6 +19,7 @@ import {
   type SummarizeResult,
 } from "../ai/summarize-result";
 import { prisma } from "../db";
+import { ingestInsightSignal } from "../insight/ingest";
 import { logger } from "../logger";
 import { getQueue, QUEUE_SUMMARIZER } from "../queue";
 
@@ -110,7 +111,15 @@ export async function summarizeTextJob(data: SummarizeJobData): Promise<Summariz
   const id = BigInt(data.telegramId);
   const row = await prisma.telegram.findUnique({
     where: { id },
-    select: { id: true, title: true, summary: true, url: true, aiStatus: true },
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      url: true,
+      aiStatus: true,
+      publishedAt: true, // 洞察信号 signalAt 锚(M34 批①,发表时间优先于解读时间)
+      createdAt: true,
+    },
   });
   if (!row) return { telegramId: data.telegramId, status: "skipped_not_found" };
   if (row.aiStatus === TELEGRAM_AI_DONE) {
@@ -186,6 +195,15 @@ export async function summarizeTextJob(data: SummarizeJobData): Promise<Summariz
     telegramId: data.telegramId,
     points: result.points.length,
     keywords: result.keywords.length,
+  });
+  // 洞察信号入池(M34 批①):AI 摘要产物=行业动态信号(热点引擎主料),
+  // fire-and-forget(ingest 自吞异常,摘要主链路不感知)
+  void ingestInsightSignal({
+    source: "telegram-ai",
+    refId: id.toString(),
+    rawText: result.summary,
+    signalAt: row.publishedAt ?? row.createdAt,
+    meta: { title: row.title, keywords: result.keywords },
   });
   return { telegramId: data.telegramId, status: "done" };
 }
