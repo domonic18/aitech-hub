@@ -5,7 +5,7 @@
  * icon(emoji),撤「编号徽章+眉标」(编号只用于真序列,M38 反模板腔口径);
  * 数字一律 tabular-nums,大字用中等字重(越大越轻)。
  */
-import { ACCENTS_DARK, escapeHtml, pickAccent, rich, wrapDocDark } from "./shell";
+import { ACCENTS, escapeHtml, pickAccent, rich, wrapDocDark } from "./shell";
 
 export type QuoteData = { quote: string; author?: string };
 export type StatsData = {
@@ -14,8 +14,8 @@ export type StatsData = {
 };
 export type PointsData = { title?: string; points: { text: string; icon?: string }[] };
 
-export function quoteHtml(d: QuoteData): string {
-  const ac = pickAccent(ACCENTS_DARK, JSON.stringify(d));
+export function quoteHtml(d: QuoteData, seed?: string): string {
+  const ac = pickAccent(ACCENTS, seed ?? JSON.stringify(d));
   const author = d.author
     ? `<div class="src"><span class="dot"></span>—— ${rich(d.author)}</div>`
     : "";
@@ -41,8 +41,8 @@ function deltaPill(delta: string): string {
   return `<span class="delta" style="color:${neg ? "#f87171" : "#34d399"}">${escapeHtml(arrow + delta)}</span>`;
 }
 
-export function statsHtml(d: StatsData): string {
-  const ac = pickAccent(ACCENTS_DARK, JSON.stringify(d));
+export function statsHtml(d: StatsData, seed?: string): string {
+  const ac = pickAccent(ACCENTS, seed ?? JSON.stringify(d));
   const [hero, ...rest] = d.items;
   const title = d.title
     ? `<div class="badge">${rich(d.title)}</div><div class="grid gap-head">`
@@ -78,8 +78,8 @@ background:rgba(148,163,184,.07);border:1px solid rgba(148,163,184,.15)}
   );
 }
 
-export function pointsHtml(d: PointsData): string {
-  const ac = pickAccent(ACCENTS_DARK, JSON.stringify(d));
+export function pointsHtml(d: PointsData, seed?: string): string {
+  const ac = pickAccent(ACCENTS, seed ?? JSON.stringify(d));
   const head = d.title ? `<div class="head"><div class="t">${rich(d.title)}</div></div>` : "";
   const rows = d.points
     .map((p) => {

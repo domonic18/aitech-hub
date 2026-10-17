@@ -7,18 +7,19 @@
  *
  * schema 在 preset-schemas.ts,样张在 preset-samples.ts,本文件只管注册与分发。
  *
- * 双主题(M38 口径,全文同色系不混彩):
- * - dark 深空系 = 观点/数据(quote/points/stats/bars/ledger);
- * - light 浅色系 = 流程/方法(compare/steps/flow/timeline/matrix/photo)。
- * 视觉模板在 src/lib/card/templates/(壳+各系卡面);文本支持 **加粗** 强调
+ * 主题(2026-10-18 用户裁定,M38 双主题/内容定系口径退役):全站 11 卡型统一
+ * 深空主题——配图风格全篇统一属确定性机制,不依赖模型自觉;accent 三组按
+ * **文章**(工具层传 thread_id 作 accentSeed)确定性取组,同篇恒同组、跨篇
+ * 轮换破「每篇同款」。未传 seed 时退回按卡内容取组(admin 实验室预览用)。
+ * 视觉模板在 src/lib/card/templates/(壳+各卡面);文本支持 **加粗** 强调
  * (templates/shell#rich,荧光笔底强调)。
  */
 import { z } from "zod";
 
 import { barsHtml, ledgerHtml } from "./templates/data-cards";
 import { pointsHtml, quoteHtml, statsHtml } from "./templates/dark-cards";
-import { flowHtml } from "./templates/light-flow";
-import { compareHtml, stepsHtml, timelineHtml } from "./templates/light-cards";
+import { flowHtml } from "./templates/swimlane-cards";
+import { compareHtml, stepsHtml, timelineHtml } from "./templates/structure-cards";
 import { matrixHtml, photoHtml } from "./templates/photo-cards";
 import {
   barsSchema,
@@ -49,44 +50,62 @@ export const CARD_PRESET_IDS = [
 ] as const;
 export type CardPresetId = (typeof CARD_PRESET_IDS)[number];
 
-/**
- * preset 元信息(卡片模板库页展示用;theme 对应视觉主题系:
- * dark=观点/数据系,light=流程/方法系)。
- */
-export const PRESET_META: Record<
-  CardPresetId,
-  { name: string; desc: string; theme: "dark" | "light" }
-> = {
-  quote: { name: "金句卡", desc: "博主原话/锐评,观点放大器", theme: "dark" },
-  points: { name: "要点卡", desc: "方法要点/清单式干货,条目可带 emoji 图标", theme: "dark" },
-  stats: { name: "数据卡", desc: "关键数据,首条自动放大为主指标,可带涨跌标记", theme: "dark" },
-  bars: { name: "量级条形卡", desc: "多项相对量级对比(横条可视化)", theme: "dark" },
-  ledger: { name: "台账卡", desc: "规格参数/键值清单速览", theme: "dark" },
-  compare: { name: "对比卡", desc: "两方对垒/选型对比", theme: "light" },
-  steps: { name: "步骤卡", desc: "操作步骤/落地路径", theme: "light" },
-  flow: { name: "泳道全景卡", desc: "流程/架构一张看懂(泳道×阶段)", theme: "light" },
-  timeline: { name: "时间线卡", desc: "演进历程/版本脉络", theme: "light" },
-  matrix: { name: "矩阵卡", desc: "并列要素盘点(2~8 格自适应网格)", theme: "light" },
-  photo: { name: "图片卡", desc: "大图+说明条(封面/截图/生成图)", theme: "light" },
+/** preset 元信息(卡片模板库页展示用;全站统一深空主题,无 theme 字段) */
+export const PRESET_META: Record<CardPresetId, { name: string; desc: string }> = {
+  quote: { name: "金句卡", desc: "博主原话/锐评,观点放大器" },
+  points: { name: "要点卡", desc: "方法要点/清单式干货,条目可带 emoji 图标" },
+  stats: { name: "数据卡", desc: "关键数据,首条自动放大为主指标,可带涨跌标记" },
+  bars: { name: "量级条形卡", desc: "多项相对量级对比(横条可视化)" },
+  ledger: { name: "台账卡", desc: "规格参数/键值清单速览" },
+  compare: { name: "对比卡", desc: "两方对垒/选型对比" },
+  steps: { name: "步骤卡", desc: "操作步骤/落地路径" },
+  flow: { name: "泳道全景卡", desc: "流程/架构一张看懂(泳道×阶段)" },
+  timeline: { name: "时间线卡", desc: "演进历程/版本脉络" },
+  matrix: { name: "矩阵卡", desc: "并列要素盘点(2~8 格自适应网格)" },
+  photo: { name: "图片卡", desc: "大图+说明条(封面/截图/生成图)" },
 };
 
-type PresetDef = { schema: z.ZodType<unknown>; build: (data: unknown) => string };
+type PresetDef = { schema: z.ZodType<unknown>; build: (data: unknown, seed: string) => string };
 
 const PRESETS: Record<CardPresetId, PresetDef> = {
-  quote: { schema: quoteSchema, build: (d) => quoteHtml(d as z.infer<typeof quoteSchema>) },
-  points: { schema: pointsSchema, build: (d) => pointsHtml(d as z.infer<typeof pointsSchema>) },
-  stats: { schema: statsSchema, build: (d) => statsHtml(d as z.infer<typeof statsSchema>) },
-  bars: { schema: barsSchema, build: (d) => barsHtml(d as z.infer<typeof barsSchema>) },
-  ledger: { schema: ledgerSchema, build: (d) => ledgerHtml(d as z.infer<typeof ledgerSchema>) },
-  compare: { schema: compareSchema, build: (d) => compareHtml(d as z.infer<typeof compareSchema>) },
-  steps: { schema: stepsSchema, build: (d) => stepsHtml(d as z.infer<typeof stepsSchema>) },
-  flow: { schema: flowSchema, build: (d) => flowHtml(d as z.infer<typeof flowSchema>) },
+  quote: {
+    schema: quoteSchema,
+    build: (d, seed) => quoteHtml(d as z.infer<typeof quoteSchema>, seed),
+  },
+  points: {
+    schema: pointsSchema,
+    build: (d, seed) => pointsHtml(d as z.infer<typeof pointsSchema>, seed),
+  },
+  stats: {
+    schema: statsSchema,
+    build: (d, seed) => statsHtml(d as z.infer<typeof statsSchema>, seed),
+  },
+  bars: { schema: barsSchema, build: (d, seed) => barsHtml(d as z.infer<typeof barsSchema>, seed) },
+  ledger: {
+    schema: ledgerSchema,
+    build: (d, seed) => ledgerHtml(d as z.infer<typeof ledgerSchema>, seed),
+  },
+  compare: {
+    schema: compareSchema,
+    build: (d, seed) => compareHtml(d as z.infer<typeof compareSchema>, seed),
+  },
+  steps: {
+    schema: stepsSchema,
+    build: (d, seed) => stepsHtml(d as z.infer<typeof stepsSchema>, seed),
+  },
+  flow: { schema: flowSchema, build: (d, seed) => flowHtml(d as z.infer<typeof flowSchema>, seed) },
   timeline: {
     schema: timelineSchema,
-    build: (d) => timelineHtml(d as z.infer<typeof timelineSchema>),
+    build: (d, seed) => timelineHtml(d as z.infer<typeof timelineSchema>, seed),
   },
-  matrix: { schema: matrixSchema, build: (d) => matrixHtml(d as z.infer<typeof matrixSchema>) },
-  photo: { schema: photoSchema, build: (d) => photoHtml(d as z.infer<typeof photoSchema>) },
+  matrix: {
+    schema: matrixSchema,
+    build: (d, seed) => matrixHtml(d as z.infer<typeof matrixSchema>, seed),
+  },
+  photo: {
+    schema: photoSchema,
+    build: (d, seed) => photoHtml(d as z.infer<typeof photoSchema>, seed),
+  },
 };
 
 const CN_TYPE: Record<string, string> = {
@@ -137,15 +156,18 @@ function formatPresetError(preset: CardPresetId, error: z.ZodError): string {
 
 /**
  * 数据卡渲染入口:zod 校验失败给人话报错(首个问题字段),agent 可自纠重试。
+ * accentSeed = 文章锚(工具层传 thread_id):同篇恒同 accent 组;缺省退回按
+ * 卡内容取组(admin 实验室预览,重渲染同数据恒同色)。
  */
 export function renderPreset(
   preset: CardPresetId,
   data: unknown,
+  accentSeed?: string,
 ): { ok: true; html: string } | { ok: false; error: string } {
   const p = PRESETS[preset];
   const parsed = p.schema.safeParse(data);
   if (!parsed.success) {
     return { ok: false, error: formatPresetError(preset, parsed.error) };
   }
-  return { ok: true, html: p.build(parsed.data) };
+  return { ok: true, html: p.build(parsed.data, accentSeed ?? JSON.stringify(parsed.data)) };
 }

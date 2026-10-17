@@ -38,7 +38,8 @@ export const renderCardTool = tool(
       // 归一层先还原再校验;命中即记日志观测漂移率,未知形态仍 fail-closed。
       const n = normalizePresetData(data);
       if (n.normalized) logger.warn({ event: "agent.card_args_normalized", preset });
-      const r = renderPreset(preset, n.data);
+      // accent 按文章锚定:thread_id 作 seed,同篇恒同强调色组(跨篇轮换)。
+      const r = renderPreset(preset, n.data, config?.configurable?.thread_id);
       if (!r.ok) return JSON.stringify({ ok: false, error: r.error });
       doc = r.html;
     } else {
@@ -74,8 +75,8 @@ export const renderCardTool = tool(
       "把卡片渲染成图片并存入媒体库,返回 {url,width,height},用于正文配图(金句/要点/" +
       "数据/量级对比/台账/选型/步骤/全景/时间线/要素盘点/大图类内容优先做卡而非纯文字)。" +
       "内容形态→卡型的选型纪律以技能指南为准。两种用法二选一:① preset+data——内置模板" +
-      "(11 卡型双主题:观点/数据系深色 quote|points|stats|bars|ledger,流程/方法系浅色 " +
-      "compare|steps|flow|timeline|matrix|photo),只填数据,样式模板兜底,常规卡片一律" +
+      "(11 卡型统一深空主题:quote|points|stats|bars|ledger|compare|steps|flow|" +
+      "timeline|matrix|photo),只填数据,样式模板兜底,常规卡片一律" +
       "优先(省额度);② html——自由 HTML(≤12000 字符,仅版式确需个性化时用),纪律:" +
       "<style> 块+class 复用样式,禁止逐元素重复 inline style、禁止手写 base64 图片," +
       "引已有配图用站内路径 /wp-content/uploads/…(渲染时自动映射媒体卷)。" +

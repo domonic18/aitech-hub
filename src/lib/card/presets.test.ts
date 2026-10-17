@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { renderPreset } from "./presets";
+import { renderPreset, CARD_PRESET_IDS, type CardPresetId } from "./presets";
 
 describe("renderPreset", () => {
   it("11 模板合法数据 → ok 且输出独立文档骨架", () => {
@@ -192,5 +192,82 @@ describe("renderPreset", () => {
       expect(r.html).toContain('meta charset="utf-8"');
       expect(r.html).toContain("width:900px");
     }
+  });
+
+  it("全站统一深空主题:11 卡型输出均含深空底色(混色回归锚)", () => {
+    const data: Record<CardPresetId, unknown> = {
+      quote: { quote: "少即是多" },
+      points: { points: [{ text: "a" }, { text: "b" }] },
+      stats: {
+        items: [
+          { value: "1", label: "a" },
+          { value: "2", label: "b" },
+        ],
+      },
+      bars: {
+        items: [
+          { label: "A", pct: 100, value: "1" },
+          { label: "B", pct: 60, value: "0.6" },
+        ],
+      },
+      ledger: {
+        rows: [
+          { k: "a", v: "1" },
+          { k: "b", v: "2" },
+          { k: "c", v: "3" },
+        ],
+      },
+      compare: { left: { label: "A", items: ["快"] }, right: { label: "B", items: ["稳"] } },
+      steps: { steps: [{ title: "一" }, { title: "二" }] },
+      flow: {
+        title: "流程",
+        lanes: [{ name: "A" }, { name: "B" }],
+        phases: [{ name: "P1" }, { name: "P2" }],
+        steps: [
+          { text: "s1", lane: 0, phase: 0 },
+          { text: "s2", lane: 1, phase: 0 },
+          { text: "s3", lane: 1, phase: 1 },
+        ],
+      },
+      timeline: {
+        events: [
+          { time: "2020", text: "起点" },
+          { time: "2026", text: "现在" },
+        ],
+      },
+      matrix: { cells: [{ name: "X" }, { name: "Y" }] },
+      photo: { src: "/wp-content/uploads/2026/10/demo.jpg" },
+    };
+    for (const id of CARD_PRESET_IDS) {
+      const r = renderPreset(id, data[id]);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.html).toContain("#0b1220");
+    }
+  });
+
+  it("accentSeed 文章锚定:同篇同组、未传 seed 退回按内容", () => {
+    const acOf = (html: string) => /--ac:(#[0-9a-f]{6})/.exec(html)?.[1];
+    const quote = renderPreset("quote", { quote: "同篇" }, "thread-a");
+    const ledger = renderPreset(
+      "ledger",
+      {
+        rows: [
+          { k: "a", v: "1" },
+          { k: "b", v: "2" },
+          { k: "c", v: "3" },
+        ],
+      },
+      "thread-a",
+    );
+    expect(quote.ok && ledger.ok).toBe(true);
+    if (quote.ok && ledger.ok) {
+      expect(acOf(quote.html)).toBeTruthy();
+      expect(acOf(quote.html)).toBe(acOf(ledger.html));
+    }
+    // 确定性:同 seed 重渲染恒同色
+    const again = renderPreset("quote", { quote: "同篇" }, "thread-a");
+    if (quote.ok && again.ok) expect(acOf(again.html)).toBe(acOf(quote.html));
+    // 缺省路径(admin 预览)仍可用
+    expect(renderPreset("quote", { quote: "预览" }).ok).toBe(true);
   });
 });
