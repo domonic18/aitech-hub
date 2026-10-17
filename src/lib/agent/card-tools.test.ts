@@ -101,6 +101,32 @@ describe("render_card", () => {
     );
   });
 
+  it("漂移收编:rows 包成 {item:{item:[…]}} → 归一后照常渲染入库", async () => {
+    sessionFindUnique.mockResolvedValue({ visitorId: "admin:s" });
+    stubFetch();
+    uploadMedia.mockResolvedValueOnce({
+      id: "11",
+      path: "/wp-content/uploads/2026/10/n.png",
+      reused: false,
+      status: "ready",
+    });
+    const r = await invoke(renderCardTool, {
+      preset: "ledger",
+      data: {
+        rows: {
+          item: {
+            item: [
+              { k: "上下文", v: "200k" },
+              { k: "模态", v: "文本" },
+              { k: "开源", v: "是" },
+            ],
+          },
+        },
+      },
+    });
+    expect(r).toMatchObject({ ok: true, url: "/wp-content/uploads/2026/10/n.png" });
+  });
+
   it("自由 HTML 模式:消毒报错直通(不触达渲染)", async () => {
     sessionFindUnique.mockResolvedValue({ visitorId: "admin:s" });
     const fetchMock = stubFetch();

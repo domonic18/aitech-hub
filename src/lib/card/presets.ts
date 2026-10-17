@@ -89,6 +89,52 @@ const PRESETS: Record<CardPresetId, PresetDef> = {
   photo: { schema: photoSchema, build: (d) => photoHtml(d as z.infer<typeof photoSchema>) },
 };
 
+const CN_TYPE: Record<string, string> = {
+  array: "数组",
+  object: "对象",
+  string: "字符串",
+  number: "数字",
+  boolean: "布尔",
+  null: "null",
+  undefined: "undefined",
+};
+
+/** zod issue → 中文短句(弱模型读不懂英文原话就不会自纠,见 ask_user 前科)。
+ *  注:zod v4 的 invalid_type issue 只带 expected,received 仅在文案里,取不到。 */
+function humanizeIssue(issue: z.core.$ZodIssue): string {
+  const d = issue as unknown as {
+    expected?: string;
+    minimum?: number;
+    maximum?: number;
+    origin?: string;
+  };
+  if (issue.code === "invalid_type" && d.expected) {
+    return `应为${CN_TYPE[d.expected] ?? d.expected},收到了其他类型`;
+  }
+  if (issue.code === "too_small" && typeof d.minimum === "number") {
+    if (d.origin === "array") return `至少 ${d.minimum} 条`;
+    if (d.origin === "string") return `至少 ${d.minimum} 字符`;
+  }
+  if (issue.code === "too_big" && typeof d.maximum === "number") {
+    if (d.origin === "array") return `最多 ${d.maximum} 条`;
+    if (d.origin === "string") return `最多 ${d.maximum} 字符`;
+  }
+  return issue.message;
+}
+
+/** 首个问题字段的人话报错;类型漂移(应为数组收到对象)附直接传数组的修正示例。 */
+function formatPresetError(preset: CardPresetId, error: z.ZodError): string {
+  const issue = error.issues[0];
+  const where = issue.path.join(".");
+  const d = issue as unknown as { expected?: string };
+  const arrDrift = issue.code === "invalid_type" && d.expected === "array";
+  const hint = arrDrift
+    ? ';数组字段直接传 JSON 数组(如 "rows":[{"k":"键","v":"值"}]),' +
+      "不要包进对象,也不要拆成对象逐条传"
+    : "";
+  return `${preset} 模板数据不合法:${where || "(根)"} ${humanizeIssue(issue)}${hint}`;
+}
+
 /**
  * 数据卡渲染入口:zod 校验失败给人话报错(首个问题字段),agent 可自纠重试。
  */
@@ -99,9 +145,7 @@ export function renderPreset(
   const p = PRESETS[preset];
   const parsed = p.schema.safeParse(data);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue.path.join(".");
-    return { ok: false, error: `${preset} 模板数据不合法:${where || "(根)"} ${issue.message}` };
+    return { ok: false, error: formatPresetError(preset, parsed.error) };
   }
   return { ok: true, html: p.build(parsed.data) };
 }

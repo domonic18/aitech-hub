@@ -153,6 +153,23 @@ describe("renderPreset", () => {
     if (!r2.ok) expect(r2.error).toContain("quote");
   });
 
+  it("类型漂移报错 → 中文说明 + 直接传数组的修正示例(弱模型自纠)", () => {
+    const r = renderPreset("ledger", { rows: { k: "a", v: "b" } });
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) {
+      expect(r.error).toContain("rows 应为数组,收到了其他类型");
+      expect(r.error).toContain("直接传 JSON 数组");
+      expect(r.error).toContain('"rows":[{"k":"键","v":"值"}]');
+      expect(r.error).not.toContain("expected array");
+    }
+  });
+
+  it("条数不足报错 → 中文条数口径", () => {
+    const r = renderPreset("steps", { steps: [{ title: "只有一步" }] });
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) expect(r.error).toContain("steps 至少 2 条");
+  });
+
   it("未知 preset 之外靠 z.enum 在工具层拦截;此处验证文本转义", () => {
     const r = renderPreset("quote", { quote: '<script>alert(1)</script> & "引号"' });
     expect(r.ok).toBe(true);

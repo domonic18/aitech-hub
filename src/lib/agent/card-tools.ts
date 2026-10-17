@@ -9,9 +9,11 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
+import { normalizePresetData } from "../card/normalize";
 import { renderPreset, CARD_PRESET_IDS } from "../card/presets";
 import { renderCardPng } from "../card/render";
 import { sanitizeCardHtml } from "../card/sanitize";
+import { logger } from "../logger";
 import { uploadMedia } from "../media/service";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
@@ -32,7 +34,11 @@ export const renderCardTool = tool(
 
     let doc: string;
     if (preset) {
-      const r = renderPreset(preset, data);
+      // 漂移收编:弱模型会把数组包成 {"item":[…]} 单键对象(实证同 ask_user),
+      // 归一层先还原再校验;命中即记日志观测漂移率,未知形态仍 fail-closed。
+      const n = normalizePresetData(data);
+      if (n.normalized) logger.warn({ event: "agent.card_args_normalized", preset });
+      const r = renderPreset(preset, n.data);
       if (!r.ok) return JSON.stringify({ ok: false, error: r.error });
       doc = r.html;
     } else {
@@ -96,7 +102,9 @@ export const renderCardTool = tool(
             "{name,emoji?},phases[2..5]:{name,desc?},steps[3..16]:{text,lane,phase},summary?}" +
             "(lane/phase 为从 0 起下标,steps 数组序即全局流转编号);timeline={title?," +
             "events[2..8]:{time,text},summary?};matrix={title?,cells[2..8]:{name,desc?,icon?}};" +
-            'photo={src:"/wp-content/uploads/…",title?,caption?}',
+            'photo={src:"/wp-content/uploads/…",title?,caption?}' +
+            ";数组字段(points/items/rows/steps/lanes/phases/events/cells)一律直接传" +
+            'JSON 数组,如 "rows":[{"k":"键","v":"值"}],不要包进对象',
         ),
       html: z
         .string()
