@@ -49,6 +49,18 @@ jobs:
       - working-directory: services/douyin-gateway
         run: python -m pytest tests/ -q
 
+  # 卡片渲染服务(M31):纯函数单测(node:test,零依赖零安装);仅校验/白名单逻辑
+  card-renderer:
+    name: card-renderer(node 单测)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: services/card-renderer
+        run: npm test
+
   migrate-replay:
     name: 迁移重放守卫
     runs-on: ubuntu-latest
@@ -238,3 +250,69 @@ jobs:
       - name: Output image info / 输出镜像信息
         run: |
           echo "Gateway image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
+
+  # 卡片渲染镜像(M31,独立 Dockerfile):与网关镜像同语义的独立 job(self-hosted /
+  # ci-builder / platforms / gate 裁定等逐条教训注释见 docker-release,勿只改一处)
+  docker-release-card-renderer:
+    name: release(卡片渲染镜像构建推送 TCR)
+    runs-on: [self-hosted]
+    needs: [app, card-renderer, migrate-replay]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+          } >> "$GITHUB_OUTPUT"
+      - name: Select builder / 选择构建器
+        run: docker buildx use ci-builder
+      - id: login
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+      - name: Build and Push card-renderer / 卡片渲染镜像(第 1 次尝试)
+        id: cbuild1
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        timeout-minutes: 25
+        with:
+          context: ./services/card-renderer
+          file: services/card-renderer/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-card-renderer:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+      - name: Build and Push card-renderer / 卡片渲染镜像(重试)
+        if: steps.cbuild1.outcome == 'failure' && steps.login.conclusion == 'success'
+        id: cbuild-retry
+        uses: docker/build-push-action@v6
+        timeout-minutes: 30
+        with:
+          context: ./services/card-renderer
+          file: services/card-renderer/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-card-renderer:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+      - name: Conclude push outcome / 推送结论裁定
+        if: always()
+        # 任一次尝试成功即 job 成功;两次皆败才判红(教训同 docker-release)
+        run: |
+          if [ "${{ steps.cbuild1.outcome }}" = "success" ] || [ "${{ steps.cbuild-retry.outcome }}" = "success" ]; then
+            echo "[OK] card-renderer image push succeeded"
+          else
+            echo "[FAIL] card-renderer image push failed in both attempts" >&2
+            exit 1
+          fi
+      - name: Output image info / 输出镜像信息
+        run: |
+          echo "Card-renderer image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
