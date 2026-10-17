@@ -12,6 +12,7 @@ import { createDeepAgent, type DeepAgent } from "deepagents";
 import { todoListMiddleware } from "langchain";
 
 import type { ResolvedAiModel } from "../ai/resolver";
+import { CARD_TOOLS } from "./card-tools";
 import { interruptGuardMiddleware } from "./ask-user-guard";
 import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
 import type { AgentIdentity } from "./identity";
@@ -69,7 +70,7 @@ const ADMIN_PROMPT_ADDENDUM = `
 1. get_topic_brief 读取专题定位、素材(博主/视频/解读笔记/人工批注)与关联文档现状;仔细分析素材
 2. 选题:基于素材构思 2~3 个切入角度并自选最优,参考近期已发标题避免重复;方向确实拿不准时用 ask_user 请管理员拍板(一次一问,带 2~4 个选项),素材充分时不必问
 3. 写作:按技能指南起草(动笔前先经下方「技能调度」取用);正文全文按下方「正文交付纪律」只经 save_topic_draft 的 content_md 参数交付,严禁把正文整篇输出到对话流;正文图片直接引用素材的 cover_path(brief 已转存为站内路径)或 generate_cover_candidates 返回的路径,严禁编造外链图片
-4. 正文配图:素材 cover_path 已可直接引用;视频封面不足或需概念示意图时 generate_cover_candidates 按小节内容现拟 prompt 生成;cover_path 为 null(转存失败)或 brief 后新挂素材时用 transfer_video_cover 重试。以上产物只作正文插图,禁止选作文章头图(头图统一走第 7 步 AI 生成流程);文首推荐卡由系统自动带图,正文开头不要再贴同一张
+4. 正文配图:素材 cover_path 已可直接引用;视频封面不足或需概念示意图时 generate_cover_candidates 按小节内容现拟 prompt 生成;cover_path 为 null(转存失败)或 brief 后新挂素材时用 transfer_video_cover 重试。以上产物只作正文插图,禁止选作文章头图(头图统一走第 7 步 AI 生成流程);文首推荐卡由系统自动带图,正文开头不要再贴同一张。金句/要点/数据/对比/步骤类内容优先用 render_card 出卡片图嵌入(preset 模板优先,省额度;卡片用法细则以技能指南为准)
 5. 自评审并优化(必做,不可跳过):以挑剔读者视角通读初稿,逐项检查并直接改写——① 开头是否用素材里的具体事实/数据抓人,有无「随着…的发展」式套话;② 背景交代是否完整,不了解这条视频的读者能否无障碍读下去;③ 要点之间是否有递进/因果逻辑,而非并列罗列;④ 「去看原视频」小节是否给出了视频原地址链接;⑤ 配图位置与全文数量是否合理、有无图文不符。自评审至多 2 轮:第 1 轮通读改写,仅当仍有硬伤(编造事实/缺原链/图文不符)才做第 2 轮;2 轮后无论是否满意都立即进入下一步,禁止反复重写
 6. save_topic_draft 落库(标题/摘要/正文/SEO 标题与描述/标签一次交付;cover_path 省略——头图由下一步生成,不选已有图片)
 7. 头图生成(必做,不可跳过):拿 save_topic_draft 返回的 post_id 调 generate_post_cover,严格走「封面生成纪律」的两段 ask_user(先对齐 2-4 个差异化方向,再过目完整生图提示词)→ 生成候选 → 管理员在预览卡点「入库」即自动存媒体库并设为文章封面;generate_post_cover 报错/超时或管理员点「全部放弃」时如实说明,并可重试一次
@@ -109,6 +110,7 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...COVER_TOOLS,
         ...SKILL_TOOLS,
         ...WECHAT_BUDGET_TOOLS,
+        ...CARD_TOOLS,
       ]
     : [...AGENT_TOOLS];
 }

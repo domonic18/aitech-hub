@@ -21,6 +21,8 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379/0
   # 抖音网关容器网内地址(.env 里的 127.0.0.1:8010 是 dev 值;M8)
   DOUYIN_GATEWAY_URL: http://douyin-gateway:8010
+  # 卡片渲染服务网内地址(M31;.env 里的 127.0.0.1:8011 是 dev 值)
+  CARD_RENDERER_URL: http://card-renderer:8011
   # environment 优先级高于 env_file(.env):容器内媒体路径钉死为挂载点,不随宿主 .env 漂移
   MEDIA_DIR: /app/media
 
@@ -139,6 +141,33 @@ services:
       retries: 3
       start_period: 60s # 首启含 chromium 拉起
     mem_limit: 1g
+    <<: *restart
+    logging: *logging
+
+  # 卡片渲染服务(M31):HTML→PNG 专职渲染;仅内网(web 经服务名访问),媒体卷 ro 共享
+  # 供站内引图 file:// 直读。浏览器常驻 + 每请求新 context;本地构建验收:
+  #   CARD_RENDERER_IMAGE=aitech-hub-card-renderer:m31 docker compose -f docker-compose.prod.yml build card-renderer
+  card-renderer:
+    image: ${CARD_RENDERER_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub-card-renderer:latest}
+    build:
+      context: ./services/card-renderer
+    environment:
+      TZ: Asia/Shanghai
+    tmpfs:
+      - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
+    volumes:
+      - ./workspace/media:/app/media:ro # 站内引图直读;MEDIA_ROOT 钉在镜像 ENV=/app/media
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:8011/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s # 首启含 chromium 拉起
+    mem_limit: 768m
     <<: *restart
     logging: *logging
 

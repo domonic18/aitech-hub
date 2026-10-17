@@ -117,6 +117,17 @@ Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 
 - **手动触发**:`POST /api/discovery/trigger {job:"hotwords"|"bili"}` 入同名一次性 job(jobId `manual-` 前缀 + 时间戳,removeOnComplete/Fail 200);真触发不入 e2e(worker 在场即真出网)
 - 编排:`src/lib/discovery/`(suggest 源插件化/l0.ts/discover.ts/hotwords.ts/keywords·candidates 仓储);状态常量单源 `src/lib/discovery/status.ts`(客户端安全,治理台组件共用)
 
+### 4.6 卡片渲染 sidecar(services/card-renderer/,2026-10-17 M31 新增)
+
+Node 20 + Playwright chromium **独立镜像独立容器**(node:20-slim + fonts-noto-cjk/fonts-noto-color-emoji),渲染内核=浏览器以保全任意 CSS(agent 编排的富排版 HTML → PNG 卡图)。与 douyin-gateway 同款 sidecar 模式:compose 内网无 ports,web 容器经 `CARD_RENDERER_URL` 调用;业务语义(preset 模板/消毒/媒体改写)全在 app 侧 `src/lib/card/`,本服务纯引擎零业务。**生产部署合并后另批请批**。
+
+- **HTTP 契约**(无鉴权不暴露公网):
+  - `POST /render {html, width?=900, scale?=2, maxHeight?=4000, timeoutMs?=12000}` → `200 image/png`(`X-Card-Width`/`X-Card-Height` = 逻辑像素;`scale`=deviceScaleFactor 出 2x 清晰图)/ `400` 入参校验 / `413` 高度超限(提示拆卡)/ `429` 忙 / `504` 超时 / `500` 渲染失败——错误体 `{error}` 人话短句,agent 直接转述
+  - `GET /health` → `200 {ok:true,browser:"up"}`(compose healthcheck,node fetch;浏览器拉起失败 `503 {ok:false}`)
+- **渲染安全三层收口**(渲染面 SSRF/外联归零):① app 侧 cheerio 白名单消毒(`src/lib/card/sanitize.ts`,自由模入服务前唯一闸,违规整体报错交 agent 自纠);② 服务侧请求级硬闸 `context.route` **仅放行 data:/about:blank**,其余(导航/图片/字体/XHR)全 abort,`javaScriptEnabled=false` `<script>` 天然不执行;③ 站内引图 `file:///…` 在 **Node 侧读盘内联 data-URI**(`inlineLocalMedia`:路径包含校验 `isInsideMediaRoot` 防遍历 + 8MB 上限,失败降级 1x1 透明占位)——chromium 不触文件系统(about:blank 源默认禁 file:// 子资源,直读路线不可行)
+- **资源形态**:浏览器常驻单例(崩溃惰性重启,冷启动即预热);并发信号量 `MAX_CONCURRENT=2` 满员即刻 429(fail-fast,排队让 agent 工具白等不如提示重试);RAW 请求体 6MB / HTML 400k 上限;compose `tmpfs /tmp/card-renderer` + `mem_limit 768m` + `start_period 60s`(chromium 首启慢)+ 媒体卷 `./workspace/media:/app/media:ro` 只读挂载(引图直读)
+- **env 三处一致红线**:服务 `MEDIA_ROOT`(default `/app/media`)= compose 挂载容器路径 = app 侧 `CARD_RENDERER_MEDIA_ROOT`(default `/app/media`);app `CARD_RENDERER_URL`(default `http://127.0.0.1:8011` 本地裸跑,compose 内 `http://card-renderer:8011`)。本地 `127.0.0.1:8011` 便于冒烟;CI 增 card-renderer 单测 job(`node --test` 零依赖直跑)+ `docker-release-card-renderer` 发布段(`aitech-hub-card-renderer` 镜像,develop-\<sha\>/latest 双 tag,见 standard/02)
+
 ## 5. 一期接口清单(Route Handlers)
 
 | 域 | 端点 | 鉴权 |

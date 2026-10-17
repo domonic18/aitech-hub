@@ -136,6 +136,14 @@
 - **码点预算自查(批③,`measure_wechat_budget` 工具 + `wechat-budget.ts`)**:落稿前对拟交 markdown 服务端真跑 renderWechatHtml 计码点(与推送校验同口径,非文字数估算),返回总/纯文本/表格/标记四段分解 + usagePct + 超限判定与精简建议(超预算必精简后复核再交稿);同步弹窗正文码点实时计数复用 preview HTML(客户端 `[...html].length`,与服务端同口径零新 API)
 - **admin 防线同构**:两批工具体内 `assertAdminThread` + fail-closed deny(纵深防御同 topic-tools);e2e 38 钉技能页签 CRUD/启停落库/专题绑定/非法 skillKey 400(零真网)
 
+**K2.8 补注六(2026-10-17,M31,图文卡片——agent 把编排 HTML 渲染成图嵌入文章与公众号;笔记富排版核心功能)**:
+
+- **分层定稿(用户核对:架构清晰、层次分明,不在代码中 hardcode 业务需求逻辑)**:**知识层** = `agent_skill` DB 行「卡片使用指南」(何时用 preset vs 自由 HTML/嵌入纪律,后台建改零发版,不进代码种子);**工具层** = `render_card`(`lib/agent/card-tools.ts`,admin 档,`assertAdminThread` 同构防线);**业务层** = `src/lib/card/`(presets.ts 五模板 + sanitize.ts 消毒 + render.ts 渲染客户端);**设施层** = `services/card-renderer` sidecar(纯渲染引擎,零业务语义)。工具调返回 `{ok,url,width,height,hint}`,hint 引导正文以 `![](url)` 嵌入——产物经 `uploadMedia` 入库(sha1 去重幂等),公众号 transload 链路天然兼容零扩面
+- **双模工具(用户选定)**:`preset`(quote 金句/points 要点/stats 数据指标/compare 双栏对比/steps 步骤,数据入 schema zod 校验,~300-600 token/卡,常规优先)+ `html`(自由 HTML,工具入参 zod 12k 硬顶,消毒白名单闸后入服务,~800-2000 token/卡);二选一互斥。**token 五层控制**:额度档兜底(agent 既有)→ 工具入参 12k 硬顶 → preset 骨架省写(模型只出数据不出样式)→ 禁手写 base64(消毒 img src 仅认 data:image 与站内 `/wp-content/uploads/`,提示引导站内引图)→ 返回极简四键
+- **消毒(`sanitize.ts`,自由模唯一入服务闸)**:cheerio 白名单——script/iframe/svg/math 等危险标签整体报错、无害未知标签解包保文本;属性仅留 class/style(img 另留 src/alt/宽高),on* 与 javascript: 必拒;`<style>` 放行但滤 @import 与外联 url()。**有意违规不静默剥除而是整体报错**(人话逐条 cap 5)——agent 自纠重试;service 侧硬闸兜底(纵深双层)
+- **站内引图零 token 链**:消毒放行的 `/wp-content/uploads/` URL 经 `rewriteLocalMediaRefs` 改写 `file://$CARD_RENDERER_MEDIA_ROOT/…`(前缀剥掉直接拼根,storage.ts 同约定)→ 服务侧 `inlineLocalMedia` 读盘(路径包含校验防遍历 + 8MB 上限)转 **data-URI 内联**——chromium 完全不触文件系统(about:blank 源默认禁 file:// 子资源,直读路线不可行,内联是正解);读失败降级 1x1 透明占位不整卡失败
+- **sidecar 契约**(arch/05 §4.6):`POST /render {html,width?,scale?}` → PNG 字节 + `X-Card-Width/Height` 头;javaScriptEnabled=false + 请求级硬闸(仅放行 data:/about:blank)+ 并发信号量满员 429 + 高度 413(超 4000px 提示拆卡)+ 504 超时,错误全人话短句供 agent 直接转述;CARD_RENDERER_URL / CARD_RENDERER_MEDIA_ROOT 双 env(与 compose 挂载三处一致)。CI 增 card-renderer 单测 job(node --test 零依赖)+ docker-release-card-renderer 镜像段;生产部署(175 加容器)合并后另批请批
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

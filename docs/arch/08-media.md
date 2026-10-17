@@ -24,6 +24,7 @@
 
 - 新上传的图片路径规则:一期沿用 `/wp-content/uploads/YYYY/MM/<sha1>.<ext>`(与旧站路径风格一致,前台无差别);切 COS 后改写为 CDN 域路径
 - 流量账:一期图片直出服务器(月流量包 1TB 量级,154 篇文章的图量级完全够);二期反代后源站在 COS(同地域内网取数,175 流量包不耗);**视频从第一天就不落服务器**(下一节)
+- **渲染引图只读消费(2026-10-17,M31 card-renderer)**:卡片渲染 sidecar 以 `workspace/media:/app/media:ro` 只读挂媒体卷,站内引图按本节同一映射约定(URL 前缀 `/wp-content/uploads/` 剥掉,余下路径直接拼 `MEDIA_ROOT`)读盘内联 data-URI 后进浏览器(arch/05 §4.6)——只读消费不改存储语义;渲染产物 PNG 经 `uploadMedia` 走标准入库规则(`YYYY/MM/<sha1>.png`),URL 永不变原则不受影响
 
 ## 2. 视频:COS 直链 + B 站嵌入(2026-09-29 决策)
 
