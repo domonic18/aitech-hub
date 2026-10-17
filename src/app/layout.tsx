@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import AssistantFab from "@/components/site/assistant/AssistantFab";
 import { getSiteTitle } from "@/lib/config/site-config";
 import { siteUrl } from "@/lib/seo/site";
 import "./globals.css";
@@ -39,6 +40,10 @@ export default function RootLayout({
           }}
         />
         {children}
+        {/* Agent 宿主唯一化(M35):全站唯一 AssistantCard 宿主挂根 layout,
+            跨路由持久——在跑 run 不随任何页面切换(admin↔site 同理)中断;
+            页面接入只走 src/lib/agent/agent-host.ts 两协议,禁止自持卡 */}
+        <AssistantFab />
       </body>
     </html>
   );
