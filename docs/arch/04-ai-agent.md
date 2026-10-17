@@ -51,8 +51,9 @@
 |----|--------|------|
 | 答案卡日配额 | `search` 角色 **100 次/日**(`ai_task_binding.daily_max`) | 超限**自动降级纯检索结果页**,前台不报错 |
 | Drawer 会话日配额 | **20 次/日** | 独立计数,超限入口置灰 + 提示 |
-| 单会话上限 | **≤12 步 / ≤50k tokens** | agent 主动收束并提示,防多步失控 |
-| 单会话上限(admin 档) | **≤80 步 / ≤400k tokens / recursion 200**(2026-10-17 验收反馈) | 专题文章生产是多步自主编排,细粒度工具链 + HITL resume + 每轮重灌全量历史,30/150k/60(M27 批⑤首档)实测中途打满;recursionLimit 须随步数同步放大(≈2×步数留裕量),护栏防失控兜底而非计费 |
+| 单会话上限 | **≤12 步 / ≤50k tokens**(默认;后台「站点设置」可调) | agent 主动收束并提示,防多步失控 |
+| 单会话上限(admin 档) | **≤80 步 / ≤400k tokens / recursion 200**(默认;2026-10-17 验收反馈) | 专题文章生产是多步自主编排,细粒度工具链 + HITL resume + 每轮重灌全量历史,30/150k/60(M27 批⑤首档)实测中途打满;recursionLimit 须随步数同步放大(≈2×步数留裕量),护栏防失控兜底而非计费 |
+| 额度可调 | 三档(游客/用户/管理员)×步数/tokens 六键入 `site_config`(键族 `agent.*`,后台站点设置编辑;recursion 按 2.5×toolCalls 派生不开放设置,2026-10-17) | 缺行/非法回默认+clamp(1..200 步 / 1k..200 万 tokens);run 路由每请求读档,保存即时生效(下一条消息) |
 | 答案缓存 | 同 `q=` **24h** 内复用 | 省钱 + 秒开;缓存行落 Redis/PG 实施时定 |
 | 模型建议 | search 角色绑国产模型(DeepSeek/GLM/Qwen 级) | 单次答案卡 ¥0.005~0.1、会话 ¥0.05~1;Claude 级成本 ×10 收益边际 |
 
@@ -106,7 +107,7 @@
 - **退役清单**:批③ BullMQ 四步管线(compose-agent + QUEUE_TOPIC_COMPOSE + worker processor)、批④ compose_topic_draft 单工具 + ComposeToolProgress 轮询面板、POST/GET `/api/topics/[id]/compose/` 路由、「专题合成」AI purpose 绑定槽(六角色收五;历史台账 role=compose 行读侧回退原值展示)——生产模型绑定收敛到 search(Agent 搜索),封面生图仍走 cover
 - **admin 工具档换装细粒度四件**(`lib/agent/topic-tools.ts`;工具体内 `admin:` 会话校验沿用):`get_topic_brief`(专题定位 + 素材全集 + 关联文档现状 + 近期已发标题,分析底料)/ `transfer_video_cover`(首视频封面转存,B 站防盗链)/ `generate_cover_candidates`(复用 M14 cover-gen 管线,工具体内轮询 ≤120s 取多候选)/ `save_topic_draft`(落稿锚定核 finalizeCompose 扩 SEO/标签——undefined=不动/null=清空,防覆盖人工已改字段;正文图片防幻觉校验只认站内 `/wp-content/uploads/`、`/media/` 路径,编造外链直接拒)
 - **编排权在模型**:ADMIN_PROMPT_ADDENDUM 重写为工作流指令(write_todos 计划先行 → 读素材 → 选题(拿不准 ask_user)→ 写作 → 配图 → 落库 → 汇报 post_url;修订 = 重读素材直接改再 save,不重跑全流程);批① STRUCTURE_SPEC 固定结构降格为系统提示「写作指南」(五节推荐体保留为指南,图片引用从禁止放开为库内路径)。过程可视性 = 每只工具卡逐个出现(替代轮询面板),不依赖 todo 条(MiniMax write_todos 触发率已知风险)
-- **护栏按身份档**(`run.ts#AGENT_LIMITS`):guest/user 12 步 / 50k tokens / 递归 30 不变;admin 放宽 30 步 / 150k / 递归 60(细粒度多步生产天然多工具),stream 路由会话预检同档
+- **护栏按身份档**(`run.ts#AGENT_LIMITS`,2026-10-17 起迁 `config/agent-limits` 后台可调):guest/user 12 步 / 50k tokens / 递归 30 不变;admin 放宽 30 步 / 150k / 递归 60(细粒度多步生产天然多工具),stream 路由会话预检同档
 - **写核保留**:`topics/compose.ts` 收敛为确定性写核(素材块拼装 / 封面转存 / 落稿锚定 / 近期标题),文首视频推荐卡仍确定性注入;后补能力锚点:视频关键帧(douyin-gateway 侧)与 HTML→截图基建(R③,待立项)
 
 **K2.8 补注二(2026-10-13,M27 批⑥,正文配图全链路 + todo 计划条修复;1276 验收反馈「重合成正文 0 图 / 侧边栏 todo 不显示」)**:

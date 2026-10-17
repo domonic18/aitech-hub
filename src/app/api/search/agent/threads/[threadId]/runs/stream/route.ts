@@ -18,7 +18,8 @@ import { z } from "zod";
 
 import { AGENT_COVER_CANDIDATES_TOOL } from "@/lib/agent/cover-tool";
 import { AGENT_PROPOSE_EDITS_TOOL } from "@/lib/agent/edit-proposal";
-import { AGENT_LIMITS, recordAgentRun, runAgentTurn } from "@/lib/agent/run";
+import { recordAgentRun, runAgentTurn } from "@/lib/agent/run";
+import { getAgentLimitsAll, toRunLimits } from "@/lib/config/agent-limits";
 import { backfillSessionTitle } from "@/lib/agent/sessions";
 import { tryConsumeAgentRunQuota, tryConsumeGuestAskQuota } from "@/lib/agent/quota";
 import {
@@ -155,7 +156,11 @@ export async function POST(
       : undefined;
   const context = sanitizeAgentRunContext(parseAgentRunContext(rawContext), identity.kind);
 
-  if (identity.kind !== "guest" && tokensTotal >= AGENT_LIMITS[identity.kind].tokens) {
+  // 护栏额度(2026-10-17 起后台「站点设置」可调):每请求一次 kv 读档,
+  // 会话累计前置闸与单轮三闸同源,recursionLimit 按 2.5×toolCalls 派生
+  const limits = toRunLimits((await getAgentLimitsAll())[identity.kind]);
+
+  if (identity.kind !== "guest" && tokensTotal >= limits.tokens) {
     return apiEnvelope(429, "本会话用量已达上限,请新建会话继续");
   }
   if (
@@ -199,6 +204,7 @@ export async function POST(
           ...(resume !== undefined ? { resume } : {}),
           ...(context !== null ? { context } : {}),
           identityKind: identity.kind,
+          limits,
           signal: abort.signal,
           onFrame: push,
         });

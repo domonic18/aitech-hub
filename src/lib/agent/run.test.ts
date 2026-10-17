@@ -1,7 +1,8 @@
 /**
  * run 编排单测(getAgentGraph mock):帧序列 metadata→…→end、todos 提取、
- * usage 聚合、工具调用去重计数、护栏按身份档主动收束(12/50k 基础档,
- * admin 档放宽见 AGENT_LIMITS 注记,M27 批⑤/2026-10-17 验收反馈)、
+ * usage 聚合、工具调用去重计数、护栏按身份档主动收束(基础档 12/50k,
+ * admin 档放宽见 config/agent-limits 默认值,M27 批⑤/2026-10-17 验收反馈;
+ * 额度经 limits 入参注入——后台站点设置可调,2026-10-17)、
  * 断开(signal aborted)即停不产 end 前的更多帧。
  */
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
@@ -12,7 +13,16 @@ const getAgentGraphMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./agent", () => ({ getAgentGraph: getAgentGraphMock }));
 
-import { AGENT_LIMITS, extractTodos, runAgentTurn, type AgentTodo } from "./run";
+import { DEFAULT_AGENT_LIMITS, deriveRecursionLimit } from "../config/agent-limits";
+import { extractTodos, runAgentTurn, type AgentTodo } from "./run";
+
+/** 测试档 = 默认额度 + 派生 recursion(与路由侧 toRunLimits 同构) */
+function runLimits(kind: "guest" | "user" | "admin" = "guest") {
+  return {
+    ...DEFAULT_AGENT_LIMITS[kind],
+    recursion: deriveRecursionLimit(DEFAULT_AGENT_LIMITS[kind].toolCalls),
+  };
+}
 
 /** 假图:getAgentGraph 返回形状({graph, resolved}),按序产出 [mode, payload] 元组 */
 function fakeGraph(frames: [string, unknown][], onStream?: () => void) {
@@ -80,6 +90,7 @@ describe("runAgentTurn", () => {
       threadId: "t1",
       message: "q",
       identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
@@ -99,6 +110,7 @@ describe("runAgentTurn", () => {
       message: "帮我校对这篇文章",
       context: { page: "文章编辑", edit: { postId: "123", title: "标题" } },
       identityKind: "admin",
+      limits: runLimits("admin"),
       signal: signalSettled(false),
       onFrame: () => {},
     });
@@ -113,6 +125,7 @@ describe("runAgentTurn", () => {
       threadId: "t1",
       message: "普通提问",
       identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame: () => {},
     });
@@ -124,9 +137,9 @@ describe("runAgentTurn", () => {
     const big = new AIMessageChunk({
       content: "",
       usage_metadata: {
-        input_tokens: AGENT_LIMITS.guest.tokens,
+        input_tokens: DEFAULT_AGENT_LIMITS.guest.tokens,
         output_tokens: 1,
-        total_tokens: AGENT_LIMITS.guest.tokens + 1,
+        total_tokens: DEFAULT_AGENT_LIMITS.guest.tokens + 1,
       },
     });
     getAgentGraphMock.mockResolvedValue(
@@ -140,6 +153,7 @@ describe("runAgentTurn", () => {
       threadId: "t1",
       message: "q",
       identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
@@ -150,7 +164,7 @@ describe("runAgentTurn", () => {
 
   it("12 次工具调用超限:主动收束", async () => {
     const framesIn: [string, unknown][] = [];
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < DEFAULT_AGENT_LIMITS.guest.toolCalls + 1; i++) {
       framesIn.push([
         "messages",
         [
@@ -168,17 +182,20 @@ describe("runAgentTurn", () => {
       threadId: "t1",
       message: "q",
       identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
     expect(outcome.truncatedReason).toContain("工具调用已达上限");
-    expect(outcome.toolCalls).toBe(13); // 第 13 次触发即断(≤12 允许),计数如实
-    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(12);
+    expect(outcome.toolCalls).toBe(DEFAULT_AGENT_LIMITS.guest.toolCalls + 1); // 档+1 次触发即断,计数如实
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(
+      DEFAULT_AGENT_LIMITS.guest.toolCalls,
+    );
     expect(frames.at(-1)).toContain("event: end");
   });
 
-  it("admin 档护栏放宽:recursionLimit 跟档,工具调用超限(档+1)主动收束", async () => {
-    const adminToolCalls = AGENT_LIMITS.admin.toolCalls;
+  it("admin 档护栏放宽:recursionLimit 跟档(2.5× 派生),工具调用超限(档+1)主动收束", async () => {
+    const adminToolCalls = DEFAULT_AGENT_LIMITS.admin.toolCalls;
     const framesIn: [string, unknown][] = [];
     for (let i = 0; i < adminToolCalls + 1; i++) {
       framesIn.push([
@@ -199,13 +216,14 @@ describe("runAgentTurn", () => {
       threadId: "t1",
       message: "q",
       identityKind: "admin",
+      limits: runLimits("admin"),
       signal: signalSettled(false),
       onFrame,
     });
     const config = (
       g.graph.stream.mock.calls as unknown as [[unknown, { recursionLimit: number }]]
     )[0]?.[1];
-    expect(config?.recursionLimit).toBe(AGENT_LIMITS.admin.recursion);
+    expect(config?.recursionLimit).toBe(deriveRecursionLimit(DEFAULT_AGENT_LIMITS.admin.toolCalls));
     expect(outcome.truncatedReason).toContain("工具调用已达上限");
     expect(outcome.toolCalls).toBe(adminToolCalls + 1);
     expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(adminToolCalls);
@@ -220,6 +238,7 @@ describe("runAgentTurn", () => {
       threadId: "t1",
       message: "q",
       identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(true),
       onFrame,
     });
@@ -242,6 +261,7 @@ describe("runAgentTurn", () => {
       message: null,
       identityKind: "guest",
       resume: { message: "报问题", option: "报问题" },
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
