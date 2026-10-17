@@ -1,12 +1,19 @@
 /**
  * 归一层单测:漂移形态收编(实证 fixture)+ 良数透传不变形 + 与 renderPreset
  * 串联(漂移数据经归一后校验通过)。归一是否收编错判的回归锚=checkpoint
- * 取证的 ledger rows 包裹形态(2026-10-18)。
+ * 取证的 ledger rows 漂移四形态(单键包裹/字符串化 JSON/双重嵌套/二元数组行,
+ * 2026-10-18)。
  */
 import { describe, expect, it } from "vitest";
 
 import { normalizePresetData } from "./normalize";
 import { renderPreset } from "./presets";
+
+const GOOD_ROWS = [
+  { k: "上下文", v: "200k" },
+  { k: "模态", v: "文本" },
+  { k: "开源", v: "是" },
+];
 
 describe("normalizePresetData", () => {
   it("实证漂移形态 {item:{item:[…]}} → 还原为数组(checkpoint 取证形态)", () => {
@@ -48,6 +55,49 @@ describe("normalizePresetData", () => {
     expect(r.data).toBe(drifted);
   });
 
+  it("字符串化 JSON(checkpoint 取证形态)→ 解析并还原为数组", () => {
+    const r = normalizePresetData({ rows: JSON.stringify(GOOD_ROWS) });
+    expect(r.normalized).toBe(true);
+    expect((r.data as { rows: unknown[] }).rows).toEqual(GOOD_ROWS);
+  });
+
+  it('字符串化双重嵌套 "[[{…}]]"(自纠越修越歪实证)→ 剥壳还原', () => {
+    const r = normalizePresetData({ rows: JSON.stringify([GOOD_ROWS]) });
+    expect(r.normalized).toBe(true);
+    expect((r.data as { rows: unknown[] }).rows).toEqual(GOOD_ROWS);
+  });
+
+  it('二元数组行 [["键","值"],…] → {k,v} 对象数组', () => {
+    const r = normalizePresetData({
+      rows: [
+        ["上下文", "200k"],
+        ["模态", "文本"],
+        ["开源", "是"],
+      ],
+    });
+    expect(r.normalized).toBe(true);
+    expect((r.data as { rows: unknown[] }).rows).toEqual(GOOD_ROWS);
+  });
+
+  it("以 [ 开头的普通文案不收编(非 JSON 字符串透传)", () => {
+    const good = { quote: "[2026 新进展] 从这里说起" };
+    const r = normalizePresetData(good);
+    expect(r.normalized).toBe(false);
+    expect(r.data).toBe(good);
+  });
+
+  it("深层下钻:对象值内的字符串化与数组内剥壳一并收编", () => {
+    const drifted = {
+      left: { label: "A", items: JSON.stringify(["x", "y"]) },
+      rows: [GOOD_ROWS], // 单元素外层 → 剥壳还原
+    };
+    const r = normalizePresetData(drifted);
+    expect(r.normalized).toBe(true);
+    const d = r.data as { left: { items: string[] }; rows: unknown[] };
+    expect(d.left.items).toEqual(["x", "y"]);
+    expect(d.rows).toEqual(GOOD_ROWS);
+  });
+
   it("良数透传:返回原引用且 normalized=false(零漂移可判)", () => {
     const good = {
       title: "t",
@@ -74,21 +124,21 @@ describe("normalizePresetData", () => {
     expect(d.rows[0].v).toEqual(["z"]);
   });
 
-  it("串联 renderPreset:漂移台账数据经归一后渲染成功", () => {
-    const drifted = {
-      title: "规格速览",
-      rows: {
-        item: {
-          item: [
-            { k: "上下文", v: "200k" },
-            { k: "模态", v: "文本" },
-            { k: "开源", v: "是" },
-          ],
-        },
-      },
-    };
-    const n = normalizePresetData(drifted);
-    const r = renderPreset("ledger", n.data);
-    expect(r.ok).toBe(true);
+  it("串联 renderPreset:四种漂移形态台账数据经归一后均渲染成功", () => {
+    const shapes: unknown[] = [
+      { item: { item: GOOD_ROWS } },
+      JSON.stringify(GOOD_ROWS),
+      JSON.stringify([GOOD_ROWS]),
+      [
+        ["上下文", "200k"],
+        ["模态", "文本"],
+        ["开源", "是"],
+      ],
+    ];
+    for (const rows of shapes) {
+      const n = normalizePresetData({ title: "规格速览", rows });
+      const r = renderPreset("ledger", n.data);
+      expect(r.ok).toBe(true);
+    }
   });
 });

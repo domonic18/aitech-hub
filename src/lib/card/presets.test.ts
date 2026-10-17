@@ -153,14 +153,45 @@ describe("renderPreset", () => {
     if (!r2.ok) expect(r2.error).toContain("quote");
   });
 
-  it("类型漂移报错 → 中文说明 + 直接传数组的修正示例(弱模型自纠)", () => {
+  it("类型漂移报错 → 收到形态具体化 + 可抄修正示例(弱模型 1~2 轮自纠)", () => {
+    // 收到对象
     const r = renderPreset("ledger", { rows: { k: "a", v: "b" } });
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) {
-      expect(r.error).toContain("rows 应为数组,收到了其他类型");
+      expect(r.error).toContain("rows 应为数组,收到了对象");
       expect(r.error).toContain("直接传 JSON 数组");
       expect(r.error).toContain('"rows":[{"k":"键","v":"值"}]');
       expect(r.error).not.toContain("expected array");
+    }
+
+    // 收到 JSON 字符串(checkpoint 实证漂移形态)
+    const r2 = renderPreset("ledger", { rows: JSON.stringify([[{ k: "a", v: "b" }]]) });
+    expect(r2).toMatchObject({ ok: false });
+    if (!r2.ok) {
+      expect(r2.error).toContain("传成了 JSON 字符串");
+      expect(r2.error).toContain('如 "rows":[{"k":"键","v":"值"}]');
+    }
+
+    // 收到二元数组行
+    const r3 = renderPreset("ledger", {
+      rows: [
+        ["a", "b"],
+        ["c", "d"],
+        ["e", "f"],
+      ],
+    });
+    expect(r3).toMatchObject({ ok: false });
+    if (!r3.ok) {
+      expect(r3.error).toContain("是嵌套数组");
+      expect(r3.error).toContain('{"k":"键","v":"值"}');
+    }
+
+    // 嵌套字段应收到对象而收到数组
+    const r4 = renderPreset("compare", { left: ["a"], right: ["b"] });
+    expect(r4).toMatchObject({ ok: false });
+    if (!r4.ok) {
+      expect(r4.error).toContain("left 收到了数组");
+      expect(r4.error).toContain("要写成对象");
     }
   });
 

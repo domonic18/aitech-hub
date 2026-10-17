@@ -29,7 +29,9 @@ export function rich(s: string): string {
   return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<em>$1</em>");
 }
 
-const FONT_STACK = '"Noto Sans CJK SC","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif';
+/** 全站统一字体栈(preset 壳与自由 HTML 消毒基线壳共用;渲染容器内置 Noto CJK) */
+export const FONT_STACK =
+  '"Noto Sans CJK SC","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif';
 
 /** accent 组(主形状色/荧光笔底/强调字色,均保证深底可读) */
 export type Accent = { main: string; soft: string; text: string };
