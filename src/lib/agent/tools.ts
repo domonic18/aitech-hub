@@ -15,6 +15,7 @@ import { z } from "zod";
 import { PUBLISHED } from "../content/posts";
 import { submitFeedbackSchema } from "../feedback/feedback-schema";
 import { prisma } from "../db";
+import { ingestInsightSignal } from "../insight/ingest";
 import { AGENT_ASK_USER_TOOL, type AgentAskUserResume } from "./hitl";
 import { logger } from "../logger";
 import { searchAll } from "../search/unified-search";
@@ -205,6 +206,14 @@ export const submitFeedbackTool = tool(
         feedbackId: row.id.toString(),
         category,
         fromAgent: true,
+      });
+      // 洞察信号入池(M34 批①):反馈是「声音」介质强信号,fire-and-forget
+      void ingestInsightSignal({
+        source: "internal-feedback",
+        refId: row.id.toString(),
+        rawText: content,
+        signalAt: new Date(),
+        meta: { category },
       });
       return JSON.stringify({ ok: true, message: "反馈已提交,感谢你的反馈!" });
     } catch (e) {

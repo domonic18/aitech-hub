@@ -20,6 +20,7 @@ import { statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
+import { ingestInsightSignal } from "@/lib/insight/ingest";
 import { geoPostIdOf, type GeoSurface } from "./geo";
 import { touchPresence } from "./online";
 import {
@@ -45,6 +46,9 @@ export interface IngestInput {
   isAdmin: boolean;
   /** /search 页携带的查询词原文(可选;仅在 path 为 /search 且 counted 时记入排行) */
   q?: string;
+  /** /search 命中数(M34 批①,SearchHitMeta 经 beacon 透传):0=零结果(内容缺口
+   * 信号);缺省=未统计(hit_count 落 null,增强前旧数据同口径) */
+  hitCount?: number;
   /** 在线用户展示标识(可选):登录用户传用户名/邮箱,未登录不传——presence 心跳
    * 落 IP(M28 批②增量,标识解析在路由侧) */
   presenceLabel?: string;
@@ -109,12 +113,24 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
     .catch((e: unknown) => logger.warn({ event: "stats.visit_log.failed", error: String(e) }));
 
   // 搜索词排行(2026-10-06 需求):仅 /search 页 counted PV 记词;行级直插不经缓冲,
-  // 同样不 await 不阻断 beacon,失败仅告警(排行少计一次可接受,不阻塞主口径)
+  // 同样不 await 不阻断 beacon,失败仅告警(排行少计一次可接受,不阻塞主口径)。
+  // M34 批①:命中数随行落 stats_search_log(0=零结果),并链式入洞察信号池
+  // (ingestInsightSignal 自吞异常不 reject,refId=搜索词行 id,幂等)
   if ((path === "/search" || path === "/search/") && input.q) {
     const term = normalizeSearchTerm(input.q);
     if (term !== "") {
+      const hitCount = input.hitCount;
       prisma.statsSearchLog
-        .create({ data: { term } })
+        .create({ data: { term, ...(hitCount === undefined ? {} : { hitCount }) } })
+        .then((row) =>
+          ingestInsightSignal({
+            source: "internal-search",
+            refId: row.id.toString(),
+            rawText: term,
+            signalAt: row.createdAt,
+            meta: hitCount === undefined ? undefined : { hitCount },
+          }),
+        )
         .catch((e: unknown) => logger.warn({ event: "stats.search_log.failed", error: String(e) }));
     }
   }

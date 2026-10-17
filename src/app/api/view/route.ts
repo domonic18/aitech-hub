@@ -20,6 +20,7 @@ const bodySchema = z.object({
   path: z.string().min(1, "path 不能为空").max(500),
   referrer: z.string().max(2000).optional(),
   q: z.string().max(200).optional(), // /search 页搜索词原文;归一与截断在 ingestView 侧
+  hitCount: z.number().int().min(0).max(10_000).optional(), // /search 命中数(M34 批①,SearchHitMeta 透传)
 });
 
 /**
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     salt: env.AUTH_SECRET,
     isAdmin: session?.role === ADMIN_ROLE,
     q: parsed.data.q,
+    hitCount: parsed.data.hitCount,
     presenceLabel: presenceLabel || undefined,
   });
   // 204 无包络:beacon 场景客户端不消费响应体
