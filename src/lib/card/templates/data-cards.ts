@@ -3,7 +3,7 @@
  * 纯 CSS 可视化(条形=div 宽度百分比,台账=点线引导行),零图片依赖——
  * 「图文并茂」的第一性是版面可视化,不是贴图。数字 tabular-nums 对齐。
  */
-import { ACCENTS_DARK, pickAccent, rich, wrapDocDark } from "./shell";
+import { ACCENTS, pickAccent, rich, wrapDocDark } from "./shell";
 
 export type BarsData = {
   title?: string;
@@ -16,8 +16,8 @@ export type LedgerData = {
 };
 
 /** 横条量级卡:pct 为相对刻度 1~100(模板只表达相对大小,精确值看 value 文本) */
-export function barsHtml(d: BarsData): string {
-  const ac = pickAccent(ACCENTS_DARK, JSON.stringify(d));
+export function barsHtml(d: BarsData, seed?: string): string {
+  const ac = pickAccent(ACCENTS, seed ?? JSON.stringify(d));
   const head = d.title
     ? `<div class="head"><div class="badge">${rich(d.title)}</div>${
         d.unit ? `<span class="unit">刻度:${rich(d.unit)}</span>` : ""
@@ -45,8 +45,8 @@ export function barsHtml(d: BarsData): string {
 }
 
 /** 键值台账卡:规格参数/配置清单速览,点线引导行(杂志账本版式) */
-export function ledgerHtml(d: LedgerData): string {
-  const ac = pickAccent(ACCENTS_DARK, JSON.stringify(d));
+export function ledgerHtml(d: LedgerData, seed?: string): string {
+  const ac = pickAccent(ACCENTS, seed ?? JSON.stringify(d));
   const head = d.title ? `<div class="badge">${rich(d.title)}</div>` : "";
   const rows = d.rows
     .map(
