@@ -13,6 +13,7 @@ import { normalizePresetData } from "../card/normalize";
 import { renderPreset, CARD_PRESET_IDS } from "../card/presets";
 import { renderCardPng } from "../card/render";
 import { sanitizeCardHtml } from "../card/sanitize";
+import { ACCENTS, pickAccent } from "../card/templates/shell";
 import { logger } from "../logger";
 import { uploadMedia } from "../media/service";
 
@@ -33,14 +34,24 @@ export const renderCardTool = tool(
       return JSON.stringify({ ok: false, error: `使用 preset=${preset} 时必须提供 data 数据对象` });
 
     let doc: string;
+    // accent 按文章锚定:thread_id 作 seed,同篇恒同强调色组(跨篇轮换);
+    // 回传给 agent——自由 HTML 据此与本篇 preset 卡同组(此前模型只能盲猜)。
+    const accent = pickAccent(ACCENTS, config?.configurable?.thread_id ?? "preview");
     if (preset) {
-      // 漂移收编:弱模型会把数组包成 {"item":[…]} 单键对象(实证同 ask_user),
+      // 漂移收编:弱模型的实证形态(单键包裹/字符串化 JSON/嵌套数组/二元数组行)
       // 归一层先还原再校验;命中即记日志观测漂移率,未知形态仍 fail-closed。
       const n = normalizePresetData(data);
       if (n.normalized) logger.warn({ event: "agent.card_args_normalized", preset });
-      // accent 按文章锚定:thread_id 作 seed,同篇恒同强调色组(跨篇轮换)。
       const r = renderPreset(preset, n.data, config?.configurable?.thread_id);
-      if (!r.ok) return JSON.stringify({ ok: false, error: r.error });
+      if (!r.ok) {
+        // 无效数据落日志(截断):此前失败侧零日志,每次排障都要翻 checkpoint。
+        logger.warn({
+          event: "agent.card_preset_invalid",
+          preset,
+          data: JSON.stringify(n.data).slice(0, 800),
+        });
+        return JSON.stringify({ ok: false, error: r.error });
+      }
       doc = r.html;
     } else {
       const r = sanitizeCardHtml(html as string);
@@ -61,9 +72,11 @@ export const renderCardTool = tool(
         markdown_line: `![](${media.path})`,
         width: card.width,
         height: card.height,
+        accent,
         hint:
           "把 markdown_line 原样写入正文对应位置(独占一行,前后空行);落稿 save_topic_draft " +
-          "时把本次全部卡片 url 逐个列入 card_urls,正文漏嵌会被拒绝",
+          "时把本次全部卡片 url 逐个列入 card_urls,正文漏嵌会被拒绝;" +
+          "自由 HTML 的强调色直接取本返回的 accent(main/soft/text 三色),与同篇 preset 卡恒同组",
       });
     } catch (e) {
       return JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "渲染失败" });
@@ -72,13 +85,15 @@ export const renderCardTool = tool(
   {
     name: "render_card",
     description:
-      "把卡片渲染成图片并存入媒体库,返回 {url,width,height},用于正文配图(金句/要点/" +
+      "把卡片渲染成图片并存入媒体库,返回 {url,width,height,accent},用于正文配图(金句/要点/" +
       "数据/量级对比/台账/选型/步骤/全景/时间线/要素盘点/大图类内容优先做卡而非纯文字)。" +
       "内容形态→卡型的选型纪律以技能指南为准。两种用法二选一:① preset+data——内置模板" +
       "(11 卡型统一深空主题:quote|points|stats|bars|ledger|compare|steps|flow|" +
       "timeline|matrix|photo),只填数据,样式模板兜底,常规卡片一律" +
-      "优先(省额度);② html——自由 HTML(≤12000 字符,仅版式确需个性化时用),纪律:" +
-      "<style> 块+class 复用样式,禁止逐元素重复 inline style、禁止手写 base64 图片," +
+      "优先(省额度);② html——自由 HTML(≤12000 字符,仅版式确需个性化时用)。渲染端" +
+      "宽容:文档级标签(html/head/meta/title)自动摘除,写片段即可;深空底色与字体已内置," +
+      "强调色用返回的 accent(main/soft/text,与同篇 preset 卡恒同组);纪律:<style> 块+" +
+      "class 复用样式,禁止逐元素重复 inline style、禁止手写 base64 图片," +
       "引已有配图用站内路径 /wp-content/uploads/…(渲染时自动映射媒体卷)。" +
       "返回的 url 直接以 ![](url) 写进正文,不要向用户复述 HTML。",
     schema: z.object({
@@ -111,7 +126,10 @@ export const renderCardTool = tool(
         .string()
         .max(FREE_HTML_MAX_CHARS)
         .optional()
-        .describe("自由 HTML(与 preset 二选一;消毒不过会整体报错,按报错修正重试)"),
+        .describe(
+          "自由 HTML 片段(与 preset 二选一;html/head/meta/title 等文档级标签自动摘除," +
+            "深空底色/字体已内置,强调色用返回的 accent;消毒不过会整体报错,按报错修正重试)",
+        ),
       width: z
         .number()
         .int()
