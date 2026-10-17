@@ -16,6 +16,9 @@ vi.mock("../db", () => ({
 }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
+const getEnabledSkillByKey = vi.hoisted(() => vi.fn());
+vi.mock("../ai/agent-skills-admin", () => ({ getEnabledSkillByKey }));
+
 const getTopic = vi.hoisted(() => vi.fn());
 vi.mock("../topics/repo", () => ({
   getTopic,
@@ -147,6 +150,50 @@ describe("get_topic_brief", () => {
     expect((materials[0].note_md as string).length).toBe(3000); // BRIEF_NOTE_MAX 截断
     expect(out.cover_transfer_failed).toEqual([]);
     expect(out.recent_published_titles).toEqual(["旧文一"]);
+    // 未绑定技能:note 只含调度指引(机制,不含业务策略——策略住指南)
+    expect(out.skill).toBeNull();
+    expect(out.note).toContain("list_skills");
+    expect(out.note).toContain("get_skill");
+    expect(out.note).not.toContain("render_card");
+  });
+
+  it("brief 绑定技能预装(pinned):skill_key 命中 → 指南全文随载荷;停用 → null+人话", async () => {
+    const topicRow = {
+      id: BigInt(7),
+      title: "端侧拐点",
+      positioning: null,
+      items: [{}],
+      linkedPostId: null,
+      composedAt: null,
+      status: "collecting",
+      skillKey: "blogger-video",
+    };
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce(topicRow);
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    getEnabledSkillByKey.mockResolvedValueOnce({
+      key: "blogger-video",
+      name: "博主×视频",
+      scenario: "视频推荐短文",
+      guideMd: "指南全文…",
+    });
+    const out = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out.skill).toMatchObject({ key: "blogger-video", guide_md: "指南全文…" });
+    expect(out.note).toContain("自动装载");
+    expect(out.note).not.toContain("get_skill 取");
+
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce(topicRow);
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    getEnabledSkillByKey.mockResolvedValueOnce(null);
+    const out2 = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out2.skill).toBeNull();
+    expect(out2.note).toContain("不存在或已停用");
+    expect(out2.note).toContain("list_skills");
   });
 
   it("封面转存单条失败 → cover_path=null + 顶层失败清单(不阻塞 brief)", async () => {
@@ -270,7 +317,8 @@ describe("save_topic_draft", () => {
         topic_id: "7",
         title: "t",
         excerpt: "e",
-        content_md: "![x](https://evil.com/a.png)",
+        content_md: "![c](/wp-content/uploads/2026/10/c.png)\n\n![x](https://evil.com/a.png)",
+        card_urls: ["/wp-content/uploads/2026/10/c.png"],
       }),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("站内媒体路径") });
     expect(getTopic).not.toHaveBeenCalled();
@@ -283,7 +331,8 @@ describe("save_topic_draft", () => {
         topic_id: "7",
         title: "t",
         excerpt: "e",
-        content_md: "正文",
+        content_md: "![](/wp-content/uploads/2026/10/c.png)\n\n正文",
+        card_urls: ["/wp-content/uploads/2026/10/c.png"],
         cover_path: "/media/videos/b.mp4",
       }),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("cover_path") });
@@ -299,7 +348,8 @@ describe("save_topic_draft", () => {
       topic_id: "7",
       title: "t",
       excerpt: "e",
-      content_md: "正文",
+      content_md: "![](/wp-content/uploads/2026/10/c.png)\n\n正文",
+      card_urls: ["/wp-content/uploads/2026/10/c.png"],
     });
     expect(first).toMatchObject({ ok: false, needConfirm: true });
     expect(finalizeCompose).not.toHaveBeenCalled();
@@ -318,7 +368,8 @@ describe("save_topic_draft", () => {
       topic_id: "7",
       title: "t",
       excerpt: "e",
-      content_md: "正文",
+      content_md: "![](/wp-content/uploads/2026/10/c.png)\n\n正文",
+      card_urls: ["/wp-content/uploads/2026/10/c.png"],
       seo_title: "SEO",
       tags: ["端侧"],
       confirm: true,
@@ -342,7 +393,13 @@ describe("save_topic_draft", () => {
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
     getTopic.mockResolvedValueOnce({ ...topic, items: [] });
     await expect(
-      invoke(saveTopicDraftTool, { topic_id: "7", title: "t", excerpt: "e", content_md: "正文" }),
+      invoke(saveTopicDraftTool, {
+        topic_id: "7",
+        title: "t",
+        excerpt: "e",
+        content_md: "![](/wp-content/uploads/2026/10/c.png)\n\n正文",
+        card_urls: ["/wp-content/uploads/2026/10/c.png"],
+      }),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("素材") });
 
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
@@ -352,7 +409,13 @@ describe("save_topic_draft", () => {
     err.name = "PostAdminError";
     finalizeCompose.mockRejectedValueOnce(err);
     await expect(
-      invoke(saveTopicDraftTool, { topic_id: "7", title: "t", excerpt: "e", content_md: "正文" }),
+      invoke(saveTopicDraftTool, {
+        topic_id: "7",
+        title: "t",
+        excerpt: "e",
+        content_md: "![](/wp-content/uploads/2026/10/c.png)\n\n正文",
+        card_urls: ["/wp-content/uploads/2026/10/c.png"],
+      }),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("slug") });
   });
 });

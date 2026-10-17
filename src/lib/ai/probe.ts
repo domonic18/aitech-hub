@@ -16,6 +16,7 @@ import {
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_SUMMARIZE,
+  AI_PURPOSE_WRITING,
   ASR_PROTOCOL_MINIMAX,
   ASR_PROTOCOL_OPENAI,
 } from "./constants";
@@ -254,7 +255,7 @@ async function probeEmbedding(input: ProbeInput, baseUrl: string): Promise<Probe
   }
 }
 
-/** 用途→探针种类:文本类(interpret/summarize/search)共享 chat;cover→images;
+/** 用途→探针种类:文本类(interpret/summarize/search/writing)共享 chat;cover→images;
  * embedding→embeddings;未绑用途回退 chat(M8 旧语义) */
 function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "embeddings"> {
   const has = (p: string): boolean => purposes?.includes(p) ?? false;
@@ -264,7 +265,8 @@ function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "
     purposes.length === 0 ||
     has(AI_PURPOSE_INTERPRET) ||
     has(AI_PURPOSE_SUMMARIZE) ||
-    has(AI_PURPOSE_SEARCH)
+    has(AI_PURPOSE_SEARCH) ||
+    has(AI_PURPOSE_WRITING)
   ) {
     kinds.push("chat");
   }

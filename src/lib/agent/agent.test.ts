@@ -26,6 +26,9 @@ vi.mock("./topic-tools", () => ({
     { name: "save_topic_draft" },
   ],
 }));
+vi.mock("./write-article-tool", () => ({
+  WRITE_ARTICLE_TOOLS: [{ name: "write_article" }],
+}));
 vi.mock("./skill-tools", () => ({
   SKILL_TOOLS: [{ name: "list_skills" }, { name: "get_skill" }],
 }));
@@ -55,7 +58,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
     }
   });
 
-  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件、封面 HITL、技能两件、预算与卡片工具", () => {
+  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件、写作单任务、封面 HITL、技能两件、预算与卡片工具", () => {
     expect(agentToolsFor("admin").map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
@@ -69,6 +72,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "transfer_video_cover",
       "generate_cover_candidates",
       "save_topic_draft",
+      "write_article",
       "generate_post_cover",
       "list_skills",
       "get_skill",
@@ -97,6 +101,17 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("needConfirm");
   });
 
+  it("写作单任务捆绑(2026-10-17):第 3 步 write_article 独立模型起草,初稿后自评审嵌卡再落库", () => {
+    const p = agentSystemPrompt("admin");
+    expect(p).toContain("write_article");
+    expect(p).toContain("独立模型");
+    expect(p).toContain("draft_md");
+    // skill_key 传工具侧自动装载指南,不由编排模型转述指南全文
+    expect(p).toContain("工具侧自动装载指南");
+    // 正文交付纪律不变:终稿只经 content_md 交付
+    expect(p).toContain("严禁把正文整篇输出到对话流");
+  });
+
   it("配图链提示(批⑥):cover_path 直引 + 生图插图 + transfer 重试 + 卡图不重复", () => {
     const p = agentSystemPrompt("admin");
     // 分配面:brief 已转存站内路径,正文直引;严禁编造外链
@@ -109,6 +124,28 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     // 张数引导属 skill 风格,已迁种子指南)
     expect(p).toContain("文首推荐卡由系统自动带图");
     expect(p).toContain("正文开头不要再贴同一张");
+  });
+
+  it("卡片可视化纪律(2026-10-17 反馈):render_card 唯一实现 + 合成卡闸门 + 改稿出卡", () => {
+    const p = agentSystemPrompt("admin");
+    // 唯一实现:render_card PNG + ![](url);内联 HTML 卡是 M36 已退役旧形态
+    expect(p).toContain("卡片可视化纪律");
+    expect(p).toContain("唯一正确实现");
+    expect(p).toContain("内联样式 HTML");
+    expect(p).toContain("已退役");
+    // 可视化优先原则(批⑤修订):不硬编码张数/卡型路由,策略归指南
+    expect(p).toContain("替代大段纯文字表述");
+    expect(p).toContain("能综合为一张卡呈现就一张");
+    expect(p).toContain("以技能指南为准");
+    expect(p).not.toContain("全景→flow"); // 卡型路由表已撤出提示词(L2 归指南)
+    expect(p).not.toContain("每篇 3~5 张");
+    // 合成闸门:内容级硬闸(card_urls 漏嵌被拒);编辑上下文改稿 = 出卡替换
+    expect(p).toContain("card_urls");
+    expect(p).toContain("漏嵌会被工具拒绝");
+    expect(p).toContain("以卡图替换对应文字段");
+    // 渲染了但没嵌 = 白做(2026-10-17 第二轮反馈)
+    expect(p).toContain("markdown_line");
+    expect(p).toContain("渲染了卡但正文没嵌");
   });
 
   it("技能调度提示(M30 批②):写前必取 skill + skill_key 直取 + 无命中说明 + 自评审闭环仍在", () => {

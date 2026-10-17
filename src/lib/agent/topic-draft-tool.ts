@@ -27,9 +27,45 @@ const IMG_RULE_HINT =
   "正文图片只可引用站内媒体路径(/wp-content/uploads/ 开头,来自 " +
   "transfer_video_cover / generate_cover_candidates 的返回),不要编造外链图片";
 
+/**
+ * 卡图嵌入自洽校验(纯函数):只审计「清单对得上」——card_urls 列出的每张
+ * 卡必须在正文中嵌了图;不规定该有几张卡(呈现策略归技能指南与自评审)。
+ * 2026-10-17 验收反馈:模型渲染了卡但起草正文时漏嵌入,媒体库有图正文无图。
+ */
+export function checkCardEmbeds(
+  contentMd: string,
+  cardUrls: string[],
+): { ok: true } | { ok: false; error: string } {
+  const missing = cardUrls.filter((u) => !contentMd.includes(u));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error:
+        `正文缺少 ${missing.length} 张已渲染卡片图(渲染了但没嵌入):` +
+        `${missing
+          .slice(0, 5)
+          .map((u) => `![](${u})`)
+          .join("、")};` +
+        "请把这些 markdown 行原样插入正文对应位置(独占一行,前后空行)后重新提交",
+    };
+  }
+  return { ok: true };
+}
+
 export const saveTopicDraftTool = tool(
   async (
-    { topic_id, title, excerpt, content_md, cover_path, seo_title, seo_description, tags, confirm },
+    {
+      topic_id,
+      title,
+      excerpt,
+      content_md,
+      card_urls,
+      cover_path,
+      seo_title,
+      seo_description,
+      tags,
+      confirm,
+    },
     config,
   ) => {
     if (!(await assertAdminThread(config?.configurable?.thread_id)))
@@ -41,6 +77,8 @@ export const saveTopicDraftTool = tool(
         error: `${IMG_RULE_HINT};发现无效引用:${badRefs.slice(0, 5).join("、")}`,
       });
     }
+    const cards = checkCardEmbeds(content_md, card_urls);
+    if (!cards.ok) return JSON.stringify({ ok: false, error: cards.error });
     if (cover_path !== undefined && !isUploadsPath(cover_path)) {
       return JSON.stringify({ ok: false, error: `cover_path ${IMG_RULE_HINT}` });
     }
@@ -113,9 +151,10 @@ export const saveTopicDraftTool = tool(
   {
     name: "save_topic_draft",
     description:
-      "把写好的专题文章落库为文章管理草稿并锚定到专题(标题/摘要/正文/封面/SEO/标签" +
-      "一次交付;已有关联文档时覆盖)。返回 post_url 后向管理员汇报文档链接。规则:" +
-      `${IMG_RULE_HINT};返回 needConfirm 时必须先用 ask_user 征得管理员确认,再带 ` +
+      "把写好的专题文章落库为文章管理草稿并锚定到专题(标题/摘要/正文/卡片url清单/" +
+      "封面/SEO/标签一次交付;已有关联文档时覆盖)。返回 post_url 后向管理员汇报文档链接。" +
+      `规则:${IMG_RULE_HINT};card_urls 里的每张卡图都必须已嵌入正文,漏嵌会被拒绝;` +
+      "返回 needConfirm 时必须先用 ask_user 征得管理员确认,再带 " +
       "confirm=true 重新调用;正文用 markdown,系统会在文首自动注入视频推荐卡。",
     schema: z.object({
       topic_id: z
@@ -138,6 +177,13 @@ export const saveTopicDraftTool = tool(
         .min(1)
         .max(POST_LIMITS.contentMd)
         .describe("正文全文(markdown;800~1200 字推荐短文)"),
+      card_urls: z
+        .array(z.string().trim().min(1).max(500))
+        .max(12)
+        .describe(
+          "本次写作过程中 render_card 返回的全部图片 url,逐个列出;没做卡则传空数组;" +
+            "列出的每条都必须已以 markdown 图片语法嵌入正文,漏嵌会被拒绝",
+        ),
       cover_path: z
         .string()
         .trim()

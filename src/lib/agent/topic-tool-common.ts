@@ -9,6 +9,10 @@ import { adminThreadDeny } from "./admin-thread";
 /** 纵深防御收口(M27 批⑧-b 上提 admin-thread 共用;deny 固定 topic 域) */
 export const denyPayload = (threadId: unknown): string => adminThreadDeny(threadId, "topic");
 
+/** brief/写作底料里单条解读笔记进上下文的截断宽度(素材多条叠加,单条给足不失真;
+ * topic-tools 与 write-article-tool 同用) */
+export const BRIEF_NOTE_MAX = 3000;
+
 /** TopicError(不存在等)归人话;其余原样上抛由 run 层收束 */
 export function humanizeTopicError(e: unknown): string | null {
   return e instanceof TopicError ? e.message : null;

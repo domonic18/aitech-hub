@@ -5,6 +5,9 @@
  * getAgentLimitsAll 读档后传入,本模块不再硬编码;默认与派生见
  * config/agent-limits)。台账逐 run 落 ai_usage_log(role=search_agent);
  * 会话行 touch+tokens 累计;客户端断开经 AbortSignal 中止 agent,已产 usage 照记。
+ * 死端检测(2026-10-17):模型轮被 max_tokens 截断且零文本零工具调用时 LangGraph
+ * 静默收束(UI 工具卡恒「运行中」),此处按 stop 结算标记 deadEndReason,
+ * 路由层补 error 帧给人话。
  */
 import { HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
@@ -45,6 +48,33 @@ function collectToolCallIds(updates: unknown, into: Set<string>): void {
   }
 }
 
+/** 截断型 stop(anthropic stop_reason=max_tokens / openai finish_reason=length) */
+const TRUNCATION_STOPS = new Set(["max_tokens", "length"]);
+
+/** chunk 是否携带非空文本(思考块不算——死端判据=零可见产出) */
+function chunkHasText(content: unknown): boolean {
+  if (typeof content === "string") return content.trim() !== "";
+  if (Array.isArray(content)) {
+    return content.some(
+      (c) =>
+        (c as { type?: unknown })?.type === "text" &&
+        typeof (c as { text?: unknown }).text === "string" &&
+        (c as { text: string }).text.trim() !== "",
+    );
+  }
+  return false;
+}
+
+/** chunk 的截断 stop 标记(双协议容忍读取;缺省 null) */
+function chunkStopReason(chunk: unknown): string | null {
+  const meta = (
+    chunk as { response_metadata?: { stop_reason?: unknown; finish_reason?: unknown } } | null
+  )?.response_metadata;
+  if (typeof meta?.stop_reason === "string") return meta.stop_reason;
+  if (typeof meta?.finish_reason === "string") return meta.finish_reason;
+  return null;
+}
+
 export interface AgentRunParams {
   threadId: string;
   /** 新提问文本(resume 分支为 null,两者必居其一,路由层把关) */
@@ -70,6 +100,9 @@ export interface AgentRunOutcome {
   toolCalls: number;
   /** 超限收束时的人话说明(正常为 null) */
   truncatedReason: string | null;
+  /** 死端说明(2026-10-17:模型轮被 max_tokens 截断且零产出——LangGraph 静默
+   * 收束、SSE 无终态帧、UI 工具卡恒「运行中」的根因;非 null 即路由层补 error 帧) */
+  deadEndReason: string | null;
   /** 本次命中的绑定(台账 modelId/modelKey 直取,免二次解析) */
   resolved: ResolvedAiModel | null;
 }
@@ -93,9 +126,13 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
     tokensOut: 0,
     toolCalls: 0,
     truncatedReason: null,
+    deadEndReason: null,
     resolved,
   };
   const seenToolCallIds = new Set<string>();
+  // 死端检测的「当前模型轮」累加器:stop 到达即结算一次(每轮恰一个收尾 stop)
+  let turnHasText = false;
+  let turnHasToolCall = false;
 
   onFrame(encodeWireEvent("metadata", { run_id: runId, thread_id: threadId }));
 
@@ -125,9 +162,26 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
       }
       for (const tc of (chunk as { tool_call_chunks?: { id?: string }[] } | null)
         ?.tool_call_chunks ?? []) {
-        if (tc.id) seenToolCallIds.add(tc.id);
+        if (tc.id) {
+          seenToolCallIds.add(tc.id);
+          turnHasToolCall = true;
+        }
       }
+      if (chunkHasText((chunk as { content?: unknown } | null)?.content)) turnHasText = true;
       outcome.toolCalls = seenToolCallIds.size;
+      // 死端判定(stop 到达即结算):截断型收尾 + 零文本 + 零工具调用 = 模型把
+      // 输出预算烧在思考上、LangGraph 静默收束——flag 出去由路由层补 error 帧
+      const stop = chunkStopReason(chunk);
+      if (stop !== null) {
+        if (TRUNCATION_STOPS.has(stop) && !turnHasText && !turnHasToolCall) {
+          outcome.deadEndReason =
+            "模型本轮输出被 max_tokens 截断(思考耗尽了输出预算),没有产出任何内容。" +
+            "请到 AI 配置 → 模型条目,调大该模型的扩展参数 max_tokens 后重试";
+          logger.warn({ event: "agent.run_dead_end", threadId, stop });
+        }
+        turnHasText = false;
+        turnHasToolCall = false;
+      }
       // 超身份档 tokens / 工具调用上限:主动收束(护栏非计费;检在发前,超限帧不外泄)
       if (outcome.tokensIn + outcome.tokensOut > limits.tokens) {
         outcome.truncatedReason = "本会话用量已达上限,请新建会话继续";
@@ -166,7 +220,7 @@ export async function recordAgentRun(params: {
     tokensIn: outcome.tokensIn,
     tokensOut: outcome.tokensOut,
     durationMs,
-    status: outcome.truncatedReason ? "degraded" : "ok",
+    status: outcome.truncatedReason ? "degraded" : outcome.deadEndReason ? "failed" : "ok",
     sessionId,
     userId: params.userId,
   });

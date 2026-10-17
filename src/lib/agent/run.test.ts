@@ -273,3 +273,104 @@ describe("runAgentTurn", () => {
     expect(outcome.truncatedReason).toBeNull();
   });
 });
+
+describe("死端检测(max_tokens 截断零产出,2026-10-17)", () => {
+  it("思考型空轮 stop=max_tokens → deadEndReason 人话(前轮工具调用不串味)", async () => {
+    const framesIn: [string, unknown][] = [
+      // 第 1 轮:正常工具调用,stop=tool_use(应结算并复位)
+      [
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "",
+            tool_call_chunks: [{ name: "write_todos", args: "{}", id: "call-1", index: 0 }],
+            response_metadata: { stop_reason: "tool_use" },
+          }),
+          {},
+        ],
+      ],
+      // 第 2 轮:纯思考(零文本零工具调用),stop=max_tokens → 死端
+      ["messages", [new AIMessageChunk({ content: "", response_metadata: {} }), {}]],
+      [
+        "messages",
+        [new AIMessageChunk({ content: "", response_metadata: { stop_reason: "max_tokens" } }), {}],
+      ],
+    ];
+    getAgentGraphMock.mockResolvedValue(fakeGraph(framesIn));
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "admin",
+      limits: runLimits("admin"),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    expect(outcome.deadEndReason).toContain("max_tokens 截断");
+    expect(outcome.deadEndReason).toContain("max_tokens");
+    expect(outcome.truncatedReason).toBeNull();
+    expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("有文本或有工具调用的截断轮不误报;正常 end_turn 不触发", async () => {
+    const framesIn: [string, unknown][] = [
+      // 截断但有部分文本 → 不算死端(UI 有可见产出)
+      [
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "写到一半被截",
+            response_metadata: { stop_reason: "max_tokens" },
+          }),
+          {},
+        ],
+      ],
+      // 工具调用轮截断 → 不算死端(参数修复中间件兜)
+      [
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "",
+            tool_call_chunks: [{ name: "search_site", args: "{}", id: "call-9", index: 0 }],
+            response_metadata: { stop_reason: "max_tokens" },
+          }),
+          {},
+        ],
+      ],
+      // 正常收尾
+      [
+        "messages",
+        [new AIMessageChunk({ content: "完", response_metadata: { stop_reason: "end_turn" } }), {}],
+      ],
+    ];
+    getAgentGraphMock.mockResolvedValue(fakeGraph(framesIn));
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    expect(outcome.deadEndReason).toBeNull();
+  });
+
+  it("openai 口径 finish_reason=length 同样识别", async () => {
+    const framesIn: [string, unknown][] = [
+      [
+        "messages",
+        [new AIMessageChunk({ content: "", response_metadata: { finish_reason: "length" } }), {}],
+      ],
+    ];
+    getAgentGraphMock.mockResolvedValue(fakeGraph(framesIn));
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    expect(outcome.deadEndReason).toContain("max_tokens");
+  });
+});

@@ -123,6 +123,57 @@ export function extractReply(
   return { text, usage: usageOf(b.usage) };
 }
 
+/**
+ * 纯文本 chat(write_article 长文起草通道,2026-10-17):与 chatJson 双协议
+ * 同源,但不带 response_format(文章是 markdown 正文,强制 JSON 会毁输出);
+ * 输出预算 maxTokens 由调用方自 extraParams 决策后显式传入。
+ */
+export async function chatText(
+  input: ChatJsonInput,
+  onUsage?: (u: ChatUsage) => void,
+): Promise<string> {
+  if (input.protocol !== AI_PROTOCOL_OPENAI && input.protocol !== AI_PROTOCOL_ANTHROPIC) {
+    throw new AiClientError("unsupported", `LLM 协议不支持(${input.protocol})`);
+  }
+  if (!input.baseUrl) throw new AiClientError("unsupported", "LLM Base URL 未配置");
+
+  if (input.protocol === AI_PROTOCOL_ANTHROPIC) {
+    const reply = await post(
+      `${input.baseUrl}/v1/messages`,
+      { "x-api-key": input.apiKey ?? "", "anthropic-version": "2023-06-01" },
+      JSON.stringify({
+        model: input.modelId,
+        max_tokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
+        system: input.system,
+        messages: [{ role: "user", content: input.user }],
+      }),
+      input.timeoutSec,
+    );
+    if (reply.status < 200 || reply.status >= 300) throw httpError(reply.status, reply.text);
+    const r = extractReply(AI_PROTOCOL_ANTHROPIC, reply.text);
+    onUsage?.(r.usage);
+    return r.text;
+  }
+
+  const reply = await post(
+    `${input.baseUrl}/chat/completions`,
+    input.apiKey ? { authorization: `Bearer ${input.apiKey}` } : {},
+    JSON.stringify({
+      model: input.modelId,
+      max_tokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
+      messages: [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ],
+    }),
+    input.timeoutSec,
+  );
+  if (reply.status < 200 || reply.status >= 300) throw httpError(reply.status, reply.text);
+  const r = extractReply(AI_PROTOCOL_OPENAI, reply.text);
+  onUsage?.(r.usage);
+  return r.text;
+}
+
 export async function chatJson(
   input: ChatJsonInput,
   /** 批⑦ 用量台账:成功响应的 usage 回调(重试场景每次成功都回调,消费方自行取舍) */

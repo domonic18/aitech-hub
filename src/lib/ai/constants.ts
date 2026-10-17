@@ -19,7 +19,11 @@ export const AI_PURPOSE_SUMMARIZE = "summarize";
 export const AI_PURPOSE_SEARCH = "search";
 export const AI_PURPOSE_COVER = "cover";
 export const AI_PURPOSE_EMBEDDING = "embedding";
-/** 模型用途 = 任务角色(五角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化)。
+/** 文章写作(2026-10-17 验收反馈:撰写文章捆绑为独立单任务 write_article,
+ * 与编排模型解耦——起草可绑长输出模型,编排照旧走 search 绑定) */
+export const AI_PURPOSE_WRITING = "writing";
+/** 模型用途 = 任务角色(六角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
+ * writing=专题文章起草单任务)。
  * compose(专题合成)已退役(M27 批⑤):合成改走会话 agent(search 绑定),
  * 历史台账 role=compose 行保留读侧回退原值展示 */
 export const AI_MODEL_PURPOSES = [
@@ -28,6 +32,7 @@ export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_COVER,
   AI_PURPOSE_EMBEDDING,
+  AI_PURPOSE_WRITING,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -58,6 +63,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "语义向量",
     icon: "i-aim",
     sub: "混合检索:三域内容 embedding + 查询向量化(pgvector 余弦召回)",
+  },
+  [AI_PURPOSE_WRITING]: {
+    label: "文章写作",
+    icon: "i-edit",
+    sub: "专题文章正文起草(write_article 单任务;与编排模型解耦,可绑长输出模型)",
   },
 };
 

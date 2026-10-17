@@ -51,9 +51,12 @@ export const renderCardTool = tool(
       return JSON.stringify({
         ok: true,
         url: media.path,
+        markdown_line: `![](${media.path})`,
         width: card.width,
         height: card.height,
-        hint: "在正文对应位置以 ![](url) 嵌入;站内原生渲染,公众号同步自动转存,无需其它处理",
+        hint:
+          "把 markdown_line 原样写入正文对应位置(独占一行,前后空行);落稿 save_topic_draft " +
+          "时把本次全部卡片 url 逐个列入 card_urls,正文漏嵌会被拒绝",
       });
     } catch (e) {
       return JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "渲染失败" });
