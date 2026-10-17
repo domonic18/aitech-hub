@@ -448,6 +448,7 @@ model StatsVisitLog {
 model StatsSearchLog {
   id        BigInt   @id @default(autoincrement())
   term      String   @db.VarChar(100) // 用户输入原文(trim + 空白折叠后截 100 字,不折叠大小写)
+  hitCount  Int?     @map("hit_count") // 命中数(M34 批① 增强):null=增强前旧数据;0=零结果(内容缺口信号,洞察中心消费)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([createdAt(sort: Desc)], map: "idx_stats_search_log_created_at")
@@ -1063,6 +1064,87 @@ model DiscoveryCandidate {
   @@index([status, type], map: "idx_discovery_candidate_status_type")
   @@index([round], map: "idx_discovery_candidate_round")
   @@map("discovery_candidate")
+}
+
+// ── insight_(洞察中心域,M34,方案锚 docs/plan/insight-plan.md)──────────────
+// 五介质痕迹模型(方案 §2):钱/时间/声音/搜索/AI 记录,真需求 ≥2 介质留痕。
+
+/// 洞察信号(批① 只入内部零采集源:搜索词/agent 问句/评论/feedback/电报 AI
+/// 产物;外部源批③④ 接入)。写侧唯一入口 lib/insight/ingest(fire-and-forget,
+/// 幂等键 (source, ref_id) 撞唯一即跳过,回填与实时入池可并发)。domain 为
+/// 跨域伏笔(远期 AI invest 财经打通/分布式爬虫多领域,方案 §1),批① 恒 tech。
+/// embedding 批② 回填,读写 raw SQL(SearchEmbedding 同款,client 不暴露)。
+model InsightSignal {
+  id             BigInt                       @id @default(autoincrement())
+  source         String                       @db.VarChar(30) // internal-search/internal-agent/internal-comment/internal-feedback/telegram-ai(批③起扩 hotboard-* 等)
+  domain         String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔)
+  medium         String                       @db.VarChar(12) // money/time/voice/search/ai-record(五介质)
+  refId          String                       @map("ref_id") @db.VarChar(120) // 溯源锚:源行 id 文本/会话 id(幂等键半)
+  rawText        String                       @map("raw_text") @db.Text // 原文(截 4000)
+  normalizedText String                       @map("normalized_text") @db.Text // 归一后(trim+空白折叠,截 2000;聚类/向量输入)
+  meta           Json? // 源相关:{hitCount,postId,category,title,topic...}
+  embedding      Unsupported("vector(1024)")? // 批② 回填;raw SQL 读写
+  signalAt       DateTime                     @map("signal_at") @db.Timestamptz(6) // 信号发生时间(非采集时间)
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  members InsightClusterMember[]
+
+  @@unique([source, refId], map: "uq_insight_signal_source_ref")
+  @@index([signalAt(sort: Desc)], map: "idx_insight_signal_recent")
+  @@index([source, signalAt(sort: Desc)], map: "idx_insight_signal_source_recent")
+  @@map("insight_signal")
+}
+
+/// 痛点/热点簇(批② 聚类产物;批① 一次建齐免二次迁移,不写入)。
+/// media=留痕介质集合(机会评分卡输入,方案 §2);status 流转纪律批② 实测定参。
+model InsightCluster {
+  id          BigInt   @id @default(autoincrement())
+  kind        String   @db.VarChar(8) // hot | pain
+  domain      String   @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
+  label       String   @db.VarChar(200) // LLM 命名(人话)
+  summary     String?  @db.VarChar(1000) // LLM 一句话概括
+  keywords    Json? // string[]
+  media       Json? // string[] 留痕介质集合
+  score       Float? // 最新机会分
+  status      String   @default("active") @db.VarChar(10) // active | fading | closed
+  firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  peakAt      DateTime? @map("peak_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members   InsightClusterMember[]
+  snapshots InsightSnapshot[]
+
+  @@index([kind, status], map: "idx_insight_cluster_kind_status")
+  @@map("insight_cluster")
+}
+
+/// 簇-信号归属(同域 FK Cascade:信号/簇删除自动收尸,不靠应用层)
+model InsightClusterMember {
+  id        BigInt         @id @default(autoincrement())
+  clusterId BigInt         @map("cluster_id")
+  signalId  BigInt         @map("signal_id")
+  weight    Float?
+  cluster   InsightCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  signal    InsightSignal  @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, signalId], map: "uq_insight_cluster_member")
+  @@index([signalId], map: "idx_insight_cluster_member_signal")
+  @@map("insight_cluster_member")
+}
+
+/// 簇每日快照(趋势 sparkline/异动告警输入,批② 写入)
+model InsightSnapshot {
+  id        BigInt         @id @default(autoincrement())
+  clusterId BigInt         @map("cluster_id")
+  date      DateTime       @db.Date
+  score     Float
+  rank      Int?
+  cluster   InsightCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, date], map: "uq_insight_snapshot_cluster_date")
+  @@map("insight_snapshot")
 }
 
 // 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
