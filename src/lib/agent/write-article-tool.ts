@@ -1,11 +1,13 @@
 /**
  * write_article·撰写文章单任务(2026-10-17 验收反馈):起草从编排模型剥离,
  * 捆绑为一只自足工具——编排 agent 只传选题方向/提纲/技能 key,工具内部装配
- * 底料(getTopic + 素材块 + 封面转存 + 指南全文)喂「文章写作(writing)」
- * 独立绑定的模型,长输出预算由该模型台账 extraParams.max_tokens 决策(零
- * hardcode:未配置即人话报错提示补配,不静默按小预算截断)。返回初稿后编排
- * 侧照旧自评审/render_card 补卡/save_topic_draft 落库;用量记 ai_usage_log
- * role=writing。
+ * 底料(getTopic + 素材块 + 指南全文)喂「文章写作(writing)」独立绑定的模型,
+ * 长输出预算由该模型台账 extraParams.max_tokens 决策(零 hardcode:未配置即
+ * 人话报错提示补配,不静默按小预算截断)。返回初稿后编排侧照旧自评审/
+ * render_card 补卡/save_topic_draft 落库;用量记 ai_usage_log role=writing。
+ * 封面纪律(2026-10-17 呈现协调性反馈):视频封面不进写手底料——文首推荐卡
+ * 由 save_topic_draft 落库侧确定性注入(finalizeCompose),正文配图=卡图+
+ * generate_cover_candidates 生成图,封面图无正文用途,喂进去只会被插错位置。
  */
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -17,25 +19,21 @@ import { readExtraMaxTokens } from "../ai/extra-params";
 import { chatText } from "../ai/llm-client";
 import { resolveAiModel } from "../ai/resolver";
 import { recordAiUsage } from "../ai/usage-log";
-import {
-  buildComposeBlocks,
-  listRecentPublishedTitles,
-  transferVideoCovers,
-} from "../topics/compose";
+import { buildComposeBlocks, listRecentPublishedTitles } from "../topics/compose";
 import { getTopic, TopicError } from "../topics/repo";
 import { logger } from "../logger";
 
 import { assertAdminThread } from "./admin-thread";
 import { BRIEF_NOTE_MAX, denyPayload, humanizeTopicError } from "./topic-tool-common";
 
-/** 写作底料里单条素材的字段形状(供 prompt 渲染与单测) */
+/** 写作底料里单条素材的字段形状(供 prompt 渲染与单测;无封面字段——封面
+ * 只服务系统注入的文首推荐卡,进底料只会被写手插错位置) */
 export interface WriterMaterial {
   kind: string;
   title: string;
   blogger: string | null;
   note: string | null;
   videoUrl: string | null;
-  coverPath: string | null;
   aiNote: string | null;
   aiSummary: string | null;
   aiPoints: string[];
@@ -57,9 +55,8 @@ export interface WriterPromptSource {
 const OUTPUT_RULES = `输出纪律:
 - 只输出正文 markdown 全文,不要任何解释、前言、后记或代码围栏
 - 事实与数据全部来自素材,严禁编造素材里没有的内容
-- 素材给出的站内图片路径按需以 ![](路径) 独占一行(前后空行)嵌入对应位置,严禁编造站外图片链接
+- 正文不插入任何图片、不留图片/卡片占位符——文首视频推荐卡与卡图由后续流程渲染注入
 - 视频类素材在对应小节给出视频原地址链接
-- 卡片图由后续流程渲染嵌入,不要留任何卡片占位符
 - 全文简体中文(专有名词保留原文)`;
 
 /** 写作 prompt 装配(纯函数,单测锚点;结构/口吻/字数策略全部住技能指南,
@@ -82,7 +79,6 @@ export function buildWriterPrompt(src: WriterPromptSource): { system: string; us
             : null,
         m.excerpt ? `   文章节选:${m.excerpt}` : null,
         m.contentSample ? `   内容取样:${m.contentSample}` : null,
-        m.coverPath ? `   视频封面(站内路径,可作正文配图):${m.coverPath}` : null,
       ];
       return lines.filter((l): l is string => l !== null).join("\n");
     })
@@ -127,21 +123,12 @@ export const writeArticleTool = tool(
         blogger: b.blogger,
         note: b.note,
         videoUrl: b.videoUrl,
-        coverPath: null,
         aiNote: b.aiNote,
         aiSummary: b.aiSummary,
         aiPoints: b.aiPoints,
         excerpt: b.excerpt,
         contentSample: b.contentSample,
       }));
-      // 封面转存(sha1 去重幂等,与 get_topic_brief 同源):站内路径进底料供正文直引
-      const coverAssets = await transferVideoCovers(blocks);
-      let coverIdx = 0;
-      blocks.forEach((b, i) => {
-        if (b.kind === "telegram" && b.coverUrl !== null) {
-          materials[i]!.coverPath = coverAssets[coverIdx++]?.coverPath ?? null;
-        }
-      });
       const model = await resolveAiModel(AI_PURPOSE_WRITING);
       if (!model) {
         return JSON.stringify({

@@ -15,6 +15,7 @@ import {
   finalizeCompose,
   isPostAdminError,
   needsRecomposeConfirm,
+  transferVideoCovers,
 } from "../topics/compose";
 import { getTopic } from "../topics/repo";
 import { findNonSiteImageRefs, isUploadsPath } from "../media/refs";
@@ -25,12 +26,15 @@ import { denyPayload, humanizeTopicError } from "./topic-tool-common";
 
 const IMG_RULE_HINT =
   "正文图片只可引用站内媒体路径(/wp-content/uploads/ 开头,来自 " +
-  "transfer_video_cover / generate_cover_candidates 的返回),不要编造外链图片";
+  "transfer_video_cover / generate_cover_candidates 的返回),不要编造外链图片;" +
+  "视频封面禁止入正文(文首推荐卡由系统自动注入)";
 
 /**
  * 卡图嵌入自洽校验(纯函数):只审计「清单对得上」——card_urls 列出的每张
  * 卡必须在正文中嵌了图;不规定该有几张卡(呈现策略归技能指南与自评审)。
  * 2026-10-17 验收反馈:模型渲染了卡但起草正文时漏嵌入,媒体库有图正文无图。
+ * 同图重复校验(2026-10-17 呈现协调性反馈):任一站内图片路径在正文出现
+ * >1 次即拒(封面重复插等协调性硬伤机器可判,策略归指南)。
  */
 export function checkCardEmbeds(
   contentMd: string,
@@ -49,7 +53,45 @@ export function checkCardEmbeds(
         "请把这些 markdown 行原样插入正文对应位置(独占一行,前后空行)后重新提交",
     };
   }
+  const counts = new Map<string, number>();
+  for (const m of contentMd.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)) {
+    counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+  }
+  const duplicated = [...counts.entries()].filter(([, n]) => n > 1);
+  if (duplicated.length > 0) {
+    return {
+      ok: false,
+      error:
+        "同一图片在正文重复嵌入(每张图全文至多出现一次):" +
+        duplicated
+          .slice(0, 5)
+          .map(([u, n]) => `${u}(${String(n)} 次)`)
+          .join("、") +
+        ";请删除多余重复嵌入后重新提交",
+    };
+  }
   return { ok: true };
+}
+
+/**
+ * 封面误用校验(纯函数):视频封面只服务系统注入的文首推荐卡
+ * (finalizeCompose 落库侧确定性 prepend),正文一律不得出现封面路径——
+ * 2026-10-17 呈现协调性反馈:写手把竖版封面当正文配图插在小节间,与横版
+ * 卡片混排失调。此校验在注入前跑,agent 交付的 content_md 不含封面路径。
+ */
+export function checkCoverMisuse(
+  contentMd: string,
+  coverPaths: string[],
+): { ok: true } | { ok: false; error: string } {
+  const hit = coverPaths.find((p) => contentMd.includes(p));
+  if (hit === undefined) return { ok: true };
+  return {
+    ok: false,
+    error:
+      `正文使用了视频封面图(${hit})——封面由系统自动注入文首推荐卡,` +
+      "正文配图只用 render_card 卡图与 generate_cover_candidates 生成图," +
+      "请删除该封面引用后重新提交",
+  };
 }
 
 export const saveTopicDraftTool = tool(
@@ -87,6 +129,14 @@ export const saveTopicDraftTool = tool(
       if (topic.items.length === 0) {
         return JSON.stringify({ ok: false, error: "专题还没有素材,无法成文——先挂载解读/文章" });
       }
+      // 封面误用校验(2026-10-17):转存走 sha1 去重幂等(brief 已转过则零外链
+      // GET);blocks 就地取材,finalizeCompose 复用同一份
+      const blocks = await buildComposeBlocks(topic);
+      const coverPaths = (await transferVideoCovers(blocks))
+        .map((a) => a.coverPath)
+        .filter((p): p is string => p !== null);
+      const cover = checkCoverMisuse(content_md, coverPaths);
+      if (!cover.ok) return JSON.stringify({ ok: false, error: cover.error });
       const linked =
         topic.linkedPostId !== null
           ? await prisma.post.findUnique({
@@ -116,7 +166,7 @@ export const saveTopicDraftTool = tool(
           excerpt: excerpt.trim().slice(0, POST_LIMITS.excerpt),
           contentMd: content_md.slice(0, POST_LIMITS.contentMd),
         },
-        await buildComposeBlocks(topic),
+        blocks,
         cover_path ?? null,
         {
           seoTitle: seo_title === undefined ? undefined : seo_title.slice(0, POST_LIMITS.seoTitle),
@@ -154,6 +204,7 @@ export const saveTopicDraftTool = tool(
       "把写好的专题文章落库为文章管理草稿并锚定到专题(标题/摘要/正文/卡片url清单/" +
       "封面/SEO/标签一次交付;已有关联文档时覆盖)。返回 post_url 后向管理员汇报文档链接。" +
       `规则:${IMG_RULE_HINT};card_urls 里的每张卡图都必须已嵌入正文,漏嵌会被拒绝;` +
+      "同一图片重复嵌入、正文引用视频封面都会被拒绝;" +
       "返回 needConfirm 时必须先用 ask_user 征得管理员确认,再带 " +
       "confirm=true 重新调用;正文用 markdown,系统会在文首自动注入视频推荐卡。",
     schema: z.object({

@@ -112,18 +112,16 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("严禁把正文整篇输出到对话流");
   });
 
-  it("配图链提示(批⑥):cover_path 直引 + 生图插图 + transfer 重试 + 卡图不重复", () => {
+  it("配图链提示(2026-10-17 封面纪律):封面禁入正文 + 系统注入推荐卡 + 生图示意图 + 读者视角自评审", () => {
     const p = agentSystemPrompt("admin");
-    // 分配面:brief 已转存站内路径,正文直引;严禁编造外链
-    expect(p).toContain("素材的 cover_path");
-    expect(p).toContain("严禁编造外链图片");
-    // 生图放开到正文概念示意图;transfer_video_cover 定位为重试/补传钮
+    // 封面退出正文供给面:cover_path 不再是正文配图源,编排提示同步禁止
+    expect(p).not.toContain("素材的 cover_path");
+    expect(p).toContain("视频封面禁止入正文");
+    expect(p).toContain("不要自己仿写推荐卡");
+    // 生图放开到正文概念示意图;头图仍统一走第 7 步
     expect(p).toContain("概念示意图");
-    expect(p).toContain("transfer_video_cover 重试");
-    // 消费口径:头图避让文首卡同图(卡自动带图属系统行为,留在工作流段;
-    // 张数引导属 skill 风格,已迁种子指南)
-    expect(p).toContain("文首推荐卡由系统自动带图");
-    expect(p).toContain("正文开头不要再贴同一张");
+    // 自评审第⑥项:读者视角版面协调(呈现协调性验收反馈)
+    expect(p).toContain("有无同一图片重复出现");
   });
 
   it("卡片可视化纪律(2026-10-17 反馈):render_card 唯一实现 + 合成卡闸门 + 改稿出卡", () => {
