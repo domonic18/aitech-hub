@@ -87,10 +87,11 @@ describe("render_card", () => {
     expect(r).toMatchObject({
       ok: true,
       url: "/wp-content/uploads/2026/10/card.png",
+      markdown_line: "![](/wp-content/uploads/2026/10/card.png)",
       width: 900,
       height: 420,
     });
-    expect(String(r.hint)).toContain("![](url)");
+    expect(String(r.hint)).toContain("card_urls");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(uploadMedia).toHaveBeenCalledWith(
       expect.objectContaining({
