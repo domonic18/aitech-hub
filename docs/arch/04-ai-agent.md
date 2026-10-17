@@ -143,6 +143,7 @@
 - **消毒(`sanitize.ts`,自由模唯一入服务闸)**:cheerio 白名单——script/iframe/svg/math 等危险标签整体报错、无害未知标签解包保文本;属性仅留 class/style(img 另留 src/alt/宽高),on* 与 javascript: 必拒;`<style>` 放行但滤 @import 与外联 url()。**有意违规不静默剥除而是整体报错**(人话逐条 cap 5)——agent 自纠重试;service 侧硬闸兜底(纵深双层)
 - **站内引图零 token 链**:消毒放行的 `/wp-content/uploads/` URL 经 `rewriteLocalMediaRefs` 改写 `file://$CARD_RENDERER_MEDIA_ROOT/…`(前缀剥掉直接拼根,storage.ts 同约定)→ 服务侧 `inlineLocalMedia` 读盘(路径包含校验防遍历 + 8MB 上限)转 **data-URI 内联**——chromium 完全不触文件系统(about:blank 源默认禁 file:// 子资源,直读路线不可行,内联是正解);读失败降级 1x1 透明占位不整卡失败
 - **sidecar 契约**(arch/05 §4.6):`POST /render {html,width?,scale?}` → PNG 字节 + `X-Card-Width/Height` 头;javaScriptEnabled=false + 请求级硬闸(仅放行 data:/about:blank)+ 并发信号量满员 429 + 高度 413(超 4000px 提示拆卡)+ 504 超时,错误全人话短句供 agent 直接转述;CARD_RENDERER_URL / CARD_RENDERER_MEDIA_ROOT 双 env(与 compose 挂载三处一致)。CI 增 card-renderer 单测 job(node --test 零依赖)+ docker-release-card-renderer 镜像段;生产部署(175 加容器)合并后另批请批
+- **工具参数漂移收编(2026-10-18,ledger rows 整线程三连败 checkpoint 取证)**:弱模型会把 JSON 数组包成 `{"item":{"item":[…]}}` 单键对象再发(与 ask_user options 漂移同源同键名),且 zod 英文原话报错回喂也无法自纠。三层修正:`lib/card/normalize.ts` 在校验前递归展开实证包裹形态(单键 item 且链终为数组,未知形态仍 fail-closed,命中记 `agent.card_args_normalized` 观测漂移率)→ preset 报错人话化(中文类型说明 + 直接传数组修正示例)→ 工具 describe 补数组字段纪律。数据形状属机制(harness)不入指南 L2
 
 **K2.8 补注七(2026-10-17,M35,Agent 宿主唯一化——run 生命周期与页面组件树解耦;M31 验收两问根因修复)**:
 
