@@ -1,13 +1,14 @@
 /**
- * preset 模板单测(M31 批B):五模板数据侧 zod 校验(合法/缺字段/超限)、
- * 输出为独立 HTML 文档、文本经转义(注入数据不产生可执行标签)。
+ * preset 模板单测(M31 批B 建,M36 批② 扩至七卡型):数据侧 zod 校验
+ * (合法/缺字段/超限/引用越界)、输出为独立 HTML 文档、文本经转义
+ * (注入数据不产生可执行标签)。
  */
 import { describe, expect, it } from "vitest";
 
-import { CARD_PRESET_IDS, renderPreset } from "./presets";
+import { renderPreset } from "./presets";
 
 describe("renderPreset", () => {
-  it("五模板合法数据 → ok 且输出独立文档骨架", () => {
+  it("七模板合法数据 → ok 且输出独立文档骨架", () => {
     expect(renderPreset("quote", { quote: "少即是多", author: "佚名" }).ok).toBe(true);
     expect(renderPreset("points", { title: "要点", points: ["a", "b"] }).ok).toBe(true);
     expect(
@@ -22,12 +23,69 @@ describe("renderPreset", () => {
       renderPreset("compare", {
         left: { label: "方案A", items: ["快"] },
         right: { label: "方案B", items: ["稳"] },
+        verdict: "看场景",
       }).ok,
     ).toBe(true);
     expect(
       renderPreset("steps", { steps: [{ title: "安装" }, { title: "配置", detail: "改 env" }] }).ok,
     ).toBe(true);
-    for (const id of CARD_PRESET_IDS) expect(CARD_PRESET_IDS).toContain(id);
+    expect(
+      renderPreset("timeline", {
+        title: "进化史",
+        events: [
+          { time: "2020", text: "起点" },
+          { time: "2026", text: "百万级" },
+        ],
+        summary: "越来越长",
+      }).ok,
+    ).toBe(true);
+    expect(
+      renderPreset("flow", {
+        title: "Agent 全流程",
+        lanes: [{ name: "用户" }, { name: "Agent" }],
+        phases: [{ name: "接收" }, { name: "执行" }],
+        steps: [
+          { text: "提任务", lane: 0, phase: 0 },
+          { text: "规划", lane: 1, phase: 0 },
+          { text: "执行", lane: 1, phase: 1 },
+        ],
+        summary: "两阶段闭环",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("flow 步骤引用越界(lane/phase 下标超范围)→ 人话报错指出序号", () => {
+    const r = renderPreset("flow", {
+      title: "流程",
+      lanes: [{ name: "A" }, { name: "B" }],
+      phases: [{ name: "P1" }, { name: "P2" }],
+      steps: [
+        { text: "s1", lane: 0, phase: 0 },
+        { text: "s2", lane: 5, phase: 0 },
+        { text: "s3", lane: 1, phase: 9 },
+      ],
+    });
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) {
+      expect(r.error).toContain("steps.1.lane");
+      expect(r.error).toContain("泳道序号 5 超出范围");
+    }
+    // 首个 issue 是 lane 越界;修掉后应再暴露 phase 越界
+    const r2 = renderPreset("flow", {
+      title: "流程",
+      lanes: [{ name: "A" }, { name: "B" }],
+      phases: [{ name: "P1" }, { name: "P2" }],
+      steps: [
+        { text: "s1", lane: 0, phase: 0 },
+        { text: "s2", lane: 1, phase: 1 },
+        { text: "s3", lane: 0, phase: 9 },
+      ],
+    });
+    expect(r2).toMatchObject({ ok: false });
+    if (!r2.ok) {
+      expect(r2.error).toContain("steps.2.phase");
+      expect(r2.error).toContain("阶段序号 9 超出范围");
+    }
   });
 
   it("数据不合法 → 人话报错带字段路径", () => {
