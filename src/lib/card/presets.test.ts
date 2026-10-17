@@ -1,21 +1,46 @@
 /**
- * preset 模板单测(M31 批B 建,M36 批② 扩至七卡型):数据侧 zod 校验
- * (合法/缺字段/超限/引用越界)、输出为独立 HTML 文档、文本经转义
- * (注入数据不产生可执行标签)。
+ * preset 模板单测(M31 批B 建,M36 批② 扩至七卡型,M38 扩至 11 卡型):
+ * 数据侧 zod 校验(合法/缺字段/超限/引用越界)、输出为独立 HTML 文档、
+ * 文本经转义(注入数据不产生可执行标签)。
  */
 import { describe, expect, it } from "vitest";
 
 import { renderPreset } from "./presets";
 
 describe("renderPreset", () => {
-  it("七模板合法数据 → ok 且输出独立文档骨架", () => {
+  it("11 模板合法数据 → ok 且输出独立文档骨架", () => {
     expect(renderPreset("quote", { quote: "少即是多", author: "佚名" }).ok).toBe(true);
-    expect(renderPreset("points", { title: "要点", points: ["a", "b"] }).ok).toBe(true);
+    expect(
+      renderPreset("points", {
+        title: "要点",
+        points: [{ text: "切块重叠 64", icon: "🧩" }, { text: "召回率 +23%" }],
+      }).ok,
+    ).toBe(true);
     expect(
       renderPreset("stats", {
         items: [
-          { value: "78%", label: "采纳率" },
+          { value: "78%", label: "采纳率", delta: "+12%" },
           { value: "3x", label: "提速" },
+        ],
+      }).ok,
+    ).toBe(true);
+    expect(
+      renderPreset("bars", {
+        title: "吞吐对比",
+        unit: "tokens/s",
+        items: [
+          { label: "模型A", pct: 100, value: "120" },
+          { label: "模型B", pct: 72, value: "86" },
+        ],
+      }).ok,
+    ).toBe(true);
+    expect(
+      renderPreset("ledger", {
+        title: "环境速览",
+        rows: [
+          { k: "模型", v: "Qwen3-4B" },
+          { k: "量化", v: "INT4" },
+          { k: "内存", v: "3.2GB" },
         ],
       }).ok,
     ).toBe(true);
@@ -37,6 +62,21 @@ describe("renderPreset", () => {
           { time: "2026", text: "百万级" },
         ],
         summary: "越来越长",
+      }).ok,
+    ).toBe(true);
+    expect(
+      renderPreset("matrix", {
+        title: "端侧芯片盘点",
+        cells: [
+          { name: "NPU A", desc: "算力 10TOPS", icon: "⚡" },
+          { name: "NPU B", desc: "算力 8TOPS" },
+        ],
+      }).ok,
+    ).toBe(true);
+    expect(
+      renderPreset("photo", {
+        src: "/wp-content/uploads/2026/10/demo.jpg",
+        caption: "实测环境",
       }).ok,
     ).toBe(true);
     expect(
@@ -88,8 +128,23 @@ describe("renderPreset", () => {
     }
   });
 
+  it("M38 新卡型边界:bars pct 超 1~100、photo 非站内路径 → 人话报错", () => {
+    const bars = renderPreset("bars", {
+      items: [
+        { label: "A", pct: 120, value: "9" },
+        { label: "B", pct: 30, value: "3" },
+      ],
+    });
+    expect(bars).toMatchObject({ ok: false });
+    if (!bars.ok) expect(bars.error).toContain("items.0.pct");
+
+    const photo = renderPreset("photo", { src: "https://cdn.example.com/x.jpg" });
+    expect(photo).toMatchObject({ ok: false });
+    if (!photo.ok) expect(photo.error).toContain("src");
+  });
+
   it("数据不合法 → 人话报错带字段路径", () => {
-    const r = renderPreset("points", { points: ["只有一条"] });
+    const r = renderPreset("points", { points: [{ text: "只有一条" }] });
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) expect(r.error).toContain("points");
 

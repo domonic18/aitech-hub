@@ -5,7 +5,7 @@
  * 表流转)+ 兜底摘要条。箭头连线简化为编号递进(数据结构化程度高、模板
  * 布局稳定);步骤序号 = 数组顺序,颜色 = 所属泳道。
  */
-import { escapeHtml, rich, wrapDocLight } from "./shell";
+import { ACCENTS_LIGHT, escapeHtml, pickAccent, rich, wrapDocLight } from "./shell";
 
 export type FlowData = {
   title: string;
@@ -25,6 +25,7 @@ const LANE_COLORS = [
 ] as const;
 
 export function flowHtml(d: FlowData): string {
+  const ac = pickAccent(ACCENTS_LIGHT, JSON.stringify(d));
   const gridCols = `110px repeat(${d.lanes.length},1fr)`;
   // 泳道色以内联注入(数量可变,CSS 类不可枚举)
   const laneHeads = d.lanes
@@ -62,7 +63,7 @@ export function flowHtml(d: FlowData): string {
     ? `<div class="tldr"><span class="bulb">💡</span><p><b>一眼看懂</b>&nbsp;|&nbsp;${rich(d.summary)}</p></div>`
     : "";
   return wrapDocLight(
-    `<div class="title"><span class="hl" style="background:linear-gradient(transparent 55%,#b7eb8f 55%)">${rich(d.title)}</span></div>
+    `<div class="title"><span class="hl" style="background:linear-gradient(transparent 55%,${ac.hl} 55%)">${rich(d.title)}</span></div>
 ${d.subtitle ? `<div class="subtitle">${rich(d.subtitle)}</div>` : ""}
 <div class="lanes" style="grid-template-columns:${gridCols}"><div></div>${laneHeads}</div>
 ${bands}${summary}`,
@@ -84,10 +85,11 @@ box-shadow:0 1px 4px rgba(0,0,0,.08);display:flex;gap:7px;align-items:flex-start
 .chip .n{flex:none;width:20px;height:20px;border-radius:50%;color:#fff;font-size:12px;font-weight:700;
 display:flex;align-items:center;justify-content:center;margin-top:2px}
 .chip b{color:#111}
-.tldr{display:flex;align-items:center;gap:12px;background:#eef2ff;border-radius:12px;padding:13px 18px;margin-top:10px}
-.bulb{flex:none;width:32px;height:32px;border-radius:50%;background:#4f46e5;color:#fff;
+.tldr{display:flex;align-items:center;gap:12px;background:var(--ac-soft);border:1px solid var(--ac-hl);border-radius:12px;padding:13px 18px;margin-top:10px}
+.bulb{flex:none;width:32px;height:32px;border-radius:50%;background:var(--ac);color:#fff;
 display:flex;align-items:center;justify-content:center;font-size:16px}
 .tldr p{font-size:16px;line-height:1.6}
-.tldr b{color:#312e81}`,
+.tldr b{color:var(--ac)}`,
+    ac,
   );
 }

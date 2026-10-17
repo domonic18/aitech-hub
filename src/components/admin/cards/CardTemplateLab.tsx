@@ -8,13 +8,8 @@
  */
 import { useCallback, useMemo, useState } from "react";
 
-import {
-  CARD_PRESET_IDS,
-  PRESET_META,
-  PRESET_SAMPLE_DATA,
-  renderPreset,
-  type CardPresetId,
-} from "@/lib/card/presets";
+import { CARD_PRESET_IDS, PRESET_META, renderPreset, type CardPresetId } from "@/lib/card/presets";
+import { PRESET_SAMPLE_DATA } from "@/lib/card/preset-samples";
 
 const THEME_LABEL = { dark: "深色系", light: "浅色系" } as const;
 

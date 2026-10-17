@@ -152,6 +152,13 @@
 - **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由
 - **诚实边界**:刷新/关标签页仍断 run(SSE 流式架构固有,跨刷新存活需后台化=BullMQ+流重连,量级另立);/search AgentDrawer 独立会话面不收编(页面即场景)
 
+**K2.8 补注八(2026-10-17,M38,卡片视觉系统——11 卡型双主题 + 信息设计纪律;美观问题立项:preset 版面素、自由模天花板低)**:
+
+- **卡型扩容 7→11**:dark 深空系=观点/数据(quote/points/stats/bars/ledger),light 浅色系=流程/方法(compare/steps/flow/timeline/matrix/photo);新增 bars 量级条形、ledger 键值台账、matrix 要素矩阵、photo 大图卡(图片呈现降级为常规一卡,「图文并茂」语义=可视化/美观化/清晰,非补图)。全文同色系不混彩(跨系以小节为界);强调色模板按数据确定性轮换(`pickAccent` hash,同数据同色,3 深色系+3 浅色系 CSS 变量注入),agent 不指定
+- **去 AI 味视觉纪律(frontend-design 清单校准)**:去发光光斑/渐变强调字/全大写字距眉题;「越大越轻」字重(display 700 非 800/900),数值 tabular-nums;编号只用于真序列(steps/timeline),并列要点用方点/图标标记;单装饰原则(.ac-line 顶条+.ring 弱圆);stats 首条自动放大为主指标 + delta 涨跌自动着色(▲绿▼红)
+- **结构拆分**:`preset-schemas.ts`(11 zod schema 即数据契约)/`preset-samples.ts`(样张,CardTemplateLab 调试台同源)/`templates/data-cards.ts`+`templates/photo-cards.ts`(新卡面);presets.ts 只留注册表与分发。渲染管线与消毒不变
+- **知识层归位**:卡片选型纪律此前只存 DB(M31 旧文本,五卡型口径已过时)——M38 起指南文本真相源在 `src/lib/ai/writing-guides.ts`(`CARD_RENDERING_GUIDE` 常量,与 seed 同源),DB 行走 oneoff(`scripts/oneoff/blogger-guide-m38/`)整体替换;卡型路由/信息设计纪律(压缩阶梯/标题动词后果/结构即信息/版面节奏禁连续同型)只住指南 L2,agent.ts 提示词不 hardcode(既有测试断言锁)
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
