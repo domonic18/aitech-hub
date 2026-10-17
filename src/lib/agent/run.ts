@@ -1,9 +1,10 @@
 /**
  * 会话 run 流编排(K2.5 核心):deepagents 多通道流(streamMode messages/updates)
- * → wire SSE 帧。护栏落地(arch/04 §3.4):单会话工具调用 ≤12 次(超限主动断)、
- * 会话累计 tokens ≤50k(前置拒绝 + 流中超限收束)、recursionLimit 硬兜底。
- * 台账逐 run 落 ai_usage_log(role=search_agent);会话行 touch+tokens 累计;
- * 客户端断开经 AbortSignal 中止 agent,已产 usage 照记。
+ * → wire SSE 帧。护栏落地(arch/04 §3.4):单轮工具调用/tokens/recursion 三闸
+ * (2026-10-17 起额度后台「站点设置」可调,site_config kv——值经路由侧
+ * getAgentLimitsAll 读档后传入,本模块不再硬编码;默认与派生见
+ * config/agent-limits)。台账逐 run 落 ai_usage_log(role=search_agent);
+ * 会话行 touch+tokens 累计;客户端断开经 AbortSignal 中止 agent,已产 usage 照记。
  */
 import { HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
@@ -24,20 +25,12 @@ import { encodeWireEvent, encodeWireMessage } from "./wire";
 // todos 提取在零依赖模块(前端计划条共用,客户端 bundle 不经此文件拉 deepagents)
 export { extractTodos, type AgentTodo } from "./todos";
 
-/**
- * 单会话护栏按身份分档(arch/04 §3.4):guest/user 维持 ≤12 步/≤50k;admin 档
- * 放宽(M27 批⑤:专题文章生产是多步自主编排——素材分析/选题/写作/配图/落库,
- * 细粒度工具 + 富上下文天然多步)。recursionLimit 为硬兜底(护栏超限主动断,
- * 此值防 prompt 失控兜底)。
- */
-export const AGENT_LIMITS: Record<
-  AgentIdentity["kind"],
-  { toolCalls: number; tokens: number; recursion: number }
-> = {
-  guest: { toolCalls: 12, tokens: 50_000, recursion: 30 },
-  user: { toolCalls: 12, tokens: 50_000, recursion: 30 },
-  admin: { toolCalls: 30, tokens: 150_000, recursion: 60 },
-};
+/** 单轮护栏三闸(调用方从 config/agent-limits 读档构造;recursion 为派生兜底) */
+export interface AgentRunLimits {
+  toolCalls: number;
+  tokens: number;
+  recursion: number;
+}
 
 /** 从 updates 载荷收集已完成工具调用 id(tool 消息的 tool_call_id,与 chunk 侧同集去重) */
 function collectToolCallIds(updates: unknown, into: Set<string>): void {
@@ -63,6 +56,8 @@ export interface AgentRunParams {
   context?: AgentRunContext | null;
   /** 身份档(决定工具面与护栏档——admin 图才有专题生产四件工具) */
   identityKind: AgentIdentity["kind"];
+  /** 单轮护栏三闸(路由侧经 config/agent-limits 读档:额度可后台调整) */
+  limits: AgentRunLimits;
   signal: AbortSignal;
   /** 流帧出口(路由侧只管 encode 后下发) */
   onFrame: (frame: string) => void;
@@ -89,9 +84,8 @@ interface UsageMeta {
  * 收尾);帧序列 metadata → (messages|updates)* → end。
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
-  const { threadId, message, resume, identityKind, signal, onFrame, context } = params;
+  const { threadId, message, resume, identityKind, limits, signal, onFrame, context } = params;
   const { graph, resolved } = await getAgentGraph(identityKind);
-  const limits = AGENT_LIMITS[identityKind];
   const runId = crypto.randomUUID();
 
   const outcome: AgentRunOutcome = {

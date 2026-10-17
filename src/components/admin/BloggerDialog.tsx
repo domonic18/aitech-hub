@@ -132,7 +132,7 @@ export default function BloggerDialog({
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {!editing && (
               <>
-                <div className="col-span-2 text-xs text-text-3">
+                <div className="sm:col-span-2 text-xs text-text-3">
                   平台 *
                   <div className="mt-1 flex items-center gap-2">
                     {PLATFORM_OPTIONS.map((p) => (
@@ -158,7 +158,7 @@ export default function BloggerDialog({
                     </span>
                   </div>
                 </div>
-                <label className="col-span-2 text-xs text-text-3">
+                <label className="sm:col-span-2 text-xs text-text-3">
                   {PLATFORM_INPUT_META[platform]?.label ?? "主页链接或身份标识"} *
                   <input
                     ref={inputRef}

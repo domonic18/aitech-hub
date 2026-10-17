@@ -4,7 +4,8 @@
  * run 后 consumeTokens 按实际用量实扣(user 专属,admin/游客不扣);扣减失败
  * 只告警不反噬。resume:透传 Command 值、不计游客提问配额、不回填标题、空
  * message 400。重依赖(run/sessions/quota/prisma/token-balance)全 mock,
- * 只验路由接线与护栏次序。
+ * 只验路由接线与护栏次序;额度读档走真 config/agent-limits(kv 桩回空 →
+ * 默认档,兼验派生注入 limits)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,11 +15,6 @@ const balanceMock = vi.hoisted(() => ({
   consumeTokens: vi.fn(),
 }));
 const runMock = vi.hoisted(() => ({
-  AGENT_LIMITS: {
-    guest: { toolCalls: 12, tokens: 50_000, recursion: 30 },
-    user: { toolCalls: 12, tokens: 50_000, recursion: 30 },
-    admin: { toolCalls: 30, tokens: 150_000, recursion: 60 },
-  },
   runAgentTurn: vi.fn(),
   recordAgentRun: vi.fn(),
 }));
@@ -29,6 +25,7 @@ const quotaMock = vi.hoisted(() => ({
 }));
 const prismaMock = vi.hoisted(() => ({
   searchAgentSession: { findUnique: vi.fn() },
+  siteConfig: { findMany: vi.fn() },
 }));
 const loggerMock = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
@@ -76,6 +73,7 @@ beforeEach(() => {
     visitorId: "user:42",
     tokensTotal: 0,
   });
+  prismaMock.siteConfig.findMany.mockResolvedValue([]); // 额度 kv 无行 → 默认档
   sessionsMock.backfillSessionTitle.mockResolvedValue(undefined);
   runMock.recordAgentRun.mockResolvedValue(undefined);
 });

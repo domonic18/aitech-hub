@@ -132,7 +132,7 @@ export default function ModelDialog({
                 className={`mt-1 font-mono ${field}`}
               />
             </label>
-            <label className="col-span-2 text-xs text-text-3">
+            <label className="sm:col-span-2 text-xs text-text-3">
               Base URL
               <input
                 value={f.baseUrl}
@@ -142,7 +142,7 @@ export default function ModelDialog({
                 className={`mt-1 font-mono ${field}`}
               />
             </label>
-            <label className="col-span-2 text-xs text-text-3">
+            <label className="sm:col-span-2 text-xs text-text-3">
               API Key{" "}
               {f.editing && (
                 <span className="text-amber">(留空 = 保留 {model?.apiKeyMask ?? "现有密钥"})</span>
@@ -220,7 +220,7 @@ export default function ModelDialog({
                 />
               </label>
             )}
-            <label className="col-span-2 text-xs text-text-3">
+            <label className="sm:col-span-2 text-xs text-text-3">
               扩展参数(JSON,选填)
               <textarea
                 value={f.extraText}
