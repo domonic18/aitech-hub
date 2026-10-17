@@ -144,6 +144,14 @@
 - **站内引图零 token 链**:消毒放行的 `/wp-content/uploads/` URL 经 `rewriteLocalMediaRefs` 改写 `file://$CARD_RENDERER_MEDIA_ROOT/…`(前缀剥掉直接拼根,storage.ts 同约定)→ 服务侧 `inlineLocalMedia` 读盘(路径包含校验防遍历 + 8MB 上限)转 **data-URI 内联**——chromium 完全不触文件系统(about:blank 源默认禁 file:// 子资源,直读路线不可行,内联是正解);读失败降级 1x1 透明占位不整卡失败
 - **sidecar 契约**(arch/05 §4.6):`POST /render {html,width?,scale?}` → PNG 字节 + `X-Card-Width/Height` 头;javaScriptEnabled=false + 请求级硬闸(仅放行 data:/about:blank)+ 并发信号量满员 429 + 高度 413(超 4000px 提示拆卡)+ 504 超时,错误全人话短句供 agent 直接转述;CARD_RENDERER_URL / CARD_RENDERER_MEDIA_ROOT 双 env(与 compose 挂载三处一致)。CI 增 card-renderer 单测 job(node --test 零依赖)+ docker-release-card-renderer 镜像段;生产部署(175 加容器)合并后另批请批
 
+**K2.8 补注七(2026-10-17,M35,Agent 宿主唯一化——run 生命周期与页面组件树解耦;M31 验收两问根因修复)**:
+
+- **根因**:专题合成/编辑页均页面自持 AssistantCard,路由切换 → 页面组件树卸载 → SDK 断 SSE 流 → stream route `cancel()` → `abort.abort()` 服务端 run 终止(usage 照记,不可恢复)。生产实证:合成 run 止步 write_todos(4h 唯一一条 search_agent 用量),关联文档无新稿
+- **红线(ESLint `no-restricted-imports` 机器守)**:`AssistantCard` 全站仅宿主 `AssistantFab` 一处实例化——宿主挂**根 layout**(跨路由持久,admin↔site 同理),首开才挂(零前置开销),此后关闭/隐藏/切页仅 display:none,在跑 run 不中断
+- **页面接入两协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicComposeActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复
+- **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由
+- **诚实边界**:刷新/关标签页仍断 run(SSE 流式架构固有,跨刷新存活需后台化=BullMQ+流重连,量级另立);/search AgentDrawer 独立会话面不收编(页面即场景)
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

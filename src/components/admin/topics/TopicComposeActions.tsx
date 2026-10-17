@@ -1,21 +1,19 @@
 "use client";
 
 /**
- * 专题合成操作区 + 侧边栏 agent 承载(M27 批⑤,agent 自主生产重构):点
- * 「合成初稿/重合成」唤起右下角助手卡(embedded AssistantCard,admin 会话即
- * member)并注入合成任务——agent 自主编排:write_todos 列计划 → 读素材/选题/
- * 写作/配图/落库,每只工具卡逐个出现在对话框(过程天然可视),完成后在对话
- * 汇报并给文档链接;落库走 save_topic_draft 工具(锚定核与 SEO/标签一次交付)。
- * 空素材在按钮侧就地拦截(零真网防线,e2e 34 断言同文);重合成的覆盖确认由
- * 工具 needConfirm → agent ask_user 回路承接。
+ * 专题合成操作区(M27 批⑤,agent 自主生产重构;M35 宿主唯一化改版):点
+ * 「合成初稿/重合成」经唤起协议注入合成任务到全局宿主卡(根 layout 常驻,
+ * 跨页存活)——agent 自主编排:write_todos 列计划 → 读素材/选题/写作/配图/
+ * 落库,完成后在对话汇报并给文档链接;落库走 save_topic_draft 工具(锚定核
+ * 与 SEO/标签一次交付)。空素材在按钮侧就地拦截(零真网防线,e2e 34 断言
+ * 同文);重合成的覆盖确认由工具 needConfirm → agent ask_user 回路承接。
+ * 历史教训:M31 验收实证本组件曾自持内嵌 AssistantCard,切页即卸载杀 run——
+ * 页面禁止自持卡,接入一律走 agent-host 协议。
  */
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
-import AssistantCard from "@/components/site/assistant/AssistantCard";
-
-/** 转交助手卡的预置任务(nonce 变化即重新注入,AssistantCard 同款契约) */
-type InjectComposeAsk = { question: string; send: true; nonce: number };
+import { openAgentAssistant } from "@/lib/agent/agent-host";
 
 export default function TopicComposeActions({
   topicId,
@@ -35,26 +33,21 @@ export default function TopicComposeActions({
   /** 服务端预判:合成后被人工编辑过(按钮 title 提示,实际判定以工具 needConfirm 为准) */
   editedSinceCompose: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [injectAsk, setInjectAsk] = useState<InjectComposeAsk | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-  const askSeq = useRef(0);
 
-  /** 唤起助手卡并注入合成任务;素材空就地拦截(与工具层预检同文人话) */
+  /** 经唤起协议注入合成任务;素材空就地拦截(与工具层预检同文人话) */
   function compose(): void {
     if (materialsCount === 0) {
       setMsg({ tone: "err", text: "尚未挂载素材——先挂 2~3 条解读/文章再合成" });
       return;
     }
     setMsg(null);
-    setInjectAsk({
+    openAgentAssistant({
       question: linkedPostId
         ? `请为专题《${topicTitle}》(专题 id:${topicId})重新合成推荐文章,将覆盖关联文档`
         : `请为专题《${topicTitle}》(专题 id:${topicId})合成推荐文章初稿`,
       send: true,
-      nonce: ++askSeq.current,
     });
-    setOpen(true);
   }
 
   const hasDoc = linkedPostId !== null;
@@ -92,14 +85,6 @@ export default function TopicComposeActions({
         <span className={`text-[11px] ${msg.tone === "ok" ? "text-green" : "text-red"}`}>
           {msg.text}
         </span>
-      )}
-      {open && (
-        <AssistantCard
-          embedded
-          onClose={() => setOpen(false)}
-          onHide={() => setOpen(false)}
-          injectAsk={injectAsk}
-        />
       )}
     </div>
   );

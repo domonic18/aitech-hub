@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * 编辑页 AI 助手入口(M27 批①,方案 §3/§9):顶栏按钮唤起 AssistantCard
- * (复用全站 agent 域件,admin 会话即 member 身份),并注入编辑上下文
- * {postId, title}——卡片内以 chip 呈现。M27 批⑧-d 扩评审面接线:getContent/
- * onApplyContent 由 PostEditor 传入(正文 state getter/setter),propose_edits
- * 提案的「应用」经此写回编辑器 → 既有自动保存链落库;缺省(理论上不会发生,
- * 编辑页恒传)则提案自动降级。embedded 形态:不渲染「隐藏助手」(无全站 FAB
- * 语义)。常驻化(2026-10-14):首开才挂(零前置开销),此后关闭仅 display:none
- * ——在跑 agent run 不随卡卸载中断,再开即回(ai-invest 同款;卸载只随页面离开)。
+ * 编辑页 AI 助手入口(M27 批①;M35 宿主唯一化改版):顶栏按钮经唤起协议
+ * (openAgentAssistant)开全局宿主卡并注入编辑上下文——本组件不再自持卡
+ * (M31 验收实证页面自持卡随路由卸载杀 run),getContent/onApplyContent 写回
+ * 接线经能力注册协议(useAgentEditSurface)挂载注册/卸载自动注销;能力不在
+ * 场时 propose_edits 评审自动降级(AgentThread 既有语义),run 本身跨页存活,
+ * 切回编辑页且中断未 resume 时评审面自动恢复。admin 会话即 member 身份。
+ * 评审面接线(M27 批⑧-d):getContent/onApplyContent 由 PostEditor 传入
+ * (正文 state getter/setter),提案「应用」经此写回编辑器 → 既有自动保存链
+ * 落库;编辑页恒传,注册句柄经 getter 透传最新引用。
+ * 程序化唤起(M31):弹窗「生成候选」等入口经 launch prop 直发消息并自动开卡。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 
-import AssistantCard from "@/components/site/assistant/AssistantCard";
+import { openAgentAssistant, useAgentEditSurface } from "@/lib/agent/agent-host";
 
 /** 外部唤醒载荷(封面生成等入口):question 直发,nonce 防同文重触发不生效 */
 export interface AssistantLaunch {
@@ -37,57 +39,26 @@ export default function EditorAssistant({
   onApplyContent,
   launch,
 }: EditorAssistantProps): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  /** 首开后恒挂载:关闭仅隐藏(见 docstring 常驻化) */
-  const [everOpened, setEverOpened] = useState(false);
+  // 能力注册协议(②):挂载注册/卸载注销,宿主卡经此获得写回接线
+  useAgentEditSurface({ postId, title, getContent, onApplyContent });
 
-  // 程序化唤起:开卡 + 注入直发消息(AssistantCard injectAsk → pending → append)
+  // 程序化唤起:开卡 + 注入直发消息(宿主 injectAsk → pending → append)
   useEffect(() => {
     if (!launch) return;
-    setEverOpened(true);
-    setOpen(true);
+    openAgentAssistant({ question: launch.question, send: true });
   }, [launch]);
 
-  // injectAsk 引用必须稳定(nonce 门闩,FAB 同 prop 的 state 持有契约):
-  // 内联字面量会让 AssistantCard 注入 effect 按引用每渲染重跑——侧栏每次
-  // 开关/宿主任意重渲染都重发种子问题(2026-10-15 验收反馈:点机器人按钮
-  // 开侧栏即直触文生图的根因)。仅 launch 换新(再次「生成候选」)才换引用。
-  const injectAsk = useMemo(
-    () => (launch ? { question: launch.question, send: true, nonce: launch.nonce } : null),
-    [launch],
-  );
-
   return (
-    <>
-      <button
-        type="button"
-        aria-label="AI 助手"
-        title="AI 助手(对话改稿,当前编辑上下文自动注入)"
-        onClick={() => {
-          setEverOpened(true);
-          setOpen((v) => !v);
-        }}
-        className={`inline-flex cursor-pointer items-center rounded-sm border px-2 py-2 ${
-          open
-            ? "border-accent text-accent"
-            : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
-        }`}
-      >
-        <svg className="ic" aria-hidden="true">
-          <use href="#i-robot" />
-        </svg>
-      </button>
-      {everOpened && (
-        <div className={open ? "contents" : "hidden"}>
-          <AssistantCard
-            embedded
-            onClose={() => setOpen(false)}
-            onHide={() => setOpen(false)}
-            injectAsk={injectAsk}
-            editContext={{ postId, title, getContent, onApplyContent }}
-          />
-        </div>
-      )}
-    </>
+    <button
+      type="button"
+      aria-label="AI 助手"
+      title="AI 助手(对话改稿,当前编辑上下文自动注入)"
+      onClick={() => openAgentAssistant()}
+      className="inline-flex cursor-pointer items-center rounded-sm border border-line bg-panel px-2 py-2 text-text-2 hover:border-line-hover hover:text-text-1"
+    >
+      <svg className="ic" aria-hidden="true">
+        <use href="#i-robot" />
+      </svg>
+    </button>
   );
 }
