@@ -3930,3 +3930,38 @@ test("39. Agent 宿主唯一化(M35:协议唤起开卡/跨页常驻 run 不断�
     await prisma.post.deleteMany({ where: { slug: { startsWith: mark } } });
   }
 });
+
+test("40. 卡片模板库页(M36:7 卡型清单/双主题标识/实时预览/JSON 校验反馈)", async ({ page }) => {
+  await e2eAdminLogin(page);
+  await page.goto("/admin/cards/");
+  await expect(page.getByRole("heading", { name: "卡片模板库" })).toBeVisible();
+
+  // ① 卡型清单 7 项(M36 双主题扩容),默认选中首个(金句卡·深色系)
+  const nav = page.getByRole("navigation", { name: "卡型清单" });
+  await expect(nav.getByRole("button")).toHaveCount(7);
+  for (const name of ["金句卡", "对比卡", "泳道全景卡", "时间线卡"]) {
+    await expect(nav.getByRole("button", { name: new RegExp(name) })).toBeVisible();
+  }
+  await expect(page.getByText("深色系", { exact: true })).toBeVisible();
+
+  // ② 实时预览:示例数据直出独立文档(preset 模板渲染,iframe srcdoc)
+  const preview = page.locator("iframe[title='实时预览']");
+  await expect(preview).toHaveCount(1);
+  await expect(preview).toHaveAttribute("srcdoc", /<!DOCTYPE html>/);
+
+  // ③ JSON 校验反馈:坏数据人话报错,修正后报错消失、预览恢复
+  const textarea = page.getByRole("textbox");
+  await textarea.fill("{ not json");
+  await expect(page.getByText("JSON 语法错误")).toBeVisible();
+  await expect(preview).toHaveCount(0);
+  await textarea.fill('{"quote":"e2e 冒烟金句","author":"e2e"}');
+  await expect(page.getByText("JSON 语法错误")).toHaveCount(0);
+  await expect(preview).toHaveAttribute("srcdoc", /e2e 冒烟金句/);
+
+  // ④ 切卡型:泳道全景卡 = 浅色系,示例数据切卡不丢(各自独立文本)
+  await nav.getByRole("button", { name: /泳道全景卡/ }).click();
+  await expect(page.getByText("浅色系", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveValue(/"lanes"/);
+  // 「渲染 PNG」按钮在数据合法时可用(真实渲染依赖 card-renderer,此处只验 UI 态)
+  await expect(page.getByRole("button", { name: "渲染 PNG" })).toBeEnabled();
+});
