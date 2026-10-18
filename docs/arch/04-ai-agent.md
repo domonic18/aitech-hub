@@ -167,6 +167,11 @@
 - **P1 传参容错(1~2 轮收敛)**:(a) 归一层扩编三个实证修复(字符串化 JSON 解析/单元素外层剥壳/二元数组行→`{k,v}`;仍 fail-closed,只收编实证形态,零合法冲突——无 preset 消费数组套数组);(b) 报错具体化:`formatPresetError` 按 issue.path 回查原始入参形态给「收到了什么」+ 可抄修正示例(嵌套数组模式在外层点破,逐行修不收敛;补 zod v4 `received` 取不到的缺口);(c) 观测补齐:失败侧落 `agent.card_preset_invalid`(数据截断 800 字符)。回归锚:normalize.test 四形态 × renderPreset 串联
 - **P2 自由 HTML 宽容化(用户裁定:任意合法 HTML 都可渲染;美观走指南 L2 + 自检,机制不强制)**:(a) 消毒安全红线不变(危险标签/事件属性/js URL/外联整体报错),文档结构标签(html/head/body/meta/title/doctype)改静默摘除——写整份文档不再撞「禁用标签 <meta>」整体报错,写片段即可;属性白名单放宽 id/colspan/rowspan(无脚本面);(b) 输出壳白底改**深空基线**(#0b1220 底+浅字+Noto CJK+min-height:600 与 preset 壳同语言)——模型没写样式也落全站统一深空,自带样式文档序后置可整体覆盖(白底等自定义照常渲染);(c) **accent 通道**:工具响应回传 `accent{main,soft,text}`(thread 锚定同组),自由模取用即与同篇 preset 卡恒同组,盲猜通道退役;(d) 美观纪律(深空可视化系统 token 表:底色/文字三级/accent 用法/tabular-nums/单装饰器 + **出卡自检清单**:对比度/单 accent/height 正常/3 秒读懂)只住 `CARD_RENDERING_GUIDE` L2(oneoff `scripts/oneoff/card-guide-html/` 落库),harness 不 hardcode——与补注八分层判据一致
 
+**K2.8 补注十(2026-10-18,post-319 双问题复盘——教程意图无入口 + 文章上下文够不着素材)**:
+
+- **根因(checkpoint + 库取证)**:① post 319(WorkBuddy做汇报ppt,教程类视频)按专题治理按钮合成,话术「合成**推荐文章**」写死于 `TopicComposeActions`(体裁被焊死),专题定位即推荐系,技能表仅 blogger-video(推荐短文)——「教程」意图在链路上**无任何入口**,编排模型显式选 blogger-video 出推荐稿(模型无过错);② agent 取素材唯一入口 `get_topic_brief` 必须给专题 id,而文章编辑上下文只有 post id,无 post→topic 反查工具——实证对话:agent 只能 `read_draft` 读正文,答「原始材料是抖音视频」(1594 字解读笔记在库不可达)。
+- **修法三层**:(a) **指南 L2**:BLOGGER_VIDEO_GUIDE 增「教程类视频」分支——判据(标题/解读笔记含教程·实战·保姆级等信号或用户点名)+ 写法(核心内容笔记=可跟做的文字版教程:第二人称分步/界面动作与输入内容/关键数字保留/结尾验收点)+ 反例禁令(禁「视频演示了…」式第三人称转述);oneoff `scripts/oneoff/blogger-guide-tutorial/` 落库。(b) **撰写目的预置**(`src/lib/topics/constants.ts#TOPIC_PURPOSES`):user-facing 目的=定位模板+合成话术体裁词,落库走 positioning 零 schema 变更;面板「绑定技能」下拉退役换「撰写目的」(切目的自动带模板,自定义文案不覆盖),关联文章 id 改只读展示;合成区加目的 picker(缺省按定位匹配)+ 可选补充要求单行框,话术带体裁词;admin 提示词补「指令指定体裁时以其为准,不被定位惯性带偏」。(c) **`get_post_sources(post_id)` 只读工具**(post→topic(linked_post_id)→挂载素材,解读笔记全文/人工批注/视频地址/文章节选;纯读零副作用与 brief 分工——brief 是生产底料装配含封面转存);改稿纪律同步「文章上下文用 get_post_sources、已知专题 id 用 get_topic_brief」。
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
