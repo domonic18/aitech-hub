@@ -1095,17 +1095,24 @@ model InsightSignal {
   @@map("insight_signal")
 }
 
-/// 痛点/热点簇(批② 聚类产物;批① 一次建齐免二次迁移,不写入)。
-/// media=留痕介质集合(机会评分卡输入,方案 §2);status 流转纪律批② 实测定参。
+/// 痛点/热点簇(批② 聚类产物):信号向量近邻归簇建簇,LLM 日批打标可读化。
+/// media=留痕介质集合(机会评分卡输入,方案 §2;批②=成员介质并集,LLM 判定批③
+/// 多介质外部源接入再收)。status 流转纪律:批② 仅 fading 兜底(14 天无新成员),
+/// 阈值实测后定参(方案 §9-5)。labeledMemberCount=打标时成员数(增量重打标判定);
+/// coverageScore/coverageState=内容覆盖度(日批对 post 向量近邻回写,看板直读免连查)。
 model InsightCluster {
   id          BigInt   @id @default(autoincrement())
   kind        String   @db.VarChar(8) // hot | pain
   domain      String   @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
-  label       String   @db.VarChar(200) // LLM 命名(人话)
+  label       String?  @db.VarChar(200) // LLM 命名(人话;未打标 null)
   summary     String?  @db.VarChar(1000) // LLM 一句话概括
   keywords    Json? // string[]
   media       Json? // string[] 留痕介质集合
   score       Float? // 最新机会分
+  labeledAt          DateTime? @map("labeled_at") @db.Timestamptz(6) // 最近 LLM 打标时间
+  labeledMemberCount Int       @default(0) @map("labeled_member_count") // 打标时成员数
+  coverageScore      Float?    @map("coverage_score") // 内容覆盖度 0-1(日批回写)
+  coverageState      String?   @map("coverage_state") @db.VarChar(10) // covered | partial | blank
   status      String   @default("active") @db.VarChar(10) // active | fading | closed
   firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
   lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)

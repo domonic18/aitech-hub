@@ -22,8 +22,11 @@ export const AI_PURPOSE_EMBEDDING = "embedding";
 /** 文章写作(2026-10-17 验收反馈:撰写文章捆绑为独立单任务 write_article,
  * 与编排模型解耦——起草可绑长输出模型,编排照旧走 search 绑定) */
 export const AI_PURPOSE_WRITING = "writing";
-/** 模型用途 = 任务角色(六角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
- * writing=专题文章起草单任务)。
+/** 洞察归纳(M34 批②,insight-plan §5.4):簇命名/一句话概括/关键词日批 LLM,
+ * 走 AiTaskBinding 治理(ai_usage_log 落 role=insight) */
+export const AI_PURPOSE_INSIGHT = "insight";
+/** 模型用途 = 任务角色(七角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
+ * writing=专题文章起草单任务,insight=M34 洞察簇归纳)。
  * compose(专题合成)已退役(M27 批⑤):合成改走会话 agent(search 绑定),
  * 历史台账 role=compose 行保留读侧回退原值展示 */
 export const AI_MODEL_PURPOSES = [
@@ -33,6 +36,7 @@ export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_COVER,
   AI_PURPOSE_EMBEDDING,
   AI_PURPOSE_WRITING,
+  AI_PURPOSE_INSIGHT,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -68,6 +72,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "文章写作",
     icon: "i-edit",
     sub: "专题文章正文起草(write_article 单任务;与编排模型解耦,可绑长输出模型)",
+  },
+  [AI_PURPOSE_INSIGHT]: {
+    label: "洞察归纳",
+    icon: "i-eye",
+    sub: "洞察中心簇命名/概括/关键词日批打标(信号向量聚类后的可读化)",
   },
 };
 
