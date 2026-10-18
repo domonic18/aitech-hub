@@ -74,7 +74,7 @@ import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
-import { runInsightDaily } from "../src/lib/insight/label";
+import { runInsightDaily } from "../src/lib/insight/daily";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {

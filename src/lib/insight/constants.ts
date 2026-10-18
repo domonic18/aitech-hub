@@ -5,9 +5,10 @@
  */
 import type { InsightSource } from "./ingest";
 
-/** 信号源 → 簇别(方案 §4 kind):内部需求侧信号(评论)归痛点(未被满足的
- * 需求表达),电报 AI 解读产物与外部热榜(公众关注度榜单)归热点;批③ 热榜
- * fetcher 源在此登记 kind(未登记源不入簇,见 cluster.ts 未知源分支) */
+/** 信号源 → 簇别初始引导值(批③ 验收三轮·痛点扩围:kind 不再按源定生死)。
+ * 聚类已单池归簇(近邻跨 kind),此处映射仅作新建簇的引导值,LLM 打标日批
+ * 按簇内容语义覆判 hot|pain(label.ts 契约);新源仍须在此登记(未登记源
+ * 不入簇,见 cluster.ts 未知源分支) */
 export const INSIGHT_SOURCE_KIND: Record<InsightSource, "hot" | "pain"> = {
   "internal-search": "pain",
   "internal-agent": "pain",
