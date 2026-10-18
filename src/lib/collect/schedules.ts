@@ -45,9 +45,10 @@ export const INSIGHT_EMBED_CRON = "3,18,33,48 * * * *";
  * visit-purge;LLM 调用分钟级,避开 4 点清理带) */
 export const INSIGHT_DAILY_CRON = "57 3 * * *";
 
-/** 热榜拉取日批 07:43(方案 §3:外部渠道日频;早高峰前取榜,与 05:37 热词/
- * 06:13 B站发现错峰) */
-export const INSIGHT_FETCH_CRON = "43 7 * * *";
+/** 热榜拉取小时批 :43(验收二批② 提频:热榜日内高波动,日频漏采;refId=
+ * 词/问题id/关键词内容锚,unique(source,refId) 幂等——在榜词续热刷新,新词
+ * 入池,提频不膨胀;LLM/向量只处理新增,成本增量可忽略) */
+export const INSIGHT_FETCH_CRON = "43 * * * *";
 
 /** 任务域(颜色为设计令牌原值,globals.css 同源;色点/日历 chip 共用) */
 export type ScheduleCategory = "insight" | "discovery" | "process" | "ops";
@@ -135,7 +136,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   {
     key: "insight-fetch",
     label: "热榜拉取",
-    desc: "百度/知乎/B站热搜榜面日频入信号池",
+    desc: "百度/知乎/B站热搜榜面小时级入信号池(在榜续热,新词入池)",
     cron: INSIGHT_FETCH_CRON,
     category: "insight",
   },

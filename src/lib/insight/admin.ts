@@ -33,7 +33,7 @@ export interface InsightSourceStat {
 export interface InsightOverview {
   total: number;
   today: number;
-  /** 近 7 日日增(含今日,缺日补 0,旧→新) */
+  /** 近 windowDays 日日增(含今日,缺日补 0,旧→新) */
   daily: { date: string; count: number }[];
   bySource: InsightSourceStat[];
 }
@@ -48,9 +48,12 @@ export interface InsightSignalRow {
 
 const DAY_MS = 86_400_000;
 
-export async function insightOverview(): Promise<InsightOverview> {
+/** 总览(验收二批②:窗口参数化 7/30/90,读侧不动数据——信号/快照本就逐日
+ * 累积,「每天重算」是固定窗口的读侧假象)。windowDays 夹取 1..90 */
+export async function insightOverview(windowDays = 7): Promise<InsightOverview> {
+  const window = Math.min(Math.max(Math.trunc(windowDays), 1), 90);
   const start = todayStart();
-  const since = new Date(start.getTime() - 6 * DAY_MS);
+  const since = new Date(start.getTime() - (window - 1) * DAY_MS);
 
   const [total, today, totals, todays, dailyRows] = await Promise.all([
     prisma.insightSignal.count({ where: { source: { in: ENABLED } } }),
@@ -76,7 +79,7 @@ export async function insightOverview(): Promise<InsightOverview> {
 
   // 缺日补 0:以北京日界锚定,键=YYYY-MM-DD(序列展示用,不涉 UTC 语义)
   const countByDay = new Map(dailyRows.map((r) => [r.d.toISOString().slice(0, 10), Number(r.c)]));
-  const daily = Array.from({ length: 7 }, (_, i) => {
+  const daily = Array.from({ length: window }, (_, i) => {
     const day = new Date(since.getTime() + i * DAY_MS);
     const key = day.toISOString().slice(0, 10);
     return { date: key, count: countByDay.get(key) ?? 0 };
@@ -103,9 +106,12 @@ const SIGNAL_SELECT = {
   signalAt: true,
 } as const;
 
-/** 最近信号流(可按源过滤,恒限在役源);limit 上限 200 */
+/** 最近信号流(可按源过滤,恒限在役源);from/to 钳 signal_at(北京日界由
+ * 调用方折算);limit 上限 200 */
 export async function listInsightSignals(opts: {
   source?: InsightSource;
+  from?: Date;
+  to?: Date;
   limit?: number;
 }): Promise<InsightSignalRow[]> {
   const rows = await prisma.insightSignal.findMany({
@@ -113,6 +119,16 @@ export async function listInsightSignals(opts: {
       AND: [
         { source: { in: ENABLED } },
         ...(opts.source === undefined ? [] : [{ source: opts.source }]),
+        ...(opts.from === undefined && opts.to === undefined
+          ? []
+          : [
+              {
+                signalAt: {
+                  ...(opts.from === undefined ? {} : { gte: opts.from }),
+                  ...(opts.to === undefined ? {} : { lt: opts.to }),
+                },
+              },
+            ]),
       ],
     },
     orderBy: { signalAt: "desc" },

@@ -46,11 +46,19 @@ interface PrevRankRow {
 }
 
 /**
- * 今日热榜:每源取 meta.batch(拉取轮时间戳)最新一批的全部条目,按 rank 升序,
- * 并对齐各源上一批的名次算变动(move)。batch/heat/url 存 meta JSONB;出榜条目
- * batch 停留在旧轮,内连接自然排除。无拉取记录(首轮前/源失败)返回空榜面。
+ * 热榜榜面:每源取 meta.batch(拉取轮时间戳)目标批的全部条目,按 rank 升序,
+ * 并对齐各源上一批的名次算变动(move)。day 缺省=最新批(验收二批②:传
+ * YYYY-MM-DD 北京日即回看当日最后一批榜面——batch 全量沉淀在 meta,读侧过滤)。
+ * batch/heat/url 存 meta JSONB;出榜条目 batch 停留在旧轮,内连接自然排除。
+ * 无拉取记录(首轮前/源失败)返回空榜面。
  */
-export async function latestHotBoard(): Promise<InsightHotSourceBoard[]> {
+export async function hotBoardForDay(day?: string): Promise<InsightHotSourceBoard[]> {
+  // 北京日界 → batch 毫秒区间(day 合法性由调用方校验,这里只做区间钳制)
+  const range =
+    day === undefined
+      ? Prisma.empty
+      : Prisma.sql` AND (meta->>'batch')::bigint >= ${new Date(`${day}T00:00:00+08:00`).getTime()}
+                   AND (meta->>'batch')::bigint < ${new Date(`${day}T00:00:00+08:00`).getTime() + 86_400_000}`;
   const [rows, prevRows] = await Promise.all([
     prisma.$queryRaw<BoardRow[]>`
       SELECT s.id, s.source, s.ref_id,
@@ -63,12 +71,12 @@ export async function latestHotBoard(): Promise<InsightHotSourceBoard[]> {
         JOIN (
           SELECT source, max((meta->>'batch')::bigint) AS batch
             FROM insight_signal
-           WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL
+           WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL${range}
            GROUP BY source
         ) b ON b.source = s.source AND (s.meta->>'batch')::bigint = b.batch
        ORDER BY s.source, rank
     `,
-    // 上一拉取批名次(每源取 < 最新批的次新批;无次新批的源自然无行)
+    // 上一拉取批名次(每源取 < 目标批的次新批,跨日回看时即前一批;无则无行)
     prisma.$queryRaw<PrevRankRow[]>`
       SELECT s.source, s.ref_id, (s.meta->>'rank')::int AS rank
         FROM insight_signal s
@@ -81,7 +89,7 @@ export async function latestHotBoard(): Promise<InsightHotSourceBoard[]> {
             FROM (
               SELECT source, max((meta->>'batch')::bigint) AS batch
                 FROM insight_signal
-               WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL
+               WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL${range}
                GROUP BY source
             ) c
         ) b ON b.prev IS NOT NULL

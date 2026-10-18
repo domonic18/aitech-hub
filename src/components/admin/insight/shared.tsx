@@ -54,6 +54,40 @@ export function formatTime(iso: string): string {
   });
 }
 
+/** 洞察页查询参数全集(跨分区互保:w=总览/云图窗口,day=热榜回看日,
+ * source/from/to=信号明细过滤) */
+export type InsightViewParams = {
+  source?: string;
+  w?: string;
+  from?: string;
+  to?: string;
+  day?: string;
+};
+
+/** 洞察页链接构造:未定义值不落串,其余参数原样保留 */
+export function insightHref(
+  params: InsightViewParams,
+  overrides: Partial<InsightViewParams> = {},
+): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries({ ...params, ...overrides })) {
+    if (v) sp.set(k, v);
+  }
+  const qs = sp.toString();
+  return `/admin/data/insight/${qs ? `?${qs}` : ""}`;
+}
+
+/** 北京日字符串(YYYY-MM-DD)±n 天 */
+export function shiftDay(day: string, delta: number): string {
+  const ms = new Date(`${day}T00:00:00+08:00`).getTime() + delta * 86_400_000;
+  return new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+}
+
+/** 北京当日 YYYY-MM-DD(sv-SE locale 恰好输出 ISO 形) */
+export function todayCn(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+}
+
 const badge = "rounded-sm px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap";
 
 /** 介质徽章(方案 §2:介质数是可解释的强信号维度;钱✓搜索✓=多介质留痕) */

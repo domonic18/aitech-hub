@@ -66,9 +66,13 @@ describe("登记表不变式", () => {
   it("视图分流:低频进日历,>8 次/日进常驻;常驻另有纯 tick 清单", () => {
     const { calendar, resident } = buildScheduleEntries();
     expect(calendar.every((e) => e.parsed.firesPerDay <= 8)).toBe(true);
-    // 每 15 分钟 ×2(96/日)分流到常驻,其余留日历
-    expect(resident.map((e) => e.key)).toEqual(["embed-reconcile", "insight-embed"]);
-    expect(calendar.map((e) => e.key)).toContain("insight-fetch");
+    // 热榜小时批(24/日,验收二批② 提频)+ 每 15 分钟 ×2(96/日)分流常驻,其余留日历
+    expect(resident.map((e) => e.key)).toEqual([
+      "insight-fetch",
+      "embed-reconcile",
+      "insight-embed",
+    ]);
+    expect(calendar.map((e) => e.key)).toContain("insight-daily");
     expect(calendar.map((e) => e.key)).toContain("discovery-bili");
     expect(RESIDENT_REGISTRY.length).toBeGreaterThanOrEqual(4);
   });
@@ -76,12 +80,17 @@ describe("登记表不变式", () => {
 
 describe("cadenceText", () => {
   it("每日单时刻/周频/高频三种口径", () => {
-    const daily = buildScheduleEntries().calendar.find((e) => e.key === "insight-fetch")!;
-    expect(cadenceText(daily)).toBe("07:43 每日");
+    const daily = buildScheduleEntries().calendar.find((e) => e.key === "insight-daily")!;
+    expect(cadenceText(daily)).toBe("03:57 每日");
     const weekly = buildScheduleEntries().calendar.find((e) => e.key === "discovery-bili")!;
     expect(cadenceText(weekly)).toBe("06:13 周一");
     const hourly = buildScheduleEntries().resident.find((e) => e.key === "insight-embed")!;
     expect(cadenceText(hourly)).toBe("4 次/小时");
+  });
+
+  it("热榜小时批(验收二批②):常驻档,人话=1 次/小时", () => {
+    const fetch = buildScheduleEntries().resident.find((e) => e.key === "insight-fetch")!;
+    expect(cadenceText(fetch)).toBe("1 次/小时");
   });
 });
 
