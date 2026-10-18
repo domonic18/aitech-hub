@@ -11,7 +11,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 
-import { isAnomaly } from "./label";
+import { clusterMomentum, isAnomaly, type ClusterMomentum } from "./scoring";
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
 
 /** 北京时区当日零点(与 statsDay/periodKey 同源口径,勿用 UTC 切日) */
@@ -148,6 +148,10 @@ export interface InsightClusterRow {
   history: number[];
   /** 异动告警(读侧双门判定,方案 §5.5) */
   anomaly: boolean;
+  /** 近 24h 新增 / 此前累计信号数(动量判定输入;雷达方向徽) */
+  sig24h: number;
+  sigBefore: number;
+  momentum: ClusterMomentum;
 }
 
 const CLUSTER_ROW_TAKE = 20;
@@ -190,8 +194,13 @@ export async function listInsightClusters(opts: {
       orderBy: { date: "asc" },
       select: { clusterId: true, score: true },
     }),
-    prisma.$queryRaw<{ cluster_id: bigint; recent: Date | null }[]>`
-      SELECT m.cluster_id, max(s.signal_at) AS recent
+    prisma.$queryRaw<
+      { cluster_id: bigint; sig_24h: bigint; sig_before: bigint; recent: Date | null }[]
+    >`
+      SELECT m.cluster_id,
+             count(s.id) FILTER (WHERE s.signal_at >= now() - interval '24 hours') AS sig_24h,
+             count(s.id) FILTER (WHERE s.signal_at <  now() - interval '24 hours') AS sig_before,
+             max(s.signal_at) AS recent
         FROM insight_cluster_member m
         JOIN insight_signal s ON s.id = m.signal_id
        WHERE m.cluster_id IN (${Prisma.join(ids)})
@@ -200,6 +209,7 @@ export async function listInsightClusters(opts: {
 
   const countMap = new Map(memberCounts.map((r) => [r.clusterId, r._count._all]));
   const recentMap = new Map(recentRows.map((r) => [r.cluster_id, r.recent]));
+  const sigMap = new Map(recentRows.map((r) => [r.cluster_id, r]));
   const historyMap = new Map<bigint, number[]>();
   for (const s of snaps) {
     const arr = historyMap.get(s.clusterId) ?? [];
@@ -216,6 +226,9 @@ export async function listInsightClusters(opts: {
       ? c.media.filter((m): m is string => typeof m === "string")
       : [];
     const recent = recentMap.get(c.id);
+    const sig = sigMap.get(c.id);
+    const sig24h = Number(sig?.sig_24h ?? 0);
+    const sigBefore = Number(sig?.sig_before ?? 0);
     return {
       id: c.id.toString(),
       kind: c.kind,
@@ -231,12 +244,15 @@ export async function listInsightClusters(opts: {
       recentAt: recent ? recent.toISOString() : null,
       history,
       anomaly: isAnomaly(history),
+      sig24h,
+      sigBefore,
+      momentum: clusterMomentum(sig24h, sigBefore),
     };
   });
 }
 
 export interface InsightClusterDetail {
-  cluster: Omit<InsightClusterRow, "history" | "anomaly"> & {
+  cluster: Omit<InsightClusterRow, "history" | "anomaly" | "sig24h" | "sigBefore" | "momentum"> & {
     domain: string;
     labeledAt: string | null;
     firstSeenAt: string;

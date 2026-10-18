@@ -10,7 +10,7 @@ import HotBoard from "@/components/admin/insight/HotBoard";
 import KeywordCloud from "@/components/admin/insight/KeywordCloud";
 import PainCardGrid from "@/components/admin/insight/PainCardGrid";
 import RadarTable from "@/components/admin/insight/RadarTable";
-import { MEDIUM_LABELS, SOURCE_LABELS } from "@/components/admin/insight/shared";
+import { SOURCE_LABELS } from "@/components/admin/insight/shared";
 import Sparkline from "@/components/admin/usage/Sparkline";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
@@ -135,58 +135,12 @@ export default async function AdminInsightPage({
       <div>
         <div className="mb-2 flex items-baseline gap-2">
           <h3 className="text-sm font-semibold">热点雷达</h3>
-          <span className="text-[11px] text-text-3">热点簇列表(30 日热力格见簇详情)</span>
+          <span className="text-[11px] text-text-3">
+            按机会分排序;动量徽=近 24h 新增信号方向(新晋/升温/平稳/退潮),热度条∝分值;30
+            日热力格见簇详情
+          </span>
         </div>
         <RadarTable clusters={hotClusters} />
-      </div>
-
-      <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
-              <th className="px-4 py-2.5 font-medium">信号源</th>
-              <th className="px-3 py-2.5 font-medium">介质</th>
-              <th className="px-3 py-2.5 text-right font-medium">总量</th>
-              <th className="px-3 py-2.5 text-right font-medium">今日</th>
-              <th className="px-4 py-2.5 text-right font-medium">占比</th>
-            </tr>
-          </thead>
-          <tbody>
-            {overview.bySource.map((s) => (
-              <tr key={s.source} className="border-b border-line last:border-b-0 hover:bg-panel-2">
-                <td className="px-4 py-2.5">
-                  <Link
-                    href={`/admin/insight?source=${s.source}`}
-                    className="text-text-1 hover:text-accent"
-                  >
-                    {SOURCE_LABELS[s.source as InsightSource] ?? s.source}
-                  </Link>
-                </td>
-                <td className="px-3 py-2.5">
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
-                    {MEDIUM_LABELS[s.medium] ?? s.medium}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono text-[12px] text-text-1">
-                  {s.total.toLocaleString()}
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono text-[12px] text-text-2">
-                  {s.today.toLocaleString()}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[11px] text-text-3">
-                  {overview.total > 0 ? `${Math.round((s.total / overview.total) * 100)}%` : "—"}
-                </td>
-              </tr>
-            ))}
-            {overview.bySource.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-xs text-text-3">
-                  信号池还是空的:前台搜一次/发一条评论即可看到首个信号
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
       </div>
 
       <div className="rounded-md border border-line bg-panel">
@@ -194,6 +148,7 @@ export default async function AdminInsightPage({
           <span className="text-xs font-medium text-text-2">最近信号</span>
           <Link
             href="/admin/insight"
+            scroll={false}
             className={`rounded-sm px-2 py-0.5 font-mono text-[11px] ${
               source === undefined
                 ? "bg-accent-dim text-accent"
@@ -206,6 +161,7 @@ export default async function AdminInsightPage({
             <Link
               key={k}
               href={`/admin/insight?source=${k}`}
+              scroll={false}
               className={`rounded-sm px-2 py-0.5 font-mono text-[11px] ${
                 source === k
                   ? "bg-accent-dim text-accent"
