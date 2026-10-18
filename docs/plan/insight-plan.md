@@ -46,8 +46,8 @@ douyin-gateway(curl_cffi TLS 指纹/Cookie 池/系统代理,基建已有,M33 批
 | 付费需求 | 猪八戒需求大厅 | 网页采集(CrawlSource type=web 模式);开放平台若查到免费档再升级 | 钱 | ③ |
 | 视频评论 | B站评论 | 公开接口 TS 直连(零签名),风控间隔沿用 M25 纪律 | 声音 | ④ |
 | 视频评论 | 抖音评论 | douyin-gateway 新端点(签名/风控收在网关内) | 声音 | ④ |
-| 热榜 | 知乎热榜/百度热搜/B站热门/微博热搜 | 公开接口或网页直连,TS 轻采集,低频(日频一批) | 声音/搜索 | ③ |
-| 搜索指数 | Google Trends(免费) | 免费接口,优先 | 搜索 | ③ |
+| 热榜 | 知乎热榜/百度热搜/B站热门/微博热搜 | 公开接口或网页直连,TS 轻采集,低频(日频一批)。**批③ 已落(2026-10-18 实弹探)**:百度/知乎/B站三源通(契约锚 golden 单测);微博 `ajax/side/hotSearch` 403(需登录 cookie,批④ 再议) | 声音/搜索 | ③ |
+| 搜索指数 | Google Trends(免费) | 免费接口。**批③ 探后弃**:trends.google.com 墙内(含生产网关)不可达,后置(百度指数逆向另议) | 搜索 | ③ |
 | 搜索指数 | 百度指数 | 网页逆向,风控敏感,**低频兜底** | 搜索 | 备选 |
 | 内部信号 | 搜索词/agent 问句/评论/feedback/电报 AI 产物 | 零采集,已在库 | 混合 | ① |
 | AI 原生 | GPTs/MCP 市场帖、prompt 合集 star、插件装机量 | 二期另批 | AI 记录 | 后置 |
@@ -146,13 +146,13 @@ model insight_snapshot {
 |---|---|---|
 | ① 内部信号先行 | 三表+embedding 列迁移;search_log 增强(命中数/零结果标记,beacon 同口径);agent 问句/评论/feedback/电报 AI 产物入池;存量回填;总览+痛点榜雏形(未聚类,先按源分组) | `make check`+真机验收 |
 | ② AI 加工层 | embedding 回填+增量聚类+LLM 打标(insight role 绑定)+覆盖度匹配+异动告警;雷达/痛点榜完整形态。**已实现(2026-10-18,`feature/insight-batch2`)**:insight 角色入 AiTaskBinding(第 7 角色);kind 按源映射(search/agent/comment/feedback→pain,telegram-ai→hot;批③ fetcher 携显式 kind);介质=成员并集(§5.4 LLM 判定留批③ 多介质外部源接入再收);覆盖度=痛点簇质心×post 近邻(零额外 embedding 调用;仅已打标簇,打标次日回写);异动=读侧双门(≥3×前3日均值且 Δ≥10,无基线不告警);阈值/配额常数化 `src/lib/insight/constants.ts` 待 §9-5 实测调参 | 簇可读、理由人话(真机验收前置:/admin/models 绑定「洞察归纳」) |
-| ③ 外部源一期 | 热榜 fetcher 插件(公开接口直连)+猪八戒网页采集(真机探先行)+Google Trends;雷达视图接外部信号 | 新源真机一轮零风控事故 |
+| ③ 外部源一期 | **2026-10-18 渠道转向后已实现(`feature/insight-batch3`,用户定调:去站内搜索/agent 问句/站点反馈,拓外部渠道+热榜/云图可视化)**:INSIGHT_SOURCES_ENABLED 停接入闸(站内三源退,存量留库,读侧+聚类白名单过滤);热榜三源 fetcher 插件(百度/知乎/B站,解析纯函数+真机探 golden 锚;日频 07:43 `fetch` job,refreshMeta=仍在榜刷新位次/热度续热);今日热榜视图(每源最新 meta.batch 榜面)+关键词云图(近 7 日活跃已打标簇关键词×机会分,字号映射);`insight:run -- fetch` 手动触发。微博(cookie)/抖音(gateway 端点)/Trends(墙)/猪八戒(真机探)后置批④ | 三源实弹校验通;`make check` 绿(1415 例) |
 | ④ 评论源 | B站评论 TS 直连+抖音评论网关端点(均真机探);痛点信号并池 | 评论信号可聚类 |
 | ⑤ 闭环与 agent | 选题工作台+转 Topic+TopicItem 扩型(signal 类)+词库联动(簇→建议加词)+**洞察 agent 雏形**(查信号/簇/评分三工具) | 选题一键流转 |
 
 ## 9. 开放决策点(立项评审收口)
 
-1. Google Trends 为主/百度指数逆向兜底——真机探后定(批③ 前)
+1. ~~Google Trends 为主/百度指数逆向兜底~~——批③ 探后定案:Trends 墙内不可达,退役;百度指数逆向未启动(后置)
 2. 猪八戒:网页爬取 vs 开放平台免费档(需查资质门槛)——真机探后定
 3. 公开热点页(SEO 机会 vs 时效负资产)——建议 admin-only 先行,公开版后议
 4. 图表方案——建议 SVG 手写扩展(Sparkline 先例),引库需另批
