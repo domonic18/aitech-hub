@@ -33,7 +33,7 @@ export default function SourceLedger({
               <tr key={s.source} className="border-b border-line last:border-b-0 hover:bg-panel-2">
                 <td className="px-4 py-2.5">
                   <Link
-                    href={`/admin/insight?source=${s.source}`}
+                    href={`/admin/data/insight/?source=${s.source}`}
                     className="text-text-1 hover:text-accent"
                   >
                     {SOURCE_LABELS[s.source as InsightSource] ?? s.source}

@@ -113,7 +113,7 @@ export function ClusterLabelLink({
 }): React.ReactElement {
   return (
     <Link
-      href={`/admin/insight/clusters/${id}`}
+      href={`/admin/data/insight/clusters/${id}`}
       className="text-text-1 hover:text-accent"
       title={label ?? "未打标簇,详情见信号原话"}
     >

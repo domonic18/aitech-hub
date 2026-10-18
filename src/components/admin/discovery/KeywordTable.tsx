@@ -7,6 +7,8 @@
  * 批量编排/勾选格/动作钮/状态徽走共享件(技术债批②)。候选表不在本件范围;
  * 分页留 RSC 页。
  */
+import Link from "next/link";
+
 import StatusControl from "./StatusControl";
 import BatchButton from "@/components/admin/batch/BatchButton";
 import BatchActionBar from "@/components/admin/batch/BatchActionBar";
@@ -18,6 +20,7 @@ import StatusChip from "@/components/admin/StatusChip";
 import { formatCnDateTime } from "@/lib/datetime";
 import type { KeywordAdminRow } from "@/lib/discovery/admin";
 import { KEYWORD_STATUS_LABELS } from "@/lib/discovery/status";
+import type { KeywordYield } from "@/lib/discovery/word-yield";
 
 export interface KeywordTableTones {
   [key: string]: string;
@@ -26,10 +29,13 @@ export interface KeywordTableTones {
 export default function KeywordTable({
   items,
   tones,
+  yieldByWord,
 }: {
   items: KeywordAdminRow[];
   /** 状态色 tone 映射(页面持有,保持与候选表同源) */
   tones: KeywordTableTones;
+  /** 词→产出聚合(批② 词动线;缺词=尚无候选命中,显 —) */
+  yieldByWord: Record<string, KeywordYield>;
 }): React.ReactElement {
   const rowIds = items.map((k) => k.id);
   const { selected, allSelected, toggle, toggleAll, clear } = useBatchSelection(rowIds);
@@ -86,6 +92,9 @@ export default function KeywordTable({
             />
             <th className="px-4 py-2.5 font-medium">词</th>
             <th className="px-3 py-2.5 font-medium">来源</th>
+            <th className="px-3 py-2.5 font-medium" title="该词命中的候选数与批准数(全部轮次累计)">
+              产出
+            </th>
             <th className="px-3 py-2.5 font-medium">状态</th>
             <th className="px-3 py-2.5 font-medium">首见时间</th>
             <th className="px-3 py-2.5 font-medium">确认时间</th>
@@ -109,6 +118,24 @@ export default function KeywordTable({
                 ) : (
                   <span title={k.source ?? undefined}>联想{k.source ? ` · ${k.source}` : ""}</span>
                 )}
+              </td>
+              <td className="px-3 py-2.5 font-mono text-xs text-text-2">
+                {(() => {
+                  const y = yieldByWord[k.word];
+                  if (!y) return <span className="text-text-3">—</span>;
+                  return (
+                    <Link
+                      href={`/admin/data/mine/?t=candidates&kw=${encodeURIComponent(k.word)}`}
+                      title="查看该词挖到的候选"
+                      className="hover:text-accent-hover hover:underline"
+                    >
+                      候选 {y.candidates}
+                      {y.approved > 0 && (
+                        <span className="ml-1 text-green">·批准 {y.approved}</span>
+                      )}
+                    </Link>
+                  );
+                })()}
               </td>
               <td className="px-3 py-2.5">
                 <StatusChip
@@ -137,7 +164,7 @@ export default function KeywordTable({
           ))}
           {items.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
+              <td colSpan={8} className="px-4 py-10 text-center text-xs text-text-3">
                 暂无关键词,可在上方人工添加或触发热词发现
               </td>
             </tr>

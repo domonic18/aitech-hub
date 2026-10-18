@@ -43,7 +43,7 @@ export default function PainCardGrid({
       {clusters.map((c) => (
         <Link
           key={c.id}
-          href={`/admin/insight/clusters/${c.id}`}
+          href={`/admin/data/insight/clusters/${c.id}`}
           className="flex items-center gap-3 rounded-sm px-2 py-2.5 hover:bg-panel-2"
         >
           <span className="w-7 shrink-0 text-right font-mono text-sm font-semibold text-text-1">

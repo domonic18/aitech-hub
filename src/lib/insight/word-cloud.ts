@@ -1,10 +1,9 @@
 /**
  * 词云螺旋排布纯函数(M34 批③ 验收反馈·问题3 行业词云形态):阿基米德螺旋
  * 紧密排布,矩形碰撞检测保证无重叠,权重决定字号与颜色档。零 DOM 依赖,
- * KeywordCloud 视图消费(客户端 canvas 量测注入),packWords 为测试锚点。
+ * KeywordCloud(洞察簇词云)与 WordYieldCloud(词库效能云)共用;客户端
+ * canvas 量测注入,packWords 为测试锚点。
  */
-import type { InsightCloudWord } from "./hotboard";
-
 export const CLOUD_H = 300;
 export const FONT_MIN = 14;
 export const FONT_MAX = 42;
@@ -17,8 +16,8 @@ interface Box {
   h: number;
 }
 
-export interface PlacedWord {
-  word: InsightCloudWord;
+export interface PlacedWord<T = { word: string; weight: number }> {
+  word: T;
   x: number;
   y: number;
   px: number;
@@ -44,19 +43,19 @@ export function tierColor(t: number): string {
  * 螺旋排布纯函数:words 按权重降序输入,自中心向外第一条不重叠位放置;
  * 竖排词按 1/4 比例(≥8 词才启用);超宽词缩字号;放不下截断。
  */
-export function packWords(
-  words: InsightCloudWord[],
+export function packWords<T extends { word: string; weight: number }>(
+  words: T[],
   width: number,
   height: number,
   measure: (text: string, px: number) => { w: number; h: number },
-): PlacedWord[] {
+): PlacedWord<T>[] {
   if (words.length === 0) return [];
   const weights = words.map((w) => w.weight);
   const min = Math.min(...weights);
   const max = Math.max(...weights);
   const span = Math.max(max - min, 1);
   const boxes: Box[] = [];
-  const out: PlacedWord[] = [];
+  const out: PlacedWord<T>[] = [];
   words.forEach((word, i) => {
     const t = (word.weight - min) / span;
     let px = FONT_MIN + t * (FONT_MAX - FONT_MIN);

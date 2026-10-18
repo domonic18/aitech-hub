@@ -63,7 +63,7 @@ function RadarRow({
     .join(" ");
   return (
     <Link
-      href={`/admin/insight/clusters/${c.id}`}
+      href={`/admin/data/insight/clusters/${c.id}`}
       className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-panel-2"
     >
       <span className={`w-5 shrink-0 text-right font-mono text-[12px] ${rankClass(rank)}`}>

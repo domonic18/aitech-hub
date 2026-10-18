@@ -1,17 +1,14 @@
 /**
- * GitHub 仓库台账页(M11 批②;侧栏精简批② 起为发现中心「项目」页签,bloggers 页同款骨架):
+ * GitHub 仓库台账页(M11 批②;2026-10-18 数据壳重组迁入为挖掘·项目视图):
  * 页顶同步健康 + API 令牌双状态卡,白名单台账表(仓库/热度/展示/健康/调度/操作)。
  * GITHUB_TOKEN 只出「已配置/未配置」布尔,值永不回显。
  */
 import RepoDialog from "@/components/admin/github/RepoDialog";
 import RepoRowOps from "@/components/admin/github/RepoRowOps";
-import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { env } from "@/lib/env";
 import { GITHUB_SYNC_INTERVAL_MIN } from "@/lib/github/constants";
 import { listReposAdmin } from "@/lib/github/repos-admin";
-
-export const dynamic = "force-dynamic";
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   healthy: { text: "healthy", cls: "bg-green/10 text-green" },
@@ -19,8 +16,7 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   error: { text: "error", cls: "bg-red/10 text-red" },
 };
 
-export default async function AdminGithubPage(): Promise<React.ReactElement> {
-  await requireAdminPage();
+export default async function MineGithub(): Promise<React.ReactElement> {
   const repos = await listReposAdmin();
   const counts = {
     total: repos.length,

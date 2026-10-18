@@ -116,7 +116,7 @@ export default async function AdminInsightPage({
         <div className="mb-2 flex items-baseline gap-2">
           <h3 className="text-sm font-semibold">关键词云图</h3>
           <span className="text-[11px] text-text-3">
-            近 7 日活跃已打标簇关键词 × 机会分(字号∝分值);点词跳簇详情
+            近 7 日活跃已打标簇关键词 × 机会分(字号∝分值);点词入词库,生效词即参与 B站发现
           </span>
         </div>
         <KeywordCloud words={cloud} />
@@ -147,7 +147,7 @@ export default async function AdminInsightPage({
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
           <span className="text-xs font-medium text-text-2">最近信号</span>
           <Link
-            href="/admin/insight"
+            href="/admin/data/insight/"
             scroll={false}
             className={`rounded-sm px-2 py-0.5 font-mono text-[11px] ${
               source === undefined
@@ -160,7 +160,7 @@ export default async function AdminInsightPage({
           {ENABLED_SOURCES.map((k) => (
             <Link
               key={k}
-              href={`/admin/insight?source=${k}`}
+              href={`/admin/data/insight/?source=${k}`}
               scroll={false}
               className={`rounded-sm px-2 py-0.5 font-mono text-[11px] ${
                 source === k

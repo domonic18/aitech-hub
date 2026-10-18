@@ -1,9 +1,7 @@
 /**
- * 采集总览页(M7 批④c;2026-10-04 按原型 admin-spider 重排;侧栏精简批①
- * 起「渠道」为同壳页签,批③ 加「采集计划」):4 KPI 卡 + 队列堆叠条/24h
- * 入库条带(mid-grid 1fr 360px)+ 采集日历热力图 + 信号采集强度(趋势/时段
- * /分源台账,自洞察中心迁入)+ 最近错误行。纯只读 RSC;KPI/队列行/热力图
- * 在 components/admin/spider,本件只做取数编排。治理动作在电报流治理页。
+ * 数据中心·运行总览视图(原采集总览页,M7 批④c→2026-10-18 数据壳重组迁入):
+ * 4 KPI 卡 + 队列堆叠条/24h 入库条带 + 采集日历热力图 + 信号采集强度(趋势/
+ * 时段/分源台账)+ 最近错误行。纯只读 RSC;守卫在 data/run 页,本件只做取数编排。
  */
 import Link from "next/link";
 
@@ -13,7 +11,6 @@ import IngestHeatmap from "@/components/admin/spider/IngestHeatmap";
 import QueueLane from "@/components/admin/spider/QueueLane";
 import SpiderKpiCards from "@/components/admin/spider/SpiderKpiCards";
 import SourceLedger, { LEDGER_SOURCES } from "@/components/admin/spider/SourceLedger";
-import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnTime } from "@/lib/datetime";
 import { insightOverview } from "@/lib/insight/admin";
 import { insightHourHeat, insightTrendDaily } from "@/lib/insight/trends";
@@ -29,8 +26,6 @@ import {
   getVideoObservation,
 } from "@/lib/telegram/spider-queries";
 
-export const dynamic = "force-dynamic";
-
 /** 空值展示「—」的 HH:mm(formatCnTime 同口径) */
 function hhmm(at: Date | null): string {
   return at === null ? "—" : formatCnTime(at);
@@ -45,8 +40,7 @@ function oldestWait(ms: number | null): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
 }
 
-export default async function AdminSpiderPage(): Promise<React.ReactElement> {
-  await requireAdminPage();
+export default async function RunOverview(): Promise<React.ReactElement> {
   const [
     snapshot,
     calendar,
@@ -117,7 +111,7 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
         </span>
         <span>最新 {video.lastVideoAt ? hhmm(video.lastVideoAt) : "—"}</span>
         <Link
-          href="/admin/discovery/bloggers/"
+          href="/admin/data/mine/?t=bloggers"
           className="ml-auto text-accent hover:text-accent-hover"
         >
           博主台账 →

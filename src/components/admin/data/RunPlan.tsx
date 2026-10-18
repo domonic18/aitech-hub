@@ -1,19 +1,14 @@
 /**
- * 采集计划页(M34 批③ 验收反馈·问题1,照搬 ai-invest 采集管理):登记表
- * 驱动的定时任务列表/日历双视图 + 常驻 tick 清单 + 热榜源台账(insight_hot_source,
- * 行内启停)+ 渠道间隔调度台账(crawl_source,管理动作在「渠道」页签)。
+ * 数据中心·运行计划视图(原采集计划页,M34 批③ 验收反馈·问题1→数据壳重组迁入):
+ * 登记表驱动的定时任务列表/日历双视图 + 常驻 tick 清单 + 渠道间隔调度台账
+ * (crawl_source,只读排程列;增删改在源管理·渠道视图)。热榜源台账在源管理。
  */
 import Link from "next/link";
 
-import HotSourceLedger from "@/components/admin/spider/HotSourceLedger";
 import ScheduleBoard from "@/components/admin/spider/ScheduleBoard";
-import { requireAdminPage } from "@/lib/auth/guard";
 import { buildScheduleEntries } from "@/lib/collect/schedules";
 import { formatCnTime } from "@/lib/datetime";
-import { listHotSourcesAdmin } from "@/lib/insight/hot-source";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
-
-export const dynamic = "force-dynamic";
 
 const TYPE_LABELS: Record<string, string> = { rss: "RSS", "social-video": "视频" };
 
@@ -21,7 +16,7 @@ function hhmm(at: Date | null): string {
   return at === null ? "—" : formatCnTime(at);
 }
 
-/** 渠道间隔调度台账(采集计划视角:只读排程列;管理在渠道页签) */
+/** 渠道间隔调度台账(只读排程列;管理动作在源管理·渠道视图) */
 async function ChannelIntervalLedger(): Promise<React.ReactElement> {
   const channels = await listChannelsAdmin();
   return (
@@ -31,12 +26,12 @@ async function ChannelIntervalLedger(): Promise<React.ReactElement> {
         <span className="ml-2 text-[11px] font-normal text-text-3">
           crawler tick 每分钟扫描,nextRunAt 到期即抓;单源失败隔离。增删改在
           <Link
-            href="/admin/spider/channels/"
+            href="/admin/data/sources/?t=channels"
             className="mx-0.5 text-accent hover:text-accent-hover"
           >
-            渠道
+            源管理·渠道
           </Link>
-          页签
+          视图
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -101,21 +96,18 @@ async function ChannelIntervalLedger(): Promise<React.ReactElement> {
   );
 }
 
-export default async function AdminSpiderSchedulePage(): Promise<React.ReactElement> {
-  await requireAdminPage();
+export default async function RunPlan(): Promise<React.ReactElement> {
   const { calendar, resident } = buildScheduleEntries();
-  const hotSources = await listHotSourcesAdmin();
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-semibold">采集计划</h2>
         <p className="mt-0.5 text-xs text-text-3">
           系统全部周期任务的一份事实:定时批任务按北京时间列出,登记表与 cron 单一来源在
-          src/lib/collect/schedules.ts;热榜源与渠道台账见下方。
+          src/lib/collect/schedules.ts。
         </p>
       </div>
       <ScheduleBoard calendar={calendar} resident={resident} />
-      <HotSourceLedger rows={hotSources} />
       <ChannelIntervalLedger />
     </div>
   );

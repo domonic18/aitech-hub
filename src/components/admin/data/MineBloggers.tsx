@@ -1,5 +1,5 @@
 /**
- * 博主台账页(M8 批③;侧栏精简批② 起为发现中心「博主」页签,channels 页同款骨架):
+ * 博主台账页(M8 批③;2026-10-18 数据壳重组迁入为挖掘·博主视图):
  * 页顶 Cookie 池 + 网关健康 + ASR 转写 + 出口代理四状态卡,博主台账表(账号/
  * 频率/启停/ASR 7d/健康/调度/操作)。Cookie 只出脱敏 ttwid 前缀;网关不可达
  * 降级展示,不阻塞页面。2026-10-06 验收反馈问题3/4:补启用开关列与 ASR 统计。
@@ -11,7 +11,6 @@ import BloggerDialog from "@/components/admin/BloggerDialog";
 import BloggerRowOps from "@/components/admin/BloggerRowOps";
 import CookiePoolCard from "@/components/admin/CookiePoolCard";
 import EgressProxyCard from "@/components/admin/EgressProxyCard";
-import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { getEgressProxyConfigAdmin } from "@/lib/telegram/egress-proxy";
 import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
@@ -22,8 +21,6 @@ import {
   VIDEO_PLATFORM_BILIBILI,
   VIDEO_PLATFORM_DOUYIN,
 } from "@/lib/telegram/constants";
-
-export const dynamic = "force-dynamic";
 
 function secUidShort(secUid: string): string {
   return secUid.length > 18 ? `${secUid.slice(0, 14)}…` : secUid;
@@ -40,8 +37,7 @@ function asrHours(sec: number): string {
   return `${(sec / 3600).toFixed(1)}h`;
 }
 
-export default async function AdminBloggersPage(): Promise<React.ReactElement> {
-  await requireAdminPage();
+export default async function MineBloggers(): Promise<React.ReactElement> {
   const [bloggers, pool, gateway, asr, asrConfig, egressProxy] = await Promise.all([
     listBloggersAdmin(),
     getCookiePoolView(),

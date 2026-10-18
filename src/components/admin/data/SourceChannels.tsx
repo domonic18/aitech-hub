@@ -1,17 +1,14 @@
 /**
- * 渠道台账页(M7 批④,采集总览「渠道」页签(侧栏精简批①):crawl_source 全量列表。
- * 端点与凭证均脱敏展示(maskUrlSecrets/maskConfig);凭证只写不读,
- * 采集频率与健康度(连续失败/上下轮时间)一屏可见。
+ * 数据中心·源管理渠道视图(原渠道台账页,M7 批④→数据壳重组迁入):
+ * crawl_source 全量台账。端点与凭证均脱敏展示(maskUrlSecrets/maskConfig);
+ * 凭证只写不读,采集频率与健康度(连续失败/上下轮时间)一屏可见。
  */
 import ChannelDialog from "@/components/admin/ChannelDialog";
 import ChannelRowOps from "@/components/admin/ChannelRowOps";
 import StatusSwitch from "@/components/admin/StatusSwitch";
-import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { CRAWL_SOURCE_STATUS_ERROR, CRAWL_SOURCE_STATUS_HEALTHY } from "@/lib/telegram/constants";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
-
-export const dynamic = "force-dynamic";
 
 function StatusBadge({ status, fails }: { status: string; fails: number }) {
   if (status === CRAWL_SOURCE_STATUS_HEALTHY) {
@@ -39,8 +36,7 @@ function StatusBadge({ status, fails }: { status: string; fails: number }) {
   );
 }
 
-export default async function AdminChannelsPage(): Promise<React.ReactElement> {
-  await requireAdminPage();
+export default async function SourceChannels(): Promise<React.ReactElement> {
   const items = await listChannelsAdmin();
   const enabledCount = items.filter((c) => c.enabled).length;
   const total24h = items.reduce((sum, c) => sum + c.count24h, 0);
