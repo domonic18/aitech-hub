@@ -112,7 +112,11 @@ export default function RadarTable({
   if (clusters.length === 0) {
     return (
       <div className="rounded-md border border-line bg-panel px-4 py-8 text-center text-xs text-text-3">
-        热点簇暂空:站内热点信号批③ 外部源(热榜/评论)接入后进入雷达
+        热点簇暂空:热榜信号拉取并打标后进入雷达——检查
+        <Link href="/admin/data/sources/?t=hot" className="mx-0.5 text-accent hover:underline">
+          源管理·热榜源
+        </Link>
+        启停,或用 CLI <code className="font-mono">insight:run -- cluster</code> 手动跑一轮
       </div>
     );
   }

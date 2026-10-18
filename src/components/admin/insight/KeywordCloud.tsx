@@ -86,7 +86,11 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
   if (words.length === 0) {
     return (
       <div className="rounded-md border border-line bg-panel px-4 py-6 text-center text-xs text-text-3">
-        暂无关键词:簇打标需在 /admin/models 绑定「洞察归纳」模型,日批(03:57)跑完即生成
+        暂无关键词:簇打标需在
+        <Link href="/admin/models" className="mx-0.5 text-accent hover:underline">
+          AI 配置
+        </Link>
+        绑定「洞察归纳」模型,日批(03:57)跑完即生成
       </div>
     );
   }

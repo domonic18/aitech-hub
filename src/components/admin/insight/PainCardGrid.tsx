@@ -33,7 +33,12 @@ export default function PainCardGrid({
   if (clusters.length === 0) {
     return (
       <div className="rounded-md border border-line bg-panel px-4 py-8 text-center text-xs text-text-3">
-        暂无痛点簇:成员 ≥3 的信号簇经日批打标后在此出榜(需在 AI 配置绑定「洞察归纳」模型)
+        暂无痛点簇:成员 ≥3 的信号簇经日批(03:57)打标后在此出榜——先在
+        <Link href="/admin/models" className="mx-0.5 text-accent hover:underline">
+          AI 配置
+        </Link>
+        绑定「洞察归纳」模型,或用 CLI <code className="font-mono">insight:run -- cluster</code>{" "}
+        手动跑一轮
       </div>
     );
   }

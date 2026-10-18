@@ -3,6 +3,8 @@
  * 三色(1 红/2 橙/3 黄)+名次变动(↑n/↓n/新)+热度比例条,对比上一拉取批。
  * 纯展示零状态,数据来自 lib/insight/hotboard#latestHotBoard;复用 shared。
  */
+import Link from "next/link";
+
 import type { InsightHotItem, InsightHotSourceBoard } from "@/lib/insight/hotboard";
 
 import { formatTime, SOURCE_LABELS } from "./shared";
@@ -112,7 +114,15 @@ function BoardCard({ board }: { board: InsightHotSourceBoard }): React.ReactElem
         ))}
         {board.items.length === 0 && (
           <li className="px-2 py-6 text-center text-xs text-text-3">
-            暂无榜面:等每日拉取(07:43)或 insight:run -- fetch 手动补跑
+            暂无榜面:等每日拉取(07:43)——去
+            <Link href="/admin/data/sources/?t=hot" className="mx-0.5 text-accent hover:underline">
+              源管理·热榜源
+            </Link>
+            确认启停,或
+            <Link href="/admin/data/run/?t=plan" className="mx-0.5 text-accent hover:underline">
+              运行·计划
+            </Link>
+            看排程
           </li>
         )}
       </ol>
