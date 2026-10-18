@@ -17,6 +17,8 @@ export interface InsightHotItem {
   title: string;
   heat: number | null;
   url: string | null;
+  /** 名次变动 vs 上一拉取批:正=↑n,负=↓n,0=持平,null=新上榜(无前批或前批未上榜) */
+  move: number | null;
 }
 
 export interface InsightHotSourceBoard {
@@ -29,6 +31,7 @@ export interface InsightHotSourceBoard {
 interface BoardRow {
   id: bigint;
   source: string;
+  ref_id: string;
   rank: number;
   title: string;
   heat: number | null;
@@ -36,29 +39,58 @@ interface BoardRow {
   signal_at: Date;
 }
 
+interface PrevRankRow {
+  source: string;
+  ref_id: string;
+  rank: number;
+}
+
 /**
- * 今日热榜:每源取 meta.batch(拉取轮时间戳)最新一批的全部条目,按 rank 升序。
- * batch/heat/url 存 meta JSONB;出榜条目 batch 停留在旧轮,内连接自然排除。
- * 无拉取记录(首轮前/源失败)返回空榜面,渲染侧给引导文案。
+ * 今日热榜:每源取 meta.batch(拉取轮时间戳)最新一批的全部条目,按 rank 升序,
+ * 并对齐各源上一批的名次算变动(move)。batch/heat/url 存 meta JSONB;出榜条目
+ * batch 停留在旧轮,内连接自然排除。无拉取记录(首轮前/源失败)返回空榜面。
  */
 export async function latestHotBoard(): Promise<InsightHotSourceBoard[]> {
-  const rows = await prisma.$queryRaw<BoardRow[]>`
-    SELECT s.id, s.source,
-           (s.meta->>'rank')::int AS rank,
-           s.raw_text AS title,
-           (s.meta->>'heat')::float8 AS heat,
-           s.meta->>'url' AS url,
-           s.signal_at
-      FROM insight_signal s
-      JOIN (
-        SELECT source, max((meta->>'batch')::bigint) AS batch
-          FROM insight_signal
-         WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL
-         GROUP BY source
-      ) b ON b.source = s.source AND (s.meta->>'batch')::bigint = b.batch
-     ORDER BY s.source, rank
-  `;
+  const [rows, prevRows] = await Promise.all([
+    prisma.$queryRaw<BoardRow[]>`
+      SELECT s.id, s.source, s.ref_id,
+             (s.meta->>'rank')::int AS rank,
+             s.raw_text AS title,
+             (s.meta->>'heat')::float8 AS heat,
+             s.meta->>'url' AS url,
+             s.signal_at
+        FROM insight_signal s
+        JOIN (
+          SELECT source, max((meta->>'batch')::bigint) AS batch
+            FROM insight_signal
+           WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL
+           GROUP BY source
+        ) b ON b.source = s.source AND (s.meta->>'batch')::bigint = b.batch
+       ORDER BY s.source, rank
+    `,
+    // 上一拉取批名次(每源取 < 最新批的次新批;无次新批的源自然无行)
+    prisma.$queryRaw<PrevRankRow[]>`
+      SELECT s.source, s.ref_id, (s.meta->>'rank')::int AS rank
+        FROM insight_signal s
+        JOIN (
+          SELECT c.source,
+                 (SELECT max((meta->>'batch')::bigint)
+                    FROM insight_signal
+                   WHERE source = c.source AND meta->>'batch' IS NOT NULL
+                     AND (meta->>'batch')::bigint < c.batch) AS prev
+            FROM (
+              SELECT source, max((meta->>'batch')::bigint) AS batch
+                FROM insight_signal
+               WHERE source IN (${Prisma.join(HOT_SOURCES)}) AND meta->>'batch' IS NOT NULL
+               GROUP BY source
+            ) c
+        ) b ON b.prev IS NOT NULL
+           AND s.source = b.source
+           AND (s.meta->>'batch')::bigint = b.prev
+    `,
+  ]);
 
+  const prevRank = new Map(prevRows.map((r) => [`${r.source}|${r.ref_id}`, r.rank]));
   const bySource = new Map<string, BoardRow[]>(HOT_SOURCES.map((s) => [s, []]));
   for (const row of rows) bySource.get(row.source)?.push(row);
   return HOT_SOURCES.map((source) => {
@@ -71,7 +103,16 @@ export async function latestHotBoard(): Promise<InsightHotSourceBoard[]> {
       source: source as InsightSource,
       fetchedAt: fetchedAt?.toISOString() ?? null,
       items: items
-        .map((it) => ({ rank: it.rank, title: it.title, heat: it.heat, url: it.url }))
+        .map((it) => {
+          const prev = prevRank.get(`${source}|${it.ref_id}`);
+          return {
+            rank: it.rank,
+            title: it.title,
+            heat: it.heat,
+            url: it.url,
+            move: prev === undefined ? null : prev - it.rank,
+          };
+        })
         .sort((a, b) => a.rank - b.rank),
     };
   });
