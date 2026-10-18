@@ -18,6 +18,11 @@ import {
   EMBED_JOB_RECONCILE,
   EMBED_RECONCILE_CRON,
   GITHUB_JOB_TICK,
+  INSIGHT_DAILY_CRON,
+  INSIGHT_EMBED_CRON,
+  INSIGHT_JOB_DAILY,
+  INSIGHT_JOB_EMBED,
+  QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
   PAY_JOB_DAILY_AUDIT,
@@ -197,6 +202,29 @@ export async function scheduleDiscovery(): Promise<void> {
     { pattern: DISCOVERY_BILI_CRON, tz: SITE_TZ },
     {
       name: DISCOVERY_JOB_BILI,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
+/** 洞察加工调度(M34 批②):向量回填+聚类 15 分钟错峰 / LLM 打标日批 03:57 */
+export async function scheduleInsight(): Promise<void> {
+  const queue = getQueue(QUEUE_INSIGHT);
+  await queue.upsertJobScheduler(
+    "insight-embed",
+    { pattern: INSIGHT_EMBED_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_EMBED,
+      data: {},
+      opts: { removeOnComplete: 50 },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "insight-daily",
+    { pattern: INSIGHT_DAILY_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_DAILY,
       data: {},
       opts: { removeOnComplete: 7 },
     },

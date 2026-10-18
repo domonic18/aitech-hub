@@ -11,6 +11,7 @@ import {
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
   QUEUE_DISTRIBUTE,
+  QUEUE_INSIGHT,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_PAY_RECONCILE,
@@ -29,6 +30,7 @@ import {
   scheduleDiscovery,
   scheduleEmbedReconcile,
   scheduleGithubTick,
+  scheduleInsight,
   scheduleMediaAudit,
   schedulePayReconcile,
   scheduleStatsFlush,
@@ -66,7 +68,9 @@ async function main(): Promise<void> {
                 ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
                 : name === QUEUE_DISCOVERY
                   ? { concurrency: 1, lockDuration: 900_000 } // B站风控纪律全局串行;双窗全词 5-10min
-                  : {};
+                  : name === QUEUE_INSIGHT
+                    ? { concurrency: 1, lockDuration: 600_000 } // 日批 LLM 分钟级;并发 1 防双拍交错归簇
+                    : {};
     const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
     w.on("failed", logFailed(name));
     workers.push(w);
@@ -85,6 +89,7 @@ async function main(): Promise<void> {
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
   await scheduleDiscovery();
+  await scheduleInsight();
 
   // checkpoint 表框架双保险(web 侧 getAgentGraph 懒加载为主;失败不拦 boot,
   // 首个 agent 任务内部 ensure 重试)

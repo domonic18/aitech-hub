@@ -47,6 +47,9 @@ export const QUEUE_PAY_RECONCILE = "pay-reconcile";
 /** 优质内容发现(M25,discovery-plan.md):热词日频直拉 + B站发现周频双窗;
  * 并发 1(B站风控纪律全局串行)+ 锁 900s 覆盖双窗全词 5-10 分钟 */
 export const QUEUE_DISCOVERY = "discovery";
+/** 洞察加工(M34 批②,insight-plan §5):embed 高频向量回填+增量聚类 /
+ * daily 日频 LLM 打标+覆盖度+快照;并发 1(同批自愈重扫语义,防双拍交错归簇)*/
+export const QUEUE_INSIGHT = "insight";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -65,6 +68,7 @@ export const QUEUE_NAMES = [
   QUEUE_EMAIL,
   QUEUE_PAY_RECONCILE,
   QUEUE_DISCOVERY,
+  QUEUE_INSIGHT,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -154,6 +158,19 @@ export const DISCOVERY_HOTWORDS_CRON = "37 5 * * *";
 
 /** B站发现 06:13 周一早(双窗全词约 5-10 分钟,避开热词档) */
 export const DISCOVERY_BILI_CRON = "13 6 * * 1";
+
+/** insight 队列 job name 契约(M34 批②;embed 为缺省路径——手动触发
+ * scripts/ops 同名一次性 job 可复用;daily=日频打标批。改名需与 worker 同批) */
+export const INSIGHT_JOB_EMBED = "embed";
+export const INSIGHT_JOB_DAILY = "daily";
+
+/** 洞察向量回填+聚类调度:每 15 分钟,与三域 embedding 对账(7/22/37/52 分)
+ * 错峰(3/18/33/48 分,同档不撞车) */
+export const INSIGHT_EMBED_CRON = "3,18,33,48 * * * *";
+
+/** 洞察日批 03:57(凌晨档错峰:03:41 media-audit / 04:13 pay-audit / 04:14
+ * visit-purge;LLM 调用分钟级,避开 4 点清理带) */
+export const INSIGHT_DAILY_CRON = "57 3 * * *";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
