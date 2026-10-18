@@ -362,6 +362,10 @@ CREATE TABLE legacy_url_map (
 
 - `system_proxy_config`(全局单点家宽出口,采集网关全部出站过境;**id=1 锚点 get-or-create,镜像 `admin_feishu_config` 形态**):`proxy_url_enc? varchar(500)`(secret-box AES-256-GCM,AUTH_SECRET 轮换失效重录)/`proxy_url_mask? varchar(60)`(`scheme://host:port` 脱敏冗余列,凭据段剥除永不回显)/`enabled 默认 false`(总开关,关闭=全部直连配置保留)/`last_test` 四件套(经网关 `/proxy-test` 探 B 站一跳);**网关零密钥不变**——worker 解密后随网关请求携带,代理地址不落网关不进日志
 
+**任务运行台账已落地(2026-10-19 验收二批③迁移 `20261019120000_job_run_log`,调度接线与读侧页签见 [arch/05 §4](05-services.md))**:
+
+- `job_run`(系统周期/手动批任务运行记录——BullMQ removeOnComplete 只留近几次,挂死/失败/耗时无处可查;学习 ai-invest collector_log 单一写入口形态):`job_key varchar(60)`(`queue/jobName` 稳定键,如 `insight/fetch`)/`queue varchar(40)`/`job_name varchar(60)`/`trigger varchar(10)` 枚举 `cron|manual`(jobId 带 `-manual-` 即 manual)/`status varchar(10)` 枚举 `running|success|failed`(**先落 running 行再执行——挂死立即停留可见,不必等超时**)/`started_at/finished_at?/duration_ms?`/`summary jsonb?`(处理器返回值,超 4000 字符截为 `{truncated,preview}`)/`error? text`(截 4000);索引 `idx_job_run_recent(started_at DESC)` + `idx_job_run_key_recent(job_key,started_at DESC)`。**单一写入口=worker 分发器包装**(worker/job-run#withJobRunLog,白名单 14 批任务 ≈400 行/日;tick 心跳与请求驱动单元任务不入账);30 天保留,04:47 日清批顺带把 running 超 24h 的崩溃残留代标 failed 收口
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**

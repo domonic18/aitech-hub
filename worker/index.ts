@@ -21,6 +21,7 @@ import {
 } from "../src/lib/queue";
 import { ensureAgentCheckpointer } from "../src/lib/agent/checkpointer";
 import { PROCESSORS } from "./processors";
+import { withJobRunLog } from "./job-run";
 import {
   scheduleAgentSessionPurge,
   scheduleAiBackfillTick,
@@ -31,6 +32,7 @@ import {
   scheduleEmbedReconcile,
   scheduleGithubTick,
   scheduleInsight,
+  scheduleJobRunPurge,
   scheduleMediaAudit,
   schedulePayReconcile,
   scheduleStatsFlush,
@@ -71,7 +73,11 @@ async function main(): Promise<void> {
                   : name === QUEUE_INSIGHT
                     ? { concurrency: 1, lockDuration: 600_000 } // 日批 LLM 分钟级;并发 1 防双拍交错归簇
                     : {};
-    const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
+    const w = new Worker(name, withJobRunLog(name, PROCESSORS[name]), {
+      connection,
+      concurrency: 2,
+      ...opts,
+    });
     w.on("failed", logFailed(name));
     workers.push(w);
   }
@@ -82,6 +88,7 @@ async function main(): Promise<void> {
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();
   await scheduleAgentSessionPurge();
+  await scheduleJobRunPurge();
   await scheduleDbBackup();
   await scheduleEmbedReconcile();
   await schedulePayReconcile();

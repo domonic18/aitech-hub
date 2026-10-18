@@ -38,8 +38,10 @@ import {
   QUEUE_SUMMARIZER,
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_PURGE,
+  STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
 } from "../src/lib/queue";
+import { purgeJobRuns } from "../src/lib/jobs/runlog";
 import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
 import { runBiliDiscovery } from "../src/lib/discovery/discover";
 import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
@@ -122,6 +124,14 @@ export const PROCESSORS: Record<string, Processor> = {
         console.log(JSON.stringify({ event: "agent.guest_thread.purge", removed: guestRemoved }));
       }
       return { removed, guestRemoved };
+    }
+    // 任务运行台账 30 天保留期清理 + 崩溃残留代收口(验收二批③)
+    if (job.name === STATS_JOB_RUN_PURGE) {
+      const summary = await purgeJobRuns();
+      if (summary.purged > 0 || summary.crashed > 0) {
+        console.log(JSON.stringify({ event: "jobrun.purge", ...summary }));
+      }
+      return summary;
     }
     const summary = await flushStatsBuffer();
     if (summary.keysFlushed > 0) {

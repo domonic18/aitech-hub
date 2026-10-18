@@ -1226,3 +1226,27 @@ model AgentSkill {
 
   @@map("agent_skill")
 }
+
+/// 任务运行台账(验收二批③,学习 ai-invest collector_log):系统全部周期批任务
+/// (cron 调度 + 手动触发,含 LLM/向量调用类)的持久运行记录——BullMQ
+/// removeOnComplete 只留近几次,挂死/失败/耗时无处可查。单一写入口=worker
+/// 分发器包装(worker/job-run#withJobRunLog):执行前先落 running 行(挂死
+/// 立即可见),终态回写 summary/error。tick 类纯心跳(crawler/github/stats-flush
+ /// /pay-sweep)不落账——其工作单元在各自台账(crawl_source/github_repo)有账。
+model JobRun {
+  id         BigInt    @id @default(autoincrement())
+  jobKey     String    @map("job_key") @db.VarChar(60) // 稳定键 queue/name(如 insight/fetch)
+  queue      String    @db.VarChar(40)
+  jobName    String    @map("job_name") @db.VarChar(60)
+  trigger    String    @db.VarChar(10) // cron | manual(jobId 带 -manual- 前缀)
+  status     String    @db.VarChar(10) // running | success | failed
+  startedAt  DateTime  @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  durationMs Int?      @map("duration_ms")
+  summary    Json? // job 级汇总(处理器返回值;超长截断)
+  error      String? @db.Text // 失败信息(截 4000)
+
+  @@index([startedAt(sort: Desc)], map: "idx_job_run_recent")
+  @@index([jobKey, startedAt(sort: Desc)], map: "idx_job_run_key_recent")
+  @@map("job_run")
+}

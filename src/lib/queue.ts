@@ -85,6 +85,7 @@ export {
   INSIGHT_DAILY_CRON,
   INSIGHT_EMBED_CRON,
   INSIGHT_FETCH_CRON,
+  JOB_RUN_PURGE_CRON,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
   USAGE_LOG_PURGE_CRON,
@@ -117,11 +118,12 @@ export const DISTRIBUTE_JOB_WECHAT_COPY = "wechat-copy";
 
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细;
  * purge-usage-log 清理 AI 用量台账,M14 批⑦;purge-agent-session 清退
- * Drawer 会话 30 天前留档,K2.5) */
+ * Drawer 会话 30 天前留档,K2.5;purge-job-run 清理任务运行台账,验收二批③) */
 export const STATS_JOB_FLUSH = "flush";
 export const STATS_JOB_PURGE = "purge-visit-log";
 export const STATS_JOB_USAGE_PURGE = "purge-usage-log";
 export const STATS_JOB_AGENT_PURGE = "purge-agent-session";
+export const STATS_JOB_RUN_PURGE = "purge-job-run";
 
 /** db-backup 队列 job name 契约(run 为缺省路径;手动触发 scripts/ops/db-backup-trigger.ts 同名) */
 export const DB_BACKUP_JOB_RUN = "run";
