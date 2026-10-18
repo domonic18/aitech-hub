@@ -9,11 +9,15 @@ CREATE TABLE "insight_hot_source" (
     "last_run_at" TIMESTAMPTZ(6),
     "last_error" VARCHAR(300),
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- updated_at 由 Prisma 客户端维护(@updatedAt),不设 DB 默认(迁移重放守卫口径)
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "insight_hot_source_pkey" PRIMARY KEY ("source")
 );
 
-INSERT INTO "insight_hot_source" ("source")
-VALUES ('hot-baidu'), ('hot-zhihu'), ('hot-bilibili')
+INSERT INTO "insight_hot_source" ("source", "created_at", "updated_at")
+VALUES
+    ('hot-baidu', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('hot-zhihu', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('hot-bilibili', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT ("source") DO NOTHING;
