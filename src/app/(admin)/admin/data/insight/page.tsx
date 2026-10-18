@@ -1,11 +1,12 @@
 /**
  * 洞察中心(M34 批①雏形→批② 完整形态,方案 docs/plan/insight-plan.md §6):
  * KPI(总量/今日/零结果搜索/日增)+ 痛点榜卡格(核心,覆盖度空白标红)+
- * 热点雷达表 + 分源台账 + 原始信号流(可按源过滤)。纯读无 mutation,服务端
- * 直查不设 API 路由。
+ * 热点雷达表 + 分源台账 + 原始信号流(可按源过滤)。服务端直查不设读 API;
+ * 页头「立即分析」经 /api/insight/trigger 手动跑日批(验收二批①)。
  */
 import Link from "next/link";
 
+import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
 import HotBoard from "@/components/admin/insight/HotBoard";
 import KeywordCloud from "@/components/admin/insight/KeywordCloud";
 import PainCardGrid from "@/components/admin/insight/PainCardGrid";
@@ -95,13 +96,26 @@ export default async function AdminInsightPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-semibold">洞察中心</h2>
-        <p className="mt-0.5 text-xs text-text-3">
-          三层读法:① 选题机会决定「写什么」→ ② 外部热度对照「站外在热什么」(点词可入词库驱动发现) →
-          ③ 信号明细钻「原始素材」。管线:外部热榜日频拉取 → 聚类打标 → 机会分;方案见
-          docs/plan/insight-plan.md(M34)。
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">洞察中心</h2>
+          <p className="mt-0.5 text-xs text-text-3">
+            三层读法:① 选题机会决定「写什么」→ ② 外部热度对照「站外在热什么」(点词可入词库驱动发现)
+            → ③ 信号明细钻「原始素材」。管线:外部热榜日频拉取 → 聚类打标 → 机会分;方案见
+            docs/plan/insight-plan.md(M34)。
+          </p>
+        </div>
+        {/* 手动触发(验收二批①):日批打标即到即跑,不必等 03:57 排程;热榜拉取在源管理·热榜源 */}
+        <TriggerButtons
+          endpoint="/api/insight/trigger"
+          jobs={[
+            {
+              job: "daily",
+              label: "立即分析",
+              hint: "手动跑一轮 LLM 打标+覆盖度+评分快照,耗时数分钟",
+            },
+          ]}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
