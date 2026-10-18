@@ -145,7 +145,7 @@ model insight_snapshot {
 | 批 | 内容 | 出口 |
 |---|---|---|
 | ① 内部信号先行 | 三表+embedding 列迁移;search_log 增强(命中数/零结果标记,beacon 同口径);agent 问句/评论/feedback/电报 AI 产物入池;存量回填;总览+痛点榜雏形(未聚类,先按源分组) | `make check`+真机验收 |
-| ② AI 加工层 | embedding 回填+增量聚类+LLM 打标(insight role 绑定)+覆盖度匹配+异动告警;雷达/痛点榜完整形态 | 簇可读、理由人话 |
+| ② AI 加工层 | embedding 回填+增量聚类+LLM 打标(insight role 绑定)+覆盖度匹配+异动告警;雷达/痛点榜完整形态。**已实现(2026-10-18,`feature/insight-batch2`)**:insight 角色入 AiTaskBinding(第 7 角色);kind 按源映射(search/agent/comment/feedback→pain,telegram-ai→hot;批③ fetcher 携显式 kind);介质=成员并集(§5.4 LLM 判定留批③ 多介质外部源接入再收);覆盖度=痛点簇质心×post 近邻(零额外 embedding 调用;仅已打标簇,打标次日回写);异动=读侧双门(≥3×前3日均值且 Δ≥10,无基线不告警);阈值/配额常数化 `src/lib/insight/constants.ts` 待 §9-5 实测调参 | 簇可读、理由人话(真机验收前置:/admin/models 绑定「洞察归纳」) |
 | ③ 外部源一期 | 热榜 fetcher 插件(公开接口直连)+猪八戒网页采集(真机探先行)+Google Trends;雷达视图接外部信号 | 新源真机一轮零风控事故 |
 | ④ 评论源 | B站评论 TS 直连+抖音评论网关端点(均真机探);痛点信号并池 | 评论信号可聚类 |
 | ⑤ 闭环与 agent | 选题工作台+转 Topic+TopicItem 扩型(signal 类)+词库联动(簇→建议加词)+**洞察 agent 雏形**(查信号/簇/评分三工具) | 选题一键流转 |
@@ -156,7 +156,7 @@ model insight_snapshot {
 2. 猪八戒:网页爬取 vs 开放平台免费档(需查资质门槛)——真机探后定
 3. 公开热点页(SEO 机会 vs 时效负资产)——建议 admin-only 先行,公开版后议
 4. 图表方案——建议 SVG 手写扩展(Sparkline 先例),引库需另批
-5. 簇自动流转纪律(active→fading 阈值)——批② 实测后定参
+5. 簇自动流转纪律(active→fading 阈值)——批② 落 `FADE_AFTER_DAYS=14` 常数初值(日批机械段流转),实测后调参
 
 ## 10. 非目标(本里程碑明确不做)
 
