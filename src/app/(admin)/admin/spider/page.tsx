@@ -1,16 +1,22 @@
 /**
  * 采集总览页(M7 批④c;2026-10-04 按原型 admin-spider 重排;侧栏精简批①
- * 起「渠道」为同壳页签):4 KPI 卡 + 队列堆叠条/24h 入库条带(mid-grid
- * 1fr 360px)+ 采集日历热力图 + 最近错误行。纯只读 RSC;KPI/队列行/热力图
+ * 起「渠道」为同壳页签,批③ 加「采集计划」):4 KPI 卡 + 队列堆叠条/24h
+ * 入库条带(mid-grid 1fr 360px)+ 采集日历热力图 + 信号采集强度(趋势/时段
+ * /分源台账,自洞察中心迁入)+ 最近错误行。纯只读 RSC;KPI/队列行/热力图
  * 在 components/admin/spider,本件只做取数编排。治理动作在电报流治理页。
  */
 import Link from "next/link";
 
+import HourHeat from "@/components/admin/insight/HourHeat";
+import TrendBars from "@/components/admin/insight/TrendBars";
 import IngestHeatmap from "@/components/admin/spider/IngestHeatmap";
 import QueueLane from "@/components/admin/spider/QueueLane";
 import SpiderKpiCards from "@/components/admin/spider/SpiderKpiCards";
+import SourceLedger, { LEDGER_SOURCES } from "@/components/admin/spider/SourceLedger";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnTime } from "@/lib/datetime";
+import { insightOverview } from "@/lib/insight/admin";
+import { insightHourHeat, insightTrendDaily } from "@/lib/insight/trends";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import {
   getCrawlerQueueSnapshot,
@@ -41,18 +47,33 @@ function oldestWait(ms: number | null): string {
 
 export default async function AdminSpiderPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [snapshot, calendar, hourly, stock, channels, video, interpreter, summarizer, github] =
-    await Promise.all([
-      getCrawlerQueueSnapshot(),
-      getIngestCalendar(84),
-      getIngestHourly(),
-      getTelegramStock(),
-      listChannelsAdmin(),
-      getVideoObservation(),
-      getInterpreterQueueSnapshot(),
-      getSummarizerQueueSnapshot(),
-      getGithubQueueSnapshot(),
-    ]);
+  const [
+    snapshot,
+    calendar,
+    hourly,
+    stock,
+    channels,
+    video,
+    interpreter,
+    summarizer,
+    github,
+    trend,
+    hourHeat,
+    insight,
+  ] = await Promise.all([
+    getCrawlerQueueSnapshot(),
+    getIngestCalendar(84),
+    getIngestHourly(),
+    getTelegramStock(),
+    listChannelsAdmin(),
+    getVideoObservation(),
+    getInterpreterQueueSnapshot(),
+    getSummarizerQueueSnapshot(),
+    getGithubQueueSnapshot(),
+    insightTrendDaily(),
+    insightHourHeat(),
+    insightOverview(),
+  ]);
   const today = calendar[calendar.length - 1]?.count ?? 0;
   const yesterday = calendar[calendar.length - 2]?.count ?? 0;
   const maxHour = Math.max(1, ...hourly.map((h) => h.count));
@@ -258,6 +279,28 @@ export default async function AdminSpiderPage(): Promise<React.ReactElement> {
 
       {/* 采集日历热力图(原型 heat-grid:周对齐 7 行 × 列) */}
       <IngestHeatmap calendar={calendar} />
+
+      {/* 信号采集强度(M34 批③ 验收反馈·问题2 自洞察中心迁入):趋势+时段+台账 */}
+      <div>
+        <div className="mb-2 flex items-baseline gap-2">
+          <h3 className="text-sm font-semibold">信号采集强度</h3>
+          <span className="text-[11px] text-text-3">
+            洞察信号池近 7 日趋势与时段分布(北京墙钟);分源明细台账见下,信号流在洞察中心
+          </span>
+        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-[1fr_1fr]">
+          <div className="rounded-md border border-line bg-panel px-4 py-4">
+            <div className="mb-3 text-xs font-medium text-text-2">近 7 日分源趋势</div>
+            <TrendBars days={trend} sources={LEDGER_SOURCES} />
+          </div>
+          <div className="rounded-md border border-line bg-panel px-4 py-4">
+            <div className="mb-3 text-xs font-medium text-text-2">时段热力(周 × 24 时)</div>
+            <HourHeat cells={hourHeat} />
+          </div>
+        </div>
+      </div>
+
+      <SourceLedger stats={insight.bySource} />
 
       {/* 最近错误(原型 err-row) */}
       <div className="rounded-md border border-line bg-panel">

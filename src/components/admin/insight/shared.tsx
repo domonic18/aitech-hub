@@ -18,6 +18,18 @@ export const SOURCE_LABELS: Record<InsightSource, string> = {
   "hot-bilibili": "B站热搜",
 };
 
+/** 源→图表色(趋势堆叠柱/占比条共用;令牌色 dark/light 双主题自适应) */
+export const SOURCE_COLORS: Record<InsightSource, string> = {
+  "internal-search": "bg-text-3",
+  "internal-agent": "bg-text-2",
+  "internal-feedback": "bg-text-3",
+  "internal-comment": "bg-amber",
+  "telegram-ai": "bg-accent",
+  "hot-baidu": "bg-blue",
+  "hot-zhihu": "bg-green",
+  "hot-bilibili": "bg-red",
+};
+
 export const MEDIUM_LABELS: Record<string, string> = {
   money: "钱",
   time: "时间",
