@@ -1,33 +1,20 @@
 /**
- * 洞察中心(M34 批①雏形,方案 docs/plan/insight-plan.md §6):热点舆情+痛点
- * 挖掘的信号池看板。批① 未聚类,先按源分组——KPI(总量/今日/零结果搜索)+
- * 近 7 日趋势 + 分源台账 + 最近信号流(可按源过滤)。批② 聚类上线后演进为
- * 簇视图,本页保留为原始信号页签。纯读无 mutation,服务端直查不设 API 路由。
+ * 洞察中心(M34 批①雏形→批② 完整形态,方案 docs/plan/insight-plan.md §6):
+ * KPI(总量/今日/零结果搜索/日增)+ 痛点榜卡格(核心,覆盖度空白标红)+
+ * 热点雷达表 + 分源台账 + 原始信号流(可按源过滤)。纯读无 mutation,服务端
+ * 直查不设 API 路由。
  */
 import Link from "next/link";
 
+import PainCardGrid from "@/components/admin/insight/PainCardGrid";
+import RadarTable from "@/components/admin/insight/RadarTable";
+import { MEDIUM_LABELS, SOURCE_LABELS } from "@/components/admin/insight/shared";
 import Sparkline from "@/components/admin/usage/Sparkline";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { insightOverview, listInsightSignals } from "@/lib/insight/admin";
+import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
 import { INSIGHT_SOURCE_MEDIUM, type InsightSource } from "@/lib/insight/ingest";
 
 export const dynamic = "force-dynamic";
-
-const SOURCE_LABELS: Record<InsightSource, string> = {
-  "internal-search": "站内搜索",
-  "internal-agent": "助手问句",
-  "internal-comment": "文章评论",
-  "internal-feedback": "站点反馈",
-  "telegram-ai": "电报AI解读",
-};
-
-const MEDIUM_LABELS: Record<string, string> = {
-  money: "钱",
-  time: "时间",
-  voice: "声音",
-  search: "搜索",
-  "ai-record": "AI记录",
-};
 
 function parseSource(raw: string | undefined): InsightSource | undefined {
   return raw !== undefined && raw in INSIGHT_SOURCE_MEDIUM ? (raw as InsightSource) : undefined;
@@ -70,8 +57,10 @@ export default async function AdminInsightPage({
   const { source: rawSource } = await searchParams;
   const source = parseSource(rawSource);
 
-  const [overview, signals] = await Promise.all([
+  const [overview, painClusters, hotClusters, signals] = await Promise.all([
     insightOverview(),
+    listInsightClusters({ kind: "pain", limit: 8 }),
+    listInsightClusters({ kind: "hot", limit: 20 }),
     listInsightSignals({ source, limit: 50 }),
   ]);
 
@@ -80,9 +69,8 @@ export default async function AdminInsightPage({
       <div>
         <h2 className="text-base font-semibold">洞察中心</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          热点舆情 + 用户痛点挖掘(方案 docs/plan/insight-plan.md,M34):批① 内部零采集源
-          入池,未聚类先按源分组;批② 接 AI 加工(向量化聚类/打标/机会评分卡)。零结果
-          搜索=内容未被满足的需求缺口,痛点侧核心指标。
+          热点舆情 + 用户痛点挖掘(方案 docs/plan/insight-plan.md,M34):批② AI 加工层 ——信号向量化聚类
+          + LLM 打标 + 覆盖度匹配 + 异动告警。零结果搜索=内容未被 满足的需求缺口,痛点侧核心指标。
         </p>
       </div>
 
@@ -103,6 +91,24 @@ export default async function AdminInsightPage({
             {overview.daily[0]?.date.slice(5)} → {overview.daily[6]?.date.slice(5)}
           </div>
         </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-baseline gap-2">
+          <h3 className="text-sm font-semibold">痛点榜</h3>
+          <span className="text-[11px] text-text-3">
+            信号簇 × 内容覆盖度;空白标红 = 选题机会(机会分 = 介质 40 + 近 7 日热度 30 + 空白 30)
+          </span>
+        </div>
+        <PainCardGrid clusters={painClusters} />
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-baseline gap-2">
+          <h3 className="text-sm font-semibold">热点雷达</h3>
+          <span className="text-[11px] text-text-3">热点簇列表(30 日热力格见簇详情)</span>
+        </div>
+        <RadarTable clusters={hotClusters} />
       </div>
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
