@@ -39,10 +39,12 @@ export async function saveSignalEmbeddings(
 }
 
 /** 已嵌向量且未归簇的信号(聚类工作集;向量随行带出避免逐信号 N+1 查询。
- * 过短文本不入簇,长度阈值参数化传入) */
+ * 过短文本不入簇,长度阈值参数化传入;只取在役源——停接源(批③ 渠道转向)
+ * 存量行不参与新簇) */
 export async function findUnclusteredSignals(
   limit: number,
   minTextLen: number,
+  enabledSources: readonly string[],
 ): Promise<
   { id: bigint; source: string; medium: string; normalizedText: string; vector: number[] }[]
 > {
@@ -58,6 +60,7 @@ export async function findUnclusteredSignals(
     SELECT s.id, s.source, s.medium, s.normalized_text AS "normalizedText", s.embedding::text AS vec
       FROM insight_signal s
      WHERE s.embedding IS NOT NULL
+       AND s.source IN (${Prisma.join(enabledSources)})
        AND char_length(s.normalized_text) >= ${minTextLen}
        AND NOT EXISTS (SELECT 1 FROM insight_cluster_member m WHERE m.signal_id = s.id)
      ORDER BY s.id

@@ -1,10 +1,10 @@
 /**
- * 洞察中心后台读侧(M34 批①雏形→批② 演进,方案 §6):overview(总量/今日/
- * 零结果搜索/日增序列/分源计数)+ listSignals(原始信号流,批② 降为页签)+
- * 批② 簇视图:listClusters(痛点榜/热点雷达数据源,带 7 日快照序列与异动
- * 判定)、getClusterDetail(簇详情:30 日快照/成员信号流/来源分布)。
- * hitCount 存于 meta.jsonb(internal-search 专属),sql 侧 meta->>'hitCount'='0'
- * 判零结果。异动=读侧 isAnomaly 双门判定,不落库(方案 §5.5 看板高亮)。
+ * 洞察中心后台读侧(M34 批①雏形→批②③ 演进,方案 §6):overview(总量/今日/
+ * 日增序列/分源计数)+ listSignals(原始信号流)+ 簇视图:listClusters
+ * (痛点榜/热点雷达数据源,带 7 日快照序列与异动判定)、getClusterDetail
+ * (簇详情:30 日快照/成员信号流/来源分布)。批③ 渠道转向:全部读侧恒限
+ * 在役源白名单(INSIGHT_SOURCES_ENABLED),站内搜索/agent/反馈存量行不再
+ * 呈现;零结果搜索指标随源退出移除。异动=读侧 isAnomaly 双门判定,不落库。
  */
 import { Prisma } from "@prisma/client";
 
@@ -12,12 +12,16 @@ import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 
 import { isAnomaly } from "./label";
-import { INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
+import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
 
 /** 北京时区当日零点(与 statsDay/periodKey 同源口径,勿用 UTC 切日) */
 function todayStart(now: Date = new Date()): Date {
   return new Date(`${statsDay(now)}T00:00:00+08:00`);
 }
+
+/** 在役源(批③ 渠道转向:站内搜索/agent/反馈退出,读侧全量按白名单过滤;
+ * 存量行保留库中不再呈现) */
+const ENABLED = [...INSIGHT_SOURCES_ENABLED];
 
 export interface InsightSourceStat {
   source: string;
@@ -29,8 +33,6 @@ export interface InsightSourceStat {
 export interface InsightOverview {
   total: number;
   today: number;
-  /** 近 7 日零结果搜索数(内容缺口信号;hitCount 增强前旧数据不计入) */
-  zeroResultSearch7d: number;
   /** 近 7 日日增(含今日,缺日补 0,旧→新) */
   daily: { date: string; count: number }[];
   bySource: InsightSourceStat[];
@@ -41,8 +43,6 @@ export interface InsightSignalRow {
   source: string;
   medium: string;
   rawText: string;
-  hitCount: number | null;
-  zeroResult: boolean;
   signalAt: string;
 }
 
@@ -52,26 +52,25 @@ export async function insightOverview(): Promise<InsightOverview> {
   const start = todayStart();
   const since = new Date(start.getTime() - 6 * DAY_MS);
 
-  const [total, today, totals, todays, dailyRows, zeroRows] = await Promise.all([
-    prisma.insightSignal.count(),
-    prisma.insightSignal.count({ where: { signalAt: { gte: start } } }),
-    prisma.insightSignal.groupBy({ by: ["source"], _count: { _all: true } }),
+  const [total, today, totals, todays, dailyRows] = await Promise.all([
+    prisma.insightSignal.count({ where: { source: { in: ENABLED } } }),
+    prisma.insightSignal.count({ where: { source: { in: ENABLED }, signalAt: { gte: start } } }),
     prisma.insightSignal.groupBy({
       by: ["source"],
-      where: { signalAt: { gte: start } },
+      where: { source: { in: ENABLED } },
+      _count: { _all: true },
+    }),
+    prisma.insightSignal.groupBy({
+      by: ["source"],
+      where: { source: { in: ENABLED }, signalAt: { gte: start } },
       _count: { _all: true },
     }),
     prisma.$queryRaw<{ d: Date; c: bigint }[]>`
       SELECT date_trunc('day', signal_at) AS d, count(*) AS c
       FROM insight_signal
-      WHERE signal_at >= ${since}
+      WHERE signal_at >= ${since} AND source IN (${Prisma.join(ENABLED)})
       GROUP BY 1
       ORDER BY 1
-    `,
-    prisma.$queryRaw<{ c: bigint }[]>`
-      SELECT count(*) AS c
-      FROM insight_signal
-      WHERE source = 'internal-search' AND meta->>'hitCount' = '0' AND signal_at >= ${since}
     `,
   ]);
 
@@ -93,13 +92,7 @@ export async function insightOverview(): Promise<InsightOverview> {
     }))
     .sort((a, b) => b.total - a.total);
 
-  return {
-    total,
-    today,
-    zeroResultSearch7d: Number(zeroRows[0]?.c ?? 0),
-    daily,
-    bySource,
-  };
+  return { total, today, daily, bySource };
 }
 
 const SIGNAL_SELECT = {
@@ -107,34 +100,32 @@ const SIGNAL_SELECT = {
   source: true,
   medium: true,
   rawText: true,
-  meta: true,
   signalAt: true,
 } as const;
 
-/** 最近信号流(可按源过滤);limit 上限 200(雏形页无分页,后续簇视图接管) */
+/** 最近信号流(可按源过滤,恒限在役源);limit 上限 200 */
 export async function listInsightSignals(opts: {
   source?: InsightSource;
   limit?: number;
 }): Promise<InsightSignalRow[]> {
   const rows = await prisma.insightSignal.findMany({
-    where: opts.source === undefined ? undefined : { source: opts.source },
+    where: {
+      AND: [
+        { source: { in: ENABLED } },
+        ...(opts.source === undefined ? [] : [{ source: opts.source }]),
+      ],
+    },
     orderBy: { signalAt: "desc" },
     take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
     select: SIGNAL_SELECT,
   });
-  return rows.map((r) => {
-    const meta = r.meta as { hitCount?: unknown } | null;
-    const hitCount = typeof meta?.hitCount === "number" ? meta.hitCount : null;
-    return {
-      id: r.id.toString(),
-      source: r.source,
-      medium: r.medium,
-      rawText: r.rawText,
-      hitCount,
-      zeroResult: hitCount === 0,
-      signalAt: r.signalAt.toISOString(),
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id.toString(),
+    source: r.source,
+    medium: r.medium,
+    rawText: r.rawText,
+    signalAt: r.signalAt.toISOString(),
+  }));
 }
 
 // ── 批② 簇视图(痛点榜/热点雷达/详情)──────────────────────────────────

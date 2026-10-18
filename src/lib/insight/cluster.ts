@@ -6,6 +6,7 @@
  */
 import { prisma } from "../db";
 import { logger } from "../logger";
+import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 import { CLUSTER_MATCH_DISTANCE, CLUSTER_MIN_TEXT_LEN, INSIGHT_SOURCE_KIND } from "./constants";
 import {
   type ClusterNearMatch,
@@ -61,7 +62,9 @@ export interface ClusterRunSummary {
 
 /** 聚类主流程(embed job 与手动脚本共用;process 级自愈,不抛) */
 export async function runInsightClustering(limit: number): Promise<ClusterRunSummary> {
-  const workset = await findUnclusteredSignals(limit, CLUSTER_MIN_TEXT_LEN);
+  const workset = await findUnclusteredSignals(limit, CLUSTER_MIN_TEXT_LEN, [
+    ...INSIGHT_SOURCES_ENABLED,
+  ]);
   const summary: ClusterRunSummary = {
     scanned: workset.length,
     joined: 0,

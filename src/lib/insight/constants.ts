@@ -5,15 +5,18 @@
  */
 import type { InsightSource } from "./ingest";
 
-/** 信号源 → 簇别(方案 §4 kind):内部需求侧信号(搜索/问句/评论/反馈)归
- * 痛点(未被满足的需求表达),电报 AI 解读产物(追热点视频的加工物)归热点;
- * 批③ 外部源 fetcher 显式带 kind 后扩表 */
+/** 信号源 → 簇别(方案 §4 kind):内部需求侧信号(评论)归痛点(未被满足的
+ * 需求表达),电报 AI 解读产物与外部热榜(公众关注度榜单)归热点;批③ 热榜
+ * fetcher 源在此登记 kind(未登记源不入簇,见 cluster.ts 未知源分支) */
 export const INSIGHT_SOURCE_KIND: Record<InsightSource, "hot" | "pain"> = {
   "internal-search": "pain",
   "internal-agent": "pain",
   "internal-comment": "pain",
   "internal-feedback": "pain",
   "telegram-ai": "hot",
+  "hot-baidu": "hot",
+  "hot-zhihu": "hot",
+  "hot-bilibili": "hot",
 };
 
 /** 归簇余弦距离阈值:信号与既有簇成员最近向量的距离 ≤ 阈值即归簇,否则建新簇

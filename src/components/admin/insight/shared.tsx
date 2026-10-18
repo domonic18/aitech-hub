@@ -13,6 +13,9 @@ export const SOURCE_LABELS: Record<InsightSource, string> = {
   "internal-comment": "文章评论",
   "internal-feedback": "站点反馈",
   "telegram-ai": "电报AI解读",
+  "hot-baidu": "百度热搜",
+  "hot-zhihu": "知乎热榜",
+  "hot-bilibili": "B站热搜",
 };
 
 export const MEDIUM_LABELS: Record<string, string> = {

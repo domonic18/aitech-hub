@@ -12,12 +12,15 @@ import { MEDIUM_LABELS, SOURCE_LABELS } from "@/components/admin/insight/shared"
 import Sparkline from "@/components/admin/usage/Sparkline";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
-import { INSIGHT_SOURCE_MEDIUM, type InsightSource } from "@/lib/insight/ingest";
+import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
 
 export const dynamic = "force-dynamic";
 
+/** 在役源(白名单序,页签展示与过滤共用) */
+const ENABLED_SOURCES = [...INSIGHT_SOURCES_ENABLED] as InsightSource[];
+
 function parseSource(raw: string | undefined): InsightSource | undefined {
-  return raw !== undefined && raw in INSIGHT_SOURCE_MEDIUM ? (raw as InsightSource) : undefined;
+  return ENABLED_SOURCES.find((s) => s === raw);
 }
 
 function formatTime(iso: string): string {
@@ -69,8 +72,9 @@ export default async function AdminInsightPage({
       <div>
         <h2 className="text-base font-semibold">洞察中心</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          热点舆情 + 用户痛点挖掘(方案 docs/plan/insight-plan.md,M34):批② AI 加工层 ——信号向量化聚类
-          + LLM 打标 + 覆盖度匹配 + 异动告警。零结果搜索=内容未被 满足的需求缺口,痛点侧核心指标。
+          热点舆情 + 用户痛点挖掘(方案 docs/plan/insight-plan.md,M34):批③ 渠道拓宽——外部热榜
+          fetcher(百度/知乎/B站,日频)+ 站内三源(搜索/问句/反馈)退出;向量化聚类+LLM 打标+
+          覆盖度匹配+异动告警(批② 加工层)持续在役。
         </p>
       </div>
 
@@ -78,9 +82,9 @@ export default async function AdminInsightPage({
         <KpiCard label="信号总量" value={overview.total.toLocaleString()} />
         <KpiCard label="今日新增" value={overview.today.toLocaleString()} />
         <KpiCard
-          label="近 7 日零结果搜索"
-          value={overview.zeroResultSearch7d.toLocaleString()}
-          hint="内容缺口信号,选题候选"
+          label="在役渠道"
+          value={String(overview.bySource.length)}
+          hint="站内三源批③ 退出,外部热榜接入"
         />
         <div className="rounded-md border border-line bg-panel px-4 py-3">
           <div className="text-xs text-text-3">近 7 日日增</div>
@@ -173,7 +177,7 @@ export default async function AdminInsightPage({
           >
             全部
           </Link>
-          {(Object.keys(INSIGHT_SOURCE_MEDIUM) as InsightSource[]).map((k) => (
+          {ENABLED_SOURCES.map((k) => (
             <Link
               key={k}
               href={`/admin/insight?source=${k}`}
@@ -201,16 +205,6 @@ export default async function AdminInsightPage({
                     {sig.rawText}
                   </span>
                 </td>
-                <td className="w-24 px-3 py-2 text-right align-top">
-                  {sig.hitCount !== null && (
-                    <span
-                      className={`font-mono text-[11px] ${sig.zeroResult ? "text-red" : "text-text-3"}`}
-                      title={sig.zeroResult ? "零结果:内容缺口" : `命中 ${sig.hitCount} 条`}
-                    >
-                      {sig.zeroResult ? "零结果" : `${sig.hitCount} 命中`}
-                    </span>
-                  )}
-                </td>
                 <td className="w-28 px-4 py-2 text-right align-top font-mono text-[11px] text-text-3">
                   {formatTime(sig.signalAt)}
                 </td>
@@ -218,7 +212,7 @@ export default async function AdminInsightPage({
             ))}
             {signals.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-xs text-text-3">
+                <td colSpan={3} className="px-4 py-8 text-center text-xs text-text-3">
                   {source === undefined ? "暂无信号" : `「${SOURCE_LABELS[source]}」暂无信号`}
                 </td>
               </tr>
