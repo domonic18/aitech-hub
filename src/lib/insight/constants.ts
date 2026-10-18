@@ -75,3 +75,7 @@ export const SCORE_GAP_WEIGHT = 30;
 export const SCORE_MEDIA_MAX = 5;
 export const SCORE_HEAT_SATURATION = 10;
 export const SCORE_HEAT_WINDOW_DAYS = 7;
+
+/** 热榜拉取(批③):单源 HTTP 超时与单源入池条数上限(榜单截前 N,防长尾) */
+export const HOTLIST_FETCH_TIMEOUT_MS = 10_000;
+export const HOTLIST_MAX_ITEMS = 50;

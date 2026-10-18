@@ -17,6 +17,7 @@ import {
   GITHUB_JOB_TICK,
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
+  INSIGHT_JOB_FETCH,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
@@ -72,6 +73,7 @@ import { dbBackupJob } from "../src/lib/backup/db-backup";
 import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
+import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/label";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
@@ -290,6 +292,11 @@ export const PROCESSORS: Record<string, Processor> = {
       if (r.embedded > 0 || r.joined > 0 || r.created > 0 || r.failed > 0) {
         console.log(JSON.stringify({ event: "insight.embed_job", ...r }));
       }
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_FETCH) {
+      const r = await runHotlistFetch();
+      console.log(JSON.stringify({ event: "insight.hotlist_job", ...r }));
       return r;
     }
     throw new Error(`未知 insight job:${job.name}`);

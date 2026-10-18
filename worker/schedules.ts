@@ -20,8 +20,10 @@ import {
   GITHUB_JOB_TICK,
   INSIGHT_DAILY_CRON,
   INSIGHT_EMBED_CRON,
+  INSIGHT_FETCH_CRON,
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
+  INSIGHT_JOB_FETCH,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
@@ -208,7 +210,8 @@ export async function scheduleDiscovery(): Promise<void> {
   );
 }
 
-/** 洞察加工调度(M34 批②):向量回填+聚类 15 分钟错峰 / LLM 打标日批 03:57 */
+/** 洞察加工调度(M34 批②→批③):向量回填+聚类 15 分钟错峰 / LLM 打标日批
+ * 03:57 / 热榜拉取日批 07:43(外部渠道) */
 export async function scheduleInsight(): Promise<void> {
   const queue = getQueue(QUEUE_INSIGHT);
   await queue.upsertJobScheduler(
@@ -225,6 +228,15 @@ export async function scheduleInsight(): Promise<void> {
     { pattern: INSIGHT_DAILY_CRON, tz: SITE_TZ },
     {
       name: INSIGHT_JOB_DAILY,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "insight-fetch",
+    { pattern: INSIGHT_FETCH_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_FETCH,
       data: {},
       opts: { removeOnComplete: 7 },
     },

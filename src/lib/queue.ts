@@ -163,6 +163,7 @@ export const DISCOVERY_BILI_CRON = "13 6 * * 1";
  * scripts/ops 同名一次性 job 可复用;daily=日频打标批。改名需与 worker 同批) */
 export const INSIGHT_JOB_EMBED = "embed";
 export const INSIGHT_JOB_DAILY = "daily";
+export const INSIGHT_JOB_FETCH = "fetch";
 
 /** 洞察向量回填+聚类调度:每 15 分钟,与三域 embedding 对账(7/22/37/52 分)
  * 错峰(3/18/33/48 分,同档不撞车) */
@@ -171,6 +172,10 @@ export const INSIGHT_EMBED_CRON = "3,18,33,48 * * * *";
 /** 洞察日批 03:57(凌晨档错峰:03:41 media-audit / 04:13 pay-audit / 04:14
  * visit-purge;LLM 调用分钟级,避开 4 点清理带) */
 export const INSIGHT_DAILY_CRON = "57 3 * * *";
+
+/** 热榜拉取日批 07:43(方案 §3:外部渠道日频;早高峰前取榜,与 05:37 热词/
+ * 06:13 B站发现错峰) */
+export const INSIGHT_FETCH_CRON = "43 7 * * *";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
