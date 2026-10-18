@@ -1,7 +1,8 @@
 /**
  * 今日热榜面板(M34 批③ 渠道视图;验收反馈·主流热榜样式):每源一卡,头部名次
  * 三色(1 红/2 橙/3 黄)+名次变动(↑n/↓n/新)+热度比例条,对比上一拉取批。
- * 纯展示零状态,数据来自 lib/insight/hotboard#latestHotBoard;复用 shared。
+ * 纯展示零状态,数据来自 lib/insight/hotboard#hotBoardForDay(缺省最新批,
+ * 可传日期回看);复用 shared。
  */
 import Link from "next/link";
 

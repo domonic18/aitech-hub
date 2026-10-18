@@ -212,7 +212,7 @@ export async function scheduleDiscovery(): Promise<void> {
 }
 
 /** 洞察加工调度(M34 批②→批③):向量回填+聚类 15 分钟错峰 / LLM 打标日批
- * 03:57 / 热榜拉取日批 07:43(外部渠道) */
+ * 03:57 / 热榜拉取小时批 :43(验收二批② 提频,外部渠道) */
 export async function scheduleInsight(): Promise<void> {
   const queue = getQueue(QUEUE_INSIGHT);
   await queue.upsertJobScheduler(

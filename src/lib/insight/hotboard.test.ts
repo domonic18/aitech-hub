@@ -13,13 +13,13 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { insightKeywordCloud, latestHotBoard } from "./hotboard";
+import { insightKeywordCloud, hotBoardForDay } from "./hotboard";
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("latestHotBoard", () => {
+describe("hotBoardForDay", () => {
   it("按源分组(白名单序)、rank 升序、fetchedAt=批内最新 signal_at;move 对齐前批名次", async () => {
     rawQuery
       .mockResolvedValueOnce([
@@ -59,7 +59,7 @@ describe("latestHotBoard", () => {
         { source: "hot-baidu", ref_id: "b-1", rank: 2 },
         { source: "hot-baidu", ref_id: "b-2", rank: 1 },
       ]);
-    const boards = await latestHotBoard();
+    const boards = await hotBoardForDay();
     expect(boards.map((b) => b.source)).toEqual(["hot-baidu", "hot-zhihu", "hot-bilibili"]);
     const baidu = boards[0];
     expect(baidu.items.map((i) => i.rank)).toEqual([1, 2, 3]);
@@ -92,7 +92,7 @@ describe("latestHotBoard", () => {
         },
       ])
       .mockResolvedValueOnce([]);
-    const boards = await latestHotBoard();
+    const boards = await hotBoardForDay();
     const zhihu = boards[1]!;
     expect(zhihu.items).toEqual([{ rank: 1, title: "首拉", heat: null, url: null, move: null }]);
   });
