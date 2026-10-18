@@ -1,6 +1,7 @@
 /**
  * 周期调度注册(worker/index 引导消费):BullMQ v6 job scheduler,upsert 幂等
- * 同 id 不重复建。cron 常量与 job name 契约的唯一真相源在 lib/queue,本模块只
+ * 同 id 不重复建。job name 契约唯一真相源在 lib/queue;cron 常量唯一真相源在
+ * lib/collect/schedules(采集计划登记表,queue.ts re-export),本模块只
  * 做「注册什么、何时触发」的表达。
  */
 import {
