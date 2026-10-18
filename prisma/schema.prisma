@@ -1154,6 +1154,23 @@ model InsightSnapshot {
   @@map("insight_snapshot")
 }
 
+/// 热榜源登记(M34 批③ 验收反馈:纳入采集计划管理):fetcher 注册表(代码)
+/// 的运行态投影——enabled=运行时启停闸(fetch 轮按表过滤,停用源不拉取),
+/// lastRunAt/consecutiveFails/lastError 由 fetch 编排逐源回写(crawl_source
+/// 同口径,连败可见)。缺行按启用处理:新 fetcher 上线免迁移即生效,台账读侧
+/// 懒登记;启停只挡采集,不动 INSIGHT_SOURCES_ENABLED 读侧白名单。
+model InsightHotSource {
+  source           String    @id @db.VarChar(30) // hot-baidu/hot-zhihu/hot-bilibili(=InsightSource hot-*)
+  enabled          Boolean   @default(true)
+  consecutiveFails Int       @default(0) @map("consecutive_fails")
+  lastRunAt        DateTime? @map("last_run_at") @db.Timestamptz(6)
+  lastError        String?   @map("last_error") @db.VarChar(300)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("insight_hot_source")
+}
+
 // 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
 // 真相源(零飞书耦合),compose 初稿锚 content_post;itemId 应用层完整性
 // (同 discovery 两表口径,无 FK)

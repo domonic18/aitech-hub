@@ -2,6 +2,8 @@
  * 热榜拉取编排(M34 批③,方案 §3 日频):逐源 fetch → 截前 N → 逐条入池
  * (refreshMeta=仍在榜次日刷新 meta 与 signal_at,位次/热度更新、信号续热)。
  * 失败隔离:单源网络/契约异常记数不弃整轮;单条入池永不 reject(ingest 自吞)。
+ * 源闸(批③ 验收反馈:纳入采集计划管理):逐轮读 insight_hot_source 启停表,
+ * 停用源整源跳过;每源拉取态(最近拉取/连败/末次错误)best-effort 回写登记表。
  * meta 携带 {rank, heat?, url?, batch}:batch=本轮时间戳,读侧「今日热榜」视图
  * 按(源内)最新 batch 取当日榜面,出榜旧条目自然沉淀为历史信号。
  */
@@ -10,6 +12,7 @@ import { logger } from "../../logger";
 import type { HotFetcher, HotItem } from "./types";
 import { HOT_FETCHERS } from "./registry";
 import { HOTLIST_MAX_ITEMS } from "../constants";
+import { enabledHotSources, recordHotSourceRun } from "../hot-source";
 import { ingestInsightSignal, type IngestOutcome } from "../ingest";
 
 export interface HotlistSourceOutcome {
@@ -71,7 +74,13 @@ export async function runHotlistFetch(
 ): Promise<HotlistOutcome> {
   const batch = Date.now();
   const sources: HotlistSourceOutcome[] = [];
+  // 源闸:停用源整源跳过(缺行=启用,见 hot-source 模块头注)
+  const allowed = await enabledHotSources();
   for (const fetcher of fetchers) {
+    if (!allowed.has(fetcher.source)) {
+      logger.info({ event: "insight.hotlist_source_skipped", source: fetcher.source });
+      continue;
+    }
     let items: HotItem[];
     try {
       items = (await fetcher.fetchItems()).slice(0, HOTLIST_MAX_ITEMS);
@@ -81,6 +90,7 @@ export async function runHotlistFetch(
         source: fetcher.source,
         error: String(e),
       });
+      await recordHotSourceRun(fetcher.source, false, String(e));
       sources.push({
         source: fetcher.source,
         fetched: 0,
@@ -92,7 +102,9 @@ export async function runHotlistFetch(
       });
       continue;
     }
-    sources.push(await ingestItems(fetcher, items, batch));
+    const outcome = await ingestItems(fetcher, items, batch);
+    await recordHotSourceRun(fetcher.source, !outcome.failed);
+    sources.push(outcome);
   }
   return { batch, sources };
 }

@@ -1,10 +1,13 @@
 /** 热榜 fetcher 单测(M34 批③):解析器锚 2026-10-18 真机探样本(golden,
- * 形态漂移即红);run 编排=失败隔离/入池聚合/refreshMeta 透传(prisma mock)。 */
+ * 形态漂移即红);run 编排=失败隔离/入池聚合/refreshMeta 透传/源闸跳过
+ * (prisma mock)。 */
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const signalCreate = vi.fn();
 const signalUpdateMany = vi.fn();
+const hotSourceFindMany = vi.fn();
+const hotSourceUpsert = vi.fn();
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/db", () => ({
   // 懒包装:工厂随被 mock 模块首查执行,先于本文件顶层 const,急切引用会 TDZ
@@ -12,6 +15,10 @@ vi.mock("@/lib/db", () => ({
     insightSignal: {
       create: (...a: unknown[]) => signalCreate(...a),
       updateMany: (...a: unknown[]) => signalUpdateMany(...a),
+    },
+    insightHotSource: {
+      findMany: (...a: unknown[]) => hotSourceFindMany(...a),
+      upsert: (...a: unknown[]) => hotSourceUpsert(...a),
     },
   },
 }));
@@ -166,6 +173,9 @@ describe("runHotlistFetch", () => {
     vi.clearAllMocks();
     signalCreate.mockResolvedValue({ id: BigInt(1) });
     signalUpdateMany.mockResolvedValue({ count: 1 });
+    // 源闸缺省:无停用行(缺行=启用)
+    hotSourceFindMany.mockResolvedValue([]);
+    hotSourceUpsert.mockResolvedValue({});
   });
 
   it("逐源逐条入池:meta 带 rank/heat/url/batch,成功源计数 ingested", async () => {
@@ -204,6 +214,43 @@ describe("runHotlistFetch", () => {
     expect(signalUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { source: "hot-bilibili", refId: "k" },
+      }),
+    );
+  });
+
+  it("源闸:停用源整源跳过(fetcher 不调、不回写),启用源照常+逐源回写拉取态", async () => {
+    hotSourceFindMany.mockResolvedValue([{ source: "hot-baidu" }]); // enabled:false 的行
+    const baiduFetch = vi.fn();
+    const r = await runHotlistFetch([
+      { source: "hot-baidu", fetchItems: baiduFetch },
+      fakeFetcher("hot-zhihu", [item("z", 1)]),
+    ]);
+    expect(baiduFetch).not.toHaveBeenCalled();
+    expect(r.sources).toEqual([expect.objectContaining({ source: "hot-zhihu" })]);
+    // 启用源回写成功态;停用源无回写
+    expect(hotSourceUpsert).toHaveBeenCalledTimes(1);
+    expect(hotSourceUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { source: "hot-zhihu" } }),
+    );
+  });
+
+  it("拉取态回写:成功清零连败,失败 +1 并记末次错误", async () => {
+    await runHotlistFetch([fakeFetcher("hot-baidu", undefined, new Error("HTTP 403"))]);
+    expect(hotSourceUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { source: "hot-baidu" },
+        update: expect.objectContaining({
+          consecutiveFails: { increment: 1 },
+          lastError: "Error: HTTP 403",
+        }),
+      }),
+    );
+    hotSourceUpsert.mockClear();
+    await runHotlistFetch([fakeFetcher("hot-baidu", [item("a", 1)])]);
+    expect(hotSourceUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { source: "hot-baidu" },
+        update: expect.objectContaining({ consecutiveFails: 0, lastError: null }),
       }),
     );
   });
