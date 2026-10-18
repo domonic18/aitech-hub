@@ -72,11 +72,24 @@ export const QUEUE_NAMES = [
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
-/** 媒体体检每日调度(避开整点;arch/08-media §3.2;worker 与媒体库页脚同源,评审 W2) */
-export const MEDIA_AUDIT_CRON = "41 3 * * *";
-
-/** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
-export const VISIT_LOG_PURGE_CRON = "14 4 * * *";
+// cron 常量唯一真相源在 lib/collect/schedules.ts(采集计划登记表;客户端组件
+// 引用登记表时不得把 bullmq 拖进浏览器包,故常量不经本文件定义)。此处
+// re-export 保 worker/scripts 原引用路径不变。
+export {
+  AGENT_SESSION_PURGE_CRON,
+  COVER_TEMP_SWEEP_CRON,
+  DB_BACKUP_CRON,
+  DISCOVERY_BILI_CRON,
+  DISCOVERY_HOTWORDS_CRON,
+  EMBED_RECONCILE_CRON,
+  INSIGHT_DAILY_CRON,
+  INSIGHT_EMBED_CRON,
+  INSIGHT_FETCH_CRON,
+  MEDIA_AUDIT_CRON,
+  PAY_DAILY_AUDIT_CRON,
+  USAGE_LOG_PURGE_CRON,
+  VISIT_LOG_PURGE_CRON,
+} from "./collect/schedules";
 
 /** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;
  * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。
@@ -91,9 +104,6 @@ export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
  * temp-sweep = hold 候选临时件日频清扫(技术债批①;改名需与 worker 同批)。 */
 export const COVER_JOB_GEN = "generate";
 export const COVER_JOB_TEMP_SWEEP = "temp-sweep";
-
-/** hold 候选临时件清扫:每日 04:23(避开 4:14 访问清理 / 4:33 会话清退档) */
-export const COVER_TEMP_SWEEP_CRON = "23 4 * * *";
 
 /** seo-batch 队列 job name 契约(M16;batch 为缺省路径,文章管理手动触发) */
 export const SEO_JOB_BATCH = "batch";
@@ -113,15 +123,6 @@ export const STATS_JOB_PURGE = "purge-visit-log";
 export const STATS_JOB_USAGE_PURGE = "purge-usage-log";
 export const STATS_JOB_AGENT_PURGE = "purge-agent-session";
 
-/** AI 用量台账 90 天保留期清理(凌晨档,与 visit-log/media-audit 错峰) */
-export const USAGE_LOG_PURGE_CRON = "52 4 * * *";
-
-/** Drawer 会话 30 天自动清退(凌晨档错峰:audit 03:41 / visit 04:14 / agent 04:33 / usage 04:52) */
-export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
-
-/** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
-export const DB_BACKUP_CRON = "23 3 * * *";
-
 /** db-backup 队列 job name 契约(run 为缺省路径;手动触发 scripts/ops/db-backup-trigger.ts 同名) */
 export const DB_BACKUP_JOB_RUN = "run";
 
@@ -136,12 +137,6 @@ export const EMAIL_JOB_SEND = "send";
 export const PAY_JOB_SWEEP = "sweep";
 export const PAY_JOB_DAILY_AUDIT = "daily-audit";
 
-/** 支付日对账 04:13(提案 §5.2;凌晨档,与其他清理任务不同队列不冲突) */
-export const PAY_DAILY_AUDIT_CRON = "13 4 * * *";
-
-/** embedding 对账调度:每 15 分钟错峰(7/22/37/52 分,避开各整点任务与 crawl tick) */
-export const EMBED_RECONCILE_CRON = "7,22,37,52 * * * *";
-
 /** github 队列 job name 契约(生产:tick 调度/sync.ts/repos-admin.ts;消费:worker 按
  * job.name 分流,sync 为缺省路径)。改名需与 worker 同批。 */
 export const GITHUB_JOB_TICK = "tick";
@@ -153,24 +148,11 @@ export const GITHUB_JOB_SYNC = "sync";
 export const DISCOVERY_JOB_HOTWORDS = "discovery-hotwords";
 export const DISCOVERY_JOB_BILI = "discovery-bili";
 
-/** 热词采集 05:37 日频(discovery-plan §7:错峰 03:23 backup / 03:41 audit / 04:52 usage) */
-export const DISCOVERY_HOTWORDS_CRON = "37 5 * * *";
-
-/** B站发现 06:13 周一早(双窗全词约 5-10 分钟,避开热词档) */
-export const DISCOVERY_BILI_CRON = "13 6 * * 1";
-
 /** insight 队列 job name 契约(M34 批②;embed 为缺省路径——手动触发
  * scripts/ops 同名一次性 job 可复用;daily=日频打标批。改名需与 worker 同批) */
 export const INSIGHT_JOB_EMBED = "embed";
 export const INSIGHT_JOB_DAILY = "daily";
-
-/** 洞察向量回填+聚类调度:每 15 分钟,与三域 embedding 对账(7/22/37/52 分)
- * 错峰(3/18/33/48 分,同档不撞车) */
-export const INSIGHT_EMBED_CRON = "3,18,33,48 * * * *";
-
-/** 洞察日批 03:57(凌晨档错峰:03:41 media-audit / 04:13 pay-audit / 04:14
- * visit-purge;LLM 调用分钟级,避开 4 点清理带) */
-export const INSIGHT_DAILY_CRON = "57 3 * * *";
+export const INSIGHT_JOB_FETCH = "fetch";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });

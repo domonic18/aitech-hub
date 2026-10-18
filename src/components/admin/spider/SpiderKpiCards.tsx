@@ -40,7 +40,8 @@ export default function SpiderKpiCards({
       sub: (
         <>
           较昨日
-          <b className={`ml-1 font-medium ${today >= yesterday ? "text-green" : "text-amber"}`}>
+          {/* 红涨绿跌(国内数据习惯,与站点统计 KPI 同口径) */}
+          <b className={`ml-1 font-medium ${today >= yesterday ? "text-red" : "text-green"}`}>
             {today >= yesterday ? "+" : ""}
             {today - yesterday}
           </b>

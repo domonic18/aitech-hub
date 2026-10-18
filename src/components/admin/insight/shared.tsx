@@ -13,6 +13,21 @@ export const SOURCE_LABELS: Record<InsightSource, string> = {
   "internal-comment": "文章评论",
   "internal-feedback": "站点反馈",
   "telegram-ai": "电报AI解读",
+  "hot-baidu": "百度热搜",
+  "hot-zhihu": "知乎热榜",
+  "hot-bilibili": "B站热搜",
+};
+
+/** 源→图表色(趋势堆叠柱/占比条共用;令牌色 dark/light 双主题自适应) */
+export const SOURCE_COLORS: Record<InsightSource, string> = {
+  "internal-search": "bg-text-3",
+  "internal-agent": "bg-text-2",
+  "internal-feedback": "bg-text-3",
+  "internal-comment": "bg-amber",
+  "telegram-ai": "bg-accent",
+  "hot-baidu": "bg-blue",
+  "hot-zhihu": "bg-green",
+  "hot-bilibili": "bg-red",
 };
 
 export const MEDIUM_LABELS: Record<string, string> = {
@@ -98,7 +113,7 @@ export function ClusterLabelLink({
 }): React.ReactElement {
   return (
     <Link
-      href={`/admin/insight/clusters/${id}`}
+      href={`/admin/data/insight/clusters/${id}`}
       className="text-text-1 hover:text-accent"
       title={label ?? "未打标簇,详情见信号原话"}
     >

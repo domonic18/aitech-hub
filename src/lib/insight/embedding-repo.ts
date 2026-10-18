@@ -39,10 +39,12 @@ export async function saveSignalEmbeddings(
 }
 
 /** 已嵌向量且未归簇的信号(聚类工作集;向量随行带出避免逐信号 N+1 查询。
- * 过短文本不入簇,长度阈值参数化传入) */
+ * 过短文本不入簇,长度阈值参数化传入;只取在役源——停接源(批③ 渠道转向)
+ * 存量行不参与新簇) */
 export async function findUnclusteredSignals(
   limit: number,
   minTextLen: number,
+  enabledSources: readonly string[],
 ): Promise<
   { id: bigint; source: string; medium: string; normalizedText: string; vector: number[] }[]
 > {
@@ -58,6 +60,7 @@ export async function findUnclusteredSignals(
     SELECT s.id, s.source, s.medium, s.normalized_text AS "normalizedText", s.embedding::text AS vec
       FROM insight_signal s
      WHERE s.embedding IS NOT NULL
+       AND s.source IN (${Prisma.join(enabledSources)})
        AND char_length(s.normalized_text) >= ${minTextLen}
        AND NOT EXISTS (SELECT 1 FROM insight_cluster_member m WHERE m.signal_id = s.id)
      ORDER BY s.id
@@ -80,12 +83,13 @@ export interface ClusterNearMatch {
   distance: number;
 }
 
-/** 既有簇近邻(按成员向量聚合取每簇最小距离;kind/domain 等值过滤不混簇)。
- * 现规模(数千信号)逐信号查询可承受;批③④ 外部源洪峰前如成瓶颈,再上
- * 簇质心表 + HNSW 分层(此注释即扩容锚)。 */
+/** 既有簇近邻(按成员向量聚合取每簇最小距离;domain 等值过滤不混簇)。
+ * kind 不再分池(批③ 验收三轮·痛点扩围):热点/痛点由簇内容语义决定,归簇
+ * 只看语义距离,kind 判定移交 LLM 打标(label.ts)。现规模(数千信号)逐信号
+ * 查询可承受;批③④ 外部源洪峰前如成瓶颈,再上簇质心表 + HNSW 分层(此注释
+ * 即扩容锚)。 */
 export async function nearestClustersByMembers(
   vector: number[],
-  kind: string,
   domain: string,
   limit = 5,
 ): Promise<ClusterNearMatch[]> {
@@ -100,7 +104,7 @@ export async function nearestClustersByMembers(
          WHERE s.embedding IS NOT NULL
          GROUP BY m.cluster_id
       ) n ON n.cluster_id = c.id
-     WHERE c.kind = ${kind}::varchar AND c.domain = ${domain}::varchar
+     WHERE c.domain = ${domain}::varchar
      ORDER BY n.distance
      LIMIT ${limit}`;
   return rows.map((r) => ({ clusterId: r.cluster_id, distance: r.distance }));

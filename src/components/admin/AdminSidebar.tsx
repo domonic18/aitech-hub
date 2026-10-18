@@ -34,14 +34,11 @@ const GROUPS: ReadonlyArray<Group> = [
     ],
   },
   {
-    label: "采集",
+    label: "数据",
     items: [
-      // 渠道配置已并入采集壳「渠道」页签(/admin/spider/channels,侧栏精简批①)
-      { icon: "i-scan", label: "采集总览", href: "/admin/spider" },
-      // 博主/项目已并入发现中心壳页签(/admin/discovery/bloggers|github,侧栏精简批②)
-      { icon: "i-experiment", label: "发现中心", href: "/admin/discovery" },
-      // 洞察中心(M34):发现功能升格热点舆情+痛点挖掘;M25 治理台保留不动
-      { icon: "i-aim", label: "洞察中心", href: "/admin/insight" },
+      // 数据壳重组·方案二(2026-10-18):采集/洞察/发现三中心并入 /admin/data
+      // 一体化管理(源管理/运行/洞察/挖掘四页签);旧路径 308 承接
+      { icon: "i-cloudserver", label: "数据中心", href: "/admin/data" },
     ],
   },
   {

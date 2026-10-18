@@ -63,3 +63,9 @@ __pycache__/
 
 # 搜索引擎验证文件(全局 *.txt 误伤;public/ 静态资产本就全部纳管)
 !public/*.txt
+
+# 数据壳(2026-10-18 方案二:全局 gitignore 裸 data 模式误伤源码目录;先豁免目录再豁免内容)
+!src/components/admin/data/
+!src/components/admin/data/**
+!src/app/(admin)/admin/data/
+!src/app/(admin)/admin/data/**

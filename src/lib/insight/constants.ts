@@ -5,15 +5,19 @@
  */
 import type { InsightSource } from "./ingest";
 
-/** 信号源 → 簇别(方案 §4 kind):内部需求侧信号(搜索/问句/评论/反馈)归
- * 痛点(未被满足的需求表达),电报 AI 解读产物(追热点视频的加工物)归热点;
- * 批③ 外部源 fetcher 显式带 kind 后扩表 */
+/** 信号源 → 簇别初始引导值(批③ 验收三轮·痛点扩围:kind 不再按源定生死)。
+ * 聚类已单池归簇(近邻跨 kind),此处映射仅作新建簇的引导值,LLM 打标日批
+ * 按簇内容语义覆判 hot|pain(label.ts 契约);新源仍须在此登记(未登记源
+ * 不入簇,见 cluster.ts 未知源分支) */
 export const INSIGHT_SOURCE_KIND: Record<InsightSource, "hot" | "pain"> = {
   "internal-search": "pain",
   "internal-agent": "pain",
   "internal-comment": "pain",
   "internal-feedback": "pain",
   "telegram-ai": "hot",
+  "hot-baidu": "hot",
+  "hot-zhihu": "hot",
+  "hot-bilibili": "hot",
 };
 
 /** 归簇余弦距离阈值:信号与既有簇成员最近向量的距离 ≤ 阈值即归簇,否则建新簇
@@ -72,3 +76,7 @@ export const SCORE_GAP_WEIGHT = 30;
 export const SCORE_MEDIA_MAX = 5;
 export const SCORE_HEAT_SATURATION = 10;
 export const SCORE_HEAT_WINDOW_DAYS = 7;
+
+/** 热榜拉取(批③):单源 HTTP 超时与单源入池条数上限(榜单截前 N,防长尾) */
+export const HOTLIST_FETCH_TIMEOUT_MS = 10_000;
+export const HOTLIST_MAX_ITEMS = 50;
