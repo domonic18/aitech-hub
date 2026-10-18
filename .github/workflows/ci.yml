@@ -113,8 +113,17 @@ jobs:
     needs: [app, gateway, migrate-replay]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
+    env:
+      # 隔离 runner 宿主 ~/.docker/config.json:其 credsStore 指向的 helper 不在 runner
+      # service PATH,login-action 落凭据即炸(run 39136681847 三镜像 job 全红)。
+      # 指 job 私有干净目录与宿主彻底隔离;凭据由 login-action 写该目录(runner 本机
+      # 临时区,信任域同 secrets)。宿主侧修 PATH 亦可但属仓外漂移项,取仓内确定解
+      DOCKER_CONFIG: ${{ runner.temp }}/docker-config
     steps:
       - uses: actions/checkout@v4
+      # 空配置先落位,后续 docker CLI/buildx/login 全走它(credsStore 隔离全靠此步,勿删)
+      - name: Init clean docker config / 初始化干净 docker 配置
+        run: mkdir -p "$DOCKER_CONFIG" && printf '{}' > "$DOCKER_CONFIG/config.json"
       - id: vars
         run: |
           {
@@ -193,8 +202,13 @@ jobs:
     needs: [app, gateway, migrate-replay]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
+    # DOCKER_CONFIG 隔离 + 干净配置初始化:教训同 docker-release(勿只改一处)
+    env:
+      DOCKER_CONFIG: ${{ runner.temp }}/docker-config
     steps:
       - uses: actions/checkout@v4
+      - name: Init clean docker config / 初始化干净 docker 配置
+        run: mkdir -p "$DOCKER_CONFIG" && printf '{}' > "$DOCKER_CONFIG/config.json"
       - id: vars
         run: |
           {
@@ -259,8 +273,13 @@ jobs:
     needs: [app, card-renderer, migrate-replay]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
+    # DOCKER_CONFIG 隔离 + 干净配置初始化:教训同 docker-release(勿只改一处)
+    env:
+      DOCKER_CONFIG: ${{ runner.temp }}/docker-config
     steps:
       - uses: actions/checkout@v4
+      - name: Init clean docker config / 初始化干净 docker 配置
+        run: mkdir -p "$DOCKER_CONFIG" && printf '{}' > "$DOCKER_CONFIG/config.json"
       - id: vars
         run: |
           {

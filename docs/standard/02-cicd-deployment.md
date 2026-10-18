@@ -28,6 +28,7 @@ push(develop, main)/ 手动
 > 机内前置(仓外一次性,参照 acore-manager 同名设施):① 注册 self-hosted runner(repo Settings → Actions → Runners,标签含默认 `self-hosted`);② 预建持久 builder `docker buildx create --name ci-builder --driver docker-container --config ~/actions-runner/buildkitd.toml`(buildkitd.toml 配国内 docker.io 镜像源;本地缓存跨 job 复用,**弃 gha cache**;workflow 里 `docker buildx use ci-builder` 选择,不用 setup-buildx-action——它会另建临时 builder 顶掉选择)。
 > Apple Silicon 构建机出 175 所需 amd64:build-push 显式 `platforms: linux/amd64`(Rosetta/QEMU 模拟,冷缓存首跑偏慢属预期;步骤级超时 25/30 分钟与登录守卫保留)。
 > 首推 `continue-on-error` + 末尾 gate 裁定步(任一次尝试成功即绿):此前无 gate,首推超时→重试成功 job 仍染红,误导发布判断(run 37106851119 教训,同 acore-manager 方案收口)。
+> 2026-10-18:runner 宿主 `~/.docker/config.json` 带 `credsStore`(macOS 凭据链),helper 不在 runner service PATH,`docker/login-action` 落凭据即炸(run 39136681847 三镜像 job 全红)。修法取仓内确定解:三个 release job 设 `DOCKER_CONFIG=$RUNNER_TEMP/docker-config` + 空配置初始化步,与宿主配置彻底隔离(宿主侧补 PATH 属仓外一次性且随环境漂移,未取)。
 
 - Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
