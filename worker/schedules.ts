@@ -25,6 +25,7 @@ import {
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  JOB_RUN_PURGE_CRON,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
@@ -42,6 +43,7 @@ import {
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
+  STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
@@ -129,6 +131,21 @@ export async function scheduleAgentSessionPurge(): Promise<void> {
     { pattern: AGENT_SESSION_PURGE_CRON, tz: SITE_TZ },
     {
       name: STATS_JOB_AGENT_PURGE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
+/** 任务运行台账清退:每日 04:47 清 30 天前运行记录 + 崩溃残留代收口
+ * (验收二批③;04 点清理带错峰:14/23/33/47/52) */
+export async function scheduleJobRunPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "job-run-purge",
+    { pattern: JOB_RUN_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: STATS_JOB_RUN_PURGE,
       data: {},
       opts: { removeOnComplete: 7 },
     },

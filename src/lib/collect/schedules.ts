@@ -22,6 +22,10 @@ export const USAGE_LOG_PURGE_CRON = "52 4 * * *";
 /** Drawer 会话 30 天自动清退(凌晨档错峰:audit 03:41 / visit 04:14 / agent 04:33 / usage 04:52) */
 export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
 
+/** 任务运行台账 30 天保留期清理(验收二批③;04 点清理带错峰:14 访问 / 23 封面 /
+ * 33 会话 / 47 任务台账 / 52 用量) */
+export const JOB_RUN_PURGE_CRON = "47 4 * * *";
+
 /** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
 export const DB_BACKUP_CRON = "23 3 * * *";
 
@@ -117,6 +121,13 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     label: "会话清退",
     desc: "Drawer 会话 30 天前留档清理",
     cron: AGENT_SESSION_PURGE_CRON,
+    category: "ops",
+  },
+  {
+    key: "job-run-purge",
+    label: "任务台账清理",
+    desc: "任务运行台账 30 天保留期清理(worker 分发器落账,验收二批③)",
+    cron: JOB_RUN_PURGE_CRON,
     category: "ops",
   },
   {
