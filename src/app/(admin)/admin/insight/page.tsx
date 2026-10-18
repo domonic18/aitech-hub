@@ -6,12 +6,15 @@
  */
 import Link from "next/link";
 
+import HotBoard from "@/components/admin/insight/HotBoard";
+import KeywordCloud from "@/components/admin/insight/KeywordCloud";
 import PainCardGrid from "@/components/admin/insight/PainCardGrid";
 import RadarTable from "@/components/admin/insight/RadarTable";
 import { MEDIUM_LABELS, SOURCE_LABELS } from "@/components/admin/insight/shared";
 import Sparkline from "@/components/admin/usage/Sparkline";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
+import { insightKeywordCloud, latestHotBoard } from "@/lib/insight/hotboard";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
 
 export const dynamic = "force-dynamic";
@@ -60,11 +63,13 @@ export default async function AdminInsightPage({
   const { source: rawSource } = await searchParams;
   const source = parseSource(rawSource);
 
-  const [overview, painClusters, hotClusters, signals] = await Promise.all([
+  const [overview, painClusters, hotClusters, signals, hotBoard, cloud] = await Promise.all([
     insightOverview(),
     listInsightClusters({ kind: "pain", limit: 8 }),
     listInsightClusters({ kind: "hot", limit: 20 }),
     listInsightSignals({ source, limit: 50 }),
+    latestHotBoard(),
+    insightKeywordCloud(),
   ]);
 
   return (
@@ -95,6 +100,26 @@ export default async function AdminInsightPage({
             {overview.daily[0]?.date.slice(5)} → {overview.daily[6]?.date.slice(5)}
           </div>
         </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-baseline gap-2">
+          <h3 className="text-sm font-semibold">今日热榜</h3>
+          <span className="text-[11px] text-text-3">
+            外部渠道最新一批拉取榜面(每日 07:43;位次/热度为各站原生口径,不跨源可比)
+          </span>
+        </div>
+        <HotBoard boards={hotBoard} />
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-baseline gap-2">
+          <h3 className="text-sm font-semibold">关键词云图</h3>
+          <span className="text-[11px] text-text-3">
+            近 7 日活跃已打标簇关键词 × 机会分(字号∝分值);点词跳簇详情
+          </span>
+        </div>
+        <KeywordCloud words={cloud} />
       </div>
 
       <div>
