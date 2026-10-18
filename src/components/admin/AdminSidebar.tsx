@@ -24,8 +24,8 @@ const GROUPS: ReadonlyArray<Group> = [
   {
     label: "内容管理",
     items: [
+      // 文章分类已并入文章管理「分类」页签(验收二批①:分类少,不占一级导航)
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
-      { icon: "i-book", label: "文章分类", href: "/admin/categories" },
       { icon: "i-comment", label: "评论管理", href: "/admin/comments" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },

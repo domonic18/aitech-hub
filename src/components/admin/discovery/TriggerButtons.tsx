@@ -1,35 +1,42 @@
 "use client";
 
 /**
- * 发现任务手动触发(M25 批③):「热词发现」与「B站发现」两枚按钮 →
- * POST /api/discovery/trigger;入队即返回(执行与风控节奏在 worker),
- * 结果看词库/候选两表。按钮态:入队中禁点 → 成功短暂示「已入队」→ 复位。
+ * 定时任务手动触发按钮组(M25 批③,验收二批①泛化):props 缺省即发现二按钮
+ * (POST /api/discovery/trigger);洞察域经 props 复用(hotboard 拉热榜/daily
+ * 跑日批 → POST /api/insight/trigger)。入队即返回(执行与风控/LLM 节奏在
+ * worker),结果看对应台账。按钮态:入队中禁点 → 成功短暂示「已入队」→ 复位。
  */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ApiEnvelope } from "@/lib/http/response";
 
-const JOBS = [
+export type TriggerJobDef = { job: string; label: string; hint: string };
+
+const DISCOVERY_JOBS: readonly TriggerJobDef[] = [
   { job: "hotwords", label: "热词发现", hint: "联想词源直拉,新词落 pending" },
   { job: "bili", label: "B站发现", hint: "双窗搜索+聚合+L0,耗时数分钟" },
-] as const;
+];
 
-type Job = (typeof JOBS)[number]["job"];
-
-export default function TriggerButtons() {
+export default function TriggerButtons({
+  endpoint = "/api/discovery/trigger",
+  jobs = DISCOVERY_JOBS,
+}: {
+  endpoint?: string;
+  jobs?: readonly TriggerJobDef[];
+}) {
   const router = useRouter();
-  const [busyJob, setBusyJob] = useState<Job | null>(null);
-  const [doneJob, setDoneJob] = useState<Job | null>(null);
+  const [busyJob, setBusyJob] = useState<string | null>(null);
+  const [doneJob, setDoneJob] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function trigger(job: Job): Promise<void> {
+  async function trigger(job: string): Promise<void> {
     if (busyJob) return;
     setBusyJob(job);
     setErr(null);
     try {
-      const res = await fetch("/api/discovery/trigger", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ job }),
@@ -53,7 +60,7 @@ export default function TriggerButtons() {
   return (
     <div className="flex flex-col items-end gap-0.5">
       <div className="flex items-center gap-2">
-        {JOBS.map(({ job, label, hint }) => (
+        {jobs.map(({ job, label, hint }) => (
           <button
             key={job}
             type="button"

@@ -69,8 +69,10 @@ export default async function SourceWords({
             </Link>
           ))}
         </div>
-        <div className="ml-auto">
+        {/* 触发在页头(验收二批①:页脚不显眼,上移与加词同排)——加完词就地跑一轮 */}
+        <div className="ml-auto flex items-center gap-3">
           <KeywordAddForm />
+          <TriggerButtons />
         </div>
       </div>
 
@@ -96,14 +98,11 @@ export default async function SourceWords({
         />
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-3xl text-[11px] leading-relaxed text-text-3">
-          说明:生效词(active)是发现管线的「燃料」——每日热词联想与每周 B站双窗搜索按词轮转搜索;
-          弃用词不再参与。加完词点右侧触发即可跑一轮,产出去「挖掘·候选治理」终审。 API:GET·POST
-          /api/discovery/keywords · PUT /api/discovery/keywords/[id]。
-        </p>
-        <TriggerButtons />
-      </div>
+      <p className="max-w-3xl text-[11px] leading-relaxed text-text-3">
+        说明:生效词(active)是发现管线的「燃料」——每日热词联想与每周 B站双窗搜索按词轮转搜索;
+        弃用词不再参与。加完词点页头触发即可跑一轮,产出去「挖掘·候选治理」终审。 API:GET·POST
+        /api/discovery/keywords · PUT /api/discovery/keywords/[id]。
+      </p>
     </div>
   );
 }
