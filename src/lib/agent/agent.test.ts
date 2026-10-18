@@ -29,6 +29,9 @@ vi.mock("./topic-tools", () => ({
 vi.mock("./write-article-tool", () => ({
   WRITE_ARTICLE_TOOLS: [{ name: "write_article" }],
 }));
+vi.mock("./post-sources-tool", () => ({
+  POST_SOURCES_TOOLS: [{ name: "get_post_sources" }],
+}));
 vi.mock("./skill-tools", () => ({
   SKILL_TOOLS: [{ name: "list_skills" }, { name: "get_skill" }],
 }));
@@ -58,7 +61,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
     }
   });
 
-  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件、写作单任务、封面 HITL、技能两件、预算与卡片工具", () => {
+  it("admin 追加编辑域(read_draft/propose_edits)、专题生产四件+素材反查、写作单任务、封面 HITL、技能两件、预算与卡片工具", () => {
     expect(agentToolsFor("admin").map((t) => t.name)).toEqual([
       "search_site",
       "read_post",
@@ -72,6 +75,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "transfer_video_cover",
       "generate_cover_candidates",
       "save_topic_draft",
+      "get_post_sources",
       "write_article",
       "generate_post_cover",
       "list_skills",

@@ -18,6 +18,7 @@ import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
 import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
+import { POST_SOURCES_TOOLS } from "./post-sources-tool";
 import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
 import { WECHAT_BUDGET_TOOLS } from "./wechat-budget-tool";
@@ -69,7 +70,7 @@ const ADMIN_PROMPT_ADDENDUM = `
 专题文章生产(管理员专属能力,收到「为专题写文章/合成初稿/改稿」类任务时启用):
 这是多步生产流程,先用 write_todos 列出计划(通常 7~8 步),再逐步执行,每步用对应工具:
 1. get_topic_brief 读取专题定位、素材(博主/视频/解读笔记/人工批注)与关联文档现状;仔细分析素材
-2. 选题:基于素材构思 2~3 个切入角度并自选最优,参考近期已发标题避免重复;方向确实拿不准时用 ask_user 请管理员拍板(一次一问,带 2~4 个选项),素材充分时不必问
+2. 选题:基于素材构思 2~3 个切入角度并自选最优,参考近期已发标题避免重复;方向确实拿不准时用 ask_user 请管理员拍板(一次一问,带 2~4 个选项),素材充分时不必问。合成指令指定了撰写目的/体裁(如「含文字版教程」)时,选题、提纲与写法以其为准——专题定位与历史话术仅在无指定时生效,不得被惯性带偏
 3. 写作(单任务捆绑,独立模型执行):先定选题方向与结构提纲,然后调 write_article 一次性起草——传 topic_id、angle(选题方向一句话)、outline(小节名与顺序)、skill_key(已 get_skill 确认的那个 key,工具侧自动装载指南全文喂写作模型)与按需 guidance;写作由「文章写作」绑定模型执行,与编排模型解耦。拿到 draft_md 初稿后:以挑剔读者视角自评审,直接在初稿上改写,正文图片直接引用素材的 cover_path(工具底料已转存站内路径)或 generate_cover_candidates 返回的路径,严禁编造外链图片;终稿仍按下方「正文交付纪律」只经 save_topic_draft 的 content_md 参数交付,严禁把正文整篇输出到对话流
 4. 正文配图:素材 cover_path 已可直接引用;视频封面不足或需概念示意图时 generate_cover_candidates 按小节内容现拟 prompt 生成;cover_path 为 null(转存失败)或 brief 后新挂素材时用 transfer_video_cover 重试。以上产物只作正文插图,禁止选作文章头图(头图统一走第 7 步 AI 生成流程);文首推荐卡由系统自动带图,正文开头不要再贴同一张。核心内容笔记优先用 render_card 卡片图做可视化呈现,替代大段纯文字表述——能综合为一张卡呈现就一张,不凑数;卡型选型与呈现节奏以技能指南为准;render_card 返回的 markdown_line 原样嵌入正文对应位置(独占一行,前后空行),渲染了卡但正文没嵌 = 白做
 5. 自评审并优化(必做,不可跳过):以挑剔读者视角通读初稿,逐项检查并直接改写——① 开头是否用素材里的具体事实/数据抓人,有无「随着…的发展」式套话;② 背景交代是否完整,不了解这条视频的读者能否无障碍读下去;③ 要点之间是否有递进/因果逻辑,而非并列罗列;④ 「去看原视频」小节是否给出了视频原地址链接;⑤ 配图位置与全文数量是否合理、有无图文不符,正文嵌入的卡片图数量必须与 render_card 调用数一致。自评审至多 2 轮:第 1 轮通读改写,仅当仍有硬伤(编造事实/缺原链/图文不符)才做第 2 轮;2 轮后无论是否满意都立即进入下一步,禁止反复重写
@@ -87,7 +88,7 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 合成流程第 4 步的卡片是必做项:大段纯文字的干货表述必须转成卡片图呈现(数据取自素材,严禁编造),能综合为一张卡即一张;落稿有内容级硬闸——save_topic_draft 必须带 card_urls(本次全部卡片 url),正文里没嵌入的卡图会被工具拒绝,按报错补嵌 markdown 行后重交
 - 编辑/改稿上下文:管理员要求「更美观/HTML/可视化/加图表」时,先 read_draft 读现稿,把适合可视化的段落(金句/要点/数据/对比/步骤/全景/时间线)逐段做成 render_card 卡,再用 propose_edits 以卡图替换对应文字段——不要只精简或改写文字
 
-管理员对已落库文章提出修改要求时:按需 get_topic_brief 重读素材,直接修改相关部分后再次 save_topic_draft(返回 needConfirm 时先 ask_user 确认覆盖),不要重跑全流程;涉及「更美观/可视化」的改稿同时按上方「卡片可视化纪律」先出卡再提案;工具返回 error/timeout 时如实转述,不要编造结果。
+管理员对已落库文章提出修改要求时:按需重读素材——文章编辑上下文(只有 post id)用 get_post_sources,已知专题 id 用 get_topic_brief——直接修改相关部分后再次 save_topic_draft(返回 needConfirm 时先 ask_user 确认覆盖),不要重跑全流程;涉及「更美观/可视化」的改稿同时按上方「卡片可视化纪律」先出卡再提案;工具返回 error/timeout 时如实转述,不要编造结果。
 
 文章编辑上下文(M27 批⑧-b):
 - 对话里出现的 [页面上下文] 前缀标注了管理员当前所在页面;含 edit 段(edit.postId/edit.title)时,表示管理员正在后台编辑这篇文章
@@ -114,6 +115,7 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...AGENT_TOOLS,
         ...EDIT_TOOLS,
         ...TOPIC_TOOLS,
+        ...POST_SOURCES_TOOLS,
         ...WRITE_ARTICLE_TOOLS,
         ...COVER_TOOLS,
         ...SKILL_TOOLS,
