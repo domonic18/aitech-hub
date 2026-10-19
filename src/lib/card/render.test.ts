@@ -1,35 +1,62 @@
 /**
- * 渲染客户端纯函数单测(M31 批B):站内媒体路径 → file:// 绝对路径改写
- * (src 与 css url() 两形态;非站内前缀不动)。
+ * 渲染客户端单测(M31 批B 建;COS 引图补丁改内联口径):POST 组装用内联产物、
+ * 内联报错原样传导(不被不可达兜底吞掉)、状态码人话映射。
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { rewriteLocalMediaRefs } from "./render";
+const inlineSiteMediaRefs = vi.hoisted(() => vi.fn());
+vi.mock("./media-inline", () => ({ inlineSiteMediaRefs }));
 
-describe("rewriteLocalMediaRefs", () => {
-  it("img src 站内路径 → file:// 媒体根", () => {
-    const out = rewriteLocalMediaRefs(
-      '<img src="/wp-content/uploads/2026/10/a.png">',
-      "/app/media",
+import { renderCardPng } from "./render";
+
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function stubFetch(status = 200) {
+  const fetchMock = vi.fn(
+    async (_url: string | URL | Request, init?: RequestInit) =>
+      new Response(PNG as unknown as BodyInit, {
+        status,
+        headers: { "content-type": "image/png", "x-card-width": "900", "x-card-height": "420" },
+      }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("renderCardPng", () => {
+  it("POST 体使用内联后的 HTML(站内图已是 data URI,不再 file:// 改写)", async () => {
+    const inlined = '<img src="data:image/png;base64,QUJD">';
+    inlineSiteMediaRefs.mockResolvedValueOnce(inlined);
+    const fetchMock = stubFetch();
+    const card = await renderCardPng('<img src="/wp-content/uploads/a.png">', { width: 900 });
+    expect(inlineSiteMediaRefs).toHaveBeenCalledWith('<img src="/wp-content/uploads/a.png">');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/render");
+    expect(JSON.parse(String(init.body))).toEqual({ html: inlined, width: 900, scale: 2 });
+    expect(card).toMatchObject({ width: 900, height: 420 });
+    expect(card.png).toEqual(PNG);
+  });
+
+  it("内联报错(文件缺失等)原样传导,不被服务不可达兜底吞掉", async () => {
+    inlineSiteMediaRefs.mockRejectedValueOnce(
+      new Error("站内图片文件缺失:/wp-content/uploads/g.png"),
     );
-    expect(out).toBe('<img src="file:///app/media/2026/10/a.png">');
-  });
-
-  it("css url() 站内路径 → file:// 媒体根", () => {
-    const out = rewriteLocalMediaRefs(
-      "<style>.a{background:url(/wp-content/uploads/b.webp)}</style>",
-      "/app/media",
+    const fetchMock = stubFetch();
+    await expect(renderCardPng('<img src="/wp-content/uploads/g.png">')).rejects.toThrow(
+      "站内图片文件缺失:/wp-content/uploads/g.png",
     );
-    expect(out).toContain("url(file:///app/media/b.webp)");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("data: 与外链 src 不动", () => {
-    const html = '<img src="data:image/png;base64,AA==" data-x="1"><img src="https://x.com/y.png">';
-    expect(rewriteLocalMediaRefs(html, "/app/media")).toBe(html);
-  });
-
-  it("带尾斜杠的媒体根不产生双斜杠", () => {
-    const out = rewriteLocalMediaRefs('<img src="/wp-content/uploads/a.png">', "/app/media/");
-    expect(out).toBe('<img src="file:///app/media/a.png">');
+  it("429 → 人话「渲染服务忙」", async () => {
+    inlineSiteMediaRefs.mockResolvedValueOnce("<p>x</p>");
+    stubFetch(429);
+    await expect(renderCardPng("<p>x</p>")).rejects.toThrow("渲染服务忙(并发已满),请稍后重试");
   });
 });
