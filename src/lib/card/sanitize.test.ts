@@ -1,13 +1,15 @@
 /**
- * 消毒器单测(M31 批B):危险标签/事件属性/js URL/外链 img/超量 img/style 外联
- * 全部整体报错;无害未知标签解包放行;属性白名单裁剪;输出为独立文档。
+ * 消毒器单测(M31 批B 建,2026-10-18 宽容化修订):安全红线不变——危险标签/
+ * 事件属性/js URL/外链 img/超量 img/style 外联全部整体报错;渲染宽容——文档
+ * 结构标签静默摘除、无害未知标签解包放行、id 与表格跨列属性保留;输出壳为
+ * 深空基线(模型自带样式后置可覆盖)。
  */
 import { describe, expect, it } from "vitest";
 
 import { sanitizeCardHtml } from "./sanitize";
 
 describe("sanitizeCardHtml", () => {
-  it("干净 HTML → ok,输出带独立文档壳与白名单结构", () => {
+  it("干净 HTML → ok,输出带独立文档壳与深空基线", () => {
     const r = sanitizeCardHtml(
       '<div class="card"><h2>标题</h2><p>正文 <strong>加粗</strong></p></div>',
     );
@@ -16,6 +18,25 @@ describe("sanitizeCardHtml", () => {
       expect(r.html.startsWith("<!DOCTYPE html>")).toBe(true);
       expect(r.html).toContain("<h2>标题</h2>");
       expect(r.html).toContain('class="card"');
+      expect(r.html).toContain("background:#0b1220");
+      expect(r.html).toContain("Noto Sans CJK SC");
+    }
+  });
+
+  it("整份文档输入 → meta/title 摘除、html/head/body 解包、doctype 去重,不算违规", () => {
+    const r = sanitizeCardHtml(
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>卡</title></head>' +
+        '<body><div class="k"><h3>T</h3></div></body></html>',
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.html).toContain('<div class="k"><h3>T</h3></div>');
+      expect(r.html).not.toContain("<title>");
+      // 只剩输出壳自带的各一处(输入侧的已摘/解包)
+      expect(r.html.match(/<!DOCTYPE/g)?.length).toBe(1);
+      expect(r.html.match(/<html/g)?.length).toBe(1);
+      expect(r.html.match(/<meta/g)?.length).toBe(1);
+      expect(r.html.match(/<body/g)?.length).toBe(1);
     }
   });
 
@@ -73,6 +94,29 @@ describe("sanitizeCardHtml", () => {
       expect(r.html).toContain('class="a"');
       expect(r.html).not.toContain("data-x");
       expect(r.html).not.toContain("align");
+    }
+  });
+
+  it("id 与表格跨列属性保留(渲染宽容化放宽项)", () => {
+    const r = sanitizeCardHtml(
+      '<div id="hero"><table><tr><td colspan="2" rowspan="1">x</td></tr></table></div>',
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.html).toContain('id="hero"');
+      expect(r.html).toContain('colspan="2"');
+      expect(r.html).toContain('rowspan="1"');
+    }
+  });
+
+  it("模型自带 body 样式后置生效,可覆盖基线(白底等自定义照常渲染)", () => {
+    const r = sanitizeCardHtml("<style>body{background:#ffffff;color:#111}</style><p>白底卡</p>");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const bodyCss = r.html.indexOf("background:#ffffff");
+      const baseline = r.html.indexOf("background:#0b1220");
+      expect(bodyCss).toBeGreaterThan(baseline);
+      expect(bodyCss).toBeGreaterThan(-1);
     }
   });
 

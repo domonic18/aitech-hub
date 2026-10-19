@@ -131,8 +131,13 @@ export interface CandidateListResult {
 export async function listCandidatesAdmin(params: {
   segment: CandidateListSegment;
   page: number;
+  /** 按命中词过滤(词库效能云点词跳入;jsonb 数组 containment) */
+  kw?: string;
 }): Promise<CandidateListResult> {
-  const where = params.segment === "all" ? {} : { status: params.segment };
+  const where = {
+    ...(params.segment === "all" ? {} : { status: params.segment }),
+    ...(params.kw ? { hitKeywords: { array_contains: params.kw } } : {}),
+  };
   const [rows, total, grouped] = await Promise.all([
     prisma.discoveryCandidate.findMany({
       where,

@@ -9,9 +9,12 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
+import { normalizePresetData } from "../card/normalize";
 import { renderPreset, CARD_PRESET_IDS } from "../card/presets";
 import { renderCardPng } from "../card/render";
 import { sanitizeCardHtml } from "../card/sanitize";
+import { ACCENTS, pickAccent } from "../card/templates/shell";
+import { logger } from "../logger";
 import { uploadMedia } from "../media/service";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
@@ -31,9 +34,24 @@ export const renderCardTool = tool(
       return JSON.stringify({ ok: false, error: `使用 preset=${preset} 时必须提供 data 数据对象` });
 
     let doc: string;
+    // accent 按文章锚定:thread_id 作 seed,同篇恒同强调色组(跨篇轮换);
+    // 回传给 agent——自由 HTML 据此与本篇 preset 卡同组(此前模型只能盲猜)。
+    const accent = pickAccent(ACCENTS, config?.configurable?.thread_id ?? "preview");
     if (preset) {
-      const r = renderPreset(preset, data);
-      if (!r.ok) return JSON.stringify({ ok: false, error: r.error });
+      // 漂移收编:弱模型的实证形态(单键包裹/字符串化 JSON/嵌套数组/二元数组行)
+      // 归一层先还原再校验;命中即记日志观测漂移率,未知形态仍 fail-closed。
+      const n = normalizePresetData(data);
+      if (n.normalized) logger.warn({ event: "agent.card_args_normalized", preset });
+      const r = renderPreset(preset, n.data, config?.configurable?.thread_id);
+      if (!r.ok) {
+        // 无效数据落日志(截断):此前失败侧零日志,每次排障都要翻 checkpoint。
+        logger.warn({
+          event: "agent.card_preset_invalid",
+          preset,
+          data: JSON.stringify(n.data).slice(0, 800),
+        });
+        return JSON.stringify({ ok: false, error: r.error });
+      }
       doc = r.html;
     } else {
       const r = sanitizeCardHtml(html as string);
@@ -54,9 +72,11 @@ export const renderCardTool = tool(
         markdown_line: `![](${media.path})`,
         width: card.width,
         height: card.height,
+        accent,
         hint:
           "把 markdown_line 原样写入正文对应位置(独占一行,前后空行);落稿 save_topic_draft " +
-          "时把本次全部卡片 url 逐个列入 card_urls,正文漏嵌会被拒绝",
+          "时把本次全部卡片 url 逐个列入 card_urls,正文漏嵌会被拒绝;" +
+          "自由 HTML 的强调色直接取本返回的 accent(main/soft/text 三色),与同篇 preset 卡恒同组",
       });
     } catch (e) {
       return JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "渲染失败" });
@@ -65,39 +85,51 @@ export const renderCardTool = tool(
   {
     name: "render_card",
     description:
-      "把卡片渲染成图片并存入媒体库,返回 {url,width,height},用于正文配图(金句/要点/" +
-      "数据/对比/步骤/流程/时间线类内容优先做卡而非纯文字)。选型:观点→quote,清单→" +
-      "points,数字→stats,选型对垒→compare,操作路径→steps,多角色×多阶段全景→flow," +
-      "演进脉络→timeline。两种用法二选一:① preset+data——内置模板(M36 双主题:观点/" +
-      "数据系深色 quote|points|stats,流程/方法系浅色 compare|steps|flow|timeline)," +
-      "常规卡片一律优先(省额度);② html——自由 HTML(≤12000 字符,仅版式确需个性化时" +
-      "用),纪律:<style> 块+class 复用样式,禁止逐元素重复 inline style、禁止手写 " +
-      "base64 图片,引已有配图用站内路径 /wp-content/uploads/…(渲染时自动映射媒体卷)。" +
+      "把卡片渲染成图片并存入媒体库,返回 {url,width,height,accent},用于正文配图(金句/要点/" +
+      "数据/量级对比/台账/选型/步骤/全景/时间线/要素盘点/大图类内容优先做卡而非纯文字)。" +
+      "内容形态→卡型的选型纪律以技能指南为准。两种用法二选一:① preset+data——内置模板" +
+      "(11 卡型统一深空主题:quote|points|stats|bars|ledger|compare|steps|flow|" +
+      "timeline|matrix|photo),只填数据,样式模板兜底,常规卡片一律" +
+      "优先(省额度);② html——自由 HTML(≤12000 字符,仅版式确需个性化时用)。渲染端" +
+      "宽容:文档级标签(html/head/meta/title)自动摘除,写片段即可;深空底色与字体已内置," +
+      "强调色用返回的 accent(main/soft/text,与同篇 preset 卡恒同组);纪律:<style> 块+" +
+      "class 复用样式,禁止逐元素重复 inline style、禁止手写 base64 图片," +
+      "引已有配图用站内路径 /wp-content/uploads/…(渲染时自动映射媒体卷)。" +
       "返回的 url 直接以 ![](url) 写进正文,不要向用户复述 HTML。",
     schema: z.object({
       preset: z
         .enum(CARD_PRESET_IDS)
         .optional()
         .describe(
-          "内置模板:quote=金句卡 points=要点列表 stats=数据指标 compare=双栏对比 " +
-            "steps=步骤流程 flow=泳道全景 timeline=时间线",
+          "内置模板:quote=金句卡 points=要点列表 stats=数据指标 bars=量级条形 " +
+            "ledger=键值台账 compare=双栏对比 steps=步骤流程 flow=泳道全景 " +
+            "timeline=时间线 matrix=要素矩阵 photo=大图卡",
         ),
       data: z
         .record(z.string(), z.unknown())
         .optional()
         .describe(
-          "preset 的数据对象:quote={quote,author?};points={title?,points[2..8]};" +
-            "stats={title?,items[2..6]:{value,label}};compare={title?,left:{label,items[1..6]}," +
-            "right:{label,items[1..6]},verdict?};steps={title?,steps[2..8]:{title,detail?}};" +
-            "flow={title,subtitle?,lanes[2..4]:{name,emoji?},phases[2..5]:{name,desc?}," +
-            "steps[3..16]:{text,lane,phase},summary?}(lane/phase 为从 0 起下标,steps 数组序" +
-            "即全局流转编号);timeline={title?,events[2..8]:{time,text},summary?}",
+          "preset 的数据对象:quote={quote,author?};points={title?,points[2..8]:{text,icon?}};" +
+            "stats={title?,items[2..6]:{value,label,delta?}}(首条自动放大为主指标,delta 如 " +
+            "+23%/-12% 自动▲绿▼红);bars={title?,unit?,items[2..6]:{label,pct:1~100,value}}" +
+            "(pct 为相对刻度,最大者 100);ledger={title?,rows[3..12]:{k,v}};" +
+            "compare={title?,left:{label,items[1..6]},right:{label,items[1..6]},verdict?};" +
+            "steps={title?,steps[2..8]:{title,detail?}};flow={title,subtitle?,lanes[2..4]:" +
+            "{name,emoji?},phases[2..5]:{name,desc?},steps[3..16]:{text,lane,phase},summary?}" +
+            "(lane/phase 为从 0 起下标,steps 数组序即全局流转编号);timeline={title?," +
+            "events[2..8]:{time,text},summary?};matrix={title?,cells[2..8]:{name,desc?,icon?}};" +
+            'photo={src:"/wp-content/uploads/…",title?,caption?}' +
+            ";数组字段(points/items/rows/steps/lanes/phases/events/cells)一律直接传" +
+            'JSON 数组,如 "rows":[{"k":"键","v":"值"}],不要包进对象',
         ),
       html: z
         .string()
         .max(FREE_HTML_MAX_CHARS)
         .optional()
-        .describe("自由 HTML(与 preset 二选一;消毒不过会整体报错,按报错修正重试)"),
+        .describe(
+          "自由 HTML 片段(与 preset 二选一;html/head/meta/title 等文档级标签自动摘除," +
+            "深空底色/字体已内置,强调色用返回的 accent;消毒不过会整体报错,按报错修正重试)",
+        ),
       width: z
         .number()
         .int()

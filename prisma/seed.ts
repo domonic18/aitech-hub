@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 
-import { BLOGGER_VIDEO_GUIDE } from "../src/lib/ai/writing-guides";
+import { BLOGGER_VIDEO_GUIDE, CARD_RENDERING_GUIDE } from "../src/lib/ai/writing-guides";
 
 /**
  * 种子数据(arch/03-data-model §1):四分类,幂等 upsert,可反复执行。
@@ -30,6 +30,13 @@ const WRITING_SKILLS = [
     name: "博主×视频推荐短文",
     scenario: "公众号「博主×视频」推荐短文(专题合成默认场景)",
     guideMd: BLOGGER_VIDEO_GUIDE,
+    enabled: true,
+  },
+  {
+    key: "card-rendering",
+    name: "图文卡片",
+    scenario: "render_card 卡片工具的卡型选型与调用纪律(通用)",
+    guideMd: CARD_RENDERING_GUIDE,
     enabled: true,
   },
 ] as const;

@@ -1,15 +1,19 @@
 "use client";
 
 /**
- * 专题定位编辑 + 人工状态流转(M26 批③治理台):标题/定位/关联文章 id/绑定
- * 技能(M30 批②)可改(PATCH /api/topics/[id]);状态钮组只出人工迁移目标
+ * 专题定位编辑 + 人工状态流转(M26 批③治理台;2026-10-18 体裁治理收编):
+ * 撰写目的下拉取代「绑定技能」下拉(目的=定位模板+合成话术体裁词,落库走
+ * positioning,技能一律自动匹配——体裁唯一入口,治 post-319「教程意图无
+ * 入口」);定位 textarea 降级为备注(切目的仅在其为空或等于某预置模板时
+ * 自动带模板,自定义文案不覆盖);关联文章 id 改只读展示(合成后自动回填);
+ * 标题可改(PATCH /api/topics/[id]);状态钮组只出人工迁移目标
  * (MANUAL_STATUS_TARGETS,§10-7 collecting→drafted 仅合成驱动不出钮),流转
  * 失败(如逆跳)行内红字。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import type { AgentSkillMeta } from "@/lib/ai/agent-skills-admin";
+import { matchTopicPurpose, TOPIC_PURPOSES, type TopicPurposeKey } from "@/lib/topics/constants";
 import {
   MANUAL_STATUS_TARGETS,
   TOPIC_STATUS_LABEL,
@@ -23,30 +27,23 @@ export default function TopicMetaPanel({
   positioning,
   linkedPostId,
   status,
-  skillKey,
-  skills,
 }: {
   id: string;
   title: string;
   positioning: string | null;
   linkedPostId: string | null;
   status: string;
-  skillKey: string | null;
-  skills: AgentSkillMeta[];
 }) {
   const router = useRouter();
   const [titleDraft, setTitleDraft] = useState(title);
   const [positioningDraft, setPositioningDraft] = useState(positioning ?? "");
-  const [linkedDraft, setLinkedDraft] = useState(linkedPostId ?? "");
-  const [skillDraft, setSkillDraft] = useState(skillKey ?? "");
+  const [purpose, setPurpose] = useState<TopicPurposeKey | null>(() =>
+    matchTopicPurpose(positioning),
+  );
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
-  const dirty =
-    titleDraft.trim() !== title ||
-    positioningDraft !== (positioning ?? "") ||
-    linkedDraft !== (linkedPostId ?? "") ||
-    skillDraft !== (skillKey ?? "");
+  const dirty = titleDraft.trim() !== title || positioningDraft !== (positioning ?? "");
 
   async function patch(body: Record<string, unknown>, okText: string): Promise<boolean> {
     setBusy(true);
@@ -81,16 +78,22 @@ export default function TopicMetaPanel({
         ...(positioningDraft !== (positioning ?? "")
           ? { positioning: positioningDraft.trim() || null }
           : {}),
-        ...(linkedDraft !== (linkedPostId ?? "")
-          ? { linkedPostId: linkedDraft.trim() === "" ? null : linkedDraft.trim() }
-          : {}),
-        ...(skillDraft !== (skillKey ?? "")
-          ? { skillKey: skillDraft === "" ? null : skillDraft }
-          : {}),
       },
       "已保存",
     );
     if (ok && titleDraft.trim() !== title) setTitleDraft(titleDraft.trim());
+  }
+
+  /** 切撰写目的:现定位为空或等于某预置模板时自动带入新模板;自定义文案
+   * 不覆盖(提示可手改),custom 态下拉保留「自定义」展示项 */
+  function switchPurpose(key: TopicPurposeKey): void {
+    setPurpose(key);
+    const target = TOPIC_PURPOSES.find((t) => t.key === key);
+    if (!target) return;
+    const cur = positioningDraft.trim();
+    if (cur === "" || matchTopicPurpose(cur) !== null) {
+      setPositioningDraft(target.positioningTemplate);
+    }
   }
 
   const targets = MANUAL_STATUS_TARGETS[status as TopicStatus] ?? [];
@@ -109,41 +112,37 @@ export default function TopicMetaPanel({
           {TOPIC_STATUS_LABEL[status as TopicStatus] ?? status}
         </span>
       </div>
-      <textarea
-        value={positioningDraft}
-        maxLength={1000}
-        rows={2}
-        onChange={(e) => setPositioningDraft(e.target.value)}
-        placeholder="专题定位(合成的选材与口吻指引)…"
-        className="rounded-sm border border-line bg-panel px-2.5 py-1.5 text-[13px] outline-none focus:border-accent placeholder:text-text-3"
-        aria-label="专题定位"
-      />
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5 text-xs text-text-2">
-          关联文章 id
-          <input
-            value={linkedDraft}
-            onChange={(e) => setLinkedDraft(e.target.value)}
-            placeholder="合成后自动回填;人工关联可直填 id"
-            className="w-40 rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent placeholder:text-text-3"
-          />
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-text-2">
-          绑定技能
+          撰写目的
           <select
-            value={skillDraft}
-            onChange={(e) => setSkillDraft(e.target.value)}
-            className="max-w-52 rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent"
-            aria-label="绑定写作技能"
+            value={purpose ?? "custom"}
+            onChange={(e) => {
+              if (e.target.value === "custom") return;
+              switchPurpose(e.target.value as TopicPurposeKey);
+            }}
+            className="max-w-56 rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent"
+            aria-label="撰写目的"
           >
-            <option value="">未绑定(合成时按场景自动匹配)</option>
-            {skills.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.name}({s.key})
+            {TOPIC_PURPOSES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
               </option>
             ))}
+            {purpose === null && <option value="custom">自定义(保留现文案)</option>}
           </select>
         </label>
+        <span className="text-xs text-text-2">关联文章</span>
+        {linkedPostId ? (
+          <a
+            href={`/admin/posts/${linkedPostId}`}
+            className="text-xs text-text-2 underline decoration-line hover:text-accent"
+          >
+            #{linkedPostId}
+          </a>
+        ) : (
+          <span className="text-xs text-text-3">合成后自动回填</span>
+        )}
         <button
           type="button"
           onClick={() => void saveMeta()}
@@ -164,6 +163,15 @@ export default function TopicMetaPanel({
           </button>
         ))}
       </div>
+      <textarea
+        value={positioningDraft}
+        maxLength={1000}
+        rows={2}
+        onChange={(e) => setPositioningDraft(e.target.value)}
+        placeholder="定位备注(切撰写目的自动带入模板;可手改选材口吻)…"
+        className="rounded-sm border border-line bg-panel px-2.5 py-1.5 text-[13px] outline-none focus:border-accent placeholder:text-text-3"
+        aria-label="专题定位"
+      />
       {msg && (
         <span className={`text-[11px] ${msg.tone === "ok" ? "text-green" : "text-red"}`}>
           {msg.text}

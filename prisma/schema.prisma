@@ -1095,17 +1095,24 @@ model InsightSignal {
   @@map("insight_signal")
 }
 
-/// 痛点/热点簇(批② 聚类产物;批① 一次建齐免二次迁移,不写入)。
-/// media=留痕介质集合(机会评分卡输入,方案 §2);status 流转纪律批② 实测定参。
+/// 痛点/热点簇(批② 聚类产物):信号向量近邻归簇建簇,LLM 日批打标可读化。
+/// media=留痕介质集合(机会评分卡输入,方案 §2;批②=成员介质并集,LLM 判定批③
+/// 多介质外部源接入再收)。status 流转纪律:批② 仅 fading 兜底(14 天无新成员),
+/// 阈值实测后定参(方案 §9-5)。labeledMemberCount=打标时成员数(增量重打标判定);
+/// coverageScore/coverageState=内容覆盖度(日批对 post 向量近邻回写,看板直读免连查)。
 model InsightCluster {
   id          BigInt   @id @default(autoincrement())
   kind        String   @db.VarChar(8) // hot | pain
   domain      String   @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
-  label       String   @db.VarChar(200) // LLM 命名(人话)
+  label       String?  @db.VarChar(200) // LLM 命名(人话;未打标 null)
   summary     String?  @db.VarChar(1000) // LLM 一句话概括
   keywords    Json? // string[]
   media       Json? // string[] 留痕介质集合
   score       Float? // 最新机会分
+  labeledAt          DateTime? @map("labeled_at") @db.Timestamptz(6) // 最近 LLM 打标时间
+  labeledMemberCount Int       @default(0) @map("labeled_member_count") // 打标时成员数
+  coverageScore      Float?    @map("coverage_score") // 内容覆盖度 0-1(日批回写)
+  coverageState      String?   @map("coverage_state") @db.VarChar(10) // covered | partial | blank
   status      String   @default("active") @db.VarChar(10) // active | fading | closed
   firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
   lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
@@ -1145,6 +1152,23 @@ model InsightSnapshot {
 
   @@unique([clusterId, date], map: "uq_insight_snapshot_cluster_date")
   @@map("insight_snapshot")
+}
+
+/// 热榜源登记(M34 批③ 验收反馈:纳入采集计划管理):fetcher 注册表(代码)
+/// 的运行态投影——enabled=运行时启停闸(fetch 轮按表过滤,停用源不拉取),
+/// lastRunAt/consecutiveFails/lastError 由 fetch 编排逐源回写(crawl_source
+/// 同口径,连败可见)。缺行按启用处理:新 fetcher 上线免迁移即生效,台账读侧
+/// 懒登记;启停只挡采集,不动 INSIGHT_SOURCES_ENABLED 读侧白名单。
+model InsightHotSource {
+  source           String    @id @db.VarChar(30) // hot-baidu/hot-zhihu/hot-bilibili(=InsightSource hot-*)
+  enabled          Boolean   @default(true)
+  consecutiveFails Int       @default(0) @map("consecutive_fails")
+  lastRunAt        DateTime? @map("last_run_at") @db.Timestamptz(6)
+  lastError        String?   @map("last_error") @db.VarChar(300)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("insight_hot_source")
 }
 
 // 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
@@ -1201,4 +1225,28 @@ model AgentSkill {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("agent_skill")
+}
+
+/// 任务运行台账(验收二批③,学习 ai-invest collector_log):系统全部周期批任务
+/// (cron 调度 + 手动触发,含 LLM/向量调用类)的持久运行记录——BullMQ
+/// removeOnComplete 只留近几次,挂死/失败/耗时无处可查。单一写入口=worker
+/// 分发器包装(worker/job-run#withJobRunLog):执行前先落 running 行(挂死
+/// 立即可见),终态回写 summary/error。tick 类纯心跳(crawler/github/stats-flush
+ /// /pay-sweep)不落账——其工作单元在各自台账(crawl_source/github_repo)有账。
+model JobRun {
+  id         BigInt    @id @default(autoincrement())
+  jobKey     String    @map("job_key") @db.VarChar(60) // 稳定键 queue/name(如 insight/fetch)
+  queue      String    @db.VarChar(40)
+  jobName    String    @map("job_name") @db.VarChar(60)
+  trigger    String    @db.VarChar(10) // cron | manual(jobId 带 -manual- 前缀)
+  status     String    @db.VarChar(10) // running | success | failed
+  startedAt  DateTime  @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  durationMs Int?      @map("duration_ms")
+  summary    Json? // job 级汇总(处理器返回值;超长截断)
+  error      String? @db.Text // 失败信息(截 4000)
+
+  @@index([startedAt(sort: Desc)], map: "idx_job_run_recent")
+  @@index([jobKey, startedAt(sort: Desc)], map: "idx_job_run_key_recent")
+  @@map("job_run")
 }

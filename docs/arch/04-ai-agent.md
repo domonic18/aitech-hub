@@ -145,6 +145,7 @@
 - **消毒(`sanitize.ts`,自由模唯一入服务闸)**:cheerio 白名单——script/iframe/svg/math 等危险标签整体报错、无害未知标签解包保文本;属性仅留 class/style(img 另留 src/alt/宽高),on* 与 javascript: 必拒;`<style>` 放行但滤 @import 与外联 url()。**有意违规不静默剥除而是整体报错**(人话逐条 cap 5)——agent 自纠重试;service 侧硬闸兜底(纵深双层)
 - **站内引图零 token 链**:消毒放行的 `/wp-content/uploads/` URL 经 `rewriteLocalMediaRefs` 改写 `file://$CARD_RENDERER_MEDIA_ROOT/…`(前缀剥掉直接拼根,storage.ts 同约定)→ 服务侧 `inlineLocalMedia` 读盘(路径包含校验防遍历 + 8MB 上限)转 **data-URI 内联**——chromium 完全不触文件系统(about:blank 源默认禁 file:// 子资源,直读路线不可行,内联是正解);读失败降级 1x1 透明占位不整卡失败
 - **sidecar 契约**(arch/05 §4.6):`POST /render {html,width?,scale?}` → PNG 字节 + `X-Card-Width/Height` 头;javaScriptEnabled=false + 请求级硬闸(仅放行 data:/about:blank)+ 并发信号量满员 429 + 高度 413(超 4000px 提示拆卡)+ 504 超时,错误全人话短句供 agent 直接转述;CARD_RENDERER_URL / CARD_RENDERER_MEDIA_ROOT 双 env(与 compose 挂载三处一致)。CI 增 card-renderer 单测 job(node --test 零依赖)+ docker-release-card-renderer 镜像段;生产部署(175 加容器)合并后另批请批
+- **工具参数漂移收编(2026-10-18,ledger rows 整线程三连败 checkpoint 取证)**:弱模型会把 JSON 数组包成 `{"item":{"item":[…]}}` 单键对象再发(与 ask_user options 漂移同源同键名),且 zod 英文原话报错回喂也无法自纠。三层修正:`lib/card/normalize.ts` 在校验前递归展开实证包裹形态(单键 item 且链终为数组,未知形态仍 fail-closed,命中记 `agent.card_args_normalized` 观测漂移率)→ preset 报错人话化(中文类型说明 + 直接传数组修正示例)→ 工具 describe 补数组字段纪律。数据形状属机制(harness)不入指南 L2
 
 **K2.8 补注七(2026-10-17,M35,Agent 宿主唯一化——run 生命周期与页面组件树解耦;M31 验收两问根因修复)**:
 
@@ -153,6 +154,25 @@
 - **页面接入两协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicComposeActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复
 - **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由
 - **诚实边界**:刷新/关标签页仍断 run(SSE 流式架构固有,跨刷新存活需后台化=BullMQ+流重连,量级另立);/search AgentDrawer 独立会话面不收编(页面即场景)
+
+**K2.8 补注八(2026-10-17,M38,卡片视觉系统——11 卡型双主题 + 信息设计纪律;美观问题立项:preset 版面素、自由模天花板低)**:
+
+- **卡型扩容 7→11**:dark 深空系=观点/数据(quote/points/stats/bars/ledger),light 浅色系=流程/方法(compare/steps/flow/timeline/matrix/photo);新增 bars 量级条形、ledger 键值台账、matrix 要素矩阵、photo 大图卡(图片呈现降级为常规一卡,「图文并茂」语义=可视化/美观化/清晰,非补图)。全文同色系不混彩(跨系以小节为界);强调色模板按数据确定性轮换(`pickAccent` hash,同数据同色,3 深色系+3 浅色系 CSS 变量注入),agent 不指定
+- **去 AI 味视觉纪律(frontend-design 清单校准)**:去发光光斑/渐变强调字/全大写字距眉题;「越大越轻」字重(display 700 非 800/900),数值 tabular-nums;编号只用于真序列(steps/timeline),并列要点用方点/图标标记;单装饰原则(.ac-line 顶条+.ring 弱圆);stats 首条自动放大为主指标 + delta 涨跌自动着色(▲绿▼红)
+- **结构拆分**:`preset-schemas.ts`(11 zod schema 即数据契约)/`preset-samples.ts`(样张,CardTemplateLab 调试台同源)/`templates/data-cards.ts`+`templates/photo-cards.ts`(新卡面);presets.ts 只留注册表与分发。渲染管线与消毒不变
+- **知识层归位**:卡片选型纪律此前只存 DB(M31 旧文本,五卡型口径已过时)——M38 起指南文本真相源在 `src/lib/ai/writing-guides.ts`(`CARD_RENDERING_GUIDE` 常量,与 seed 同源),DB 行走 oneoff(`scripts/oneoff/blogger-guide-m38/`)整体替换;卡型路由/信息设计纪律(压缩阶梯/标题动词后果/结构即信息/版面节奏禁连续同型)只住指南 L2,agent.ts 提示词不 hardcode(既有测试断言锁)
+- **全站统一深空(2026-10-18,用户裁定:一篇文章配图风格必须统一——M38 双主题/内容定系口径退役)**:根因复盘:①「同色系不混彩」写成指南纪律(跨系以小节为界)即依赖模型自觉,实测模型循指南跨节混用产出暗浅混排文章;② per-card `pickAccent(hash(数据))` 按卡轮换是第二不一致源(同篇各卡强调色各自为政)。修正属确定性机制,不入指南 L2(harness-vs-hardcode 分层判据——改规则要发版的进代码):(a) 11 卡型全量统一深空主题:`light-cards/light-flow` 更名 `structure-cards/swimlane-cards` 并深空重皮,`wrapDocLight`/浅色 accent 组退役,`PRESET_META` 去 theme 字段;(b) accent 改**按文章锚定**:工具层传 `thread_id` 作 accentSeed(`renderPreset(preset, data, seed)`),同篇恒同 accent 组、跨篇轮换破「每篇同款」,缺省(admin 实验室预览)退回按卡内容取组;(c) 指南同步:卡型路由去(深色)/(浅色) 标注、主题系纪律条目退役、html 自由卡底色口径对齐深空系(#0b1220 系),oneoff `scripts/oneoff/guide-dark-unify/` 落库;回归锚:11 卡型输出必含 #0b1220 + 同 seed 同 accent 组单测
+
+**K2.8 补注九(2026-10-18,render_card 传参容错扩编 + 自由 HTML 宽容化——生产两连败复盘)**:
+
+- **根因复盘(checkpoint 取证,生产 ledger/matrix 三连败 + 自由模 accent 盲猜)**:① 弱模型工具参数漂移不止单键包裹一形——实证四形态:`{item:[…]}` 包裹(PR #105 已收编)、**字符串化 JSON**(`rows: "[[{…}]]"`,JSON.stringify 后再嵌引号)、**双重嵌套**(`[[{…}]]`)、**二元数组行**(`[["键","值"],…]`);错误反馈触发「自纠」反而产出新漂移形态(越修越歪,不收敛);② 失败侧零日志(仅 normalized 有 `agent.card_args_normalized`),每次排障都要翻 checkpoint;③ 自由 HTML 模式消毒壳是 M31 白底硬壳(`background:#ffffff`),模型按指南手写深空壳时 thread accent 不可见只能盲猜(实证猜 #38bdf8、本篇实锚 #a78bfa,色组错位)
+- **P1 传参容错(1~2 轮收敛)**:(a) 归一层扩编三个实证修复(字符串化 JSON 解析/单元素外层剥壳/二元数组行→`{k,v}`;仍 fail-closed,只收编实证形态,零合法冲突——无 preset 消费数组套数组);(b) 报错具体化:`formatPresetError` 按 issue.path 回查原始入参形态给「收到了什么」+ 可抄修正示例(嵌套数组模式在外层点破,逐行修不收敛;补 zod v4 `received` 取不到的缺口);(c) 观测补齐:失败侧落 `agent.card_preset_invalid`(数据截断 800 字符)。回归锚:normalize.test 四形态 × renderPreset 串联
+- **P2 自由 HTML 宽容化(用户裁定:任意合法 HTML 都可渲染;美观走指南 L2 + 自检,机制不强制)**:(a) 消毒安全红线不变(危险标签/事件属性/js URL/外联整体报错),文档结构标签(html/head/body/meta/title/doctype)改静默摘除——写整份文档不再撞「禁用标签 <meta>」整体报错,写片段即可;属性白名单放宽 id/colspan/rowspan(无脚本面);(b) 输出壳白底改**深空基线**(#0b1220 底+浅字+Noto CJK+min-height:600 与 preset 壳同语言)——模型没写样式也落全站统一深空,自带样式文档序后置可整体覆盖(白底等自定义照常渲染);(c) **accent 通道**:工具响应回传 `accent{main,soft,text}`(thread 锚定同组),自由模取用即与同篇 preset 卡恒同组,盲猜通道退役;(d) 美观纪律(深空可视化系统 token 表:底色/文字三级/accent 用法/tabular-nums/单装饰器 + **出卡自检清单**:对比度/单 accent/height 正常/3 秒读懂)只住 `CARD_RENDERING_GUIDE` L2(oneoff `scripts/oneoff/card-guide-html/` 落库),harness 不 hardcode——与补注八分层判据一致
+
+**K2.8 补注十(2026-10-18,post-319 双问题复盘——教程意图无入口 + 文章上下文够不着素材)**:
+
+- **根因(checkpoint + 库取证)**:① post 319(WorkBuddy做汇报ppt,教程类视频)按专题治理按钮合成,话术「合成**推荐文章**」写死于 `TopicComposeActions`(体裁被焊死),专题定位即推荐系,技能表仅 blogger-video(推荐短文)——「教程」意图在链路上**无任何入口**,编排模型显式选 blogger-video 出推荐稿(模型无过错);② agent 取素材唯一入口 `get_topic_brief` 必须给专题 id,而文章编辑上下文只有 post id,无 post→topic 反查工具——实证对话:agent 只能 `read_draft` 读正文,答「原始材料是抖音视频」(1594 字解读笔记在库不可达)。
+- **修法三层**:(a) **指南 L2**:BLOGGER_VIDEO_GUIDE 增「教程类视频」分支——判据(标题/解读笔记含教程·实战·保姆级等信号或用户点名)+ 写法(核心内容笔记=可跟做的文字版教程:第二人称分步/界面动作与输入内容/关键数字保留/结尾验收点)+ 反例禁令(禁「视频演示了…」式第三人称转述);oneoff `scripts/oneoff/blogger-guide-tutorial/` 落库。(b) **撰写目的预置**(`src/lib/topics/constants.ts#TOPIC_PURPOSES`):user-facing 目的=定位模板+合成话术体裁词,落库走 positioning 零 schema 变更;面板「绑定技能」下拉退役换「撰写目的」(切目的自动带模板,自定义文案不覆盖),关联文章 id 改只读展示;合成区加目的 picker(缺省按定位匹配)+ 可选补充要求单行框,话术带体裁词;admin 提示词补「指令指定体裁时以其为准,不被定位惯性带偏」。(c) **`get_post_sources(post_id)` 只读工具**(post→topic(linked_post_id)→挂载素材,解读笔记全文/人工批注/视频地址/文章节选;纯读零副作用与 brief 分工——brief 是生产底料装配含封面转存);改稿纪律同步「文章上下文用 get_post_sources、已知专题 id 用 get_topic_brief」。
 
 ### 3.5 分期
 

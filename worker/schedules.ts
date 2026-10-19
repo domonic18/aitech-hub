@@ -1,6 +1,7 @@
 /**
  * 周期调度注册(worker/index 引导消费):BullMQ v6 job scheduler,upsert 幂等
- * 同 id 不重复建。cron 常量与 job name 契约的唯一真相源在 lib/queue,本模块只
+ * 同 id 不重复建。job name 契约唯一真相源在 lib/queue;cron 常量唯一真相源在
+ * lib/collect/schedules(采集计划登记表,queue.ts re-export),本模块只
  * 做「注册什么、何时触发」的表达。
  */
 import {
@@ -18,6 +19,14 @@ import {
   EMBED_JOB_RECONCILE,
   EMBED_RECONCILE_CRON,
   GITHUB_JOB_TICK,
+  INSIGHT_DAILY_CRON,
+  INSIGHT_EMBED_CRON,
+  INSIGHT_FETCH_CRON,
+  INSIGHT_JOB_DAILY,
+  INSIGHT_JOB_EMBED,
+  INSIGHT_JOB_FETCH,
+  JOB_RUN_PURGE_CRON,
+  QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
   PAY_JOB_DAILY_AUDIT,
@@ -34,6 +43,7 @@ import {
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_FLUSH,
   STATS_JOB_PURGE,
+  STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
@@ -127,6 +137,21 @@ export async function scheduleAgentSessionPurge(): Promise<void> {
   );
 }
 
+/** 任务运行台账清退:每日 04:47 清 30 天前运行记录 + 崩溃残留代收口
+ * (验收二批③;04 点清理带错峰:14/23/33/47/52) */
+export async function scheduleJobRunPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "job-run-purge",
+    { pattern: JOB_RUN_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: STATS_JOB_RUN_PURGE,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
 /** 数据库每日备份:03:23 pg_dump → 备份桶(M19 批②,M6 异机存放落地) */
 export async function scheduleDbBackup(): Promise<void> {
   const queue = getQueue(QUEUE_DB_BACKUP);
@@ -197,6 +222,39 @@ export async function scheduleDiscovery(): Promise<void> {
     { pattern: DISCOVERY_BILI_CRON, tz: SITE_TZ },
     {
       name: DISCOVERY_JOB_BILI,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+}
+
+/** 洞察加工调度(M34 批②→批③):向量回填+聚类 15 分钟错峰 / LLM 打标日批
+ * 03:57 / 热榜拉取小时批 :43(验收二批② 提频,外部渠道) */
+export async function scheduleInsight(): Promise<void> {
+  const queue = getQueue(QUEUE_INSIGHT);
+  await queue.upsertJobScheduler(
+    "insight-embed",
+    { pattern: INSIGHT_EMBED_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_EMBED,
+      data: {},
+      opts: { removeOnComplete: 50 },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "insight-daily",
+    { pattern: INSIGHT_DAILY_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_DAILY,
+      data: {},
+      opts: { removeOnComplete: 7 },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "insight-fetch",
+    { pattern: INSIGHT_FETCH_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_FETCH,
       data: {},
       opts: { removeOnComplete: 7 },
     },

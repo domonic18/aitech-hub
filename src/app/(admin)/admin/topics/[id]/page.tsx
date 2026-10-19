@@ -1,6 +1,6 @@
 /**
- * 专题详情(M26 批③④,方案 §8 详情三区):① 定位区(标题/定位/关联文章 +
- * 人工状态流转);② 素材区(电报卡:标题/博主/短结论/解读笔记全文/批注内联
+ * 专题详情(M26 批③④,方案 §8 详情三区;2026-10-18 体裁治理收编):
+ * ① 定位区(标题/撰写目的/定位备注/关联文章只读 + 人工状态流转);② 素材区(电报卡:标题/博主/短结论/解读笔记全文/批注内联
  * 编辑;文章卡)+ 页内挂载选料(searchParams 驱动服务端渲染:电报仅
  * aiStatus=done,文章按标题搜);③ 合成操作区(合成初稿/重合成/跳转文档,
  * 重合成保护预判提示)。数据服务端直取 repo。
@@ -9,7 +9,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { parsePage } from "@/lib/admin/list";
-import { listEnabledSkillMetas } from "@/lib/ai/agent-skills-admin";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { needsRecomposeConfirm } from "@/lib/topics/compose";
@@ -172,8 +171,6 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
         positioning={topic.positioning}
         linkedPostId={topic.linkedPostId?.toString() ?? null}
         status={topic.status}
-        skillKey={topic.skillKey}
-        skills={await listEnabledSkillMetas()}
       />
       <div className="mt-1 text-[11px] text-text-3">
         创建于 {formatCnDateTime(topic.createdAt)} · 更新于 {formatCnDateTime(topic.updatedAt)}
@@ -186,6 +183,7 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
       <TopicComposeActions
         topicId={id}
         topicTitle={topic.title}
+        positioning={topic.positioning}
         materialsCount={topic.items.length}
         linkedPostId={topic.linkedPostId?.toString() ?? null}
         linkedPostStatus={linkedPost?.status ?? null}

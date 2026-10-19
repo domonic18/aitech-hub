@@ -91,6 +91,11 @@ describe("render_card", () => {
       width: 900,
       height: 420,
     });
+    expect(r.accent).toMatchObject({
+      main: expect.stringMatching(/^#[0-9a-f]{6}$/),
+      soft: expect.any(String),
+      text: expect.any(String),
+    });
     expect(String(r.hint)).toContain("card_urls");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(uploadMedia).toHaveBeenCalledWith(
@@ -98,6 +103,81 @@ describe("render_card", () => {
         mime: "image/png",
         filename: expect.stringContaining("card-stats-"),
       }),
+    );
+  });
+
+  it("漂移收编:rows 包成 {item:{item:[…]}} → 归一后照常渲染入库", async () => {
+    sessionFindUnique.mockResolvedValue({ visitorId: "admin:s" });
+    stubFetch();
+    uploadMedia.mockResolvedValueOnce({
+      id: "11",
+      path: "/wp-content/uploads/2026/10/n.png",
+      reused: false,
+      status: "ready",
+    });
+    const r = await invoke(renderCardTool, {
+      preset: "ledger",
+      data: {
+        rows: {
+          item: {
+            item: [
+              { k: "上下文", v: "200k" },
+              { k: "模态", v: "文本" },
+              { k: "开源", v: "是" },
+            ],
+          },
+        },
+      },
+    });
+    expect(r).toMatchObject({ ok: true, url: "/wp-content/uploads/2026/10/n.png" });
+  });
+
+  it("漂移收编:rows 字符串化 JSON/双重嵌套 → 归一后照常渲染入库", async () => {
+    sessionFindUnique.mockResolvedValue({ visitorId: "admin:s" });
+    stubFetch();
+    uploadMedia.mockResolvedValue({
+      id: "12",
+      path: "/wp-content/uploads/2026/10/s.png",
+      reused: false,
+      status: "ready",
+    });
+    const rows = [
+      { k: "上下文", v: "200k" },
+      { k: "模态", v: "文本" },
+      { k: "开源", v: "是" },
+    ];
+    // 字符串化双重嵌套(checkpoint 取证的「自纠越修越歪」形态)
+    const r1 = await invoke(renderCardTool, {
+      preset: "ledger",
+      data: { rows: JSON.stringify([rows]) },
+    });
+    // 二元数组行
+    const r2 = await invoke(renderCardTool, {
+      preset: "ledger",
+      data: {
+        rows: [
+          ["上下文", "200k"],
+          ["模态", "文本"],
+          ["开源", "是"],
+        ],
+      },
+    });
+    expect(r1).toMatchObject({ ok: true, url: "/wp-content/uploads/2026/10/s.png" });
+    expect(r2).toMatchObject({ ok: true, url: "/wp-content/uploads/2026/10/s.png" });
+  });
+
+  it("preset 数据仍不合法 → 人话报错 + 无效数据落日志", async () => {
+    sessionFindUnique.mockResolvedValue({ visitorId: "admin:s" });
+    const { logger } = await import("../logger");
+    // 收编层不认识的形态(单键非 item 对象)透传 zod 后仍失败
+    const r = await invoke(renderCardTool, {
+      preset: "ledger",
+      data: { rows: { key: [{ k: "a", v: "b" }] } },
+    });
+    expect(r).toMatchObject({ ok: false });
+    expect(String(r.error)).toContain("rows 应为数组,收到了对象");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "agent.card_preset_invalid", preset: "ledger" }),
     );
   });
 

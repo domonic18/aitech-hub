@@ -1,38 +1,41 @@
 /**
- * 专题状态机单测(M26 批①,方案 §3/§10-7):流转矩阵钉死。
+ * 撰写目的预置单测(2026-10-18 体裁治理):定位模板精确匹配 → 目的 key;
+ * 空=缺省「视频安利」;自定义文案=null(UI 显示自定义且切目的不覆盖)。
  */
 import { describe, expect, it } from "vitest";
 
-import { canTransition, MANUAL_STATUS_TARGETS, TOPIC_STATUS, type TopicStatus } from "./constants";
+import {
+  DEFAULT_TOPIC_POSITIONING,
+  matchTopicPurpose,
+  TOPIC_PURPOSES,
+  TUTORIAL_TOPIC_POSITIONING,
+} from "./constants";
 
-describe("canTransition(专题状态机)", () => {
-  it("合法路径:collecting→drafted→published 主线 + 人工回退", () => {
-    expect(canTransition("collecting", "drafted")).toBe(true);
-    expect(canTransition("drafted", "published")).toBe(true);
-    expect(canTransition("published", "drafted")).toBe(true);
-    expect(canTransition("drafted", "collecting")).toBe(true);
-    // publish 钩子旁路:人工关联文章发布不经合成
-    expect(canTransition("collecting", "published")).toBe(true);
+describe("matchTopicPurpose(定位 → 撰写目的)", () => {
+  it("预置模板精确匹配各自目的", () => {
+    expect(matchTopicPurpose(DEFAULT_TOPIC_POSITIONING)).toBe("video-recommend");
+    expect(matchTopicPurpose(TUTORIAL_TOPIC_POSITIONING)).toBe("video-tutorial");
   });
 
-  it("非法路径:终态逆跳与同态以外的越级", () => {
-    expect(canTransition("collecting", "collecting")).toBe(false);
-    expect(canTransition("published", "collecting")).toBe(false);
-    expect(canTransition("published", "published")).toBe(false);
+  it("空/null = 缺省「视频安利」;自定义文案 = null", () => {
+    expect(matchTopicPurpose(null)).toBe("video-recommend");
+    expect(matchTopicPurpose("")).toBe("video-recommend");
+    expect(matchTopicPurpose("  ")).toBe("video-recommend");
+    expect(matchTopicPurpose("面向开发者的深度解读")).toBeNull();
   });
 
-  it("状态枚举完备:三态(合法值应用层 Zod 管控,arch/03 枚举演进条款)", () => {
-    expect(TOPIC_STATUS).toEqual(["collecting", "drafted", "published"]);
+  it("模板被手改即视为自定义(不误配;trim 后仍须全等)", () => {
+    expect(matchTopicPurpose(`${TUTORIAL_TOPIC_POSITIONING}!`)).toBeNull();
+    expect(matchTopicPurpose(`${TUTORIAL_TOPIC_POSITIONING} `)).toBe("video-tutorial");
   });
 
-  it("人工迁移钮组(§10-7):不含 collecting→drafted(仅合成驱动),均在状态机合法集内", () => {
-    expect(MANUAL_STATUS_TARGETS.collecting).toEqual(["published"]);
-    expect(MANUAL_STATUS_TARGETS.drafted).toEqual(["collecting", "published"]);
-    expect(MANUAL_STATUS_TARGETS.published).toEqual(["drafted"]);
-    for (const [from, targets] of Object.entries(MANUAL_STATUS_TARGETS)) {
-      for (const to of targets) {
-        expect(canTransition(from as TopicStatus, to)).toBe(true);
-      }
+  it("预置项自洽:每项目录含 key/label/genreWord/模板,模板互不重复", () => {
+    const templates = new Set(TOPIC_PURPOSES.map((t) => t.positioningTemplate));
+    expect(templates.size).toBe(TOPIC_PURPOSES.length);
+    for (const t of TOPIC_PURPOSES) {
+      expect(t.label.length).toBeGreaterThan(0);
+      expect(t.genreWord.length).toBeGreaterThan(0);
+      expect(matchTopicPurpose(t.positioningTemplate)).toBe(t.key);
     }
   });
 });

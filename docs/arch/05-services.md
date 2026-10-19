@@ -161,3 +161,4 @@ Node 20 + Playwright chromium **独立镜像独立容器**(node:20-slim + fonts-
 - pino 结构化 JSON;`instrumentation.ts` 注册 request id 中间件,响应头回写 `X-Request-Id`
 - 慢请求(>500ms)warn 级;`/api/health` 供 compose healthcheck
 - worker 日志带 `queue/jobId`;一期不接日志平台,`docker compose logs` 排障
+- **批任务运行台账(2026-10-19 验收二批③,表结构见 [arch/03 §1 job_run](03-data-model.md))**:worker 分发器包装(`worker/job-run#withJobRunLog`)对白名单 14 个周期/手动批任务(洞察三件套/发现双件/备份/体检/支付日对账/清理四件/封面清扫/AI 补扫)统一落账——先落 `running` 行再执行(挂死立即停留可见),终态回写 summary/error/耗时;admin「数据中心→运行」新增**日志**(明细过滤分页)与**健康**(24h/7d 成功率、连败 ≥2 标红、running 超 1h 挂起疑似)两页签。tick 心跳(crawler/github/stats-flush/pay-sweep)与请求驱动单元任务不入账;台账 30 天保留(04:47 日清批顺带把 running 超 24h 崩溃残留代标 failed)

@@ -1,12 +1,15 @@
 /**
- * 自由 HTML 消毒(M31 批B,双模里的自由模入服务前唯一闸):
- * cheerio 白名单——危险标签整体移除并报错(a 等无害未知标签解包保文本不算错),
- * 属性仅留 class/style(img 另留 src/alt/宽高),img src 只认 data:image 与站内
- * /wp-content/uploads/ 路径(拒 ..),<style> 块放行但滤 @import 与外联 url()。
- * 有意违规不静默剥除而是整体报错(人话逐条,cap 5)——agent 自纠重试;
- * service 侧另有请求级硬闸兜底(纵深双层)。
+ * 自由 HTML 消毒(M31 批B 建;2026-10-18 宽容化修订):双模里的自由模入服务前
+ * 唯一闸。安全红线不变——危险标签/事件属性/js URL/外链资源整体报错(agent 自纠);
+ * 渲染宽容化:文档结构标签(html/head/body/meta/title/doctype)静默摘除不算违规
+ * (写整份文档也能渲染),其余无害未知标签解包保文本;属性白名单放宽 id 与表格
+ * colspan/rowspan。输出壳为深空基线(#0b1220 底 + 浅字 + Noto CJK)——模型没写
+ * 样式也落全站统一深空;模型自带 body 样式时后置生效可整体覆盖(任意合法
+ * HTML 都能按其本意渲染)。service 侧另有请求级硬闸兜底(纵深双层)。
  */
 import * as cheerio from "cheerio";
+
+import { FONT_STACK } from "./templates/shell";
 
 export const CARD_HTML_MAX_CHARS = 400_000; // 与服务侧 HTML_MAX_CHARS 对齐
 const IMG_MAX_COUNT = 8;
@@ -63,6 +66,11 @@ const ALLOWED_TAGS = new Set([
   "style",
 ]);
 
+/** 文档结构标签:静默摘除不算违规(meta/title 连内容丢,html/head/body 解包保
+ *  内容,doctype 摘除)——模型写整份文档不再撞禁用标签整体报错 */
+const STRUCT_REMOVE = new Set(["meta", "title"]);
+const STRUCT_UNWRAP = new Set(["html", "head", "body"]);
+
 /** 危险标签:整体移除(含子树);其余不在白名单的标签解包保文本 */
 const DROP_TAGS = new Set([
   "script",
@@ -70,7 +78,6 @@ const DROP_TAGS = new Set([
   "object",
   "embed",
   "link",
-  "meta",
   "base",
   "form",
   "input",
@@ -106,10 +113,15 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
   const violations: string[] = [];
   const $ = cheerio.load(input, null, false); // fragment 模式;输出经 $.html() 还原
 
-  // 注释节点全摘(信息面收敛;根级注释由 serialize 时自然丢弃,这里摘子树内)
+  // 注释节点全摘(信息面收敛;根级注释由 serialize 时自然丢弃,这里摘子树内);
+  // doctype 指令一并摘(输出壳自带)
   $("*")
     .contents()
-    .filter((_i, n) => n.type === "comment")
+    .filter((_i, n) => n.type === "comment" || n.type === "directive")
+    .remove();
+  $.root()
+    .contents()
+    .filter((_i, n) => n.type === "comment" || n.type === "directive")
     .remove();
 
   // 第一遍:标签定性 + 违规收集(只报不改,整体失败让 agent 自纠)
@@ -118,6 +130,14 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
     const tag = (node as DomEl).tagName?.toLowerCase();
     const el = $(node);
     if (!tag) return;
+    if (STRUCT_REMOVE.has(tag)) {
+      el.remove();
+      return;
+    }
+    if (STRUCT_UNWRAP.has(tag)) {
+      el.replaceWith(el.contents()); // 文档壳标签解包保内容,不算违规
+      return;
+    }
     if (DROP_TAGS.has(tag)) {
       violations.push(`禁用标签 <${tag}>(整体移除)`);
       return;
@@ -161,20 +181,25 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
     return { ok: false, error: `HTML 消毒未通过(请修正后重新调用):${uniq.join(";")}${more}` };
   }
 
-  // 第二遍:统一裁属性 + <style> 内容滤洗(能走到这里说明已无违规)
+  // 第二遍:统一裁属性 + <style> 内容滤洗(能走到这里说明已无违规)。
+  // 属性白名单:class/style(+id 锚点;th/td 另留 colspan/rowspan 表格语义;
+  // img 另留 src/alt/宽高)——均无脚本面。
   $("*").each((_i, node) => {
     const raw = node as DomEl;
     if (!raw.tagName || !raw.attribs) return;
     const el = $(node);
+    const tag = raw.tagName.toLowerCase();
     const keep = new Set(
-      raw.tagName === "img"
+      tag === "img"
         ? ["class", "style", "src", "alt", "width", "height"]
-        : ["class", "style"],
+        : tag === "th" || tag === "td"
+          ? ["class", "style", "id", "colspan", "rowspan"]
+          : ["class", "style", "id"],
     );
     for (const name of Object.keys(raw.attribs)) {
       if (!keep.has(name)) el.removeAttr(name);
     }
-    if (raw.tagName === "style") {
+    if (tag === "style") {
       el.text(
         el
           .text()
@@ -184,11 +209,14 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
     }
   });
 
+  // 深空基线壳:没写样式的片段也落全站统一深空;模型自带 <style> 在文档序上
+  // 后置,同名规则可整体覆盖基线(白底等自定义照常生效)。
   return {
     ok: true,
     html:
       `<!DOCTYPE html><html><head><meta charset="utf-8"><style>` +
-      `html,body{margin:0;padding:0;background:#ffffff}</style></head>` +
-      `<body>${$.html()}</body></html>`,
+      `html,body{margin:0;padding:0;min-height:600px;background:#0b1220;` +
+      `color:#f1f5f9;font-family:${FONT_STACK};line-height:1.6}` +
+      `</style></head><body>${$.html()}</body></html>`,
   };
 }

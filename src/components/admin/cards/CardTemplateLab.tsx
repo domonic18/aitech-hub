@@ -8,15 +8,8 @@
  */
 import { useCallback, useMemo, useState } from "react";
 
-import {
-  CARD_PRESET_IDS,
-  PRESET_META,
-  PRESET_SAMPLE_DATA,
-  renderPreset,
-  type CardPresetId,
-} from "@/lib/card/presets";
-
-const THEME_LABEL = { dark: "深色系", light: "浅色系" } as const;
+import { CARD_PRESET_IDS, PRESET_META, renderPreset, type CardPresetId } from "@/lib/card/presets";
+import { PRESET_SAMPLE_DATA } from "@/lib/card/preset-samples";
 
 export default function CardTemplateLab(): React.ReactElement {
   const [active, setActive] = useState<CardPresetId>(CARD_PRESET_IDS[0]);
@@ -95,9 +88,6 @@ export default function CardTemplateLab(): React.ReactElement {
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold">{meta.name}</span>
-          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-text-3">
-            {THEME_LABEL[meta.theme]}
-          </span>
           <span className="flex-1" />
           <button
             type="button"

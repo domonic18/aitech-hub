@@ -15,6 +15,9 @@ import {
   DISTRIBUTE_JOB_WECHAT_BATCH,
   DISTRIBUTE_JOB_WECHAT_COPY,
   GITHUB_JOB_TICK,
+  INSIGHT_JOB_DAILY,
+  INSIGHT_JOB_EMBED,
+  INSIGHT_JOB_FETCH,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
@@ -24,6 +27,7 @@ import {
   QUEUE_EMBED,
   QUEUE_EMAIL,
   QUEUE_GITHUB,
+  QUEUE_INSIGHT,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
@@ -34,8 +38,10 @@ import {
   QUEUE_SUMMARIZER,
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_PURGE,
+  STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
 } from "../src/lib/queue";
+import { purgeJobRuns } from "../src/lib/jobs/runlog";
 import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
 import { runBiliDiscovery } from "../src/lib/discovery/discover";
 import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
@@ -68,6 +74,9 @@ import { runAudit } from "../src/lib/media/audit";
 import { dbBackupJob } from "../src/lib/backup/db-backup";
 import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
+import { runInsightEmbedBatch } from "../src/lib/insight/embed";
+import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
+import { runInsightDaily } from "../src/lib/insight/daily";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {
@@ -115,6 +124,14 @@ export const PROCESSORS: Record<string, Processor> = {
         console.log(JSON.stringify({ event: "agent.guest_thread.purge", removed: guestRemoved }));
       }
       return { removed, guestRemoved };
+    }
+    // 任务运行台账 30 天保留期清理 + 崩溃残留代收口(验收二批③)
+    if (job.name === STATS_JOB_RUN_PURGE) {
+      const summary = await purgeJobRuns();
+      if (summary.purged > 0 || summary.crashed > 0) {
+        console.log(JSON.stringify({ event: "jobrun.purge", ...summary }));
+      }
+      return summary;
     }
     const summary = await flushStatsBuffer();
     if (summary.keysFlushed > 0) {
@@ -270,5 +287,28 @@ export const PROCESSORS: Record<string, Processor> = {
       return r;
     }
     throw new Error(`未知 discovery job:${job.name}`);
+  },
+  // 洞察加工(M34 批②):embed=向量回填+增量聚类(15min,向量调用为主);
+  // daily=LLM 打标+覆盖度+评分快照(日频)。LLM/向量外呼在服务内收敛,
+  // 未绑定模型服务侧自降级,这里只报 job 级汇总。未知 job 显式抛错
+  [QUEUE_INSIGHT]: async (job) => {
+    if (job.name === INSIGHT_JOB_DAILY) {
+      const r = await runInsightDaily();
+      console.log(JSON.stringify({ event: "insight.daily_job", ...r }));
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_EMBED) {
+      const r = await runInsightEmbedBatch();
+      if (r.embedded > 0 || r.joined > 0 || r.created > 0 || r.failed > 0) {
+        console.log(JSON.stringify({ event: "insight.embed_job", ...r }));
+      }
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_FETCH) {
+      const r = await runHotlistFetch();
+      console.log(JSON.stringify({ event: "insight.hotlist_job", ...r }));
+      return r;
+    }
+    throw new Error(`未知 insight job:${job.name}`);
   },
 };

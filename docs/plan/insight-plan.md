@@ -46,8 +46,8 @@ douyin-gateway(curl_cffi TLS 指纹/Cookie 池/系统代理,基建已有,M33 批
 | 付费需求 | 猪八戒需求大厅 | 网页采集(CrawlSource type=web 模式);开放平台若查到免费档再升级 | 钱 | ③ |
 | 视频评论 | B站评论 | 公开接口 TS 直连(零签名),风控间隔沿用 M25 纪律 | 声音 | ④ |
 | 视频评论 | 抖音评论 | douyin-gateway 新端点(签名/风控收在网关内) | 声音 | ④ |
-| 热榜 | 知乎热榜/百度热搜/B站热门/微博热搜 | 公开接口或网页直连,TS 轻采集,低频(日频一批) | 声音/搜索 | ③ |
-| 搜索指数 | Google Trends(免费) | 免费接口,优先 | 搜索 | ③ |
+| 热榜 | 知乎热榜/百度热搜/B站热门/微博热搜 | 公开接口或网页直连,TS 轻采集,低频(日频一批)。**批③ 已落(2026-10-18 实弹探)**:百度/知乎/B站三源通(契约锚 golden 单测);微博 `ajax/side/hotSearch` 403(需登录 cookie,批④ 再议) | 声音/搜索 | ③ |
+| 搜索指数 | Google Trends(免费) | 免费接口。**批③ 探后弃**:trends.google.com 墙内(含生产网关)不可达,后置(百度指数逆向另议) | 搜索 | ③ |
 | 搜索指数 | 百度指数 | 网页逆向,风控敏感,**低频兜底** | 搜索 | 备选 |
 | 内部信号 | 搜索词/agent 问句/评论/feedback/电报 AI 产物 | 零采集,已在库 | 混合 | ① |
 | AI 原生 | GPTs/MCP 市场帖、prompt 合集 star、插件装机量 | 二期另批 | AI 记录 | 后置 |
@@ -145,18 +145,24 @@ model insight_snapshot {
 | 批 | 内容 | 出口 |
 |---|---|---|
 | ① 内部信号先行 | 三表+embedding 列迁移;search_log 增强(命中数/零结果标记,beacon 同口径);agent 问句/评论/feedback/电报 AI 产物入池;存量回填;总览+痛点榜雏形(未聚类,先按源分组) | `make check`+真机验收 |
-| ② AI 加工层 | embedding 回填+增量聚类+LLM 打标(insight role 绑定)+覆盖度匹配+异动告警;雷达/痛点榜完整形态 | 簇可读、理由人话 |
-| ③ 外部源一期 | 热榜 fetcher 插件(公开接口直连)+猪八戒网页采集(真机探先行)+Google Trends;雷达视图接外部信号 | 新源真机一轮零风控事故 |
+| ② AI 加工层 | embedding 回填+增量聚类+LLM 打标(insight role 绑定)+覆盖度匹配+异动告警;雷达/痛点榜完整形态。**已实现(2026-10-18,`feature/insight-batch2`)**:insight 角色入 AiTaskBinding(第 7 角色);kind 按源映射(search/agent/comment/feedback→pain,telegram-ai→hot;批③ fetcher 携显式 kind);介质=成员并集(§5.4 LLM 判定留批③ 多介质外部源接入再收);覆盖度=痛点簇质心×post 近邻(零额外 embedding 调用;仅已打标簇,打标次日回写);异动=读侧双门(≥3×前3日均值且 Δ≥10,无基线不告警);阈值/配额常数化 `src/lib/insight/constants.ts` 待 §9-5 实测调参 | 簇可读、理由人话(真机验收前置:/admin/models 绑定「洞察归纳」) |
+| ③ 外部源一期 | **2026-10-18 渠道转向后已实现(`feature/insight-batch3`,用户定调:去站内搜索/agent 问句/站点反馈,拓外部渠道+热榜/云图可视化)**:INSIGHT_SOURCES_ENABLED 停接入闸(站内三源退,存量留库,读侧+聚类白名单过滤);热榜三源 fetcher 插件(百度/知乎/B站,解析纯函数+真机探 golden 锚;日频 07:43 `fetch` job,refreshMeta=仍在榜刷新位次/热度续热);今日热榜视图(每源最新 meta.batch 榜面)+关键词云图(近 7 日活跃已打标簇关键词×机会分,字号映射);`insight:run -- fetch` 手动触发。微博(cookie)/抖音(gateway 端点)/Trends(墙)/猪八戒(真机探)后置批④ | 三源实弹校验通;`make check` 绿(1415 例) |
 | ④ 评论源 | B站评论 TS 直连+抖音评论网关端点(均真机探);痛点信号并池 | 评论信号可聚类 |
 | ⑤ 闭环与 agent | 选题工作台+转 Topic+TopicItem 扩型(signal 类)+词库联动(簇→建议加词)+**洞察 agent 雏形**(查信号/簇/评分三工具) | 选题一键流转 |
 
+### 8.1 批③ 验收反馈(两轮,本地栈验收驱动)
+
+- **第一轮(已验收)**:源筛选页签 `scroll={false}` 修切换滚顶;可视化增强 v1——近 7 日分源堆叠趋势、7 日×24 时段热力、分源占比条+台账、热榜热度条(`src/lib/insight/trends.ts` 北京墙钟口径桶取)。
+- **第二轮(已交付,5 项)**:① 照搬 ai-invest 采集管理落 `/admin/spider/schedule`(登记表 `src/lib/collect/schedules.ts`,同时是 cron 常量唯一真相源——`@/lib/queue` 仅 re-export,防 client 组件经 queue 拖 bullmq 进浏览器包;列表/日历双视图+分类筛选+常驻清单+crawl_source 间隔台账;管理动作仍在渠道页签);② 洞察中心「信号采集强度」三件套(趋势/时段热力/台账)整体迁入采集总览;③ 词云重写为行业形态——阿基米德螺旋紧密排布+矩形碰撞检测+分层着色+约 1/4 竖排(纯函数 `lib/insight/word-cloud.ts#packWords`,测试锚点);④ 痛点榜改行式机会榜(机会分+分数比例条,整行可点)、热点雷达改双列窄行,两者高度约减半;⑤ 热榜主流化——名次变动(↑n/↓n/「新」,对齐各源上一 `meta.batch` 名次)+ 头部名次着色 + 热度条。
+- **第三轮(已交付)**:热榜三源纳入采集计划管理——新增 `insight_hot_source` 登记表(fetcher 代码注册表的运行态投影):运行时启停闸(`run.ts` 逐轮按表过滤,停用源整源跳过,缺行=启用免迁移兼容新 fetcher)+ 逐源拉取态回写(最近拉取/连败/末次错误,crawl_source 同口径,best-effort 不炸信号主链)+ 采集计划页热榜源台账(行内 StatusSwitch 启停,`PUT /api/insight/hot-sources/<source>/status`,照 channels status 惯例)。启停只挡采集,不动 `INSIGHT_SOURCES_ENABLED` 读侧白名单(存量信号照常展示)。同轮:热点雷达改**动量榜**(评估后方案 A)——快照序列尚薄(全簇仅 1 点,sparkline 成孤点)故撤迷你图,改显式名次(头部三色同热榜语法)+ 动量徽(`label.ts#clusterMomentum` 纯函数:新晋=24h≥3 且此前≤2 / 升温=24h≥3 且占比≥40% / 退潮=24h 零新增;热榜 refreshMeta 续热使占比偏「仍在榜」语义,作方向不作度量)+ 分值热度条 + 相对活跃时间。痛点扩围(批③ 渠道转向后 pain 池唯一进水口=文章评论,量小饥饿):**kind 从按源硬映射改为按簇内容语义判定**——`nearestClustersByMembers` 去 kind 过滤改单池归簇(同主题跨源合流),`INSIGHT_SOURCE_KIND` 降级为新建簇引导值,打标契约加 `kind` 字段(LLM 判定:pain=有明确诉求/求助/抱怨,hot=公众话题,拿不准归 hot)日批回写;存量 ≥3 成员簇一次性重判(37/37 成功,「AI编码落地与审查瓶颈」由 hot 翻入 pain,其余 31 个 hot 簇 LLM 判纯话题维持)。专职痛点语料源(猪八戒/知乎问题/外部评论)记批④候选另立项。
+
 ## 9. 开放决策点(立项评审收口)
 
-1. Google Trends 为主/百度指数逆向兜底——真机探后定(批③ 前)
+1. ~~Google Trends 为主/百度指数逆向兜底~~——批③ 探后定案:Trends 墙内不可达,退役;百度指数逆向未启动(后置)
 2. 猪八戒:网页爬取 vs 开放平台免费档(需查资质门槛)——真机探后定
 3. 公开热点页(SEO 机会 vs 时效负资产)——建议 admin-only 先行,公开版后议
 4. 图表方案——建议 SVG 手写扩展(Sparkline 先例),引库需另批
-5. 簇自动流转纪律(active→fading 阈值)——批② 实测后定参
+5. 簇自动流转纪律(active→fading 阈值)——批② 落 `FADE_AFTER_DAYS=14` 常数初值(日批机械段流转),实测后调参
 
 ## 10. 非目标(本里程碑明确不做)
 

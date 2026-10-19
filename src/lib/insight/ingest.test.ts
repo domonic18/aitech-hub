@@ -1,5 +1,5 @@
-/** 洞察信号入池单测(prisma mock,无真库):源→介质映射/归一与截断/
- * 空文本拒收/P2002 幂等跳过/异常自吞不外抛。 */
+/** 洞察信号入池单测(prisma mock,无真库):在役源闸门/源→介质映射/归一与
+ * 截断/空文本拒收/P2002 幂等与热榜 meta 刷新/异常自吞不外抛。 */
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,42 +10,56 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 const signalCreate = vi.fn();
+const signalUpdateMany = vi.fn();
 vi.mock("@/lib/db", () => ({
-  prisma: { insightSignal: { create: (...a: unknown[]) => signalCreate(...a) } },
+  prisma: {
+    insightSignal: {
+      create: (...a: unknown[]) => signalCreate(...a),
+      updateMany: (...a: unknown[]) => signalUpdateMany(...a),
+    },
+  },
 }));
 
-import { INSIGHT_SOURCE_MEDIUM, ingestInsightSignal } from "./ingest";
+import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, ingestInsightSignal } from "./ingest";
 
 beforeEach(() => {
   vi.clearAllMocks();
   signalCreate.mockResolvedValue({ id: BigInt(1) });
+  signalUpdateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("ingestInsightSignal", () => {
   it("正常入池:源→介质映射、归一(trim+空白折叠)、meta 透传", async () => {
     const r = await ingestInsightSignal({
-      source: "internal-search",
+      source: "internal-comment",
       refId: "42",
       rawText: "  怎么用  AI 做\n\tPPT  ",
       signalAt: new Date("2026-10-17T08:00:00+08:00"),
-      meta: { hitCount: 0 },
+      meta: { foo: 1 },
     });
     expect(r).toBe("ingested");
     expect(signalCreate).toHaveBeenCalledWith({
       data: {
-        source: "internal-search",
-        medium: "search",
+        source: "internal-comment",
+        medium: "voice",
         refId: "42",
         rawText: "怎么用  AI 做\n\tPPT",
         normalizedText: "怎么用 AI 做 PPT",
-        meta: { hitCount: 0 },
+        meta: { foo: 1 },
         signalAt: new Date("2026-10-17T08:00:00+08:00"),
       },
       select: { id: true },
     });
   });
 
-  it("五源介质映射各就位(方案 §2:搜索问句=search,评论反馈=voice,电报AI=ai-record)", async () => {
+  it("在役源逐一映射介质(评论/电报AI/热榜三源;方案 §2 五介质口径)", async () => {
+    expect([...INSIGHT_SOURCES_ENABLED].sort()).toEqual([
+      "hot-baidu",
+      "hot-bilibili",
+      "hot-zhihu",
+      "internal-comment",
+      "telegram-ai",
+    ]);
     for (const [source, medium] of Object.entries(INSIGHT_SOURCE_MEDIUM)) {
       await ingestInsightSignal({
         source: source as keyof typeof INSIGHT_SOURCE_MEDIUM,
@@ -53,10 +67,26 @@ describe("ingestInsightSignal", () => {
         rawText: "内容",
         signalAt: new Date(0),
       });
-      expect(signalCreate).toHaveBeenLastCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ medium }) }),
-      );
+      if (INSIGHT_SOURCES_ENABLED.has(source as keyof typeof INSIGHT_SOURCE_MEDIUM)) {
+        expect(signalCreate).toHaveBeenLastCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ medium }) }),
+        );
+      }
     }
+  });
+
+  it("停接源短路返 disabled,零写入零日志(批③ 渠道转向闸)", async () => {
+    for (const source of ["internal-search", "internal-agent", "internal-feedback"] as const) {
+      const r = await ingestInsightSignal({
+        source,
+        refId: "1",
+        rawText: "词",
+        signalAt: new Date(0),
+      });
+      expect(r).toBe("disabled");
+    }
+    expect(signalCreate).not.toHaveBeenCalled();
+    expect(loggerWarn).not.toHaveBeenCalled();
   });
 
   it("raw 截 4000、归一截 2000、refId 截 120", async () => {
@@ -78,7 +108,7 @@ describe("ingestInsightSignal", () => {
 
   it("空文本(纯空白)不入池返 error,零日志噪音", async () => {
     const r = await ingestInsightSignal({
-      source: "internal-feedback",
+      source: "telegram-ai",
       refId: "1",
       rawText: "   ",
       signalAt: new Date(0),
@@ -96,12 +126,33 @@ describe("ingestInsightSignal", () => {
       }),
     );
     const r = await ingestInsightSignal({
-      source: "internal-agent",
+      source: "internal-comment",
       refId: "sess-1",
       rawText: "问句",
       signalAt: new Date(0),
     });
     expect(r).toBe("duplicate");
+    expect(loggerWarn).not.toHaveBeenCalled();
+  });
+
+  it("refreshMeta 开启时撞唯一 → 刷新 meta 与 signal_at 返 refreshed(热榜仍在榜)", async () => {
+    signalCreate.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    const meta = { rank: 3, batch: 1792302900000 };
+    const at = new Date("2026-10-18T07:43:00+08:00");
+    const r = await ingestInsightSignal(
+      { source: "hot-baidu", refId: "某热点词", rawText: "某热点词", signalAt: at, meta },
+      { refreshMeta: true },
+    );
+    expect(r).toBe("refreshed");
+    expect(signalUpdateMany).toHaveBeenCalledWith({
+      where: { source: "hot-baidu", refId: "某热点词" },
+      data: { meta, signalAt: at },
+    });
     expect(loggerWarn).not.toHaveBeenCalled();
   });
 

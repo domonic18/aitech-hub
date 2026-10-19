@@ -21,14 +21,22 @@ const nextConfig: NextConfig = {
       { source: "/admin/pay/", destination: "/admin/settings/pay/", statusCode: 308 },
       { source: "/admin/pats", destination: "/admin/settings/pats/", statusCode: 308 },
       { source: "/admin/pats/", destination: "/admin/settings/pats/", statusCode: 308 },
-      { source: "/admin/channels", destination: "/admin/spider/channels/", statusCode: 308 },
-      { source: "/admin/channels/", destination: "/admin/spider/channels/", statusCode: 308 },
+      {
+        source: "/admin/channels",
+        destination: "/admin/data/sources/?t=channels",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/channels/",
+        destination: "/admin/data/sources/?t=channels",
+        statusCode: 308,
+      },
       // 侧栏精简批②(2026-10-14):博主/项目并入 /admin/discovery 壳、会话并入
       // /admin/usage 壳,旧路径 308 承接(同上双斜杠形态都列)
-      { source: "/admin/bloggers", destination: "/admin/discovery/bloggers/", statusCode: 308 },
-      { source: "/admin/bloggers/", destination: "/admin/discovery/bloggers/", statusCode: 308 },
-      { source: "/admin/github", destination: "/admin/discovery/github/", statusCode: 308 },
-      { source: "/admin/github/", destination: "/admin/discovery/github/", statusCode: 308 },
+      { source: "/admin/bloggers", destination: "/admin/data/mine/?t=bloggers", statusCode: 308 },
+      { source: "/admin/bloggers/", destination: "/admin/data/mine/?t=bloggers", statusCode: 308 },
+      { source: "/admin/github", destination: "/admin/data/mine/?t=github", statusCode: 308 },
+      { source: "/admin/github/", destination: "/admin/data/mine/?t=github", statusCode: 308 },
       {
         source: "/admin/agent-sessions",
         destination: "/admin/usage/sessions/",
@@ -39,6 +47,56 @@ const nextConfig: NextConfig = {
         destination: "/admin/usage/sessions/",
         statusCode: 308,
       },
+      // 数据壳重组·方案二(2026-10-18):采集/洞察/发现三中心并入 /admin/data 壳,
+      // 旧路径 308 承接(子页映射 ?t= 子视图;双斜杠形态都列,防双跳;
+      // clusters 通配在前,具体优先于泛化)
+      {
+        source: "/admin/insight/clusters/:path*",
+        destination: "/admin/data/insight/clusters/:path*",
+        statusCode: 308,
+      },
+      { source: "/admin/insight", destination: "/admin/data/insight/", statusCode: 308 },
+      { source: "/admin/insight/", destination: "/admin/data/insight/", statusCode: 308 },
+      {
+        source: "/admin/spider/channels",
+        destination: "/admin/data/sources/?t=channels",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/spider/channels/",
+        destination: "/admin/data/sources/?t=channels",
+        statusCode: 308,
+      },
+      { source: "/admin/spider/schedule", destination: "/admin/data/run/?t=plan", statusCode: 308 },
+      {
+        source: "/admin/spider/schedule/",
+        destination: "/admin/data/run/?t=plan",
+        statusCode: 308,
+      },
+      { source: "/admin/spider", destination: "/admin/data/run/", statusCode: 308 },
+      { source: "/admin/spider/", destination: "/admin/data/run/", statusCode: 308 },
+      {
+        source: "/admin/discovery/bloggers",
+        destination: "/admin/data/mine/?t=bloggers",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/discovery/bloggers/",
+        destination: "/admin/data/mine/?t=bloggers",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/discovery/github",
+        destination: "/admin/data/mine/?t=github",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/discovery/github/",
+        destination: "/admin/data/mine/?t=github",
+        statusCode: 308,
+      },
+      { source: "/admin/discovery", destination: "/admin/data/mine/", statusCode: 308 },
+      { source: "/admin/discovery/", destination: "/admin/data/mine/", statusCode: 308 },
     ];
   },
   async headers() {
