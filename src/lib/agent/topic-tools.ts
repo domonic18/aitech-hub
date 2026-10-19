@@ -129,8 +129,8 @@ export const getTopicBriefTool = tool(
       "读取专题的完整生产底料:专题定位、绑定技能(topic.skill_key 已自动随载荷全文" +
       "装载,字段 skill)、挂载素材(博主/视频/解读笔记/要点/人工批注/站内文章节选)、" +
       "关联文档现状(含是否被人工编辑过)与近期已发文章标题(防重复选题)。视频封面" +
-      "已自动转存为站内路径(materials[].cover_path),可直接在正文引用。写专题文章前" +
-      "必调;仔细分析素材后再选题与写作。",
+      "已自动转存为站内路径(materials[].cover_path,仅系统注入文首推荐卡用," +
+      "禁止在正文引用)。写专题文章前必调;仔细分析素材后再选题与写作。",
     schema: z.object({
       topic_id: z
         .string()
@@ -178,8 +178,8 @@ export const transferVideoCoverTool = tool(
     description:
       "转存专题全部视频素材封面入站内媒体库(B 站图床有防盗链,外链直引会裂图),返回" +
       "「标题/博主/站内路径」清单,部分失败列在 failed(标题)。brief 里 cover_path " +
-      "为 null(转存失败)或 brief 之后新挂了素材时使用;返回的路径可作 " +
-      "save_topic_draft 的 cover_path(文章头图/公众号大图),也可在正文中以图片语法引用。",
+      "为 null(转存失败)或 brief 之后新挂了素材时使用;返回的路径仅作系统注入" +
+      "文首推荐卡与 save_topic_draft 的 cover_path(文章头图)供给,禁止在正文中引用。",
     schema: z.object({
       topic_id: z
         .string()

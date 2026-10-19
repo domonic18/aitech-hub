@@ -84,6 +84,8 @@ const ADMIN_OK = { visitorId: "admin:sub-1" };
 
 beforeEach(() => {
   vi.resetAllMocks(); // once 队列一并清,防跨用例串味
+  // save_topic_draft 落稿校验默认零封面(具体用例再用 once 覆盖)
+  transferVideoCovers.mockResolvedValue([]);
 });
 
 describe("admin 会话防线(纵深防御,四工具同口径)", () => {

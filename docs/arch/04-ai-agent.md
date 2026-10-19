@@ -116,6 +116,8 @@
 - **todo 计划条修复**:deepagents 1.14.2 仅给 Codex harness 档自动挂 todoListMiddleware,自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带 → write_todos 从未存在于图中(系统提示「计划先行」是无工具可调的空话,侧边栏计划条恒空)。修复 = agent 图显式挂 `todoListMiddleware()`(langchain 导出;guest/user/admin 全身份档) + load 恢复:runtime-adapter 从 state 顶层 `values.todos` 白名单过滤后经 onTodos 回写(切会话先清空防残显;`extractTodos` 只认 updates 帧形态,顶层值用 `extractTodosFromValues`),arch/04 §3.1「执行计划条」自此名实相符
 - R③(关键帧/HTML 截图)维持原排期,悬于版权口径裁决
 
+**K2.8 补注三(2026-10-17,M37 封面纪律收敛;呈现协调性验收反馈:写手把竖版封面当正文配图小节间乱插、同图重复)**:上文批⑥「正文直引 cover_path」消费口径**退役**——封面收敛单一职责「只服务系统注入的文首推荐卡 + save_topic_draft 的 cover_path(头图)」,禁止入正文。write_article(M37 单任务)底料剔除 coverPath 不再转存;brief/transfer_video_cover/generate_cover_candidates 工具描述与编排提示改为禁止性表述;指南 L2 删「小节间插 1~2 张」;落稿侧双硬校验——checkCardEmbeds 增同图重复拒收 + checkCoverMisuse 拒封面入正文(均在 finalizeCompose 注入前跑);自评审第⑥项读者视角版面协调。正文配图最终口径 = render_card 卡图 + generate_cover_candidates 生成图两类
+
 **K2.8 补注三(2026-10-13,M27 批⑦,验收反馈四项修复之二/之三)**:(1) **后台 AI 助手 FAB**——AssistantFab 挂进 admin/layout(此前仅 (site)/layout,专题/编辑页侧边助手卡误关后无路可回);admin 会话经 /api/search/agent 解析 admin 身份档(生产四工具在位),SSR 恒 null 免水合不一致。(2) **写作质量与自评审闭环**——ADMIN_PROMPT_ADDENDUM 重写:写作指南反模板腔(钩子 ≤80 字禁「随着…的快速发展」式开场、背景与来龙去脉节、要点递进禁平行罗列、禁「总而言之」类套话、具体数字/句式交错);「去看原视频」小节硬要求给 video_url 行内链接(公众号渲染器外链转角标+文末 References,wechat-safe;「阅读原文」指向站内文章,正文带原链是公众号读者抵达视频的唯一通路);第 5 步新增**强制自评审**(不可跳过:挑剔读者视角逐项检查开头钩子/背景完整性/要点逻辑/原链在位/配图合理并直接改写;**轮数封顶 2**——第 1 轮通读改写,仅硬伤才第 2 轮,2 轮后必须进 save,防无限重写烧 token),save 后汇报须说明自评审改动。
 
 **K2.8 补注四(2026-10-13,M27 批⑧-a/b/c/d,编辑页改稿闭环 + 会话侧栏常驻化;方案 v2 锚 editor-ai-plan §2「提案不落笔」/§4 上下文注入/§6 工具面/§7 评审面)**:

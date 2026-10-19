@@ -2,8 +2,9 @@
  * write_article 单测(2026-10-17 撰写文章单任务捆绑):admin 纵深防线 /
  * 无素材拒 / 写作模型未绑定人话 / extraParams.max_tokens 未配置 fail-closed
  * (零 hardcode:不静默按小预算截断)/ happy path 底料装配(指南全文 +
- * angle/outline + 封面站内路径)与台账 role=writing / skill_key 缺省回专题
- * 绑定 / chatText 业务失败人话 / prompt 纯函数机制断言。DB/LLM 全 mock。
+ * angle/outline)与台账 role=writing / 封面不进底料不转存(2026-10-17 呈现
+ * 协调性反馈)/ skill_key 缺省回专题绑定 / chatText 业务失败人话 / prompt
+ * 纯函数机制断言。DB/LLM 全 mock。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -151,10 +152,9 @@ describe("write_article", () => {
     expect(chatText).not.toHaveBeenCalled();
   });
 
-  it("happy path:底料装配(指南/角度/提纲/封面站内路径)+ 预算透传 + 台账 writing", async () => {
+  it("happy path:底料装配(指南/角度/提纲)+ 预算透传 + 台账 writing + 封面不进底料", async () => {
     getTopic.mockResolvedValueOnce(TOPIC);
     buildComposeBlocks.mockResolvedValueOnce([BLOCK]);
-    transferVideoCovers.mockResolvedValueOnce([{ title: "视频A", coverPath: "/wp/a.jpg" }]);
     getEnabledSkillByKey.mockResolvedValueOnce({
       key: "blogger-video",
       guideMd: "指南全文……",
@@ -181,8 +181,11 @@ describe("write_article", () => {
     expect(call.user).toContain("成本拐点已到");
     expect(call.user).toContain("开头");
     expect(call.user).toContain("解读笔记全文");
-    expect(call.user).toContain("/wp/a.jpg");
     expect(call.user).toContain("https://b23.tv/x");
+    // 封面纪律(2026-10-17 呈现协调性):不转存、不进底料——推荐卡由系统注入
+    expect(transferVideoCovers).not.toHaveBeenCalled();
+    expect(call.user).not.toContain("/wp/a.jpg");
+    expect(call.system).toContain("不插入任何图片");
     expect(recordAiUsage).toHaveBeenCalledWith(
       expect.objectContaining({ role: "writing", modelId: 9, status: "ok" }),
     );
@@ -248,7 +251,7 @@ describe("buildWriterPrompt(纯函数)", () => {
     expect(noGuide.user).toContain("旧文一");
   });
 
-  it("素材渲染:批注/要点/摘录/封面路径/视频地址逐项进底料", () => {
+  it("素材渲染:批注/要点/摘录/视频地址逐项进底料;封面路径无字段可渲染", () => {
     const { user } = buildWriterPrompt({
       topicTitle: "t",
       positioning: "p",
@@ -264,7 +267,6 @@ describe("buildWriterPrompt(纯函数)", () => {
           blogger: "UP主A",
           note: "批注N",
           videoUrl: "https://b23.tv/x",
-          coverPath: "/wp/a.jpg",
           aiNote: null,
           aiSummary: "摘要S",
           aiPoints: ["p1", "p2"],
@@ -277,7 +279,7 @@ describe("buildWriterPrompt(纯函数)", () => {
     expect(user).toContain("UP主A");
     expect(user).toContain("批注N");
     expect(user).toContain("https://b23.tv/x");
-    expect(user).toContain("/wp/a.jpg");
     expect(user).toContain("p1;p2");
+    expect(user).not.toContain("/wp/a.jpg");
   });
 });
