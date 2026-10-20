@@ -6,9 +6,11 @@
 export const TOPIC_STATUS = ["collecting", "drafted", "published"] as const;
 export type TopicStatus = (typeof TOPIC_STATUS)[number];
 
+/** 状态展示名(2026-10-20 详情页重构:去「合成」术语,讲用户语言——
+ * DB 枚举值不变,仅展示层文案;列表分段签/详情步进条/徽标同源) */
 export const TOPIC_STATUS_LABEL: Record<TopicStatus, string> = {
-  collecting: "收集中",
-  drafted: "已合成",
+  collecting: "收集素材中",
+  drafted: "初稿已生成",
   published: "已发布",
 };
 
@@ -45,11 +47,12 @@ export const TUTORIAL_TOPIC_POSITIONING =
   "不做「视频演示了…」式转述;推荐框架其余小节照常。";
 
 /**
- * 撰写目的预置(2026-10-18 体裁治理,post-319 验收反馈「合成话术写死推荐
- * 体裁,教程意图无入口」):user-facing 目的 = 定位模板 + 合成话术体裁词,
- * 落库仍走 positioning(模板文本),零 schema 变更。两个目的同走 blogger-video
- * 指南(教程写法是指南内分支),绑定技能一律自动匹配。扩展新目的=加一项
- * (label/genreWord/positioningTemplate),指南侧补对应写法分支。
+ * 内容形式预置(2026-10-18 体裁治理;2026-10-20 详情页重构收编为写作配置
+ * 「内容形式」维度,可视化构建器见 writing-config.ts):user-facing 形式 =
+ * 定位模板 + 生成话术体裁词,落库仍走 positioning(模板文本),零 schema 变更。
+ * 两个形式同走 blogger-video 指南(教程写法是指南内分支),绑定技能一律自动
+ * 匹配。扩展新形式=加一项(label/genreWord/positioningTemplate),指南侧补
+ * 对应写法分支 + writing-config 补样例。
  */
 export type TopicPurposeKey = "video-recommend" | "video-tutorial";
 

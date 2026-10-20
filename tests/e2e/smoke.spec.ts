@@ -3274,7 +3274,7 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
   }
 });
 
-test("34. 专题治理台(M26 批③④:新建/挂载仅已解读/批注/人工状态流转/合成防线/权限防线,零真网)", async ({
+test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/添加仅已解读/批注/人工状态流转/生成初稿防线/权限防线,零真网)", async ({
   page,
   request,
 }) => {
@@ -3346,24 +3346,35 @@ test("34. 专题治理台(M26 批③④:新建/挂载仅已解读/批注/人工�
     await expect(page.getByRole("heading", { name: "专题管理" })).toBeVisible();
     await page.getByRole("button", { name: "新建专题" }).click();
     await page.getByPlaceholder("专题标题(必填,≤200 字符)…").fill(TOPIC_TITLE);
-    await page.getByPlaceholder(/专题定位\(可选/).fill("e2e 定位:面向开发者的端侧落地盘点");
+    await page.getByPlaceholder(/写作要求\(可选/).fill("e2e 定位:面向开发者的端侧落地盘点");
     await page.getByRole("button", { name: "创建", exact: true }).click();
     await page.waitForURL(/\/admin\/topics\/\d+\/?$/); // trailingSlash 归一后带尾斜杠
     const topicId = new URL(page.url()).pathname.split("/").filter(Boolean).pop()!;
 
-    // 详情:定位区(标题/定位/收集中态);人工钮组只有「标记发布」(§10-7 无 drafted)
+    // 详情:概览区(标题/收集素材中态);人工钮组只有「标记为已发布」(§10-7 无 drafted)
     await expect(page.getByLabel("专题标题")).toHaveValue(TOPIC_TITLE);
-    await expect(page.getByText("收集中", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "标记发布" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "撤回合成态" })).toHaveCount(0);
-    await expect(page.getByText("尚未挂载素材")).toBeVisible();
+    await expect(page.getByText("收集素材中", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "标记为已发布" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "退回收集素材" })).toHaveCount(0);
+    await expect(page.getByText("还没有素材")).toBeVisible();
 
-    // 挂载选料:已解读视频在列,未解读不上榜;挂载 → 行翻「已在本专题」+ 素材卡出现
+    // 写作要求配置区(2026-10-20 详情页重构):四维构建器在位;新建时自填定位
+    // → 已自定义徽章 + 全文回显;点选项(确认按模板重建)→ 合成条款行,保存回显
+    await expect(page.getByText("口吻语感", { exact: true })).toBeVisible();
+    await expect(page.getByText(/已自定义/)).toBeVisible();
+    await expect(page.getByLabel("写作要求")).toHaveValue(/端侧落地盘点/);
+    page.once("dialog", (d) => d.accept()); // 自定义态切选项:确认覆盖手改文本
+    await page.getByRole("button", { name: "专业编辑" }).click();
+    await expect(page.getByLabel("写作要求")).toHaveValue(/口吻:专业编辑/);
+    await page.getByRole("button", { name: "保存写作要求" }).click();
+    await expect(page.getByText("写作要求已保存,生成初稿时生效")).toBeVisible({ timeout: 10_000 });
+
+    // 从库添加素材:已解读视频在列,未解读不上榜;添加 → 行翻「已添加」+ 素材卡出现
     const candRow = page.getByRole("row", { name: new RegExp(TG_DONE) });
     await expect(candRow).toBeVisible();
     await expect(page.getByRole("row", { name: new RegExp(TG_PENDING) })).toHaveCount(0);
-    await candRow.getByRole("button", { name: "挂载" }).click();
-    await expect(candRow.getByText("已在本专题")).toBeVisible({ timeout: 10_000 });
+    await candRow.getByRole("button", { name: "添加", exact: true }).click();
+    await expect(candRow.getByText("已添加")).toBeVisible({ timeout: 10_000 });
     const materialCard = page.getByText("短结论:e2e 短结论:端侧模型落地在成本曲线上过了拐点");
     await expect(materialCard).toBeVisible();
     await expect(page.getByText(/解读笔记\(\d+ 字\)/)).toBeVisible();
@@ -3392,27 +3403,29 @@ test("34. 专题治理台(M26 批③④:新建/挂载仅已解读/批注/人工�
 
     // 批注:UI 内联编辑 → 保存后按钮翻「改批注」;API 出参带批注
     await page.getByRole("button", { name: "加批注" }).click();
-    await page.getByPlaceholder(/批注\(给合成的定向提示/).fill(NOTE);
+    await page.getByPlaceholder(/批注\(给生成初稿的定向提示/).fill(NOTE);
     await page.getByRole("button", { name: "保存批注" }).click();
     await expect(page.getByRole("button", { name: "改批注" })).toBeVisible({ timeout: 10_000 });
     const withNote = await page.request.get(`/api/topics/${topicId}/`);
     const withNoteBody = (await withNote.json()) as typeof detailBody;
     expect(withNoteBody.data.items[0]!.note).toBe(NOTE);
 
-    // 人工状态流转全链(UI 直点):收集→已发布→撤回合成态→回到收集
-    await page.getByRole("button", { name: "标记发布" }).click();
+    // 人工状态流转全链(UI 直点):收集素材中→已发布→撤回发布→退回收集素材
+    await page.getByRole("button", { name: "标记为已发布" }).click();
     await expect(page.getByText("已发布", { exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("button", { name: "撤回合成态" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "撤回发布" })).toBeVisible();
     // 防线:published→collecting 逆跳 409
     const badBack = await page.request.patch(`/api/topics/${topicId}/`, {
       headers: origin,
       data: { status: "collecting" },
     });
     expect(badBack.status()).toBe(409);
-    await page.getByRole("button", { name: "撤回合成态" }).click();
-    await expect(page.getByText("已合成", { exact: true })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole("button", { name: "回到收集" }).click();
-    await expect(page.getByText("收集中", { exact: true })).toBeVisible({ timeout: 10_000 });
+    page.once("dialog", (d) => d.accept()); // 撤回发布带后果确认
+    await page.getByRole("button", { name: "撤回发布" }).click();
+    await expect(page.getByText("初稿已生成", { exact: true })).toBeVisible({ timeout: 10_000 });
+    page.once("dialog", (d) => d.accept()); // 退回收集素材带后果确认
+    await page.getByRole("button", { name: "退回收集素材" }).click();
+    await expect(page.getByText("收集素材中", { exact: true })).toBeVisible({ timeout: 10_000 });
     // §10-7 边界:UI 不出 collecting→drafted 钮(上方 toHaveCount(0) 已验);
     // API 层按设计不收紧(运营纪律,repo 层流转矩阵放行)→ 200 落 drafted
     const composePath = await page.request.patch(`/api/topics/${topicId}/`, {
@@ -3444,16 +3457,16 @@ test("34. 专题治理台(M26 批③④:新建/挂载仅已解读/批注/人工�
     });
     expect(pat.status()).toBe(403);
 
-    // 卸载 → 素材区回空态(可重挂,不做确认步)
+    // 卸载 → 素材区回空态(可重添加,不做确认步)
     await page.getByRole("button", { name: "卸载" }).click();
-    await expect(page.getByText("尚未挂载素材")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("还没有素材")).toBeVisible({ timeout: 10_000 });
 
-    // 合成防线(M27 批⑤,固定管线退役后防线收敛到按钮侧,零真网):合成区
-    // 已渲染;UI 点合成 → 空素材人话行内回显,不开抽屉。写库防线在工具层
+    // 生成初稿防线(M27 批⑤,固定管线退役后防线收敛到按钮侧,零真网):初稿区
+    // 已渲染;UI 点生成 → 空素材人话行内回显,不开抽屉。写库防线在工具层
     // (save_topic_draft admin 会话校验),API 轮询路由已随管线退役删除
-    await expect(page.getByRole("button", { name: "合成初稿" })).toBeVisible();
-    await page.getByRole("button", { name: "合成初稿" }).click();
-    await expect(page.getByText("尚未挂载素材——先挂 2~3 条解读/文章再合成")).toBeVisible({
+    await expect(page.getByRole("button", { name: "生成初稿" })).toBeVisible();
+    await page.getByRole("button", { name: "生成初稿" }).click();
+    await expect(page.getByText("还没有素材——先添加 2~3 条解读/文章,再来生成初稿")).toBeVisible({
       timeout: 10_000,
     });
   } finally {

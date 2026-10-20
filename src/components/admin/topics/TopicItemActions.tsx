@@ -75,7 +75,7 @@ export default function TopicItemActions({
           maxLength={500}
           rows={2}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="批注(给合成的定向提示,≤500 字符;空=清除)…"
+          placeholder="批注(给生成初稿的定向提示,≤500 字符;空=清除)…"
           className="w-full rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent placeholder:text-text-3"
         />
         <div className="flex items-center gap-2">

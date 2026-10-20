@@ -1,6 +1,7 @@
 /**
- * 撰写目的预置单测(2026-10-18 体裁治理):定位模板精确匹配 → 目的 key;
- * 空=缺省「视频安利」;自定义文案=null(UI 显示自定义且切目的不覆盖)。
+ * 内容形式预置单测(2026-10-18 体裁治理;2026-10-20 起为写作配置「内容形式」
+ * 维度的底座,可视化构建见 writing-config):定位模板精确匹配 → 形式 key;
+ * 空=缺省「视频安利」;自定义文案=null(解析层显示已自定义且不猜)。
  */
 import { describe, expect, it } from "vitest";
 
@@ -11,7 +12,7 @@ import {
   TUTORIAL_TOPIC_POSITIONING,
 } from "./constants";
 
-describe("matchTopicPurpose(定位 → 撰写目的)", () => {
+describe("matchTopicPurpose(写作要求模板 → 内容形式)", () => {
   it("预置模板精确匹配各自目的", () => {
     expect(matchTopicPurpose(DEFAULT_TOPIC_POSITIONING)).toBe("video-recommend");
     expect(matchTopicPurpose(TUTORIAL_TOPIC_POSITIONING)).toBe("video-tutorial");

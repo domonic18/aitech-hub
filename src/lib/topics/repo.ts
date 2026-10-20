@@ -184,7 +184,7 @@ export async function mountItem(topicId: bigint, input: ItemMountInput): Promise
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      throw new TopicError("conflict", "该素材已在本专题内,不重复挂载");
+      throw new TopicError("conflict", "该素材已添加,不重复添加");
     }
     throw e;
   }
@@ -220,7 +220,7 @@ export interface MountCandidates<T> {
   total: number;
 }
 
-/** 电报流挂载候选:仅解读完成(aiStatus=done)的视频,标题/博主含关键词(忽略
+/** 视频挂载候选:仅解读完成(aiStatus=done)的视频,标题/博主含关键词(忽略
  * 大小写),近期解读优先(方案 §8 挂载交互口径) */
 export async function listTelegramCandidates(
   q: string | undefined,

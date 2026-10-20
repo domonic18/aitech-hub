@@ -123,7 +123,7 @@ model TopicItem {
 
 ## 8. 治理台与路由
 
-- `/admin/topics`:列表(状态分段 collecting/drafted/published)+ 新建;`/admin/topics/[id]` 详情三区——素材聚合视图(解读卡:标题/博主/笔记摘要/短结论/批注内联编辑 + 文章卡)、定位编辑、合成操作区(合成初稿/重合成/跳转文档)
+- `/admin/topics`:列表(状态分段 collecting/drafted/published)+ 新建;`/admin/topics/[id]` 详情四区(2026-10-20 详情页重构,原「详情三区」按工作流叙事重排、去「合成」术语)——① 专题概览(状态步进条+标题+事实行+人工流转)② 写作要求(MECE 四维可视化构建:内容形式×口吻×篇幅×配图,样例节选+信息卡真实渲染预览;选择单向合成文本落库 positioning,`src/lib/topics/writing-config.ts`)③ 素材(解读卡/文章卡+批注内联编辑;素材库 `<details>` 零素材默认展开,开合态客户端持有防 refresh 塌缩)④ 初稿(文档状态卡+公众号同步快照+生成初稿/重新生成初稿,体裁词由服务端 `resolvePurpose` 从写作要求派生)
 - 挂载交互:详情页内选挂(电报流按博主/时间筛选,仅列 `aiStatus=done`;文章按关键词搜);电报流治理台条目内「加入专题」入口 v1 不做(§10-5)
 - API 路由(顶层域目录惯例):`GET/POST /api/topics`、`GET/PATCH /api/topics/[id]`、`POST/DELETE /api/topics/[id]/items`。鉴权 admin 会话,PAT 拒(对齐 M11/M17 惯例);mutation Origin 校验 + Zod 入参。**M27 批⑤:`POST/GET /api/topics/[id]/compose` 随固定管线退役删除**(合成执行与进度可视性改由会话 agent 工具层承接,见下条)
 - ~~**合成执行形态(M27 批③ agent 化)**:BullMQ 异步四步管线……~~ **已随 M27 批⑤ 退役**(`QUEUE_TOPIC_COMPOSE`/processor/降级单调用一并移除;jobId 去重、轮询路由、409 防重等管线基建不复存在)

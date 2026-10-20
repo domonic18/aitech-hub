@@ -112,7 +112,7 @@ export default async function AdminTopicsPage({
             {items.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-3 py-8 text-center text-text-3">
-                  暂无专题——右上角「新建专题」开始,素材在电报流解读完成后挂入
+                  暂无专题——右上角「新建专题」开始,素材在视频解读完成后添加
                 </td>
               </tr>
             )}

@@ -4,7 +4,7 @@
  * 禁止自持卡实例(ESLint no-restricted-imports 守护,见 eslint.config.mjs)。
  * 页面接入只走两条协议通道:
  *  1. 唤起协议:openAgentAssistant() 派发 agent:open——开卡 + 可选预置问题
- *     直发/预填(ContactLauncher/TopicComposeActions/EditorAssistant 同款);
+ *     直发/预填(ContactLauncher/TopicDraftActions/EditorAssistant 同款);
  *  2. 能力注册协议:useAgentEditSurface(EditorAssistant)——挂载注册编辑面
  *     getContent/onApplyContent 写回接线,卸载自动注销;能力不在场时
  *     propose_edits 评审自动降级(AgentThread 既有语义),run 本身不中断,
