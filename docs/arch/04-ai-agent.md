@@ -181,6 +181,11 @@
 - **纪律层(指南 L2,oneoff `scripts/oneoff/card-guide-rich-html/` 落库)**:自检改「在写 HTML 时逐条过,渲染出来后就不再返工」,补布局自查(class 必须在同一份 `<style>` 里定义,否则 flex/grid 塌成单列);**一次定稿**——渲染成功即采用,仅工具报错或返回 height 异常矮/超高时修正一次,同一张卡至多 2 次,禁止连环重渲;工具描述同步同一纪律
 - **答案卡/Drawer 出图**:受约束 markdown 增 img 块(见上文 K2「答案渲染」注记),render_card 返回的 `markdown_line` 原样写入正文即可见
 
+**K2.8 补注十二(2026-10-20,WorkBuddy PPT 合成验收反馈——多卡叙事与双端适配)**:
+
+- **反馈**:PPT 式题材合成仍落 preset 常规卡(指南双路径下 preset 是常规形态默认,弱模型循省 token 惯性);内容一张卡承载不了时缺主动拆卡策略(只有 413 被动兜底);产物要便于手动发公众号与小红书。
+- **修法(纪律层 L2,真相源仍 `writing-guides.ts`,oneoff `scripts/oneoff/card-guide-multicard-platform/` 落库)**:①成品感题材(PPT 式汇报/全景长图/多栏海报/数据看板)默认 html 整版设计;②多卡叙事——预计超高或版式异质即按叙事弧拆卡(总览主卡→论证各卡→结论/行动卡),系列统一 accent/版式、卡角 N/M、单张独立可发布,拆卡不降级回 preset;③双端适配——公众号 900 宽默认即适配,小红书素材 html 竖版 3:4(1080×约 1440,maxHeight 1440 防溢出)或 1:1。机制零变更(1080/1440 均在既有 width 320~1600 / maxHeight 400~8000 契约内)。
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)
