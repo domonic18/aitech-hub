@@ -186,6 +186,13 @@
 - **反馈**:PPT 式题材合成仍落 preset 常规卡(指南双路径下 preset 是常规形态默认,弱模型循省 token 惯性);内容一张卡承载不了时缺主动拆卡策略(只有 413 被动兜底);产物要便于手动发公众号与小红书。
 - **修法(纪律层 L2,真相源仍 `writing-guides.ts`,oneoff `scripts/oneoff/card-guide-multicard-platform/` 落库)**:①成品感题材(PPT 式汇报/全景长图/多栏海报/数据看板)默认 html 整版设计;②多卡叙事——预计超高或版式异质即按叙事弧拆卡(总览主卡→论证各卡→结论/行动卡),系列统一 accent/版式、卡角 N/M、单张独立可发布,拆卡不降级回 preset;③双端适配——公众号 900 宽默认即适配,小红书素材 html 竖版 3:4(1080×约 1440,maxHeight 1440 防溢出)或 1:1。机制零变更(1080/1440 均在既有 width 320~1600 / maxHeight 400~8000 契约内)。
 
+**K2.8 补注十三(2026-10-20,模板入口机制层关闭——render_card 全量自由 HTML)**:
+
+- **再反馈与裁定**:补注十二的指南层调教后用户实测专题合成仍落 preset 卡(两次指南修订 #120/#121 均未能扭转弱模型的省 token 惯性——工具 schema 里 preset 是一等字段 + 描述写「两种用法二选一、同等正式」,指南 L2 压不过工具面的显式 affordance)。用户裁定:**机制层直接关闭模板入口**,所有文章配图一律按内容生成自由 HTML(harness-vs-hardcode 分层判据的显式反例:改指南不发版仍不生效,故改机制发版)。
+- **工具层**:`render_card` schema 删 `preset`/`data`,`html` 改必填(`min(1)`,30k 硬顶不变);工具体删 preset 分支与 normalize/renderPreset 依赖;description 重写为「唯一用法 = 依内容设计完整 HTML,模板模式已下线」。legacy 形态(preset+data)经 zod 静默剥离后因缺 html 被 schema 拒,`toolArgsFeedbackMiddleware` 回中文修正提示兜底自纠。
+- **知识层**:`BLOGGER_VIDEO_GUIDE`/`CARD_RENDERING_GUIDE` 同步反转——原「卡型路由(选 preset)」改写为「版式语汇」(同一份内容形态对照:金句→大字引言区、数据→大数字指标区、对垒→双栏对照区、步骤→步骤链区、全景→泳道全景区…),语义从「选模板」变为「自由 HTML 的版式设计参考」;「图片卡纪律」的 preset 默认/html 四情形对照退役。admin 系统提示「卡片可视化纪律」同步单路径表述。oneoff `scripts/oneoff/card-guide-html-only/` 一次灌两把 key。
+- **保留面**:preset 模板实现(`src/lib/card/presets|normalize|preset-schemas|templates/*`)与 `/api/card-presets/preview`、CardTemplateLab 模板实验室**全量保留**——那是人工确定性预览调试台,非文章生成入口;`contextTrimMiddleware` 逻辑不动(旧 checkpoint 里无 html 的 preset 调用天然跳过剥离,向后兼容)。
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

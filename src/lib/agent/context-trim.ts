@@ -5,7 +5,7 @@
  *
  * 1. 已渲染的 render_card 调用,args.html 替换为占位文本(保留最近 2 次不动)。
  *    HTML 渲染后对后续轮次零信息价值,却是最大膨胀源(单张自由 HTML 可达
- *    30k 字符);preset/data/width/maxHeight 保留(模型仍需知道这张卡是什么)。
+ *    30k 字符);width/maxHeight 保留(模型仍需知道这张卡是什么)。
  *    **最近 2 次不剥**:实测(Kimi/MiniMax 同现)模型会回读自己上一轮的 tool_call
  *    参数,看到占位文本即误判「我刚才传的是占位符、写漏了 HTML」,于是重渲——
  *    而重渲又被剥成占位,形成死循环(一轮 20+ 次 render_card)。留最近两次既
