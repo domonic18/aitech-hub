@@ -63,7 +63,7 @@
 - **降级三路径**(no_binding/quota/error)一律 SSE `unavailable` 事件,不占 HTTP 状态,前台无感;IP 频控 10 次/分(`rate-limit.ts`,Redis 挂放行)
 - **0 命中仍生成**(requirement §4 红线「AI 直接作答」):prompt 换无资料变体(凭模型知识、不用 [n]),meta.noHits 标注,答案卡明示「站内无命中 · AI 直接作答」
 - **追问 chips**:单次调用哨兵分隔(`###FOLLOW###` + 恰好 3 行,≤20 字/条);流式侧 `visiblePrefix` 扣住哨兵与半截哨兵防泄漏;漏哨兵 → 无 chips 优雅降级
-- **答案渲染**:受约束 markdown 子集(`answer-markdown.ts`:**加粗**/`行内代码`/`[文本](URL)` 链接(href 单行无空白才成链,渲染侧 http(s) 非本站开新窗)/`-` 与 `1.` 列表/`#`~`####` 标题(收敛 2~4 级)/``` 代码围栏(未闭合到 EOF 按代码块收尾)/GFM 表格(表头+分隔行开启,单元格行内解析;行内代码含 `|` 的瑕疵接受)/空行分段;标题/围栏/表格/链接系 K2.5 验收反馈补充——技术问题下模型习惯性输出,渲染器扩子集而非 prompt 对抗),子集外字面量;prompt 同步约束排版;纯函数解析 → React 节点,不经 dangerouslySetInnerHTML(无注入面);`[n]` 上标在文本叶内二次解析
+- **答案渲染**:受约束 markdown 子集(`answer-markdown.ts`:**加粗**/`行内代码`/`[文本](URL)` 链接(href 单行无空白才成链,渲染侧 http(s) 非本站开新窗)/`-` 与 `1.` 列表/`#`~`####` 标题(收敛 2~4 级)/``` 代码围栏(未闭合到 EOF 按代码块收尾)/GFM 表格(表头+分隔行开启,单元格行内解析;行内代码含 `|` 的瑕疵接受)/空行分段/独占一行的站内卡片图 `![](/wp-content/uploads/…)`(2026-10-20 补:render_card 的 `markdown_line` 原样写入正文即在答案卡与 Drawer 出图;只认站内媒体路径,外链图片按字面量,不渲染任意远端资源);标题/围栏/表格/链接系 K2.5 验收反馈补充——技术问题下模型习惯性输出,渲染器扩子集而非 prompt 对抗),子集外字面量;prompt 同步约束排版;纯函数解析 → React 节点,不经 dangerouslySetInnerHTML(无注入面);`[n]` 上标在文本叶内二次解析
 - **流式**:双协议均 SSE——openai `stream:true + include_usage`(400 点名剥参重发,镜像 response_format 先例);anthropic 标准 `content_block_delta` 流式(usage 两段式 message_start/message_delta 按 max 合并;400 点名 stream 参数回落非流式整段单 delta,同款先例——首迭代初版 anthropic 非流式兜底致答案整段一次性出现,验收反馈后升级);断流有增量按 done 收尾(degraded 行,不写缓存)、零增量 unavailable(error)+ failed 行;备用模型 → degraded 行
 - **nginx**:`location ^~ /api/search/` `proxy_buffering off`(配置随批落地);响应头 `x-accel-buffering: no`
 
@@ -173,6 +173,13 @@
 
 - **根因(checkpoint + 库取证)**:① post 319(WorkBuddy做汇报ppt,教程类视频)按专题治理按钮合成,话术「合成**推荐文章**」写死于 `TopicComposeActions`(体裁被焊死),专题定位即推荐系,技能表仅 blogger-video(推荐短文)——「教程」意图在链路上**无任何入口**,编排模型显式选 blogger-video 出推荐稿(模型无过错);② agent 取素材唯一入口 `get_topic_brief` 必须给专题 id,而文章编辑上下文只有 post id,无 post→topic 反查工具——实证对话:agent 只能 `read_draft` 读正文,答「原始材料是抖音视频」(1594 字解读笔记在库不可达)。
 - **修法三层**:(a) **指南 L2**:BLOGGER_VIDEO_GUIDE 增「教程类视频」分支——判据(标题/解读笔记含教程·实战·保姆级等信号或用户点名)+ 写法(核心内容笔记=可跟做的文字版教程:第二人称分步/界面动作与输入内容/关键数字保留/结尾验收点)+ 反例禁令(禁「视频演示了…」式第三人称转述);oneoff `scripts/oneoff/blogger-guide-tutorial/` 落库。(b) **撰写目的预置**(`src/lib/topics/constants.ts#TOPIC_PURPOSES`):user-facing 目的=定位模板+合成话术体裁词,落库走 positioning 零 schema 变更;面板「绑定技能」下拉退役换「撰写目的」(切目的自动带模板,自定义文案不覆盖),关联文章 id 改只读展示;合成区加目的 picker(缺省按定位匹配)+ 可选补充要求单行框,话术带体裁词;admin 提示词补「指令指定体裁时以其为准,不被定位惯性带偏」。(c) **`get_post_sources(post_id)` 只读工具**(post→topic(linked_post_id)→挂载素材,解读笔记全文/人工批注/视频地址/文章节选;纯读零副作用与 brief 分工——brief 是生产底料装配含封面转存);改稿纪律同步「文章上下文用 get_post_sources、已知专题 id 用 get_topic_brief」。
+
+**K2.8 补注十一(2026-10-20,撰写体验三问题复盘——「卡住」与「只会套模板」;富 HTML 正式化)**:
+
+- **根因(实测 + checkpoint 取证)**:① 每轮把指南 + 素材 + 完整 draft_md + 每张卡的自由 HTML **全量重发**,token 近平方增长,单轮 40 万撞会话闸 → 表现为「生成中突然停住」;② nginx `/api/search/` `proxy_read_timeout 120s` + SSE 无心跳,长工具调用(出卡/封面)静默断流,客户端 reader 正常结束、UI 无提示;③ 护栏触发无结构化日志,排障只能翻 checkpoint;④ 指南「出卡自检(逐条过,不过就改了重渲)」诱导盲重渲——模型看不到成图,凭想象反复重渲(实证同一诉求 11 次 render_card、MiniMax 与 Kimi 同样发生),叠加大 HTML 重发把预算烧穿;⑤ 答案卡/Drawer 的受约束渲染器无图片支持,`![](url)` 按字面量显示,卡片在 Drawer 里「看不见」
+- **修法(机制层,发版生效)**:`contextTrimMiddleware`(`src/lib/agent/context-trim.ts`,wrapModelCall 请求副本改写、零持久化、无改动同引用透传)——规则 1 把**已渲染**的 render_card 调用 `args.html` 换成占位文本(preset/data/width/maxHeight 保留;**最近 2 次不剥**——实测模型会回读自己上一轮的 tool_call 参数,看到占位即误判「我刚才传的是占位符、写漏了 HTML」而重渲,重渲又被剥成占位,形成一轮 20+ 次 render_card 的死循环,Kimi/MiniMax 同现;留最近两次破环),规则 2 仅当估算 >150k 字符时把较早的 `get_topic_brief`/`get_skill`/`list_skills` 结果换占位(每种留最近一次);`write_article`/`save_topic_draft`/render_card 结果/human 消息永不动。**占位回显防呆**:render_card 收到含占位文本的 html 直接拒渲(模型偶有抄回占位再渲,出的是无意义卡)。SSE 每 15s `: ping` 注释帧 + nginx read timeout 300s。admin 默认额度 120 次工具 / 60 万 token(site_config 可覆盖)。护栏与收尾落 `agent.run_guard_tripped` / `agent.run_done` / `agent.context_trimmed`
+- **纪律层(指南 L2,oneoff `scripts/oneoff/card-guide-rich-html/` 落库)**:自检改「在写 HTML 时逐条过,渲染出来后就不再返工」,补布局自查(class 必须在同一份 `<style>` 里定义,否则 flex/grid 塌成单列);**一次定稿**——渲染成功即采用,仅工具报错或返回 height 异常矮/超高时修正一次,同一张卡至多 2 次,禁止连环重渲;工具描述同步同一纪律
+- **答案卡/Drawer 出图**:受约束 markdown 增 img 块(见上文 K2「答案渲染」注记),render_card 返回的 `markdown_line` 原样写入正文即可见
 
 ### 3.5 分期
 

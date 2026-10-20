@@ -81,6 +81,32 @@ describe("sanitizeCardHtml", () => {
     expect(bad2.ok).toBe(false);
   });
 
+  it("style 属性内的外链 url() 报错(2026-10-20 补洞);站内与 data URI 放行", () => {
+    const ext = sanitizeCardHtml('<div style="background:url(https://evil.com/t.png)">x</div>');
+    expect(ext.ok).toBe(false);
+    if (!ext.ok) expect(ext.error).toContain("style 属性内 url()");
+    expect(
+      sanitizeCardHtml('<div style="background:url(/wp-content/uploads/2026/10/t.png)">x</div>').ok,
+    ).toBe(true);
+    expect(
+      sanitizeCardHtml('<div style="background:url(data:image/png;base64,iVBORw0KGgo=)">x</div>')
+        .ok,
+    ).toBe(true);
+  });
+
+  it("img 的事件属性现在会被捕获(此前被 img 分支 return 漏检)", () => {
+    const r = sanitizeCardHtml('<img src="/wp-content/uploads/a.png" onerror="alert(1)">');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("onerror");
+  });
+
+  it("img 同时带外链 style 也报错(通用属性扫描先于 img 白名单)", () => {
+    const r = sanitizeCardHtml(
+      '<img src="/wp-content/uploads/a.png" style="background:url(https://evil.com/x)">',
+    );
+    expect(r.ok).toBe(false);
+  });
+
   it("无害未知标签解包保文本且不算违规", () => {
     const r = sanitizeCardHtml("<div><custom-tag>保留文字</custom-tag></div>");
     expect(r.ok).toBe(true);

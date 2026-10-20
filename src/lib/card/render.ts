@@ -13,14 +13,16 @@ export type RenderedCard = { png: Uint8Array; width: number; height: number };
 
 function humanizeStatus(status: number, serverError: string): string {
   if (status === 429) return "渲染服务忙(并发已满),请稍后重试";
-  if (status === 413) return serverError || "卡片高度超限,请拆成多张卡";
+  if (status === 413) {
+    return serverError || "卡片高度超限,请先把 maxHeight 调到 6000~8000 再试,仍超则拆成多张卡";
+  }
   if (status === 504) return "渲染超时,请精简卡片内容后重试";
   return serverError || `渲染服务返回 ${status}`;
 }
 
 export async function renderCardPng(
   html: string,
-  opts: { width?: number; scale?: number } = {},
+  opts: { width?: number; scale?: number; maxHeight?: number } = {},
 ): Promise<RenderedCard> {
   const inlined = await inlineSiteMediaRefs(html);
   let res: Response;
@@ -32,6 +34,8 @@ export async function renderCardPng(
         html: inlined,
         width: opts.width ?? 900,
         scale: opts.scale ?? 2,
+        // 条件展开:不传时服务端按默认 4000,既有精确 body 断言不受影响
+        ...(opts.maxHeight !== undefined ? { maxHeight: opts.maxHeight } : {}),
       }),
       signal: AbortSignal.timeout(20_000),
     });

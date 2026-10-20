@@ -3,6 +3,9 @@
  * `[文本](URL)` 链接、「- 」列表、#/##/### 标题、``` 代码围栏与 GFM 表格
  * (标题/围栏/表格/链接系 K2.5 验收反馈补充——技术问题下模型习惯性输出,
  * 渲染器按子集解析成描述块),子集之外一律字面量。
+ * 卡片图(2026-10-20):独占一行的 `![](/wp-content/uploads/…)` 解析为 img 块
+ * ——render_card 返回的 markdown_line 原样写入正文即可在答案卡/Drawer 出图;
+ * 只认站内媒体路径,外链图片按字面量显示(不渲染任意远端资源)。
  * 不产 HTML、不经 dangerouslySetInnerHTML,无注入面;链接 href 仅收
  * 无空白单行 URL(渲染侧 http(s) 外链 target=_blank)。
  * 流式期间尾部未闭合标记短暂按字面量显示,闭合后即正常(可接受)。
@@ -20,7 +23,8 @@ export type AnswerBlock =
   | { kind: "pre"; lang: string; v: string }
   | { kind: "table"; head: AnswerInline[][]; rows: AnswerInline[][][] }
   | { kind: "ul"; items: AnswerInline[][] }
-  | { kind: "ol"; items: AnswerInline[][] };
+  | { kind: "ol"; items: AnswerInline[][] }
+  | { kind: "img"; src: string; alt: string };
 
 /** 行内解析:`代码`、**加粗** 与 [文本](URL)(空内容/未闭合/URL 含空白按字面量;
  * 代码段内不再嵌套;链接文本不再嵌套行内标记) */
@@ -73,6 +77,8 @@ export function parseAnswerInline(text: string): AnswerInline[] {
   return segs;
 }
 
+// 卡片图独占一行:仅认站内媒体路径(外链/相对路径一律按字面量,避免渲染任意远端资源)
+const IMG_LINE = /^!\[([^\]]*)\]\((\/wp-content\/uploads\/[A-Za-z0-9/._-]+)\)\s*$/;
 const UL_LINE = /^\s*[-*]\s+(.*)$/;
 const OL_LINE = /^\s*\d{1,2}[.)]\s+(.*)$/;
 const HEAD_LINE = /^(#{1,4})\s+(.+)$/;
@@ -129,6 +135,14 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
       flushPara();
       flushList();
       fence = { lang: fenceMark[1].trim(), lines: [] };
+      continue;
+    }
+    // 卡片图:独占一行的站内媒体路径 → img 块(render_card 的 markdown_line 原样)
+    const img = IMG_LINE.exec(line);
+    if (img) {
+      flushPara();
+      flushList();
+      blocks.push({ kind: "img", src: img[2]!, alt: img[1]! });
       continue;
     }
     // 表格:当前行含 | 且下一行是分隔行;表体连续吞含 | 的非空行

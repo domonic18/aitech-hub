@@ -13,7 +13,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function stubFetch(status = 200) {
   const fetchMock = vi.fn(
-    async (_url: string | URL | Request, init?: RequestInit) =>
+    async () =>
       new Response(PNG as unknown as BodyInit, {
         status,
         headers: { "content-type": "image/png", "x-card-width": "900", "x-card-height": "420" },
@@ -36,11 +36,27 @@ describe("renderCardPng", () => {
     const card = await renderCardPng('<img src="/wp-content/uploads/a.png">', { width: 900 });
     expect(inlineSiteMediaRefs).toHaveBeenCalledWith('<img src="/wp-content/uploads/a.png">');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("/render");
     expect(JSON.parse(String(init.body))).toEqual({ html: inlined, width: 900, scale: 2 });
     expect(card).toMatchObject({ width: 900, height: 420 });
     expect(card.png).toEqual(PNG);
+  });
+
+  it("maxHeight 显式传入才进 body;省略时不出现(服务端按默认 4000)", async () => {
+    inlineSiteMediaRefs.mockResolvedValue("<p>x</p>");
+    const fetchMock = stubFetch();
+    await renderCardPng("<p>x</p>", { width: 1080, maxHeight: 6000 });
+    const [, first] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(first.body))).toEqual({
+      html: "<p>x</p>",
+      width: 1080,
+      scale: 2,
+      maxHeight: 6000,
+    });
+    await renderCardPng("<p>x</p>");
+    const [, second] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect("maxHeight" in JSON.parse(String(second.body))).toBe(false);
   });
 
   it("内联报错(文件缺失等)原样传导,不被服务不可达兜底吞掉", async () => {
