@@ -22,6 +22,7 @@ import { POST_SOURCES_TOOLS } from "./post-sources-tool";
 import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
 import { WECHAT_BUDGET_TOOLS } from "./wechat-budget-tool";
+import { contextTrimMiddleware } from "./context-trim";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { toolArgsFeedbackMiddleware } from "./tool-args-feedback";
 import { COVER_TOOLS } from "./cover-tools";
@@ -171,6 +172,9 @@ export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promis
     //   (M31 验收:MiniMax options 三连败弃问实证,报错自纠对弱模型不可靠)。
     middleware: [
       toolCallRepairMiddleware,
+      // 富 HTML 上下文瘦身(2026-10-20):已渲染卡的 args.html 每轮全文重发是
+      // 最大膨胀源;在修复之后、中断守卫之前(先保证序列合法,再瘦身)
+      contextTrimMiddleware,
       interruptGuardMiddleware,
       toolArgsFeedbackMiddleware,
       todoListMiddleware(),
