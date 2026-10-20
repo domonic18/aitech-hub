@@ -21,14 +21,17 @@ export interface AgentLimitsConfig {
   tokens: number;
 }
 
-/** 默认档(= 硬编码时代 2026-10-17 放宽值;缺行/构建期回落) */
+/** 默认档(= 硬编码时代 2026-10-17 放宽值;缺行/构建期回落);
+ * 2026-10-20 富 HTML 改造:一篇文章 = 素材/指南 + 写作 + 1~2 轮自审 + 3~5 张卡
+ * (含重试) + 两段封面 HITL,80 次无重试余量;tokens 同调 600k(大 HTML 卡
+ * 单次 8~12k token,多轮累积) */
 export const DEFAULT_AGENT_LIMITS: Record<AgentLimitKind, AgentLimitsConfig> = {
   guest: { toolCalls: 12, tokens: 50_000 },
   user: { toolCalls: 12, tokens: 50_000 },
-  admin: { toolCalls: 80, tokens: 400_000 },
+  admin: { toolCalls: 120, tokens: 600_000 },
 };
 
-/** 合法域(三档同域;admin 长编排实测 80/400k,上限留足余量) */
+/** 合法域(三档同域;admin 长编排实测 80/400k→120/600k,上限留足余量) */
 export const TOOL_CALLS_MIN = 1;
 export const TOOL_CALLS_MAX = 200;
 export const TOKENS_MIN = 1_000;

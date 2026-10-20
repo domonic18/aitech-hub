@@ -196,6 +196,9 @@ export async function POST(
         closed = true;
       };
       abort.signal.addEventListener("abort", onAbort);
+      // 心跳:思考期/长工具调用(出卡、封面)无业务帧,代理 read timeout 会静默
+      // 断流(sse.ts 忽略 ":" 注释行,客户端零影响);15s < nginx 300s 留足余量
+      const heartbeat = setInterval(() => push(": ping\n\n"), 15_000);
 
       try {
         const outcome = await runAgentTurn({
@@ -248,6 +251,7 @@ export async function POST(
         });
         push(`event: error\ndata: ${JSON.stringify({ message: "处理中断,请重试" })}\n\n`);
       } finally {
+        clearInterval(heartbeat);
         abort.signal.removeEventListener("abort", onAbort);
         try {
           controller.close();

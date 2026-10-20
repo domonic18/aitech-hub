@@ -118,6 +118,7 @@ interface UsageMeta {
  */
 export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutcome> {
   const { threadId, message, resume, identityKind, limits, signal, onFrame, context } = params;
+  const startedAt = Date.now();
   const { graph, resolved } = await getAgentGraph(identityKind);
   const runId = crypto.randomUUID();
 
@@ -185,10 +186,28 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
       // 超身份档 tokens / 工具调用上限:主动收束(护栏非计费;检在发前,超限帧不外泄)
       if (outcome.tokensIn + outcome.tokensOut > limits.tokens) {
         outcome.truncatedReason = "本会话用量已达上限,请新建会话继续";
+        logger.warn({
+          event: "agent.run_guard_tripped",
+          guard: "tokens",
+          threadId,
+          tokensIn: outcome.tokensIn,
+          tokensOut: outcome.tokensOut,
+          toolCalls: outcome.toolCalls,
+          limits,
+        });
         break;
       }
       if (outcome.toolCalls > limits.toolCalls) {
         outcome.truncatedReason = "本条回复的工具调用已达上限,已主动收束";
+        logger.warn({
+          event: "agent.run_guard_tripped",
+          guard: "tool_calls",
+          threadId,
+          tokensIn: outcome.tokensIn,
+          tokensOut: outcome.tokensOut,
+          toolCalls: outcome.toolCalls,
+          limits,
+        });
         break;
       }
       onFrame(encodeWireMessage(chunk as Parameters<typeof encodeWireMessage>[0]));
@@ -200,6 +219,18 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
   }
 
   if (!signal.aborted) onFrame(encodeWireEvent("end", {})); // 客户端已断,收尾帧无意义
+  // 结构化出口日志:此前只有台账/checkpoint 可查,长链路排障要翻三处
+  logger.info({
+    event: "agent.run_done",
+    threadId,
+    durationMs: Date.now() - startedAt,
+    tokensIn: outcome.tokensIn,
+    tokensOut: outcome.tokensOut,
+    toolCalls: outcome.toolCalls,
+    truncated: outcome.truncatedReason !== null,
+    deadEnd: outcome.deadEndReason !== null,
+    aborted: signal.aborted,
+  });
   return outcome;
 }
 

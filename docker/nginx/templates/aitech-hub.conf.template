@@ -73,7 +73,9 @@ server {
     proxy_set_header Connection "";
     proxy_buffering off;
     proxy_cache off;
-    proxy_read_timeout 120s;
+    # 路由侧 15s SSE 心跳(": ping")保活;长写作/多卡渲染单轮可达数分钟,
+    # 300s 给心跳留足重试余量(原 120s 会静默断流)
+    proxy_read_timeout 300s;
   }
 
   # proxy_pass 无 URI 部分:原始请求串(含中文 percent-encoded slug)原样透传
