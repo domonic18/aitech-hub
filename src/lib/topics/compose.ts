@@ -4,7 +4,7 @@
  * composedAt/状态流转,save_topic_draft 工具消费)。编排权在会话 agent(细粒度
  * 工具逐项执行,工具面在 lib/agent/topic-tools),本模块只提供写侧确定性核;
  * 四步固定管线(批③ compose-agent)与单调用合成已退役。落稿 = content_post
- * 草稿(contentOrigin=ai_assisted,默认分类 report「产品评测」缺则幂等补建,
+ * 草稿(contentOrigin=ai_assisted,默认分类 blog「博客文章」缺则幂等补建,
  * 标签缺省带专题标题)→ topic 锚定 linkedPostId+composedAt、collecting→drafted
  * (§10-7)。M27 批②:视频封面转存入站内媒体库落 post.coverPath(站点头图 +
  * 公众号大图;转存失败降级 null 不阻塞落稿)。M27 批⑥:文首推荐卡升级带图
@@ -218,9 +218,12 @@ export async function transferCoverOrNull(coverUrl: string): Promise<string | nu
   }
 }
 
-/** 默认分类(§10-4:分类「产品评测」可改;slug 为站内既有种子,缺则幂等补建) */
-const DEFAULT_CATEGORY_SLUG = "report";
-const DEFAULT_CATEGORY_NAME = "产品评测";
+/**
+ * 默认分类(§10-4;2026-10-20 验收反馈问题一:专题合成稿=站长原创内容,落
+ * 「博客文章」——原创分类,首页进「博主文章」板块;slug 为站内既有种子,缺则幂等补建)
+ */
+const DEFAULT_CATEGORY_SLUG = "blog";
+const DEFAULT_CATEGORY_NAME = "博客文章";
 
 async function ensureDefaultCategory(): Promise<void> {
   const existing = await prisma.category.findUnique({
