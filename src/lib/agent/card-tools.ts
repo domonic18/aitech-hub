@@ -1,8 +1,9 @@
 /**
  * 卡片图渲染·admin 工具(M31 批B):agent 把编排的 HTML 渲染成图片入媒体库。
  * 双模:preset 数据卡(zod 校验数据→app 侧模板出 HTML,~300-600 token/卡,常规
- * 卡片优先)与自由 HTML(服务端消毒,~800-2000 token/卡,个性化排版)。
- * token 纪律三闸在工具层落地:html ≤12k 字符 zod 硬顶、返回仅 {url,width,height}
+ * 形态默认)与自由 HTML(服务端消毒,个性化版式——2026-10-20 起两条路径同等
+ * 正式,html 上限 12k→30k 字符、新增 maxHeight,支撑多栏/混排/示意图)。
+ * token 纪律在工具层落地:html ≤30k 字符 zod 硬顶、返回仅 {url,width,height}
  * 极小 JSON、消毒/校验报错全部人话短句供自纠。渲染服务见 services/card-renderer。
  * 纵深防御同 wechat-budget/cover-tools(admin 图独占 + 会话归属 fail-closed)。
  */
@@ -18,11 +19,12 @@ import { logger } from "../logger";
 import { uploadMedia } from "../media/service";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
+import { RENDER_CARD_HTML_PLACEHOLDER } from "./context-trim";
 
-const FREE_HTML_MAX_CHARS = 12_000; // agent 输出 token 单卡硬顶(~3-4k token)
+const FREE_HTML_MAX_CHARS = 30_000; // 单卡硬顶(~8-10k token;多栏混排/示意图需要版面体量)
 
 export const renderCardTool = tool(
-  async ({ preset, data, html, width }, config) => {
+  async ({ preset, data, html, width, maxHeight }, config) => {
     if (!(await assertAdminThread(config?.configurable?.thread_id)))
       return adminThreadDeny(config?.configurable?.thread_id, "card");
 
@@ -54,13 +56,26 @@ export const renderCardTool = tool(
       }
       doc = r.html;
     } else {
+      // 占位回显防呆:上下文瘦身把旧调用的 args.html 换成了占位文本,模型偶尔
+      // 原样抄回来再渲一次——渲出来就是一张写着占位语的无意义卡。措辞刻意说明
+      // 「不是你的输入错误」:实测模型读到自己的历史占位会自判「我写漏了」而连环重渲。
+      if ((html as string).includes(RENDER_CARD_HTML_PLACEHOLDER))
+        return JSON.stringify({
+          ok: false,
+          error:
+            "html 是系统为节省上下文做的压缩替换,不是你的输入错误,不要重渲。这张卡已有渲染结果," +
+            "直接用前面工具结果里的 url;确实需要新卡时,重新写完整 HTML 再调用",
+        });
       const r = sanitizeCardHtml(html as string);
       if (!r.ok) return JSON.stringify({ ok: false, error: r.error });
       doc = r.html;
     }
 
     try {
-      const card = await renderCardPng(doc, { width: width ?? 900 });
+      const card = await renderCardPng(doc, {
+        width: width ?? 900,
+        ...(maxHeight !== undefined ? { maxHeight } : {}),
+      });
       const media = await uploadMedia({
         data: card.png,
         mime: "image/png",
@@ -87,15 +102,16 @@ export const renderCardTool = tool(
     description:
       "把卡片渲染成图片并存入媒体库,返回 {url,width,height,accent},用于正文配图(金句/要点/" +
       "数据/量级对比/台账/选型/步骤/全景/时间线/要素盘点/大图类内容优先做卡而非纯文字)。" +
-      "内容形态→卡型的选型纪律以技能指南为准。两种用法二选一:① preset+data——内置模板" +
-      "(11 卡型统一深空主题:quote|points|stats|bars|ledger|compare|steps|flow|" +
-      "timeline|matrix|photo),只填数据,样式模板兜底,常规卡片一律" +
-      "优先(省额度);② html——自由 HTML(≤12000 字符,仅版式确需个性化时用)。渲染端" +
+      "内容形态→卡型的选型纪律以技能指南为准。两种用法二选一、同等正式:① preset+data" +
+      "——内置模板(11 卡型统一深空主题:quote|points|stats|bars|ledger|compare|steps|" +
+      "flow|timeline|matrix|photo),只填数据,样式模板兜底,常规形态默认;② html——" +
+      "自由 HTML(≤30000 字符),多栏混排/图文并置/自定义示意图/数据对比长图首选。渲染端" +
       "宽容:文档级标签(html/head/meta/title)自动摘除,写片段即可;深空底色与字体已内置," +
       "强调色用返回的 accent(main/soft/text,与同篇 preset 卡恒同组);纪律:<style> 块+" +
       "class 复用样式,禁止逐元素重复 inline style、禁止手写 base64 图片," +
       "引已有配图用站内路径 /wp-content/uploads/…(渲染时自动映射媒体卷)。" +
-      "返回的 url 直接以 ![](url) 写进正文,不要向用户复述 HTML。",
+      "返回的 url 直接以 ![](url) 写进正文,不要向用户复述 HTML。渲染成功即定稿:你" +
+      "看不到成图,同一张卡至多再渲 1 次(工具报错或 height 异常时),禁止连环重渲。",
     schema: z.object({
       preset: z
         .enum(CARD_PRESET_IDS)
@@ -136,7 +152,14 @@ export const renderCardTool = tool(
         .min(320)
         .max(1600)
         .optional()
-        .describe("画布宽(px),默认 900;公众号场景 900 即可"),
+        .describe("画布宽(px),默认 900;公众号场景 900 即可,多栏宽卡可 1000~1200"),
+      maxHeight: z
+        .number()
+        .int()
+        .min(400)
+        .max(8000)
+        .optional()
+        .describe("画布高度上限(px),默认 4000;内容多时 4000~6000,超 8000 应拆成多张卡"),
     }),
   },
 );

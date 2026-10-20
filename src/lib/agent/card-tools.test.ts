@@ -13,6 +13,7 @@ vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 vi.mock("../media/service", () => ({ uploadMedia }));
 
 import { renderCardTool } from "./card-tools";
+import { RENDER_CARD_HTML_PLACEHOLDER } from "./context-trim";
 
 type AnyTool = { invoke: (args: never, cfg?: never) => Promise<unknown> };
 
@@ -187,6 +188,18 @@ describe("render_card", () => {
     const r = await invoke(renderCardTool, { html: "<p onclick='x()'>a</p>" });
     expect(r).toMatchObject({ ok: false });
     expect(String(r.error)).toContain("消毒");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("占位回显 → 拒渲染(上下文瘦身后的 args.html 被模型抄回来)", async () => {
+    sessionFindUnique.mockResolvedValue({ visitorId: "admin:s" });
+    const fetchMock = stubFetch();
+    const r = await invoke(renderCardTool, {
+      html: `<div>${RENDER_CARD_HTML_PLACEHOLDER}</div>`,
+    });
+    expect(r).toMatchObject({ ok: false });
+    expect(String(r.error)).toContain("系统为节省上下文做的压缩替换");
+    expect(String(r.error)).toContain("不要重渲");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

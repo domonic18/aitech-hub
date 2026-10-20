@@ -13,7 +13,7 @@ import { FONT_STACK } from "./templates/shell";
 
 export const CARD_HTML_MAX_CHARS = 400_000; // 与服务侧 HTML_MAX_CHARS 对齐
 const IMG_MAX_COUNT = 8;
-const DATA_URI_MAX_CHARS = 600_000; // ~440KB 二进制;自由模 zod 12k 硬顶下实际到不了
+const DATA_URI_MAX_CHARS = 600_000; // ~440KB 二进制;自由模 zod 30k 硬顶下实际到不了
 
 /** 允许保留的标签;img 走专属 src 校验,style 走内容滤洗 */
 const ALLOWED_TAGS = new Set([
@@ -101,6 +101,11 @@ const IMG_SRC_DATA = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+
 /** CSS 外联 url():除 data: 与站内路径外全部命中(粗粒度即可,服务侧硬闸兜底) */
 const CSS_EXTERNAL_URL = /url\(\s*['"]?(?!data:|\/wp-content\/uploads\/)[^)'"\s]*['"]?\s*\)/gi;
 
+/** /g 正则的 test() 会推进 lastIndex——统一用 match 判定,避免跨调用串状态 */
+function hasExternalCssUrl(css: string): boolean {
+  return css.match(CSS_EXTERNAL_URL) !== null;
+}
+
 export type SanitizeResult = { ok: true; html: string } | { ok: false; error: string };
 
 /** domhandler Element 的结构化子集(不引 cheerio 内部命名空间类型) */
@@ -146,6 +151,15 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
       el.replaceWith(el.contents()); // 无害未知标签解包保文本,不算违规
       return;
     }
+    // 通用属性扫描必须排在 style/img 的 return 之前——否则 img 的 onerror 与
+    // style="background:url(https://…)" 从未被检查(2026-10-20 补洞)。
+    for (const [name, value] of Object.entries((node as DomEl).attribs ?? {})) {
+      if (/^on/i.test(name)) violations.push(`禁用事件属性 ${name}`);
+      else if (/javascript:/i.test(value ?? "")) violations.push(`属性 ${name} 含 javascript: URL`);
+      else if (name === "style" && hasExternalCssUrl(value ?? "")) {
+        violations.push("style 属性内 url() 仅允许 data: 与站内路径");
+      }
+    }
     if (tag === "style") {
       const css = el.text();
       if (/@import/i.test(css)) violations.push("<style> 内禁止 @import");
@@ -167,10 +181,6 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
         violations.push("单张 data-URI 图片超过约 440KB 上限");
       }
       return;
-    }
-    for (const [name, value] of Object.entries((node as DomEl).attribs ?? {})) {
-      if (/^on/i.test(name)) violations.push(`禁用事件属性 ${name}`);
-      else if (/javascript:/i.test(value ?? "")) violations.push(`属性 ${name} 含 javascript: URL`);
     }
   });
   if (imgCount > IMG_MAX_COUNT) violations.push(`img 超过 ${IMG_MAX_COUNT} 张上限`);
@@ -198,6 +208,13 @@ export function sanitizeCardHtml(input: string): SanitizeResult {
     );
     for (const name of Object.keys(raw.attribs)) {
       if (!keep.has(name)) el.removeAttr(name);
+    }
+    // 纵深:保留的 style 属性再做一遍外链滤洗(第一遍已报违规,这里兜服务侧兜底前的空窗)
+    if (keep.has("style")) {
+      const styleAttr = el.attr("style");
+      if (styleAttr !== undefined && hasExternalCssUrl(styleAttr)) {
+        el.attr("style", styleAttr.replace(CSS_EXTERNAL_URL, "none"));
+      }
     }
     if (tag === "style") {
       el.text(

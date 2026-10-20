@@ -1,7 +1,8 @@
 "use client";
 /**
  * 受约束 markdown 渲染(K2 答案卡 / K2.5 Drawer 会话正文共用):
- * 标题(#~####)/加粗/行内代码/链接/代码围栏/GFM 表格/有序无序列表 + [n] 角标。
+ * 标题(#~####)/加粗/行内代码/链接/代码围栏/GFM 表格/有序无序列表 + [n] 角标;
+ * 独占一行的站内卡片图 ![](/wp-content/uploads/…) 渲染为 <img>(render_card 产物)。
  * citeLinks=true 时角标为锚链(跳引用列表 #cite-n);Drawer 无引用列表,
  * 传 false 渲染纯上标。
  */
@@ -149,6 +150,20 @@ function renderBlocks(blocks: AnswerBlock[], citeLinks: boolean): React.ReactNod
             </tbody>
           </table>
         </div>
+      );
+    }
+    if (b.kind === "img") {
+      // 卡片图(render_card 产物):站内媒体路径直出,宽屏铺满阅读栏
+      return (
+        // eslint-disable-next-line @next/next/no-img-element -- 站内媒体卷动态路径,不走 next/image 优化域
+        <img
+          key={i}
+          src={b.src}
+          alt={b.alt}
+          loading="lazy"
+          decoding="async"
+          className="my-2 w-full rounded border border-line"
+        />
       );
     }
     return <p key={i}>{renderInline(b.segs, `p${i}`, citeLinks)}</p>;
