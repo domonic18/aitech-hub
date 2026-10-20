@@ -76,6 +76,7 @@
 | KPI 卡 | 4 列网格:图标+标签 → 大数(mono,单位 small)→ 说明行;同比用语义色小字 | admin-usage / spider |
 | CSS 图表 | **禁图表库**:柱图(div 高度 + seeded rnd)、分布条(`.track/.fill` 必须display:block)、sparkline(14 柱)、热力图(84 格 color-mix 4 档 + 日期轴 space-between,**子元素禁 margin-left:auto**)、条带(24 格)。数据一律 mulberry32 种子伪随机,写死种子保证双主题截图一致 | admin-usage / spider |
 | 抽屉 Drawer | 右侧 560px;头(单号+状态 tag)→ desc2 概要 → JSON pre(.k/.s/.n 语法色)→ 垂直时间线(节点圆点 + 耗时;终态节点用语义色);`body.drawer-open` 控制 | admin-sessions |
+| 图片查看器 | 全屏遮罩(black/80,z 高于抽屉);工具条=缩小/百分比(mono)/放大/适配/关闭(sprite 图标);滚轮缩放朝向光标(0.2×~8×)、双击 1↔2、拖拽平移(scale>1);Esc 只关最上层——下层容器(抽屉)按上层 open 态让行 | admin-media |
 | 双状态卡 | 服务观测页页顶两卡并列(适配层 / 转写):状态点 + 4 指标 + 内嵌 alert | admin-bloggers |
 | 两步武装删除 | 删除按钮:启用行 disabled + title「两步武装删除」;停用行可点;footer 注「仅允许对已停用账号物理删除,级联清理」 | admin-bloggers |
 | 空态 | 图标 + 标题 + 说明 + hint 条;说明兜底语义(「AI 直接作答」) | site-search |
