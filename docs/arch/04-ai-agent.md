@@ -193,6 +193,8 @@
 - **知识层**:`BLOGGER_VIDEO_GUIDE`/`CARD_RENDERING_GUIDE` 同步反转——原「卡型路由(选 preset)」改写为「版式语汇」(同一份内容形态对照:金句→大字引言区、数据→大数字指标区、对垒→双栏对照区、步骤→步骤链区、全景→泳道全景区…),语义从「选模板」变为「自由 HTML 的版式设计参考」;「图片卡纪律」的 preset 默认/html 四情形对照退役。admin 系统提示「卡片可视化纪律」同步单路径表述。oneoff `scripts/oneoff/card-guide-html-only/` 一次灌两把 key。
 - **保留面**:preset 模板实现(`src/lib/card/presets|normalize|preset-schemas|templates/*`)与 `/api/card-presets/preview`、CardTemplateLab 模板实验室**全量保留**——那是人工确定性预览调试台,非文章生成入口;`contextTrimMiddleware` 逻辑不动(旧 checkpoint 里无 html 的 preset 调用天然跳过剥离,向后兼容)。
 
+**K2.8 补注十四(2026-10-20,正文渠道中性化——导流话术出正文进分发层)**:多渠道分发(公众号/小红书/掘金…)前置下,「公众号读者点阅读原文」类平台导流话术不得 hardcode 进存库正文(同一篇要发多渠道)。三层收口:①正文侧——`buildVideoCard` 文首推荐卡删「阅读原文」CTA,`BLOGGER_VIDEO_GUIDE`「去看原视频」小节新增纪律:正文渠道中性,严禁写死平台导流话术,站内导流由分发层按渠道自动追加(oneoff `scripts/oneoff/guide-channel-neutral/` 落库);②分发侧——新增 `src/lib/distribute/channel-tails.ts` 渠道尾注注册表(新增渠道=加 tail 函数+管线装配点;文案与品牌强相关,先落代码常量不进 site_config),`wechat-sync-run` 在 transload 前拼 `wechatTail()`(码点预算按追加后计,`content_source_url` 仍锚站内原文);③存量文不回写,重合成时按新规则生效。补注三「正文带原链是公众号读者抵达视频的唯一通路」语义由 `content_source_url`+尾注承接,行内 video_url 链接要求不变。
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

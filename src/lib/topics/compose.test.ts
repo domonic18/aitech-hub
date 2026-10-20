@@ -73,7 +73,8 @@ describe("buildVideoCard(文首推荐卡,M27 批⑥带图)", () => {
     const card = buildVideoCard([tgBlock(), second], null);
     expect(card).toContain("《端侧实测》");
     expect(card).toContain("UP主:UP主A");
-    expect(card).toContain("阅读原文");
+    // 渠道中性化(2026-10-20 问题四):导流话术不入正文,由分发侧 channel-tails 追加
+    expect(card).not.toContain("阅读原文");
     expect(card).not.toContain("第二条");
   });
 

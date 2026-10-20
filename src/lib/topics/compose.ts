@@ -111,6 +111,9 @@ export async function buildComposeBlocks(
  * 批⑥:卡内嵌首视频自己的封面(图上文下两段式 blockquote;双端渲染器对块内
  * md 图片语法原生支持,公众号侧经 transload 转 mmbiz + image 规则内联样式),
  * 图必须是所推荐视频自己的封面(语义锚定),转存失败/无视频素材降级纯文字卡。
+ * 2026-10-20 验收反馈问题四:正文渠道中性化——「阅读原文」类公众号导流话术
+ * 不再写进正文(文章要分发多渠道),站内导流由分发层按渠道追加尾注
+ * (distribute/channel-tails),视频直达链接由写作指南要求正文自带 video_url。
  */
 export function buildVideoCard(
   blocks: ComposeMaterialBlock[],
@@ -119,11 +122,7 @@ export function buildVideoCard(
   const v = blocks.find((b) => b.kind === "telegram");
   if (!v) return null;
   const imageLine = cardCoverPath ? `> ![${v.title}](${cardCoverPath})\n>\n` : "";
-  return (
-    imageLine +
-    `> 📺 本文推荐视频:《${v.title}》· UP主:${v.blogger ?? "未知"}` +
-    " ——文末「阅读原文」可进站直达原视频"
-  );
+  return imageLine + `> 📺 本文推荐视频:《${v.title}》· UP主:${v.blogger ?? "未知"}`;
 }
 
 // ── 封面供给(M27 批⑥:全量转存,brief/transfer/finalize 三方共用)────

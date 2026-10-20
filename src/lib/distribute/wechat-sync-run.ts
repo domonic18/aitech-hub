@@ -1,13 +1,15 @@
 /**
  * 公众号草稿同步·执行侧(M17 批⑥自 wechat-sync 拆出,≤350 行红线):
  * worker 消费的同步管线——封面 add_material + 正文图 uploadimg 转存(wechat-media
- * 缓存防重推)→ renderWechatHtml 内联样式 → draft/add(首推)| draft/update(重推,
+ * 缓存防重推)→ 追加公众号渠道尾注(channel-tails,2026-10-20 正文渠道中性化)→
+ * renderWechatHtml 内联样式 → draft/add(首推)| draft/update(重推,
  * 行 mediaId 锚定)。行状态机 pending → synced/failed;批量 failedIds 隔离、篇间
  * gap 防频控。入队三口(一键/批量/发布自动)在 ./wechat-sync,依赖单向 run→sync。 */
 import { postPath } from "../content/post-path";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { absoluteUrl } from "../seo/site";
+import { wechatTail } from "./channel-tails";
 import { renderWechatHtml } from "./wechat-html";
 import { ensureCoverMedia, transloadContentImages } from "./wechat-media";
 import {
@@ -140,7 +142,9 @@ export async function syncOnePost(
 
     const creds: WechatCredentials = { appid: cfg.appid, appSecret: cfg.appSecret };
     const cover = await ensureCoverMedia(creds, coverPath);
-    const finalMd = await transloadContentImages(creds, contentMd);
+    // 渠道尾注在分发侧追加(2026-10-20 问题四):正文存库渠道中性,「阅读原文」
+    // 导流话术仅公众号草稿携带(码点预算按追加后计)
+    const finalMd = await transloadContentImages(creds, `${contentMd}\n\n${wechatTail()}`);
     const { html } = renderWechatHtml(finalMd, themeId);
     const contentChars = [...html].length;
     if (contentChars > WECHAT_CONTENT_MAX_CHARS) {
