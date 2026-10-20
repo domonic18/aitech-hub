@@ -1,6 +1,6 @@
 /**
  * 上下文瘦身单测(2026-10-20 富 HTML):规则 1 剥已渲染卡的 args.html(最近 2 次
- * 原样、preset/data 保留、未应答的不动);规则 2 仅超阈值时精简旧 brief/guide,
+ * 原样、width/maxHeight 保留、未应答的不动);规则 2 仅超阈值时精简旧 brief/guide,
  * 每种留最近一次;write_article/save_topic_draft 结果与 human 消息永不改;
  * 无改动同引用返回(零拷贝契约)。
  */
@@ -48,7 +48,7 @@ describe("trimContextMessages 规则 1(已渲染卡的 HTML 参数)", () => {
     expect(out.stats.charsAfter).toBeLessThan(out.stats.charsBefore);
   });
 
-  it("preset 卡(无 html 字段)不动;未应答的 render_card 也不动", () => {
+  it("历史 preset 调用(无 html 字段)不动;未应答的 render_card 也不动", () => {
     const presetCall = aiCall("c1", "render_card", { preset: "stats", data: { items: [] } });
     const pending = aiCall("c2", "render_card", { html: "<div>x</div>" }); // 无 ToolMessage
     const out = trimContextMessages([
