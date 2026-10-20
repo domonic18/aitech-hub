@@ -7,14 +7,22 @@
  * 输出预算/供应商扩展(2026-10-17:max_tokens 截断静默中断根修)只住台账
  * extraParams,代码零数值默认——max_tokens → maxTokens(双协议),
  * output_config(如 MiniMax effort 思考深度,缺省 max)→ outputConfig(仅
- * anthropic,langchain 原生透传请求体);未配置时 langchain 按模型名兜底
- * (未知模型 4096,思考型模型易静默截断),故缺失即 warn 提示台账补配。
+ * anthropic,langchain 原生透传请求体);temperature 同口径(2026-10 模型
+ * 切换:Kimi 固定不可改、thinking 开启时 ChatAnthropic 仅接受缺省或 1,
+ * 硬编码 0.3 会直接 400),未配置即不下发;max_tokens 缺失时 langchain 按
+ * 模型名兜底(未知模型 4096,思考型模型易静默截断),故缺失即 warn 提示台账补配。
  */
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 
 import { AI_PROTOCOL_ANTHROPIC, AI_PROTOCOL_OPENAI, AI_PURPOSE_SEARCH } from "../ai/constants";
-import { hasExtraMaxTokens, readExtraMaxTokens, readExtraOutputConfig } from "../ai/extra-params";
+import {
+  hasExtraMaxTokens,
+  hasExtraTemperature,
+  readExtraMaxTokens,
+  readExtraOutputConfig,
+  readExtraTemperature,
+} from "../ai/extra-params";
 import { resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
 import { logger } from "../logger";
 
@@ -24,9 +32,14 @@ export class AgentModelError extends Error {}
 /** extraParams → 构造参数(纯函数,单测锚点):类型门通过才带上,配错型 warn 不静默吞 */
 export function extraModelParams(m: ResolvedAiModel): {
   maxTokens?: number;
+  temperature?: number;
   outputConfig?: Record<string, unknown>;
 } {
-  const out: { maxTokens?: number; outputConfig?: Record<string, unknown> } = {};
+  const out: {
+    maxTokens?: number;
+    temperature?: number;
+    outputConfig?: Record<string, unknown>;
+  } = {};
   const maxTokens = readExtraMaxTokens(m.extraParams);
   if (maxTokens !== null) {
     out.maxTokens = maxTokens;
@@ -35,6 +48,18 @@ export function extraModelParams(m: ResolvedAiModel): {
       event: "agent.model_extra_params_invalid",
       modelId: m.id,
       key: "max_tokens",
+    });
+  }
+  // 温度零硬编码(2026-10 Kimi/DeepSeek 切换):Kimi 固定不可改、thinking 开启时
+  // ChatAnthropic 只接受缺省或 1;未配置即不下发,由供应商默认兜底。
+  const temperature = readExtraTemperature(m.extraParams);
+  if (temperature !== null) {
+    out.temperature = temperature;
+  } else if (hasExtraTemperature(m.extraParams)) {
+    logger.warn({
+      event: "agent.model_extra_params_invalid",
+      modelId: m.id,
+      key: "temperature",
     });
   }
   const outputConfig = readExtraOutputConfig(m.extraParams);
@@ -64,7 +89,6 @@ function openaiModel(m: ResolvedAiModel): ChatOpenAI {
   return new ChatOpenAI({
     model: m.modelId,
     apiKey: m.apiKey ?? "not-set",
-    temperature: 0.3,
     timeout: m.timeoutSec * 1000,
     maxRetries: 0, // 重试与主备切换由绑定解析层负责,客户端不重试防重复计费
     configuration: { baseURL: m.baseUrl ?? undefined },
@@ -77,7 +101,6 @@ function anthropicModel(m: ResolvedAiModel): ChatAnthropic {
   return new ChatAnthropic({
     model: m.modelId,
     apiKey: m.apiKey ?? "not-set",
-    temperature: 0.3,
     maxRetries: 0,
     ...(m.baseUrl ? { anthropicApiUrl: m.baseUrl } : {}),
     // anthropic 协议超时经 SDK ClientOptions 透传(无顶层 timeout 字段)

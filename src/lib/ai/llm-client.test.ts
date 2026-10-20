@@ -114,6 +114,27 @@ describe("chatJson 请求形状", () => {
     expect(body.messages).toEqual([{ role: "user", content: "概括这条视频" }]);
   });
 
+  it("output_config 只进 anthropic 载荷(openai 不出现该字段)", async () => {
+    const calls = stubFetch([{ status: 200, body: OPENAI_OK }]);
+    await chatJson({ ...base, outputConfig: { effort: "low" } });
+    expect(String(calls[0]!.init.body)).not.toContain("output_config");
+
+    const anthropicCalls = stubFetch([
+      { status: 200, body: JSON.stringify({ content: [{ type: "text", text: "{}" }] }) },
+    ]);
+    await chatJson({
+      ...base,
+      protocol: "anthropic",
+      baseUrl: "https://llm.test",
+      outputConfig: { effort: "low" },
+    });
+    expect(
+      (JSON.parse(String(anthropicCalls[0]!.init.body)) as { output_config?: unknown })
+        .output_config,
+    ).toEqual({ effort: "low" });
+    expect(anthropicCalls).toHaveLength(1);
+  });
+
   it("无 key:openai 不带 Authorization;anthropic 仍需 x-api-key 占位", async () => {
     let calls = stubFetch([{ status: 200, body: OPENAI_OK }]);
     await chatJson({ ...base, apiKey: null });
@@ -345,6 +366,38 @@ describe("chatStream", () => {
     expect(body.max_tokens).toBe(800);
   });
 
+  it("anthropic:output_config 进流式载荷;openai 同一入参不下发该字段", async () => {
+    const calls: CapturedCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+        calls.push({ url: String(url), init });
+        return sseResponse([
+          'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n',
+          'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ]);
+      }),
+    );
+    await chatStream(
+      {
+        ...streamBase,
+        protocol: "anthropic",
+        baseUrl: "https://llm.test",
+        outputConfig: { effort: "high" },
+      },
+      () => undefined,
+    );
+    expect(
+      (JSON.parse(String(calls[0]!.init.body)) as { output_config?: unknown }).output_config,
+    ).toEqual({ effort: "high" });
+
+    const openaiCalls = stubFetch([{ status: 200, body: "data: [DONE]\n\n" }]);
+    await chatStream({ ...streamBase, outputConfig: { effort: "high" } }, () => undefined).catch(
+      () => undefined,
+    );
+    expect(String(openaiCalls[0]!.init.body)).not.toContain("output_config");
+  });
+
   it("anthropic:400 点名 stream → 回落非流式整段单 delta(镜像 stream_options 先例)", async () => {
     const calls: CapturedCall[] = [];
     vi.stubGlobal(
@@ -434,5 +487,27 @@ describe("chatText 纯文本通道(write_article 长文起草)", () => {
   it("HTTP 非 2xx → AiClientError http(响应体摘要)", async () => {
     stubFetch([{ status: 429, body: '{"error":"rate limited"}' }]);
     await expect(chatText({ ...base })).rejects.toBeInstanceOf(AiClientError);
+  });
+
+  it("anthropic:output_config(写作模型 effort 思考深度)进载荷;openai 不下发", async () => {
+    const calls = stubFetch([
+      {
+        status: 200,
+        body: JSON.stringify({ content: [{ type: "text", text: "# 正文" }] }),
+      },
+    ]);
+    await chatText({
+      ...base,
+      protocol: "anthropic",
+      baseUrl: "https://llm.test",
+      maxTokens: 65_536,
+      outputConfig: { effort: "low" },
+    });
+    const body = JSON.parse(String(calls[0]!.init.body)) as { output_config?: unknown };
+    expect(body.output_config).toEqual({ effort: "low" });
+
+    const openaiCalls = stubFetch([{ status: 200, body: OPENAI_OK }]);
+    await chatText({ ...base, outputConfig: { effort: "low" } });
+    expect(String(openaiCalls[0]!.init.body)).not.toContain("output_config");
   });
 });

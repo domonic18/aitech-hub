@@ -25,6 +25,8 @@ export interface ChatStreamInput {
   user: string;
   timeoutSec: number;
   maxTokens?: number;
+  /** 供应商扩展(仅 anthropic 下发 output_config,如 Kimi 的 effort 思考深度) */
+  outputConfig?: Record<string, unknown>;
   /** 外部中止(客户端断开);与超时 AbortSignal.any 组合(双协议流式均透传) */
   signal?: AbortSignal;
 }
@@ -210,6 +212,7 @@ export async function chatStream(
       max_tokens: maxTokens,
       system: input.system,
       messages: [{ role: "user", content: input.user }],
+      ...(input.outputConfig ? { output_config: input.outputConfig } : {}),
     };
     let res = await openStream(
       url,

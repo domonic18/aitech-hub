@@ -19,6 +19,8 @@ export interface ChatJsonInput {
   timeoutSec: number;
   /** 输出预算(默认 2000:summary ≤1000 字 + points 富余) */
   maxTokens?: number;
+  /** 供应商扩展(仅 anthropic 下发 output_config,如 Kimi/MiniMax 的 effort 思考深度) */
+  outputConfig?: Record<string, unknown>;
 }
 
 /** 输出预算缺省(流式同款,llm-stream 引用同源) */
@@ -146,6 +148,7 @@ export async function chatText(
         max_tokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
         system: input.system,
         messages: [{ role: "user", content: input.user }],
+        ...(input.outputConfig ? { output_config: input.outputConfig } : {}),
       }),
       input.timeoutSec,
     );
@@ -194,6 +197,7 @@ export async function chatJson(
         max_tokens: maxTokens,
         system: input.system,
         messages: [{ role: "user", content: input.user }],
+        ...(input.outputConfig ? { output_config: input.outputConfig } : {}),
       }),
       input.timeoutSec,
     );

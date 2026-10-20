@@ -161,3 +161,43 @@ describe("extraParams 接线(max_tokens/output_config 只住台账)", () => {
     );
   });
 });
+
+describe("temperature 接线(2026-10 Kimi/DeepSeek 切换:零 hardcode)", () => {
+  it("未配 temperature → 构造参数不带该字段(不再有 0.3 硬编码)", async () => {
+    resolveAiModelMock.mockResolvedValue({ ...BASE_MODEL, protocol: "anthropic" });
+    await resolveAgentModel();
+    const opts = anthropicCtor.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("temperature" in opts).toBe(false);
+    expect(loggerWarn).not.toHaveBeenCalledWith(expect.objectContaining({ key: "temperature" }));
+  });
+
+  it("anthropic 台账配 1(thinking 开启时唯一合法显式值)→ 透传", async () => {
+    resolveAiModelMock.mockResolvedValue({
+      ...BASE_MODEL,
+      protocol: "anthropic",
+      extraParams: { max_tokens: 65_536, temperature: 1 },
+    });
+    await resolveAgentModel();
+    expect(anthropicCtor).toHaveBeenCalledWith(expect.objectContaining({ temperature: 1 }));
+  });
+
+  it("openai 台账配 0.3(等价迁移)→ 透传", async () => {
+    resolveAiModelMock.mockResolvedValue({ ...BASE_MODEL, extraParams: { temperature: 0.3 } });
+    await resolveAgentModel();
+    expect(openaiCtor).toHaveBeenCalledWith(expect.objectContaining({ temperature: 0.3 }));
+  });
+
+  it("temperature 配错型 → warn invalid,不带值不静默吞", async () => {
+    resolveAiModelMock.mockResolvedValue({
+      ...BASE_MODEL,
+      protocol: "anthropic",
+      extraParams: { temperature: 3 },
+    });
+    await resolveAgentModel();
+    const opts = anthropicCtor.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("temperature" in opts).toBe(false);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "agent.model_extra_params_invalid", key: "temperature" }),
+    );
+  });
+});
