@@ -1,15 +1,15 @@
 /**
  * 写作指南订正:把 src/lib/ai/writing-guides.ts 的 BLOGGER_VIDEO_GUIDE 现文本
- * 灌入 agent_skill(blogger-video)。2026-10-20 渠道中性化配套——正文侧严禁
- * 写死平台导流话术(「公众号读者点阅读原文」等),站内导流由分发层
- * channel-tails 按渠道追加;指南新增对应纪律条款。
+ * 灌入 agent_skill(blogger-video)。2026-10-20 详情页重构配套——上一轮
+ * guide-channel-neutral(渠道中性化)与本轮「写作要求优先」条款一并落库;
+ * 验收库已应用过渠道中性化版,本次为其增量(新增条款 + docblock)。
  *
  * 背景:seed 只在缺行时插入,落库后归后台所有——代码里改指南不会自动生效,
- * 必须显式订正。与代码变更同 PR;部署后执行(旧正文/旧指南互不致错:导流
- * 话术只是重复,不再有害)。
+ * 必须显式订正。与代码变更同 PR;部署后执行(旧正文不致错:新条款只约束
+ * 下一次生成;指南全文同步幂等,重复执行跳过)。
  *
- *   npx tsx scripts/oneoff/guide-channel-neutral/run.ts          # dry-run
- *   npx tsx scripts/oneoff/guide-channel-neutral/run.ts --apply  # 写库
+ *   npx tsx scripts/oneoff/guide-blogger-video/run.ts          # dry-run
+ *   npx tsx scripts/oneoff/guide-blogger-video/run.ts --apply  # 写库
  *
  * 幂等:文本一致则跳过;执行核验后删除本目录(以 git 历史存档)。
  * @status oneoff

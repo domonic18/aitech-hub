@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * 挂载执行钮(M26 批③治理台):POST /api/topics/[id]/items,成功刷新;
- * 409(重复挂载)等行内红字。
+ * 素材添加钮(2026-10-20 详情页重构文案:挂载→添加,讲用户语言):
+ * POST /api/topics/[id]/items,成功刷新;409(重复添加)等行内红字。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -34,7 +34,7 @@ export default function TopicMountButton({
       });
       const body = (await res.json()) as ApiEnvelope;
       if (!res.ok || body.code !== 0) {
-        setErr(body.message || `挂载失败(${res.status})`);
+        setErr(body.message || `添加失败(${res.status})`);
         return;
       }
       router.refresh();
@@ -53,7 +53,7 @@ export default function TopicMountButton({
         disabled={busy}
         className="rounded-sm border border-line px-2.5 py-1 text-xs text-text-2 hover:border-accent hover:text-text-1 disabled:opacity-50"
       >
-        挂载
+        添加
       </button>
       {err && (
         <span className="max-w-48 text-right text-[11px] text-red" role="alert">

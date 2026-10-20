@@ -69,7 +69,7 @@ export default function TopicCreateForm() {
         value={positioning}
         maxLength={1000}
         onChange={(e) => setPositioning(e.target.value)}
-        placeholder="专题定位(可选:给合成用的选材与口吻指引,≤1000 字符)…"
+        placeholder="写作要求(可选:选材与口吻指引,生成初稿时生效,≤1000 字符)…"
         rows={2}
         className="w-80 rounded-sm border border-line bg-panel px-2.5 py-1.5 text-[13px] outline-none focus:border-accent placeholder:text-text-3"
       />

@@ -151,7 +151,7 @@
 
 - **根因**:专题合成/编辑页均页面自持 AssistantCard,路由切换 → 页面组件树卸载 → SDK 断 SSE 流 → stream route `cancel()` → `abort.abort()` 服务端 run 终止(usage 照记,不可恢复)。生产实证:合成 run 止步 write_todos(4h 唯一一条 search_agent 用量),关联文档无新稿
 - **红线(ESLint `no-restricted-imports` 机器守)**:`AssistantCard` 全站仅宿主 `AssistantFab` 一处实例化——宿主挂**根 layout**(跨路由持久,admin↔site 同理),首开才挂(零前置开销),此后关闭/隐藏/切页仅 display:none,在跑 run 不中断
-- **页面接入两协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicComposeActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复
+- **页面接入两协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicDraftActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复
 - **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由
 - **诚实边界**:刷新/关标签页仍断 run(SSE 流式架构固有,跨刷新存活需后台化=BullMQ+流重连,量级另立);/search AgentDrawer 独立会话面不收编(页面即场景)
 
@@ -194,6 +194,8 @@
 - **保留面**:preset 模板实现(`src/lib/card/presets|normalize|preset-schemas|templates/*`)与 `/api/card-presets/preview`、CardTemplateLab 模板实验室**全量保留**——那是人工确定性预览调试台,非文章生成入口;`contextTrimMiddleware` 逻辑不动(旧 checkpoint 里无 html 的 preset 调用天然跳过剥离,向后兼容)。
 
 **K2.8 补注十四(2026-10-20,正文渠道中性化——导流话术出正文进分发层)**:多渠道分发(公众号/小红书/掘金…)前置下,「公众号读者点阅读原文」类平台导流话术不得 hardcode 进存库正文(同一篇要发多渠道)。三层收口:①正文侧——`buildVideoCard` 文首推荐卡删「阅读原文」CTA,`BLOGGER_VIDEO_GUIDE`「去看原视频」小节新增纪律:正文渠道中性,严禁写死平台导流话术,站内导流由分发层按渠道自动追加(oneoff `scripts/oneoff/guide-channel-neutral/` 落库);②分发侧——新增 `src/lib/distribute/channel-tails.ts` 渠道尾注注册表(新增渠道=加 tail 函数+管线装配点;文案与品牌强相关,先落代码常量不进 site_config),`wechat-sync-run` 在 transload 前拼 `wechatTail()`(码点预算按追加后计,`content_source_url` 仍锚站内原文);③存量文不回写,重合成时按新规则生效。补注三「正文带原链是公众号读者抵达视频的唯一通路」语义由 `content_source_url`+尾注承接,行内 video_url 链接要求不变。
+
+**K2.8 补注十五(2026-10-20,专题详情页重构——写作配置可视化,双真相源收口)**:验收反馈指出专题详情多编辑框重复(撰写目的×2、补充要求 vs 定位备注)、「合成/重合成」术语难懂。四区重排(概览/写作要求/素材/初稿,topic-pipeline §8):①**配置单点**——「撰写目的」下拉与定位 textarea 合并为「写作要求」MECE 四维构建(`src/lib/topics/writing-config.ts`:内容形式×口吻语感×篇幅×配图,每选项一句话说明+样例节选;配图维走 `/api/card-presets/preview` 真实渲染零副作用预览);机制=选择单向合成文本落库 positioning(零 schema 变更,缺省维不出条款=存量模板无损回显),textarea 唯一真相源,手改即「已自定义」(未知文本不猜);体裁词服务端 `resolvePurpose` 从落库文本派生(自定义回落「视频安利稿」,与历史 fallback 同口径),生成话术与概览展示同源——post-319 的「下拉未保存 vs 已存定位」双真相源漂移根除。②**术语人话**——合成初稿→生成初稿、重合成→重新生成初稿、挂载→添加、状态名→收集素材中/初稿已生成/已发布(展示层 `TOPIC_STATUS_LABEL`,DB 枚举不变);admin 提示词与 cover 工具描述同步。③**指南配套**——`BLOGGER_VIDEO_GUIDE` 增「写作要求优先」条款(positioning 显式指定的口吻/篇幅/配图数量优先于指南缺省;oneoff `scripts/oneoff/guide-blogger-video/` 全文同步落库);admin 提示词选题步改「任务指令或写作要求指定体裁/口吻/篇幅/配图时以其为准」。
 
 ### 3.5 分期
 

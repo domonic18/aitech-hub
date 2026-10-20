@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 挂载选料筛选(M26 批③治理台):tab 切换(电报流/文章)+ 关键词回车检索,
+ * 素材库筛选(2026-10-20 详情页重构文案:tab 切换(视频/文章)+ 关键词回车检索,
  * 均以 searchParams 驱动服务端渲染(?mount=<type>&q=<kw>&page=),页内状态
  * 不另持副本。
  */
@@ -43,7 +43,7 @@ export default function TopicMountControls({
               : "border border-line text-text-2 hover:text-text-1"
           }`}
         >
-          {t === "telegram" ? "电报流(仅已解读)" : "文章"}
+          {t === "telegram" ? "视频(仅已解读)" : "文章"}
         </button>
       ))}
       <input

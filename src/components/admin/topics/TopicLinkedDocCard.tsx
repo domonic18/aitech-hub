@@ -1,8 +1,9 @@
 /**
- * 关联文档状态卡(2026-10-20 验收反馈问题三:合成后链路可视化)——专题详情
- * 「合成与文档」区内展示:文档标题/状态 + 公众号渠道同步快照(未同步/已同步/
- * 失败原因),把「合成 → 人工定稿 → 发布 → 渠道分发」的落点直接摆在合成按钮
- * 旁边。服务端纯展示件,数据 getLinkedDocDetail。
+ * 初稿文档状态卡(2026-10-20 验收反馈问题三:合成后链路可视化;同日详情页
+ * 重构更名「初稿」)——专题详情「初稿」区内展示:文档标题/状态 + 公众号渠道
+ * 同步快照(未同步/已同步/失败原因),把「生成初稿 → 人工定稿 → 发布 → 渠道
+ * 分发」的落点直接摆在生成按钮旁边;「打开文档」主按钮引导人工定稿。服务端
+ * 纯展示件,数据 getLinkedDocDetail。
  */
 import Link from "next/link";
 
@@ -39,7 +40,7 @@ export default function TopicLinkedDocCard({
   return (
     <div className="rounded-sm border border-line bg-panel p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-semibold text-text-3">关联文档</span>
+        <span className="text-[11px] font-semibold text-text-3">初稿</span>
         <Link
           href={`/admin/posts/${postId}`}
           className="min-w-0 truncate text-[13px] font-medium text-text-1 hover:text-accent"
@@ -53,9 +54,9 @@ export default function TopicLinkedDocCard({
         <span className="ml-auto">
           <Link
             href={`/admin/posts/${postId}`}
-            className="text-xs text-text-2 underline decoration-line hover:text-accent"
+            className="rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90"
           >
-            编辑文档 →
+            打开文档
           </Link>
         </span>
       </div>
