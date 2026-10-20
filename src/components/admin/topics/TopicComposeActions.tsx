@@ -18,6 +18,10 @@ import Link from "next/link";
 import { openAgentAssistant } from "@/lib/agent/agent-host";
 import { matchTopicPurpose, TOPIC_PURPOSES, type TopicPurposeKey } from "@/lib/topics/constants";
 
+/** 封面免确认档位锚点(2026-10-20 验收反馈问题二):合成话术尾部固定追加,
+ * 把「专题合成走封面自动档」写进任务指令本身,不依赖模型记忆任务来源 */
+const COVER_AUTO_HINT = "。头图直接自动生成并采用(自动档),不要用 ask_user 向我确认封面方向或提示词";
+
 export default function TopicComposeActions({
   topicId,
   topicTitle,
@@ -45,7 +49,8 @@ export default function TopicComposeActions({
   const [extra, setExtra] = useState("");
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
-  /** 经唤起协议注入合成任务;话术带体裁词与补充要求(空则省略);
+  /** 经唤起协议注入合成任务;话术带体裁词与补充要求(空则省略)与封面免确认
+   * 锚点(2026-10-20:档位锚点写进任务指令,不依赖模型记忆任务来源);
    * 素材空就地拦截(与工具层预检同文人话) */
   function compose(): void {
     if (materialsCount === 0) {
@@ -57,8 +62,8 @@ export default function TopicComposeActions({
     const extraPart = extra.trim() ? `,补充要求:${extra.trim()}` : "";
     openAgentAssistant({
       question: linkedPostId
-        ? `请为专题《${topicTitle}》(专题 id:${topicId})重新合成【${genre}】,将覆盖关联文档${extraPart}`
-        : `请为专题《${topicTitle}》(专题 id:${topicId})合成【${genre}】初稿${extraPart}`,
+        ? `请为专题《${topicTitle}》(专题 id:${topicId})重新合成【${genre}】,将覆盖关联文档${extraPart}${COVER_AUTO_HINT}`
+        : `请为专题《${topicTitle}》(专题 id:${topicId})合成【${genre}】初稿${extraPart}${COVER_AUTO_HINT}`,
       send: true,
     });
   }

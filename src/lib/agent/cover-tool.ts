@@ -9,6 +9,14 @@
 /** 工具名(工具面与 interrupt.value.kind 同源) */
 export const AGENT_COVER_CANDIDATES_TOOL = "generate_cover_candidates";
 
+/**
+ * 编辑页封面工具注册名(2026-10-20 专题合成 auto 档引入显式常量):真
+ * interrupt 工具与候选工具名错开;ask-user-guard 白名单须收本名——此前误收
+ * 候选工具名(非 interrupt),真封面工具反而不在单飞守卫内。零依赖契约文件
+ * 内导出,防 guard 反向拉 cover-generate/prisma 依赖链。
+ */
+export const GENERATE_POST_COVER_TOOL = "generate_post_cover";
+
 /** 入库完成广播事件名(卡片 → PostEditor,同页面解耦同步;2026-10-16 反馈问题一) */
 export const COVER_ADOPTED_EVENT = "ah:cover-adopted";
 
