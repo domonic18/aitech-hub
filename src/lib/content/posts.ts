@@ -72,10 +72,17 @@ export async function getPostById(id: bigint) {
   });
 }
 
-export async function listLatestPosts(limit: number) {
+/**
+ * 最新文章(首页右栏;2026-10-20 验收反馈问题二:按分类原创标记分流——
+ * original=true「博主文章」rail / false「推荐视频」rail,缺省不过滤)
+ */
+export async function listLatestPosts(limit: number, opts: { original?: boolean } = {}) {
   return prerenderSafe("posts.latest", [], async () => {
     const items = await prisma.post.findMany({
-      where: PUBLISHED,
+      where: {
+        ...PUBLISHED,
+        ...(opts.original !== undefined ? { category: { isOriginal: opts.original } } : {}),
+      },
       select: LIST_SELECT,
       orderBy: [...ORDER],
       take: limit,
@@ -106,14 +113,23 @@ export interface ListPageParams {
   pageSize: number;
   categorySlug?: string;
   tagSlug?: string;
+  /** 仅原创分类(/articles 页自称「全部原创文章」;分类/标签页不过滤) */
+  originalOnly?: boolean;
 }
 
 /** 分页列表(全部/分类/标签共用;tagSlug/categorySlug 由调用方先 normalizeSlug) */
-export async function listPostsPage({ page, pageSize, categorySlug, tagSlug }: ListPageParams) {
+export async function listPostsPage({
+  page,
+  pageSize,
+  categorySlug,
+  tagSlug,
+  originalOnly,
+}: ListPageParams) {
   const where = {
     ...PUBLISHED,
     ...(categorySlug ? { category: { slug: categorySlug } } : {}),
     ...(tagSlug ? { tags: { some: { tag: { slug: tagSlug } } } } : {}),
+    ...(originalOnly ? { category: { isOriginal: true } } : {}),
   };
   return prerenderSafe("posts.page", { items: [], total: 0, page, pageSize }, async () => {
     const [items, total] = await prisma.$transaction([

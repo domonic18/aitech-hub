@@ -13,13 +13,32 @@ import { BLOGGER_VIDEO_GUIDE, CARD_RENDERING_GUIDE } from "../src/lib/ai/writing
 const prisma = new PrismaClient();
 
 const CATEGORIES = [
-  { slug: "blog", name: "博客文章", description: "AI 工程实战原创文章", sortOrder: 1 },
-  { slug: "report", name: "产品评测", description: "AI 产品评测与实测", sortOrder: 2 },
-  { slug: "news", name: "行业资讯", description: "AI 行业资讯(旧站内容不再迁移)", sortOrder: 3 },
+  {
+    slug: "blog",
+    name: "博客文章",
+    description: "AI 工程实战原创文章",
+    isOriginal: true,
+    sortOrder: 1,
+  },
+  {
+    slug: "report",
+    name: "产品评测",
+    description: "AI 产品评测与实测",
+    isOriginal: true,
+    sortOrder: 2,
+  },
+  {
+    slug: "news",
+    name: "行业资讯",
+    description: "AI 行业资讯(旧站内容不再迁移)",
+    isOriginal: false,
+    sortOrder: 3,
+  },
   {
     slug: "advertising",
     name: "推广活动",
     description: "推广活动(旧站内容不再迁移)",
+    isOriginal: false,
     sortOrder: 4,
   },
 ] as const;
@@ -45,6 +64,7 @@ async function main(): Promise<void> {
   for (const c of CATEGORIES) {
     await prisma.category.upsert({
       where: { slug: c.slug },
+      // update 不含 isOriginal:建后归后台管理,重播 seed 不回灌覆盖
       update: { name: c.name, description: c.description, sortOrder: c.sortOrder },
       create: c,
     });

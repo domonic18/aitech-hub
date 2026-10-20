@@ -52,6 +52,7 @@ const ROW = {
   slug: "ai-agents",
   name: "AI 智能体",
   description: null,
+  isOriginal: false,
   sortOrder: 10,
   _count: { posts: 3 },
 };
@@ -93,7 +94,12 @@ describe("createCategory", () => {
       CategoryCreateSchema.parse({ slug: "ai-agents", name: "AI 智能体", description: "  " }),
     );
     expect(categoryCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ slug: "ai-agents", description: null, sortOrder: 0 }),
+      data: expect.objectContaining({
+        slug: "ai-agents",
+        description: null,
+        isOriginal: false,
+        sortOrder: 0,
+      }),
       select: expect.anything(),
     });
     expect(row.postCount).toBe(0);
@@ -120,6 +126,17 @@ describe("updateCategory", () => {
       select: expect.anything(),
     });
     expect(revalidateCategoryPaths).toHaveBeenCalledWith("ai-agents");
+  });
+
+  it("isOriginal 透传更新(2026-10-20 原创标记);未传不进 data", async () => {
+    categoryFindUnique.mockResolvedValue({ slug: "ai-agents" });
+    categoryUpdate.mockResolvedValue(ROW);
+    await updateCategory(BigInt(12), CategoryUpdateSchema.parse({ isOriginal: true }));
+    expect(categoryUpdate).toHaveBeenCalledWith({
+      where: { id: BigInt(12) },
+      data: { isOriginal: true },
+      select: expect.anything(),
+    });
   });
 });
 

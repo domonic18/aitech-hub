@@ -56,6 +56,9 @@ model Category {
   slug        String   @unique(map: "uq_content_category_slug") @db.VarChar(100) // blog / report / news / advertising
   name        String   @db.VarChar(100)
   description String?  @db.Text
+  // 原创分类标记(2026-10-20 验收反馈:首页按「博主文章/推荐视频」分流;
+  // 文章随分类继承——blog/report=true,推荐视频/资讯/推广=false,后台可改)
+  isOriginal  Boolean  @default(false) @map("is_original")
   sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
