@@ -55,7 +55,7 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
 
   return (
     <PostEditor
-      categories={categories.map((c) => ({ slug: c.slug, name: c.name }))}
+      categories={categories.map((c) => ({ slug: c.slug, name: c.name, isOriginal: c.isOriginal }))}
       post={{
         id: post.id.toString(),
         title: post.title,

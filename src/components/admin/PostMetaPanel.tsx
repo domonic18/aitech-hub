@@ -2,10 +2,11 @@
 
 /**
  * 编辑器右侧元信息栏(原型 admin-editor meta panel;M5-d 表单简化):
- * 常用组 = 分类/标签/封面/摘要;【高级选项】默认折叠 = slug/SEO(用户反馈:术语不可
- * 理解、创建时必填项太多)。纯受控组件(值上提,onChange 打补丁),不发请求;
- * 边界校验在 PostEditor.saveOnly。SEO「AI 填充」按钮(2026-10-06 验收反馈问题7)
- * 仅转交 onSeoSuggest 回调,请求仍在 PostEditor(不发请求契约不破)。
+ * 2026-10-20 验收反馈问题三分组重排——四个语义组:基础(分类/标签/摘要)、
+ * 发布(封面/创作方式/链接 slug)、SEO 与门禁(默认折叠;门禁已启用时默认
+ * 展开,防激活设置藏进折叠)。纯受控组件(值上提,onChange 打补丁),不发
+ * 请求;边界校验在 PostEditor.saveOnly。SEO「AI 填充」按钮(2026-10-06 验收
+ * 反馈问题7)仅转交 onSeoSuggest 回调,请求仍在 PostEditor(不发请求契约不破)。
  */
 import { POST_LIMITS, type ContentOrigin } from "@/lib/content/post-schema";
 
@@ -16,6 +17,8 @@ import type { CoverGenContext } from "./cover/templates";
 export interface EditorCategory {
   slug: string;
   name: string;
+  /** 原创分类标记(PostEditor 创建态默认取首个原创分类,2026-10-20) */
+  isOriginal: boolean;
 }
 
 export interface PostMetaValue {
@@ -38,6 +41,15 @@ const ORIGIN_OPTIONS: Array<{ value: ContentOrigin; label: string }> = [
   { value: "ai_assisted", label: "AI 辅助创作" },
   { value: "ai_generated", label: "AI 生成" },
 ];
+
+/** 分组小标题(问题三:语义分组,一眼知道这块管什么) */
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border-b border-line pb-1.5 font-mono text-[11px] tracking-wider text-text-3">
+      {children}
+    </div>
+  );
+}
 
 /** slug 字段(2026-10 URL 终态):两态统一可编辑——id 锚定 URL,改 slug 永不毁外链;
  * preview 展示派生/当前 canonical 形态,留空语义由调用方按创建(=派生)/编辑(=不改)区分 */
@@ -72,163 +84,122 @@ export default function PostMetaPanel({
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       onChange({ [key]: e.target.value });
 
+  const gateActive = value.isPurchasable || value.isLoginRequired;
+
   return (
-    <div className="flex flex-col gap-4 rounded-md border border-line bg-panel p-4">
-      <div>
-        <label className={LABEL} htmlFor="post-category">
-          分类
-        </label>
-        <select
-          id="post-category"
-          value={value.categorySlug}
-          onChange={set("categorySlug")}
-          className={INPUT}
-        >
-          {categories.map((c) => (
-            <option key={c.slug} value={c.slug}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className={LABEL} htmlFor="post-origin">
-          创作方式(对外合规标识)
-        </label>
-        <select
-          id="post-origin"
-          value={value.contentOrigin}
-          onChange={(e) => onChange({ contentOrigin: e.target.value as ContentOrigin })}
-          className={INPUT}
-        >
-          {ORIGIN_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <div className="mt-1 text-[11px] text-text-3">
-          AI 生成内容按《人工智能生成合成内容标识办法》须显式标识,发布后展示于文章页
+    <div className="flex flex-col gap-5 rounded-md border border-line bg-panel p-4">
+      {/* ── 基础:分类 / 标签 / 摘要 ── */}
+      <SectionTitle>基础</SectionTitle>
+      <div className="-mt-3 flex flex-col gap-4">
+        <div>
+          <label className={LABEL} htmlFor="post-category">
+            分类
+          </label>
+          <select
+            id="post-category"
+            value={value.categorySlug}
+            onChange={set("categorySlug")}
+            className={INPUT}
+          >
+            {categories.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </div>
-      </div>
 
-      <div>
-        <label className={LABEL} htmlFor="post-tags">
-          标签(顿号或逗号分隔,最多 {POST_LIMITS.tagsMax} 个)
-        </label>
-        <input
-          id="post-tags"
-          value={value.tagsText}
-          onChange={set("tagsText")}
-          placeholder="如:Claude Code、Next.js"
-          className={INPUT}
-        />
-        <div className="mt-1 font-mono text-[11px] text-text-3">
-          {tagCount} / {POST_LIMITS.tagsMax}
-        </div>
-      </div>
-
-      <div>
-        <CoverUploader
-          coverPath={value.coverPath}
-          onChange={(p) => onChange({ coverPath: p })}
-          coverContext={coverContext}
-          onAgentCoverGen={onAgentCoverGen}
-        />
-      </div>
-
-      <div>
-        <label className={LABEL} htmlFor="post-excerpt">
-          摘要(列表/订阅展示;留空自动截取正文)
-        </label>
-        <textarea
-          id="post-excerpt"
-          value={value.excerpt}
-          onChange={set("excerpt")}
-          maxLength={POST_LIMITS.excerpt}
-          rows={3}
-          className={`${INPUT} resize-y`}
-        />
-        <div className="mt-1 font-mono text-[11px] text-text-3">
-          {value.excerpt.length} / {POST_LIMITS.excerpt}
-        </div>
-      </div>
-
-      <div>
-        <label className={LABEL} htmlFor="post-gate">
-          阅读门禁(M21)
-        </label>
-        <select
-          id="post-gate"
-          value={value.isPurchasable ? "paid" : value.isLoginRequired ? "login" : "free"}
-          onChange={(e) => {
-            const gate = e.target.value;
-            if (gate === "paid") {
-              onChange({ isPurchasable: true, isLoginRequired: false });
-            } else if (gate === "login") {
-              onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: true });
-            } else {
-              onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: false });
-            }
-          }}
-          className={INPUT}
-        >
-          <option value="free">免费阅读</option>
-          <option value="login">登录可见(免费,须登录)</option>
-          <option value="paid">付费解锁</option>
-        </select>
-        <div className="mt-1 text-[11px] text-text-3">
-          {value.isPurchasable
-            ? "前台仅展示截断预览,读者支付解锁全文"
-            : value.isLoginRequired
-              ? "前台仅展示截断预览,登录后免费阅读全文"
-              : "全文对所有人可见"}
-        </div>
-        {value.isPurchasable && (
-          <div className="mt-2">
-            <label className={LABEL} htmlFor="post-price">
-              价格(元)
-            </label>
-            <input
-              id="post-price"
-              type="number"
-              inputMode="decimal"
-              min={0.01}
-              max={999.99}
-              step={0.01}
-              value={value.purchasePriceText}
-              onChange={set("purchasePriceText")}
-              placeholder="5.00"
-              className={INPUT}
-            />
-            <div className="mt-1 text-[11px] text-text-3">0.01 ~ 999.99 元;下单按此服务端定价</div>
+        <div>
+          <label className={LABEL} htmlFor="post-tags">
+            标签(顿号或逗号分隔,最多 {POST_LIMITS.tagsMax} 个)
+          </label>
+          <input
+            id="post-tags"
+            value={value.tagsText}
+            onChange={set("tagsText")}
+            placeholder="如:Claude Code、Next.js"
+            className={INPUT}
+          />
+          <div className="mt-1 font-mono text-[11px] text-text-3">
+            {tagCount} / {POST_LIMITS.tagsMax}
           </div>
-        )}
+        </div>
+
+        <div>
+          <label className={LABEL} htmlFor="post-excerpt">
+            摘要(列表/订阅展示;留空自动截取正文)
+          </label>
+          <textarea
+            id="post-excerpt"
+            value={value.excerpt}
+            onChange={set("excerpt")}
+            maxLength={POST_LIMITS.excerpt}
+            rows={3}
+            className={`${INPUT} resize-y`}
+          />
+          <div className="mt-1 font-mono text-[11px] text-text-3">
+            {value.excerpt.length} / {POST_LIMITS.excerpt}
+          </div>
+        </div>
       </div>
 
+      {/* ── 发布:封面 / 创作方式 / slug ── */}
+      <SectionTitle>发布</SectionTitle>
+      <div className="-mt-3 flex flex-col gap-4">
+        <div>
+          <CoverUploader
+            coverPath={value.coverPath}
+            onChange={(p) => onChange({ coverPath: p })}
+            coverContext={coverContext}
+            onAgentCoverGen={onAgentCoverGen}
+          />
+        </div>
+
+        <div>
+          <label className={LABEL} htmlFor="post-origin">
+            创作方式(对外合规标识)
+          </label>
+          <select
+            id="post-origin"
+            value={value.contentOrigin}
+            onChange={(e) => onChange({ contentOrigin: e.target.value as ContentOrigin })}
+            className={INPUT}
+          >
+            {ORIGIN_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <div className="mt-1 text-[11px] text-text-3">
+            AI 生成内容按《人工智能生成合成内容标识办法》须显式标识,发布后展示于文章页
+          </div>
+        </div>
+
+        <div>
+          <label className={LABEL} htmlFor="post-slug">
+            链接地址 slug(ASCII;可随时改,旧链接按 id 自动重定向)
+          </label>
+          <input
+            id="post-slug"
+            value={slug.text}
+            onChange={(e) => slug.onChange(e.target.value)}
+            placeholder={slug.preview}
+            maxLength={POST_LIMITS.slug}
+            className={`${INPUT} font-mono`}
+          />
+          <div className="mt-1 truncate font-mono text-[11px] text-text-3" title={slug.preview}>
+            文章地址:{slug.preview}
+          </div>
+        </div>
+      </div>
+
+      {/* ── SEO(默认折叠:留空即有缺省,多数场景无需展开)── */}
       <details>
-        <summary className="cursor-pointer select-none text-xs font-medium text-text-2 hover:text-text-1">
-          高级选项(slug / SEO,均可留空)
+        <summary className="cursor-pointer select-none border-b border-line pb-1.5 font-mono text-[11px] tracking-wider text-text-3 hover:text-text-2">
+          SEO(可留空,AI 可代填)
         </summary>
         <div className="mt-3 flex flex-col gap-4">
-          <div>
-            <label className={LABEL} htmlFor="post-slug">
-              链接地址 slug(ASCII;可随时改,旧链接按 id 自动重定向)
-            </label>
-            <input
-              id="post-slug"
-              value={slug.text}
-              onChange={(e) => slug.onChange(e.target.value)}
-              placeholder={slug.preview}
-              maxLength={POST_LIMITS.slug}
-              className={`${INPUT} font-mono`}
-            />
-            <div className="mt-1 truncate font-mono text-[11px] text-text-3" title={slug.preview}>
-              文章地址:{slug.preview}
-            </div>
-          </div>
-
           <div>
             <div className="flex items-center justify-between">
               <label className={LABEL} htmlFor="post-seo-title">
@@ -267,6 +238,68 @@ export default function PostMetaPanel({
               rows={3}
               className={`${INPUT} resize-y`}
             />
+          </div>
+        </div>
+      </details>
+
+      {/* ── 阅读门禁(默认折叠;付费/登录可见已启用时默认展开,防激活设置藏进折叠)── */}
+      <details open={gateActive}>
+        <summary className="cursor-pointer select-none border-b border-line pb-1.5 font-mono text-[11px] tracking-wider text-text-3 hover:text-text-2">
+          阅读门禁{gateActive ? "(已启用)" : "(默认免费)"}
+        </summary>
+        <div className="mt-3 flex flex-col gap-4">
+          <div>
+            <label className={LABEL} htmlFor="post-gate">
+              门禁方式
+            </label>
+            <select
+              id="post-gate"
+              value={value.isPurchasable ? "paid" : value.isLoginRequired ? "login" : "free"}
+              onChange={(e) => {
+                const gate = e.target.value;
+                if (gate === "paid") {
+                  onChange({ isPurchasable: true, isLoginRequired: false });
+                } else if (gate === "login") {
+                  onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: true });
+                } else {
+                  onChange({ isPurchasable: false, purchasePriceText: "", isLoginRequired: false });
+                }
+              }}
+              className={INPUT}
+            >
+              <option value="free">免费阅读</option>
+              <option value="login">登录可见(免费,须登录)</option>
+              <option value="paid">付费解锁</option>
+            </select>
+            <div className="mt-1 text-[11px] text-text-3">
+              {value.isPurchasable
+                ? "前台仅展示截断预览,读者支付解锁全文"
+                : value.isLoginRequired
+                  ? "前台仅展示截断预览,登录后免费阅读全文"
+                  : "全文对所有人可见"}
+            </div>
+            {value.isPurchasable && (
+              <div className="mt-2">
+                <label className={LABEL} htmlFor="post-price">
+                  价格(元)
+                </label>
+                <input
+                  id="post-price"
+                  type="number"
+                  inputMode="decimal"
+                  min={0.01}
+                  max={999.99}
+                  step={0.01}
+                  value={value.purchasePriceText}
+                  onChange={set("purchasePriceText")}
+                  placeholder="5.00"
+                  className={INPUT}
+                />
+                <div className="mt-1 text-[11px] text-text-3">
+                  0.01 ~ 999.99 元;下单按此服务端定价
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </details>

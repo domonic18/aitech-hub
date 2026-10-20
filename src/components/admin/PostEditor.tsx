@@ -72,6 +72,11 @@ const BTN_SECONDARY =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel px-3 py-2 text-sm text-text-1 hover:border-line-hover disabled:cursor-not-allowed disabled:opacity-60";
 const BTN_PRIMARY =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60";
+/** 下架:生命周期里的破坏性动作,红色次级样式与存草稿区分(问题三重排) */
+const BTN_DANGER =
+  "inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel px-3 py-2 text-sm text-red hover:border-red/40 disabled:cursor-not-allowed disabled:opacity-60";
+/** 顶栏动作组分隔线(问题三:协作/AI | 分发 | 生命周期三组视觉切开;sm 以下密排不显) */
+const BAR_DIVIDER_CLS = "mx-1 hidden h-5 w-px bg-line sm:block";
 
 export default function PostEditor({
   categories,
@@ -93,7 +98,9 @@ export default function PostEditor({
   const [slugText, setSlugText] = useState(post?.slug ?? "");
   const [contentMd, setContentMd] = useState(post?.contentMd ?? "");
   const [meta, setMeta] = useState<PostMetaValue>({
-    categorySlug: post?.categorySlug ?? categories[0]?.slug ?? "",
+    // 创建态默认首个「原创」分类(2026-10-20 问题一:排序靠前的非原创分类,
+    // 如推荐视频,不再成为新文章缺省落点);存量编辑态仍用文章自己的分类
+    categorySlug: post?.categorySlug ?? categories.find((c) => c.isOriginal)?.slug ?? "",
     tagsText: post?.tags.join("、") ?? "",
     coverPath: post?.coverPath ?? "",
     excerpt: post?.excerpt ?? "",
@@ -263,7 +270,9 @@ export default function PostEditor({
           {STATUS_LABEL[status]}
           {mode === "create" ? "(新)" : ""}
         </span>
-        <div className="ml-auto flex items-center gap-2">
+        {/* 右侧动作分三组(2026-10-20 问题三):AI 协作 | 渠道分发 | 生命周期
+            (下架红色次级、发布主按钮),组分隔线切开;侧栏开关恒最右 */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {mode === "edit" && post && (
             <EditorAssistant
               postId={post.id}
@@ -273,33 +282,26 @@ export default function PostEditor({
               launch={assistantLaunch}
             />
           )}
-          <button
-            type="button"
-            aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-            title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-            className="inline-flex cursor-pointer items-center rounded-sm border border-line bg-panel px-2 py-2 text-text-2 hover:border-line-hover hover:text-text-1"
-            onClick={toggleSidebar}
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-menu" />
-            </svg>
-          </button>
           {wechat && post && (
-            <EditorWechatSyncButton
-              wechatReady={wechat.ready}
-              post={{
-                id: post.id,
-                title,
-                seoTitle: meta.seoTitle,
-                excerpt: meta.excerpt,
-                seoDescription: meta.seoDescription,
-                coverPath: meta.coverPath,
-                wechatStatus: wechat.status,
-              }}
-            />
+            <>
+              {mode === "edit" && <span aria-hidden="true" className={BAR_DIVIDER_CLS} />}
+              <EditorWechatSyncButton
+                wechatReady={wechat.ready}
+                post={{
+                  id: post.id,
+                  title,
+                  seoTitle: meta.seoTitle,
+                  excerpt: meta.excerpt,
+                  seoDescription: meta.seoDescription,
+                  coverPath: meta.coverPath,
+                  wechatStatus: wechat.status,
+                }}
+              />
+            </>
           )}
+          <span className={BAR_DIVIDER_CLS} aria-hidden="true" />
           {status === "published" && (
-            <button type="button" disabled={busy} className={BTN_SECONDARY} onClick={unpublish}>
+            <button type="button" disabled={busy} className={BTN_DANGER} onClick={unpublish}>
               下架
             </button>
           )}
@@ -314,6 +316,18 @@ export default function PostEditor({
               <use href="#i-cloudupload" />
             </svg>
             {status === "unpublished" ? "重新上架" : "发布"}
+          </button>
+          <span className={BAR_DIVIDER_CLS} aria-hidden="true" />
+          <button
+            type="button"
+            aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            className="inline-flex cursor-pointer items-center rounded-sm border border-line bg-panel px-2 py-2 text-text-2 hover:border-line-hover hover:text-text-1"
+            onClick={toggleSidebar}
+          >
+            <svg className="ic" aria-hidden="true">
+              <use href="#i-menu" />
+            </svg>
           </button>
         </div>
       </div>
