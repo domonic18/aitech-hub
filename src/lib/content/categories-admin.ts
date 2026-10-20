@@ -1,7 +1,9 @@
 /**
  * 分类管理写侧 + 台账(种子四分类见 prisma/seed.ts;2026-10-16 验收反馈:
  * 后台增删改查)。红线:slug 承载公开 URL(/category/<slug>/,arch/07 §2),
- * 建后不可改——改名只动 name/description/sortOrder。删除守卫:①非软删文章
+ * 建后不可改——改名只动 name/description/isOriginal/sortOrder(isOriginal=
+ * 原创分类标记,2026-10-20:首页「博主文章/推荐视频」分流与 /articles 过滤)。
+ * 删除守卫:①非软删文章
  * 引用禁删(报数量);②至少保留一个分类(导航/编辑器下拉不可为空);软删
  * 残留引用在事务内迁至剩余分类中 sortOrder 最小者,防悬挂 FK。缓存失效经
  * revalidate.ts 单点编排(arch/05-services §1)。
@@ -30,6 +32,8 @@ export interface CategoryAdminRow {
   slug: string;
   name: string;
   description: string | null;
+  /** 原创分类标记(2026-10-20:首页「博主文章/推荐视频」分流,/articles 过滤) */
+  isOriginal: boolean;
   sortOrder: number;
   postCount: number;
 }
@@ -43,6 +47,7 @@ const ROW_SELECT = {
   slug: true,
   name: true,
   description: true,
+  isOriginal: true,
   sortOrder: true,
   ...NOT_DELETED_COUNT,
 } as const;
@@ -52,6 +57,7 @@ function toRow(r: {
   slug: string;
   name: string;
   description: string | null;
+  isOriginal: boolean;
   sortOrder: number;
   _count: { posts: number };
 }): CategoryAdminRow {
@@ -60,6 +66,7 @@ function toRow(r: {
     slug: r.slug,
     name: r.name,
     description: r.description,
+    isOriginal: r.isOriginal,
     sortOrder: r.sortOrder,
     postCount: r._count.posts,
   };
@@ -79,6 +86,7 @@ export const CategoryCreateSchema = z.object({
   slug: slugSchema,
   name: z.string().trim().min(1, "名称必填").max(100),
   description: z.string().trim().max(500).optional(),
+  isOriginal: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
 });
 
@@ -86,6 +94,7 @@ export const CategoryCreateSchema = z.object({
 export const CategoryUpdateSchema = z.object({
   name: z.string().trim().min(1, "名称必填").max(100).optional(),
   description: z.string().trim().max(500).optional(),
+  isOriginal: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
 });
 
@@ -102,6 +111,7 @@ export async function createCategory(
       slug: input.slug,
       name: input.name,
       description: input.description ? input.description : null,
+      isOriginal: input.isOriginal ?? false,
       sortOrder: input.sortOrder ?? 0,
     },
     select: ROW_SELECT,
@@ -123,10 +133,12 @@ export async function updateCategory(
       ...(input.description !== undefined
         ? { description: input.description ? input.description : null }
         : {}),
+      ...(input.isOriginal !== undefined ? { isOriginal: input.isOriginal } : {}),
       ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
     },
     select: ROW_SELECT,
   });
+  // 原创标记影响首页/文章列表聚合(isOriginal 过滤),随 slug 一起失效
   revalidateCategoryPaths(updated.slug);
   return toRow(updated);
 }

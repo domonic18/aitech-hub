@@ -10,10 +10,10 @@
  * 工具(锚定核与 SEO/标签一次交付)。空素材在按钮侧就地拦截(零真网防线,
  * e2e 34 断言同文);重合成的覆盖确认由工具 needConfirm → agent ask_user 回路
  * 承接。历史教训:M31 验收实证本组件曾自持内嵌 AssistantCard,切页即卸载杀
- * run——页面禁止自持卡,接入一律走 agent-host 协议。
+ * run——页面禁止自持卡,接入一律走 agent-host 协议。2026-10-20 问题三:「跳转
+ * 文档」链接上移关联文档状态卡(TopicLinkedDocCard),本件只留合成动作。
  */
 import { useState } from "react";
-import Link from "next/link";
 
 import { openAgentAssistant } from "@/lib/agent/agent-host";
 import { matchTopicPurpose, TOPIC_PURPOSES, type TopicPurposeKey } from "@/lib/topics/constants";
@@ -110,14 +110,6 @@ export default function TopicComposeActions({
           className="min-w-64 flex-1 rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent placeholder:text-text-3"
           aria-label="合成补充要求"
         />
-        {hasDoc && (
-          <Link
-            href={`/admin/posts/${linkedPostId}`}
-            className="rounded-sm border border-line px-2.5 py-1 text-xs text-text-2 hover:border-accent hover:text-text-1"
-          >
-            跳转文档(人工定稿)
-          </Link>
-        )}
       </div>
       <span className="text-[11px] text-text-3">
         在右侧 AI 对话框执行:agent 自主编排(读素材→选题→写作→配图→落库);模型走 「Agent 搜索」绑定

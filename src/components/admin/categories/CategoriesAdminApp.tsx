@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * 分类台账表(2026-10-16 后台增删改查):名称/slug/描述/排序/文章数/操作;
+ * 分类台账表(2026-10-16 后台增删改查):名称/slug/描述/原创/排序/文章数/操作;
  * 删除守卫在 service(引用禁删/至少留一),in_use 报数透出服务端 message。
+ * 原创列(2026-10-20):isOriginal 开关直改(首页「博主文章/推荐视频」分流)。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,6 +18,27 @@ const opLink = "cursor-pointer text-xs text-text-2 hover:text-accent disabled:op
 function Row({ category }: { category: CategoryAdminRow }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+
+  /** 原创标记直改(行内开关;PUT 局部更新,不影响其余字段) */
+  const toggleOriginal = (): void => {
+    setBusy(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/categories/${category.id}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ isOriginal: !category.isOriginal }),
+        });
+        const body = (await res.json()) as ApiEnvelope;
+        if (body.code !== 0) alert(body.message || `HTTP ${res.status}`);
+        router.refresh();
+      } catch (e) {
+        alert(String(e));
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
 
   const remove = (): void => {
     const hint =
@@ -54,6 +76,26 @@ function Row({ category }: { category: CategoryAdminRow }) {
       >
         {category.description ?? "—"}
       </td>
+      <td className="px-3 py-2.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={toggleOriginal}
+          title={
+            category.isOriginal
+              ? "原创分类:文章进首页「博主文章」与 /articles;点击改为非原创"
+              : "非原创分类:文章进首页「推荐视频」板块;点击改为原创"
+          }
+          className={
+            "cursor-pointer rounded-sm border px-2 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 " +
+            (category.isOriginal
+              ? "border-green/30 bg-green/10 text-green-hi"
+              : "border-line bg-panel-2 text-text-3")
+          }
+        >
+          {category.isOriginal ? "原创" : "非原创"}
+        </button>
+      </td>
       <td className="px-3 py-2.5 font-mono text-[11px] text-text-3">{category.sortOrder}</td>
       <td className="px-3 py-2.5 font-mono text-[11px] text-text-3" title="不含回收站文章">
         {category.postCount}
@@ -84,6 +126,7 @@ export default function CategoriesAdminApp({ items }: { items: CategoryAdminRow[
             <th className="px-4 py-2.5 font-medium">名称</th>
             <th className="px-3 py-2.5 font-medium">slug</th>
             <th className="px-3 py-2.5 font-medium">描述</th>
+            <th className="px-3 py-2.5 font-medium">原创</th>
             <th className="px-3 py-2.5 font-medium">排序</th>
             <th className="px-3 py-2.5 font-medium">文章数</th>
             <th className="px-4 py-2.5 text-right font-medium">操作</th>
@@ -95,7 +138,7 @@ export default function CategoriesAdminApp({ items }: { items: CategoryAdminRow[
           ))}
           {items.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
+              <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
                 还没有分类,点右上角「新增分类」创建第一个
               </td>
             </tr>
@@ -104,7 +147,8 @@ export default function CategoriesAdminApp({ items }: { items: CategoryAdminRow[
       </table>
       <div className="border-t border-line px-4 py-2.5 font-mono text-[11px] text-text-3">
         GET/POST /api/categories · PUT/DELETE /api/categories/[id] — slug 建后不可改(公开
-        /category/&lt;slug&gt;/ 锚定);有未删除文章引用的分类不可删;至少保留一个分类
+        /category/&lt;slug&gt;/
+        锚定);原创分类进首页「博主文章」,非原创进「推荐视频」;有未删除文章引用的分类不可删;至少保留一个分类
       </div>
     </div>
   );

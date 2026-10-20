@@ -119,6 +119,34 @@ export async function getLinkedPostState(
   });
 }
 
+/**
+ * 关联文档详情(2026-10-20 验收反馈问题三:「合成完之后怎么走」可视化——
+ * 文档状态 + 公众号渠道行快照,合成与文档区状态卡消费)
+ */
+export async function getLinkedDocDetail(postId: bigint): Promise<{
+  title: string;
+  status: string;
+  wechat: { status: string; syncedAt: Date | null; lastError: string | null } | null;
+} | null> {
+  const row = await prisma.post.findUnique({
+    where: { id: postId },
+    select: {
+      title: true,
+      status: true,
+      channels: {
+        where: { channel: "wechat" },
+        select: { status: true, syncedAt: true, lastError: true },
+      },
+    },
+  });
+  if (!row) return null;
+  return {
+    title: row.title,
+    status: row.status,
+    wechat: row.channels[0] ?? null,
+  };
+}
+
 // ── 素材挂载 ──────────────────────────────────────────────
 
 /** 挂载前置校验(方案 §3):telegram 须解读完成;post 须存在且未软删 */

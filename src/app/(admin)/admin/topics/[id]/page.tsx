@@ -1,9 +1,13 @@
 /**
  * 专题详情(M26 批③④,方案 §8 详情三区;2026-10-18 体裁治理收编):
- * ① 定位区(标题/撰写目的/定位备注/关联文章只读 + 人工状态流转);② 素材区(电报卡:标题/博主/短结论/解读笔记全文/批注内联
- * 编辑;文章卡)+ 页内挂载选料(searchParams 驱动服务端渲染:电报仅
- * aiStatus=done,文章按标题搜);③ 合成操作区(合成初稿/重合成/跳转文档,
- * 重合成保护预判提示)。数据服务端直取 repo。
+ * ① 定位区(状态流程条 + 标题/撰写目的/定位备注/关联文章只读 + 人工状态流转);
+ * ② 素材区(电报卡:标题/博主/短结论/解读笔记全文/批注内联编辑;文章卡)+
+ * 页内挂载选料(searchParams 驱动服务端渲染:电报仅 aiStatus=done,文章按标题
+ * 搜);③ 合成与文档区(关联文档状态卡:文档状态/公众号同步快照/编辑跳转 +
+ * 合成初稿/重合成,重合成保护预判提示)。
+ * 2026-10-20 验收反馈问题三重排:叙事顺序按工作流走向(定位 → 收素材 → 合成
+ * 出稿),替代原先「合成」插在素材前的跳跃;状态可视化上移流程条;合成落点
+ * (文档去哪了/发了没/渠道同步没)以状态卡摆在合成按钮旁。
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,6 +18,7 @@ import { formatCnDateTime } from "@/lib/datetime";
 import { needsRecomposeConfirm } from "@/lib/topics/compose";
 import { MOUNT_PAGE_SIZE, type TopicItemMaterial } from "@/lib/topics/repo";
 import {
+  getLinkedDocDetail,
   getLinkedPostState,
   getTopic,
   hydrateItems,
@@ -24,9 +29,11 @@ import {
 import AdminPagination from "@/components/admin/AdminPagination";
 import TopicComposeActions from "@/components/admin/topics/TopicComposeActions";
 import TopicItemActions from "@/components/admin/topics/TopicItemActions";
+import TopicLinkedDocCard from "@/components/admin/topics/TopicLinkedDocCard";
 import TopicMetaPanel from "@/components/admin/topics/TopicMetaPanel";
 import TopicMountButton from "@/components/admin/topics/TopicMountButton";
 import TopicMountControls from "@/components/admin/topics/TopicMountControls";
+import TopicStatusStepper from "@/components/admin/topics/TopicStatusStepper";
 
 export const dynamic = "force-dynamic";
 
@@ -145,6 +152,7 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
   if (!topic) notFound();
   const materials = await hydrateItems(topic.items);
   const linkedPost = topic.linkedPostId ? await getLinkedPostState(topic.linkedPostId) : null;
+  const linkedDoc = topic.linkedPostId ? await getLinkedDocDetail(topic.linkedPostId) : null;
 
   const sp = await searchParams;
   const tab = sp.mount === "post" ? "post" : "telegram";
@@ -164,33 +172,26 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
         </Link>
       </div>
 
-      {/* ① 定位区 */}
-      <TopicMetaPanel
-        id={id}
-        title={topic.title}
-        positioning={topic.positioning}
-        linkedPostId={topic.linkedPostId?.toString() ?? null}
-        status={topic.status}
-      />
+      {/* ① 定位区:状态流程条(问题三可视化)+ 定位编辑 + 人工状态流转 */}
+      <div className="rounded-sm border border-line bg-panel p-3">
+        <TopicStatusStepper status={topic.status} />
+      </div>
+      <div className="mt-2">
+        <TopicMetaPanel
+          id={id}
+          title={topic.title}
+          positioning={topic.positioning}
+          linkedPostId={topic.linkedPostId?.toString() ?? null}
+          status={topic.status}
+        />
+      </div>
       <div className="mt-1 text-[11px] text-text-3">
         创建于 {formatCnDateTime(topic.createdAt)} · 更新于 {formatCnDateTime(topic.updatedAt)}
         {topic.composedAt && ` · 最近合成 ${formatCnDateTime(topic.composedAt)}`}
         {topic.publishedAt && ` · 关联文章发布 ${formatCnDateTime(topic.publishedAt)}`}
       </div>
 
-      {/* ③ 合成操作区(批④:重合成保护在服务端 409 二次确认,这里仅提示预判) */}
-      <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">合成</h2>
-      <TopicComposeActions
-        topicId={id}
-        topicTitle={topic.title}
-        positioning={topic.positioning}
-        materialsCount={topic.items.length}
-        linkedPostId={topic.linkedPostId?.toString() ?? null}
-        linkedPostStatus={linkedPost?.status ?? null}
-        editedSinceCompose={linkedPost ? needsRecomposeConfirm(topic, linkedPost) : false}
-      />
-
-      {/* ② 素材区 */}
+      {/* ② 素材区(先收料,后合成——叙事顺序与工作流一致) */}
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">素材({topic.items.length})</h2>
       <div className="flex flex-col gap-2">
         {topic.items.map((item) => {
@@ -284,6 +285,24 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
           }}
         />
       )}
+
+      {/* ③ 合成与文档区(问题三:合成落点可视化——文档状态/公众号同步快照
+          摆在合成按钮旁;重合成保护在服务端 409 二次确认,这里仅提示预判) */}
+      <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">合成与文档</h2>
+      <div className="flex flex-col gap-2">
+        {topic.linkedPostId && linkedDoc && (
+          <TopicLinkedDocCard postId={topic.linkedPostId.toString()} doc={linkedDoc} />
+        )}
+        <TopicComposeActions
+          topicId={id}
+          topicTitle={topic.title}
+          positioning={topic.positioning}
+          materialsCount={topic.items.length}
+          linkedPostId={topic.linkedPostId?.toString() ?? null}
+          linkedPostStatus={linkedPost?.status ?? null}
+          editedSinceCompose={linkedPost ? needsRecomposeConfirm(topic, linkedPost) : false}
+        />
+      </div>
     </div>
   );
 }

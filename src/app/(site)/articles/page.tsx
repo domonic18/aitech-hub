@@ -20,7 +20,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ArticlesPage(): Promise<React.ReactElement> {
   const [{ items, total, page, pageSize }, tags] = await Promise.all([
-    listPostsPage({ page: 1, pageSize: DEFAULT_PAGE_SIZE }),
+    // 页面语义=全部「原创」文章(2026-10-20:按分类原创标记过滤,推荐视频等
+    // 非原创分类不混入;分类页仍按各自 slug 全量展示)
+    listPostsPage({ page: 1, pageSize: DEFAULT_PAGE_SIZE, originalOnly: true }),
     listTagsWithCount(),
   ]);
   return (

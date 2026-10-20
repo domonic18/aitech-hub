@@ -50,6 +50,7 @@ CREATE TABLE content_category (
     slug        VARCHAR(100) NOT NULL,               -- blog / report / news / advertising
     name        VARCHAR(100) NOT NULL,
     description TEXT,
+    is_original BOOLEAN NOT NULL DEFAULT false,      -- 原创分类标记(2026-10-20):首页「博主文章/推荐视频」分流 + /articles 过滤;文章随分类继承
     sort_order  INT NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -13,7 +13,7 @@ export default async function NewPostPage({
   const [categories, sp] = await Promise.all([listCategories(), searchParams]);
   return (
     <PostEditor
-      categories={categories.map((c) => ({ slug: c.slug, name: c.name }))}
+      categories={categories.map((c) => ({ slug: c.slug, name: c.name, isOriginal: c.isOriginal }))}
       imported={sp.import === "1"}
     />
   );
