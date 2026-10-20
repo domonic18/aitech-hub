@@ -5,6 +5,7 @@
  * 只数 ok/degraded)。客户端中途断开:已发增量按 done 收尾(degraded,不写缓存)。
  */
 import { AI_PURPOSE_SEARCH } from "@/lib/ai/constants";
+import { readExtraOutputConfig } from "@/lib/ai/extra-params";
 import { chatStream } from "@/lib/ai/llm-stream";
 import { getRoleDailyMax, resolveAiModel } from "@/lib/ai/resolver";
 import { recordAiUsage } from "@/lib/ai/usage-log";
@@ -125,6 +126,8 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
               user: buildAnswerUserPrompt(q, buildCiteBlocks(picks, bodies)),
               timeoutSec: model.timeoutSec,
               maxTokens: ANSWER_MAX_TOKENS,
+              // 思考深度等供应商扩展只住台账(Kimi effort):缺省会导致 K3 按 effort=max 跑
+              outputConfig: readExtraOutputConfig(model.extraParams) ?? undefined,
               signal: abort.signal,
             },
             (d) => {

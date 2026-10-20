@@ -15,7 +15,7 @@ import { z } from "zod";
 import { getEnabledSkillByKey } from "../ai/agent-skills-admin";
 import { AI_PURPOSE_WRITING } from "../ai/constants";
 import { AiAdminError, AiClientError } from "../ai/errors";
-import { readExtraMaxTokens } from "../ai/extra-params";
+import { readExtraMaxTokens, readExtraOutputConfig } from "../ai/extra-params";
 import { chatText } from "../ai/llm-client";
 import { resolveAiModel } from "../ai/resolver";
 import { recordAiUsage } from "../ai/usage-log";
@@ -167,6 +167,8 @@ export const writeArticleTool = tool(
           user,
           timeoutSec: model.timeoutSec,
           maxTokens,
+          // 思考深度等供应商扩展只住台账(Kimi effort);非 anthropic 供货方不传
+          outputConfig: readExtraOutputConfig(model.extraParams) ?? undefined,
         },
         (u) => {
           usage = u;

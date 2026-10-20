@@ -191,6 +191,26 @@ describe("write_article", () => {
     );
   });
 
+  it("output_config 从台账 extraParams 透传写作模型(Kimi effort);未配则不带", async () => {
+    getTopic.mockResolvedValueOnce(TOPIC);
+    buildComposeBlocks.mockResolvedValueOnce([BLOCK]);
+    getEnabledSkillByKey.mockResolvedValueOnce(null);
+    resolveAiModel.mockResolvedValueOnce({
+      ...WRITER_MODEL,
+      protocol: "anthropic",
+      extraParams: { max_tokens: 65_536, output_config: { effort: "low" } },
+    });
+    await invoke({ topic_id: "7", angle: "a", outline: "o" });
+    expect(chatText.mock.calls[0]?.[0]).toMatchObject({ outputConfig: { effort: "low" } });
+
+    getTopic.mockResolvedValueOnce(TOPIC);
+    buildComposeBlocks.mockResolvedValueOnce([BLOCK]);
+    getEnabledSkillByKey.mockResolvedValueOnce(null);
+    resolveAiModel.mockResolvedValueOnce(WRITER_MODEL);
+    await invoke({ topic_id: "7", angle: "a", outline: "o" });
+    expect(chatText.mock.calls[1]?.[0]).toMatchObject({ outputConfig: undefined });
+  });
+
   it("skill_key 省略回专题绑定;指南停用 → skill_loaded null 仍写作", async () => {
     getTopic.mockResolvedValueOnce(TOPIC);
     buildComposeBlocks.mockResolvedValueOnce([BLOCK]);
