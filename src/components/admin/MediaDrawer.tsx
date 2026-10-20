@@ -3,12 +3,16 @@
 /**
  * 媒体详情抽屉(原型 admin-media §4):点卡片开,GET /api/media/[id] 拉取
  * (preview / kv / 引用方文章 / 复制URL / 删除);删除走 DELETE(409 = 仍被引用,
- * 按钮置灰),成功回调 onDeleted(父级关抽屉 + router.refresh)。
+ * 按钮置灰),成功回调 onDeleted(父级关抽屉 + router.refresh)。预览图点击
+ * 唤起 MediaViewer 全屏查看(2026-10-20 反馈问题三);Esc 只关最上层——查看器
+ * 开着时本抽屉让行(状态门控,不赌监听顺序)。
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { type MediaDetailData, formatBytes, MEDIA_LIMITS } from "@/lib/media/media-schema";
+
+import MediaViewer from "./MediaViewer";
 
 type Detail = MediaDetailData;
 
@@ -24,11 +28,14 @@ export default function MediaDrawer({
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** 查看器载荷(原图路径;null = 关闭) */
+  const [viewer, setViewer] = useState<{ src: string; alt: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
     setDetail(null);
     setError(null);
+    setViewer(null);
     fetch(`/api/media/${id}`)
       .then(async (res) => {
         const body = (await res.json().catch(() => null)) as { data?: Detail } | null;
@@ -45,12 +52,14 @@ export default function MediaDrawer({
   }, [id]);
 
   useEffect(() => {
+    // 查看器开着:Esc 归最上层(MediaViewer 自理),本抽屉让行不订阅
+    if (viewer) return;
     const onEsc = (e: KeyboardEvent): void => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onEsc);
     return () => document.removeEventListener("keydown", onEsc);
-  }, [onClose]);
+  }, [onClose, viewer]);
 
   const remove = useCallback(async () => {
     if (!detail) return;
@@ -101,14 +110,19 @@ export default function MediaDrawer({
 
         {m && (
           <>
-            <div className="mt-4 flex h-44 items-center justify-center overflow-hidden rounded-sm border border-line bg-panel-2">
+            <button
+              type="button"
+              title="点击放大查看"
+              className="mt-4 flex h-44 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-sm border border-line bg-panel-2"
+              onClick={() => setViewer({ src: m.path, alt: m.filename })}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部预览,src 为站内动态路径 */}
               <img
                 src={preview ?? undefined}
                 alt={m.filename}
                 className="max-h-full max-w-full object-contain"
               />
-            </div>
+            </button>
 
             <dl className="mt-4 space-y-1.5 text-xs">
               {[
@@ -170,6 +184,7 @@ export default function MediaDrawer({
           </>
         )}
       </aside>
+      {viewer && <MediaViewer src={viewer.src} alt={viewer.alt} onClose={() => setViewer(null)} />}
     </div>
   );
 }
