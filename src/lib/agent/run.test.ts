@@ -2,7 +2,8 @@
  * run 编排单测(getAgentGraph mock):帧序列 metadata→…→end、todos 提取、
  * usage 聚合、工具调用去重计数、护栏按身份档主动收束(基础档 12/50k,
  * admin 档放宽见 config/agent-limits 默认值,M27 批⑤/2026-10-17 验收反馈;
- * 额度经 limits 入参注入——后台站点设置可调,2026-10-17)、
+ * 额度经 limits 入参注入——后台站点设置可调,2026-10-17)、收束帧纪律
+ * (2026-10-21:纯文本撞线帧放行/工具调用帧不外泄)、
  * 断开(signal aborted)即停不产 end 前的更多帧。
  */
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
@@ -158,7 +159,58 @@ describe("runAgentTurn", () => {
       onFrame,
     });
     expect(outcome.truncatedReason).toContain("用量已达上限");
-    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(0); // 检在发前
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(0); // 空帧不放行
+    expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("撞线帧带纯文本(模型收尾总结)→ 放行文本帧再收束(2026-10-21 验收反馈)", async () => {
+    const big = new AIMessageChunk({
+      content: "初稿已落库,配图 3 张,封面已采纳",
+      usage_metadata: {
+        input_tokens: DEFAULT_AGENT_LIMITS.guest.tokens,
+        output_tokens: 1,
+        total_tokens: DEFAULT_AGENT_LIMITS.guest.tokens + 1,
+      },
+    });
+    getAgentGraphMock.mockResolvedValue(fakeGraph([["messages", [big, {}]]]));
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    expect(outcome.truncatedReason).toContain("用量已达上限");
+    const msgFrames = frames.filter((f) => f.startsWith("event: messages"));
+    expect(msgFrames).toHaveLength(1);
+    expect(msgFrames[0]).toContain("初稿已落库");
+    expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("撞线帧带工具调用 → 不放行(它不会再执行,渲染出去界面恒挂)", async () => {
+    const big = new AIMessageChunk({
+      content: "",
+      tool_call_chunks: [{ name: "search_site", args: "{}", id: "call-x", index: 0 }],
+      usage_metadata: {
+        input_tokens: DEFAULT_AGENT_LIMITS.guest.tokens,
+        output_tokens: 1,
+        total_tokens: DEFAULT_AGENT_LIMITS.guest.tokens + 1,
+      },
+    });
+    getAgentGraphMock.mockResolvedValue(fakeGraph([["messages", [big, {}]]]));
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    expect(outcome.truncatedReason).toContain("用量已达上限");
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(0);
     expect(frames.at(-1)).toContain("event: end");
   });
 
