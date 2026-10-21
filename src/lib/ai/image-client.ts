@@ -12,8 +12,9 @@
  * 同 key,约 30 分钟过期)——仅当下载 URL 宿主与网关 baseUrl 宿主一致才带,
  * 密钥不出同一供应商边界。
  * 部分供应商(智谱)无 n 参数、单次仅回 1 张:返回不足 n 时顺序补请求凑满候选。
- * 扩展参数(M16 问题2):模型 extra_params 浅合并进请求体,保留键不可覆盖。
- * 超时/网络/HTTP/业务错归因与 llm-client 同款(AiClientError kind)。
+ * 扩展参数(M16 问题2):模型 extra_params 浅合并进请求体,保留键不可覆盖;
+ * 保留键显式 null = 整键剔除(M39 严格校验供应商适配,如 AiHubMix 拒收
+ * size/response_format)。超时/网络/HTTP/业务错归因与 llm-client 同款(AiClientError kind)。
  */
 import { AI_PROTOCOL_OPENAI } from "./constants";
 import { AiClientError } from "./errors";
@@ -37,7 +38,34 @@ export interface GenerateImagesInput {
 export type GeneratedImage = { b64: string } | { url: string };
 
 /** 请求体保留键 model/prompt/n/size/response_format:extraParams 先展开、保留键后展开,
- * 后者恒覆盖前者(扩展参数不可改写契约,防配置把请求体改漂;单测锁定) */
+ * 后者恒覆盖前者(扩展参数不可改写契约,防配置把请求体改漂;单测锁定)。
+ * M39 补充:extraParams 某保留键显式 null = 该键整体剔除——严格校验供应商适配
+ * (探针实证 AiHubMix nano-banana 拒收 size/response_format 回 400 Unknown
+ * request parameter),null 值本身不进请求体;与探针共用本构造器保证同口径。 */
+
+export interface ImagesBodyKeys {
+  model: string;
+  prompt: string;
+  n: number;
+  size: string;
+  response_format: string;
+}
+
+/** 生图请求体构造(image-client 与 probe 同源):保留键缺省在场,extraParams
+ * 非 null 键先展开(保留键恒覆盖)、null 键仅作剔除指令不透传 */
+export function buildImagesBody(
+  keys: ImagesBodyKeys,
+  extraParams?: Record<string, unknown>,
+): Record<string, unknown> {
+  const extra = Object.fromEntries(Object.entries(extraParams ?? {}).filter(([, v]) => v !== null));
+  const omit = new Set(
+    Object.entries(extraParams ?? {})
+      .filter(([, v]) => v === null)
+      .map(([k]) => k),
+  );
+  const preserved = Object.fromEntries(Object.entries(keys).filter(([k]) => !omit.has(k)));
+  return { ...extra, ...preserved };
+}
 
 /** url 下载体积帽(生图 1344×768 jpg ≈ 200KB;20MB 已是数量级冗余) */
 const DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
@@ -70,14 +98,16 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
   }
   if (!input.baseUrl) throw new AiClientError("unsupported", "生图 Base URL 未配置");
   const endpoint = `${input.baseUrl.replace(/\/+$/, "")}/images/generations`;
-  const baseBody: Record<string, unknown> = {
-    ...(input.extraParams ?? {}),
-    model: input.modelId,
-    prompt: input.prompt,
-    n: input.n,
-    size: input.size,
-    response_format: "b64_json",
-  };
+  const baseBody = buildImagesBody(
+    {
+      model: input.modelId,
+      prompt: input.prompt,
+      n: input.n,
+      size: input.size,
+      response_format: "b64_json",
+    },
+    input.extraParams,
+  );
 
   const collected: GeneratedImage[] = [];
   let lastBizError: string | null = null; // AiHubMix 形态:{error} 文案随 200 回,末轮无图时透传

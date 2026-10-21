@@ -143,6 +143,24 @@ describe("generateImages(M16 问题1/2 扩)", () => {
       /协议不支持/,
     );
   });
+
+  it("extraParams 保留键显式 null = 整键剔除,null 值不透传(M39 AiHubMix 严格校验适配)", async () => {
+    const { calls } = stubFetchSequence([
+      { output: [{ content_url: "https://aihubmix.com/a.png" }] },
+    ]);
+    await generateImages({
+      ...BASE_INPUT,
+      n: 1,
+      extraParams: { size: null, response_format: null, watermark_enabled: false },
+    });
+    const body = calls[0] as Record<string, unknown>;
+    expect(body.size).toBeUndefined(); // 剔除,不发 null 也不发缺省值
+    expect(body.response_format).toBeUndefined();
+    expect(body.model).toBe("cogview-3-flash"); // 未剔除的保留键照常在场
+    expect(body.prompt).toBe("横版科技封面");
+    expect(body.n).toBe(1);
+    expect(body.watermark_enabled).toBe(false); // 非 null 扩展参数照常透传
+  });
 });
 
 describe("generateImages(M39 AiHubMix 形态)", () => {
