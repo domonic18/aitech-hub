@@ -269,7 +269,7 @@ model WritingSampleImage {
 | 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);**指南工艺纪律已随真机反馈补齐(2026-10-21,见 §13.3-⑥)**:系统提示第 4/5⑤/7 步与 blogger-video 指南双层改写(两类工艺分流 + 插画入列 + 封面跳过);**5 场景 skill 种子已交付(批④余项,2026-10-21,见 §13.10)** | 本地真机一轮:illustrate 绑定模型真出图入库(核心,已验);重合成走查「文生图为主」真出插画(工艺纪律,§13.9 批④+4 后用户已验证:高质量带字图文) |
 | 批④+ 封面图勾选微调(2026-10-21 用户补充,§13.3-⑤) | 写作配置「生成封面图」勾选(默认勾)+ brief 结构化标记 + cover 候选工具守卫 | `make check` 绿 + 面板手验(取消勾选重合成不再出封面) |
 | 批④++ 分层三修(2026-10-21 用户要求,§13.7) | 意图结构化闭环(brief `visual_mode` + 三态 note,提示分流改按字段)+ 守卫对称(插画为主未绑定生图模型 → brief 开工预警)+ 清单单源机器防线(工具面-提示一致性测试,正反向)+ 陈旧枚举 docblock 清理 —— **已交付** | `make check` 绿(含 parity 守卫);重合成走查插画为主真出插画 |
-| 批③ 样例参照图库(**顺延**) | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
+| 批③ 样例参照图库 | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 —— **已交付(2026-10-21,见 §13.11;探针实证 Seedream 收 image 参数且风格高度靠拢)** | 迁移从零重放 ✅ + `make check` 绿(1580 用例)+ L-core 全链实证(媒体卷→data URL→出图)✅;面板手验待验收 |
 | 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
 
 ### 13.6 非目标(本立项明确不做)
@@ -541,3 +541,88 @@ topic-tools/agent/illustrate-tool/illustrate-generate 新增 aspect 映射与张
 **验收**:`make check` 绿(typecheck/lint 0 error/1569 tests,新增 3 断言);验收
 库 seed 后 7 技能在册(guide_md 1192~3954 字符,公共条款 SQL 抽查通过)。
 指南为 DB 资产不进 web bundle,本轮无需重建镜像;生产随批⑤ 发布后重跑 seed。
+
+### 13.11 批③设计:样例参照图库(2026-10-21 细化并交付)
+
+> 立项骨架见 §13.3-③/§13.4;本节按 Seedream 5.0 Pro 实绑现状细化。悬置项
+> 更新:立项时悬置 AiHubMix 是否收参考图参数;现 illustrate 绑定 Seedream
+> (官方 images/generations 原生支持 `image` 参数,URL 或 data URL,至多
+> 10 张)——两分支收敛为「参数实测定形态,机制按支持设计」。
+
+**设计决策(5 条)**:
+
+1. **参照图传递走 base64 data URL,不走公网 URL**:本地/验收环境站点不可公网
+   达,URL 直传只有生产可用;base64 全环境一致,不引入站点可达性依赖。工具层
+   对参照图独立设 ≤6MB 帽(base64 后请求体膨胀 ~1.33x;官方单图上限 10MB,
+   媒体上传帽内,6MB 帽是保守自留量)。
+2. **单图参照**:`topic.sample_image_id` 单列(立项已定);Seedream 支持至多
+   10 张但单图先验证价值,多图后置(YAGNI)。
+3. **指南零改动**:reference 是机制参数不是编排策略——使用指引住工具描述 +
+   brief note 双层(§13.7 工具载荷层),避免 7 行指南批量重灌(oneoff 订正
+   留给真正的策略变更)。
+4. **删图库行 = 引用置空不删媒体**:删 writing_sample_image 行时事务内置空
+   topic.sample_image_id(应用层完整性,同 linked_post_id 口径);媒体文件归
+   媒体库治理(sha1 去重、可能被正文引用),图库删除不连带。
+5. **降级分支保留**:实测若模型拒收 image 参数,工具参数保留、执行侧忽略并在
+   hint 说明(样例图退化为 prompt 风格描述素材)——UI 与表结构不受影响。
+   **探针已通过(见下),本分支降为换绑模型的兜底口径(describe 提示已覆盖)。**
+
+**落地面(按层)**:
+
+- **L-schema(唯一迁移)**:§13.4 原案——`writing_sample_image`(id/name/
+  media_path/created_at)+ `topic.sample_image_id BigInt?`;create-only 评审 +
+  从零重放,forward-only。
+- **L-API(4 路由,顶层域目录惯例,无 admin 命名空间)**:
+  `GET /api/writing-samples` 列表;`POST /api/writing-samples` multipart 上传
+  (file 字段 → uploadMedia sha1 去重复用 + 登记行);`PATCH
+  /api/writing-samples/[id]` 重命名(name ≤100);`DELETE
+  /api/writing-samples/[id]` 删行 + 置空引用。topic PATCH 扩 `sample_image_id`
+  (字符串 BigInt|null;存在性核,同 skillKey 核同款)。全部 admin 会话 +
+  PAT 拒 + mutation Origin 校验 + Zod。
+- **L-UI**:新组件 `TopicSampleImagePicker`(src/components/admin/topics/),
+  挂专题详情写作配置卡片配图维之后;TopicWritingConfigPanel 文件零改动
+  (§13.8 刚重构,298 行不回填)。交互:当前参照缩略 + 清除 / 本地上传 /
+  剪贴板粘贴(paste 监听仅挂载期)/ 图库选择弹层(网格缩略 + 内联重命名 +
+  删除);选择与清除即时 PATCH topic(独立于写作要求保存按钮,免耦合)。
+- **L-brief(编排可见)**:get_topic_brief 带 `sample_image: {id,name,path}`;
+  visual_mode=illustrate 时 visual_note 追加「生图带 reference_path」指引。
+- **L-tool(机制参数)**:generate_illustration schema 加 `reference_path`
+  (站内媒体前缀白名单 `/wp-content/uploads/`,optional);describe 注明
+  「brief 带样例参照图时传入,模型以图为风格参照;模型不支持时去掉重调」。
+- **L-core(执行核心)**:GenerateIllustrationsInput 加 `referencePath`;
+  uploadsUrlToRel + mediaStorage 读字节 → base64 data URL → image-client
+  GenerateImagesInput 加 `image?: string`(openai 协议请求体顶层透传,仅传入
+  时附加);读文件失败人话报错不阻塞。
+
+**探针实测结果(2026-10-21 已完成,tunnel + tsx 直连)**:illustrate 主绑定
+`doubao-seedream-5-0-flash-260915`(用户重合成验证时换绑 flash),两例
+(16:9 金句卡 / 3:4 要点卡)以 t1~t5 真出图为参照 data URL + prompt 直连:
+
+- ✅ **收参**:`image`(data URL ~200-300KB)HTTP 200 正常出图,无拒收;
+- ✅ **与 size 共存**:1344x768 与 864x1152 均按请求尺寸出图;
+- ✅ **风格靠拢度(目验)**:两例高度复刻参照——版式语法(序号要点条/左侧
+  竖排标签/底部结论条/居中金句+署名破折号)、配色、字体气质、纸纹肌理全保留,
+  新内容文字逐字正确;flash 档即可,pro 预期更稳;
+- 延迟 12.4s/12.7s(无参照 t1~t5 约 4~8s,可接受,模型 timeoutSec 帽内)。
+
+结论:走原生 image 通道,决策 1/2/3/4 不变,决策 5 降为兜底口径。
+
+**测试**:迁移从零重放;路由鉴权/Zod/Origin 单测;illustrate-generate 参照
+透传;tool reference_path 白名单拒外链;topic PATCH 存在性核;e2e 归批⑤。
+
+**交付记录(2026-10-21)**:全层落地——L-schema 迁移
+`20261021120000_m39_writing_sample_image`(scratch 从零重放 + schema diff 空,
+验收库 deploy 落位);L-API `GET/POST /api/writing-samples` +
+`PATCH/DELETE /api/writing-samples/[id]` + topic PATCH `sample_image_id`
+存在性核;L-UI `TopicSampleImagePicker`(本地上传/剪贴板粘贴[输入框内不劫持]/
+图库弹层内联重命名删除,绑定清除即时 PATCH,TopicWritingConfigPanel 零改动);
+L-brief `sample_image` 载荷 + illustrate visual_note 追加 reference_path 指引;
+L-tool `reference_path`(白名单住工具描述,执行核心 uploadsUrlToRel 二次校验);
+L-core `referencePath` → 媒体卷读字节 → data URL → image-client `image?` 顶层
+透传(装载失败降级无参照出图 + reference_error 人话回带)。测试 +14(1580
+全绿):参照装载合法/四类降级不阻塞/工具透传与 warning/schema/图库 CRUD 投影。
+验收冒烟:四路由 401/403 收口正确;L-core 全链实证(媒体卷参照图 → 出图
+8.6s,风格复刻文字零错)。**待验收:面板手验 + 绑样例图专题重合成(用户验)。**
+
+**出口**:`make check` 绿 + 迁移从零重放通过 + 面板手验(上传/粘贴/选择/
+重命名/删除/清除/重挂)+ 绑样例图的专题重合成出图风格向参照靠拢(用户验)。
