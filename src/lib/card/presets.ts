@@ -5,7 +5,9 @@
  * 双模里的省钱模:agent 只产出数据(约 300-600 token/卡),排版由模板兜底;
  * 全部文本经转义,数据侧无注入面。画布 900px 固定宽(Noto CJK 由渲染容器提供)。
  *
- * schema 在 preset-schemas.ts,样张在 preset-samples.ts,本文件只管注册与分发。
+ * schema 在 preset-schemas.ts,本文件只管注册与分发(原实验室样张已随
+ * /admin/cards 调试台移除,M39 批②——写作配置面板的配图样例内联在
+ * writing-config.ts)。
  *
  * 主题(2026-10-18 用户裁定,M38 双主题/内容定系口径退役):全站 11 卡型统一
  * 深空主题——配图风格全篇统一属确定性机制,不依赖模型自觉;accent 三组按
@@ -49,21 +51,6 @@ export const CARD_PRESET_IDS = [
   "photo",
 ] as const;
 export type CardPresetId = (typeof CARD_PRESET_IDS)[number];
-
-/** preset 元信息(卡片模板库页展示用;全站统一深空主题,无 theme 字段) */
-export const PRESET_META: Record<CardPresetId, { name: string; desc: string }> = {
-  quote: { name: "金句卡", desc: "博主原话/锐评,观点放大器" },
-  points: { name: "要点卡", desc: "方法要点/清单式干货,条目可带 emoji 图标" },
-  stats: { name: "数据卡", desc: "关键数据,首条自动放大为主指标,可带涨跌标记" },
-  bars: { name: "量级条形卡", desc: "多项相对量级对比(横条可视化)" },
-  ledger: { name: "台账卡", desc: "规格参数/键值清单速览" },
-  compare: { name: "对比卡", desc: "两方对垒/选型对比" },
-  steps: { name: "步骤卡", desc: "操作步骤/落地路径" },
-  flow: { name: "泳道全景卡", desc: "流程/架构一张看懂(泳道×阶段)" },
-  timeline: { name: "时间线卡", desc: "演进历程/版本脉络" },
-  matrix: { name: "矩阵卡", desc: "并列要素盘点(2~8 格自适应网格)" },
-  photo: { name: "图片卡", desc: "大图+说明条(封面/截图/生成图)" },
-};
 
 type PresetDef = { schema: z.ZodType<unknown>; build: (data: unknown, seed: string) => string };
 
@@ -211,7 +198,7 @@ function typeName(v: unknown): string {
 /**
  * 数据卡渲染入口:zod 校验失败给人话报错(首个问题字段),agent 可自纠重试。
  * accentSeed = 文章锚(工具层传 thread_id):同篇恒同 accent 组;缺省退回按
- * 卡内容取组(admin 实验室预览,重渲染同数据恒同色)。
+ * 卡内容取组(预览路由无 seed 时,重渲染同数据恒同色)。
  */
 export function renderPreset(
   preset: CardPresetId,
