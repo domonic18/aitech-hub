@@ -146,8 +146,10 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("唯一正确实现");
     expect(p).toContain("内联样式 HTML");
     expect(p).toContain("已退役");
-    // 可视化优先原则(批⑤修订):不硬编码张数/卡型路由,策略归指南
-    expect(p).toContain("替代大段纯文字表述");
+    // 可视化优先原则(批⑤修订):不硬编码张数/卡型路由,策略归指南;
+    // E1(2026-10-21)纪律单源化:内容规划细则住指南层,提示只留一行锚点
+    expect(p).toContain("锚点标准「一图看懂全文,且不虎头蛇尾」");
+    expect(p).not.toContain("信息主干清单"); // 细则不回填提示词(单源住指南)
     expect(p).toContain("能综合为一张卡呈现就一张");
     expect(p).toContain("以技能指南为准");
     expect(p).not.toContain("全景→flow"); // 卡型路由表已撤出提示词(L2 归指南)
