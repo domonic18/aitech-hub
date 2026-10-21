@@ -22,6 +22,8 @@ const NON_TOOL_TOKENS = new Set([
   "markdown_line", // render_card 返回字段
   "post_id", // save_topic_draft 返回字段
   "post_url", // save_topic_draft 返回字段
+  "reference_path", // generate_illustration 样例参照图参数(M39 批③;2026-10-21 提示加参照纪律)
+  "sample_image", // brief 结构化标记:样例参照图(M39 批③)
   "skill_key", // 专题绑定字段 / write_article 参数
   "skip_cover_generation", // brief 结构化标记(M39 批④+)
   "topic_id", // 各工具参数
