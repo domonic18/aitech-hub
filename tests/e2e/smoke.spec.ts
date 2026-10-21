@@ -9,6 +9,8 @@ import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import sharp from "sharp";
 
+import { composeWritingText } from "../../src/lib/topics/writing-config";
+
 /**
  * E2E 冒烟(standard/01-testing §4):首页//post/<id>-<slug> 文章/legacy 301/308/admin 登录(M4)/
  * SEO 端点/后台发布→前台闭环(M5-a)/电报流前台与后台三页(M7)/博主台账与视频混合流(M8)/
@@ -22,6 +24,7 @@ import sharp from "sharp";
  * 专题治理台:新建/挂载素材(仅已解读)/批注/人工状态流转/权限防线(M26 批③)。
  * 飞书免登底座:登录页非飞书零回归/兑换未启用 403/status 凭证齐透传·未配置 403/bind 未登录 401(M29,零真网)。
  * Agent 技能:后台页签 CRUD 冒烟(key 建后不可改)/启停落库/专题绑定写作技能/非法 skillKey 400(M30 批④,零真网)。
+ * 样例参照图库与写作配置回写:图库路由鉴权/上传边界/重命名删除软引用/topic 绑定核/五形式 skillKey 回写(M39 批③⑤,零真网)。
  * 映射样例取自 legacy_url_map 真实行(迁移产物,与库内数据耦合是验收本意)。
  */
 
@@ -3977,4 +3980,219 @@ test("40. 卡片模板库页(M36:7 卡型清单/双主题标识/实时预览/JSO
   await expect(page.getByRole("textbox")).toHaveValue(/"lanes"/);
   // 「渲染 PNG」按钮在数据合法时可用(真实渲染依赖 card-renderer,此处只验 UI 态)
   await expect(page.getByRole("button", { name: "渲染 PNG" })).toBeEnabled();
+});
+
+test("41. 样例参照图库与写作配置回写(M39 批③⑤:图库路由鉴权/上传边界/重命名删除软引用/topic 绑定核/五形式 skillKey 回写,零真网)", async ({
+  page,
+  request,
+}) => {
+  const TOPIC_TITLE = "e2e 专题-样例参照图";
+  await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+  await prisma.writingSampleImage.deleteMany({ where: { name: { startsWith: "e2e " } } });
+  const png = await sharp({
+    create: { width: 4, height: 3, channels: 3, background: { r: 30, g: 144, b: 255 } },
+  })
+    .png()
+    .toBuffer();
+
+  try {
+    // ① 未登录防线:GET 401;mutation 跨域 Origin 403(同源关先于会话)、同源 Origin 401
+    await page.goto("/");
+    expect((await request.get("/api/writing-samples/")).status()).toBe(401);
+    const cross = await request.post("/api/writing-samples/", {
+      headers: { "content-type": "application/json", origin: "https://evil.example" },
+    });
+    expect(cross.status()).toBe(403);
+    expect(
+      (
+        await request.post("/api/writing-samples/", {
+          headers: { "content-type": "application/json", origin: originOf(page) },
+        })
+      ).status(),
+    ).toBe(401);
+    const crossTopic = await request.patch("/api/topics/1/", {
+      headers: { "content-type": "application/json", origin: "https://evil.example" },
+      data: { sampleImageId: "1" },
+    });
+    expect(crossTopic.status()).toBe(403);
+
+    // ② 登录后上传边界:缺文件字段 400(JSON body 打 multipart 路由由 Next 415 挡,
+    //    不进路由校验)/ 非图片魔数 415(媒体域 unsupported 既有口径)/ 超 6MB 400 /
+    //    合法 202(展示名=文件名去扩展)
+    await e2eAdminLogin(page);
+    const origin = jsonOrigin(page);
+    const sampleOrigin = { origin: originOf(page) };
+    const noField = await page.request.post("/api/writing-samples/", {
+      headers: sampleOrigin,
+      multipart: {
+        notfile: { name: "e2e-x.txt", mimeType: "text/plain", buffer: Buffer.from("x") },
+      },
+    });
+    expect(noField.status()).toBe(400);
+    expect(await noField.text()).toContain("缺少文件字段");
+    const notImg = await page.request.post("/api/writing-samples/", {
+      headers: sampleOrigin,
+      multipart: {
+        file: { name: "e2e-fake.png", mimeType: "image/png", buffer: Buffer.from("not an image") },
+      },
+    });
+    expect(notImg.status()).toBe(415);
+    const oversize = await page.request.post("/api/writing-samples/", {
+      headers: sampleOrigin,
+      multipart: {
+        file: {
+          name: "e2e-big.png",
+          mimeType: "image/png",
+          buffer: Buffer.alloc(6 * 1024 * 1024 + 1, 7),
+        },
+      },
+    });
+    expect(oversize.status()).toBe(400);
+    expect(await oversize.text()).toContain("6MB");
+    const up = await page.request.post("/api/writing-samples/", {
+      headers: sampleOrigin,
+      multipart: { file: { name: "e2e 参照样例风格.png", mimeType: "image/png", buffer: png } },
+    });
+    expect(up.status()).toBe(202);
+    const upBody = (await up.json()) as {
+      code: number;
+      data: { id: string; name: string; mediaPath: string };
+    };
+    expect(upBody.code).toBe(0);
+    expect(upBody.data.name).toBe("e2e 参照样例风格");
+    expect(upBody.data.mediaPath).toMatch(/^\/wp-content\/uploads\//);
+    const sampleId = upBody.data.id;
+
+    // ③ sha1 去重:同字节重传 reused,媒体同路径、图库另起新行
+    const reup = await page.request.post("/api/writing-samples/", {
+      headers: sampleOrigin,
+      multipart: { file: { name: "e2e 参照样例风格.png", mimeType: "image/png", buffer: png } },
+    });
+    expect(reup.status()).toBe(202);
+    const reupBody = (await reup.json()) as {
+      message: string;
+      data: { id: string; mediaPath: string };
+    };
+    expect(reupBody.message).toBe("reused");
+    expect(reupBody.data.mediaPath).toBe(upBody.data.mediaPath);
+    expect(reupBody.data.id).not.toBe(sampleId);
+
+    // ④ 清单含新行
+    const list = await page.request.get("/api/writing-samples/");
+    const listBody = (await list.json()) as {
+      data: { samples: Array<{ id: string }> };
+    };
+    expect(listBody.data.samples.some((s) => s.id === sampleId)).toBe(true);
+
+    // ⑤ 重命名与校验:空名/超长 400、非法 id 400、不存在 404
+    const renamed = await page.request.patch(`/api/writing-samples/${sampleId}/`, {
+      headers: origin,
+      data: { name: "e2e 重命名风格" },
+    });
+    expect(renamed.status()).toBe(200);
+    expect(((await renamed.json()) as { data: { name: string } }).data.name).toBe("e2e 重命名风格");
+    expect(
+      (
+        await page.request.patch(`/api/writing-samples/${sampleId}/`, {
+          headers: origin,
+          data: { name: "" },
+        })
+      ).status(),
+    ).toBe(400);
+    expect(
+      (
+        await page.request.patch(`/api/writing-samples/${sampleId}/`, {
+          headers: origin,
+          data: { name: "x".repeat(101) },
+        })
+      ).status(),
+    ).toBe(400);
+    expect(
+      (
+        await page.request.patch("/api/writing-samples/abc/", {
+          headers: origin,
+          data: { name: "x" },
+        })
+      ).status(),
+    ).toBe(400);
+    expect(
+      (
+        await page.request.patch("/api/writing-samples/99999999/", {
+          headers: origin,
+          data: { name: "x" },
+        })
+      ).status(),
+    ).toBe(404);
+
+    // ⑥ topic 绑定核:绑定回读;不存在 400(存在性核);非法 id 400
+    const topic = await prisma.topic.create({ data: { title: TOPIC_TITLE } });
+    const topicId = topic.id.toString();
+    const bind = await page.request.patch(`/api/topics/${topicId}/`, {
+      headers: origin,
+      data: { sampleImageId: sampleId },
+    });
+    expect(bind.status()).toBe(200);
+    expect(
+      ((await bind.json()) as { data: { sampleImageId: string | null } }).data.sampleImageId,
+    ).toBe(sampleId);
+    const noSample = await page.request.patch(`/api/topics/${topicId}/`, {
+      headers: origin,
+      data: { sampleImageId: "99999999" },
+    });
+    expect(noSample.status()).toBe(400);
+    expect(await noSample.text()).toContain("样例参照图不存在");
+    expect(
+      (
+        await page.request.patch(`/api/topics/${topicId}/`, {
+          headers: origin,
+          data: { sampleImageId: "abc" },
+        })
+      ).status(),
+    ).toBe(400);
+
+    // ⑦ writing-config 五形式 roundtrip:价格表模板 + 文生图图文条款 → skillKey 同请求回写;
+    //   手写补充 → custom,派生 undefined 不触碰既有绑定(2026-10-20 重构口径)
+    const pricing = composeWritingText({
+      form: "model-pricing",
+      tone: "friendly",
+      length: "standard",
+      visual: "illustrate",
+      cover: "generate",
+    });
+    const cfg = await page.request.patch(`/api/topics/${topicId}/`, {
+      headers: origin,
+      data: { positioning: pricing },
+    });
+    expect(cfg.status()).toBe(200);
+    expect(((await cfg.json()) as { data: { skillKey: string | null } }).data.skillKey).toBe(
+      "model-pricing",
+    );
+    const customed = await page.request.patch(`/api/topics/${topicId}/`, {
+      headers: origin,
+      data: { positioning: `${pricing}\n补充:多列一手实测价格` },
+    });
+    expect(customed.status()).toBe(200);
+    expect(((await customed.json()) as { data: { skillKey: string | null } }).data.skillKey).toBe(
+      "model-pricing",
+    );
+
+    // ⑧ 删行软引用:绑定事务置空(媒体不连带);再删 404
+    const del = await page.request.delete(`/api/writing-samples/${sampleId}/`, {
+      headers: origin,
+    });
+    expect(del.status()).toBe(200);
+    expect(((await del.json()) as { data: { deleted: boolean } }).data.deleted).toBe(true);
+    const afterDel = await page.request.get(`/api/topics/${topicId}/`);
+    expect(
+      ((await afterDel.json()) as { data: { sampleImageId: string | null } }).data.sampleImageId,
+    ).toBeNull();
+    expect(
+      (
+        await page.request.delete(`/api/writing-samples/${sampleId}/`, { headers: origin })
+      ).status(),
+    ).toBe(404);
+  } finally {
+    await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+    await prisma.writingSampleImage.deleteMany({ where: { name: { startsWith: "e2e " } } });
+  }
 });

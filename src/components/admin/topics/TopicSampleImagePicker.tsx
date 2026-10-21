@@ -46,7 +46,7 @@ export default function TopicSampleImagePicker({
     loadSamples().catch(() => setMsg({ tone: "err", text: "图库清单加载失败,刷新页面重试" }));
   }, [loadSamples]);
 
-  /** 绑定/清除即时 PATCH topic(sample_image_id 可空;失败回滚本地态) */
+  /** 绑定/清除即时 PATCH topic(sampleImageId 可空;失败回滚本地态) */
   const patchBinding = useCallback(
     async (sampleImageId: string | null, okText: string): Promise<boolean> => {
       const prev = boundId;
@@ -57,7 +57,7 @@ export default function TopicSampleImagePicker({
         const res = await fetch(`/api/topics/${topicId}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sample_image_id: sampleImageId }),
+          body: JSON.stringify({ sampleImageId }),
         });
         const resp = (await res.json()) as ApiEnvelope;
         if (!res.ok || resp.code !== 0) {
