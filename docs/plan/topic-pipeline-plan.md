@@ -270,7 +270,7 @@ model WritingSampleImage {
 | 批④+ 封面图勾选微调(2026-10-21 用户补充,§13.3-⑤) | 写作配置「生成封面图」勾选(默认勾)+ brief 结构化标记 + cover 候选工具守卫 | `make check` 绿 + 面板手验(取消勾选重合成不再出封面) |
 | 批④++ 分层三修(2026-10-21 用户要求,§13.7) | 意图结构化闭环(brief `visual_mode` + 三态 note,提示分流改按字段)+ 守卫对称(插画为主未绑定生图模型 → brief 开工预警)+ 清单单源机器防线(工具面-提示一致性测试,正反向)+ 陈旧枚举 docblock 清理 —— **已交付** | `make check` 绿(含 parity 守卫);重合成走查插画为主真出插画 |
 | 批③ 样例参照图库 | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 —— **已交付(2026-10-21,见 §13.11;探针实证 Seedream 收 image 参数且风格高度靠拢)** | 迁移从零重放 ✅ + `make check` 绿(1580 用例)+ L-core 全链实证(媒体卷→data URL→出图)✅;面板手验待验收 |
-| 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
+| 批⑤ 收口 | 文档同步(arch/04 K2.8 补注十六:illustrate 第八角色/五层职责模型/样例参照图库、development-plan M39 行、本表)+ e2e 补齐(用例 41:图库路由鉴权/上传边界/重命名删除软引用/topic 绑定核/五形式 skillKey 回写,零真网)—— **已交付(2026-10-21)**;e2e 逮出并修复面板绑定键 snake/camel 错位真 bug | 用例 41 绿 + `make check` 绿(1580);全套件 26/41——余 15 例数据态耦合(套件硬编码旧本地数据集快照,dev 库空库后回灌验收库行形态/引用态不同,非 M39 回归),套件对齐新数据集另立项;PR 合 develop + 生产部署待批准 |
 
 ### 13.6 非目标(本立项明确不做)
 
@@ -285,7 +285,8 @@ model WritingSampleImage {
 
 > 触发:批④ 真机反馈「选了文生图仍全走 HTML 卡」(§13.3-⑥)。复盘定性:不是单点
 > bug,是分层缺陷——同一事实(正文配图有哪些工艺)没有真相源,意图没有结构化通道,
-> 守卫不对称。本节为 M39 范围内的设计基准,批⑤ 收口时并入 arch/04(§3 编排段)。
+> 守卫不对称。本节为 M39 范围内的设计基准,批⑤ 收口时并入 arch/04(§3 编排段)
+> ——**已并入(2026-10-21,arch/04 K2.8 补注十六)**。
 
 **合成全链路现状(分层视图)**
 
@@ -511,7 +512,7 @@ resolver+image-client):
 topic-tools/agent/illustrate-tool/illustrate-generate 新增 aspect 映射与张数收敛
 [1,3]),`make check` 绿(typecheck/lint 0 error/1566 tests);验收栈 m39-batch4
 重建 + nginx restart,样例三图 HTTP 200。**待收口**:post 280 同配置重合成
-(编排形态至少两种)用户触发验证;批⑤ arch/04 同步时并入本节。
+(编排形态至少两种)用户触发验证;批⑤ arch/04 同步时并入本节(已并入 K2.8 补注十六)。
 **✅ 出口验证通过(2026-10-21 用户)**:post 280 同配置重合成真出高质量带字
 图文,批④+4 收口。
 另:L2 指南「图」条修正 generate_cover_candidates 职责(只服务封面,正文概念图
@@ -623,6 +624,14 @@ L-core `referencePath` → 媒体卷读字节 → data URL → image-client `ima
 全绿):参照装载合法/四类降级不阻塞/工具透传与 warning/schema/图库 CRUD 投影。
 验收冒烟:四路由 401/403 收口正确;L-core 全链实证(媒体卷参照图 → 出图
 8.6s,风格复刻文字零错)。**待验收:面板手验 + 绑样例图专题重合成(用户验)。**
+
+**批⑤ 收口补记(2026-10-21)**:e2e 用例 41 落地(图库路由鉴权/上传边界
+[坏 multipart/非图片魔数/超 6MB]/重命名与 404/topic 绑定核/删行软引用置空/
+五形式 skillKey 回写与 custom 不触碰,零真网),逮出真 bug 一枚——面板
+patchBinding 误发 snake_case `sample_image_id`,schema 只认 camelCase(zod 剥
+未知键 → 400「至少提供一个更新字段」),绑定会全败,已修 `{sampleImageId}`;
+arch/04 同步 K2.8 补注十六(illustrate 第八角色/五层职责模型/图库)+
+development-plan M39 行回填。
 
 **出口**:`make check` 绿 + 迁移从零重放通过 + 面板手验(上传/粘贴/选择/
 重命名/删除/清除/重挂)+ 绑样例图的专题重合成出图风格向参照靠拢(用户验)。
