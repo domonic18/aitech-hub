@@ -7,7 +7,9 @@
  * 响应三种形态都收(M16 问题1:智谱 CogView 只回 url 且忽略 response_format;
  * M39:AiHubMix 回 output[] 数组且条目键为 content_url):OpenAI `data[]` 与
  * AiHubMix `output[]` 双数组等价解析,条目 b64_json 直解;url/content_url 由
- * 服务端转存(免签名 URL 过期,不外链)。下载鉴权纪律:默认不带 Authorization
+ * 服务端转存(免签名 URL 过期,不外链)。解析单源 parseImagesResponse——
+ * generateImages 与 probeImages 共用(E2 收口,供应商新形态只改一处)。
+ * 下载鉴权纪律:默认不带 Authorization
  * (防密钥泄漏给第三方 CDN);收窄例外=同源下载(M39 AiHubMix content_url 须带
  * 同 key,约 30 分钟过期)——仅当下载 URL 宿主与网关 baseUrl 宿主一致才带,
  * 密钥不出同一供应商边界。
@@ -68,6 +70,58 @@ export function buildImagesBody(
   );
   const preserved = Object.fromEntries(Object.entries(keys).filter(([k]) => !omit.has(k)));
   return { ...extra, ...preserved };
+}
+
+/** 响应单行(双供应商形态并集):b64 直解,或 url/content_url 待转存 */
+interface ImagesResponseRow {
+  b64_json?: unknown;
+  url?: unknown;
+  content_url?: unknown;
+}
+
+export interface ParsedImagesResponse {
+  /** 行级校验通过的图片(url 形态已过 https+长度门) */
+  images: GeneratedImage[];
+  /** HTTP 200 体携顶层 {error} 文案的业务错(AiHubMix 形态),无则 null */
+  bizError: string | null;
+  /** data[]/output[] 数组是否在场(缺 = 契约漂移,补请求无益) */
+  hasRows: boolean;
+}
+
+/** 行级归一:b64 非空串直解优先;url/content_url 须 https 且 <2000(转存口径)。 */
+function parseImageRow(row: ImagesResponseRow | undefined): GeneratedImage | null {
+  if (typeof row?.b64_json === "string" && row.b64_json.length > 0) return { b64: row.b64_json };
+  const link =
+    typeof row?.url === "string"
+      ? row.url
+      : typeof row?.content_url === "string"
+        ? row.content_url
+        : null;
+  return link !== null && /^https:\/\//.test(link) && link.length < 2000 ? { url: link } : null;
+}
+
+/**
+ * 生图响应解析单源(generateImages 与 probeImages 共用;M39 双形态收编,后续
+ * 供应商新响应形态只改这里):OpenAI `data[]`(b64_json|url)与 AiHubMix
+ * `output[]`(b64_json|content_url)等价解析,data 优先不歧义;单行脏数据跳过
+ * 不再弃全轮;顶层 error 文案透传给调用方拼业务错。
+ */
+export function parseImagesResponse(body: unknown): ParsedImagesResponse {
+  const shell = body as { data?: unknown; output?: unknown; error?: unknown };
+  const bizError =
+    typeof shell.error === "string" && shell.error.trim() !== "" ? shell.error : null;
+  const rows = Array.isArray(shell.data)
+    ? shell.data
+    : Array.isArray(shell.output)
+      ? shell.output
+      : null;
+  if (rows === null) return { images: [], bizError, hasRows: false };
+  const images: GeneratedImage[] = [];
+  for (const r of rows) {
+    const img = parseImageRow(r as ImagesResponseRow | undefined);
+    if (img) images.push(img);
+  }
+  return { images, bizError, hasRows: true };
 }
 
 /** url 下载体积帽(生图 1344×768 jpg ≈ 200KB;20MB 已是数量级冗余) */
@@ -143,45 +197,26 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
     } catch {
       throw new AiClientError("business", "生图响应不是 JSON");
     }
-    // 双数组等价解析(M39):OpenAI data[] / AiHubMix output[];data 优先(同现不歧义)
-    const shell = body as { data?: unknown; output?: unknown; error?: unknown };
-    lastBizError =
-      typeof shell.error === "string" && shell.error.trim() !== "" ? shell.error : null;
-    const rows = Array.isArray(shell.data)
-      ? shell.data
-      : Array.isArray(shell.output)
-        ? shell.output
-        : undefined;
-    if (!Array.isArray(rows)) {
+    // 双数组等价解析单源(E2 收口:与 probeImages 共用 parseImagesResponse)
+    const parsed = parseImagesResponse(body);
+    lastBizError = parsed.bizError;
+    if (!parsed.hasRows) {
       // AiHubMix 业务错可能随 HTTP 200 回 {error}:有文案就透传,无则报契约漂移
       throw new AiClientError(
         "business",
-        lastBizError ? `生图失败:${lastBizError}` : "生图响应缺 data/output 数组(契约漂移)",
+        parsed.bizError ? `生图失败:${parsed.bizError}` : "生图响应缺 data/output 数组(契约漂移)",
       );
     }
-    for (const r of rows) {
-      const row = r as { b64_json?: unknown; url?: unknown; content_url?: unknown };
-      if (typeof row?.b64_json === "string" && row.b64_json.length > 0) {
-        collected.push({ b64: row.b64_json });
-      } else {
-        const link =
-          typeof row?.url === "string"
-            ? row.url
-            : typeof row?.content_url === "string"
-              ? row.content_url
-              : null;
-        if (link && /^https:\/\//.test(link) && link.length < 2000) collected.push({ url: link });
-      }
+    collected.push(...parsed.images);
+    if (parsed.images.length === 0) {
+      // 空数组(供应商明确回空,补请求无益)或行全非法:立即失败,不烧补齐轮
+      throw new AiClientError(
+        "business",
+        lastBizError
+          ? `生图失败:${lastBizError}`
+          : "生图响应无 b64_json/url 图片数据(契约漂移,检查供应商与模型 ID)",
+      );
     }
-    if (rows.length === 0) break; // 供应商明确回空:补请求也无益
-  }
-  if (collected.length === 0) {
-    throw new AiClientError(
-      "business",
-      lastBizError
-        ? `生图失败:${lastBizError}`
-        : "生图响应无 b64_json/url 图片数据(契约漂移,检查供应商与模型 ID)",
-    );
   }
   return collected;
 }
