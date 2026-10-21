@@ -5,10 +5,11 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_TOPIC_POSITIONING, TUTORIAL_TOPIC_POSITIONING } from "./constants";
+import { DEFAULT_TOPIC_POSITIONING, TOPIC_PURPOSES, TUTORIAL_TOPIC_POSITIONING } from "./constants";
 import {
   composeWritingText,
   DEFAULT_WRITING_SELECTION,
+  deriveSkillKey,
   parseWritingText,
   resolvePurpose,
   WRITING_DIMENSIONS,
@@ -17,6 +18,7 @@ import {
 
 const EDITORIAL = "口吻:专业编辑,克制陈述,让数据与事实说话,少用感叹号与网络流行语。";
 const COMPACT = "篇幅:精炼,全文约 800 字,每节只留一个核心论点与一条证据。";
+const ILLUSTRATE = "配图:文生图插画为主,按小节内容生成概念/场景插画(数据密集内容仍可配信息卡)。";
 const MINIMAL = "配图:少图,最多 1 张信息卡,以文字与行内链接表达为主。";
 
 describe("composeWritingText(选择 → 写作要求文本)", () => {
@@ -34,9 +36,11 @@ describe("composeWritingText(选择 → 写作要求文本)", () => {
     expect(text).toBe([TUTORIAL_TOPIC_POSITIONING, EDITORIAL, COMPACT, MINIMAL].join("\n"));
   });
 
-  it("只改配图 = 模板 + 单条配图条款", () => {
-    const text = composeWritingText({ ...DEFAULT_WRITING_SELECTION, visual: "minimal" });
-    expect(text).toBe(`${DEFAULT_TOPIC_POSITIONING}\n${MINIMAL}`);
+  it("只改配图 = 模板 + 单条配图条款(插画/少图各归其位)", () => {
+    const illu = composeWritingText({ ...DEFAULT_WRITING_SELECTION, visual: "illustrate" });
+    expect(illu).toBe(`${DEFAULT_TOPIC_POSITIONING}\n${ILLUSTRATE}`);
+    const min = composeWritingText({ ...DEFAULT_WRITING_SELECTION, visual: "minimal" });
+    expect(min).toBe(`${DEFAULT_TOPIC_POSITIONING}\n${MINIMAL}`);
   });
 });
 
@@ -80,6 +84,42 @@ describe("parseWritingText(写作要求文本 → 选择)", () => {
   it("条款行之外多出手写行 → custom=true", () => {
     const text = `${composeWritingText(DEFAULT_WRITING_SELECTION)}\n多用具体数字,少用形容词。`;
     expect(parseWritingText(text).custom).toBe(true);
+  });
+
+  it("插画条款往返回显 illustrate;新形式模板(开源项目介绍)精确匹配", () => {
+    const p = parseWritingText(
+      composeWritingText({ ...DEFAULT_WRITING_SELECTION, visual: "illustrate" }),
+    );
+    expect(p.custom).toBe(false);
+    expect(p.selection.visual).toBe("illustrate");
+    const form = TOPIC_PURPOSES.find((t) => t.key === "open-source-intro");
+    expect(form).toBeDefined();
+    expect(parseWritingText(form!.positioningTemplate).selection.form).toBe("open-source-intro");
+  });
+});
+
+describe("deriveSkillKey(形式 → skillKey 服务端单点派生,M39 批②)", () => {
+  it("预置形式(含条款组合)返回注册表 skillKey;缺省=视频安利→blogger-video", () => {
+    expect(deriveSkillKey(DEFAULT_TOPIC_POSITIONING)).toBe("blogger-video");
+    expect(deriveSkillKey(null)).toBe("blogger-video"); // 未设置=缺省形式
+    const tutorial = composeWritingText({
+      ...DEFAULT_WRITING_SELECTION,
+      form: "video-tutorial",
+      tone: "editorial",
+    });
+    expect(deriveSkillKey(tutorial)).toBe("blogger-video");
+    const pricing = composeWritingText({
+      ...DEFAULT_WRITING_SELECTION,
+      form: "model-pricing",
+    });
+    expect(deriveSkillKey(pricing)).toBe("model-pricing");
+  });
+
+  it("自定义文本 → undefined(不动人工绑定);7 形式全量可派生", () => {
+    expect(deriveSkillKey("按我上一篇文章的风格写,重点讲成本账。")).toBeUndefined();
+    for (const t of TOPIC_PURPOSES) {
+      expect(deriveSkillKey(t.positioningTemplate)).toBe(t.skillKey);
+    }
   });
 });
 

@@ -12,6 +12,7 @@ import { toItemDto, toTopicDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
 import { getTopic, hydrateItems, updateTopic, updateTopicStatus } from "@/lib/topics/repo";
 import { topicStatusSchema, topicUpdateSchema } from "@/lib/topics/schemas";
+import { deriveSkillKey } from "@/lib/topics/writing-config";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,18 @@ export async function PATCH(
       select: { enabled: true },
     });
     if (!skill || !skill.enabled) return apiEnvelope(400, "skillKey 不存在或已停用");
+  }
+  // 形式 → skillKey 单点回写(M39 批②):body 带 positioning 且未显式给
+  // skillKey 时按预置形式派生绑定(自定义文本返回 undefined = 不动人工绑定)。
+  // 派生值是注册表常量非用户输入,故在上面的存在性核之后注入、免核;专属
+  // skill 种子落库前(批④)agent 侧经 list_skills 自动匹配兜底(topic-tools)。
+  if (
+    parsed.success &&
+    parsed.data.positioning !== undefined &&
+    parsed.data.skillKey === undefined
+  ) {
+    const derived = deriveSkillKey(parsed.data.positioning ?? null);
+    if (derived !== undefined) parsed.data.skillKey = derived;
   }
   try {
     let topic = await updateTopic(BigInt(id), parsed.success ? parsed.data : {});

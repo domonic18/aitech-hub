@@ -20,6 +20,7 @@ import {
   composeWritingText,
   parseWritingText,
   VISUAL_SAMPLE_CARDS,
+  VISUAL_SAMPLE_ILLUSTRATIONS,
   WRITING_DIMENSIONS,
   type WritingSelection,
 } from "@/lib/topics/writing-config";
@@ -85,7 +86,8 @@ function DimensionGroup({
       <div className="flex flex-wrap gap-2">
         {dim.options.map((opt) => {
           const active = opt.key === selected;
-          const hasSample = opt.sample !== "" || dim.key === "visual";
+          // 配图维:信息卡走真实渲染、插画走静态样例,少图纯文字无样例
+          const hasSample = opt.sample !== "" || (dim.key === "visual" && opt.key !== "minimal");
           return (
             <div key={opt.key} className="flex flex-col gap-1">
               <div className="flex items-center gap-1">
@@ -122,7 +124,22 @@ function DimensionGroup({
               </div>
               {openKey === opt.key && (
                 <div className="max-w-96 rounded-sm border border-dashed border-line bg-panel-2/60 px-2.5 py-2">
-                  {dim.key === "visual" ? (
+                  {dim.key === "visual" && opt.key === "illustrate" ? (
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[11px] text-text-3">
+                        以下为文生图插画样例(生成时按各小节内容绘制,概念/场景/氛围向;非固定模板):
+                      </span>
+                      {VISUAL_SAMPLE_ILLUSTRATIONS.map((img) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={img.src}
+                          src={img.src}
+                          alt={img.alt}
+                          className="max-w-full rounded-sm border border-line"
+                        />
+                      ))}
+                    </div>
+                  ) : dim.key === "visual" ? (
                     <div className="flex flex-col gap-2">
                       <span className="text-[11px] text-text-3">
                         以下为信息卡真实渲染样例(生成时按文章内容自动设计,非固定模板):

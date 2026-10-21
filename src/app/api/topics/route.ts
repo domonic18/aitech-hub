@@ -12,6 +12,7 @@ import { TOPIC_LIST_SEGMENTS } from "@/lib/topics/constants";
 import { toTopicDto } from "@/lib/topics/dto";
 import { createTopic, countByStatus, listTopics } from "@/lib/topics/repo";
 import { topicCreateSchema } from "@/lib/topics/schemas";
+import { deriveSkillKey } from "@/lib/topics/writing-config";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (actor.kind === "reject") return actor.response;
   const parsed = topicCreateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "标题必填(1-200 字符),定位最长 1000 字符");
-  const topic = await createTopic(parsed.data);
+  // 形式 → skillKey 单点回写(M39 批②,同 PATCH 口径):定位命中预置形式时
+  // 派生绑定;自定义/空串不绑(agent 侧自动匹配兜底)
+  const topic = await createTopic({
+    ...parsed.data,
+    skillKey: deriveSkillKey(parsed.data.positioning ?? null),
+  });
   return apiEnvelope(0, "created", toTopicDto(topic));
 }

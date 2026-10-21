@@ -24,8 +24,9 @@ export type WritingFormKey = TopicPurposeKey;
 export type WritingToneKey = "friendly" | "editorial";
 /** 篇幅:standard=标准 ≈1200 字(指南缺省,不出条款);compact=精炼 ≈800 字 */
 export type WritingLengthKey = "standard" | "compact";
-/** 配图:cards=信息卡为主(指南缺省,不出条款);minimal=少图纯文字 */
-export type WritingVisualKey = "cards" | "minimal";
+/** 配图:cards=信息卡为主(指南缺省,不出条款);illustrate=文生图插画为主;
+ * minimal=少图纯文字(M39 批②三选) */
+export type WritingVisualKey = "cards" | "illustrate" | "minimal";
 
 export interface WritingSelection {
   form: WritingFormKey;
@@ -52,6 +53,7 @@ const LENGTH_CLAUSE: Record<WritingLengthKey, string | null> = {
 };
 const VISUAL_CLAUSE: Record<WritingVisualKey, string | null> = {
   cards: null,
+  illustrate: "配图:文生图插画为主,按小节内容生成概念/场景插画(数据密集内容仍可配信息卡)。",
   minimal: "配图:少图,最多 1 张信息卡,以文字与行内链接表达为主。",
 };
 
@@ -95,6 +97,9 @@ export function parseWritingText(text: string | null): WritingParse {
     } else if (line === LENGTH_CLAUSE.compact) {
       if (found.length !== undefined) custom = true;
       found.length = "compact";
+    } else if (line === VISUAL_CLAUSE.illustrate) {
+      if (found.visual !== undefined) custom = true;
+      found.visual = "illustrate";
     } else if (line === VISUAL_CLAUSE.minimal) {
       if (found.visual !== undefined) custom = true;
       found.visual = "minimal";
@@ -134,6 +139,18 @@ export function resolvePurpose(positioning: string | null): {
     };
   }
   return { label: preset.label, genreWord: preset.genreWord, custom: false };
+}
+
+/**
+ * 形式 → skillKey 单点派生(M39 批②):定位文本精确命中预置形式(含缺省
+ * 「视频安利」,空串视同未设置=缺省)时返回注册表 skillKey,服务端在
+ * positioning 落库的同一请求里一并回写 topic.skillKey;自定义文本返回
+ * undefined = 不动人工绑定(PATCH/POST 路由同源调用,UI 不经手)。
+ */
+export function deriveSkillKey(positioning: string | null): string | undefined {
+  const { selection, custom } = parseWritingText(positioning);
+  if (custom) return undefined;
+  return TOPIC_PURPOSES.find((t) => t.key === selection.form)?.skillKey;
 }
 
 /** ── 可视化配置元数据(选项说明 + 样例节选;面板渲染用)────────── */
@@ -178,6 +195,52 @@ export const WRITING_DIMENSIONS: readonly WritingDimension[] = [
           "第 1 步:拉取镜像并启动容器(先确认 CUDA 版本再选 tag)。\n" +
           "第 2 步:挂载模型目录,修改配置里的量化参数。\n" +
           "跟完你手里会多一个能跑的本地知识库,全程不用写代码。",
+      },
+      {
+        key: "open-source-intro",
+        label: TOPIC_PURPOSES[2]?.label ?? "开源项目介绍",
+        desc: "讲清一个项目解决什么问题、凭什么值得上手,给最小可复现路径。",
+        sample:
+          "先给结论:如果你在找「本地就能跑的向量检索」,这个项目值得先试。\n" +
+          "它不堆功能——核心只有一个嵌入索引,但把九成内存省在了量化上;\n" +
+          "README 五分钟能跑通第一个 demo,坑都替你标好了。",
+      },
+      {
+        key: "paper-interpret",
+        label: TOPIC_PURPOSES[3]?.label ?? "论文解读",
+        desc: "讲清论文回答了什么问题、结论改变了什么,方法直觉优先。",
+        sample:
+          "这篇论文回答的问题很直接:小模型能不能在推理阶段「临时变聪明」。\n" +
+          "方法直觉一句话:与其把所有知识塞进参数,不如教会模型按需查笔记。\n" +
+          "关键实验里,7B 模型挂上检索后在数学基准上追平了 34B。",
+      },
+      {
+        key: "tutorial-refine",
+        label: TOPIC_PURPOSES[4]?.label ?? "教程精炼",
+        desc: "教程/实操素材:只留必要步骤与参数的精炼版跟做手册。",
+        sample:
+          "准备:一个 GitHub 账号、装好 Node 20+。\n" +
+          "第 1 步:克隆仓库并安装依赖(国内网络记得设镜像)。\n" +
+          "第 2 步:复制 .env.example 并填入 API Key。\n" +
+          "常见坑:端口占用就换 PORT,Node 版本低了会直接启动失败。",
+      },
+      {
+        key: "weekly-news",
+        label: TOPIC_PURPOSES[5]?.label ?? "周新闻精选",
+        desc: "一周 AI 动态分组综述:每条一句话讲清发生了什么、为何值得在意。",
+        sample:
+          "本周速览:① 两家头部厂商同日发布新旗舰模型;② 开源社区出现首个\n" +
+          "跑通手机端的多模态框架;③ 国内大模型价格再降一轮。\n" +
+          "下面按「模型 / 框架 / 行业」三组展开。",
+      },
+      {
+        key: "model-pricing",
+        label: TOPIC_PURPOSES[6]?.label ?? "模型价格表",
+        desc: "模型牌价速查:表格为主干,客观比对与选购建议,不臆测定价。",
+        sample:
+          "先看结论表(数据截稿 2026-10,单位:元/百万 tokens):\n" +
+          "| 模型 | 输入 | 输出 | 免费额度 |\n" +
+          "选购建议一句话:重度对话选输出便宜的,长文档处理优先看输入价。",
       },
     ],
   },
@@ -226,12 +289,18 @@ export const WRITING_DIMENSIONS: readonly WritingDimension[] = [
   {
     key: "visual",
     title: "配图",
-    hint: "信息卡由 AI 按内容自动设计生成;右侧为真实渲染样例。",
+    hint: "信息卡由 AI 按内容自动设计生成;插画由文生图模型按内容绘制。",
     options: [
       {
         key: "cards",
         label: "信息卡为主",
         desc: "按内容自动生成 HTML 信息卡(金句/数据/步骤卡等),1~3 张(缺省)。",
+        sample: "",
+      },
+      {
+        key: "illustrate",
+        label: "文生图插画为主",
+        desc: "按小节内容生成概念/场景插画,适合叙事与氛围表达;数据密集内容仍可配信息卡。",
         sample: "",
       },
       {
@@ -264,4 +333,12 @@ export const VISUAL_SAMPLE_CARDS: readonly { preset: "quote" | "stats"; data: un
       ],
     },
   },
+];
+
+/** 配图维度「文生图插画为主」的静态样例(M39 批②:生图模型预产出入
+ * public/,入仓库;文生图无法零副作用实时预览——每张计费且 10~30s,静态
+ * 样例是唯一务实解,与信息卡真实渲染互为对照) */
+export const VISUAL_SAMPLE_ILLUSTRATIONS: readonly { src: string; alt: string }[] = [
+  { src: "/images/writing/illustrate-sample-1.jpg", alt: "文生图插画样例 1:概念场景图" },
+  { src: "/images/writing/illustrate-sample-2.jpg", alt: "文生图插画样例 2:数据叙事氛围图" },
 ];

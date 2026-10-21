@@ -13,7 +13,9 @@ export const topicCreateSchema = z.object({
   title: z.string().trim().min(1, "标题必填").max(200),
   positioning: z.string().trim().max(1000).optional(),
 });
-export type TopicCreateInput = z.infer<typeof topicCreateSchema>;
+/** skillKey 为服务端派生字段(M39 批②形式回写),不在客户端 schema 内
+ * (zod 剥未知键,客户端传不上来);PATCH 的 skillKey 仍走 topicUpdateSchema */
+export type TopicCreateInput = z.infer<typeof topicCreateSchema> & { skillKey?: string };
 
 export const topicUpdateSchema = z
   .object({
