@@ -57,6 +57,12 @@ export async function updateTopic(id: bigint, patch: TopicUpdateInput): Promise<
           : patch.linkedPostId === null
             ? null
             : BigInt(patch.linkedPostId),
+      sampleImageId:
+        patch.sampleImageId === undefined
+          ? undefined
+          : patch.sampleImageId === null
+            ? null
+            : BigInt(patch.sampleImageId),
     },
   });
 }

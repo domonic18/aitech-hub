@@ -161,6 +161,23 @@ describe("generateImages(M16 问题1/2 扩)", () => {
     expect(body.n).toBe(1);
     expect(body.watermark_enabled).toBe(false); // 非 null 扩展参数照常透传
   });
+
+  it("参照图(M39 批③):传 image 时进请求体顶层;不传时键不出现", async () => {
+    const { calls } = stubFetchSequence([{ data: [{ b64_json: PNG_1X1 }] }]);
+    const dataUrl = `data:image/png;base64,${PNG_1X1}`;
+    await generateImages({ ...BASE_INPUT, n: 1, image: dataUrl });
+    expect((calls[0] as Record<string, unknown>).image).toBe(dataUrl);
+    // 补齐轮次同样携带(参照图属请求级参数)
+    const { calls: calls2 } = stubFetchSequence([
+      { data: [{ b64_json: PNG_1X1 }] },
+      { data: [{ b64_json: PNG_1X1 }] },
+    ]);
+    await generateImages({ ...BASE_INPUT, image: dataUrl });
+    expect((calls2[1] as Record<string, unknown>).image).toBe(dataUrl);
+    const { calls: calls3 } = stubFetchSequence([{ data: [{ b64_json: PNG_1X1 }] }]);
+    await generateImages({ ...BASE_INPUT, n: 1 });
+    expect((calls3[0] as Record<string, unknown>).image).toBeUndefined();
+  });
 });
 
 describe("generateImages(M39 AiHubMix 形态)", () => {

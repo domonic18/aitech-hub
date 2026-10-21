@@ -57,7 +57,10 @@ export async function PATCH(
   const parsed = topicUpdateSchema.safeParse(body);
   const status = topicStatusSchema.safeParse(body);
   if (!parsed.success && !status.success) {
-    return apiEnvelope(400, "字段不合法(标题 1-200 / 定位 ≤1000 / 文章 id 纯数字 / status 枚举)");
+    return apiEnvelope(
+      400,
+      "字段不合法(标题 1-200 / 定位 ≤1000 / 文章 id 与样例图 id 纯数字 / status 枚举)",
+    );
   }
   // skillKey 存在性核(soft ref 可解绑,但指向必须落在启用的 agent_skill 上)
   if (parsed.success && parsed.data.skillKey) {
@@ -66,6 +69,14 @@ export async function PATCH(
       select: { enabled: true },
     });
     if (!skill || !skill.enabled) return apiEnvelope(400, "skillKey 不存在或已停用");
+  }
+  // 样例参照图存在性核(M39 批③,同 skillKey soft ref 口径:可解绑,指向必须存在)
+  if (parsed.success && parsed.data.sampleImageId) {
+    const sample = await prisma.writingSampleImage.findUnique({
+      where: { id: BigInt(parsed.data.sampleImageId) },
+      select: { id: true },
+    });
+    if (!sample) return apiEnvelope(400, "样例参照图不存在");
   }
   // 形式 → skillKey 单点回写(M39 批②):body 带 positioning 且未显式给
   // skillKey 时按预置形式派生绑定(自定义文本返回 undefined = 不动人工绑定)。

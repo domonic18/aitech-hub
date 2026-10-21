@@ -5,9 +5,15 @@
  * 费),成功按张落 ok/degraded 行。
  * 同步执行:agent 工具调用内等待出图(云厂商 10-30s;agent 运行本就长驻,
  * 且插画是工具流内点状调用,不似 cover 另有编辑器路由消费场景,无需 BullMQ)。
+ * M39 批③:参照图通道(referencePath 站内媒体路径 → mediaStorage 读字节 →
+ * data URL 进 Seedream 原生 image 参数,出图向参照风格靠拢)——装载失败/超帽/
+ * 格式不支持不阻塞生图,降级为无参照出图并把人话原因带回调用侧(agent 可见)。
  */
+import path from "node:path";
+
 import { logger } from "../logger";
 import { uploadMedia } from "../media/service";
+import { MEDIA_MIME_BY_EXT, mediaStorage, uploadsUrlToRel } from "../media/storage";
 
 import { AI_PURPOSE_ILLUSTRATE } from "./constants";
 import { AiAdminError, AiClientError } from "./errors";
@@ -32,6 +38,36 @@ export const ILLUSTRATE_DEFAULT_ASPECT: IllustrateAspect = "16:9";
 /** 单次调用张数帽:图文按小节点状生成,1 张为主、关键小节至多 3 张择优(按张计费) */
 export const ILLUSTRATE_MAX_COUNT = 3;
 
+/** 参照图字节帽(§13.11 决策 1;base64 后 ~1.33x 膨胀,官方单图 10MB 上限内自留量;
+ * 上传侧 /api/writing-samples 同帽前置拦截,此处为执行期防御) */
+export const ILLUSTRATE_REFERENCE_MAX_BYTES = 6 * 1024 * 1024;
+
+/** 参照图白名单 mime(Seedream image 参数支持域;gif/svg 不收) */
+const REFERENCE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/** 参照图装载(站内媒体路径 → data URL);任一环失败返回人话原因,不抛——
+ * 参照是增强不是硬依赖,生图照常进行(调用侧把原因带回 agent) */
+async function loadReferenceDataUrl(
+  referencePath: string,
+): Promise<{ dataUrl: string } | { error: string }> {
+  const rel = uploadsUrlToRel(referencePath);
+  if (!rel) {
+    return { error: "参照图路径不合法(仅支持站内媒体 /wp-content/uploads/ 路径)" };
+  }
+  const bytes = await mediaStorage.get(rel);
+  if (!bytes || bytes.length === 0) {
+    return { error: "参照图文件读取失败(可能已被删除):请到专题写作配置重新选择参照图" };
+  }
+  if (bytes.length > ILLUSTRATE_REFERENCE_MAX_BYTES) {
+    return { error: "参照图超过 6MB 体积帽:请换更小的图" };
+  }
+  const mime = MEDIA_MIME_BY_EXT[path.extname(rel).toLowerCase()] ?? "";
+  if (!REFERENCE_MIMES.has(mime)) {
+    return { error: "参照图格式不支持(仅 png/jpeg/webp)" };
+  }
+  return { dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}` };
+}
+
 export interface IllustrateImage {
   path: string;
   mime: string;
@@ -43,11 +79,13 @@ export interface GenerateIllustrationsInput {
   n?: number;
   /** 宽高比(枚举守卫,越界回落缺省 16:9) */
   aspect?: string;
+  /** 参照图站内媒体路径(M39 批③;/wp-content/uploads/ 前缀;装载失败降级无参照出图) */
+  referencePath?: string;
 }
 
 export async function generateIllustrations(
   input: GenerateIllustrationsInput,
-): Promise<{ images: IllustrateImage[] }> {
+): Promise<{ images: IllustrateImage[]; referenceError: string | null }> {
   const model = await resolveAiModel(AI_PURPOSE_ILLUSTRATE);
   if (!model) {
     throw new AiAdminError(
@@ -59,6 +97,23 @@ export async function generateIllustrations(
   const size =
     ILLUSTRATE_ASPECT_SIZES[input.aspect ?? ""] ??
     ILLUSTRATE_ASPECT_SIZES[ILLUSTRATE_DEFAULT_ASPECT];
+  // 参照图装载(§13.11 探针实证 Seedream 收 image 参数与 size 共存):失败降级
+  // 无参照出图,人话原因带回调用侧(参照是增强不是硬依赖)
+  let referenceDataUrl: string | undefined;
+  let referenceError: string | null = null;
+  if (input.referencePath) {
+    const ref = await loadReferenceDataUrl(input.referencePath);
+    if ("dataUrl" in ref) {
+      referenceDataUrl = ref.dataUrl;
+    } else {
+      referenceError = ref.error;
+      logger.warn({
+        event: "illustrate.reference_load_failed",
+        reason: ref.error,
+        path: input.referencePath,
+      });
+    }
+  }
   const startedAt = Date.now();
   let images;
   try {
@@ -72,6 +127,7 @@ export async function generateIllustrations(
       size,
       timeoutSec: model.timeoutSec,
       extraParams: model.extraParams,
+      ...(referenceDataUrl ? { image: referenceDataUrl } : {}),
     });
   } catch (e) {
     // 请求级失败(整批无图=不计费):落 failed 行供看板观测,错误原样上抛
@@ -131,6 +187,7 @@ export async function generateIllustrations(
     requested: n,
     generated: out.length,
     promptLen: input.prompt.length,
+    referenceApplied: referenceDataUrl !== undefined,
   });
-  return { images: out };
+  return { images: out, referenceError };
 }

@@ -32,6 +32,9 @@ export interface GenerateImagesInput {
   timeoutSec: number;
   /** 供应商扩展参数(模型台账配置;浅合并,保留键 model/prompt/n/size/response_format 不可覆盖) */
   extraParams?: Record<string, unknown>;
+  /** 参照图 data URL(M39 批③:Seedream 原生 image 参数,出图向参照风格靠拢;
+   * 仅传入时进请求体顶层;拒收型供应商会回 400——换绑前先探针) */
+  image?: string;
 }
 
 /** 单张结果:b64 直解形态或 url 待转存形态(调用侧统一转 bytes) */
@@ -108,6 +111,9 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
     },
     input.extraParams,
   );
+  // 参照图(M39 批③)仅传入时附加在请求体顶层(openai 协议外置键,不占保留键契约;
+  // 不进 extraParams 合并语义——调用侧显式给才带,防模型台账误配出参照图)
+  const reqBody = input.image ? { ...baseBody, image: input.image } : baseBody;
 
   const collected: GeneratedImage[] = [];
   let lastBizError: string | null = null; // AiHubMix 形态:{error} 文案随 200 回,末轮无图时透传
@@ -116,7 +122,7 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
     const remain = input.n - collected.length;
     let res: Response;
     try {
-      res = await postImages(endpoint, input.apiKey, { ...baseBody, n: remain }, input.timeoutSec);
+      res = await postImages(endpoint, input.apiKey, { ...reqBody, n: remain }, input.timeoutSec);
     } catch (e) {
       if (e instanceof AiClientError) throw e;
       const aborted = e instanceof Error && e.name === "AbortError";

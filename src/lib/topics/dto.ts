@@ -14,6 +14,7 @@ export interface TopicDto {
   skillKey: string | null;
   status: string;
   linkedPostId: string | null;
+  sampleImageId: string | null;
   composedAt: string | null;
   publishedAt: string | null;
   createdAt: string;
@@ -32,6 +33,7 @@ export function toTopicDto(
     skillKey: t.skillKey,
     status: t.status,
     linkedPostId: t.linkedPostId === null ? null : t.linkedPostId.toString(),
+    sampleImageId: t.sampleImageId === null ? null : t.sampleImageId.toString(),
     composedAt: t.composedAt?.toISOString() ?? null,
     publishedAt: t.publishedAt?.toISOString() ?? null,
     createdAt: t.createdAt.toISOString(),

@@ -2,7 +2,7 @@
  * 专题文章生产·admin 细粒度工具面(M27 批⑤建;批⑥补正文配图分配面):
  * 编排权移交会话 agent——模型按系统提示工作流自主规划(write_todos)并逐工具
  * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面,配图工艺
- * visual_mode 结构化透出)→
+ * visual_mode 结构化透出;M39 批③ 起带样例参照图 sample_image)→
  * transfer_video_cover(全量封面转存,重试/补传钮)/ generate_cover_candidates
  * (文生图封面候选,复用 M14 cover-gen 管线;M39 批④ 起只服务封面,正文概念
  * 图归 generate_illustration)/ generate_illustration
@@ -78,6 +78,14 @@ export const getTopicBriefTool = tool(
       // 修 3 守卫对称:图文为主但 illustrate 未绑定时开工前即告警(路径不可用
       // 提前暴露,不再等调用时才爆)
       const visualMode = parseWritingText(topic.positioning).selection.visual;
+      // 样例参照图(M39 批③):soft ref,行已删即 null(应用层完整性)
+      const sampleImage =
+        topic.sampleImageId != null
+          ? await prisma.writingSampleImage.findUnique({
+              where: { id: topic.sampleImageId },
+              select: { id: true, name: true, mediaPath: true },
+            })
+          : null;
       const illustrationWarning =
         visualMode === "illustrate" && (await resolveAiModel(AI_PURPOSE_ILLUSTRATE)) === null
           ? "本专题写作配置为「文生图图文为主」,但「插图配图(illustrate)」尚未绑定生图模型:本次无法生成带字图文——先到 AI 配置完成任务绑定再开工,或把写作配置改回「信息卡为主」"
@@ -109,7 +117,10 @@ export const getTopicBriefTool = tool(
         ...(visualMode === "illustrate"
           ? {
               visual_note:
-                "本专题写作配置为「文生图图文为主」:正文配图以 generate_illustration 图文为主艺(先按内容编排呈现形态,再带字生成;形态不设限),数据密集小节仍可配 render_card 信息卡;不要整篇走 HTML 卡",
+                "本专题写作配置为「文生图图文为主」:正文配图以 generate_illustration 图文为主艺(先按内容编排呈现形态,再带字生成;形态不设限),数据密集小节仍可配 render_card 信息卡;不要整篇走 HTML 卡" +
+                (sampleImage
+                  ? `。样例参照图《${sampleImage.name}》已就位:每次 generate_illustration 都把 reference_path 设为 ${sampleImage.mediaPath},出图即向参照图风格靠拢(prompt 风格锚定句写「保持与参考图一致的视觉风格」)`
+                  : ""),
             }
           : visualMode === "minimal"
             ? {
@@ -117,6 +128,13 @@ export const getTopicBriefTool = tool(
                   "本专题写作配置为「少图纯文字」:至多 1 张信息卡,以文字与行内链接表达为主,不硬插图",
               }
             : {}),
+        sample_image: sampleImage
+          ? {
+              id: sampleImage.id.toString(),
+              name: sampleImage.name,
+              media_path: sampleImage.mediaPath,
+            }
+          : null,
         ...(illustrationWarning ? { illustration_warning: illustrationWarning } : {}),
         ...(coverSkip
           ? {

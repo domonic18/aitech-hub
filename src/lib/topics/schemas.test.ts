@@ -28,6 +28,13 @@ describe("topicUpdateSchema", () => {
     expect(topicUpdateSchema.safeParse({ skillKey: "-lead" }).success).toBe(false);
     expect(topicUpdateSchema.safeParse({ skillKey: " " }).success).toBe(false);
   });
+
+  it("sampleImageId(M39 批③):数字串 / 解绑 null;非数字拒绝", () => {
+    expect(topicUpdateSchema.safeParse({ sampleImageId: "42" }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ sampleImageId: null }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ sampleImageId: "4a" }).success).toBe(false);
+    expect(topicUpdateSchema.safeParse({ sampleImageId: 42 }).success).toBe(false);
+  });
 });
 
 describe("itemMountSchema", () => {

@@ -112,4 +112,33 @@ describe("generate_illustration(文生图图文工具)", () => {
     generateIllustrations.mockRejectedValueOnce(new Error("pg 连接断"));
     await expect(invoke({ prompt: "p" })).rejects.toThrow("pg 连接断");
   });
+
+  it("reference_path 透传执行核心(样例参照机制参数,§13.11 批③)", async () => {
+    generateIllustrations.mockResolvedValueOnce({
+      images: [{ path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" }],
+      referenceError: null,
+    });
+    await invoke({
+      prompt: "p",
+      reference_path: "/wp-content/uploads/2026/10/ref.jpg",
+    });
+    expect(generateIllustrations).toHaveBeenCalledWith({
+      prompt: "p",
+      aspect: undefined,
+      n: 1,
+      referencePath: "/wp-content/uploads/2026/10/ref.jpg",
+    });
+  });
+
+  it("参照装载失败不阻塞:reference_warning 人话带回,hint 注明本次未生效", async () => {
+    generateIllustrations.mockResolvedValueOnce({
+      images: [{ path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" }],
+      referenceError: "参照图文件读取失败(可能已被删除):请到专题写作配置重新选择参照图",
+    });
+    const out = await invoke({ prompt: "p", reference_path: "/wp-content/uploads/a/gone.jpg" });
+    expect(out).toMatchObject({ ok: true });
+    expect(out.reference_warning).toContain("读取失败");
+    expect(String(out.hint)).toContain("参照图未生效");
+    expect(String(out.hint)).toContain("card_urls");
+  });
 });

@@ -16,6 +16,17 @@ vi.mock("./image-client", () => ({
   sniffImageMime: vi.fn(() => "image/png"),
 }));
 vi.mock("../media/service", () => ({ uploadMedia: vi.fn() }));
+// 参照图装载桩(M39 批③):uploadsUrlToRel / MEDIA_MIME_BY_EXT 用最小同构实现
+// (storage.test.ts 另有真实现覆盖),mediaStorage.get 逐测注入
+const storageGet = vi.hoisted(() => vi.fn());
+vi.mock("../media/storage", () => ({
+  uploadsUrlToRel: (p: string): string | null =>
+    p.startsWith("/wp-content/uploads/") && !p.includes("..")
+      ? p.slice("/wp-content/uploads/".length)
+      : null,
+  MEDIA_MIME_BY_EXT: { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" },
+  mediaStorage: { get: storageGet },
+}));
 
 import { AiClientError } from "./errors";
 import { decodeImageB64, downloadImage, generateImages, sniffImageMime } from "./image-client";
@@ -162,5 +173,47 @@ describe("generateIllustrations(文生图执行核心)", () => {
     expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ size: "1344x768" }));
     await generateIllustrations({ prompt: "p", aspect: "1:1" });
     expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ size: "1024x1024" }));
+  });
+
+  it("参照图合法:mediaStorage 字节 → data URL 进 image 参数;referenceError 为 null", async () => {
+    storageGet.mockResolvedValueOnce(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "/wp-content/uploads/2026/10/ref.png",
+    });
+    expect(r.referenceError).toBeNull();
+    expect(storageGet).toHaveBeenCalledWith("2026/10/ref.png");
+    const call = mockedGenerate.mock.calls[0]?.[0];
+    expect(call?.image).toBe(
+      `data:image/png;base64,${Buffer.from(new Uint8Array([0x89, 0x50, 0x4e, 0x47])).toString("base64")}`,
+    );
+  });
+
+  it("参照图降级不阻塞(§13.11 决策 5 兜底):路径非法/读取失败/超帽/格式不支持均无 image 照常出图,人话原因带回", async () => {
+    mockedGenerate.mockResolvedValue([{ b64: "AAAA" }]);
+    // 外链(非站内前缀)
+    let r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "https://cdn.example/x.png",
+    });
+    expect(r.referenceError).toContain("路径不合法");
+    expect(mockedGenerate.mock.calls[0]?.[0]?.image).toBeUndefined();
+    // 穿越
+    r = await generateIllustrations({ prompt: "p", referencePath: "/wp-content/uploads/../etc" });
+    expect(r.referenceError).toContain("路径不合法");
+    // 文件不存在
+    storageGet.mockResolvedValueOnce(null);
+    r = await generateIllustrations({ prompt: "p", referencePath: "/wp-content/uploads/a/x.png" });
+    expect(r.referenceError).toContain("读取失败");
+    expect(mockedGenerate.mock.calls[2]?.[0]?.image).toBeUndefined();
+    // 超 6MB 帽
+    storageGet.mockResolvedValueOnce(new Uint8Array(6 * 1024 * 1024 + 1));
+    r = await generateIllustrations({ prompt: "p", referencePath: "/wp-content/uploads/a/x.png" });
+    expect(r.referenceError).toContain("6MB");
+    // 格式不支持(svg 无映射)
+    storageGet.mockResolvedValueOnce(new Uint8Array([1, 2, 3]));
+    r = await generateIllustrations({ prompt: "p", referencePath: "/wp-content/uploads/a/x.svg" });
+    expect(r.referenceError).toContain("格式不支持");
+    expect(mockedGenerate).toHaveBeenCalledTimes(5); // 全程照常出图
   });
 });

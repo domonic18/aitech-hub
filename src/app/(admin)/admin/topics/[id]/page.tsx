@@ -33,6 +33,7 @@ import TopicMountButton from "@/components/admin/topics/TopicMountButton";
 import TopicMountControls from "@/components/admin/topics/TopicMountControls";
 import TopicOverviewPanel from "@/components/admin/topics/TopicOverviewPanel";
 import TopicPersistDetails from "@/components/admin/topics/TopicPersistDetails";
+import TopicSampleImagePicker from "@/components/admin/topics/TopicSampleImagePicker";
 import TopicWritingConfigPanel from "@/components/admin/topics/TopicWritingConfigPanel";
 
 export const dynamic = "force-dynamic";
@@ -191,6 +192,12 @@ export default async function AdminTopicDetailPage({ params, searchParams }: Pag
       {/* ② 写作要求:四维可视化构建(选择合成文本,textarea 唯一真相源) */}
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">写作要求</h2>
       <TopicWritingConfigPanel id={id} positioning={topic.positioning} />
+
+      {/* 配图风格参照(M39 批③):样例图库绑定面,绑定即时生效不经保存按钮 */}
+      <TopicSampleImagePicker
+        topicId={id}
+        initialSampleImageId={topic.sampleImageId?.toString() ?? null}
+      />
 
       {/* ③ 素材(先收料):零素材时素材库默认展开引导 */}
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-1">素材({topic.items.length})</h2>
