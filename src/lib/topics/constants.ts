@@ -49,30 +49,88 @@ export const TUTORIAL_TOPIC_POSITIONING =
 /**
  * 内容形式预置(2026-10-18 体裁治理;2026-10-20 详情页重构收编为写作配置
  * 「内容形式」维度,可视化构建器见 writing-config.ts):user-facing 形式 =
- * 定位模板 + 生成话术体裁词,落库仍走 positioning(模板文本),零 schema 变更。
- * 两个形式同走 blogger-video 指南(教程写法是指南内分支),绑定技能一律自动
- * 匹配。扩展新形式=加一项(label/genreWord/positioningTemplate),指南侧补
- * 对应写法分支 + writing-config 补样例。
+ * 定位模板 + 生成话术体裁词 + 绑定技能,落库走 positioning(模板文本)+
+ * skillKey 回写(M39 批②服务端单点派生,见 writing-config#deriveSkillKey),
+ * 零 schema 变更。两个既有视频形式继续挂 blogger-video 指南(教程写法是指南
+ * 内分支);M39 扩容 5 个非视频形式各挂专属 skill(批④种子落库前 agent 侧
+ * list_skills 兜底,见 topic-tools 绑定降级)。扩展新形式=加一项,指南侧补
+ * 对应 skill + writing-config 补样例。
  */
-export type TopicPurposeKey = "video-recommend" | "video-tutorial";
+export type TopicPurposeKey =
+  | "video-recommend"
+  | "video-tutorial"
+  | "open-source-intro"
+  | "paper-interpret"
+  | "tutorial-refine"
+  | "weekly-news"
+  | "model-pricing";
 
 export const TOPIC_PURPOSES: readonly {
   key: TopicPurposeKey;
   label: string;
   genreWord: string;
   positioningTemplate: string;
+  /** 生成初稿绑定的 agent_skill key(服务端从 positioning 单点派生回写) */
+  skillKey: string;
 }[] = [
   {
     key: "video-recommend",
     label: "视频安利",
     genreWord: "视频安利稿",
     positioningTemplate: DEFAULT_TOPIC_POSITIONING,
+    skillKey: "blogger-video",
   },
   {
     key: "video-tutorial",
     label: "视频安利+文字版教程",
     genreWord: "视频安利稿·含文字版教程",
     positioningTemplate: TUTORIAL_TOPIC_POSITIONING,
+    skillKey: "blogger-video",
+  },
+  {
+    key: "open-source-intro",
+    label: "开源项目介绍",
+    genreWord: "开源项目介绍稿",
+    positioningTemplate:
+      "围绕「这个项目解决什么问题、凭什么值得上手」来选材:优先带出核心机制、" +
+      "与同类项目的关键差异和真实上手体验;给出可复现的最小上手路径,不写官方 README 复读。",
+    skillKey: "open-source-intro",
+  },
+  {
+    key: "paper-interpret",
+    label: "论文解读",
+    genreWord: "论文解读稿",
+    positioningTemplate:
+      "围绕「这篇论文回答了什么问题、结论改变了什么」来选材:优先讲清方法直觉与" +
+      "关键实验数据,弱化公式推导;点明局限与适用边界,像给同行做口头报告,不做逐节翻译。",
+    skillKey: "paper-interpret",
+  },
+  {
+    key: "tutorial-refine",
+    label: "教程精炼",
+    genreWord: "教程精炼稿",
+    positioningTemplate:
+      "本篇素材为教程/实操内容:整理成读者可直接跟做的精炼教程——步骤只留必要动作" +
+      "与输入,关键参数与坑位提示就地标注;前置「准备清单」,不做背景故事铺垫。",
+    skillKey: "tutorial-refine",
+  },
+  {
+    key: "weekly-news",
+    label: "周新闻精选",
+    genreWord: "周新闻精选稿",
+    positioningTemplate:
+      "本篇为一周新闻精选综述:按主题分组收编本周最重要的 AI 动态,每条一句话讲清" +
+      "「发生了什么+为什么值得在意」;开头给三行速览,结尾点出下周值得跟踪的一件事。",
+    skillKey: "weekly-news",
+  },
+  {
+    key: "model-pricing",
+    label: "模型价格表",
+    genreWord: "模型价格表稿",
+    positioningTemplate:
+      "本篇为模型价格速查:以表格为主干整理各模型的输入/输出牌价与免费额度,标注" +
+      "计价单位与数据截稿日期;只做客观比对与选购建议,不臆测未公布的定价。",
+    skillKey: "model-pricing",
   },
 ];
 

@@ -28,7 +28,12 @@ export class TopicError extends Error {
 
 export async function createTopic(input: TopicCreateInput): Promise<Topic> {
   return prisma.topic.create({
-    data: { title: input.title, positioning: input.positioning ?? null },
+    data: {
+      title: input.title,
+      positioning: input.positioning ?? null,
+      // 服务端派生回写(M39 批②形式绑定),客户端 schema 不收该键
+      skillKey: input.skillKey ?? null,
+    },
   });
 }
 
@@ -52,6 +57,12 @@ export async function updateTopic(id: bigint, patch: TopicUpdateInput): Promise<
           : patch.linkedPostId === null
             ? null
             : BigInt(patch.linkedPostId),
+      sampleImageId:
+        patch.sampleImageId === undefined
+          ? undefined
+          : patch.sampleImageId === null
+            ? null
+            : BigInt(patch.sampleImageId),
     },
   });
 }

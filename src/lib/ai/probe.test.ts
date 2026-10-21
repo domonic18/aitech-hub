@@ -134,6 +134,43 @@ describe("probeModel(用途感知分流)", () => {
     expect(body.prompt.length).toBeGreaterThan(0);
   });
 
+  it("绑 illustrate 同走生图探针;AiHubMix output[]/content_url 形态即通(M39)", async () => {
+    const calls = stubFetch(
+      200,
+      JSON.stringify({ output: [{ index: 0, content_url: "https://api.x.com/file/a.png" }] }),
+    );
+    const r = await probeModel({ ...base, purposes: ["illustrate"] });
+    expect(r.ok).toBe(true);
+    expect(r.detail).toContain("生图连通");
+    expect(calls[0].url).toBe("https://api.x.com/v1/images/generations");
+  });
+
+  it("生图 HTTP 200 携 error 且无图:失败透传供应商文案(M39)", async () => {
+    stubFetch(200, JSON.stringify({ status: "failed", output: [], error: "quota exceeded" }));
+    const r = await probeModel({ ...base, purposes: ["cover"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("quota exceeded");
+  });
+
+  it("生图非 2xx JSON 错误体:提取 error.message 人话,不带 code/tid 噪音(M39 实测 async_not_enabled 形态)", async () => {
+    stubFetch(
+      403,
+      JSON.stringify({
+        error: {
+          code: "async_not_enabled",
+          message: "Asynchronous tasks are not enabled. Please go to console to activate.",
+          tid: "2026102101121856975219003654011",
+        },
+      }),
+    );
+    const r = await probeModel({ ...base, purposes: ["illustrate"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("HTTP 403");
+    expect(r.detail).toContain("Asynchronous tasks are not enabled");
+    expect(r.detail).not.toContain("async_not_enabled");
+    expect(r.detail).not.toContain("tid");
+  });
+
   it("生图探针带台账 extraParams 浅合并,保留键不可被覆盖(与 image-client 同纪律)", async () => {
     const calls = stubFetch(200, JSON.stringify({ data: [{ url: "https://cdn.x.com/a.jpg" }] }));
     const r = await probeModel({
@@ -148,6 +185,24 @@ describe("probeModel(用途感知分流)", () => {
     expect(body.size).toBe(COVER_IMAGE_SIZE); // 保留键恒覆盖扩展参数
     expect(body.n).toBe(1);
     expect(body.response_format).toBe("b64_json");
+  });
+
+  it("生图探针 extraParams 保留键显式 null = 剔除(与管线同源构造,M39 AiHubMix 实证)", async () => {
+    const calls = stubFetch(
+      200,
+      JSON.stringify({ output: [{ content_url: "https://api.x.com/a.png" }] }),
+    );
+    const r = await probeModel({
+      ...base,
+      purposes: ["illustrate"],
+      extraParams: { size: null, response_format: null },
+    });
+    expect(r.ok).toBe(true);
+    const body = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>;
+    expect(body.size).toBeUndefined();
+    expect(body.response_format).toBeUndefined();
+    expect(body.n).toBe(1);
+    expect(body.model).toBe("m");
   });
 
   it("生图 url 形态须 https 且长度合规(与 image-client 转存口径一致)", async () => {

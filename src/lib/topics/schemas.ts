@@ -13,7 +13,9 @@ export const topicCreateSchema = z.object({
   title: z.string().trim().min(1, "标题必填").max(200),
   positioning: z.string().trim().max(1000).optional(),
 });
-export type TopicCreateInput = z.infer<typeof topicCreateSchema>;
+/** skillKey 为服务端派生字段(M39 批②形式回写),不在客户端 schema 内
+ * (zod 剥未知键,客户端传不上来);PATCH 的 skillKey 仍走 topicUpdateSchema */
+export type TopicCreateInput = z.infer<typeof topicCreateSchema> & { skillKey?: string };
 
 export const topicUpdateSchema = z
   .object({
@@ -28,6 +30,8 @@ export const topicUpdateSchema = z
       .regex(AGENT_SKILL_KEY_RE, "skillKey 仅限小写字母/数字/连字符")
       .nullable()
       .optional(),
+    // 样例参照图绑定(M39 批③):null=解绑;存在性在 API 路由核(soft ref 同 skillKey 口径)
+    sampleImageId: BIGINT_ID.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "至少提供一个更新字段");
 export type TopicUpdateInput = z.infer<typeof topicUpdateSchema>;

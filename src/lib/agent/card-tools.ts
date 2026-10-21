@@ -3,7 +3,8 @@
  * 单模 = 自由 HTML(服务端消毒;2026-10-20 起模板入口机制层关闭——两次指南
  * 调教后弱模型仍循省 token 惯性落 preset,用户裁定收掉工具面而非继续调指南:
  * schema 只留 html(≤30000 字符)+ width/maxHeight,preset/data 彻底移除;
- * preset 模板实现保留(模板实验室预览用),版式设计知识转「版式语汇」住指南)。
+ * preset 模板实现保留(写作配置面板配图样例预览用),版式设计知识转「版式
+ * 语汇」住指南)。
  * token 纪律在工具层落地:html ≤30k 字符 zod 硬顶、返回极小 JSON、消毒/校验
  * 报错全部人话短句供自纠。渲染服务见 services/card-renderer。纵深防御同
  * wechat-budget/cover-tools(admin 图独占 + 会话归属 fail-closed)。

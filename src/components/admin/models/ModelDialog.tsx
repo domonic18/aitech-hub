@@ -233,7 +233,9 @@ export default function ModelDialog({
                 className={`mt-1 font-mono ${field}`}
               />
               <span className="mt-1 block text-[11px] text-amber">
-                浅合并进该模型的请求体;model/prompt/n/size/response_format 为保留键不可覆盖。
+                浅合并进该模型的请求体;model/prompt/n/size/response_format 为保留键不可覆盖;保留键置
+                null = 从请求体剔除(严格校验供应商用,如 AiHubMix 生图:&#123;&quot;size&quot;: null,
+                &quot;response_format&quot;: null&#125;)。
               </span>
               {f.extraInvalid && (
                 <span className="mt-1 block text-[11px] text-red">不是合法的 JSON 对象</span>

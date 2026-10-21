@@ -30,13 +30,31 @@ describe("matchTopicPurpose(写作要求模板 → 内容形式)", () => {
     expect(matchTopicPurpose(`${TUTORIAL_TOPIC_POSITIONING} `)).toBe("video-tutorial");
   });
 
-  it("预置项自洽:每项目录含 key/label/genreWord/模板,模板互不重复", () => {
+  it("预置项自洽:每项目录含 key/label/genreWord/模板/skillKey,模板互不重复", () => {
     const templates = new Set(TOPIC_PURPOSES.map((t) => t.positioningTemplate));
     expect(templates.size).toBe(TOPIC_PURPOSES.length);
     for (const t of TOPIC_PURPOSES) {
       expect(t.label.length).toBeGreaterThan(0);
       expect(t.genreWord.length).toBeGreaterThan(0);
+      expect(t.skillKey).toMatch(/^[a-z0-9-]+$/); // AGENT_SKILL_KEY_RE 同域
       expect(matchTopicPurpose(t.positioningTemplate)).toBe(t.key);
+    }
+  });
+
+  it("M39 扩容:7 形式,两个视频形式同挂 blogger-video,5 新形式各专属 skill", () => {
+    expect(TOPIC_PURPOSES).toHaveLength(7);
+    const byKey = Object.fromEntries(TOPIC_PURPOSES.map((t) => [t.key, t.skillKey]));
+    expect(byKey["video-recommend"]).toBe("blogger-video");
+    expect(byKey["video-tutorial"]).toBe("blogger-video");
+    for (const k of [
+      "open-source-intro",
+      "paper-interpret",
+      "tutorial-refine",
+      "weekly-news",
+      "model-pricing",
+    ]) {
+      expect(byKey[k]).not.toBe("blogger-video");
+      expect(byKey[k].length).toBeGreaterThan(0);
     }
   });
 });

@@ -1,14 +1,20 @@
 /**
- * 文生图客户端(M14 批⑥,验收反馈问题6;2026-10-06 M16 反馈问题1/2 扩):
- * OpenAI images/generations 兼容协议。POST {baseUrl}/images/generations,
- * Bearer 鉴权。协议门禁仅 openai——混元/豆包等原生签名协议不入本仓(与 LLM 侧
- * 同纪律),经其 OpenAI 兼容网关接入。
- * 响应两种形态都收(M16 问题1:智谱 CogView 只回 url 且忽略 response_format):
- * b64_json 直解;url 由服务端转存(免签名 URL 过期,不外链)。Authorization
- * 不外发下载请求(防密钥泄漏给第三方 CDN)。
+ * 文生图客户端(M14 批⑥,验收反馈问题6;2026-10-06 M16 反馈问题1/2 扩;
+ * 2026-10-21 M39 扩 AiHubMix 形态):OpenAI images/generations 兼容协议。
+ * POST {baseUrl}/images/generations,Bearer 鉴权。协议门禁仅 openai——
+ * 混元/豆包等原生签名协议不入本仓(与 LLM 侧同纪律),经其 OpenAI 兼容网关
+ * 接入(nano banana 即经 AiHubMix 网关,topic-pipeline-plan §13)。
+ * 响应三种形态都收(M16 问题1:智谱 CogView 只回 url 且忽略 response_format;
+ * M39:AiHubMix 回 output[] 数组且条目键为 content_url):OpenAI `data[]` 与
+ * AiHubMix `output[]` 双数组等价解析,条目 b64_json 直解;url/content_url 由
+ * 服务端转存(免签名 URL 过期,不外链)。下载鉴权纪律:默认不带 Authorization
+ * (防密钥泄漏给第三方 CDN);收窄例外=同源下载(M39 AiHubMix content_url 须带
+ * 同 key,约 30 分钟过期)——仅当下载 URL 宿主与网关 baseUrl 宿主一致才带,
+ * 密钥不出同一供应商边界。
  * 部分供应商(智谱)无 n 参数、单次仅回 1 张:返回不足 n 时顺序补请求凑满候选。
- * 扩展参数(M16 问题2):模型 extra_params 浅合并进请求体,保留键不可覆盖。
- * 超时/网络/HTTP/业务错归因与 llm-client 同款(AiClientError kind)。
+ * 扩展参数(M16 问题2):模型 extra_params 浅合并进请求体,保留键不可覆盖;
+ * 保留键显式 null = 整键剔除(M39 严格校验供应商适配,如 AiHubMix 拒收
+ * size/response_format)。超时/网络/HTTP/业务错归因与 llm-client 同款(AiClientError kind)。
  */
 import { AI_PROTOCOL_OPENAI } from "./constants";
 import { AiClientError } from "./errors";
@@ -26,13 +32,43 @@ export interface GenerateImagesInput {
   timeoutSec: number;
   /** 供应商扩展参数(模型台账配置;浅合并,保留键 model/prompt/n/size/response_format 不可覆盖) */
   extraParams?: Record<string, unknown>;
+  /** 参照图 data URL(M39 批③:Seedream 原生 image 参数,出图向参照风格靠拢;
+   * 仅传入时进请求体顶层;拒收型供应商会回 400——换绑前先探针) */
+  image?: string;
 }
 
 /** 单张结果:b64 直解形态或 url 待转存形态(调用侧统一转 bytes) */
 export type GeneratedImage = { b64: string } | { url: string };
 
 /** 请求体保留键 model/prompt/n/size/response_format:extraParams 先展开、保留键后展开,
- * 后者恒覆盖前者(扩展参数不可改写契约,防配置把请求体改漂;单测锁定) */
+ * 后者恒覆盖前者(扩展参数不可改写契约,防配置把请求体改漂;单测锁定)。
+ * M39 补充:extraParams 某保留键显式 null = 该键整体剔除——严格校验供应商适配
+ * (探针实证 AiHubMix nano-banana 拒收 size/response_format 回 400 Unknown
+ * request parameter),null 值本身不进请求体;与探针共用本构造器保证同口径。 */
+
+export interface ImagesBodyKeys {
+  model: string;
+  prompt: string;
+  n: number;
+  size: string;
+  response_format: string;
+}
+
+/** 生图请求体构造(image-client 与 probe 同源):保留键缺省在场,extraParams
+ * 非 null 键先展开(保留键恒覆盖)、null 键仅作剔除指令不透传 */
+export function buildImagesBody(
+  keys: ImagesBodyKeys,
+  extraParams?: Record<string, unknown>,
+): Record<string, unknown> {
+  const extra = Object.fromEntries(Object.entries(extraParams ?? {}).filter(([, v]) => v !== null));
+  const omit = new Set(
+    Object.entries(extraParams ?? {})
+      .filter(([, v]) => v === null)
+      .map(([k]) => k),
+  );
+  const preserved = Object.fromEntries(Object.entries(keys).filter(([k]) => !omit.has(k)));
+  return { ...extra, ...preserved };
+}
 
 /** url 下载体积帽(生图 1344×768 jpg ≈ 200KB;20MB 已是数量级冗余) */
 const DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
@@ -65,22 +101,28 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
   }
   if (!input.baseUrl) throw new AiClientError("unsupported", "生图 Base URL 未配置");
   const endpoint = `${input.baseUrl.replace(/\/+$/, "")}/images/generations`;
-  const baseBody: Record<string, unknown> = {
-    ...(input.extraParams ?? {}),
-    model: input.modelId,
-    prompt: input.prompt,
-    n: input.n,
-    size: input.size,
-    response_format: "b64_json",
-  };
+  const baseBody = buildImagesBody(
+    {
+      model: input.modelId,
+      prompt: input.prompt,
+      n: input.n,
+      size: input.size,
+      response_format: "b64_json",
+    },
+    input.extraParams,
+  );
+  // 参照图(M39 批③)仅传入时附加在请求体顶层(openai 协议外置键,不占保留键契约;
+  // 不进 extraParams 合并语义——调用侧显式给才带,防模型台账误配出参照图)
+  const reqBody = input.image ? { ...baseBody, image: input.image } : baseBody;
 
   const collected: GeneratedImage[] = [];
+  let lastBizError: string | null = null; // AiHubMix 形态:{error} 文案随 200 回,末轮无图时透传
   // 请求轮次帽:首轮 n 张 + 至多 2 轮补齐(单图供应商两轮即满;防病兜端点拖死 worker)
   for (let round = 0; round < 1 + 2 && collected.length < input.n; round++) {
     const remain = input.n - collected.length;
     let res: Response;
     try {
-      res = await postImages(endpoint, input.apiKey, { ...baseBody, n: remain }, input.timeoutSec);
+      res = await postImages(endpoint, input.apiKey, { ...reqBody, n: remain }, input.timeoutSec);
     } catch (e) {
       if (e instanceof AiClientError) throw e;
       const aborted = e instanceof Error && e.name === "AbortError";
@@ -101,18 +143,34 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
     } catch {
       throw new AiClientError("business", "生图响应不是 JSON");
     }
-    const rows = (body as { data?: unknown }).data;
-    if (!Array.isArray(rows)) throw new AiClientError("business", "生图响应缺 data 数组(契约漂移)");
+    // 双数组等价解析(M39):OpenAI data[] / AiHubMix output[];data 优先(同现不歧义)
+    const shell = body as { data?: unknown; output?: unknown; error?: unknown };
+    lastBizError =
+      typeof shell.error === "string" && shell.error.trim() !== "" ? shell.error : null;
+    const rows = Array.isArray(shell.data)
+      ? shell.data
+      : Array.isArray(shell.output)
+        ? shell.output
+        : undefined;
+    if (!Array.isArray(rows)) {
+      // AiHubMix 业务错可能随 HTTP 200 回 {error}:有文案就透传,无则报契约漂移
+      throw new AiClientError(
+        "business",
+        lastBizError ? `生图失败:${lastBizError}` : "生图响应缺 data/output 数组(契约漂移)",
+      );
+    }
     for (const r of rows) {
-      const row = r as { b64_json?: unknown; url?: unknown };
+      const row = r as { b64_json?: unknown; url?: unknown; content_url?: unknown };
       if (typeof row?.b64_json === "string" && row.b64_json.length > 0) {
         collected.push({ b64: row.b64_json });
-      } else if (
-        typeof row?.url === "string" &&
-        /^https:\/\//.test(row.url) &&
-        row.url.length < 2000
-      ) {
-        collected.push({ url: row.url });
+      } else {
+        const link =
+          typeof row?.url === "string"
+            ? row.url
+            : typeof row?.content_url === "string"
+              ? row.content_url
+              : null;
+        if (link && /^https:\/\//.test(link) && link.length < 2000) collected.push({ url: link });
       }
     }
     if (rows.length === 0) break; // 供应商明确回空:补请求也无益
@@ -120,19 +178,47 @@ export async function generateImages(input: GenerateImagesInput): Promise<Genera
   if (collected.length === 0) {
     throw new AiClientError(
       "business",
-      "生图响应无 b64_json/url 图片数据(契约漂移,检查供应商与模型 ID)",
+      lastBizError
+        ? `生图失败:${lastBizError}`
+        : "生图响应无 b64_json/url 图片数据(契约漂移,检查供应商与模型 ID)",
     );
   }
   return collected;
 }
 
-/** url 形态转存(M16 问题1):GET 下载为 bytes;不带 Authorization(签名 URL 自含鉴权) */
-export async function downloadImage(url: string, timeoutSec: number): Promise<Uint8Array> {
+/** 下载鉴权(M39):同源才带 Authorization——AiHubMix content_url 须带同 key 且
+ * 约 30 分钟过期;跨宿主(第三方 CDN 签名 URL)严禁外发密钥 */
+export interface DownloadAuth {
+  baseUrl: string | null;
+  apiKey: string | null;
+}
+
+/** URL 宿主与网关 baseUrl 宿主一致判定(任一非法 URL = 非同源) */
+function isSameHost(url: string, baseUrl: string | null): boolean {
+  if (!baseUrl) return false;
+  try {
+    return new URL(url).host === new URL(baseUrl).host;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * url 形态转存(M16 问题1):GET 下载为 bytes;默认不带 Authorization(签名 URL
+ * 自含鉴权);传 auth 且 URL 与 baseUrl 同宿主才带(M39 同源带鉴权下载)。
+ */
+export async function downloadImage(
+  url: string,
+  timeoutSec: number,
+  auth?: DownloadAuth,
+): Promise<Uint8Array> {
+  const sameOriginAuth: Record<string, string> =
+    auth?.apiKey && isSameHost(url, auth.baseUrl) ? { authorization: `Bearer ${auth.apiKey}` } : {};
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutSec * 1000);
   let res: Response;
   try {
-    res = await fetch(url, { signal: ctrl.signal });
+    res = await fetch(url, { headers: sameOriginAuth, signal: ctrl.signal });
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     throw new AiClientError(

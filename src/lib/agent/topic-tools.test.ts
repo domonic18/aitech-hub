@@ -19,6 +19,9 @@ vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 const getEnabledSkillByKey = vi.hoisted(() => vi.fn());
 vi.mock("../ai/agent-skills-admin", () => ({ getEnabledSkillByKey }));
 
+const resolveAiModel = vi.hoisted(() => vi.fn());
+vi.mock("../ai/resolver", () => ({ resolveAiModel }));
+
 const getTopic = vi.hoisted(() => vi.fn());
 vi.mock("../topics/repo", () => ({
   getTopic,
@@ -236,6 +239,78 @@ describe("get_topic_brief", () => {
       error: "专题不存在",
     });
   });
+
+  it("封面图勾选(M39 批④+):skip 条款 → 结构化标记 + cover_note;缺省无 note", async () => {
+    const SKIP_CLAUSE = "封面:不生成封面图,重写时保留现有封面。";
+    const base = {
+      id: BigInt(7),
+      title: "端侧拐点",
+      items: [{}],
+      linkedPostId: null,
+      composedAt: null,
+      status: "collecting",
+    };
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({ ...base, positioning: `面向开发者\n${SKIP_CLAUSE}` });
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    const out = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out.skip_cover_generation).toBe(true);
+    expect(out.cover_note).toContain("不要生成封面");
+    expect(out.cover_note).toContain("保留现有封面");
+
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({ ...base, positioning: "面向开发者" });
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    const out2 = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out2.skip_cover_generation).toBe(false);
+    expect(out2).not.toHaveProperty("cover_note");
+  });
+
+  it("配图工艺结构化(M39 §13.7 修 1/修 3):visual_mode 三态透出 + 图文未绑定开工预警", async () => {
+    const ILLUSTRATE_CLAUSE =
+      "配图:文生图图文为主,由 AI 按小节内容编排呈现形态(文字入图;数据密集内容仍可配信息卡)。";
+    const MINIMAL_CLAUSE = "配图:少图,最多 1 张信息卡,以文字与行内链接表达为主。";
+    const base = {
+      id: BigInt(7),
+      title: "端侧拐点",
+      items: [{}],
+      linkedPostId: null,
+      composedAt: null,
+      status: "collecting",
+    };
+    const run = async (positioning: string): Promise<Record<string, unknown>> => {
+      sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+      getTopic.mockResolvedValueOnce({ ...base, positioning });
+      buildComposeBlocks.mockResolvedValueOnce([]);
+      transferVideoCovers.mockResolvedValueOnce([]);
+      listRecentPublishedTitles.mockResolvedValueOnce([]);
+      return invoke(getTopicBriefTool, { topic_id: "7" });
+    };
+
+    // 图文为主:visual_mode + note;未绑定 → illustration_warning(开工前预警)
+    resolveAiModel.mockResolvedValueOnce(null);
+    const illu = await run(`面向开发者\n${ILLUSTRATE_CLAUSE}`);
+    expect(illu.visual_mode).toBe("illustrate");
+    expect(illu.visual_note).toContain("图文为主艺");
+    expect(illu.illustration_warning).toContain("尚未绑定生图模型");
+
+    // 已绑定 → 无预警字段
+    resolveAiModel.mockResolvedValueOnce({ id: 1 });
+    const bound = await run(`面向开发者\n${ILLUSTRATE_CLAUSE}`);
+    expect(bound).not.toHaveProperty("illustration_warning");
+
+    // 缺省(信息卡为主)→ cards 无 note;少图 → minimal + note
+    const dflt = await run("面向开发者");
+    expect(dflt.visual_mode).toBe("cards");
+    expect(dflt).not.toHaveProperty("visual_note");
+    const min = await run(`面向开发者\n${MINIMAL_CLAUSE}`);
+    expect(min.visual_mode).toBe("minimal");
+    expect(min.visual_note).toContain("少图");
+  });
 });
 
 describe("transfer_video_cover", () => {
@@ -299,6 +374,21 @@ describe("generate_cover_candidates", () => {
     expect(enqueueCoverGen).toHaveBeenCalledWith(
       expect.objectContaining({ token: expect.any(String), postId: "9" }),
     );
+  });
+
+  it("封面勾选守卫(M39 批④+):skip 条款专题直接拒绝,不入队不计费", async () => {
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      title: "端侧拐点",
+      positioning: "面向开发者\n封面:不生成封面图,重写时保留现有封面。",
+      linkedPostId: BigInt(9),
+    });
+    await expect(invoke(generateCoverCandidatesTool, { topic_id: "7" })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("取消勾选"),
+    });
+    expect(enqueueCoverGen).not.toHaveBeenCalled();
   });
 });
 

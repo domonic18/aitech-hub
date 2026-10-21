@@ -6,8 +6,9 @@
  * 人话报错提示补配,不静默按小预算截断)。返回初稿后编排侧照旧自评审/
  * render_card 补卡/save_topic_draft 落库;用量记 ai_usage_log role=writing。
  * 封面纪律(2026-10-17 呈现协调性反馈):视频封面不进写手底料——文首推荐卡
- * 由 save_topic_draft 落库侧确定性注入(finalizeCompose),正文配图=卡图+
- * generate_cover_candidates 生成图,封面图无正文用途,喂进去只会被插错位置。
+ * 由 save_topic_draft 落库侧确定性注入(finalizeCompose),封面图无正文用途,
+ * 喂进去只会被插错位置。正文配图工艺清单以系统提示为唯一权威副本(M39
+ * §13.7 修 2),此处不再维护枚举句。
  */
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";

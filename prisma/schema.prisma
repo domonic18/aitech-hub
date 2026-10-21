@@ -633,7 +633,7 @@ model AiModel {
   pricePerImage     Float?    @map("price_per_image") // 生图牌价 ¥/张(cover 角色)
   concurrency       Int       @default(4)
   timeoutSec        Int       @default(60) @map("timeout_sec")
-  extraParams       Json?     @map("extra_params") // 供应商扩展参数(如生图 watermark_enabled),浅合并进请求体;保留键不可覆盖
+  extraParams       Json?     @map("extra_params") // 供应商扩展参数(如生图 watermark_enabled),浅合并进请求体;保留键不可覆盖,生图保留键显式 null=剔除(严格校验供应商适配)
   enabled           Boolean   @default(true)
   lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
   lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
@@ -1184,6 +1184,7 @@ model Topic {
   status       String    @default("collecting") @db.VarChar(20) // collecting | drafted | published(合法值应用层 Zod,arch/03 枚举演进条款)
   skillKey     String?   @map("skill_key") @db.VarChar(50) // 绑定 agent_skill 的稳定引用(M30 批②;合成写稿按它取指南,soft ref 随 skill 删降级)
   linkedPostId BigInt?   @map("linked_post_id") // 专题文档 content_post 锚(合成时落,应用层完整性)
+  sampleImageId BigInt?  @map("sample_image_id") // 样例参照图(writing_sample_image,soft ref 应用层完整性;M39 批③ 生图风格参照)
   composedAt   DateTime? @map("composed_at") @db.Timestamptz(6)
   publishedAt  DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1209,6 +1210,20 @@ model TopicItem {
   @@unique([topicId, itemType, itemId], map: "uq_topic_item_identity")
   @@index([topicId, sortOrder], map: "idx_topic_item_topic_sort")
   @@map("topic_item")
+}
+
+/// 样例参照图库(M39 批③):管理员上传的风格参照图,绑到 topic.sample_image_id,
+/// 合成生图(generate_illustration reference_path)时以 data URL 传 Seedream
+/// `image` 参数,出图向参照风格靠拢。media_path 为媒体库站内路径
+/// (/wp-content/uploads/…);文件归媒体库治理(sha1 去重、可能被正文引用),
+/// 本表删行不删媒体;topic 引用为 soft ref(删行事务置空,应用层完整性)。
+model WritingSampleImage {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.VarChar(100) // 展示名(可重命名,默认取上传文件名去扩展)
+  mediaPath String   @map("media_path") @db.VarChar(500) // 媒体库站内路径(uploadsUrlToRel 可逆)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("writing_sample_image")
 }
 
 /// Agent skill(M30 批①):业务流程纪律从 agent 系统提示提取为可管理资产——

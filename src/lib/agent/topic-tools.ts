@@ -1,9 +1,12 @@
 /**
  * 专题文章生产·admin 细粒度工具面(M27 批⑤建;批⑥补正文配图分配面):
  * 编排权移交会话 agent——模型按系统提示工作流自主规划(write_todos)并逐工具
- * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面)→
+ * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面,配图工艺
+ * visual_mode 结构化透出;M39 批③ 起带样例参照图 sample_image)→
  * transfer_video_cover(全量封面转存,重试/补传钮)/ generate_cover_candidates
- * (文生图封面候选与概念示意图,复用 M14 cover-gen 管线)→ save_topic_draft
+ * (文生图封面候选,复用 M14 cover-gen 管线;M39 批④ 起只服务封面,正文概念
+ * 图归 generate_illustration)/ generate_illustration
+ * (文生图图文,M39 批④建,§13.9 重定义,走 illustrate 角色绑定)→ save_topic_draft
  * (落稿锚定核,已拆 topic-draft-tool,技术债批⑤)。
  * 过程可视性来自每只工具卡逐个出现,HITL 选题/覆盖确认走 ask_user。
  * 纵深防御:图侧工具按身份档分发(admin 独占)之外,每只工具体内再验会话行
@@ -22,6 +25,8 @@ import {
   type CoverGenProbeHit,
 } from "../ai/cover-generate";
 import { AiAdminError } from "../ai/errors";
+import { AI_PURPOSE_ILLUSTRATE } from "../ai/constants";
+import { resolveAiModel } from "../ai/resolver";
 import { getEnabledSkillByKey } from "../ai/agent-skills-admin";
 import { prisma } from "../db";
 import {
@@ -31,9 +36,11 @@ import {
   transferVideoCovers,
 } from "../topics/compose";
 import { getTopic, TopicError } from "../topics/repo";
+import { parseWritingText, skipCoverGeneration } from "../topics/writing-config";
 import { logger } from "../logger";
 
 import { assertAdminThread } from "./admin-thread";
+import { generateIllustrationTool } from "./illustrate-tool";
 import { pollUntil } from "./poll";
 import { saveTopicDraftTool } from "./topic-draft-tool";
 import { BRIEF_NOTE_MAX, denyPayload, humanizeTopicError } from "./topic-tool-common";
@@ -63,6 +70,26 @@ export const getTopicBriefTool = tool(
       // 确定性注入全文,不等模型自发 get_skill;内容来自 agent_skill 资产,
       // 后台改指南即时生效,提示词零硬编码)
       const boundSkill = topic.skillKey ? await getEnabledSkillByKey(topic.skillKey) : null;
+      // 封面图勾选(M39 批④+):结构化标记 + 人话 note 双披露(弱模型纪律;
+      // 工具层另有硬守卫,此处防无效调用尝试)
+      const coverSkip = skipCoverGeneration(topic.positioning);
+      // 配图工艺结构化(M39 §13.7 修 1):写作配置的 visual 维从 prose 条款行
+      // 升格为结构化字段,编排侧分流以本字段为准,不再要求模型重读条款文本;
+      // 修 3 守卫对称:图文为主但 illustrate 未绑定时开工前即告警(路径不可用
+      // 提前暴露,不再等调用时才爆)
+      const visualMode = parseWritingText(topic.positioning).selection.visual;
+      // 样例参照图(M39 批③):soft ref,行已删即 null(应用层完整性)
+      const sampleImage =
+        topic.sampleImageId != null
+          ? await prisma.writingSampleImage.findUnique({
+              where: { id: topic.sampleImageId },
+              select: { id: true, name: true, mediaPath: true },
+            })
+          : null;
+      const illustrationWarning =
+        visualMode === "illustrate" && (await resolveAiModel(AI_PURPOSE_ILLUSTRATE)) === null
+          ? "本专题写作配置为「文生图图文为主」,但「插图配图(illustrate)」尚未绑定生图模型:本次无法生成带字图文——先到 AI 配置完成任务绑定再开工,或把写作配置改回「信息卡为主」"
+          : null;
       return JSON.stringify({
         topic: {
           id: topic.id.toString(),
@@ -85,6 +112,36 @@ export const getTopicBriefTool = tool(
           : topic.skillKey
             ? `绑定技能 ${topic.skillKey} 不存在或已停用,动笔前先 list_skills 匹配并 get_skill 取指南`
             : "专题未绑定技能,动笔前先 list_skills 按场景匹配,命中即 get_skill 取指南",
+        skip_cover_generation: coverSkip,
+        visual_mode: visualMode,
+        ...(visualMode === "illustrate"
+          ? {
+              visual_note:
+                "本专题写作配置为「文生图图文为主」:正文配图以 generate_illustration 图文为主艺(先按内容编排呈现形态,再带字生成;形态不设限),数据密集小节仍可配 render_card 信息卡;不要整篇走 HTML 卡" +
+                (sampleImage
+                  ? `。样例参照图《${sampleImage.name}》已就位:每次 generate_illustration 都把 reference_path 设为 ${sampleImage.mediaPath},出图即向参照图风格靠拢(prompt 风格锚定句写「保持与参考图一致的视觉风格」)`
+                  : ""),
+            }
+          : visualMode === "minimal"
+            ? {
+                visual_note:
+                  "本专题写作配置为「少图纯文字」:至多 1 张信息卡,以文字与行内链接表达为主,不硬插图",
+              }
+            : {}),
+        sample_image: sampleImage
+          ? {
+              id: sampleImage.id.toString(),
+              name: sampleImage.name,
+              media_path: sampleImage.mediaPath,
+            }
+          : null,
+        ...(illustrationWarning ? { illustration_warning: illustrationWarning } : {}),
+        ...(coverSkip
+          ? {
+              cover_note:
+                "本专题写作配置取消勾选了「生成封面图」:全程不要生成封面,save_topic_draft 不要传 cover_path(保留现有封面);正文概念图用 generate_illustration",
+            }
+          : {}),
         linked_post:
           linkedId !== null && linked && linked.status !== "deleted"
             ? {
@@ -199,6 +256,16 @@ export const generateCoverCandidatesTool = tool(
     let jobId: string;
     try {
       const topic = await getTopic(BigInt(topic_id));
+      // 封面图勾选守卫(M39 批④+,硬约束):写作配置取消「生成封面图」的专题
+      // 直接拒绝,免弱模型无视 brief 标记白烧计费;正文概念图指引改走插画工具
+      if (skipCoverGeneration(topic.positioning)) {
+        return JSON.stringify({
+          ok: false,
+          error:
+            "本专题写作配置取消勾选了「生成封面图」:不生成封面,保留现有封面;" +
+            "正文概念/场景图请改用 generate_illustration",
+        });
+      }
       // 关联稿正文一并供给(M31:agent 提示词步骤吃全文;无关联稿留空)
       const linkedCtx = topic.linkedPostId
         ? await loadCoverPostContext(topic.linkedPostId.toString())
@@ -245,8 +312,10 @@ export const generateCoverCandidatesTool = tool(
     name: "generate_cover_candidates",
     description:
       "用文生图模型为专题文章生成候选图(2 张,约 10-30 秒,本工具会等待到出图)," +
-      "返回站内路径列表。可为封面,也可为正文小节现拟 prompt 生成概念示意图(不限于" +
-      "封面);prompt 描述期望的画面主体与风格,省略则按专题标题自动生成。",
+      "返回站内路径列表,供封面选用。brief 的 skip_cover_generation=true(写作配置" +
+      "取消勾选封面图)时本工具会拒绝,此时不要生成封面、保留现有封面;正文小节的" +
+      "概念/场景配图不走本工具,改用 generate_illustration。prompt 描述期望的画面" +
+      "主体与风格,省略则按专题标题自动生成。",
     schema: z.object({
       topic_id: z
         .string()
@@ -263,12 +332,14 @@ export const generateCoverCandidatesTool = tool(
 );
 
 // save_topic_draft 实现已拆 topic-draft-tool(技术债批⑤);此处 re-export 维持
-// 「四工具同入口」的消费面(agent.ts / 单测)不漂移。
+// 「工具同入口」的消费面(agent.ts / 单测)不漂移。generate_illustration
+// (M39 批④)实现落 illustrate-tool,文生图图文走 illustrate 角色绑定。
 export { saveTopicDraftTool };
 
 export const TOPIC_TOOLS = [
   getTopicBriefTool,
   transferVideoCoverTool,
   generateCoverCandidatesTool,
+  generateIllustrationTool,
   saveTopicDraftTool,
 ];

@@ -304,9 +304,14 @@ export async function coverGenJob(data: CoverGenJobData): Promise<{ generated: n
   let generated = 0;
   for (const img of images) {
     try {
-      // b64 直解;url 形态服务端转存(智谱 CogView 等只回 url,M16 问题1)
+      // b64 直解;url 形态服务端转存(智谱 CogView 等只回 url,M16 问题1;M39 同源带鉴权下载)
       const bytes =
-        "b64" in img ? decodeImageB64(img.b64) : await downloadImage(img.url, model.timeoutSec);
+        "b64" in img
+          ? decodeImageB64(img.b64)
+          : await downloadImage(img.url, model.timeoutSec, {
+              baseUrl: model.baseUrl,
+              apiKey: model.apiKey,
+            });
       const mime = sniffImageMime(bytes) ?? "image/webp";
       // hold 模式(M31):临时盘 + 虚拟路径,不进媒体库;确认入库走 adoptCoverCandidate
       const mediaPath = data.hold

@@ -143,6 +143,75 @@ describe("generateImages(M16 问题1/2 扩)", () => {
       /协议不支持/,
     );
   });
+
+  it("extraParams 保留键显式 null = 整键剔除,null 值不透传(M39 AiHubMix 严格校验适配)", async () => {
+    const { calls } = stubFetchSequence([
+      { output: [{ content_url: "https://aihubmix.com/a.png" }] },
+    ]);
+    await generateImages({
+      ...BASE_INPUT,
+      n: 1,
+      extraParams: { size: null, response_format: null, watermark_enabled: false },
+    });
+    const body = calls[0] as Record<string, unknown>;
+    expect(body.size).toBeUndefined(); // 剔除,不发 null 也不发缺省值
+    expect(body.response_format).toBeUndefined();
+    expect(body.model).toBe("cogview-3-flash"); // 未剔除的保留键照常在场
+    expect(body.prompt).toBe("横版科技封面");
+    expect(body.n).toBe(1);
+    expect(body.watermark_enabled).toBe(false); // 非 null 扩展参数照常透传
+  });
+
+  it("参照图(M39 批③):传 image 时进请求体顶层;不传时键不出现", async () => {
+    const { calls } = stubFetchSequence([{ data: [{ b64_json: PNG_1X1 }] }]);
+    const dataUrl = `data:image/png;base64,${PNG_1X1}`;
+    await generateImages({ ...BASE_INPUT, n: 1, image: dataUrl });
+    expect((calls[0] as Record<string, unknown>).image).toBe(dataUrl);
+    // 补齐轮次同样携带(参照图属请求级参数)
+    const { calls: calls2 } = stubFetchSequence([
+      { data: [{ b64_json: PNG_1X1 }] },
+      { data: [{ b64_json: PNG_1X1 }] },
+    ]);
+    await generateImages({ ...BASE_INPUT, image: dataUrl });
+    expect((calls2[1] as Record<string, unknown>).image).toBe(dataUrl);
+    const { calls: calls3 } = stubFetchSequence([{ data: [{ b64_json: PNG_1X1 }] }]);
+    await generateImages({ ...BASE_INPUT, n: 1 });
+    expect((calls3[0] as Record<string, unknown>).image).toBeUndefined();
+  });
+});
+
+describe("generateImages(M39 AiHubMix 形态)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("output[] 数组与 content_url 键等价解析(与 OpenAI data[]/url 同归一)", async () => {
+    stubFetchSequence([
+      {
+        id: "t1",
+        status: "completed",
+        output: [
+          { index: 0, b64_json: PNG_1X1 },
+          { index: 1, content_url: "https://aihubmix.com/file/a.png" },
+        ],
+      },
+    ]);
+    const images = await generateImages(BASE_INPUT);
+    expect(images).toEqual([{ b64: PNG_1X1 }, { url: "https://aihubmix.com/file/a.png" }]);
+  });
+
+  it("data[] 缺失且 output[] 缺失:报契约漂移;有 error 文案则透传", async () => {
+    stubFetchSequence([{ id: "t1", status: "failed", error: "model overloaded" }]);
+    await expect(generateImages(BASE_INPUT)).rejects.toThrow(/model overloaded/);
+
+    stubFetchSequence([{}]);
+    await expect(generateImages(BASE_INPUT)).rejects.toThrow(/契约漂移/);
+  });
+
+  it("空 output 数组随 200 回 error:末轮无图透传供应商文案", async () => {
+    stubFetchSequence([{ status: "failed", output: [], error: "quota exceeded" }]);
+    await expect(generateImages(BASE_INPUT)).rejects.toThrow(/quota exceeded/);
+  });
 });
 
 describe("downloadImage(M16 问题1)", () => {
@@ -171,5 +240,38 @@ describe("downloadImage(M16 问题1)", () => {
       vi.fn(async () => new Response(new Uint8Array(0), { status: 200 })),
     );
     await expect(downloadImage("https://cdn.example.com/a.png", 30)).rejects.toThrow(/转存为空/);
+  });
+
+  it("同源下载带 Authorization;跨宿主/未传 auth 一律不带(M39 密钥不出供应商边界)", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const stub = (): void => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: unknown, init?: RequestInit) => {
+          seen.push((init?.headers ?? {}) as Record<string, unknown>);
+          return new Response(new Uint8Array([1]), { status: 200 });
+        }),
+      );
+    };
+    const auth = { baseUrl: "https://aihubmix.com/ai/v1", apiKey: "k-ah" };
+
+    stub(); // 同宿主(含路径差异):带 Bearer
+    await downloadImage("https://aihubmix.com/file/a.png", 30, auth);
+    expect(seen[0].authorization).toBe("Bearer k-ah");
+
+    stub(); // 跨宿主(第三方 CDN):不带
+    await downloadImage("https://cdn.example.com/a.png", 30, auth);
+    expect(seen[1].authorization).toBeUndefined();
+
+    stub(); // 未传 auth(既有调用方):不带
+    await downloadImage("https://aihubmix.com/file/a.png", 30);
+    expect(seen[2].authorization).toBeUndefined();
+
+    stub(); // baseUrl 非法:按非同源处理,不带
+    await downloadImage("https://aihubmix.com/file/a.png", 30, {
+      baseUrl: "::not-a-url",
+      apiKey: "k-ah",
+    });
+    expect(seen[3].authorization).toBeUndefined();
   });
 });

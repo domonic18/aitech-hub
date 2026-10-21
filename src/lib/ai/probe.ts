@@ -1,7 +1,7 @@
 /**
  * 连通性探针(M8 批⑥,arch/04 §4「测试连通性入口」;2026-10-16 反馈问题3
  * 用途感知):按模型绑定的用途分流到**真实业务端点**——文本类走 chat ping
- * (openai/anthropic 双协议),cover 走 /images/generations 真实最小生成一张,
+ * (openai/anthropic 双协议),cover/illustrate 走 /images/generations 真实最小生成一张,
  * embedding 走 /embeddings 并校验向量维度(与 ai-invest 同思路:测试=真实冒烟,
  * 不再用 chat ping 一刀切误报可用模型)。ASR openai/minimax 双协议 1s 正弦波
  * 实调转写。结果只落 ProbeResult(持久化在 admin service),永不 throw;
@@ -13,6 +13,7 @@ import {
   AI_PROTOCOL_OPENAI,
   AI_PURPOSE_COVER,
   AI_PURPOSE_EMBEDDING,
+  AI_PURPOSE_ILLUSTRATE,
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_SUMMARIZE,
@@ -21,6 +22,7 @@ import {
   ASR_PROTOCOL_OPENAI,
 } from "./constants";
 import { COVER_IMAGE_SIZE } from "./cover-prompt";
+import { buildImagesBody } from "./image-client";
 
 export interface ProbeInput {
   protocol: string;
@@ -64,7 +66,7 @@ async function runProbe(url: string, init: RequestInit): Promise<RawProbe> {
     return {
       ok: false,
       latencyMs,
-      detail: `HTTP ${res.status}: ${body.slice(0, 200) || "(空响应)"}`,
+      detail: `HTTP ${res.status}: ${humanizeErrorBody(body)}`,
       body: "",
     };
   } catch (e) {
@@ -79,6 +81,28 @@ async function runProbe(url: string, init: RequestInit): Promise<RawProbe> {
 
 function authHeaders(apiKey: string | null): Record<string, string> {
   return apiKey ? { authorization: `Bearer ${apiKey}` } : {};
+}
+
+/**
+ * 供应商 JSON 错误体提取人话 message(M39 验收反馈:403 异步未开通的原始体
+ * 截 200 字符后 message 被代码/tid 噪音淹没):OpenAI 兼容惯例 error.message
+ * (AiHubMix async_not_enabled 实测同形);非 JSON/缺字段回退原文截断。
+ * 已实测形态,非凭空假设;提取不到就走兜底,不会误吞信息。
+ */
+function humanizeErrorBody(text: string): string {
+  try {
+    const j = JSON.parse(text) as { error?: { message?: unknown } | string };
+    const msg =
+      typeof j.error === "string"
+        ? j.error
+        : typeof j.error?.message === "string"
+          ? j.error.message
+          : null;
+    if (msg && msg.trim() !== "") return msg.slice(0, 200);
+  } catch {
+    // 非 JSON 体:走原文兜底
+  }
+  return text.slice(0, 200) || "(空响应)";
 }
 
 /**
@@ -145,9 +169,10 @@ const IMAGE_PROBE_TIMEOUT_MIN_SEC = 15;
 const IMAGE_PROBE_TIMEOUT_MAX_SEC = 120;
 
 /** 生图探针:真实最小生成一张(计费一张,测试按钮低频可接受),
- * 2xx 且 data[0] 含 b64_json/url 即通——请求形状与 image-client 全对齐
- * (extraParams 浅合并保留键后展开/尺寸 1344x768/双形态校验含 https 前缀),
- * 探针比管线严或松都会造成「测试失败但实际可用」或反向误报 */
+ * 2xx 且 data[0]/output[0] 含 b64_json/url/content_url 即通——请求形状与
+ * image-client 全对齐(经 buildImagesBody 同源构造,extraParams 保留键恒覆盖、
+ * 显式 null 剔除/尺寸 1344x768/双数组双键形态校验与管线同口径,M39 收 AiHubMix
+ * output[]/content_url),探针比管线严或松都会造成「测试失败但实际可用」或反向误报 */
 async function probeImages(input: ProbeInput, baseUrl: string): Promise<ProbeResult> {
   if (input.protocol !== AI_PROTOCOL_OPENAI) {
     return {
@@ -165,14 +190,19 @@ async function probeImages(input: ProbeInput, baseUrl: string): Promise<ProbeRes
     const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/images/generations`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders(input.apiKey) },
-      body: JSON.stringify({
-        ...(input.extraParams ?? {}),
-        model: input.modelId,
-        prompt: "连通性测试",
-        n: 1,
-        size: COVER_IMAGE_SIZE,
-        response_format: "b64_json",
-      }),
+      // 请求体与 image-client 同源构造器(保留键 null 剔除语义一致,同口径)
+      body: JSON.stringify(
+        buildImagesBody(
+          {
+            model: input.modelId,
+            prompt: "连通性测试",
+            n: 1,
+            size: COVER_IMAGE_SIZE,
+            response_format: "b64_json",
+          },
+          input.extraParams,
+        ),
+      ),
       signal: AbortSignal.timeout(timeoutSec * 1000),
     });
     const latencyMs = Date.now() - startedAt;
@@ -181,25 +211,43 @@ async function probeImages(input: ProbeInput, baseUrl: string): Promise<ProbeRes
       return {
         ok: false,
         latencyMs,
-        detail: `HTTP ${res.status}: ${text.slice(0, 200) || "(空响应)"}`,
+        detail: `HTTP ${res.status}: ${humanizeErrorBody(text)}`,
       };
     }
-    let body: { data?: unknown };
+    let body: { data?: unknown; output?: unknown; error?: unknown };
     try {
-      body = JSON.parse(text) as { data?: unknown };
+      body = JSON.parse(text) as { data?: unknown; output?: unknown; error?: unknown };
     } catch {
       return { ok: false, latencyMs, detail: "生图响应不是 JSON(契约漂移)" };
     }
-    const rows = body.data;
+    // 双数组等价解析(M39):OpenAI data[] / AiHubMix output[],与 image-client 同口径
+    const rows = Array.isArray(body.data)
+      ? body.data
+      : Array.isArray(body.output)
+        ? body.output
+        : undefined;
     const row = Array.isArray(rows)
-      ? (rows[0] as { b64_json?: unknown; url?: unknown } | undefined)
+      ? (rows[0] as { b64_json?: unknown; url?: unknown; content_url?: unknown } | undefined)
       : undefined;
-    // 双形态校验与 image-client 同口径:b64 非空串 / url 须 https 且长度合规
+    // 双形态校验与 image-client 同口径:b64 非空串 / url|content_url 须 https 且长度合规
     const hasB64 = typeof row?.b64_json === "string" && row.b64_json.length > 0;
-    const hasUrl =
-      typeof row?.url === "string" && /^https:\/\//.test(row.url) && row.url.length < 2000;
+    const link =
+      typeof row?.url === "string"
+        ? row.url
+        : typeof row?.content_url === "string"
+          ? row.content_url
+          : null;
+    const hasUrl = link !== null && /^https:\/\//.test(link) && link.length < 2000;
     if (!row || (!hasB64 && !hasUrl)) {
-      return { ok: false, latencyMs, detail: "生图响应无 b64_json/url 图片数据(契约漂移)" };
+      const bizError =
+        typeof body.error === "string" && body.error.trim() !== "" ? body.error : null;
+      return {
+        ok: false,
+        latencyMs,
+        detail: bizError
+          ? `生图失败:${bizError.slice(0, 200)}`
+          : "生图响应无 b64_json/url 图片数据(契约漂移)",
+      };
     }
     return { ok: true, latencyMs, detail: `生图连通 ${latencyMs}ms(计费 1 张)` };
   } catch (e) {
@@ -228,7 +276,7 @@ async function probeEmbedding(input: ProbeInput, baseUrl: string): Promise<Probe
       return {
         ok: false,
         latencyMs,
-        detail: `HTTP ${res.status}: ${text.slice(0, 200) || "(空响应)"}`,
+        detail: `HTTP ${res.status}: ${humanizeErrorBody(text)}`,
       };
     }
     let body: { data?: unknown };
@@ -255,8 +303,8 @@ async function probeEmbedding(input: ProbeInput, baseUrl: string): Promise<Probe
   }
 }
 
-/** 用途→探针种类:文本类(interpret/summarize/search/writing)共享 chat;cover→images;
- * embedding→embeddings;未绑用途回退 chat(M8 旧语义) */
+/** 用途→探针种类:文本类(interpret/summarize/search/writing)共享 chat;
+ * cover/illustrate→images;embedding→embeddings;未绑用途回退 chat(M8 旧语义) */
 function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "embeddings"> {
   const has = (p: string): boolean => purposes?.includes(p) ?? false;
   const kinds: Array<"chat" | "images" | "embeddings"> = [];
@@ -270,7 +318,7 @@ function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "
   ) {
     kinds.push("chat");
   }
-  if (has(AI_PURPOSE_COVER)) kinds.push("images");
+  if (has(AI_PURPOSE_COVER) || has(AI_PURPOSE_ILLUSTRATE)) kinds.push("images");
   if (has(AI_PURPOSE_EMBEDDING)) kinds.push("embeddings");
   return kinds;
 }
