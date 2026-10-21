@@ -235,6 +235,11 @@ model TopicItem {
 - 场景 skill 种子落库(oneoff 幂等 seed,同 M38 惯例):5 新形式各一行 `agent_skill`(guideMd 含写作模板/结构骨架/插画数量口径 + 工艺分工纪律);blogger-video 同批增补配图工艺条款
 - **工艺分工纪律(入指南 L2)**:数据密集内容(价格表/周新闻数据图/对比表/步骤卡)走 HTML 信息卡——文生图对中文精确文字渲染不可靠是硬边界;概念/场景/氛围图走文生图插画。两工艺互补非替代,UI 文案与指南双重引导
 
+**⑤ 封面图生成勾选(2026-10-21 用户补充微调)**
+- 写作配置面板新增「生成封面图」勾选项(默认勾选):勾选=现状(合成流程封面候选自动生成);取消=重新生成文章时 AI 不再生成封面,保留关联稿现有封面
+- 载体沿用 positioning 条款行机制(零 schema 变更):取消勾选合成条款行 `封面:不生成封面图,重写时保留现有封面。`(精确锚点入 compose/parse 往返);默认勾选不出行,老专题存量定位无损
+- 双层硬约束(弱模型纪律,指南披露不足实证在案):brief 载荷带结构化 `skip_cover_generation` 标记 + 人话 note(软);`generate_cover_candidates` 工具层对勾选专题直接拒绝并指引正文概念图改走 `generate_illustration`(硬,免浪费计费)
+
 ### 13.4 数据模型变更
 
 ```prisma
@@ -257,6 +262,7 @@ model WritingSampleImage {
 | 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;探针实测(n/size/response_format/参考图参数)+ 验收小修(徽章内联错误原因/错误体人话提取/extra_params 保留键 null=剔除机制)—— **已交付(feature/writing-illustration),连通性测试绿(~17s/张)** | 探针结论已回填 §13.2-1/§13.3-①/③;`make check` 绿 ✅ |
 | 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 —— **已交付(feature/writing-illustration)** | `make check` 绿(1535 用例);面板手验(选项/回显/样例)待验收 ✅ |
 | 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);其余随后置批:5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:illustrate 绑定模型真出图入库(核心);合成走查插画/信息卡分工(其余) |
+| 批④+ 封面图勾选微调(2026-10-21 用户补充,§13.3-⑤) | 写作配置「生成封面图」勾选(默认勾)+ brief 结构化标记 + cover 候选工具守卫 | `make check` 绿 + 面板手验(取消勾选重合成不再出封面) |
 | 批③ 样例参照图库(**顺延**) | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
 | 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
 
