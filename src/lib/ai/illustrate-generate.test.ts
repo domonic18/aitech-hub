@@ -1,7 +1,8 @@
 /**
  * 文生图执行核心单测(M39 批④,全 mock,同 cover-generate.test.ts 桩法):
  * 未绑定人话报错且零计费行 / 成功按张计费入库 / 请求级失败落 failed 行原样
- * 上抛 / url 形态同源带鉴权转存 / 单张入库失败不废整批 / 张数收敛。
+ * 上抛 / url 形态同源带鉴权转存 / 单张入库失败不废整批 / 张数收敛 / 宽高比
+ * → 分辨率映射(§13.9,未知值回落缺省 16:9)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -145,11 +146,21 @@ describe("generateIllustrations(文生图执行核心)", () => {
     );
   });
 
-  it("张数收敛:越界 n 收进 [1,2]", async () => {
-    mockedGenerate.mockResolvedValueOnce([{ b64: "AAAA" }, { b64: "BBBB" }]);
+  it("张数收敛:越界 n 收进 [1,3](§13.9 关键小节至多 3 张择优)", async () => {
+    mockedGenerate.mockResolvedValueOnce([{ b64: "AAAA" }, { b64: "BBBB" }, { b64: "CCCC" }]);
     mockedUpload.mockResolvedValue({ path: "/wp-content/uploads/2026/10/illu-d.png" } as never);
     await generateIllustrations({ prompt: "p", n: 5 });
-    expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ n: 2 }));
-    expect(sniffImageMime).toHaveBeenCalledTimes(2);
+    expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ n: 3 }));
+    expect(sniffImageMime).toHaveBeenCalledTimes(3);
+  });
+
+  it("宽高比映射(§13.9):3:4 → 竖版 864x1152;未知值回落缺省 16:9", async () => {
+    mockedGenerate.mockResolvedValue([{ b64: "AAAA" }]);
+    await generateIllustrations({ prompt: "p", aspect: "3:4" });
+    expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ size: "864x1152" }));
+    await generateIllustrations({ prompt: "p", aspect: "9:21" });
+    expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ size: "1344x768" }));
+    await generateIllustrations({ prompt: "p", aspect: "1:1" });
+    expect(mockedGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ size: "1024x1024" }));
   });
 });

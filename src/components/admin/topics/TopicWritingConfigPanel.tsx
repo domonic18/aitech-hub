@@ -90,7 +90,7 @@ function DimensionGroup({
       <div className="flex flex-wrap gap-2">
         {dim.options.map((opt) => {
           const active = opt.key === selected;
-          // 配图维:信息卡走真实渲染、插画走静态样例,少图纯文字无样例
+          // 配图维:信息卡走真实渲染、文生图图文走静态样例,少图纯文字无样例
           const hasSample = opt.sample !== "" || (dim.key === "visual" && opt.key !== "minimal");
           return (
             <div key={opt.key} className="flex flex-col gap-1">
@@ -131,7 +131,8 @@ function DimensionGroup({
                   {dim.key === "visual" && opt.key === "illustrate" ? (
                     <div className="flex flex-col gap-2">
                       <span className="text-[11px] text-text-3">
-                        以下为文生图插画样例(生成时按各小节内容绘制,概念/场景/氛围向;非固定模板):
+                        以下为 AI 按内容编排的图文示例(Seedream 5.0 Pro
+                        实证真出图;形态由内容特点决定,非固定模板):
                       </span>
                       {VISUAL_SAMPLE_ILLUSTRATIONS.map((img) => (
                         // eslint-disable-next-line @next/next/no-img-element

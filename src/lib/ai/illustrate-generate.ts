@@ -15,11 +15,22 @@ import { decodeImageB64, downloadImage, generateImages, sniffImageMime } from ".
 import { resolveAiModel } from "./resolver";
 import { recordAiUsage } from "./usage-log";
 
-/** 插画分辨率:与封面同档 16:9(公众号正文展示宽 ~900,1344 宽留缩略余量) */
-export const ILLUSTRATE_IMAGE_SIZE = "1344x768";
+/** 宽高比 → 分辨率映射(§13.9:宽高比是模型物理约束属机制参数,不携带内容
+ * 语义;呈现形态由 agent 编排,经 prompt 表达)。横版与封面同档 16:9(公众号
+ * 正文展示宽 ~900,1344 宽留缩略余量);竖版适配小红书 3:4;方图 1:1 兜底 */
+export const ILLUSTRATE_ASPECT_SIZES: Record<string, string> = {
+  "16:9": "1344x768",
+  "3:4": "864x1152",
+  "1:1": "1024x1024",
+};
 
-/** 单次调用张数帽:插画按小节点状生成,1 张为主、关键小节至多 2 张择优(按张计费) */
-export const ILLUSTRATE_MAX_COUNT = 2;
+export type IllustrateAspect = keyof typeof ILLUSTRATE_ASPECT_SIZES;
+
+/** 缺省宽高比(历史口径:横版 16:9) */
+export const ILLUSTRATE_DEFAULT_ASPECT: IllustrateAspect = "16:9";
+
+/** 单次调用张数帽:图文按小节点状生成,1 张为主、关键小节至多 3 张择优(按张计费) */
+export const ILLUSTRATE_MAX_COUNT = 3;
 
 export interface IllustrateImage {
   path: string;
@@ -30,6 +41,8 @@ export interface GenerateIllustrationsInput {
   prompt: string;
   /** 张数(1..ILLUSTRATE_MAX_COUNT,越界收敛;默认 1) */
   n?: number;
+  /** 宽高比(枚举守卫,越界回落缺省 16:9) */
+  aspect?: string;
 }
 
 export async function generateIllustrations(
@@ -43,6 +56,9 @@ export async function generateIllustrations(
     );
   }
   const n = Math.min(Math.max(input.n ?? 1, 1), ILLUSTRATE_MAX_COUNT);
+  const size =
+    ILLUSTRATE_ASPECT_SIZES[input.aspect ?? ""] ??
+    ILLUSTRATE_ASPECT_SIZES[ILLUSTRATE_DEFAULT_ASPECT];
   const startedAt = Date.now();
   let images;
   try {
@@ -53,7 +69,7 @@ export async function generateIllustrations(
       apiKey: model.apiKey,
       prompt: input.prompt,
       n,
-      size: ILLUSTRATE_IMAGE_SIZE,
+      size,
       timeoutSec: model.timeoutSec,
       extraParams: model.extraParams,
     });

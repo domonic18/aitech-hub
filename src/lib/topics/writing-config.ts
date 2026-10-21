@@ -27,7 +27,8 @@ export type WritingFormKey = TopicPurposeKey;
 export type WritingToneKey = "friendly" | "editorial";
 /** 篇幅:standard=标准 ≈1200 字(指南缺省,不出条款);compact=精炼 ≈800 字 */
 export type WritingLengthKey = "standard" | "compact";
-/** 配图:cards=信息卡为主(指南缺省,不出条款);illustrate=文生图插画为主;
+/** 配图:cards=信息卡为主(指南缺省,不出条款);illustrate=文生图图文为主
+ * (§13.9 重定义:由 AI 按内容编排呈现形态,原「插画」口径废弃);
  * minimal=少图纯文字(M39 批②三选) */
 export type WritingVisualKey = "cards" | "illustrate" | "minimal";
 /** 封面图:generate=合成流程自动生成封面候选(缺省,不出条款);skip=不生成,
@@ -61,7 +62,8 @@ const LENGTH_CLAUSE: Record<WritingLengthKey, string | null> = {
 };
 const VISUAL_CLAUSE: Record<WritingVisualKey, string | null> = {
   cards: null,
-  illustrate: "配图:文生图插画为主,按小节内容生成概念/场景插画(数据密集内容仍可配信息卡)。",
+  illustrate:
+    "配图:文生图图文为主,由 AI 按小节内容编排呈现形态(文字入图;数据密集内容仍可配信息卡)。",
   minimal: "配图:少图,最多 1 张信息卡,以文字与行内链接表达为主。",
 };
 const COVER_CLAUSE: Record<WritingCoverKey, string | null> = {
@@ -353,8 +355,8 @@ export const WRITING_DIMENSIONS: readonly WritingDimension[] = [
       },
       {
         key: "illustrate",
-        label: "文生图插画为主",
-        desc: "按小节内容生成概念/场景插画,适合叙事与氛围表达;数据密集内容仍可配信息卡。",
+        label: "文生图图文为主",
+        desc: "AI 按小节内容编排图文呈现(要点/金句/图解等形态不设限,标题要点入图),适合公众号/小红书传播;数据密集内容仍可配信息卡。",
         sample: "",
       },
       {
@@ -389,10 +391,12 @@ export const VISUAL_SAMPLE_CARDS: readonly { preset: "quote" | "stats"; data: un
   },
 ];
 
-/** 配图维度「文生图插画为主」的静态样例(M39 批②:生图模型预产出入
- * public/,入仓库;文生图无法零副作用实时预览——每张计费且 10~30s,静态
- * 样例是唯一务实解,与信息卡真实渲染互为对照) */
+/** 配图维度「文生图图文为主」的静态样例(M39 批②建;§13.9 换为 Seedream
+ * 5.0 Pro 实证真出图,展示「按内容编排的不同形态」而非固定模板:文生图无法
+ * 零副作用实时预览——每张计费且 10~60s,静态样例是唯一务实解,与信息卡真实
+ * 渲染互为对照) */
 export const VISUAL_SAMPLE_ILLUSTRATIONS: readonly { src: string; alt: string }[] = [
-  { src: "/images/writing/illustrate-sample-1.jpg", alt: "文生图插画样例 1:概念场景图" },
-  { src: "/images/writing/illustrate-sample-2.jpg", alt: "文生图插画样例 2:数据叙事氛围图" },
+  { src: "/images/writing/illustrate-sample-1.jpg", alt: "图文示例:横版头图(大标题+副题)" },
+  { src: "/images/writing/illustrate-sample-2.jpg", alt: "图文示例:竖版要点卡(小红书风)" },
+  { src: "/images/writing/illustrate-sample-3.jpg", alt: "图文示例:金句卡(极简排版)" },
 ];

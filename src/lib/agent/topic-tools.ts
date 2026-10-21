@@ -6,7 +6,7 @@
  * transfer_video_cover(全量封面转存,重试/补传钮)/ generate_cover_candidates
  * (文生图封面候选,复用 M14 cover-gen 管线;M39 批④ 起只服务封面,正文概念
  * 图归 generate_illustration)/ generate_illustration
- * (文生图插画,M39 批④,走 illustrate 角色绑定)→ save_topic_draft
+ * (文生图图文,M39 批④建,§13.9 重定义,走 illustrate 角色绑定)→ save_topic_draft
  * (落稿锚定核,已拆 topic-draft-tool,技术债批⑤)。
  * 过程可视性来自每只工具卡逐个出现,HITL 选题/覆盖确认走 ask_user。
  * 纵深防御:图侧工具按身份档分发(admin 独占)之外,每只工具体内再验会话行
@@ -75,12 +75,12 @@ export const getTopicBriefTool = tool(
       const coverSkip = skipCoverGeneration(topic.positioning);
       // 配图工艺结构化(M39 §13.7 修 1):写作配置的 visual 维从 prose 条款行
       // 升格为结构化字段,编排侧分流以本字段为准,不再要求模型重读条款文本;
-      // 修 3 守卫对称:插画为主但 illustrate 未绑定时开工前即告警(路径不可用
+      // 修 3 守卫对称:图文为主但 illustrate 未绑定时开工前即告警(路径不可用
       // 提前暴露,不再等调用时才爆)
       const visualMode = parseWritingText(topic.positioning).selection.visual;
       const illustrationWarning =
         visualMode === "illustrate" && (await resolveAiModel(AI_PURPOSE_ILLUSTRATE)) === null
-          ? "本专题写作配置为「文生图插画为主」,但「插图配图(illustrate)」尚未绑定生图模型:本次无法生成插画——先到 AI 配置完成任务绑定再开工,或把写作配置改回「信息卡为主」"
+          ? "本专题写作配置为「文生图图文为主」,但「插图配图(illustrate)」尚未绑定生图模型:本次无法生成带字图文——先到 AI 配置完成任务绑定再开工,或把写作配置改回「信息卡为主」"
           : null;
       return JSON.stringify({
         topic: {
@@ -109,7 +109,7 @@ export const getTopicBriefTool = tool(
         ...(visualMode === "illustrate"
           ? {
               visual_note:
-                "本专题写作配置为「文生图插画为主」:正文配图以 generate_illustration 插画为主艺(概念/场景/氛围),数据密集小节仍可配 render_card 信息卡;不要整篇走 HTML 卡",
+                "本专题写作配置为「文生图图文为主」:正文配图以 generate_illustration 图文为主艺(先按内容编排呈现形态,再带字生成;形态不设限),数据密集小节仍可配 render_card 信息卡;不要整篇走 HTML 卡",
             }
           : visualMode === "minimal"
             ? {
@@ -315,7 +315,7 @@ export const generateCoverCandidatesTool = tool(
 
 // save_topic_draft 实现已拆 topic-draft-tool(技术债批⑤);此处 re-export 维持
 // 「工具同入口」的消费面(agent.ts / 单测)不漂移。generate_illustration
-// (M39 批④)实现落 illustrate-tool,文生图插画走 illustrate 角色绑定。
+// (M39 批④)实现落 illustrate-tool,文生图图文走 illustrate 角色绑定。
 export { saveTopicDraftTool };
 
 export const TOPIC_TOOLS = [

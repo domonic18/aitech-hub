@@ -270,9 +270,9 @@ describe("get_topic_brief", () => {
     expect(out2).not.toHaveProperty("cover_note");
   });
 
-  it("配图工艺结构化(M39 §13.7 修 1/修 3):visual_mode 三态透出 + 插画未绑定开工预警", async () => {
+  it("配图工艺结构化(M39 §13.7 修 1/修 3):visual_mode 三态透出 + 图文未绑定开工预警", async () => {
     const ILLUSTRATE_CLAUSE =
-      "配图:文生图插画为主,按小节内容生成概念/场景插画(数据密集内容仍可配信息卡)。";
+      "配图:文生图图文为主,由 AI 按小节内容编排呈现形态(文字入图;数据密集内容仍可配信息卡)。";
     const MINIMAL_CLAUSE = "配图:少图,最多 1 张信息卡,以文字与行内链接表达为主。";
     const base = {
       id: BigInt(7),
@@ -291,11 +291,11 @@ describe("get_topic_brief", () => {
       return invoke(getTopicBriefTool, { topic_id: "7" });
     };
 
-    // 插画为主:visual_mode + note;未绑定 → illustration_warning(开工前预警)
+    // 图文为主:visual_mode + note;未绑定 → illustration_warning(开工前预警)
     resolveAiModel.mockResolvedValueOnce(null);
     const illu = await run(`面向开发者\n${ILLUSTRATE_CLAUSE}`);
     expect(illu.visual_mode).toBe("illustrate");
-    expect(illu.visual_note).toContain("插画为主艺");
+    expect(illu.visual_note).toContain("图文为主艺");
     expect(illu.illustration_warning).toContain("尚未绑定生图模型");
 
     // 已绑定 → 无预警字段
