@@ -240,6 +240,11 @@ model TopicItem {
 - 载体沿用 positioning 条款行机制(零 schema 变更):取消勾选合成条款行 `封面:不生成封面图,重写时保留现有封面。`(精确锚点入 compose/parse 往返);默认勾选不出行,老专题存量定位无损
 - 双层硬约束(弱模型纪律,指南披露不足实证在案):brief 载荷带结构化 `skip_cover_generation` 标记 + 人话 note(软);`generate_cover_candidates` 工具层对勾选专题直接拒绝并指引正文概念图改走 `generate_illustration`(硬,免浪费计费)
 
+**⑥ 工艺纪律改写(2026-10-21 真机反馈:选了文生图仍全走 HTML 卡)**
+> 根因:工具机制已就位但**流程指令层缺失**——`generate_illustration` 在工具面,但系统提示第 4 步写死「正文配图只有两类——render_card…与 generate_cover_candidates…」、blogger-video 指南写「正文配图只用 render_card 卡图与 generate_cover_candidates 生成图」;技能指南优先于系统提示通用写法,弱模型照单执行,插画工具不可达。修复 = 双层同步改写(指南 L2 + 系统提示 harness 双落,弱模型单层披露不足实证在案):
+- 系统提示(admin addendum):第 4 步改「两类工艺按写作要求「配图」条款分流」——render_card=数据密集专艺(中文精确文字渲染不可靠是硬边界),`generate_illustration`=概念/场景/氛围叙事向(插画非卡片,card_urls 不含);「配图:文生图插画为主」条款 → 插画为主艺、数据密集小节仍配信息卡;`generate_cover_candidates` 只服务封面候选。第 5⑤ 自评审数量对账扩为「配图工具(render_card/generate_illustration)调用数一致」;第 7 步头图加 `skip_cover_generation=true` 整步跳过;「卡片可视化纪律」必做项扩为「卡片图或文生图插画」,card_urls 硬闸只对卡片
+- blogger-video 指南(DB 资产,后台改即生效):「写作要求优先」示例条款补插画条款;「核心内容笔记」导语改工艺分流(插画为主时主艺移交,数据密集仍按下述版式配卡);「图」纪律行改「正文配图只用 render_card 卡图与 generate_illustration 文生图插画(generate_cover_candidates 只服务封面候选)」
+
 ### 13.4 数据模型变更
 
 ```prisma
@@ -261,7 +266,7 @@ model WritingSampleImage {
 |---|---|---|
 | 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;探针实测(n/size/response_format/参考图参数)+ 验收小修(徽章内联错误原因/错误体人话提取/extra_params 保留键 null=剔除机制)—— **已交付(feature/writing-illustration),连通性测试绿(~17s/张)** | 探针结论已回填 §13.2-1/§13.3-①/③;`make check` 绿 ✅ |
 | 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 —— **已交付(feature/writing-illustration)** | `make check` 绿(1535 用例);面板手验(选项/回显/样例)待验收 ✅ |
-| 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);其余随后置批:5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:illustrate 绑定模型真出图入库(核心);合成走查插画/信息卡分工(其余) |
+| 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);**指南工艺纪律已随真机反馈补齐(2026-10-21,见 §13.3-⑥)**:系统提示第 4/5⑤/7 步与 blogger-video 指南双层改写(两类工艺分流 + 插画入列 + 封面跳过);余 5 场景 skill 种子后置批 | 本地真机一轮:illustrate 绑定模型真出图入库(核心,已验);重合成走查「文生图为主」真出插画(工艺纪律) |
 | 批④+ 封面图勾选微调(2026-10-21 用户补充,§13.3-⑤) | 写作配置「生成封面图」勾选(默认勾)+ brief 结构化标记 + cover 候选工具守卫 | `make check` 绿 + 面板手验(取消勾选重合成不再出封面) |
 | 批③ 样例参照图库(**顺延**) | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
 | 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
