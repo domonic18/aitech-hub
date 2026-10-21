@@ -178,3 +178,86 @@ model TopicItem {
 **验收标准(预排)**:解读真机出笔记(新条有/存量 null);专题挂载→合成→人工定稿→发布→公众号草箱全链真机走通;素材降级拼装路径(全短结论专题)可合成;`make check` 全绿 + 迁移从零重放;零版权红线破坏(转写不落库断言不放松)。
 
 **状态:方案定稿(2026-10-12),已实施至 M27 批⑦**——M26 五批 + M27 批①~⑥(合成重构→agent 化→对话框化→自主生产→配图全链路)代码全部交付;合成链终态 = 会话 agent 自主编排(arch/04 K2.8 补注),后续 R③ 关键帧/HTML 截图、R④ 工具注册表化(MCP 扩展位)另行立项。编辑器 AI 化见 [editor-ai-plan.md](editor-ai-plan.md)。状态流转对齐 [development-plan.md](development-plan.md) §5 维护约定。
+
+## 13. 增补方案:M39 文生图插画与内容形式扩容(2026-10-21 立项)
+
+> 2026-10-21 用户立项:nano banana(`gemini-nano-banana-2.1`,经 AiHubMix 网关)文生图能力强,借力让同步公众号/小红书的文章以更美观、清晰的可视化方式呈现。四项主需求(生图任务绑定/写作时可选文生图工艺/配图样例缩略图/内容形式扩容)+ 两项补充(移除模板实验室页/样例参照图库)。方案评估后六决策定稿(§13.2);除批③外零 schema 变更。前置探针:AiHubMix 端点参数容忍度与参考图支持(用户在模型台账配 key 后实测,结论回填本节)。
+
+### 13.1 需求与现状差距(评估结论:半数基建现成)
+
+| 已有基建 | 位置 | 与需求的差距 |
+|---|---|---|
+| 任务绑定机制(七角色,含 cover 封面生图,M14) | `src/lib/ai/bindings-admin.ts` | 差一个 `illustrate`(配图生图)角色;播种/校验/绑定 UI 全自动生效 |
+| 文生图客户端(OpenAI images/generations 兼容,M14/M16) | `src/lib/ai/image-client.ts` | AiHubMix 响应形态(`output[]`/`content_url`)与「下载须带 Bearer」需适配 |
+| 生图队列 + 候选 hold/adopt(M14/M31) | `src/lib/ai/cover-generate.ts` | 插画生成复用其执行核心(生成→入库),cover 管线本体不动 |
+| HTML 卡渲染(agent 工具 → card-renderer,M31/M38) | `src/lib/agent/card-tools.ts` | 现成,即「信息卡」工艺一侧 |
+| 写作配置四维 MECE(2026-10-20 详情页重构) | `src/lib/topics/writing-config.ts` | 配图维两选扩三选;内容形式注册表扩容 |
+| `topic.skillKey` 软引用 + `agent_skill` 表(M30) | prisma / `src/lib/agent/skill-tools.ts` | 「每场景一个 skill」载体现成,零新表 |
+
+### 13.2 决策记录(2026-10-21 用户定稿)
+
+1. **nano banana 接入**:经 AiHubMix 网关(base `https://aihubmix.com/ai/v1`,模型 `gemini-nano-banana-2.1`,OpenAI images/generations 兼容形态);响应为 `{id, status, output:[{b64_json|content_url, index}], error}`,`content_url` 下载须带同 key 且约 30 分钟过期(下载即时转存,过期无虞)
+2. **内容形式扩展走代码注册表扩容(路线 A)**:一次把新形式注册进 `TOPIC_PURPOSES`;DB 化预置表(路线 B)否决——真正瓶颈在每形式的指南写法分支质量,不在注册表本身,且注册表机制本按扩展设计
+3. **每个内容形式 = 一个场景 skill**:写作要求/结构模板/插画数量口径住 `agent_skill.guideMd`(后台改即生效零发版);插画数量由 agent 自主决定,指南给各场景口径
+4. **生图模型按绑定级**:写作 UI 只选工艺,模型在 AI 配置页 `illustrate` 角色绑主力/备用;不做每次写作时临时选模型
+5. **移除卡片模板实验室页**:preset 模板入口 2026-10-20 已机制层关闭,页面属遗留;`/api/card-presets/preview` 保留(写作面板配图真实渲染预览依赖)
+6. **新增样例参照图库**:写作时可上传本地/剪贴板粘贴样例图供生成参照,图库沉淀管理、后续可直接选用
+
+### 13.3 方案分块
+
+**① 生图基建适配(零 schema)**
+- `AI_MODEL_PURPOSES` 加 `illustrate`(配图生图)第八角色 + `AI_ROLE_META` 角色卡;绑定 Tab/校验/resolver 自动纳入;`ai_usage_log` role=illustrate 自然覆盖记账
+- image-client 扩 AiHubMix 形态:响应兼容 `output[]`(现仅认 OpenAI `data[]`),条目 `b64_json`|`content_url` 双形态;**同源带鉴权下载**——现有「下载不带 Authorization」纪律收窄为「URL 宿主=网关 baseUrl 宿主才带」(密钥不出同一供应商边界,跨宿主仍禁)
+- 探针项(批①出口):`n`/`size`/`response_format` 端点容忍度;`n` 不支持则走智谱同款补请求凑满(机制已有);每模型 `extra_params` 逃生门已有
+
+**② 写作配置面(零 schema)**
+- 配图维三选:**信息卡为主**(HTML 渲染,缺省)/ **文生图插画为主** / **少图纯文字**;条款行机制照旧(`VISUAL_CLAUSE` 注册精确字符串,合成/回显自动纳入)
+- 「文生图插画」样例 = 2 张 nano banana 预生成静态缩略图(`public/` 资产入仓库),展示与既有 `VISUAL_SAMPLE_CARDS` 同构;文生图无法零副作用实时预览(每张计费 + 10-30s),静态样例是唯一务实解
+- 内容形式扩容 5 项:开源项目介绍 / 论文解读 / 教程精炼 / 周新闻精选 / 模型价格表(`TOPIC_PURPOSES` 加项:label/genreWord/positioningTemplate/**skillKey**——注册表新增字段);选形式时服务端单点回写 `topic.skillKey`(人工改 skillKey 仍自由,与现状一致);两个既有视频形式继续挂 blogger-video skill 不迁
+- `writing-config.ts` 补 5 形式面板样例节选;`resolvePurpose`/合成/解析机制零改动(新形式自动纳入,custom 判定不变)
+- 移除模板实验室:`AdminSidebar` 入口 + `admin/cards/page.tsx` + `CardTemplateLab.tsx`;preset 模板实现与预览 API 保留
+
+**③ 样例参照图库(唯一 schema 变更)**
+- 新表 `writing_sample_image`(name/media_path/created_at)+ `topic` 加列 `sample_image_id`(可空,应用层完整性无 FK,同 `linked_post_id` 口径);迁移纪律照旧 create-only 评审 + 从零重放,forward-only
+- 写作配置面板配图区「样例参照」位:本地上传/剪贴板粘贴 → `uploadMedia` 入媒体库 + 图库登记(可选「仅本专题引用不入库」不做,凡上传皆入库沉淀,口径更简单);图库选择器内联重命名/删除,不开新管理页
+- **探针悬置项**:AiHubMix images 端点是否收参考图参数——能收则 `generate_illustration` 生成时带样例图参照;不能收则降级为「样例图仅供 agent 拟 prompt 时的风格描述素材」(agent 侧无多模态读图通道,效果打折),探针后如实回填本节再定交互承诺
+
+**④ 生成执行**
+- 新 admin 工具 `generate_illustration`:agent 按小节内容拟 prompt → 复用 cover-gen 执行核心(prompt/张数/尺寸 → 生图 → `uploadMedia` 入库)→ 回传 markdown 行与站内路径;不交互不挂起(免确认口径同 cover auto 档);模型走 `illustrate` 绑定,未绑定时人话报错不阻塞其余小节
+- 从 cover-generate 提取「文生图执行核心」共用函数,cover 管线零改动;时长/成本预期:每张 10-30s,一篇 2~4 张,合成时长 +1~2 分钟,按张计费入台账
+- 场景 skill 种子落库(oneoff 幂等 seed,同 M38 惯例):5 新形式各一行 `agent_skill`(guideMd 含写作模板/结构骨架/插画数量口径 + 工艺分工纪律);blogger-video 同批增补配图工艺条款
+- **工艺分工纪律(入指南 L2)**:数据密集内容(价格表/周新闻数据图/对比表/步骤卡)走 HTML 信息卡——文生图对中文精确文字渲染不可靠是硬边界;概念/场景/氛围图走文生图插画。两工艺互补非替代,UI 文案与指南双重引导
+
+### 13.4 数据模型变更
+
+```prisma
+model WritingSampleImage {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.VarChar(100) // 样例名(图库列表展示;可重命名)
+  mediaPath String   @map("media_path") @db.VarChar(500) // 媒体库站内路径
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("writing_sample_image")
+}
+```
+
+`topic` 加一列:`sampleImageId BigInt? @map("sample_image_id") // 样例参照图(写作配置配图区挂;应用层完整性无 FK,删图库行后引用置空)`。其余全部零 schema。
+
+### 13.5 实施分批
+
+| 批 | 内容 | 出口 |
+|---|---|---|
+| 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;**探针(n/size/参考图参数)——用户在模型台账配 key 后走连通性测试实测** | 探针结论回填 §13/§13.3-③;`make check` 绿 |
+| 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 | `make check` + 面板手验(选项/回显/样例) |
+| 批③ 样例参照图库 | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
+| 批④ 生成执行 | `generate_illustration` 工具 + 执行核心提取 + 5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:nano banana 真出图入稿(含样例参照档) |
+| 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
+
+### 13.6 非目标(本立项明确不做)
+
+- 每次写作时临时选生图模型(决策 4,绑定级已覆盖)
+- 内容形式 DB 化预置表与 admin CRUD(决策 2,路线 A)
+- 小红书分发通道(本立项只优化文章配图质量;渠道同步后置,图片进正文后未来渠道自然受益)
+- 插画位置/数量的人工精细控制(agent 按指南自主;反馈驱动的精控后置)
+- cover 封面管线重构(仅提取共用核心,行为不变)
+- 预置样例缩略图的在线再生成(静态资产随代码迭代,需要换样例 = 换图发版,频次可忽略)
