@@ -227,6 +227,9 @@ model TopicItem {
 - **探针悬置项**:AiHubMix images 端点是否收参考图参数——能收则 `generate_illustration` 生成时带样例图参照;不能收则降级为「样例图仅供 agent 拟 prompt 时的风格描述素材」(agent 侧无多模态读图通道,效果打折)。批①已探明基础参数契约(拒收 size/response_format),参考图参数属独立请求形态,**留批③按上述两分支实测后再定交互承诺**
 
 **④ 生成执行**
+
+> **2026-10-21 用户优先级调整**:批② 交付后用户实测「文生图插画为主」选择仍出 HTML 卡——根因即本批工具未落地(agent 手里唯一配图工具是 HTML 信息卡渲染,条款行只是文本指引;且既有 `generate_cover_candidates` 走 cover 角色绑定,illustrate 绑定模型在合成中零参与)。用户要求**先验证文生图出图效果**,故前两项(执行核心提取 + `generate_illustration` 工具)提前至批③ 之前交付;skill 种子与工艺纪律仍随后置批,批③ 样例参照图库顺延(§13.5)。
+
 - 新 admin 工具 `generate_illustration`:agent 按小节内容拟 prompt → 复用 cover-gen 执行核心(prompt/张数/尺寸 → 生图 → `uploadMedia` 入库)→ 回传 markdown 行与站内路径;不交互不挂起(免确认口径同 cover auto 档);模型走 `illustrate` 绑定,未绑定时人话报错不阻塞其余小节
 - 从 cover-generate 提取「文生图执行核心」共用函数,cover 管线零改动;时长/成本预期:每张 10-30s,一篇 2~4 张,合成时长 +1~2 分钟,按张计费入台账
 - 场景 skill 种子落库(oneoff 幂等 seed,同 M38 惯例):5 新形式各一行 `agent_skill`(guideMd 含写作模板/结构骨架/插画数量口径 + 工艺分工纪律);blogger-video 同批增补配图工艺条款
@@ -253,8 +256,8 @@ model WritingSampleImage {
 |---|---|---|
 | 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;探针实测(n/size/response_format/参考图参数)+ 验收小修(徽章内联错误原因/错误体人话提取/extra_params 保留键 null=剔除机制)—— **已交付(feature/writing-illustration),连通性测试绿(~17s/张)** | 探针结论已回填 §13.2-1/§13.3-①/③;`make check` 绿 ✅ |
 | 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 —— **已交付(feature/writing-illustration)** | `make check` 绿(1535 用例);面板手验(选项/回显/样例)待验收 ✅ |
-| 批③ 样例参照图库 | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
-| 批④ 生成执行 | `generate_illustration` 工具 + 执行核心提取 + 5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:nano banana 真出图入稿(含样例参照档) |
+| 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);其余随后置批:5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:illustrate 绑定模型真出图入库(核心);合成走查插画/信息卡分工(其余) |
+| 批③ 样例参照图库(**顺延**) | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
 | 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
 
 ### 13.6 非目标(本立项明确不做)
