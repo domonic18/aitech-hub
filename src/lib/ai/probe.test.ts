@@ -134,6 +134,24 @@ describe("probeModel(用途感知分流)", () => {
     expect(body.prompt.length).toBeGreaterThan(0);
   });
 
+  it("绑 illustrate 同走生图探针;AiHubMix output[]/content_url 形态即通(M39)", async () => {
+    const calls = stubFetch(
+      200,
+      JSON.stringify({ output: [{ index: 0, content_url: "https://api.x.com/file/a.png" }] }),
+    );
+    const r = await probeModel({ ...base, purposes: ["illustrate"] });
+    expect(r.ok).toBe(true);
+    expect(r.detail).toContain("生图连通");
+    expect(calls[0].url).toBe("https://api.x.com/v1/images/generations");
+  });
+
+  it("生图 HTTP 200 携 error 且无图:失败透传供应商文案(M39)", async () => {
+    stubFetch(200, JSON.stringify({ status: "failed", output: [], error: "quota exceeded" }));
+    const r = await probeModel({ ...base, purposes: ["cover"] });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("quota exceeded");
+  });
+
   it("生图探针带台账 extraParams 浅合并,保留键不可被覆盖(与 image-client 同纪律)", async () => {
     const calls = stubFetch(200, JSON.stringify({ data: [{ url: "https://cdn.x.com/a.jpg" }] }));
     const r = await probeModel({
