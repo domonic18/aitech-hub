@@ -196,7 +196,7 @@ model TopicItem {
 
 ### 13.2 决策记录(2026-10-21 用户定稿)
 
-1. **nano banana 接入**:经 AiHubMix 网关(base `https://aihubmix.com/ai/v1`,模型 `gemini-nano-banana-2.1`,OpenAI images/generations 兼容形态);响应为 `{id, status, output:[{b64_json|content_url, index}], error}`,`content_url` 下载须带同 key 且约 30 分钟过期(下载即时转存,过期无虞)
+1. **nano banana 接入**:经 AiHubMix 网关(base `https://aihubmix.com/ai/v1`,模型 `gemini-nano-banana-2.1`,OpenAI images/generations 兼容形态);响应为 `{id, status, output:[{b64_json|content_url, index}], error}`,`content_url` 下载须带同 key 且约 30 分钟过期(下载即时转存,过期无虞)。**探针实证(2026-10-21)**:端点严格校验,拒收 `size`/`response_format`(HTTP 400 `Unknown request parameter`),`n`/`model`/`prompt` 正常;且生图走其**异步任务通道,须先在 AiHubMix 控制台开通**(未开通报 403 `async_not_enabled`)。参数剔除经 `extra_params` 保留键置 null 表达(新增机制,见 §13.3-①),模型 id=26 已配 `{"size": null, "response_format": null}`,连通性测试通过(~17s/张)
 2. **内容形式扩展走代码注册表扩容(路线 A)**:一次把新形式注册进 `TOPIC_PURPOSES`;DB 化预置表(路线 B)否决——真正瓶颈在每形式的指南写法分支质量,不在注册表本身,且注册表机制本按扩展设计
 3. **每个内容形式 = 一个场景 skill**:写作要求/结构模板/插画数量口径住 `agent_skill.guideMd`(后台改即生效零发版);插画数量由 agent 自主决定,指南给各场景口径
 4. **生图模型按绑定级**:写作 UI 只选工艺,模型在 AI 配置页 `illustrate` 角色绑主力/备用;不做每次写作时临时选模型
@@ -208,7 +208,10 @@ model TopicItem {
 **① 生图基建适配(零 schema)**
 - `AI_MODEL_PURPOSES` 加 `illustrate`(配图生图)第八角色 + `AI_ROLE_META` 角色卡;绑定 Tab/校验/resolver 自动纳入;`ai_usage_log` role=illustrate 自然覆盖记账
 - image-client 扩 AiHubMix 形态:响应兼容 `output[]`(现仅认 OpenAI `data[]`),条目 `b64_json`|`content_url` 双形态;**同源带鉴权下载**——现有「下载不带 Authorization」纪律收窄为「URL 宿主=网关 baseUrl 宿主才带」(密钥不出同一供应商边界,跨宿主仍禁)
-- 探针项(批①出口):`n`/`size`/`response_format` 端点容忍度;`n` 不支持则走智谱同款补请求凑满(机制已有);每模型 `extra_params` 逃生门已有
+- 探针项(批①出口):`n`/`size`/`response_format` 端点容忍度;`n` 不支持则走智谱同款补请求凑满(机制已有);每模型 `extra_params` 逃生门已有。
+  **实证结论(2026-10-21)**:`n` 支持、`size`/`response_format` 被 400 拒收 → 新增「`extra_params` 保留键显式 null = 整键剔除」机制(image-client 与探针共用 `buildImagesBody` 同源构造,`null` 值不透传),非 null 扩展参数照旧透传;请求体构造器收口后探针与管线永不漂移
+- 验收配套小修(批①顺带):测试状态徽章失败时内联显示截断原因(原仅 title 悬浮,「失败且没有错误原因」);探针非 2xx JSON 错误体优先提取 `error.message` 人话(原原始体截 200 字符,message 被代码/tid 噪音淹没)
+- **第二供应商 Seedream 5.0 pro(2026-10-21 用户追加,契约评估=零代码接入)**:火山方舟 `POST https://ark.cn-beijing.volces.com/api/v3/images/generations` + Bearer,OpenAI images 兼容——现有客户端直接覆盖(协议门禁 openai/响应 `data[]` url|b64_json/错误 `error.code+message`)。台账配置:protocol=openai、baseUrl=`https://ark.cn-beijing.volces.com/api/v3`、modelId=`doubao-seedream-5-0-pro-260628`(以方舟 Model ID 页为准)、extra_params `{"watermark": false, "n": null}`(watermark 官方默认 true 须显式关;n 未见于文档,预置剔除走智谱同款补请求凑满,若实测支持 n 亦可去掉)。`size` 显式宽x高在支持域内(1344x768 ✓);url 转存跨宿主不带鉴权(TOS 公链)恰合既有纪律。**关键差异:官方支持参考图 `image` 参数(单图/多图最多 10 张,URL 或 data URL base64)——批③样例参照图库在 Seedream 侧有原生生成通道**(AiHubMix nano-banana 仍悬置,prompt 描述降级兜底),工具层参数透传留批③设计
 
 **② 写作配置面(零 schema)**
 - 配图维三选:**信息卡为主**(HTML 渲染,缺省)/ **文生图插画为主** / **少图纯文字**;条款行机制照旧(`VISUAL_CLAUSE` 注册精确字符串,合成/回显自动纳入)
@@ -220,7 +223,7 @@ model TopicItem {
 **③ 样例参照图库(唯一 schema 变更)**
 - 新表 `writing_sample_image`(name/media_path/created_at)+ `topic` 加列 `sample_image_id`(可空,应用层完整性无 FK,同 `linked_post_id` 口径);迁移纪律照旧 create-only 评审 + 从零重放,forward-only
 - 写作配置面板配图区「样例参照」位:本地上传/剪贴板粘贴 → `uploadMedia` 入媒体库 + 图库登记(可选「仅本专题引用不入库」不做,凡上传皆入库沉淀,口径更简单);图库选择器内联重命名/删除,不开新管理页
-- **探针悬置项**:AiHubMix images 端点是否收参考图参数——能收则 `generate_illustration` 生成时带样例图参照;不能收则降级为「样例图仅供 agent 拟 prompt 时的风格描述素材」(agent 侧无多模态读图通道,效果打折),探针后如实回填本节再定交互承诺
+- **探针悬置项**:AiHubMix images 端点是否收参考图参数——能收则 `generate_illustration` 生成时带样例图参照;不能收则降级为「样例图仅供 agent 拟 prompt 时的风格描述素材」(agent 侧无多模态读图通道,效果打折)。批①已探明基础参数契约(拒收 size/response_format),参考图参数属独立请求形态,**留批③按上述两分支实测后再定交互承诺**
 
 **④ 生成执行**
 - 新 admin 工具 `generate_illustration`:agent 按小节内容拟 prompt → 复用 cover-gen 执行核心(prompt/张数/尺寸 → 生图 → `uploadMedia` 入库)→ 回传 markdown 行与站内路径;不交互不挂起(免确认口径同 cover auto 档);模型走 `illustrate` 绑定,未绑定时人话报错不阻塞其余小节
@@ -247,7 +250,7 @@ model WritingSampleImage {
 
 | 批 | 内容 | 出口 |
 |---|---|---|
-| 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;**探针(n/size/参考图参数)——用户在模型台账配 key 后走连通性测试实测** | 探针结论回填 §13/§13.3-③;`make check` 绿 |
+| 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;探针实测(n/size/response_format/参考图参数)+ 验收小修(徽章内联错误原因/错误体人话提取/extra_params 保留键 null=剔除机制)—— **已交付(feature/writing-illustration),连通性测试绿(~17s/张)** | 探针结论已回填 §13.2-1/§13.3-①/③;`make check` 绿 ✅ |
 | 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 | `make check` + 面板手验(选项/回显/样例) |
 | 批③ 样例参照图库 | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
 | 批④ 生成执行 | `generate_illustration` 工具 + 执行核心提取 + 5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:nano banana 真出图入稿(含样例参照档) |
