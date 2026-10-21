@@ -268,6 +268,7 @@ model WritingSampleImage {
 | 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 —— **已交付(feature/writing-illustration)** | `make check` 绿(1535 用例);面板手验(选项/回显/样例)待验收 ✅ |
 | 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);**指南工艺纪律已随真机反馈补齐(2026-10-21,见 §13.3-⑥)**:系统提示第 4/5⑤/7 步与 blogger-video 指南双层改写(两类工艺分流 + 插画入列 + 封面跳过);余 5 场景 skill 种子后置批 | 本地真机一轮:illustrate 绑定模型真出图入库(核心,已验);重合成走查「文生图为主」真出插画(工艺纪律) |
 | 批④+ 封面图勾选微调(2026-10-21 用户补充,§13.3-⑤) | 写作配置「生成封面图」勾选(默认勾)+ brief 结构化标记 + cover 候选工具守卫 | `make check` 绿 + 面板手验(取消勾选重合成不再出封面) |
+| 批④++ 分层三修(2026-10-21 用户要求,§13.7) | 意图结构化闭环(brief `visual_mode` + 三态 note,提示分流改按字段)+ 守卫对称(插画为主未绑定生图模型 → brief 开工预警)+ 清单单源机器防线(工具面-提示一致性测试,正反向)+ 陈旧枚举 docblock 清理 —— **已交付** | `make check` 绿(含 parity 守卫);重合成走查插画为主真出插画 |
 | 批③ 样例参照图库(**顺延**) | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
 | 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
 
@@ -279,3 +280,93 @@ model WritingSampleImage {
 - 插画位置/数量的人工精细控制(agent 按指南自主;反馈驱动的精控后置)
 - cover 封面管线重构(仅提取共用核心,行为不变)
 - 预置样例缩略图的在线再生成(静态资产随代码迭代,需要换样例 = 换图发版,频次可忽略)
+
+### 13.7 文章生成层次职责梳理与防再犯机制(2026-10-21 用户要求)
+
+> 触发:批④ 真机反馈「选了文生图仍全走 HTML 卡」(§13.3-⑥)。复盘定性:不是单点
+> bug,是分层缺陷——同一事实(正文配图有哪些工艺)没有真相源,意图没有结构化通道,
+> 守卫不对称。本节为 M39 范围内的设计基准,批⑤ 收口时并入 arch/04(§3 编排段)。
+
+**合成全链路现状(分层视图)**
+
+```
+L0 意图层   写作配置面板 → writing-config compose/parse → positioning 条款行
+            (唯一落库载体;结构化 selection 服务端可派生,零 schema)
+L1 编排机制  ADMIN_PROMPT_ADDENDUM(代码,发版生效)
+            工作流步骤 1-8 + 交付纪律 + 卡片可视化纪律 + 封面纪律 + 技能调度
+L2 工艺策略  agent_skill 指南(DB 资产,后台改即时生效;brief 预装 / get_skill 渐进取)
+L3 工具守卫  tool 面(schema/description/体内校验;身份 fail-closed、uploads-only、
+            card_urls 硬闸、cover skip 守卫、未绑定人话报错)
+L4 执行核心  generateIllustrations / render_card 管线 / cover-gen 队列 / finalizeCompose
+            (纯库函数,零提示语义)
+旁路        write_article 写作模型(独立绑定):底料=定位原文+指南全文+素材,
+            OUTPUT_RULES 禁图——只产文字,配图全在编排侧(边界健康,本次故障不在此层)
+```
+
+**本次故障的三个结构性缺陷**
+
+1. **意图断层**:「配图:文生图插画为主」止步于 prose 条款行,brief 无结构化透出。
+   封面勾选有 `skip_cover_generation` 结构化标记 + note + 工具硬守卫三层(M39 批④+),
+   配图选择只有 prose——同一配置面板的维度,结构化只做了一半。要求弱模型「正确读到
+   并服从一段与其它显式指令冲突的 prose」是最弱一环。
+2. **能力清单双副本漂移**:「正文配图有哪些工艺」是机制事实(真相源=工具面),却被
+   手写进两处策略文本:L1 提示(「只有两类」)+ L2 指南(「只用 render_card 与
+   generate_cover_candidates」),另有 write-article/topic-tools docblock 两处副本
+   (共 4 处)。新增工具只改工具面与测试,清单副本无任何机器校验强制同步;模型服从
+   了最显式的那份旧清单。
+3. **守卫不对称**:意图说「不要」(封面)有工具硬拒;意图说「只要」(插画为主)无
+   机制保证路径可用——illustrate 绑定缺失只在调用时爆,此前静默回落全靠模型自觉。
+
+**层次职责重划(核心原则:按变更节奏与真相源切层,每层只答一个问题)**
+
+| 层 | 职责(只答一个问题) | 禁止 |
+|---|---|---|
+| L0 意图 | 用户这次要什么(结构化 selection 为准,prose 仅为载体) | — |
+| L1 编排机制 | 流程顺序(先干什么后干什么)+ **能力清单**(工具面有什么,与工具面同发版节奏,唯一权威副本) | 不写工艺策略(什么内容用什么版式/几张) |
+| L2 工艺策略 | 怎么做好(版式语汇/口吻/字数/插画数量口径/工艺分工原则) | 不维护能力枚举句(「只用 X 与 Y」),只按分工原则引用工具名 |
+| L3 工具守卫 | 硬约束:身份/格式/越权/**意图违逆**(说不要→拒) | 不做需要判断力的路由(选哪工艺是模型+策略的事) |
+| L4 执行核心 | 计费/入库/去重/降级 | 不携带提示语义 |
+
+**防再犯三修(2026-10-21 已交付,出口见 §13.5 批④++ 行)**
+
+- **修 1·意图结构化闭环**:`get_topic_brief` 载荷透出 `visual_mode`(cards/illustrate/
+  minimal,服务端 `parseWritingText(positioning).selection.visual` 派生,零 schema)+
+  三态人话 note(对齐 cover_note 口径);L1 第 4 步改「按 brief 的 visual_mode 分流」,
+  不再要求模型重读条款文本自行判断。
+- **修 2·清单单源 + 机器防线**:能力清单唯一权威 = L1 提示(与工具面同发版节奏);
+  L2 指南删枚举句改分工原则(blogger-video 三处已改两处半,补齐并在收口时全 skill
+  盘一遍);新增**一致性单测**:遍历 `agentToolsFor("admin")` 全部工具名,断言 L1
+  提示逐一提及(显式 allowlist 豁免),反向断言 L1/L2 不出现未注册工具名——本次
+  故障在该测试下直接红。顺带清理 write-article/topic-tools docblock 陈旧枚举副本。
+- **修 3·守卫对称**:brief 阶段即可用性预检——`visual_mode=illustrate` 且 illustrate
+  未绑定时,载荷带 warning(「插画为主但未绑定生图模型,本次无法生成插画:先到 AI
+  配置绑定,或改写作配置为信息卡为主」),把路径不可用从调用时提前到开工前暴露
+  (render_card 无绑定依赖,必可用,无需对称预检)。
+
+**分层机制与文件对照(2026-10-21 补,文件名已逐一核实)**
+
+| 层 | 机制 | 文件(职责锚点) | 生效节奏 |
+|---|---|---|---|
+| L0 意图 | 条款行 compose/parse 往返 + 结构化 selection 派生 + form→skillKey 回写 | `src/lib/topics/writing-config.ts`(CLAUSE 注册表/parseWritingText/deriveSkillKey/skipCoverGeneration)、`src/lib/topics/constants.ts`(TOPIC_PURPOSES 7 形式模板)、`src/components/admin/topics/TopicWritingConfigPanel.tsx`(面板)、`src/app/api/topics/[id]/route.ts`(PATCH 落库 positioning+skillKey 同请求回写) | 保存即落库,下次生成本次生效 |
+| L1 编排机制 | ADMIN_PROMPT_ADDENDUM:工作流步骤 1-8 + 能力清单(唯一权威副本)+ 交付/封面/改稿纪律 + 技能调度条款 | `src/lib/agent/agent.ts`(ADMIN_PROMPT_ADDENDUM + agentToolsFor/agentSystemPrompt 分发 + 图缓存 key=id:source:身份) | 发版(镜像重建+容器重启清图缓存) |
+| L2 工艺策略 | agent_skill 资产(key/name/scenario/guide_md/enabled);指南正文即场景工艺 | DB 表 `agent_skill`;读取 `src/lib/ai/agent-skills-admin.ts`;后台 CRUD `src/app/api/agent-skills/` + 页面 `src/app/(admin)/admin/skills/page.tsx`;种子惯例 `scripts/oneoff/`(如 guide-blogger-video) | DB 即时生效,零发版 |
+| L3 工具守卫 | schema 入参校验 + 体内硬校验 + description 承载用法纪律 | `src/lib/agent/topic-tools.ts`(brief/转存/cover 候选+skip 守卫)、`topic-draft-tool.ts`(card_urls 硬闸/uploads-only/needConfirm)、`illustrate-tool.ts`、`card-tools.ts`(render_card 自由 HTML 唯一用法)、`write-article-tool.ts`、`cover-tools.ts`(HITL 两段/auto_adopt)、`skill-tools.ts`、`wechat-budget-tool.ts`、`post-sources-tool.ts`;横切:`admin-thread.ts`(fail-closed)+ 中间件四件(tool-call-repair/context-trim/ask-user-guard/tool-args-feedback,agent.ts 挂载) | 发版 |
+| L4 执行核心 | 纯库函数:生图/渲卡/队列/落库注入/计费入库 | `src/lib/ai/illustrate-generate.ts`(generateIllustrations)、`src/lib/ai/image-client.ts`(images/generations 兼容客户端)、`src/lib/ai/cover-generate.ts`(BullMQ 入队+单拍探测)、`src/lib/card/render.ts`(HTML→PNG 经 card-renderer sidecar)、`src/lib/topics/compose.ts`(buildComposeBlocks/finalizeCompose 文首推荐卡注入/transferVideoCovers)、`src/lib/media/service.ts`(uploadMedia sha1 去重)、`worker/processors.ts`(队列消费) | 发版 |
+| 旁路 写作模型 | write_article 单任务捆绑:工具侧装配底料(定位原文+指南全文+素材)喂 writing 绑定模型,OUTPUT_RULES 禁图 | `src/lib/agent/write-article-tool.ts`(buildWriterPrompt) | 发版(机制)/DB(指南内容) |
+
+**场景处理的归属(三层拆开:路由是机制,内容是策略,匹配是兜底)**
+
+- **场景路由 = 机制(L0+brief 预装,确定性)**:内容形式 → skillKey 的映射住
+  `writing-config.ts#deriveSkillKey`(TOPIC_PURPOSES 注册表),PATCH 落库时同请求回写
+  `topic.skillKey`;`get_topic_brief` 见有绑定即 pinned 预装该指南全文(topic-tools.ts),
+  不等模型自发取用。确定性路由不经过模型判断。
+- **场景工艺内容 = 策略(L2 指南正文)**:这个场景怎么写——结构骨架/口吻/字数/插画
+  数量口径/教程判据/码点预算——全部住该场景 guideMd。批④ 余项「5 场景 skill 种子」
+  即此模式:oneoff 幂等 seed 一行 agent_skill + TOPIC_PURPOSES 注册形式(后者发版)。
+  场景内二次分支(如视频安利指南内的「教程类视频判据」)也纯住 L2 文本,由模型执行。
+- **场景匹配兜底 = 模型自主(L1 调度条款 + skill-tools 机制)**:无绑定/停用时,编排
+  模型按 L1「技能调度」条款调 list_skills 按 scenario 元数据对号 → get_skill 取全文;
+  仍未命中则按素材常识写作并在汇报中声明。
+- **归属判据**(harness-vs-hardcode 既有口径):这条场景规则改不改要发版?要发版的
+  (路由注册表、能力清单、工具语义)→ L0/L1/L3;运营随时会调的(写法、口径、结构)
+  → L2。场景「换指南」零发版,场景「新增一类」= 注册表发版 + 指南入 DB 各半步。
