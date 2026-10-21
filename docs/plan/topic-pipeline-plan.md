@@ -266,7 +266,7 @@ model WritingSampleImage {
 |---|---|---|
 | 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;探针实测(n/size/response_format/参考图参数)+ 验收小修(徽章内联错误原因/错误体人话提取/extra_params 保留键 null=剔除机制)—— **已交付(feature/writing-illustration),连通性测试绿(~17s/张)** | 探针结论已回填 §13.2-1/§13.3-①/③;`make check` 绿 ✅ |
 | 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 —— **已交付(feature/writing-illustration)** | `make check` 绿(1535 用例);面板手验(选项/回显/样例)待验收 ✅ |
-| 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);**指南工艺纪律已随真机反馈补齐(2026-10-21,见 §13.3-⑥)**:系统提示第 4/5⑤/7 步与 blogger-video 指南双层改写(两类工艺分流 + 插画入列 + 封面跳过);余 5 场景 skill 种子后置批 | 本地真机一轮:illustrate 绑定模型真出图入库(核心,已验);重合成走查「文生图为主」真出插画(工艺纪律) |
+| 批④ 生成执行 | **核心已提前交付(2026-10-21 用户优先级调整,见 §13.3-④)**:`generate_illustration` 工具 + 执行核心提取(cover 管线零改动);**指南工艺纪律已随真机反馈补齐(2026-10-21,见 §13.3-⑥)**:系统提示第 4/5⑤/7 步与 blogger-video 指南双层改写(两类工艺分流 + 插画入列 + 封面跳过);**5 场景 skill 种子已交付(批④余项,2026-10-21,见 §13.10)** | 本地真机一轮:illustrate 绑定模型真出图入库(核心,已验);重合成走查「文生图为主」真出插画(工艺纪律,§13.9 批④+4 后用户已验证:高质量带字图文) |
 | 批④+ 封面图勾选微调(2026-10-21 用户补充,§13.3-⑤) | 写作配置「生成封面图」勾选(默认勾)+ brief 结构化标记 + cover 候选工具守卫 | `make check` 绿 + 面板手验(取消勾选重合成不再出封面) |
 | 批④++ 分层三修(2026-10-21 用户要求,§13.7) | 意图结构化闭环(brief `visual_mode` + 三态 note,提示分流改按字段)+ 守卫对称(插画为主未绑定生图模型 → brief 开工预警)+ 清单单源机器防线(工具面-提示一致性测试,正反向)+ 陈旧枚举 docblock 清理 —— **已交付** | `make check` 绿(含 parity 守卫);重合成走查插画为主真出插画 |
 | 批③ 样例参照图库(**顺延**) | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
@@ -512,5 +512,32 @@ topic-tools/agent/illustrate-tool/illustrate-generate 新增 aspect 映射与张
 [1,3]),`make check` 绿(typecheck/lint 0 error/1566 tests);验收栈 m39-batch4
 重建 + nginx restart,样例三图 HTTP 200。**待收口**:post 280 同配置重合成
 (编排形态至少两种)用户触发验证;批⑤ arch/04 同步时并入本节。
+**✅ 出口验证通过(2026-10-21 用户)**:post 280 同配置重合成真出高质量带字
+图文,批④+4 收口。
 另:L2 指南「图」条修正 generate_cover_candidates 职责(只服务封面,正文概念图
 归 generate_illustration——批④ 职责移交在指南侧的漏改,本次一并收口)。
+
+### 13.10 批④余项:5 场景 skill 种子(2026-10-21 交付)
+
+> 批② 扩容的 5 个非视频内容形式(open-source-intro/paper-interpret/tutorial-refine/
+> weekly-news/model-pricing)各配专属场景 skill——form→skillKey 单点绑定已在
+> constants 注册,本批补齐指南资产,消除「绑定降级 list_skills 兜底」的常态失联。
+
+**落地**:
+- 指南真相源 `src/lib/ai/writing-guides.ts` 新增 5 份指南(各含:体裁钩子/递进
+  结构/硬纪律——素材取数不编造/生动性反套话/篇幅区间)+ **公共条款单源插值**
+  (CLAUSE_REQUIREMENT_FIRST/CRAFT_VISUAL/CLAUSE_WECHAT_BUDGET 三个常量,防五份
+  漂移);CRAFT_VISUAL 按 §13.9 编排开放原则(先定「传达什么信息+用什么形态」,
+  形态不设限;数据密集走卡、内容成图走文生图图文、错字一图至多重出一次)。
+  场景差异:开源介绍=README 复读反腔+最小上手路径;论文解读=人话点破问题+直觉
+  优先+局限边界;教程精炼=准备/步骤/坑/验收手册+第二人称祈使句;周新闻=三行
+  速览+分组综述+每条独立可读;价格表=表格主干+计价单位表头+「—」不臆测。
+- `WRITING_SKILLS` 注册表自 seed.ts 收编入真相源文件(seed 只管「只补缺」落库;
+  已部署环境补技能 = 重跑 seed,幂等)。
+- 断链守卫 `writing-guides.test.ts`:TOPIC_PURPOSES.skillKey 全覆盖 WRITING_SKILLS
+  (deriveSkillKey 回写库中不存在的 key = 静默劣化,机器拦)+ key 唯一 + 五指南
+  公共条款在位。
+
+**验收**:`make check` 绿(typecheck/lint 0 error/1569 tests,新增 3 断言);验收
+库 seed 后 7 技能在册(guide_md 1192~3954 字符,公共条款 SQL 抽查通过)。
+指南为 DB 资产不进 web bundle,本轮无需重建镜像;生产随批⑤ 发布后重跑 seed。
