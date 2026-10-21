@@ -12,6 +12,7 @@ import {
   deriveSkillKey,
   parseWritingText,
   resolvePurpose,
+  skipCoverGeneration,
   WRITING_DIMENSIONS,
   type WritingSelection,
 } from "./writing-config";
@@ -26,12 +27,13 @@ describe("composeWritingText(选择 → 写作要求文本)", () => {
     expect(composeWritingText(DEFAULT_WRITING_SELECTION)).toBe(DEFAULT_TOPIC_POSITIONING);
   });
 
-  it("非缺省维追加条款行,缺省维不出行;行序固定 口吻→篇幅→配图", () => {
+  it("非缺省维追加条款行,缺省维不出行;行序固定 口吻→篇幅→配图(封面缺省不出行)", () => {
     const text = composeWritingText({
       form: "video-tutorial",
       tone: "editorial",
       length: "compact",
       visual: "minimal",
+      cover: "generate",
     });
     expect(text).toBe([TUTORIAL_TOPIC_POSITIONING, EDITORIAL, COMPACT, MINIMAL].join("\n"));
   });
@@ -69,6 +71,7 @@ describe("parseWritingText(写作要求文本 → 选择)", () => {
       tone: "friendly",
       length: "standard",
       visual: "minimal",
+      cover: "generate",
     });
     expect(parseWritingText(text).selection.form).toBe("video-tutorial");
   });
@@ -172,10 +175,40 @@ describe("WRITING_DIMENSIONS(面板元数据健全性)", () => {
       tone: "editorial",
       length: "standard",
       visual: "minimal",
+      cover: "generate",
     };
     expect(byDim.form).toContain(sel.form);
     expect(byDim.tone).toContain(sel.tone);
     expect(byDim.length).toContain(sel.length);
     expect(byDim.visual).toContain(sel.visual);
+  });
+});
+
+describe("封面图勾选(M39 批④+:compose/parse 往返 + 守卫同源)", () => {
+  const SKIP_CLAUSE = "封面:不生成封面图,重写时保留现有封面。";
+
+  it("缺省勾选不出条款行(纯模板解析回 generate);取消勾选 = 精确条款行,往返回显 skip", () => {
+    expect(parseWritingText(DEFAULT_TOPIC_POSITIONING).selection.cover).toBe("generate");
+    const skip = composeWritingText({ ...DEFAULT_WRITING_SELECTION, cover: "skip" });
+    expect(skip).toBe(`${DEFAULT_TOPIC_POSITIONING}\n${SKIP_CLAUSE}`);
+    expect(parseWritingText(skip)).toEqual({
+      selection: { ...DEFAULT_WRITING_SELECTION, cover: "skip" },
+      custom: false,
+    });
+  });
+
+  it("手改模板 + skip 条款 → cover 仍回显 skip 且 custom=true(锚点独立于 custom)", () => {
+    const p = parseWritingText(`${DEFAULT_TOPIC_POSITIONING}!\n${SKIP_CLAUSE}`);
+    expect(p.custom).toBe(true);
+    expect(p.selection.cover).toBe("skip");
+  });
+
+  it("skipCoverGeneration(brief 标记/工具守卫同源):缺省 false;skip 条款 true(含手改)", () => {
+    expect(skipCoverGeneration(null)).toBe(false);
+    expect(skipCoverGeneration(DEFAULT_TOPIC_POSITIONING)).toBe(false);
+    expect(
+      skipCoverGeneration(composeWritingText({ ...DEFAULT_WRITING_SELECTION, cover: "skip" })),
+    ).toBe(true);
+    expect(skipCoverGeneration(`${DEFAULT_TOPIC_POSITIONING}!\n${SKIP_CLAUSE}`)).toBe(true);
   });
 });

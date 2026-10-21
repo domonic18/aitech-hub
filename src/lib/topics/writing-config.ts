@@ -1,6 +1,7 @@
 /**
  * 文章生成配置(2026-10-20 验收反馈:写作配置可视化重构)——把「写一篇什么
- * 样的文章」拆成 MECE 四维:内容形式 × 口吻语感 × 篇幅 × 配图。机制:
+ * 样的文章」拆成 MECE 四维:内容形式 × 口吻语感 × 篇幅 × 配图,外加一项封面
+ * 图勾选(M39 批④+:勾选型开关不入维度组,面板单列 checkbox)。机制:
  * - 单向合成:选择组合 → 写作要求文本(落库 positioning,零 schema 变更);
  *   缺省维不出条款行(=模板原文,老专题存量定位无损回显)。
  * - textarea 是唯一真相源:选择只是文本构建器;手改文本即整组转「已自定义」。
@@ -27,12 +28,16 @@ export type WritingLengthKey = "standard" | "compact";
 /** 配图:cards=信息卡为主(指南缺省,不出条款);illustrate=文生图插画为主;
  * minimal=少图纯文字(M39 批②三选) */
 export type WritingVisualKey = "cards" | "illustrate" | "minimal";
+/** 封面图:generate=合成流程自动生成封面候选(缺省,不出条款);skip=不生成,
+ * 重写时保留关联稿现有封面(M39 批④+ 用户补充勾选项) */
+export type WritingCoverKey = "generate" | "skip";
 
 export interface WritingSelection {
   form: WritingFormKey;
   tone: WritingToneKey;
   length: WritingLengthKey;
   visual: WritingVisualKey;
+  cover: WritingCoverKey;
 }
 
 export const DEFAULT_WRITING_SELECTION: WritingSelection = {
@@ -40,6 +45,7 @@ export const DEFAULT_WRITING_SELECTION: WritingSelection = {
   tone: "friendly",
   length: "standard",
   visual: "cards",
+  cover: "generate",
 };
 
 /** 条款行(非缺省维合成进写作要求;精确字符串,反向解析锚点,勿改动文案) */
@@ -56,13 +62,22 @@ const VISUAL_CLAUSE: Record<WritingVisualKey, string | null> = {
   illustrate: "配图:文生图插画为主,按小节内容生成概念/场景插画(数据密集内容仍可配信息卡)。",
   minimal: "配图:少图,最多 1 张信息卡,以文字与行内链接表达为主。",
 };
+const COVER_CLAUSE: Record<WritingCoverKey, string | null> = {
+  generate: null,
+  skip: "封面:不生成封面图,重写时保留现有封面。",
+};
 
 /** 选择 → 写作要求文本(单向;缺省维不出条款 = 纯模板,存量兼容) */
 export function composeWritingText(sel: WritingSelection): string {
   const template =
     TOPIC_PURPOSES.find((t) => t.key === sel.form)?.positioningTemplate ??
     DEFAULT_TOPIC_POSITIONING;
-  const clauses = [TONE_CLAUSE[sel.tone], LENGTH_CLAUSE[sel.length], VISUAL_CLAUSE[sel.visual]];
+  const clauses = [
+    TONE_CLAUSE[sel.tone],
+    LENGTH_CLAUSE[sel.length],
+    VISUAL_CLAUSE[sel.visual],
+    COVER_CLAUSE[sel.cover],
+  ];
   const present = clauses.filter((c): c is string => c !== null);
   return present.length ? `${template}\n${present.join("\n")}` : template;
 }
@@ -80,14 +95,16 @@ export function parseWritingText(text: string | null): WritingParse {
     .map((l) => l.trim())
     .filter((l) => l !== "");
   const clauseLines = new Set(
-    [TONE_CLAUSE, LENGTH_CLAUSE, VISUAL_CLAUSE].flatMap((m) =>
+    [TONE_CLAUSE, LENGTH_CLAUSE, VISUAL_CLAUSE, COVER_CLAUSE].flatMap((m) =>
       Object.values(m).filter((c): c is string => c !== null),
     ),
   );
-  const found = { tone: undefined, length: undefined, visual: undefined } as Record<
-    string,
-    unknown
-  >;
+  const found = {
+    tone: undefined,
+    length: undefined,
+    visual: undefined,
+    cover: undefined,
+  } as Record<string, unknown>;
   const rest: string[] = [];
   let custom = false;
   for (const line of lines) {
@@ -103,6 +120,9 @@ export function parseWritingText(text: string | null): WritingParse {
     } else if (line === VISUAL_CLAUSE.minimal) {
       if (found.visual !== undefined) custom = true;
       found.visual = "minimal";
+    } else if (line === COVER_CLAUSE.skip) {
+      if (found.cover !== undefined) custom = true;
+      found.cover = "skip";
     } else if (clauseLines.has(line)) {
       custom = true; // 同维冲突条款(不该出现,防御)
     } else {
@@ -117,6 +137,7 @@ export function parseWritingText(text: string | null): WritingParse {
       tone: (found.tone as WritingToneKey) ?? DEFAULT_WRITING_SELECTION.tone,
       length: (found.length as WritingLengthKey) ?? DEFAULT_WRITING_SELECTION.length,
       visual: (found.visual as WritingVisualKey) ?? DEFAULT_WRITING_SELECTION.visual,
+      cover: (found.cover as WritingCoverKey) ?? DEFAULT_WRITING_SELECTION.cover,
     },
     custom,
   };
@@ -151,6 +172,15 @@ export function deriveSkillKey(positioning: string | null): string | undefined {
   const { selection, custom } = parseWritingText(positioning);
   if (custom) return undefined;
   return TOPIC_PURPOSES.find((t) => t.key === selection.form)?.skillKey;
+}
+
+/**
+ * 定位文本是否勾选「不生成封面图」(M39 批④+):brief 结构化标记与
+ * generate_cover_candidates 工具守卫同源消费;条款行锚点独立于 custom 判定
+ * (手改文本 + 已知条款行仍回显,同配图维口径)。缺省/未设置 = 生成封面。
+ */
+export function skipCoverGeneration(positioning: string | null): boolean {
+  return parseWritingText(positioning).selection.cover === "skip";
 }
 
 /** ── 可视化配置元数据(选项说明 + 样例节选;面板渲染用)────────── */

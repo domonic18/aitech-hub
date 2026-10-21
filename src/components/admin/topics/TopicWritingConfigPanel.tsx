@@ -3,7 +3,8 @@
 /**
  * 写作要求配置区(2026-10-20 详情页重构核心件,替代「撰写目的下拉 + 定位
  * 备注」双入口)——把写作要求拆成 MECE 四维可视化构建:内容形式 × 口吻语感 ×
- * 篇幅 × 配图。机制(src/lib/topics/writing-config.ts):
+ * 篇幅 × 配图,外加「生成封面图」勾选(M39 批④+,勾选型开关不入维度组)。
+ * 机制(src/lib/topics/writing-config.ts):
  * - textarea 是唯一真相源(落库 positioning);选项是文本构建器,点选即单向
  *   合成文本(缺省维不出条款);手改文本自动转「已自定义」,再点选项会确认
  *   后用模板重建。
@@ -197,6 +198,23 @@ export default function TopicWritingConfigPanel({
     setMsg(null);
   }
 
+  /** 封面图勾选(M39 批④+):勾=生成(缺省不出条款);取消=写入跳过条款行。
+   * 与选项切换同一自定义态确认口径(合成会覆盖手改文本) */
+  function toggleCover(): void {
+    const next: WritingSelection = {
+      ...parsed.selection,
+      cover: parsed.selection.cover === "skip" ? "generate" : "skip",
+    };
+    if (
+      parsed.custom &&
+      !window.confirm("当前写作要求被手动修改过,切换将按模板重新生成,手动修改会丢失。继续?")
+    ) {
+      return;
+    }
+    setText(composeWritingText(next));
+    setMsg(null);
+  }
+
   async function save(): Promise<void> {
     if (busy || !dirty) return;
     setBusy(true);
@@ -233,6 +251,21 @@ export default function TopicWritingConfigPanel({
           />
         ))}
       </div>
+      <label className="flex items-start gap-2 border-t border-line pt-2.5">
+        <input
+          type="checkbox"
+          checked={parsed.selection.cover !== "skip"}
+          onChange={toggleCover}
+          className="mt-0.5 h-3.5 w-3.5 accent-[color:var(--accent)]"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[12px] font-medium text-text-1">生成封面图</span>
+          <span className="text-[11px] leading-snug text-text-3">
+            勾选时,AI 生成文章初稿会同步生成封面候选(默认);重新生成文章前可取消勾选, AI
+            将不再生成封面、保留现有封面。
+          </span>
+        </span>
+      </label>
       <div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-semibold text-text-1">写作要求全文</span>
