@@ -1,17 +1,20 @@
 "use client";
 
 /**
- * 写作要求配置区(2026-10-20 详情页重构核心件,替代「撰写目的下拉 + 定位
- * 备注」双入口)——把写作要求拆成 MECE 四维可视化构建:内容形式 × 口吻语感 ×
- * 篇幅 × 配图,外加「生成封面图」勾选(M39 批④+,勾选型开关不入维度组)。
- * 机制(src/lib/topics/writing-config.ts):
- * - textarea 是唯一真相源(落库 positioning);选项是文本构建器,点选即单向
- *   合成文本(缺省维不出条款);手改文本自动转「已自定义」,再点选项会确认
- *   后用模板重建。
+ * 写作要求配置区(2026-10-20 详情页重构核心件;2026-10-21 §13.8 交互重构)
+ * ——把写作要求拆成 MECE 四维可视化构建:内容形式 × 口吻语感 × 篇幅 × 配图,
+ * 外加「生成封面图」勾选(勾选型开关不入维度组)+「补充要求」自由块。
+ * §13.8 机制(src/lib/topics/writing-config.ts):选项归选项、补充归补充:
+ * - 选项卡只由点击驱动(setSelection),点选永不弹确认、永不销毁已写内容;
+ * - 补充要求是独立自由块,保存时以【补充要求】头并入 positioning,原样
+ *   verbatim 透传 AI;
+ * - custom 仅=存量文本的体裁模板曾被手改(amber 提示核对,非死胡同——手改
+ *   内容已被解析无损收进补充块);
+ * - 「查看将交给 AI 的写作要求」可折叠预览合成结果(所见即所交)。
  * - 每个选项带一句话说明 + 可展开样例节选(措辞示范);配图「信息卡为主」
  *   的样例走 /api/card-presets/preview 真实渲染(零副作用),所见即所得。
  * 保存 PATCH /api/topics/[id] {positioning};生成初稿(TopicDraftActions)
- * 服务端从同一文本派生体裁词,无双入口漂移。
+ * 服务端从同一文本派生体裁词与技能路由(带补充要求照常派生),无双入口漂移。
  */
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -177,42 +180,25 @@ export default function TopicWritingConfigPanel({
   positioning: string | null;
 }) {
   const router = useRouter();
-  const [text, setText] = useState(positioning ?? "");
+  // §13.8:selection 只由点击驱动;supplement 是独立自由块(点选项/勾选永不
+  // 触碰);custom 仅=体裁模板曾被手改(提示核对,手改内容已在 supplement 无损保留)
+  const initial = useMemo(() => parseWritingText(positioning), [positioning]);
+  const [selection, setSelection] = useState<WritingSelection>(initial.selection);
+  const [supplement, setSupplement] = useState(initial.supplement);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
-  const parsed = useMemo(() => parseWritingText(text), [text]);
-  const dirty = text.trim() !== (positioning ?? "");
+  const composed = composeWritingText(selection, supplement.trim() || null);
+  const dirty = composed !== (positioning ?? "");
 
-  /** 点选项:合成新文本;自定义态先确认(手改内容会被模板覆盖) */
+  /** 点选项:仅更新选择状态——不弹确认、不销毁任何已写内容(§13.8) */
   function select(dim: (typeof WRITING_DIMENSIONS)[number], key: string): void {
-    if (parsed.selection[dim.key] === key) return;
-    if (
-      parsed.custom &&
-      !window.confirm("当前写作要求被手动修改过,切换将按模板重新生成,手动修改会丢失。继续?")
-    ) {
-      return;
-    }
-    const next = { ...parsed.selection, [dim.key]: key } as WritingSelection;
-    setText(composeWritingText(next));
-    setMsg(null);
+    setSelection((s) => ({ ...s, [dim.key]: key }) as WritingSelection);
   }
 
-  /** 封面图勾选(M39 批④+):勾=生成(缺省不出条款);取消=写入跳过条款行。
-   * 与选项切换同一自定义态确认口径(合成会覆盖手改文本) */
+  /** 封面图勾选(M39 批④+):勾=生成(缺省不出条款);取消=写入跳过条款行 */
   function toggleCover(): void {
-    const next: WritingSelection = {
-      ...parsed.selection,
-      cover: parsed.selection.cover === "skip" ? "generate" : "skip",
-    };
-    if (
-      parsed.custom &&
-      !window.confirm("当前写作要求被手动修改过,切换将按模板重新生成,手动修改会丢失。继续?")
-    ) {
-      return;
-    }
-    setText(composeWritingText(next));
-    setMsg(null);
+    setSelection((s) => ({ ...s, cover: s.cover === "skip" ? "generate" : "skip" }));
   }
 
   async function save(): Promise<void> {
@@ -223,7 +209,7 @@ export default function TopicWritingConfigPanel({
       const res = await fetch(`/api/topics/${id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ positioning: text.trim() || null }),
+        body: JSON.stringify({ positioning: composed }),
       });
       const resp = (await res.json()) as ApiEnvelope;
       if (!res.ok || resp.code !== 0) {
@@ -246,7 +232,7 @@ export default function TopicWritingConfigPanel({
           <DimensionGroup
             key={dim.key}
             dim={dim}
-            selection={parsed.selection}
+            selection={selection}
             onSelect={(key) => select(dim, key)}
           />
         ))}
@@ -254,7 +240,7 @@ export default function TopicWritingConfigPanel({
       <label className="flex items-start gap-2 border-t border-line pt-2.5">
         <input
           type="checkbox"
-          checked={parsed.selection.cover !== "skip"}
+          checked={selection.cover !== "skip"}
           onChange={toggleCover}
           className="mt-0.5 h-3.5 w-3.5 accent-[color:var(--accent)]"
         />
@@ -267,25 +253,29 @@ export default function TopicWritingConfigPanel({
         </span>
       </label>
       <div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold text-text-1">写作要求全文</span>
-          {parsed.custom ? (
-            <span className="text-[11px] text-amber-hi">
-              已自定义(生成初稿时原样交给 AI;点任一选项会按模板重建)
-            </span>
-          ) : (
-            <span className="text-[11px] text-text-3">由上方选择自动合成,可直接补充细节后保存</span>
-          )}
-        </div>
+        <span className="text-[12px] font-semibold text-text-1">补充要求(可选)</span>
         <textarea
-          value={text}
-          maxLength={1000}
+          value={supplement}
+          maxLength={500}
           rows={3}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="写作要求(选材与口吻指引,生成初稿时生效,≤1000 字符)…"
+          onChange={(e) => setSupplement(e.target.value)}
+          placeholder="选材偏好、口吻细节、特别强调等,原样交给 AI;上方选项怎么切换都不会覆盖这里…"
           className="rounded-sm border border-line bg-panel px-2.5 py-1.5 text-[12px] leading-relaxed outline-none focus:border-accent placeholder:text-text-3"
-          aria-label="写作要求"
+          aria-label="补充要求"
         />
+        {initial.custom && (
+          <span className="text-[11px] text-amber-hi">
+            体裁描述曾被手动修改:保存后将采用标准模板,原内容已保留在补充要求;请核对上方「内容形式」选择。
+          </span>
+        )}
+        <details>
+          <summary className="cursor-pointer text-[11px] text-text-3 hover:text-accent">
+            查看将交给 AI 的写作要求
+          </summary>
+          <pre className="mt-1.5 whitespace-pre-wrap rounded-sm border border-dashed border-line bg-panel-2/60 px-2.5 py-2 font-sans text-[11px] leading-relaxed text-text-2">
+            {composed}
+          </pre>
+        </details>
         <div className="flex items-center gap-2">
           <button
             type="button"

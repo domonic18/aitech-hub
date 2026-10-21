@@ -1,12 +1,14 @@
 /**
- * 文章生成配置(2026-10-20 验收反馈:写作配置可视化重构)——把「写一篇什么
- * 样的文章」拆成 MECE 四维:内容形式 × 口吻语感 × 篇幅 × 配图,外加一项封面
- * 图勾选(M39 批④+:勾选型开关不入维度组,面板单列 checkbox)。机制:
- * - 单向合成:选择组合 → 写作要求文本(落库 positioning,零 schema 变更);
- *   缺省维不出条款行(=模板原文,老专题存量定位无损回显)。
- * - textarea 是唯一真相源:选择只是文本构建器;手改文本即整组转「已自定义」。
- * - 反向回显:已知条款行(精确匹配)+ 形式模板精确匹配时恢复选中态,其余
- *   一律自定义(不做模糊猜测)。
+ * 文章生成配置(2026-10-20 详情页重构;2026-10-21 §13.8 交互重构)——
+ * 把「写一篇什么样的文章」拆成 MECE 四维:内容形式 × 口吻语感 × 篇幅 × 配图,
+ * 外加封面图勾选(勾选型开关不入维度组)。§13.8 定位:选项归选项、补充归补充:
+ * - 载体三段式(仍是 positioning 单字段,零 schema):体裁模板(内部资产,
+ *   不暴露编辑)+ 条款行(选项卡驱动)+【补充要求】自由块(用户自由文本
+ *   verbatim 透传 AI)。
+ * - 选项卡只由点击驱动;自由文本永不因点选项被销毁——解析时未识别行(含
+ *   被手改的体裁模板 prose)一律收进补充块(无损不变量)。
+ * - custom 仅=体裁模板被手改(不再因存在自由文本触发):deriveSkillKey
+ *   技能路由在带补充要求时照常派生(修复:自由文本杀死技能路由的隐藏耦合)。
  * 样例节选(内容形式/措辞示范)依据 2026-10 行业写法调研:公众号技术文钩子
  * +递进小标题、教程体前置清单+可复现分步、安利体先给结论与收益、口吻基准
  * 「口语但可信」。扩展新维度 = 加 CLAUSE 注册 + WRITING_DIMENSIONS 加组,
@@ -67,8 +69,14 @@ const COVER_CLAUSE: Record<WritingCoverKey, string | null> = {
   skip: "封面:不生成封面图,重写时保留现有封面。",
 };
 
-/** 选择 → 写作要求文本(单向;缺省维不出条款 = 纯模板,存量兼容) */
-export function composeWritingText(sel: WritingSelection): string {
+/** 补充要求块头(自由补充与机器载荷的分界锚点;解析只认第一处,补充正文里
+ * 再出现同款头不会被二次切分) */
+export const SUPPLEMENT_HEADER = "【补充要求】";
+
+/** 选择 + 补充 → 写作要求文本(单向;缺省维不出条款 = 纯模板,存量兼容)。
+ * 三段式载体(§13.8):体裁模板 + 条款行 + 补充块;点选项只重建前两段,
+ * 补充块原样保留 */
+export function composeWritingText(sel: WritingSelection, supplement?: string | null): string {
   const template =
     TOPIC_PURPOSES.find((t) => t.key === sel.form)?.positioningTemplate ??
     DEFAULT_TOPIC_POSITIONING;
@@ -79,21 +87,31 @@ export function composeWritingText(sel: WritingSelection): string {
     COVER_CLAUSE[sel.cover],
   ];
   const present = clauses.filter((c): c is string => c !== null);
-  return present.length ? `${template}\n${present.join("\n")}` : template;
+  const head = present.length ? `${template}\n${present.join("\n")}` : template;
+  const supp = (supplement ?? "").trim();
+  return supp ? `${head}\n${SUPPLEMENT_HEADER}\n${supp}` : head;
 }
 
-/** 解析结果:selection 尽力回显;custom=true 表示文本不完全是选择的表达 */
+/** 解析结果:selection 尽力回显;supplement=自由补充块(未识别内容的无损
+ * 归宿,含被手改的体裁模板 prose);custom 仅=体裁模板被手改/条款行冲突 */
 export interface WritingParse {
   selection: WritingSelection;
+  supplement: string;
   custom: boolean;
 }
 
-/** 写作要求文本 → 选择(条款行提取 + 模板精确匹配;未知内容 → custom) */
+/** 写作要求文本 → 选择 + 补充(§13.8):【补充要求】头切出自由块;已知条款
+ * 行提取进选项;其余未识别行全部收进 supplement——保存永不销毁用户内容。
+ * 体裁模板全等匹配才认 form(不猜);无模板可认时 form 回落缺省并由 custom
+ * 提示用户核对(手改内容已在 supplement,不丢) */
 export function parseWritingText(text: string | null): WritingParse {
   const lines = (text ?? "")
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l !== "");
+  const headerIdx = lines.indexOf(SUPPLEMENT_HEADER);
+  const headLines = headerIdx >= 0 ? lines.slice(0, headerIdx) : lines;
+  const suppLines = headerIdx >= 0 ? lines.slice(headerIdx + 1) : [];
   const clauseLines = new Set(
     [TONE_CLAUSE, LENGTH_CLAUSE, VISUAL_CLAUSE, COVER_CLAUSE].flatMap((m) =>
       Object.values(m).filter((c): c is string => c !== null),
@@ -107,7 +125,7 @@ export function parseWritingText(text: string | null): WritingParse {
   } as Record<string, unknown>;
   const rest: string[] = [];
   let custom = false;
-  for (const line of lines) {
+  for (const line of headLines) {
     if (line === TONE_CLAUSE.editorial) {
       if (found.tone !== undefined) custom = true;
       found.tone = "editorial";
@@ -123,14 +141,19 @@ export function parseWritingText(text: string | null): WritingParse {
     } else if (line === COVER_CLAUSE.skip) {
       if (found.cover !== undefined) custom = true;
       found.cover = "skip";
-    } else if (clauseLines.has(line)) {
-      custom = true; // 同维冲突条款(不该出现,防御)
     } else {
+      // 未识别行(含同维冲突条款与手改模板 prose)——无损收进补充块
+      if (clauseLines.has(line)) custom = true; // 同维冲突条款(不该出现,防御)
       rest.push(line);
     }
   }
   const form = matchTopicPurpose(rest.join("\n") || null);
   if (form === null) custom = true;
+  // 模板精确命中 = 被识别的体裁行,不漏进补充块(仅手改/未识别的行才进补充)
+  const suppRest =
+    form !== null
+      ? rest.filter((l) => l !== TOPIC_PURPOSES.find((t) => t.key === form)?.positioningTemplate)
+      : rest;
   return {
     selection: {
       form: form ?? DEFAULT_WRITING_SELECTION.form,
@@ -139,6 +162,7 @@ export function parseWritingText(text: string | null): WritingParse {
       visual: (found.visual as WritingVisualKey) ?? DEFAULT_WRITING_SELECTION.visual,
       cover: (found.cover as WritingCoverKey) ?? DEFAULT_WRITING_SELECTION.cover,
     },
+    supplement: [...suppRest, ...suppLines].join("\n"),
     custom,
   };
 }
