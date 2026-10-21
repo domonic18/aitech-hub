@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 
-import { BLOGGER_VIDEO_GUIDE, CARD_RENDERING_GUIDE } from "../src/lib/ai/writing-guides";
+import { WRITING_SKILLS } from "../src/lib/ai/writing-guides";
 
 /**
  * 种子数据(arch/03-data-model §1):四分类,幂等 upsert,可反复执行。
@@ -9,6 +9,8 @@ import { BLOGGER_VIDEO_GUIDE, CARD_RENDERING_GUIDE } from "../src/lib/ai/writing
  * M30 批① 增 agent skill 种子:收编 agent 提示词「博主×视频」指南 + 码点预算段
  * (update 分支为空——skill 落库后归后台所有,重跑种子不覆盖管理员编辑;
  * 指南文本真相源在 src/lib/ai/writing-guides.ts,M36 起改值走 oneoff 订正)。
+ * M39 批④:注册表 WRITING_SKILLS 收编入真相源文件(含 5 场景新技能),本文件
+ * 只管「只补缺」落库——已部署环境补新技能 = 重跑本脚本(幂等)。
  */
 const prisma = new PrismaClient();
 
@@ -40,23 +42,6 @@ const CATEGORIES = [
     description: "推广活动(旧站内容不再迁移)",
     isOriginal: false,
     sortOrder: 4,
-  },
-] as const;
-
-const WRITING_SKILLS = [
-  {
-    key: "blogger-video",
-    name: "博主×视频推荐短文",
-    scenario: "公众号「博主×视频」推荐短文(专题合成默认场景)",
-    guideMd: BLOGGER_VIDEO_GUIDE,
-    enabled: true,
-  },
-  {
-    key: "card-rendering",
-    name: "图文卡片",
-    scenario: "render_card 卡片工具的卡型选型与调用纪律(通用)",
-    guideMd: CARD_RENDERING_GUIDE,
-    enabled: true,
   },
 ] as const;
 
