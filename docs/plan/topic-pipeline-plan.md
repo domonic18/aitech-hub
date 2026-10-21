@@ -219,6 +219,7 @@ model TopicItem {
 - 内容形式扩容 5 项:开源项目介绍 / 论文解读 / 教程精炼 / 周新闻精选 / 模型价格表(`TOPIC_PURPOSES` 加项:label/genreWord/positioningTemplate/**skillKey**——注册表新增字段);选形式时服务端单点回写 `topic.skillKey`(人工改 skillKey 仍自由,与现状一致);两个既有视频形式继续挂 blogger-video skill 不迁
 - `writing-config.ts` 补 5 形式面板样例节选;`resolvePurpose`/合成/解析机制零改动(新形式自动纳入,custom 判定不变)
 - 移除模板实验室:`AdminSidebar` 入口 + `admin/cards/page.tsx` + `CardTemplateLab.tsx`;preset 模板实现与预览 API 保留
+  **实施记录(2026-10-21)**:skillKey 回写=服务端单点 `deriveSkillKey`(writing-config 导出,POST/PATCH 路由从 positioning 派生,custom→undefined 不动人工绑定;派生值属注册表常量,在 PATCH 存在性核之后注入免核,skill 种子落库前 agent 侧 list_skills 兜底)。文生图样例 2 张经 cogview-4 预产出(无水印无文字,672w jpg 入 `public/images/writing/`,后续可用真 nano-banana 重出同路径替换);实验室移除连带 `PRESET_META`/`preset-samples.ts`(唯一消费者)与两处 docblock 订正;tsconfig exclude 补 `workspace/tmp`(gitignored 临时脚本不该进门禁,对齐 CI 视角)
 
 **③ 样例参照图库(唯一 schema 变更)**
 - 新表 `writing_sample_image`(name/media_path/created_at)+ `topic` 加列 `sample_image_id`(可空,应用层完整性无 FK,同 `linked_post_id` 口径);迁移纪律照旧 create-only 评审 + 从零重放,forward-only
@@ -251,7 +252,7 @@ model WritingSampleImage {
 | 批 | 内容 | 出口 |
 |---|---|---|
 | 批① 生图基建 | `illustrate` 角色 + image-client AiHubMix 形态适配;探针实测(n/size/response_format/参考图参数)+ 验收小修(徽章内联错误原因/错误体人话提取/extra_params 保留键 null=剔除机制)—— **已交付(feature/writing-illustration),连通性测试绿(~17s/张)** | 探针结论已回填 §13.2-1/§13.3-①/③;`make check` 绿 ✅ |
-| 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 | `make check` + 面板手验(选项/回显/样例) |
+| 批② 写作配置面 | 配图三选 + 条款行 + 静态样例缩略图 + 内容形式扩容 5 项 + form→skillKey 回写 + 移除模板实验室页 —— **已交付(feature/writing-illustration)** | `make check` 绿(1535 用例);面板手验(选项/回显/样例)待验收 ✅ |
 | 批③ 样例参照图库 | 迁移(表+列)+ 上传/粘贴/选择/管理 UI + topic PATCH 扩字段 + brief 载荷带样例图 | 迁移从零重放 + 面板手验 |
 | 批④ 生成执行 | `generate_illustration` 工具 + 执行核心提取 + 5 场景 skill 种子 + 指南工艺纪律 | 本地真机一轮:nano banana 真出图入稿(含样例参照档) |
 | 批⑤ 收口 | 文档同步(arch/04 八角色与工具面、本文件状态、development-plan M39 行)+ e2e/单测补齐(图库路由鉴权/Zod、writing-config 扩展 roundtrip) | `make check` + e2e 全绿,PR 合 develop |
