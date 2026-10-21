@@ -3,7 +3,8 @@
  * 编排权移交会话 agent——模型按系统提示工作流自主规划(write_todos)并逐工具
  * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面)→
  * transfer_video_cover(全量封面转存,重试/补传钮)/ generate_cover_candidates
- * (文生图封面候选与概念示意图,复用 M14 cover-gen 管线)→ save_topic_draft
+ * (文生图封面候选与概念示意图,复用 M14 cover-gen 管线)/ generate_illustration
+ * (文生图插画,M39 批④,走 illustrate 角色绑定)→ save_topic_draft
  * (落稿锚定核,已拆 topic-draft-tool,技术债批⑤)。
  * 过程可视性来自每只工具卡逐个出现,HITL 选题/覆盖确认走 ask_user。
  * 纵深防御:图侧工具按身份档分发(admin 独占)之外,每只工具体内再验会话行
@@ -34,6 +35,7 @@ import { getTopic, TopicError } from "../topics/repo";
 import { logger } from "../logger";
 
 import { assertAdminThread } from "./admin-thread";
+import { generateIllustrationTool } from "./illustrate-tool";
 import { pollUntil } from "./poll";
 import { saveTopicDraftTool } from "./topic-draft-tool";
 import { BRIEF_NOTE_MAX, denyPayload, humanizeTopicError } from "./topic-tool-common";
@@ -263,12 +265,14 @@ export const generateCoverCandidatesTool = tool(
 );
 
 // save_topic_draft 实现已拆 topic-draft-tool(技术债批⑤);此处 re-export 维持
-// 「四工具同入口」的消费面(agent.ts / 单测)不漂移。
+// 「工具同入口」的消费面(agent.ts / 单测)不漂移。generate_illustration
+// (M39 批④)实现落 illustrate-tool,文生图插画走 illustrate 角色绑定。
 export { saveTopicDraftTool };
 
 export const TOPIC_TOOLS = [
   getTopicBriefTool,
   transferVideoCoverTool,
   generateCoverCandidatesTool,
+  generateIllustrationTool,
   saveTopicDraftTool,
 ];
