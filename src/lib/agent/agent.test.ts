@@ -126,10 +126,12 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("不要自己仿写推荐卡");
     // M39 批④:generate_illustration 入正文配图工艺(概念/场景/氛围向),
     // cover 候选工具的正文概念图职责移交(只服务封面候选)——修复「选了
-    // 文生图仍全走 HTML 卡」的工艺断链(工具在面、流程提示未提 = 不可达)
+    // 文生图仍全走 HTML 卡」的工艺断链(工具在面、流程提示未提 = 不可达);
+    // §13.7 修 1:分流依据改为 brief 结构化 visual_mode,不再靠模型重读条款
     expect(p).toContain("generate_illustration");
     expect(p).toContain("文生图插画为主");
     expect(p).toContain("只服务封面候选");
+    expect(p).toContain("brief 的 visual_mode");
     // 封面勾选(批④+):skip 标记时第 7 步整体跳过
     expect(p).toContain("skip_cover_generation");
     // 自评审第⑥项:读者视角版面协调(呈现协调性验收反馈);⑤ 数量对账含插画

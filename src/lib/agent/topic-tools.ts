@@ -1,9 +1,11 @@
 /**
  * 专题文章生产·admin 细粒度工具面(M27 批⑤建;批⑥补正文配图分配面):
  * 编排权移交会话 agent——模型按系统提示工作流自主规划(write_todos)并逐工具
- * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面)→
+ * 执行:get_topic_brief(素材全集 + 封面已转存为站内路径的分配面,配图工艺
+ * visual_mode 结构化透出)→
  * transfer_video_cover(全量封面转存,重试/补传钮)/ generate_cover_candidates
- * (文生图封面候选与概念示意图,复用 M14 cover-gen 管线)/ generate_illustration
+ * (文生图封面候选,复用 M14 cover-gen 管线;M39 批④ 起只服务封面,正文概念
+ * 图归 generate_illustration)/ generate_illustration
  * (文生图插画,M39 批④,走 illustrate 角色绑定)→ save_topic_draft
  * (落稿锚定核,已拆 topic-draft-tool,技术债批⑤)。
  * 过程可视性来自每只工具卡逐个出现,HITL 选题/覆盖确认走 ask_user。
@@ -23,6 +25,8 @@ import {
   type CoverGenProbeHit,
 } from "../ai/cover-generate";
 import { AiAdminError } from "../ai/errors";
+import { AI_PURPOSE_ILLUSTRATE } from "../ai/constants";
+import { resolveAiModel } from "../ai/resolver";
 import { getEnabledSkillByKey } from "../ai/agent-skills-admin";
 import { prisma } from "../db";
 import {
@@ -32,7 +36,7 @@ import {
   transferVideoCovers,
 } from "../topics/compose";
 import { getTopic, TopicError } from "../topics/repo";
-import { skipCoverGeneration } from "../topics/writing-config";
+import { parseWritingText, skipCoverGeneration } from "../topics/writing-config";
 import { logger } from "../logger";
 
 import { assertAdminThread } from "./admin-thread";
@@ -69,6 +73,15 @@ export const getTopicBriefTool = tool(
       // 封面图勾选(M39 批④+):结构化标记 + 人话 note 双披露(弱模型纪律;
       // 工具层另有硬守卫,此处防无效调用尝试)
       const coverSkip = skipCoverGeneration(topic.positioning);
+      // 配图工艺结构化(M39 §13.7 修 1):写作配置的 visual 维从 prose 条款行
+      // 升格为结构化字段,编排侧分流以本字段为准,不再要求模型重读条款文本;
+      // 修 3 守卫对称:插画为主但 illustrate 未绑定时开工前即告警(路径不可用
+      // 提前暴露,不再等调用时才爆)
+      const visualMode = parseWritingText(topic.positioning).selection.visual;
+      const illustrationWarning =
+        visualMode === "illustrate" && (await resolveAiModel(AI_PURPOSE_ILLUSTRATE)) === null
+          ? "本专题写作配置为「文生图插画为主」,但「插图配图(illustrate)」尚未绑定生图模型:本次无法生成插画——先到 AI 配置完成任务绑定再开工,或把写作配置改回「信息卡为主」"
+          : null;
       return JSON.stringify({
         topic: {
           id: topic.id.toString(),
@@ -92,6 +105,19 @@ export const getTopicBriefTool = tool(
             ? `绑定技能 ${topic.skillKey} 不存在或已停用,动笔前先 list_skills 匹配并 get_skill 取指南`
             : "专题未绑定技能,动笔前先 list_skills 按场景匹配,命中即 get_skill 取指南",
         skip_cover_generation: coverSkip,
+        visual_mode: visualMode,
+        ...(visualMode === "illustrate"
+          ? {
+              visual_note:
+                "本专题写作配置为「文生图插画为主」:正文配图以 generate_illustration 插画为主艺(概念/场景/氛围),数据密集小节仍可配 render_card 信息卡;不要整篇走 HTML 卡",
+            }
+          : visualMode === "minimal"
+            ? {
+                visual_note:
+                  "本专题写作配置为「少图纯文字」:至多 1 张信息卡,以文字与行内链接表达为主,不硬插图",
+              }
+            : {}),
+        ...(illustrationWarning ? { illustration_warning: illustrationWarning } : {}),
         ...(coverSkip
           ? {
               cover_note:
