@@ -25,8 +25,12 @@ export const AI_PURPOSE_WRITING = "writing";
 /** 洞察归纳(M34 批②,insight-plan §5.4):簇命名/一句话概括/关键词日批 LLM,
  * 走 AiTaskBinding 治理(ai_usage_log 落 role=insight) */
 export const AI_PURPOSE_INSIGHT = "insight";
-/** 模型用途 = 任务角色(七角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
- * writing=专题文章起草单任务,insight=M34 洞察簇归纳)。
+/** 配图生图(M39,topic-pipeline-plan §13):正文插画/概念场景图生成,与封面
+ * (cover)分角色——模型偏好与成本档位不同,绑定校验按角色隔离;走同一
+ * images 探针与生图管线 */
+export const AI_PURPOSE_ILLUSTRATE = "illustrate";
+/** 模型用途 = 任务角色(八角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
+ * writing=专题文章起草单任务,insight=M34 洞察簇归纳,illustrate=M39 配图生图)。
  * compose(专题合成)已退役(M27 批⑤):合成改走会话 agent(search 绑定),
  * 历史台账 role=compose 行保留读侧回退原值展示 */
 export const AI_MODEL_PURPOSES = [
@@ -34,6 +38,7 @@ export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_SUMMARIZE,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_COVER,
+  AI_PURPOSE_ILLUSTRATE,
   AI_PURPOSE_EMBEDDING,
   AI_PURPOSE_WRITING,
   AI_PURPOSE_INSIGHT,
@@ -62,6 +67,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "封面生图",
     icon: "i-picture",
     sub: "文章题图 + OG 图生成",
+  },
+  [AI_PURPOSE_ILLUSTRATE]: {
+    label: "配图生图",
+    icon: "i-picture",
+    sub: "正文插画/概念场景图生成(专题写作配图工艺·文生图插画)",
   },
   [AI_PURPOSE_EMBEDDING]: {
     label: "语义向量",
