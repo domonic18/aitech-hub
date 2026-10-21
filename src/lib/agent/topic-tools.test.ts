@@ -236,6 +236,36 @@ describe("get_topic_brief", () => {
       error: "专题不存在",
     });
   });
+
+  it("封面图勾选(M39 批④+):skip 条款 → 结构化标记 + cover_note;缺省无 note", async () => {
+    const SKIP_CLAUSE = "封面:不生成封面图,重写时保留现有封面。";
+    const base = {
+      id: BigInt(7),
+      title: "端侧拐点",
+      items: [{}],
+      linkedPostId: null,
+      composedAt: null,
+      status: "collecting",
+    };
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({ ...base, positioning: `面向开发者\n${SKIP_CLAUSE}` });
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    const out = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out.skip_cover_generation).toBe(true);
+    expect(out.cover_note).toContain("不要生成封面");
+    expect(out.cover_note).toContain("保留现有封面");
+
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({ ...base, positioning: "面向开发者" });
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    const out2 = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out2.skip_cover_generation).toBe(false);
+    expect(out2).not.toHaveProperty("cover_note");
+  });
 });
 
 describe("transfer_video_cover", () => {
@@ -299,6 +329,21 @@ describe("generate_cover_candidates", () => {
     expect(enqueueCoverGen).toHaveBeenCalledWith(
       expect.objectContaining({ token: expect.any(String), postId: "9" }),
     );
+  });
+
+  it("封面勾选守卫(M39 批④+):skip 条款专题直接拒绝,不入队不计费", async () => {
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      title: "端侧拐点",
+      positioning: "面向开发者\n封面:不生成封面图,重写时保留现有封面。",
+      linkedPostId: BigInt(9),
+    });
+    await expect(invoke(generateCoverCandidatesTool, { topic_id: "7" })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("取消勾选"),
+    });
+    expect(enqueueCoverGen).not.toHaveBeenCalled();
   });
 });
 

@@ -32,6 +32,7 @@ import {
   transferVideoCovers,
 } from "../topics/compose";
 import { getTopic, TopicError } from "../topics/repo";
+import { skipCoverGeneration } from "../topics/writing-config";
 import { logger } from "../logger";
 
 import { assertAdminThread } from "./admin-thread";
@@ -65,6 +66,9 @@ export const getTopicBriefTool = tool(
       // 确定性注入全文,不等模型自发 get_skill;内容来自 agent_skill 资产,
       // 后台改指南即时生效,提示词零硬编码)
       const boundSkill = topic.skillKey ? await getEnabledSkillByKey(topic.skillKey) : null;
+      // 封面图勾选(M39 批④+):结构化标记 + 人话 note 双披露(弱模型纪律;
+      // 工具层另有硬守卫,此处防无效调用尝试)
+      const coverSkip = skipCoverGeneration(topic.positioning);
       return JSON.stringify({
         topic: {
           id: topic.id.toString(),
@@ -87,6 +91,13 @@ export const getTopicBriefTool = tool(
           : topic.skillKey
             ? `绑定技能 ${topic.skillKey} 不存在或已停用,动笔前先 list_skills 匹配并 get_skill 取指南`
             : "专题未绑定技能,动笔前先 list_skills 按场景匹配,命中即 get_skill 取指南",
+        skip_cover_generation: coverSkip,
+        ...(coverSkip
+          ? {
+              cover_note:
+                "本专题写作配置取消勾选了「生成封面图」:全程不要生成封面,save_topic_draft 不要传 cover_path(保留现有封面);正文概念图用 generate_illustration",
+            }
+          : {}),
         linked_post:
           linkedId !== null && linked && linked.status !== "deleted"
             ? {
@@ -201,6 +212,16 @@ export const generateCoverCandidatesTool = tool(
     let jobId: string;
     try {
       const topic = await getTopic(BigInt(topic_id));
+      // 封面图勾选守卫(M39 批④+,硬约束):写作配置取消「生成封面图」的专题
+      // 直接拒绝,免弱模型无视 brief 标记白烧计费;正文概念图指引改走插画工具
+      if (skipCoverGeneration(topic.positioning)) {
+        return JSON.stringify({
+          ok: false,
+          error:
+            "本专题写作配置取消勾选了「生成封面图」:不生成封面,保留现有封面;" +
+            "正文概念/场景图请改用 generate_illustration",
+        });
+      }
       // 关联稿正文一并供给(M31:agent 提示词步骤吃全文;无关联稿留空)
       const linkedCtx = topic.linkedPostId
         ? await loadCoverPostContext(topic.linkedPostId.toString())
@@ -247,8 +268,10 @@ export const generateCoverCandidatesTool = tool(
     name: "generate_cover_candidates",
     description:
       "用文生图模型为专题文章生成候选图(2 张,约 10-30 秒,本工具会等待到出图)," +
-      "返回站内路径列表。可为封面,也可为正文小节现拟 prompt 生成概念示意图(不限于" +
-      "封面);prompt 描述期望的画面主体与风格,省略则按专题标题自动生成。",
+      "返回站内路径列表,供封面选用。brief 的 skip_cover_generation=true(写作配置" +
+      "取消勾选封面图)时本工具会拒绝,此时不要生成封面、保留现有封面;正文小节的" +
+      "概念/场景配图不走本工具,改用 generate_illustration。prompt 描述期望的画面" +
+      "主体与风格,省略则按专题标题自动生成。",
     schema: z.object({
       topic_id: z
         .string()
