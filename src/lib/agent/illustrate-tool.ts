@@ -30,10 +30,34 @@ const ASPECT_KEYS = Object.keys(ILLUSTRATE_ASPECT_SIZES) as [string, ...string[]
 /** 参照图路径白名单(站内媒体前缀;执行核心 uploadsUrlToRel 二次校验穿越) */
 export const REFERENCE_PATH_PREFIX = "/wp-content/uploads/";
 
+/** 参照风格冲突检测(纯函数,单测锚点):带参照图时 prompt 出现 HEX 色值即判
+ * 自编配色与参照冲突。2026-10-21 验收实证:文字风格指令会压过参照图(Seedream
+ * 听文字的),编排模型无视工具描述里的锚定句纪律 → 升级执行侧守卫(fail-closed
+ * 人话反馈,模型可自纠重调)。只拦确定性信号 HEX;色名/深浅底类软冲突由系统
+ * 提示 + schema 描述双层文本约束承载 */
+export function detectReferenceStyleConflict(prompt: string): string | null {
+  const hit = prompt.match(/#[0-9a-fA-F]{3,8}\b/);
+  return hit ? `prompt 含具体色值 ${hit[0]}` : null;
+}
+
 export const generateIllustrationTool = tool(
   async ({ prompt, aspect, count, reference_path }, config) => {
     if (!(await assertAdminThread(config?.configurable?.thread_id)))
       return adminThreadDeny(config?.configurable?.thread_id, "illustrate");
+    // 参照风格冲突守卫:带参照图时 prompt 自编 HEX 配色 → 未出图先拒(不产生
+    // 生图费用),人话反馈让模型去掉风格词重调;无参照时不拦(自编配色是常态)
+    if (reference_path) {
+      const conflict = detectReferenceStyleConflict(prompt);
+      if (conflict)
+        return JSON.stringify({
+          ok: false,
+          error:
+            `${conflict}。带样例参照图时视觉风格由参照图承载,严禁在 prompt 自编配色` +
+            "(HEX 色值/深浅底/衬线等风格词都不要写——文字会压过参照图):请去掉全部风格词," +
+            "只保留内容与版式编排,风格锚定句固定写「保持与参考图一致的视觉风格」后重调" +
+            "(本次未出图不计费)",
+        });
+    }
     try {
       const { images, referenceError } = await generateIllustrations({
         prompt,
@@ -47,11 +71,19 @@ export const generateIllustrationTool = tool(
           path: img.path,
           markdown: `![图文${images.length > 1 ? i + 1 : ""}](${img.path})`,
         })),
-        ...(referenceError ? { reference_warning: referenceError } : {}),
+        ...(referenceError
+          ? { reference_warning: referenceError }
+          : reference_path
+            ? { reference_applied: true }
+            : {}),
         hint:
           "把选用的 markdown 原样写入正文对应位置(独占一行,前后空行);多张时择优取用," +
           "未选用的不写入;图文不是信息卡,save_topic_draft 的 card_urls 不含这些图" +
-          (referenceError ? ";本次参照图未生效(原因见 reference_warning),已按 prompt 出图" : ""),
+          (referenceError
+            ? ";本次参照图未生效(原因见 reference_warning),已按 prompt 出图"
+            : reference_path
+              ? ";参照图已生效:同篇后续图文的风格以参照图为准,prompt 仍不要写自编配色"
+              : ""),
       });
     } catch (e) {
       if (e instanceof AiAdminError || e instanceof AiClientError)
@@ -63,16 +95,21 @@ export const generateIllustrationTool = tool(
     name: "generate_illustration",
     description:
       "文生图图文:把你编排的呈现形态生成为带字内容图并存入媒体库(每张约 10-60 秒," +
-      "本工具会等待到出图),返回站内路径与 markdown 行。先用内容编排:确定这张图" +
-      "传达什么信息、用什么形态呈现(要点归纳/金句/头图/对比图解/流程步骤/清单/" +
-      "时间线/概念场景带标注等,由内容特点定,形态不设限),再把形态版式、入图" +
+      "本工具会等待到出图),返回站内路径与 markdown 行。先做内容规划,标准是" +
+      "「一图看懂全文,且不虎头蛇尾」:第 1 张把全文主干(核心概念/步骤链/关键数据/" +
+      "结论)浓缩成全景图,信息全面且精炼;需多张时至多 3 张,按文章结构顺序各完整" +
+      "承接一个后半段章节,每张自身信息完整(标题/要点/落点齐全,不是零碎补丁图)," +
+      "图片合起来覆盖素材核心笔记的全部主干。不做与正文重复的单点装饰图。再确定这张" +
+      "图的形态(全景概览/要点" +
+      "归纳/流程步骤/对比图解/时间线/清单等,形态不设限),然后把形态版式、入图" +
       "文字(原文短句化、字少而大)、风格锚定句写进 prompt;横版头图用 16:9," +
       "竖版卡片用 3:4。入图文字是模型画的,错字无法自查:文字宁少勿多,一图至多" +
       "重出一次。数据密集内容(价格表/对比表/榜单)不走本工具,改 render_card" +
       " 信息卡。brief 带 sample_image(样例参照图)时必须把它 media_path 传给" +
-      " reference_path,模型以图为风格参照,此时 prompt 的风格锚定句写「保持与参" +
-      "考图一致的视觉风格」即可;返回 ok:false(未绑定模型/生图失败)时该处改走" +
-      " render_card 即可,不要反复重试。",
+      " reference_path,模型以图为风格参照;此时 prompt 严禁写任何具体配色/字体/" +
+      "风格词(文字会压过参照图,HEX 色值会被守卫直接拒绝),风格锚定句固定写「保" +
+      "持与参考图一致的视觉风格」;返回 ok:false(未绑定模型/风格冲突/生图失败)" +
+      "时按报错修正或改走 render_card,不要反复重试。",
     schema: z.object({
       prompt: z
         .string()
@@ -81,8 +118,9 @@ export const generateIllustrationTool = tool(
         .max(2000)
         .describe(
           "完整生图提示词(中文):呈现形态与版式布局 + 入图文字逐句给出(标题/要点的原文短句,别改写)" +
-            "+ 风格锚定描述(同篇多图重复同一句风格描述保持一致;带 reference_path 时锚定句写" +
-            "「保持与参考图一致的视觉风格」);文字宁少勿多,数字直接写明",
+            "+ 风格锚定描述(同篇多图重复同一句风格描述保持一致;带 reference_path 时严禁出现" +
+            "色值/配色/字体等风格词,锚定句固定写「保持与参考图一致的视觉风格」);" +
+            "文字宁少勿多,数字直接写明",
         ),
       aspect: z
         .enum(ASPECT_KEYS)
@@ -102,7 +140,8 @@ export const generateIllustrationTool = tool(
         .optional()
         .describe(
           "样例参照图的站内媒体路径(brief.sample_image.media_path;仅收 /wp-content/uploads/ " +
-            "站内路径,外链无效):传入后出图向参照图的风格靠拢",
+            "站内路径,外链无效):传入后视觉风格完全以参照图为准,prompt 不得自编配色" +
+            "(HEX 色值会被守卫拒绝)",
         ),
     }),
   },

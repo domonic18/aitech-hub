@@ -7,7 +7,9 @@
  * 会话行 touch+tokens 累计;客户端断开经 AbortSignal 中止 agent,已产 usage 照记。
  * 死端检测(2026-10-17):模型轮被 max_tokens 截断且零文本零工具调用时 LangGraph
  * 静默收束(UI 工具卡恒「运行中」),此处按 stop 结算标记 deadEndReason,
- * 路由层补 error 帧给人话。
+ * 路由层补 error 帧给人话。收束帧纪律(2026-10-21 验收反馈):护栏撞线时工具
+ * 调用帧永不外泄(它不会再执行),纯文本帧放行——模型收尾总结恰在撞线帧时,
+ * 吞掉它用户只看到「已中断」而工作其实已完成。
  */
 import { HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
@@ -72,6 +74,16 @@ function chunkStopReason(chunk: unknown): string | null {
   )?.response_metadata;
   if (typeof meta?.stop_reason === "string") return meta.stop_reason;
   if (typeof meta?.finish_reason === "string") return meta.finish_reason;
+  return null;
+}
+
+/** 护栏判定(纯函数,单测锚点):tokens / tool_calls 双闸,返回命中的闸名 */
+function overLimit(
+  outcome: { tokensIn: number; tokensOut: number; toolCalls: number },
+  limits: { tokens: number; toolCalls: number },
+): "tokens" | "tool_calls" | null {
+  if (outcome.tokensIn + outcome.tokensOut > limits.tokens) return "tokens";
+  if (outcome.toolCalls > limits.toolCalls) return "tool_calls";
   return null;
 }
 
@@ -183,31 +195,29 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
         turnHasText = false;
         turnHasToolCall = false;
       }
-      // 超身份档 tokens / 工具调用上限:主动收束(护栏非计费;检在发前,超限帧不外泄)
-      if (outcome.tokensIn + outcome.tokensOut > limits.tokens) {
-        outcome.truncatedReason = "本会话用量已达上限,请新建会话继续";
+      // 超身份档 tokens / 工具调用上限:主动收束(护栏非计费)。收束帧纪律:
+      // 工具调用帧永不外泄(它不会再执行,渲染出去界面恒「运行中」);纯文本
+      // 帧放行——2026-10-21 验收实证:模型收尾总结恰在撞线帧,吞掉它用户只
+      // 看到「已中断」,而落稿/配图/封面其实已全部完成
+      const guard = overLimit(outcome, limits);
+      if (guard) {
+        outcome.truncatedReason =
+          guard === "tokens"
+            ? "本会话用量已达上限,请新建会话继续"
+            : "本条回复的工具调用已达上限,已主动收束";
         logger.warn({
           event: "agent.run_guard_tripped",
-          guard: "tokens",
+          guard,
           threadId,
           tokensIn: outcome.tokensIn,
           tokensOut: outcome.tokensOut,
           toolCalls: outcome.toolCalls,
           limits,
         });
-        break;
-      }
-      if (outcome.toolCalls > limits.toolCalls) {
-        outcome.truncatedReason = "本条回复的工具调用已达上限,已主动收束";
-        logger.warn({
-          event: "agent.run_guard_tripped",
-          guard: "tool_calls",
-          threadId,
-          tokensIn: outcome.tokensIn,
-          tokensOut: outcome.tokensOut,
-          toolCalls: outcome.toolCalls,
-          limits,
-        });
+        const carriesToolCall =
+          ((chunk as { tool_call_chunks?: unknown[] } | null)?.tool_call_chunks?.length ?? 0) > 0;
+        if (chunkHasText((chunk as { content?: unknown } | null)?.content) && !carriesToolCall)
+          onFrame(encodeWireMessage(chunk as Parameters<typeof encodeWireMessage>[0]));
         break;
       }
       onFrame(encodeWireMessage(chunk as Parameters<typeof encodeWireMessage>[0]));

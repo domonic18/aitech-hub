@@ -3,7 +3,8 @@
  * 只读工具 + ask_user HITL 提问 + M22 批⑤ submit_feedback 唯一可写口)+
  * get_time 输出形状(iso/beijing/timezone,北京时区显式锚定不随机器漂)+
  * ask_user 入参 schema 形状(question/options 界)+ M27 批⑧-b read_draft
- * (admin 会话防线 fail-closed/任意状态可读/截断形状)。
+ * (admin 会话防线 fail-closed/任意状态可读/截断形状/同会话正文未变重复读取
+ * 去重——2026-10-21 反刍烧 token 守卫)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,12 +27,14 @@ import {
   proposeEditsTool,
   readDraftTool,
 } from "./tools";
+import { resetReadDraftSeenForTest } from "./edit-tools";
 
 beforeEach(() => {
   prismaMock.post.findFirst.mockReset();
   prismaMock.githubRepo.findFirst.mockReset();
   prismaMock.searchAgentSession.findUnique.mockReset();
   searchAllMock.mockReset();
+  resetReadDraftSeenForTest();
 });
 
 describe("AGENT_TOOLS", () => {
@@ -164,6 +167,46 @@ describe("readDraftTool(M27 批⑧-b)", () => {
       ok: false,
       error: "文章不存在",
     });
+  });
+
+  it("同会话正文未变重复读取 → unchanged 轻量帧(2026-10-21 反刍守卫)", async () => {
+    mockSession("admin:u1");
+    prismaMock.post.findFirst.mockResolvedValue({
+      title: "草稿",
+      status: "draft",
+      contentMd: "同一段正文",
+    });
+    const first = JSON.parse(await invoke({ threadId: "t1" }));
+    expect(first.content).toBe("同一段正文");
+    expect(first.unchanged).toBeUndefined();
+    const second = JSON.parse(await invoke({ threadId: "t1" }));
+    expect(second.unchanged).toBe(true);
+    expect(second.content).toBeUndefined();
+    expect(second.hint).toContain("上一条读取结果");
+    expect(second.content_length).toBe(5);
+  });
+
+  it("正文变更后哈希失配恢复全文;跨会话各自独立", async () => {
+    mockSession("admin:u1");
+    prismaMock.post.findFirst.mockResolvedValue({
+      title: "草稿",
+      status: "draft",
+      contentMd: "v1",
+    });
+    await invoke({ threadId: "t1" });
+    prismaMock.post.findFirst.mockResolvedValue({
+      title: "草稿",
+      status: "draft",
+      contentMd: "v2",
+    });
+    expect(JSON.parse(await invoke({ threadId: "t1" })).content).toBe("v2");
+    // 另一会话首读同一版本 → 全文(去重按会话隔离)
+    prismaMock.post.findFirst.mockResolvedValue({
+      title: "草稿",
+      status: "draft",
+      contentMd: "v2",
+    });
+    expect(JSON.parse(await invoke({ threadId: "t-other" })).content).toBe("v2");
   });
 });
 

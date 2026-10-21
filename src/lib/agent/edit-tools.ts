@@ -3,6 +3,8 @@
  * read_draft 读现稿 + propose_edits 改稿提案(HITL 中断评审,提案不落笔)。
  * 挂载仅 admin 图(agent.ts),体内再验会话行归属 admin(fail-closed)。
  */
+import { createHash } from "node:crypto";
+
 import { tool } from "@langchain/core/tools";
 import { interrupt } from "@langchain/langgraph";
 import { z } from "zod";
@@ -16,6 +18,25 @@ import { AGENT_PROPOSE_EDITS_TOOL, type ProposeEditsResume } from "./edit-propos
 /** 单篇正文进上下文的截断长度(字符;约 4-6k tokens,12 步护栏内可承受多轮;
  * tools 的 read_post/read_repo 同用,自此件出口) */
 export const TOOL_BODY_MAX = 6000;
+
+/**
+ * 同会话同文章重复读取去重(2026-10-21 验收实证的烧 token 根因:弱模型落稿后
+ * 验证焦虑,一轮并行 read_draft ×5-8、全程 ×17,同一份正文反复入历史并按轮次
+ * 平方放大,单轮 tokens 烧到 652k 撞 600k 护栏)。机制级守卫(§13.7:文本纪律
+ * 对弱模型不足):正文 sha1 未变时只回轻量确认帧,模型引用原文用历史里上一条
+ * 读取结果;内容一变(编辑/提案落笔)哈希失配自动恢复全文。进程内缓存,重启
+ * 即失效(fail-open 回老行为,无正确性风险);超量整体清空防涨。
+ */
+const readDraftSeen = new Map<string, Map<string, string>>();
+
+/** 单测复位缓存 */
+export function resetReadDraftSeenForTest(): void {
+  readDraftSeen.clear();
+}
+
+function readDraftDigest(content: string): string {
+  return createHash("sha1").update(content).digest("hex");
+}
 
 /**
  * 读编辑中的文章草稿(M27 批⑧-b,admin 独占):read_post 只认已发布,而
@@ -34,6 +55,23 @@ export const readDraftTool = tool(
     });
     if (!post) return JSON.stringify({ ok: false, error: "文章不存在" });
     const full = post.contentMd ?? "";
+    // 重复读取去重:正文未变只回确认帧(省历史体积,弱模型反刍不放大 token)
+    const threadKey = String(config?.configurable?.thread_id ?? "default");
+    const digest = readDraftDigest(full);
+    if (readDraftSeen.get(threadKey)?.get(id) === digest) {
+      return JSON.stringify({
+        id,
+        title: post.title,
+        status: post.status,
+        unchanged: true,
+        content_length: full.length,
+        hint: "正文与你本会话上次读取完全一致,已省略重复全文;引用原文请用上一条读取结果,不要重读",
+      });
+    }
+    if (readDraftSeen.size > 100) readDraftSeen.clear();
+    const byPost = readDraftSeen.get(threadKey) ?? new Map<string, string>();
+    byPost.set(id, digest);
+    readDraftSeen.set(threadKey, byPost);
     return JSON.stringify({
       id,
       title: post.title,
@@ -48,7 +86,9 @@ export const readDraftTool = tool(
     description:
       "读管理员正在编辑的文章(任意状态:草稿/已发布均可,已删除除外)。返回标题、状态" +
       "与 Markdown 正文(超长截断,truncated 为 true 时 content_length 是全长)。页面上下文" +
-      "含 edit.postId、或用户说「这篇文章/当前文章」时,先用它读全文再讨论或修改。",
+      "含 edit.postId、或用户说「这篇文章/当前文章」时,先用它读全文再讨论或修改。" +
+      "同一会话内正文没有变化时重复读取只返回确认帧(unchanged)——读一次就够了,禁止" +
+      "反复重读或并行多次调用同一篇文章。",
     schema: z.object({
       id: z.string().regex(/^\d+$/).describe("文章 id(纯数字,即页面上下文的 edit.postId)"),
     }),
