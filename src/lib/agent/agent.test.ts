@@ -118,16 +118,23 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     expect(p).toContain("严禁把正文整篇输出到对话流");
   });
 
-  it("配图链提示(2026-10-17 封面纪律):封面禁入正文 + 系统注入推荐卡 + 生图示意图 + 读者视角自评审", () => {
+  it("配图链提示(2026-10-17 封面纪律;2026-10-21 插画入列):封面禁入正文 + 系统注入推荐卡 + 两类工艺分流 + 读者视角自评审", () => {
     const p = agentSystemPrompt("admin");
     // 封面退出正文供给面:cover_path 不再是正文配图源,编排提示同步禁止
     expect(p).not.toContain("素材的 cover_path");
     expect(p).toContain("视频封面禁止入正文");
     expect(p).toContain("不要自己仿写推荐卡");
-    // 生图放开到正文概念示意图;头图仍统一走第 7 步
-    expect(p).toContain("概念示意图");
-    // 自评审第⑥项:读者视角版面协调(呈现协调性验收反馈)
+    // M39 批④:generate_illustration 入正文配图工艺(概念/场景/氛围向),
+    // cover 候选工具的正文概念图职责移交(只服务封面候选)——修复「选了
+    // 文生图仍全走 HTML 卡」的工艺断链(工具在面、流程提示未提 = 不可达)
+    expect(p).toContain("generate_illustration");
+    expect(p).toContain("文生图插画为主");
+    expect(p).toContain("只服务封面候选");
+    // 封面勾选(批④+):skip 标记时第 7 步整体跳过
+    expect(p).toContain("skip_cover_generation");
+    // 自评审第⑥项:读者视角版面协调(呈现协调性验收反馈);⑤ 数量对账含插画
     expect(p).toContain("有无同一图片重复出现");
+    expect(p).toContain("generate_illustration)调用数一致");
   });
 
   it("卡片可视化纪律(2026-10-17 反馈):render_card 唯一实现 + 合成卡闸门 + 改稿出卡", () => {
@@ -150,6 +157,9 @@ describe("agentSystemPrompt(提示按身份分发)", () => {
     // 渲染了但没嵌 = 白做(2026-10-17 第二轮反馈)
     expect(p).toContain("markdown_line");
     expect(p).toContain("渲染了卡但正文没嵌");
+    // M39 批④:第 4 步必做项扩为卡片或插画;card_urls 硬闸只对卡片(插画不入清单)
+    expect(p).toContain("卡片图或文生图插画");
+    expect(p).toContain("插画不是卡片不入此清单");
   });
 
   it("技能调度提示(M30 批②):写前必取 skill + skill_key 直取 + 无命中说明 + 自评审闭环仍在", () => {
