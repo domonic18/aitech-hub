@@ -7,7 +7,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildCoverPrompt } from "./cover-prompt";
-import { decodeImageB64, downloadImage, generateImages, sniffImageMime } from "./image-client";
+import {
+  decodeImageB64,
+  downloadImage,
+  generateImages,
+  parseImagesResponse,
+  sniffImageMime,
+} from "./image-client";
 import { AiClientError } from "./errors";
 
 const PNG_1X1 =
@@ -211,6 +217,42 @@ describe("generateImages(M39 AiHubMix 形态)", () => {
   it("空 output 数组随 200 回 error:末轮无图透传供应商文案", async () => {
     stubFetchSequence([{ status: "failed", output: [], error: "quota exceeded" }]);
     await expect(generateImages(BASE_INPUT)).rejects.toThrow(/quota exceeded/);
+  });
+});
+
+describe("parseImagesResponse(E2 解析收口:generateImages 与 probe 单源)", () => {
+  it("data[] 优先于 output[] 同现不歧义;b64/url/content_url 三键归一", () => {
+    const r = parseImagesResponse({
+      data: [{ b64_json: PNG_1X1 }],
+      output: [{ content_url: "https://x.example/b.png" }],
+    });
+    expect(r.images).toEqual([{ b64: PNG_1X1 }]);
+    expect(r.hasRows).toBe(true);
+    expect(r.bizError).toBeNull();
+  });
+
+  it("单行脏数据跳过不弃全轮(非 https/超长/空键);合法行保留", () => {
+    const r = parseImagesResponse({
+      data: [
+        { url: "http://insecure.example/a.png" },
+        { url: `https://cdn.example.com/${"x".repeat(2100)}` },
+        { foo: 1 },
+        { content_url: "https://cdn.example.com/ok.png" },
+      ],
+    });
+    expect(r.images).toEqual([{ url: "https://cdn.example.com/ok.png" }]);
+  });
+
+  it("200 携 error 文案透传;缺 data/output 数组报 hasRows:false(契约漂移)", () => {
+    const withErr = parseImagesResponse({ status: "failed", output: [], error: "quota exceeded" });
+    expect(withErr.bizError).toBe("quota exceeded");
+    expect(withErr.hasRows).toBe(true);
+    expect(withErr.images).toEqual([]);
+
+    const drift = parseImagesResponse({ id: "t1", status: "failed" });
+    expect(drift.hasRows).toBe(false);
+    expect(drift.bizError).toBeNull();
+    expect(drift.images).toEqual([]);
   });
 });
 

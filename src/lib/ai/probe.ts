@@ -22,7 +22,7 @@ import {
   ASR_PROTOCOL_OPENAI,
 } from "./constants";
 import { COVER_IMAGE_SIZE } from "./cover-prompt";
-import { buildImagesBody } from "./image-client";
+import { buildImagesBody, parseImagesResponse } from "./image-client";
 
 export interface ProbeInput {
   protocol: string;
@@ -214,39 +214,24 @@ async function probeImages(input: ProbeInput, baseUrl: string): Promise<ProbeRes
         detail: `HTTP ${res.status}: ${humanizeErrorBody(text)}`,
       };
     }
-    let body: { data?: unknown; output?: unknown; error?: unknown };
+    let body: unknown;
     try {
-      body = JSON.parse(text) as { data?: unknown; output?: unknown; error?: unknown };
+      body = JSON.parse(text) as unknown;
     } catch {
       return { ok: false, latencyMs, detail: "生图响应不是 JSON(契约漂移)" };
     }
-    // 双数组等价解析(M39):OpenAI data[] / AiHubMix output[],与 image-client 同口径
-    const rows = Array.isArray(body.data)
-      ? body.data
-      : Array.isArray(body.output)
-        ? body.output
-        : undefined;
-    const row = Array.isArray(rows)
-      ? (rows[0] as { b64_json?: unknown; url?: unknown; content_url?: unknown } | undefined)
-      : undefined;
-    // 双形态校验与 image-client 同口径:b64 非空串 / url|content_url 须 https 且长度合规
-    const hasB64 = typeof row?.b64_json === "string" && row.b64_json.length > 0;
-    const link =
-      typeof row?.url === "string"
-        ? row.url
-        : typeof row?.content_url === "string"
-          ? row.content_url
-          : null;
-    const hasUrl = link !== null && /^https:\/\//.test(link) && link.length < 2000;
-    if (!row || (!hasB64 && !hasUrl)) {
-      const bizError =
-        typeof body.error === "string" && body.error.trim() !== "" ? body.error : null;
+    // 响应解析单源(E2 收口):OpenAI data[] / AiHubMix output[] 双形态与
+    // generateImages 共用 parseImagesResponse,行级校验口径天然一致
+    const parsed = parseImagesResponse(body);
+    if (!parsed.hasRows || parsed.images.length === 0) {
       return {
         ok: false,
         latencyMs,
-        detail: bizError
-          ? `生图失败:${bizError.slice(0, 200)}`
-          : "生图响应无 b64_json/url 图片数据(契约漂移)",
+        detail: parsed.bizError
+          ? `生图失败:${parsed.bizError.slice(0, 200)}`
+          : parsed.hasRows
+            ? "生图响应无 b64_json/url 图片数据(契约漂移)"
+            : "生图响应缺 data/output 数组(契约漂移)",
       };
     }
     return { ok: true, latencyMs, detail: `生图连通 ${latencyMs}ms(计费 1 张)` };
