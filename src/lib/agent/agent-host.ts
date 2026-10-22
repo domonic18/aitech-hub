@@ -9,6 +9,9 @@
  *     getContent/onApplyContent 写回接线,卸载自动注销;能力不在场时
  *     propose_edits 评审自动降级(AgentThread 既有语义),run 本身不中断,
  *     切回编辑页能力重新注册即可继续评审(降级已 resume 的中断除外)。
+ *  3. run 收尾广播:AGENT_RUN_INACTIVE_EVENT(宿主→页面,唯一的反向通道;
+ *     runtime-adapter 每 run 收尾派发,消费方以自身在途态为前提,无在途态
+ *     零动作)。
  * 通道机制 = window CustomEvent(与 agent:open 同一机制,页面与宿主零组件树
  * 耦合);路由策略为纯函数(单测覆盖)。
  */
@@ -24,6 +27,14 @@ export const AGENT_SURFACE_EVENT = "agent:surface";
 
 /** 能力重报请求(宿主挂载监听后广播,补偿注册先于监听的时序竞态) */
 export const AGENT_SURFACE_ANNOUNCE_EVENT = "agent:surface-announce";
+
+/**
+ * Agent run 收尾广播(M44:runtime-adapter 在每次 run 起止派发,正常收尾/
+ * 中断/异常全路径覆盖)。方向为宿主→页面(协议③,此前仅页面→宿主两条);
+ * 消费方以自身在途态为前提——创作中心「生成中」监听后即时比对落库结果,
+ * 无在途态时零动作,detail 不携带载荷(状态一律以 DB 为真相源)。
+ */
+export const AGENT_RUN_INACTIVE_EVENT = "agent:run-inactive";
 
 /** 唤起载荷(ask.send: true=直发,false=仅预填输入框) */
 export interface AgentOpenAsk {
