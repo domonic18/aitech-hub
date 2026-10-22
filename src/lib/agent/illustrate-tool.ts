@@ -23,12 +23,15 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
+import { logger } from "../logger";
+
 import { AiAdminError, AiClientError } from "../ai/errors";
 import {
   generateIllustrations,
   ILLUSTRATE_ASPECT_SIZES,
   ILLUSTRATE_MAX_COUNT,
 } from "../ai/illustrate-generate";
+import { ensureStudioRoot } from "../ai/illustration-studio";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
 
@@ -72,11 +75,25 @@ export const generateIllustrationTool = tool(
         n: count ?? 1,
         referencePath: reference_path,
       });
+      // M40 批 B:出图即登记工坊根版本(免费 DB 行),回执带编辑器链接供拆层
+      // 精修;登记失败不回滚生图(已计费,链接缺席仅损失精修入口)
+      const studios = await Promise.all(
+        images.map(async (img) => {
+          try {
+            const { versionId } = await ensureStudioRoot(img.path);
+            return `/admin/illustration/${versionId}`;
+          } catch (e) {
+            logger.warn({ event: "illu.studio_root_register_failed", path: img.path, err: e });
+            return null;
+          }
+        }),
+      );
       return JSON.stringify({
         ok: true,
         images: images.map((img, i) => ({
           path: img.path,
           markdown: `![图文${images.length > 1 ? i + 1 : ""}](${img.path})`,
+          ...(studios[i] ? { studio: studios[i] } : {}),
         })),
         ...(referenceError
           ? { reference_warning: referenceError }
@@ -89,7 +106,9 @@ export const generateIllustrationTool = tool(
             : {}),
         hint:
           "把选用的 markdown 原样写入正文对应位置(独占一行,前后空行);多张时择优取用," +
-          "未选用的不写入;图文不是信息卡,save_topic_draft 的 card_urls 不含这些图" +
+          "未选用的不写入;图文不是信息卡,save_topic_draft 的 card_urls 不含这些图;" +
+          "每张图文带 studio 编辑器链接,把选用图的链接一并告知用户(错字/瑕疵可在" +
+          "配图工坊拆层精修)" +
           (referenceError
             ? ";本次参照图未生效(原因见 reference_warning),已按 prompt 出图"
             : reference_path
