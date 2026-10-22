@@ -322,9 +322,11 @@ test("7. 媒体库闭环(M5b:上传/卡片/详情抽屉/软删)", async ({ page 
   await page.goto("/admin/media/");
   await expect(page.getByText("近 30 天 / 未引用")).toBeVisible();
 
-  // 上传(setInputFiles 直喂缓冲,无需夹具文件)→ refresh 后卡片出现
+  // 上传(setInputFiles 直喂缓冲,无需夹具文件)→ refresh 后卡片出现。
+  // 底色须与 41 号样图(30/144/255)区分:同字节 PNG sha1 相同,媒体去重会
+  // 把本例上传并到旧行,卡片 alt 永远不出现(数据态耦合,2026-10-22 实锤)
   const png = await sharp({
-    create: { width: 4, height: 3, channels: 3, background: { r: 30, g: 144, b: 255 } },
+    create: { width: 4, height: 3, channels: 3, background: { r: 88, g: 24, b: 210 } },
   })
     .png()
     .toBuffer();
@@ -490,9 +492,10 @@ test("9. 站点统计页六模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await expect(page.getByTestId("trend-tip")).toContainText("PV");
 
   // 分段切换 URL 驱动:trend=30 生效且 hot 参数跨段保留
-  // 「近 30 天」在趋势卡与两张热门卡各一枚(Link 分段),count=3 证三卡分段均按参数渲染
+  // 「近 30 天」共 4 枚(Link 分段):趋势卡 + 热门页面/热门搜索(2026-10-06)/
+  // 条目点击(M28)三张 hot 分段卡各一,count=4 证四卡分段均按参数渲染
   await page.goto("/admin/?trend=30&hot=all");
-  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(3);
+  await expect(page.getByRole("link", { name: "近 30 天" })).toHaveCount(4);
   await expect(page.getByText("该时段暂无页面浏览")).toHaveCount(0);
   await expect(polylines.first()).toBeVisible();
   await page.getByRole("link", { name: "近 90 天" }).click(); // 仅趋势卡有,唯一
@@ -1692,19 +1695,22 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
   });
   const aiReadId = seeded.find((r) => r.title === "e2e-ai-已解读")!.id.toString();
 
-  // ── 播种②:两个 showcase 仓库(sortOrder 垫到存量最大之上,rail 排序必进前二;
-  //    repo_count=1 时只现 A,验证配置钳制)nextSyncAt 推远防 worker 抢跑
+  // ── 播种②:两个 showcase 仓库。rail 排序=sortOrder 升序、平手 stars 降序
+  //    (listShowcaseRepos):与存量最小 sortOrder 并列 + stars 垫到全场最高,
+  //    A 恒第一、B 第二,与库态无关;repo_count=1 钳制只现 A。
+  //    nextSyncAt 推远防 worker 抢跑
   await prisma.githubRepo.deleteMany({ where: { slug: { in: [SLUG_A, SLUG_B] } } });
-  const maxSort =
-    (await prisma.githubRepo.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0;
+  const minSort =
+    (await prisma.githubRepo.aggregate({ _min: { sortOrder: true } }))._min.sortOrder ?? 0;
+  const maxStars = (await prisma.githubRepo.aggregate({ _max: { stars: true } }))._max.stars ?? 0;
   await prisma.githubRepo.createMany({
     data: [SLUG_A, SLUG_B].map((slug, i) => ({
       fullName: `e2e-rail/${slug}`,
       slug,
       description: `e2e rail ${slug}`,
-      stars: 100 - i,
+      stars: maxStars + 1000 - i,
       htmlUrl: `https://github.com/e2e-rail/${slug}`,
-      sortOrder: maxSort + 1 + i,
+      sortOrder: minSort,
       nextSyncAt: new Date(Date.now() + 24 * 3600_000),
     })),
   });
@@ -1947,6 +1953,14 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
   const ASR_KEY = "e2e-usage-asr";
   // 自播种:带牌价模型(¥2 in / ¥8 out / ¥0.5 每张)+ 用量四行(LLM/ASR ok/ASR 降级/生图)
   // 期望账目:tokens 2.0M;费用 ¥7.00(LLM) + ¥5.00(ASR 0.5h×¥10) + ¥0.50(生图) = ¥12.50
+  // 看板 KPI 是全表窗口聚合:回灌库带真实用量行(窗口内)会污染 ¥12.50/2.0M——
+  // 测前快照非 e2e 行并清场,finally 原样回灌(id 不复原,断言不依赖;本地无并发写)
+  const externalUsage = await prisma.aiUsageLog.findMany({
+    where: { modelKey: { not: { startsWith: "e2e-usage" } } },
+  });
+  await prisma.aiUsageLog.deleteMany({
+    where: { modelKey: { not: { startsWith: "e2e-usage" } } },
+  });
   await prisma.aiUsageLog.deleteMany({ where: { modelKey: { startsWith: "e2e-usage" } } });
   await prisma.aiModel.deleteMany({ where: { modelId: MODEL_KEY } });
   const model = await prisma.aiModel.create({
@@ -2088,15 +2102,19 @@ test("21. M14 收口:用量统计看板(台账聚合/费用折算/降级拆分/9
     for (const label of ["微信公众号头图", "站内 / OG 卡片", "CSDN / 通用横图", "列表缩略图"]) {
       await expect(page.getByText(label).first()).toBeVisible();
     }
-    await expect(page.getByText("AI 文生图")).toBeVisible();
-    await expect(page.getByRole("button", { name: "生成候选" })).toBeDisabled();
-    // M16 问题2:prompt 框 gating——填提示词即解锁生成(不触网)
-    await page.getByPlaceholder(/描述画面/).fill("横版 16:9 科技封面插画,无文字与水印");
-    await expect(page.getByRole("button", { name: "生成候选" })).toBeEnabled();
+    await expect(page.getByText(/AI 生成封面/)).toBeVisible();
+    // M31 验收反馈:弹窗内直连生图退役 → Agent 入口块(唤起编辑页侧栏 Agent,
+    // 零真网口径不变,本例不点唤起)
+    await expect(page.getByRole("button", { name: "唤起 Agent 生成候选" })).toBeVisible();
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(page.getByText("本地上传(jpg / png / webp)")).toBeHidden();
   } finally {
-    await prisma.aiUsageLog.deleteMany({ where: { modelKey: { startsWith: "e2e-usage" } } });
+    await prisma.aiUsageLog.deleteMany({});
+    for (let i = 0; i < externalUsage.length; i += 500) {
+      await prisma.aiUsageLog.createMany({
+        data: externalUsage.slice(i, i + 500).map((r) => ({ ...r, id: undefined })),
+      });
+    }
     await prisma.aiModel.deleteMany({ where: { modelId: MODEL_KEY } });
     if (asrBefore) {
       await prisma.asrConfig.update({
@@ -2413,6 +2431,16 @@ test("26. K1 三域统一检索:/search 分组命中/高亮/g-more/空态/noinde
     where: { role: "search" },
     data: { primaryId: fakeModel.id, backupId: null },
   });
+  // 语义榜先决=embedding 绑定:回灌库绑有真 embedding 模型,查询向量化后语义
+  // 补召混进命中数(1 → 24)且烧真金——测前摘除,finally 复原(与 search 绑定
+  // 交换同纪律;语义层降级=纯词项路径,行为与单榜一致)
+  const embeddingBefore = await prisma.aiTaskBinding.findUniqueOrThrow({
+    where: { role: "embedding" },
+  });
+  await prisma.aiTaskBinding.update({
+    where: { role: "embedding" },
+    data: { primaryId: null, backupId: null },
+  });
 
   try {
     // 22.1 三域分组命中页:SSR 直出真实 HTML(noindex 双保险;AI 答案卡 K2 批③
@@ -2481,6 +2509,10 @@ test("26. K1 三域统一检索:/search 分组命中/高亮/g-more/空态/noinde
       where: { role: "search" },
       data: { primaryId: bindingBefore.primaryId, backupId: bindingBefore.backupId },
     });
+    await prisma.aiTaskBinding.update({
+      where: { role: "embedding" },
+      data: { primaryId: embeddingBefore.primaryId, backupId: embeddingBefore.backupId },
+    });
     await prisma.aiUsageLog.deleteMany({ where: { modelKey: "e2e-answer-model" } });
     await prisma.aiModel.deleteMany({ where: { modelId: "e2e-answer-model" } });
     await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
@@ -2523,6 +2555,10 @@ async function e2eAdminLogin(page: import("@playwright/test").Page): Promise<voi
 
 test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口禁用+sync 400)", async ({ page }) => {
   const snap = await snapshotWechatConfig();
+  // 记录表空态隔离:回灌库带历史同步记录——快照清场,finally 原样回灌
+  // (id 不复原,断言不依赖)
+  const syncRecords = await prisma.publishChannel.findMany();
+  await prisma.publishChannel.deleteMany();
   try {
     // 未配置确定性环境:清单例行(页面 get-or-create 会落默认禁用行)
     await prisma.wechatConfig.deleteMany({ where: { id: 1 } });
@@ -2554,6 +2590,12 @@ test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口
     expect(res.status()).toBe(400);
     expect(((await res.json()) as { message: string }).message).toContain("公众号渠道未就绪");
   } finally {
+    await prisma.publishChannel.deleteMany();
+    if (syncRecords.length > 0) {
+      await prisma.publishChannel.createMany({
+        data: syncRecords.map((r) => ({ ...r, id: undefined })),
+      });
+    }
     await restoreWechatConfig(snap);
   }
 });
@@ -2819,7 +2861,10 @@ test("30. K2.5/K2.6 Drawer 深挖会话:游客线程面(g_ 前缀/不落行/归�
     ),
   );
   await expect(drawer.getByText("k25agent 无绑定直发问题")).toBeVisible();
-  await expect(drawer.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 15_000 });
+  // exact:错误横幅按钮「…就无法直接发送消息」以「发送」结尾,无 exact 会 strict 相撞
+  await expect(drawer.getByRole("button", { name: "发送", exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   const cookies = await page.context().cookies();
   expect(cookies.some((c) => c.name === "ah_av")).toBe(true);
 
@@ -3027,7 +3072,7 @@ test("32. 文章评论与点赞(M23 批②:评论区渲染/两级楼层/游客�
   }
 });
 
-test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/词库管理/加词与状态流转/触发校验,零真网)", async ({
+test("33. 数据中心·挖掘与词库(M25 候选终审+批准自动登记博主;2026-10-18 数据壳重组后挖掘页 /admin/data/mine、词库 /admin/data/sources;加词与状态流转/触发校验,零真网)", async ({
   page,
   request,
 }) => {
@@ -3090,9 +3135,10 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
     const serverOrigin = originOf(page);
 
     // 候选 tab(默认):播种两行在,L0 徽标/信号列/拒绝理由如实呈现
-    await page.goto("/admin/discovery/");
-    await expect(page.getByRole("link", { name: "发现中心" })).toBeVisible(); // 侧栏入口(侧栏精简批② 起项名)
-    await expect(page.getByRole("heading", { name: "发现治理" })).toBeVisible();
+    await page.goto("/admin/data/mine/");
+    await expect(page.getByRole("link", { name: "数据中心" })).toBeVisible(); // 侧栏入口(数据壳重组起项名)
+    await expect(page.getByRole("heading", { name: "挖掘", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "候选治理" })).toBeVisible();
     const bloggerRow = page.getByRole("row", { name: /e2e-发现博主/ });
     await expect(bloggerRow).toBeVisible();
     await expect(bloggerRow.getByText(`mid ${BLOGGER_MID}`)).toBeVisible();
@@ -3222,9 +3268,9 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
     });
     expect(patTrigger.status()).toBe(403);
 
-    // 词库 tab:预置联想词在(来源与待定态);UI 加词 → origin=manual 直接生效
-    await page.getByRole("link", { name: "词库管理" }).click();
-    await page.waitForURL(/tab=keywords/);
+    // 词库视图(源管理页,数据壳重组后独立路由):预置联想词在(来源与待定态);
+    // UI 加词 → origin=manual 直接生效
+    await page.goto("/admin/data/sources/?t=words");
     const seedRow = page.getByRole("row", { name: new RegExp(KW_SEED) });
     await expect(seedRow).toBeVisible();
     await expect(seedRow.getByText("联想 · bili-suggest")).toBeVisible();
@@ -3258,9 +3304,9 @@ test("33. 优质内容发现治理台(M25:候选终审+批准自动登记博主/
     await newRow.getByRole("button", { name: "已弃用" }).click();
     await expect(newRow.getByText("已弃用").first()).toBeVisible({ timeout: 10_000 });
 
-    // 候选分段筛选:已批准段只含终审行,pending 视频不在
-    await page.getByRole("link", { name: "候选治理" }).click();
-    await page.waitForURL(/\/admin\/discovery\/$/);
+    // 候选分段筛选:已批准段只含终审行,pending 视频不在(词库视图在源管理页,
+    // 无挖掘 SubTabs 回链,goto 直返挖掘页)
+    await page.goto("/admin/data/mine/");
     await page.getByRole("link", { name: /^已批准/ }).click();
     await page.waitForURL(/status=approved/);
     await expect(page.getByRole("row", { name: /e2e-发现博主/ })).toBeVisible();
@@ -3361,14 +3407,13 @@ test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/
     await expect(page.getByRole("button", { name: "退回收集素材" })).toHaveCount(0);
     await expect(page.getByText("还没有素材")).toBeVisible();
 
-    // 写作要求配置区(2026-10-20 详情页重构):四维构建器在位;新建时自填定位
-    // → 已自定义徽章 + 全文回显;点选项(确认按模板重建)→ 合成条款行,保存回显
+    // 写作要求配置区(§13.8 交互重设计):四维构建器在位;新建时自填定位 →
+    // 自由文本无损落「补充要求」独立块;点选项不弹确认不销毁内容,切选项后
+    // 补充要求原样保留,保存 toast 回显
     await expect(page.getByText("口吻语感", { exact: true })).toBeVisible();
-    await expect(page.getByText(/已自定义/)).toBeVisible();
-    await expect(page.getByLabel("写作要求")).toHaveValue(/端侧落地盘点/);
-    page.once("dialog", (d) => d.accept()); // 自定义态切选项:确认覆盖手改文本
+    await expect(page.getByLabel("补充要求", { exact: true })).toHaveValue(/端侧落地盘点/);
     await page.getByRole("button", { name: "专业编辑" }).click();
-    await expect(page.getByLabel("写作要求")).toHaveValue(/口吻:专业编辑/);
+    await expect(page.getByLabel("补充要求", { exact: true })).toHaveValue(/端侧落地盘点/);
     await page.getByRole("button", { name: "保存写作要求" }).click();
     await expect(page.getByText("写作要求已保存,生成初稿时生效")).toBeVisible({ timeout: 10_000 });
 
@@ -3659,7 +3704,9 @@ test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过
     await page.getByRole("button", { name: "AI 助手" }).click();
     const dialog = page.getByRole("dialog", { name: "AI 助手" });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "新会话" })).toBeVisible();
+    // 真 <button> 定位:会话行是 div[role=button],历史库空标题会话的默认文案
+    // 同为「新会话」,getByRole(name) 会 strict 冲突——按元素名过滤掉行节点
+    await expect(dialog.locator("button").filter({ hasText: "新会话" })).toBeVisible();
     await expect(dialog.getByPlaceholder("搜索会话")).toBeVisible();
     // 宽屏汉堡钮退役(sm:hidden 在 DOM 但不可见)
     await expect(dialog.getByRole("button", { name: "会话列表" })).toBeHidden();
@@ -3686,7 +3733,7 @@ test("36. 助手会话列表常驻化(M27 批⑧-a:member 常驻左栏/搜索过
     await gpage.getByRole("button", { name: "打开 AI 助手" }).click();
     const gdialog = gpage.getByRole("dialog", { name: "AI 助手" });
     await expect(gdialog).toBeVisible();
-    await expect(gdialog.getByRole("button", { name: "新会话" })).toHaveCount(0);
+    await expect(gdialog.locator("button").filter({ hasText: "新会话" })).toHaveCount(0);
     await ctx.close();
   } finally {
     await prisma.searchAgentSession.deleteMany({
@@ -3775,7 +3822,7 @@ test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 
   }
 });
 
-test("38. Agent 技能(M30 批④:技能页签 CRUD 冒烟/key 建后不可改/启停落库/专题绑定写作技能/非法 skillKey 400,零真网)", async ({
+test("38. Agent 技能(M30 批④:技能页 CRUD 冒烟/key 建后不可改/启停落库/技能路由派生与软引用防线/非法 skillKey 400,零真网)", async ({
   page,
 }) => {
   const KEY = "e2e-skill-m30";
@@ -3792,10 +3839,10 @@ test("38. Agent 技能(M30 批④:技能页签 CRUD 冒烟/key 建后不可改/�
   try {
     await e2eAdminLogin(page);
 
-    // 38.1 「Agent 技能」页签:UI 新增技能(全字段)→ 台账行落位,库内 enabled=true
-    await page.goto("/admin/models/");
-    await expect(page.getByRole("tab", { name: "Agent 技能" })).toBeVisible();
-    await page.getByRole("tab", { name: "Agent 技能" }).click();
+    // 38.1 「写作技能」独立页(M39 批① 自模型页第 4 页签提升):UI 新增技能
+    //      (全字段)→ 台账行落位,库内 enabled=true
+    await page.goto("/admin/skills/");
+    await expect(page.getByRole("heading", { name: "写作技能" })).toBeVisible();
     await expect(page.getByRole("button", { name: "+ 新增技能" })).toBeVisible();
     await page.getByRole("button", { name: "+ 新增技能" }).click();
     await page.getByPlaceholder("如 blogger-video").fill(KEY);
@@ -3831,37 +3878,48 @@ test("38. Agent 技能(M30 批④:技能页签 CRUD 冒烟/key 建后不可改/�
     expect((await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } })).enabled).toBe(
       false,
     );
+    // 停用态软引用防线:显式绑定指向停用技能 → 400(不落库)
+    const bindOff = await page.request.patch(`/api/topics/${topic.id}/`, {
+      headers: jsonOrigin(page),
+      data: { skillKey: KEY },
+    });
+    expect(bindOff.status()).toBe(400);
+    expect(((await bindOff.json()) as { message: string }).message).toContain("skillKey");
     await row.getByRole("switch", { name: /启用 e2e 技能/ }).click();
     await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", "true", {
       timeout: 10_000,
     });
 
-    // 38.4 专题绑定:详情页「绑定写作技能」select 只列启用技能 → 选 e2e 技能保存
-    //      → 库内 skill_key 落位;解绑回「未绑定」→ null
-    await page.goto(`/admin/topics/${topic.id}/`);
-    const bind = page.getByLabel("绑定写作技能");
-    await expect(bind).toBeVisible();
-    await expect(bind.getByRole("option", { name: new RegExp(KEY) })).toHaveCount(1);
-    await bind.selectOption(KEY);
-    const bindDone = page.waitForResponse(
-      (r) =>
-        r.url().includes(`/api/topics/${topic.id}`) &&
-        r.request().method() === "PATCH" &&
-        r.status() === 200,
-    );
-    await page.getByRole("button", { name: "保存", exact: true }).click();
-    await bindDone;
+    // 38.4 技能路由(M39 批② 派生制;详情页「绑定写作技能」select 随 §13.8
+    //      退役):显式 skillKey 软引用落位;定位命中预置形式 → 派生覆盖;
+    //      显式解绑 → null
+    const bindPut = await page.request.patch(`/api/topics/${topic.id}/`, {
+      headers: jsonOrigin(page),
+      data: { skillKey: KEY },
+    });
+    expect(bindPut.status()).toBe(200);
     expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBe(KEY);
-
-    await bind.selectOption("");
-    const unbindDone = page.waitForResponse(
-      (r) =>
-        r.url().includes(`/api/topics/${topic.id}`) &&
-        r.request().method() === "PATCH" &&
-        r.status() === 200,
+    const derived = await page.request.patch(`/api/topics/${topic.id}/`, {
+      headers: jsonOrigin(page),
+      data: {
+        positioning: composeWritingText({
+          form: "model-pricing",
+          tone: "friendly",
+          length: "standard",
+          visual: "illustrate",
+          cover: "generate",
+        }),
+      },
+    });
+    expect(derived.status()).toBe(200);
+    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBe(
+      "model-pricing",
     );
-    await page.getByRole("button", { name: "保存", exact: true }).click();
-    await unbindDone;
+    const unbind = await page.request.patch(`/api/topics/${topic.id}/`, {
+      headers: jsonOrigin(page),
+      data: { skillKey: null },
+    });
+    expect(unbind.status()).toBe(200);
     expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBeNull();
 
     // 38.5 服务端防线:PATCH 不存在的 skillKey → 400 人话包络(不落库)
@@ -3947,39 +4005,22 @@ test("39. Agent 宿主唯一化(M35:协议唤起开卡/跨页常驻 run 不断�
   }
 });
 
-test("40. 卡片模板库页(M36:7 卡型清单/双主题标识/实时预览/JSON 校验反馈)", async ({ page }) => {
+test("40. 模板实验室退役防线(M39 移除 /admin/cards 页:页面 404;预览 API 独活、非法 preset 400,零真网)", async ({
+  page,
+}) => {
   await e2eAdminLogin(page);
-  await page.goto("/admin/cards/");
-  await expect(page.getByRole("heading", { name: "卡片模板库" })).toBeVisible();
 
-  // ① 卡型清单 7 项(M36 双主题扩容),默认选中首个(金句卡·深色系)
-  const nav = page.getByRole("navigation", { name: "卡型清单" });
-  await expect(nav.getByRole("button")).toHaveCount(7);
-  for (const name of ["金句卡", "对比卡", "泳道全景卡", "时间线卡"]) {
-    await expect(nav.getByRole("button", { name: new RegExp(name) })).toBeVisible();
-  }
-  await expect(page.getByText("深色系", { exact: true })).toBeVisible();
+  // ① 模板实验室页已随 M39 退役:登录态访问直落 404(默认 not-found)
+  const gone = await page.goto("/admin/cards/");
+  expect(gone?.status()).toBe(404);
 
-  // ② 实时预览:示例数据直出独立文档(preset 模板渲染,iframe srcdoc)
-  const preview = page.locator("iframe[title='实时预览']");
-  await expect(preview).toHaveCount(1);
-  await expect(preview).toHaveAttribute("srcdoc", /<!DOCTYPE html>/);
-
-  // ③ JSON 校验反馈:坏数据人话报错,修正后报错消失、预览恢复
-  const textarea = page.getByRole("textbox");
-  await textarea.fill("{ not json");
-  await expect(page.getByText("JSON 语法错误")).toBeVisible();
-  await expect(preview).toHaveCount(0);
-  await textarea.fill('{"quote":"e2e 冒烟金句","author":"e2e"}');
-  await expect(page.getByText("JSON 语法错误")).toHaveCount(0);
-  await expect(preview).toHaveAttribute("srcdoc", /e2e 冒烟金句/);
-
-  // ④ 切卡型:泳道全景卡 = 浅色系,示例数据切卡不丢(各自独立文本)
-  await nav.getByRole("button", { name: /泳道全景卡/ }).click();
-  await expect(page.getByText("浅色系", { exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox")).toHaveValue(/"lanes"/);
-  // 「渲染 PNG」按钮在数据合法时可用(真实渲染依赖 card-renderer,此处只验 UI 态)
-  await expect(page.getByRole("button", { name: "渲染 PNG" })).toBeEnabled();
+  // ② 预览 API 独活(仅 POST + admin 会话):非法 preset 400(Zod enum 校验,
+  //    不触真实渲染——card-renderer 8011 未对宿主机发布,渲染链路留真机验收)
+  const bad = await page.request.post("/api/card-presets/preview/", {
+    headers: { "content-type": "application/json", origin: originOf(page) },
+    data: { preset: "not-a-preset", data: {} },
+  });
+  expect(bad.status()).toBe(400);
 });
 
 test("41. 样例参照图库与写作配置回写(M39 批③⑤:图库路由鉴权/上传边界/重命名删除软引用/topic 绑定核/五形式 skillKey 回写,零真网)", async ({
@@ -4194,5 +4235,21 @@ test("41. 样例参照图库与写作配置回写(M39 批③⑤:图库路由鉴�
   } finally {
     await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
     await prisma.writingSampleImage.deleteMany({ where: { name: { startsWith: "e2e " } } });
+    // 样例媒体行与盘上文件族一并清:样例删除按设计不连带媒体(⑧ 口径),
+    // 残留孤儿行会与用例 7 的样图同字节 sha1 相撞吞掉 7 号上传(数据态耦合)
+    const leftover = await prisma.media.findMany({
+      where: { filename: "e2e 参照样例风格.png" },
+    });
+    const mediaRoot = path.resolve(process.cwd(), process.env.MEDIA_DIR ?? "workspace/media");
+    for (const m of leftover) {
+      const rel = decodeURIComponent(m.path.replace("/wp-content/uploads/", ""));
+      const stem = rel.replace(/\.[a-z]+$/, "");
+      await Promise.all(
+        [rel, `${stem}.webp`, `${stem}.thumb.webp`].map((f) =>
+          rm(path.join(mediaRoot, f), { force: true }),
+        ),
+      );
+      await prisma.media.delete({ where: { id: m.id } });
+    }
   }
 });

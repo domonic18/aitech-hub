@@ -28,6 +28,7 @@ import {
   QUEUE_EMAIL,
   QUEUE_GITHUB,
   QUEUE_INSIGHT,
+  QUEUE_ILLUSTRATION_STUDIO,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
   QUEUE_MEDIA_PROCESS,
@@ -59,6 +60,10 @@ import {
   sweepStaleCoverTemp,
   type CoverGenJobData,
 } from "../src/lib/ai/cover-generate";
+import {
+  illustrationDecomposeJob,
+  type DecomposeJobData,
+} from "../src/lib/ai/illustration-decompose";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
   type WechatBatchJobData,
@@ -311,4 +316,7 @@ export const PROCESSORS: Record<string, Processor> = {
     }
     throw new Error(`未知 insight job:${job.name}`);
   },
+  // 配图工坊拆层(M40 批 B):手动触发,单 job ~75s 官方拆层 + 逐层转存落库;
+  // 失败落图层组 failed 行(attempts=1 生图计费不自动重试,入队侧钉)
+  [QUEUE_ILLUSTRATION_STUDIO]: (job) => illustrationDecomposeJob(job.data as DecomposeJobData),
 };

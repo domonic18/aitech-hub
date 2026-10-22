@@ -3,7 +3,9 @@
  * 成功回传路径与 markdown 行 / aspect 透传执行核心 / 未绑定与生图失败人话
  * ok:false(不阻塞,模型可自纠改走 render_card)/ 意外异常原样上抛 /
  * 样例参照图(批③透传/装载降级;2026-10-21 验收反馈加:参照风格冲突守卫
- * HEX 出图前拒 + reference_applied 生效确认)。执行核心见 illustrate-generate.test.ts。
+ * HEX 出图前拒 + reference_applied 生效确认)。M40 批 B:出图即登记工坊根
+ * 版本,回执逐张带 studio 编辑器链接(登记失败不回滚生图)。执行核心见
+ * illustrate-generate.test.ts。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,6 +21,9 @@ vi.mock("../ai/illustrate-generate", () => ({
   ILLUSTRATE_ASPECT_SIZES: { "16:9": "1344x768", "3:4": "864x1152", "1:1": "1024x1024" },
   ILLUSTRATE_MAX_COUNT: 3,
 }));
+
+const ensureStudioRoot = vi.hoisted(() => vi.fn());
+vi.mock("../ai/illustration-studio", () => ({ ensureStudioRoot }));
 
 import { AiAdminError, AiClientError } from "../ai/errors";
 import { detectReferenceStyleConflict, generateIllustrationTool } from "./illustrate-tool";
@@ -36,6 +41,7 @@ async function invoke(args: Record<string, unknown>): Promise<Record<string, unk
 beforeEach(() => {
   vi.resetAllMocks();
   assertAdminThread.mockResolvedValue(true);
+  ensureStudioRoot.mockResolvedValue({ versionId: BigInt(501) });
 });
 
 describe("generate_illustration(文生图图文工具)", () => {
@@ -45,7 +51,7 @@ describe("generate_illustration(文生图图文工具)", () => {
     expect(generateIllustrations).not.toHaveBeenCalled();
   });
 
-  it("成功:回传站内路径与 markdown 行,附落稿 hint", async () => {
+  it("成功:回传站内路径与 markdown 行,出图即登记工坊根版本回带编辑器链接", async () => {
     generateIllustrations.mockResolvedValueOnce({
       images: [{ path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" }],
     });
@@ -54,11 +60,10 @@ describe("generate_illustration(文生图图文工具)", () => {
     expect((out.images as Array<{ markdown: string }>)[0]?.markdown).toBe(
       "![图文](/wp-content/uploads/2026/10/illu-a.png)",
     );
-    expect(generateIllustrations).toHaveBeenCalledWith({
-      prompt: "一只机械鹤立于数据流之上",
-      n: 1,
-    });
+    expect(ensureStudioRoot).toHaveBeenCalledWith("/wp-content/uploads/2026/10/illu-a.png");
+    expect((out.images as Array<{ studio?: string }>)[0]?.studio).toBe("/admin/illustration/501");
     expect(String(out.hint)).toContain("card_urls");
+    expect(String(out.hint)).toContain("配图工坊");
   });
 
   it("aspect 透传执行核心(机制参数,工具不改写)", async () => {
@@ -73,19 +78,37 @@ describe("generate_illustration(文生图图文工具)", () => {
     });
   });
 
-  it("多张:markdown 逐张带序号", async () => {
+  it("多张:markdown 逐张带序号,工坊链接逐张对应", async () => {
     generateIllustrations.mockResolvedValueOnce({
       images: [
         { path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" },
         { path: "/wp-content/uploads/2026/10/illu-b.png", mime: "image/png" },
       ],
     });
+    ensureStudioRoot
+      .mockResolvedValueOnce({ versionId: BigInt(501) })
+      .mockResolvedValueOnce({ versionId: BigInt(502) });
     const out = await invoke({ prompt: "p", count: 2 });
-    const marks = (out.images as Array<{ markdown: string }>).map((i) => i.markdown);
-    expect(marks).toEqual([
+    const imgs = out.images as Array<{ markdown: string; studio?: string }>;
+    expect(imgs.map((i) => i.markdown)).toEqual([
       "![图文1](/wp-content/uploads/2026/10/illu-a.png)",
       "![图文2](/wp-content/uploads/2026/10/illu-b.png)",
     ]);
+    expect(imgs.map((i) => i.studio)).toEqual([
+      "/admin/illustration/501",
+      "/admin/illustration/502",
+    ]);
+  });
+
+  it("工坊根版本登记失败不回滚生图:studio 缺席但 ok:true(已计费不损失成图)", async () => {
+    generateIllustrations.mockResolvedValueOnce({
+      images: [{ path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" }],
+    });
+    ensureStudioRoot.mockRejectedValueOnce(new Error("pg 连接断"));
+    const out = await invoke({ prompt: "p" });
+    expect(out).toMatchObject({ ok: true });
+    expect((out.images as Array<{ studio?: string }>)[0]?.studio).toBeUndefined();
+    expect((out.images as Array<{ markdown: string }>)[0]?.markdown).toContain("illu-a.png");
   });
 
   it("未绑定模型 → ok:false 人话(AiAdminError 不上抛)", async () => {
@@ -151,6 +174,25 @@ describe("generate_illustration(文生图图文工具)", () => {
     const out = await invoke({ prompt: "p", reference_path: "/wp-content/uploads/a/ref.jpg" });
     expect(out).toMatchObject({ ok: true, reference_applied: true });
     expect(String(out.hint)).toContain("参照图已生效");
+  });
+
+  it("外链参照(M40 批 A):URL 原样透传执行核心,转存回执 reference_saved + hint 提示改传站内路径", async () => {
+    generateIllustrations.mockResolvedValueOnce({
+      images: [{ path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" }],
+      referenceError: null,
+      savedReferencePath: "/wp-content/uploads/2026/10/illu-ref-abc.png",
+    });
+    const out = await invoke({ prompt: "p", reference_path: "https://cdn.example/x.png" });
+    expect(generateIllustrations).toHaveBeenCalledWith(
+      expect.objectContaining({ referencePath: "https://cdn.example/x.png" }),
+    );
+    expect(out).toMatchObject({
+      ok: true,
+      reference_applied: true,
+      reference_saved: "/wp-content/uploads/2026/10/illu-ref-abc.png",
+    });
+    expect(String(out.hint)).toContain("转存入库");
+    expect(String(out.hint)).toContain("reference_path");
   });
 
   it("参照风格冲突守卫:带参照时 prompt 含 HEX 色值 → 出图前拒,人话自纠反馈", async () => {

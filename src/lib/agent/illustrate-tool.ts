@@ -12,6 +12,10 @@
  * M39 批③:reference_path 样例参照图(brief.sample_image 带出;机制参数不占
  * 指南——使用指引住工具描述 + brief note 双层)。白名单站内媒体前缀,外链拒;
  * 参照装载失败不阻塞生图(执行核心降级),人话原因回带 agent。
+ * M40 批 A(会话视觉输入 Tier 1):参照来源扩展——用户会话发来站内路径或
+ * https 图片 URL 均可作 reference_path,外链由执行核心抓取转存入库;编排模型
+ * 纯文本看不了图,纪律=只传参不臆测,以 reference_applied/reference_saved
+ * 回执确认生效。
  * 2026-10-21 E1 纪律单源化:内容规划细则(一图看懂全文/全景图/并集覆盖等)移居
  * writing-guides.ts(CRAFT_ILLUSTRATION_PLAN,指南随 brief 注入可见)——验收期
  * 三轮调优实证:细则住工具描述发版才能改;本描述只留锚点与机制,调优改指南层。
@@ -19,12 +23,15 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
+import { logger } from "../logger";
+
 import { AiAdminError, AiClientError } from "../ai/errors";
 import {
   generateIllustrations,
   ILLUSTRATE_ASPECT_SIZES,
   ILLUSTRATE_MAX_COUNT,
 } from "../ai/illustrate-generate";
+import { ensureStudioRoot } from "../ai/illustration-studio";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
 
@@ -62,30 +69,53 @@ export const generateIllustrationTool = tool(
         });
     }
     try {
-      const { images, referenceError } = await generateIllustrations({
+      const { images, referenceError, savedReferencePath } = await generateIllustrations({
         prompt,
         aspect,
         n: count ?? 1,
         referencePath: reference_path,
       });
+      // M40 批 B:出图即登记工坊根版本(免费 DB 行),回执带编辑器链接供拆层
+      // 精修;登记失败不回滚生图(已计费,链接缺席仅损失精修入口)
+      const studios = await Promise.all(
+        images.map(async (img) => {
+          try {
+            const { versionId } = await ensureStudioRoot(img.path);
+            return `/admin/illustration/${versionId}`;
+          } catch (e) {
+            logger.warn({ event: "illu.studio_root_register_failed", path: img.path, err: e });
+            return null;
+          }
+        }),
+      );
       return JSON.stringify({
         ok: true,
         images: images.map((img, i) => ({
           path: img.path,
           markdown: `![图文${images.length > 1 ? i + 1 : ""}](${img.path})`,
+          ...(studios[i] ? { studio: studios[i] } : {}),
         })),
         ...(referenceError
           ? { reference_warning: referenceError }
           : reference_path
-            ? { reference_applied: true }
+            ? {
+                reference_applied: true,
+                // 外链参照已转存站内(sha1 去重),同篇后续调用传这个站内路径更快更稳
+                ...(savedReferencePath ? { reference_saved: savedReferencePath } : {}),
+              }
             : {}),
         hint:
           "把选用的 markdown 原样写入正文对应位置(独占一行,前后空行);多张时择优取用," +
-          "未选用的不写入;图文不是信息卡,save_topic_draft 的 card_urls 不含这些图" +
+          "未选用的不写入;图文不是信息卡,save_topic_draft 的 card_urls 不含这些图;" +
+          "每张图文带 studio 编辑器链接,把选用图的链接一并告知用户(错字/瑕疵可在" +
+          "配图工坊拆层精修)" +
           (referenceError
             ? ";本次参照图未生效(原因见 reference_warning),已按 prompt 出图"
             : reference_path
-              ? ";参照图已生效:同篇后续图文的风格以参照图为准,prompt 仍不要写自编配色"
+              ? savedReferencePath
+                ? ";参照图已生效并转存入库(reference_saved):同篇后续图文改传该站内路径作 " +
+                  "reference_path,风格以参照图为准,prompt 仍不要写自编配色"
+                : ";参照图已生效:同篇后续图文的风格以参照图为准,prompt 仍不要写自编配色"
               : ""),
       });
     } catch (e) {
@@ -105,7 +135,9 @@ export const generateIllustrationTool = tool(
       "入图文字取原文短句、字少而大,同篇多图每条 prompt 末尾重复同一句风格描述;" +
       "错字无法自查:文字宁少勿多,一图至多重出一次。数据密集内容(价格表/对比表/" +
       "榜单)不走本工具,改 render_card 信息卡。brief 带 sample_image(样例参照图)" +
-      "时必须把它的 media_path 传给 reference_path,风格完全以参照图为准;此时 " +
+      "时必须把它的 media_path 传给 reference_path;用户在会话中发来参照图(站内路径" +
+      "或 https 图片 URL)同样传给 reference_path——你无法查看图片内容,严禁臆测图里" +
+      "画了什么,只传参并由返回回执确认生效。带参照图时风格完全以参照图为准;此时 " +
       "prompt 严禁写任何具体配色/字体/风格词(文字会压过参照图,HEX 色值会被守卫" +
       "直接拒绝),风格锚定句固定写「保持与参考图一致的视觉风格」;返回 ok:false" +
       "(未绑定模型/风格冲突/生图失败)时按报错修正或改走 render_card,不要反复重试。",
@@ -135,12 +167,13 @@ export const generateIllustrationTool = tool(
       reference_path: z
         .string()
         .trim()
-        .max(500)
+        .max(800)
         .optional()
         .describe(
-          "样例参照图的站内媒体路径(brief.sample_image.media_path;仅收 /wp-content/uploads/ " +
-            "站内路径,外链无效):传入后视觉风格完全以参照图为准,prompt 不得自编配色" +
-            "(HEX 色值会被守卫拒绝)",
+          "样例参照图:站内媒体路径(brief.sample_image.media_path,/wp-content/uploads/ 前缀)" +
+            "或用户在会话中发的 https 图片 URL(自动抓取转存入库)。传入后视觉风格完全以参照图" +
+            "为准,prompt 不得自编配色(HEX 色值会被守卫拒绝);返回 reference_saved 后同篇" +
+            "后续调用改传该站内路径",
         ),
     }),
   },

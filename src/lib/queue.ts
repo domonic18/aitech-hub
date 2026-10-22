@@ -50,6 +50,10 @@ export const QUEUE_DISCOVERY = "discovery";
 /** 洞察加工(M34 批②,insight-plan §5):embed 高频向量回填+增量聚类 /
  * daily 日频 LLM 打标+覆盖度+快照;并发 1(同批自愈重扫语义,防双拍交错归簇)*/
 export const QUEUE_INSIGHT = "insight";
+/** 配图工坊拆层(M40 批 B,arch/05 §4.7):手动触发 Seedream layer_decomposition,
+ * 官方 URL 24h 过期前 worker 转存站内媒体;拆层 ~75s 不占请求(请求内禁秒级任务)。
+ * 并发 1:拆层是单绑定模型重调用,串行防打爆速率 */
+export const QUEUE_ILLUSTRATION_STUDIO = "illustration-studio";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -69,6 +73,7 @@ export const QUEUE_NAMES = [
   QUEUE_PAY_RECONCILE,
   QUEUE_DISCOVERY,
   QUEUE_INSIGHT,
+  QUEUE_ILLUSTRATION_STUDIO,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
@@ -155,6 +160,11 @@ export const DISCOVERY_JOB_BILI = "discovery-bili";
 export const INSIGHT_JOB_EMBED = "embed";
 export const INSIGHT_JOB_DAILY = "daily";
 export const INSIGHT_JOB_FETCH = "fetch";
+
+/** illustration-studio 队列 job name 契约(M40 批 B;decompose 为缺省路径——
+ * 拆层运行首次触发与改字后手动重拆同一入口,jobId 锚 groupId 天然唯一)。
+ * 改名需与 worker 同批。 */
+export const ILLUSTRATION_JOB_DECOMPOSE = "decompose";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
