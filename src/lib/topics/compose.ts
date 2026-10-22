@@ -21,13 +21,15 @@ import { fetchExternalImage } from "../media/fetch-external";
 import { uploadMedia } from "../media/service";
 import { logger } from "../logger";
 import { prisma } from "../db";
-import { hydrateItems } from "./repo";
+import { hydrateItems } from "./materials";
 
 // ── 素材块(原 compose-prompt 纯函数段,M27 批⑤并档)──────────────
 
 /** 合成素材块(hydrateItems 同源取数,post 块额外带摘要与正文取样) */
 export interface ComposeMaterialBlock {
   kind: "telegram" | "post";
+  /** telegram 块分型(M42:文本素材也是一等底料);post 块恒 null */
+  mediaType: "video" | "text" | null;
   title: string;
   blogger: string | null;
   /** 人工批注(合成取舍指令,原样注入) */
@@ -36,7 +38,12 @@ export interface ComposeMaterialBlock {
   aiNote: string | null;
   aiSummary: string | null;
   aiPoints: string[];
-  /** telegram 块:原视频链接与封面图(供写作引用/CTA);post 块恒 null */
+  /** 电报原文 1-3 句(文本素材的主底料;视频为辅助) */
+  summary: string | null;
+  /** 解读主题与关键词(视频素材才有,供选题关联) */
+  aiTopic: string | null;
+  keywords: string[];
+  /** telegram 视频块:原视频链接与封面图(供写作引用/CTA);文本/post 块恒 null */
   videoUrl: string | null;
   coverUrl: string | null;
   /** post 块:摘要与正文取样(telegram 块恒 null) */
@@ -73,16 +80,21 @@ export async function buildComposeBlocks(
     const m = materials.get(item.id);
     if (!m) continue;
     if (item.itemType === "telegram" && m.telegram) {
+      const isVideo = m.telegram.mediaType === "video";
       blocks.push({
         kind: "telegram",
+        mediaType: isVideo ? "video" : "text",
         title: m.telegram.title ?? "(无标题)",
         blogger: m.telegram.videoBlogger,
         note: item.note,
         aiNote: m.telegram.aiNote,
         aiSummary: m.telegram.aiSummary,
         aiPoints: normalizePoints(m.telegram.aiPoints),
-        videoUrl: m.telegram.url,
-        coverUrl: m.telegram.videoCoverUrl ?? null,
+        summary: m.telegram.summary,
+        aiTopic: m.telegram.aiTopic,
+        keywords: normalizePoints(m.telegram.aiKeywords),
+        videoUrl: isVideo ? m.telegram.url : null,
+        coverUrl: isVideo ? (m.telegram.videoCoverUrl ?? null) : null,
         excerpt: null,
         contentSample: null,
       });
@@ -90,12 +102,16 @@ export async function buildComposeBlocks(
       const detail = postMap.get(m.post.id);
       blocks.push({
         kind: "post",
+        mediaType: null,
         title: detail?.title ?? m.post.title ?? "(无标题)",
         blogger: null,
         note: item.note,
         aiNote: null,
         aiSummary: null,
         aiPoints: [],
+        summary: null,
+        aiTopic: null,
+        keywords: [],
         videoUrl: null,
         coverUrl: null,
         excerpt: detail?.excerpt ?? null,
@@ -119,7 +135,8 @@ export function buildVideoCard(
   blocks: ComposeMaterialBlock[],
   cardCoverPath: string | null,
 ): string | null {
-  const v = blocks.find((b) => b.kind === "telegram");
+  // M42:仅视频素材产生推荐卡(电报文本素材不是视频,不造假推荐)
+  const v = blocks.find((b) => b.kind === "telegram" && b.mediaType === "video");
   if (!v) return null;
   const imageLine = cardCoverPath ? `> ![${v.title}](${cardCoverPath})\n>\n` : "";
   return imageLine + `> 📺 本文推荐视频:《${v.title}》· UP主:${v.blogger ?? "未知"}`;
@@ -256,7 +273,7 @@ export async function finalizeCompose(
 ): Promise<ComposeOutcome> {
   // 卡图确定性自取(批⑥):锚定首视频块自己的封面,不依赖模型传参;与
   // brief/transfer 的先行转存 sha1 去重,至多重复一次外链 GET;失败降级文字卡
-  const firstVideo = blocks.find((b) => b.kind === "telegram");
+  const firstVideo = blocks.find((b) => b.kind === "telegram" && b.mediaType === "video");
   const cardCoverPath =
     firstVideo?.coverUrl != null ? await transferCoverOrNull(firstVideo.coverUrl) : null;
   const cardMd = buildVideoCard(blocks, cardCoverPath);

@@ -29,12 +29,16 @@ vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 function tgBlock() {
   return {
     kind: "telegram" as const,
+    mediaType: "video" as const,
     title: "端侧实测",
     blogger: "UP主A",
     note: null,
     aiNote: null,
     aiSummary: null,
     aiPoints: [],
+    summary: "原文一句",
+    aiTopic: "端侧",
+    keywords: [],
     videoUrl: "https://www.bilibili.com/video/BV1xx",
     coverUrl: "https://i0.hdslb.com/bfs/archive/cover.jpg",
     excerpt: null,
@@ -45,12 +49,16 @@ function tgBlock() {
 function postBlock() {
   return {
     kind: "post" as const,
+    mediaType: null,
     title: "旧文",
     blogger: null,
     note: null,
     aiNote: null,
     aiSummary: null,
     aiPoints: [],
+    summary: null,
+    aiTopic: null,
+    keywords: [],
     videoUrl: null,
     coverUrl: null,
     excerpt: null,

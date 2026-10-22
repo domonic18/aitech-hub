@@ -10,7 +10,8 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { toItemDto, toTopicDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
-import { getTopic, hydrateItems, updateTopic, updateTopicStatus } from "@/lib/topics/repo";
+import { hydrateItems } from "@/lib/topics/materials";
+import { getTopic, updateTopic, updateTopicStatus } from "@/lib/topics/repo";
 import { topicStatusSchema, topicUpdateSchema } from "@/lib/topics/schemas";
 import { deriveSkillKey } from "@/lib/topics/writing-config";
 
@@ -59,7 +60,7 @@ export async function PATCH(
   if (!parsed.success && !status.success) {
     return apiEnvelope(
       400,
-      "字段不合法(标题 1-200 / 定位 ≤1000 / 文章 id 与样例图 id 纯数字 / status 枚举)",
+      "字段不合法(标题 1-200 / 定位与贴图配置 ≤1000 / 文章 id 与样例图 id 纯数字 / status 枚举 / outputType article|pin)",
     );
   }
   // skillKey 存在性核(soft ref 可解绑,但指向必须落在启用的 agent_skill 上)

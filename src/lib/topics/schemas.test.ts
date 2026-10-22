@@ -11,6 +11,14 @@ describe("topicCreateSchema", () => {
     expect(topicCreateSchema.safeParse({ title: "x".repeat(201) }).success).toBe(false);
     expect(topicCreateSchema.safeParse({}).success).toBe(false);
   });
+
+  it("主意图(M42):article/pin 合法,缺省不落键,非法值拒绝", () => {
+    expect(topicCreateSchema.safeParse({ title: "t", outputType: "pin" }).success).toBe(true);
+    expect(topicCreateSchema.safeParse({ title: "t", outputType: "article" }).success).toBe(true);
+    expect(topicCreateSchema.safeParse({ title: "t", outputType: "video" }).success).toBe(false);
+    const parsed = topicCreateSchema.parse({ title: "t" });
+    expect(parsed.outputType).toBeUndefined();
+  });
 });
 
 describe("topicUpdateSchema", () => {
@@ -34,6 +42,14 @@ describe("topicUpdateSchema", () => {
     expect(topicUpdateSchema.safeParse({ sampleImageId: null }).success).toBe(true);
     expect(topicUpdateSchema.safeParse({ sampleImageId: "4a" }).success).toBe(false);
     expect(topicUpdateSchema.safeParse({ sampleImageId: 42 }).success).toBe(false);
+  });
+
+  it("贴图配置(M42):≤1000 码点,可置空;主意图可切换", () => {
+    expect(topicUpdateSchema.safeParse({ pinPositioning: "画面:共 6 张" }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ pinPositioning: null }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ pinPositioning: "x".repeat(1001) }).success).toBe(false);
+    expect(topicUpdateSchema.safeParse({ outputType: "pin" }).success).toBe(true);
+    expect(topicUpdateSchema.safeParse({ outputType: "audio" }).success).toBe(false);
   });
 });
 

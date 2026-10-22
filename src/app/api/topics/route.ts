@@ -8,7 +8,11 @@ import { type NextRequest, NextResponse } from "next/server";
 import { parseListSegment, parsePage } from "@/lib/admin/list";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
-import { TOPIC_LIST_SEGMENTS } from "@/lib/topics/constants";
+import {
+  TOPIC_LIST_SEGMENTS,
+  TOPIC_OUTPUT_TYPES,
+  type TopicOutputType,
+} from "@/lib/topics/constants";
 import { toTopicDto } from "@/lib/topics/dto";
 import { createTopic, countByStatus, listTopics } from "@/lib/topics/repo";
 import { topicCreateSchema } from "@/lib/topics/schemas";
@@ -23,10 +27,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (actor.kind === "reject") return actor.response;
   const sp = req.nextUrl.searchParams;
   const segment = parseListSegment(TOPIC_LIST_SEGMENTS, sp.get("status") ?? undefined, "all");
+  const rawOutput = sp.get("output") ?? undefined;
+  const output = (TOPIC_OUTPUT_TYPES as readonly string[]).includes(rawOutput ?? "")
+    ? (rawOutput as TopicOutputType)
+    : undefined;
   const page = parsePage(sp.get("page") ?? undefined);
   const [{ items, total }, counts] = await Promise.all([
-    listTopics({ status: segment === "all" ? undefined : segment, page }),
-    countByStatus(),
+    listTopics({
+      status: segment === "all" ? undefined : segment,
+      ...(output ? { output } : {}),
+      page,
+    }),
+    countByStatus(output),
   ]);
   return apiEnvelope(0, "ok", {
     items: items.map((t) => toTopicDto(t)),
@@ -39,12 +51,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const parsed = topicCreateSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return apiEnvelope(400, "标题必填(1-200 字符),定位最长 1000 字符");
+  if (!parsed.success) {
+    return apiEnvelope(400, "标题必填(1-200 字符),定位最长 1000 字符,主意图仅 article/pin");
+  }
   // 形式 → skillKey 单点回写(M39 批②,同 PATCH 口径):定位命中预置形式时
-  // 派生绑定;自定义/空串不绑(agent 侧自动匹配兜底)
-  const topic = await createTopic({
-    ...parsed.data,
-    skillKey: deriveSkillKey(parsed.data.positioning ?? null),
-  });
+  // 派生绑定;自定义/空串不绑(agent 侧自动匹配兜底)。贴图意图且未填长文
+  // 定位时不绑写作技能(避免给贴图创作挂上文章指南)
+  const skillKey =
+    parsed.data.outputType === "pin" && parsed.data.positioning === undefined
+      ? undefined
+      : deriveSkillKey(parsed.data.positioning ?? null);
+  const topic = await createTopic({ ...parsed.data, skillKey });
   return apiEnvelope(0, "created", toTopicDto(topic));
 }
