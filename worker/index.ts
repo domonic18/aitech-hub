@@ -11,6 +11,7 @@ import {
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
   QUEUE_DISTRIBUTE,
+  QUEUE_ILLUSTRATION_STUDIO,
   QUEUE_INSIGHT,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_TRANSFER,
@@ -72,7 +73,9 @@ async function main(): Promise<void> {
                   ? { concurrency: 1, lockDuration: 900_000 } // B站风控纪律全局串行;双窗全词 5-10min
                   : name === QUEUE_INSIGHT
                     ? { concurrency: 1, lockDuration: 600_000 } // 日批 LLM 分钟级;并发 1 防双拍交错归簇
-                    : {};
+                    : name === QUEUE_ILLUSTRATION_STUDIO
+                      ? { concurrency: 1, lockDuration: 600_000 } // 拆层 ~75s+逐层转存;并发 1 防打爆单绑定模型
+                      : {};
     const w = new Worker(name, withJobRunLog(name, PROCESSORS[name]), {
       connection,
       concurrency: 2,

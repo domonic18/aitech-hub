@@ -731,6 +731,82 @@ model AiUsageLog {
   @@map("ai_usage_log")
 }
 
+// ── ai_illu_(配图工坊,M40 批 B,arch/05 §4.7)──────────────────────
+// 版本链/图层组/图层行三表:根版本=进入工坊的原始整图(generate_illustration
+// 出图即登记,拆层仍纯手动——M40 决策);编辑回路确认后产新版本(parent 单链);
+// 拆层一次运行=一个图层组(干净底板+透明 PNG 图层行)。spike 实证契约
+// (2026-10-22,workspace/tmp/spike-illustration-studio/):底图=抠净元素的
+// 干净底板(显隐组合导出语义成立,藏层即元素真消失);官方水印烙在底板上
+// (导出恒带水印,合规自动闭环);图层=bbox 区域高分重提(纵横比与 bbox 一致、
+// 尺寸非等比),合成按 normalized bbox 定位缩放。
+
+/// 配图版本(版本链节点):mediaPath=该版本整图(站内媒体路径,编辑回路输入
+/// 与产物);origin 记产生方式;edit_instruction/edit_bbox 记复现依据
+/// (original 两列为 null)。parent 单链不分支(评审史即链);不设删除
+/// (版本不可变历史,M40 无删除面)。
+model IllustrationVersion {
+  id              BigInt   @id @default(autoincrement())
+  mediaPath       String   @map("media_path") @db.VarChar(500)
+  parentVersionId BigInt?  @map("parent_version_id")
+  origin          String   @db.VarChar(20) // original/text_edit/erase/redraw
+  editInstruction String?  @map("edit_instruction") @db.VarChar(1000) // 产生本版本的编辑指令
+  editBbox        String?  @map("edit_bbox") @db.VarChar(40) // normalized "x1 y1 x2 y2"
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  parent  IllustrationVersion?   @relation("illu_version_chain", fields: [parentVersionId], references: [id])
+  children IllustrationVersion[] @relation("illu_version_chain")
+  groups  IllustrationLayerGroup[]
+
+  @@index([parentVersionId], map: "idx_ai_illu_version_parent")
+  @@index([mediaPath], map: "idx_ai_illu_version_media")
+  @@map("ai_illu_version")
+}
+
+/// 图层组(一次拆层运行):version 维度手动触发;改字后旧组即过期(手动重拆
+/// 产新组,旧组保留供回看)。status=processing 时编辑器轮询;ready 后 layers
+/// 可用;failed 带人话 error。baseMediaPath=干净底板(data[0] 转存,合成
+/// 与画布预览的背景层——非 version.mediaPath 整图)。
+model IllustrationLayerGroup {
+  id            BigInt   @id @default(autoincrement())
+  versionId     BigInt   @map("version_id")
+  baseMediaPath String?  @map("base_media_path") @db.VarChar(500) // 底板转存路径(ready 后非空)
+  status        String   @default("processing") @db.VarChar(12) // processing/ready/failed
+  error         String?  @db.VarChar(500)
+  modelId       Int      @map("model_id") // ai_model.id(拆层调用溯源,与用量台账对账)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  version IllustrationVersion @relation(fields: [versionId], references: [id])
+  layers  IllustrationLayer[]
+
+  @@index([versionId, createdAt], map: "idx_ai_illu_group_version_created")
+  @@map("ai_illu_layer_group")
+}
+
+/// 图层行(拆层产物单层):bbox=官方 normalized[0-999] x1/y1/x2/y2(合成定位
+/// 唯一依据,spike 实证图层尺寸非等比必须按 bbox 缩放);mediaPath=透明 PNG
+/// 站内转存路径(官方 URL 24h 过期前由 worker 转存);visible=显隐组合
+/// (默认全显,导出在前端画布按 z 序合成底板+可见层)。
+model IllustrationLayer {
+  id          BigInt   @id @default(autoincrement())
+  groupId     BigInt   @map("group_id")
+  zIndex      Int      @map("z_index")
+  name        String   @db.VarChar(200)
+  description String?  @db.VarChar(500)
+  bboxX1      Int      @map("bbox_x1")
+  bboxY1      Int      @map("bbox_y1")
+  bboxX2      Int      @map("bbox_x2")
+  bboxY2      Int      @map("bbox_y2")
+  mediaPath   String   @map("media_path") @db.VarChar(500)
+  visible     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  group IllustrationLayerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, zIndex], map: "idx_ai_illu_layer_group_zindex")
+  @@map("ai_illu_layer")
+}
+
 // ── site_(站点配置域,M10)────────────────────────────────────────
 
 /// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,

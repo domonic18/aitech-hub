@@ -9,7 +9,8 @@ export type AiAdminErrorCode =
   | "duplicate"
   | "bound" // 两步武装删除:被任务绑定引用,先解绑
   | "invalid" // 校验不过(purposes 不匹配/主备相同等)
-  | "disabled"; // 绑定/解析目标模型已停用
+  | "disabled" // 绑定/解析目标模型已停用
+  | "conflict"; // 资源态冲突(M40 工坊:同版本拆层进行中重复触发)
 
 /** 业务错误 → 路由按码映射 HTTP 状态(同 BloggerAdminError 模式) */
 export class AiAdminError extends Error {
@@ -24,7 +25,7 @@ export class AiAdminError extends Error {
 /** 路由侧统一映射:not_found→404,duplicate|bound→409,其余→400 */
 export function aiErrorStatus(code: AiAdminErrorCode): number {
   if (code === "not_found") return 404;
-  if (code === "duplicate" || code === "bound") return 409;
+  if (code === "duplicate" || code === "bound" || code === "conflict") return 409;
   return 400;
 }
 
