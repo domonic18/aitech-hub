@@ -39,7 +39,6 @@ import StudioTopbar from "@/components/admin/studio/StudioTopbar";
 import StudioWorkbench from "@/components/admin/studio/StudioWorkbench";
 import TopicMountButton from "@/components/admin/studio/TopicMountButton";
 import TopicMountControls from "@/components/admin/studio/TopicMountControls";
-import TopicSampleImagePicker from "@/components/admin/studio/TopicSampleImagePicker";
 import TopicWritingConfigPanel from "@/components/admin/studio/TopicWritingConfigPanel";
 
 export const dynamic = "force-dynamic";
@@ -184,16 +183,7 @@ export default async function AdminStudioDetailPage({ params, searchParams }: Pa
           )
         }
         pinStage={<PinOutputsGrid pins={pins} />}
-        writingConfig={
-          <div className="flex flex-col gap-3">
-            <TopicWritingConfigPanel id={id} positioning={topic.positioning} />
-            {/* 配图风格参照(M39 批③):样例图库绑定面,绑定即时生效不经保存按钮 */}
-            <TopicSampleImagePicker
-              topicId={id}
-              initialSampleImageId={topic.sampleImageId?.toString() ?? null}
-            />
-          </div>
-        }
+        writingConfig={<TopicWritingConfigPanel id={id} positioning={topic.positioning} />}
         pinConfig={
           <PinConfigPanel id={id} pinPositioning={topic.pinPositioning} candidates={references} />
         }
