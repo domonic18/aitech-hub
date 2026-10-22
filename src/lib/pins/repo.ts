@@ -13,7 +13,12 @@ import { PIN_IMAGES_MAX, PIN_MANUAL_TARGETS, type PinStatus } from "./constants"
 import type { PinCreateInput, PinImageAddInput, PinUpdateInput } from "./schemas";
 
 export type PinErrorCode =
-  "not_found" | "invalid_transition" | "edit_locked" | "image_overflow" | "version_not_found";
+  | "not_found"
+  | "invalid_transition"
+  | "edit_locked"
+  | "image_overflow"
+  | "version_not_found"
+  | "invalid_input";
 
 export class PinError extends Error {
   constructor(
@@ -221,6 +226,35 @@ export async function listPins(
     })),
     total,
   };
+}
+
+/** 某创作项目的贴图产出(M42 创作中心产出区):首图封面 + 张数,更新时间倒序 */
+export async function listPinsByTopic(topicId: bigint): Promise<
+  {
+    id: bigint;
+    title: string;
+    status: string;
+    imageCount: number;
+    coverPath: string | null;
+    updatedAt: Date;
+  }[]
+> {
+  const rows = await prisma.contentPin.findMany({
+    where: { topicId },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      _count: { select: { images: true } },
+      images: { orderBy: { sortOrder: "asc" }, take: 1, select: { mediaPath: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: r.status,
+    imageCount: r._count.images,
+    coverPath: r.images[0]?.mediaPath ?? null,
+    updatedAt: r.updatedAt,
+  }));
 }
 
 /** 状态分段计数(工作台页签角标) */

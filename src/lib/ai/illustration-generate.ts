@@ -4,9 +4,13 @@
  * 工坊「新建配图」(无 pinId)与组装台「AI 生成贴图」(带 pinId)。
  * attempts=1 生图计费不自动重试(同拆层口径);完成无推送,调用方轮询取结果
  * (工坊列表 / 贴图详情)。缺省宽高比 3:4(小绿书竖版,异于 illustrate 缺省 16:9)。
+ * M42 批③:参照图贯通——入参携带 referencePath(仅站内 uploads)透传到执行核心,
+ * 成功后把实际采纳的参照落 content_pin.reference_media_path(重生成不再靠人记忆);
+ * 装载失败照常降级无参照出图,referenceError 如实回传。
  */
 import { prisma } from "../db";
 import { logger } from "../logger";
+import { isUploadsPath } from "../media/refs";
 import { getQueue, ILLUSTRATION_JOB_GENERATE, QUEUE_ILLUSTRATION_STUDIO } from "../queue";
 import { PIN_IMAGES_MAX } from "../pins/constants";
 import { AI_PURPOSE_ILLUSTRATE } from "./constants";
@@ -25,6 +29,8 @@ export interface IllustrationGenerateJobData {
   count?: number;
   /** 组装台入口携带:生成完成后自动挂到序列尾(超上限截断,编辑态才挂) */
   pinId?: string;
+  /** 参照图站内 uploads 路径(风格锚定;装载失败降级无参照并回带 referenceError) */
+  referencePath?: string;
 }
 
 export interface IllustrationGenerateJobResult {
@@ -61,7 +67,24 @@ async function attachGeneratedToPin(pinId: bigint, versionIds: bigint[]): Promis
   return toAttach.length;
 }
 
-/** worker 消费:生图 → 登记工坊根版本 → 可选回填贴图 */
+/** 采纳参照落库(best-effort):外链参照已被执行核心转存,优先记转存后的站内路径 */
+async function persistAdoptedReference(pinId: bigint, path: string): Promise<void> {
+  try {
+    await prisma.contentPin.update({
+      where: { id: pinId },
+      data: { referenceMediaPath: path },
+    });
+  } catch (e) {
+    // 参照元数据写失败不回滚已计费出图,只丢「下次默认参照」
+    logger.warn({
+      event: "illu.reference_persist_failed",
+      pinId: String(pinId),
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+/** worker 消费:生图 → 登记工坊根版本 → 可选回填贴图 → 采纳参照落库 */
 export async function illustrationGenerateJob(
   data: IllustrationGenerateJobData,
 ): Promise<IllustrationGenerateJobResult> {
@@ -70,6 +93,7 @@ export async function illustrationGenerateJob(
     prompt: data.prompt,
     n: data.count,
     aspect,
+    ...(data.referencePath ? { referencePath: data.referencePath } : {}),
   });
   const versionIds: bigint[] = [];
   for (const img of gen.images) {
@@ -80,12 +104,18 @@ export async function illustrationGenerateJob(
   if (data.pinId && versionIds.length > 0) {
     attached = await attachGeneratedToPin(BigInt(data.pinId), versionIds);
   }
+  // 只记真正生效的参照:装载失败(referenceError)说明参照没进 prompt,不落库
+  const adopted = gen.savedReferencePath ?? data.referencePath ?? null;
+  if (data.pinId && adopted && gen.referenceError === null) {
+    await persistAdoptedReference(BigInt(data.pinId), adopted);
+  }
   logger.info({
     event: "illu.generate_done",
     versions: versionIds.length,
     attached,
     pinId: data.pinId ?? null,
     aspect,
+    reference: adopted,
     referenceError: gen.referenceError,
   });
   return { versionIds: versionIds.map(String), attached, referenceError: gen.referenceError };
@@ -101,7 +131,12 @@ export async function enqueueIllustrationGenerate(input: {
   aspect?: string;
   count?: number;
   pinId?: string;
+  referencePath?: string;
 }): Promise<{ jobId: string }> {
+  // 参照只收站内 uploads(纵深防御:schema 已校验一层,内部调用方不经 HTTP)
+  if (input.referencePath && !isUploadsPath(input.referencePath)) {
+    throw new AiAdminError("invalid", "参照图须为站内上传路径(/wp-content/uploads/…)");
+  }
   const model = await resolveAiModel(AI_PURPOSE_ILLUSTRATE);
   if (!model) {
     throw new AiAdminError(
@@ -130,6 +165,7 @@ export async function enqueueIllustrationGenerate(input: {
       aspect: input.aspect && ILLUSTRATE_ASPECT_SIZES[input.aspect] ? input.aspect : "3:4",
       count: Math.min(Math.max(input.count ?? 1, 1), ILLUSTRATE_MAX_COUNT),
       ...(input.pinId ? { pinId: input.pinId } : {}),
+      ...(input.referencePath ? { referencePath: input.referencePath } : {}),
     },
     { jobId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 },
   );
@@ -138,6 +174,7 @@ export async function enqueueIllustrationGenerate(input: {
     jobId,
     pinId: input.pinId ?? null,
     aspect: input.aspect ?? "3:4",
+    reference: input.referencePath ?? null,
   });
   return { jobId };
 }

@@ -97,4 +97,12 @@ describe("生成入参(illustrate 通道)", () => {
       true,
     );
   });
+
+  it("referencePath 仅收站内 uploads(M42 批③)", () => {
+    const ok = "/wp-content/uploads/2026/10/sample.png";
+    expect(pinGenerateSchema.safeParse({ prompt: "x", referencePath: ok }).success).toBe(true);
+    for (const bad of ["/media/sample.png", "https://ext/a.png", "uploads/a.png"]) {
+      expect(pinGenerateSchema.safeParse({ prompt: "x", referencePath: bad }).success).toBe(false);
+    }
+  });
 });
