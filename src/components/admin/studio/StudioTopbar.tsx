@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * 创作概览区(M42 批④:自专题概览泛化)——详情页第①区,回答「这个创作现在
- * 到哪一步了、接下来做什么」:状态步进条 + 标题编辑 + 事实行(主意图/内容
- * 形式/长文与贴图成果/各时间点)+ 当前态语义说明与人工流转钮。写作要求与
- * 贴图配置的编辑都不在这里(第②区页签单点),本件只读展示派生结果,避免
- * 双入口。贴图意图的长文定位可能为空,此时不展示内容形式(缺省值会误读)。
+ * 创作顶栏(v2 工作台重构,自 TopicOverviewPanel 收编):返回 + 行内标题编辑
+ * + 状态徽标 + 主意图 chip + 人工流转钮组;第二行当前态语义说明与时间线。
+ * 状态机纪律不变:collecting→drafted 仅由生成驱动,API/钮组口径同源
+ * (MANUAL_STATUS_TARGETS;回退钮弹确认写后果)。
  */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
@@ -17,13 +17,17 @@ import {
 } from "@/lib/topics/constants";
 import type { ApiEnvelope } from "@/lib/http/response";
 
-import TopicStatusStepper from "./TopicStatusStepper";
-
-/** 当前态语义说明(这一步意味着什么、下一步做什么;与步进条 STEP_HINT 互补) */
+/** 当前态语义说明(这一步意味着什么、下一步做什么) */
 const STATUS_HINT: Record<TopicStatus, string> = {
   collecting: "素材收集中:添加视频/文章/电报素材、写批注,攒够 2~3 条即可在产出区创作。",
   drafted: "已出稿:长文/贴图已落库,可继续精修或再生成一组;补充素材后可回来重做。",
   published: "已发布:文章前台可见,可到文档编辑页同步公众号草稿。",
+};
+
+const STATUS_PILL: Record<TopicStatus, string> = {
+  collecting: "bg-amber/12 text-amber-hi",
+  drafted: "bg-accent/12 text-accent",
+  published: "bg-green/12 text-green",
 };
 
 /** 状态钮语义命名(按目标态;人工迁移目标只有这三个方向) */
@@ -44,38 +48,21 @@ function statusAction(target: TopicStatus): { label: string; confirm: string | n
   }
 }
 
-export default function TopicOverviewPanel({
+export default function StudioTopbar({
   id,
   title,
   status,
   outputLabel,
-  linkedPostId,
-  pinCount,
-  purposeLabel,
-  purposeCustom,
-  showPurpose,
   createdAt,
   updatedAt,
-  composedAt,
-  publishedAt,
 }: {
   id: string;
   title: string;
   status: string;
-  /** 主意图展示名(长文创作/贴图创作;只决定默认面板,不限制另一种产出) */
+  /** 主意图展示名(长文创作/贴图创作) */
   outputLabel: string;
-  linkedPostId: string | null;
-  /** 本创作已落库贴图数(产出成果计数) */
-  pinCount: number;
-  /** 内容形式展示名(服务端 resolvePurpose 由写作要求派生,此处只读) */
-  purposeLabel: string;
-  purposeCustom: boolean;
-  /** 长文定位为空时不展示内容形式(缺省派生值会被误读为已配置) */
-  showPurpose: boolean;
   createdAt: Date;
   updatedAt: Date;
-  composedAt: Date | null;
-  publishedAt: Date | null;
 }) {
   const router = useRouter();
   const [titleDraft, setTitleDraft] = useState(title);
@@ -127,9 +114,20 @@ export default function TopicOverviewPanel({
   const targets = MANUAL_STATUS_TARGETS[status as TopicStatus] ?? [];
 
   return (
-    <div className="flex flex-col gap-3 rounded-sm border border-line bg-panel p-3">
-      <TopicStatusStepper status={status} />
-      <div className="flex items-center gap-2">
+    <div className="mb-3 flex flex-col gap-1.5 rounded-sm border border-line bg-panel px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/admin/studio/"
+          className="shrink-0 text-xs text-text-3 hover:text-accent"
+          title="返回创作中心列表"
+        >
+          ← 创作中心
+        </Link>
+        <span
+          className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium ${STATUS_PILL[status as TopicStatus] ?? ""}`}
+        >
+          {TOPIC_STATUS_LABEL[status as TopicStatus] ?? status}
+        </span>
         <input
           value={titleDraft}
           maxLength={200}
@@ -152,63 +150,30 @@ export default function TopicOverviewPanel({
             保存标题
           </button>
         )}
-      </div>
-      {/* 事实行:主意图 + 内容形式 + 产出成果 + 时间线(原「定位备注」下方散落的元信息收拢) */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-3">
-        <span>
-          主意图:<span className="text-text-2">{outputLabel}</span>
+        <span className="shrink-0 rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-2">
+          {outputLabel}
         </span>
-        {showPurpose && (
-          <span>
-            内容形式:<span className="text-text-2">{purposeLabel}</span>
-            {purposeCustom && <span className="ml-1 text-amber-hi">(自定义)</span>}
-          </span>
-        )}
-        <span>
-          长文:
-          {linkedPostId ? (
-            <a
-              href={`/admin/posts/${linkedPostId}`}
-              className="text-text-2 underline decoration-line hover:text-accent"
+        {targets.map((t) => {
+          const { label } = statusAction(t);
+          return (
+            <button
+              key={t}
+              type="button"
+              disabled={busy}
+              onClick={() => void changeStatus(t)}
+              title={`流转到「${TOPIC_STATUS_LABEL[t]}」`}
+              className="shrink-0 rounded-sm border border-line px-2 py-0.5 text-[11px] text-text-2 hover:border-accent hover:text-text-1 disabled:opacity-50"
             >
-              #{linkedPostId}
-            </a>
-          ) : (
-            "未生成"
-          )}
-        </span>
-        <span>贴图:{pinCount} 张</span>
-        <span>创建 {fmt(createdAt)}</span>
-        <span>更新 {fmt(updatedAt)}</span>
-        {composedAt && <span>最近生成 {fmt(composedAt)}</span>}
-        {publishedAt && <span>文章发布 {fmt(publishedAt)}</span>}
+              {label}
+            </button>
+          );
+        })}
       </div>
-      {/* 状态操作:当前态语义一行 + 语义化流转钮(回退弹确认写后果) */}
-      <div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold text-text-3">状态操作</span>
-          <span className="text-[11px] text-text-2">{STATUS_HINT[status as TopicStatus]}</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {targets.map((t) => {
-            const { label } = statusAction(t);
-            return (
-              <button
-                key={t}
-                type="button"
-                disabled={busy}
-                onClick={() => void changeStatus(t)}
-                title={`流转到「${TOPIC_STATUS_LABEL[t]}」`}
-                className="rounded-sm border border-line px-2.5 py-1 text-xs text-text-2 hover:border-accent hover:text-text-1 disabled:opacity-50"
-              >
-                {label}
-              </button>
-            );
-          })}
-          {targets.length === 0 && (
-            <span className="text-[11px] text-text-3">当前状态无人工流转出口</span>
-          )}
-        </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-3">
+        <span>{STATUS_HINT[status as TopicStatus]}</span>
+        <span className="ml-auto">
+          创建 {fmt(createdAt)} · 更新 {fmt(updatedAt)}
+        </span>
       </div>
       {msg && (
         <span className={`text-[11px] ${msg.tone === "ok" ? "text-green" : "text-red"}`}>

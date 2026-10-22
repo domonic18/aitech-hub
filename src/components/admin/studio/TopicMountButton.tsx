@@ -51,7 +51,7 @@ export default function TopicMountButton({
         type="button"
         onClick={() => void mount()}
         disabled={busy}
-        className="rounded-sm border border-line px-2.5 py-1 text-xs text-text-2 hover:border-accent hover:text-text-1 disabled:opacity-50"
+        className="whitespace-nowrap rounded-sm border border-line px-2.5 py-1 text-xs text-text-2 hover:border-accent hover:text-text-1 disabled:opacity-50"
       >
         添加
       </button>

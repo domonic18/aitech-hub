@@ -83,7 +83,8 @@ export default function StudioActions({
   }
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-sm border border-line bg-panel p-3">
+    // 外框(边框/吸附/阴影)由 StudioWorkbench 创作条槽位承担,本件只管内容
+    <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
