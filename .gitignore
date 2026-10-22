@@ -36,6 +36,7 @@ coverage/
 !/workspace/backups/
 !/workspace/backups/.gitkeep
 workspace/backups/*.tgz
+workspace/backups/*.dump
 workspace/backups/db/
 
 # Playwright 本地产物
