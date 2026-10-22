@@ -807,6 +807,78 @@ model IllustrationLayer {
   @@map("ai_illu_layer")
 }
 
+// ── content_pin(贴图域,M41 渠道三)──────────────────────────────
+
+/// 贴图(渠道三主实体,「一文看懂XXX」轻图文):标题 ≤32 码点(公众号
+/// newspic 硬上限,应用层 Zod)+ 轻文字纯文本(≤2 万码点,UI 软帽 2000)+
+/// 有序图片列表(content_pin_image,引用配图工坊 ai_illu_version 不拷文件)+
+/// 专题软关联。status 状态机:draft(草稿)→ pending(待验收)→ synced(已推
+/// 公众号草稿箱)→ published(站点 /pins 上架);回退仅 pending→draft。
+/// read_more_url 同步时写公众号 content_source_url(阅读原文回跳站内)。
+/// crop_spec 为封面裁剪快照(cover_info.crop_percent_list,同步随 draft/add)。
+model ContentPin {
+  id          BigInt    @id @default(autoincrement())
+  title       String    @db.VarChar(64) // ≤32 码点(应用层 Zod;VarChar 留字节数余量)
+  content     String    @default("") @map("content") @db.Text // 轻文字纯文本(禁 Markdown/内联 HTML)
+  topicId     BigInt?   @map("topic_id") // 专题软关联(应用层完整性:删专题由编辑侧改挂)
+  status      String    @default("draft") @db.VarChar(20) // draft/pending/synced/published(应用层 Zod)
+  readMoreUrl String?   @map("read_more_url") @db.VarChar(500)
+  cropSpec    String    @default("1_1") @map("crop_spec") @db.VarChar(40) // 1_1/16_9/2.35_9
+  syncedAt    DateTime? @map("synced_at") @db.Timestamptz(6) // 最近一次公众号草稿同步成功
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6) // 站点 /pins 上架时间
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  images   ContentPinImage[]
+  channels ContentPinChannel[]
+
+  @@index([status, updatedAt(sort: Desc)], map: "idx_content_pin_status_updated")
+  @@map("content_pin")
+}
+
+/// 贴图有序图片:version_id 引用配图工坊版本(soft ref 应用层完整性,不拷
+/// 文件不回写;本地上传为 null);media_path 为挂载时快照——工坊后续改字产
+/// 新版本不篡改已挂序列,升版由人工在组装台重挂。首张即封面(公众号
+/// image_list 顺序 = 本表 sort_order;站点瀑布流封面同源)。
+model ContentPinImage {
+  id        BigInt   @id @default(autoincrement())
+  pinId     BigInt   @map("pin_id")
+  versionId BigInt?  @map("version_id")
+  mediaPath String   @map("media_path") @db.VarChar(500) // 站内路径(/wp-content/uploads/…)
+  width     Int?
+  height    Int?
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  pin ContentPin @relation(fields: [pinId], references: [id], onDelete: Cascade)
+
+  @@index([pinId, sortOrder], map: "idx_content_pin_image_pin_sort")
+  @@map("content_pin_image")
+}
+
+/// 贴图渠道留痕(循 publish_channel 同款):每贴图×渠道一行,(pin,channel)
+/// 唯一;media_id=公众号草稿 media_id(draft/add newspic 回执,重推走
+/// draft/update);publish_id 预留 freepublish 发表回执。失败可重试
+/// (attempts/last_error 人话,同步管线落)。
+model ContentPinChannel {
+  id        BigInt    @id @default(autoincrement())
+  pinId     BigInt    @map("pin_id")
+  channel   String    @db.VarChar(20) // wechat(合法值应用层 Zod,arch/03 枚举演进条款)
+  status    String    @default("pending") @db.VarChar(20) // pending/synced/failed(应用层 Zod)
+  mediaId   String?   @map("media_id") @db.VarChar(100) // 公众号草稿 media_id
+  publishId String?   @map("publish_id") @db.VarChar(100) // freepublish 回执(预留)
+  attempts  Int       @default(0) @map("attempts")
+  lastError String?   @map("last_error") @db.VarChar(500)
+  syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pin ContentPin @relation(fields: [pinId], references: [id], onDelete: Cascade)
+
+  @@unique([pinId, channel], map: "uq_content_pin_channel_pin_channel")
+  @@map("content_pin_channel")
+}
+
 // ── site_(站点配置域,M10)────────────────────────────────────────
 
 /// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,
