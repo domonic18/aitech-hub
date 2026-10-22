@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * 专题概览区(2026-10-20 详情页重构:替代 TopicMetaPanel)——详情页第①区,
- * 回答「这个专题现在到哪一步了、接下来做什么」:状态步进条 + 标题编辑 +
- * 事实行(内容形式/关联文章/各时间点)+ 当前态语义说明与人工流转钮。
- * 写作要求的编辑不在这里(第②区 TopicWritingConfigPanel 单点),本件只读
- * 展示派生出的内容形式,避免双入口。
+ * 创作概览区(M42 批④:自专题概览泛化)——详情页第①区,回答「这个创作现在
+ * 到哪一步了、接下来做什么」:状态步进条 + 标题编辑 + 事实行(主意图/内容
+ * 形式/长文与贴图成果/各时间点)+ 当前态语义说明与人工流转钮。写作要求与
+ * 贴图配置的编辑都不在这里(第②区页签单点),本件只读展示派生结果,避免
+ * 双入口。贴图意图的长文定位可能为空,此时不展示内容形式(缺省值会误读)。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,8 +21,8 @@ import TopicStatusStepper from "./TopicStatusStepper";
 
 /** 当前态语义说明(这一步意味着什么、下一步做什么;与步进条 STEP_HINT 互补) */
 const STATUS_HINT: Record<TopicStatus, string> = {
-  collecting: "素材收集中:添加视频/文章素材、写批注,攒够 2~3 条即可到「初稿」区生成初稿。",
-  drafted: "初稿已生成:建议打开文档人工定稿后发布;补充了素材可回来重新生成。",
+  collecting: "素材收集中:添加视频/文章/电报素材、写批注,攒够 2~3 条即可在产出区创作。",
+  drafted: "已出稿:长文/贴图已落库,可继续精修或再生成一组;补充素材后可回来重做。",
   published: "已发布:文章前台可见,可到文档编辑页同步公众号草稿。",
 };
 
@@ -32,12 +32,12 @@ function statusAction(target: TopicStatus): { label: string; confirm: string | n
     case "collecting":
       return {
         label: "退回收集素材",
-        confirm: "退回后可继续添加素材;已生成的初稿文档保留不动,重新生成初稿时会覆盖。确认退回?",
+        confirm: "退回后可继续添加素材;已生成的长文与贴图保留不动,重新生成时才会覆盖。确认退回?",
       };
     case "drafted":
       return {
         label: "撤回发布",
-        confirm: "只回退专题状态,文章本身不变(下架文章请到文档编辑页操作)。确认撤回?",
+        confirm: "只回退创作状态,文章本身不变(下架文章请到文档编辑页操作)。确认撤回?",
       };
     case "published":
       return { label: "标记为已发布", confirm: null };
@@ -48,9 +48,12 @@ export default function TopicOverviewPanel({
   id,
   title,
   status,
+  outputLabel,
   linkedPostId,
+  pinCount,
   purposeLabel,
   purposeCustom,
+  showPurpose,
   createdAt,
   updatedAt,
   composedAt,
@@ -59,10 +62,16 @@ export default function TopicOverviewPanel({
   id: string;
   title: string;
   status: string;
+  /** 主意图展示名(长文创作/贴图创作;只决定默认面板,不限制另一种产出) */
+  outputLabel: string;
   linkedPostId: string | null;
+  /** 本创作已落库贴图数(产出成果计数) */
+  pinCount: number;
   /** 内容形式展示名(服务端 resolvePurpose 由写作要求派生,此处只读) */
   purposeLabel: string;
   purposeCustom: boolean;
+  /** 长文定位为空时不展示内容形式(缺省派生值会被误读为已配置) */
+  showPurpose: boolean;
   createdAt: Date;
   updatedAt: Date;
   composedAt: Date | null;
@@ -130,8 +139,8 @@ export default function TopicOverviewPanel({
             if (e.key === "Enter") void saveTitle();
           }}
           className="min-w-0 flex-1 rounded-sm border border-transparent bg-panel px-1 py-0.5 text-[15px] font-semibold outline-none hover:border-line focus:border-accent"
-          aria-label="专题标题"
-          placeholder="专题标题…"
+          aria-label="创作标题"
+          placeholder="创作标题…"
         />
         {titleDraft.trim() !== title && titleDraft.trim() !== "" && (
           <button
@@ -144,14 +153,19 @@ export default function TopicOverviewPanel({
           </button>
         )}
       </div>
-      {/* 事实行:内容形式 + 关联文章 + 时间线(原「定位备注」下方散落的元信息收拢) */}
+      {/* 事实行:主意图 + 内容形式 + 产出成果 + 时间线(原「定位备注」下方散落的元信息收拢) */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-3">
         <span>
-          内容形式:<span className="text-text-2">{purposeLabel}</span>
-          {purposeCustom && <span className="ml-1 text-amber-hi">(自定义)</span>}
+          主意图:<span className="text-text-2">{outputLabel}</span>
         </span>
+        {showPurpose && (
+          <span>
+            内容形式:<span className="text-text-2">{purposeLabel}</span>
+            {purposeCustom && <span className="ml-1 text-amber-hi">(自定义)</span>}
+          </span>
+        )}
         <span>
-          关联文章:
+          长文:
           {linkedPostId ? (
             <a
               href={`/admin/posts/${linkedPostId}`}
@@ -160,9 +174,10 @@ export default function TopicOverviewPanel({
               #{linkedPostId}
             </a>
           ) : (
-            "生成初稿后自动回填"
+            "未生成"
           )}
         </span>
+        <span>贴图:{pinCount} 张</span>
         <span>创建 {fmt(createdAt)}</span>
         <span>更新 {fmt(updatedAt)}</span>
         {composedAt && <span>最近生成 {fmt(composedAt)}</span>}

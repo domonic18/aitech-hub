@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 function PipeBar(): React.ReactElement {
   const steps: Array<[string, string]> = [
     ["数据中心", "发现选题"],
-    ["专题管理", "绑定主题"],
+    ["创作中心", "绑定主题"],
     ["agent", "生成图 + 轻文字"],
     ["配图工坊", "人工精修"],
     ["公众号", "贴图草稿"],

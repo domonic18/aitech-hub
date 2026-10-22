@@ -24,7 +24,7 @@ const SEG_LABEL: Record<string, string> = {
   media: "媒体库",
   comments: "评论管理",
   distribute: "内容分发",
-  topics: "专题管理",
+  studio: "创作中心",
   users: "用户管理",
   feedback: "反馈管理",
   pats: "PAT 令牌",

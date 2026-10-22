@@ -46,12 +46,16 @@ const TOPIC = {
 };
 const TG_BLOCK = {
   kind: "telegram",
+  mediaType: "video",
   title: "WorkBuddy做汇报ppt",
   blogger: "晓墨AIGC",
   note: "重点讲需求清单",
   aiNote: "## 背景与问题\n…实操流程…",
   aiSummary: "短结论",
   aiPoints: ["要点1"],
+  summary: "原文摘要",
+  aiTopic: "PPT 自动化",
+  keywords: ["PPT"],
   videoUrl: "https://www.douyin.com/video/x",
   coverUrl: null,
   excerpt: null,
@@ -116,7 +120,7 @@ describe("get_post_sources", () => {
         title: "Workbuddy做PPT",
         positioning: "教程向定位",
         skill_key: null,
-        admin_url: "/admin/topics/2",
+        admin_url: "/admin/studio/2",
       },
       linked_post: { id: "319", status: "published" },
     });

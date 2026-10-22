@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * 素材库筛选(2026-10-20 详情页重构文案:tab 切换(视频/文章)+ 关键词回车检索,
- * 均以 searchParams 驱动服务端渲染(?mount=<type>&q=<kw>&page=),页内状态
- * 不另持副本。
+ * 素材库筛选(2026-10-20 详情页重构文案;M42 放开电报文本):tab 切换
+ * (电报/文章)+ 关键词回车检索,均以 searchParams 驱动服务端渲染
+ * (?mount=<type>&q=<kw>&page=),页内状态不另持副本。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -27,7 +27,7 @@ export default function TopicMountControls({
     sp.set("mount", nextTab);
     if (nextQ) sp.set("q", nextQ);
     const qs = sp.toString();
-    return `/admin/topics/${topicId}/${qs ? `?${qs}` : ""}`;
+    return `/admin/studio/${topicId}/${qs ? `?${qs}` : ""}`;
   }
 
   return (
@@ -43,7 +43,7 @@ export default function TopicMountControls({
               : "border border-line text-text-2 hover:text-text-1"
           }`}
         >
-          {t === "telegram" ? "视频(仅已解读)" : "文章"}
+          {t === "telegram" ? "电报(视频需已解读)" : "文章"}
         </button>
       ))}
       <input

@@ -35,7 +35,7 @@ export function buildAgentPageContext(pathname: string): string {
   if (/^\/admin\/posts\/new$/.test(route)) return "文章新建";
   if (/^\/admin\/posts\/\d+$/.test(route)) return "文章编辑";
   if (/^\/admin\/posts/.test(route)) return "文章管理";
-  if (/^\/admin\/topics/.test(route)) return "专题治理";
+  if (/^\/admin\/studio/.test(route)) return "创作中心";
   if (/^\/admin/.test(route)) return "后台";
   if (/^\/search/.test(route)) return "搜索";
   if (/^\/telegram/.test(route)) return "电报流";

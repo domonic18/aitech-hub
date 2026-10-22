@@ -1,14 +1,14 @@
 /**
- * 专题状态流程条(2026-10-20 验收反馈问题三:状态管理可视化不足):收集→合成→
- * 发布三步横向步进——完成步打勾、当前步高亮、未达步灰置,每步下挂一行「这一步
- * 意味着什么」,让当前位置与下一步动作自解释,替代原裸文字徽章。纯展示件,
- * 服务端渲染零交互;人工流转操作在 TopicOverviewPanel(带后果说明与确认)。
+ * 创作状态流程条(M42:自专题状态泛化):收集→出稿→发布三步横向步进——完成步
+ * 打勾、当前步高亮、未达步灰置,每步下挂一行「这一步意味着什么」,让当前位置
+ * 与下一步动作自解释,替代原裸文字徽章。纯展示件,服务端渲染零交互;人工流转
+ * 操作在 TopicOverviewPanel(带后果说明与确认)。
  */
 import { TOPIC_STATUS, TOPIC_STATUS_LABEL, type TopicStatus } from "@/lib/topics/constants";
 
 const STEP_HINT: Record<TopicStatus, string> = {
   collecting: "添加素材、写批注",
-  drafted: "初稿已生成,可人工定稿",
+  drafted: "长文/贴图已落库,可精修",
   published: "前台可见,可同步渠道",
 };
 

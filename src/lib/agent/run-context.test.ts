@@ -14,11 +14,14 @@ import {
 } from "./run-context";
 
 describe("buildAgentPageContext", () => {
-  it("路由→页面名映射(编辑/新建/管理/专题/其他后台/搜索/电报/项目/首页)", () => {
+  it("路由→页面名映射(编辑/新建/管理/创作中心/其他后台/搜索/电报/项目/首页)", () => {
     expect(buildAgentPageContext("/admin/posts/123")).toBe("文章编辑");
     expect(buildAgentPageContext("/admin/posts/new")).toBe("文章新建");
     expect(buildAgentPageContext("/admin/posts")).toBe("文章管理");
-    expect(buildAgentPageContext("/admin/topics")).toBe("专题治理");
+    expect(buildAgentPageContext("/admin/studio")).toBe("创作中心");
+    expect(buildAgentPageContext("/admin/studio/12")).toBe("创作中心");
+    // 旧路由已 308 到创作中心;即便有残留调用也落在后台粗粒度,不得误判
+    expect(buildAgentPageContext("/admin/topics")).toBe("后台");
     expect(buildAgentPageContext("/admin/feedback")).toBe("后台");
     expect(buildAgentPageContext("/search")).toBe("搜索");
     expect(buildAgentPageContext("/telegram")).toBe("电报流");

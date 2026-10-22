@@ -41,14 +41,14 @@ export const postSourcesTool = tool(
           ok: false,
           error:
             "这篇文章没有关联专题(非合成产物),查不到素材关联;原始素材在电报管理时," +
-            "请管理员提供专题 id 用 get_topic_brief,或先在专题管理挂载素材后合成",
+            "请管理员提供创作 id 用 get_topic_brief,或先在创作中心挂载素材后创作",
         });
       }
       const blocks = await buildComposeBlocks(topic);
       if (blocks.length === 0) {
         return JSON.stringify({
           ok: false,
-          error: `关联专题《${topic.title}》(id:${topic.id})还没有挂载素材,先到专题管理挂载`,
+          error: `关联创作《${topic.title}》(id:${topic.id})还没有挂载素材,先到创作中心挂载`,
         });
       }
       logger.info({ event: "agent.post_sources_ok", postId: post_id, topicId: topic.id });
@@ -60,18 +60,21 @@ export const postSourcesTool = tool(
           positioning: topic.positioning,
           skill_key: topic.skillKey,
           status: topic.status,
-          admin_url: `/admin/topics/${topic.id.toString()}`,
+          admin_url: `/admin/studio/${topic.id.toString()}`,
         },
         linked_post: { id: post.id.toString(), title: post.title, status: post.status },
         materials: blocks.map((b) => ({
           kind: b.kind,
+          media_type: b.mediaType,
           title: b.title,
           blogger: b.blogger,
           note: b.note,
           video_url: b.videoUrl,
+          ...(b.aiTopic !== null ? { ai_topic: b.aiTopic } : {}),
+          ...(b.keywords.length > 0 ? { keywords: b.keywords } : {}),
           ...(b.aiNote !== null
             ? { note_md: b.aiNote.slice(0, BRIEF_NOTE_MAX) }
-            : { summary: b.aiSummary, points: b.aiPoints }),
+            : { summary: b.aiSummary ?? b.summary, points: b.aiPoints }),
           excerpt: b.excerpt,
           content_sample: b.contentSample,
         })),

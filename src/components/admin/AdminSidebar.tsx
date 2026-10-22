@@ -34,7 +34,7 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-appstore", label: "贴图管理", href: "/admin/pins" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
       { icon: "i-cloudupload", label: "内容分发", href: "/admin/distribute" },
-      { icon: "i-folder", label: "专题管理", href: "/admin/topics" },
+      { icon: "i-folder", label: "创作中心", href: "/admin/studio" },
     ],
   },
   {
