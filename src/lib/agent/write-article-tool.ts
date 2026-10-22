@@ -31,10 +31,16 @@ import { BRIEF_NOTE_MAX, denyPayload, humanizeTopicError } from "./topic-tool-co
  * 只服务系统注入的文首推荐卡,进底料只会被写手插错位置) */
 export interface WriterMaterial {
   kind: string;
+  /** telegram 分型(M42:文本素材底料);文章恒 null */
+  mediaType: "video" | "text" | null;
   title: string;
   blogger: string | null;
   note: string | null;
   videoUrl: string | null;
+  /** 电报原文摘要(文本素材的主底料)与解读主题/关键词 */
+  summary: string | null;
+  aiTopic: string | null;
+  keywords: string[];
   aiNote: string | null;
   aiSummary: string | null;
   aiPoints: string[];
@@ -65,9 +71,14 @@ const OUTPUT_RULES = `输出纪律:
 export function buildWriterPrompt(src: WriterPromptSource): { system: string; user: string } {
   const materials = src.materials
     .map((m, i) => {
+      const label = m.mediaType === "video" ? "视频" : m.kind === "post" ? "文章" : "电报图文";
       const lines = [
-        `${i + 1}. [${m.kind}] ${m.title}${m.blogger ? `(UP主:${m.blogger})` : ""}`,
+        `${i + 1}. [${label}] ${m.title}${m.blogger ? `(UP主:${m.blogger})` : ""}`,
         m.videoUrl ? `   视频地址:${m.videoUrl}` : null,
+        m.summary ? `   原文摘要:${m.summary}` : null,
+        m.aiTopic
+          ? `   解读主题:${m.aiTopic}${m.keywords.length > 0 ? `(关键词:${m.keywords.join("、")})` : ""}`
+          : null,
         m.note ? `   人工批注:${m.note}` : null,
         m.aiNote
           ? `   解读笔记:\n${m.aiNote
@@ -120,10 +131,14 @@ export const writeArticleTool = tool(
       const skill = key ? await getEnabledSkillByKey(key) : null;
       const materials: WriterMaterial[] = blocks.map((b) => ({
         kind: b.kind,
+        mediaType: b.mediaType,
         title: b.title,
         blogger: b.blogger,
         note: b.note,
         videoUrl: b.videoUrl,
+        summary: b.summary,
+        aiTopic: b.aiTopic,
+        keywords: b.keywords,
         aiNote: b.aiNote,
         aiSummary: b.aiSummary,
         aiPoints: b.aiPoints,
@@ -222,7 +237,7 @@ export const writeArticleTool = tool(
       topic_id: z
         .string()
         .regex(/^\d{1,10}$/)
-        .describe("专题 id(专题管理详情页 URL 中的数字 id)"),
+        .describe("创作 id(创作中心详情页 URL 中的数字 id)"),
       angle: z
         .string()
         .trim()
