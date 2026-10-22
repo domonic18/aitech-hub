@@ -3,7 +3,8 @@
 /**
  * 贴图详情抽屉(M41):开抽屉时抓 GET /api/pins/[id](图片序列+渠道留痕),
  * 首图大预览 + 缩略条切换 + 事实 kv + 渠道记录;「继续组装」进组装台。
- * 编辑动作不做在抽屉(改文案/调序列去组装台,单点入口防两处漂移)。
+ * 编辑动作不做在抽屉(改文案/调序列去组装台,单点入口防两处漂移);
+ * 删除除外(M42 反馈:列表侧无删除入口,须先进组装台才能删,补进抽屉底栏)。
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -44,13 +45,28 @@ function ChannelRow({
 export default function PinDetailDrawer({
   pinId,
   onClose,
+  onDeleted,
 }: {
   pinId: string;
   onClose: () => void;
+  onDeleted?: (id: string) => void;
 }): React.ReactElement {
   const [detail, setDetail] = useState<PinDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [selected, setSelected] = useState(0);
+
+  async function delPin(): Promise<void> {
+    if (!window.confirm("删除该贴图?图片序列与渠道记录一并删除,不可恢复。")) return;
+    setDeleting(true);
+    const body = await callPinApi(`/api/pins/${pinId}`, { method: "DELETE" });
+    setDeleting(false);
+    if (body.code !== 0) {
+      setError(body.message);
+      return;
+    }
+    onDeleted?.(pinId);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -192,6 +208,14 @@ export default function PinDetailDrawer({
         </div>
 
         <div className="flex gap-2.5 border-t border-line px-5 py-3.5">
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => void delPin()}
+            className="cursor-pointer text-xs text-text-3 hover:text-red disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            删除贴图
+          </button>
           <Link
             href={`/admin/pins/${pinId}`}
             className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-sm border border-line py-2 text-[13px] text-text-1 hover:border-accent hover:text-accent"
