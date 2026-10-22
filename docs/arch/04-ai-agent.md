@@ -205,6 +205,15 @@
 - **内容形式扩容与场景 skill 种子(§13.10)**:TOPIC_PURPOSES 增 5 形式(open-source-intro/paper-interpret/tutorial-refine/weekly-news/model-pricing,各带 positioningTemplate+skillKey);`WRITING_SKILLS` 注册表自 seed 收编入真相源 `src/lib/ai/writing-guides.ts`(公共条款常量插值防五份漂移,seed 只管「只补缺」落库,已部署环境重跑 seed 幂等补齐);断链守卫单测:TOPIC_PURPOSES.skillKey 全覆盖 WRITING_SKILLS(deriveSkillKey 回写库中不存在的 key=静默劣化,机器拦)。
 - **样例参照图库(§13.11,本立项唯一 schema 变更)**:`writing_sample_image` 表 + `topic.sample_image_id`(soft ref 应用层完整性,删图库行=事务置空引用,媒体归媒体库治理 sha1 去重不连带);admin 专题详情「配图风格参照」卡(TopicSampleImagePicker:本地上传/剪贴板粘贴[输入框内不劫持]/图库弹层内联重命名删除,绑定清除即时 PATCH 不经保存按钮);上传复用 uploadMedia(魔数嗅探+sha1 去重)≤6MB 帽(官方单图 10MB 内自留量,data URL 后请求体 ~1.33x)。**生图参照通道**:brief 载荷带 `sample_image`,visual_note 指引每次 generate_illustration 带 `reference_path`(仅站内 `/wp-content/uploads/` 前缀;工具描述+brief 双层承载,指南零改动);执行核心读媒体卷字节转 data URL → image-client `image` 参数顶层透传(与 size 共存,补齐轮次携带)——探针实证 Seedream 收 image 且风格高度靠拢(flash 档 12.4s/12.7s/张);参照装载失败(路径不合法/读取失败/超帽/格式不支持)降级无参照出图,`reference_warning` 人话回带;换绑模型兜底口径由 describe 提示覆盖。路由鉴权/Zod/e2e 用例 41 收口(零真网)。
 
+**K2.8 补注十七(2026-10-22,M42 创作中心——专题管理概念重构为端到端创作台,长文/贴图双分支 + 素材接地闭环)**:
+
+- **概念与路由**:用户可见概念「专题管理」→「创作中心」(`/admin/topics*` → `/admin/studio*` 308 承接);表/API/工具名**全部不动**(全量改名 churn 覆盖 schema/API/checkpoint/e2e,收益为零)。`topic.output_type`(article|pin)= 主意图,只决定新建默认面板与 agent 分支,**不限制**另一种产出(产出区恒有「生成长文」「生成贴图」)。
+- **admin 工具面扩至 23 只(本迭代 +4)**:`search_materials`(只读;kind=telegram|post 可空、q 关键词、limit≤20;文本电报口径为 visible 且摘要非空,视频须已解读,文章须未删除)/ `mount_material`(幂等,重复挂载回 `already_mounted:true` 不报错)/ `unmount_material`(幂等)——三者体内 `assertAdminThread` 守卫,note 原样进写作底料;`save_topic_pin`(create-only 落贴图,见下)。**能力清单唯一权威副本仍是 L1 提示**,新工具名已进提示且纳入 prompt-tool parity 单测(pin_config 等参数词元入豁免词表)。
+- **素材接地纪律(L1)**:正文/贴图里出现的事实必须能指回某条已挂素材;选题缺证据先 `search_materials` 搜电报与历史文章,挑 2~3 条最贴题的 `mount_material` 挂上,挂完重调 `get_topic_brief` 复核;与选题无关的 `unmount_material` 移除;汇报里说明挂了哪些、为什么。人工仍可在创作台素材区手工增删。
+- **get_topic_brief 载荷扩容**:`output_type` / `pin_config`(结构化贴图配置:count/aspect/crop/style/**reference**)/ `existing_pins` / `reference_candidates`(参照候选:样例图 → 视频封面 → 挂载文章正文图 → 本创作已有贴图,去重、仅站内 uploads、上限 10)/ `mounted_keys`(已挂素材去重锚)。
+- **双分支产出**:长文沿用 `write_article` + `save_topic_draft`(1:1 锚 `topic.linked_post_id`);贴图分支 = `generate_illustration` 逐张出图(**每张必传 `reference_path`**:`pin_config.reference` 有值时优先用管理员指定的那张,其次 brief 样例参照图,再次候选里最贴题的一张)→ `save_topic_pin` 单事务建 `content_pin` + `content_pin_image`(顺序落 sort_order、写 `reference_media_path`、创作状态 collecting→drafted、失败整体回滚);create-only,既有贴图编辑回组装台,同一创作可多次落多张(N:1 锚 `content_pin.topic_id`)。
+- **参照贯通(补 M41 断点)**:`pinGenerateSchema.referencePath`(仅站内 uploads)→ API → 队列 jobData → `generateIllustrations({ referencePath })` 全链透传;组装台「AI 生成」tab 亦可选参照图,人工通道与 agent 通道同源。
+
 ### 3.5 分期
 
 - **第一迭代:K1 检索基座 + K2 答案卡**——**已交付(2026-10-06,批①②③)**:页面式;TS 进程内单轮 RAG,SSE 流式(K1 落点 `src/lib/search/unified-search.ts`,K2 落点 `src/lib/search/answer-*` + `GET /api/search/answer/`;实施注记 §3.2/§3.4)

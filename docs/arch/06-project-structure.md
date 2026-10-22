@@ -45,6 +45,8 @@ aitech-hub/
 │   │   │   ├── media/page.tsx    # 媒体库:图片/视频/文件 + 孤儿/断链/重复清洗(arch/08-media)
 │   │   │   ├── users/page.tsx
 │   │   │   ├── github/page.tsx   # GitHub 仓库台账:白名单登记/健康度/调度/展示开关(M11)
+│   │   │   ├── studio/{page,[id]}/page.tsx # 创作中心(M42,原 topics):列表(状态×主意图) + 详情四区(概览/双配置页签/素材/产出)
+│   │   │   ├── pins/{page,[id]}/page.tsx   # 贴图工作台与组装台(M41)
 │   │   │   ├── distribute/page.tsx # 内容分发:公众号配置卡+同步记录表(筛选/分页;M17)
 │   │   │   └── overview/page.tsx
 │   │   ├── api/                  # Route Handlers(REST 风格,camelCase JSON)
@@ -69,6 +71,8 @@ aitech-hub/
 │   │   ├── media/                # storage(LocalDisk→COS Provider)/ refs(引用解析)/ rules(类型白名单)
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
 │   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)
+│   │   ├── topics/               # 创作中心域(M42,原专题域):repo(读写)/materials(素材搜索与挂载,幂等)/compose(底料装配)/references(参照候选装配)/writing-config(长文条款往返)/writing-pin-config(贴图条款往返,与长文互不派生)/constants/reference-labels(零依赖,客户端安全)
+│   │   ├── pins/                 # 贴图域(M41/M42):repo(读写)/assemble(createPinWithImages 单事务落库)/schemas/constants(与 topics 贴图配置同源裁剪档)
 │   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队四口+job 数据契约)、wechat-sync-run(草稿执行管线,依赖单向 run→sync)、wechat-copy-run(复制公众号格式执行管线,无码点门不写状态机;M31 批④)、records(读侧+reset)
 │   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口;M27 批⑧ 增 read_draft/propose_edits=EDIT_TOOLS,admin 档装配)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏;批⑧ 起携 context 注入)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合);M27 批⑧ 增 run-context(页面/编辑上下文构建注入)、edit-proposal(提案契约/解析)、admin-thread(admin 会话守卫)、ask-user-guard 泛化 interrupt_guard(中断类单飞)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
