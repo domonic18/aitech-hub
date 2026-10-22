@@ -7,6 +7,7 @@
 import Link from "next/link";
 
 import { ORIGIN_BADGE_CLS, ORIGIN_LABEL } from "@/components/admin/illustration/labels";
+import IllustrationCreateButton from "@/components/admin/illustration/IllustrationCreateButton";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
@@ -30,6 +31,9 @@ export default async function AdminIllustrationListPage(): Promise<React.ReactEl
         <span className="text-[11px] text-text-3">
           共 {roots.length} 张{roots.length >= LIST_TAKE ? "(仅显最近 50)" : ""} · agent
           配图出图即登记,点选进入拆层/改字/导出
+        </span>
+        <span className="ml-auto">
+          <IllustrationCreateButton />
         </span>
       </div>
 
