@@ -253,10 +253,31 @@ export interface WechatDraftArticle {
   only_fans_can_comment?: 0 | 1;
 }
 
+/**
+ * 图片消息草稿(M41 渠道三「小绿书」,article_type=newspic;spike 实证契约):
+ * title ≤32 字(硬上限,超字无法保存草稿)/ content 纯文本 ≤2 万码点(禁
+ * Markdown/HTML)/ image_list ≤20 张且 media_id 必须来自 add_material 永久素材
+ * (uploadimg 的 mmbiz URL 不可用),**首张即封面** / crop_percent_list 三档
+ * (1_1/16_9/2.35_9)。字段名保留下划线原样透传。
+ */
+export interface WechatNewsPicArticle {
+  article_type: "newspic";
+  title: string;
+  content: string;
+  author?: string;
+  digest?: string;
+  content_source_url?: string;
+  image_info: { image_list: Array<{ media_id: string }> };
+  cover_info?: { crop_percent_list: string[] };
+}
+
+/** draft/add 与 draft/update 共用的 article 载荷(图文/图片消息两形) */
+export type WechatDraftPayload = WechatDraftArticle | WechatNewsPicArticle;
+
 /** 新建草稿(draft/add,articles 为数组):回草稿 media_id */
 export async function wechatDraftAdd(
   creds: WechatCredentials,
-  article: WechatDraftArticle,
+  article: WechatDraftPayload,
 ): Promise<string> {
   return withToken(creds, async (token) => {
     const body = await getWxJson<WxErrorBody & { media_id?: string }>(
@@ -270,11 +291,11 @@ export async function wechatDraftAdd(
   });
 }
 
-/** 更新草稿(draft/update,articles 为单对象 + index 定位):重推已同步文章走此路径 */
+/** 更新草稿(draft/update,articles 为单对象 + index 定位):重推已同步内容走此路径 */
 export async function wechatDraftUpdate(
   creds: WechatCredentials,
   mediaId: string,
-  article: WechatDraftArticle,
+  article: WechatDraftPayload,
 ): Promise<void> {
   await withToken(creds, async (token) => {
     const body = await getWxJson<WxErrorBody>(

@@ -121,6 +121,10 @@ export const DISTRIBUTE_JOB_WECHAT = "wechat-sync";
 export const DISTRIBUTE_JOB_WECHAT_BATCH = "wechat-batch";
 export const DISTRIBUTE_JOB_WECHAT_COPY = "wechat-copy";
 
+/** 贴图公众号同步(M41 渠道三 newspic 图片消息;与文章同步共用 distribute
+ * 队列串行防频控)。改名需与 worker 同批。 */
+export const DISTRIBUTE_JOB_PIN_WECHAT = "pin-wechat-sync";
+
 /** stats 队列 job name 契约(flush 为缺省路径;purge 清理访问明细;
  * purge-usage-log 清理 AI 用量台账,M14 批⑦;purge-agent-session 清退
  * Drawer 会话 30 天前留档,K2.5;purge-job-run 清理任务运行台账,验收二批③) */
@@ -163,8 +167,10 @@ export const INSIGHT_JOB_FETCH = "fetch";
 
 /** illustration-studio 队列 job name 契约(M40 批 B;decompose 为缺省路径——
  * 拆层运行首次触发与改字后手动重拆同一入口,jobId 锚 groupId 天然唯一)。
- * 改名需与 worker 同批。 */
+ * 改名需与 worker 同批。generate = 直出生成(M41:工坊「新建配图」/组装台
+ * 「AI 生成贴图」,prompt→文生图→根版本→可选回填贴图)。 */
 export const ILLUSTRATION_JOB_DECOMPOSE = "decompose";
+export const ILLUSTRATION_JOB_GENERATE = "generate";
 
 export function bullConnection(): IORedis {
   return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
