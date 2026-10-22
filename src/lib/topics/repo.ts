@@ -74,6 +74,8 @@ export interface TopicListQuery {
   status?: TopicStatus;
   /** 主意图过滤(M42 列表 ?output=;缺省不过滤) */
   output?: TopicOutputType;
+  /** 标题关键词过滤(v2 列表 ?q=;大小写不敏感 contains) */
+  q?: string;
   page?: number;
   pageSize?: number;
 }
@@ -91,6 +93,7 @@ export async function listTopics(query: TopicListQuery = {}): Promise<{
   const where: Prisma.TopicWhereInput = {
     ...(query.status ? { status: query.status } : {}),
     ...(query.output ? { outputType: query.output } : {}),
+    ...(query.q ? { title: { contains: query.q, mode: "insensitive" } } : {}),
   };
   const [items, total] = await prisma.$transaction([
     prisma.topic.findMany({
@@ -164,4 +167,20 @@ export async function countByStatus(output?: TopicOutputType): Promise<Record<st
     _count: { _all: true },
   });
   return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
+}
+
+/**
+ * 创作贴图计数(v2 列表卡进度 chips):content_pin.topic_id 是软引用无 Prisma
+ * relation,按 id 集合 groupBy 一次取回,映射 topicId → 贴图数。
+ */
+export async function pinCountByTopic(ids: bigint[]): Promise<Map<bigint, number>> {
+  if (ids.length === 0) return new Map();
+  const rows = await prisma.contentPin.groupBy({
+    by: ["topicId"],
+    where: { topicId: { in: ids } },
+    _count: { _all: true },
+  });
+  return new Map(
+    rows.flatMap((r) => (r.topicId === null ? [] : [[r.topicId, r._count._all] as const])),
+  );
 }

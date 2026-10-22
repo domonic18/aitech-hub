@@ -3425,26 +3425,30 @@ test("34. 创作中心(M42 由专题治理台重构:新建/添加仅已解读/�
     await page.getByRole("button", { name: "保存写作要求" }).click();
     await expect(page.getByText("写作要求已保存,生成初稿时生效")).toBeVisible({ timeout: 10_000 });
 
-    // 双配置独立列(M42):切「贴图配置」改张数保存 → 刷新仍在;长文配置不被派生污染
-    await page.getByRole("button", { name: "贴图配置" }).click();
+    // 双配置独立列(M42;v2 工作台:舞台页签「贴图」联动右侧配置栏)改张数保存
+    // → 刷新仍在;切回「长文」长文配置不被派生污染
+    await page.getByRole("button", { name: /^贴图/ }).click();
     await page.getByLabel("张数").fill("8");
     await page.getByRole("button", { name: "保存贴图配置" }).click();
     await expect(page.getByText("贴图配置已保存,生成贴图时生效")).toBeVisible({ timeout: 10_000 });
     await page.reload();
-    await page.getByRole("button", { name: "贴图配置" }).click();
+    await page.getByRole("button", { name: /^贴图/ }).click();
     await expect(page.getByLabel("张数")).toHaveValue("8");
-    await page.getByRole("button", { name: "长文配置" }).click();
+    await page.getByRole("button", { name: /^长文/ }).click();
     await expect(page.getByLabel("补充要求", { exact: true })).toHaveValue(/端侧落地盘点/);
 
-    // 从库添加素材:已解读视频在列,未解读不上榜;添加 → 行翻「已添加」+ 素材卡出现
+    // 从库添加素材(v2 弹层):已解读视频在列,未解读不上榜;添加 → 行翻「已添加」
+    await page.getByRole("button", { name: "添加素材" }).click();
     const candRow = page.getByRole("row", { name: new RegExp(TG_DONE) });
     await expect(candRow).toBeVisible();
     await expect(page.getByRole("row", { name: new RegExp(TG_PENDING) })).toHaveCount(0);
     await candRow.getByRole("button", { name: "添加", exact: true }).click();
     await expect(candRow.getByText("已添加")).toBeVisible({ timeout: 10_000 });
+    // 素材卡在左栏刷新出现(弹层之下),断言后关弹层再做批注等栏内操作
     const materialCard = page.getByText("短结论:e2e 短结论:端侧模型落地在成本曲线上过了拐点");
     await expect(materialCard).toBeVisible();
     await expect(page.getByText(/解读笔记\(\d+ 字\)/)).toBeVisible();
+    await page.getByRole("button", { name: "关闭" }).click();
 
     // 重挂与未解读防线(会话同源 POST):唯一键冲突 409;未解读 409(invalid_material)
     const realDup = await page.request.post(`/api/topics/${topicId}/items/`, {
@@ -3549,6 +3553,8 @@ test("34. 创作中心(M42 由专题治理台重构:新建/添加仅已解读/�
       },
     });
     await page.reload();
+    // v2 工作台:刷新后舞台按主意图落「长文」页签,切「贴图」看产出网格
+    await page.getByRole("button", { name: /^贴图/ }).click();
     await expect(page.getByText(PIN_TITLE)).toBeVisible();
     await expect(page.getByRole("link", { name: "去组装台" })).toBeVisible();
     await expect(page.getByRole("button", { name: "再生成一组贴图" })).toBeVisible();

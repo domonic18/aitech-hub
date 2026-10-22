@@ -3,6 +3,7 @@
 /**
  * 贴图网格(M41):3:4 竖图卡(封面=首图快照/状态徽标/张数角标/专题 chip),
  * 点卡开详情抽屉(抓 GET /api/pins/[id]);编辑动作都在组装台,本组件只浏览。
+ * M42 反馈补:删除入口补进详情抽屉,删成后本地摘卡(不经整页刷新)。
  */
 import { useState } from "react";
 import { formatCnDateTime } from "@/lib/datetime";
@@ -19,9 +20,15 @@ export default function PinsWorkbench({
   items: PinListItemDto[];
   emptyHint: string;
 }): React.ReactElement {
+  const [list, setList] = useState(items);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  if (items.length === 0) {
+  function onDeleted(id: string): void {
+    setOpenId(null);
+    setList((l) => l.filter((p) => p.id !== id));
+  }
+
+  if (list.length === 0) {
     return (
       <div className="rounded-sm border border-dashed border-line px-4 py-14 text-center text-xs text-text-3">
         {emptyHint}
@@ -32,7 +39,7 @@ export default function PinsWorkbench({
   return (
     <>
       <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3 xl:grid-cols-4">
-        {items.map((p) => {
+        {list.map((p) => {
           const status = p.status as PinStatus;
           return (
             <button
@@ -88,7 +95,9 @@ export default function PinsWorkbench({
           );
         })}
       </div>
-      {openId !== null && <PinDetailDrawer pinId={openId} onClose={() => setOpenId(null)} />}
+      {openId !== null && (
+        <PinDetailDrawer pinId={openId} onClose={() => setOpenId(null)} onDeleted={onDeleted} />
+      )}
     </>
   );
 }
