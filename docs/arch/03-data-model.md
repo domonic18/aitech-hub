@@ -373,6 +373,12 @@ CREATE TABLE legacy_url_map (
 - `ai_illu_layer_group`(图层组=一次拆层运行):`version_id` FK **RESTRICT**/`base_media_path?`(干净底板,ready 后回填)/`status varchar(12)` 枚举 `processing|ready|failed`/`error? varchar(500)`(人话失败原因)/`model_id`(溯源列入队时定格,绑定主备选边同 resolver 口径,无绑定 0);索引 `(version_id, created_at)`(取最新组)
 - `ai_illu_layer`(图层行):`group_id` FK **CASCADE**(重拆清旧组连图层)/`z_index/name varchar(200)/description? varchar(500)`/`bbox_x1..bbox_y2 int`(normalized 0-999,左上原点)/`media_path`(bbox 区域高分重提透明 PNG)/`visible bool 默认 true`(显隐组合持久化,导出前端合成);索引 `(group_id, z_index)`
 
+**贴图三表已落地(2026-10-22 M41 迁移 `20261022150000_m41_content_pin`,队列与接口见 [arch/05 §4.8](05-services.md)、URL 终态见 [arch/07 §2](07-frontend.md);forward-only)**:
+
+- `content_pin`(贴图主实体,公众号「小绿书」newspic 图片帖):`title varchar(64)`(≤32 码点公众号硬上限,VarChar 留字节数余量)/`content text 默认 ''`(轻文字纯文本,禁 Markdown/内联 HTML,≤2 万码点)/`topic_id?`(专题 soft ref,应用层完整性不设跨域 FK,同 `topic.linked_post_id` 口径)/`status varchar(20) 默认 draft` 枚举 `draft|pending|synced|published`(应用层 Zod,人工迁移表 `PIN_MANUAL_TARGETS` 收敛)/`read_more_url? varchar(500)`(阅读原文,http(s) 白名单)/`crop_spec varchar(40) 默认 1_1`(封面裁剪档 `1_1|16_9|2.35_9`,随 draft/add 透传)/`synced_at?/published_at?`(首进 published 落,回退再上架不覆盖);索引 `(status, updated_at DESC)`(工作台页签)
+- `content_pin_image`(有序图片,首张即封面——公众号 `image_list` 顺序 = sort_order,站点瀑布流封面同源):`pin_id` FK **CASCADE**(删贴图连图)/`version_id?`(引用 `ai_illu_version` soft ref 不拷文件不回写,本地上传为 null)/`media_path varchar(500)`(**挂载时快照**——工坊后续改字产新版本不篡改已挂序列,升版由人工在组装台重挂)/`width?/height?`(本地上传取自然尺寸;工坊引用缺省)/`sort_order`;索引 `(pin_id, sort_order)`
+- `content_pin_channel`(渠道留痕,每贴图×渠道一行,`@@unique([pinId, channel])`,循 `publish_channel` ensure 形态):`channel varchar(20)`(一期仅 `wechat`)/`status varchar(20) 默认 pending` 枚举 `pending|synced|failed`/`media_id?/publish_id?`(公众号草稿/发布锚,重推 update 以 media_id 定位)/`attempts`(含人工重试)/`last_error? varchar(500)`(人话)/`synced_at?`;`pin_id` FK **CASCADE**
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
