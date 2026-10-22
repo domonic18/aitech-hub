@@ -7,6 +7,7 @@
  * lib 引入,不手写同形接口(M5-a 评审 W3)。
  */
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import type { StudioView } from "@/lib/ai/illustration-studio";
@@ -221,6 +222,9 @@ export default function IllustrationStudio({
     <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/illustration/" className="text-[11px] text-text-2 hover:text-accent">
+            ← 列表
+          </Link>
           <h1 className="text-sm font-medium text-text-1">配图工坊</h1>
           <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${originCls}`}>
             {ORIGIN_LABEL[view.version.origin] ?? view.version.origin} #{view.version.id}
