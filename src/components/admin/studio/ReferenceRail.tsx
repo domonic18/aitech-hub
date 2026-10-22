@@ -1,11 +1,19 @@
 "use client";
 
 /**
- * 参照图选择轨(M42 批④ 贴图配置):候选来自服务端 resolveTopicReferences
- * (样例图 → 视频封面 → 挂载文章配图 → 本创作已有贴图,仅站内 uploads)。
- * 「自动」= 不指定,agent 生成时按同一优先级自选;点选某张则把路径写进
- * pin_positioning 的「参照图:」条款行,后续生成优先采纳。单选、无多选。
+ * 参照图选择轨(M42 批④ 贴图配置;M44 验收反馈补齐三源入口)——候选来自
+ * 服务端 resolveTopicReferences(样例图 → 视频封面 → 挂载文章配图 → 本创作
+ * 已有贴图,仅站内 uploads);另支持 ① 上传本地图 ② 剪贴板粘贴图片,均经
+ * 既有 uploadImageFile → POST /api/media 管线入库,路径写进 pin_positioning
+ * 的「参照图:」条款行,随「保存贴图配置」落库(get_topic_brief 同源读取)。
+ * 「自动」= 不指定,agent 生成时按同一优先级自选;单选、无多选。
+ * 粘贴监听挂 document:仅本轨可见(hidden 页签 display:none → offsetParent
+ * null,不接管)且目标非输入框时才消费剪贴板图片,其余粘贴行为不受影响。
+ * 上传/粘贴的路径不在服务端候选内,以「已指定」卡呈现(条款行持久,刷新仍在)。
  */
+import { useEffect, useRef, useState } from "react";
+
+import { uploadImageFile } from "@/lib/media/upload-client";
 import { REFERENCE_SOURCE_LABEL, type ReferenceSource } from "@/lib/topics/reference-labels";
 
 export interface ReferenceRailItem {
@@ -13,6 +21,8 @@ export interface ReferenceRailItem {
   mediaPath: string;
   label: string;
 }
+
+const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export default function ReferenceRail({
   candidates,
@@ -26,8 +36,51 @@ export default function ReferenceRail({
   onChange: (mediaPath: string) => void;
   disabled?: boolean;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function upload(file: Blob, filename: string): Promise<void> {
+    if (uploading) return;
+    setErr(null);
+    setUploading(true);
+    const r = await uploadImageFile(file, filename);
+    setUploading(false);
+    if (r.ok) {
+      onChange(r.path);
+    } else {
+      setErr(r.error);
+    }
+  }
+
+  // 剪贴板图片 → 上传管线;目标在输入框/可编辑区(文本粘贴)或本轨不可见时不接管
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent): void => {
+      if (disabled || uploading) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLElement &&
+        (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")
+      ) {
+        return;
+      }
+      if (!rootRef.current || rootRef.current.offsetParent === null) return;
+      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
+      const file = item?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      void upload(file, file.name || "paste.png");
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  });
+
+  /** 上传/粘贴图不在服务端候选内 → 以「已指定」卡呈现 */
+  const specifiedOutside = value !== "" && !candidates.some((c) => c.mediaPath === value);
+
   return (
-    <div className="flex flex-col gap-1.5">
+    <div ref={rootRef} className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-semibold text-text-3">参照图</span>
         <button
@@ -42,13 +95,42 @@ export default function ReferenceRail({
         >
           自动(按优先级)
         </button>
-        <span className="text-[11px] text-text-3">
-          {value === "" ? "生成时自选一张:样例图 → 视频封面 → 文章配图 → 本创作贴图" : value}
-        </span>
+        <button
+          type="button"
+          disabled={disabled || uploading}
+          onClick={() => fileRef.current?.click()}
+          className="rounded-sm border border-line px-2 py-0.5 text-[11px] text-text-2 hover:text-text-1 disabled:opacity-50"
+        >
+          {uploading ? "上传中…" : "上传"}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept={ACCEPT}
+          aria-label="上传参照图"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void upload(f, f.name);
+          }}
+        />
       </div>
+      <p className="text-[11px] leading-relaxed text-text-3">
+        {value === ""
+          ? "点选下方预置候选,或上传 / 粘贴(Ctrl+V)本地图;不指定则生成时自选:样例图 → 视频封面 → 文章配图 → 本创作贴图"
+          : value}
+      </p>
+      {specifiedOutside && (
+        <div className="w-20 shrink-0 overflow-hidden rounded-sm border border-accent">
+          {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部缩略,src 为站内动态路径 */}
+          <img src={value} alt="已指定参照图" className="h-20 w-20 bg-panel-2 object-cover" />
+          <span className="block truncate px-1 py-0.5 text-[10px] text-accent">已指定</span>
+        </div>
+      )}
       {candidates.length === 0 ? (
         <p className="text-[11px] text-text-3">
-          暂无可选参照(绑定样例图、挂载已转存封面的视频或带配图的文章后出现)
+          暂无预置候选(绑定样例图、挂载已转存封面的视频或带配图的文章后出现;可先用上传/粘贴)
         </p>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -80,6 +162,11 @@ export default function ReferenceRail({
             );
           })}
         </div>
+      )}
+      {err && (
+        <p className="text-[11px] text-red" role="alert">
+          {err}
+        </p>
       )}
     </div>
   );
