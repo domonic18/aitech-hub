@@ -1,27 +1,31 @@
 import type { MetadataRoute } from "next";
 
+import { asciiSlugFromTitle, pinPath } from "@/lib/content/pin-path";
 import { listAllPostsForSeo } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
 import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
 import { listProjectsForSeo } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
+import { listPublishedPinsForSeo } from "@/lib/pins/repo";
 import { absoluteUrl } from "@/lib/seo/site";
 
-/** sitemap(arch/07-frontend §3:全部 published 文章 + 分类 + 标签 + 项目 + 静态页;lastModified 取 updated_at) */
+/** sitemap(arch/07-frontend §3:全部 published 文章 + 分类 + 标签 + 项目 + 贴图 + 静态页;lastModified 取 updated_at) */
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [posts, categories, tags, projects] = await Promise.all([
+  const [posts, categories, tags, projects, pins] = await Promise.all([
     listAllPostsForSeo(),
     listCategories(),
     listTagsWithCount(),
     listProjectsForSeo(),
+    listPublishedPinsForSeo(),
   ]);
 
   const staticPages: MetadataRoute.Sitemap = [
     "",
     "/articles/",
     "/projects/",
+    "/pins/",
     "/archive/",
     "/about/",
     "/agreement/",
@@ -50,6 +54,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: "daily",
     priority: 0.7,
   }));
+  const pinPages: MetadataRoute.Sitemap = pins.map((p) => ({
+    url: absoluteUrl(pinPath(p.id, asciiSlugFromTitle(p.title))),
+    lastModified: p.updatedAt,
+    changeFrequency: "weekly",
+    priority: 0.7,
+  }));
 
-  return [...staticPages, ...categoryPages, ...tagPages, ...projectPages, ...postPages];
+  return [
+    ...staticPages,
+    ...categoryPages,
+    ...tagPages,
+    ...projectPages,
+    ...pinPages,
+    ...postPages,
+  ];
 }
