@@ -119,6 +119,19 @@ export async function getTopic(id: bigint): Promise<TopicWithItems> {
   return topic;
 }
 
+/**
+ * 创作状态快照(M44 生成态轮询:裸 select 不 include items,5s 级轮询保持
+ * 轻查询);行缺返回 null(生成途中创作被删,轮询侧据此清态)。
+ */
+export async function getTopicStateSnapshot(
+  id: bigint,
+): Promise<{ status: string; updatedAt: Date; linkedPostId: bigint | null } | null> {
+  return prisma.topic.findUnique({
+    where: { id },
+    select: { status: true, updatedAt: true, linkedPostId: true },
+  });
+}
+
 /** 关联文档状态(详情页合成操作区提示口径;行缺返回 null 视为无锚) */
 export async function getLinkedPostState(
   postId: bigint,

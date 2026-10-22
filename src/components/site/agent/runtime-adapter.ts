@@ -17,6 +17,7 @@ import type {
   LangGraphStreamCallback,
 } from "@assistant-ui/react-langgraph";
 
+import { AGENT_RUN_INACTIVE_EVENT } from "@/lib/agent/agent-host";
 import { createSseEventReader } from "@/lib/agent/sse";
 import { extractTodos, extractTodosFromValues, type AgentTodo } from "@/lib/agent/todos";
 
@@ -237,6 +238,13 @@ export function createAgentRuntimeAdapter(
         }
       } finally {
         options.onRunActiveChange?.(false); // 正常收尾/中断/异常全路径覆盖
+        // M44:run 收尾全局广播(创作中心生成态据此即时比对落库结果,免等
+        // 下一跳轮询;无消费方时零开销。轮询仍是兜底路径——run 与页面不同窗
+        // 或广播先于监听的时序竞态由 5s 轮询覆盖)。node 单测环境无 window,
+        // 与 lib 侧 sessionStorage 同式守卫
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(AGENT_RUN_INACTIVE_EVENT));
+        }
       }
     },
     eventHandlers: {

@@ -48,8 +48,8 @@ export default function StudioWorkbench({
 
   return (
     <div className="grid items-stretch gap-3 lg:grid-cols-[264px_minmax(0,1fr)_312px]">
-      {/* 左:素材栏(整列,与配置栏同高) */}
-      <div className="min-w-0">{rail}</div>
+      {/* 左:素材栏(整列 flex 列,素材卡 + 底部就绪锚点,与中/右栏底边对齐) */}
+      <div className="flex min-w-0 flex-col">{rail}</div>
 
       {/* 中:舞台(页签 + 产出 + 吸附创作条) */}
       <div className="flex min-w-0 flex-col">
@@ -77,8 +77,8 @@ export default function StudioWorkbench({
         <div className="sticky bottom-0 mt-3">{createBar}</div>
       </div>
 
-      {/* 右:配置栏(随舞台页签联动,面板不卸载;随页滚动不吸附——配置面高过视口) */}
-      <div className="min-w-0 self-start rounded-sm border border-line bg-panel p-2.5">
+      {/* 右:配置栏(items-stretch 拉满列高,底边与素材栏/创作条对齐;面板不卸载随页签联动) */}
+      <div className="min-w-0 rounded-sm border border-line bg-panel p-2.5">
         <h2 className="mb-2 px-0.5 text-[13px] font-semibold text-text-1">创作配置</h2>
         <div className="flex flex-col gap-3">
           <div hidden={tab !== "post"}>{writingConfig}</div>

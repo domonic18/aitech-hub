@@ -59,7 +59,7 @@ export default function MaterialRail({
   candidates: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-sm border border-line bg-panel p-2.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-sm border border-line bg-panel p-2.5">
       <div className="flex items-center gap-1.5 px-0.5">
         <h2 className="text-[13px] font-semibold text-text-1">素材</h2>
         <span className="rounded-sm bg-panel-2 px-1.5 text-[11px] text-text-2">{items.length}</span>
@@ -180,6 +180,25 @@ export default function MaterialRail({
       </div>
 
       {candidates}
+
+      {/* 底部就绪锚点(M44 F2):spacer 把状态压到栏底,三栏底边对齐 */}
+      <div className="flex-1" />
+      {items.length >= 2 && (
+        <div className="flex items-center gap-1.5 rounded-sm bg-green/10 px-2 py-1.5 text-[11px] text-green">
+          <span>✓</span>
+          <span>素材已就绪({items.length} 条)· 可以开始生成</span>
+        </div>
+      )}
+      {items.length === 1 && (
+        <div className="rounded-sm bg-amber/12 px-2 py-1.5 text-[11px] text-amber-hi">
+          已有 1 条,建议再添 1~2 条
+        </div>
+      )}
+      {items.length > 0 && (
+        <p className="px-0.5 text-[10.5px] leading-relaxed text-text-3">
+          已挂素材将全部作为创作依据交给 AI
+        </p>
+      )}
     </div>
   );
 }

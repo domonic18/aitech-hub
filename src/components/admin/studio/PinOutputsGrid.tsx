@@ -16,6 +16,8 @@ import { formatCnDateTime } from "@/lib/datetime";
 import type { ApiEnvelope } from "@/lib/http/response";
 import { PIN_STATUS_LABEL, type PinStatus } from "@/lib/pins/constants";
 
+import { useStudioGeneration } from "./StudioGenerationProvider";
+
 export interface PinGridItem {
   id: bigint;
   title: string;
@@ -35,6 +37,8 @@ const STATUS_BADGE: Record<PinStatus, string> = {
 export default function PinOutputsGrid({ pins }: { pins: PinGridItem[] }) {
   const [list, setList] = useState(pins);
   const [err, setErr] = useState<string | null>(null);
+  // 本轮新增贴图「新」徽标(M44):completed.newIds 命中即高亮,dismiss 后消失
+  const { completed } = useStudioGeneration();
 
   async function del(p: PinGridItem): Promise<void> {
     if (!window.confirm(`删除贴图《${p.title}》?图片序列与渠道记录一并删除,不可恢复。`)) return;
@@ -52,10 +56,11 @@ export default function PinOutputsGrid({ pins }: { pins: PinGridItem[] }) {
     }
   }
 
+  // 服务端空态由舞台引导卡接管(M44);这里只兜本地删空的回退
   if (list.length === 0) {
     return (
       <p className="rounded-sm border border-dashed border-line px-3 py-6 text-center text-[12px] text-text-3">
-        还没有贴图——点「生成贴图」后,贴图会出现在这里,可去组装台精修并同步公众号
+        贴图已清空——刷新页面恢复服务端列表,或点「生成贴图」再生成一组
       </p>
     );
   }
@@ -65,6 +70,7 @@ export default function PinOutputsGrid({ pins }: { pins: PinGridItem[] }) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {list.map((p) => {
           const status = p.status as PinStatus;
+          const isNew = completed?.kind === "pin" && completed.newIds.includes(p.id.toString());
           return (
             <div
               key={p.id.toString()}
@@ -89,6 +95,11 @@ export default function PinOutputsGrid({ pins }: { pins: PinGridItem[] }) {
                 >
                   {PIN_STATUS_LABEL[status] ?? p.status}
                 </span>
+                {isNew && (
+                  <span className="absolute right-1.5 top-1.5 rounded-sm bg-accent px-1.5 py-px text-[10.5px] font-medium text-[color:var(--accent-contrast)]">
+                    新
+                  </span>
+                )}
                 <span className="absolute bottom-1.5 right-1.5 rounded-sm bg-black/60 px-1.5 py-px font-mono text-[10.5px] text-white">
                   {p.imageCount} 图
                 </span>

@@ -257,6 +257,12 @@ export async function listPinsByTopic(topicId: bigint): Promise<
   }));
 }
 
+/** 某创作的贴图 id 集(M44 生成态轮询比对:轻查询不取内容) */
+export async function listPinIdsByTopic(topicId: bigint): Promise<string[]> {
+  const rows = await prisma.contentPin.findMany({ where: { topicId }, select: { id: true } });
+  return rows.map((r) => r.id.toString());
+}
+
 /** 状态分段计数(工作台页签角标) */
 export async function countPinsByStatus(): Promise<Record<PinStatus | "all", number>> {
   const grouped = await prisma.contentPin.groupBy({ by: ["status"], _count: { _all: true } });

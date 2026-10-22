@@ -151,7 +151,7 @@
 
 - **根因**:专题合成/编辑页均页面自持 AssistantCard,路由切换 → 页面组件树卸载 → SDK 断 SSE 流 → stream route `cancel()` → `abort.abort()` 服务端 run 终止(usage 照记,不可恢复)。生产实证:合成 run 止步 write_todos(4h 唯一一条 search_agent 用量),关联文档无新稿
 - **红线(ESLint `no-restricted-imports` 机器守)**:`AssistantCard` 全站仅宿主 `AssistantFab` 一处实例化——宿主挂**根 layout**(跨路由持久,admin↔site 同理),首开才挂(零前置开销),此后关闭/隐藏/切页仅 display:none,在跑 run 不中断
-- **页面接入两协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicDraftActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复
+- **页面接入三协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicDraftActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复;③ **run 收尾广播**(M44)`AGENT_RUN_INACTIVE_EVENT`→ `agent:run-inactive`(runtime-adapter stream finally 派发,正常收尾/中断/异常全路径;无载荷全局广播,消费方以自身在途态为前提,无生成态零动作)——创作中心生成态据此即时比对落库结果免等下一跳轮询,5s 轮询仍为兜底(run 与页面不同窗/广播先于监听的竞态由轮询覆盖)
 - **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由
 - **诚实边界**:刷新/关标签页仍断 run(SSE 流式架构固有,跨刷新存活需后台化=BullMQ+流重连,量级另立);/search AgentDrawer 独立会话面不收编(页面即场景)
 

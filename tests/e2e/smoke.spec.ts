@@ -3541,6 +3541,25 @@ test("34. 创作中心(M42 由专题治理台重构:新建/添加仅已解读/�
       timeout: 10_000,
     });
 
+    // M44 状态驱动交互(零 LLM):空产出舞台=三步引导卡(post/pin 各一,步骤①
+    // 挂素材=当前步骤);创作条标题态机空素材=「先准备素材」;轮询接口裸快照与
+    // [id] 路由守卫同款(会话 200 / PAT 403)
+    await expect(page.getByText("先挂载素材,再开始创作")).toHaveCount(2);
+    await expect(page.getByText("当前步骤")).toHaveCount(2);
+    await expect(page.getByText("先准备素材")).toBeVisible();
+    const snap = await page.request.get(`/api/topics/${topicId}/studio-state/`);
+    expect(snap.status()).toBe(200);
+    const snapBody = (await snap.json()) as {
+      data: { status: string; linkedPostId: string | null; pinIds: string[] };
+    };
+    expect(snapBody.data.status).toBe("drafted");
+    expect(snapBody.data.linkedPostId).toBeNull();
+    expect(snapBody.data.pinIds).toEqual([]);
+    const patSnap = await request.get(`/api/topics/${topicId}/studio-state/`, {
+      headers: { authorization: "Bearer e2e-not-a-token" },
+    });
+    expect(patSnap.status()).toBe(403);
+
     // 贴图产出卡(M42):topic_id 软关联的贴图在产出区列出,入口直通组装台
     await prisma.contentPin.create({
       data: {

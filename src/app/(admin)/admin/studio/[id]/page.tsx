@@ -13,6 +13,7 @@ import { requireAdminPage } from "@/lib/auth/guard";
 import { listPinsByTopic } from "@/lib/pins/repo";
 import { needsRecomposeConfirm } from "@/lib/topics/compose";
 import { TOPIC_OUTPUT_LABEL, type TopicOutputType } from "@/lib/topics/constants";
+import type { GenerationBaseline } from "@/lib/topics/generation-state";
 import {
   MOUNT_PAGE_SIZE,
   hydrateItems,
@@ -33,7 +34,10 @@ import ArticleOutputCard from "@/components/admin/studio/ArticleOutputCard";
 import MaterialRail from "@/components/admin/studio/MaterialRail";
 import PinConfigPanel from "@/components/admin/studio/PinConfigPanel";
 import PinOutputsGrid from "@/components/admin/studio/PinOutputsGrid";
+import StageGuideCard from "@/components/admin/studio/StageGuideCard";
+import StageStateGate from "@/components/admin/studio/StageStateGate";
 import StudioActions from "@/components/admin/studio/StudioActions";
+import StudioGenerationProvider from "@/components/admin/studio/StudioGenerationProvider";
 import StudioMaterialModal from "@/components/admin/studio/StudioMaterialModal";
 import StudioTopbar from "@/components/admin/studio/StudioTopbar";
 import StudioWorkbench from "@/components/admin/studio/StudioWorkbench";
@@ -73,6 +77,14 @@ export default async function AdminStudioDetailPage({ params, searchParams }: Pa
     `出 ${pinParsed.selection.count} 张 · ${PIN_ASPECT_LABEL[pinParsed.selection.aspect]}` +
     ` · 首图 ${PIN_CROP_LABEL[pinParsed.selection.crop]}` +
     (pinParsed.selection.reference ? " · 指定参照图" : " · 参照图自动");
+
+  // 生成态基线(M44):点击生成时随 StudioActions 下发,轮询据此判定落库完成
+  const baseline: GenerationBaseline = {
+    status: topic.status,
+    updatedAt: topic.updatedAt.toISOString(),
+    linkedPostId: topic.linkedPostId ? topic.linkedPostId.toString() : null,
+    pinIds: pins.map((p) => p.id.toString()),
+  };
 
   const sp = await searchParams;
   const tab = sp.mount === "post" ? "post" : "telegram";
@@ -161,48 +173,69 @@ export default async function AdminStudioDetailPage({ params, searchParams }: Pa
         updatedAt={topic.updatedAt}
       />
 
-      <StudioWorkbench
-        defaultTab={topic.outputType === "pin" ? "pin" : "post"}
-        postCount={topic.linkedPostId ? 1 : 0}
-        pinCount={pins.length}
-        rail={
-          <MaterialRail
-            topicId={id}
-            items={topic.items}
-            materials={materials}
-            candidates={materialModal}
-          />
-        }
-        postStage={
-          topic.linkedPostId && linkedDoc ? (
-            <ArticleOutputCard postId={topic.linkedPostId.toString()} doc={linkedDoc} />
-          ) : (
-            <p className="rounded-sm border border-dashed border-line px-3 py-6 text-center text-[12px] text-text-3">
-              还没有长文——点「生成长文」后,文档会出现在这里,可打开人工定稿
-            </p>
-          )
-        }
-        pinStage={<PinOutputsGrid pins={pins} />}
-        writingConfig={<TopicWritingConfigPanel id={id} positioning={topic.positioning} />}
-        pinConfig={
-          <PinConfigPanel id={id} pinPositioning={topic.pinPositioning} candidates={references} />
-        }
-        createBar={
-          <div className="rounded-sm border border-line bg-panel p-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.25)]">
-            <StudioActions
+      {/* 生成态 Provider(M44):包整个工作台,舞台门/创作条/产出网格共享在途与完成态 */}
+      <StudioGenerationProvider topicId={id}>
+        <StudioWorkbench
+          defaultTab={topic.outputType === "pin" ? "pin" : "post"}
+          postCount={topic.linkedPostId ? 1 : 0}
+          pinCount={pins.length}
+          rail={
+            <MaterialRail
               topicId={id}
-              topicTitle={topic.title}
-              materialsCount={topic.items.length}
-              hasDoc={topic.linkedPostId !== null}
-              linkedPostStatus={linkedPost?.status ?? null}
-              editedSinceCompose={linkedPost ? needsRecomposeConfirm(topic, linkedPost) : false}
-              genreWord={purpose.genreWord}
-              hasPins={pins.length > 0}
-              pinHint={pinHint}
+              items={topic.items}
+              materials={materials}
+              candidates={materialModal}
             />
-          </div>
-        }
-      />
+          }
+          postStage={
+            <StageStateGate kind="post">
+              {topic.linkedPostId && linkedDoc ? (
+                <ArticleOutputCard postId={topic.linkedPostId.toString()} doc={linkedDoc} />
+              ) : (
+                <StageGuideCard
+                  variant="post"
+                  materialsCount={topic.items.length}
+                  configured={(topic.positioning ?? "").trim() !== ""}
+                />
+              )}
+            </StageStateGate>
+          }
+          pinStage={
+            <StageStateGate kind="pin" pinTarget={pinParsed.selection.count}>
+              {pins.length > 0 ? (
+                <PinOutputsGrid pins={pins} />
+              ) : (
+                <StageGuideCard
+                  variant="pin"
+                  materialsCount={topic.items.length}
+                  configured={(topic.pinPositioning ?? "").trim() !== ""}
+                />
+              )}
+            </StageStateGate>
+          }
+          writingConfig={<TopicWritingConfigPanel id={id} positioning={topic.positioning} />}
+          pinConfig={
+            <PinConfigPanel id={id} pinPositioning={topic.pinPositioning} candidates={references} />
+          }
+          createBar={
+            <div className="rounded-sm border border-line bg-panel p-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.25)]">
+              <StudioActions
+                topicId={id}
+                topicTitle={topic.title}
+                materialsCount={topic.items.length}
+                hasDoc={topic.linkedPostId !== null}
+                linkedPostStatus={linkedPost?.status ?? null}
+                editedSinceCompose={linkedPost ? needsRecomposeConfirm(topic, linkedPost) : false}
+                genreWord={purpose.genreWord}
+                hasPins={pins.length > 0}
+                pinHint={pinHint}
+                outputType={topic.outputType}
+                baseline={baseline}
+              />
+            </div>
+          }
+        />
+      </StudioGenerationProvider>
     </div>
   );
 }
