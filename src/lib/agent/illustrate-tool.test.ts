@@ -153,6 +153,25 @@ describe("generate_illustration(文生图图文工具)", () => {
     expect(String(out.hint)).toContain("参照图已生效");
   });
 
+  it("外链参照(M40 批 A):URL 原样透传执行核心,转存回执 reference_saved + hint 提示改传站内路径", async () => {
+    generateIllustrations.mockResolvedValueOnce({
+      images: [{ path: "/wp-content/uploads/2026/10/illu-a.png", mime: "image/png" }],
+      referenceError: null,
+      savedReferencePath: "/wp-content/uploads/2026/10/illu-ref-abc.png",
+    });
+    const out = await invoke({ prompt: "p", reference_path: "https://cdn.example/x.png" });
+    expect(generateIllustrations).toHaveBeenCalledWith(
+      expect.objectContaining({ referencePath: "https://cdn.example/x.png" }),
+    );
+    expect(out).toMatchObject({
+      ok: true,
+      reference_applied: true,
+      reference_saved: "/wp-content/uploads/2026/10/illu-ref-abc.png",
+    });
+    expect(String(out.hint)).toContain("转存入库");
+    expect(String(out.hint)).toContain("reference_path");
+  });
+
   it("参照风格冲突守卫:带参照时 prompt 含 HEX 色值 → 出图前拒,人话自纠反馈", async () => {
     const out = await invoke({
       prompt: "深蓝底 #0b1220 金色强调,标题大字「测试」",

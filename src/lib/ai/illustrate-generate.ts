@@ -8,10 +8,14 @@
  * M39 批③:参照图通道(referencePath 站内媒体路径 → mediaStorage 读字节 →
  * data URL 进 Seedream 原生 image 参数,出图向参照风格靠拢)——装载失败/超帽/
  * 格式不支持不阻塞生图,降级为无参照出图并把人话原因带回调用侧(agent 可见)。
+ * M40 批 A:参照来源扩展到会话视觉输入——用户在会话中发的 https 图片 URL
+ * 经 fetchExternalImage 抓取 → 魔数嗅探 → uploadMedia 入库(sha1 去重)后走
+ * 同一 data URL 通路;编排模型纯文本看不了图,只做 URL 传参不臆测内容。
  */
 import path from "node:path";
 
 import { logger } from "../logger";
+import { fetchExternalImage } from "../media/fetch-external";
 import { uploadMedia } from "../media/service";
 import { MEDIA_MIME_BY_EXT, mediaStorage, uploadsUrlToRel } from "../media/storage";
 
@@ -20,6 +24,7 @@ import { AiAdminError, AiClientError } from "./errors";
 import { decodeImageB64, downloadImage, generateImages, sniffImageMime } from "./image-client";
 import { resolveAiModel } from "./resolver";
 import { recordAiUsage } from "./usage-log";
+import { siteUrl } from "../seo/site";
 
 /** 宽高比 → 分辨率映射(§13.9:宽高比是模型物理约束属机制参数,不携带内容
  * 语义;呈现形态由 agent 编排,经 prompt 表达)。横版与封面同档 16:9(公众号
@@ -45,27 +50,64 @@ export const ILLUSTRATE_REFERENCE_MAX_BYTES = 6 * 1024 * 1024;
 /** 参照图白名单 mime(Seedream image 参数支持域;gif/svg 不收) */
 const REFERENCE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
-/** 参照图装载(站内媒体路径 → data URL);任一环失败返回人话原因,不抛——
- * 参照是增强不是硬依赖,生图照常进行(调用侧把原因带回 agent) */
+/** 参照图装载(站内媒体路径或会话外链 URL → data URL);任一环失败返回人话
+ * 原因,不抛——参照是增强不是硬依赖,生图照常进行(调用侧把原因带回 agent)。
+ * M40 批 A:外链 URL 分流——fetchExternalImage(admin 风险域同 fetch-external
+ * 注释,SSRF 边界沿用)→ 魔数嗅探 → uploadMedia 入库(sha1 去重,媒体库可见
+ * 可复用)→ 同站内通路装 data URL;只收 https。同源完整 URL(媒体库复制形态)
+ * 先剥 origin 归一为站内路径,免公网回环抓取。 */
 async function loadReferenceDataUrl(
   referencePath: string,
-): Promise<{ dataUrl: string } | { error: string }> {
-  const rel = uploadsUrlToRel(referencePath);
-  if (!rel) {
-    return { error: "参照图路径不合法(仅支持站内媒体 /wp-content/uploads/ 路径)" };
+): Promise<{ dataUrl: string; savedPath?: string } | { error: string }> {
+  let candidate = referencePath;
+  try {
+    const u = new URL(referencePath);
+    if (u.origin === siteUrl()) candidate = u.pathname + u.search;
+  } catch {
+    // 非 URL 形态(站内相对路径),按原样进站内分流
   }
-  const bytes = await mediaStorage.get(rel);
-  if (!bytes || bytes.length === 0) {
-    return { error: "参照图文件读取失败(可能已被删除):请到专题写作配置重新选择参照图" };
+  const rel = uploadsUrlToRel(candidate);
+  if (rel) {
+    const bytes = await mediaStorage.get(rel);
+    if (!bytes || bytes.length === 0) {
+      return { error: "参照图文件读取失败(可能已被删除):请到专题写作配置重新选择参照图" };
+    }
+    if (bytes.length > ILLUSTRATE_REFERENCE_MAX_BYTES) {
+      return { error: "参照图超过 6MB 体积帽:请换更小的图" };
+    }
+    const mime = MEDIA_MIME_BY_EXT[path.extname(rel).toLowerCase()] ?? "";
+    if (!REFERENCE_MIMES.has(mime)) {
+      return { error: "参照图格式不支持(仅 png/jpeg/webp)" };
+    }
+    return { dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}` };
   }
-  if (bytes.length > ILLUSTRATE_REFERENCE_MAX_BYTES) {
+  if (!/^https:\/\//i.test(referencePath)) {
+    return {
+      error: "参照图路径不合法(仅支持站内媒体 /wp-content/uploads/ 路径或 https 图片 URL)",
+    };
+  }
+  let fetched: { data: Uint8Array; mime: string };
+  try {
+    fetched = await fetchExternalImage(referencePath);
+  } catch (e) {
+    return { error: `参照图外链抓取失败(${e instanceof Error ? e.message : String(e)})` };
+  }
+  const sniffed = sniffImageMime(fetched.data);
+  if (!sniffed || !REFERENCE_MIMES.has(sniffed)) {
+    return { error: "参照图外链内容不是可用的 png/jpeg/webp 图片" };
+  }
+  if (fetched.data.byteLength > ILLUSTRATE_REFERENCE_MAX_BYTES) {
     return { error: "参照图超过 6MB 体积帽:请换更小的图" };
   }
-  const mime = MEDIA_MIME_BY_EXT[path.extname(rel).toLowerCase()] ?? "";
-  if (!REFERENCE_MIMES.has(mime)) {
-    return { error: "参照图格式不支持(仅 png/jpeg/webp)" };
-  }
-  return { dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}` };
+  const saved = await uploadMedia({
+    data: fetched.data,
+    mime: sniffed,
+    filename: `illu-ref-${Date.now().toString(36)}.${sniffed === "image/png" ? "png" : sniffed === "image/jpeg" ? "jpg" : "webp"}`,
+  });
+  return {
+    dataUrl: `data:${sniffed};base64,${Buffer.from(fetched.data).toString("base64")}`,
+    savedPath: saved.path,
+  };
 }
 
 export interface IllustrateImage {
@@ -83,9 +125,12 @@ export interface GenerateIllustrationsInput {
   referencePath?: string;
 }
 
-export async function generateIllustrations(
-  input: GenerateIllustrationsInput,
-): Promise<{ images: IllustrateImage[]; referenceError: string | null }> {
+export async function generateIllustrations(input: GenerateIllustrationsInput): Promise<{
+  images: IllustrateImage[];
+  referenceError: string | null;
+  /** 外链参照转存后的站内路径(媒体库可见可复用;站内参照或无参照时为 null) */
+  savedReferencePath: string | null;
+}> {
   const model = await resolveAiModel(AI_PURPOSE_ILLUSTRATE);
   if (!model) {
     throw new AiAdminError(
@@ -101,10 +146,12 @@ export async function generateIllustrations(
   // 无参照出图,人话原因带回调用侧(参照是增强不是硬依赖)
   let referenceDataUrl: string | undefined;
   let referenceError: string | null = null;
+  let savedReferencePath: string | null = null;
   if (input.referencePath) {
     const ref = await loadReferenceDataUrl(input.referencePath);
     if ("dataUrl" in ref) {
       referenceDataUrl = ref.dataUrl;
+      savedReferencePath = ref.savedPath ?? null;
     } else {
       referenceError = ref.error;
       logger.warn({
@@ -189,5 +236,5 @@ export async function generateIllustrations(
     promptLen: input.prompt.length,
     referenceApplied: referenceDataUrl !== undefined,
   });
-  return { images: out, referenceError };
+  return { images: out, referenceError, savedReferencePath };
 }

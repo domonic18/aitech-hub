@@ -16,6 +16,10 @@ vi.mock("./image-client", () => ({
   sniffImageMime: vi.fn(() => "image/png"),
 }));
 vi.mock("../media/service", () => ({ uploadMedia: vi.fn() }));
+// 外链参照抓取桩(M40 批 A 会话视觉输入)
+const mockedFetchExternal = vi.hoisted(() => vi.fn());
+vi.mock("../media/fetch-external", () => ({ fetchExternalImage: mockedFetchExternal }));
+vi.mock("../seo/site", () => ({ siteUrl: () => "https://17aitech.com" }));
 // 参照图装载桩(M39 批③):uploadsUrlToRel / MEDIA_MIME_BY_EXT 用最小同构实现
 // (storage.test.ts 另有真实现覆盖),mediaStorage.get 逐测注入
 const storageGet = vi.hoisted(() => vi.fn());
@@ -60,6 +64,10 @@ beforeEach(() => {
   mockedResolve.mockResolvedValue(MODEL);
   mockedGenerate.mockResolvedValue([{ b64: "AAAA" }]);
   mockedUpload.mockResolvedValue({ path: "/wp-content/uploads/2026/10/illu-a.png" } as never);
+  mockedFetchExternal.mockResolvedValue({
+    data: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    mime: "image/png",
+  });
 });
 
 describe("generateIllustrations(文生图执行核心)", () => {
@@ -191,10 +199,10 @@ describe("generateIllustrations(文生图执行核心)", () => {
 
   it("参照图降级不阻塞(§13.11 决策 5 兜底):路径非法/读取失败/超帽/格式不支持均无 image 照常出图,人话原因带回", async () => {
     mockedGenerate.mockResolvedValue([{ b64: "AAAA" }]);
-    // 外链(非站内前缀)
+    // 非 https 外链(M40 起 https URL 已合法,http 与裸文本仍拒)
     let r = await generateIllustrations({
       prompt: "p",
-      referencePath: "https://cdn.example/x.png",
+      referencePath: "http://cdn.example/x.png",
     });
     expect(r.referenceError).toContain("路径不合法");
     expect(mockedGenerate.mock.calls[0]?.[0]?.image).toBeUndefined();
@@ -215,5 +223,71 @@ describe("generateIllustrations(文生图执行核心)", () => {
     r = await generateIllustrations({ prompt: "p", referencePath: "/wp-content/uploads/a/x.svg" });
     expect(r.referenceError).toContain("格式不支持");
     expect(mockedGenerate).toHaveBeenCalledTimes(5); // 全程照常出图
+  });
+
+  it("外链参照(M40 批 A 会话视觉输入):https URL 抓取 → 嗅探 → 入库转存 → data URL 进 image 参数,savedReferencePath 回带", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "https://cdn.example/x.png",
+    });
+    expect(mockedFetchExternal).toHaveBeenCalledWith("https://cdn.example/x.png");
+    expect(mockedUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ data: bytes, mime: "image/png" }),
+    );
+    expect(r.referenceError).toBeNull();
+    expect(r.savedReferencePath).toBe("/wp-content/uploads/2026/10/illu-a.png");
+    const call = mockedGenerate.mock.calls[0]?.[0];
+    expect(call?.image).toBe(`data:image/png;base64,${Buffer.from(bytes).toString("base64")}`);
+  });
+
+  it("同源完整 URL 剥 origin 归一站内路径(M40 批 A):媒体库复制形态不走公网回环抓取", async () => {
+    storageGet.mockResolvedValueOnce(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "https://17aitech.com/wp-content/uploads/2026/10/ref.png",
+    });
+    expect(mockedFetchExternal).not.toHaveBeenCalled();
+    expect(storageGet).toHaveBeenCalledWith("2026/10/ref.png");
+    expect(r.referenceError).toBeNull();
+    expect(r.savedReferencePath).toBeNull(); // 站内参照,无转存
+  });
+
+  it("外链参照降级:抓取失败/内容非图/超 6MB 帽均无 image 照常出图,人话原因带回且零参照转存", async () => {
+    mockedFetchExternal.mockRejectedValueOnce(new Error("HTTP 404"));
+    let r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "https://cdn.example/gone.png",
+    });
+    expect(r.referenceError).toContain("抓取失败");
+    expect(r.savedReferencePath).toBeNull();
+    expect(mockedGenerate.mock.calls[0]?.[0]?.image).toBeUndefined();
+
+    // 嗅探不出图片魔数(svg/文本)
+    mockedFetchExternal.mockResolvedValueOnce({
+      data: new Uint8Array([0x3c, 0x73, 0x76, 0x67]),
+      mime: "image/svg+xml",
+    });
+    vi.mocked(sniffImageMime).mockReturnValueOnce(null as never);
+    r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "https://cdn.example/s.svg",
+    });
+    expect(r.referenceError).toContain("不是可用的 png/jpeg/webp");
+
+    // 执行期 6MB 帽(fetchExternalImage 上限 10MB,参照帽更紧)
+    mockedFetchExternal.mockResolvedValueOnce({
+      data: new Uint8Array(6 * 1024 * 1024 + 1),
+      mime: "image/png",
+    });
+    r = await generateIllustrations({
+      prompt: "p",
+      referencePath: "https://cdn.example/big.png",
+    });
+    expect(r.referenceError).toContain("6MB");
+
+    // uploadMedia 仅出图入库 3 次(每成功生图一张),参照转存零发生
+    expect(mockedUpload).toHaveBeenCalledTimes(3);
+    expect(mockedGenerate).toHaveBeenCalledTimes(3); // 三次均照常出图
   });
 });
