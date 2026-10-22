@@ -20,6 +20,8 @@ const NON_TOOL_TOKENS = new Set([
   "cover_path", // 素材/落稿字段
   "draft_md", // write_article 返回字段
   "markdown_line", // render_card 返回字段
+  "output_type", // brief 结构化标记:主意图 article|pin(M42 创作中心)
+  "pin_config", // brief 结构化标记:贴图配置(M42 批④;reference 为管理员指定参照图)
   "post_id", // save_topic_draft 返回字段
   "post_url", // save_topic_draft 返回字段
   "reference_path", // generate_illustration 样例参照图参数(M39 批③;2026-10-21 提示加参照纪律)

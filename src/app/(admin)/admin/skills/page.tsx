@@ -20,7 +20,7 @@ export default async function AdminSkillsPage(): Promise<React.ReactElement> {
         <h2 className="text-base font-semibold">写作技能</h2>
         <p className="mt-0.5 text-xs text-text-3">
           流程纪律沉淀为可管理资产:编辑器 AI 写作前经技能清单对号取用指南全文,建改即时生效;
-          专题可在「专题管理」绑定 skill_key 指定写作技能。
+          创作可在「创作中心」绑定 skill_key 指定写作技能。
         </p>
       </div>
       <div className="flex justify-end">

@@ -8,7 +8,7 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { toItemDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
-import { unmountItem, updateItem } from "@/lib/topics/repo";
+import { unmountItem, updateItem } from "@/lib/topics/materials";
 import { itemUpdateSchema } from "@/lib/topics/schemas";
 
 export const dynamic = "force-dynamic";

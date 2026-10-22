@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   output: "standalone",
   async redirects() {
     return [
+      // M42 创作中心(2026-10-22):专题管理 → 创作中心,旧书签/外链 308 承接
+      // (trailingSlash 规范化先于 redirects,两种斜杠形态都列,同下方惯例)
+      { source: "/admin/topics", destination: "/admin/studio/", statusCode: 308 },
+      { source: "/admin/topics/", destination: "/admin/studio/", statusCode: 308 },
+      { source: "/admin/topics/:path*", destination: "/admin/studio/:path*", statusCode: 308 },
       // WP 时代订阅地址承接(standard/02 §5 验收清单):/feed 与 /feed/ → /feed.xml
       // trailingSlash 规范化先于 redirects 执行,canonical 形态 /feed/ 必须显式列出
       { source: "/feed", destination: "/feed.xml", statusCode: 301 },

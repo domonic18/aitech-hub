@@ -8,10 +8,20 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const sessionFindUnique = vi.hoisted(() => vi.fn());
 const postFindUnique = vi.hoisted(() => vi.fn());
+// M42 brief 贴图区:本创作既有贴图 + 参照候选(样例图/挂载文章/本创作贴图)
+const briefDb = vi.hoisted(() => ({
+  pinFindMany: vi.fn(),
+  sampleFindUnique: vi.fn(),
+  itemFindMany: vi.fn(),
+  postFindMany: vi.fn(),
+}));
 vi.mock("../db", () => ({
   prisma: {
     searchAgentSession: { findUnique: sessionFindUnique },
-    post: { findUnique: postFindUnique },
+    post: { findUnique: postFindUnique, findMany: briefDb.postFindMany },
+    contentPin: { findMany: briefDb.pinFindMany },
+    writingSampleImage: { findUnique: briefDb.sampleFindUnique },
+    topicItem: { findMany: briefDb.itemFindMany },
   },
 }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -89,6 +99,11 @@ beforeEach(() => {
   vi.resetAllMocks(); // once 队列一并清,防跨用例串味
   // save_topic_draft 落稿校验默认零封面(具体用例再用 once 覆盖)
   transferVideoCovers.mockResolvedValue([]);
+  // brief 贴图区缺省空(具体用例再用 once 覆盖)
+  briefDb.pinFindMany.mockResolvedValue([]);
+  briefDb.sampleFindUnique.mockResolvedValue(null);
+  briefDb.itemFindMany.mockResolvedValue([]);
+  briefDb.postFindMany.mockResolvedValue([]);
 });
 
 describe("admin 会话防线(纵深防御,四工具同口径)", () => {
@@ -116,15 +131,19 @@ describe("get_topic_brief", () => {
       status: "drafted",
       composedAt: new Date("2026-10-13T10:00:00Z"),
       linkedPostId: BigInt(9),
-      items: [{}],
+      items: [{ itemType: "post", itemId: BigInt(3) }],
     };
     getTopic.mockResolvedValueOnce(topic);
     buildComposeBlocks.mockResolvedValueOnce([
       {
         kind: "telegram",
+        mediaType: "video",
         title: "视频A",
         blogger: "UP主A",
         note: "突出成本",
+        summary: "原文一句",
+        aiTopic: null,
+        keywords: [],
         videoUrl: "https://b23.tv/x",
         coverUrl: "https://img/x.jpg",
         aiNote: "n".repeat(3500),
@@ -162,12 +181,67 @@ describe("get_topic_brief", () => {
     expect(out.note).not.toContain("render_card");
   });
 
+  it("M42 贴图区:output_type/pin_config/existing_pins/reference_candidates/mounted_keys 随 brief 透出", async () => {
+    sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      title: "端侧拐点",
+      positioning: null,
+      pinPositioning: "画面:共 8 张,比例 1:1,首图裁剪 16_9。\n风格:手绘笔记风",
+      outputType: "pin",
+      status: "collecting",
+      composedAt: null,
+      linkedPostId: null,
+      sampleImageId: BigInt(5),
+      items: [
+        { itemType: "post", itemId: BigInt(3) },
+        { itemType: "telegram", itemId: BigInt(9) },
+      ],
+    });
+    buildComposeBlocks.mockResolvedValueOnce([]);
+    transferVideoCovers.mockResolvedValueOnce([]);
+    listRecentPublishedTitles.mockResolvedValueOnce([]);
+    // 同一次 brief 两处读样例图(sample_image 标记 + 参照候选),用常驻 mock
+    briefDb.sampleFindUnique.mockResolvedValue({
+      id: BigInt(5),
+      name: "白纸红字",
+      mediaPath: "/wp-content/uploads/2026/10/sample.png",
+    });
+    briefDb.pinFindMany.mockResolvedValueOnce([
+      { id: BigInt(77), title: "已出的一张", status: "draft", _count: { images: 3 } },
+    ]);
+
+    const out = await invoke(getTopicBriefTool, { topic_id: "7" });
+    expect(out.topic).toMatchObject({ output_type: "pin" });
+    expect(out.pin_config).toMatchObject({
+      count: 8,
+      aspect: "1:1",
+      crop: "16_9",
+      style: "手绘笔记风",
+      reference: null,
+      custom: false,
+    });
+    expect((out.pin_config as { note: string }).note).toContain("出 8 张,比例 方版 1:1");
+    expect((out.pin_config as { note: string }).note).toContain("未指定参照图");
+    expect(out.existing_pins).toEqual([
+      { id: "77", title: "已出的一张", status: "draft", images: 3, admin_url: "/admin/pins/77" },
+    ]);
+    expect(out.reference_candidates).toEqual([
+      {
+        source: "sample_image",
+        media_path: "/wp-content/uploads/2026/10/sample.png",
+        label: "样例参照图《白纸红字》",
+      },
+    ]);
+    expect(out.mounted_keys).toEqual(["post:3", "telegram:9"]);
+  });
+
   it("brief 绑定技能预装(pinned):skill_key 命中 → 指南全文随载荷;停用 → null+人话", async () => {
     const topicRow = {
       id: BigInt(7),
       title: "端侧拐点",
       positioning: null,
-      items: [{}],
+      items: [{ itemType: "post", itemId: BigInt(3) }],
       linkedPostId: null,
       composedAt: null,
       status: "collecting",
@@ -203,13 +277,21 @@ describe("get_topic_brief", () => {
 
   it("封面转存单条失败 → cover_path=null + 顶层失败清单(不阻塞 brief)", async () => {
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
-    getTopic.mockResolvedValueOnce({ id: BigInt(7), title: "端侧拐点", items: [{}] });
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      title: "端侧拐点",
+      items: [{ itemType: "post", itemId: BigInt(3) }],
+    });
     buildComposeBlocks.mockResolvedValueOnce([
       {
         kind: "telegram",
+        mediaType: "video",
         title: "视频A",
         blogger: "UP主A",
         note: null,
+        summary: "原文一句",
+        aiTopic: null,
+        keywords: [],
         videoUrl: "https://b23.tv/x",
         coverUrl: "https://img/x.jpg",
         aiNote: null,
@@ -245,7 +327,7 @@ describe("get_topic_brief", () => {
     const base = {
       id: BigInt(7),
       title: "端侧拐点",
-      items: [{}],
+      items: [{ itemType: "post", itemId: BigInt(3) }],
       linkedPostId: null,
       composedAt: null,
       status: "collecting",
@@ -277,7 +359,7 @@ describe("get_topic_brief", () => {
     const base = {
       id: BigInt(7),
       title: "端侧拐点",
-      items: [{}],
+      items: [{ itemType: "post", itemId: BigInt(3) }],
       linkedPostId: null,
       composedAt: null,
       status: "collecting",
@@ -316,7 +398,10 @@ describe("get_topic_brief", () => {
 describe("transfer_video_cover", () => {
   it("全量转存:成功清单 covers(标题/博主/站内路径),部分失败列 failed", async () => {
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
-    getTopic.mockResolvedValueOnce({ id: BigInt(7), items: [{}] });
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      items: [{ itemType: "post", itemId: BigInt(3) }],
+    });
     transferVideoCovers.mockResolvedValueOnce([
       { title: "视频A", blogger: "UP主A", coverPath: "/wp-content/uploads/2026/10/a.jpg" },
       { title: "视频B", blogger: null, coverPath: null },
@@ -332,7 +417,10 @@ describe("transfer_video_cover", () => {
 
   it("零视频封面 → ok:false 人话;全部转存失败 → ok:false 人话", async () => {
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
-    getTopic.mockResolvedValueOnce({ id: BigInt(7), items: [{}] });
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      items: [{ itemType: "post", itemId: BigInt(3) }],
+    });
     transferVideoCovers.mockResolvedValueOnce([]);
     await expect(invoke(transferVideoCoverTool, { topic_id: "7" })).resolves.toMatchObject({
       ok: false,
@@ -340,7 +428,10 @@ describe("transfer_video_cover", () => {
     });
 
     sessionFindUnique.mockResolvedValueOnce(ADMIN_OK);
-    getTopic.mockResolvedValueOnce({ id: BigInt(7), items: [{}] });
+    getTopic.mockResolvedValueOnce({
+      id: BigInt(7),
+      items: [{ itemType: "post", itemId: BigInt(3) }],
+    });
     transferVideoCovers.mockResolvedValueOnce([
       { title: "视频A", blogger: "UP主A", coverPath: null },
     ]);
@@ -396,7 +487,7 @@ describe("save_topic_draft", () => {
   const topic = {
     id: BigInt(7),
     title: "端侧拐点",
-    items: [{}],
+    items: [{ itemType: "post", itemId: BigInt(3) }],
     linkedPostId: null,
     composedAt: null,
     status: "collecting",

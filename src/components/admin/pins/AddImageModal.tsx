@@ -52,6 +52,10 @@ export default function AddImageModal({
   const [count, setCount] = useState(1);
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  // M42 批③:参照图(风格锚定,单张)——工坊根版本或本地上传,只收站内 uploads
+  const [referencePath, setReferencePath] = useState<string | null>(null);
+  const refFileRef = useRef<HTMLInputElement>(null);
+  const [refBusy, setRefBusy] = useState(false);
 
   const remaining = PIN_IMAGES_MAX - currentCount;
 
@@ -73,11 +77,39 @@ export default function AddImageModal({
     const body = await callPinApi<{ jobId: string }>(`/api/pins/${pinId}/generate`, {
       method: "POST",
       headers: JSON_HEADERS,
-      body: JSON.stringify({ prompt: prompt.trim(), aspect, count: Math.min(count, remaining) }),
+      body: JSON.stringify({
+        prompt: prompt.trim(),
+        aspect,
+        count: Math.min(count, remaining),
+        ...(referencePath ? { referencePath } : {}),
+      }),
     });
     setBusy(false);
     if (body.code !== 0) setError(body.message);
     else onGenerated(currentCount);
+  }
+
+  /** 本地参照图:only 过媒体管线(不挂序列),拿站内路径当 referencePath */
+  async function uploadReference() {
+    const file = refFileRef.current?.files?.[0];
+    if (!file) return;
+    setRefBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const upRes = await fetch("/api/media", { method: "POST", body: form });
+      const up = (await upRes.json().catch(() => null)) as ApiEnvelope<{ path: string }> | null;
+      if (!up || up.code !== 0 || !up.data) {
+        setError(up?.message ?? `参照图上传失败(HTTP ${upRes.status})`);
+        return;
+      }
+      setReferencePath(up.data.path);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "网络异常");
+    } finally {
+      setRefBusy(false);
+    }
   }
 
   /** 本地图取自然宽高后走媒体管线,再挂序列(media_path 快照) */
@@ -236,6 +268,79 @@ export default function AddImageModal({
                 placeholder="出图提示词(走 illustrate 模型,工坊出图后自动挂到序列尾)…"
                 className="w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-[13px] text-text-1 outline-none focus:border-accent"
               />
+              <div>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="text-xs text-text-2">参照图</span>
+                  <span className="text-[11px] text-text-3">
+                    可选 · 单张 · 出图向它靠风格(prompt 里别写配色/风格词)
+                  </span>
+                  {referencePath && (
+                    <button
+                      type="button"
+                      onClick={() => setReferencePath(null)}
+                      className="ml-auto cursor-pointer text-[11px] text-text-3 hover:text-red"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setReferencePath(null)}
+                    className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border text-[10.5px] ${
+                      referencePath === null
+                        ? "border-accent bg-accent-dim text-accent"
+                        : "border-line text-text-3 hover:text-text-1"
+                    }`}
+                  >
+                    无参照
+                  </button>
+                  {workshopRoots.map((v) => {
+                    const on = referencePath === v.mediaPath;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setReferencePath(on ? null : v.mediaPath)}
+                        className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-sm border ${
+                          on
+                            ? "border-accent shadow-[0_0_0_1px_var(--accent)]"
+                            : "border-line hover:border-text-3"
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- 站内媒体路径缩略 */}
+                        <img
+                          src={v.mediaPath}
+                          alt=""
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    disabled={refBusy}
+                    onClick={() => refFileRef.current?.click()}
+                    className="h-14 shrink-0 rounded-sm border border-dashed border-line px-2.5 text-[10.5px] text-text-3 hover:text-text-1 disabled:opacity-50"
+                  >
+                    {refBusy ? "上传中…" : "本地上传"}
+                  </button>
+                  <input
+                    ref={refFileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={() => void uploadReference()}
+                    className="hidden"
+                  />
+                </div>
+                {referencePath && !workshopRoots.some((v) => v.mediaPath === referencePath) && (
+                  <p className="mt-1 truncate font-mono text-[10.5px] text-accent">
+                    参照:{referencePath}
+                  </p>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-text-2">尺寸</span>

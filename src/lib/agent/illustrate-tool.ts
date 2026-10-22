@@ -31,24 +31,18 @@ import {
   ILLUSTRATE_ASPECT_SIZES,
   ILLUSTRATE_MAX_COUNT,
 } from "../ai/illustrate-generate";
+import { detectReferenceStyleConflict } from "../ai/reference-guard";
 import { ensureStudioRoot } from "../ai/illustration-studio";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
+
+/** 兼容出口:守卫实现住 ai/reference-guard(纯函数零依赖,API 路由共用),既有调用方仍从本模块取 */
+export { detectReferenceStyleConflict } from "../ai/reference-guard";
 
 const ASPECT_KEYS = Object.keys(ILLUSTRATE_ASPECT_SIZES) as [string, ...string[]];
 
 /** 参照图路径白名单(站内媒体前缀;执行核心 uploadsUrlToRel 二次校验穿越) */
 export const REFERENCE_PATH_PREFIX = "/wp-content/uploads/";
-
-/** 参照风格冲突检测(纯函数,单测锚点):带参照图时 prompt 出现 HEX 色值即判
- * 自编配色与参照冲突。2026-10-21 验收实证:文字风格指令会压过参照图(Seedream
- * 听文字的),编排模型无视工具描述里的锚定句纪律 → 升级执行侧守卫(fail-closed
- * 人话反馈,模型可自纠重调)。只拦确定性信号 HEX;色名/深浅底类软冲突由系统
- * 提示 + schema 描述双层文本约束承载 */
-export function detectReferenceStyleConflict(prompt: string): string | null {
-  const hit = prompt.match(/#[0-9a-fA-F]{3,8}\b/);
-  return hit ? `prompt 含具体色值 ${hit[0]}` : null;
-}
 
 export const generateIllustrationTool = tool(
   async ({ prompt, aspect, count, reference_path }, config) => {

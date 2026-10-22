@@ -9,8 +9,9 @@ export type TopicStatus = (typeof TOPIC_STATUS)[number];
 /** 状态展示名(2026-10-20 详情页重构:去「合成」术语,讲用户语言——
  * DB 枚举值不变,仅展示层文案;列表分段签/详情步进条/徽标同源) */
 export const TOPIC_STATUS_LABEL: Record<TopicStatus, string> = {
-  collecting: "收集素材中",
-  drafted: "初稿已生成",
+  collecting: "收集中",
+  // M42:产出不再限长文(贴图落库同样推进到此),文案泛化为「已出稿」
+  drafted: "已出稿",
   published: "已发布",
 };
 
@@ -30,7 +31,21 @@ export const TOPIC_ITEM_TYPE = ["telegram", "post"] as const;
 export type TopicItemType = (typeof TOPIC_ITEM_TYPE)[number];
 
 /**
- * 新建专题定位预填(M27 批①合成重构,1276 验收反馈「不要每次现填」):
+ * 创作主意图(M42 创作中心):article=长文创作(深度文章与「文章+配图」是同轴
+ * 内的 visual 维差异,不另设类型);pin=贴图创作(公众号小绿书图片帖)。
+ * 只决定新建默认面板、列表筛选与 agent 分支——不限制另一种产出:创作台产出区
+ * 恒有「生成长文」「生成贴图」两个入口。
+ */
+export const TOPIC_OUTPUT_TYPES = ["article", "pin"] as const;
+export type TopicOutputType = (typeof TOPIC_OUTPUT_TYPES)[number];
+
+export const TOPIC_OUTPUT_LABEL: Record<TopicOutputType, string> = {
+  article: "长文创作",
+  pin: "贴图创作",
+};
+
+/**
+ * 新建创作定位预填(M27 批①合成重构,1276 验收反馈「不要每次现填」):
  * 缺省角度=博主×视频推荐体;固定结构模板在 compose.ts 代码内,此处只做
  * 用户可改的补充指令底稿(清空也合法——合成不依赖它)。
  * 2026-10-18 体裁治理:本文案即「视频安利」目的的定位模板(TOPIC_PURPOSES)。

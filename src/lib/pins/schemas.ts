@@ -5,6 +5,8 @@
  */
 import { z } from "zod";
 
+import { isUploadsPath } from "../media/refs";
+
 import { PIN_CONTENT_MAX, PIN_CROP_SPECS, PIN_IMAGES_MAX, PIN_TITLE_MAX } from "./constants";
 
 const BIGINT_ID = z.string().regex(/^\d+$/, "id 须为纯数字字符串");
@@ -78,10 +80,17 @@ export const pinImageReorderSchema = z.object({
   ids: z.array(BIGINT_ID).min(1).max(PIN_IMAGES_MAX),
 });
 
-/** AI 生成贴图(prompt 必填;张数/宽高比走 illustrate 既有枚举) */
+/** AI 生成贴图(prompt 必填;张数/宽高比走 illustrate 既有枚举;
+ * referencePath = 风格参照图,只收站内 uploads——外链由执行核心抓取会引入 SSRF 面) */
 export const pinGenerateSchema = z.object({
   prompt: z.string().trim().min(1, "生图提示词必填").max(2000),
   aspect: z.string().trim().max(10).optional(),
   count: z.number().int().min(1).max(3).optional(),
+  referencePath: z
+    .string()
+    .trim()
+    .max(500)
+    .refine(isUploadsPath, "参照图须为站内上传路径(/wp-content/uploads/…)")
+    .optional(),
 });
 export type PinGenerateInput = z.infer<typeof pinGenerateSchema>;

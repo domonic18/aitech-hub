@@ -84,7 +84,8 @@
 2. 命中 → `NextResponse.redirect(target, status)`;`target_url` 为 NULL → 410;未命中 → `notFound()`
 3. Nginx 把新站未命中路由兜底转发到 `/legacy/<path>`(standard/02-cicd-deployment §4),即"先新站路由、后映射表"
 4. **双层兜底(实现注)**:`/category/[slug]`、`/tag/[slug]` 页面查无内容时同进程直查映射表(`lib/content/legacy.ts#legacyRedirectOrNotFound`),命中则 `permanentRedirect`——RSC 页面语境拿不到精确 301(固定 308,同为永久类),表内 `http_status` 的精确表达由本 route 层完成;E2E 断言精确 301 须打 `/legacy/<path>`
-5. **2026-10 URL 迁移行**:`legacy_url_map` 增 103×301(旧中文单段链 → `/post/<id>-<slug>/`,目标带尾斜杠单跳直达)与 53×410(下架删除文);`/[slug]` 页自迁移起为纯 legacy 引擎(不再直接供文,见 §1);Redis `legacy:map:*` 缓存 1h——**部署后须 flush 该前缀**,否则旧行(404/旧目标)最长多活 1h
+5. **后台路由迁移(M42)**:`next.config.ts` redirects 承接 `/admin/topics` → `/admin/studio` 与 `/admin/topics/:path*` → `/admin/studio/:path*`(308;`trailingSlash` 归一后尾斜杠形态另列一条),老书签不断
+6. **2026-10 URL 迁移行**:`legacy_url_map` 增 103×301(旧中文单段链 → `/post/<id>-<slug>/`,目标带尾斜杠单跳直达)与 53×410(下架删除文);`/[slug]` 页自迁移起为纯 legacy 引擎(不再直接供文,见 §1);Redis `legacy:map:*` 缓存 1h——**部署后须 flush 该前缀**,否则旧行(404/旧目标)最长多活 1h
 
 ## 7. 管理后台(/admin)
 
@@ -94,6 +95,7 @@
   - Markdown 导入:「导入 .md / 粘贴」→ 解析全部图片引用 → 弹窗批量上传本地图片(选择文件夹/拖拽/zip,sha1 去重)+ 外链图调 `POST /api/media/import` 转存 → 以返回映射自动替换 md 中的引用为站内 URL → 进编辑器;编辑器内截图粘贴直接走上传管线
   - 封面工作流(M14 批⑤⑥ 已交付):`CoverDialog` 双源选图(本地上传 / 媒体库轻列表 `GET /api/media/pick`)+ 内置裁剪器(react-easy-crop),五模板一次裁剪多尺寸导出——微信公众号 2.35:1 / OG 1200×630 / CSDN 16:9 / 通用横图 / 列表缩略图(前端 canvas 裁剪压缩后按 `cover` 变体上传);AI 文生图已点亮(`cover-gen` 队列 attempts=1 按张计费,coverContext 无标题禁用,逐张落 ai_usage_log 台账)
 - 编辑旧文:content_html 只读展示(提示"旧文保真,如需改写请转 Markdown 重发布"),避免双向转换损毁
+- **创作中心 `/admin/studio`(M42,原专题管理 `/admin/topics*` 308 承接)**:端到端创作台——一个创作项目可出 1 篇长文 + N 张贴图,创作素材必须来自系统内既有条目(解读视频/电报文本/历史文章),agent 可自行搜索补挂。列表:状态分段 × 主意图过滤(`?status=&output=`)、5 列(标题/主意图/状态/素材/更新时间)。详情四区:① 创作概览(状态步进 + 标题 + 事实行:主意图/内容形式/长文 id/贴图张数/时间线 + 人工流转钮)② 创作配置页签「长文配置 / 贴图配置」(两套独立列,`hidden` 切换保状态:长文=四维写作要求+样例参照图,贴图=张数/比例/首图裁剪/风格/参照图/补充要求)③ 素材(按 mediaType 分型的素材卡 + 素材库挂载)④ 产出(长文卡 + 贴图卡列表「去组装台/前台预览」+ 恒有「生成长文」「生成贴图」两动作,均经 `openAgentAssistant` 交全局宿主卡执行)
 - **评论管理页 `/admin/comments`(M23 批③,照 /admin/feedback 模板)**:RSC 直调 service(不开列表 API);三分段 tab(全部/显示/隐藏——先发后审无 pending 段)+ 内容/作者关键词搜索 + 分页;行内状态流转(隐藏/恢复两态互切)+ 删根连带(confirm 明示回复数,物理不可逆);WP 迁移评论带「WP」徽标;写 API `PUT/DELETE /api/post-comments/[id]`(仅会话)
 - **媒体库页(重点,详见 arch/08-media)**:图片/视频/文件 Tab + 引用状态过滤(已引用/未引用孤儿/断链)+ 重复检测 + 批量操作 + 存储统计
 - 用户/数据页:AntD Table + 服务端分页

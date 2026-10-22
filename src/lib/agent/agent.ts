@@ -18,6 +18,8 @@ import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
 import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
+import { MATERIAL_TOOLS } from "./material-tools";
+import { saveTopicPinTool } from "./pin-tool";
 import { POST_SOURCES_TOOLS } from "./post-sources-tool";
 import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
@@ -82,6 +84,18 @@ const ADMIN_PROMPT_ADDENDUM = `
 7. 头图生成(必做,不可跳过,免确认;brief 的 skip_cover_generation=true 即写作配置取消勾选「生成封面图」时整步跳过,不生成封面不设 cover_path,保留关联稿现有封面):拿 save_topic_draft 返回的 post_id 调 generate_post_cover 并传 auto_adopt:true(合成流程专用自动档)——自行撰写高质量生图 prompt(要求画面融入文章主题相关的 2~8 字中文主题词,方向差异化,质量不得因免确认降低),候选自动采纳第一张并直接设为文章封面,全程不要用 ask_user 向管理员确认封面方向或提示词;报错/超时如实说明并可重试一次
 8. 汇报:文章标题、结构与亮点、配图与 SEO 摘要,并给出文档链接(指向 post_url 的 markdown 链接);汇报里说明自评审改了哪些地方与头图生成结果
 
+素材接地纪律(M42 创作中心:创作只吃系统内既有素材,严禁凭空发挥):
+- 开工先读 brief 的素材区;选题缺证据时用 search_materials 搜电报(已解读视频、可见文本)与历史文章,挑 2~3 条最贴题的用 mount_material 挂上(topic_id 必传;重复挂载只返回已挂载标记,不报错),与选题无关的用 unmount_material 移除并说明原因
+- 正文/贴图里出现的每个事实、数据、案例都必须能指回某条已挂素材;找不到证据就再搜再挂,仍找不到就把该点删掉——宁缺勿造
+- 挂载/移除后重调 get_topic_brief 复核素材区再进入下一步;汇报里说明本次挂了哪些素材、为什么
+
+贴图生产(M42 创作中心,收到「出贴图/生成小绿书图文/做一组图」类任务,或 brief 的 output_type 为 pin 时启用):
+1. 先调 get_topic_brief:读素材区、贴图配置(张数/比例/风格/参照图)与参照候选;素材不足按上面的接地纪律 search_materials 补挂
+2. 定角度:从已挂素材里挑 1 条信息增量最大的事实或结论做主线;轻文字只展开这一条,不堆砌卖点
+3. 出图:按配置的张数与比例逐张 generate_illustration(每次 10~60 秒按张计费),每张必传 reference_path——pin_config.reference 有值时优先用管理员指定的那张,其次 brief 的样例参照图,再次参照候选里最贴题的一张;prompt 严禁自编配色/风格词(HEX 色值会被守卫拒绝),风格锚定句固定写「保持与参考图一致的视觉风格」;每张承载一个小节,图与图内容不重复
+4. save_topic_pin 落库:标题按码点 ≤32 字、写轻文字、按展示顺序传本次全部图路径、传本次实际使用的参照图与配置里的首图裁剪档;阅读原文省略即可(自动取本创作长文);create-only——既有贴图的编辑去组装台,同一创作可以多次落多张
+5. 汇报:贴图标题、张数、组装台链接与前台预览链接,并说明本次用了哪些素材、为什么
+
 正文交付纪律(2026-10-17 验收反馈:整篇 HTML 刷进对话不可读且白耗会话额度):
 - 正文全文(含笔记卡 HTML)只经 save_topic_draft 的 content_md 参数交付;聊天流里只允许同步:选题方向(2~3 句)、结构提纲(小节名列表)、自评审修改要点、字数与码点数
 - 起草与自评审在内部完成,改写直接体现在落库终稿里,不要把初稿/改后稿整篇贴进对话;管理员想先看稿时说明「初稿已就绪,落库后可在编辑页查看」
@@ -121,6 +135,8 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...AGENT_TOOLS,
         ...EDIT_TOOLS,
         ...TOPIC_TOOLS,
+        ...MATERIAL_TOOLS,
+        saveTopicPinTool,
         ...POST_SOURCES_TOOLS,
         ...WRITE_ARTICLE_TOOLS,
         ...COVER_TOOLS,

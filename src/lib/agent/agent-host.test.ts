@@ -27,14 +27,14 @@ describe("agentFabButtonVisible(路由策略:FAB 按钮显隐,卡永驻)", () =>
   it("其余路由全显(前台/后台/搜索/项目)", () => {
     expect(agentFabButtonVisible("/")).toBe(true);
     expect(agentFabButtonVisible("/admin")).toBe(true);
-    expect(agentFabButtonVisible("/admin/topics")).toBe(true);
+    expect(agentFabButtonVisible("/admin/studio")).toBe(true);
     expect(agentFabButtonVisible("/search?q=x")).toBe(true);
     expect(agentFabButtonVisible("/projects")).toBe(true);
     expect(agentFabButtonVisible("/post/317-some-slug")).toBe(true);
   });
 
   it("尾斜杠归一化(与 buildAgentPageContext 同式)", () => {
-    expect(agentFabButtonVisible("/admin/topics/")).toBe(true);
+    expect(agentFabButtonVisible("/admin/studio/")).toBe(true);
     expect(agentFabButtonVisible("/")).toBe(true);
     expect(agentFabButtonVisible("///")).toBe(true);
   });

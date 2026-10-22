@@ -1,9 +1,9 @@
 /**
- * 初稿文档状态卡(2026-10-20 验收反馈问题三:合成后链路可视化;同日详情页
- * 重构更名「初稿」)——专题详情「初稿」区内展示:文档标题/状态 + 公众号渠道
- * 同步快照(未同步/已同步/失败原因),把「生成初稿 → 人工定稿 → 发布 → 渠道
- * 分发」的落点直接摆在生成按钮旁边;「打开文档」主按钮引导人工定稿。服务端
- * 纯展示件,数据 getLinkedDocDetail。
+ * 长文产出卡(M42 批④:自 TopicLinkedDocCard 泛化,产出区不再只有「初稿」)
+ * ——创作中心产出区展示本创作关联的长文:标题/状态 + 公众号渠道同步快照
+ * (未同步/已同步/失败原因),把「生成长文 → 人工定稿 → 发布 → 渠道分发」
+ * 的落点直接摆在动作区旁边;「打开文档」主按钮引导人工定稿。服务端纯展示件,
+ * 数据 getLinkedDocDetail。
  */
 import Link from "next/link";
 
@@ -25,7 +25,7 @@ const WECHAT_STATUS: Record<string, { label: string; cls: string }> = {
   pending: { label: "待同步", cls: "text-text-3" },
 };
 
-export default function TopicLinkedDocCard({
+export default function ArticleOutputCard({
   postId,
   doc,
 }: {
@@ -40,7 +40,7 @@ export default function TopicLinkedDocCard({
   return (
     <div className="rounded-sm border border-line bg-panel p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-semibold text-text-3">初稿</span>
+        <span className="text-[11px] font-semibold text-text-3">长文</span>
         <Link
           href={`/admin/posts/${postId}`}
           className="min-w-0 truncate text-[13px] font-medium text-text-1 hover:text-accent"

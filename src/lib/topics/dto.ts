@@ -5,12 +5,14 @@
  */
 import type { Topic, TopicItem } from "@prisma/client";
 
-import type { TopicItemMaterial } from "./repo";
+import type { TopicItemMaterial } from "./materials";
 
 export interface TopicDto {
   id: string;
   title: string;
   positioning: string | null;
+  pinPositioning: string | null;
+  outputType: string;
   skillKey: string | null;
   status: string;
   linkedPostId: string | null;
@@ -30,6 +32,8 @@ export function toTopicDto(
     id: t.id.toString(),
     title: t.title,
     positioning: t.positioning,
+    pinPositioning: t.pinPositioning,
+    outputType: t.outputType,
     skillKey: t.skillKey,
     status: t.status,
     linkedPostId: t.linkedPostId === null ? null : t.linkedPostId.toString(),
@@ -52,10 +56,18 @@ export interface TopicItemDto {
   telegram: {
     id: string;
     title: string | null;
+    /** video / text(M42:电报文本素材) */
+    mediaType: string;
+    /** 原文 1-3 句(文本素材的主底料) */
+    summary: string;
     videoBlogger: string | null;
     url: string;
+    videoCoverUrl: string | null;
     aiSummary: string | null;
+    aiPoints: unknown;
     aiNote: string | null;
+    aiTopic: string | null;
+    aiKeywords: unknown;
   } | null;
   post: { id: string; title: string; status: string } | null;
 }

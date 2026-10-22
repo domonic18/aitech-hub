@@ -76,10 +76,14 @@ const TOPIC = {
 
 const BLOCK = {
   kind: "telegram",
+  mediaType: "video",
   title: "视频A",
   blogger: "UP主A",
   note: "突出成本",
   videoUrl: "https://b23.tv/x",
+  summary: "原文一句",
+  aiTopic: "端侧",
+  keywords: ["端侧", "推理"],
   coverUrl: "https://img/x.jpg",
   aiNote: "解读笔记全文",
   aiSummary: null,
@@ -283,10 +287,14 @@ describe("buildWriterPrompt(纯函数)", () => {
       materials: [
         {
           kind: "telegram",
+          mediaType: "video",
           title: "视频A",
           blogger: "UP主A",
           note: "批注N",
           videoUrl: "https://b23.tv/x",
+          summary: null,
+          aiTopic: null,
+          keywords: [],
           aiNote: null,
           aiSummary: "摘要S",
           aiPoints: ["p1", "p2"],

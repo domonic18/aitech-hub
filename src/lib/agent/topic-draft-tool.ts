@@ -211,7 +211,7 @@ export const saveTopicDraftTool = tool(
       topic_id: z
         .string()
         .regex(/^\d{1,10}$/)
-        .describe("专题 id(专题管理详情页 URL 中的数字 id)"),
+        .describe("创作 id(创作中心详情页 URL 中的数字 id)"),
       title: z
         .string()
         .trim()

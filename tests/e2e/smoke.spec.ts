@@ -21,7 +21,7 @@ import { composeWritingText } from "../../src/lib/topics/writing-config";
  * K2.5 Drawer 深挖会话:线程 API 面+唤起预填+无绑定降级+侧栏删除(K2.5)/
  * 文章评论与点赞:评论区渲染/两级楼层/游客点赞去重回退(M23)/
  * 优质内容发现治理台:词库管理与候选人工终审(M25)。
- * 专题治理台:新建/挂载素材(仅已解读)/批注/人工状态流转/权限防线(M26 批③)。
+ * 创作中心:新建/挂载素材(仅已解读)/批注/人工状态流转/双配置/产出动作防线(M26 批③,M42 重构)。
  * 飞书免登底座:登录页非飞书零回归/兑换未启用 403/status 凭证齐透传·未配置 403/bind 未登录 401(M29,零真网)。
  * Agent 技能:后台页签 CRUD 冒烟(key 建后不可改)/启停落库/专题绑定写作技能/非法 skillKey 400(M30 批④,零真网)。
  * 样例参照图库与写作配置回写:图库路由鉴权/上传边界/重命名删除软引用/topic 绑定核/五形式 skillKey 回写(M39 批③⑤,零真网)。
@@ -422,9 +422,11 @@ test("9. 站点统计页六模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   page,
   request,
 }) => {
-  // 访问明细/搜索词隔离(重跑幂等)
+  // 访问明细/搜索词隔离(重跑幂等):日聚合页表也要清——本用例的 beacon 会累加
+  // stats_page_daily,重跑几轮后伪路径挤进「热门页面」表,与最近访问行 strict 相撞
   const visitPath = "/e2e-visit-log";
   await prisma.statsVisitLog.deleteMany({ where: { path: visitPath } });
+  await prisma.statsPageDaily.deleteMany({ where: { path: visitPath } });
   const searchTerm = "e2e 热搜词";
   await prisma.statsSearchLog.deleteMany({ where: { term: searchTerm } });
 
@@ -485,6 +487,7 @@ test("9. 站点统计页六模块可见(M5c:KPI/趋势SVG/来源/环境/热门,�
   await expect(visitRow).toBeVisible();
   await expect(visitRow).toContainText("203.0.113.7");
   await prisma.statsVisitLog.deleteMany({ where: { path: visitPath } });
+  await prisma.statsPageDaily.deleteMany({ where: { path: visitPath } });
 
   // hover 趋势图 → client 岛吸附出数据 tip(用户反馈补强)
   await page.locator("svg[aria-label='PV/UV 趋势图']").hover({ position: { x: 200, y: 100 } });
@@ -3323,11 +3326,12 @@ test("33. 数据中心·挖掘与词库(M25 候选终审+批准自动登记博�
   }
 });
 
-test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/添加仅已解读/批注/人工状态流转/生成初稿防线/权限防线,零真网)", async ({
+test("34. 创作中心(M42 由专题治理台重构:新建/添加仅已解读/批注/人工状态流转/产出动作防线/权限防线,零真网)", async ({
   page,
   request,
 }) => {
   const TOPIC_TITLE = "e2e 专题-端侧AI落地";
+  const PIN_TITLE = "e2e 创作产出贴图";
   const TG_DONE = "e2e 专题素材视频·已解读";
   const TG_PENDING = "e2e 专题素材视频·未解读";
   const NOTE = "e2e 批注:合成时突出端侧推理成本曲线";
@@ -3389,20 +3393,24 @@ test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/
     const origin = jsonOrigin(page);
     const serverOrigin = originOf(page);
 
-    // 列表页:侧栏入口/标题分段签;UI 新建专题 → 直跳详情
-    await page.goto("/admin/topics/");
-    await expect(page.getByRole("link", { name: "专题管理" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "专题管理" })).toBeVisible();
-    await page.getByRole("button", { name: "新建专题" }).click();
-    await page.getByPlaceholder("专题标题(必填,≤200 字符)…").fill(TOPIC_TITLE);
+    // 旧路径承接(M42):专题管理 → 创作中心 308,老书签不断
+    await page.goto("/admin/topics");
+    await expect(page).toHaveURL(/\/admin\/studio\/?$/);
+
+    // 列表页:侧栏入口/标题分段签;UI 新建创作 → 直跳详情
+    await page.goto("/admin/studio/");
+    await expect(page.getByRole("link", { name: "创作中心" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "创作中心" })).toBeVisible();
+    await page.getByRole("button", { name: "新建创作" }).click();
+    await page.getByPlaceholder("创作标题(必填,≤200 字符)…").fill(TOPIC_TITLE);
     await page.getByPlaceholder(/写作要求\(可选/).fill("e2e 定位:面向开发者的端侧落地盘点");
     await page.getByRole("button", { name: "创建", exact: true }).click();
-    await page.waitForURL(/\/admin\/topics\/\d+\/?$/); // trailingSlash 归一后带尾斜杠
+    await page.waitForURL(/\/admin\/studio\/\d+\/?$/); // trailingSlash 归一后带尾斜杠
     const topicId = new URL(page.url()).pathname.split("/").filter(Boolean).pop()!;
 
-    // 详情:概览区(标题/收集素材中态);人工钮组只有「标记为已发布」(§10-7 无 drafted)
-    await expect(page.getByLabel("专题标题")).toHaveValue(TOPIC_TITLE);
-    await expect(page.getByText("收集素材中", { exact: true })).toBeVisible();
+    // 详情:概览区(标题/收集中态);人工钮组只有「标记为已发布」(§10-7 无 drafted)
+    await expect(page.getByLabel("创作标题")).toHaveValue(TOPIC_TITLE);
+    await expect(page.getByText(/^素材收集中:/)).toBeVisible();
     await expect(page.getByRole("button", { name: "标记为已发布" })).toBeVisible();
     await expect(page.getByRole("button", { name: "退回收集素材" })).toHaveCount(0);
     await expect(page.getByText("还没有素材")).toBeVisible();
@@ -3416,6 +3424,17 @@ test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/
     await expect(page.getByLabel("补充要求", { exact: true })).toHaveValue(/端侧落地盘点/);
     await page.getByRole("button", { name: "保存写作要求" }).click();
     await expect(page.getByText("写作要求已保存,生成初稿时生效")).toBeVisible({ timeout: 10_000 });
+
+    // 双配置独立列(M42):切「贴图配置」改张数保存 → 刷新仍在;长文配置不被派生污染
+    await page.getByRole("button", { name: "贴图配置" }).click();
+    await page.getByLabel("张数").fill("8");
+    await page.getByRole("button", { name: "保存贴图配置" }).click();
+    await expect(page.getByText("贴图配置已保存,生成贴图时生效")).toBeVisible({ timeout: 10_000 });
+    await page.reload();
+    await page.getByRole("button", { name: "贴图配置" }).click();
+    await expect(page.getByLabel("张数")).toHaveValue("8");
+    await page.getByRole("button", { name: "长文配置" }).click();
+    await expect(page.getByLabel("补充要求", { exact: true })).toHaveValue(/端侧落地盘点/);
 
     // 从库添加素材:已解读视频在列,未解读不上榜;添加 → 行翻「已添加」+ 素材卡出现
     const candRow = page.getByRole("row", { name: new RegExp(TG_DONE) });
@@ -3460,7 +3479,7 @@ test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/
 
     // 人工状态流转全链(UI 直点):收集素材中→已发布→撤回发布→退回收集素材
     await page.getByRole("button", { name: "标记为已发布" }).click();
-    await expect(page.getByText("已发布", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/^已发布:/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("button", { name: "撤回发布" })).toBeVisible();
     // 防线:published→collecting 逆跳 409
     const badBack = await page.request.patch(`/api/topics/${topicId}/`, {
@@ -3470,10 +3489,10 @@ test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/
     expect(badBack.status()).toBe(409);
     page.once("dialog", (d) => d.accept()); // 撤回发布带后果确认
     await page.getByRole("button", { name: "撤回发布" }).click();
-    await expect(page.getByText("初稿已生成", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/^已出稿:/)).toBeVisible({ timeout: 10_000 });
     page.once("dialog", (d) => d.accept()); // 退回收集素材带后果确认
     await page.getByRole("button", { name: "退回收集素材" }).click();
-    await expect(page.getByText("收集素材中", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/^素材收集中:/)).toBeVisible({ timeout: 10_000 });
     // §10-7 边界:UI 不出 collecting→drafted 钮(上方 toHaveCount(0) 已验);
     // API 层按设计不收紧(运营纪律,repo 层流转矩阵放行)→ 200 落 drafted
     const composePath = await page.request.patch(`/api/topics/${topicId}/`, {
@@ -3509,15 +3528,32 @@ test("34. 专题治理台(M26 批③④;2026-10-20 详情页重构文案:新建/
     await page.getByRole("button", { name: "卸载" }).click();
     await expect(page.getByText("还没有素材")).toBeVisible({ timeout: 10_000 });
 
-    // 生成初稿防线(M27 批⑤,固定管线退役后防线收敛到按钮侧,零真网):初稿区
-    // 已渲染;UI 点生成 → 空素材人话行内回显,不开抽屉。写库防线在工具层
+    // 产出动作防线(M42:两个动作恒在,与主意图无关;空素材就地拦截,零真网):
+    // UI 点生成长文 → 空素材人话行内回显,不开抽屉。写库防线在工具层
     // (save_topic_draft admin 会话校验),API 轮询路由已随管线退役删除
-    await expect(page.getByRole("button", { name: "生成初稿" })).toBeVisible();
-    await page.getByRole("button", { name: "生成初稿" }).click();
-    await expect(page.getByText("还没有素材——先添加 2~3 条解读/文章,再来生成初稿")).toBeVisible({
+    await expect(page.getByRole("button", { name: "生成贴图" })).toBeVisible();
+    await page.getByRole("button", { name: "生成长文" }).click();
+    await expect(page.getByText("还没有素材——先添加 2~3 条解读/文章/电报,再来创作")).toBeVisible({
       timeout: 10_000,
     });
+
+    // 贴图产出卡(M42):topic_id 软关联的贴图在产出区列出,入口直通组装台
+    await prisma.contentPin.create({
+      data: {
+        title: PIN_TITLE,
+        topicId: BigInt(topicId),
+        status: "draft",
+        images: {
+          create: [{ mediaPath: "/wp-content/uploads/e2e/studio-pin-1.png", sortOrder: 0 }],
+        },
+      },
+    });
+    await page.reload();
+    await expect(page.getByText(PIN_TITLE)).toBeVisible();
+    await expect(page.getByRole("link", { name: "去组装台" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "再生成一组贴图" })).toBeVisible();
   } finally {
+    await prisma.contentPin.deleteMany({ where: { title: PIN_TITLE } });
     await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
     await prisma.telegram.deleteMany({
       where: { sourceId: source.id, title: { in: [TG_DONE, TG_PENDING] } },
@@ -3956,8 +3992,8 @@ test("39. Agent 宿主唯一化(M35:协议唤起开卡/跨页常驻 run 不断�
     },
   });
   try {
-    // ① 懒挂载:专题页初始无卡;协议唤起(agent:open 空 detail)开卡
-    await page.goto("/admin/topics");
+    // ① 懒挂载:创作中心初始无卡;协议唤起(agent:open 空 detail)开卡
+    await page.goto("/admin/studio");
     await expect(page.getByRole("dialog", { name: "AI 助手" })).toHaveCount(0);
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("agent:open", { detail: {} })));
     const dialog = page.getByRole("dialog", { name: "AI 助手" });
