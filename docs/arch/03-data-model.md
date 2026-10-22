@@ -367,6 +367,12 @@ CREATE TABLE legacy_url_map (
 
 - `job_run`(系统周期/手动批任务运行记录——BullMQ removeOnComplete 只留近几次,挂死/失败/耗时无处可查;学习 ai-invest collector_log 单一写入口形态):`job_key varchar(60)`(`queue/jobName` 稳定键,如 `insight/fetch`)/`queue varchar(40)`/`job_name varchar(60)`/`trigger varchar(10)` 枚举 `cron|manual`(jobId 带 `-manual-` 即 manual)/`status varchar(10)` 枚举 `running|success|failed`(**先落 running 行再执行——挂死立即停留可见,不必等超时**)/`started_at/finished_at?/duration_ms?`/`summary jsonb?`(处理器返回值,超 4000 字符截为 `{truncated,preview}`)/`error? text`(截 4000);索引 `idx_job_run_recent(started_at DESC)` + `idx_job_run_key_recent(job_key,started_at DESC)`。**单一写入口=worker 分发器包装**(worker/job-run#withJobRunLog,白名单 14 批任务 ≈400 行/日;tick 心跳与请求驱动单元任务不入账);30 天保留,04:47 日清批顺带把 running 超 24h 的崩溃残留代标 failed 收口
 
+**配图工坊三表已落地(2026-10-22 M40 批 B 迁移 `20261022090000_m40_illustration_studio`,队列纪律与契约见 [arch/05 §4.7](05-services.md);forward-only,三 FK 无 onDelete 默认 RESTRICT 语义显式声明)**:
+
+- `ai_illu_version`(版本链,编辑评审史):`media_path varchar(500)`(整图站内路径)/`parent_version_id?`(自引用 FK `SET NULL`,根版本 null;单链逐级回溯)/`origin varchar(20)` 枚举 `original|text_edit|erase|redraw`(应用层 Zod 管控)/`edit_instruction? varchar(1000)/edit_bbox? varchar(40)`(normalized `"x1 y1 x2 y2"`);索引 parent + media_path(`ensureStudioRoot` get-or-create 查询锚)
+- `ai_illu_layer_group`(图层组=一次拆层运行):`version_id` FK **RESTRICT**/`base_media_path?`(干净底板,ready 后回填)/`status varchar(12)` 枚举 `processing|ready|failed`/`error? varchar(500)`(人话失败原因)/`model_id`(溯源列入队时定格,绑定主备选边同 resolver 口径,无绑定 0);索引 `(version_id, created_at)`(取最新组)
+- `ai_illu_layer`(图层行):`group_id` FK **CASCADE**(重拆清旧组连图层)/`z_index/name varchar(200)/description? varchar(500)`/`bbox_x1..bbox_y2 int`(normalized 0-999,左上原点)/`media_path`(bbox 区域高分重提透明 PNG)/`visible bool 默认 true`(显隐组合持久化,导出前端合成);索引 `(group_id, z_index)`
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
