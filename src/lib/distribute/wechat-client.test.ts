@@ -21,6 +21,7 @@ import {
   wechatDraftUpdate,
   wechatUploadImage,
   type WechatDraftArticle,
+  type WechatNewsPicArticle,
 } from "./wechat-client";
 
 const mockedRedis = vi.mocked(redis);
@@ -65,6 +66,17 @@ const ARTICLE: WechatDraftArticle = {
   content: '<p style="margin:12px 0;">正文</p>',
   content_source_url: "https://17aitech.com/post/1-x",
   thumb_media_id: "COVER",
+};
+
+/** newspic 图片消息(M41 小绿书):无 thumb_media_id,image_list 首张即封面 */
+const NEWS_PIC: WechatNewsPicArticle = {
+  article_type: "newspic",
+  title: "贴图标题",
+  content: "轻文字纯文本",
+  author: "一起AI",
+  content_source_url: "https://17aitech.com/pins/1-x/",
+  image_info: { image_list: [{ media_id: "IMG1" }, { media_id: "IMG2" }] },
+  cover_info: { crop_percent_list: ["1_1"] },
 };
 
 beforeEach(() => {
@@ -256,6 +268,31 @@ describe("业务接口载荷", () => {
     expect(sent.media_id).toBe("DRAFT1");
     expect(sent.index).toBe(0);
     expect(sent.articles.title).toBe("标题");
+    expect(Array.isArray(sent.articles)).toBe(false);
+  });
+
+  it("draft/add newspic:image_info/cover_info 原样透传,无 thumb 字段", async () => {
+    const fetchMock = stubFetchBy({ "draft/add": [{ media_id: "PIC1" }] });
+    const mediaId = await wechatDraftAdd(CREDS, NEWS_PIC);
+    expect(mediaId).toBe("PIC1");
+    const sent = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(sent.articles).toHaveLength(1);
+    expect(sent.articles[0].article_type).toBe("newspic");
+    expect(sent.articles[0].image_info.image_list).toEqual([
+      { media_id: "IMG1" },
+      { media_id: "IMG2" },
+    ]);
+    expect(sent.articles[0].cover_info.crop_percent_list).toEqual(["1_1"]);
+    expect(sent.articles[0].thumb_media_id).toBeUndefined();
+  });
+
+  it("draft/update newspic:单对象 articles 直传(media_id 锚定重推)", async () => {
+    const fetchMock = stubFetchBy({ "draft/update": [{ errcode: 0 }] });
+    await wechatDraftUpdate(CREDS, "PIC1", NEWS_PIC);
+    const sent = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(sent.media_id).toBe("PIC1");
+    expect(sent.index).toBe(0);
+    expect(sent.articles.article_type).toBe("newspic");
     expect(Array.isArray(sent.articles)).toBe(false);
   });
 });

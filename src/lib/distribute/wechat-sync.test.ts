@@ -59,6 +59,7 @@ import {
   wechatDraftUpdate,
   wechatUploadImage,
   WechatApiError,
+  type WechatDraftArticle,
 } from "./wechat-client";
 import { getWechatRuntimeConfig } from "./wechat-config-admin";
 import {
@@ -303,7 +304,7 @@ describe("syncOnePost 管线", () => {
     );
     expect(mockedUpload).toHaveBeenCalledTimes(1);
     expect(mockedDraftAdd).toHaveBeenCalledTimes(1);
-    const article = mockedDraftAdd.mock.calls[0][1];
+    const article = mockedDraftAdd.mock.calls[0][1] as WechatDraftArticle;
     expect(article.title).toBe("文章标题"); // title=缺省(无 seoTitle/快照)
     expect(article.digest).toBe("文章摘要"); // excerpt 回退
     expect(article.thumb_media_id).toBe("COVER1");

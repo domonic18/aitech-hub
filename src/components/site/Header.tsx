@@ -12,6 +12,7 @@ const NAV = [
   { href: "/telegram/", label: "电报流" },
   { href: "/articles/", label: "文章" },
   { href: "/projects/", label: "项目" },
+  { href: "/pins/", label: "贴图" },
 ];
 
 /**

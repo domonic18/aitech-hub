@@ -41,7 +41,13 @@
 7. 分类/标签/legacy 兜底仍走 `src/lib/slug.ts#normalizeSlug`(percent-encoded 中文,与文章 URL 无关):输入可能是解码中文或编码形态,统一归一化为编码形态再查库;`normalizeSlug` 单测钉死编码↔解码往返、`%` 字面量、`+`/空格边界
 8. `generateStaticParams` 只返回 canonical 段(`listPostSegmentsForPrerender`);e2e 冒烟断言:canonical 200、bare-id/错误尾巴 308、旧中文链单跳 301/308 到 `/post/`、410 行 404
 
-## 3. SEO 实现清单
+### 2.1 贴图 URL 终态:/pins/&lt;id&gt;-&lt;slug&gt;(2026-10-22 M41 新增)
+
+与文章同款 id 锚定纪律,唯一构造/解析出口 `src/lib/content/pin-path.ts`(纯函数零 IO,单测钉死;全站贴图链接只许经 `pinPath` 构造):
+
+1. 贴图详情 URL = `/pins/<id>-<ascii-slug>/`;slug 无库列,渲染时由 `asciiSlugFromTitle(title)` 派生(与文章同款实现),纯中文标题 → bare-id `/pins/<id>/` canonical
+2. 解析 `parsePinSegment` 只认 `<digits>[-anything]`,按前导数字段取 id;`/pins/[segment]` 页对比 canonical 段,不一致 `permanentRedirect`(308)归一
+3. 墙页 `/pins/`(瀑布流,revalidate 600)+ 详情 `generateStaticParams` 只返 canonical 段(`listPinSegmentsForPrerender`);sitemap 收录墙页 + 全部 published 贴图(priority 0.7 weekly)
 
 - `app/layout.tsx`:默认 metadata(template `%s | 一起AI`;品牌 2026-10-02 定稿,src 已同批落地:Header 17 monogram 芯片 + icon.svg),`metadataBase = NEXT_PUBLIC_SITE_URL`
 - 文章页 `generateMetadata`:title=seo_title||title,description=seo_description||excerpt,canonical=`/post/<id>-<slug>/`(post-path 构造),OG(article + cover + published_time)

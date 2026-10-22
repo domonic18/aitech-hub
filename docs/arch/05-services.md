@@ -139,6 +139,14 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 - **版本链治理**(服务层 `src/lib/ai/illustration-studio.ts`):agent 出图即登记根版本(`ensureStudioRoot` get-or-create,免费 DB 行,工具回执带 `/admin/illustration/<id>` 链接;拆层本身纯手动计费——M40 五决策);改字确认后旧图层组过期,重拆=新组(手动);表结构见 arch/03 §2.4 配图工坊三表
 - **导出**:显隐组合合成在编辑器前端 canvas(底板+可见层按 normalized bbox 定位缩放;底板=抠净元素的干净底,藏层即元素真消失)→ `POST /api/media` 入库;官方水印「AI生成」烙在底板上,导出恒带(合规自动闭环)
 
+### 4.8 贴图公众号同步队列(`pin-wechat-sync`,2026-10-22 M41 新增)
+
+贴图(newspic「小绿书」图片消息)推送公众号草稿箱的异步通道,执行核心 `src/lib/distribute/pin-wechat-sync.ts`。job `DISTRIBUTE_JOB_PIN_WECHAT`(`pin-wechat-sync`)落 `QUEUE_DISTRIBUTE`——与文章图文同步共享 `concurrency: 1` 串行(微信频控同源);attempts=2(失败落行不抛,worker 重试兜底瞬态抖动)。入口两路:组装台「同步至公众号草稿箱」按钮 + agent/脚本 `POST /api/pins/[id]/sync`。
+
+- **入队资格前置**(全 400 人话,先判后建):未配置公众号 / 贴图 draft 未验收(点明先提交验收)/ 无图( newspic 至少 1 张)/ 渠道行 pending 拒重——**建行前先判**,零入队零落行(防僵尸 pending 首单教训,同文章 sync 口径);synced 有 mediaId 重推放行(draft/update 增量改)
+- **管线**:逐张 `add_material` 换永久 MediaID(ensureCoverMedia 复用,publish_media_cache `m:<sha1>` 缓存命中零重传;任一张失败整单终止——裂图比不同步更糟)→ 组 newspic 载荷(image_list ≤20 首张即封面 / crop_percent_list 三档 / content_source_url 阅读原文缺省不带)→ 首推 `draft/add`(mediaId 锚定落行)、重推 `draft/update`(行 mediaId 定位,不动站点发布态)→ 41039 content_source_url 域名校验拒 → 去阅读原文字段重试一次(同图文口径,落 warn 留痕)。同步侧兜底校验(缺图/标题超 32 码点/轻文字超 2 万码点)failed 落行人话——不信任上游
+- **状态机**:渠道行 pending→synced/failed(人话进 last_error ≤500,attempts 递增),成功事务内贴图 pending→synced(首推时;重推已 published 不动站点态);失败返回不抛由 job 包装上抛(attempts 兜底)
+
 ## 5. 一期接口清单(Route Handlers)
 
 | 域 | 端点 | 鉴权 |
@@ -162,6 +170,7 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 | distribute | `GET/PUT /api/distribute/wechat-config`(配置单例掩码视图/更新,secret 留空=保留)、`POST /api/distribute/wechat-config/test`(实调 `/cgi-bin/token` 探针落 last_test,40164 IP 白名单人话透出 errmsg 自带出口 IP)、`POST /api/distribute/wechat/sync`(单篇入队 202 `{jobId,token}`;未配置/旧文/缺封面/pending 400 人话前置)+ `GET …/sync/[jobId]?token=`(轮询终态)、`POST /api/distribute/wechat/batch`(多选批量入队,ids ≤30 去重;逐篇预检 skipped 随 202 携回人话,eligible 0 不产生 job)+ `GET …/batch/[jobId]?token=`(进度 processed/total/failedIds)、`POST /api/distribute/wechat/preview`(正文按主题预览纯渲染,返回 `{html,theme}`,theme=请求指定 > 行快照 > 渠道默认)、`POST /api/distribute/wechat/copy`(「复制公众号格式」入队 202,无码点门;M31 批④)+ `GET …/copy/[jobId]?token=`(轮询 `{ok,html,chars,coverReady,reason}`)、`POST /api/distribute/records/[id]/reset`(清 publish_channel.media_id 绑定——公众号侧草稿被人工删后重推回落 draft/add;无绑定 400,记录不存在 404;均 M17) | admin **仅会话**(PAT 禁管内容分发) |
 | site | `GET/PUT /api/site-config`(站点 kv 设置;PUT zod 校验,成功 `revalidatePath("/", "layout")` 使首页 ISR 立即再生;M10 批②,首键 `band.item_count` 1..50) | admin **仅会话**(PAT 禁管站点配置) |
 | illustration(配图工坊) | `GET /api/illustration/studio/[id]`(版本+根→当前链+最新图层组)、`POST …/decompose`(手动拆层入队,processing 重复 409)、`POST …/edit`(三回路交互编辑,同步 ~15s 出候选)、`POST …/versions`(候选确认落版本链)、`PATCH /api/illustration/layers/[id]`(图层显隐;均 M40 批 B,§4.7) | admin **仅会话**(PAT 不能驱动编辑器;mutation Origin 校验) |
+| pins(贴图) | `GET/POST /api/pins`(分页列表 status/q/topic 过滤;新建缺省「未命名贴图」)、`GET/PATCH/DELETE /api/pins/[id]`(详情含 images+channels;PATCH 字段组与 status 组独立解析任一命中,同 topics 口径;DELETE 级联删图与渠道行)、`POST/PUT/DELETE /api/pins/[id]/images`(工坊版本挂载 versionIds 或本地上传 mediaPath 快照 / 全量重排 / 移除单张)、`POST /api/pins/[id]/generate`(AI 生成入队,复用 generate_illustration 管线出图直挂序列)、`POST /api/pins/[id]/sync`(公众号 newspic 入队 202 `{jobId}`,资格前置 400 人话;均 M41,§4.8) | admin **仅会话**(PAT must not manage pins;mutation Origin 校验) |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
 

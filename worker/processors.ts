@@ -12,12 +12,14 @@ import {
   CRAWL_JOB_VIDEO,
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
+  DISTRIBUTE_JOB_PIN_WECHAT,
   DISTRIBUTE_JOB_WECHAT_BATCH,
   DISTRIBUTE_JOB_WECHAT_COPY,
   GITHUB_JOB_TICK,
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  ILLUSTRATION_JOB_GENERATE,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
@@ -64,6 +66,11 @@ import {
   illustrationDecomposeJob,
   type DecomposeJobData,
 } from "../src/lib/ai/illustration-decompose";
+import {
+  illustrationGenerateJob,
+  type IllustrationGenerateJobData,
+} from "../src/lib/ai/illustration-generate";
+import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
   type WechatBatchJobData,
@@ -252,6 +259,19 @@ export const PROCESSORS: Record<string, Processor> = {
       console.log(JSON.stringify({ event: "wechat.copy_result", postId: r.postId, ok: r.ok }));
       return r;
     }
+    if (job.name === DISTRIBUTE_JOB_PIN_WECHAT) {
+      // 贴图公众号同步(M41 渠道三 newspic):结果已落行,失败上抛兜底重试
+      const r = await pinWechatSyncJob(job.data as PinWechatSyncJobData);
+      console.log(
+        JSON.stringify({
+          event: "pin.sync_result",
+          pinId: r.pinId,
+          ok: r.ok,
+          mediaId: r.mediaId ?? null,
+        }),
+      );
+      return r;
+    }
     const r = await wechatSyncJob(job.data as WechatSyncJobData);
     console.log(
       JSON.stringify({
@@ -316,7 +336,13 @@ export const PROCESSORS: Record<string, Processor> = {
     }
     throw new Error(`未知 insight job:${job.name}`);
   },
-  // 配图工坊拆层(M40 批 B):手动触发,单 job ~75s 官方拆层 + 逐层转存落库;
-  // 失败落图层组 failed 行(attempts=1 生图计费不自动重试,入队侧钉)
-  [QUEUE_ILLUSTRATION_STUDIO]: (job) => illustrationDecomposeJob(job.data as DecomposeJobData),
+  // 配图工坊(M40 批 B 拆层 / M41 直出生成):手动触发,单 job ~15-75s 官方
+  // 调用 + 转存落库;失败落组行/仅 job_run 台账(attempts=1 生图计费不自动重试,
+  // 入队侧钉)
+  [QUEUE_ILLUSTRATION_STUDIO]: (job) => {
+    if (job.name === ILLUSTRATION_JOB_GENERATE) {
+      return illustrationGenerateJob(job.data as IllustrationGenerateJobData);
+    }
+    return illustrationDecomposeJob(job.data as DecomposeJobData);
+  },
 };
