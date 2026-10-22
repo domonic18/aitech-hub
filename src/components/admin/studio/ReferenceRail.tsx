@@ -2,8 +2,9 @@
 
 /**
  * 参照图选择轨(M42 批④ 贴图配置;M44 验收反馈补齐三源入口)——候选来自
- * 服务端 resolveTopicReferences(样例图 → 视频封面 → 挂载文章配图 → 本创作
- * 已有贴图,仅站内 uploads);另支持 ① 上传本地图 ② 剪贴板粘贴图片,均经
+ * 服务端 resolveTopicReferences(绑定样例图 → 样例图库全量 → 视频封面 →
+ * 挂载文章配图 → 本创作已有贴图,仅站内 uploads);另支持 ① 上传本地图
+ * ② 剪贴板粘贴图片,均经
  * 既有 uploadImageFile → POST /api/media 管线入库,路径写进 pin_positioning
  * 的「参照图:」条款行,随「保存贴图配置」落库(get_topic_brief 同源读取)。
  * 「自动」= 不指定,agent 生成时按同一优先级自选;单选、无多选。
@@ -118,7 +119,7 @@ export default function ReferenceRail({
       </div>
       <p className="text-[11px] leading-relaxed text-text-3">
         {value === ""
-          ? "点选下方预置候选,或上传 / 粘贴(Ctrl+V)本地图;不指定则生成时自选:样例图 → 视频封面 → 文章配图 → 本创作贴图"
+          ? "点选下方预置候选,或上传 / 粘贴(Ctrl+V)本地图;不指定则生成时自选:样例图 → 样例图库 → 视频封面 → 文章配图 → 本创作贴图"
           : value}
       </p>
       {specifiedOutside && (
@@ -130,7 +131,7 @@ export default function ReferenceRail({
       )}
       {candidates.length === 0 ? (
         <p className="text-[11px] text-text-3">
-          暂无预置候选(绑定样例图、挂载已转存封面的视频或带配图的文章后出现;可先用上传/粘贴)
+          暂无预置候选(样例图库为空,素材也没有可用封面/配图;可先用上传/粘贴)
         </p>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">

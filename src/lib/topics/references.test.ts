@@ -1,13 +1,13 @@
 /**
- * 参照图解析单测(M42 批②,prisma 全 mock):优先级(样例图 → 视频封面 →
- * 文章配图 → 本创作贴图)、仅收 uploads 站内路径、同图去重、上限收敛、
+ * 参照图解析单测(M42 批②,prisma 全 mock):优先级(样例图 → 图库 → 视频封面
+ * → 文章配图 → 本创作贴图)、仅收 uploads 站内路径、同图去重、上限收敛、
  * 软引用悬空静默跳过。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({
   prisma: {
-    writingSampleImage: { findUnique: vi.fn() },
+    writingSampleImage: { findUnique: vi.fn(), findMany: vi.fn() },
     topicItem: { findMany: vi.fn() },
     post: { findMany: vi.fn() },
     contentPin: { findMany: vi.fn() },
@@ -20,6 +20,7 @@ import { REFERENCE_LIMIT_MAX, resolveTopicReferences } from "./references";
 
 const m = {
   sampleFind: vi.mocked(prisma.writingSampleImage.findUnique),
+  libFind: vi.mocked(prisma.writingSampleImage.findMany),
   itemsFind: vi.mocked(prisma.topicItem.findMany),
   postFind: vi.mocked(prisma.post.findMany),
   pinFind: vi.mocked(prisma.contentPin.findMany),
@@ -51,14 +52,20 @@ function block(over: Partial<ComposeMaterialBlock>): ComposeMaterialBlock {
 beforeEach(() => {
   vi.clearAllMocks();
   m.sampleFind.mockResolvedValue(null);
+  m.libFind.mockResolvedValue([] as never);
   m.itemsFind.mockResolvedValue([] as never);
   m.postFind.mockResolvedValue([] as never);
   m.pinFind.mockResolvedValue([] as never);
 });
 
 describe("resolveTopicReferences", () => {
-  it("优先级:样例图 → 视频封面 → 文章配图 → 本创作贴图;同图去重", async () => {
+  it("优先级:样例图 → 图库 → 视频封面 → 文章配图 → 本创作贴图;同图去重", async () => {
     m.sampleFind.mockResolvedValue({ name: "白纸红字", mediaPath: `${U}/sample.png` } as never);
+    m.libFind.mockResolvedValue([
+      { name: "白纸红字", mediaPath: `${U}/sample.png` }, // 绑定那张:去重不重复出
+      { name: " cartoon", mediaPath: `${U}/lib1.png` },
+      { name: "坏路径", mediaPath: "https://ext/lib2.png" }, // 非 uploads 剔除
+    ] as never);
     m.itemsFind.mockResolvedValue([{ itemId: BigInt(7) }] as never);
     m.postFind.mockResolvedValue([
       {
@@ -80,11 +87,26 @@ describe("resolveTopicReferences", () => {
     );
     expect(r.map((x) => [x.source, x.mediaPath])).toEqual([
       ["sample_image", `${U}/sample.png`],
+      ["sample_library", `${U}/lib1.png`],
       ["video_cover", `${U}/cover.jpg`],
       ["post_image", `${U}/post.png`],
       ["pin_image", `${U}/pin.png`],
     ]);
     expect(r[0]?.label).toContain("白纸红字");
+  });
+
+  it("样例图库层:无绑定时图库仍是预置候选;findMany 带 take 帽", async () => {
+    const rows = Array.from({ length: 8 }, (_, i) => ({
+      name: `库图${i}`,
+      mediaPath: `${U}/lib${i}.png`,
+    }));
+    // mock 尊重 take(与 DB 行为一致:帽在查询层收敛,代码不再二次截断)
+    m.libFind.mockImplementation((async (args?: { take?: number }) =>
+      rows.slice(0, args?.take ?? rows.length)) as never);
+    const r = await resolveTopicReferences({ id: BigInt(1), sampleImageId: null });
+    expect(r).toHaveLength(5); // SAMPLE_LIBRARY_MAX 帽(≤ limit 10)
+    expect(r.every((x) => x.source === "sample_library")).toBe(true);
+    expect(m.libFind.mock.calls[0]?.[0]?.take).toBe(5);
   });
 
   it("非 uploads 路径一律剔除(/media/、外链、相对路径)", async () => {

@@ -1,8 +1,9 @@
 /**
  * 创作参照图解析(M42 批②):给贴图/配图生成提供「像什么」的站内视觉锚点,
- * 让 AI 出图不是凭空发挥。优先级 sample_image(人工指定风格)→ video_cover
- * (素材视频封面)→ post_image(挂载文章正文配图)→ pin_image(本创作已有
- * 贴图,视觉延续);去重、仅收 uploads 站内路径、上限 10。
+ * 让 AI 出图不是凭空发挥。优先级 sample_image(人工指定风格)→ sample_library
+ * (样例图库全量,M44 验收反馈:图库即预置风格池,不必逐 topic 绑定)→
+ * video_cover(素材视频封面)→ post_image(挂载文章正文配图)→ pin_image
+ * (本创作已有贴图,视觉延续);去重、仅收 uploads 站内路径、上限 10。
  * 视频封面须由调用方先行转存(coverAssets 与 blocks 视频子序列同序),本模块
  * 不发起外链下载——工具调用里不藏网络阻塞;没转存就跳过该层,不抛错。
  */
@@ -22,6 +23,8 @@ export const REFERENCE_LIMIT_MAX = 10;
 const POST_IMAGES_PER_POST = 2;
 /** 本创作最多看几张贴图 */
 const PIN_SCAN_MAX = 3;
+/** 样例图库层上限(管理员策展池设帽,防图库增长挤占自动源名额) */
+const SAMPLE_LIBRARY_MAX = 5;
 
 export interface ReferenceCandidate {
   source: ReferenceSource;
@@ -58,6 +61,16 @@ export async function resolveTopicReferences(
       select: { name: true, mediaPath: true },
     });
     if (sample) push("sample_image", sample.mediaPath, `样例参照图《${sample.name}》`);
+  }
+
+  // ①b 样例图库全量(预置风格池;绑定那张已入列,路径去重自动不重复)
+  const library = await prisma.writingSampleImage.findMany({
+    orderBy: { createdAt: "desc" },
+    take: Math.min(SAMPLE_LIBRARY_MAX, limit),
+    select: { name: true, mediaPath: true },
+  });
+  for (const item of library) {
+    push("sample_library", item.mediaPath, `样例图库《${item.name}》`);
   }
 
   // ② 素材视频封面(已转存站内;与 blocks 视频子序列同序对齐)

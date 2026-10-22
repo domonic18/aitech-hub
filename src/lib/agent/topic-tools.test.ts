@@ -8,10 +8,11 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const sessionFindUnique = vi.hoisted(() => vi.fn());
 const postFindUnique = vi.hoisted(() => vi.fn());
-// M42 brief 贴图区:本创作既有贴图 + 参照候选(样例图/挂载文章/本创作贴图)
+// M42 brief 贴图区:本创作既有贴图 + 参照候选(样例图/图库/挂载文章/本创作贴图)
 const briefDb = vi.hoisted(() => ({
   pinFindMany: vi.fn(),
   sampleFindUnique: vi.fn(),
+  libFindMany: vi.fn(),
   itemFindMany: vi.fn(),
   postFindMany: vi.fn(),
 }));
@@ -20,7 +21,7 @@ vi.mock("../db", () => ({
     searchAgentSession: { findUnique: sessionFindUnique },
     post: { findUnique: postFindUnique, findMany: briefDb.postFindMany },
     contentPin: { findMany: briefDb.pinFindMany },
-    writingSampleImage: { findUnique: briefDb.sampleFindUnique },
+    writingSampleImage: { findUnique: briefDb.sampleFindUnique, findMany: briefDb.libFindMany },
     topicItem: { findMany: briefDb.itemFindMany },
   },
 }));
@@ -102,6 +103,7 @@ beforeEach(() => {
   // brief 贴图区缺省空(具体用例再用 once 覆盖)
   briefDb.pinFindMany.mockResolvedValue([]);
   briefDb.sampleFindUnique.mockResolvedValue(null);
+  briefDb.libFindMany.mockResolvedValue([]);
   briefDb.itemFindMany.mockResolvedValue([]);
   briefDb.postFindMany.mockResolvedValue([]);
 });
