@@ -28,6 +28,8 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
       { icon: "i-comment", label: "评论管理", href: "/admin/comments" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
+      // 配图工坊(M40 验收反馈补):agent 配图产物的加工台固定入口,列表页落地
+      { icon: "i-picture", label: "配图工坊", href: "/admin/illustration" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
       { icon: "i-cloudupload", label: "内容分发", href: "/admin/distribute" },
       { icon: "i-folder", label: "专题管理", href: "/admin/topics" },

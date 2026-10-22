@@ -131,7 +131,7 @@ Node 20 + Playwright chromium **独立镜像独立容器**(node:20-slim + fonts-
 
 ### 4.7 配图工坊队列(`illustration-studio`,2026-10-22 M40 批 B 新增)
 
-generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端点 `layer_decomposition` 拆层(1 干净底板 + N 透明 PNG 图层,各带 normalized 0-999 bbox)→ 编辑器 `/admin/illustration/[id]` 显隐组合导出与三条交互编辑回路(改字必选/消除笔/自由重绘,统一 bbox+指令 → 交互编辑 → 新整图,预览态确认制落版本链)。spike 实证契约与产物锚 docs/plan/development-plan.md M40 行(探针 workspace/tmp/spike-illustration-studio/)。
+generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端点 `layer_decomposition` 拆层(1 干净底板 + N 透明 PNG 图层,各带 normalized 0-999 bbox)→ 编辑器 `/admin/illustration/[id]` 显隐组合导出与三条交互编辑回路(改字必选/消除笔/自由重绘,统一 bbox+指令 → 交互编辑 → 新整图,预览态确认制落版本链)。入口两路(2026-10-22 验收反馈补后台固定入口):侧栏「内容管理·配图工坊」→ 列表页 `/admin/illustration`(根版本倒序网格,server component 直查零新 API)+ agent 回执链接直达编辑器。spike 实证契约与产物锚 docs/plan/development-plan.md M40 行(探针 workspace/tmp/spike-illustration-studio/)。
 
 - **纪律**:`concurrency: 1` + `lockDuration 600s`(spike 实测拆层 ~75s,慢调用)+ `attempts=1`(生图计费不自动重试,同 cover 口径);jobId `illu-decompose-<groupId>` 锚自增组 ID 天然唯一(冒号禁用同 §4.1);手动触发 `POST /api/illustration/studio/[id]/decompose`,同版本已有 processing 组 409 人话拒(防重复计费双拆)
 - **拆层契约**(执行核心 `src/lib/ai/illustration-decompose.ts`,不走 generateImages——响应行携带图层元数据,单模块自带请求与行解析):POST `{baseUrl}/images/generations` body `{model, image(data URL ≤6MB), layer_decomposition: true, size: "2K", response_format: "url"}`,prompt 不传=自动拆层;超时专用 180s 档(不走模型 60s 常规档);官方 URL 24h 过期前逐层下载转存站内媒体;底板缺失/全层转存失败判组失败(failed+人话 error),单层失败跳过不废整组;计费=每调用 1 行 usage(拆层单价待用户核实后设置补录——M40 五决策)
