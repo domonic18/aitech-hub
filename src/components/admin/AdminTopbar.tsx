@@ -21,10 +21,19 @@ interface Crumb {
 /** 已知段文案;未知段按 decodeURIComponent 兜底(不再裸输出路径) */
 const SEG_LABEL: Record<string, string> = {
   posts: "文章管理",
+  categories: "分类",
   media: "媒体库",
   comments: "评论管理",
-  distribute: "内容分发",
+  distribute: "分发中心", // IA v2 更名(原「内容分发」),路由不变
   studio: "创作中心",
+  illustration: "配图工坊",
+  pins: "贴图管理",
+  data: "数据中心",
+  sources: "源管理",
+  schedule: "计划",
+  run: "运行",
+  insight: "洞察",
+  mine: "挖掘",
   users: "用户管理",
   feedback: "反馈管理",
   pats: "PAT 令牌",
@@ -42,13 +51,20 @@ const SEG_LABEL: Record<string, string> = {
   bloggers: "博主",
   github: "项目",
   models: "模型配置",
+  skills: "写作技能",
   usage: "AI 用量",
   sessions: "会话",
 };
 
-/** 数字段 = 文章 id(编辑页);其余未知段解码展示 */
-function segLabel(seg: string): string {
-  if (/^\d+$/.test(seg)) return "编辑文章";
+/** 数字段 = 详情/编辑页 id,文案随上一段域变化;其余未知段解码展示 */
+function segLabel(seg: string, prev?: string): string {
+  if (/^\d+$/.test(seg)) {
+    if (prev === "studio") return "创作详情";
+    if (prev === "illustration") return "配图详情";
+    if (prev === "pins") return "贴图详情";
+    return "编辑文章";
+  }
+  if (seg === "clusters") return "机会与痛点";
   return SEG_LABEL[seg] ?? decodeSeg(seg);
 }
 
@@ -70,9 +86,8 @@ function crumbsOf(pathname: string): Crumb[] {
   let acc = "/admin";
   segs.forEach((seg, i) => {
     acc += `/${seg}`;
-    crumbs.push(
-      i === segs.length - 1 ? { label: segLabel(seg) } : { label: segLabel(seg), href: acc },
-    );
+    const label = segLabel(seg, i > 0 ? segs[i - 1] : undefined);
+    crumbs.push(i === segs.length - 1 ? { label } : { label, href: acc });
   });
   return crumbs;
 }

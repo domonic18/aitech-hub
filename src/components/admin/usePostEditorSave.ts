@@ -37,29 +37,32 @@ export function splitTags(text: string): string[] {
   return out;
 }
 
-/** 自动保存状态行(仅编辑态草稿启用自动存;其余形态保持手动「已保存」行) */
+/** 自动保存状态行(仅编辑态草稿启用自动存;其余形态保持手动「已保存」行;
+ * wordCount 传正文长度则随行展示字数——F15 板:已自动保存 09:41 · 字数 2,847) */
 export function autosaveStatusLine(
   mode: "create" | "edit",
   status: PostDisplayState,
   autosavePhase: AutosavePhase,
   savedAt: Date | null,
+  wordCount?: number,
 ): string | null {
   if (mode !== "edit" || status !== "draft") {
     return savedAt ? `已保存 ${formatCnTime(savedAt)}` : null;
   }
+  const count = wordCount === undefined ? "" : ` · 字数 ${wordCount.toLocaleString("en-US")}`;
   switch (autosavePhase) {
     case "saving":
-      return "自动保存中…";
+      return `自动保存中…${count}`;
     case "saved":
-      return savedAt ? `已自动保存 ${formatCnTime(savedAt)}` : "已自动保存";
+      return savedAt ? `已自动保存 ${formatCnTime(savedAt)}${count}` : `已自动保存${count}`;
     case "dirty":
-      return "有未保存修改(将自动保存)";
+      return `有未保存修改(将自动保存)${count}`;
     case "failed":
-      return "自动保存失败,已留本地底稿(继续编辑将重试)";
+      return `自动保存失败,已留本地底稿(继续编辑将重试)${count}`;
     case "conflict":
       return "自动保存已暂停";
     default:
-      return savedAt ? `已保存 ${formatCnTime(savedAt)}` : null;
+      return savedAt ? `已保存 ${formatCnTime(savedAt)}${count}` : null;
   }
 }
 

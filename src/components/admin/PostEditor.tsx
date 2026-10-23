@@ -258,7 +258,7 @@ export default function PostEditor({
     }
   }, [mode, post]);
 
-  const autosaveLine = autosaveStatusLine(mode, status, autosavePhase, savedAt);
+  const autosaveLine = autosaveStatusLine(mode, status, autosavePhase, savedAt, contentMd.length);
 
   return (
     <div className="flex flex-col gap-4">
@@ -270,8 +270,9 @@ export default function PostEditor({
           {STATUS_LABEL[status]}
           {mode === "create" ? "(新)" : ""}
         </span>
-        {/* 右侧动作分三组(2026-10-20 问题三):AI 协作 | 渠道分发 | 生命周期
-            (下架红色次级、发布主按钮),组分隔线切开;侧栏开关恒最右 */}
+        {/* 右侧动作分三组(2026-10-20 问题三;F15 轻对齐:封面 AI 提入头部协作组)
+            :AI 协作 | 渠道分发 | 生命周期(下架红色次级、发布主按钮),
+            组分隔线切开;侧栏开关恒最右 */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {mode === "edit" && post && (
             <EditorAssistant
@@ -281,6 +282,19 @@ export default function PostEditor({
               onApplyContent={applyAssistantContent}
               launch={assistantLaunch}
             />
+          )}
+          {mode === "edit" && post && (
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              onClick={launchCoverAgent}
+              title="唤起侧边栏 Agent 生成封面候选(方向对齐 → 出图入库)"
+            >
+              <svg className="ic" aria-hidden="true">
+                <use href="#i-picture" />
+              </svg>
+              封面 AI
+            </button>
           )}
           {wechat && post && (
             <>

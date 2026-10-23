@@ -31,6 +31,7 @@
 | 搜索/AI 答案卡/Drawer 会话 Agent | docs/arch/04 §3(检索/答案卡/K2.5) |
 | UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
 | 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
+| 后台 UI/IA 设计板(Ardot 定稿) | 文件 739246438907714(F1-F27;创作域已落码,余域待立项) |
 | 测试规范                      | docs/standard/01-testing         |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 

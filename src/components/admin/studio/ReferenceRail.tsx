@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
+import SampleLibraryModal from "@/components/admin/SampleLibraryModal";
 import { uploadImageFile } from "@/lib/media/upload-client";
 import { REFERENCE_SOURCE_LABEL, type ReferenceSource } from "@/lib/topics/reference-labels";
 
@@ -41,6 +42,8 @@ export default function ReferenceRail({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 图库管理弹层(F8;本轨自持开合态):开着时本轨不抢剪贴板粘贴
+  const [libOpen, setLibOpen] = useState(false);
 
   async function upload(file: Blob, filename: string): Promise<void> {
     if (uploading) return;
@@ -58,7 +61,7 @@ export default function ReferenceRail({
   // 剪贴板图片 → 上传管线;目标在输入框/可编辑区(文本粘贴)或本轨不可见时不接管
   useEffect(() => {
     const onPaste = (e: ClipboardEvent): void => {
-      if (disabled || uploading) return;
+      if (disabled || uploading || libOpen) return;
       const t = e.target;
       if (
         t instanceof HTMLElement &&
@@ -116,6 +119,13 @@ export default function ReferenceRail({
             if (f) void upload(f, f.name);
           }}
         />
+        <button
+          type="button"
+          onClick={() => setLibOpen(true)}
+          className="rounded-sm border border-line px-2 py-0.5 text-[11px] text-text-2 hover:text-text-1"
+        >
+          图库管理
+        </button>
       </div>
       <p className="text-[11px] leading-relaxed text-text-3">
         {value === ""
@@ -169,6 +179,7 @@ export default function ReferenceRail({
           {err}
         </p>
       )}
+      <SampleLibraryModal open={libOpen} onClose={() => setLibOpen(false)} />
     </div>
   );
 }
