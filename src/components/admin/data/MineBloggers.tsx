@@ -1,25 +1,20 @@
 /**
- * 博主台账页(M8 批③;2026-10-18 数据壳重组迁入为挖掘·博主视图):
- * 页顶 Cookie 池 + 网关健康 + ASR 转写 + 出口代理四状态卡,博主台账表(账号/
- * 频率/启停/ASR 7d/健康/调度/操作)。Cookie 只出脱敏 ttwid 前缀;网关不可达
- * 降级展示,不阻塞页面。2026-10-06 验收反馈问题3/4:补启用开关列与 ASR 统计。
- * M33 批B:增出口代理卡(全局单点家宽出口,URL 只写不读)。
+ * 数据中心·源管理·博主台账(F27 板,M8 批③起历经数据壳重组迁入):
+ * 七列表 博主|平台|状态|挂靠任务|最近采集|已采集|操作——状态四态
+ * (●采集中 amber = crawler 队列活跃 job / 启用 / 暂停 / 待验证 = 已登记未首采);
+ * 启停收进行内(BloggerRowOps),页顶状态卡 ×4 与登记/回填/删除能力保留。
  */
-import StatusSwitch from "@/components/admin/StatusSwitch";
-import { getAsrConfigAdmin } from "@/lib/ai/asr-admin";
 import BloggerDialog from "@/components/admin/BloggerDialog";
 import BloggerRowOps from "@/components/admin/BloggerRowOps";
-import CookiePoolCard from "@/components/admin/CookiePoolCard";
-import EgressProxyCard from "@/components/admin/EgressProxyCard";
-import { formatCnDateTime } from "@/lib/datetime";
-import { getEgressProxyConfigAdmin } from "@/lib/telegram/egress-proxy";
-import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
-import { getAsrOverview } from "@/lib/telegram/spider-queries";
-import { fetchGatewayHealth, getCookiePoolView } from "@/lib/telegram/social-platform-admin";
+import BloggerStatusCards from "@/components/admin/data/BloggerStatusCards";
+import { formatCnTime, startOfCnDay } from "@/lib/datetime";
+import { videoRunningAccounts } from "@/lib/collect/channel-ledger";
+import { listBloggerVideoCounts, listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
 import {
   SOCIAL_CRAWL_INTERVAL_MIN,
   VIDEO_PLATFORM_BILIBILI,
   VIDEO_PLATFORM_DOUYIN,
+  VIDEO_PLATFORM_LABELS,
 } from "@/lib/telegram/constants";
 
 function secUidShort(secUid: string): string {
@@ -33,152 +28,85 @@ function profileUrl(b: { platform: string; secUid: string }): string | null {
   return null;
 }
 
-function asrHours(sec: number): string {
-  return `${(sec / 3600).toFixed(1)}h`;
+/** 最近采集相对时刻(板「6 分钟前 / 今天 09:30 / 昨天 21:30 / 10-19」) */
+function lastRunAtText(at: Date): string {
+  const minutes = Math.floor((Date.now() - at.getTime()) / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)} 分钟前`;
+  const days = Math.round((startOfCnDay().getTime() - startOfCnDay(at).getTime()) / 86_400_000);
+  if (days <= 0) return `今天 ${formatCnTime(at)}`;
+  if (days === 1) return `昨天 ${formatCnTime(at)}`;
+  return formatCnDateShort(at);
+}
+
+/** MM-DD(北京时区) */
+function formatCnDateShort(at: Date): string {
+  return at.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(5);
+}
+
+function cadenceOf(min: number): string {
+  return min >= 60 ? `每 ${Math.round(min / 60)} 小时` : `每 ${min} 分钟`;
+}
+
+type BloggerRow = Awaited<ReturnType<typeof listBloggersAdmin>>[number];
+
+/** 状态四态(F27):running > paused > 待验证(未首采)> 启用 */
+function statusOf(b: BloggerRow, running: boolean): { label: string; cls: string; dot: string } {
+  if (running)
+    return {
+      label: "采集中",
+      cls: "text-amber",
+      dot: "animate-pulse bg-amber",
+    };
+  if (!b.enabled) return { label: "暂停", cls: "text-text-3", dot: "bg-line" };
+  if (b.lastRunAt === null) return { label: "待验证", cls: "text-blue", dot: "bg-blue" };
+  return { label: "启用", cls: "text-green", dot: "bg-green" };
 }
 
 export default async function MineBloggers(): Promise<React.ReactElement> {
-  const [bloggers, pool, gateway, asr, asrConfig, egressProxy] = await Promise.all([
+  const [bloggers, videoCounts, runningAccounts] = await Promise.all([
     listBloggersAdmin(),
-    getCookiePoolView(),
-    fetchGatewayHealth(),
-    getAsrOverview(),
-    getAsrConfigAdmin(),
-    getEgressProxyConfigAdmin(),
+    listBloggerVideoCounts(),
+    videoRunningAccounts(),
   ]);
+  const byPlatform = new Map<string, number>();
+  for (const b of bloggers) byPlatform.set(b.platform, (byPlatform.get(b.platform) ?? 0) + 1);
+  const platformSummary = [...byPlatform.entries()]
+    .map(([p, n]) => `${VIDEO_PLATFORM_LABELS[p] ?? p} ${n}`)
+    .join(" · ");
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold">博主管理</h2>
+          <h2 className="text-base font-semibold">博主台账</h2>
           <p className="mt-0.5 text-xs text-text-3">
-            视频博主台账:登记/轮询/健康度;Cookie 池为平台级共享,AES-256-GCM 加密落库只写不读。
+            手动触发与回填在行内;运行中博主 = 琥珀态,与渠道语义一致
           </p>
         </div>
         <BloggerDialog label="登记博主" />
       </div>
 
-      {/* 状态卡 ×4(原型 kpi 卡):Cookie 池(客户端)+ 网关健康(RSC)+ ASR 转写 + 出口代理(客户端) */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <CookiePoolCard pools={pool.pools} />
-        <EgressProxyCard config={egressProxy} />
-        <div className="rounded-md border border-line bg-panel px-4 py-4">
-          <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
-            <svg className="ic text-accent" aria-hidden="true">
-              <use href="#i-cloudserver" />
-            </svg>
-            采集网关(douyin-gateway · 抖音/B站)
-          </div>
-          {gateway.reachable ? (
-            <>
-              <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-green">
-                {gateway.status ?? "ok"}
-              </div>
-              {/* per-platform jar 池(M24);platforms 缺失时回落顶层(douyin 旧网关兼容) */}
-              <div className="mt-1.5 space-y-0.5 font-mono text-[11px] text-text-3">
-                {(Object.entries(gateway.platforms ?? {}).length > 0
-                  ? Object.entries(gateway.platforms ?? {})
-                  : [
-                      [
-                        "douyin",
-                        {
-                          jarsTotal: gateway.jarsTotal ?? 0,
-                          jarsAvailable: gateway.jarsAvailable ?? 0,
-                          wbiAgeSeconds: null,
-                        },
-                      ] as const,
-                    ]
-                ).map(([name, p]) => (
-                  <div key={name}>
-                    {name}:可用 <b className="text-text-2">{p.jarsAvailable}</b> / 共{" "}
-                    <b className="text-text-2">{p.jarsTotal}</b>
-                    {name === VIDEO_PLATFORM_BILIBILI && p.wbiAgeSeconds != null && (
-                      <span title="wbi 签名密钥缓存年龄">
-                        {" "}
-                        · wbi {Math.floor(p.wbiAgeSeconds / 3600)}h
-                      </span>
-                    )}
-                  </div>
-                ))}
-                <div className="text-[10px]">(网关内存风控冷却态)</div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-red">
-                unreachable
-              </div>
-              <div className="mt-1.5 text-[11px] text-text-3">
-                网关不可达(检查容器/DOUYIN_GATEWAY_URL);采集失败不记博主连续失败
-              </div>
-            </>
-          )}
-        </div>
-        <div className="rounded-md border border-line bg-panel px-4 py-4">
-          <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
-            <svg className="ic text-accent" aria-hidden="true">
-              <use href="#i-sound" />
-            </svg>
-            ASR 转写
-          </div>
-          {asrConfig.enabled ? (
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-text-3">
-              <div>
-                服务状态{" "}
-                <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">
-                  {asrConfig.provider}/{asrConfig.modelId}
-                </span>
-              </div>
-              <div>
-                今日转写{" "}
-                <b className="font-mono text-[13px] text-text-1">
-                  {asr.todayDone} / {asrHours(asr.todayDurationSec)}
-                </b>
-              </div>
-              <div>
-                排队中 <b className="font-mono text-[13px] text-text-1">{asr.queueWaiting}</b>
-              </div>
-              <div>
-                今日降级{" "}
-                <b
-                  className={`font-mono text-[13px] ${asr.todayDegraded > 0 ? "text-amber" : "text-text-1"}`}
-                  title="ASR 终败条数(无音轨/转写失败),按缺转写降级入库"
-                >
-                  {asr.todayDegraded}
-                </b>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="mt-2 font-mono text-[26px] font-bold leading-none tracking-[-0.01em] text-amber">
-                未启用
-              </div>
-              <div className="mt-1.5 text-[11px] text-text-3">
-                在「AI 配置 → ASR」启用并测试通过后,视频自动转写+解读
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <BloggerStatusCards />
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
         <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="border-b border-line text-xs text-text-3">
               <th className="px-4 py-2.5 font-medium">博主</th>
-              <th className="px-3 py-2.5 font-medium">平台 / 分类</th>
-              <th className="px-3 py-2.5 font-medium">频率</th>
-              <th className="px-3 py-2.5 font-medium">启用</th>
-              <th className="px-3 py-2.5 text-right font-medium">ASR 7d</th>
-              <th className="px-3 py-2.5 font-medium">健康</th>
-              <th className="px-3 py-2.5 font-medium">调度</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
+              <th className="px-3 py-2.5 font-medium">平台</th>
+              <th className="px-3 py-2.5 font-medium">状态</th>
+              <th className="px-3 py-2.5 font-medium">挂靠任务</th>
+              <th className="px-3 py-2.5 font-medium">最近采集</th>
+              <th className="px-3 py-2.5 text-right font-medium">已采集</th>
+              <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             {bloggers.map((b) => {
               const homeUrl = profileUrl(b);
+              const running = runningAccounts.has(b.id);
+              const st = statusOf(b, running);
+              const videoCount = videoCounts.get(`${b.platform}\n${b.nickname}`) ?? 0;
               return (
                 <tr
                   key={b.id}
@@ -213,62 +141,56 @@ export default async function MineBloggers(): Promise<React.ReactElement> {
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
-                      {b.platform}
+                      {VIDEO_PLATFORM_LABELS[b.platform] ?? b.platform}
                     </span>
                     {b.category && (
                       <div className="mt-0.5 text-[11px] text-text-3">{b.category}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-2">
-                    {b.crawlIntervalMin}min
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <StatusSwitch
-                      endpoint={`/api/bloggers/${b.id}/status`}
-                      enabled={b.enabled}
-                      name={b.nickname}
-                      disableHint={`确认停用「${b.nickname}」?停用后调度器不再派发该博主的采集任务。`}
-                    />
-                  </td>
-                  <td
-                    className="px-3 py-2.5 text-right font-mono text-[11px] text-text-2"
-                    title={`近 7 天:转写 ${b.asr7d.done} 条${b.asr7d.degraded > 0 ? ` · 降级 ${b.asr7d.degraded} 条` : ""}`}
-                  >
-                    {b.asr7d.done} / {asrHours(b.asr7d.durationSec)}
-                    {b.asr7d.degraded > 0 && (
-                      <span className="ml-1 text-amber" title={`降级 ${b.asr7d.degraded} 条`}>
-                        ↓{b.asr7d.degraded}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {b.lastError ? (
-                      <span
-                        className="rounded-sm bg-red/10 px-1.5 py-px text-[10px] text-red"
-                        title={b.lastError}
-                      >
-                        {b.consecutiveFails} 连败
-                      </span>
-                    ) : (
-                      <span className="rounded-sm bg-green/10 px-1.5 py-px text-[10px] text-green">
-                        ok
-                      </span>
-                    )}
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    <span className={`inline-flex items-center gap-1.5 text-xs ${st.cls}`}>
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${st.dot}`} />
+                      {st.label}
+                    </span>
                     {!b.platformEnabled && (
                       <div className="mt-0.5 font-mono text-[10px] text-amber">平台已停用</div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[11px] leading-relaxed text-text-3">
-                    最新作品 {b.lastPostAt ? formatCnDateTime(b.lastPostAt) : "—"}
-                    <br />
-                    上轮 {b.lastRunAt ? formatCnDateTime(b.lastRunAt) : "—"}
-                    <br />
-                    下轮{" "}
-                    {b.enabled && b.platformEnabled && b.nextRunAt
-                      ? formatCnDateTime(b.nextRunAt)
+                  <td className="px-3 py-2.5 text-xs text-text-2">
+                    {b.enabled && b.platformEnabled
+                      ? `${VIDEO_PLATFORM_LABELS[b.platform] ?? b.platform}博主采集 · ${cadenceOf(b.crawlIntervalMin)}`
                       : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-text-2">
+                    {b.lastRunAt === null
+                      ? "—"
+                      : !b.enabled
+                        ? `${formatCnDateShort(b.lastRunAt)} · 已暂停`
+                        : `${lastRunAtText(b.lastRunAt)} · ${b.consecutiveFails > 0 ? "失败" : "正常"}`}
+                    {b.consecutiveFails > 0 && b.enabled && b.lastError !== null && (
+                      <div
+                        className="mt-0.5 max-w-[180px] truncate text-[10px] text-red"
+                        title={b.lastError}
+                      >
+                        {b.lastError}
+                      </div>
+                    )}
+                  </td>
+                  <td
+                    className="px-3 py-2.5 text-right font-mono text-[11px] text-text-2"
+                    title={`近 7 天 ASR:转写 ${b.asr7d.done} 条${b.asr7d.degraded > 0 ? ` · 降级 ${b.asr7d.degraded} 条` : ""}`}
+                  >
+                    视频 {videoCount}
+                    {(b.asr7d.done > 0 || b.asr7d.degraded > 0) && (
+                      <div className="mt-0.5 text-[10px] text-text-3">
+                        ASR 7d {b.asr7d.done}
+                        {b.asr7d.degraded > 0 && (
+                          <span className="text-amber"> ↓{b.asr7d.degraded}</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right">
                     <BloggerRowOps
                       blogger={{
                         id: b.id,
@@ -285,7 +207,7 @@ export default async function MineBloggers(): Promise<React.ReactElement> {
             })}
             {bloggers.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-xs text-text-3">
+                <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
                   还没有博主,点右上角「登记博主」接入第一批(建议先导入 Cookie 池)
                 </td>
               </tr>
@@ -293,6 +215,11 @@ export default async function MineBloggers(): Promise<React.ReactElement> {
           </tbody>
         </table>
       </div>
+
+      <p className="font-mono text-[11px] text-text-3">
+        共 {bloggers.length} 位博主{platformSummary && ` · ${platformSummary}`} · 新增博主在
+        博主候选池 审核通过后自动入此
+      </p>
 
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:调度器每分钟扫描到期博主逐个入队(失败隔离在单博主 job);轮询间隔 ≥

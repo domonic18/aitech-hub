@@ -45,6 +45,17 @@ const IDENTITY_LABELS: Record<string, string> = {
 
 // ── 台账 ──────────────────────────────────────────────────────────────────────
 
+/** 博主累计入库视频数(F27「已采集」列):telegram 无外键,按 (平台, 冗余名)
+ *  聚合,键同 loadAsr7dByBlogger——`platform\nnickname` */
+export async function listBloggerVideoCounts(): Promise<Map<string, number>> {
+  const groups = await prisma.telegram.groupBy({
+    by: ["videoBlogger", "videoPlatform"],
+    where: { mediaType: TELEGRAM_MEDIA_VIDEO, videoBlogger: { not: null } },
+    _count: { _all: true },
+  });
+  return new Map(groups.map((g) => [`${g.videoPlatform}\n${g.videoBlogger ?? ""}`, g._count._all]));
+}
+
 /** 近 7 天 ASR 转写聚合(2026-10-06 验收反馈问题4,原型「ASR 7d」列:条数/时长):
  * telegram 无 social_account 外键,按 (video_platform, video_blogger) 冗余名匹配
  * ——与 ai-backfill/作品筛选同一既定口径;done 计转写,降级单列便于观察。 */

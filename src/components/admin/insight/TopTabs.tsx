@@ -1,0 +1,43 @@
+"use client";
+
+/**
+ * 洞察中心顶部双 chip(F11/F10 板 stBar:分析总览 | 发现),真实路由切换。
+ * 簇详情页(/admin/insight/clusters/…)板面无 stBar(F25/F26),返回 null 隐藏。
+ */
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const ITEMS = [
+  { label: "分析总览", href: "/admin/insight/", base: "/admin/insight" },
+  { label: "发现", href: "/admin/insight/discovery/", base: "/admin/insight/discovery" },
+] as const;
+
+export default function InsightTopTabs(): React.ReactElement | null {
+  const pathname = usePathname();
+  // clusters 详情不点亮任一 chip → 详情页态,整条隐藏
+  const active = ITEMS.find(
+    (t) => pathname === t.href || pathname === t.base || pathname.startsWith(`${t.base}/`),
+  );
+  if (active === undefined) return null;
+  return (
+    <div className="flex items-center gap-1.5">
+      {ITEMS.map((t) => {
+        const on = t.label === active.label;
+        return (
+          <Link
+            key={t.label}
+            href={t.href}
+            aria-current={on ? "page" : undefined}
+            className={`rounded-sm px-3 py-1.5 text-[12.5px] ${
+              on
+                ? "bg-accent-dim font-semibold text-accent"
+                : "bg-panel-2 text-text-2 hover:text-text-1"
+            }`}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}

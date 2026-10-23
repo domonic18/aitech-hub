@@ -1176,16 +1176,20 @@ model Feedback {
 /// 新词 pending 经治理台确认后滚雪球闭环。word 落库即归一形(trim+lower),
 /// 唯一约束与查重同一口径;origin/status 合法值应用层 Zod 管控。
 model DiscoveryKeyword {
-  id          BigInt    @id @default(autoincrement())
-  word        String    @unique(map: "uq_discovery_keyword_word") @db.VarChar(100) // 归一形(trim+lower)
-  origin      String    @db.VarChar(10) // manual | hotword
-  status      String    @default("pending") @db.VarChar(10) // pending | active | dismissed
-  source      String?   @db.VarChar(30) // hotword 来源标识(如 bili-suggest/bing-suggest)
-  firstSeenAt DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(6)
-  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            BigInt    @id @default(autoincrement())
+  word          String    @unique(map: "uq_discovery_keyword_word") @db.VarChar(100) // 归一形(trim+lower)
+  origin        String    @db.VarChar(10) // manual | hotword
+  status        String    @default("pending") @db.VarChar(10) // pending | active | dismissed | merged(并入已有词的别名)
+  source        String?   @db.VarChar(30) // hotword 来源标识(如 bili-suggest/bing-suggest)
+  mergedIntoId  BigInt?   @map("merged_into_id") // 合并目标词(候选治理 F24;合并词命中统计随目标词)
+  mergedInto    DiscoveryKeyword? @relation("KeywordMergeTarget", fields: [mergedIntoId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mergedFrom    DiscoveryKeyword[] @relation("KeywordMergeTarget")
+  firstSeenAt   DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@index([mergedIntoId], map: "idx_discovery_keyword_merged_into")
   @@map("discovery_keyword")
 }
 

@@ -1,7 +1,8 @@
 /**
- * 数据中心壳层(2026-10-18 数据壳重组·方案二:采集/洞察/发现三中心并为一体化
- * 管理):源管理/运行/洞察/挖掘四页签经 AdminTabNav 子段路由切换,页内二级视图
- * 走 ?t= 参数。旧路径 /admin/spider|insight|discovery 经 next.config 308 承接。
+ * 数据中心壳层(IA v5 板定:F17/F21/F22 页签序 源管理→计划→运行,数据中心
+ * 收敛为纯采集执行域;洞察拆独立域 /admin/insight,挖掘拆入源管理/洞察)。
+ * 页内二级视图走 ?t= 参数。旧路径 /admin/spider|insight|discovery|mine 经
+ * next.config 308 承接。
  */
 import AdminTabNav from "@/components/admin/AdminTabNav";
 
@@ -15,9 +16,8 @@ export default function AdminDataLayout({
       <AdminTabNav
         items={[
           { label: "源管理", href: "/admin/data/sources/" },
+          { label: "计划", href: "/admin/data/plan/" },
           { label: "运行", href: "/admin/data/run/" },
-          { label: "洞察", href: "/admin/data/insight/" },
-          { label: "挖掘", href: "/admin/data/mine/" },
         ]}
       />
       {children}

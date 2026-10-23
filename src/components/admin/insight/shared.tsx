@@ -55,13 +55,14 @@ export function formatTime(iso: string): string {
 }
 
 /** 洞察页查询参数全集(跨分区互保:w=总览/云图窗口,day=热榜回看日,
- * source/from/to=信号明细过滤) */
+ * hs=热榜源展示切换,source/from/to=信号明细过滤) */
 export type InsightViewParams = {
   source?: string;
   w?: string;
   from?: string;
   to?: string;
   day?: string;
+  hs?: string;
 };
 
 /** 洞察页链接构造:未定义值不落串,其余参数原样保留 */
@@ -74,7 +75,7 @@ export function insightHref(
     if (v) sp.set(k, v);
   }
   const qs = sp.toString();
-  return `/admin/data/insight/${qs ? `?${qs}` : ""}`;
+  return `/admin/insight/${qs ? `?${qs}` : ""}`;
 }
 
 /** 北京日字符串(YYYY-MM-DD)±n 天 */
@@ -137,6 +138,15 @@ export function AnomalyBadge(): React.ReactElement {
   );
 }
 
+/** 可写角度一行文案(F25/F26 actionCard):覆盖度状态派生,LLM 选题生成未立项
+ * 前先给确定性文案;无覆盖度评分(未日批)显观察提示。 */
+export function writeAngleLine(state: string | null): string {
+  if (state === "blank") return "站内尚无覆盖该簇的稿件——内容空白即首发窗口,适合系统性切入。";
+  if (state === "partial") return "既有稿件零散提及,缺系统性对比/实操——按「能跑通」路线整合成篇。";
+  if (state === "covered") return "覆盖较全——从最新动态、差异实测或反例角度补更。";
+  return "覆盖度待日批评估(03:57 跑完回写);可先从代表信号判断切入角度。";
+}
+
 /** 簇名(未打标显示占位;详情链接) */
 export function ClusterLabelLink({
   id,
@@ -147,7 +157,7 @@ export function ClusterLabelLink({
 }): React.ReactElement {
   return (
     <Link
-      href={`/admin/data/insight/clusters/${id}`}
+      href={`/admin/insight/clusters/${id}`}
       className="text-text-1 hover:text-accent"
       title={label ?? "未打标簇,详情见信号原话"}
     >

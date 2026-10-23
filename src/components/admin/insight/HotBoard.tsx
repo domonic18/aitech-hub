@@ -116,11 +116,14 @@ function BoardCard({ board }: { board: InsightHotSourceBoard }): React.ReactElem
         {board.items.length === 0 && (
           <li className="px-2 py-6 text-center text-xs text-text-3">
             暂无榜面:等每日拉取(07:43)——去
-            <Link href="/admin/data/sources/?t=hot" className="mx-0.5 text-accent hover:underline">
+            <Link
+              href="/admin/data/sources/?t=channels"
+              className="mx-0.5 text-accent hover:underline"
+            >
               源管理·热榜源
             </Link>
             确认启停,或
-            <Link href="/admin/data/run/?t=plan" className="mx-0.5 text-accent hover:underline">
+            <Link href="/admin/data/plan/" className="mx-0.5 text-accent hover:underline">
               运行·计划
             </Link>
             看排程

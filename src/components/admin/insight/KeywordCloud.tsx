@@ -29,6 +29,13 @@ type AddFeedback =
   | { kind: "exists"; word: string; statusLabel: string }
   | { kind: "error"; word: string; message: string };
 
+/** 搜索过滤:词形(归一)与打标 label 双匹配;空串原样返回 */
+function searchTrim(q: string, words: InsightCloudWord[]): InsightCloudWord[] {
+  const s = q.trim().toLowerCase();
+  if (s === "") return words;
+  return words.filter((w) => w.word.includes(s) || (w.label ?? "").toLowerCase().includes(s));
+}
+
 export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): React.ReactElement {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<PlacedWord<InsightCloudWord>[] | null>(null);
@@ -36,16 +43,20 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
   const [feedback, setFeedback] = useState<AddFeedback | null>(null);
   const [biliQueued, setBiliQueued] = useState(false);
   const [busyWord, setBusyWord] = useState<string | null>(null);
+  /** 板定搜索框(F11 云图卡):客户端过滤,归一形与打标词双匹配 */
+  const [search, setSearch] = useState("");
   const measure = useMeasure();
+
+  const shown = searchTrim(search, words);
 
   useEffect(() => {
     const width = boxRef.current?.clientWidth ?? 0;
     if (width === 0) return;
-    const sorted = [...words].sort((a, b) => b.weight - a.weight);
+    const sorted = [...shown].sort((a, b) => b.weight - a.weight);
     setPlaced(packWords(sorted, width, CLOUD_H, measure));
-    // measure 为稳定闭包(ref 缓存),words 变化重排即可
+    // measure 为稳定闭包(ref 缓存),shown 变化重排即可
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [words]);
+  }, [shown]);
 
   /** 点词入词库:归一与幂等在服务端(addManualKeyword);结果内联反馈 */
   async function addToLexicon(w: InsightCloudWord): Promise<void> {
@@ -102,7 +113,7 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
             <>
               <span className="text-green">✓ 已入词库「{feedback.word}」,生效词即参与下轮发现</span>
               <Link
-                href={`/admin/data/insight/clusters/${feedback.clusterId}`}
+                href={`/admin/insight/clusters/${feedback.clusterId}`}
                 className="text-accent hover:underline"
               >
                 查看簇详情
@@ -118,7 +129,10 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
                   触发 B站发现
                 </button>
               )}
-              <Link href="/admin/data/mine/?t=candidates" className="text-accent hover:underline">
+              <Link
+                href="/admin/data/sources/?t=candidates"
+                className="text-accent hover:underline"
+              >
                 去候选治理
               </Link>
             </>
@@ -126,7 +140,10 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
           {feedback.kind === "exists" && (
             <>
               <span className="text-text-2">{feedback.statusLabel}</span>
-              <Link href="/admin/data/sources/?t=words" className="text-accent hover:underline">
+              <Link
+                href="/admin/insight/discovery/?t=words"
+                className="text-accent hover:underline"
+              >
                 去词库管理
               </Link>
             </>
@@ -134,6 +151,14 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
           {feedback.kind === "error" && <span className="text-red">{feedback.message}</span>}
         </div>
       )}
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="搜索词…"
+        aria-label="搜索云图关键词"
+        className="w-full rounded-sm border border-line bg-panel px-3 py-1.5 text-xs text-text-1 placeholder:text-text-3 focus:border-accent focus:outline-none"
+      />
       <div
         ref={boxRef}
         className="relative overflow-hidden rounded-md border border-line bg-panel"
@@ -163,7 +188,7 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
         ))}
         {placed !== null && placed.length === 0 && (
           <div className="flex h-full items-center justify-center text-xs text-text-3">
-            词过多无法排布,请收窄窗口
+            {shown.length === 0 && words.length > 0 ? "无匹配词" : "词过多无法排布,请收窄窗口"}
           </div>
         )}
       </div>

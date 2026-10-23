@@ -277,8 +277,14 @@ export interface InsightClusterDetail {
     /** 近 30 日快照(升序,缺日不补;热力格输入) */
     snapshots: { date: string; score: number; rank: number | null }[];
   };
-  /** 成员信号原话流(最近 50 条) */
-  signals: { id: string; source: string; rawText: string; signalAt: string }[];
+  /** 成员信号原话流(最近 50 条;meta 供热度排序与原文链,F26 证据卡用) */
+  signals: {
+    id: string;
+    source: string;
+    rawText: string;
+    signalAt: string;
+    meta: unknown;
+  }[];
   /** 来源分布(降序) */
   sourceDist: { source: string; count: number }[];
 }
@@ -309,17 +315,18 @@ export async function getInsightClusterDetail(id: bigint): Promise<InsightCluste
 
   const [memberCounts, snapshots, signals, sourceRows] = await Promise.all([
     prisma.insightClusterMember.count({ where: { clusterId: id } }),
+    // 近 8 周(F25 趋势条窗宽):desc 取尾再反转回升序
     prisma.insightSnapshot.findMany({
       where: { clusterId: id },
-      orderBy: { date: "asc" },
-      take: 30,
+      orderBy: { date: "desc" },
+      take: 56,
       select: { date: true, score: true, rank: true },
     }),
     prisma.insightSignal.findMany({
       where: { members: { some: { clusterId: id } } },
       orderBy: { signalAt: "desc" },
       take: 50,
-      select: { id: true, source: true, rawText: true, signalAt: true },
+      select: { id: true, source: true, rawText: true, signalAt: true, meta: true },
     }),
     prisma.insightSignal.groupBy({
       by: ["source"],
@@ -353,17 +360,20 @@ export async function getInsightClusterDetail(id: bigint): Promise<InsightCluste
       firstSeenAt: cluster.firstSeenAt.toISOString(),
       lastSeenAt: cluster.lastSeenAt.toISOString(),
       peakAt: cluster.peakAt?.toISOString() ?? null,
-      snapshots: snapshots.map((s) => ({
-        date: s.date.toISOString().slice(0, 10),
-        score: s.score,
-        rank: s.rank,
-      })),
+      snapshots: snapshots
+        .map((s) => ({
+          date: s.date.toISOString().slice(0, 10),
+          score: s.score,
+          rank: s.rank,
+        }))
+        .reverse(),
     },
     signals: signals.map((s) => ({
       id: s.id.toString(),
       source: s.source,
       rawText: s.rawText,
       signalAt: s.signalAt.toISOString(),
+      meta: s.meta,
     })),
     sourceDist: sourceRows
       .map((r) => ({ source: r.source, count: r._count._all }))

@@ -7,6 +7,7 @@
 import type { JobRun } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { startOfCnDay } from "@/lib/datetime";
 
 import { consecutiveFails } from "./runlog";
 
@@ -42,6 +43,8 @@ export function jobRunLabel(key: string): string {
 export interface JobRunListFilter {
   key?: string;
   status?: string;
+  /** 仅今天(北京自然日,F18「今天|全部」范围筛选) */
+  today?: boolean;
   page?: number;
 }
 
@@ -55,6 +58,7 @@ export async function listJobRuns(filter: JobRunListFilter): Promise<{
   const where = {
     ...(filter.key === undefined ? {} : { jobKey: filter.key }),
     ...(filter.status === undefined ? {} : { status: filter.status }),
+    ...(filter.today === true ? { startedAt: { gte: startOfCnDay() } } : {}),
   };
   const [rows, total] = await Promise.all([
     prisma.jobRun.findMany({
@@ -68,6 +72,25 @@ export async function listJobRuns(filter: JobRunListFilter): Promise<{
   return { rows, total, page, pages: Math.max(1, Math.ceil(total / JOB_RUN_PAGE_SIZE)) };
 }
 
+/** F18 状态计数 chips(随 key/today 过滤,不随 status——chips 本身就是状态入口) */
+export async function jobRunStatusCounts(
+  filter: Pick<JobRunListFilter, "key" | "today">,
+): Promise<{ running: number; success: number; failed: number }> {
+  const rows = await prisma.jobRun.groupBy({
+    by: ["status"],
+    where: {
+      ...(filter.key === undefined ? {} : { jobKey: filter.key }),
+      ...(filter.today === true ? { startedAt: { gte: startOfCnDay() } } : {}),
+    },
+    _count: { _all: true },
+  });
+  const out = { running: 0, success: 0, failed: 0 };
+  for (const r of rows) {
+    if (r.status in out) out[r.status as keyof typeof out] = r._count._all;
+  }
+  return out;
+}
+
 export interface JobKeyHealth {
   jobKey: string;
   total24h: number;
@@ -78,6 +101,8 @@ export interface JobKeyHealth {
   lastSuccessAt: Date | null;
   lastFailedAt: Date | null;
   avgDurationMs: number | null;
+  /** F19 归因:末次失败轮的 error(截 200 字;无失败 → null) */
+  lastError: string | null;
 }
 
 /** 连败纯函数见 ./runlog(顶部 re-export);此处只做聚合查询 */
@@ -102,7 +127,10 @@ export async function jobRunHealth(): Promise<JobRunHealth> {
         COUNT(*) FILTER (WHERE status = 'running')::int AS "runningNow",
         MAX(started_at) FILTER (WHERE status = 'success') AS "lastSuccessAt",
         MAX(started_at) FILTER (WHERE status = 'failed') AS "lastFailedAt",
-        AVG(duration_ms) FILTER (WHERE started_at >= now() - interval '7 days')::float AS "avgDurationMs"
+        AVG(duration_ms) FILTER (WHERE started_at >= now() - interval '7 days')::float AS "avgDurationMs",
+        (SELECT left(j2.error, 200) FROM job_run j2
+          WHERE j2.job_key = job_run.job_key AND j2.status = 'failed'
+          ORDER BY j2.started_at DESC LIMIT 1) AS "lastError"
       FROM job_run
       WHERE started_at >= now() - interval '7 days' OR status = 'running'
       GROUP BY job_key
