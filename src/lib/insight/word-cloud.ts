@@ -1,8 +1,7 @@
 /**
  * 词云螺旋排布纯函数(M34 批③ 验收反馈·问题3 行业词云形态):阿基米德螺旋
  * 紧密排布,矩形碰撞检测保证无重叠,权重决定字号与颜色档。零 DOM 依赖,
- * KeywordCloud(洞察簇词云)与 WordYieldCloud(词库效能云)共用;客户端
- * canvas 量测注入,packWords 为测试锚点。
+ * KeywordCloud(洞察簇词云)专用;客户端 canvas 量测注入,packWords 为测试锚点。
  */
 export const CLOUD_H = 300;
 export const FONT_MIN = 14;

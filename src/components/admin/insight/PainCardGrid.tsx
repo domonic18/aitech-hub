@@ -43,8 +43,9 @@ export default function PainCardGrid({
     );
   }
   const max = Math.max(...clusters.map((c) => c.score ?? 0), 1);
+  // 自 F11 起宿主于页侧 Card 壳(F11 板),自身不再画面板框
   return (
-    <div className="rounded-md border border-line bg-panel px-2 py-1">
+    <div>
       {clusters.map((c) => (
         <Link
           key={c.id}

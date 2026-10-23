@@ -37,8 +37,16 @@ export interface KeywordListResult {
 export async function listKeywordsAdmin(params: {
   segment: KeywordListSegment;
   page: number;
+  /** 词模糊搜索(F23 板筛选;归一形小写,入参归一后 contains) */
+  kw?: string;
+  /** 来源过滤:manual(手动)| hotword(发现任务联想) */
+  origin?: string;
 }): Promise<KeywordListResult> {
-  const where = params.segment === "all" ? {} : { status: params.segment };
+  const where = {
+    ...(params.segment === "all" ? {} : { status: params.segment }),
+    ...(params.kw ? { word: { contains: params.kw.toLowerCase() } } : {}),
+    ...(params.origin ? { origin: params.origin } : {}),
+  };
   const [rows, total, grouped] = await Promise.all([
     prisma.discoveryKeyword.findMany({
       where,

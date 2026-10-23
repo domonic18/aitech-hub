@@ -121,8 +121,9 @@ export default function RadarTable({
     );
   }
   const maxScore = Math.max(...clusters.map((c) => c.score ?? 0), 0);
+  // 自 F11 起宿主于页侧 Card 壳(F11 板),自身不再画面板框
   return (
-    <div className="grid gap-x-4 rounded-md border border-line bg-panel px-2 py-1 lg:grid-cols-2">
+    <div className="grid gap-x-4 lg:grid-cols-2">
       {clusters.map((c, i) => (
         <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} />
       ))}

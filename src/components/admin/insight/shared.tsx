@@ -55,13 +55,14 @@ export function formatTime(iso: string): string {
 }
 
 /** 洞察页查询参数全集(跨分区互保:w=总览/云图窗口,day=热榜回看日,
- * source/from/to=信号明细过滤) */
+ * hs=热榜源展示切换,source/from/to=信号明细过滤) */
 export type InsightViewParams = {
   source?: string;
   w?: string;
   from?: string;
   to?: string;
   day?: string;
+  hs?: string;
 };
 
 /** 洞察页链接构造:未定义值不落串,其余参数原样保留 */
