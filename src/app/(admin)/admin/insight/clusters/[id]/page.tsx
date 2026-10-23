@@ -34,7 +34,7 @@ export default async function AdminInsightClusterPage({
     <div className="flex flex-col gap-4">
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/admin/data/insight/" className="text-xs text-text-3 hover:text-accent">
+          <Link href="/admin/insight/" className="text-xs text-text-3 hover:text-accent">
             ← 洞察中心
           </Link>
           <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">

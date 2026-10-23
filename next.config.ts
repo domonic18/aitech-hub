@@ -7,8 +7,69 @@ const nextConfig: NextConfig = {
   output: "standalone",
   async redirects() {
     return [
+      // IA v5 板定(2026-10-23):数据中心收敛为采集执行域(源管理/计划/运行),
+      // 洞察拆独立域 /admin/insight,挖掘拆入源管理/洞察。带 query 的精确分流
+      // 在前(has 条件;其余 query 如 kw/page 原样透传),具体优先于泛化;
+      // 双斜杠形态都列(防双跳,trailingSlash 规范化先于 redirects)
+      {
+        source: "/admin/data/insight/clusters/:path*",
+        destination: "/admin/insight/clusters/:path*",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/insight/clusters/",
+        destination: "/admin/insight/clusters/",
+        statusCode: 308,
+      },
+      { source: "/admin/data/insight", destination: "/admin/insight/", statusCode: 308 },
+      { source: "/admin/data/insight/", destination: "/admin/insight/", statusCode: 308 },
+      {
+        source: "/admin/data/mine",
+        destination: "/admin/data/sources/?t=candidates",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/mine/",
+        has: [{ type: "query", key: "t", value: "^(bloggers)$" }],
+        destination: "/admin/data/sources/?t=bloggers",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/mine/",
+        has: [{ type: "query", key: "t", value: "^(candidates)$" }],
+        destination: "/admin/data/sources/?t=candidates",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/mine/",
+        has: [{ type: "query", key: "t", value: "^(github)$" }],
+        destination: "/admin/insight/discovery/?t=github",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/mine/",
+        destination: "/admin/data/sources/?t=candidates",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/sources/",
+        has: [{ type: "query", key: "t", value: "^(words)$" }],
+        destination: "/admin/insight/discovery/?t=words",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/sources/",
+        has: [{ type: "query", key: "t", value: "^(hot)$" }],
+        destination: "/admin/data/sources/?t=channels",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/run/",
+        has: [{ type: "query", key: "t", value: "^(plan)$" }],
+        destination: "/admin/data/plan/",
+        statusCode: 308,
+      },
       // M42 创作中心(2026-10-22):专题管理 → 创作中心,旧书签/外链 308 承接
-      // (trailingSlash 规范化先于 redirects,两种斜杠形态都列,同下方惯例)
       { source: "/admin/topics", destination: "/admin/studio/", statusCode: 308 },
       { source: "/admin/topics/", destination: "/admin/studio/", statusCode: 308 },
       { source: "/admin/topics/:path*", destination: "/admin/studio/:path*", statusCode: 308 },
@@ -36,12 +97,28 @@ const nextConfig: NextConfig = {
         destination: "/admin/data/sources/?t=channels",
         statusCode: 308,
       },
-      // 侧栏精简批②(2026-10-14):博主/项目并入 /admin/discovery 壳、会话并入
-      // /admin/usage 壳,旧路径 308 承接(同上双斜杠形态都列)
-      { source: "/admin/bloggers", destination: "/admin/data/mine/?t=bloggers", statusCode: 308 },
-      { source: "/admin/bloggers/", destination: "/admin/data/mine/?t=bloggers", statusCode: 308 },
-      { source: "/admin/github", destination: "/admin/data/mine/?t=github", statusCode: 308 },
-      { source: "/admin/github/", destination: "/admin/data/mine/?t=github", statusCode: 308 },
+      // 侧栏精简批②(2026-10-14):博主/项目并入发现壳、会话并入 /admin/usage 壳
+      // (IA v5 后目标随新域更新:博主→源管理·博主台账,项目→洞察·项目发现)
+      {
+        source: "/admin/bloggers",
+        destination: "/admin/data/sources/?t=bloggers",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/bloggers/",
+        destination: "/admin/data/sources/?t=bloggers",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/github",
+        destination: "/admin/insight/discovery/?t=github",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/github/",
+        destination: "/admin/insight/discovery/?t=github",
+        statusCode: 308,
+      },
       {
         source: "/admin/agent-sessions",
         destination: "/admin/usage/sessions/",
@@ -52,16 +129,8 @@ const nextConfig: NextConfig = {
         destination: "/admin/usage/sessions/",
         statusCode: 308,
       },
-      // 数据壳重组·方案二(2026-10-18):采集/洞察/发现三中心并入 /admin/data 壳,
-      // 旧路径 308 承接(子页映射 ?t= 子视图;双斜杠形态都列,防双跳;
-      // clusters 通配在前,具体优先于泛化)
-      {
-        source: "/admin/insight/clusters/:path*",
-        destination: "/admin/data/insight/clusters/:path*",
-        statusCode: 308,
-      },
-      { source: "/admin/insight", destination: "/admin/data/insight/", statusCode: 308 },
-      { source: "/admin/insight/", destination: "/admin/data/insight/", statusCode: 308 },
+      // 数据壳重组·方案二(2026-10-18)→ IA v5 修订(2026-10-23):旧 /admin/insight
+      // 现为真实路由(洞察独立域),不再 redirect;采集/发现旧壳路径映射新域子段
       {
         source: "/admin/spider/channels",
         destination: "/admin/data/sources/?t=channels",
@@ -72,36 +141,32 @@ const nextConfig: NextConfig = {
         destination: "/admin/data/sources/?t=channels",
         statusCode: 308,
       },
-      { source: "/admin/spider/schedule", destination: "/admin/data/run/?t=plan", statusCode: 308 },
-      {
-        source: "/admin/spider/schedule/",
-        destination: "/admin/data/run/?t=plan",
-        statusCode: 308,
-      },
+      { source: "/admin/spider/schedule", destination: "/admin/data/plan/", statusCode: 308 },
+      { source: "/admin/spider/schedule/", destination: "/admin/data/plan/", statusCode: 308 },
       { source: "/admin/spider", destination: "/admin/data/run/", statusCode: 308 },
       { source: "/admin/spider/", destination: "/admin/data/run/", statusCode: 308 },
       {
         source: "/admin/discovery/bloggers",
-        destination: "/admin/data/mine/?t=bloggers",
+        destination: "/admin/data/sources/?t=bloggers",
         statusCode: 308,
       },
       {
         source: "/admin/discovery/bloggers/",
-        destination: "/admin/data/mine/?t=bloggers",
+        destination: "/admin/data/sources/?t=bloggers",
         statusCode: 308,
       },
       {
         source: "/admin/discovery/github",
-        destination: "/admin/data/mine/?t=github",
+        destination: "/admin/insight/discovery/?t=github",
         statusCode: 308,
       },
       {
         source: "/admin/discovery/github/",
-        destination: "/admin/data/mine/?t=github",
+        destination: "/admin/insight/discovery/?t=github",
         statusCode: 308,
       },
-      { source: "/admin/discovery", destination: "/admin/data/mine/", statusCode: 308 },
-      { source: "/admin/discovery/", destination: "/admin/data/mine/", statusCode: 308 },
+      { source: "/admin/discovery", destination: "/admin/insight/discovery/", statusCode: 308 },
+      { source: "/admin/discovery/", destination: "/admin/insight/discovery/", statusCode: 308 },
     ];
   },
   async headers() {

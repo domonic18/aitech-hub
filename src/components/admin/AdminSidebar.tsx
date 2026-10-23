@@ -57,11 +57,11 @@ const GROUPS: ReadonlyArray<Group> = [
   {
     label: "数据",
     items: [
-      // 数据壳重组·方案二(2026-10-18):采集/洞察/发现三中心并入 /admin/data
-      // 一体化管理(源管理/运行/洞察/挖掘四页签);旧路径 308 承接
+      // 数据中心(IA v5 板定):纯采集执行域,页签 源管理/计划/运行;
+      // 洞察拆独立域 /admin/insight,旧 308 承接
       { icon: "i-cloudserver", label: "数据中心", href: "/admin/data" },
-      // 洞察中心(IA v2 新增):暂指数据壳「洞察」页签;洞察域立项迁 /admin/insight 时仅改此 href
-      { icon: "i-aim", label: "洞察中心", href: "/admin/data/insight" },
+      // 洞察中心(IA v5 板定):独立域(分析总览 + 发现),自数据壳迁出
+      { icon: "i-aim", label: "洞察中心", href: "/admin/insight" },
     ],
   },
   {
@@ -96,7 +96,7 @@ export default function AdminSidebar({
   const pathname = usePathname();
 
   // active 判定(IA v2):最长 href 命中优先——
-  // /admin/data/insight/… 须点亮「洞察中心」而非「数据中心」
+  // /admin/insight/… 须点亮「洞察中心」而非「数据中心」
   // (/admin/data 是其前缀,朴素 startsWith 会双亮;exact 项仍只按全等参与)。
   const activeHref = GROUPS.flatMap((group) => group.items).reduce<string | undefined>(
     (best, item) => {

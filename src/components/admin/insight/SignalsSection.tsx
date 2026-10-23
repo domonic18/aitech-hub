@@ -47,11 +47,7 @@ export default function SignalsSection({
             {SOURCE_LABELS[k]}
           </Link>
         ))}
-        <form
-          method="GET"
-          action="/admin/data/insight/"
-          className="ml-auto flex items-center gap-1.5"
-        >
+        <form method="GET" action="/admin/insight/" className="ml-auto flex items-center gap-1.5">
           {/* 跨分区参数保真:窗口/热榜回看日/当前源随表单提交 */}
           {params.w && <input type="hidden" name="w" value={params.w} />}
           {params.day && <input type="hidden" name="day" value={params.day} />}
@@ -114,16 +110,13 @@ export default function SignalsSection({
                   <>
                     该范围内暂无信号:信号由外部热榜小时级拉取产生——去
                     <Link
-                      href="/admin/data/sources/?t=hot"
+                      href="/admin/data/sources/?t=channels"
                       className="mx-0.5 text-accent hover:underline"
                     >
                       源管理·热榜源
                     </Link>
                     检查启停或手动拉取,或在
-                    <Link
-                      href="/admin/data/run/?t=plan"
-                      className="mx-0.5 text-accent hover:underline"
-                    >
+                    <Link href="/admin/data/plan/" className="mx-0.5 text-accent hover:underline">
                       运行·计划
                     </Link>
                     看排程

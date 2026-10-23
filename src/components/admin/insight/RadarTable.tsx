@@ -63,7 +63,7 @@ function RadarRow({
     .join(" ");
   return (
     <Link
-      href={`/admin/data/insight/clusters/${c.id}`}
+      href={`/admin/insight/clusters/${c.id}`}
       className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-panel-2"
     >
       <span className={`w-5 shrink-0 text-right font-mono text-[12px] ${rankClass(rank)}`}>
@@ -113,7 +113,7 @@ export default function RadarTable({
     return (
       <div className="rounded-md border border-line bg-panel px-4 py-8 text-center text-xs text-text-3">
         热点簇暂空:热榜信号拉取并打标后进入雷达——检查
-        <Link href="/admin/data/sources/?t=hot" className="mx-0.5 text-accent hover:underline">
+        <Link href="/admin/data/sources/?t=channels" className="mx-0.5 text-accent hover:underline">
           源管理·热榜源
         </Link>
         启停,或用 CLI <code className="font-mono">insight:run -- cluster</code> 手动跑一轮

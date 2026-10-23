@@ -31,8 +31,10 @@ const SEG_LABEL: Record<string, string> = {
   data: "数据中心",
   sources: "源管理",
   schedule: "计划",
+  plan: "计划", // IA v5:计划升独立页签 /admin/data/plan
   run: "运行",
-  insight: "洞察",
+  insight: "洞察中心", // IA v5:洞察独立域 /admin/insight
+  discovery: "发现", // IA v5:洞察 › 发现(旧独立发现中心已 308)
   mine: "挖掘",
   users: "用户管理",
   feedback: "反馈管理",
@@ -47,7 +49,6 @@ const SEG_LABEL: Record<string, string> = {
   telegram: "电报管理",
   spider: "采集总览",
   channels: "渠道",
-  discovery: "发现中心",
   bloggers: "博主",
   github: "项目",
   models: "模型配置",
@@ -62,6 +63,7 @@ function segLabel(seg: string, prev?: string): string {
     if (prev === "studio") return "创作详情";
     if (prev === "illustration") return "编辑器"; // F14 板 crumb「配图工坊 › 编辑器」
     if (prev === "pins") return "贴图详情";
+    if (prev === "clusters") return "簇详情"; // F25/F26 机会/痛点详情
     return "编辑文章";
   }
   if (seg === "clusters") return "机会与痛点";

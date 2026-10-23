@@ -32,7 +32,7 @@ function wordsHref(segment: string, page: number): string {
   if (segment !== "all") sp.set("status", segment);
   if (page > 1) sp.set("page", String(page));
   const qs = sp.toString();
-  return `/admin/data/sources/?t=words${qs ? `&${qs}` : ""}`;
+  return `/admin/insight/discovery/?t=words${qs ? `&${qs}` : ""}`;
 }
 
 export default async function SourceWords({

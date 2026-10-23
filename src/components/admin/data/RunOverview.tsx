@@ -111,7 +111,7 @@ export default async function RunOverview(): Promise<React.ReactElement> {
         </span>
         <span>最新 {video.lastVideoAt ? hhmm(video.lastVideoAt) : "—"}</span>
         <Link
-          href="/admin/data/mine/?t=bloggers"
+          href="/admin/data/sources/?t=bloggers"
           className="ml-auto text-accent hover:text-accent-hover"
         >
           博主台账 →

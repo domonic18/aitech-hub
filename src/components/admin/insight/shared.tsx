@@ -74,7 +74,7 @@ export function insightHref(
     if (v) sp.set(k, v);
   }
   const qs = sp.toString();
-  return `/admin/data/insight/${qs ? `?${qs}` : ""}`;
+  return `/admin/insight/${qs ? `?${qs}` : ""}`;
 }
 
 /** 北京日字符串(YYYY-MM-DD)±n 天 */
@@ -147,7 +147,7 @@ export function ClusterLabelLink({
 }): React.ReactElement {
   return (
     <Link
-      href={`/admin/data/insight/clusters/${id}`}
+      href={`/admin/insight/clusters/${id}`}
       className="text-text-1 hover:text-accent"
       title={label ?? "未打标簇,详情见信号原话"}
     >

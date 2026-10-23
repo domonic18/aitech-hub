@@ -125,7 +125,7 @@ export default function KeywordTable({
                   if (!y) return <span className="text-text-3">—</span>;
                   return (
                     <Link
-                      href={`/admin/data/mine/?t=candidates&kw=${encodeURIComponent(k.word)}`}
+                      href={`/admin/data/sources/?t=candidates&kw=${encodeURIComponent(k.word)}`}
                       title="查看该词挖到的候选"
                       className="hover:text-accent-hover hover:underline"
                     >

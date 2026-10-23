@@ -102,7 +102,7 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
             <>
               <span className="text-green">✓ 已入词库「{feedback.word}」,生效词即参与下轮发现</span>
               <Link
-                href={`/admin/data/insight/clusters/${feedback.clusterId}`}
+                href={`/admin/insight/clusters/${feedback.clusterId}`}
                 className="text-accent hover:underline"
               >
                 查看簇详情
@@ -118,7 +118,10 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
                   触发 B站发现
                 </button>
               )}
-              <Link href="/admin/data/mine/?t=candidates" className="text-accent hover:underline">
+              <Link
+                href="/admin/data/sources/?t=candidates"
+                className="text-accent hover:underline"
+              >
                 去候选治理
               </Link>
             </>
@@ -126,7 +129,10 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
           {feedback.kind === "exists" && (
             <>
               <span className="text-text-2">{feedback.statusLabel}</span>
-              <Link href="/admin/data/sources/?t=words" className="text-accent hover:underline">
+              <Link
+                href="/admin/insight/discovery/?t=words"
+                className="text-accent hover:underline"
+              >
                 去词库管理
               </Link>
             </>

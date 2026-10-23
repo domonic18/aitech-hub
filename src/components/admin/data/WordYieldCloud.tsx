@@ -62,7 +62,7 @@ export default function WordYieldCloud({ yields }: { yields: KeywordYield[] }): 
       {(placed ?? []).map((p) => (
         <Link
           key={p.word.word}
-          href={`/admin/data/mine/?t=candidates&kw=${encodeURIComponent(p.word.word)}`}
+          href={`/admin/data/sources/?t=candidates&kw=${encodeURIComponent(p.word.word)}`}
           title={`候选 ${p.word.candidates} · 批准 ${p.word.approved} · 最高播放 ${fmtPlay(p.word.maxPlay)} —— 点击按词过滤候选`}
           className={`absolute whitespace-nowrap leading-none transition-opacity hover:opacity-100 ${
             p.t >= 0.75 ? "font-semibold" : "font-medium"

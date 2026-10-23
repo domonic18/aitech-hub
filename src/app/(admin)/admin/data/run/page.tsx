@@ -1,22 +1,21 @@
 /**
- * 数据中心·运行页(调度+呈现段):采集总览(强度/队列/日历/错误)+ 任务日志
- * (job_run 台账明细,验收二批③)+ 健康聚合(成功率/连败/挂死)+ 采集计划
- * (登记表日历/常驻 tick/渠道间隔)。?t= 切视图,默认总览。
+ * 数据中心·运行页(执行呈现段,IA v5 板定 F18 日志/F19 健康/F20 实时):
+ * 实时采集(强度/队列/依赖)+ 任务日志(job_run 台账明细)+ 健康聚合
+ * (成功率/连败/挂死)。?t= 切视图,默认实时;计划视图已升独立页签
+ * /admin/data/plan(旧 ?t=plan 经 next.config 308)。
  */
 import RunHealth from "@/components/admin/data/RunHealth";
 import RunJobs from "@/components/admin/data/RunJobs";
 import RunOverview from "@/components/admin/data/RunOverview";
-import RunPlan from "@/components/admin/data/RunPlan";
 import SubTabs from "@/components/admin/data/SubTabs";
 import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [
-  ["overview", "总览"],
-  ["jobs", "日志"],
-  ["health", "健康"],
-  ["plan", "计划"],
+  ["overview", "实时采集"],
+  ["jobs", "采集日志"],
+  ["health", "健康度"],
 ] as const;
 
 export default async function AdminDataRunPage({
@@ -32,19 +31,11 @@ export default async function AdminDataRunPage({
       <div>
         <h2 className="text-base font-semibold">运行</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          跑了什么、跑得怎样:总览看强度/队列/错误,日志看批任务每轮明细,健康看成败与挂死,计划看全部排程;源的启停回「源管理」。
+          跑了什么、跑得怎样:实时看当前采集与队列,日志看批任务每轮明细,健康看成败与挂死;源的启停回「源管理」,排程看「计划」。
         </p>
       </div>
       <SubTabs tabs={TABS} active={t} basePath="/admin/data/run/" />
-      {t === "overview" ? (
-        <RunOverview />
-      ) : t === "jobs" ? (
-        <RunJobs sp={sp} />
-      ) : t === "health" ? (
-        <RunHealth />
-      ) : (
-        <RunPlan />
-      )}
+      {t === "overview" ? <RunOverview /> : t === "jobs" ? <RunJobs sp={sp} /> : <RunHealth />}
     </div>
   );
 }
