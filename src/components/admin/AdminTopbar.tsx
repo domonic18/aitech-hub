@@ -60,7 +60,7 @@ const SEG_LABEL: Record<string, string> = {
 function segLabel(seg: string, prev?: string): string {
   if (/^\d+$/.test(seg)) {
     if (prev === "studio") return "创作详情";
-    if (prev === "illustration") return "配图详情";
+    if (prev === "illustration") return "编辑器"; // F14 板 crumb「配图工坊 › 编辑器」
     if (prev === "pins") return "贴图详情";
     return "编辑文章";
   }

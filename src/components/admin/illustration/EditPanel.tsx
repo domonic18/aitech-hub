@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * 配图工坊·编辑面板(M40 批 B):三回路统一表单(改字必选/消除/重绘)+
- * 候选预览确认制——生成只出预览候选,「确认存为版本」才落版本链,放弃即闲置。
+ * 配图工坊·编辑面板(M40 批 B 建,F14 板 18:813 对齐):三模式统一表单
+ * (文字修改必选/消除笔/自由重绘)+ 预览态确认制——「生成预览」只出候选,
+ * 「确认落新版本」才写版本链,放弃即闲置;常驻 hint 说明该机制。
+ * highlight(版本链「＋ 新版本」引导):短暂 ring 高亮定位编辑入口。
  */
 import { EDIT_MODES, type EditMode, type NormalizedBbox } from "./labels";
 
@@ -15,6 +17,7 @@ export default function EditPanel({
   error,
   confirming,
   hasReadyGroup,
+  highlight,
   onMode,
   onInstruction,
   onSubmit,
@@ -30,6 +33,8 @@ export default function EditPanel({
   error: string | null;
   confirming: boolean;
   hasReadyGroup: boolean;
+  /** 版本链「＋ 新版本」chip 点击后的引导高亮(短暂) */
+  highlight?: boolean;
   onMode: (m: EditMode) => void;
   onInstruction: (v: string) => void;
   onSubmit: () => void;
@@ -44,8 +49,13 @@ export default function EditPanel({
     bbox !== null &&
     (!needInstruction || instruction.trim() !== "");
   return (
-    <section className="flex flex-col gap-2 rounded-md border border-line bg-panel-1 p-3">
-      <h2 className="text-xs font-medium text-text-2">编辑</h2>
+    <section
+      id="illu-edit-panel"
+      className={`flex flex-col gap-2 rounded-md border bg-panel-1 p-3 transition-shadow ${
+        highlight ? "border-accent ring-1 ring-accent" : "border-line"
+      }`}
+    >
+      <h2 className="text-xs font-medium text-text-2">编辑选中层</h2>
       <div className="flex gap-1">
         {EDIT_MODES.map((m) => (
           <button
@@ -80,13 +90,7 @@ export default function EditPanel({
         onChange={(e) => onInstruction(e.target.value)}
         rows={2}
         maxLength={500}
-        placeholder={
-          mode === "text"
-            ? "新文字(必填,逐字给出)"
-            : mode === "redraw"
-              ? "重绘内容描述(必填)"
-              : "补充说明(可空)"
-        }
+        placeholder="编辑指令,如「标题改为一起 AI 2.0」…"
         className="w-full resize-y rounded-sm border border-line bg-bg px-2 py-1.5 text-[11px] text-text-1 placeholder:text-text-3 focus:border-accent focus:outline-none disabled:opacity-60"
       />
       {previewPath ? (
@@ -104,7 +108,7 @@ export default function EditPanel({
               onClick={onConfirm}
               className="flex-1 cursor-pointer rounded-sm bg-accent px-2 py-1.5 text-[11px] font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {confirming ? "保存中…" : "✓ 确认存为新版本"}
+              {confirming ? "保存中…" : "确认落新版本"}
             </button>
             <button
               type="button"
@@ -123,10 +127,13 @@ export default function EditPanel({
           onClick={onSubmit}
           className="cursor-pointer rounded-sm bg-accent px-2 py-2 text-[11px] font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "生成候选中(约 15 秒)…" : `生成候选预览(${current.label})`}
+          {busy ? "生成预览中(约 15 秒)…" : "生成预览"}
         </button>
       )}
       {error && <p className="text-[11px] leading-relaxed text-red">{error}</p>}
+      <p className="text-[10px] leading-relaxed text-text-3">
+        预览态确认制:预览满意才落新版本,不覆盖原版本。
+      </p>
       {!hasReadyGroup && (
         <p className="text-[10px] leading-relaxed text-text-3">
           提示:未拆层也可直接框选编辑;拆层后点选图层可精准取范围。

@@ -68,7 +68,7 @@ export default function IllustrationCreateButton(): React.ReactElement {
         <svg className="ic" aria-hidden="true">
           <use href="#i-robot" />
         </svg>
-        新建配图
+        ＋ 新建配图
       </button>
       {open && (
         <DialogShell title="新建配图(文生图直出)" scroll>

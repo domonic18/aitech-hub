@@ -66,6 +66,12 @@ export default function LayerTree({
             底板为抠净元素的干净底图,藏层即元素真消失;官方水印烙在底板,导出恒带(合规)。
           </p>
           <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+            {/* 列头(F14 板 18:783):行右端状态文本列对齐「显隐」 */}
+            <li aria-hidden="true" className="flex items-center gap-2 px-2 text-[10px] text-text-3">
+              <span className="w-[14px]" />
+              <span className="flex-1">名称</span>
+              <span className="flex-none">显隐</span>
+            </li>
             {group.layers.map((l) => {
               const selected = l.id === selectedLayerId;
               return (
@@ -79,7 +85,7 @@ export default function LayerTree({
                       type="button"
                       title={l.visible ? "隐藏图层" : "显示图层"}
                       onClick={() => onToggleVisible(l.id, !l.visible)}
-                      className={`cursor-pointer text-sm leading-none ${
+                      className={`w-[14px] cursor-pointer text-sm leading-none ${
                         l.visible ? "text-green" : "text-text-3 opacity-40"
                       }`}
                     >
@@ -104,7 +110,12 @@ export default function LayerTree({
                         </span>
                       )}
                     </button>
-                    <span className="flex-none font-mono text-[10px] text-text-3">z{l.zIndex}</span>
+                    {/* 状态文本(F14):选中行「选中」accent,其余显隐态 */}
+                    <span
+                      className={`flex-none text-[10px] ${selected ? "text-accent" : "text-text-3"}`}
+                    >
+                      {selected ? "选中" : l.visible ? "显示" : "隐藏"}
+                    </span>
                   </div>
                 </li>
               );
