@@ -8,6 +8,7 @@
 import type { JobRun } from "@prisma/client";
 
 import { prisma } from "../db";
+import { formatCnTime } from "../datetime";
 import {
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   SOCIAL_CRAWL_INTERVAL_MIN,
@@ -15,7 +16,12 @@ import {
 } from "../telegram/constants";
 import { listChannelsAdmin } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
-import { INSIGHT_FETCH_CRON, parseCron, SCHEDULE_REGISTRY } from "./schedules";
+import {
+  CALENDAR_MAX_FIRES_PER_DAY,
+  INSIGHT_FETCH_CRON,
+  parseCron,
+  SCHEDULE_REGISTRY,
+} from "./schedules";
 import { intervalText } from "./channel-ledger-types";
 import { videoRunningSince } from "./channel-ledger";
 import {
@@ -263,4 +269,72 @@ export async function buildPlanRows(): Promise<PlanBoardData> {
     ],
     calEntries: [...rss.entries, ...hot.entries, ...social.entries, ...registry.entries],
   };
+}
+
+// ── F19 脱期 / F20 即将运行 ───────────────────────────────────────────────────
+
+/** jobKey → 期望运行间隔毫秒(登记表反向映射;crawler/ai-backfill 等非登记
+ *  任务无固定节奏 → null,不参与脱期判定) */
+export function registryIntervalMs(jobKey: string): number | null {
+  const def = SCHEDULE_REGISTRY.find((d) => REGISTRY_JOB_RUN_KEY[d.key] === jobKey);
+  const parsed = def === undefined ? null : parseCron(def.cron);
+  if (def === undefined || parsed === null || parsed.firesPerDay <= 0) return null;
+  // 周任务 firesPerDay 是「触发日当日次数」,按触发天数摊回平均间隔(周档 = 7 天)
+  const dayCount = parsed.days?.length ?? 7;
+  return Math.round((86_400_000 * (7 / dayCount)) / parsed.firesPerDay);
+}
+
+/** 登记表全部 jobRun 键(F19 脱期判定需覆盖 7 日无运行的任务) */
+export function registryJobRunKeys(): string[] {
+  return Object.values(REGISTRY_JOB_RUN_KEY);
+}
+
+/** F20 引擎卡「即将运行 · 未来 N 小时」:渠道/热榜/登记表的下一次触发,
+ *  结构化时刻服务端预格式化(防水合漂移),按时刻升序。 */
+export async function upcomingRuns(
+  hours = 12,
+  limit = 4,
+): Promise<Array<{ key: string; label: string; atText: string }>> {
+  const from = new Date();
+  const horizon = from.getTime() + hours * 3_600_000;
+  const candidates: Array<{ key: string; label: string; at: Date }> = [];
+  const push = (key: string, label: string, at: Date | null | undefined): void => {
+    if (
+      at !== null &&
+      at !== undefined &&
+      at.getTime() > from.getTime() &&
+      at.getTime() <= horizon
+    ) {
+      candidates.push({ key, label, at });
+    }
+  };
+  const [channels, hot, parsed] = await Promise.all([
+    listChannelsAdmin(),
+    listHotSourcesAdmin(),
+    parseCron(INSIGHT_FETCH_CRON),
+  ]);
+  for (const c of channels) {
+    if (c.enabled)
+      push(`rss-${c.id}`, c.name, nextIntervalRuns(c.nextRunAt, c.crawlIntervalMin, 1, from)[0]);
+  }
+  if (parsed !== null && hot.length > 0) {
+    const at = nextCronRuns(parsed, 1, from)[0];
+    if (at !== undefined) push("hot", `热榜拉取(${hot.length} 源)`, at);
+  }
+  for (const d of SCHEDULE_REGISTRY) {
+    // 热榜拉取已在上面以「热榜拉取(N 源)」聚合;常驻高频(>8 次/日,F21 同口径)
+    // 不进「即将运行」(embed-reconcile 类 tick)
+    if (d.key === "insight-fetch") continue;
+    const p = parseCron(d.cron);
+    if (p === null || p.firesPerDay > CALENDAR_MAX_FIRES_PER_DAY) continue;
+    push(`reg-${d.key}`, d.label, nextCronRuns(p, 1, from)[0]);
+  }
+  return candidates
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+    .slice(0, limit)
+    .map(({ key, label, at }) => ({
+      key,
+      label,
+      atText: formatCnTime(at),
+    }));
 }

@@ -21,3 +21,15 @@ export function fmtDuration(ms: number | null): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
 }
+
+/** F18「入库」数:摘要 JSON 里首个数值型产出字段(inserted/fetched/count/items/
+ * total/words/signals);无则 null——不硬凑计数。 */
+export function summaryInserted(summary: unknown): number | null {
+  if (summary === null || summary === undefined || typeof summary !== "object") return null;
+  const rec = summary as Record<string, unknown>;
+  for (const key of ["inserted", "fetched", "count", "items", "total", "words", "signals"]) {
+    const v = rec[key];
+    if (typeof v === "number") return v;
+  }
+  return null;
+}
