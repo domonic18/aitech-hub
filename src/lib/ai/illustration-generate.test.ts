@@ -25,7 +25,11 @@ vi.mock("./illustrate-generate", () => ({
   ILLUSTRATE_MAX_COUNT: 3,
 }));
 const ensureStudioRoot = vi.hoisted(() => vi.fn());
-vi.mock("./illustration-studio", () => ({ ensureStudioRoot }));
+// 部分mock:ensureStudioRoot 打桩,纯函数 deriveIllustrationName 保真实实现(job 内调用)
+vi.mock("./illustration-studio", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./illustration-studio")>()),
+  ensureStudioRoot,
+}));
 
 import { prisma } from "../db";
 import { illustrationGenerateJob } from "./illustration-generate";

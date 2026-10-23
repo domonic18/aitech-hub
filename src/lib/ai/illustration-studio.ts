@@ -15,6 +15,16 @@ import { AiAdminError } from "./errors";
 export const ILLUSTRATION_VERSION_ORIGINS = ["original", "text_edit", "erase", "redraw"] as const;
 export type IllustrationVersionOrigin = (typeof ILLUSTRATION_VERSION_ORIGINS)[number];
 
+/** 登记口(F13/F14 板面「来源」):agent=会话生图,studio=工坊直出;历史行 null 不显 */
+export const ILLUSTRATION_SOURCES = ["agent", "studio"] as const;
+export type IllustrationSource = (typeof ILLUSTRATION_SOURCES)[number];
+
+/** 展示名派生:trim 后取前 40 字符(板卡名称行量级),空串回落 null(展示兜底「配图 #id」) */
+export function deriveIllustrationName(prompt: string): string | null {
+  const trimmed = prompt.trim().replace(/\s+/g, " ");
+  return trimmed ? trimmed.slice(0, 40) : null;
+}
+
 /** normalized bbox 形态校验("x1 y1 x2 y2",各段 0-999 整数) */
 export function isValidNormalizedBbox(bbox: string): boolean {
   const parts = bbox.trim().split(/\s+/);
@@ -22,15 +32,24 @@ export function isValidNormalizedBbox(bbox: string): boolean {
   return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 999);
 }
 
-/** 根版本 get-or-create(同图复用同工坊;双击竞态最坏产两根,无害不设约束) */
-export async function ensureStudioRoot(mediaPath: string): Promise<{ versionId: bigint }> {
+/** 根版本 get-or-create(同图复用同工坊;双击竞态最坏产两根,无害不设约束)。
+ * 可选 name/source 仅在 create 时落(复用根不覆盖——首发登记即定型)。 */
+export async function ensureStudioRoot(
+  mediaPath: string,
+  meta?: { name?: string | null; source?: IllustrationSource },
+): Promise<{ versionId: bigint }> {
   const existing = await prisma.illustrationVersion.findFirst({
     where: { mediaPath, origin: "original" },
     select: { id: true },
   });
   if (existing) return { versionId: existing.id };
   const created = await prisma.illustrationVersion.create({
-    data: { mediaPath, origin: "original" },
+    data: {
+      mediaPath,
+      origin: "original",
+      name: meta?.name ?? null,
+      source: meta?.source ?? null,
+    },
     select: { id: true },
   });
   logger.info({ event: "illu.studio_root_created", versionId: created.id });
@@ -94,6 +113,9 @@ export async function confirmEditVersion(
       mediaPath: input.imagePath,
       parentVersionId: parent.id,
       origin: input.origin,
+      // 名称/来源随根继承(链上同名同源,板面 F13 卡与 F14 头部按链尾展示)
+      name: parent.name,
+      source: parent.source,
       editInstruction: input.instruction ?? null,
       editBbox: input.bbox ?? null,
     },
@@ -132,6 +154,8 @@ export interface StudioView {
     id: number;
     mediaPath: string;
     origin: string;
+    name: string | null;
+    source: string | null;
     editInstruction: string | null;
     editBbox: string | null;
     createdAt: string;
@@ -168,6 +192,8 @@ export async function getStudioView(versionId: bigint): Promise<StudioView | nul
       id: Number(version.id),
       mediaPath: version.mediaPath,
       origin: version.origin,
+      name: version.name,
+      source: version.source,
       editInstruction: version.editInstruction,
       editBbox: version.editBbox,
       createdAt: version.createdAt.toISOString(),

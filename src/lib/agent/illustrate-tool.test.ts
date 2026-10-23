@@ -23,7 +23,11 @@ vi.mock("../ai/illustrate-generate", () => ({
 }));
 
 const ensureStudioRoot = vi.hoisted(() => vi.fn());
-vi.mock("../ai/illustration-studio", () => ({ ensureStudioRoot }));
+// 部分mock:ensureStudioRoot 打桩,纯函数 deriveIllustrationName 保真实实现(工具内调用)
+vi.mock("../ai/illustration-studio", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ai/illustration-studio")>()),
+  ensureStudioRoot,
+}));
 
 import { AiAdminError, AiClientError } from "../ai/errors";
 import { detectReferenceStyleConflict, generateIllustrationTool } from "./illustrate-tool";
@@ -60,7 +64,10 @@ describe("generate_illustration(文生图图文工具)", () => {
     expect((out.images as Array<{ markdown: string }>)[0]?.markdown).toBe(
       "![图文](/wp-content/uploads/2026/10/illu-a.png)",
     );
-    expect(ensureStudioRoot).toHaveBeenCalledWith("/wp-content/uploads/2026/10/illu-a.png");
+    expect(ensureStudioRoot).toHaveBeenCalledWith("/wp-content/uploads/2026/10/illu-a.png", {
+      name: "一只机械鹤立于数据流之上",
+      source: "agent",
+    });
     expect((out.images as Array<{ studio?: string }>)[0]?.studio).toBe("/admin/illustration/501");
     expect(String(out.hint)).toContain("card_urls");
     expect(String(out.hint)).toContain("配图工坊");

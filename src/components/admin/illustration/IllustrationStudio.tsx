@@ -6,19 +6,18 @@
  * 导出(canvas 合成 → POST /api/media 入库)。API 包络与类型均自服务端
  * lib 引入,不手写同形接口(M5-a 评审 W3)。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import type { StudioView } from "@/lib/ai/illustration-studio";
 import type { ApiEnvelope } from "@/lib/http/response";
-import { formatCnDateTime } from "@/lib/datetime";
 
 import { exportCompositeBlob } from "./composite";
 import {
   MODE_TO_ORIGIN,
   ORIGIN_BADGE_CLS,
-  ORIGIN_LABEL,
+  SOURCE_LABEL,
   type EditMode,
   type NormalizedBbox,
 } from "./labels";
@@ -218,25 +217,48 @@ export default function IllustrationStudio({
   }
 
   const originCls = ORIGIN_BADGE_CLS[view.version.origin] ?? ORIGIN_BADGE_CLS.original;
+  // 「＋ 新版本」引导(F14 版本链尾 chip):滚动定位 EditPanel 并短暂高亮
+  const [editFocus, setEditFocus] = useState(false);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (focusTimer.current) clearTimeout(focusTimer.current);
+    },
+    [],
+  );
+  function focusEditPanel() {
+    setEditFocus(true);
+    document
+      .getElementById("illu-edit-panel")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => setEditFocus(false), 1600);
+  }
+  const sourceLabel = view.version.source ? SOURCE_LABEL[view.version.source] : null;
   return (
     <div className="flex flex-col gap-4">
+      {/* headRow(F14 板 18:753):← 返回 + 来源 chip + 展示名 + 查看整图 */}
       <header className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/admin/illustration/" className="text-[11px] text-text-2 hover:text-accent">
-            ← 列表
+            ← 返回
           </Link>
-          <h1 className="text-sm font-medium text-text-1">配图工坊</h1>
-          <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${originCls}`}>
-            {ORIGIN_LABEL[view.version.origin] ?? view.version.origin} #{view.version.id}
-          </span>
-          <span className="text-[11px] text-text-3">
-            {formatCnDateTime(new Date(view.version.createdAt))}
-          </span>
+          {sourceLabel && (
+            <span
+              className={`rounded-sm px-1.5 py-0.5 text-[10px] ${originCls}`}
+              title={`版本 #${view.version.id}`}
+            >
+              {sourceLabel}
+            </span>
+          )}
+          <h1 className="truncate text-sm font-medium text-text-1">
+            {view.version.name ?? `配图 #${view.version.id}`}
+          </h1>
           <a
             href={view.version.mediaPath}
             target="_blank"
             rel="noreferrer"
-            className="text-[11px] text-accent hover:underline"
+            className="ml-auto text-[11px] text-accent hover:underline"
           >
             查看整图
           </a>
@@ -248,7 +270,7 @@ export default function IllustrationStudio({
           </p>
         )}
       </header>
-      <VersionStrip chain={view.chain} currentId={versionId} />
+      <VersionStrip chain={view.chain} currentId={versionId} onNewVersion={focusEditPanel} />
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <LayerCanvas
           baseSrc={readyGroup?.baseMediaPath ?? view.version.mediaPath}
@@ -273,9 +295,9 @@ export default function IllustrationStudio({
           />
           {readyGroup && (
             <section className="flex flex-col gap-2 rounded-md border border-line bg-panel-1 p-3">
-              <h2 className="text-xs font-medium text-text-2">导出当前组合</h2>
+              <h2 className="text-xs font-medium text-text-2">导出</h2>
               <p className="text-[10px] leading-relaxed text-text-3">
-                底板 + 可见图层按原分辨率合成 PNG,上传媒体库;隐藏的图层不会出现。
+                按显隐组合导出 → 媒体库,供文章插入器引用。
               </p>
               <button
                 type="button"
@@ -283,7 +305,7 @@ export default function IllustrationStudio({
                 onClick={() => void handleExport()}
                 className="cursor-pointer rounded-sm bg-accent px-2 py-1.5 text-[11px] font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {busy === "export" ? "合成上传中…" : "⤓ 合成并上传媒体库"}
+                {busy === "export" ? "生成导出图中…" : "生成导出图"}
               </button>
               {exportPath && (
                 <p className="text-[11px] text-text-2">
@@ -310,6 +332,7 @@ export default function IllustrationStudio({
             error={editError}
             confirming={busy === "confirm"}
             hasReadyGroup={readyGroup !== null}
+            highlight={editFocus}
             onMode={handleModeChange}
             onInstruction={setInstruction}
             onSubmit={() => void handleEdit()}

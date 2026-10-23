@@ -5,7 +5,7 @@
  * normalized bbox 叠放,bbox 叠加层供点选图层与拖选编辑区域(点按 8px 阈值
  * 区分点击与拖选;点击命中取 z 最高包含层)。编辑 bbox/选中层共用琥珀色高亮。
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { StudioGroupView } from "@/lib/ai/illustration-studio";
 
@@ -41,9 +41,20 @@ export default function LayerCanvas({
 }): React.ReactElement {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const baseImgRef = useRef<HTMLImageElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  /** 底图原始尺寸(F14 imgLabel「整图 · W×H」;onLoad 时读,加载完成前不显) */
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const layers = group?.status === "ready" ? group.layers : [];
   const visibleLayers = layers.filter((l) => l.visible);
+
+  // 缓存图在 hydration 完成前已加载时 React onLoad 不补发,mount 后查 complete 兜底
+  useEffect(() => {
+    const img = baseImgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setNatural({ w: img.naturalWidth, h: img.naturalHeight });
+    }
+  }, [baseSrc]);
 
   function toViewBox(e: React.PointerEvent): { x: number; y: number } {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -102,82 +113,103 @@ export default function LayerCanvas({
   }
 
   return (
-    <div className="relative select-none overflow-hidden rounded-md border border-line bg-panel-2">
-      {/* eslint-disable-next-line @next/next/no-img-element -- 站内动态媒体路径,免优化直出 */}
-      <img src={baseSrc} alt="工坊底图" className="block w-full" draggable={false} />
-      {visibleLayers.map((l) => {
-        const [x1, y1, x2, y2] = l.bbox;
-        return (
-          // eslint-disable-next-line @next/next/no-img-element -- 同上,透明 PNG 按 bbox 叠放
-          <img
-            key={l.id}
-            src={l.mediaPath}
-            alt={l.name}
-            draggable={false}
-            className="pointer-events-none absolute"
-            style={{
-              left: `${x1 / 10}%`,
-              top: `${y1 / 10}%`,
-              width: `${(x2 - x1) / 10}%`,
-              height: `${(y2 - y1) / 10}%`,
-            }}
-          />
-        );
-      })}
-      {layers.length > 0 && (
-        <svg
-          ref={svgRef}
-          viewBox="0 0 1000 1000"
-          preserveAspectRatio="none"
-          className="absolute inset-0 h-full w-full cursor-crosshair touch-none"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-        >
-          {layers.map((l) => {
-            const selected = l.id === selectedLayerId;
-            return (
+    <div className="flex flex-col gap-1.5">
+      {/* 尺寸 label(F14 板 18:775 imgLabel) */}
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[10.5px] text-text-3">
+          {natural ? `整图 · ${natural.w}×${natural.h}` : "整图"}
+        </span>
+      </div>
+      <div className="relative select-none overflow-hidden rounded-md border border-line bg-panel-2">
+        {/* eslint-disable-next-line @next/next/no-img-element -- 站内动态媒体路径,免优化直出 */}
+        <img
+          ref={baseImgRef}
+          src={baseSrc}
+          alt="工坊底图"
+          className="block w-full"
+          draggable={false}
+          onLoad={(e) =>
+            setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
+          }
+        />
+        {visibleLayers.map((l) => {
+          const [x1, y1, x2, y2] = l.bbox;
+          return (
+            // eslint-disable-next-line @next/next/no-img-element -- 同上,透明 PNG 按 bbox 叠放
+            <img
+              key={l.id}
+              src={l.mediaPath}
+              alt={l.name}
+              draggable={false}
+              className="pointer-events-none absolute"
+              style={{
+                left: `${x1 / 10}%`,
+                top: `${y1 / 10}%`,
+                width: `${(x2 - x1) / 10}%`,
+                height: `${(y2 - y1) / 10}%`,
+              }}
+            />
+          );
+        })}
+        {layers.length > 0 && (
+          <svg
+            ref={svgRef}
+            viewBox="0 0 1000 1000"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full cursor-crosshair touch-none"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+          >
+            {layers.map((l) => {
+              const selected = l.id === selectedLayerId;
+              return (
+                <rect
+                  key={l.id}
+                  x={l.bbox[0]}
+                  y={l.bbox[1]}
+                  width={l.bbox[2] - l.bbox[0]}
+                  height={l.bbox[3] - l.bbox[1]}
+                  fill={selected ? "rgba(245,158,11,0.08)" : "transparent"}
+                  stroke={selected ? "#f59e0b" : "rgba(59,130,246,0.55)"}
+                  strokeWidth={selected ? 2.5 : 1.5}
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })}
+            {/* 手动编辑框(无选中层时)与拖选过程框 */}
+            {!selectedLayerId && editBbox && (
               <rect
-                key={l.id}
-                x={l.bbox[0]}
-                y={l.bbox[1]}
-                width={l.bbox[2] - l.bbox[0]}
-                height={l.bbox[3] - l.bbox[1]}
-                fill={selected ? "rgba(245,158,11,0.08)" : "transparent"}
-                stroke={selected ? "#f59e0b" : "rgba(59,130,246,0.55)"}
-                strokeWidth={selected ? 2.5 : 1.5}
+                x={editBbox[0]}
+                y={editBbox[1]}
+                width={editBbox[2] - editBbox[0]}
+                height={editBbox[3] - editBbox[1]}
+                fill="rgba(245,158,11,0.06)"
+                stroke="#f59e0b"
+                strokeWidth={2.5}
                 vectorEffect="non-scaling-stroke"
               />
-            );
-          })}
-          {/* 手动编辑框(无选中层时)与拖选过程框 */}
-          {!selectedLayerId && editBbox && (
-            <rect
-              x={editBbox[0]}
-              y={editBbox[1]}
-              width={editBbox[2] - editBbox[0]}
-              height={editBbox[3] - editBbox[1]}
-              fill="rgba(245,158,11,0.06)"
-              stroke="#f59e0b"
-              strokeWidth={2.5}
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-          {drag?.moved && (
-            <rect
-              x={drag.cur[0]}
-              y={drag.cur[1]}
-              width={drag.cur[2] - drag.cur[0]}
-              height={drag.cur[3] - drag.cur[1]}
-              fill="rgba(245,158,11,0.06)"
-              stroke="#f59e0b"
-              strokeWidth={2}
-              strokeDasharray="6 4"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </svg>
-      )}
+            )}
+            {drag?.moved && (
+              <rect
+                x={drag.cur[0]}
+                y={drag.cur[1]}
+                width={drag.cur[2] - drag.cur[0]}
+                height={drag.cur[3] - drag.cur[1]}
+                fill="rgba(245,158,11,0.06)"
+                stroke="#f59e0b"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+          </svg>
+        )}
+      </div>
+      {/* 操作 hint(F14 板 18:775) */}
+      <p className="text-[10.5px] leading-relaxed text-text-3">
+        按住拖拽手绘 bbox · 选中层后在右侧三模式编辑
+      </p>
     </div>
   );
 }

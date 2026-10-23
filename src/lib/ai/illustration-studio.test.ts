@@ -26,6 +26,7 @@ import { prisma } from "../db";
 import { AiAdminError } from "./errors";
 import {
   confirmEditVersion,
+  deriveIllustrationName,
   enqueueDecompose,
   ensureStudioRoot,
   getStudioView,
@@ -62,6 +63,18 @@ describe("isValidNormalizedBbox", () => {
   });
 });
 
+describe("deriveIllustrationName(展示名派生,F13/F14)", () => {
+  it("trim + 折叠空白 + 截前 40 字符;空串回落 null", () => {
+    expect(deriveIllustrationName("  一只机械鹤  立于数据流之上 ")).toBe(
+      "一只机械鹤 立于数据流之上",
+    );
+    const long = "甲".repeat(50);
+    expect(deriveIllustrationName(long)).toHaveLength(40);
+    expect(deriveIllustrationName("   ")).toBeNull();
+    expect(deriveIllustrationName("")).toBeNull();
+  });
+});
+
 describe("ensureStudioRoot(根版本 get-or-create)", () => {
   it("同图已有根版本 → 复用不建新行", async () => {
     vFindFirst.mockResolvedValueOnce({ id: BigInt(501) } as never);
@@ -70,13 +83,34 @@ describe("ensureStudioRoot(根版本 get-or-create)", () => {
     expect(vCreate).not.toHaveBeenCalled();
   });
 
-  it("首次出图 → 建 origin=original 根版本", async () => {
+  it("首次出图 → 建 origin=original 根版本(name/source 缺省 null)", async () => {
     vFindFirst.mockResolvedValueOnce(null);
     const r = await ensureStudioRoot("/wp-content/uploads/a.png");
     expect(r).toEqual({ versionId: BigInt(502) });
     expect(vCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { mediaPath: "/wp-content/uploads/a.png", origin: "original" },
+        data: {
+          mediaPath: "/wp-content/uploads/a.png",
+          origin: "original",
+          name: null,
+          source: null,
+        },
+      }),
+    );
+  });
+
+  it("登记带 meta → name/source 仅 create 时落;复用根不覆盖", async () => {
+    vFindFirst.mockResolvedValueOnce(null);
+    await ensureStudioRoot("/wp-content/uploads/a.png", {
+      name: "一图看懂 MCP 架构",
+      source: "agent",
+    });
+    expect(vCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "一图看懂 MCP 架构",
+          source: "agent",
+        }),
       }),
     );
   });
@@ -172,6 +206,27 @@ describe("confirmEditVersion(候选确认成版本)", () => {
           origin: "erase",
           editInstruction: "去掉水印角标",
           editBbox: "10 20 30 40",
+        }),
+      }),
+    );
+  });
+
+  it("name/source 随 parent 继承(链上同名同源,F13/F14 展示口径)", async () => {
+    vFindUnique.mockResolvedValueOnce({
+      id: BigInt(501),
+      name: "一图看懂 MCP 架构",
+      source: "studio",
+    } as never);
+    await confirmEditVersion(BigInt(501), {
+      imagePath: "/wp-content/uploads/c.png",
+      origin: "redraw",
+      instruction: "标题区重绘",
+    });
+    expect(vCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "一图看懂 MCP 架构",
+          source: "studio",
         }),
       }),
     );
