@@ -19,7 +19,7 @@ import {
   ILLUSTRATE_ASPECT_SIZES,
   ILLUSTRATE_MAX_COUNT,
 } from "./illustrate-generate";
-import { ensureStudioRoot } from "./illustration-studio";
+import { deriveIllustrationName, ensureStudioRoot } from "./illustration-studio";
 import { resolveAiModel } from "./resolver";
 import { AiAdminError } from "./errors";
 
@@ -97,7 +97,11 @@ export async function illustrationGenerateJob(
   });
   const versionIds: bigint[] = [];
   for (const img of gen.images) {
-    const { versionId } = await ensureStudioRoot(img.path);
+    // F13/F14 对齐批:工坊直出登记带展示名(prompt 派生前 40 字)与来源 studio
+    const { versionId } = await ensureStudioRoot(img.path, {
+      name: deriveIllustrationName(data.prompt),
+      source: "studio",
+    });
     versionIds.push(versionId);
   }
   let attached = 0;

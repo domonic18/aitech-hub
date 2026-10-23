@@ -742,13 +742,17 @@ model AiUsageLog {
 
 /// 配图版本(版本链节点):mediaPath=该版本整图(站内媒体路径,编辑回路输入
 /// 与产物);origin 记产生方式;edit_instruction/edit_bbox 记复现依据
-/// (original 两列为 null)。parent 单链不分支(评审史即链);不设删除
+/// (original 两列为 null)。name=展示名(登记时从提示词派生,链上随根;
+/// NULL=历史行,展示兜底「配图 #id」);source=登记口('agent'|'studio',
+/// NULL=历史行不显来源)。parent 单链不分支(评审史即链);不设删除
 /// (版本不可变历史,M40 无删除面)。
 model IllustrationVersion {
   id              BigInt   @id @default(autoincrement())
   mediaPath       String   @map("media_path") @db.VarChar(500)
   parentVersionId BigInt?  @map("parent_version_id")
   origin          String   @db.VarChar(20) // original/text_edit/erase/redraw
+  name            String?  @db.VarChar(200) // 展示名(提示词派生前 40 字,链内继承)
+  source          String?  @db.VarChar(20) // 登记口:agent(会话生图)/studio(工坊直出)
   editInstruction String?  @map("edit_instruction") @db.VarChar(1000) // 产生本版本的编辑指令
   editBbox        String?  @map("edit_bbox") @db.VarChar(40) // normalized "x1 y1 x2 y2"
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

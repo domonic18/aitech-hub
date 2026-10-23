@@ -32,7 +32,7 @@ import {
   ILLUSTRATE_MAX_COUNT,
 } from "../ai/illustrate-generate";
 import { detectReferenceStyleConflict } from "../ai/reference-guard";
-import { ensureStudioRoot } from "../ai/illustration-studio";
+import { deriveIllustrationName, ensureStudioRoot } from "../ai/illustration-studio";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
 
@@ -70,11 +70,15 @@ export const generateIllustrationTool = tool(
         referencePath: reference_path,
       });
       // M40 批 B:出图即登记工坊根版本(免费 DB 行),回执带编辑器链接供拆层
-      // 精修;登记失败不回滚生图(已计费,链接缺席仅损失精修入口)
+      // 精修;登记失败不回滚生图(已计费,链接缺席仅损失精修入口)。
+      // F13/F14 对齐批:登记带展示名(prompt 派生前 40 字)与来源 agent
       const studios = await Promise.all(
         images.map(async (img) => {
           try {
-            const { versionId } = await ensureStudioRoot(img.path);
+            const { versionId } = await ensureStudioRoot(img.path, {
+              name: deriveIllustrationName(prompt),
+              source: "agent",
+            });
             return `/admin/illustration/${versionId}`;
           } catch (e) {
             logger.warn({ event: "illu.studio_root_register_failed", path: img.path, err: e });
