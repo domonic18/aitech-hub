@@ -5,6 +5,8 @@
  * 手动触发统一在 源管理·台账 行内(板 note)。
  */
 import MineGithub from "@/components/admin/data/MineGithub";
+import CandidateWordsBoard from "@/components/admin/discovery/CandidateWordsBoard";
+import DiscoveryJobsBoard from "@/components/admin/discovery/DiscoveryJobsBoard";
 import WordsBoard from "@/components/admin/discovery/WordsBoard";
 import SubTabs from "@/components/admin/data/SubTabs";
 import { requireAdminPage } from "@/lib/auth/guard";
@@ -27,6 +29,7 @@ export default async function AdminInsightDiscoveryPage({
     page?: string;
     kw?: string;
     origin?: string;
+    source?: string;
   }>;
 }): Promise<React.ReactElement> {
   await requireAdminPage();
@@ -38,30 +41,12 @@ export default async function AdminInsightDiscoveryPage({
       {t === "words" ? (
         <WordsBoard searchParams={sp} />
       ) : t === "jobs" ? (
-        <DiscoveryJobs />
+        <DiscoveryJobsBoard />
       ) : t === "candidates" ? (
-        <CandidateReview />
+        <CandidateWordsBoard searchParams={sp} />
       ) : (
         <MineGithub />
       )}
-    </div>
-  );
-}
-
-/** 发现任务段(W6 贴板:任务卡+最近运行表);骨架期占位 */
-function DiscoveryJobs(): React.ReactElement {
-  return (
-    <div className="rounded-md border border-line bg-panel px-4 py-10 text-center text-xs text-text-3">
-      发现任务运行台账迁入中
-    </div>
-  );
-}
-
-/** 候选治理段(W6 贴板:F24 词候选卡+KPI);骨架期占位 */
-function CandidateReview(): React.ReactElement {
-  return (
-    <div className="rounded-md border border-line bg-panel px-4 py-10 text-center text-xs text-text-3">
-      候选治理迁入中
     </div>
   );
 }
