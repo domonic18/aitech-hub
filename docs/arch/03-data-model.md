@@ -369,7 +369,7 @@ CREATE TABLE legacy_url_map (
 
 **配图工坊三表已落地(2026-10-22 M40 批 B 迁移 `20261022090000_m40_illustration_studio`,队列纪律与契约见 [arch/05 §4.7](05-services.md);forward-only,三 FK 无 onDelete 默认 RESTRICT 语义显式声明)**:
 
-- `ai_illu_version`(版本链,编辑评审史):`media_path varchar(500)`(整图站内路径)/`parent_version_id?`(自引用 FK `SET NULL`,根版本 null;单链逐级回溯)/`origin varchar(20)` 枚举 `original|text_edit|erase|redraw`(应用层 Zod 管控)/`edit_instruction? varchar(1000)/edit_bbox? varchar(40)`(normalized `"x1 y1 x2 y2"`);索引 parent + media_path(`ensureStudioRoot` get-or-create 查询锚)
+- `ai_illu_version`(版本链,编辑评审史):`media_path varchar(500)`(整图站内路径)/`parent_version_id?`(自引用 FK `SET NULL`,根版本 null;单链逐级回溯)/`origin varchar(20)` 枚举 `original|text_edit|erase|redraw`(应用层 Zod 管控)/`name? varchar(200)`(展示名,登记时从提示词派生前 40 字,链内随根继承;NULL=历史行展示兜底「配图 #id」,2026-10-23 F13/F14 对齐批加列)/`source? varchar(20)` 枚举 `agent|studio`(登记口:agent 会话生图/工坊直出;NULL=历史行不显来源)/`edit_instruction? varchar(1000)/edit_bbox? varchar(40)`(normalized `"x1 y1 x2 y2"`);索引 parent + media_path(`ensureStudioRoot` get-or-create 查询锚)
 - `ai_illu_layer_group`(图层组=一次拆层运行):`version_id` FK **RESTRICT**/`base_media_path?`(干净底板,ready 后回填)/`status varchar(12)` 枚举 `processing|ready|failed`/`error? varchar(500)`(人话失败原因)/`model_id`(溯源列入队时定格,绑定主备选边同 resolver 口径,无绑定 0);索引 `(version_id, created_at)`(取最新组)
 - `ai_illu_layer`(图层行):`group_id` FK **CASCADE**(重拆清旧组连图层)/`z_index/name varchar(200)/description? varchar(500)`/`bbox_x1..bbox_y2 int`(normalized 0-999,左上原点)/`media_path`(bbox 区域高分重提透明 PNG)/`visible bool 默认 true`(显隐组合持久化,导出前端合成);索引 `(group_id, z_index)`
 
