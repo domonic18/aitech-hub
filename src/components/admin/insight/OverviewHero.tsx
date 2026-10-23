@@ -2,7 +2,8 @@
  * F11 分析总览 hero 行:左关键词云图卡(搜索 + 点词入词库),右 KPI 四竖列
  * (候选增量·7天 / 信号总数 / 机会均分(人写内容) / 新入词库)+ 底部日批
  * status 行「每日分析 · 今日 HH:MM 成功」。KPI 固定口径不随窗口 chips(板定
- * 7 天增量与全量总数);机会均分由页侧按当前 hot 簇均分传入。
+ * 7 天增量与全量总数);机会均分由页侧按当前 hot 簇均分传入;词云卡头标窗口
+ * 口径(windowDays)——窗口 chips 只影响词云,标识让取景范围可见。
  */
 import KeywordCloud from "@/components/admin/insight/KeywordCloud";
 import type { InsightCloudWord } from "@/lib/insight/hotboard";
@@ -58,11 +59,14 @@ export default async function OverviewHero({
   cloud,
   totalSignals,
   hotAvg,
+  windowDays,
 }: {
   cloud: InsightCloudWord[];
   totalSignals: number;
   /** hot 簇机会分均值(页侧算;无簇 null → 「—」) */
   hotAvg: number | null;
+  /** 词云窗口(页头窗口 chips),用于卡头口径标识 */
+  windowDays: number;
 }): Promise<React.ReactElement> {
   const since7d = new Date(Date.now() - 7 * 86_400_000);
   const [candidates7d, confirmed7d] = await Promise.all([
@@ -72,7 +76,12 @@ export default async function OverviewHero({
   return (
     <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="rounded-md border border-line bg-panel px-4 py-3.5">
-        <div className="mb-2 text-sm font-semibold">关键词云图</div>
+        <div className="mb-2 text-sm font-semibold">
+          关键词云图
+          <span className="ml-2 text-[11px] font-normal text-text-3">
+            近 {windowDays} 天活跃 · 窗口随页头 chips
+          </span>
+        </div>
         <KeywordCloud words={cloud} />
         <div className="mt-2 text-[11px] text-text-3">
           字号 = 机会分 · 点击词加入种子词库(active)
