@@ -12,6 +12,12 @@ import { usePathname } from "next/navigation";
 type Item = { icon: string; label: string; href?: string; tag?: "M5" | "二期"; exact?: boolean };
 type Group = { label: string; items: Item[] };
 
+/**
+ * IA v2(Ardot F12 定稿,创作域对齐批 2026-10-23):按内容漏斗 7 组 19 项。
+ * 创作组置顶(漏斗起点);素材/内容拆两组;内容分发→分发中心独立组(更名,路由不动);
+ * 洞察中心暂指数据壳洞察页签——洞察域立项迁 /admin/insight 时只改此项 href;
+ * 用户+系统合并「用户与系统」,设置锚底。
+ */
 const GROUPS: ReadonlyArray<Group> = [
   {
     label: "OVERVIEW",
@@ -22,19 +28,30 @@ const GROUPS: ReadonlyArray<Group> = [
     ],
   },
   {
-    label: "内容管理",
+    label: "创作",
+    items: [
+      { icon: "i-folder", label: "创作中心", href: "/admin/studio" },
+      // 配图工坊(M40):agent 配图产物的加工台固定入口,列表页落地
+      { icon: "i-picture", label: "配图工坊", href: "/admin/illustration" },
+      { icon: "i-picture", label: "媒体库", href: "/admin/media" },
+    ],
+  },
+  {
+    label: "内容",
     items: [
       // 文章分类已并入文章管理「分类」页签(验收二批①:分类少,不占一级导航)
       { icon: "i-filetext", label: "文章管理", href: "/admin/posts" },
       { icon: "i-comment", label: "评论管理", href: "/admin/comments" },
-      { icon: "i-picture", label: "媒体库", href: "/admin/media" },
-      // 配图工坊(M40 验收反馈补):agent 配图产物的加工台固定入口,列表页落地
-      { icon: "i-picture", label: "配图工坊", href: "/admin/illustration" },
       // 贴图管理(M41):公众号小绿书图片帖工作台(流水线+组装台)
       { icon: "i-appstore", label: "贴图管理", href: "/admin/pins" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
-      { icon: "i-cloudupload", label: "内容分发", href: "/admin/distribute" },
-      { icon: "i-folder", label: "创作中心", href: "/admin/studio" },
+    ],
+  },
+  {
+    label: "分发",
+    items: [
+      // 内容分发→分发中心(IA v2 更名,多渠道枢纽永久位;路由不变)
+      { icon: "i-cloudupload", label: "分发中心", href: "/admin/distribute" },
     ],
   },
   {
@@ -43,6 +60,8 @@ const GROUPS: ReadonlyArray<Group> = [
       // 数据壳重组·方案二(2026-10-18):采集/洞察/发现三中心并入 /admin/data
       // 一体化管理(源管理/运行/洞察/挖掘四页签);旧路径 308 承接
       { icon: "i-cloudserver", label: "数据中心", href: "/admin/data" },
+      // 洞察中心(IA v2 新增):暂指数据壳「洞察」页签;洞察域立项迁 /admin/insight 时仅改此 href
+      { icon: "i-aim", label: "洞察中心", href: "/admin/data/insight" },
     ],
   },
   {
@@ -56,16 +75,11 @@ const GROUPS: ReadonlyArray<Group> = [
     ],
   },
   {
-    label: "用户",
+    label: "用户与系统",
     items: [
       { icon: "i-user", label: "用户管理", href: "/admin/users" },
       { icon: "i-comment", label: "反馈管理", href: "/admin/feedback" },
       { icon: "i-checkcircle", label: "支付订单", href: "/admin/pay/orders" },
-    ],
-  },
-  {
-    label: "系统",
-    items: [
       // 配置类五页(常规/邮件/飞书/支付/PAT)合并为壳层页签(侧栏精简批①)
       { icon: "i-setting", label: "系统设置", href: "/admin/settings" },
     ],
@@ -80,6 +94,19 @@ export default function AdminSidebar({
   onClose: () => void;
 }): React.ReactElement {
   const pathname = usePathname();
+
+  // active 判定(IA v2):最长 href 命中优先——
+  // /admin/data/insight/… 须点亮「洞察中心」而非「数据中心」
+  // (/admin/data 是其前缀,朴素 startsWith 会双亮;exact 项仍只按全等参与)。
+  const activeHref = GROUPS.flatMap((group) => group.items).reduce<string | undefined>(
+    (best, item) => {
+      if (item.href === undefined) return best;
+      const hit = pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`));
+      if (!hit) return best;
+      return best === undefined || item.href.length > best.length ? item.href : best;
+    },
+    undefined,
+  );
 
   return (
     <aside
@@ -109,9 +136,7 @@ export default function AdminSidebar({
               {group.label}
             </div>
             {group.items.map((item) => {
-              const active =
-                item.href !== undefined &&
-                (pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`)));
+              const active = item.href !== undefined && item.href === activeHref;
               if (item.href) {
                 return (
                   <Link
