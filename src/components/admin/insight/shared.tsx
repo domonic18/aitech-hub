@@ -138,6 +138,15 @@ export function AnomalyBadge(): React.ReactElement {
   );
 }
 
+/** 可写角度一行文案(F25/F26 actionCard):覆盖度状态派生,LLM 选题生成未立项
+ * 前先给确定性文案;无覆盖度评分(未日批)显观察提示。 */
+export function writeAngleLine(state: string | null): string {
+  if (state === "blank") return "站内尚无覆盖该簇的稿件——内容空白即首发窗口,适合系统性切入。";
+  if (state === "partial") return "既有稿件零散提及,缺系统性对比/实操——按「能跑通」路线整合成篇。";
+  if (state === "covered") return "覆盖较全——从最新动态、差异实测或反例角度补更。";
+  return "覆盖度待日批评估(03:57 跑完回写);可先从代表信号判断切入角度。";
+}
+
 /** 簇名(未打标显示占位;详情链接) */
 export function ClusterLabelLink({
   id,
