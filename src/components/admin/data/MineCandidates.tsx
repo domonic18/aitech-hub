@@ -1,6 +1,7 @@
 /**
- * 数据中心·挖掘候选治理视图(原发现中心「治理」页,M25 批③→数据壳重组迁入,
- * 词库管理拆往源管理·词库):B站候选人工终审一屏一表。数据唯一真相源在本系统:
+ * 数据中心·源管理·博主候选池(F27 域,IA v5 自发现中心迁入):B站候选
+ * 人工终审一屏一表,批准即自动登记进 博主台账(M26 批③拍板;幂等跳过
+ * 已登记,失败附行内提示可回退重批)。数据唯一真相源在本系统:
  * 批准博主候选即自动登记进「博主」视图(M26 批③拍板;幂等跳过已登记,失败附
  * 行内提示可回退重批);手动触发入 discovery 队列一次性 job,执行与风控节奏在
  * worker。L0 判定为元数据预筛,结论仅供参考,人工终审可覆盖。
@@ -37,7 +38,7 @@ function candHref(segment: string, page: number, kw?: string): string {
   if (page > 1) sp.set("page", String(page));
   if (kw) sp.set("kw", kw);
   const qs = sp.toString();
-  return `/admin/data/mine/?t=candidates${qs ? `&${qs}` : ""}`;
+  return `/admin/data/sources/?t=candidates${qs ? `&${qs}` : ""}`;
 }
 
 function fmtNum(n: number | null | undefined): string {
@@ -73,9 +74,10 @@ export default async function MineCandidates({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">候选治理</h2>
+          <h2 className="text-base font-semibold">博主候选池</h2>
           <p className="mt-0.5 text-xs text-text-3">
-            B站候选(任务A/B 产物)的人工终审台;词去源管理·词库生效,数据唯一真相源在本系统。
+            B站候选(任务A/B 产物)的人工终审台;审核通过后自动登记至 博主台账,生效词在 洞察中心 · 发现
+            · 种子词库 维护。
           </p>
         </div>
         <TriggerButtons />
@@ -99,7 +101,7 @@ export default async function MineCandidates({
         </div>
         {kw && (
           <Link
-            href="/admin/data/mine/?t=candidates"
+            href="/admin/data/sources/?t=candidates"
             className="inline-flex items-center gap-1 rounded-sm bg-accent-dim px-2 py-1 text-xs text-accent hover:bg-accent/20"
             title="清除按词过滤"
           >
@@ -205,7 +207,8 @@ export default async function MineCandidates({
             {cand.items.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
-                  暂无候选:到「源管理·词库」添加生效词后,点上方「热词发现」积累词库,再触发「B站发现」
+                  暂无候选:到「洞察中心 · 发现 ·
+                  种子词库」添加生效词后,点上方「热词发现」积累词库,再触发「B站发现」
                 </td>
               </tr>
             )}
@@ -223,9 +226,9 @@ export default async function MineCandidates({
 
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:L0 为元数据预筛(名称/标题黑名单与教学信号),reject 结论仅供参考,终审以人工为准;
-        批准博主候选即自动登记进「博主」视图(幂等;失败会附行内提示,回退待定后重批可重试)。
-        生效词在源管理·词库维护,参与每日热词联想与每周 B站双窗搜索 (LRU 轮转,20 词/轮)。 API:GET
-        /api/discovery/candidates · PUT /api/discovery/candidates/[id] · POST
+        批准博主候选即自动登记进「博主」视图(幂等;失败会附行内提示,回退待定后重批可重试)。 生效词在
+        洞察中心 · 发现 · 种子词库 维护,参与每日热词联想与每周 B站双窗搜索 (LRU 轮转,20 词/轮)。
+        API:GET /api/discovery/candidates · PUT /api/discovery/candidates/[id] · POST
         /api/discovery/trigger。
       </p>
     </div>

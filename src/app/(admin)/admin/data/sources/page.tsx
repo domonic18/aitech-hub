@@ -1,20 +1,21 @@
 /**
- * 数据中心·源管理页(管线起点·配置段):三类源一条龙——渠道(crawl_source,
- * 启停/频率/健康)、热榜源(insight_hot_source,启停/回写)、词库
- * (discovery_keyword,生效词=发现搜索源)。?t= 切视图,默认渠道。
+ * 数据中心·源管理页(IA v5 板定 F17/F27):采集对象与渠道统一台账——
+ * 采集渠道(渠道/热榜/发现/GitHub 五类行,F17)、博主台账(F27,与渠道
+ * 同级)、博主候选池(审核通过后入博主台账)。?t= 切段,默认采集渠道;
+ * 种子词库已迁洞察中心(/admin/insight/discovery?t=words,308 承接)。
  */
-import SourceChannels from "@/components/admin/data/SourceChannels";
-import SourceHot from "@/components/admin/data/SourceHot";
-import SourceWords from "@/components/admin/data/SourceWords";
+import ChannelLedger from "@/components/admin/data/ChannelLedger";
+import MineBloggers from "@/components/admin/data/MineBloggers";
+import MineCandidates from "@/components/admin/data/MineCandidates";
 import SubTabs from "@/components/admin/data/SubTabs";
 import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [
-  ["channels", "渠道"],
-  ["hot", "热榜源"],
-  ["words", "词库"],
+  ["channels", "采集渠道"],
+  ["bloggers", "博主台账"],
+  ["candidates", "博主候选池"],
 ] as const;
 
 export default async function AdminDataSourcesPage({
@@ -30,16 +31,16 @@ export default async function AdminDataSourcesPage({
       <div>
         <h2 className="text-base font-semibold">源管理</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          管线起点:采集与发现的所有「源」在此登记启停;跑了多少、跑得怎样看「运行」,产出了什么看「洞察」。
+          采集对象与渠道统一台账 · 博主与渠道同级,新增经 博主候选池 审核后入此
         </p>
       </div>
       <SubTabs tabs={TABS} active={t} basePath="/admin/data/sources/" />
       {t === "channels" ? (
-        <SourceChannels />
-      ) : t === "hot" ? (
-        <SourceHot />
+        <ChannelLedger />
+      ) : t === "bloggers" ? (
+        <MineBloggers />
       ) : (
-        <SourceWords searchParams={sp} />
+        <MineCandidates searchParams={sp} />
       )}
     </div>
   );
