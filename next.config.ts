@@ -23,11 +23,7 @@ const nextConfig: NextConfig = {
       },
       { source: "/admin/data/insight", destination: "/admin/insight/", statusCode: 308 },
       { source: "/admin/data/insight/", destination: "/admin/insight/", statusCode: 308 },
-      {
-        source: "/admin/data/mine",
-        destination: "/admin/data/sources/?t=candidates",
-        statusCode: 308,
-      },
+      // mine 按 query 分流必须在裸规则之前:裸 source 能先匹配截胡(has 不再评估)
       {
         source: "/admin/data/mine/",
         has: [{ type: "query", key: "t", value: "^(bloggers)$" }],
@@ -44,6 +40,11 @@ const nextConfig: NextConfig = {
         source: "/admin/data/mine/",
         has: [{ type: "query", key: "t", value: "^(github)$" }],
         destination: "/admin/insight/discovery/?t=github",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/data/mine",
+        destination: "/admin/data/sources/?t=candidates",
         statusCode: 308,
       },
       {
