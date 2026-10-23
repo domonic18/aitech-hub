@@ -2,8 +2,11 @@
  * 洞察中心·分析总览(F11 板):pageHead(窗口 chips + dayNav + 立即分析)→
  * heroRow(关键词云图 + KPI 四竖列 + 日批 status)→ row2(机会分趋势 + 痛点榜)
  * → row3(热榜信号(源 chips 可切)+ 种子词产出榜)→ 信号明细折叠区。取数
- * 页侧一次装配;窗口 chips 钳统计窗口(w),dayNav 钳热榜回看日(day),hs 钳
- * 热榜源展示,from/to 由折叠区信号明细自持。服务端直查不设读 API。
+ * 页侧一次装配;窗口 chips 钳统计窗口(w)并附窗口统计徽章(窗口只影响词云,
+ * KPI 板定固定口径,徽章让取景范围可见),dayNav 钳热榜回看日(day)且链接带
+ * #hot-board 锚点——控件在页头、效果卡在首屏之下,跳滚让反馈即时可见;热榜卡
+ * 头常驻回看标识(点击回最新)。hs 钳热榜源展示,from/to 由折叠区信号明细自持。
+ * 服务端直查不设读 API。
  */
 import Link from "next/link";
 
@@ -44,20 +47,22 @@ const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
 const chipOn = `${chip} bg-accent-dim text-accent`;
 const chipOff = `${chip} bg-panel-2 text-text-2 hover:text-text-1`;
 
-/** 卡壳(row2/row3 四卡统一:标题 + 一句话读法 + 内容) */
+/** 卡壳(row2/row3 四卡统一:标题 + 一句话读法 + 内容;id 供页头控件锚点跳滚) */
 function Card({
   title,
   hint,
   extra,
+  id,
   children,
 }: {
   title: string;
   hint: string;
   extra?: React.ReactNode;
+  id?: string;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="rounded-md border border-line bg-panel">
+    <div id={id} className="rounded-md border border-line bg-panel">
       <div className="flex flex-wrap items-baseline gap-2 border-b border-line px-4 py-2.5">
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-[11px] text-text-3">{hint}</span>
@@ -100,6 +105,10 @@ export default async function AdminInsightPage({
     scored.length === 0 ? null : scored.reduce((a, c) => a + (c.score ?? 0), 0) / scored.length;
   const boards =
     params.hs === undefined ? hotBoard : hotBoard.filter((b) => b.source === params.hs);
+  /** 窗口徽章口径:活跃簇=词云取数,信号=insightOverview.daily 求和(窗口内在役源) */
+  const windowSignals = overview.daily.reduce((a, d) => a + d.count, 0);
+  /** dayNav 链接统一锚点:控件在页头、效果卡在首屏之下,跳滚让反馈即时可见 */
+  const dayAnchor = "#hot-board";
 
   return (
     <div className="flex flex-col gap-4">
@@ -123,7 +132,7 @@ export default async function AdminInsightPage({
         />
       </div>
 
-      {/* 窗口 chips(统计取景)+ dayNav(热榜回看日,板定头部位置) */}
+      {/* 窗口 chips(统计取景)+ 窗口徽章(取景范围可见)+ dayNav(热榜回看日,板定头部位置) */}
       <div className="flex flex-wrap items-center gap-2">
         {WINDOWS.map((n) => (
           <Link
@@ -135,18 +144,27 @@ export default async function AdminInsightPage({
             {n} 天
           </Link>
         ))}
+        <span
+          className="rounded-sm bg-panel-2 px-2 py-0.5 font-mono text-[11px] text-text-3"
+          title={`窗口 chips 只影响词云与该徽章;KPI 四卡为板定固定口径`}
+        >
+          近 {w} 天 · 活跃簇 {cloud.length} · 信号 {windowSignals.toLocaleString()}
+        </span>
         <span className="ml-auto flex items-center gap-1 text-[11px] text-text-3">
           热榜回看
           <Link
-            href={insightHref(params, { day: shiftDay(params.day ?? today, -1) })}
-            scroll={false}
+            href={insightHref(params, { day: shiftDay(params.day ?? today, -1) }) + dayAnchor}
             className={chipOff}
             aria-label="前一天"
           >
             ‹
           </Link>
           {params.day !== undefined ? (
-            <Link href={insightHref(params, { day: undefined })} scroll={false} className={chipOn}>
+            <Link
+              href={insightHref(params, { day: undefined }) + dayAnchor}
+              className={chipOn}
+              title="回看模式:点击回最新榜面"
+            >
               {params.day}
             </Link>
           ) : (
@@ -154,8 +172,7 @@ export default async function AdminInsightPage({
           )}
           {params.day !== undefined && params.day < today ? (
             <Link
-              href={insightHref(params, { day: shiftDay(params.day, 1) })}
-              scroll={false}
+              href={insightHref(params, { day: shiftDay(params.day, 1) }) + dayAnchor}
               className={chipOff}
               aria-label="后一天"
             >
@@ -167,7 +184,7 @@ export default async function AdminInsightPage({
         </span>
       </div>
 
-      <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} />
+      <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
 
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card title="机会分趋势" hint="按机会分排序 · 点击行进簇详情 · 动量徽=近 24h 方向">
@@ -180,10 +197,20 @@ export default async function AdminInsightPage({
 
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card
+          id="hot-board"
           title="热榜信号"
           hint="小时级拉取 · 位次/热度为各站原生口径,不跨源可比"
           extra={
             <>
+              {params.day !== undefined && (
+                <Link
+                  href={insightHref(params, { day: undefined }) + dayAnchor}
+                  className={chipOn}
+                  title="回看模式:点击回最新榜面"
+                >
+                  回看 {params.day} ✕
+                </Link>
+              )}
               <Link
                 href={insightHref(params, { hs: undefined })}
                 scroll={false}
