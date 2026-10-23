@@ -29,6 +29,26 @@ export function statsDay(now: Date = new Date()): string {
   return formatCnDate(now);
 }
 
+/**
+ * 今日起点(北京时区零点对应的 UTC 时刻):「当日」口径计数(分发中心
+ * 今日分发 KPI 等)用。Asia/Shanghai 1991 年后无夏令时,固定 +08:00。
+ */
+export function startOfCnDay(now: Date = new Date()): Date {
+  return new Date(`${formatCnDate(now)}T00:00:00+08:00`);
+}
+
+/** 相对时间(F16 渠道卡「最近同步:N 分钟/小时/天前」;<1 分钟显「刚刚」,超 7 天回落绝对日期) */
+export function formatCnRelative(date: Date, now: Date = new Date()): string {
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} 天前`;
+  return formatCnDate(date);
+}
+
 /** 当前统计月(YYYY-MM,北京时区):Token 月度额度 periodKey 同源口径(M22) */
 export function statsMonth(now: Date = new Date()): string {
   return statsDay(now).slice(0, 7);

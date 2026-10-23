@@ -4,6 +4,8 @@
  */
 import { prisma } from "../db";
 
+import { startOfCnDay } from "../datetime";
+
 import { DistributeError } from "./errors";
 
 /** 记录筛选分段(页码走 ?page=,状态走 ?status=;all 时不带 status 参数) */
@@ -75,6 +77,50 @@ export async function listPublishChannelRecords(q: PublishRecordQuery = {}): Pro
     total,
     page,
     pageSize,
+  };
+}
+
+/**
+ * 分发中心总览数(F16 statsRow + 渠道卡 meta):今日/近 7 天成功率/累计/
+ * 失败计数与最近一条记录。今日按北京时区零点(startOfCnDay);成功率只看
+ * 近 7 天终态行(终态以 updatedAt 计,pending 未定不计入分母)。
+ */
+export interface DistributeOverview {
+  todaySynced: number;
+  /** 近 7 天 synced/(synced+failed);无终态行 → null(界面显 —) */
+  rate7d: number | null;
+  totalSynced: number;
+  failedCount: number;
+  lastRecord: { status: string; syncedAt: Date | null; updatedAt: Date } | null;
+}
+
+export async function getDistributeOverview(): Promise<DistributeOverview> {
+  const since7d = new Date(Date.now() - 7 * 24 * 3_600_000);
+  const [todaySynced, recent7d, totalSynced, failedCount, last] = await Promise.all([
+    prisma.publishChannel.count({
+      where: { status: "synced", syncedAt: { gte: startOfCnDay() } },
+    }),
+    prisma.publishChannel.groupBy({
+      by: ["status"],
+      where: { status: { in: ["synced", "failed"] }, updatedAt: { gte: since7d } },
+      _count: { _all: true },
+    }),
+    prisma.publishChannel.count({ where: { status: "synced" } }),
+    prisma.publishChannel.count({ where: { status: "failed" } }),
+    prisma.publishChannel.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: { status: true, syncedAt: true, updatedAt: true },
+    }),
+  ]);
+  const synced7d = recent7d.find((r) => r.status === "synced")?._count._all ?? 0;
+  const failed7d = recent7d.find((r) => r.status === "failed")?._count._all ?? 0;
+  const denom = synced7d + failed7d;
+  return {
+    todaySynced,
+    rate7d: denom > 0 ? synced7d / denom : null,
+    totalSynced,
+    failedCount,
+    lastRecord: last,
   };
 }
 
