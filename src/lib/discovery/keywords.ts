@@ -65,13 +65,34 @@ export async function insertHotwords(
   return { total: words.length, inserted: res.count };
 }
 
-/** 词状态流转(治理台批③):确认转 active(记 confirmedAt);pending 回退清之 */
+/** 词状态流转(治理台批③;F24 增 merged):确认转 active(记 confirmedAt);
+ *  pending/dismissed 回退清之;merged=并入目标词作别名(记 mergedIntoId,
+ *  目标须存在且自身非别名——别名不叠别名,归并链压平);离 merged 态清
+ *  mergedIntoId(取消合并即解除别名关系)。 */
 export async function setKeywordStatus(
   id: bigint,
-  status: "active" | "dismissed" | "pending",
+  status: "active" | "dismissed" | "pending" | "merged",
+  options?: { mergedIntoId?: bigint },
 ): Promise<DiscoveryKeyword> {
+  if (status === "merged") {
+    if (options?.mergedIntoId === undefined) throw new TypeError("merged 需要 mergedIntoId");
+    return prisma.$transaction(async (tx) => {
+      const target = await tx.discoveryKeyword.findUnique({
+        where: { id: options.mergedIntoId },
+      });
+      if (!target || target.id === id) throw new KeywordMergeError("合并目标词不存在");
+      if (target.status === "merged") throw new KeywordMergeError("目标词已是别名,不可再并入");
+      return tx.discoveryKeyword.update({
+        where: { id },
+        data: { status, confirmedAt: null, mergedIntoId: options.mergedIntoId },
+      });
+    });
+  }
   return prisma.discoveryKeyword.update({
     where: { id },
-    data: { status, confirmedAt: status === "active" ? new Date() : null },
+    data: { status, confirmedAt: status === "active" ? new Date() : null, mergedIntoId: null },
   });
 }
+
+/** 合并前置校验失败(路由层映射 422) */
+export class KeywordMergeError extends Error {}

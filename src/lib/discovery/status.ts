@@ -4,14 +4,16 @@
  * 防状态字面量漂移(同 feedback-schema 口径)。
  */
 
-/** 词库状态:pending=联想回灌待定;active=生效参与发现轮;dismissed=人工弃用 */
-export const KEYWORD_STATUSES = ["pending", "active", "dismissed"] as const;
+/** 词库状态:pending=联想回灌待定;active=生效参与发现轮;dismissed=人工弃用;
+ *  merged=已并入已有词作别名(F24 候选治理合并,命中统计随目标词) */
+export const KEYWORD_STATUSES = ["pending", "active", "dismissed", "merged"] as const;
 export type KeywordStatus = (typeof KEYWORD_STATUSES)[number];
 
 export const KEYWORD_STATUS_LABELS: Record<KeywordStatus, string> = {
   pending: "待定",
   active: "生效",
   dismissed: "已弃用",
+  merged: "已并入",
 };
 
 /** 词库列表分段(tab 白名单,parseListSegment 消费) */
