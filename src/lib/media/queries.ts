@@ -1,7 +1,7 @@
 /**
  * 媒体库读侧查询(M5-b;arch/08-media + arch/05-services §5 media 行):
  * 列表(kind Tab × 引用过滤)、详情抽屉、存储统计、断链清单。
- * 引用状态实时计算(refs+cover 双查,表量级 ~1k 直接聚合);audit 定时任务仅作持久投影,
+ * 引用状态实时计算(文章 refs+cover + 软引用集合,表量级 ~1k 直接聚合);audit 定时任务仅作持久投影,
  * 两侧引用口径共用 loadRefIndex / loadReferencedPathSet(评审 W5:单源)。
  */
 import type { Prisma } from "@prisma/client";
@@ -17,34 +17,59 @@ import {
 
 export const MEDIA_PAGE_SIZE = MEDIA_LIMITS.pageSize;
 
-/** 引用索引(全库口径,量级 ~1k 行;列表与统计共用,孤儿口径单源——评审 W5):路径 → 引用篇数 */
+/**
+ * 引用索引(全库口径,量级 ~1k 行;列表与统计共用,孤儿口径单源——评审 W5):
+ * 文章域计数(refCount 正文引用篇数 + coverSet 封面)与软引用集合(softRefSet,
+ * 2026-10-24 验收:贴图挂载/生图参照/样例图库/配图工坊也是真实消费方,不算孤儿;
+ * 计数不混入 refCount——「引用 N」徽标与详情抽屉均按文章篇数口径)。
+ */
 export async function loadRefIndex(): Promise<{
   refCount: Map<string, number>;
   coverSet: Set<string>;
+  softRefSet: Set<string>;
 }> {
   // 只读聚合,Promise.all 并行即可($transaction 数组形态会劣化 groupBy 的重载推导)
-  const [refs, covers] = await Promise.all([
-    prisma.mediaRef.groupBy({
-      by: ["mediaPath"],
-      _count: { mediaPath: true },
-      orderBy: { mediaPath: "asc" },
-    }),
-    prisma.post.findMany({ where: { coverPath: { not: null } }, select: { coverPath: true } }),
-  ]);
+  const [refs, covers, pinImages, pinRefs, sampleImages, illuVersions, layerBases, illuLayers] =
+    await Promise.all([
+      prisma.mediaRef.groupBy({
+        by: ["mediaPath"],
+        _count: { mediaPath: true },
+        orderBy: { mediaPath: "asc" },
+      }),
+      prisma.post.findMany({ where: { coverPath: { not: null } }, select: { coverPath: true } }),
+      prisma.contentPinImage.findMany({ select: { mediaPath: true } }),
+      prisma.contentPin.findMany({
+        where: { referenceMediaPath: { not: null } },
+        select: { referenceMediaPath: true },
+      }),
+      prisma.writingSampleImage.findMany({ select: { mediaPath: true } }),
+      prisma.illustrationVersion.findMany({ select: { mediaPath: true } }),
+      prisma.illustrationLayerGroup.findMany({
+        where: { baseMediaPath: { not: null } },
+        select: { baseMediaPath: true },
+      }),
+      prisma.illustrationLayer.findMany({ select: { mediaPath: true } }),
+    ]);
+  const softRefSet = new Set<string>();
+  for (const r of pinImages) softRefSet.add(r.mediaPath);
+  for (const r of pinRefs) if (r.referenceMediaPath) softRefSet.add(r.referenceMediaPath);
+  for (const r of sampleImages) softRefSet.add(r.mediaPath);
+  for (const r of illuVersions) softRefSet.add(r.mediaPath);
+  for (const r of layerBases) if (r.baseMediaPath) softRefSet.add(r.baseMediaPath);
+  for (const r of illuLayers) softRefSet.add(r.mediaPath);
   return {
     refCount: new Map(refs.map((r) => [r.mediaPath, r._count.mediaPath])),
     coverSet: new Set(covers.map((c) => c.coverPath ?? "")),
+    softRefSet,
   };
 }
 
-/** 被引用路径全集(正文引用 ∪ 封面;audit 判定与读侧同源,评审 W5) */
+/** 被引用路径全集(正文引用 ∪ 封面 ∪ 软引用;audit 判定与读侧同源,评审 W5) */
 export async function loadReferencedPathSet(): Promise<Set<string>> {
-  const [refs, covers] = await Promise.all([
-    prisma.mediaRef.findMany({ select: { mediaPath: true } }),
-    prisma.post.findMany({ where: { coverPath: { not: null } }, select: { coverPath: true } }),
-  ]);
-  const paths = new Set(refs.map((r) => r.mediaPath));
-  for (const c of covers) if (c.coverPath) paths.add(c.coverPath);
+  const { refCount, coverSet, softRefSet } = await loadRefIndex();
+  const paths = new Set(refCount.keys());
+  for (const c of coverSet) paths.add(c);
+  for (const s of softRefSet) paths.add(s);
   return paths;
 }
 
@@ -87,8 +112,9 @@ export async function listMediaAdmin(query: {
     where: { deletedAt: null },
     select: { id: true, kind: true, path: true },
   });
-  const { refCount, coverSet } = await loadRefIndex();
-  const orphanOf = (path: string): boolean => !refCount.has(path) && !coverSet.has(path);
+  const { refCount, coverSet, softRefSet } = await loadRefIndex();
+  const orphanOf = (path: string): boolean =>
+    !refCount.has(path) && !coverSet.has(path) && !softRefSet.has(path);
 
   const counts = {
     image: { all: 0, referenced: 0, orphan: 0, trash: 0 },
@@ -211,7 +237,10 @@ export async function mediaStats(): Promise<MediaStats> {
     loadRefIndex(),
   ]);
   const orphanCount = live.filter(
-    (m) => !refIndex.refCount.has(m.path) && !refIndex.coverSet.has(m.path),
+    (m) =>
+      !refIndex.refCount.has(m.path) &&
+      !refIndex.coverSet.has(m.path) &&
+      !refIndex.softRefSet.has(m.path),
   ).length;
 
   const stats: MediaStats = {

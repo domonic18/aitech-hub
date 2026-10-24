@@ -32,6 +32,18 @@ const STATUS_LABELS: Partial<Record<MediaStatus, { text: string; cls: string }>>
 };
 
 function RefBadge({ item }: { item: MediaListItem }): React.ReactElement {
+  // 孤儿判定以实时口径 isOrphan 为准(含贴图/参照/工坊软引用;2026-10-24 验收:
+  // 贴图挂载图与手动上传参照图曾因只算文章域被误标孤儿)
+  if (item.isOrphan) {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-amber">
+        <svg className="ic ic-sm" aria-hidden="true">
+          <use href="#i-warning" />
+        </svg>
+        孤儿
+      </span>
+    );
+  }
   if (item.refCount > 0) {
     return (
       <span className="inline-flex items-center gap-0.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-green">
@@ -43,11 +55,11 @@ function RefBadge({ item }: { item: MediaListItem }): React.ReactElement {
     );
   }
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-amber">
+    <span className="inline-flex items-center gap-0.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-green">
       <svg className="ic ic-sm" aria-hidden="true">
-        <use href="#i-warning" />
+        <use href="#i-check" />
       </svg>
-      孤儿
+      在用
     </span>
   );
 }
