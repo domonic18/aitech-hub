@@ -20,8 +20,13 @@ function Kpi({
   value: string;
   title?: string;
 }): React.ReactElement {
+  // flex-1 + 垂直居中:右栏四卡均分列高,底边与左侧云图卡对齐(2026-10-24 验收反馈:
+  // 云图卡高于 KPI 列时右下留白,不美观)
   return (
-    <div className="rounded-md border border-line bg-panel px-4 py-3" title={title}>
+    <div
+      className="flex flex-1 flex-col justify-center rounded-md border border-line bg-panel px-4 py-3"
+      title={title}
+    >
       <div className="text-[11px] leading-4 text-text-3">{label}</div>
       <div className="mt-1 font-mono text-xl font-semibold text-text-1">{value}</div>
     </div>

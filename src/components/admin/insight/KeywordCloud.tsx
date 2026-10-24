@@ -10,7 +10,7 @@
  * 反馈条悬于云容器上方,内联簇详情/候选治理直链与 B站发现就地触发,不打断动线。
  */
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiEnvelope } from "@/lib/http/response";
 import { SENTIMENT_LABELS, type InsightSentiment } from "@/lib/insight/constants";
@@ -80,8 +80,15 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
     legendCounts.set(s, (legendCounts.get(s) ?? 0) + 1);
   }
 
-  const shown = searchTrim(search, words).filter(
-    (w) => sentFilter === null || sentimentOf(w.sentiment) === sentFilter,
+  /** useMemo 钉住引用:filter 每轮都出新数组,裸写会令下方 useEffect([shown])
+   * 连同 setPlaced 组成无限重渲染循环(主线程打满,页内所有链接点击无响应,
+   * 2026-10-24 验收实测)——搜索词/图例筛选取值不变时必须保持同一引用。 */
+  const shown = useMemo(
+    () =>
+      searchTrim(search, words).filter(
+        (w) => sentFilter === null || sentimentOf(w.sentiment) === sentFilter,
+      ),
+    [words, search, sentFilter],
   );
 
   useEffect(() => {
