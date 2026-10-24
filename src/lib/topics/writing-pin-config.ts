@@ -142,7 +142,7 @@ export function pinReferenceOf(pinPositioning: string | null): string {
 export const PIN_CROP_LABEL: Record<PinCropSpec, string> = {
   "1_1": "方图 1:1",
   "16_9": "横图 16:9",
-  "2.35_9": "超宽 2.35:9",
+  "2.35_1": "超宽 2.35:1",
 };
 
 /** 比例展示名(UI 选项用) */

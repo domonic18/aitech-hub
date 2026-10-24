@@ -11,7 +11,7 @@ import { PIN_CROP_SPECS, type PinCropSpec } from "@/lib/pins/constants";
 const CROP_LABEL: Record<PinCropSpec, string> = {
   "1_1": "1:1",
   "16_9": "16:9",
-  "2.35_9": "2.35:9",
+  "2.35_1": "2.35:1",
 };
 
 export default function PreviewPane({

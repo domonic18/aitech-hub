@@ -40,8 +40,9 @@ export const PIN_CONTENT_MAX = 20000;
 export const PIN_CONTENT_SOFT_MAX = 1000;
 /** 图片序列上限(公众号 image_list ≤20 张) */
 export const PIN_IMAGES_MAX = 20;
-/** 封面裁剪档(公众号 cover_info.crop_percent_list 三选一,同步时随 draft/add) */
-export const PIN_CROP_SPECS = ["1_1", "16_9", "2.35_9"] as const;
+/** 封面裁剪档(公众号 cover_info.crop_percent_list 三选一,同步时随 draft/add;
+ * 值域以官方 newspic 文档为准 1_1/16_9/2.35_1——旧值 2.35_9 系笔误已勘误) */
+export const PIN_CROP_SPECS = ["1_1", "16_9", "2.35_1"] as const;
 export type PinCropSpec = (typeof PIN_CROP_SPECS)[number];
 
 /** 渠道一期仅 wechat(复用 distribute 渠道常量,字段中立同款) */

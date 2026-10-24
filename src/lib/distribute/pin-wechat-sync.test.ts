@@ -167,8 +167,8 @@ describe("syncOnePin 管线", () => {
     expect(mocked.draftAdd).toHaveBeenCalledTimes(1);
     const article = mocked.draftAdd.mock.calls[0][1] as WechatNewsPicArticle;
     expect(article.article_type).toBe("newspic");
-    expect(article.image_info.image_list).toEqual([{ media_id: "M1" }]);
-    expect(article.cover_info?.crop_percent_list).toEqual(["1_1"]);
+    expect(article.image_info.image_list).toEqual([{ image_media_id: "M1" }]);
+    expect(article.cover_info?.crop_percent_list).toEqual([{ ratio: "1_1" }]);
     expect(article.content_source_url).toContain("/post/1-x/");
     expect(mocked.tx).toHaveBeenCalledTimes(1);
     expect(mocked.updatePin).toHaveBeenCalledWith(
