@@ -1,9 +1,10 @@
 /** 词云螺旋排布纯函数单测(M34 批③ 验收反馈·问题3):无重叠/边界内/高分词
- * 居中/竖排比例/窄画布截断。measure 以等宽近似模拟 canvas 量测。 */
+ * 居中/竖排比例/窄画布截断;M46 验收批增舆情四色映射用例。measure 以等宽近似
+ * 模拟 canvas 量测。 */
 import { describe, expect, it } from "vitest";
 
 import type { InsightCloudWord } from "./hotboard";
-import { GAP, packWords } from "./word-cloud";
+import { GAP, SENTIMENT_LEGEND, packWords, sentimentColor, sentimentOf } from "./word-cloud";
 
 const W = 800;
 const H = 300;
@@ -25,8 +26,22 @@ function mkWords(n: number): InsightCloudWord[] {
     weight: 100 - i * 2,
     clusterId: String(i + 1),
     label: `簇${i + 1}`,
+    sentiment: (["positive", "neutral", "negative", "mixed"] as const)[i % 4],
   }));
 }
+
+describe("sentimentColor / sentimentOf / SENTIMENT_LEGEND", () => {
+  it("舆情四色映射(null 未打标归中性)与图例序", () => {
+    expect(sentimentColor("positive")).toBe("var(--green-hi)");
+    expect(sentimentColor("negative")).toBe("var(--red-hi)");
+    expect(sentimentColor("mixed")).toBe("var(--amber-hi)");
+    expect(sentimentColor("neutral")).toBe("var(--text-2)");
+    expect(sentimentColor(null)).toBe("var(--text-2)");
+    expect(sentimentOf(null)).toBe("neutral");
+    expect(sentimentOf("mixed")).toBe("mixed");
+    expect(SENTIMENT_LEGEND.map((l) => l.label)).toEqual(["正面", "中性", "负面", "争议"]);
+  });
+});
 
 describe("packWords", () => {
   it("空输入返回空数组", () => {
@@ -67,10 +82,16 @@ describe("packWords", () => {
 
   it("≥8 词启用竖排(i%4===2)且超宽词缩字号仍可落位", () => {
     const longWords: InsightCloudWord[] = [
-      { word: "超长关键词测试文本一号", weight: 90, clusterId: "1", label: "L" },
-      { word: "短", weight: 80, clusterId: "2", label: "S" },
-      { word: "超长关键词测试文本二号", weight: 70, clusterId: "3", label: "L2" },
-      { word: "另一个超长关键词测试文本三号", weight: 60, clusterId: "4", label: "L3" },
+      { word: "超长关键词测试文本一号", weight: 90, clusterId: "1", label: "L", sentiment: null },
+      { word: "短", weight: 80, clusterId: "2", label: "S", sentiment: "positive" },
+      { word: "超长关键词测试文本二号", weight: 70, clusterId: "3", label: "L2", sentiment: null },
+      {
+        word: "另一个超长关键词测试文本三号",
+        weight: 60,
+        clusterId: "4",
+        label: "L3",
+        sentiment: null,
+      },
       ...mkWords(10),
     ];
     const placed = packWords(longWords, 400, H, measure);

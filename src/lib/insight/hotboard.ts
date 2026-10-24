@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 
+import { type InsightSentiment } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "./ingest";
 
 /** 热榜源(白名单内 hot-* 前缀;展示顺序=白名单序) */
@@ -134,6 +135,8 @@ export interface InsightCloudWord {
   weight: number;
   clusterId: string;
   label: string;
+  /** 舆情倾向(M46 验收批,词云四色;来自计权簇,null=未打标读侧按中性) */
+  sentiment: InsightSentiment | null;
 }
 
 const CLOUD_WINDOW_DAYS = 7;
@@ -159,7 +162,7 @@ export async function insightKeywordCloud(
     },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],
     take: CLOUD_CLUSTER_TAKE,
-    select: { id: true, label: true, keywords: true, score: true },
+    select: { id: true, label: true, keywords: true, score: true, sentiment: true },
   });
 
   const byWord = new Map<string, InsightCloudWord>();
@@ -173,7 +176,13 @@ export async function insightKeywordCloud(
       if (word.length < CLOUD_MIN_WORD_LEN) continue;
       const prev = byWord.get(word);
       if (prev === undefined || c.score > prev.weight) {
-        byWord.set(word, { word, weight: c.score, clusterId: c.id.toString(), label: c.label });
+        byWord.set(word, {
+          word,
+          weight: c.score,
+          clusterId: c.id.toString(),
+          label: c.label,
+          sentiment: c.sentiment as InsightSentiment | null,
+        });
       }
     }
   }

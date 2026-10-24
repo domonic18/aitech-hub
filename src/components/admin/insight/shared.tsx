@@ -54,6 +54,15 @@ export function formatTime(iso: string): string {
   });
 }
 
+/** 热榜源短渠道名(百度/知乎/B站;F11 v2 渠道页签与合并榜来源 chip 共用,
+ * 未来新源按「XX热搜/热榜」命名自动派生,免逐个登记) */
+export function shortSource(source: string): string {
+  return (SOURCE_LABELS[source as keyof typeof SOURCE_LABELS] ?? source).replace(
+    /(热搜|热榜)$/,
+    "",
+  );
+}
+
 /** 洞察页查询参数全集(跨分区互保:w=总览/云图窗口,day=热榜回看日,
  * hs=热榜源展示切换,source/from/to=信号明细过滤) */
 export type InsightViewParams = {
