@@ -37,7 +37,10 @@ vi.mock("./material-tools", () => ({
     { name: "unmount_material" },
   ],
 }));
-vi.mock("./pin-tool", () => ({ saveTopicPinTool: { name: "save_topic_pin" } }));
+vi.mock("./pin-tool", () => ({
+  saveTopicPinTool: { name: "save_topic_pin" },
+  updateTopicPinTool: { name: "update_topic_pin" },
+}));
 vi.mock("./post-sources-tool", () => ({
   POST_SOURCES_TOOLS: [{ name: "get_post_sources" }],
 }));
@@ -89,6 +92,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "mount_material",
       "unmount_material",
       "save_topic_pin",
+      "update_topic_pin",
       "get_post_sources",
       "write_article",
       "generate_post_cover",

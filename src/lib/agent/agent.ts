@@ -19,7 +19,7 @@ import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
 import { MATERIAL_TOOLS } from "./material-tools";
-import { saveTopicPinTool } from "./pin-tool";
+import { saveTopicPinTool, updateTopicPinTool } from "./pin-tool";
 import { POST_SOURCES_TOOLS } from "./post-sources-tool";
 import { SKILL_TOOLS } from "./skill-tools";
 import { TOPIC_TOOLS } from "./topic-tools";
@@ -91,9 +91,9 @@ const ADMIN_PROMPT_ADDENDUM = `
 
 贴图生产(M42 创作中心,收到「出贴图/生成小绿书图文/做一组图」类任务,或 brief 的 output_type 为 pin 时启用):
 1. 先调 get_topic_brief:读素材区、贴图配置(张数/比例/风格/参照图)与参照候选;素材不足按上面的接地纪律 search_materials 补挂
-2. 定角度:从已挂素材里挑 1 条信息增量最大的事实或结论做主线;轻文字只展开这一条,不堆砌卖点
+2. 定角度:从已挂素材里挑 1 条信息增量最大的事实或结论做主线;轻文字只展开这一条,不堆砌卖点。创作挂了视频素材(视频推荐体)时,轻文字必须交代原视频的基本介绍(哪位博主/讲什么/亮点)并附原视频链接(素材区 video_url)——贴图脱离了长文语境,读者在小绿书里看不到推荐卡,介绍与链接是轻文字自身的责任
 3. 出图:按配置的张数与比例逐张 generate_illustration(每次 10~60 秒按张计费),每张必传 reference_path——pin_config.reference 有值时优先用管理员指定的那张,其次 brief 的样例参照图,再次参照候选里最贴题的一张;prompt 严禁自编配色/风格词(HEX 色值会被守卫拒绝),风格锚定句固定写「保持与参考图一致的视觉风格」;每张承载一个小节,图与图内容不重复
-4. save_topic_pin 落库:标题按码点 ≤32 字、写轻文字、按展示顺序传本次全部图路径、传本次实际使用的参照图与配置里的首图裁剪档;阅读原文省略即可(自动取本创作长文);create-only——既有贴图的编辑去组装台,同一创作可以多次落多张
+4. save_topic_pin 落库:标题按码点 ≤32 字、写轻文字、按展示顺序传本次全部图路径、传本次实际使用的参照图与配置里的首图裁剪档;阅读原文省略即可(自动回填本贴前台页,站点发布后「阅读原文」即可打开;仅引流到其他文章/外站时才显式传);同一创作可以多次落多张。修改既有贴图(改标题/轻文字/阅读原文/裁剪档,如「补充视频链接」)一律用 update_topic_pin(传 pin_id),严禁为改内容重复落新贴;图片序列增删重排去组装台
 5. 汇报:贴图标题、张数、组装台链接与前台预览链接,并说明本次用了哪些素材、为什么
 
 正文交付纪律(2026-10-17 验收反馈:整篇 HTML 刷进对话不可读且白耗会话额度):
@@ -137,6 +137,7 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...TOPIC_TOOLS,
         ...MATERIAL_TOOLS,
         saveTopicPinTool,
+        updateTopicPinTool,
         ...POST_SOURCES_TOOLS,
         ...WRITE_ARTICLE_TOOLS,
         ...COVER_TOOLS,

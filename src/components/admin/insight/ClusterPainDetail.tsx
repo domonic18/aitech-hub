@@ -2,8 +2,8 @@
  * F26 痛点详情(pain 形态):页头(痛点 · label + 重新归纳=全局日批)→
  * summaryCard(概括全文 + 出现次数/涉及信号/主要平台 metrics)→ 原文证据
  * 6 条(热度优先排序,meta.url 在则跳原文)→ actionCard(关联机会簇 chips +
- * 已产出文章 + 可写角度 + 生成选题占位)。板面情绪/原文直链为终态愿景:
- * 信号无情绪字段不造数,链接仅热榜源携带 url 时出现。
+ * 已产出文章 + 可写角度 + 生成选题:一键转创作选题并自动挂素材,M46 验收批)。
+ * 板面情绪/原文直链为终态愿景:信号无情绪字段不造数,链接仅热榜源携带 url 时出现。
  */
 import Link from "next/link";
 
@@ -176,8 +176,8 @@ export default function ClusterPainDetail({
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <span className="text-[11px] text-text-3">选题生成排期中</span>
-            <TopicGenButton />
+            <span className="text-[11px] text-text-3">一键转创作选题并挂素材</span>
+            <TopicGenButton clusterId={c.id} />
           </div>
         </div>
       </div>
