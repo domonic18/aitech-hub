@@ -1,8 +1,8 @@
 /**
  * F25 机会簇详情(hot 形态):页头(机会簇 · label + 窗口 chips + 加入词库)→
  * heroRow(机会分卡 + 近 8 周趋势条 | KPI 4)→ 核心词表(近 {w} 日频次 vs 前
- * {w} 日 → 趋势徽,加词库/已在词库)→ 代表信号 4 条 + 可写角度卡(生成选题
- * 占位)。数据簇详情 + extras 见 lib/insight/admin。
+ * {w} 日 → 趋势徽,加词库/已在词库)→ 代表信号 4 条 + 可写角度卡(生成选题:
+ * 一键转创作选题并自动挂素材,M46 验收批)。数据簇详情 + extras 见 lib/insight/admin。
  */
 import Link from "next/link";
 
@@ -275,8 +275,8 @@ export default function ClusterHotDetail({
             </p>
           )}
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-[11px] text-text-3">选题生成排期中</span>
-            <TopicGenButton />
+            <span className="text-[11px] text-text-3">一键转创作选题并挂素材</span>
+            <TopicGenButton clusterId={c.id} />
           </div>
         </div>
       </div>
