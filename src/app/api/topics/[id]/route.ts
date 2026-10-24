@@ -1,7 +1,9 @@
 /**
  * 专题单条 API(M26 批③治理台,方案 §8):GET 详情(含素材水合出参)/
  * PATCH 定位字段与状态流转(字段与 status 可同请求;状态合法性按当前态在
- * repo 层校验,collecting→drafted 仅合成驱动属运营纪律,API 不另行收紧)。
+ * repo 层校验,collecting→drafted 仅合成驱动属运营纪律,API 不另行收紧)/
+ * DELETE 删除创作(M46 验收补:v2 列表重构丢失删除入口,这里补 API 半边;
+ * 素材挂载随 FK 级联,已生成长文/贴图是软引用不动)。
  */
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -11,7 +13,7 @@ import { apiEnvelope } from "@/lib/http/response";
 import { toItemDto, toTopicDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
 import { hydrateItems } from "@/lib/topics/materials";
-import { getTopic, updateTopic, updateTopicStatus } from "@/lib/topics/repo";
+import { deleteTopic, getTopic, updateTopic, updateTopicStatus } from "@/lib/topics/repo";
 import { topicStatusSchema, topicUpdateSchema } from "@/lib/topics/schemas";
 import { deriveSkillKey } from "@/lib/topics/writing-config";
 
@@ -97,6 +99,24 @@ export async function PATCH(
       topic = await updateTopicStatus(BigInt(id), status.data.status);
     }
     return apiEnvelope(0, "ok", toTopicDto(topic));
+  } catch (e) {
+    const mapped = mapTopicError(e);
+    if (mapped) return mapped;
+    throw e;
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const actor = await requireSessionActor(req, PAT_DENY);
+  if (actor.kind === "reject") return actor.response;
+  const { id } = await params;
+  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  try {
+    await deleteTopic(BigInt(id));
+    return apiEnvelope(0, "deleted");
   } catch (e) {
     const mapped = mapTopicError(e);
     if (mapped) return mapped;

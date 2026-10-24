@@ -111,6 +111,35 @@ export default function StudioTopbar({
     await patch({ status: target }, `已流转为「${TOPIC_STATUS_LABEL[target]}」`);
   }
 
+  /**
+   * 删除创作(M46 验收补:v2 重构丢失入口):确认写明边界——创作与素材挂载
+   * 关系删除;已生成长文/贴图是软引用保留(文档管理/组装台)。成功即回列表。
+   */
+  async function remove(): Promise<void> {
+    if (busy) return;
+    if (
+      !window.confirm(
+        `删除创作《${title}》?素材挂载关系一并删除;已生成的长文与贴图保留(分别到文档管理、组装台查看)。确认删除?`,
+      )
+    )
+      return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/topics/${id}`, { method: "DELETE" });
+      const resp = (await res.json()) as ApiEnvelope;
+      if (!res.ok || resp.code !== 0) {
+        setMsg({ tone: "err", text: resp.message || `删除失败(${res.status})` });
+        return;
+      }
+      router.push("/admin/studio/");
+    } catch {
+      setMsg({ tone: "err", text: "网络异常,请重试" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const targets = MANUAL_STATUS_TARGETS[status as TopicStatus] ?? [];
 
   return (
@@ -168,6 +197,15 @@ export default function StudioTopbar({
             </button>
           );
         })}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void remove()}
+          title="删除本创作(素材挂载关系一并删除,已生成长文/贴图保留)"
+          className="ml-1 shrink-0 rounded-sm border border-line px-2 py-0.5 text-[11px] text-text-3 hover:border-red hover:text-red disabled:opacity-50"
+        >
+          删除创作
+        </button>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-3">
         <span>{STATUS_HINT[status as TopicStatus]}</span>

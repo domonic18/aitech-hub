@@ -3577,6 +3577,15 @@ test("34. 创作中心(M42 由专题治理台重构:新建/添加仅已解读/�
     await expect(page.getByText(PIN_TITLE)).toBeVisible();
     await expect(page.getByRole("link", { name: "去组装台" })).toBeVisible();
     await expect(page.getByRole("button", { name: "再生成一组贴图" })).toBeVisible();
+
+    // 删除创作(M46 验收补:v2 重构丢失删除入口):未知 id 404 防线 + UI 全流
+    // (顶栏钮带后果确认,确认后 DELETE 成功跳回列表,卡消失)
+    const delMissing = await page.request.delete(`/api/topics/999999999/`, { headers: origin });
+    expect(delMissing.status()).toBe(404);
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "删除创作" }).click();
+    await page.waitForURL(/\/admin\/studio\/?$/, { timeout: 10_000 });
+    await expect(page.getByText(TOPIC_TITLE)).toHaveCount(0);
   } finally {
     await prisma.contentPin.deleteMany({ where: { title: PIN_TITLE } });
     await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
