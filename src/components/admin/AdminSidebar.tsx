@@ -5,9 +5,15 @@
  * 未交付项一律禁用态展示(降级注记,不静默消失),不挂死链接。
  * M13 移动端:<1024 抽屉化(受控 open,开/关由 AdminShell 持有);
  * ≥1024(lg)固定常驻原样。隐藏走 -translate-x-full 而非 hidden,保留滑动动画。
+ * 宽度/收起(2026-10-24 验收反馈问题三):lg 下右缘拖拽调宽(180–400,双击
+ * 复位,持久化在 AdminShell);「«/»」收起为 56px 图标栏(标签 lg:hidden、
+ * 图标居中,title 提示;移动抽屉不受影响)。偏好与钳制常量见 ./sidebar-prefs。
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRef } from "react";
+
+import { SIDEBAR_DEFAULT_W, SIDEBAR_MAX_W, SIDEBAR_MIN_W } from "@/components/admin/sidebar-prefs";
 
 type Item = { icon: string; label: string; href?: string; tag?: "M5" | "二期"; exact?: boolean };
 type Group = { label: string; items: Item[] };
@@ -89,11 +95,23 @@ const GROUPS: ReadonlyArray<Group> = [
 export default function AdminSidebar({
   open,
   onClose,
+  collapsed,
+  width,
+  onToggleCollapsed,
+  onWidthChange,
 }: {
   open: boolean;
   onClose: () => void;
+  /** lg 收起态(56px 图标栏);移动抽屉不受影响 */
+  collapsed: boolean;
+  /** 当前展开宽(拖拽起点;持久化由 AdminShell 统一落盘) */
+  width: number;
+  onToggleCollapsed: () => void;
+  onWidthChange: (w: number) => void;
 }): React.ReactElement {
   const pathname = usePathname();
+  // 拖拽会话(startX/startW 起点 + last 最新值,pointerup 复核钳制)
+  const dragRef = useRef<{ startX: number; startW: number; last: number } | null>(null);
 
   // active 判定(IA v2):最长 href 命中优先——
   // /admin/insight/… 须点亮「洞察中心」而非「数据中心」
@@ -108,15 +126,54 @@ export default function AdminSidebar({
     undefined,
   );
 
+  // ── 宽度拖拽(lg 专属;capture 保证移出热区仍收 move) ──────────────────────
+  const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startW: width, last: width };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+  const moveResize = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const d = dragRef.current;
+    if (d === null) return;
+    d.last = Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, d.startW + (e.clientX - d.startX)));
+    onWidthChange(d.last);
+  };
+  const endResize = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (dragRef.current === null) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  };
+
   return (
     <aside
-      className={`fixed top-0 left-0 z-20 flex h-screen w-[var(--admin-sidebar-w)] flex-col overflow-y-auto border-r border-line bg-panel transition-transform duration-200 lg:translate-x-0 ${
-        open ? "translate-x-0" : "-translate-x-full"
-      }`}
+      className={`fixed top-0 left-0 z-20 flex h-screen w-[220px] flex-col overflow-y-auto border-r border-line bg-panel transition-transform duration-200 lg:translate-x-0 ${
+        collapsed ? "lg:w-14" : "lg:w-[var(--admin-sidebar-w)]"
+      } ${open ? "translate-x-0" : "-translate-x-full"}`}
     >
       <div className="flex items-center gap-2 px-4 py-4">
-        <span className="inline-block h-4 w-2 bg-accent" aria-hidden="true" />
-        <span className="text-sm font-semibold tracking-wide">一起AI 控制台</span>
+        <span
+          className={`inline-block h-4 w-2 bg-accent ${collapsed ? "lg:hidden" : ""}`}
+          aria-hidden="true"
+        />
+        <span className={`text-sm font-semibold tracking-wide ${collapsed ? "lg:hidden" : ""}`}>
+          一起AI 控制台
+        </span>
+        {/* 收起/展开切换(lg 专属;收起态居中作图标栏头钮) */}
+        <button
+          type="button"
+          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+          title={collapsed ? "展开侧栏" : "收起侧栏"}
+          onClick={onToggleCollapsed}
+          className={`hidden h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-text-2 hover:bg-panel-2 hover:text-text-1 lg:inline-flex ${
+            collapsed ? "mx-auto" : "ml-auto"
+          }`}
+        >
+          {collapsed ? "»" : "«"}
+        </button>
         <button
           type="button"
           aria-label="关闭菜单"
@@ -132,7 +189,11 @@ export default function AdminSidebar({
       <nav className="flex-1 px-2 pb-4">
         {GROUPS.map((group) => (
           <div key={group.label} className="mb-3">
-            <div className="px-2 py-1.5 font-mono text-[10px] tracking-[0.08em] text-text-3 uppercase">
+            <div
+              className={`px-2 py-1.5 font-mono text-[10px] tracking-[0.08em] text-text-3 uppercase ${
+                collapsed ? "lg:hidden" : ""
+              }`}
+            >
               {group.label}
             </div>
             {group.items.map((item) => {
@@ -143,7 +204,10 @@ export default function AdminSidebar({
                     key={item.label}
                     href={item.href}
                     aria-current={active ? "page" : undefined}
+                    title={collapsed ? item.label : undefined}
                     className={`flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] ${
+                      collapsed ? "lg:justify-center" : ""
+                    } ${
                       active
                         ? "bg-accent-dim font-medium text-accent"
                         : "text-text-2 hover:bg-panel-2 hover:text-text-1"
@@ -152,7 +216,7 @@ export default function AdminSidebar({
                     <svg className="ic" aria-hidden="true">
                       <use href={`#${item.icon}`} />
                     </svg>
-                    {item.label}
+                    <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
                   </Link>
                 );
               }
@@ -161,13 +225,19 @@ export default function AdminSidebar({
                   key={item.label}
                   aria-disabled="true"
                   title={`${item.tag} 交付`}
-                  className="flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-3"
+                  className={`flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-3 ${
+                    collapsed ? "lg:justify-center" : ""
+                  }`}
                 >
                   <svg className="ic" aria-hidden="true">
                     <use href={`#${item.icon}`} />
                   </svg>
-                  {item.label}
-                  <span className="ml-auto rounded-sm bg-panel-2 px-1 py-px font-mono text-[10px] text-text-3">
+                  <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
+                  <span
+                    className={`ml-auto rounded-sm bg-panel-2 px-1 py-px font-mono text-[10px] text-text-3 ${
+                      collapsed ? "lg:hidden" : ""
+                    }`}
+                  >
                     {item.tag}
                   </span>
                 </span>
@@ -178,9 +248,30 @@ export default function AdminSidebar({
       </nav>
 
       <div className="border-t border-line px-4 py-3">
-        <Link href="/" className="text-xs text-text-2 hover:text-accent">
-          ← 返回前台站点
+        <Link
+          href="/"
+          aria-label="返回前台站点"
+          className={`text-xs text-text-2 hover:text-accent ${collapsed ? "lg:block lg:text-center" : ""}`}
+        >
+          ←<span className={collapsed ? "lg:hidden" : ""}> 返回前台站点</span>
         </Link>
+      </div>
+
+      {/* 宽度拖拽热区(右缘 6px,lg 专属;收起态隐藏防误拖) */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖拽调整侧栏宽度(双击复位)"
+        title="拖拽调整宽度 · 双击复位"
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onDoubleClick={() => onWidthChange(SIDEBAR_DEFAULT_W)}
+        className={`group absolute inset-y-0 right-0 z-10 hidden w-1.5 cursor-col-resize touch-none select-none ${
+          collapsed ? "" : "lg:block"
+        }`}
+      >
+        <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-accent/60" />
       </div>
     </aside>
   );
