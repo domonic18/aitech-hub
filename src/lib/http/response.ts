@@ -17,8 +17,12 @@ export function apiEnvelope(
   data: unknown = null,
   /** 业务成功但异步受理(如上传后 sharp 管线)可指定 202;默认 code=0 → 200 */
   okStatus: 200 | 202 = 200,
+  /** 额外响应头(M47 批B3:付费正文/公开时间线要 no-store,此前两处被迫
+   *  手写同形 JSON,包络漂移防线的破口) */
+  headers?: HeadersInit,
 ): NextResponse {
   return NextResponse.json({ code, message, data } satisfies ApiEnvelope, {
     status: code === 0 ? okStatus : code,
+    ...(headers ? { headers } : {}),
   });
 }

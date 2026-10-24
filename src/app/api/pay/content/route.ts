@@ -34,8 +34,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return apiEnvelope(403, "未持有该文章权益");
   }
 
-  return NextResponse.json(
-    { code: 0, message: "ok", data: { contentMd: post.contentMd, contentHtml: post.contentHtml } },
-    { headers: { "cache-control": "no-store" } },
-  );
+  return apiEnvelope(0, "ok", { contentMd: post.contentMd, contentHtml: post.contentHtml }, 200, {
+    "cache-control": "no-store",
+  });
 }
