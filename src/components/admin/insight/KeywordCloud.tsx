@@ -1,18 +1,28 @@
 "use client";
 
 /**
- * 关键词云视图(M34 批③;批② 词动线改造:点词入词库):排布纯函数在
- * lib/insight/word-cloud(测试锚点 packWords);本件只做挂载后 canvas 量测
- * + 渲染(纯客户端,SSR 不出水合差异)。点词 = POST /api/discovery/keywords
- * (origin=manual 直接生效;已在词库 409 带当前状态);反馈条悬于云容器上方,
- * 内联簇详情/候选治理直链与 B站发现就地触发,不打断动线。
+ * 关键词云视图(M34 批③;批② 词动线改造:点词入词库;M46 验收批·舆情四色):
+ * 排布纯函数在 lib/insight/word-cloud(测试锚点 packWords);本件只做挂载后
+ * canvas 量测 + 渲染(纯客户端,SSR 不出水合差异)。字号=机会分(权重档定
+ * 字号/字重),颜色=簇舆情倾向(正面绿/中性灰/负面红/争议琥珀,未打标按中性);
+ * 图例 chips 即筛选(点切该情绪面,再点还原全部)。点词 = POST
+ * /api/discovery/keywords(origin=manual 直接生效;已在词库 409 带当前状态);
+ * 反馈条悬于云容器上方,内联簇详情/候选治理直链与 B站发现就地触发,不打断动线。
  */
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import type { ApiEnvelope } from "@/lib/http/response";
+import { SENTIMENT_LABELS, type InsightSentiment } from "@/lib/insight/constants";
 import type { InsightCloudWord } from "@/lib/insight/hotboard";
-import { CLOUD_H, packWords, tierColor, type PlacedWord } from "@/lib/insight/word-cloud";
+import {
+  CLOUD_H,
+  SENTIMENT_LEGEND,
+  packWords,
+  sentimentColor,
+  sentimentOf,
+  type PlacedWord,
+} from "@/lib/insight/word-cloud";
 
 function useMeasure(): (text: string, px: number) => { w: number; h: number } {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -36,6 +46,20 @@ function searchTrim(q: string, words: InsightCloudWord[]): InsightCloudWord[] {
   return words.filter((w) => w.word.includes(s) || (w.label ?? "").toLowerCase().includes(s));
 }
 
+/** 图例 chip 配色(与 sentimentColor 同源:活性=色底色字,闲置=灰底+彩点) */
+const LEGEND_ACTIVE_CLS: Record<InsightSentiment, string> = {
+  positive: "bg-green/12 text-green",
+  neutral: "bg-panel-2 text-text-1",
+  negative: "bg-red/12 text-red",
+  mixed: "bg-amber/12 text-amber-hi",
+};
+const LEGEND_DOT_CLS: Record<InsightSentiment, string> = {
+  positive: "bg-green-hi",
+  neutral: "bg-text-2",
+  negative: "bg-red-hi",
+  mixed: "bg-amber-hi",
+};
+
 export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): React.ReactElement {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<PlacedWord<InsightCloudWord>[] | null>(null);
@@ -45,9 +69,20 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
   const [busyWord, setBusyWord] = useState<string | null>(null);
   /** 板定搜索框(F11 云图卡):客户端过滤,归一形与打标词双匹配 */
   const [search, setSearch] = useState("");
+  /** 图例筛选(M46 验收批):点切该舆情面,再点还原全部(null=全部) */
+  const [sentFilter, setSentFilter] = useState<InsightSentiment | null>(null);
   const measure = useMeasure();
 
-  const shown = searchTrim(search, words);
+  /** 图例计数:全量词按舆情面统计(null 计入中性,与着色同口径) */
+  const legendCounts = new Map<InsightSentiment, number>();
+  for (const w of words) {
+    const s = sentimentOf(w.sentiment);
+    legendCounts.set(s, (legendCounts.get(s) ?? 0) + 1);
+  }
+
+  const shown = searchTrim(search, words).filter(
+    (w) => sentFilter === null || sentimentOf(w.sentiment) === sentFilter,
+  );
 
   useEffect(() => {
     const width = boxRef.current?.clientWidth ?? 0;
@@ -170,7 +205,7 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
             type="button"
             disabled={busyWord !== null}
             onClick={() => void addToLexicon(p.word)}
-            title={`${p.word.label} · 机会分 ${p.word.weight}${added.has(p.word.word) ? " · 已在词库" : " · 点击入词库"}`}
+            title={`${p.word.label} · 机会分 ${p.word.weight} · 舆情${SENTIMENT_LABELS[sentimentOf(p.word.sentiment)]}${added.has(p.word.word) ? " · 已在词库" : " · 点击入词库"}`}
             className={`absolute whitespace-nowrap leading-none transition-opacity hover:opacity-100 ${
               p.t >= 0.75 ? "font-semibold" : "font-medium"
             } ${placed === null ? "opacity-0" : "opacity-85"}`}
@@ -178,7 +213,7 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
               left: p.x,
               top: p.y,
               fontSize: p.px,
-              color: tierColor(p.t),
+              color: sentimentColor(p.word.sentiment),
               transform: `translate(-50%, -50%)${p.vertical ? " rotate(90deg)" : ""}`,
             }}
           >
@@ -191,6 +226,30 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
             {shown.length === 0 && words.length > 0 ? "无匹配词" : "词过多无法排布,请收窄窗口"}
           </div>
         )}
+      </div>
+      {/* 图例行(M46 验收批,F11 板定):chips 即筛选 + 读法提示;null=全部 */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {SENTIMENT_LEGEND.map(({ key, label }) => {
+          const active = sentFilter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSentFilter(active ? null : key)}
+              title={`只看${label}词,再点还原全部`}
+              className={`inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-[11px] ${
+                active ? LEGEND_ACTIVE_CLS[key] : "bg-panel-2 text-text-2 hover:text-text-1"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${LEGEND_DOT_CLS[key]}`} />
+              {label}
+              <span className="font-mono text-text-3">{legendCounts.get(key) ?? 0}</span>
+            </button>
+          );
+        })}
+        <span className="ml-auto text-[11px] text-text-3">
+          字号 = 机会分 · 颜色 = 舆情倾向(LLM 打标) · 点词加入种子词库
+        </span>
       </div>
     </div>
   );

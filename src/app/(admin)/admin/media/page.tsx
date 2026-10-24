@@ -163,7 +163,8 @@ export default async function AdminMediaPage({
             <use href="#i-warning" />
           </svg>
           <span>
-            未引用 = 无文章正文/封面引用;勾选后可批量删除(被引用的会自动跳过)。软删入回收站,
+            未引用 = 无任何消费方(文章正文/封面、贴图挂载、生图参照、样例图库、配图工坊)
+            引用;勾选后可批量删除(被引用的会自动跳过)。软删入回收站,
             {MEDIA_LIMITS.trashDays} 天后物理清除。
           </span>
         </div>

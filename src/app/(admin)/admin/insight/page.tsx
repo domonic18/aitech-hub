@@ -1,12 +1,12 @@
 /**
- * 洞察中心·分析总览(F11 板):pageHead(窗口 chips + dayNav + 立即分析)→
- * heroRow(关键词云图 + KPI 四竖列 + 日批 status)→ row2(机会分趋势 + 痛点榜)
- * → row3(热榜信号(源 chips 可切)+ 种子词产出榜)→ 信号明细折叠区。取数
- * 页侧一次装配;窗口 chips 钳统计窗口(w)并附窗口统计徽章(窗口只影响词云,
- * KPI 板定固定口径,徽章让取景范围可见),dayNav 钳热榜回看日(day)且链接带
- * #hot-board 锚点——控件在页头、效果卡在首屏之下,跳滚让反馈即时可见;热榜卡
- * 头常驻回看标识(点击回最新)。hs 钳热榜源展示,from/to 由折叠区信号明细自持。
- * 服务端直查不设读 API。
+ * 洞察中心·分析总览(F11 板,v2 对齐设计稿):pageHead(窗口 chips + 立即
+ * 分析)→ heroRow(关键词云图(舆情四色+图例筛选) + KPI 四竖列 + 日批
+ * status)→ row2(机会分趋势 + 痛点榜)→ row3(热榜信号(渠道页签可切,合并
+ * 全宽榜)+ 种子词产出榜)→ 信号明细折叠区。取数页侧一次装配;窗口 chips 钳
+ * 统计窗口(w)并附窗口统计徽章(窗口只影响词云,KPI 板定固定口径,徽章让
+ * 取景范围可见);热榜回看日(day)页签随卡头常驻(板定 ‹ 日期 › 位置,点击
+ * 回最新)。hs 钳热榜源展示,from/to 由折叠区信号明细自持。服务端直查不设读
+ * API。
  */
 import Link from "next/link";
 
@@ -19,6 +19,7 @@ import RadarTable from "@/components/admin/insight/RadarTable";
 import SignalsSection from "@/components/admin/insight/SignalsSection";
 import {
   insightHref,
+  shortSource,
   shiftDay,
   todayCn,
   type InsightViewParams,
@@ -36,27 +37,23 @@ const ENABLED_SOURCES = [...INSIGHT_SOURCES_ENABLED] as InsightSource[];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const WINDOWS = [7, 30, 90] as const;
 
-/** 热榜源 chips 短标签(板:百度|知乎|B站) */
-const HOT_CHIP_LABELS: Record<string, string> = {
-  "hot-baidu": "百度",
-  "hot-zhihu": "知乎",
-  "hot-bilibili": "B站",
-};
-
 const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
 const chipOn = `${chip} bg-accent-dim text-accent`;
 const chipOff = `${chip} bg-panel-2 text-text-2 hover:text-text-1`;
 
-/** 卡壳(row2/row3 四卡统一:标题 + 一句话读法 + 内容;id 供页头控件锚点跳滚) */
+/** 卡壳(row2/row3 四卡统一:标题 + 一句话读法 + 页签槽(热榜渠道页签位,
+ * F11 v2 板定紧随标题)+ 右侧 extra + 内容;id 供页头控件锚点跳滚) */
 function Card({
   title,
   hint,
+  tabs,
   extra,
   id,
   children,
 }: {
   title: string;
   hint: string;
+  tabs?: React.ReactNode;
   extra?: React.ReactNode;
   id?: string;
   children: React.ReactNode;
@@ -66,6 +63,7 @@ function Card({
       <div className="flex flex-wrap items-baseline gap-2 border-b border-line px-4 py-2.5">
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-[11px] text-text-3">{hint}</span>
+        {tabs !== undefined && <span className="flex flex-wrap items-center gap-1">{tabs}</span>}
         {extra !== undefined && <span className="ml-auto flex items-center gap-1.5">{extra}</span>}
       </div>
       <div className="px-2 py-2">{children}</div>
@@ -107,8 +105,6 @@ export default async function AdminInsightPage({
     params.hs === undefined ? hotBoard : hotBoard.filter((b) => b.source === params.hs);
   /** 窗口徽章口径:活跃簇=词云取数,信号=insightOverview.daily 求和(窗口内在役源) */
   const windowSignals = overview.daily.reduce((a, d) => a + d.count, 0);
-  /** dayNav 链接统一锚点:控件在页头、效果卡在首屏之下,跳滚让反馈即时可见 */
-  const dayAnchor = "#hot-board";
 
   return (
     <div className="flex flex-col gap-4">
@@ -150,38 +146,6 @@ export default async function AdminInsightPage({
         >
           近 {w} 天 · 活跃簇 {cloud.length} · 信号 {windowSignals.toLocaleString()}
         </span>
-        <span className="ml-auto flex items-center gap-1 text-[11px] text-text-3">
-          热榜回看
-          <Link
-            href={insightHref(params, { day: shiftDay(params.day ?? today, -1) }) + dayAnchor}
-            className={chipOff}
-            aria-label="前一天"
-          >
-            ‹
-          </Link>
-          {params.day !== undefined ? (
-            <Link
-              href={insightHref(params, { day: undefined }) + dayAnchor}
-              className={chipOn}
-              title="回看模式:点击回最新榜面"
-            >
-              {params.day}
-            </Link>
-          ) : (
-            <span className="font-mono text-text-2">最新</span>
-          )}
-          {params.day !== undefined && params.day < today ? (
-            <Link
-              href={insightHref(params, { day: shiftDay(params.day, 1) }) + dayAnchor}
-              className={chipOff}
-              aria-label="后一天"
-            >
-              ›
-            </Link>
-          ) : (
-            <span className={`${chip} opacity-40`}>›</span>
-          )}
-        </span>
       </div>
 
       <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
@@ -200,17 +164,8 @@ export default async function AdminInsightPage({
           id="hot-board"
           title="热榜信号"
           hint="小时级拉取 · 位次/热度为各站原生口径,不跨源可比"
-          extra={
+          tabs={
             <>
-              {params.day !== undefined && (
-                <Link
-                  href={insightHref(params, { day: undefined }) + dayAnchor}
-                  className={chipOn}
-                  title="回看模式:点击回最新榜面"
-                >
-                  回看 {params.day} ✕
-                </Link>
-              )}
               <Link
                 href={insightHref(params, { hs: undefined })}
                 scroll={false}
@@ -225,9 +180,62 @@ export default async function AdminInsightPage({
                   scroll={false}
                   className={params.hs === b.source ? chipOn : chipOff}
                 >
-                  {HOT_CHIP_LABELS[b.source] ?? b.source}
+                  {shortSource(b.source)}
                 </Link>
               ))}
+              <Link
+                href="/admin/data/sources/?t=channels"
+                title="新增热榜源经 源管理·热榜源 启停接入"
+                className="rounded-sm border border-dashed border-line-hover px-2 py-0.5 font-mono text-[11px] text-text-3 hover:text-text-1"
+              >
+                +渠道
+              </Link>
+            </>
+          }
+          extra={
+            <>
+              {params.day !== undefined && (
+                <Link
+                  href={insightHref(params, { day: undefined })}
+                  scroll={false}
+                  className={chipOn}
+                  title="回看模式:点击回最新榜面"
+                >
+                  回看 {params.day} ✕
+                </Link>
+              )}
+              <Link
+                href={insightHref(params, { day: shiftDay(params.day ?? today, -1) })}
+                scroll={false}
+                className={chipOff}
+                aria-label="前一天"
+              >
+                ‹
+              </Link>
+              {params.day !== undefined ? (
+                <Link
+                  href={insightHref(params, { day: undefined })}
+                  scroll={false}
+                  className={chipOn}
+                  title="回看模式:点击回最新榜面"
+                >
+                  {params.day}
+                </Link>
+              ) : (
+                <span className="font-mono text-[11px] text-text-2">最新</span>
+              )}
+              {params.day !== undefined && params.day < today ? (
+                <Link
+                  href={insightHref(params, { day: shiftDay(params.day, 1) })}
+                  scroll={false}
+                  className={chipOff}
+                  aria-label="后一天"
+                >
+                  ›
+                </Link>
+              ) : (
+                <span className={`${chip} opacity-40`}>›</span>
+              )}
             </>
           }
         >

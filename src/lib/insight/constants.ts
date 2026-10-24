@@ -80,3 +80,16 @@ export const SCORE_HEAT_WINDOW_DAYS = 7;
 /** 热榜拉取(批③):单源 HTTP 超时与单源入池条数上限(榜单截前 N,防长尾) */
 export const HOTLIST_FETCH_TIMEOUT_MS = 10_000;
 export const HOTLIST_MAX_ITEMS = 50;
+
+/** 簇舆情倾向(M46 验收批,F11 词云四色;LLM 打标扩展位,label.ts 日批回写):
+ * positive=正面/neutral=中性/negative=负面/mixed=争议;null=未打标,读侧按
+ * 中性显示。图例序即数组序 */
+export const INSIGHT_SENTIMENTS = ["positive", "neutral", "negative", "mixed"] as const;
+export type InsightSentiment = (typeof INSIGHT_SENTIMENTS)[number];
+
+export const SENTIMENT_LABELS: Record<InsightSentiment, string> = {
+  positive: "正面",
+  neutral: "中性",
+  negative: "负面",
+  mixed: "争议",
+};

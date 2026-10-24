@@ -1264,6 +1264,7 @@ model InsightSignal {
 model InsightCluster {
   id          BigInt   @id @default(autoincrement())
   kind        String   @db.VarChar(8) // hot | pain
+  sentiment   String?  @map("sentiment") @db.VarChar(8) // 舆情倾向(LLM 打标扩展位):positive|neutral|negative|mixed;null=未打标,读侧按中性显示
   domain      String   @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
   label       String?  @db.VarChar(200) // LLM 命名(人话;未打标 null)
   summary     String?  @db.VarChar(1000) // LLM 一句话概括

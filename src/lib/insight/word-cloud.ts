@@ -1,8 +1,12 @@
 /**
  * 词云螺旋排布纯函数(M34 批③ 验收反馈·问题3 行业词云形态):阿基米德螺旋
- * 紧密排布,矩形碰撞检测保证无重叠,权重决定字号与颜色档。零 DOM 依赖,
- * KeywordCloud(洞察簇词云)专用;客户端 canvas 量测注入,packWords 为测试锚点。
+ * 紧密排布,矩形碰撞检测保证无重叠,权重决定字号与字重档。M46 验收批:颜色
+ * 语义从权重档改为**舆情四色**(字号=机会分,颜色=sentiment,图例同源)。
+ * 零 DOM 依赖,KeywordCloud(洞察簇词云)专用;客户端 canvas 量测注入,
+ * packWords 为测试锚点。
  */
+import { SENTIMENT_LABELS, type InsightSentiment } from "./constants";
+
 export const CLOUD_H = 300;
 export const FONT_MIN = 14;
 export const FONT_MAX = 42;
@@ -29,14 +33,26 @@ function overlaps(a: Box, b: Box): boolean {
   return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + GAP && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + GAP;
 }
 
-/** 权重档着色(令牌变量,双主题自适应;高分层更亮) */
-export function tierColor(t: number): string {
-  if (t >= 0.75) return "var(--accent-hi)";
-  if (t >= 0.55) return "var(--blue)";
-  if (t >= 0.35) return "var(--green-hi)";
-  if (t >= 0.18) return "var(--amber-hi)";
+/** 舆情四色(M46 验收批,F11 图例同源;令牌变量双主题自适应):
+ * 正面=绿/中性=灰(text-2)/负面=红/争议=琥珀;null(未打标)按中性 */
+export function sentimentColor(s: InsightSentiment | null): string {
+  if (s === "positive") return "var(--green-hi)";
+  if (s === "negative") return "var(--red-hi)";
+  if (s === "mixed") return "var(--amber-hi)";
   return "var(--text-2)";
 }
+
+/** 舆情显示值(null 归中性,与 sentimentColor 同一口径);图例序按常量表序 */
+export function sentimentOf(s: InsightSentiment | null): InsightSentiment {
+  return s ?? "neutral";
+}
+
+export const SENTIMENT_LEGEND: Array<{ key: InsightSentiment; label: string }> = (
+  Object.keys(SENTIMENT_LABELS) as InsightSentiment[]
+).map((key) => ({
+  key,
+  label: SENTIMENT_LABELS[key],
+}));
 
 /**
  * 螺旋排布纯函数:words 按权重降序输入,自中心向外第一条不重叠位放置;
