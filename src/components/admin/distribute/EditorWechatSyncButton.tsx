@@ -13,6 +13,7 @@ import { useState } from "react";
 import SyncWechatDialog, {
   type WechatSyncDialogPost,
 } from "@/components/admin/distribute/SyncWechatDialog";
+import { wechatSyncActionLabel } from "@/lib/distribute/channels";
 
 export default function EditorWechatSyncButton({
   post,
@@ -39,7 +40,7 @@ export default function EditorWechatSyncButton({
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel px-3 py-2 text-sm text-text-1 hover:border-line-hover disabled:cursor-not-allowed disabled:opacity-60"
         onClick={() => setOpen(true)}
       >
-        {status === "pending" ? "同步中" : status === "synced" ? "重新同步" : "同步公众号"}
+        {wechatSyncActionLabel(status)}
       </button>
       {open && (
         <SyncWechatDialog

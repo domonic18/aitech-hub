@@ -14,6 +14,7 @@ import SyncWechatDialog, {
   type WechatSyncDialogPost,
 } from "@/components/admin/distribute/SyncWechatDialog";
 import type { PostDisplayState } from "@/lib/content/post-schema";
+import { wechatSyncActionLabel } from "@/lib/distribute/channels";
 
 const OP_BTN =
   "cursor-pointer rounded-sm bg-transparent px-1.5 py-1 text-xs text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50";
@@ -123,7 +124,7 @@ export default function PostRowOps({
             className={OP_BTN}
             onClick={() => setSyncOpen(true)}
           >
-            {status === "pending" ? "同步中" : status === "synced" ? "重新同步" : "同步公众号"}
+            {wechatSyncActionLabel(status)}
           </button>
         )}
       </span>
