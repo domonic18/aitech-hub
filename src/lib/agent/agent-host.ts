@@ -32,9 +32,24 @@ export const AGENT_SURFACE_ANNOUNCE_EVENT = "agent:surface-announce";
  * Agent run 收尾广播(M44:runtime-adapter 在每次 run 起止派发,正常收尾/
  * 中断/异常全路径覆盖)。方向为宿主→页面(协议③,此前仅页面→宿主两条);
  * 消费方以自身在途态为前提——创作中心「生成中」监听后即时比对落库结果,
- * 无在途态时零动作,detail 不携带载荷(状态一律以 DB 为真相源)。
+ * 无在途态时零动作(状态一律以 DB 为真相源)。
+ * detail.interrupted(M46 验收补):本次 run 是否以 ask_user 中断挂起——
+ * 挂起 = 等用户回答,在途态保持;非中断收尾 = 本轮定局,在途态无产出即清。
  */
 export const AGENT_RUN_INACTIVE_EVENT = "agent:run-inactive";
+
+/** run 收尾广播载荷(runtime-adapter 派发;缺 detail 的旧事件按非中断计) */
+export interface AgentRunInactiveDetail {
+  interrupted: boolean;
+}
+
+/** 安全读取收尾广播载荷(CustomEvent detail 形态不限;非对象/缺键按非中断计) */
+export function readRunInactiveDetail(detail: unknown): AgentRunInactiveDetail {
+  if (typeof detail === "object" && detail !== null && "interrupted" in detail) {
+    return { interrupted: (detail as { interrupted?: unknown }).interrupted === true };
+  }
+  return { interrupted: false };
+}
 
 /** 唤起载荷(ask.send: true=直发,false=仅预填输入框) */
 export interface AgentOpenAsk {

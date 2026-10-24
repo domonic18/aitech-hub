@@ -9,6 +9,7 @@ import {
   buildAskUserResumeCommand,
   normalizeAskUserOptions,
   parseAgentAskUserInterrupt,
+  updatesHasInterrupt,
 } from "./hitl";
 
 describe("parseAgentAskUserInterrupt", () => {
@@ -111,5 +112,22 @@ describe("normalizeAskUserOptions(M31 弱模型漂移归一)", () => {
     const long = "字".repeat(120);
     const out = normalizeAskUserOptions([` ${long} `, "乙", "丙", "丁", "戊"]);
     expect(out).toEqual(["字".repeat(100), "乙", "丙", "丁"]);
+  });
+});
+
+describe("updatesHasInterrupt(run 收尾中断判定)", () => {
+  it("__interrupt__ 键在场即中断(langgraph updates 帧实证形态)", () => {
+    expect(
+      updatesHasInterrupt({ __interrupt__: [{ value: { kind: "ask_user", question: "a" } }] }),
+    ).toBe(true);
+    expect(updatesHasInterrupt({ node1: { todos: [] }, __interrupt__: [] })).toBe(true);
+  });
+
+  it("普通节点增量/消息批/非对象安全判 false", () => {
+    expect(updatesHasInterrupt({ node1: { messages: [] } })).toBe(false);
+    expect(updatesHasInterrupt({})).toBe(false);
+    expect(updatesHasInterrupt(null)).toBe(false);
+    expect(updatesHasInterrupt("updates")).toBe(false);
+    expect(updatesHasInterrupt(undefined)).toBe(false);
   });
 });

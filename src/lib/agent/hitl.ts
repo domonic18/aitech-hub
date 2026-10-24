@@ -65,6 +65,16 @@ export function buildAskUserResumeCommand(resume: AgentAskUserResume): AgentAskU
 }
 
 /**
+ * updates 帧是否携带中断(langgraph streamMode updates:图挂起时以 __interrupt__
+ * 键入增量,loop._emit 实证)。run 收尾广播据此区分「等用户回答」与「真收尾」
+ * ——前者在途态保持(用户作答后续 run 仍计本轮),后者本轮定局,生成在途态
+ * 据此判定立即清态而非干等超时。
+ */
+export function updatesHasInterrupt(updates: unknown): boolean {
+  return typeof updates === "object" && updates !== null && "__interrupt__" in updates;
+}
+
+/**
  * options 入参归一化(M31 验收反馈 2026-10-15:MiniMax 三连败 checkpoint 实证
  * ——options 反复发成对象数组 [{content:"…"}],严 schema 硬拒后模型无自纠能力,
  * 弃问降级自动出图)。模型侧工具 spec 保持纯 string[] 不变,归一在执行前做,

@@ -55,7 +55,7 @@ export function maskUrlSecrets(raw: string): string {
   return changed ? u.toString() : raw;
 }
 
-export type ChannelAdminErrorCode = "not_found" | "name_taken" | "disabled";
+export type ChannelAdminErrorCode = "not_found" | "name_taken" | "disabled" | "in_use";
 
 /** 业务错误 → 路由按码映射 HTTP 状态(同 UserAdminError 模式) */
 export class ChannelAdminError extends Error {
@@ -195,6 +195,22 @@ export async function setChannelEnabled(id: number, enabled: boolean): Promise<v
   if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
   await prisma.crawlSource.update({ where: { id }, data: { enabled } });
   logger.info({ event: "channel.enabled_changed", channelId: id, enabled });
+}
+
+/** 删除渠道(2026-10-24 验收:台账补删除入口):文字渠道可删,已采集条目经
+ *  FK(onDelete: Cascade)一并清除;视频平台行是博主挂载载体
+ *  (SocialAccount.platformRow Restrict)不可删,显式拒绝而非撞 P2003。 */
+export async function deleteChannel(id: number): Promise<void> {
+  const src = await prisma.crawlSource.findUnique({
+    where: { id },
+    select: { id: true, name: true, type: true },
+  });
+  if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
+  if (src.type === CRAWL_SOURCE_TYPE_SOCIAL_VIDEO) {
+    throw new ChannelAdminError("in_use", "视频平台行承载博主挂载,不可删除,可停用");
+  }
+  await prisma.crawlSource.delete({ where: { id } });
+  logger.info({ event: "channel.deleted", channelId: id, name: src.name });
 }
 
 /** 手动触发一轮采集(队列入队,复用 crawl job;停用渠道拒绝) */

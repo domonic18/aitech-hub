@@ -17,7 +17,8 @@ import type {
   LangGraphStreamCallback,
 } from "@assistant-ui/react-langgraph";
 
-import { AGENT_RUN_INACTIVE_EVENT } from "@/lib/agent/agent-host";
+import { AGENT_RUN_INACTIVE_EVENT, type AgentRunInactiveDetail } from "@/lib/agent/agent-host";
+import { updatesHasInterrupt } from "@/lib/agent/hitl";
 import { createSseEventReader } from "@/lib/agent/sse";
 import { extractTodos, extractTodosFromValues, type AgentTodo } from "@/lib/agent/todos";
 
@@ -122,6 +123,11 @@ export interface AgentRuntimeAdapter {
 export function createAgentRuntimeAdapter(
   options: AgentRuntimeAdapterOptions = {},
 ): AgentRuntimeAdapter {
+  // 本 runtime 最近一次 run 是否以中断收尾(ask_user 挂起):onUpdates 见
+  // __interrupt__ 即置位,stream 收尾随 run-inactive 广播带给消费方(创作
+  // 中心生成态据此区分「等用户回答」与「真收尾」);run 串行,单槽即够
+  let lastRunInterrupted = false;
+
   // 后端会话即 remote 线程。InMemory adapter 不认识列表外的线程 id,切换历史
   // 会话时 fetch 会拒绝且被 runtime 静默吞掉——覆写 initialize(首条消息真实
   // create,延迟建线程省配额)与 fetch(历史会话直接采用传入 id)。
@@ -172,6 +178,7 @@ export function createAgentRuntimeAdapter(
     },
     stream: async function* (messages, config) {
       options.onRunActiveChange?.(true);
+      lastRunInterrupted = false; // 每 run 重置,中断态只描述最近一次 run
       try {
         const { externalId } = await config.initialize();
         if (!externalId) throw new Error("会话尚未初始化");
@@ -241,14 +248,20 @@ export function createAgentRuntimeAdapter(
         // M44:run 收尾全局广播(创作中心生成态据此即时比对落库结果,免等
         // 下一跳轮询;无消费方时零开销。轮询仍是兜底路径——run 与页面不同窗
         // 或广播先于监听的时序竞态由 5s 轮询覆盖)。node 单测环境无 window,
-        // 与 lib 侧 sessionStorage 同式守卫
+        // 与 lib 侧 sessionStorage 同式守卫。detail.interrupted 供消费方区分
+        // ask_user 挂起(在途态保持,等用户作答续跑)与真收尾(本轮定局)
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent(AGENT_RUN_INACTIVE_EVENT));
+          window.dispatchEvent(
+            new CustomEvent(AGENT_RUN_INACTIVE_EVENT, {
+              detail: { interrupted: lastRunInterrupted } satisfies AgentRunInactiveDetail,
+            }),
+          );
         }
       }
     },
     eventHandlers: {
       onUpdates: (updates: unknown) => {
+        if (updatesHasInterrupt(updates)) lastRunInterrupted = true;
         const todos = extractTodos(updates);
         if (todos.length > 0) options.onTodos?.(todos);
       },
