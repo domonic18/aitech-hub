@@ -136,8 +136,10 @@ export default async function RunJobs({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
+      <div className="overflow-x-auto rounded-md border border-line bg-panel">
+        {/* 短列全部 nowrap + 表格 min-w:窄视口不再把「排程」等挤成竖排折行,
+            容器横向滚动兜底(2026-10-24 验收反馈问题二) */}
+        <table className="w-full min-w-[760px] text-left text-[13px]">
           <thead>
             <tr className="border-b border-line bg-panel-2 text-[11px] text-text-3">
               <th className="px-4 py-2 font-normal">任务</th>
@@ -154,10 +156,12 @@ export default async function RunJobs({
               return (
                 <tr key={r.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
                   <td className="px-4 py-2 align-top">
-                    <div className="text-text-1">{jobRunLabel(r.jobKey)}</div>
-                    <div className="font-mono text-[10px] text-text-3">{r.jobKey}</div>
+                    <div className="whitespace-nowrap text-text-1">{jobRunLabel(r.jobKey)}</div>
+                    <div className="whitespace-nowrap font-mono text-[10px] text-text-3">
+                      {r.jobKey}
+                    </div>
                   </td>
-                  <td className="w-12 px-3 py-2 align-top">
+                  <td className="whitespace-nowrap px-3 py-2 align-top">
                     {r.trigger === "manual" ? (
                       <span className="rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] text-accent">
                         手动
@@ -166,20 +170,20 @@ export default async function RunJobs({
                       <span className="text-[11px] text-text-3">排程</span>
                     )}
                   </td>
-                  <td className="w-16 px-3 py-2 align-top">
+                  <td className="whitespace-nowrap px-3 py-2 align-top">
                     <span
                       className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap ${STATUS_CLS[r.status] ?? ""}`}
                     >
                       {STATUS_LABELS[r.status] ?? r.status}
                     </span>
                   </td>
-                  <td className="w-28 px-3 py-2 text-right align-top font-mono text-[11px] text-text-2">
+                  <td className="whitespace-nowrap px-3 py-2 text-right align-top font-mono text-[11px] text-text-2">
                     {inserted !== null && (
                       <b className="mr-1 font-medium text-text-1">{inserted}</b>
                     )}
                     {fmtDuration(r.durationMs)}
                   </td>
-                  <td className="w-28 px-3 py-2 align-top font-mono text-[11px] whitespace-nowrap text-text-3">
+                  <td className="whitespace-nowrap px-3 py-2 align-top font-mono text-[11px] text-text-3">
                     {fmtTime(r.startedAt)}
                   </td>
                   <td className="px-4 py-2 align-top">
