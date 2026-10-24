@@ -26,6 +26,17 @@ export function isUploadsPath(p: string): boolean {
   return p.startsWith(SITE_UPLOADS_PREFIX);
 }
 
+/** 正则转义(站内锚点簇拼装用) */
+export function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** uploads 路径正则体(转义前缀 + 白名单字符类,不含 ^$ 锚点):站内媒体锚点
+ * 簇的正则素材单源(M47 批A' 收敛——此前 sanitize/media-inline/answer-markdown
+ * /clean-html 四文件手嵌同一前缀+字符类,前缀调整只改本文件)。字符类不含
+ * %(percent-encoded):清洗/校验域按未编码路径口径,放宽编码形态也只动这里 */
+export const UPLOADS_PATH_RE_BODY = `${escapeRegExp(SITE_UPLOADS_PREFIX)}[A-Za-z0-9/._-]+`;
+
 /**
  * 正文 markdown 里引用了但不属于站内媒体的图片路径(原样返回,供 agent 写侧
  * 工具防幻觉校验:模型可能编造外链图片,站内渲染与公众号同步都会裂图)。

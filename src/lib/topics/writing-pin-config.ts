@@ -8,7 +8,7 @@
  * - 比例键与 illustrate 生图档位同域(PIN_ASPECTS = ILLUSTRATE_ASPECT_SIZES
  *   的键);裁剪键复用公众号 newspic 三档(PIN_CROP_SPECS),首图即封面。
  */
-import { isUploadsPath } from "../media/refs";
+import { escapeRegExp, isUploadsPath } from "../media/refs";
 import { PIN_CROP_SPECS, PIN_IMAGES_MAX, type PinCropSpec } from "../pins/constants";
 import { SUPPLEMENT_HEADER } from "./writing-config";
 
@@ -40,15 +40,11 @@ export const DEFAULT_PIN_WRITING_SELECTION: PinWritingSelection = {
   reference: "",
 };
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /** 条款行解析锚点:比例/裁剪档从常量派生(档位字面量含 `.` 先转义)。曾在
  * 正则里硬编码 `2\.35_9`,与 #146 勘误后的 `2.35_1` 脱节 → 合法配置解析回落
  * 缺省且画面行坠入补充块;派生后新增档位只改常量一处,compose/parse 永不漂移 */
-const ASPECT_ALT = PIN_ASPECTS.map(escapeRe).join("|");
-const CROP_ALT = PIN_CROP_SPECS.map(escapeRe).join("|");
+const ASPECT_ALT = PIN_ASPECTS.map(escapeRegExp).join("|");
+const CROP_ALT = PIN_CROP_SPECS.map(escapeRegExp).join("|");
 const FRAME_RE = new RegExp(
   `^画面:共 (\\d{1,2}) 张,比例 (${ASPECT_ALT}),首图裁剪 (${CROP_ALT})。$`,
 );

@@ -186,7 +186,7 @@ describe("常量健全性", () => {
 
   it("比例/裁剪展示名全覆盖(UI 选项与契约字面量同源)", () => {
     for (const a of PIN_ASPECTS) expect(PIN_ASPECT_LABEL[a].length).toBeGreaterThan(0);
-    for (const c of ["1_1", "16_9", "2.35_1"] as const) {
+    for (const c of PIN_CROP_SPECS) {
       expect(PIN_CROP_LABEL[c].length).toBeGreaterThan(0);
     }
   });

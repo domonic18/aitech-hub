@@ -6,6 +6,7 @@
  * 预算:渲染端硬上限 HTML 400k 字符/请求体 6MB,单图 >220KB 走 sharp 压缩
  * (1800px=900 CSS×scale2 满宽;GIF 压后变静帧,可接受),总量 >360k 字符拒渲。
  */
+import { UPLOADS_PATH_RE_BODY } from "../media/refs";
 import { MEDIA_MIME_BY_EXT, mediaStorage, uploadsUrlToRel } from "../media/storage";
 
 /** 单图内联原始字节上限(≈300k base64 字符),超出走 sharp 压缩 */
@@ -16,8 +17,12 @@ const INLINE_TOTAL_MAX_CHARS = 360_000;
 const RESIZE_MAX_EDGE = 1800;
 const JPEG_QUALITY = 82;
 
-/** src="…" 与 css url(…) 两形态(引号必带/可省同旧 rewrite 口径);路径字符集同 sanitize 白名单 */
-const MEDIA_REF_RE = /(src\s*=\s*["']|url\(\s*["']?)(\/wp-content\/uploads\/[A-Za-z0-9/._-]+)/g;
+/** src="…" 与 css url(…) 两形态(引号必带/可省同旧 rewrite 口径);路径字符集
+ * 同 sanitize 白名单,正则体自 media/refs 单源派生 */
+const MEDIA_REF_RE = new RegExp(
+  String.raw`(src\s*=\s*["']|url\(\s*["']?)(${UPLOADS_PATH_RE_BODY})`,
+  "g",
+);
 
 const extOf = (p: string): string => {
   const fileName = p.slice(p.lastIndexOf("/") + 1);
