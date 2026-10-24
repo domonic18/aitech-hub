@@ -5,18 +5,14 @@
  */
 import Link from "next/link";
 
+import { MEDIUM_LABELS, SOURCE_LABELS, type InsightMediumVocab } from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
 
-export const SOURCE_LABELS: Record<InsightSource, string> = {
-  "internal-search": "站内搜索",
-  "internal-agent": "助手问句",
-  "internal-comment": "文章评论",
-  "internal-feedback": "站点反馈",
-  "telegram-ai": "电报AI解读",
-  "hot-baidu": "百度热搜",
-  "hot-zhihu": "知乎热榜",
-  "hot-bilibili": "B站热搜",
-};
+// 展示名与介质标签下沉 domain constants 单源(hot-source 台账同用),此处转出口
+export { MEDIUM_LABELS, SOURCE_LABELS };
+
+/** 洞察窗口 chips 白名单(总览与簇详情两页共用解析,此前两页各自手写) */
+export const WINDOWS = [7, 30, 90] as const;
 
 /** 源→图表色(趋势堆叠柱/占比条共用;令牌色 dark/light 双主题自适应) */
 export const SOURCE_COLORS: Record<InsightSource, string> = {
@@ -28,14 +24,6 @@ export const SOURCE_COLORS: Record<InsightSource, string> = {
   "hot-baidu": "bg-blue",
   "hot-zhihu": "bg-green",
   "hot-bilibili": "bg-red",
-};
-
-export const MEDIUM_LABELS: Record<string, string> = {
-  money: "钱",
-  time: "时间",
-  voice: "声音",
-  search: "搜索",
-  "ai-record": "AI记录",
 };
 
 export const COVERAGE_LABELS: Record<string, string> = {
@@ -106,7 +94,7 @@ export function MediaBadges({ media }: { media: string[] }): React.ReactElement 
     <span className="inline-flex flex-wrap gap-1">
       {media.map((m) => (
         <span key={m} className={`${badge} bg-panel-2 text-text-2`} title={`留痕介质:${m}`}>
-          {MEDIUM_LABELS[m] ?? m}
+          {MEDIUM_LABELS[m as InsightMediumVocab] ?? m}
         </span>
       ))}
       {media.length >= 2 && (

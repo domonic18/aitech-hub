@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { PIN_CROP_SPECS } from "../pins/constants";
 import { PIN_ASPECTS, PIN_ASPECT_LABEL, PIN_CROP_LABEL } from "./writing-pin-config";
 import {
   clampPinCount,
@@ -61,6 +62,19 @@ describe("parsePinWritingText", () => {
     const parsed = parsePinWritingText(text);
     expect(parsed.custom).toBe(false);
     expect(composePinWritingText(parsed.selection, parsed.supplement)).toBe(text);
+  });
+
+  it("全档位 × 全比例往返幂等(契约正则与常量同源,防档位漂移;2.35_1 曾被正则旧值 2.35_9 拒收)", () => {
+    for (const aspect of PIN_ASPECTS) {
+      for (const crop of PIN_CROP_SPECS) {
+        const text = composePinWritingText({ ...DEFAULT_PIN_WRITING_SELECTION, aspect, crop });
+        const parsed = parsePinWritingText(text);
+        expect(parsed.custom).toBe(false);
+        expect(parsed.selection.aspect).toBe(aspect);
+        expect(parsed.selection.crop).toBe(crop);
+        expect(composePinWritingText(parsed.selection, parsed.supplement)).toBe(text);
+      }
+    }
   });
 
   it("null/空串回落缺省,无补充", () => {
@@ -172,7 +186,7 @@ describe("常量健全性", () => {
 
   it("比例/裁剪展示名全覆盖(UI 选项与契约字面量同源)", () => {
     for (const a of PIN_ASPECTS) expect(PIN_ASPECT_LABEL[a].length).toBeGreaterThan(0);
-    for (const c of ["1_1", "16_9", "2.35_1"] as const) {
+    for (const c of PIN_CROP_SPECS) {
       expect(PIN_CROP_LABEL[c].length).toBeGreaterThan(0);
     }
   });

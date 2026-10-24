@@ -11,8 +11,12 @@ import { ILLUSTRATION_JOB_DECOMPOSE, QUEUE_ILLUSTRATION_STUDIO, getQueue } from 
 
 import { AiAdminError } from "./errors";
 
+/** 编辑版 origin(三编辑回路;versions 路由 zod 与 labels.MODE_TO_ORIGIN 单源) */
+export const EDIT_ORIGINS = ["text_edit", "erase", "redraw"] as const;
+export type IllustrationEditOrigin = (typeof EDIT_ORIGINS)[number];
+
 /** 版本产生方式(合法值应用层 Zod 管控;original=根版本,其余=三编辑回路) */
-export const ILLUSTRATION_VERSION_ORIGINS = ["original", "text_edit", "erase", "redraw"] as const;
+export const ILLUSTRATION_VERSION_ORIGINS = ["original", ...EDIT_ORIGINS] as const;
 export type IllustrationVersionOrigin = (typeof ILLUSTRATION_VERSION_ORIGINS)[number];
 
 /** 登记口(F13/F14 板面「来源」):agent=会话生图,studio=工坊直出;历史行 null 不显 */

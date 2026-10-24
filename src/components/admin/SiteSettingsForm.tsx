@@ -22,6 +22,7 @@ import {
   SettingsSection,
 } from "@/components/admin/settings-controls";
 import {
+  AGENT_LIMIT_KINDS,
   TOKENS_MAX,
   TOKENS_MIN,
   TOOL_CALLS_MAX,
@@ -252,7 +253,7 @@ export default function SiteSettingsForm({
         description="站内 AI 助手(搜索/专题生产)的单轮护栏,按身份分档;保存后新会话即时生效。递归上限按工具调用次数 2.5 倍自动推导,不单独设置。"
       >
         <SettingsGrid cols={3}>
-          {(["guest", "user", "admin"] as const).map((kind) => (
+          {AGENT_LIMIT_KINDS.map((kind) => (
             <SettingsField
               key={`${kind}-toolcalls`}
               label={`${AGENT_KIND_META[kind].label} · 工具调用次数`}
@@ -272,7 +273,7 @@ export default function SiteSettingsForm({
               />
             </SettingsField>
           ))}
-          {(["guest", "user", "admin"] as const).map((kind) => (
+          {AGENT_LIMIT_KINDS.map((kind) => (
             <SettingsField
               key={`${kind}-tokens`}
               label={`${AGENT_KIND_META[kind].label} · tokens 上限`}

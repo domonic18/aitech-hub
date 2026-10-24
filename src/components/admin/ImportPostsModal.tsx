@@ -23,12 +23,10 @@ import {
   replaceImageRefs,
 } from "@/lib/media/import-md";
 import { runImportTransfer } from "@/lib/media/import-transfer-client";
-import { MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { IMAGE_ACCEPT, IMAGE_EXT_RE, MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
 
 const MD_RE = /\.(md|markdown)$/i;
-const IMAGE_RE = /\.(jpe?g|png|webp|gif)$/i;
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export default function ImportPostsModal({ onClose }: { onClose: () => void }): React.ReactElement {
   const router = useRouter();
@@ -76,7 +74,7 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
 
   /** 图片选择:按文件名去重追加,不清空已有选择(跨目录多次补选) */
   function addImages(list: Iterable<File>): void {
-    const incoming = [...list].filter((f) => !MD_RE.test(f.name) && IMAGE_RE.test(f.name));
+    const incoming = [...list].filter((f) => !MD_RE.test(f.name) && IMAGE_EXT_RE.test(f.name));
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => f.name));
       return [...prev, ...incoming.filter((f) => !seen.has(f.name))];
@@ -89,7 +87,7 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
    *  常分处不同层级目录)。目录既无图片也无 md 时给出提示。 */
   function addDirectory(list: FileList): void {
     const all = [...list];
-    const imgs = all.filter((f) => !MD_RE.test(f.name) && IMAGE_RE.test(f.name));
+    const imgs = all.filter((f) => !MD_RE.test(f.name) && IMAGE_EXT_RE.test(f.name));
     if (imgs.length > 0) addImages(imgs);
     const md = mdName ? undefined : all.find((f) => MD_RE.test(f.name));
     if (md) applyMd(md);

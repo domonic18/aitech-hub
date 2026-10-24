@@ -9,6 +9,8 @@
  */
 import * as cheerio from "cheerio";
 
+import { SITE_UPLOADS_PREFIX, UPLOADS_PATH_RE_BODY, escapeRegExp } from "../media/refs";
+
 import { FONT_STACK } from "./templates/shell";
 
 export const CARD_HTML_MAX_CHARS = 400_000; // 与服务侧 HTML_MAX_CHARS 对齐
@@ -95,11 +97,16 @@ const DROP_TAGS = new Set([
   "noscript",
 ]);
 
-/** img src 白名单:data-URI 与站内媒体路径(无 ..、无反斜杠、无编码字符) */
-const IMG_SRC_SITE = /^\/wp-content\/uploads\/[A-Za-z0-9/._-]+$/;
+/** img src 白名单:data-URI 与站内媒体路径(无 ..、无反斜杠、无编码字符;
+ * 站内正则体自 media/refs 单源派生,前缀或字符类调整只改 refs)。IMG_SRC_DATA
+ * 的 mime 备选与 data-uri-image.MIME_EXT 是有意的不同域:清洗侧历史口径不含 avif */
+const IMG_SRC_SITE = new RegExp(`^${UPLOADS_PATH_RE_BODY}$`);
 const IMG_SRC_DATA = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 /** CSS 外联 url():除 data: 与站内路径外全部命中(粗粒度即可,服务侧硬闸兜底) */
-const CSS_EXTERNAL_URL = /url\(\s*['"]?(?!data:|\/wp-content\/uploads\/)[^)'"\s]*['"]?\s*\)/gi;
+const CSS_EXTERNAL_URL = new RegExp(
+  String.raw`url\(\s*['"]?(?!data:|${escapeRegExp(SITE_UPLOADS_PREFIX)})[^)'"\s]*['"]?\s*\)`,
+  "gi",
+);
 
 /** /g 正则的 test() 会推进 lastIndex——统一用 match 判定,避免跨调用串状态 */
 function hasExternalCssUrl(css: string): boolean {

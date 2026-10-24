@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import { IMAGE_ACCEPT } from "@/lib/media/media-schema";
 
 /** 与 lib/topics/writing-samples 的 WritingSampleDto 同形(本地声明,避免客户端引服务模块) */
 interface SampleRow {
@@ -28,8 +29,6 @@ interface SampleRow {
 function envelopeError(j: { code: number; message: string }, status: number): Error {
   return new Error(j.message || `请求失败(${status})`);
 }
-
-const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export default function SampleLibraryModal({
   open,
@@ -306,7 +305,7 @@ export default function SampleLibraryModal({
       <input
         ref={fileRef}
         type="file"
-        accept={ACCEPT}
+        accept={IMAGE_ACCEPT}
         aria-label="添加本地图入库"
         className="hidden"
         onChange={(e) => {

@@ -15,6 +15,20 @@ import { hasValidPurchase } from "@/lib/pay/entitlement";
 
 export { handleNotify, markOrderPaidAndGrant } from "./order-notify";
 
+/** 订单状态词表单源(M47 批A':用户中心/后台订单页曾整抄过滤枚举+中文词表,
+ * 且后台 chip 裸英文与前台中文分叉)。值为 pay_order.status 实际态值;
+ * 过滤器=态值+「全部」入口。 */
+export const PAY_ORDER_STATUSES = ["pending", "paid", "closed", "refunded"] as const;
+export type PayOrderStatus = (typeof PAY_ORDER_STATUSES)[number];
+export const PAY_ORDER_FILTERS = ["all", ...PAY_ORDER_STATUSES] as const;
+export type PayOrderFilter = (typeof PAY_ORDER_FILTERS)[number];
+export const PAY_ORDER_STATUS_LABELS: Record<PayOrderStatus, string> = {
+  pending: "待支付",
+  paid: "已支付",
+  closed: "已关闭",
+  refunded: "已退款",
+};
+
 /** 业务错误 → Handler 按码映射 HTTP 状态(循 PostAdminError 惯例) */
 export type PayErrorCode =
   "not_found" | "invalid_body" | "not_purchasable" | "already_owned" | "gateway_off";

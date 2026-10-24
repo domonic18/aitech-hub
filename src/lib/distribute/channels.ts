@@ -17,6 +17,21 @@ export const PUBLISH_CHANNEL_STATUSES = [
   PUBLISH_STATUS_FAILED,
 ] as const;
 
+/** 公众号同步状态展示词单源(M47 批A':行内按钮/产出卡/贴图详情/配置卡五处
+ * 曾各自表述且已漂移——草箱/草稿箱、同步失败/失败;统一「草稿箱」全称口径) */
+export const PUBLISH_STATUS_LABELS: Record<string, string> = {
+  pending: "待同步",
+  synced: "已同步草稿箱",
+  failed: "同步失败",
+};
+
+/** 同步动作按钮文案(pending=进行态;已同步给重试话术,其余/未同步过 null
+ * 首次同步;两处按钮曾逐字重复三元链) */
+export function wechatSyncActionLabel(status: string | null): string {
+  if (status === PUBLISH_STATUS_PENDING) return "同步中";
+  return status === PUBLISH_STATUS_SYNCED ? "重新同步" : "同步公众号";
+}
+
 /** 公众号图文标题上限(字;弹窗按码点预校验,精确计数口径待官方核验) */
 export const WECHAT_TITLE_MAX = 64;
 /** 公众号图文摘要上限(字;超限接口报错,弹窗拦截 + payload clamp 双保险) */

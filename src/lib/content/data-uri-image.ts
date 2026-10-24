@@ -11,8 +11,7 @@ export interface Base64Image {
   ext: string;
 }
 
-const DATA_URI_RE = /data:image\/(png|jpe?g|gif|webp|avif);base64,([A-Za-z0-9+/=]+)/g;
-
+/** data:URI mime → 落盘扩展名(键同时派生 DATA_URI_RE 备选,扩 mime 只改本表) */
 const MIME_EXT: Record<string, string> = {
   png: "png",
   jpeg: "jpg",
@@ -21,6 +20,11 @@ const MIME_EXT: Record<string, string> = {
   webp: "webp",
   avif: "avif",
 };
+
+const DATA_URI_RE = new RegExp(
+  `data:image/(${Object.keys(MIME_EXT).join("|")});base64,([A-Za-z0-9+/=]+)`,
+  "g",
+);
 
 /**
  * 把 data: URI 图片替换为 replacer 返回的 URL(迁移:落盘为新 URL;

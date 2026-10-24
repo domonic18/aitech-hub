@@ -6,6 +6,7 @@
  * 数据 getLinkedDocDetail。
  */
 import Link from "next/link";
+import { PUBLISH_STATUS_LABELS } from "@/lib/distribute/channels";
 
 export interface LinkedDocDetail {
   title: string;
@@ -20,9 +21,9 @@ const DOC_STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 const WECHAT_STATUS: Record<string, { label: string; cls: string }> = {
-  synced: { label: "已同步草箱", cls: "text-green-hi" },
-  failed: { label: "同步失败", cls: "text-red" },
-  pending: { label: "待同步", cls: "text-text-3" },
+  synced: { label: PUBLISH_STATUS_LABELS.synced, cls: "text-green-hi" },
+  failed: { label: PUBLISH_STATUS_LABELS.failed, cls: "text-red" },
+  pending: { label: PUBLISH_STATUS_LABELS.pending, cls: "text-text-3" },
 };
 
 export default function ArticleOutputCard({

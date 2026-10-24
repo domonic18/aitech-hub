@@ -12,6 +12,7 @@ import Link from "next/link";
 import type { PinDetailDto, PinImageDto } from "@/lib/pins/dto";
 import type { PinStatus } from "@/lib/pins/constants";
 import { formatCnDateTime } from "@/lib/datetime";
+import { PUBLISH_STATUS_LABELS } from "@/lib/distribute/channels";
 
 import { callPinApi } from "./api";
 import { PIN_BADGE_CLS, PIN_BADGE_LABEL } from "./status";
@@ -197,7 +198,7 @@ export default function PinDetailDrawer({
                 ok={wechat?.status === "synced"}
                 note={
                   wechat
-                    ? `${wechat.status === "synced" ? "已同步草稿箱" : `状态 ${wechat.status}`}${
+                    ? `${PUBLISH_STATUS_LABELS[wechat.status] ?? `状态 ${wechat.status}`}${
                         wechat.lastError ? ` · ${wechat.lastError}` : ""
                       }${wechat.syncedAt ? ` · ${formatCnDateTime(new Date(wechat.syncedAt))}` : ""}`
                     : "未同步 · 验收通过后执行「同步草稿箱」"

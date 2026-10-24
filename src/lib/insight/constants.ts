@@ -93,3 +93,38 @@ export const SENTIMENT_LABELS: Record<InsightSentiment, string> = {
   negative: "负面",
   mixed: "争议",
 };
+
+// ── 读侧边界与展示名(M47 批A':白名单/取数边界/展示词此前散落裸写)────────
+
+/** 信号明细取数边界(缺省/上限;listInsightSignals 与总览页调用侧同源) */
+export const SIGNAL_TAKE_DEFAULT = 50;
+export const SIGNAL_TAKE_MAX = 200;
+/** 簇列表单次上限(listInsightClusters;行内缺省 CLUSTER_ROW_TAKE=20) */
+export const CLUSTER_TAKE_MAX = 50;
+
+/** 洞察源展示名单源(页签/合并榜 chip/热榜台账/蜘蛛源台账共用;曾 shared.tsx
+ * 与 hot-source.ts 两份手抄) */
+export const SOURCE_LABELS: Record<InsightSource, string> = {
+  "internal-search": "站内搜索",
+  "internal-agent": "助手问句",
+  "internal-comment": "文章评论",
+  "internal-feedback": "站点反馈",
+  "telegram-ai": "电报AI解读",
+  "hot-baidu": "百度热搜",
+  "hot-zhihu": "知乎热榜",
+  "hot-bilibili": "B站热搜",
+};
+
+/** 簇介质词表(方案 §2 留痕介质五值;unionMedia 白名单与徽章标签同源;比当前
+ * INSIGHT_SOURCE_MEDIUM 值域宽——money/time 为留痕扩展位,不随源映射收窄) */
+export const INSIGHT_MEDIA_VOCAB = ["money", "time", "voice", "search", "ai-record"] as const;
+export type InsightMediumVocab = (typeof INSIGHT_MEDIA_VOCAB)[number];
+
+/** 介质中文徽章(洞察页与蜘蛛台账共用;曾与词表两处平行) */
+export const MEDIUM_LABELS: Record<InsightMediumVocab, string> = {
+  money: "钱",
+  time: "时间",
+  voice: "声音",
+  search: "搜索",
+  "ai-record": "AI记录",
+};

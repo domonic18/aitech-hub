@@ -19,6 +19,7 @@ import {
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  ILLUSTRATION_JOB_EDIT,
   ILLUSTRATION_JOB_GENERATE,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
@@ -66,6 +67,7 @@ import {
   illustrationDecomposeJob,
   type DecomposeJobData,
 } from "../src/lib/ai/illustration-decompose";
+import { editIllustration, type EditIllustrationInput } from "../src/lib/ai/illustration-edit";
 import {
   illustrationGenerateJob,
   type IllustrationGenerateJobData,
@@ -336,12 +338,15 @@ export const PROCESSORS: Record<string, Processor> = {
     }
     throw new Error(`未知 insight job:${job.name}`);
   },
-  // 配图工坊(M40 批 B 拆层 / M41 直出生成):手动触发,单 job ~15-75s 官方
-  // 调用 + 转存落库;失败落组行/仅 job_run 台账(attempts=1 生图计费不自动重试,
-  // 入队侧钉)
+  // 配图工坊(M40 批 B 拆层 / M41 直出生成 / M47 批 A 三回路编辑):手动触发,
+  // 单 job ~15-75s 官方调用 + 转存落库;失败落组行/仅 job_run 台账(attempts=1
+  // 生图计费不自动重试,入队侧钉)
   [QUEUE_ILLUSTRATION_STUDIO]: (job) => {
     if (job.name === ILLUSTRATION_JOB_GENERATE) {
       return illustrationGenerateJob(job.data as IllustrationGenerateJobData);
+    }
+    if (job.name === ILLUSTRATION_JOB_EDIT) {
+      return editIllustration(job.data as EditIllustrationInput);
     }
     return illustrationDecomposeJob(job.data as DecomposeJobData);
   },

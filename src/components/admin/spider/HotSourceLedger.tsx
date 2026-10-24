@@ -5,6 +5,7 @@
  */
 import StatusSwitch from "@/components/admin/StatusSwitch";
 import { MEDIUM_LABELS } from "@/components/admin/insight/shared";
+import type { InsightMediumVocab } from "@/lib/insight/constants";
 import type { HotSourceRow } from "@/lib/insight/hot-source";
 
 function hhmm(at: Date | null): string {
@@ -54,7 +55,9 @@ export default function HotSourceLedger({ rows }: { rows: HotSourceRow[] }): Rea
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2.5 text-text-3">{MEDIUM_LABELS[r.medium] ?? r.medium}</td>
+                <td className="px-3 py-2.5 text-text-3">
+                  {MEDIUM_LABELS[r.medium as InsightMediumVocab] ?? r.medium}
+                </td>
                 <td className="px-3 py-2.5">
                   <StatusSwitch
                     endpoint={`/api/insight/hot-sources/${r.source}/status`}

@@ -32,7 +32,12 @@ import {
   usePostEditorSave,
 } from "@/components/admin/usePostEditorSave";
 import EditorWechatSyncButton from "@/components/admin/distribute/EditorWechatSyncButton";
-import { POST_LIMITS, type ContentOrigin, type PostDisplayState } from "@/lib/content/post-schema";
+import {
+  POST_DISPLAY_STATE_LABEL,
+  POST_LIMITS,
+  type ContentOrigin,
+  type PostDisplayState,
+} from "@/lib/content/post-schema";
 import { asciiSlugFromTitle } from "@/lib/content/post-path";
 
 import { INPUT } from "./editor-controls";
@@ -61,12 +66,6 @@ export interface EditorPost {
   /** 乐观锁基准(M27 批①):加载时刻 updatedAt ISO,自动保存链随写更新 */
   updatedAt: string;
 }
-
-const STATUS_LABEL: Record<PostDisplayState, string> = {
-  published: "已发布",
-  draft: "草稿",
-  unpublished: "已下架",
-};
 
 const BTN_SECONDARY =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-panel px-3 py-2 text-sm text-text-1 hover:border-line-hover disabled:cursor-not-allowed disabled:opacity-60";
@@ -267,7 +266,7 @@ export default function PostEditor({
           ← 返回列表
         </Link>
         <span className="rounded-sm bg-panel-2 px-2 py-0.5 font-mono text-[11px] text-text-3">
-          {STATUS_LABEL[status]}
+          {POST_DISPLAY_STATE_LABEL[status]}
           {mode === "create" ? "(新)" : ""}
         </span>
         {/* 右侧动作分三组(2026-10-20 问题三;F15 轻对齐:封面 AI 提入头部协作组)

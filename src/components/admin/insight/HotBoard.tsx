@@ -12,13 +12,14 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { HOTLIST_MAX_ITEMS } from "@/lib/insight/constants";
 import type { InsightHotItem, InsightHotSourceBoard } from "@/lib/insight/hotboard";
 
 import { shortSource } from "./shared";
 
-/** 每渠道展示条数:默认 15,展开 50(榜单上游 HOTLIST_MAX_ITEMS=50 截断) */
+/** 每渠道展示条数:默认 15,展开=上游截断上限(与 ingest HOTLIST_MAX_ITEMS 同源) */
 const LIMIT_DEFAULT = 15;
-const LIMIT_EXPANDED = 50;
+const LIMIT_EXPANDED = HOTLIST_MAX_ITEMS;
 
 /** 热度口径各站不同,只做千分位/万位缩写展示(不跨源可比) */
 function formatHeat(heat: number): string {

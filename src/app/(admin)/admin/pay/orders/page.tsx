@@ -8,20 +8,21 @@ import AdminPagination from "@/components/admin/AdminPagination";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { listOrdersAdmin, PAY_ORDERS_PAGE_SIZE } from "@/lib/pay/admin";
+import {
+  PAY_ORDER_FILTERS,
+  PAY_ORDER_STATUS_LABELS,
+  type PayOrderFilter,
+  type PayOrderStatus,
+} from "@/lib/pay/order-service";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
 import AdminManualGrantCard from "@/components/pay/AdminManualGrantCard";
 
 export const dynamic = "force-dynamic";
 
-const ORDER_STATUSES = ["all", "pending", "paid", "closed", "refunded"] as const;
-type OrderStatusFilter = (typeof ORDER_STATUSES)[number];
-const STATUS_LABELS: Record<OrderStatusFilter, string> = {
+const STATUS_LABELS: Record<PayOrderFilter, string> = {
   all: "全部",
-  pending: "待支付",
-  paid: "已支付",
-  closed: "已关闭",
-  refunded: "已退款",
+  ...PAY_ORDER_STATUS_LABELS,
 };
 
 function statusChip(status: string): React.ReactElement {
@@ -33,7 +34,11 @@ function statusChip(status: string): React.ReactElement {
         : status === "closed"
           ? "text-text-3"
           : "text-accent";
-  return <span className={`font-mono text-xs font-medium ${tone}`}>{status}</span>;
+  return (
+    <span className={`font-mono text-xs font-medium ${tone}`}>
+      {PAY_ORDER_STATUS_LABELS[status as PayOrderStatus] ?? status}
+    </span>
+  );
 }
 
 export default async function AdminPayOrdersPage({
@@ -44,7 +49,7 @@ export default async function AdminPayOrdersPage({
   await requireAdminPage();
   const sp = await searchParams;
   const page = parsePage(sp.page);
-  const status = parseListSegment(ORDER_STATUSES, sp.status, "all");
+  const status = parseListSegment(PAY_ORDER_FILTERS, sp.status, "all");
 
   const { items, total } = await listOrdersAdmin({
     page,
@@ -64,7 +69,7 @@ export default async function AdminPayOrdersPage({
       </div>
 
       <div className="flex overflow-hidden rounded-sm border border-line">
-        {ORDER_STATUSES.map((s) => (
+        {PAY_ORDER_FILTERS.map((s) => (
           <a
             key={s}
             href={`/admin/pay/orders/?status=${s === "all" ? "" : s}`}

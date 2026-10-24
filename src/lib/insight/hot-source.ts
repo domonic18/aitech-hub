@@ -11,6 +11,7 @@ import { statsDay } from "@/lib/datetime";
 
 import { HOT_FETCHERS } from "./hotlist/registry";
 import type { HotFetcher } from "./hotlist/types";
+import { SOURCE_LABELS } from "./constants";
 import { INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
 
 /** 北京时区当日零点(与 insight/admin 同源口径,勿用 UTC 切日) */
@@ -34,8 +35,8 @@ export interface HotSourceRow {
   todayCount: number;
 }
 
-/** fetcher 注册表键集(未知 source 一律拒绝,防脏键入表) */
-const HOT_SOURCE_KEYS = new Set<string>(HOT_FETCHERS.map((f) => f.source));
+/** fetcher 注册表键集(未知 source 一律拒绝,防脏键入表;洞察页 hs 参数白名单同用) */
+export const HOT_SOURCE_KEYS = new Set<string>(HOT_FETCHERS.map((f) => f.source));
 
 /** 启用集(缺行=启用):run 编排闸 */
 export async function enabledHotSources(): Promise<Set<string>> {
@@ -99,7 +100,7 @@ export async function listHotSourcesAdmin(): Promise<HotSourceRow[]> {
     const r = byKey.get(source);
     return {
       source,
-      label: LABELS[source] ?? source,
+      label: SOURCE_LABELS[source as InsightSource] ?? source,
       medium: INSIGHT_SOURCE_MEDIUM[source as InsightSource] ?? "search",
       enabled: r?.enabled ?? true,
       consecutiveFails: r?.consecutiveFails ?? 0,
@@ -129,9 +130,4 @@ export class HotSourceError extends Error {
   }
 }
 
-/** 展示名(fetcher 注册表无 label,与洞察中心页签同源) */
-const LABELS: Record<string, string> = {
-  "hot-baidu": "百度热搜",
-  "hot-zhihu": "知乎热榜",
-  "hot-bilibili": "B站热搜",
-};
+/** 展示名(fetcher 注册表无 label;单源自 constants.SOURCE_LABELS,曾两份手抄) */

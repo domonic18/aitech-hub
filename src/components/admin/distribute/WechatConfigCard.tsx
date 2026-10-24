@@ -8,6 +8,7 @@
  */
 import { useState } from "react";
 
+import { PUBLISH_STATUS_LABELS } from "@/lib/distribute/channels";
 import type { DistributeOverview } from "@/lib/distribute/records";
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
 import { formatCnRelative } from "@/lib/datetime";
@@ -29,7 +30,7 @@ export default function WechatConfigCard({
   const lastLine = last
     ? {
         time: formatCnRelative(new Date(last.updatedAt)),
-        label: last.status === "synced" ? "成功" : last.status === "failed" ? "失败" : "同步中",
+        label: PUBLISH_STATUS_LABELS[last.status] ?? "同步中",
         cls: last.status === "synced" ? "text-green" : last.status === "failed" ? "text-red" : "",
       }
     : null;

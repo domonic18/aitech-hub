@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 
 import { clusterMomentum, isAnomaly, type ClusterMomentum } from "./scoring";
+import { CLUSTER_TAKE_MAX, SIGNAL_TAKE_DEFAULT, SIGNAL_TAKE_MAX } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
 
 /** 北京时区当日零点(与 statsDay/periodKey 同源口径,勿用 UTC 切日) */
@@ -33,7 +34,7 @@ export interface InsightSourceStat {
 export interface InsightOverview {
   total: number;
   today: number;
-  /** 近 windowDays 日日增(含今日,缺日补 0,旧→新) */
+  /** 近 windowDays 日日增(含今日,缺日补 0,旧→新;北京日界) */
   daily: { date: string; count: number }[];
   bySource: InsightSourceStat[];
 }
@@ -68,8 +69,8 @@ export async function insightOverview(windowDays = 7): Promise<InsightOverview> 
       where: { source: { in: ENABLED }, signalAt: { gte: start } },
       _count: { _all: true },
     }),
-    prisma.$queryRaw<{ d: Date; c: bigint }[]>`
-      SELECT date_trunc('day', signal_at) AS d, count(*) AS c
+    prisma.$queryRaw<{ d: string; c: bigint }[]>`
+      SELECT to_char(signal_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS d, count(*) AS c
       FROM insight_signal
       WHERE signal_at >= ${since} AND source IN (${Prisma.join(ENABLED)})
       GROUP BY 1
@@ -77,12 +78,14 @@ export async function insightOverview(windowDays = 7): Promise<InsightOverview> 
     `,
   ]);
 
-  // 缺日补 0:以北京日界锚定,键=YYYY-MM-DD(序列展示用,不涉 UTC 语义)
-  const countByDay = new Map(dailyRows.map((r) => [r.d.toISOString().slice(0, 10), Number(r.c)]));
+  // 缺日补 0:键=北京日(SQL 显式 AT TIME ZONE 切桶,与 trends.ts 同口径;
+  // 曾用 UTC date_trunc → 日界错 8 小时,今日 8 点后信号落出序列尾部)
+  const countByDay = new Map(dailyRows.map((r) => [r.d, Number(r.c)]));
+  const [y, m, d] = statsDay(since).split("-").map(Number);
+  const anchorUtc = Date.UTC(y, m - 1, d);
   const daily = Array.from({ length: window }, (_, i) => {
-    const day = new Date(since.getTime() + i * DAY_MS);
-    const key = day.toISOString().slice(0, 10);
-    return { date: key, count: countByDay.get(key) ?? 0 };
+    const date = new Date(anchorUtc + i * DAY_MS).toISOString().slice(0, 10);
+    return { date, count: countByDay.get(date) ?? 0 };
   });
 
   const todayBySource = new Map(todays.map((r) => [r.source, r._count._all]));
@@ -132,7 +135,7 @@ export async function listInsightSignals(opts: {
       ],
     },
     orderBy: { signalAt: "desc" },
-    take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
+    take: Math.min(Math.max(opts.limit ?? SIGNAL_TAKE_DEFAULT, 1), SIGNAL_TAKE_MAX),
     select: SIGNAL_SELECT,
   });
   return rows.map((r) => ({
@@ -178,7 +181,7 @@ export async function listInsightClusters(opts: {
   kind?: "hot" | "pain";
   limit?: number;
 }): Promise<InsightClusterRow[]> {
-  const take = Math.min(Math.max(opts.limit ?? CLUSTER_ROW_TAKE, 1), 50);
+  const take = Math.min(Math.max(opts.limit ?? CLUSTER_ROW_TAKE, 1), CLUSTER_TAKE_MAX);
   const clusters = await prisma.insightCluster.findMany({
     where: { status: { not: "closed" }, ...(opts.kind === undefined ? {} : { kind: opts.kind }) },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],

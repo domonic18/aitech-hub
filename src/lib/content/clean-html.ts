@@ -11,9 +11,19 @@ import * as cheerio from "cheerio";
 import type { Comment, Element, ParentNode } from "domhandler";
 
 import { rewriteBase64Images } from "./data-uri-image";
+import { SITE_UPLOADS_PREFIX, escapeRegExp } from "../media/refs";
 
 /** 旧站域名(内链/媒体相对化);dev 是 wp_options siteurl 的实际值 */
 export const WP_ORIGINS = ["17aitech.com", "www.17aitech.com", "dev.17aitech.com"] as const;
+
+/** 可识别 WP 自闭合短码名单(convertShortcodes 删除式与 findResidue 残留检测
+ * 两式同源派生;caption 与 su_* 各有专式,不在此列) */
+const SHORTCODE_NAMES = ["gallery", "video", "audio", "playlist", "embed", "contact-form"] as const;
+const SHORTCODE_ALT = SHORTCODE_NAMES.join("|");
+
+/** 剥壳留痕:src 任意位置含 uploads 前缀即告警(不锚定:src 可能是绝对 URL);
+ * 前缀自 media/refs 单源 */
+const UPLOADS_ANYWHERE_RE = new RegExp(escapeRegExp(SITE_UPLOADS_PREFIX));
 
 /** 保留播放器的 iframe 域白名单(03 §4;其余 iframe 删除并记报告) */
 const IFRAME_SRC_ALLOW = /^https?:\/\/(player\.bilibili\.com|www\.youtube\.com)\//;
@@ -169,7 +179,7 @@ function convertShortcodes(html: string, report: CleanHtmlReport): string {
   );
   // 自闭合已知杂项短码(gallery/video 等):删除
   html = html.replace(
-    /\[(gallery|video|audio|playlist|embed|contact-form)[^\]]*\]/gi,
+    new RegExp(String.raw`\[(${SHORTCODE_ALT})[^\]]*\]`, "gi"),
     (m, code: string) => {
       report.shortcodesRemoved.push({ code, innerLength: 0 });
       return "";
@@ -205,7 +215,7 @@ function toRelative(u: string): string {
 /** 清洗后的短码残留检测(只报不删:中文正文合法使用 [] 极常见) */
 function findResidue(html: string): string[] {
   const residue = new Set<string>();
-  const re = /\[(gallery|video|audio|playlist|embed|contact-form|su_[a-z_]+)[^\]]*\]/gi;
+  const re = new RegExp(String.raw`\[(${SHORTCODE_ALT}|su_[a-z_]+)[^\]]*\]`, "gi");
   for (const m of html.matchAll(re)) residue.add(m[0]);
   return [...residue];
 }
@@ -276,7 +286,7 @@ export function cleanPostHtml(html: string): { html: string; report: CleanHtmlRe
     if (!ALLOWED_TAGS.has(el.tagName)) {
       // video/audio/source 等:剥壳前记录 src(媒体闭包从原文提取,这里只留痕)
       const src = el.attribs.src ?? el.attribs.href;
-      if (src && /\/wp-content\/uploads\//.test(src)) {
+      if (src && UPLOADS_ANYWHERE_RE.test(src)) {
         report.warnings.push(`<${tag}> 携带 uploads 资源被剥壳:${src}`);
       }
       bump(report.tagsUnwrapped, el.tagName);

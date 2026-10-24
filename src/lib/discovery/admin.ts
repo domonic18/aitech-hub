@@ -192,7 +192,10 @@ export async function listCandidatesAdmin(params: {
 
 // ── 手动触发 ─────────────────────────────────────────────
 
-export type DiscoveryTriggerJob = "hotwords" | "bili";
+/** 手动触发可选 job 词表单源(M47 批A':API zod/台账动作类型曾各自字面量;
+ *  与队列 job 名 DISCOVERY_JOB_*(discovery-* 前缀)刻意不同名,勿混淆派生) */
+export const DISCOVERY_TRIGGER_JOBS = ["hotwords", "bili"] as const;
+export type DiscoveryTriggerJob = (typeof DISCOVERY_TRIGGER_JOBS)[number];
 
 /** 手动触发一轮发现:入 discovery 队列一次性 job,jobId 带 manual 前缀与
  *  调度 job(id 锚定 next_run_at)不冲突;入队即返回,执行与风控纪律在 worker。 */

@@ -10,6 +10,7 @@
  * 无空白单行 URL(渲染侧 http(s) 外链 target=_blank)。
  * 流式期间尾部未闭合标记短暂按字面量显示,闭合后即正常(可接受)。
  */
+import { UPLOADS_PATH_RE_BODY } from "@/lib/media/refs";
 
 export type AnswerInline =
   | { t: "text"; v: string }
@@ -78,7 +79,8 @@ export function parseAnswerInline(text: string): AnswerInline[] {
 }
 
 // 卡片图独占一行:仅认站内媒体路径(外链/相对路径一律按字面量,避免渲染任意远端资源)
-const IMG_LINE = /^!\[([^\]]*)\]\((\/wp-content\/uploads\/[A-Za-z0-9/._-]+)\)\s*$/;
+// 正则体自 media/refs 单源派生(与 sanitize/media-inline 同簇)
+const IMG_LINE = new RegExp(String.raw`^!\[([^\]]*)\]\((${UPLOADS_PATH_RE_BODY})\)\s*$`);
 const UL_LINE = /^\s*[-*]\s+(.*)$/;
 const OL_LINE = /^\s*\d{1,2}[.)]\s+(.*)$/;
 const HEAD_LINE = /^(#{1,4})\s+(.+)$/;

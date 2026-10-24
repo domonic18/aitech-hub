@@ -9,17 +9,18 @@ import { z } from "zod";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
-import { confirmEditVersion, isValidNormalizedBbox } from "@/lib/ai/illustration-studio";
+import {
+  EDIT_ORIGINS,
+  confirmEditVersion,
+  isValidNormalizedBbox,
+} from "@/lib/ai/illustration-studio";
+import { SITE_UPLOADS_PREFIX } from "@/lib/media/refs";
 
 export const dynamic = "force-dynamic";
 
 const ConfirmSchema = z.object({
-  imagePath: z
-    .string()
-    .trim()
-    .max(500)
-    .startsWith("/wp-content/uploads/", "候选图须为站内媒体路径"),
-  origin: z.enum(["text_edit", "erase", "redraw"]),
+  imagePath: z.string().trim().max(500).startsWith(SITE_UPLOADS_PREFIX, "候选图须为站内媒体路径"),
+  origin: z.enum(EDIT_ORIGINS),
   instruction: z.string().trim().max(1000).optional(),
   bbox: z.string().trim().max(40).optional(),
 });

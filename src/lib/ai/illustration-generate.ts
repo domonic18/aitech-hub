@@ -12,7 +12,7 @@ import { prisma } from "../db";
 import { logger } from "../logger";
 import { isUploadsPath } from "../media/refs";
 import { getQueue, ILLUSTRATION_JOB_GENERATE, QUEUE_ILLUSTRATION_STUDIO } from "../queue";
-import { PIN_IMAGES_MAX } from "../pins/constants";
+import { PIN_IMAGES_MAX, isPinEditable } from "../pins/constants";
 import { AI_PURPOSE_ILLUSTRATE } from "./constants";
 import {
   generateIllustrations,
@@ -46,7 +46,7 @@ async function attachGeneratedToPin(pinId: bigint, versionIds: bigint[]): Promis
     where: { id: pinId },
     select: { status: true, _count: { select: { images: true } } },
   });
-  if (!pin || (pin.status !== "draft" && pin.status !== "pending")) return 0;
+  if (!pin || !isPinEditable(pin.status)) return 0;
   const room = PIN_IMAGES_MAX - pin._count.images;
   const toAttach = versionIds.slice(0, Math.max(0, room));
   if (toAttach.length === 0) return 0;
@@ -154,7 +154,7 @@ export async function enqueueIllustrationGenerate(input: {
       select: { status: true, _count: { select: { images: true } } },
     });
     if (!pin) throw new AiAdminError("not_found", "贴图不存在");
-    if (pin.status !== "draft" && pin.status !== "pending") {
+    if (!isPinEditable(pin.status)) {
       throw new AiAdminError("invalid", "已同步/已发布贴图不可加图,请先撤回待验收");
     }
     if (pin._count.images >= PIN_IMAGES_MAX) {

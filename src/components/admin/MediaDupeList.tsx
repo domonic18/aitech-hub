@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import { formatCnDateTime } from "@/lib/datetime";
 import type { ApiEnvelope } from "@/lib/http/response";
-import { formatBytes } from "@/lib/media/media-schema";
+import { IMAGE_EXT_RE, formatBytes } from "@/lib/media/media-schema";
 
 export interface MediaDupeItemView {
   id: string;
@@ -108,7 +108,7 @@ export default function MediaDupeList({ groups }: { groups: MediaDupeGroupView[]
                 const cls = `h-14 w-[84px] rounded-sm border object-cover ${
                   isKeeper ? "border-accent" : "border-line"
                 }`;
-                return item.thumbPath || /\.(jpe?g|png|webp|gif)$/i.test(item.path) ? (
+                return item.thumbPath || IMAGE_EXT_RE.test(item.path) ? (
                   // eslint-disable-next-line @next/next/no-img-element -- 本地媒体卷缩略图,不走 next/image 优化域
                   <img
                     key={item.id}

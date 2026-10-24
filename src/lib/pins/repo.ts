@@ -10,7 +10,7 @@ import { asciiSlugFromTitle, pinPath, pinPathSegment } from "../content/pin-path
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
 import { absoluteUrl } from "../seo/site";
-import { PIN_IMAGES_MAX, PIN_MANUAL_TARGETS, type PinStatus } from "./constants";
+import { PIN_IMAGES_MAX, PIN_MANUAL_TARGETS, isPinEditable, type PinStatus } from "./constants";
 import type { PinCreateInput, PinImageAddInput, PinUpdateInput } from "./schemas";
 
 export type PinErrorCode =
@@ -38,7 +38,7 @@ async function requirePin(id: bigint): Promise<ContentPin> {
 
 /** 已同步/已发布贴图禁直编内容(先撤回待验收;防公众号草稿与站内失同步) */
 function assertEditable(status: string): void {
-  if (status === "synced" || status === "published") {
+  if (!isPinEditable(status)) {
     throw new PinError("edit_locked", "已同步/已发布贴图不可直接编辑,请先撤回待验收");
   }
 }

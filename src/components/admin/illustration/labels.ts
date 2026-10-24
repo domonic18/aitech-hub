@@ -3,6 +3,7 @@
  * 编辑回路与登记来源的中文标签/徽标配色,VersionStrip 与 StudioPage
  * 头部共用(防两处漂移)。三模式文案贴 F14 板(18:813):文字修改|消除笔|自由重绘。
  */
+import type { IllustrationEditOrigin } from "@/lib/ai/illustration-studio";
 
 export const ORIGIN_LABEL: Record<string, string> = {
   original: "原图",
@@ -32,8 +33,8 @@ export const EDIT_MODES = [
 
 export type EditMode = (typeof EDIT_MODES)[number]["key"];
 
-/** 编辑回路 mode → 版本 origin(与后端 ILLUSTRATION_VERSION_ORIGINS 对齐) */
-export const MODE_TO_ORIGIN: Record<EditMode, "text_edit" | "erase" | "redraw"> = {
+/** 编辑回路 mode → 版本 origin(类型自 illustration-studio.EDIT_ORIGINS 单源派生) */
+export const MODE_TO_ORIGIN: Record<EditMode, IllustrationEditOrigin> = {
   text: "text_edit",
   erase: "erase",
   redraw: "redraw",

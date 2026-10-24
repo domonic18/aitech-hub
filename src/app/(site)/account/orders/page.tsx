@@ -14,19 +14,19 @@ import { verifyAccessToken } from "@/lib/auth/session";
 import { formatCnDateTime } from "@/lib/datetime";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 import { listOrdersForUser, USER_ORDERS_PAGE_SIZE } from "@/lib/pay/user-orders";
+import {
+  PAY_ORDER_FILTERS,
+  PAY_ORDER_STATUS_LABELS,
+  type PayOrderFilter,
+} from "@/lib/pay/order-service";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "我的订单" };
 
-const ORDER_STATUSES = ["all", "pending", "paid", "closed", "refunded"] as const;
-type OrderStatusFilter = (typeof ORDER_STATUSES)[number];
-const STATUS_LABELS: Record<OrderStatusFilter, string> = {
+const STATUS_LABELS: Record<PayOrderFilter, string> = {
   all: "全部",
-  pending: "待支付",
-  paid: "已支付",
-  closed: "已关闭",
-  refunded: "已退款",
+  ...PAY_ORDER_STATUS_LABELS,
 };
 
 function statusChip(status: string): React.ReactElement {
@@ -40,7 +40,7 @@ function statusChip(status: string): React.ReactElement {
           : "text-accent";
   return (
     <span className={`font-mono text-xs font-medium ${tone}`}>
-      {STATUS_LABELS[status as OrderStatusFilter] ?? status}
+      {STATUS_LABELS[status as PayOrderFilter] ?? status}
     </span>
   );
 }
@@ -57,7 +57,7 @@ export default async function AccountOrdersPage({
 
   const sp = await searchParams;
   const page = parsePage(sp.page);
-  const status = parseListSegment(ORDER_STATUSES, sp.status, "all");
+  const status = parseListSegment(PAY_ORDER_FILTERS, sp.status, "all");
 
   const { items, total } = await listOrdersForUser({
     userId: BigInt(session.sub),
@@ -74,7 +74,7 @@ export default async function AccountOrdersPage({
       <p className="mt-1 text-xs text-text-3">单篇文章购买的支付记录;待支付单可继续完成支付。</p>
 
       <div className="mt-6 flex overflow-hidden rounded-sm border border-line">
-        {ORDER_STATUSES.map((s) => (
+        {PAY_ORDER_FILTERS.map((s) => (
           <Link
             key={s}
             href={`/account/orders/${s === "all" ? "" : `?status=${s}`}`}

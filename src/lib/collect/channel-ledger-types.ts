@@ -4,6 +4,7 @@
  * 同 collect/schedules 口径)。健康 pill 四态与「最近运行」相对时刻文案
  * 的唯一出口,测试直打本件。
  */
+import type { DiscoveryTriggerJob } from "@/lib/discovery/admin";
 
 export type ChannelKind = "rss" | "video" | "hot" | "discovery" | "github";
 export type LedgerHealth = "healthy" | "fail" | "degraded" | "paused";
@@ -13,7 +14,7 @@ export type LedgerPrimaryAction =
   | { type: "crawl"; channelId: number }
   | { type: "crawlBloggers"; bloggerIds: number[] }
   | { type: "hotboard" }
-  | { type: "discover"; job: "hotwords" | "bili" }
+  | { type: "discover"; job: DiscoveryTriggerJob }
   | { type: "syncGithub"; repoIds: number[] }
   | { type: "running"; sinceMs: number };
 

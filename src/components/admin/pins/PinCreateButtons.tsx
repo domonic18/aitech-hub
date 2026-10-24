@@ -10,13 +10,11 @@ import { useRouter } from "next/navigation";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
+import { ILLUSTRATE_ASPECT_OPTIONS } from "@/lib/ai/constants";
+
 import { callPinApi, JSON_HEADERS } from "./api";
 
-const ASPECTS = [
-  { key: "3:4", label: "3:4 · 864×1152" },
-  { key: "1:1", label: "1:1 · 1024" },
-  { key: "16:9", label: "16:9 · 1344×768" },
-] as const;
+const ASPECTS = ILLUSTRATE_ASPECT_OPTIONS;
 
 export default function PinCreateButtons(): React.ReactElement {
   const router = useRouter();

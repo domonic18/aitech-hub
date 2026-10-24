@@ -5,8 +5,8 @@
  * 全宽榜)+ 种子词产出榜)→ 信号明细折叠区。取数页侧一次装配;窗口 chips 钳
  * 统计窗口(w)并附窗口统计徽章(窗口只影响词云,KPI 板定固定口径,徽章让
  * 取景范围可见);热榜回看日(day)页签随卡头常驻(板定 ‹ 日期 › 位置,点击
- * 回最新)。hs 钳热榜源展示,from/to 由折叠区信号明细自持。服务端直查不设读
- * API。
+ * 回最新)。hs 钳热榜源展示;from/to 钳信号明细(北京日界,lt 次日零点)。
+ * 服务端直查不设读 API。
  */
 import Link from "next/link";
 
@@ -18,6 +18,7 @@ import PainCardGrid from "@/components/admin/insight/PainCardGrid";
 import RadarTable from "@/components/admin/insight/RadarTable";
 import SignalsSection from "@/components/admin/insight/SignalsSection";
 import {
+  WINDOWS,
   insightHref,
   shortSource,
   shiftDay,
@@ -26,7 +27,9 @@ import {
 } from "@/components/admin/insight/shared";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
+import { SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
 import { hotBoardForDay, insightKeywordCloud } from "@/lib/insight/hotboard";
+import { HOT_SOURCE_KEYS } from "@/lib/insight/hot-source";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +38,6 @@ export const dynamic = "force-dynamic";
 const ENABLED_SOURCES = [...INSIGHT_SOURCES_ENABLED] as InsightSource[];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const WINDOWS = [7, 30, 90] as const;
 
 const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
 const chipOn = `${chip} bg-accent-dim text-accent`;
@@ -82,10 +84,9 @@ export default async function AdminInsightPage({
     source: ENABLED_SOURCES.find((s) => s === sp.source),
     w: WINDOWS.some((n) => String(n) === sp.w) ? sp.w : undefined,
     day: DATE_RE.test(sp.day ?? "") ? sp.day : undefined,
-    hs:
-      sp.hs === "hot-baidu" || sp.hs === "hot-zhihu" || sp.hs === "hot-bilibili"
-        ? sp.hs
-        : undefined,
+    from: DATE_RE.test(sp.from ?? "") ? sp.from : undefined,
+    to: DATE_RE.test(sp.to ?? "") ? sp.to : undefined,
+    hs: sp.hs !== undefined && HOT_SOURCE_KEYS.has(sp.hs) ? sp.hs : undefined,
   };
   const w = params.w === undefined ? 7 : Number(params.w);
   const today = todayCn();
@@ -94,7 +95,15 @@ export default async function AdminInsightPage({
     insightOverview(w),
     listInsightClusters({ kind: "pain", limit: 8 }),
     listInsightClusters({ kind: "hot", limit: 20 }),
-    listInsightSignals({ source: params.source as InsightSource | undefined, limit: 50 }),
+    listInsightSignals({
+      source: params.source as InsightSource | undefined,
+      // 北京日界折算(表单口径见 SignalsSection:from ≥ 当日零点,to < 次日零点;
+      // 此前 from/to 只进 URL 不进查询,日期筛选是空转)
+      from: params.from === undefined ? undefined : new Date(`${params.from}T00:00:00+08:00`),
+      to:
+        params.to === undefined ? undefined : new Date(`${shiftDay(params.to, 1)}T00:00:00+08:00`),
+      limit: SIGNAL_TAKE_DEFAULT,
+    }),
     hotBoardForDay(params.day),
     insightKeywordCloud({ windowDays: w }),
   ]);

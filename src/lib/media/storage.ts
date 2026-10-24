@@ -20,6 +20,7 @@ import COS from "cos-nodejs-sdk-v5";
 
 import { cosWireKey } from "@/lib/backup/cos-bucket";
 import { env } from "@/lib/env";
+import { SITE_UPLOADS_PREFIX } from "@/lib/media/refs";
 
 export interface MediaStorage {
   /** 写入二进制(已 sha1 命名的相对路径),幂等覆盖 */
@@ -33,9 +34,8 @@ export interface MediaStorage {
 
 /** URL 路径 → 磁盘相对路径(`/wp-content/uploads/a/b` → `a/b`;不 decode,见文件头路径约定);非法路径返回 null */
 export function uploadsUrlToRel(urlPath: string): string | null {
-  const prefix = "/wp-content/uploads/";
-  if (!urlPath.startsWith(prefix)) return null;
-  const rel = urlPath.slice(prefix.length);
+  if (!urlPath.startsWith(SITE_UPLOADS_PREFIX)) return null;
+  const rel = urlPath.slice(SITE_UPLOADS_PREFIX.length);
   if (!rel || rel.includes("\0") || rel.split("/").includes("..")) return null;
   return rel;
 }
@@ -46,7 +46,7 @@ export function relToUploadsUrl(relPath: string): string {
     .split("/")
     .map((seg) => encodeURIComponent(seg))
     .join("/");
-  return `/wp-content/uploads/${encoded}`;
+  return `${SITE_UPLOADS_PREFIX}${encoded}`;
 }
 
 /** 存储后端类型(M19 批①;与 content_media.storage 列同词表 local/cos) */

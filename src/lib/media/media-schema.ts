@@ -58,6 +58,15 @@ export type MediaRefFilter = (typeof MEDIA_REF_FILTERS)[number];
 /** 图片 mime 白名单(arch/08-media §3.4;gif 保动画:worker 以 animated webp 出副本) */
 export const IMAGE_MIME_WHITELIST = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
+/** 文件选择器 accept 串(UI 过滤自白名单派生;服务端仍按白名单硬校验) */
+export const IMAGE_ACCEPT = IMAGE_MIME_WHITELIST.join(",");
+
+/** 图片扩展名判定(文件名粗筛/图标渲染;真实类型以 sniffImageMime 字节裁决) */
+export const IMAGE_EXT_RE = new RegExp(
+  `\\.(${IMAGE_MIME_WHITELIST.map((m) => (m === "image/jpeg" ? "jpe?g" : m.slice("image/".length))).join("|")})$`,
+  "i",
+);
+
 /**
  * 魔数嗅探图片 mime(M27 批⑦ 传参错误根治:声明 mime 全链路仅作展示提示,
  * 字节是唯一裁决——CDN content-type 缺省/漂移、image/jpg 类传参错一律不再

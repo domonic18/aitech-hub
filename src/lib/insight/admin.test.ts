@@ -17,7 +17,8 @@ vi.mock("@/lib/db", () => ({
       groupBy: (...a: unknown[]) => signalGroupBy(...a),
       findMany: (...a: unknown[]) => signalFindMany(...a),
     },
-    $queryRaw: (_strings: TemplateStringsArray, ...values: unknown[]) => dailyQuery(...values),
+    $queryRaw: (strings: TemplateStringsArray, ...values: unknown[]) =>
+      dailyQuery(strings, ...values),
   },
 }));
 
@@ -43,8 +44,9 @@ function mockOverview(): void {
       { source: "telegram-ai", _count: { _all: 8 } },
     ]);
   });
-  // 北京日界 2026-10-17 → UTC 锚 10-16T16:00Z;since=10-10T16:00Z,仅 10-12 有数据
-  dailyQuery.mockResolvedValue([{ d: new Date("2026-10-12T16:00:00.000Z"), c: BigInt(5) }]);
+  // statsDay mock 恒 2026-10-17 → 序列锚 10-17(旧→新 10-17..10-23);d 为
+  // to_char 北京日字符串,仅 10-19 有数据
+  dailyQuery.mockResolvedValue([{ d: "2026-10-19", c: BigInt(5) }]);
 }
 
 describe("insightOverview", () => {
@@ -54,13 +56,13 @@ describe("insightOverview", () => {
     expect(o.total).toBe(28);
     expect(o.today).toBe(3);
     expect(o.daily.map((d) => d.date)).toEqual([
-      "2026-10-10",
-      "2026-10-11",
-      "2026-10-12",
-      "2026-10-13",
-      "2026-10-14",
-      "2026-10-15",
-      "2026-10-16",
+      "2026-10-17",
+      "2026-10-18",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21",
+      "2026-10-22",
+      "2026-10-23",
     ]);
     expect(o.daily[2].count).toBe(5);
     expect(o.daily.filter((d, i) => i !== 2).every((d) => d.count === 0)).toBe(true);
@@ -81,6 +83,13 @@ describe("insightOverview", () => {
       where: { source: { in: enabled }, signalAt: { gte: expect.any(Date) } },
     });
     expect(dailyQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("日增切桶显式北京时区(to_char AT TIME ZONE;勿退回 UTC date_trunc——日界错 8 小时)", async () => {
+    mockOverview();
+    await insightOverview();
+    const sql = (dailyQuery.mock.calls[0]?.[0] as TemplateStringsArray).join("${v}");
+    expect(sql).toContain("AT TIME ZONE 'Asia/Shanghai'");
   });
 });
 

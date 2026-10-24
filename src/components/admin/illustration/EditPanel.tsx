@@ -127,7 +127,7 @@ export default function EditPanel({
           onClick={onSubmit}
           className="cursor-pointer rounded-sm bg-accent px-2 py-2 text-[11px] font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "生成预览中(约 15 秒)…" : "生成预览"}
+          {busy ? "生成预览中(入队执行,约半分钟)…" : "生成预览"}
         </button>
       )}
       {error && <p className="text-[11px] leading-relaxed text-red">{error}</p>}

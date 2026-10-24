@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import Vditor from "vditor";
 
 import MediaInsertDialog from "@/components/admin/MediaInsertDialog";
-import { MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { IMAGE_ACCEPT, MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
 
 /** 精简工具栏:高频排版 + 上传 + 模式切换(sv/ir/wysiwyg)+ 全屏 */
@@ -134,7 +134,7 @@ export default function VditorEditor({
         onChange(v);
       },
       upload: {
-        accept: "image/jpeg,image/png,image/webp,image/gif",
+        accept: IMAGE_ACCEPT,
         handler: async (files) => {
           for (const file of files) {
             if (file.size > MEDIA_LIMITS.maxUploadBytes) {

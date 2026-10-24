@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 
 import ClusterHotDetail from "@/components/admin/insight/ClusterHotDetail";
 import ClusterPainDetail from "@/components/admin/insight/ClusterPainDetail";
+import { WINDOWS } from "@/components/admin/insight/shared";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { getInsightClusterExtras } from "@/lib/insight/cluster-extras";
 import { getInsightClusterDetail } from "@/lib/insight/admin";
@@ -27,7 +28,7 @@ export default async function AdminInsightClusterPage({
   const detail = await getInsightClusterDetail(bigId);
   if (detail === null) notFound();
   const sp = await searchParams;
-  const windowDays = sp.w === "30" || sp.w === "90" ? Number(sp.w) : 7;
+  const windowDays = WINDOWS.some((n) => String(n) === sp.w) ? Number(sp.w) : 7;
   const extras = await getInsightClusterExtras(bigId, detail.cluster.keywords, windowDays);
 
   return detail.cluster.kind === "hot" ? (

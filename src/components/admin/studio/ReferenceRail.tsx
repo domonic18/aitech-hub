@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import SampleLibraryModal from "@/components/admin/SampleLibraryModal";
+import { IMAGE_ACCEPT } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
 import { REFERENCE_SOURCE_LABEL, type ReferenceSource } from "@/lib/topics/reference-labels";
 
@@ -23,8 +24,6 @@ export interface ReferenceRailItem {
   mediaPath: string;
   label: string;
 }
-
-const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export default function ReferenceRail({
   candidates,
@@ -110,7 +109,7 @@ export default function ReferenceRail({
         <input
           ref={fileRef}
           type="file"
-          accept={ACCEPT}
+          accept={IMAGE_ACCEPT}
           aria-label="上传参照图"
           className="hidden"
           onChange={(e) => {

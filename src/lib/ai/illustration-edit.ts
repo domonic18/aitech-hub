@@ -15,6 +15,7 @@ import path from "node:path";
 import { logger } from "../logger";
 import { MEDIA_MIME_BY_EXT, mediaStorage, uploadsUrlToRel } from "../media/storage";
 import { uploadMedia } from "../media/service";
+import { getQueue, ILLUSTRATION_JOB_EDIT, QUEUE_ILLUSTRATION_STUDIO } from "../queue";
 
 import { AI_PURPOSE_ILLUSTRATE } from "./constants";
 import { AiAdminError, AiClientError } from "./errors";
@@ -145,4 +146,81 @@ export async function editIllustration(
     durationMs: Date.now() - startedAt,
   });
   return { imagePath: saved.path };
+}
+
+// ── 队列化(M47 批 A:请求内禁秒级任务——HTTP 路由入队+轮询,worker 消费
+// 转调 editIllustration;执行核心不动,agent 侧未来复用同核心)──────────────
+
+export interface IllustrationEditJobData {
+  /** 编辑基准版本 ID(溯源日志用;执行只认 imagePath) */
+  versionId: string;
+  imagePath: string;
+  mode: IllustrationEditMode;
+  bbox: string;
+  instruction?: string;
+}
+
+export type IllustrationEditJobResult = { imagePath: string };
+
+/** 入队(工坊编辑路由):前置核 illustrate 绑定模型(job 内失败只能等轮询
+ * 才见,入队即 400 人话);jobId 时间戳唯一(非确定性 id,无 BullMQ 去重陷阱);
+ * attempts=1 生图计费不自动重试(同 generate/decompose 口径) */
+export async function enqueueIllustrationEdit(input: {
+  versionId: bigint;
+  imagePath: string;
+  mode: IllustrationEditMode;
+  bbox: string;
+  instruction?: string;
+}): Promise<{ jobId: string }> {
+  const model = await resolveAiModel(AI_PURPOSE_ILLUSTRATE);
+  if (!model) {
+    throw new AiAdminError(
+      "disabled",
+      "未绑定或未启用「插图配图(illustrate)」模型:先到 AI 配置完成任务绑定",
+    );
+  }
+  const jobId = `illu-edit-${Date.now().toString(36)}`;
+  await getQueue(QUEUE_ILLUSTRATION_STUDIO).add(
+    ILLUSTRATION_JOB_EDIT,
+    {
+      versionId: String(input.versionId),
+      imagePath: input.imagePath,
+      mode: input.mode,
+      bbox: input.bbox,
+      ...(input.instruction ? { instruction: input.instruction } : {}),
+    } satisfies IllustrationEditJobData,
+    { jobId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 },
+  );
+  logger.info({
+    event: "illu.edit_enqueued",
+    jobId,
+    versionId: input.versionId,
+    mode: input.mode,
+  });
+  return { jobId };
+}
+
+export type IllustrationEditJobState =
+  | { state: "missing" }
+  | { state: "processing" }
+  | { state: "done"; imagePath: string }
+  | { state: "failed"; message: string };
+
+/** 编辑任务态查询(前端 3s 轮询):BullMQ job 态转译——completed 取 returnvalue,
+ * failed 取 failedReason 人话,waiting/delayed/active 统一 processing;
+ * job 不存在(removeOn* 滚动清除/过期)→ missing。 */
+export async function illustrationEditJobStatus(jobId: string): Promise<IllustrationEditJobState> {
+  const job = await getQueue(QUEUE_ILLUSTRATION_STUDIO).getJob(jobId);
+  if (!job) return { state: "missing" };
+  const state = await job.getState();
+  if (state === "completed") {
+    const r = job.returnvalue as IllustrationEditJobResult | undefined;
+    return r?.imagePath
+      ? { state: "done", imagePath: r.imagePath }
+      : { state: "failed", message: "编辑任务无有效结果,请重试" };
+  }
+  if (state === "failed") {
+    return { state: "failed", message: job.failedReason || "编辑失败,请重试" };
+  }
+  return { state: "processing" };
 }

@@ -6,6 +6,8 @@
  */
 import { z } from "zod";
 
+import { SITE_UPLOADS_PREFIX } from "../media/refs";
+
 export const quoteSchema = z.object({
   quote: z.string().min(1).max(500).describe("金句正文"),
   author: z.string().max(100).optional().describe("出处/作者,可省略"),
@@ -189,7 +191,7 @@ export const matrixSchema = z.object({
 export const photoSchema = z.object({
   src: z
     .string()
-    .startsWith("/wp-content/uploads/")
+    .startsWith(SITE_UPLOADS_PREFIX)
     .describe("图片站内路径(/wp-content/uploads/…,来自媒体库/封面转存/生成图)"),
   title: z.string().max(60).optional().describe("图上大字报标题,可省略"),
   caption: z.string().max(200).optional().describe("底部说明条,可省略"),
