@@ -30,6 +30,13 @@ vi.mock("./resolver", () => ({
   })),
 }));
 vi.mock("./usage-log", () => ({ recordAiUsage: vi.fn() }));
+const queueAdd = vi.hoisted(() => vi.fn());
+const queueGetJob = vi.hoisted(() => vi.fn());
+vi.mock("../queue", () => ({
+  QUEUE_ILLUSTRATION_STUDIO: "illustration-studio",
+  ILLUSTRATION_JOB_EDIT: "edit",
+  getQueue: vi.fn(() => ({ add: queueAdd, getJob: queueGetJob })),
+}));
 vi.mock("./image-client", () => ({
   generateImages: vi.fn(async () => [{ b64: "AAAA" }]),
   decodeImageB64: vi.fn(() => new Uint8Array([1, 2, 3])),
@@ -41,7 +48,12 @@ import { mediaStorage } from "../media/storage";
 import { uploadMedia } from "../media/service";
 import { AiAdminError, AiClientError } from "./errors";
 import { generateImages, sniffImageMime } from "./image-client";
-import { buildEditPrompt, editIllustration } from "./illustration-edit";
+import {
+  buildEditPrompt,
+  editIllustration,
+  enqueueIllustrationEdit,
+  illustrationEditJobStatus,
+} from "./illustration-edit";
 import { recordAiUsage } from "./usage-log";
 
 const mockedGet = vi.mocked(mediaStorage.get);
@@ -180,5 +192,76 @@ describe("editIllustration(交互编辑)", () => {
         filename: expect.stringMatching(/^illu-edit-.+\.jpg$/),
       }),
     );
+  });
+});
+
+describe("enqueueIllustrationEdit(M47 批 A 队列化)", () => {
+  it("入队:edit job 名 + attempts=1 计费不重试 + illu-edit- 前缀 jobId(非确定性)", async () => {
+    queueAdd.mockResolvedValueOnce(undefined);
+    const { jobId } = await enqueueIllustrationEdit({
+      versionId: BigInt(12),
+      imagePath: "/wp-content/uploads/a.png",
+      mode: "text",
+      bbox: "1 2 3 4",
+      instruction: "改标题",
+    });
+    expect(jobId).toMatch(/^illu-edit-[a-z0-9]+$/);
+    expect(queueAdd).toHaveBeenCalledTimes(1);
+    const [name, data, opts] = queueAdd.mock.calls[0];
+    expect(name).toBe("edit");
+    expect(data).toEqual({
+      versionId: "12",
+      imagePath: "/wp-content/uploads/a.png",
+      mode: "text",
+      bbox: "1 2 3 4",
+      instruction: "改标题",
+    });
+    expect(opts).toMatchObject({ jobId, attempts: 1 });
+  });
+
+  it("未绑定模型:入队即人话拒(job 内失败用户看不见)", async () => {
+    const { resolveAiModel } = await import("./resolver");
+    vi.mocked(resolveAiModel).mockResolvedValueOnce(null);
+    await expect(
+      enqueueIllustrationEdit({
+        versionId: BigInt(12),
+        imagePath: "/wp-content/uploads/a.png",
+        mode: "erase",
+        bbox: "1 2 3 4",
+      }),
+    ).rejects.toThrow(AiAdminError);
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+});
+
+describe("illustrationEditJobStatus(任务态转译)", () => {
+  it("job 不存在 → missing(removeOn* 滚动清除/过期)", async () => {
+    queueGetJob.mockResolvedValueOnce(null);
+    await expect(illustrationEditJobStatus("illu-edit-x")).resolves.toEqual({ state: "missing" });
+  });
+
+  it("completed+有结果 → done 候选路径;failed → failedReason 人话;在途 → processing", async () => {
+    queueGetJob.mockResolvedValueOnce({
+      getState: async () => "completed",
+      returnvalue: { imagePath: "/wp-content/uploads/2026/10/edit.png" },
+    });
+    await expect(illustrationEditJobStatus("illu-edit-x")).resolves.toEqual({
+      state: "done",
+      imagePath: "/wp-content/uploads/2026/10/edit.png",
+    });
+
+    queueGetJob.mockResolvedValueOnce({
+      getState: async () => "failed",
+      failedReason: "编辑返回了空结果(契约漂移,检查供应商与模型 ID)",
+    });
+    await expect(illustrationEditJobStatus("illu-edit-x")).resolves.toEqual({
+      state: "failed",
+      message: "编辑返回了空结果(契约漂移,检查供应商与模型 ID)",
+    });
+
+    queueGetJob.mockResolvedValueOnce({ getState: async () => "active" });
+    await expect(illustrationEditJobStatus("illu-edit-x")).resolves.toEqual({
+      state: "processing",
+    });
   });
 });

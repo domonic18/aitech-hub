@@ -2,9 +2,10 @@
 
 /**
  * 配图工坊·编排(M40 批 B):服务端取数初值 + 客户端交互编排——processing
- * 轮询自刷/拆层入队/三回路编辑(候选确认制)/图层显隐乐观更新/显隐组合
- * 导出(canvas 合成 → POST /api/media 入库)。API 包络与类型均自服务端
- * lib 引入,不手写同形接口(M5-a 评审 W3)。
+ * 轮询自刷/拆层入队/三回路编辑(M47 批 A 队列化:POST 拿 jobId 后 3s 轮询,
+ * 候选确认制不变)/图层显隐乐观更新/显隐组合导出(canvas 合成 → POST
+ * /api/media 入库)。API 包络与类型均自服务端 lib 引入,不手写同形接口
+ * (M5-a 评审 W3)。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -49,6 +50,8 @@ export default function IllustrationStudio({
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+  /** 进行中的编辑任务(M47 批 A 队列化:POST 拿 jobId 后 3s 轮询,终态自清) */
+  const [editJobId, setEditJobId] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -138,26 +141,57 @@ export default function IllustrationStudio({
     setEditError(null);
     setExportError(null);
     try {
-      const body = await callApi<{ imagePath: string }>(
-        `/api/illustration/studio/${versionId}/edit`,
-        {
-          method: "POST",
-          headers: JSON_HEADERS,
-          body: JSON.stringify({
-            mode,
-            bbox: bbox.join(" "),
-            instruction: instruction.trim() || undefined,
-          }),
-        },
-      );
-      if (body.code !== 0) setEditError(body.message);
-      else setPreviewPath(body.data.imagePath);
+      const body = await callApi<{ jobId: string }>(`/api/illustration/studio/${versionId}/edit`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          mode,
+          bbox: bbox.join(" "),
+          instruction: instruction.trim() || undefined,
+        }),
+      });
+      if (body.code !== 0 || !body.data) {
+        setEditError(body.message);
+        setBusy(null);
+      } else {
+        setEditJobId(body.data.jobId); // 轮询 effect 接管,终态自清 busy
+      }
     } catch (e) {
       setEditError(e instanceof Error ? e.message : "网络异常");
-    } finally {
       setBusy(null);
     }
   }
+
+  // 编辑任务轮询(3s;M47 批 A 自同步等待改队列化):processing 续轮,
+  // done→候选预览,failed/missing→人话报错并解锁;卸载即停
+  useEffect(() => {
+    if (editJobId === null) return;
+    let stale = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const body = await callApi<{ state: "processing" | "done"; imagePath?: string }>(
+            `/api/illustration/studio/${versionId}/edit?job=${encodeURIComponent(editJobId)}`,
+          );
+          if (stale) return;
+          if (body.code === 0 && body.data?.state === "processing") return;
+          if (body.code === 0 && body.data?.state === "done" && body.data.imagePath) {
+            setPreviewPath(body.data.imagePath);
+          } else {
+            setEditError(body.message);
+          }
+        } catch {
+          return; // 网络抖动:本轮放弃,下轮再探
+        }
+        setEditJobId(null);
+        setBusy(null);
+      })();
+    }, 3000);
+    return () => {
+      stale = true;
+      clearInterval(timer);
+    };
+  }, [editJobId, versionId]);
 
   async function handleConfirm() {
     if (!previewPath) return;
