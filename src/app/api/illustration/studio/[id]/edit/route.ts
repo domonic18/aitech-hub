@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import {
   ILLUSTRATION_EDIT_MODES,
@@ -39,7 +40,8 @@ export async function POST(
   const actor = await requireSessionActor(req, "PAT 不能驱动编辑器(仅管理会话通道)");
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "版本 ID 不合法");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "版本 ID 不合法");
   const parsed = EditSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "编辑参数不合法(mode/bbox 必填,形态见接口约定)");
   if (!isValidNormalizedBbox(parsed.data.bbox)) return apiEnvelope(400, "bbox 坐标须在 0-999 域内");
@@ -47,11 +49,11 @@ export async function POST(
     return apiEnvelope(400, "改字与自由重绘必须给指令(消除笔可空)");
   }
   // 基准图 = 当前版本整图(路径服务侧取,客户端只给版本 ID)
-  const view = await getStudioView(BigInt(id));
+  const view = await getStudioView(bigId);
   if (!view) return apiEnvelope(404, "工坊版本不存在");
   try {
     const { jobId } = await enqueueIllustrationEdit({
-      versionId: BigInt(id),
+      versionId: bigId,
       imagePath: view.version.mediaPath,
       mode: parsed.data.mode,
       bbox: parsed.data.bbox,
@@ -73,7 +75,8 @@ export async function GET(
   const actor = await requireSessionActor(req, "PAT 不能查询编辑任务(仅管理会话通道)");
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "版本 ID 不合法");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "版本 ID 不合法");
   const jobId = req.nextUrl.searchParams.get("job") ?? "";
   if (!JOB_ID_RE.test(jobId)) return apiEnvelope(400, "任务 ID 不合法");
   const st = await illustrationEditJobStatus(jobId);

@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { COVER_TEMP_PREFIX, readHoldCandidate } from "@/lib/ai/cover-generate";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,13 @@ export async function GET(
   if (actor.kind === "reject") return actor.response;
 
   const { id } = await params;
-  if (!/^\d{1,19}$/.test(id)) return apiEnvelope(400, "候选 id 不合法");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "候选 id 不合法");
   const token = req.headers.get("x-cover-token") ?? "";
   if (!/^[0-9a-f-]{8,64}$/.test(token)) return apiEnvelope(400, "token 缺失或不合法");
 
   const row = await prisma.coverCandidate.findUnique({
-    where: { id: BigInt(id) },
+    where: { id: bigId },
     select: { token: true, mediaPath: true },
   });
   if (!row || row.token !== token) return apiEnvelope(404, "候选不存在或已清理");

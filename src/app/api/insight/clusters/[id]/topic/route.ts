@@ -5,13 +5,13 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { createTopicFromCluster } from "@/lib/insight/topic-gen";
 import { TopicError } from "@/lib/topics/errors";
 
 export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not create topics from insight clusters";
-const ID_RE = /^\d{1,10}$/;
 
 export async function POST(
   req: NextRequest,
@@ -20,9 +20,10 @@ export async function POST(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "簇 id 不合法");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "簇 id 不合法");
   try {
-    const r = await createTopicFromCluster(BigInt(id));
+    const r = await createTopicFromCluster(bigId);
     return apiEnvelope(0, "created", {
       topic_id: r.topicId.toString(),
       title: r.title,

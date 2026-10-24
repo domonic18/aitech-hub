@@ -14,6 +14,7 @@ import { registerApprovedBlogger } from "@/lib/discovery/blogger-registration";
 import { CANDIDATE_STATUSES } from "@/lib/discovery/status";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,12 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "status 不合法");
   try {
-    const row = await setCandidateStatus(BigInt(id), parsed.data.status);
+    const row = await setCandidateStatus(bigId, parsed.data.status);
     // 批准博主候选 → 同步自动登记进博主管理(幂等;失败转行内提示不阻塞终审)
     let message = "ok";
     let socialAccountId: string | null = null;

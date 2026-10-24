@@ -8,6 +8,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { listPinIdsByTopic } from "@/lib/pins/repo";
 import { mapTopicError } from "@/lib/topics/http";
 import { getTopicStateSnapshot } from "@/lib/topics/repo";
@@ -16,8 +17,6 @@ export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage topics";
 
-const ID_RE = /^\d{1,10}$/;
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -25,11 +24,12 @@ export async function GET(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
-  const topic = await getTopicStateSnapshot(BigInt(id));
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
+  const topic = await getTopicStateSnapshot(bigId);
   if (!topic) return apiEnvelope(404, "创作不存在或已删除");
   try {
-    const pinIds = await listPinIdsByTopic(BigInt(id));
+    const pinIds = await listPinIdsByTopic(bigId);
     return apiEnvelope(0, "ok", {
       status: topic.status,
       updatedAt: topic.updatedAt.toISOString(),

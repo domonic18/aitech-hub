@@ -5,6 +5,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { getStudioView } from "@/lib/ai/illustration-studio";
@@ -18,7 +19,9 @@ export async function GET(
   const actor = await requireSessionActor(req, "PAT 不能访问配图工坊(仅管理会话通道)");
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  const versionId = BigInt(/^\d+$/.test(id) ? id : "0");
+  // 曾静默归零(BigInt(坏 id → "0"))查出无关版本;归 parse-id 单源后坏 id 显式 400
+  const versionId = parseBigIntId(id);
+  if (versionId === null) return apiEnvelope(400, "版本 ID 不合法");
   const view = await getStudioView(versionId);
   if (!view) return apiEnvelope(404, "工坊版本不存在");
   return apiEnvelope(0, "ok", view);

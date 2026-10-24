@@ -10,6 +10,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { toItemDto, toTopicDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
 import { hydrateItems } from "@/lib/topics/materials";
@@ -21,8 +22,6 @@ export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage topics";
 
-const ID_RE = /^\d{1,10}$/;
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -30,9 +29,10 @@ export async function GET(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   try {
-    const topic = await getTopic(BigInt(id));
+    const topic = await getTopic(bigId);
     const materials = await hydrateItems(topic.items);
     return apiEnvelope(0, "ok", {
       ...toTopicDto(topic, topic.items.length),
@@ -52,7 +52,8 @@ export async function PATCH(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiEnvelope(400, "请求体须为 JSON 对象");
   // 字段组与 status 两组 schema 独立解析,任一命中即可(纯 status 体在字段组会
@@ -94,9 +95,9 @@ export async function PATCH(
     if (derived !== undefined) parsed.data.skillKey = derived;
   }
   try {
-    let topic = await updateTopic(BigInt(id), parsed.success ? parsed.data : {});
+    let topic = await updateTopic(bigId, parsed.success ? parsed.data : {});
     if (status.success) {
-      topic = await updateTopicStatus(BigInt(id), status.data.status);
+      topic = await updateTopicStatus(bigId, status.data.status);
     }
     return apiEnvelope(0, "ok", toTopicDto(topic));
   } catch (e) {
@@ -113,9 +114,10 @@ export async function DELETE(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   try {
-    await deleteTopic(BigInt(id));
+    await deleteTopic(bigId);
     return apiEnvelope(0, "deleted");
   } catch (e) {
     const mapped = mapTopicError(e);
