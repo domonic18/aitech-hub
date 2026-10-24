@@ -1,4 +1,6 @@
-/** 渠道编辑(M7 批④):全量表单更新;token 写侧规则见 service(空串清除/缺省沿用)。 */
+/** 渠道编辑/删除(编辑 M7 批④;删除 2026-10-24 验收):编辑为全量表单更新,
+ *  token 写侧规则见 service(空串清除/缺省沿用);删除级联清除已采集条目,
+ *  视频平台行(service in_use 拒绝)→ 409。 */
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
@@ -6,6 +8,7 @@ import { apiEnvelope } from "@/lib/http/response";
 import {
   ChannelAdminError,
   ChannelInputSchema,
+  deleteChannel,
   updateChannel,
 } from "@/lib/telegram/channels-admin";
 
@@ -32,6 +35,25 @@ export async function PUT(
         e.code === "not_found" ? 404 : e.code === "name_taken" ? 409 : 400,
         e.message,
       );
+    }
+    throw e;
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const actor = await requireSessionActor(req, PAT_DENY);
+  if (actor.kind === "reject") return actor.response;
+  const { id } = await params;
+  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  try {
+    await deleteChannel(Number(id));
+    return apiEnvelope(0, "deleted");
+  } catch (e) {
+    if (e instanceof ChannelAdminError) {
+      return apiEnvelope(e.code === "not_found" ? 404 : e.code === "in_use" ? 409 : 400, e.message);
     }
     throw e;
   }

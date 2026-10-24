@@ -192,6 +192,26 @@ export default function ChannelLedgerTable({ rows }: { rows: ChannelLedgerRow[] 
   const visible = filter === "all" ? rows : rows.filter((r) => r.kind === filter);
   const enabledCount = rows.filter((r) => r.enabled).length;
 
+  /** 删除文字渠道(2026-10-24 验收):确认后 DELETE,级联清条目;失败弹人话 */
+  async function removeChannel(id: number, name: string): Promise<void> {
+    if (
+      !window.confirm(`删除渠道「${name}」?该渠道已采集的全部条目将一并删除,不可恢复。确认删除?`)
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/channels/${id}`, { method: "DELETE" });
+      const body = (await res.json()) as ApiEnvelope;
+      if (body.code !== 0) {
+        alert(`删除失败:${body.message || `HTTP ${res.status}`}`);
+        return;
+      }
+      router.refresh();
+    } catch {
+      alert("网络错误,请重试");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -224,64 +244,76 @@ export default function ChannelLedgerTable({ rows }: { rows: ChannelLedgerRow[] 
             </tr>
           </thead>
           <tbody>
-            {visible.map((r) => (
-              <tr
-                key={r.key}
-                className={`border-b border-line last:border-b-0 hover:bg-panel-2 ${
-                  r.enabled ? "" : "opacity-60"
-                }`}
-              >
-                <td className="px-4 py-2.5">
-                  <div className="font-medium text-text-1">{r.name}</div>
-                  {r.editChannel !== null && (
-                    <ChannelDialog
-                      label="编辑"
-                      channel={r.editChannel}
-                      buttonClass="mt-0.5 cursor-pointer rounded-sm px-0 py-0 text-[11px] text-text-3 hover:text-accent"
-                    />
-                  )}
-                </td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    {r.statusEndpoint !== null && (
-                      <StatusSwitch
-                        endpoint={r.statusEndpoint}
-                        enabled={r.enabled}
-                        name={r.name}
-                        disableHint={`确认停用「${r.name}」?停用后调度器不再派发任务。`}
-                      />
+            {visible.map((r) => {
+              const ec = r.editChannel;
+              return (
+                <tr
+                  key={r.key}
+                  className={`border-b border-line last:border-b-0 hover:bg-panel-2 ${
+                    r.enabled ? "" : "opacity-60"
+                  }`}
+                >
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-text-1">{r.name}</div>
+                    {ec !== null && (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <ChannelDialog
+                          label="编辑"
+                          channel={ec}
+                          buttonClass="cursor-pointer rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-2 hover:border-accent hover:text-accent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void removeChannel(ec.id, r.name)}
+                          className="cursor-pointer rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-2 hover:border-red hover:text-red"
+                        >
+                          删除
+                        </button>
+                      </div>
                     )}
-                    <span className="text-xs text-text-2">{r.cadence}</span>
-                  </div>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2.5">
-                  <span
-                    className={`inline-flex items-center gap-1.5 text-xs ${HEALTH_TEXT[r.health]}`}
-                  >
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      {r.statusEndpoint !== null && (
+                        <StatusSwitch
+                          endpoint={r.statusEndpoint}
+                          enabled={r.enabled}
+                          name={r.name}
+                          disableHint={`确认停用「${r.name}」?停用后调度器不再派发任务。`}
+                        />
+                      )}
+                      <span className="text-xs text-text-2">{r.cadence}</span>
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5">
                     <span
-                      className={`inline-block h-1.5 w-1.5 rounded-full ${HEALTH_STYLE[r.health]}`}
-                    />
-                    {r.healthText}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[11px] text-text-2">
-                  {r.lastRunLabel}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2.5">
-                  <div className="flex items-center justify-end gap-1">
-                    <PrimaryButton
-                      row={r}
-                      primary={r.primary}
-                      onDone={(msg) => {
-                        if (msg !== null) alert(`触发失败:${msg}`);
-                        else router.refresh();
-                      }}
-                    />
-                    <SecondaryAction row={r} />
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      className={`inline-flex items-center gap-1.5 text-xs ${HEALTH_TEXT[r.health]}`}
+                    >
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${HEALTH_STYLE[r.health]}`}
+                      />
+                      {r.healthText}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[11px] text-text-2">
+                    {r.lastRunLabel}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <PrimaryButton
+                        row={r}
+                        primary={r.primary}
+                        onDone={(msg) => {
+                          if (msg !== null) alert(`触发失败:${msg}`);
+                          else router.refresh();
+                        }}
+                      />
+                      <SecondaryAction row={r} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {visible.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-xs text-text-3">
