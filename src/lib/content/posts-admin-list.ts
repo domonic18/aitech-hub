@@ -4,7 +4,7 @@
  */
 import { prisma } from "@/lib/db";
 
-import { POST_STATUS_DELETED } from "./post-schema";
+import { POST_STATUS_DELETED, type AdminListSegment } from "./post-schema";
 
 export const ADMIN_PAGE_SIZE = 15;
 
@@ -34,7 +34,7 @@ export type AdminPostRow = Awaited<ReturnType<typeof listPostsAdmin>>["items"][n
 
 export interface AdminListQuery {
   page: number;
-  segment: "all" | "published" | "draft" | "unpublished";
+  segment: AdminListSegment;
   q?: string;
 }
 

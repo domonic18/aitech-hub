@@ -74,6 +74,13 @@ export function postDisplayState(post: {
 export const ADMIN_LIST_SEGMENTS = ["all", "published", "draft", "unpublished"] as const;
 export type AdminListSegment = (typeof ADMIN_LIST_SEGMENTS)[number];
 
+/** 展示态中文名(编辑器头标/列表徽章/页签同源;三处曾各抄一份,M47 批A' 收敛) */
+export const POST_DISPLAY_STATE_LABEL: Record<PostDisplayState, string> = {
+  published: "已发布",
+  draft: "草稿",
+  unpublished: "已下架",
+};
+
 /** slug 边界(分类/标签沿用):先归一化(arch/07-frontend §2 红线,统一 percent-encoded 小写)再验空 */
 export const slugSchema = z
   .string()

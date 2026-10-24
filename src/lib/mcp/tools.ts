@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { AdminActor } from "@/lib/http/mutation-guard";
 import { upsertArticle } from "@/lib/content/publish-api";
 import { publishUpsertShape } from "@/lib/content/publish-schema";
+import { ADMIN_LIST_SEGMENTS } from "@/lib/content/post-schema";
 import {
   getPostBySlugAdmin,
   listPostsAdmin,
@@ -128,7 +129,7 @@ export function createMcpServer(actor: AdminActor): McpServer {
     "list_articles",
     "列文章(不含正文;status: all|published|draft|unpublished,q 模糊匹配标题/slug)",
     {
-      status: z.enum(["all", "published", "draft", "unpublished"]).default("all"),
+      status: z.enum(ADMIN_LIST_SEGMENTS).default("all"),
       q: z.string().max(100).optional(),
       page: z.number().int().min(1).default(1),
     },

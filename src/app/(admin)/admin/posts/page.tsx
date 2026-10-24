@@ -14,6 +14,7 @@ import CategoriesSection from "@/components/admin/categories/CategoriesSection";
 import SubTabs from "@/components/admin/data/SubTabs";
 import {
   ADMIN_LIST_SEGMENTS,
+  POST_DISPLAY_STATE_LABEL,
   postDisplayState,
   type AdminListSegment,
 } from "@/lib/content/post-schema";
@@ -27,9 +28,7 @@ export const dynamic = "force-dynamic";
 
 const SEG_LABELS: Record<AdminListSegment, string> = {
   all: "全部",
-  published: "已发布",
-  draft: "草稿",
-  unpublished: "已下架",
+  ...POST_DISPLAY_STATE_LABEL,
 };
 
 /** 文章/分类双视图(?t= 切换;分类原为侧栏一级项,验收二批①降级并入) */
