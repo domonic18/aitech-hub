@@ -5,7 +5,8 @@
  * 先于 worker 放弃(评审 S2:30 张 × 15s 最坏 450s > 固定 180s 预算)。任一
  * 失败不抛:未成 URL 映射 null,由调用方逐条落状态与 warning。
  */
-import { type ApiEnvelope } from "@/lib/http/response";
+import { pollJobUntil } from "@/lib/http/poll-client";
+import type { ApiEnvelope } from "@/lib/http/response";
 import { type TransferResult, MEDIA_LIMITS } from "@/lib/media/media-schema";
 import type { ImportMapping } from "@/lib/media/import-md";
 
@@ -28,19 +29,16 @@ export async function runImportTransfer(urls: string[]): Promise<ImportMapping> 
   } | null> | null;
   const jobId = postBody?.data?.jobId;
   if (!jobId) return Object.fromEntries(urls.map((u) => [u, null]));
-  // 轮询直至完成(转存任务在 worker 执行;超时预算按最坏抓取时长推导)
-  for (let i = 0; i < pollTriesFor(urls.length); i += 1) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    const poll = await fetch(`/api/media/import?job=${encodeURIComponent(jobId)}`);
-    if (!poll.ok) continue;
-    const body = (await poll.json().catch(() => null)) as ApiEnvelope<{
-      state?: string;
-      result?: TransferResult | null;
-    } | null> | null;
-    if (body?.data?.state === "completed" && body.data.result) {
-      return body.data.result.mapping;
-    }
-    if (body?.data?.state === "failed") break;
-  }
+  // 轮询直至完成(转存任务在 worker 执行;超时预算按最坏抓取时长推导;
+  // completed 但 result 未就绪视为暂时态继续,failed 视为终态提前收止)
+  const final = await pollJobUntil<{ state?: string; result?: TransferResult | null }>(
+    `/api/media/import?job=${encodeURIComponent(jobId)}`,
+    {
+      pollMs: POLL_INTERVAL_MS,
+      pollMax: pollTriesFor(urls.length),
+      isTerminal: (d) => (d.state === "completed" && !!d.result) || d.state === "failed",
+    },
+  );
+  if (final?.state === "completed" && final.result) return final.result.mapping;
   return Object.fromEntries(urls.map((u) => [u, null]));
 }

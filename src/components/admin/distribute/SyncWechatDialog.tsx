@@ -21,6 +21,7 @@ import {
   WECHAT_TITLE_MAX,
 } from "@/lib/distribute/channels";
 import { WECHAT_THEMES } from "@/lib/distribute/wechat-themes";
+import { pollJobUntil } from "@/lib/http/poll-client";
 import type { ApiEnvelope } from "@/lib/http/response";
 import SyncWechatPreview from "./SyncWechatPreview";
 
@@ -37,12 +38,13 @@ export interface WechatSyncDialogPost {
 const POLL_MS = 2_000;
 const POLL_MAX = 150; // 2s × 150 = 5min:单篇最坏(多图转存)分钟级,兜底轮询
 
-type SyncPollBody = ApiEnvelope<{
+/** 轮询 data 载荷(包络由 pollJobUntil 剥;mediaId 本视图未消费,留字段对齐端点) */
+type SyncPollData = {
   state: "waiting" | "active" | "completed" | "failed";
   ok?: boolean | null;
   mediaId?: string | null;
   reason?: string | null;
-} | null>;
+};
 
 export default function SyncWechatDialog({
   post,
@@ -109,33 +111,31 @@ export default function SyncWechatDialog({
         return;
       }
       const { jobId, token } = json.data;
-      for (let i = 0; i < POLL_MAX; i += 1) {
-        await new Promise((r) => setTimeout(r, POLL_MS));
-        const poll = await fetch(
-          `/api/distribute/wechat/sync/${jobId}?token=${encodeURIComponent(token)}`,
-        );
-        if (!poll.ok) continue;
-        const body = (await poll.json().catch(() => null)) as SyncPollBody | null;
-        if (body?.code !== 0 || !body?.data) continue;
-        const d = body.data;
-        if (d.state === "completed") {
-          if (d.ok) {
-            onClose();
-            router.refresh();
-          } else {
-            setError(d.reason ?? "同步失败");
-            setMsg(null);
-            setBusy(false);
-          }
-          return;
-        }
-        if (d.state === "failed") {
-          setError(d.reason ?? "同步任务失败");
+      const d = await pollJobUntil<SyncPollData>(
+        `/api/distribute/wechat/sync/${jobId}?token=${encodeURIComponent(token)}`,
+        {
+          pollMs: POLL_MS,
+          pollMax: POLL_MAX,
+          isTerminal: (x) => x.state === "completed" || x.state === "failed",
+          onPoll: () => setMsg("同步中…(转存正文图片并推送草稿,多图文章约需 1-2 分钟)"),
+        },
+      );
+      if (d?.state === "completed") {
+        if (d.ok) {
+          onClose();
+          router.refresh();
+        } else {
+          setError(d.reason ?? "同步失败");
           setMsg(null);
           setBusy(false);
-          return;
         }
-        setMsg("同步中…(转存正文图片并推送草稿,多图文章约需 1-2 分钟)");
+        return;
+      }
+      if (d) {
+        setError(d.reason ?? "同步任务失败");
+        setMsg(null);
+        setBusy(false);
+        return;
       }
       setError("轮询超时:任务仍在后台执行,稍后到「内容分发」页查看结果");
       setMsg(null);
