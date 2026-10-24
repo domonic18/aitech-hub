@@ -13,6 +13,12 @@ import { useEffect, useRef, useState } from "react";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import {
+  TELEGRAM_AI_DONE,
+  TELEGRAM_AI_MISSING_TRANSCRIPT,
+  TELEGRAM_AI_PENDING,
+  TELEGRAM_AI_PROCESSING,
+} from "@/lib/telegram/constants";
 
 const ACTIONS: Record<string, Array<{ label: string; to: string; danger?: boolean }>> = {
   visible: [
@@ -109,8 +115,8 @@ export default function TelegramRowOps({
 
   const isVideo = mediaType === "video";
   const isText = mediaType === "text";
-  const aiRerun = aiStatus === "done" || aiStatus === "missing_transcript";
-  const aiWorking = aiStatus === "pending" || aiStatus === "processing";
+  const aiRerun = aiStatus === TELEGRAM_AI_DONE || aiStatus === TELEGRAM_AI_MISSING_TRANSCRIPT;
+  const aiWorking = aiStatus === TELEGRAM_AI_PENDING || aiStatus === TELEGRAM_AI_PROCESSING;
 
   return (
     <div className="flex items-center justify-end gap-1 text-xs">

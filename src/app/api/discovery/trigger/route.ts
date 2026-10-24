@@ -6,7 +6,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { triggerDiscovery } from "@/lib/discovery/admin";
+import { DISCOVERY_TRIGGER_JOBS, triggerDiscovery } from "@/lib/discovery/admin";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not trigger discovery jobs";
 
-const Body = z.object({ job: z.enum(["hotwords", "bili"]) });
+const Body = z.object({ job: z.enum(DISCOVERY_TRIGGER_JOBS) });
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const actor = await requireSessionActor(req, PAT_DENY);
