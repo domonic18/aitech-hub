@@ -7,9 +7,9 @@
  */
 import { useRef, useState } from "react";
 
-import type { ApiEnvelope } from "@/lib/http/response";
 import { ILLUSTRATE_ASPECT_OPTIONS } from "@/lib/ai/constants";
 import { IMAGE_ACCEPT } from "@/lib/media/media-schema";
+import { uploadImageFile } from "@/lib/media/upload-client";
 import type { PinImageDto } from "@/lib/pins/dto";
 import { PIN_IMAGES_MAX } from "@/lib/pins/constants";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -93,21 +93,10 @@ export default function AddImageModal({
     if (!file) return;
     setRefBusy(true);
     setError(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const upRes = await fetch("/api/media", { method: "POST", body: form });
-      const up = (await upRes.json().catch(() => null)) as ApiEnvelope<{ path: string }> | null;
-      if (!up || up.code !== 0 || !up.data) {
-        setError(up?.message ?? `参照图上传失败(HTTP ${upRes.status})`);
-        return;
-      }
-      setReferencePath(up.data.path);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "网络异常");
-    } finally {
-      setRefBusy(false);
-    }
+    const up = await uploadImageFile(file, file.name);
+    if (!up.ok) setError(up.error);
+    else setReferencePath(up.path);
+    setRefBusy(false);
   }
 
   /** 本地图取自然宽高后走媒体管线,再挂序列(media_path 快照) */
@@ -117,19 +106,17 @@ export default function AddImageModal({
     setBusy(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const upRes = await fetch("/api/media", { method: "POST", body: form });
-      const up = (await upRes.json().catch(() => null)) as ApiEnvelope<{ path: string }> | null;
-      if (!up || up.code !== 0 || !up.data) {
-        setError(up?.message ?? `上传失败(HTTP ${upRes.status})`);
+      const up = await uploadImageFile(file, file.name);
+      if (!up.ok) {
+        setError(up.error);
         return;
       }
+      const mediaPath = up.path;
       const dims = await new Promise<{ w: number; h: number }>((resolve) => {
         const img = new Image();
         img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
         img.onerror = () => resolve({ w: 0, h: 0 });
-        img.src = up.data!.path;
+        img.src = mediaPath;
       });
       const body = await callPinApi<{ added: number; images: PinImageDto[] }>(
         `/api/pins/${pinId}/images`,
@@ -137,7 +124,7 @@ export default function AddImageModal({
           method: "POST",
           headers: JSON_HEADERS,
           body: JSON.stringify({
-            mediaPath: up.data.path,
+            mediaPath,
             ...(dims.w > 0 ? { width: dims.w, height: dims.h } : {}),
           }),
         },
