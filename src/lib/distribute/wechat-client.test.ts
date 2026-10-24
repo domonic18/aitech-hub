@@ -75,8 +75,8 @@ const NEWS_PIC: WechatNewsPicArticle = {
   content: "轻文字纯文本",
   author: "一起AI",
   content_source_url: "https://17aitech.com/pins/1-x/",
-  image_info: { image_list: [{ media_id: "IMG1" }, { media_id: "IMG2" }] },
-  cover_info: { crop_percent_list: ["1_1"] },
+  image_info: { image_list: [{ image_media_id: "IMG1" }, { image_media_id: "IMG2" }] },
+  cover_info: { crop_percent_list: [{ ratio: "1_1" }] },
 };
 
 beforeEach(() => {
@@ -279,10 +279,10 @@ describe("业务接口载荷", () => {
     expect(sent.articles).toHaveLength(1);
     expect(sent.articles[0].article_type).toBe("newspic");
     expect(sent.articles[0].image_info.image_list).toEqual([
-      { media_id: "IMG1" },
-      { media_id: "IMG2" },
+      { image_media_id: "IMG1" },
+      { image_media_id: "IMG2" },
     ]);
-    expect(sent.articles[0].cover_info.crop_percent_list).toEqual(["1_1"]);
+    expect(sent.articles[0].cover_info.crop_percent_list).toEqual([{ ratio: "1_1" }]);
     expect(sent.articles[0].thumb_media_id).toBeUndefined();
   });
 

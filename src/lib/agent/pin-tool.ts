@@ -86,7 +86,7 @@ export const saveTopicPinTool = tool(
       "- reference_path:本次出图实际采纳的参照图(与生图时传的 reference_path 一致;" +
       "无参照则省略)。\n" +
       "- read_more_url:省略时自动取本创作长文的站内链接;本创作没有长文且需要引流时再显式传。\n" +
-      "- crop_spec:首图裁剪档 1_1 / 16_9 / 2.35_9,按画面比例匹配参照图与内容,省略默认 1_1。\n" +
+      "- crop_spec:首图裁剪档 1_1 / 16_9 / 2.35_1,按画面比例匹配参照图与内容,省略默认 1_1。\n" +
       "回执含 pin_id、组装台 admin_url、前台 preview_url:汇报时两个链接都给。",
     schema: z.object({
       topic_id: z.string().regex(ID_RE).describe("创作(专题)id"),

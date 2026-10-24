@@ -30,12 +30,12 @@ describe("composePinWritingText", () => {
     const text = composePinWritingText({
       count: 9,
       aspect: "1:1",
-      crop: "2.35_9",
+      crop: "2.35_1",
       style: "手绘笔记风,米白纸底",
       reference: "",
     });
     expect(text).toBe(
-      ["画面:共 9 张,比例 1:1,首图裁剪 2.35_9。", "风格:手绘笔记风,米白纸底"].join("\n"),
+      ["画面:共 9 张,比例 1:1,首图裁剪 2.35_1。", "风格:手绘笔记风,米白纸底"].join("\n"),
     );
   });
 
@@ -172,7 +172,7 @@ describe("常量健全性", () => {
 
   it("比例/裁剪展示名全覆盖(UI 选项与契约字面量同源)", () => {
     for (const a of PIN_ASPECTS) expect(PIN_ASPECT_LABEL[a].length).toBeGreaterThan(0);
-    for (const c of ["1_1", "16_9", "2.35_9"] as const) {
+    for (const c of ["1_1", "16_9", "2.35_1"] as const) {
       expect(PIN_CROP_LABEL[c].length).toBeGreaterThan(0);
     }
   });

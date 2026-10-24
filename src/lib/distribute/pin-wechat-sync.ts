@@ -175,10 +175,10 @@ export async function syncOnePin(pinId: bigint): Promise<PinWechatSyncResult> {
     const creds: WechatCredentials = { appid: cfg.appid, appSecret: cfg.appSecret };
     // 逐张永久素材(add_material;uploadimg 的 URL 不可用于 image_list)——
     // m:sha1 缓存命中零重传;任一张失败整单终止(裂图比不同步更糟)
-    const imageList: Array<{ media_id: string }> = [];
+    const imageList: Array<{ image_media_id: string }> = [];
     for (const img of pin.images) {
       const material = await ensureCoverMedia(creds, img.mediaPath);
-      imageList.push({ media_id: material.mediaId });
+      imageList.push({ image_media_id: material.mediaId });
     }
     const article: WechatNewsPicArticle = {
       article_type: "newspic",
@@ -187,7 +187,7 @@ export async function syncOnePin(pinId: bigint): Promise<PinWechatSyncResult> {
       ...(cfg.author ? { author: cfg.author } : {}),
       ...(pin.readMoreUrl ? { content_source_url: pin.readMoreUrl } : {}),
       image_info: { image_list: imageList },
-      cover_info: { crop_percent_list: [pin.cropSpec] },
+      cover_info: { crop_percent_list: [{ ratio: pin.cropSpec }] },
     };
     // 阅读原文(read_more_url)由组装台显式维护,缺省不带(不擅自覆盖导流)
     const mediaId = await submitNewsPic(creds, article, row.mediaId);
