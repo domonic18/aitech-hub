@@ -5,7 +5,12 @@
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { AGENT_OPEN_EVENT, agentFabButtonVisible, openAgentAssistant } from "./agent-host";
+import {
+  AGENT_OPEN_EVENT,
+  agentFabButtonVisible,
+  openAgentAssistant,
+  readRunInactiveDetail,
+} from "./agent-host";
 
 describe("agentFabButtonVisible(路由策略:FAB 按钮显隐,卡永驻)", () => {
   it("编辑页 /admin/posts/<id> 藏按钮(顶栏 EditorAssistant 入口在场)", () => {
@@ -64,5 +69,19 @@ describe("openAgentAssistant(唤起协议派发契约)", () => {
     window.removeEventListener(AGENT_OPEN_EVENT, spy);
     const detail = (spy.mock.calls[0]![0] as CustomEvent).detail;
     expect(detail).toEqual({});
+  });
+});
+
+describe("readRunInactiveDetail(收尾广播载荷安全读取)", () => {
+  it("interrupted 布尔透传;非布尔按 false 收敛", () => {
+    expect(readRunInactiveDetail({ interrupted: true })).toEqual({ interrupted: true });
+    expect(readRunInactiveDetail({ interrupted: false })).toEqual({ interrupted: false });
+    expect(readRunInactiveDetail({ interrupted: "yes" })).toEqual({ interrupted: false });
+  });
+
+  it("缺 detail/非对象载荷(旧事件形态)按非中断计", () => {
+    expect(readRunInactiveDetail(undefined)).toEqual({ interrupted: false });
+    expect(readRunInactiveDetail(null)).toEqual({ interrupted: false });
+    expect(readRunInactiveDetail("agent:run-inactive")).toEqual({ interrupted: false });
   });
 });

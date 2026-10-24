@@ -108,6 +108,12 @@ export default function StudioActions({
       };
     }
     if (completed) {
+      if (completed.outcome === "no-output") {
+        return {
+          title: "创作动作 · 本轮未产出",
+          hint: "生成已结束但没有新产出——原因见右侧助手对话;调整后可重新生成",
+        };
+      }
       return {
         title: "创作动作 · 本轮已完成 ✓",
         hint: "产出已就位;可发布/精修,或调整配置后再次生成",
