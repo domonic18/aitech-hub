@@ -154,7 +154,7 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 
 - **`searchMaterials({ kind?, q?, limit? })`**(`src/lib/topics/materials.ts`,agent `search_materials` 工具的服务层):电报(视频须已解读 / 文本须 visible 且摘要非空)+ 历史文章(未软删)`contains` 检索,按 `aiRanAt/publishedAt` 倒序(详情页挂载候选显式 `aiRanAt DESC NULLS LAST`:文本素材无 `aiRanAt`,PG 的 DESC 缺省 NULLS FIRST 会把整批文本顶到首页、新解读视频沉到末页);`mountMaterial`/`unmountMaterial` **幂等**(重复挂载返回 `{created:false}` 不报错),写侧仍走既有唯一键与素材资格校验
 - **`resolveTopicReferences(topic, opts?)`**(`src/lib/topics/references.ts`):参照候选装配,优先级 `样例图(sample_image)→ 素材视频封面 → 挂载文章正文图 → 本创作已有贴图`;去重、仅站内 uploads、上限 10;详情页渲染**不发起外链转存**(视频封面在生成期由 agent 转存后进候选,避免页面加载外呼)
-- **`createPinWithImages(input)`**(`src/lib/pins/assemble.ts`,agent `save_topic_pin` 的服务层):单事务建 `content_pin` + 有序 `content_pin_image`(sortOrder 落序)、写 `referenceMediaPath`、创作状态 collecting→drafted;失败整体回滚。硬闸与贴图组装台同源(`PIN_TITLE_MAX/PIN_CONTENT_MAX/PIN_IMAGES_MAX` 码点口径、图片仅 uploads、重复 path 拒);create-only,既有贴图编辑仍在组装台
+- **`createPinWithImages(input)`**(`src/lib/pins/assemble.ts`,agent `save_topic_pin` 的服务层):单事务建 `content_pin` + 有序 `content_pin_image`(sortOrder 落序)、写 `referenceMediaPath`、创作状态 collecting→drafted;失败整体回滚。硬闸与贴图组装台同源(`PIN_TITLE_MAX/PIN_CONTENT_MAX/PIN_IMAGES_MAX` 码点口径、图片仅 uploads、重复 path 拒);create-only;既有贴图文字修改走 agent `update_topic_pin`(2026-10-24 验收批,归属按 topic 校验、`pinUpdateSchema` 码点单源、repo `updatePin` 守 synced/published 红线),图片序列编辑仍在组装台
 
 ## 5. 一期接口清单(Route Handlers)
 

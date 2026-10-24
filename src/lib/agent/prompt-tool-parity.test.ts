@@ -22,6 +22,7 @@ const NON_TOOL_TOKENS = new Set([
   "markdown_line", // render_card 返回字段
   "output_type", // brief 结构化标记:主意图 article|pin(M42 创作中心)
   "pin_config", // brief 结构化标记:贴图配置(M42 批④;reference 为管理员指定参照图)
+  "pin_id", // update_topic_pin 参数 / save_topic_pin 回执字段
   "post_id", // save_topic_draft 返回字段
   "post_url", // save_topic_draft 返回字段
   "reference_path", // generate_illustration 样例参照图参数(M39 批③;2026-10-21 提示加参照纪律)
@@ -29,6 +30,7 @@ const NON_TOOL_TOKENS = new Set([
   "skill_key", // 专题绑定字段 / write_article 参数
   "skip_cover_generation", // brief 结构化标记(M39 批④+)
   "topic_id", // 各工具参数
+  "video_url", // brief 素材区字段:原视频链接(M46 验收批:视频体贴图轻文字带源)
   "visual_mode", // brief 结构化标记(M39 §13.7 修 1)
   "write_todos", // deepagents harness 计划工具(todoListMiddleware 挂载)
 ]);

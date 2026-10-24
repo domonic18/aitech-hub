@@ -24,20 +24,33 @@ vi.mock("../topics/repo", () => ({
 const createPinWithImages = vi.hoisted(() => vi.fn());
 vi.mock("../pins/assemble", () => ({ createPinWithImages }));
 
+const updatePin = vi.hoisted(() => vi.fn());
+vi.mock("../pins/repo", () => ({
+  PinError: class extends Error {
+    constructor(_code: string, message: string) {
+      super(message);
+    }
+  },
+  updatePin,
+}));
+
 const db = vi.hoisted(() => ({
   postFindUnique: vi.fn(),
   pinCount: vi.fn(),
+  pinFindUnique: vi.fn(),
+  channelCount: vi.fn(),
 }));
 vi.mock("../db", () => ({
   prisma: {
     post: { findUnique: db.postFindUnique },
-    contentPin: { count: db.pinCount },
+    contentPin: { count: db.pinCount, findUnique: db.pinFindUnique },
+    contentPinChannel: { count: db.channelCount },
   },
 }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { PinError } from "../pins/repo";
-import { saveTopicPinTool } from "./pin-tool";
+import { saveTopicPinTool, updateTopicPinTool } from "./pin-tool";
 
 const PIN = {
   id: BigInt(77),
@@ -62,6 +75,18 @@ beforeEach(() => {
   createPinWithImages.mockResolvedValue(PIN);
   db.postFindUnique.mockResolvedValue({ id: BigInt(42), slug: "on-device", status: "published" });
   db.pinCount.mockResolvedValue(2);
+  db.pinFindUnique.mockResolvedValue({
+    id: BigInt(77),
+    title: PIN.title,
+    topicId: BigInt(7),
+    status: "draft",
+  });
+  updatePin.mockResolvedValue({
+    id: BigInt(77),
+    title: "新标题",
+    status: "draft",
+  });
+  db.channelCount.mockResolvedValue(0);
 });
 
 describe("save_topic_pin", () => {
@@ -133,5 +158,85 @@ describe("save_topic_pin", () => {
     createPinWithImages.mockRejectedValueOnce(new PinError("invalid_input", "图片路径有重复"));
     const out = await invoke({ topic_id: "7", title: "t", image_paths: [IMG] });
     expect(out).toEqual({ ok: false, error: "图片路径有重复" });
+  });
+});
+
+describe("update_topic_pin", () => {
+  async function invokeUpdate(args: Record<string, unknown>, threadId = "t-admin") {
+    const raw = (await updateTopicPinTool.invoke(
+      args as never,
+      { configurable: { thread_id: threadId } } as never,
+    )) as string;
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  it("非 admin 会话 → deny 且不触达业务", async () => {
+    assertAdminThread.mockResolvedValueOnce(false);
+    const out = await invokeUpdate({ pin_id: "77", topic_id: "7", content: "x" });
+    expect(out.ok).toBe(false);
+    expect(updatePin).not.toHaveBeenCalled();
+  });
+
+  it("归属校验过 → 改轻文字与阅读原文;回执带链接,无同步提示", async () => {
+    const out = await invokeUpdate({
+      pin_id: "77",
+      topic_id: "7",
+      content: "补一段视频介绍 https://example.com/v/1",
+      read_more_url: "https://example.com/v/1",
+    });
+    expect(updatePin).toHaveBeenCalledWith(BigInt(77), {
+      content: "补一段视频介绍 https://example.com/v/1",
+      readMoreUrl: "https://example.com/v/1",
+    });
+    expect(out).toMatchObject({
+      ok: true,
+      pin_id: "77",
+      status: "draft",
+      wechat_resync_needed: false,
+      admin_url: "/admin/pins/77",
+    });
+    expect(String(out.message)).not.toContain("重新同步");
+  });
+
+  it("已同步公众号 → 回执 wechat_resync_needed:true 提示组装台重新同步", async () => {
+    db.channelCount.mockResolvedValueOnce(1);
+    updatePin.mockResolvedValueOnce({ id: BigInt(77), title: "t", status: "synced" });
+    const out = await invokeUpdate({ pin_id: "77", topic_id: "7", title: "t" });
+    expect(out.wechat_resync_needed).toBe(true);
+    expect(String(out.message)).toContain("组装台重新同步");
+  });
+
+  it("贴图不属于本创作或不存在 → ok:false 人话,不触 repo", async () => {
+    db.pinFindUnique.mockResolvedValueOnce({
+      id: BigInt(77),
+      topicId: BigInt(9),
+      status: "draft",
+    });
+    const out = await invokeUpdate({ pin_id: "77", topic_id: "7", content: "x" });
+    expect(out.ok).toBe(false);
+    expect(String(out.error)).toContain("不属于本创作");
+    expect(updatePin).not.toHaveBeenCalled();
+    db.pinFindUnique.mockResolvedValueOnce(null);
+    const out2 = await invokeUpdate({ pin_id: "99", topic_id: "7", content: "x" });
+    expect(out2.ok).toBe(false);
+  });
+
+  it("已同步/已发布直编被 repo 拒(edit_locked)→ 人话回传", async () => {
+    updatePin.mockRejectedValueOnce(
+      new PinError("edit_locked", "已同步/已发布贴图不可直接编辑,请先撤回待验收"),
+    );
+    const out = await invokeUpdate({ pin_id: "77", topic_id: "7", content: "x" });
+    expect(out).toEqual({ ok: false, error: "已同步/已发布贴图不可直接编辑,请先撤回待验收" });
+  });
+
+  it("码点硬闸(schema 单源):标题超 32 码字 → ok:false,不触 repo", async () => {
+    const out = await invokeUpdate({
+      pin_id: "77",
+      topic_id: "7",
+      title: "超".repeat(33),
+    });
+    expect(out.ok).toBe(false);
+    expect(String(out.error)).toContain("标题最长");
+    expect(updatePin).not.toHaveBeenCalled();
   });
 });
