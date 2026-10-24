@@ -6,8 +6,8 @@
 
 /** 展开态默认宽(与 globals.css --admin-sidebar-w 初始值一致) */
 export const SIDEBAR_DEFAULT_W = 220;
-/** 拖拽/恢复钳制下限(组标签 + 图标 + 文字的最小可读宽) */
-export const SIDEBAR_MIN_W = 180;
+/** 拖拽/恢复钳制下限(图标 + 四字菜单项完整可读;更窄靠 truncate 省略) */
+export const SIDEBAR_MIN_W = 140;
 /** 拖拽上限(再宽挤压内容区收益为负) */
 export const SIDEBAR_MAX_W = 400;
 /** 收起态图标栏宽(Tailwind lg:w-14) */

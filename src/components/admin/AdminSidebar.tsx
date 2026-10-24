@@ -159,7 +159,11 @@ export default function AdminSidebar({
           className={`inline-block h-4 w-2 bg-accent ${collapsed ? "lg:hidden" : ""}`}
           aria-hidden="true"
         />
-        <span className={`text-sm font-semibold tracking-wide ${collapsed ? "lg:hidden" : ""}`}>
+        <span
+          className={`min-w-0 truncate text-sm font-semibold tracking-wide ${
+            collapsed ? "lg:hidden" : ""
+          }`}
+        >
           一起AI 控制台
         </span>
         {/* 收起/展开切换(lg 专属;收起态居中作图标栏头钮) */}
@@ -216,7 +220,9 @@ export default function AdminSidebar({
                     <svg className="ic" aria-hidden="true">
                       <use href={`#${item.icon}`} />
                     </svg>
-                    <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
+                    <span className={`min-w-0 truncate ${collapsed ? "lg:hidden" : ""}`}>
+                      {item.label}
+                    </span>
                   </Link>
                 );
               }
@@ -232,9 +238,11 @@ export default function AdminSidebar({
                   <svg className="ic" aria-hidden="true">
                     <use href={`#${item.icon}`} />
                   </svg>
-                  <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
+                  <span className={`min-w-0 truncate ${collapsed ? "lg:hidden" : ""}`}>
+                    {item.label}
+                  </span>
                   <span
-                    className={`ml-auto rounded-sm bg-panel-2 px-1 py-px font-mono text-[10px] text-text-3 ${
+                    className={`ml-auto shrink-0 rounded-sm bg-panel-2 px-1 py-px font-mono text-[10px] text-text-3 ${
                       collapsed ? "lg:hidden" : ""
                     }`}
                   >
