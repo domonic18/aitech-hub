@@ -7,7 +7,7 @@ import Link from "next/link";
 
 import Sparkline from "@/components/admin/usage/Sparkline";
 import type { InsightClusterRow } from "@/lib/insight/admin";
-import { AnomalyBadge, COVERAGE_LABELS, MediaBadges } from "./shared";
+import { AnomalyBadge, COVERAGE_LABELS, MediaBadges, clusterHref } from "./shared";
 
 /** 覆盖度徽章(行内紧凑版;blank 标红=选题机会) */
 function CoveragePill({ state }: { state: string | null }): React.ReactElement | null {
@@ -49,7 +49,7 @@ export default function PainCardGrid({
       {clusters.map((c) => (
         <Link
           key={c.id}
-          href={`/admin/insight/clusters/${c.id}`}
+          href={clusterHref(c.id)}
           className="flex items-center gap-3 rounded-sm px-2 py-2.5 hover:bg-panel-2"
         >
           <span className="w-7 shrink-0 text-right font-mono text-sm font-semibold text-text-1">

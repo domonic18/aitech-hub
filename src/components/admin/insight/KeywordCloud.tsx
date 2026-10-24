@@ -23,6 +23,7 @@ import {
   sentimentOf,
   type PlacedWord,
 } from "@/lib/insight/word-cloud";
+import { clusterHref } from "./shared";
 
 function useMeasure(): (text: string, px: number) => { w: number; h: number } {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -154,10 +155,7 @@ export default function KeywordCloud({ words }: { words: InsightCloudWord[] }): 
           {feedback.kind === "created" && (
             <>
               <span className="text-green">✓ 已入词库「{feedback.word}」,生效词即参与下轮发现</span>
-              <Link
-                href={`/admin/insight/clusters/${feedback.clusterId}`}
-                className="text-accent hover:underline"
-              >
+              <Link href={clusterHref(feedback.clusterId)} className="text-accent hover:underline">
                 查看簇详情
               </Link>
               {biliQueued ? (
