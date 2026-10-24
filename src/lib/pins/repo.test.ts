@@ -216,7 +216,9 @@ describe("reorderPinImages / removePinImage", () => {
 
 describe("createPin 缺省", () => {
   it("缺省 cropSpec=1_1、content 空串、topicId 可空;阅读原文回填本贴自链", async () => {
-    mocked.updatePinMock.mockResolvedValue(pin({ readMoreUrl: "http://localhost:3000/pins/1/" }));
+    // 行内含 Date,跨毫秒深比较会偶红——直接断言 update 返回值同引用
+    const updated = pin({ readMoreUrl: "http://localhost:3000/pins/1/" });
+    mocked.updatePinMock.mockResolvedValue(updated);
     const out = await createPin({ title: "未命名贴图" });
     expect(mocked.createPinMock).toHaveBeenCalledWith({
       data: {
@@ -231,7 +233,7 @@ describe("createPin 缺省", () => {
       where: { id: BigInt(1) },
       data: { readMoreUrl: "http://localhost:3000/pins/1/" },
     });
-    expect(out).toEqual(pin({ readMoreUrl: "http://localhost:3000/pins/1/" }));
+    expect(out).toBe(updated);
   });
 
   it("显式阅读原文 → 尊重传入值不回填", async () => {
