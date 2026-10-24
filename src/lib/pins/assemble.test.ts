@@ -1,7 +1,8 @@
 /**
  * 贴图组装落库单测(M42 批③,prisma 全 mock):码点硬闸(标题 32 / 轻文字 2 万)、
  * 图片 1..20 与 uploads-only、重复图拒、软引用创建校验、事务内顺序落图与
- * collecting→drafted 推进、中途失败整体上抛不继续写。
+ * collecting→drafted 推进、阅读原文缺省回填本贴自链(显式传入不覆盖)、
+ * 中途失败整体上抛不继续写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +10,7 @@ vi.mock("../db", () => ({
   prisma: {
     $transaction: vi.fn(),
     topic: { findUnique: vi.fn(), updateMany: vi.fn() },
-    contentPin: { create: vi.fn() },
+    contentPin: { create: vi.fn(), update: vi.fn() },
     contentPinImage: { createMany: vi.fn() },
   },
 }));
@@ -23,6 +24,7 @@ const tx = {
   topicFind: vi.mocked(prisma.topic.findUnique),
   topicUpdateMany: vi.mocked(prisma.topic.updateMany),
   pinCreate: vi.mocked(prisma.contentPin.create),
+  pinUpdate: vi.mocked(prisma.contentPin.update),
   imgCreateMany: vi.mocked(prisma.contentPinImage.createMany),
   transaction: vi.mocked(prisma.$transaction),
 };
@@ -36,6 +38,10 @@ beforeEach(() => {
   tx.topicFind.mockResolvedValue({ id: BigInt(1) } as never);
   tx.topicUpdateMany.mockResolvedValue({ count: 1 } as never);
   tx.pinCreate.mockResolvedValue({ id: BigInt(77) } as never);
+  tx.pinUpdate.mockResolvedValue({
+    id: BigInt(77),
+    readMoreUrl: "http://localhost:3000/pins/77/",
+  } as never);
   tx.imgCreateMany.mockResolvedValue({ count: 1 } as never);
 });
 
@@ -85,7 +91,8 @@ describe("createPinWithImages(单事务)", () => {
       images: [img(1), img(2), img(3)],
       referenceMediaPath: `${U}/sample.png`,
     });
-    expect(pin).toEqual({ id: BigInt(77) });
+    // 纯中文标题无 ASCII slug → 自链退化为 /pins/<id>/(id 锚定)
+    expect(pin).toEqual({ id: BigInt(77), readMoreUrl: "http://localhost:3000/pins/77/" });
     expect(tx.pinCreate).toHaveBeenCalledWith({
       data: {
         title: "标题",
@@ -95,6 +102,10 @@ describe("createPinWithImages(单事务)", () => {
         cropSpec: "1_1",
         referenceMediaPath: `${U}/sample.png`,
       },
+    });
+    expect(tx.pinUpdate).toHaveBeenCalledWith({
+      where: { id: BigInt(77) },
+      data: { readMoreUrl: "http://localhost:3000/pins/77/" },
     });
     expect(tx.imgCreateMany).toHaveBeenCalledWith({
       data: [img(1), img(2), img(3)].map((mediaPath, i) => ({
@@ -108,6 +119,20 @@ describe("createPinWithImages(单事务)", () => {
       where: { id: BigInt(1), status: "collecting" },
       data: { status: "drafted" },
     });
+  });
+
+  it("显式阅读原文 → 尊重传入值,不回填自链", async () => {
+    tx.pinCreate.mockResolvedValue({
+      id: BigInt(77),
+      readMoreUrl: "https://example.com/a",
+    } as never);
+    const pin = await createPinWithImages({
+      title: "标题",
+      images: [img(1)],
+      readMoreUrl: "https://example.com/a",
+    });
+    expect(tx.pinUpdate).not.toHaveBeenCalled();
+    expect(pin).toEqual({ id: BigInt(77), readMoreUrl: "https://example.com/a" });
   });
 
   it("无 topicId(独立贴图):不查创作不推进状态", async () => {

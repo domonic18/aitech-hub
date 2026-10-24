@@ -215,8 +215,9 @@ describe("reorderPinImages / removePinImage", () => {
 });
 
 describe("createPin 缺省", () => {
-  it("缺省 cropSpec=1_1、content 空串、topicId 可空", async () => {
-    await createPin({ title: "未命名贴图" });
+  it("缺省 cropSpec=1_1、content 空串、topicId 可空;阅读原文回填本贴自链", async () => {
+    mocked.updatePinMock.mockResolvedValue(pin({ readMoreUrl: "http://localhost:3000/pins/1/" }));
+    const out = await createPin({ title: "未命名贴图" });
     expect(mocked.createPinMock).toHaveBeenCalledWith({
       data: {
         title: "未命名贴图",
@@ -226,5 +227,16 @@ describe("createPin 缺省", () => {
         cropSpec: "1_1",
       },
     });
+    expect(mocked.updatePinMock).toHaveBeenCalledWith({
+      where: { id: BigInt(1) },
+      data: { readMoreUrl: "http://localhost:3000/pins/1/" },
+    });
+    expect(out).toEqual(pin({ readMoreUrl: "http://localhost:3000/pins/1/" }));
+  });
+
+  it("显式阅读原文 → 尊重传入值不回填", async () => {
+    mocked.createPinMock.mockResolvedValue(pin({ readMoreUrl: "https://example.com/a" }));
+    await createPin({ title: "t", readMoreUrl: "https://example.com/a" });
+    expect(mocked.updatePinMock).not.toHaveBeenCalled();
   });
 });

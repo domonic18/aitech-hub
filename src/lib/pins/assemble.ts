@@ -5,12 +5,16 @@
  * 硬闸在 schema 之外再卡一层(工具入参经模型,不能只信 Zod):标题/轻文字
  * 按码点计数([...s].length,公众号契约),图片 1..PIN_IMAGES_MAX、只收 uploads
  * 站内路径、重复路径拒(同图重复挂无意义且会顶掉封面位)。
+ * 阅读原文自动化(2026-10-24 验收反馈,生产全流程免手动):缺省回填本贴前台
+ * 自链(未发布先占位,站点发布后自然可达;微信同步只读库值,故必须持久化)。
  * create-only:既有贴图编辑仍走组装台(repo.updatePin + 图片序列接口)。
  */
 import type { ContentPin } from "@prisma/client";
 
+import { asciiSlugFromTitle, pinPath } from "../content/pin-path";
 import { isUploadsPath } from "../media/refs";
 import { prisma } from "../db";
+import { absoluteUrl } from "../seo/site";
 
 import { PIN_CONTENT_MAX, PIN_IMAGES_MAX, PIN_TITLE_MAX, type PinCropSpec } from "./constants";
 import { PinError } from "./repo";
@@ -85,6 +89,15 @@ export async function createPinWithImages(input: CreatePinWithImagesInput): Prom
         referenceMediaPath: input.referenceMediaPath ?? null,
       },
     });
+    // 阅读原文缺省回填本贴自链:自链含 id,只能在 create 后补写(同事务内,
+    // 失败整体回滚);显式传入则尊重传入值不覆盖
+    let result = pin;
+    if (input.readMoreUrl == null) {
+      result = await tx.contentPin.update({
+        where: { id: pin.id },
+        data: { readMoreUrl: absoluteUrl(pinPath(pin.id, asciiSlugFromTitle(title))) },
+      });
+    }
     await tx.contentPinImage.createMany({
       data: images.map((mediaPath, i) => ({
         pinId: pin.id,
@@ -100,6 +113,6 @@ export async function createPinWithImages(input: CreatePinWithImagesInput): Prom
         data: { status: "drafted" },
       });
     }
-    return pin;
+    return result;
   });
 }

@@ -218,6 +218,7 @@
 - **视频推荐体×贴图分支轻文字硬要求(L1)**:创作挂视频素材时,贴图轻文字必须交代原视频基本介绍(博主/讲什么/亮点)并附原视频链接(素材区 `video_url`)——贴图脱离长文语境,读者在小绿书看不到文首推荐卡,介绍与链接是轻文字自身的责任(验收反馈问题一:此前只写画面观点)。
 - **`update_topic_pin`(admin 工具面 24 只)**:改既有贴图文字面(标题/轻文字/阅读原文/裁剪档),`pin_id`+`topic_id` 归属硬校验;校验单源=组装台路由同款 `pinUpdateSchema`(码点口径),执行面 repo `updatePin`(synced/published 拒直编人话回传,同 UI 红线);已同步渠道回执 `wechat_resync_needed:true` 提示组装台重推公众号草稿。**改稿一律本工具,严禁为改内容重复落新贴**(验收反馈问题二:无改稿工具致 AI 只读困境+重复建贴);图片序列增删重排仍归组装台。L1 提示与两工具描述同步,parity 单测随更。
 - **参照贯通(补 M41 断点)**:`pinGenerateSchema.referencePath`(仅站内 uploads)→ API → 队列 jobData → `generateIllustrations({ referencePath })` 全链透传;组装台「AI 生成」tab 亦可选参照图,人工通道与 agent 通道同源。
+- **阅读原文缺省改自链回填(2026-10-24 验收批二,生产全链免手动)**:`save_topic_pin` 退役「缺省取本创作长文」——`createPinWithImages`/`createPin` 执行面对缺省统一回填本贴前台自链(`absoluteUrl(pinPath(id, asciiSlugFromTitle(title)))`,id 锚定,未发布先落链,站点发布后即达);模型/组装台显式传入则覆盖,回执 `read_more_source` 改 `self|manual`。全链自动化:生成贴图(自链已回填)→ 站点发布 → 同步公众号 → 公众号「阅读原文」直达本贴。L1 提示与工具描述同步。
 
 ### 3.5 分期
 

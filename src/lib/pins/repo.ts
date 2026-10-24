@@ -6,9 +6,10 @@
  */
 import { Prisma, type ContentPin } from "@prisma/client";
 
-import { asciiSlugFromTitle, pinPathSegment } from "../content/pin-path";
+import { asciiSlugFromTitle, pinPath, pinPathSegment } from "../content/pin-path";
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
+import { absoluteUrl } from "../seo/site";
 import { PIN_IMAGES_MAX, PIN_MANUAL_TARGETS, type PinStatus } from "./constants";
 import type { PinCreateInput, PinImageAddInput, PinUpdateInput } from "./schemas";
 
@@ -42,8 +43,13 @@ function assertEditable(status: string): void {
   }
 }
 
+/**
+ * 手工新建(组装台 POST /api/pins)。阅读原文缺省回填本贴前台自链(与
+ * agent 组装同口径,2026-10-24 验收反馈:发布→同步→阅读原文全链免手动);
+ * 显式传入则尊重传入值。
+ */
 export async function createPin(input: PinCreateInput): Promise<ContentPin> {
-  return prisma.contentPin.create({
+  const pin = await prisma.contentPin.create({
     data: {
       title: input.title,
       content: input.content ?? "",
@@ -51,6 +57,11 @@ export async function createPin(input: PinCreateInput): Promise<ContentPin> {
       readMoreUrl: input.readMoreUrl ?? null,
       cropSpec: input.cropSpec ?? "1_1",
     },
+  });
+  if (input.readMoreUrl != null) return pin;
+  return prisma.contentPin.update({
+    where: { id: pin.id },
+    data: { readMoreUrl: absoluteUrl(pinPath(pin.id, asciiSlugFromTitle(pin.title))) },
   });
 }
 

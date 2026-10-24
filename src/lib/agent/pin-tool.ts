@@ -2,9 +2,10 @@
  * 贴图产出·admin 工具(M42 批③;M46 验收批增改稿工具):
  * - save_topic_pin:把本创作的出图序列落成一张 content_pin(create-only)。
  *   执行面 createPinWithImages(单事务 + 码点硬闸),工具层只做 soft ref 与默认值:
- *   阅读原文缺省取本创作长文的站内绝对 URL(有 linked_post 时),模型可覆盖;
- *   crop_spec 缺省 1_1(与组装台同档);参照图只收站内 uploads;回执带 pin_id /
- *   组装台链接 / 前台预览链接与当前创作贴图数,便于模型汇报。
+ *   阅读原文缺省由执行面回填本贴前台自链(2026-10-24 验收反馈:发布→同步→
+ *   阅读原文全链免手动;模型显式传入则覆盖),crop_spec 缺省 1_1(与组装台同档);
+ *   参照图只收站内 uploads;回执带 pin_id / 组装台链接 / 前台预览链接与当前
+ *   创作贴图数,便于模型汇报。
  * - update_topic_pin(2026-10-24 验收反馈:改既有贴图只能重复落新贴):修改本
  *   创作既有贴图的文字面(标题/轻文字/阅读原文/裁剪档),归属按 topic_id 硬校验;
  *   校验复用组装台同款 pinUpdateSchema(码点口径单源),执行面 repo updatePin
@@ -14,7 +15,6 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { asciiSlugFromTitle, pinPath } from "../content/pin-path";
-import { postPath } from "../content/post-path";
 import { prisma } from "../db";
 import { isUploadsPath } from "../media/refs";
 import { PIN_CROP_SPECS } from "../pins/constants";
@@ -29,17 +29,6 @@ import { denyPayload } from "./topic-tool-common";
 
 const ID_RE = /^\d{1,10}$/;
 
-/** 阅读原文缺省:本创作长文的站内绝对 URL(软引用缺行/已软删 → 不设) */
-async function defaultReadMoreUrl(linkedPostId: bigint | null): Promise<string | null> {
-  if (linkedPostId === null) return null;
-  const post = await prisma.post.findUnique({
-    where: { id: linkedPostId },
-    select: { id: true, slug: true, status: true },
-  });
-  if (!post || post.status === "deleted") return null;
-  return absoluteUrl(postPath(post.id, post.slug));
-}
-
 export const saveTopicPinTool = tool(
   async (
     { topic_id, title, content, image_paths, reference_path, crop_spec, read_more_url },
@@ -49,7 +38,6 @@ export const saveTopicPinTool = tool(
       return denyPayload(config?.configurable?.thread_id);
     try {
       const topic = await getTopic(BigInt(topic_id));
-      const readMoreUrl = read_more_url ?? (await defaultReadMoreUrl(topic.linkedPostId));
       const pin = await createPinWithImages({
         title,
         content,
@@ -57,7 +45,7 @@ export const saveTopicPinTool = tool(
         images: image_paths,
         referenceMediaPath: reference_path ?? null,
         cropSpec: crop_spec,
-        readMoreUrl,
+        readMoreUrl: read_more_url ?? null,
       });
       const total = await prisma.contentPin.count({ where: { topicId: topic.id } });
       const id = pin.id.toString();
@@ -66,8 +54,8 @@ export const saveTopicPinTool = tool(
         pin_id: id,
         status: pin.status,
         images: image_paths.length,
-        read_more_url: readMoreUrl,
-        read_more_source: read_more_url ? "manual" : readMoreUrl ? "linked_post" : null,
+        read_more_url: pin.readMoreUrl,
+        read_more_source: read_more_url ? "manual" : "self",
         topic_pin_count: total,
         admin_url: `/admin/pins/${id}`,
         preview_url: absoluteUrl(pinPath(pin.id, asciiSlugFromTitle(pin.title))),
@@ -89,7 +77,8 @@ export const saveTopicPinTool = tool(
       "顺序即公众号 image_list 顺序,首图当封面)。\n" +
       "- reference_path:本次出图实际采纳的参照图(与生图时传的 reference_path 一致;" +
       "无参照则省略)。\n" +
-      "- read_more_url:省略时自动取本创作长文的站内链接;本创作没有长文且需要引流时再显式传。\n" +
+      "- read_more_url:省略时自动回填本贴图的站内前台页(站点发布后「阅读原文」即可打开);" +
+      "需要引流到其他文章或外站时再显式传。\n" +
       "- crop_spec:首图裁剪档 1_1 / 16_9 / 2.35_1,按画面比例匹配参照图与内容,省略默认 1_1。\n" +
       "回执含 pin_id、组装台 admin_url、前台 preview_url:汇报时两个链接都给。" +
       "create-only:修改既有贴图用 update_topic_pin,严禁为改内容再落新贴图。",
@@ -116,7 +105,7 @@ export const saveTopicPinTool = tool(
         .regex(/^https?:\/\/\S+$/, "阅读原文须为 http(s) 完整链接")
         .max(500)
         .optional()
-        .describe("阅读原文链接;省略时自动取本创作长文"),
+        .describe("阅读原文链接;省略时自动回填本贴前台页,一般省略"),
     }),
   },
 );

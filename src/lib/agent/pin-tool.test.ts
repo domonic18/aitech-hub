@@ -1,7 +1,8 @@
 /**
- * save_topic_pin 单测(M42 批③,全 mock):admin 会话防线 / 阅读原文缺省取本创作
- * 长文(软删/缺行不设,显式传则覆盖)/ 回执带组装台与前台链接 / 落库硬闸错误
- * 人话化(PinError → ok:false,不抛)。
+ * save_topic_pin / update_topic_pin 单测(M42 批③建,M46 验收批扩,全 mock):
+ * admin 会话防线 / 阅读原文缺省由执行面回填本贴自链(显式传则覆盖)/ 回执带
+ * 组装台与前台链接 / 落库硬闸错误人话化(PinError → ok:false,不抛)/
+ * update_topic_pin 归属校验与同步态提示。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,14 +36,12 @@ vi.mock("../pins/repo", () => ({
 }));
 
 const db = vi.hoisted(() => ({
-  postFindUnique: vi.fn(),
   pinCount: vi.fn(),
   pinFindUnique: vi.fn(),
   channelCount: vi.fn(),
 }));
 vi.mock("../db", () => ({
   prisma: {
-    post: { findUnique: db.postFindUnique },
     contentPin: { count: db.pinCount, findUnique: db.pinFindUnique },
     contentPinChannel: { count: db.channelCount },
   },
@@ -56,6 +55,7 @@ const PIN = {
   id: BigInt(77),
   title: "端侧推理的三件事",
   status: "draft",
+  readMoreUrl: "http://localhost:3000/pins/77/",
 };
 
 const IMG = "/wp-content/uploads/2026/10/gen-1.png";
@@ -73,7 +73,6 @@ beforeEach(() => {
   assertAdminThread.mockResolvedValue(true);
   getTopic.mockResolvedValue({ id: BigInt(7), linkedPostId: BigInt(42) });
   createPinWithImages.mockResolvedValue(PIN);
-  db.postFindUnique.mockResolvedValue({ id: BigInt(42), slug: "on-device", status: "published" });
   db.pinCount.mockResolvedValue(2);
   db.pinFindUnique.mockResolvedValue({
     id: BigInt(77),
@@ -97,7 +96,7 @@ describe("save_topic_pin", () => {
     expect(createPinWithImages).not.toHaveBeenCalled();
   });
 
-  it("阅读原文缺省取本创作长文;回执带组装台/前台链接与贴图数", async () => {
+  it("阅读原文缺省由执行面回填本贴自链;回执带组装台/前台链接与贴图数", async () => {
     const out = await invoke({
       topic_id: "7",
       title: PIN.title,
@@ -113,13 +112,14 @@ describe("save_topic_pin", () => {
       images: [IMG],
       referenceMediaPath: "/wp-content/uploads/2026/10/sample.png",
       cropSpec: "16_9",
-      readMoreUrl: "http://localhost:3000/post/42-on-device/",
+      readMoreUrl: null,
     });
     expect(out).toMatchObject({
       ok: true,
       pin_id: "77",
       images: 1,
-      read_more_source: "linked_post",
+      read_more_url: "http://localhost:3000/pins/77/",
+      read_more_source: "self",
       topic_pin_count: 2,
       admin_url: "/admin/pins/77",
       // 纯中文标题无 ASCII slug → canonical 退化为 /pins/<id>/(id 锚定)
@@ -127,31 +127,17 @@ describe("save_topic_pin", () => {
     });
   });
 
-  it("显式阅读原文覆盖缺省,不再查长文", async () => {
+  it("显式阅读原文覆盖缺省自链", async () => {
     const out = await invoke({
       topic_id: "7",
       title: "t",
       image_paths: [IMG],
       read_more_url: "https://example.com/a",
     });
-    expect(db.postFindUnique).not.toHaveBeenCalled();
     expect(createPinWithImages).toHaveBeenCalledWith(
       expect.objectContaining({ readMoreUrl: "https://example.com/a" }),
     );
     expect(out.read_more_source).toBe("manual");
-  });
-
-  it("长文缺失/软删或创作无长文 → 不设阅读原文", async () => {
-    db.postFindUnique.mockResolvedValueOnce({ id: BigInt(42), slug: "x", status: "deleted" });
-    await invoke({ topic_id: "7", title: "t", image_paths: [IMG] });
-    expect(createPinWithImages).toHaveBeenLastCalledWith(
-      expect.objectContaining({ readMoreUrl: null }),
-    );
-    getTopic.mockResolvedValueOnce({ id: BigInt(7), linkedPostId: null });
-    await invoke({ topic_id: "7", title: "t", image_paths: [IMG] });
-    expect(createPinWithImages).toHaveBeenLastCalledWith(
-      expect.objectContaining({ readMoreUrl: null }),
-    );
   });
 
   it("落库硬闸失败(PinError)→ ok:false 人话,不抛", async () => {
