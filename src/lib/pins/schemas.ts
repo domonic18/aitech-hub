@@ -7,7 +7,13 @@ import { z } from "zod";
 
 import { isUploadsPath } from "../media/refs";
 
-import { PIN_CONTENT_MAX, PIN_CROP_SPECS, PIN_IMAGES_MAX, PIN_TITLE_MAX } from "./constants";
+import {
+  PIN_CONTENT_MAX,
+  PIN_CROP_SPECS,
+  PIN_IMAGES_MAX,
+  PIN_STATUS,
+  PIN_TITLE_MAX,
+} from "./constants";
 
 const BIGINT_ID = z.string().regex(/^\d+$/, "id 须为纯数字字符串");
 
@@ -56,7 +62,7 @@ export type PinUpdateInput = z.infer<typeof pinUpdateSchema>;
 
 /** 状态流转独立 schema(流转合法性在 repo 层按当前态校验) */
 export const pinStatusSchema = z.object({
-  status: z.enum(["draft", "pending", "synced", "published"]),
+  status: z.enum(PIN_STATUS),
 });
 
 /** 添加图片:从配图工坊选版本(versionIds)或本地上传(mediaPath 已过媒体管线) */

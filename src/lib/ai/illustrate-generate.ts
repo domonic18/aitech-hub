@@ -26,14 +26,10 @@ import { resolveAiModel } from "./resolver";
 import { recordAiUsage } from "./usage-log";
 import { siteUrl } from "../seo/site";
 
-/** 宽高比 → 分辨率映射(§13.9:宽高比是模型物理约束属机制参数,不携带内容
- * 语义;呈现形态由 agent 编排,经 prompt 表达)。横版与封面同档 16:9(公众号
- * 正文展示宽 ~900,1344 宽留缩略余量);竖版适配小红书 3:4;方图 1:1 兜底 */
-export const ILLUSTRATE_ASPECT_SIZES: Record<string, string> = {
-  "16:9": "1344x768",
-  "3:4": "864x1152",
-  "1:1": "1024x1024",
-};
+/** 宽高比 → 分辨率映射(机制参数单源自 ai/constants;此处转出口保持原导入路径) */
+export { ILLUSTRATE_ASPECT_SIZES } from "./constants";
+
+import { ILLUSTRATE_ASPECT_SIZES } from "./constants";
 
 export type IllustrateAspect = keyof typeof ILLUSTRATE_ASPECT_SIZES;
 

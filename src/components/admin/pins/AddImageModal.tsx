@@ -8,6 +8,8 @@
 import { useRef, useState } from "react";
 
 import type { ApiEnvelope } from "@/lib/http/response";
+import { ILLUSTRATE_ASPECT_OPTIONS } from "@/lib/ai/constants";
+import { IMAGE_ACCEPT } from "@/lib/media/media-schema";
 import type { PinImageDto } from "@/lib/pins/dto";
 import { PIN_IMAGES_MAX } from "@/lib/pins/constants";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -22,11 +24,7 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-const ASPECTS = [
-  { key: "3:4", label: "3:4 · 864×1152" },
-  { key: "1:1", label: "1:1 · 1024" },
-  { key: "16:9", label: "16:9 · 1344×768" },
-] as const;
+const ASPECTS = ILLUSTRATE_ASPECT_OPTIONS;
 
 export default function AddImageModal({
   pinId,
@@ -410,7 +408,7 @@ export default function AddImageModal({
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
+                accept={IMAGE_ACCEPT}
                 onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
                 className="w-full cursor-pointer rounded-sm border border-dashed border-line px-3 py-3 text-xs text-text-2 file:mr-3 file:cursor-pointer file:rounded-sm file:border-0 file:bg-panel-2 file:px-2.5 file:py-1.5 file:text-xs file:text-text-1"
               />

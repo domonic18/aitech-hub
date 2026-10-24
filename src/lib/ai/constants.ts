@@ -123,3 +123,18 @@ export const AI_CONFIG_PAT_DENY = "PAT must not manage AI service config";
 
 /** 错误详情截断宽度(HTTP 响应体摘要/探测错误落 last_test_error 前统一截断) */
 export const AI_ERR_DETAIL_MAX = 200;
+
+/** 生图宽高比档位(§13.9:宽高比是模型物理约束属机制参数,不携带内容语义;
+ * 键序=UI 展示序,横版与封面同档 16:9,竖版适配小红书 3:4,方图兜底)。此前
+ * illustrate-generate 与三个 UI 组件四份平行,改分辨率要动四处(M47 批A' 收敛) */
+export const ILLUSTRATE_ASPECT_SIZES: Record<string, string> = {
+  "3:4": "864x1152",
+  "1:1": "1024x1024",
+  "16:9": "1344x768",
+};
+
+/** 宽高比下拉选项(标签「比例 · 分辨率」,自上映射派生;1:1 自此显全尺寸) */
+export const ILLUSTRATE_ASPECT_OPTIONS = Object.keys(ILLUSTRATE_ASPECT_SIZES).map((key) => ({
+  key,
+  label: `${key} · ${ILLUSTRATE_ASPECT_SIZES[key].replace("x", "×")}`,
+}));

@@ -19,6 +19,13 @@ export const PIN_STATUS_LABEL: Record<PinStatus, string> = {
 /** 列表分段白名单(全部 + 四态;?status= 解析用) */
 export const PIN_LIST_SEGMENTS = ["all", ...PIN_STATUS] as const;
 
+/** 可编辑状态域(「已同步/已发布须先撤回待验收」规则单源;repo 编辑锁与
+ * agent 加图闸同用,此前同规则正反两式三处手写) */
+export const PIN_EDITABLE_STATUSES = ["draft", "pending"] as const;
+export function isPinEditable(status: string): boolean {
+  return (PIN_EDITABLE_STATUSES as readonly string[]).includes(status);
+}
+
 /**
  * 人工可驱动的状态迁移(组装台/工作台钮组与 API 文档口径同源):
  * draft→pending 提交验收;pending→draft 撤回继续组装;pending→published
