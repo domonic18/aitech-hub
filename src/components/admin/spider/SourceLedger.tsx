@@ -7,6 +7,7 @@ import Link from "next/link";
 import { MEDIUM_LABELS, SOURCE_COLORS, SOURCE_LABELS } from "@/components/admin/insight/shared";
 import SourceShareBar from "@/components/admin/insight/SourceShareBar";
 import type { InsightSourceStat } from "@/lib/insight/admin";
+import type { InsightMediumVocab } from "@/lib/insight/constants";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
 
 export default function SourceLedger({
@@ -41,7 +42,7 @@ export default function SourceLedger({
                 </td>
                 <td className="px-3 py-2.5">
                   <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
-                    {MEDIUM_LABELS[s.medium] ?? s.medium}
+                    {MEDIUM_LABELS[s.medium as InsightMediumVocab] ?? s.medium}
                   </span>
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono text-[12px] text-text-1">

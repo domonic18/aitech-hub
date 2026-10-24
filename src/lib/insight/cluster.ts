@@ -10,7 +10,12 @@
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { INSIGHT_SOURCES_ENABLED } from "./ingest";
-import { CLUSTER_MATCH_DISTANCE, CLUSTER_MIN_TEXT_LEN, INSIGHT_SOURCE_KIND } from "./constants";
+import {
+  CLUSTER_MATCH_DISTANCE,
+  CLUSTER_MIN_TEXT_LEN,
+  INSIGHT_MEDIA_VOCAB,
+  INSIGHT_SOURCE_KIND,
+} from "./constants";
 import {
   type ClusterNearMatch,
   findUnclusteredSignals,
@@ -38,14 +43,14 @@ export function decideAssignment(
   return { action: "create" };
 }
 
-/** 簇介质 = 成员介质并集(方案 §2 留痕介质;五值白名单,未知源值丢弃) */
-const MEDIA_VOCAB = ["money", "time", "voice", "search", "ai-record"] as const;
+/** 簇介质 = 成员介质并集(方案 §2 留痕介质;词表自 constants 单源,未知源值丢弃) */
+const MEDIA_VOCAB: readonly string[] = INSIGHT_MEDIA_VOCAB;
 
 export function unionMedia(medias: (readonly string[] | null | undefined)[]): string[] {
   const set = new Set<string>();
   for (const m of medias) {
     for (const x of m ?? []) {
-      if ((MEDIA_VOCAB as readonly string[]).includes(x)) set.add(x);
+      if (MEDIA_VOCAB.includes(x)) set.add(x);
     }
   }
   return [...set];

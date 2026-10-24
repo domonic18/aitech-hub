@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 
 import { clusterMomentum, isAnomaly, type ClusterMomentum } from "./scoring";
+import { CLUSTER_TAKE_MAX, SIGNAL_TAKE_DEFAULT, SIGNAL_TAKE_MAX } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
 
 /** 北京时区当日零点(与 statsDay/periodKey 同源口径,勿用 UTC 切日) */
@@ -134,7 +135,7 @@ export async function listInsightSignals(opts: {
       ],
     },
     orderBy: { signalAt: "desc" },
-    take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
+    take: Math.min(Math.max(opts.limit ?? SIGNAL_TAKE_DEFAULT, 1), SIGNAL_TAKE_MAX),
     select: SIGNAL_SELECT,
   });
   return rows.map((r) => ({
@@ -180,7 +181,7 @@ export async function listInsightClusters(opts: {
   kind?: "hot" | "pain";
   limit?: number;
 }): Promise<InsightClusterRow[]> {
-  const take = Math.min(Math.max(opts.limit ?? CLUSTER_ROW_TAKE, 1), 50);
+  const take = Math.min(Math.max(opts.limit ?? CLUSTER_ROW_TAKE, 1), CLUSTER_TAKE_MAX);
   const clusters = await prisma.insightCluster.findMany({
     where: { status: { not: "closed" }, ...(opts.kind === undefined ? {} : { kind: opts.kind }) },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],
