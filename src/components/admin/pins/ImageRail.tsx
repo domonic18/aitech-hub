@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * 序列轨(M41):竖排缩略(首图带「封面」标),上下移/移除 + 添加图片入口;
- * 已同步/已发布整体只读(撤回后再编)。
+ * 序列轨(M41):竖排缩略(首图带「封面」标),拖拽排序(M48 验收反馈)+上下移/
+ * 移除 + 添加图片入口;已同步/已发布整体只读(撤回后再编)。拖拽为原生 HTML5
+ * DnD(零依赖;触屏无 DnD,↑/↓ 按钮保留作备援),drop 落点=被悬停项的目标位。
  */
+import { useState } from "react";
+
 import type { PinImageDto } from "@/lib/pins/dto";
 import { PIN_IMAGES_MAX } from "@/lib/pins/constants";
 
@@ -27,6 +30,20 @@ export default function ImageRail({
   onAdd: () => void;
 }): React.ReactElement {
   const canAdd = editable && images.length < PIN_IMAGES_MAX;
+  /** 拖拽态:from=拖起项下标,over=当前悬停目标下标(null=不在拖拽中) */
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+
+  function clearDrag(): void {
+    setDragFrom(null);
+    setDragOver(null);
+  }
+
+  function handleDrop(target: number): void {
+    if (dragFrom !== null && dragFrom !== target) onMove(dragFrom, target);
+    clearDrag();
+  }
+
   return (
     <div className="rounded-sm border border-line bg-panel p-2.5">
       <div className="mb-2 flex items-center justify-between px-0.5">
@@ -35,6 +52,9 @@ export default function ImageRail({
           <span className="font-mono text-text-3">
             {images.length}/{PIN_IMAGES_MAX}
           </span>
+          {editable && images.length > 1 && (
+            <span className="ml-1.5 text-[10.5px] text-text-3">· 拖拽缩略图可调顺序</span>
+          )}
         </span>
         {!editable && <span className="text-[10.5px] text-amber-hi">已锁定</span>}
       </div>
@@ -42,9 +62,32 @@ export default function ImageRail({
         {images.map((img, i) => (
           <div
             key={img.id}
+            draggable={editable && !busy && images.length > 1}
+            onDragStart={(e) => {
+              setDragFrom(i);
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", String(i)); // Firefox 必需
+            }}
+            onDragOver={(e) => {
+              if (dragFrom === null || dragFrom === i) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(i);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDrop(i);
+            }}
+            onDragEnd={clearDrag}
             className={`relative overflow-hidden rounded-sm border ${
-              i === selected ? "border-accent shadow-[0_0_0_1px_var(--accent)]" : "border-line"
-            }`}
+              dragFrom === i
+                ? "border-line opacity-40"
+                : dragOver === i && dragFrom !== null
+                  ? "border-accent border-dashed shadow-[0_0_0_1px_var(--accent)]"
+                  : i === selected
+                    ? "border-accent shadow-[0_0_0_1px_var(--accent)]"
+                    : "border-line"
+            } ${editable && !busy && images.length > 1 ? "cursor-grab active:cursor-grabbing" : ""}`}
           >
             <button
               type="button"
