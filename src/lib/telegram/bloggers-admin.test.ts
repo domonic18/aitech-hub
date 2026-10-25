@@ -55,7 +55,7 @@ import {
   type BloggerAdminErrorCode,
 } from "./bloggers-admin";
 import { fetchBilibiliProfile, resolveBilibiliMid } from "./adapters/video/bilibili";
-import { fetchDouyinProfile, resolveDouyinSecUid } from "./adapters/video/douyin";
+import { fetchDouyinProfile } from "./adapters/video/douyin";
 import { activeJars, ensurePlatformRow } from "./social-platform-admin";
 
 function crawlable(over: Record<string, unknown> = {}) {

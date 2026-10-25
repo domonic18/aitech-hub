@@ -7,19 +7,12 @@
 import Link from "next/link";
 
 import { requireAdminPage } from "@/lib/auth/guard";
-import { maskPhone } from "@/lib/auth/mask";
-import { formatCnDateTime } from "@/lib/datetime";
 import {
   USER_LIST_SEGMENTS,
   USERS_PAGE_SIZE,
   listUsersAdmin,
   type UserListSegment,
 } from "@/lib/users/admin-users";
-import {
-  USER_STATUS_ACTIVE,
-  USER_STATUS_DISABLED,
-  USER_STATUS_PENDING_BINDING,
-} from "@/lib/users/user-status";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
 import UsersTable from "@/components/admin/UsersTable";
@@ -44,32 +37,6 @@ function listHref(segment: UserListSegment, page: number, q?: string): string {
     page,
     q,
   });
-}
-
-/** 状态徽标(原型 admin-users .status-badge soft chip):active 绿/待绑定琥珀/已禁用灰 */
-function StatusBadge({ status }: { status: string }) {
-  if (status === USER_STATUS_ACTIVE) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-sm bg-green/12 px-2 py-0.5 text-xs font-medium text-green">
-        <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden="true" />
-        active
-      </span>
-    );
-  }
-  if (status === USER_STATUS_PENDING_BINDING) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-sm bg-amber/12 px-2 py-0.5 text-xs font-medium text-amber">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden="true" />
-        待绑定
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-sm bg-panel-2 px-2 py-0.5 text-xs font-medium text-text-3">
-      <span className="h-1.5 w-1.5 rounded-full bg-text-3" aria-hidden="true" />
-      已禁用
-    </span>
-  );
 }
 
 export default async function AdminUsersPage({

@@ -24,12 +24,7 @@ import { logger } from "../logger";
 import { getQueue, QUEUE_SUMMARIZER } from "../queue";
 
 import { aiJobOpts, markAiFailed, markAiPendingAndEnqueue } from "./ai-shared";
-import {
-  TELEGRAM_AI_DONE,
-  TELEGRAM_AI_PENDING,
-  TELEGRAM_AI_PROCESSING,
-  TELEGRAM_MEDIA_TEXT,
-} from "./constants";
+import { TELEGRAM_AI_DONE, TELEGRAM_AI_PROCESSING, TELEGRAM_MEDIA_TEXT } from "./constants";
 import { stripHtml } from "./normalize";
 import { countTodayAiDone } from "./spider-queries";
 

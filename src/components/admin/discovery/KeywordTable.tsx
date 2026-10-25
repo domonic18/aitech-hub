@@ -16,17 +16,10 @@ import BatchActionBar from "@/components/admin/batch/BatchActionBar";
 import { RowCheckbox, SelectAllTh } from "@/components/admin/batch/SelectionCheckbox";
 import { useBatchAction } from "@/components/admin/batch/useBatchAction";
 import { useBatchSelection } from "@/components/admin/batch/useBatchSelection";
-import StatusChip from "@/components/admin/StatusChip";
-
 import { formatCnDate, formatCnTime } from "@/lib/datetime";
 import type { KeywordAdminRow } from "@/lib/discovery/admin";
-import { KEYWORD_STATUS_LABELS } from "@/lib/discovery/status";
 import type { KeywordYield } from "@/lib/discovery/word-yield";
 import type { WordRelation } from "@/lib/discovery/word-relations";
-
-export interface KeywordTableTones {
-  [key: string]: string;
-}
 
 /** 来源标签(板:手动|发现任务;hotword 来源标识悬停可见) */
 function originLabel(k: KeywordAdminRow): string {
@@ -46,13 +39,10 @@ function hitLabel(at: Date | null): string {
 
 export default function KeywordTable({
   items,
-  tones,
   yieldByWord,
   relByWord,
 }: {
   items: KeywordAdminRow[];
-  /** 状态色 tone 映射(页面持有,保持与候选表同源) */
-  tones: KeywordTableTones;
   /** 词→候选产出聚合(关联列候选计数;缺词=尚无候选命中,显 —) */
   yieldByWord: Record<string, KeywordYield>;
   /** 词→文章数与最近命中(页侧 unnest 一次聚合) */

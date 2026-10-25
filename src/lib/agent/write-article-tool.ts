@@ -21,7 +21,7 @@ import { chatText } from "../ai/llm-client";
 import { resolveAiModel } from "../ai/resolver";
 import { recordAiUsage } from "../ai/usage-log";
 import { buildComposeBlocks, listRecentPublishedTitles } from "../topics/compose";
-import { getTopic, TopicError } from "../topics/repo";
+import { getTopic } from "../topics/repo";
 import { logger } from "../logger";
 
 import { assertAdminThread } from "./admin-thread";

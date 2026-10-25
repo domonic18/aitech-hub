@@ -4,12 +4,7 @@
  * (noopener nofollow,与电报流一致);mark 高亮 + 命中度。RSC 纯展示。
  */
 import { formatCnDateTime } from "@/lib/datetime";
-import {
-  compactCount,
-  feedChipTone,
-  formatDuration,
-  platformLabel,
-} from "@/lib/telegram/feed-view";
+import { compactCount, feedChipTone, platformLabel } from "@/lib/telegram/feed-view";
 import type { TelegramSearchHit } from "@/lib/search/search-view";
 import HitVideoCover from "./HitVideoCover";
 import Marked from "./Marked";
@@ -29,7 +24,6 @@ export default function TelegramHit({
 }): React.ReactElement {
   if (hit.mediaType === "video" && hit.video) {
     const v = hit.video;
-    const duration = formatDuration(v.durationSeconds);
     const play = compactCount(v.engagement.play);
     return (
       <a
