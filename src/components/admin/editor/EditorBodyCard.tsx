@@ -7,7 +7,7 @@
  */
 import { useState } from "react";
 
-import MdEditor from "@/components/admin/MdEditor";
+import MdEditor from "@/components/admin/editor/MdEditor";
 import ArticleBody from "@/components/article/ArticleBody";
 
 export default function EditorBodyCard({

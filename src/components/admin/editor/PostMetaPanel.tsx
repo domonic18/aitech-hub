@@ -10,9 +10,9 @@
  */
 import { POST_LIMITS, type ContentOrigin } from "@/lib/content/post-schema";
 
-import CoverUploader from "./CoverUploader";
+import CoverUploader from "../CoverUploader";
 import { INPUT, LABEL } from "./editor-controls";
-import type { CoverGenContext } from "./cover/templates";
+import type { CoverGenContext } from "../cover/templates";
 
 export interface EditorCategory {
   slug: string;

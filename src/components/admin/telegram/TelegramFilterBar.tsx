@@ -6,7 +6,7 @@
  */
 import Link from "next/link";
 
-import TelegramFilterForm from "@/components/admin/TelegramFilterForm";
+import TelegramFilterForm from "@/components/admin/telegram/TelegramFilterForm";
 import {
   TELEGRAM_AI_FILTERS,
   TELEGRAM_LIST_SEGMENTS,

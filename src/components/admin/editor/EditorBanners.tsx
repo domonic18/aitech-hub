@@ -5,7 +5,7 @@
  * 影子副本恢复提示。影子横幅(M27 批①):崩溃/断网留底的本地修改,恢复=回填
  * 标题与正文(影子保留至保存成功,期间再崩可再次恢复);丢弃=清除留底。
  */
-import { clearPostShadow, type PostShadow } from "@/components/admin/usePostAutosave";
+import { clearPostShadow, type PostShadow } from "@/components/admin/editor/usePostAutosave";
 import { formatCnTime } from "@/lib/datetime";
 
 export default function EditorBanners({

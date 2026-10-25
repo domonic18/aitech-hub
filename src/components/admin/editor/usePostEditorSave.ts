@@ -15,12 +15,12 @@ import {
 } from "@/lib/content/post-schema";
 import { type ApiEnvelope } from "@/lib/http/response";
 import { formatCnTime } from "@/lib/datetime";
-import type { PostMetaValue } from "@/components/admin/PostMetaPanel";
+import type { PostMetaValue } from "@/components/admin/editor/PostMetaPanel";
 import {
   clearPostShadow,
   type AutosavePhase,
   type AutosaveResult,
-} from "@/components/admin/usePostAutosave";
+} from "@/components/admin/editor/usePostAutosave";
 
 /** 服务端包络(形态引用 ApiEnvelope,评审 W3:客户端不手写同形接口) */
 type SaveBody = ApiEnvelope<{ id?: string; updatedAt?: string; reason?: string } | null>;

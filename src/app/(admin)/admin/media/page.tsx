@@ -5,9 +5,9 @@
  */
 import Link from "next/link";
 
-import MediaActions from "@/components/admin/MediaActions";
-import MediaDupeList from "@/components/admin/MediaDupeList";
-import MediaGrid from "@/components/admin/MediaGrid";
+import MediaActions from "@/components/admin/media/MediaActions";
+import MediaDupeList from "@/components/admin/media/MediaDupeList";
+import MediaGrid from "@/components/admin/media/MediaGrid";
 import { MEDIA_AUDIT_CRON } from "@/lib/queue";
 import {
   type MediaKind,

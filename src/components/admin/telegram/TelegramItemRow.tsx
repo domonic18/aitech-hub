@@ -4,9 +4,9 @@
  * 2026-10-05 反馈:标题下灰字改显 AI 解读(aiSummary;未解读/无解读回退原始
  * summary,解读态由 AiBadge 表达),与用户「这行应是解读内容」的预期一致。
  */
-import TelegramRowOps from "@/components/admin/TelegramRowOps";
+import TelegramRowOps from "@/components/admin/telegram/TelegramRowOps";
 import { RowCheckbox } from "@/components/admin/batch/SelectionCheckbox";
-import { AiBadge, MediaBadge, StatusBadge } from "@/components/admin/TelegramBadges";
+import { AiBadge, MediaBadge, StatusBadge } from "@/components/admin/telegram/TelegramBadges";
 import { formatCnDateTime } from "@/lib/datetime";
 import { compactCount, formatDuration, platformLabel } from "@/lib/telegram/feed-view";
 import type { TelegramAdminList } from "@/lib/telegram/telegram-admin";
