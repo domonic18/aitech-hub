@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { clampDigest, WECHAT_DIGEST_MAX } from "./channels";
+import { clampDigest, parseChannelParam, WECHAT_DIGEST_MAX } from "./channels";
 
 describe("clampDigest", () => {
   it("不超上限原样返回", () => {
@@ -25,5 +25,16 @@ describe("clampDigest", () => {
 
   it("自定义上限生效", () => {
     expect(clampDigest("abcdef", 3)).toBe("abc");
+  });
+});
+
+describe("parseChannelParam(M48 批D 渠道注册表)", () => {
+  it("合法渠道放行", () => {
+    expect(parseChannelParam("wechat")).toBe("wechat");
+  });
+
+  it("非法/缺省 → undefined(不过滤)", () => {
+    expect(parseChannelParam("xiaohongshu")).toBeUndefined();
+    expect(parseChannelParam(undefined)).toBeUndefined();
   });
 });

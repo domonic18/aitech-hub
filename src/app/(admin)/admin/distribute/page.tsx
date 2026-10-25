@@ -8,7 +8,7 @@ import Link from "next/link";
 import AdminPagination from "@/components/admin/AdminPagination";
 import DistributeAdminApp from "@/components/admin/distribute/DistributeAdminApp";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { CHANNEL_WECHAT } from "@/lib/distribute/channels";
+import { parseChannelParam } from "@/lib/distribute/channels";
 import {
   PUBLISH_RECORD_SEGMENTS,
   getDistributeOverview,
@@ -27,7 +27,7 @@ const SEG_LABELS: Record<(typeof PUBLISH_RECORD_SEGMENTS)[number], string> = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; page?: string; channel?: string }>;
 }
 
 export default async function AdminDistributePage({
@@ -37,20 +37,24 @@ export default async function AdminDistributePage({
   const sp = await searchParams;
   const segment = parseListSegment(PUBLISH_RECORD_SEGMENTS, sp.status, "all");
   const page = parsePage(sp.page);
+  // M48 批D:渠道维度接线(?channel=,经注册表校验)——缺省不过滤;一期仅
+  // wechat 行,数据面与旧硬编码一致
+  const channel = parseChannelParam(sp.channel);
 
   const [config, records, overview] = await Promise.all([
     getWechatConfigAdmin(),
     listPublishChannelRecords({
-      channel: CHANNEL_WECHAT,
+      ...(channel ? { channel } : {}),
       ...(segment !== "all" ? { status: segment } : {}),
       page,
     }),
-    getDistributeOverview(),
+    getDistributeOverview(channel),
   ]);
   const totalPages = Math.max(1, Math.ceil(records.total / records.pageSize));
   const hrefFor = (p: number): string =>
     adminListHref("/admin/distribute", {
       status: segment === "all" ? undefined : segment,
+      ...(channel ? { channel } : {}),
       page: p,
     });
 
