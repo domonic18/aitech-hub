@@ -179,11 +179,13 @@ export async function listPostSegmentsForPrerender(): Promise<string[]> {
   }
 }
 
-/** sitemap/feed/llms 全量投影(轻字段;updatedAt 作 lastmod;门禁字段供 GEO 面截断) */
-export async function listAllPostsForSeo() {
+/** sitemap/feed/llms 全量投影(轻字段;updatedAt 作 lastmod;门禁字段供 GEO 面截断;
+ * take 缺省=全量,sitemap/llms 不传,feed 传 RSS_FEED_SIZE 档「最新 20 篇」) */
+export async function listAllPostsForSeo(take?: number) {
   return prerenderSafe("posts.allForSeo", [], () =>
     prisma.post.findMany({
       where: PUBLISHED,
+      ...(take !== undefined ? { take } : {}),
       select: {
         id: true,
         slug: true,
