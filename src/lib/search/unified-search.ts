@@ -103,7 +103,8 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
   if (terms.length === 0) return emptyResult(q, terms);
 
   // 语义层先决:查询向量化(未绑定/失败 → null,双榜退化单榜,行为不回归)
-  const vector = await embedQueryForSearch(q);
+  // M48 批B:向量化外呼不 await,与词项三域并发起跑——embed RTT 不再阻塞词项检索
+  const vectorPromise = embedQueryForSearch(q);
 
   // 可见性条件与词项条件分离:词项 findMany 带 OR,纯语义 id 补取只带可见性
   const telegramVisible = {
@@ -160,7 +161,7 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
     _count: { select: { posts: true } },
   } as const;
 
-  const [tgRes, postRes, repoRes, tgVec, postVec, repoVec] = await Promise.all([
+  const [tgRes, postRes, repoRes, vector] = await Promise.all([
     prisma.$transaction([
       prisma.telegram.findMany({
         where: telegramWhere,
@@ -188,6 +189,11 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
       }),
       prisma.githubRepo.count({ where: repoWhere }),
     ]),
+    vectorPromise,
+  ]);
+
+  // 语义向量榜:vector 就绪后三域并发(null → 单榜退化,行为同原)
+  const [tgVec, postVec, repoVec] = await Promise.all([
     vector ? topVectorMatches("telegram", vector, VECTOR_RECALL_LIMIT) : Promise.resolve(null),
     vector ? topVectorMatches("post", vector, VECTOR_RECALL_LIMIT) : Promise.resolve(null),
     vector ? topVectorMatches("repo", vector, VECTOR_RECALL_LIMIT) : Promise.resolve(null),

@@ -3,6 +3,8 @@
  * 页面禁止裸 Prisma,一律经 service;复杂查询集中本目录)。
  * 写侧(保存钩子/revalidate 编排)随 M5 管理后台落地。
  */
+import { cache } from "react";
+
 import { prisma } from "@/lib/db";
 import { postPathSegment } from "@/lib/content/post-path";
 import { prerenderSafe } from "@/lib/prerender-safe";
@@ -61,8 +63,10 @@ async function attachInteractionCounts<T extends { id: bigint }>(
   }));
 }
 
-/** 详情:id 直取(2026-10 URL 终态,id 是唯一解析锚;slug 仅装饰);仅已发布 */
-export async function getPostById(id: bigint) {
+/** 详情:id 直取(2026-10 URL 终态,id 是唯一解析锚;slug 仅装饰);仅已发布。
+ * cache() 同请求去重:generateMetadata 与页面各调一次不再双查含双份正文(M48 批B);
+ * 请求外(单测/路由脚本)行为同原函数 */
+export const getPostById = cache(async (id: bigint) => {
   return prisma.post.findFirst({
     where: { id, ...PUBLISHED },
     include: {
@@ -70,7 +74,7 @@ export async function getPostById(id: bigint) {
       tags: { select: { tag: { select: { slug: true, name: true } } } },
     },
   });
-}
+});
 
 /**
  * 最新文章(首页右栏;2026-10-20 验收反馈问题二:按分类原创标记分流——
@@ -177,6 +181,18 @@ export async function listPostSegmentsForPrerender(): Promise<string[]> {
     console.warn(JSON.stringify({ event: "posts.prerender.degraded", error: String(e) }));
     return [];
   }
+}
+
+/** sitemap 索引轻投影(M48 批B):仅 id/slug/updatedAt——正文大列属 feed/llms,
+ * sitemap 每小时全量再生不该背着数十 KB/篇 的 body 白拉 */
+export async function listPostSeoIndex() {
+  return prerenderSafe("posts.seoIndex", [], () =>
+    prisma.post.findMany({
+      where: PUBLISHED,
+      select: { id: true, slug: true, updatedAt: true },
+      orderBy: [...ORDER],
+    }),
+  );
 }
 
 /** sitemap/feed/llms 全量投影(轻字段;updatedAt 作 lastmod;门禁字段供 GEO 面截断;

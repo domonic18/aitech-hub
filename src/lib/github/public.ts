@@ -4,6 +4,8 @@
  * 降级为空数据,arch/07-frontend §1)+ 显式 select——readmeMd 大字段只在
  * getProjectBySlug 单点取出,列表/SEO 路径零大列。
  */
+import { cache } from "react";
+
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
 
@@ -34,8 +36,9 @@ export function listShowcaseRepos(limit?: number) {
 }
 export type ShowcaseRepo = Awaited<ReturnType<typeof listShowcaseRepos>>[number];
 
-/** 详情(display=false 视为下架,同 404);含已发布配套文章与 README 缓存 */
-export function getProjectBySlug(slug: string) {
+/** 详情(display=false 视为下架,同 404);含已发布配套文章与 README 缓存。
+ * cache() 同请求去重:generateMetadata 与页面各调一次不再双拉 readmeMd(M48 批B) */
+export const getProjectBySlug = cache((slug: string) => {
   return prerenderSafe("github.project", null, () =>
     prisma.githubRepo.findFirst({
       where: { slug, display: true },
@@ -54,7 +57,7 @@ export function getProjectBySlug(slug: string) {
       },
     }),
   );
-}
+});
 export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectBySlug>>>;
 
 /** 进展动态时间轴(裁剪管道已保证每仓 ≤50,详情页默认取 20) */

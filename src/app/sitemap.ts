@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { asciiSlugFromTitle, pinPath } from "@/lib/content/pin-path";
-import { listAllPostsForSeo } from "@/lib/content/posts";
+import { listPostSeoIndex } from "@/lib/content/posts";
 import { postPath } from "@/lib/content/post-path";
 import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
 import { listProjectsForSeo } from "@/lib/github/public";
@@ -14,7 +14,7 @@ export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [posts, categories, tags, projects, pins] = await Promise.all([
-    listAllPostsForSeo(),
+    listPostSeoIndex(),
     listCategories(),
     listTagsWithCount(),
     listProjectsForSeo(),
