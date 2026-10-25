@@ -94,20 +94,22 @@ export interface DistributeOverview {
   lastRecord: { status: string; syncedAt: Date | null; updatedAt: Date } | null;
 }
 
-export async function getDistributeOverview(): Promise<DistributeOverview> {
+export async function getDistributeOverview(channel?: string): Promise<DistributeOverview> {
   const since7d = new Date(Date.now() - 7 * 24 * 3_600_000);
+  const scope = channel ? { channel } : {};
   const [todaySynced, recent7d, totalSynced, failedCount, last] = await Promise.all([
     prisma.publishChannel.count({
-      where: { status: "synced", syncedAt: { gte: startOfCnDay() } },
+      where: { ...scope, status: "synced", syncedAt: { gte: startOfCnDay() } },
     }),
     prisma.publishChannel.groupBy({
       by: ["status"],
-      where: { status: { in: ["synced", "failed"] }, updatedAt: { gte: since7d } },
+      where: { ...scope, status: { in: ["synced", "failed"] }, updatedAt: { gte: since7d } },
       _count: { _all: true },
     }),
-    prisma.publishChannel.count({ where: { status: "synced" } }),
-    prisma.publishChannel.count({ where: { status: "failed" } }),
+    prisma.publishChannel.count({ where: { ...scope, status: "synced" } }),
+    prisma.publishChannel.count({ where: { ...scope, status: "failed" } }),
     prisma.publishChannel.findFirst({
+      where: scope,
       orderBy: { updatedAt: "desc" },
       select: { status: true, syncedAt: true, updatedAt: true },
     }),

@@ -64,7 +64,9 @@ async function main(): Promise<void> {
         : name === QUEUE_INTERPRETER || name === QUEUE_SEO_BATCH
           ? { concurrency: 1, lockDuration: 600_000 }
           : name === QUEUE_DISTRIBUTE
-            ? { concurrency: 1, lockDuration: 900_000 }
+            ? // 批D:wechat 沿用历史队列(在途 job 兼容);新渠道走 distributeQueueFor
+              // 子队列,届时在此按渠道各建 worker(同并发 1 语义),互不队头阻塞
+              { concurrency: 1, lockDuration: 900_000 }
             : name === QUEUE_DB_BACKUP
               ? { concurrency: 1, lockDuration: 600_000 }
               : name === QUEUE_PAY_RECONCILE

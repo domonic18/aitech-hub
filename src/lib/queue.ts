@@ -3,6 +3,7 @@ import type { ConnectionOptions } from "bullmq";
 import IORedis from "ioredis";
 
 import { env } from "./env";
+import { CHANNEL_WECHAT } from "./distribute/channels";
 
 /**
  * BullMQ producer 侧封装(arch/00-overview §2:请求内只 enqueue,处理一律在 worker 进程)。
@@ -32,6 +33,12 @@ export const QUEUE_SEO_BATCH = "seo-batch";
 /** 内容分发(M17,requirement §4 多渠道分发):公众号推草稿;
  * 并发 1 全局串行(微信接口频控),lockDuration 900s 覆盖单批 30 篇 × ~15s */
 export const QUEUE_DISTRIBUTE = "distribute";
+/** 分发队列按渠道路由(M48 批D 地基):wechat 沿用历史队列名——改名会弃生产
+ * 在途 job,禁;新渠道(小红书等)一律 `distribute:<channel>` 子队列,worker 侧
+ * 按渠道各建 worker(同 concurrency=1 语义),渠道间互不队头阻塞 */
+export function distributeQueueFor(channel: string): string {
+  return channel === CHANNEL_WECHAT ? QUEUE_DISTRIBUTE : `${QUEUE_DISTRIBUTE}:${channel}`;
+}
 /** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
  * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */
 export const QUEUE_DB_BACKUP = "db-backup";
