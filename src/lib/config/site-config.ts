@@ -6,6 +6,7 @@
  * 容纳 hero_md markdown)。站点标题消费面:metadata/Header/Footer/RSS/
  * llms.txt;admin 控制台内部 UI 不随配置(保持「一起AI 控制台」)。
  */
+import { cache } from "react";
 import { z } from "zod";
 
 import { prisma } from "../db";
@@ -47,13 +48,15 @@ export const ICP_MAX = 60;
 
 // ── 读侧 ──────────────────────────────────────────────────────
 
-/** 单键读值(构建期无库/缺行 → null,由各键解析器回落) */
-async function readConfigValue(key: string): Promise<string | null> {
+/** 单键读值(构建期无库/缺行 → null,由各键解析器回落)。
+ * cache() 同请求去重:一次渲染 metadata+Header+Footer 等各键读取不再各自查库
+ * (实测单渲染最多 4-5 次 siteConfig 查询,M48 批B) */
+const readConfigValue = cache((key: string): Promise<string | null> => {
   return prerenderSafe(`site_config.${key}`, null, async () => {
     const row = await prisma.siteConfig.findUnique({ where: { key }, select: { value: true } });
     return row?.value ?? null;
   });
-}
+});
 
 /** 整数键解析:缺行/非整数/低于下限 → 默认;超上限 → clamp(band 条数同口径) */
 function parseIntConfig(raw: string | null, fallback: number, min: number, max: number): number {

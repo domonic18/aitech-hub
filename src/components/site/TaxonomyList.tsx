@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { getSiteTitle } from "@/lib/config/site-config";
 import { legacyRedirectOrNotFound } from "@/lib/content/legacy";
 import { listPostsPage } from "@/lib/content/posts";
@@ -15,8 +17,9 @@ export interface TaxonomyInfo {
   name: string;
 }
 
-/** slug 解析(红线:必经 normalizeSlug)→ 查库;未命中走 legacy 兜底后 404 */
-export async function resolveTaxonomy(
+/** slug 解析(红线:必经 normalizeSlug)→ 查库;未命中走 legacy 兜底后 404。
+ * cache() 同请求去重:generateMetadata 与页面各调一次不再双解析(M48 批B) */
+export const resolveTaxonomy = cache(async function resolveTaxonomy(
   kind: TaxonomyKind,
   rawSlug: string,
 ): Promise<TaxonomyInfo | null> {
@@ -25,7 +28,7 @@ export async function resolveTaxonomy(
   if (found) return found;
   await legacyRedirectOrNotFound([kind, rawSlug]); // 必抛(redirect/notFound)
   return null;
-}
+});
 
 export async function taxonomyPosts(kind: TaxonomyKind, slug: string, page: number) {
   return listPostsPage({
