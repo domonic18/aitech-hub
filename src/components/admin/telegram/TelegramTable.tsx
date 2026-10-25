@@ -8,11 +8,11 @@
  * 批量编排/勾选格/动作钮走共享件(技术债批②;表头样式同步其余四表)。
  * 分页留 RSC 页(AdminPagination 需服务端 hrefFor)。
  */
-import BatchButton from "./batch/BatchButton";
-import BatchActionBar from "./batch/BatchActionBar";
-import { SelectAllTh } from "./batch/SelectionCheckbox";
-import { useBatchAction } from "./batch/useBatchAction";
-import { useBatchSelection } from "./batch/useBatchSelection";
+import BatchButton from "../batch/BatchButton";
+import BatchActionBar from "../batch/BatchActionBar";
+import { SelectAllTh } from "../batch/SelectionCheckbox";
+import { useBatchAction } from "../batch/useBatchAction";
+import { useBatchSelection } from "../batch/useBatchSelection";
 import TelegramItemRow from "./TelegramItemRow";
 
 import type { TelegramAdminList } from "@/lib/telegram/telegram-admin";

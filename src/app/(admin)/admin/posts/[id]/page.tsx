@@ -4,7 +4,7 @@
  */
 import { notFound } from "next/navigation";
 
-import PostEditor from "@/components/admin/PostEditor";
+import PostEditor from "@/components/admin/editor/PostEditor";
 import ArticleBody from "@/components/article/ArticleBody";
 import { asContentOrigin, postDisplayState } from "@/lib/content/post-schema";
 import { getPostForAdmin, parsePostId } from "@/lib/content/posts-admin";

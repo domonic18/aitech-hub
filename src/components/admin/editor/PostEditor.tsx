@@ -20,17 +20,17 @@ import PostMetaPanel, {
   type EditorCategory,
   type PostMetaValue,
   type SlugField,
-} from "@/components/admin/PostMetaPanel";
-import EditorBanners from "@/components/admin/EditorBanners";
-import EditorBodyCard from "@/components/admin/EditorBodyCard";
-import EditorAssistant, { type AssistantLaunch } from "@/components/admin/EditorAssistant";
-import { readPostShadow, type PostShadow } from "@/components/admin/usePostAutosave";
-import usePostAutosave from "@/components/admin/usePostAutosave";
+} from "@/components/admin/editor/PostMetaPanel";
+import EditorBanners from "@/components/admin/editor/EditorBanners";
+import EditorBodyCard from "@/components/admin/editor/EditorBodyCard";
+import EditorAssistant, { type AssistantLaunch } from "@/components/admin/editor/EditorAssistant";
+import { readPostShadow, type PostShadow } from "@/components/admin/editor/usePostAutosave";
+import usePostAutosave from "@/components/admin/editor/usePostAutosave";
 import {
   autosaveStatusLine,
   splitTags,
   usePostEditorSave,
-} from "@/components/admin/usePostEditorSave";
+} from "@/components/admin/editor/usePostEditorSave";
 import EditorWechatSyncButton from "@/components/admin/distribute/EditorWechatSyncButton";
 import {
   POST_DISPLAY_STATE_LABEL,

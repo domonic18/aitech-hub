@@ -17,7 +17,7 @@ import "vditor/dist/index.css";
 import { useEffect, useRef, useState } from "react";
 import Vditor from "vditor";
 
-import MediaInsertDialog from "@/components/admin/MediaInsertDialog";
+import MediaInsertDialog from "@/components/admin/media/MediaInsertDialog";
 import { IMAGE_ACCEPT, MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
 

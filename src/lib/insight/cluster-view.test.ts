@@ -1,4 +1,4 @@
-/** 簇视图读侧单测(prisma mock,无真库;承重墙补盲 M47 批C):
+/** 簇视图读侧单测(prisma mock,无真库;承重墙补盲 M47 批C,M47 批D 跟随实现迁 cluster-view):
  * listInsightClusters 的 take 钳制/kind 过滤/二次聚合映射/异动动量判定,
  * getInsightClusterDetail 的 404 null/快照升序反转/来源分布降序/bigint 出参。 */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +33,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { getInsightClusterDetail, listInsightClusters } from "./admin";
+import { getInsightClusterDetail, listInsightClusters } from "./cluster-view";
 
 beforeEach(() => {
   vi.clearAllMocks();

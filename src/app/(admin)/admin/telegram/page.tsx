@@ -7,8 +7,8 @@
  */
 import BlocklistManager from "@/components/admin/BlocklistManager";
 import AdminPagination from "@/components/admin/AdminPagination";
-import TelegramFilterBar from "@/components/admin/TelegramFilterBar";
-import TelegramTable from "@/components/admin/TelegramTable";
+import TelegramFilterBar from "@/components/admin/telegram/TelegramFilterBar";
+import TelegramTable from "@/components/admin/telegram/TelegramTable";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { parseListSegment, parsePage } from "@/lib/admin/list";
 import {
