@@ -7,11 +7,18 @@
  * login=登录引导(仿旧站 unlock_type=1)/ paid=off 联系站长、未登录引导、
  * mock 模拟支付、xunhu 跳收银链。预览由服务端传入,本组件永不回退展示全文。
  */
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import ArticleBody from "@/components/article/ArticleBody";
 import { withNext } from "@/lib/auth/next-path";
+
+// M48 批C:ArticleBody(react-markdown+rehype+highlight 栈,原始 ~750K)原被本
+// 客户端组件静态拖进所有文章页首屏包——/post/[slug] 首载 289K 里 ≈177K 是它,而
+// 绝大多数文章无付费门禁根本不挂本卡。改 next/dynamic(默认 ssr:true):门禁页
+// 预览的 SSR HTML/SEO 不变,markdown chunk 仅挂卡页面水合期异步补拉;无门禁
+// 文章页(SEO 主面)首载回归 ~112K 基线
+const ArticleBody = dynamic(() => import("@/components/article/ArticleBody"));
 
 interface AccessState {
   loggedIn: boolean;
