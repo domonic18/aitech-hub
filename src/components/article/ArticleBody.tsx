@@ -44,6 +44,7 @@ export default function ArticleBody({
           components={{
             // 图文混排(M27 批⑥):正文图惰性加载,首屏 LCP 不被文中小图拖累;
             // 圆角/最大宽度由 prose.css .prose img 既有规则覆盖
+            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text -- md 正文图经 rehype 渲染,alt 随 AST 节点透传(静态分析不可见);站内路径无 next/image 配置价值
             img: (props) => <img loading="lazy" decoding="async" {...props} />,
           }}
         >

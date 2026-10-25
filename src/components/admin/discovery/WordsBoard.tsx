@@ -21,12 +21,6 @@ import AdminPagination from "@/components/admin/AdminPagination";
 import KeywordAddForm from "@/components/admin/discovery/KeywordAddForm";
 import KeywordTable from "@/components/admin/discovery/KeywordTable";
 
-const KEYWORD_TONES: Record<string, string> = {
-  pending: "bg-amber/12 text-amber-hi",
-  active: "bg-green/12 text-green",
-  dismissed: "bg-panel-2 text-text-2",
-};
-
 /** 来源筛选白名单(板:手动|发现任务;库中 origin 就此两形) */
 const ORIGINS = [
   ["", "全部"],
@@ -139,7 +133,6 @@ export default async function WordsBoard({
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
         <KeywordTable
           items={kwList.items}
-          tones={KEYWORD_TONES}
           yieldByWord={yieldByWord}
           relByWord={Object.fromEntries(relations)}
         />

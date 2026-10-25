@@ -15,7 +15,7 @@
  * 消息(state 异常/消息被压缩截断)时 fail-closed 拦截——放行会让非首个
  * interrupt 在 resume 重执行时进入 interrupt,错位比报错更危险。
  */
-import { AIMessage, ToolMessage, createMiddleware } from "langchain";
+import { ToolMessage, createMiddleware } from "langchain";
 
 import { logger } from "../logger";
 

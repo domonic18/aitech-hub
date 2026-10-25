@@ -17,7 +17,7 @@ export default function AdminTabNav({
   const pathname = usePathname();
   return (
     <div className="flex flex-wrap overflow-hidden rounded-sm border border-line">
-      {items.map((t, i) => {
+      {items.map((t) => {
         // 前缀匹配去尾斜杠归一(数据壳:洞察页签需点亮 /admin/insight/clusters/… 详情页)
         const base = t.href.replace(/\/+$/, "");
         const active = pathname === t.href || pathname === base || pathname.startsWith(`${base}/`);

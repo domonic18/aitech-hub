@@ -21,7 +21,7 @@ const FULL_ENV = {
 
 /** fake COS 客户端:四方法可编程,默认全 404(新桶空态) */
 function fakeClient(overrides: Partial<Record<keyof CosClient, unknown>> = {}): CosClient {
-  const notFound = (params: { Key: string }) =>
+  const notFound = () =>
     Promise.reject(Object.assign(new Error("NoSuchKey"), { code: "NoSuchKey", statusCode: 404 }));
   return {
     putObject: vi.fn().mockResolvedValue({ statusCode: 200 }),

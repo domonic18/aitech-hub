@@ -4,7 +4,7 @@
  */
 import Link from "next/link";
 
-import { MEDIUM_LABELS, SOURCE_COLORS, SOURCE_LABELS } from "@/components/admin/insight/shared";
+import { MEDIUM_LABELS, SOURCE_LABELS } from "@/components/admin/insight/shared";
 import SourceShareBar from "@/components/admin/insight/SourceShareBar";
 import type { InsightSourceStat } from "@/lib/insight/admin";
 import type { InsightMediumVocab } from "@/lib/insight/constants";
