@@ -230,3 +230,9 @@ export async function getHotPages(range: HotRange, limit = 10): Promise<HotPageR
   out.sort((a, b) => b.pv - a.pv);
   return out.slice(0, limit);
 }
+
+/** 引擎卡「采集中」窗口入库量:当前采集批次起始以来的信号条数(M48 批F 自
+ * data/run/EngineCard 组件层下沉) */
+export async function countTelegramSince(since: Date): Promise<number> {
+  return prisma.telegram.count({ where: { createdAt: { gte: since } } });
+}

@@ -2,7 +2,11 @@
  * 分源合并 + 信号流恒限在役源与过滤传参(批③ 渠道转向后口径)。 */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/datetime", () => ({ statsDay: () => "2026-10-17" }));
+vi.mock("@/lib/datetime", async (importOriginal) => ({
+  // M48 批F:日序列单源进 datetime,真身 cnDayKeyRange/DAY_MS 原样透传
+  ...(await importOriginal()),
+  statsDay: () => "2026-10-17",
+}));
 
 const signalCount = vi.fn();
 const signalGroupBy = vi.fn();

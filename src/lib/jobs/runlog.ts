@@ -6,7 +6,7 @@
  */
 import type { Prisma } from "@prisma/client";
 
-import { prisma } from "@/lib/db";
+import { deleteBatchedWhere, prisma } from "@/lib/db";
 
 /** 台账保留期(行量口径:落账白名单约 400 行/日 × 30 天 ≈ 1.2 万行) */
 export const JOB_RUN_RETENTION_DAYS = 30;
@@ -107,7 +107,9 @@ export interface JobRunPurgeSummary {
 /** 保留期清理 + 崩溃残留代收口(running 超 24h 标 failed,不让僵尸行永久占用「进行中」) */
 export async function purgeJobRuns(): Promise<JobRunPurgeSummary> {
   const cutoff = new Date(Date.now() - JOB_RUN_RETENTION_DAYS * 86_400_000);
-  const purged = await prisma.jobRun.deleteMany({ where: { startedAt: { lt: cutoff } } });
+  // 分批防超时(M48 批F:statement_timeout 30s 下大保留窗口单条 deleteMany 必被掐)
+  const purgedCount = await deleteBatchedWhere(prisma.jobRun, { startedAt: { lt: cutoff } });
+  const purged = { count: purgedCount };
   const crashed = await prisma.jobRun.updateMany({
     where: { status: "running", startedAt: { lt: new Date(Date.now() - CRASHED_STALE_MS) } },
     data: {

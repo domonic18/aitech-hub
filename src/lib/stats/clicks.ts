@@ -7,7 +7,7 @@
  * purgeClickLogs 挂 worker 日调度,180 天保留同搜索词。
  * 表无 PII(无 IP/无访客哈希);ref 无外键,标题查询侧反解,删除兜底占位。
  */
-import { prisma } from "@/lib/db";
+import { deleteBatchedWhere, prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 
@@ -52,11 +52,10 @@ export function ingestClick(input: ClickInput): void {
 /** 点击明细保留天数(无 PII,与搜索词一致;「全部」窗口的实际上界) */
 const CLICK_LOG_RETENTION_DAYS = 180;
 
-/** 清理保留窗口外的点击明细;返回删除行数(0 不打日志) */
+/** 清理保留窗口外的点击明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeClickLogs(): Promise<number> {
   const cutoff = new Date(Date.now() - CLICK_LOG_RETENTION_DAYS * 86_400_000);
-  const r = await prisma.statsClickLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  return r.count;
+  return deleteBatchedWhere(prisma.statsClickLog, { createdAt: { lt: cutoff } });
 }
 
 // ── 读侧(admin 统计页「热门点击」)────────────────────────────────

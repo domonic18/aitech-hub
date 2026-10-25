@@ -8,8 +8,8 @@ import Link from "next/link";
 import { crawlerActiveRuns } from "@/lib/collect/channel-ledger";
 import { upcomingRuns } from "@/lib/collect/plan-rows";
 import { formatCnTime } from "@/lib/datetime";
-import { prisma } from "@/lib/db";
 import { jobRunLabel, listJobRuns } from "@/lib/jobs/runlog-admin";
+import { countTelegramSince } from "@/lib/stats/queries";
 import { getCrawlerQueueSnapshot } from "@/lib/telegram/spider-queries";
 
 function elapsed(ms: number): string {
@@ -25,10 +25,7 @@ export default async function EngineCard(): Promise<React.ReactElement> {
     listJobRuns({ page: 1 }),
   ]);
   const since = active.length > 0 ? Math.min(...active.map((a) => a.sinceMs)) : null;
-  const inserted =
-    since === null
-      ? 0
-      : await prisma.telegram.count({ where: { createdAt: { gte: new Date(since) } } });
+  const inserted = since === null ? 0 : await countTelegramSince(new Date(since));
 
   return (
     <div className="flex flex-col rounded-md border border-line bg-panel">

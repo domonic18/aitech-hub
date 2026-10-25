@@ -4,7 +4,7 @@
  * sidecar 走各自 GET /health(compose 网内服务名,dev 本地映射端口)。
  */
 import { env } from "@/lib/env";
-import { prisma } from "@/lib/db";
+import { pingDb } from "@/lib/db";
 import { redis } from "@/lib/redis";
 
 interface Dep {
@@ -35,7 +35,7 @@ async function fetchHealth(base: string): Promise<void> {
 
 export default async function DepsBar(): Promise<React.ReactElement> {
   const [pg, cache, renderer, gateway] = await Promise.all([
-    timed(() => prisma.$queryRaw`SELECT 1`),
+    timed(() => pingDb()),
     timed(() => redis.ping()),
     timed(() => fetchHealth(env.CARD_RENDERER_URL)),
     timed(() => fetchHealth(env.DOUYIN_GATEWAY_URL)),

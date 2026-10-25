@@ -6,8 +6,8 @@
  */
 import Link from "next/link";
 
-import { prisma } from "@/lib/db";
 import { formatCnDateTime } from "@/lib/datetime";
+import { latestJobRun } from "@/lib/jobs/runlog-admin";
 import { jobRunLabel, listJobRuns } from "@/lib/jobs/runlog-admin";
 import { cadenceLabel } from "@/lib/collect/plan-rows-types";
 import { parseCron, SCHEDULE_REGISTRY, type CronParsed } from "@/lib/collect/schedules";
@@ -75,14 +75,8 @@ const STATUS_META: Record<string, { label: string; cls: string; dot: string }> =
 
 export default async function DiscoveryJobsBoard(): Promise<React.ReactElement> {
   const [hot, bili, hotRuns, biliRuns] = await Promise.all([
-    prisma.jobRun.findFirst({
-      where: { jobKey: TASKS[0]!.jobKey },
-      orderBy: { startedAt: "desc" },
-    }),
-    prisma.jobRun.findFirst({
-      where: { jobKey: TASKS[1]!.jobKey },
-      orderBy: { startedAt: "desc" },
-    }),
+    latestJobRun(TASKS[0]!.jobKey),
+    latestJobRun(TASKS[1]!.jobKey),
     listJobRuns({ key: TASKS[0]!.jobKey, page: 1 }),
     listJobRuns({ key: TASKS[1]!.jobKey, page: 1 }),
   ]);

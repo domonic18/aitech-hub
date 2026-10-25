@@ -9,6 +9,7 @@ const prismaMock = vi.hoisted(() => ({
   statsClickLog: {
     create: vi.fn(),
     deleteMany: vi.fn(),
+    findMany: vi.fn(),
     groupBy: vi.fn(),
   },
   telegram: { findMany: vi.fn() },
@@ -17,7 +18,11 @@ const prismaMock = vi.hoisted(() => ({
 }));
 const loggerMock = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
-vi.mock("../db", () => ({ prisma: prismaMock }));
+vi.mock("../db", async (importOriginal) => ({
+  // M48 批F:purge 走真身 deleteBatchedWhere(prisma mock 只换连接),helper 不 mock
+  ...(await importOriginal<object>()),
+  prisma: prismaMock,
+}));
 vi.mock("../logger", () => ({ logger: loggerMock }));
 
 import { domainOf, getClickDomains, getHotClicks, ingestClick, purgeClickLogs } from "./clicks";
@@ -72,15 +77,22 @@ describe("ingestClick(行级直插,失败只告警)", () => {
 });
 
 describe("purgeClickLogs(180 天保留,循搜索词)", () => {
-  it("删 cutoff 之前并返回行数", async () => {
-    prismaMock.statsClickLog.deleteMany.mockResolvedValue({ count: 5 });
-    await expect(purgeClickLogs()).resolves.toBe(5);
-    const arg = prismaMock.statsClickLog.deleteMany.mock.calls[0]![0] as {
+  it("批取 id → in 删(M48 批F 分批),cutoff 断言在 findMany where", async () => {
+    const cutoff = new Date(Date.now() - 180 * 86_400_000);
+    prismaMock.statsClickLog.findMany.mockResolvedValue([{ id: BigInt(11) }, { id: BigInt(12) }]);
+    prismaMock.statsClickLog.deleteMany.mockResolvedValue({ count: 2 });
+    await expect(purgeClickLogs()).resolves.toBe(2);
+    const findArg = prismaMock.statsClickLog.findMany.mock.calls[0]![0] as {
       where: { createdAt: { lt: Date } };
+      take: number;
     };
-    const days = (Date.now() - arg.where.createdAt.lt.getTime()) / 86_400_000;
+    const days = (Date.now() - findArg.where.createdAt.lt.getTime()) / 86_400_000;
     expect(days).toBeGreaterThan(179.9);
     expect(days).toBeLessThan(180.1);
+    expect(findArg.take).toBe(500);
+    expect(prismaMock.statsClickLog.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [BigInt(11), BigInt(12)] } },
+    });
   });
 });
 

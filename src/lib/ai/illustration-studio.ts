@@ -174,12 +174,13 @@ export interface StudioView {
 export async function getStudioView(versionId: bigint): Promise<StudioView | null> {
   const version = await prisma.illustrationVersion.findUnique({ where: { id: versionId } });
   if (!version) return null;
-  // 单链向上回溯(链深 = 编辑次数,量级 <20,逐级查询足够)
+  // 单链向上回溯(链深 = 编辑次数,量级 <20,逐级查询足够;上限 64 兜底手工
+  // 数据 A↔B 互指的环——FK 不防逻辑环,无上限则单请求死循环,M48 批F)
   const chain: Array<{ id: bigint; origin: string; createdAt: Date }> = [];
   let cursor = version;
   while (true) {
     chain.unshift({ id: cursor.id, origin: cursor.origin, createdAt: cursor.createdAt });
-    if (cursor.parentVersionId === null) break;
+    if (cursor.parentVersionId === null || chain.length >= 64) break;
     const parent = await prisma.illustrationVersion.findUnique({
       where: { id: cursor.parentVersionId },
     });

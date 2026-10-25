@@ -9,7 +9,8 @@
 import KeywordCloud from "@/components/admin/insight/KeywordCloud";
 import type { InsightCloudWord } from "@/lib/insight/hotboard";
 import { formatCnDate, formatCnTime, startOfCnDay } from "@/lib/datetime";
-import { prisma } from "@/lib/db";
+import { latestJobRun } from "@/lib/jobs/runlog-admin";
+import { discoveryKeyword7dCounts } from "@/lib/insight/admin";
 
 function Kpi({
   label,
@@ -35,11 +36,7 @@ function Kpi({
 
 /** 日批 status:今日成功绿 / 非今日成功灰 / 失败红 / 无运行灰 */
 async function DailyStatusLine(): Promise<React.ReactElement> {
-  const run = await prisma.jobRun.findFirst({
-    where: { jobKey: "insight/daily" },
-    orderBy: { startedAt: "desc" },
-    select: { startedAt: true, status: true },
-  });
+  const run = await latestJobRun("insight/daily");
   if (run === null) {
     return (
       <div className="rounded-md border border-line bg-panel px-4 py-2.5 text-[11px] text-text-3">
@@ -74,11 +71,7 @@ export default async function OverviewHero({
   /** 词云窗口(页头窗口 chips),用于卡头口径标识 */
   windowDays: number;
 }): Promise<React.ReactElement> {
-  const since7d = new Date(Date.now() - 7 * 86_400_000);
-  const [candidates7d, confirmed7d] = await Promise.all([
-    prisma.discoveryKeyword.count({ where: { createdAt: { gte: since7d } } }),
-    prisma.discoveryKeyword.count({ where: { confirmedAt: { gte: since7d } } }),
-  ]);
+  const { candidates7d, confirmed7d } = await discoveryKeyword7dCounts();
   return (
     <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="rounded-md border border-line bg-panel px-4 py-3.5">
