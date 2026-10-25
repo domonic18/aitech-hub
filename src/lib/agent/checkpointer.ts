@@ -1,8 +1,9 @@
 /**
  * LangGraph checkpoint 持久化(K2.5,arch/04 §3.3):PostgresSaver 复用生产 PG,
  * checkpoint 表框架 setup() 幂等自管——不进 Prisma migrations(arch/03 边界,
- * ai-invest 先例:checkpoint 表不进 Alembic)。pg Pool 独立小池(max 3,生产
- * PG max_connections=20,Prisma 已占大头);进程级单例,懒加载——构建期不触达
+ * ai-invest 先例:checkpoint 表不进 Alembic)。pg Pool 独立小池(max 3,懒连接;
+ * 生产 PG max_connections=100 实测,M48 批A 勘误——旧注释「20」系本地 dev 值);
+ * 进程级单例,懒加载——构建期不触达
  * DB(prerenderSafe 同款纪律),仅 force-dynamic 路由与 worker boot 实例化。
  */
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";

@@ -31,9 +31,16 @@ case "$SERVICE_ROLE" in
         node -e "fetch('http://127.0.0.1:${PORT:-3000}$p').catch(() => {})" || true
       done
     ) &
+    # M48 批A①:容器 mem_limit 下显式钉堆上限——V8 缺省按宿主机内存推断老生代,
+    # 容器内失准,可远超 cgroup 上限才触发 GC → 内核 OOM 硬杀绕过优雅路径
+    export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=512"
     exec node server.js
     ;;
   worker)
+    # M48 批A①:容器 mem_limit 下显式钉堆上限——V8 缺省按宿主机内存推断老生代,
+    # 容器内失准,可远超 cgroup 上限才触发 GC → 内核 OOM 硬杀绕过优雅路径;
+    # worker 另有 sharp 原生内存不走 V8 堆,堆占比再让一档(512m limit → 384 堆)
+    export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=384"
     exec node dist/worker/index.js
     ;;
   *)

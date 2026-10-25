@@ -53,6 +53,13 @@ import { SITE_TZ } from "../src/lib/datetime";
 
 const STATS_FLUSH_EVERY_MS = 60_000;
 
+/** 调度任务统一 opts:成功保留条数沿用各任务原值;失败一律保留 50 条——BullMQ 缺省
+ * failed 永不清理,高频调度(如 stats-flush 60s/embed 15min)持续失败会在 Redis 堆
+ * failed job(含栈与返回值)构成慢泄漏(M48 批A④) */
+function schedulerOpts(removeOnComplete: number) {
+  return { removeOnComplete, removeOnFail: 50 };
+}
+
 export async function scheduleStatsFlush(): Promise<void> {
   const queue = getQueue(QUEUE_STATS);
   await queue.upsertJobScheduler(
@@ -61,7 +68,7 @@ export async function scheduleStatsFlush(): Promise<void> {
     {
       name: STATS_JOB_FLUSH,
       data: {},
-      opts: { removeOnComplete: 100 },
+      opts: schedulerOpts(100),
     },
   );
 }
@@ -75,7 +82,7 @@ export async function scheduleMediaAudit(): Promise<void> {
     {
       name: "audit",
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -90,7 +97,7 @@ export async function scheduleCoverTempSweep(): Promise<void> {
     {
       name: COVER_JOB_TEMP_SWEEP,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -104,7 +111,7 @@ export async function scheduleVisitLogPurge(): Promise<void> {
     {
       name: STATS_JOB_PURGE,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -118,7 +125,7 @@ export async function scheduleUsageLogPurge(): Promise<void> {
     {
       name: STATS_JOB_USAGE_PURGE,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -132,7 +139,7 @@ export async function scheduleAgentSessionPurge(): Promise<void> {
     {
       name: STATS_JOB_AGENT_PURGE,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -147,7 +154,7 @@ export async function scheduleJobRunPurge(): Promise<void> {
     {
       name: STATS_JOB_RUN_PURGE,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -161,7 +168,7 @@ export async function scheduleDbBackup(): Promise<void> {
     {
       name: DB_BACKUP_JOB_RUN,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -175,7 +182,7 @@ export async function scheduleEmbedReconcile(): Promise<void> {
     {
       name: EMBED_JOB_RECONCILE,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -191,7 +198,7 @@ export async function schedulePayReconcile(): Promise<void> {
     {
       name: PAY_JOB_SWEEP,
       data: {},
-      opts: { removeOnComplete: 50 },
+      opts: schedulerOpts(50),
     },
   );
   await queue.upsertJobScheduler(
@@ -200,7 +207,7 @@ export async function schedulePayReconcile(): Promise<void> {
     {
       name: PAY_JOB_DAILY_AUDIT,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -214,7 +221,7 @@ export async function scheduleDiscovery(): Promise<void> {
     {
       name: DISCOVERY_JOB_HOTWORDS,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
   await queue.upsertJobScheduler(
@@ -223,7 +230,7 @@ export async function scheduleDiscovery(): Promise<void> {
     {
       name: DISCOVERY_JOB_BILI,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -238,7 +245,7 @@ export async function scheduleInsight(): Promise<void> {
     {
       name: INSIGHT_JOB_EMBED,
       data: {},
-      opts: { removeOnComplete: 50 },
+      opts: schedulerOpts(50),
     },
   );
   await queue.upsertJobScheduler(
@@ -247,7 +254,7 @@ export async function scheduleInsight(): Promise<void> {
     {
       name: INSIGHT_JOB_DAILY,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
   await queue.upsertJobScheduler(
@@ -256,7 +263,7 @@ export async function scheduleInsight(): Promise<void> {
     {
       name: INSIGHT_JOB_FETCH,
       data: {},
-      opts: { removeOnComplete: 7 },
+      opts: schedulerOpts(7),
     },
   );
 }
@@ -272,7 +279,7 @@ export async function scheduleCrawlerTick(): Promise<void> {
     {
       name: CRAWL_JOB_TICK,
       data: {},
-      opts: { removeOnComplete: 50 },
+      opts: schedulerOpts(50),
     },
   );
 }
@@ -289,7 +296,7 @@ export async function scheduleGithubTick(): Promise<void> {
     {
       name: GITHUB_JOB_TICK,
       data: {},
-      opts: { removeOnComplete: 50 },
+      opts: schedulerOpts(50),
     },
   );
 }
@@ -306,7 +313,7 @@ export async function scheduleAiBackfillTick(): Promise<void> {
     {
       name: CRAWL_JOB_AI_BACKFILL,
       data: {},
-      opts: { removeOnComplete: 50 },
+      opts: schedulerOpts(50),
     },
   );
 }
