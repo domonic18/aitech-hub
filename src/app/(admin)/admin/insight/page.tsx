@@ -61,7 +61,10 @@ function Card({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div id={id} className="rounded-md border border-line bg-panel">
+    // min-w-0:grid item 自动最小尺寸会被 truncate(nowrap)标题的 min-content
+    // 顶爆——移动端视口下热榜长标题把隐式轨道撑到 877px 整页横滚(M48 验收反馈),
+    // 打断 min-content 传播链让 truncate 在视口内真正生效
+    <div id={id} className="min-w-0 rounded-md border border-line bg-panel">
       <div className="flex flex-wrap items-baseline gap-2 border-b border-line px-4 py-2.5">
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-[11px] text-text-3">{hint}</span>
