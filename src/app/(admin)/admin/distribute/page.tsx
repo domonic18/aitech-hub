@@ -8,7 +8,7 @@ import Link from "next/link";
 import AdminPagination from "@/components/admin/AdminPagination";
 import DistributeAdminApp from "@/components/admin/distribute/DistributeAdminApp";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { parseChannelParam } from "@/lib/distribute/channels";
+import { DISTRIBUTE_CHANNELS, parseChannelParam } from "@/lib/distribute/channels";
 import {
   PUBLISH_RECORD_SEGMENTS,
   getDistributeOverview,
@@ -22,7 +22,8 @@ export const dynamic = "force-dynamic";
 const SEG_LABELS: Record<(typeof PUBLISH_RECORD_SEGMENTS)[number], string> = {
   all: "全部",
   synced: "已同步",
-  pending: "同步中",
+  ready: "待发布",
+  pending: "生成中",
   failed: "失败",
 };
 
@@ -58,26 +59,59 @@ export default async function AdminDistributePage({
       page: p,
     });
 
-  const filter = (
+  // M49 批X2:渠道 chips(?channel=,注册表单源)+ 状态 chips 双行
+  const channelChips = (
     <div className="flex overflow-hidden rounded-sm border border-line">
-      {PUBLISH_RECORD_SEGMENTS.map((seg) => (
+      <Link
+        href={adminListHref("/admin/distribute", {
+          status: segment === "all" ? undefined : segment,
+        })}
+        className={`px-3 py-1 text-xs ${channel === undefined ? "bg-accent-dim font-semibold text-accent" : "bg-panel text-text-2 hover:bg-panel-2"}`}
+      >
+        全部渠道
+      </Link>
+      {Object.entries(DISTRIBUTE_CHANNELS).map(([ch, def]) => (
         <Link
-          key={seg}
+          key={ch}
           href={adminListHref("/admin/distribute", {
-            status: seg === "all" ? undefined : seg,
+            status: segment === "all" ? undefined : segment,
+            channel: ch,
           })}
-          className={`border-r border-line px-3 py-1 text-xs last:border-r-0 ${
-            seg === segment
+          className={`border-l border-line px-3 py-1 text-xs ${
+            channel === ch
               ? "bg-accent-dim font-semibold text-accent"
               : "bg-panel text-text-2 hover:bg-panel-2"
           }`}
         >
-          {/* F16 板:失败 chip 带计数(「失败 2」),其余段不带 */}
-          {seg === "failed" && overview.failedCount > 0
-            ? `${SEG_LABELS[seg]} ${overview.failedCount}`
-            : SEG_LABELS[seg]}
+          {def.label}
         </Link>
       ))}
+    </div>
+  );
+  const filter = (
+    <div className="flex flex-wrap items-center gap-2">
+      {channelChips}
+      <div className="flex overflow-hidden rounded-sm border border-line">
+        {PUBLISH_RECORD_SEGMENTS.map((seg) => (
+          <Link
+            key={seg}
+            href={adminListHref("/admin/distribute", {
+              status: seg === "all" ? undefined : seg,
+              ...(channel ? { channel } : {}),
+            })}
+            className={`border-r border-line px-3 py-1 text-xs last:border-r-0 ${
+              seg === segment
+                ? "bg-accent-dim font-semibold text-accent"
+                : "bg-panel text-text-2 hover:bg-panel-2"
+            }`}
+          >
+            {/* F16 板:失败 chip 带计数(「失败 2」),其余段不带 */}
+            {seg === "failed" && overview.failedCount > 0
+              ? `${SEG_LABELS[seg]} ${overview.failedCount}`
+              : SEG_LABELS[seg]}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 

@@ -25,6 +25,8 @@ export const AI_PURPOSE_WRITING = "writing";
 /** 洞察归纳(M34 批②,insight-plan §5.4):簇命名/一句话概括/关键词日批 LLM,
  * 走 AiTaskBinding 治理(ai_usage_log 落 role=insight) */
 export const AI_PURPOSE_INSIGHT = "insight";
+/** 小红书笔记改写(M49 批X2:文章 → 小红书体标题/正文/话题标签) */
+export const AI_PURPOSE_XHS_REWRITE = "xhs_rewrite";
 /** 配图生图(M39,topic-pipeline-plan §13;§13.9 重定义为内容可视化图文):
  * 正文带字内容图生成(编排形态由 agent 决定),与封面(cover)分角色——模型
  * 偏好与成本档位不同,绑定校验按角色隔离;走同一 images 探针与生图管线 */
@@ -42,6 +44,7 @@ export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_EMBEDDING,
   AI_PURPOSE_WRITING,
   AI_PURPOSE_INSIGHT,
+  AI_PURPOSE_XHS_REWRITE,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -87,6 +90,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "洞察归纳",
     icon: "i-eye",
     sub: "洞察中心簇命名/概括/关键词日批打标(信号向量聚类后的可读化)",
+  },
+  [AI_PURPOSE_XHS_REWRITE]: {
+    label: "小红书改写",
+    icon: "i-filetext",
+    sub: "文章 → 小红书体笔记(标题 ≤20 字 · 正文 ≤1000 字 · 话题标签)",
   },
 };
 
