@@ -15,6 +15,14 @@ export const CRAWL_SOURCE_TYPES = [
 ] as const;
 export type CrawlSourceType = (typeof CRAWL_SOURCE_TYPES)[number];
 
+/** 已实现采集管线的类型(M48 批E:adapters 仅 rss,web/api 建了必「适配器未实现」
+ * 每轮报错;social-video 走博主采集管线,真实存在)——渠道创建/编辑 Zod 与 UI
+ * 选项一律用本清单,全集 CRAWL_SOURCE_TYPES 仅保留类型语义 */
+export const CRAWL_SOURCE_TYPES_IMPLEMENTED = [
+  CRAWL_SOURCE_TYPE_RSS,
+  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+] as const;
+
 export const CRAWL_SOURCE_STATUS_HEALTHY = "healthy";
 export const CRAWL_SOURCE_STATUS_DEGRADED = "degraded";
 export const CRAWL_SOURCE_STATUS_ERROR = "error";

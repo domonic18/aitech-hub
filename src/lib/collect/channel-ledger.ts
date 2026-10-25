@@ -10,14 +10,7 @@
 import type { JobRun } from "@prisma/client";
 
 import { prisma } from "../db";
-import {
-  CRAWL_JOB_VIDEO,
-  DISCOVERY_JOB_BILI,
-  DISCOVERY_JOB_HOTWORDS,
-  QUEUE_CRAWLER,
-  QUEUE_DISCOVERY,
-  getQueue,
-} from "../queue";
+import { DISCOVERY_JOB_BILI, DISCOVERY_JOB_HOTWORDS, QUEUE_DISCOVERY } from "../queue";
 import { INSIGHT_FETCH_CRON } from "./schedules";
 import {
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
@@ -27,6 +20,7 @@ import {
 } from "../telegram/constants";
 import { listChannelsAdmin } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
+import { videoRunningSince } from "./crawler-runs";
 import {
   healthOf,
   intervalText,
@@ -74,41 +68,6 @@ async function rssRows(): Promise<ChannelLedgerRow[]> {
       },
     };
   });
-}
-
-/** crawler 活跃视频 job → 账号 → 最早 processedOn(「● 采集中 mm:ss」时钟起点;
- *  渠道台账按平台归并,F27 博主台账按账号直用) */
-export async function videoRunningAccounts(): Promise<Map<number, number>> {
-  const active = await getQueue(QUEUE_CRAWLER).getActive(0, 20);
-  const out = new Map<number, number>();
-  for (const j of active) {
-    if (j.name !== CRAWL_JOB_VIDEO) continue;
-    const accountId = (j.data as { accountId?: number }).accountId;
-    if (typeof accountId !== "number") continue;
-    const at = j.processedOn ?? j.timestamp;
-    if (typeof at !== "number") continue;
-    const known = out.get(accountId);
-    if (known === undefined || at < known) out.set(accountId, at);
-  }
-  return out;
-}
-
-/** crawler 活跃视频 job → 平台 → 最早 processedOn(F17 平台行与 F21 计划社媒行共用) */
-export async function videoRunningSince(): Promise<Map<string, number>> {
-  const byAccount = await videoRunningAccounts();
-  if (byAccount.size === 0) return new Map();
-  const accounts = await prisma.socialAccount.findMany({
-    where: { id: { in: [...byAccount.keys()] } },
-    select: { id: true, platform: true },
-  });
-  const out = new Map<string, number>();
-  for (const a of accounts) {
-    const at = byAccount.get(a.id);
-    if (at === undefined) continue;
-    const known = out.get(a.platform);
-    if (known === undefined || at < known) out.set(a.platform, at);
-  }
-  return out;
 }
 
 async function videoRows(): Promise<ChannelLedgerRow[]> {
@@ -293,115 +252,4 @@ export async function buildChannelLedger(): Promise<ChannelLedgerRow[]> {
   return [...rss, ...video, ...hot, ...discovery, ...github];
 }
 
-/** F19 健康表渠道行(文字渠道 + 视频平台两组):连败/末次运行原值直出。
- *  CrawlSource 无逐渠道错误字段,归因列由页侧显「—」;视频平台行 = 博主聚合
- *  (连败取启用博主最大值,末次运行取最新)。 */
-export interface ChannelHealthRow {
-  key: string;
-  group: "rss" | "video";
-  name: string;
-  enabled: boolean;
-  fails: number;
-  lastRunAt: Date | null;
-  status: "healthy" | "degraded" | "error" | null;
-}
-
-export async function channelHealthRows(): Promise<ChannelHealthRow[]> {
-  const [channels, platformRows, bloggers] = await Promise.all([
-    listChannelsAdmin(),
-    prisma.crawlSource.findMany({
-      where: { type: CRAWL_SOURCE_TYPE_SOCIAL_VIDEO },
-      orderBy: { id: "asc" },
-    }),
-    prisma.socialAccount.findMany({
-      select: { platform: true, enabled: true, lastRunAt: true, consecutiveFails: true },
-    }),
-  ]);
-  return [
-    ...channels.map((c) => ({
-      key: `rss-${c.id}`,
-      group: "rss" as const,
-      name: c.name,
-      enabled: c.enabled,
-      fails: c.consecutiveFails,
-      lastRunAt: c.lastRunAt,
-      status: (c.status ?? null) as ChannelHealthRow["status"],
-    })),
-    ...platformRows.map((p) => {
-      const platform = p.platform ?? p.name;
-      const mine = bloggers.filter((b) => b.platform === platform);
-      return {
-        key: `video-${platform}`,
-        group: "video" as const,
-        name: `${VIDEO_PLATFORM_LABELS[platform] ?? platform}博主采集`,
-        enabled: p.enabled,
-        fails: Math.max(0, ...mine.filter((b) => b.enabled).map((b) => b.consecutiveFails)),
-        lastRunAt: mine.reduce<Date | null>(
-          (acc, b) =>
-            b.lastRunAt !== null && (acc === null || b.lastRunAt > acc) ? b.lastRunAt : acc,
-          null,
-        ),
-        status: null,
-      };
-    }),
-  ];
-}
-
-/** F20 引擎卡当前采集:crawler 队列活跃 job 逐条(文字渠道带渠道名,视频
- *  job 反查博主名;时钟起点 processedOn ?? timestamp) */
-export async function crawlerActiveRuns(): Promise<
-  Array<{ id: string; label: string; kind: "rss" | "video"; sinceMs: number }>
-> {
-  const active = await getQueue(QUEUE_CRAWLER).getActive(0, 20);
-  const out: Array<{ id: string; label: string; kind: "rss" | "video"; sinceMs: number }> = [];
-  const accountIds: number[] = [];
-  const rows: Array<{
-    id: string;
-    label: string | null;
-    kind: "rss" | "video";
-    sinceMs: number;
-    accountId?: number;
-  }> = [];
-  for (const j of active) {
-    const data = (j.data ?? {}) as { sourceName?: string; sourceId?: number; accountId?: number };
-    const sinceMs = typeof j.processedOn === "number" ? j.processedOn : (j.timestamp ?? Date.now());
-    if (j.name === CRAWL_JOB_VIDEO) {
-      if (typeof data.accountId !== "number") continue;
-      accountIds.push(data.accountId);
-      rows.push({ id: j.id ?? "", label: null, kind: "video", sinceMs, accountId: data.accountId });
-    } else {
-      rows.push({
-        id: j.id ?? "",
-        label: data.sourceName ?? (data.sourceId != null ? `渠道 #${data.sourceId}` : j.name),
-        kind: "rss",
-        sinceMs,
-      });
-    }
-  }
-  if (accountIds.length > 0) {
-    const accounts = await prisma.socialAccount.findMany({
-      where: { id: { in: accountIds } },
-      select: { id: true, nickname: true },
-    });
-    const nameOf = new Map(accounts.map((a) => [a.id, a.nickname]));
-    for (const r of rows) {
-      if (r.kind === "video") r.label = nameOf.get(r.accountId ?? -1) ?? "博主";
-    }
-  }
-  for (const r of rows)
-    out.push({ id: r.id, label: r.label ?? r.id, kind: r.kind, sinceMs: r.sinceMs });
-  return out;
-}
-
-/** F20 按博主排队:crawler 队列 waiting 视频 job → accountId 计数 */
-export async function videoWaitingAccounts(): Promise<Map<number, number>> {
-  const waiting = await getQueue(QUEUE_CRAWLER).getWaiting(0, 100);
-  const out = new Map<number, number>();
-  for (const j of waiting) {
-    if (j.name !== CRAWL_JOB_VIDEO) continue;
-    const accountId = (j.data as { accountId?: number }).accountId;
-    if (typeof accountId !== "number") continue;
-    out.set(accountId, (out.get(accountId) ?? 0) + 1);
-  }
-  return out;
-}
+/** F19 健康表/F20 引擎卡的读侧已拆至 ./channel-health 与 ./crawler-runs(≤350 行红线) */

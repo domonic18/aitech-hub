@@ -9,7 +9,7 @@ import Link from "next/link";
 
 import LiveRefresher from "@/components/admin/data/LiveRefresher";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { channelHealthRows } from "@/lib/collect/channel-ledger";
+import { channelHealthRows } from "@/lib/collect/channel-health";
 import { registryIntervalMs, registryJobRunKeys } from "@/lib/collect/plan-rows";
 import { jobRunHealth, jobRunLabel } from "@/lib/jobs/runlog-admin";
 import type { JobKeyHealth } from "@/lib/jobs/runlog-admin";

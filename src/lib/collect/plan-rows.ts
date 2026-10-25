@@ -23,7 +23,7 @@ import {
   SCHEDULE_REGISTRY,
 } from "./schedules";
 import { intervalText } from "./channel-ledger-types";
-import { videoRunningSince } from "./channel-ledger";
+import { videoRunningSince } from "./crawler-runs";
 import {
   cadenceLabel,
   cronCal,
@@ -45,23 +45,6 @@ export interface PlanBoardData {
   rows: PlanRow[];
   calEntries: PlanCalEntry[];
 }
-
-/** 登记表 key → jobRun jobKey(最近运行落账映射;embed-reconcile 准心跳不入账) */
-const REGISTRY_JOB_RUN_KEY: Record<string, string> = {
-  "db-backup": "db-backup/run",
-  "media-audit": "media-audit/audit",
-  "insight-daily": "insight/daily",
-  "pay-daily-audit": "pay-reconcile/daily-audit",
-  "visit-purge": "stats/purge-visit-log",
-  "cover-sweep": "cover-gen/temp-sweep",
-  "agent-purge": "stats/purge-agent-session",
-  "job-run-purge": "stats/purge-job-run",
-  "discovery-hotwords": "discovery/discovery-hotwords",
-  "usage-purge": "stats/purge-usage-log",
-  "insight-fetch": "insight/fetch",
-  "discovery-bili": "discovery/discovery-bili",
-  "insight-embed": "insight/embed",
-};
 
 function registryGroup(category: string): PlanGroup {
   if (category === "discovery") return "discovery";
@@ -215,7 +198,8 @@ async function registryRows(): Promise<{ rows: PlanRow[]; entries: PlanCalEntry[
   }).filter((d): d is NonNullable<typeof d> => d !== null);
   const runs = await Promise.all(
     defs.map((d) => {
-      const jobKey = REGISTRY_JOB_RUN_KEY[d.def.key];
+      // M48 批E:jobRun 键随登记表 def 单源(schedules.ts#CronScheduleDef.jobRunKey)
+      const jobKey = d.def.jobRunKey;
       return jobKey === undefined
         ? Promise.resolve(null)
         : prisma.jobRun.findFirst({ where: { jobKey }, orderBy: { startedAt: "desc" } });
@@ -276,7 +260,7 @@ export async function buildPlanRows(): Promise<PlanBoardData> {
 /** jobKey → 期望运行间隔毫秒(登记表反向映射;crawler/ai-backfill 等非登记
  *  任务无固定节奏 → null,不参与脱期判定) */
 export function registryIntervalMs(jobKey: string): number | null {
-  const def = SCHEDULE_REGISTRY.find((d) => REGISTRY_JOB_RUN_KEY[d.key] === jobKey);
+  const def = SCHEDULE_REGISTRY.find((d) => d.jobRunKey === jobKey);
   const parsed = def === undefined ? null : parseCron(def.cron);
   if (def === undefined || parsed === null || parsed.firesPerDay <= 0) return null;
   // 周任务 firesPerDay 是「触发日当日次数」,按触发天数摊回平均间隔(周档 = 7 天)
@@ -286,7 +270,7 @@ export function registryIntervalMs(jobKey: string): number | null {
 
 /** 登记表全部 jobRun 键(F19 脱期判定需覆盖 7 日无运行的任务) */
 export function registryJobRunKeys(): string[] {
-  return Object.values(REGISTRY_JOB_RUN_KEY);
+  return SCHEDULE_REGISTRY.flatMap((d) => (d.jobRunKey ? [d.jobRunKey] : []));
 }
 
 /** F20 引擎卡「即将运行 · 未来 N 小时」:渠道/热榜/登记表的下一次触发,

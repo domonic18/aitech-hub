@@ -4,7 +4,7 @@
  * 同源(videoRunningAccounts / listBloggerVideoCounts),排队经 crawler
  * waiting job data.accountId 归并。
  */
-import { videoRunningAccounts, videoWaitingAccounts } from "@/lib/collect/channel-ledger";
+import { videoRunningAccounts, videoWaitingAccounts } from "@/lib/collect/crawler-runs";
 import { listBloggersAdmin, listBloggerVideoCounts } from "@/lib/telegram/bloggers-admin";
 import { VIDEO_PLATFORM_LABELS } from "@/lib/telegram/constants";
 

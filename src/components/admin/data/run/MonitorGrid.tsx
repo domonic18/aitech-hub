@@ -4,7 +4,7 @@
  * 实况明细。全部由现有观测数据推导(渠道连败与脱期、视频运行态、job_run
  * 末次、队列积压与 tick 存活),缺数据显空态不造假。
  */
-import { crawlerActiveRuns, videoRunningSince } from "@/lib/collect/channel-ledger";
+import { crawlerActiveRuns, videoRunningSince } from "@/lib/collect/crawler-runs";
 import { registryIntervalMs, registryJobRunKeys } from "@/lib/collect/plan-rows";
 import { formatCnTime } from "@/lib/datetime";
 import { listHotSourcesAdmin } from "@/lib/insight/hot-source";

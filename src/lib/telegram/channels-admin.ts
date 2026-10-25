@@ -14,7 +14,7 @@ import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
-  CRAWL_SOURCE_TYPES,
+  CRAWL_SOURCE_TYPES_IMPLEMENTED,
 } from "./constants";
 
 /** 视为凭证的 config 键(读侧脱敏 + 写侧空串清除) */
@@ -70,7 +70,7 @@ export class ChannelAdminError extends Error {
 /** 渠道表单(创建/编辑共用;token 为凭证写侧,不入库明文日志) */
 export const ChannelInputSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  type: z.enum(CRAWL_SOURCE_TYPES),
+  type: z.enum(CRAWL_SOURCE_TYPES_IMPLEMENTED),
   platform: z.string().trim().max(20).nullable().optional(),
   url: z.url().max(500),
   crawlIntervalMin: z.number().int().min(5).max(1440),
