@@ -94,6 +94,7 @@ services:
       retries: 3
       start_period: 60s # 首启含全量 migrate deploy,放宽
     mem_limit: 768m
+    stop_grace_period: 30s # M48 批A③:在途请求/ISR 再生收尾窗
     <<: *restart
     logging: *logging
 
@@ -102,6 +103,11 @@ services:
     environment:
       SERVICE_ROLE: worker
       <<: *app-env
+      # M48 批A②:worker 独立低连接预算——job 并发普遍 1-2,无需 web 侧的 10。
+      # 勘误:实测生产 max_connections=100(checkpointer 旧注释「20」系本地 dev 值),
+      # 原判「超卖急症」不成立;本项按角色右移,压绝对峰值
+      # (web10+worker4+checkpointer 3×2+备份1=21,余量大)
+      DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=4
     env_file:
       - .env
     volumes:
@@ -118,6 +124,9 @@ services:
       web:
         condition: service_healthy # web entrypoint 先 migrate deploy;healthy 即 schema 就绪
     mem_limit: 512m
+    # M48 批A③:发版 SIGTERM 给在跑 job 收尾窗(短中任务可完成;10min 级长批仍会
+    # 到期被杀,由 stalled 重试承接——彻底排空需分钟级 grace,部署时长不可接受)
+    stop_grace_period: 120s
     <<: *restart
     logging: *logging
 
@@ -196,7 +205,18 @@ services:
   redis:
     image: redis:7-alpine
     # AOF 持久化:BullMQ 队列与统计缓冲不因容器重启丢任务
-    command: ["redis-server", "--appendonly", "yes"]
+    # M48 批A⑤:maxmemory 显式封顶(noeviction——stats 缓冲键属持久数据,LRU 静默
+    # 丢统计不可接受,满了写报错可见可控);mem_limit 相应放宽留 AOF 重写 COW 余量
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "96mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
     volumes:
       - ./workspace/redis:/data
     healthcheck:
@@ -204,6 +224,6 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-    mem_limit: 128m
+    mem_limit: 192m
     <<: *restart
     logging: *logging
