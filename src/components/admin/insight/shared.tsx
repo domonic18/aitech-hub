@@ -144,6 +144,12 @@ export function writeAngleLine(state: string | null): string {
   return "覆盖度待日批评估(03:57 跑完回写);可先从代表信号判断切入角度。";
 }
 
+/** 簇详情路径单源(M47 批B:五处模板串 + 簇详情 w chips 各自直构收口;
+ *  w 省略 = 默认窗,不携 query) */
+export function clusterHref(id: string, w?: number): string {
+  return w === undefined ? `/admin/insight/clusters/${id}` : `/admin/insight/clusters/${id}?w=${w}`;
+}
+
 /** 簇名(未打标显示占位;详情链接) */
 export function ClusterLabelLink({
   id,
@@ -154,7 +160,7 @@ export function ClusterLabelLink({
 }): React.ReactElement {
   return (
     <Link
-      href={`/admin/insight/clusters/${id}`}
+      href={clusterHref(id)}
       className="text-text-1 hover:text-accent"
       title={label ?? "未打标簇,详情见信号原话"}
     >

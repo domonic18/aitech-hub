@@ -8,13 +8,12 @@ import { z } from "zod";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { deleteWritingSample, renameWritingSample } from "@/lib/topics/writing-samples";
 
 export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage writing samples";
-
-const ID_RE = /^\d{1,10}$/;
 
 const NAME_SCHEMA = z.object({ name: z.string().trim().min(1, "名称必填").max(100) });
 
@@ -25,11 +24,12 @@ export async function PATCH(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   const body = (await req.json().catch(() => null)) as unknown;
   const parsed = NAME_SCHEMA.safeParse(body);
   if (!parsed.success) return apiEnvelope(400, "name 必填且 ≤100 字");
-  const sample = await renameWritingSample(BigInt(id), parsed.data.name);
+  const sample = await renameWritingSample(bigId, parsed.data.name);
   if (!sample) return apiEnvelope(404, "样例参照图不存在");
   return apiEnvelope(0, "ok", sample);
 }
@@ -41,8 +41,9 @@ export async function DELETE(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
-  const deleted = await deleteWritingSample(BigInt(id));
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
+  const deleted = await deleteWritingSample(bigId);
   if (!deleted) return apiEnvelope(404, "样例参照图不存在");
   return apiEnvelope(0, "ok", { deleted: true });
 }

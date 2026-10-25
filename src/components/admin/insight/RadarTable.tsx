@@ -9,7 +9,7 @@ import Link from "next/link";
 import type { InsightClusterRow } from "@/lib/insight/admin";
 import type { ClusterMomentum } from "@/lib/insight/scoring";
 
-import { AnomalyBadge } from "./shared";
+import { AnomalyBadge, clusterHref } from "./shared";
 
 /** 名次头部三色(与 HotBoard 同一套视觉语言) */
 function rankClass(rank: number): string {
@@ -63,7 +63,7 @@ function RadarRow({
     .join(" ");
   return (
     <Link
-      href={`/admin/insight/clusters/${c.id}`}
+      href={clusterHref(c.id)}
       className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-panel-2"
     >
       <span className={`w-5 shrink-0 text-right font-mono text-[12px] ${rankClass(rank)}`}>

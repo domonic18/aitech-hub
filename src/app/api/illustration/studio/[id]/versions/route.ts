@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import {
   EDIT_ORIGINS,
@@ -32,14 +33,15 @@ export async function POST(
   const actor = await requireSessionActor(req, "PAT 不能驱动编辑器(仅管理会话通道)");
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "版本 ID 不合法");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "版本 ID 不合法");
   const parsed = ConfirmSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "确认参数不合法(imagePath/origin 必填)");
   if (parsed.data.bbox !== undefined && !isValidNormalizedBbox(parsed.data.bbox)) {
     return apiEnvelope(400, 'bbox 坐标须为 normalized "x1 y1 x2 y2"(0-999)');
   }
   try {
-    const r = await confirmEditVersion(BigInt(id), {
+    const r = await confirmEditVersion(bigId, {
       imagePath: parsed.data.imagePath,
       origin: parsed.data.origin,
       instruction: parsed.data.instruction,

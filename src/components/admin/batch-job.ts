@@ -6,6 +6,7 @@
  * 终态与错误经回调交回各批量条自渲染(onDone/onError),忙态管理留在调用方;
  * 提交中文案由调用方在调用前自置(onWaiting 语义并入)。
  */
+import { pollJobUntil } from "@/lib/http/poll-client";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 /** 轮询响应 data(seo-batch 与 wechat-batch 共有字段的并集) */
@@ -54,24 +55,21 @@ export async function runBatchJob<T extends { jobId?: string; token?: string }>(
       }
     }
     const { jobId, token } = json.data;
-    for (let i = 0; i < opts.pollMax; i += 1) {
-      await new Promise((r) => setTimeout(r, opts.pollMs));
-      const poll = await fetch(opts.pollUrl(jobId, token));
-      if (!poll.ok) continue;
-      const body = (await poll.json().catch(() => null)) as ApiEnvelope<BatchPollData> | null;
-      if (body?.code !== 0 || !body?.data) continue;
-      const d = body.data;
-      if (d.state === "completed") {
-        opts.onDone(d);
-        return;
-      }
-      if (d.state === "failed") {
-        opts.onError(d.error ?? "批量任务失败");
-        return;
-      }
-      opts.onProgress(d);
+    const d = await pollJobUntil<BatchPollData>(opts.pollUrl(jobId, token), {
+      pollMs: opts.pollMs,
+      pollMax: opts.pollMax,
+      isTerminal: (x) => x.state === "completed" || x.state === "failed",
+      onPoll: (x) => opts.onProgress(x),
+    });
+    if (!d) {
+      opts.onError(opts.timeoutMsg);
+      return;
     }
-    opts.onError(opts.timeoutMsg);
+    if (d.state === "completed") {
+      opts.onDone(d);
+      return;
+    }
+    opts.onError(d.error ?? "批量任务失败");
   } catch {
     opts.onError("网络错误,请重试");
   }

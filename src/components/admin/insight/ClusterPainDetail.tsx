@@ -9,7 +9,12 @@ import Link from "next/link";
 
 import TopicGenButton from "@/components/admin/insight/TopicGenButton";
 import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
-import { SOURCE_LABELS, formatTime, writeAngleLine } from "@/components/admin/insight/shared";
+import {
+  SOURCE_LABELS,
+  clusterHref,
+  formatTime,
+  writeAngleLine,
+} from "@/components/admin/insight/shared";
 import type { InsightClusterDetail } from "@/lib/insight/admin";
 import type { InsightClusterExtras } from "@/lib/insight/cluster-extras";
 
@@ -152,7 +157,7 @@ export default function ClusterPainDetail({
               {extras.relatedHot.map((h) => (
                 <Link
                   key={h.id}
-                  href={`/admin/insight/clusters/${h.id}`}
+                  href={clusterHref(h.id)}
                   className="rounded-sm bg-panel-2 px-2 py-0.5 text-xs text-text-2 hover:bg-accent-dim hover:text-accent"
                   title="查看机会簇详情"
                 >

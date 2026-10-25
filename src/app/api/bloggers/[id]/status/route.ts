@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseNumericId } from "@/lib/http/parse-id";
 import { BloggerAdminError, setBloggerEnabled } from "@/lib/telegram/bloggers-admin";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +19,12 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "enabled 须为布尔");
   try {
-    await setBloggerEnabled(Number(id), parsed.data.enabled);
+    await setBloggerEnabled(nid, parsed.data.enabled);
     return apiEnvelope(0, parsed.data.enabled ? "enabled" : "disabled");
   } catch (e) {
     if (e instanceof BloggerAdminError) return apiEnvelope(404, e.message);

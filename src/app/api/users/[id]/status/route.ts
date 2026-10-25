@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { UserAdminError, setUserStatus } from "@/lib/users/admin-users";
 import { USER_STATUS_ACTIVE, USER_STATUS_MUTABLE } from "@/lib/users/user-status";
 
@@ -22,12 +23,13 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,19}$/.test(id)) return apiEnvelope(400, "invalid id");
-  if (BigInt(id) === BigInt(actor.sub)) return apiEnvelope(400, "不能变更当前登录账号的状态");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
+  if (bigId === BigInt(actor.sub)) return apiEnvelope(400, "不能变更当前登录账号的状态");
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "status 须为 active|disabled");
   try {
-    const r = await setUserStatus(BigInt(id), parsed.data.status);
+    const r = await setUserStatus(bigId, parsed.data.status);
     return apiEnvelope(0, r.status === USER_STATUS_ACTIVE ? "enabled" : "disabled", r);
   } catch (e) {
     if (e instanceof UserAdminError) return apiEnvelope(404, e.message);

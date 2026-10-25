@@ -15,6 +15,7 @@ import { useState } from "react";
 
 import { formatCnDateTime } from "@/lib/datetime";
 
+import { pollJobUntil } from "@/lib/http/poll-client";
 import type { ApiEnvelope } from "@/lib/http/response";
 import type { PublishRecordRow } from "@/lib/distribute/records";
 
@@ -30,11 +31,12 @@ const OP_BTN =
 const SYNC_POLL_MS = 2_000;
 const SYNC_POLL_MAX = 150; // 同 SyncWechatDialog:单篇最坏分钟级,兜底 5min
 
-type SyncPollBody = ApiEnvelope<{
+/** 轮询 data 载荷(包络由 pollJobUntil 剥) */
+type SyncPollData = {
   state: "waiting" | "active" | "completed" | "failed";
   ok?: boolean | null;
   reason?: string | null;
-} | null>;
+};
 
 function StatusBadge({ status }: { status: string }): React.ReactElement {
   const s = STATUS_STYLES[status] ?? {
@@ -80,20 +82,18 @@ function makeResync(
         return;
       }
       const { jobId, token } = json.data;
-      for (let i = 0; i < SYNC_POLL_MAX; i += 1) {
-        await new Promise((r) => setTimeout(r, SYNC_POLL_MS));
-        const poll = await fetch(
-          `/api/distribute/wechat/sync/${jobId}?token=${encodeURIComponent(token)}`,
-        );
-        if (!poll.ok) continue;
-        const body = (await poll.json().catch(() => null)) as SyncPollBody | null;
-        if (body?.code !== 0 || !body?.data) continue;
-        const d = body.data;
-        if (d.state === "completed" || d.state === "failed") {
-          refreshRow(row.id, d.state === "failed" || !d.ok ? (d.reason ?? "同步失败") : null);
-          router.refresh();
-          return;
-        }
+      const d = await pollJobUntil<SyncPollData>(
+        `/api/distribute/wechat/sync/${jobId}?token=${encodeURIComponent(token)}`,
+        {
+          pollMs: SYNC_POLL_MS,
+          pollMax: SYNC_POLL_MAX,
+          isTerminal: (x) => x.state === "completed" || x.state === "failed",
+        },
+      );
+      if (d) {
+        refreshRow(row.id, d.state === "failed" || !d.ok ? (d.reason ?? "同步失败") : null);
+        router.refresh();
+        return;
       }
       refreshRow(row.id, "轮询超时:任务仍在后台,稍后刷新本页查看");
     } catch {

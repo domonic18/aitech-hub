@@ -7,6 +7,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseNumericId } from "@/lib/http/parse-id";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { getModelForTest, recordModelTest } from "@/lib/ai/models-admin";
 import { probeModel } from "@/lib/ai/probe";
@@ -21,11 +22,12 @@ export async function POST(
   const actor = await requireSessionActor(req, AI_CONFIG_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   try {
-    const target = await getModelForTest(Number(id));
+    const target = await getModelForTest(nid);
     const result = await probeModel(target);
-    await recordModelTest(Number(id), result);
+    await recordModelTest(nid, result);
     return apiEnvelope(0, result.ok ? "ok" : "fail", result);
   } catch (e) {
     if (e instanceof AiAdminError) return apiEnvelope(aiErrorStatus(e.code), e.message);

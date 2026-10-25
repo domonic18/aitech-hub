@@ -6,6 +6,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { toItemDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
 import { mountItem } from "@/lib/topics/materials";
@@ -15,8 +16,6 @@ export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage topics";
 
-const ID_RE = /^\d{1,10}$/;
-
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -24,11 +23,12 @@ export async function POST(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   const parsed = itemMountSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "挂载参数不合法(itemType 枚举 + itemId 纯数字)");
   try {
-    const item = await mountItem(BigInt(id), parsed.data);
+    const item = await mountItem(bigId, parsed.data);
     return apiEnvelope(0, "mounted", toItemDto(item));
   } catch (e) {
     const mapped = mapTopicError(e);

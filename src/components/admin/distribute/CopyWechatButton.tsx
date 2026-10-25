@@ -9,19 +9,21 @@
  */
 import { useCallback, useRef, useState } from "react";
 
+import { pollJobUntil } from "@/lib/http/poll-client";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 const POLL_MS = 2_000;
 const POLL_MAX = 150; // 2s × 150 = 5min:多图文章转存最坏分钟级
 
-type CopyPollBody = ApiEnvelope<{
+/** 轮询 data 载荷(包络由 pollJobUntil 剥) */
+type CopyPollData = {
   state: "waiting" | "active" | "completed" | "failed";
   ok?: boolean | null;
   html?: string | null;
   chars?: number | null;
   coverReady?: boolean | null;
   reason?: string | null;
-} | null>;
+};
 
 type CopyPhase = "idle" | "running" | "ready" | "copied";
 
@@ -65,34 +67,32 @@ export default function CopyWechatButton({
         return;
       }
       const { jobId, token } = json.data;
-      for (let i = 0; i < POLL_MAX; i += 1) {
-        await new Promise((r) => setTimeout(r, POLL_MS));
-        const poll = await fetch(
-          `/api/distribute/wechat/copy/${jobId}?token=${encodeURIComponent(token)}`,
-        );
-        if (!poll.ok) continue;
-        const body = (await poll.json().catch(() => null)) as CopyPollBody | null;
-        if (body?.code !== 0 || !body?.data) continue;
-        const d = body.data;
-        if (d.state === "completed") {
-          if (d.ok && d.html) {
-            htmlRef.current = d.html;
-            coverReadyRef.current = d.coverReady === true;
-            setMsg(null);
-            setPhase("ready");
-          } else {
-            setError(d.reason ?? "生成失败");
-            setMsg(null);
-            setPhase("idle");
-          }
-          return;
-        }
-        if (d.state === "failed") {
-          setError(d.reason ?? "任务失败");
+      const d = await pollJobUntil<CopyPollData>(
+        `/api/distribute/wechat/copy/${jobId}?token=${encodeURIComponent(token)}`,
+        {
+          pollMs: POLL_MS,
+          pollMax: POLL_MAX,
+          isTerminal: (x) => x.state === "completed" || x.state === "failed",
+        },
+      );
+      if (d?.state === "completed") {
+        if (d.ok && d.html) {
+          htmlRef.current = d.html;
+          coverReadyRef.current = d.coverReady === true;
+          setMsg(null);
+          setPhase("ready");
+        } else {
+          setError(d.reason ?? "生成失败");
           setMsg(null);
           setPhase("idle");
-          return;
         }
+        return;
+      }
+      if (d) {
+        setError(d.reason ?? "任务失败");
+        setMsg(null);
+        setPhase("idle");
+        return;
       }
       setError("轮询超时:任务仍在后台执行,稍后重试(图片转存已缓存,会更快)");
       setMsg(null);

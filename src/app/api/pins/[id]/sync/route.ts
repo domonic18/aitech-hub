@@ -7,14 +7,13 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
 import { enqueuePinWechatSync } from "@/lib/distribute/pin-wechat-sync";
 
 export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage pins";
-
-const ID_RE = /^\d{1,10}$/;
 
 export async function POST(
   req: NextRequest,
@@ -23,9 +22,10 @@ export async function POST(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!ID_RE.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   try {
-    const { jobId } = await enqueuePinWechatSync(BigInt(id));
+    const { jobId } = await enqueuePinWechatSync(bigId);
     return apiEnvelope(0, "enqueued", { jobId });
   } catch (e) {
     if (e instanceof DistributeError) {

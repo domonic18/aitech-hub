@@ -7,6 +7,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { AiAdminError, aiErrorStatus } from "@/lib/ai/errors";
 import { enqueueDecompose } from "@/lib/ai/illustration-studio";
 
@@ -19,9 +20,10 @@ export async function POST(
   const actor = await requireSessionActor(req, "PAT 不能触发拆层(仅管理会话通道)");
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "版本 ID 不合法");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "版本 ID 不合法");
   try {
-    const r = await enqueueDecompose(BigInt(id));
+    const r = await enqueueDecompose(bigId);
     return apiEnvelope(0, "accepted", { groupId: Number(r.groupId) });
   } catch (e) {
     if (e instanceof AiAdminError) return apiEnvelope(aiErrorStatus(e.code), e.message);

@@ -5,6 +5,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseNumericId } from "@/lib/http/parse-id";
 import {
   ChannelAdminError,
   ChannelInputSchema,
@@ -23,11 +24,12 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   const parsed = ChannelInputSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "渠道字段不合法(名称/类型/端点/频率)");
   try {
-    const r = await updateChannel(Number(id), parsed.data);
+    const r = await updateChannel(nid, parsed.data);
     return apiEnvelope(0, "updated", r);
   } catch (e) {
     if (e instanceof ChannelAdminError) {
@@ -47,9 +49,10 @@ export async function DELETE(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   try {
-    await deleteChannel(Number(id));
+    await deleteChannel(nid);
     return apiEnvelope(0, "deleted");
   } catch (e) {
     if (e instanceof ChannelAdminError) {

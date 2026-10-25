@@ -15,6 +15,7 @@ import {
 import { commentDomainErrorStatus } from "@/lib/comment/http-map";
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -28,15 +29,16 @@ export async function PUT(
   if (!admin) return apiEnvelope(401, "unauthorized");
 
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
   const parsed = commentStatusSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return apiEnvelope(400, parsed.error.issues[0]?.message ?? "invalid body");
   }
 
   try {
-    await requireComment(BigInt(id));
-    const item = await updateCommentStatus(BigInt(id), parsed.data.status);
+    await requireComment(bigId);
+    const item = await updateCommentStatus(bigId, parsed.data.status);
     logger.info({
       event: "admin.comment.status_changed",
       operatorId: admin.sub,
@@ -60,11 +62,12 @@ export async function DELETE(
   if (!admin) return apiEnvelope(401, "unauthorized");
 
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
 
   try {
-    await requireComment(BigInt(id));
-    const { deleted } = await deleteCommentWithReplies(BigInt(id));
+    await requireComment(bigId);
+    const { deleted } = await deleteCommentWithReplies(bigId);
     logger.info({
       event: "admin.comment.deleted",
       operatorId: admin.sub,

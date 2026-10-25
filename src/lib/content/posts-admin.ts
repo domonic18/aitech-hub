@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { maybeEnqueueAutoWechat } from "@/lib/distribute/wechat-sync";
 import { logger } from "@/lib/logger";
 import { extractMediaRefs, syncMediaRefs } from "@/lib/media/refs";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { normalizeSlug } from "@/lib/slug";
 
 import { revalidatePostPaths } from "./revalidate";
@@ -26,14 +27,10 @@ export { ADMIN_PAGE_SIZE, listPostsAdmin, type AdminListQuery } from "./posts-ad
 /**
  * 路径/字符串 id → BigInt(管理 API 与编辑页共用,评审 W4 收口双轨):
  * 非纯数字或溢出返回 null,由调用方决定 404/400 语义。
+ * M47 批B 委托 parse-id 单源(此前无界 /^\d+$/,int64 上限外BigInt 不炸但落库无意义)。
  */
 export function parsePostId(raw: string): bigint | null {
-  if (!/^\d+$/.test(raw)) return null;
-  try {
-    return BigInt(raw);
-  } catch {
-    return null;
-  }
+  return parseBigIntId(raw);
 }
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */

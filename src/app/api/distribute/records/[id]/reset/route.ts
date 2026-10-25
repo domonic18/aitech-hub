@@ -7,6 +7,7 @@ import { type NextRequest } from "next/server";
 
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
 import { resetRecordBinding } from "@/lib/distribute/records";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 
@@ -17,8 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (actor.kind === "reject") return actor.response;
 
   const { id: raw } = await params;
-  if (!/^\d{1,19}$/.test(raw)) return apiEnvelope(400, "记录 id 不合法");
-  const id = BigInt(raw);
+  const id = parseBigIntId(raw);
+  if (id === null) return apiEnvelope(400, "记录 id 不合法");
 
   try {
     await resetRecordBinding(id);

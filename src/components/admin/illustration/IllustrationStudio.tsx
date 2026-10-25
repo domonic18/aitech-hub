@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 
 import type { StudioView } from "@/lib/ai/illustration-studio";
 import type { ApiEnvelope } from "@/lib/http/response";
+import { uploadImageFile } from "@/lib/media/upload-client";
 
 import { exportCompositeBlob } from "./composite";
 import {
@@ -234,15 +235,12 @@ export default function IllustrationStudio({
           .filter((l) => l.visible)
           .map((l) => ({ mediaPath: l.mediaPath, bbox: l.bbox })),
       });
-      const form = new FormData();
-      form.append("file", blob, `illu-export-${versionId}-${Date.now()}.png`);
-      const res = await fetch("/api/media", { method: "POST", body: form });
-      const body = (await res.json().catch(() => null)) as ApiEnvelope<{ path?: string }> | null;
-      if (!body || body.code !== 0 || !body.data?.path) {
-        setExportError(body?.message ?? `上传失败(HTTP ${res.status})`);
+      const up = await uploadImageFile(blob, `illu-export-${versionId}-${Date.now()}.png`);
+      if (!up.ok) {
+        setExportError(up.error);
         return;
       }
-      setExportPath(body.data.path);
+      setExportPath(up.path);
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "导出失败");
     } finally {

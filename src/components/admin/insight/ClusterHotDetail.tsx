@@ -12,6 +12,7 @@ import {
   CoverageBadge,
   MediaBadges,
   SOURCE_LABELS,
+  clusterHref,
   formatTime,
   writeAngleLine,
 } from "@/components/admin/insight/shared";
@@ -19,14 +20,6 @@ import type { InsightClusterDetail } from "@/lib/insight/admin";
 import type { InsightClusterExtras } from "@/lib/insight/cluster-extras";
 
 const WINDOWS = [7, 30, 90] as const;
-
-/** 簇详情内窗口 chips href(仅 w 一个口径,直构) */
-function clusterHref(id: string, w: number, active: boolean): string {
-  const sp = new URLSearchParams();
-  if (!active) sp.set("w", String(w));
-  const q = sp.toString();
-  return `/admin/insight/clusters/${id}${q === "" ? "" : `?${q}`}`;
-}
 
 /** 趋势徽:前窗为零→新兴;现值显著高→上升;显著低→回落;余持平 */
 function trendOf(freq: number, prevFreq: number): { label: string; cls: string } {
@@ -86,7 +79,7 @@ export default function ClusterHotDetail({
             {WINDOWS.map((n) => (
               <Link
                 key={n}
-                href={clusterHref(c.id, w, w === n)}
+                href={clusterHref(c.id, w === n ? undefined : w)}
                 scroll={false}
                 className={`rounded-sm px-2 py-0.5 font-mono text-[11px] ${
                   w === n ? "bg-accent-dim text-accent" : "bg-panel-2 text-text-2 hover:text-text-1"
