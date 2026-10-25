@@ -142,7 +142,7 @@ jobs:
         timeout-minutes: 25
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -159,7 +159,7 @@ jobs:
         timeout-minutes: 30
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -215,8 +215,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
-          context: ./services/douyin-gateway
-          file: services/douyin-gateway/Dockerfile
+          context: .
+          file: docker/gateway/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -229,8 +229,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
-          context: ./services/douyin-gateway
-          file: services/douyin-gateway/Dockerfile
+          context: .
+          file: docker/gateway/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -281,8 +281,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
-          context: ./services/card-renderer
-          file: services/card-renderer/Dockerfile
+          context: .
+          file: docker/card-renderer/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -295,8 +295,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
-          context: ./services/card-renderer
-          file: services/card-renderer/Dockerfile
+          context: .
+          file: docker/card-renderer/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64

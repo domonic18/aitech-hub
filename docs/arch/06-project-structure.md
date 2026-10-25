@@ -94,10 +94,15 @@ aitech-hub/
 │       ├── legacy-orders/        # 旧 WP 订单导入(M21 批⑥,生产导入执行后删)
 │       └── telegram-decode/      # 电报流存量标题实体解码(2026-10-09,生产清洗执行后删)
 ├── tests/e2e/                    # Playwright:首页/中文 slug 文章页/301/登录/sitemap
-├── docker/
-│   ├── Dockerfile                # 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)
-│   ├── entrypoint.sh             # 容器入口:web 先 migrate deploy + ISR 预热;worker 直起
-│   └── nginx/                    # nginx.conf + conf.d/aitech-hub.conf(standard/02-cicd-deployment §4)
+├── services/                     # 独立 sidecar,自包含(依赖/测试/契约随目录,arch/05 §4.4/§4.6);镜像定义不入此处,见 docker/ 目录册
+│   ├── douyin-gateway/           # 抖音数据网关(Python,签名+数据端点)
+│   └── card-renderer/            # 卡片渲染 sidecar(Node+chromium,HTML→PNG)
+├── docker/                       # 镜像目录册:全部镜像定义集中 docker/<image>/Dockerfile,构建上下文一律仓库根(standard/02-cicd-deployment §3)
+│   ├── app/                      # Dockerfile 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)+ entrypoint.sh(web 先 migrate deploy + ISR 预热;worker 直起)
+│   ├── gateway/                  # Dockerfile(python sidecar;源码住 services/douyin-gateway/)
+│   ├── card-renderer/            # Dockerfile(node sidecar;源码住 services/card-renderer/)
+│   ├── pgvector/                 # Dockerfile(postgres:16-alpine + pgvector 自编译,M20)
+│   └── nginx/                    # nginx.conf + conf.d/aitech-hub.conf(standard/02 §4;compose 挂载配置,非镜像)
 ├── docs/                         # 本文档体系(索引 docs/README.md;UI 原型 docs/prototypes/index.html)
 ├── public/                       # 静态字节资源(favicon 等)
 │

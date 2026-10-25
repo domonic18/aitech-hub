@@ -14,7 +14,7 @@ PR / push(develop, main)
 
 push(develop, main)/ 手动
 ├── job docker-release          [依赖 app+gateway+migration 全绿] app 镜像 buildx 构建推送 TCR
-└── job docker-release-gateway  [同上依赖] 网关镜像 buildx 构建推送 TCR(services/douyin-gateway/Dockerfile,M8 批①)
+└── job docker-release-gateway  [同上依赖] 网关镜像 buildx 构建推送 TCR(docker/gateway/Dockerfile,M8 批①)
                                 两镜像 job 并行互不拖累;tag = <branch>-<短 sha>;latest 仅 main(保证 compose pull 默认即发布版)
                                 构建/推送跑 Mac mini self-hosted runner(2026-10-16 起,见下)
 ```
@@ -52,9 +52,10 @@ make migrate   # npx prisma migrate deploy
 - dev compose 只含基础设施;应用本地跑保热更;prod compose 全栈
 - pre-commit:lint-staged;pre-push:`make check`
 
-## 3. 镜像(docker/Dockerfile)
+## 3. 镜像(docker/<image>/ 目录册)
 
-- 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
+- **镜像目录册**(2026-10-25 收编,仿 ai-invest-assisstant):全部镜像定义集中 `docker/<image>/Dockerfile`——`app/`(web+worker 同镜像)/`gateway/`/`card-renderer/`/`pgvector/`;构建上下文一律**仓库根**(Dockerfile 内 COPY 前缀即源码出处),单一根级 `.dockerignore` 服务全部上下文(子级排除用 `**/` 前缀,裸目录名只匹配根级);sidecar 源码住 `services/`(自包含:依赖/测试/契约),镜像定义不入服务目录;`docker/nginx/` 为 compose 挂载配置非镜像
+- app 镜像多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
 - **构建信息注入**(2026-10-05):`npm run build` 经 `scripts/ops/build-with-info.sh` 包装,`NEXT_PUBLIC_BUILD_REF`/`NEXT_PUBLIC_BUILD_TIME` 构建期内联客户端 bundle,页脚展示版本追踪行;CI build-args 传 `branch-sha` 与 UTC 时间,本地直跑回退 `git describe --always --dirty`(`.dockerignore` 排除 `.git`,容器内必须显式传参),均缺省页脚显示 dev
 - 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema)+ `scripts/` 与 `src/`(ops 脚本如 `npm run admin` 以 tsx 直跑,依赖 src 源码;显式整拷,勿依赖 standalone 追踪);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
 - `.dockerignore` 排除 `.env`/`docs`/`tests`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
@@ -74,20 +75,20 @@ make migrate   # npx prisma migrate deploy
   - ops 脚本依赖的 src 必须**显式 COPY**:standalone 追踪对源码只带碎片(2026-10-03 实测 `src/lib/auth/` 仅剩 `*.test.ts`,生产镜像 `npm run admin` 必 MODULE_NOT_FOUND);`scripts/`、`src/` 勿依赖追踪带入
   - 定属主用 `COPY --chown`,勿 `RUN chown -R /app`:后者把已拷内容整层 CoW 复制一遍,实测多出 1.08GB 层(镜像层只增不删)
 
-### 3.2 网关镜像(services/douyin-gateway/Dockerfile,M8 批①)
+### 3.2 网关镜像(docker/gateway/Dockerfile,M8 批①)
 
-- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 装 requirements 后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,`.dockerignore` 仓库级排除互不影响
+- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 装 requirements 后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,单一根级 `.dockerignore` 服务全部上下文(源码住 `services/douyin-gateway/`,镜像定义收编 `docker/gateway/`)
 - CI 与主镜像各自独立 job 并行构建推送(`docker-release-gateway`,2026-10-04 起;各带重推重试,互不拖累);tag 规则同款 `<branch>-<短 sha>` + `latest` 仅 main
 - prod compose 服务 `douyin-gateway`:`image: ${GATEWAY_IMAGE:-…aitech-hub-gateway:latest}`,内网无 ports(worker 经服务名 `http://douyin-gateway:8010` 访问,`x-app-env` 注 `DOUYIN_GATEWAY_URL`);tmpfs 挂 `/tmp/playwright-profiles`(chromium Profile 防容器层写放大);healthcheck urllib 探 `/health`(slim 无 curl 同款问题),`start_period: 60s`(首启含 chromium 拉起);`mem_limit: 1g` + `DOUYIN_SIGNER_WARM_SLOTS: 1`(warm 页吃内存,2C4G 预算钉死单槽)
 - dev compose 走 `--profile douyin` 按需起(build 本地,`127.0.0.1:8010` 仅回环,便于 curl 冒烟),不影响日常 pg/redis 起;契约见 arch/05 §4.4
 - **网关镜像升级步骤**(契约护栏):黄金样本双侧对拍已进 CI(pytest `test_contract_fixtures.py` + vitest `gateway-contract.test.ts`),升级后另跑一次实弹对拍——`docker compose --profile douyin up -d douyin-gateway` 起本地网关,`npm run test:integration`(gateway 未起自动跳过;真实拉取对拍设 `DOUYIN_INTEGRATION_SEC_UID`/`DOUYIN_INTEGRATION_SHARE_URL` 开启)
 - 镜像现状 ≈2.4GB → 消除 chown 复制层后 ≈1.4GB(runner 全量 node_modules 为既有取舍:worker 与 prisma CLI 同镜像所需——web 启动即跑 `npx prisma migrate deploy`,CLI 必须在);进一步瘦身方向:`npm ci --omit=dev` 拆 prod-deps 层 + tsx 入 dependencies,非一期阻塞(2026-10-03 评估)
 
-### 3.3 PG pgvector 镜像(M20 批①,docker/postgres-pgvector.Dockerfile)
+### 3.3 PG pgvector 镜像(M20 批①,docker/pgvector/Dockerfile)
 
 - **为什么自编译**:dev/prod PG 现网 postgres:16-alpine(musl),`datcollversion` 为 NULL(musl 不记录 collation 版本);官方 `pgvector/pgvector` 镜像是 Debian(glibc)——原位换镜像 = 既有 PGDATA 文本排序**静默**变更(locale 无版本锚,不报错),禁用官方镜像直换现网。自编译 = postgres:16-alpine 基座 + 源码编 pgvector v0.8.7(`make with_llvm=no`——alpine pgxs 缺省要 clang 出 LLVM bitcode,构建必挂),基座不变零 collation 风险;CI 迁移重放库无历史数据,直接用官方 `pgvector/pgvector:pg16` 无碍
-- 构建推送(175 无 buildx 不能构建,本机出):`docker build --platform linux/amd64 -f docker/postgres-pgvector.Dockerfile -t <TCR>/<namespace>/aitech-hub-pgvector:pg16 docker/` → `docker save | ssh <prod> docker load` → 服务器内网 `docker tag` + `docker push` TCR(内网秒级);本机直推 TCR 无权限
-- compose:dev postgres `build: {context: ./docker, dockerfile: postgres-pgvector.Dockerfile}`(卷 `./workspace/postgres-dev`,dev/prod 卷禁共挂);prod 引 TCR `aitech-hub-pgvector:pg16`
+- 构建推送(175 无 buildx 不能构建,本机出):`docker build --platform linux/amd64 -t <TCR>/<namespace>/aitech-hub-pgvector:pg16 docker/pgvector` → `docker save | ssh <prod> docker load` → 服务器内网 `docker tag` + `docker push` TCR(内网秒级);本机直推 TCR 无权限
+- compose:dev postgres `build: {context: ./docker/pgvector}`(卷 `./workspace/postgres-dev`,dev/prod 卷禁共挂);prod 引 TCR `aitech-hub-pgvector:pg16`
 - **175 换 PG 容器 runbook(M20 部署批执行,变更操作先批准;实参以 `docker inspect` 旧容器为准)**:①`pg_dump` 全量安全留档 → ②`docker stop`+`docker rm` 旧 postgres(数据卷 `workspace/postgres` 不动)→ ③`docker run` 同参重建(仅镜像换 pgvector 版;挂载/端口/env 逐项对齐)→ ④`psql -c "CREATE EXTENSION IF NOT EXISTS vector"` 验证 → ⑤部署新版应用镜像(启动即 `migrate deploy` 落 `search_embedding` 表)→ ⑥admin 绑定 embedding-3 → `npm run embed:run` 回填 → ⑦线上混合检索抽查(含降级:停绑定后纯词项回归)
 
 ## 4. 生产拓扑与 Nginx(compose 服务)

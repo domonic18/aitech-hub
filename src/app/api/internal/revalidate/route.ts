@@ -6,7 +6,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 
 /**
- * 内部全量失效(镜像构建期降级产物预热用,docker/entrypoint.sh 调用;
+ * 内部全量失效(镜像构建期降级产物预热用,docker/app/entrypoint.sh 调用;
  * M5 管理侧如需全量刷新亦复用)。鉴权:AUTH_SECRET 派生对称 token,
  * 不新增配置面;仅 POST,幂等。
  */
