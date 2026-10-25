@@ -8,7 +8,7 @@
 ```
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
-├── job gateway   Python 3.11 + pip 缓存 → pytest services/douyin-gateway/tests(M8 批①;纯单测无网依赖)
+├── job gateway   Python 3.11 + uv(setup-uv 锁文件缓存)→ uv run pytest services/douyin-gateway/tests(M8 批①;纯单测无网依赖)
 ├── job migration 起 pgvector/pgvector:pg16(M20 批①,search_embedding 迁移需 vector 扩展)→
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 
@@ -77,7 +77,7 @@ make migrate   # npx prisma migrate deploy
 
 ### 3.2 网关镜像(docker/gateway/Dockerfile,M8 批①)
 
-- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 装 requirements 后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,单一根级 `.dockerignore` 服务全部上下文(源码住 `services/douyin-gateway/`,镜像定义收编 `docker/gateway/`)
+- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 引导 uv 按 `uv.lock` 精确装依赖(`--frozen`,2026-10-25 自 requirements*.txt 迁移 pyproject+uv.lock)后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,单一根级 `.dockerignore` 服务全部上下文(源码住 `services/douyin-gateway/`,镜像定义收编 `docker/gateway/`)
 - CI 与主镜像各自独立 job 并行构建推送(`docker-release-gateway`,2026-10-04 起;各带重推重试,互不拖累);tag 规则同款 `<branch>-<短 sha>` + `latest` 仅 main
 - prod compose 服务 `douyin-gateway`:`image: ${GATEWAY_IMAGE:-…aitech-hub-gateway:latest}`,内网无 ports(worker 经服务名 `http://douyin-gateway:8010` 访问,`x-app-env` 注 `DOUYIN_GATEWAY_URL`);tmpfs 挂 `/tmp/playwright-profiles`(chromium Profile 防容器层写放大);healthcheck urllib 探 `/health`(slim 无 curl 同款问题),`start_period: 60s`(首启含 chromium 拉起);`mem_limit: 1g` + `DOUYIN_SIGNER_WARM_SLOTS: 1`(warm 页吃内存,2C4G 预算钉死单槽)
 - dev compose 走 `--profile douyin` 按需起(build 本地,`127.0.0.1:8010` 仅回环,便于 curl 冒烟),不影响日常 pg/redis 起;契约见 arch/05 §4.4
