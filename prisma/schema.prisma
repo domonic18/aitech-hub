@@ -1066,6 +1066,10 @@ model PublishChannel {
   theme     String?   @db.VarChar(20) // 正文主题快照(上次推送所用 id;空=渠道默认,重推沿用)
   attempts  Int       @default(0) @map("attempts") // 推送尝试次数(观测)
   lastError String?   @map("last_error") @db.VarChar(500)
+  /// 渠道扩展数据(M49 批X1:xiaohongshu 起非微信渠道的渠道特有字段走此 JSON——
+  /// xhs: noteUrl(发布回填)/materialPath(物料包)/coverPath(3:4 封面卡)等;
+  /// wechat 既有类型化列保留不动(零搬迁零回归),新渠道禁再加渠道专名列)
+  data      Json?
   syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

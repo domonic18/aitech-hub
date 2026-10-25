@@ -78,7 +78,6 @@ describe("ingestClick(行级直插,失败只告警)", () => {
 
 describe("purgeClickLogs(180 天保留,循搜索词)", () => {
   it("批取 id → in 删(M48 批F 分批),cutoff 断言在 findMany where", async () => {
-    const cutoff = new Date(Date.now() - 180 * 86_400_000);
     prismaMock.statsClickLog.findMany.mockResolvedValue([{ id: BigInt(11) }, { id: BigInt(12) }]);
     prismaMock.statsClickLog.deleteMany.mockResolvedValue({ count: 2 });
     await expect(purgeClickLogs()).resolves.toBe(2);

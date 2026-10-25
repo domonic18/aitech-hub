@@ -94,7 +94,9 @@ export default async function AdminPostsPage({
     excerpt: row.excerpt,
     seoDescription: row.seoDescription,
     syncable: row.contentMd !== null,
-    wechat: row.channels.find((c) => c.channel === "wechat") ?? null,
+    // M49 批X1 渠道化:行形状改 channels 数组下发(UI 按 channel 自取;新增渠道
+    // 不再加链)
+    channels: row.channels.map((c) => ({ channel: c.channel, status: c.status })),
   }));
 
   return (

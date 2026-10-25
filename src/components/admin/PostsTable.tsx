@@ -36,7 +36,7 @@ export interface PostsTableRowView {
   excerpt: string | null;
   seoDescription: string | null;
   syncable: boolean;
-  wechat: { status: string } | null;
+  channels: Array<{ channel: string; status: string }>;
 }
 
 export default function PostsTable({
@@ -51,7 +51,8 @@ export default function PostsTable({
   const rowIds = rows.map((r) => r.id);
   const { selected, allSelected, toggle, toggleAll, clear } = useBatchSelection(rowIds);
   const syncedCount = rows.filter(
-    (r) => selected.has(r.id) && r.wechat?.status === "synced",
+    (r) =>
+      selected.has(r.id) && r.channels.some((c) => c.channel === "wechat" && c.status === "synced"),
   ).length;
   const { busy, msg, error, runSeoBatch, runWechatBatch, runDeleteBatch } = usePostsBatchJobs({
     selectedIds: [...selected],
@@ -203,7 +204,7 @@ export default function PostsTable({
                     excerpt: row.excerpt,
                     seoDescription: row.seoDescription,
                     syncable: row.syncable,
-                    wechat: row.wechat,
+                    channels: row.channels,
                   }}
                 />
               </td>

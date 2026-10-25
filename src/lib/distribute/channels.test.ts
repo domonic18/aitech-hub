@@ -33,8 +33,8 @@ describe("parseChannelParam(M48 批D 渠道注册表)", () => {
     expect(parseChannelParam("wechat")).toBe("wechat");
   });
 
-  it("非法/缺省 → undefined(不过滤)", () => {
-    expect(parseChannelParam("xiaohongshu")).toBeUndefined();
+  it("非法/缺省 → undefined(不过滤;xiaohongshu 已随 M49 批X1 转合法)", () => {
+    expect(parseChannelParam("instagram")).toBeUndefined();
     expect(parseChannelParam(undefined)).toBeUndefined();
   });
 });
