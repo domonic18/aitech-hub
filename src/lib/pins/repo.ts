@@ -1,14 +1,14 @@
 /**
- * 贴图仓储(M41):content_pin CRUD、状态机流转、有序图片序列管理、
- * 公开读(published 瀑布流/详情)。完整性口径:topicId / versionId 均 soft ref
+ * 贴图仓储(M41):content_pin CRUD、状态机流转、有序图片序列管理。
+ * 公开读(M47 批D 切出至 ./public-read,拆文件守 350 行线)留兼容出口。
+ * 完整性口径:topicId / versionId 均 soft ref
  * 应用层校验,不设跨域 FK(同 topic.linked_post_id 口径);工坊版本挂载时
  * 快照 media_path,升版由人工重挂。
  */
 import { Prisma, type ContentPin } from "@prisma/client";
 
-import { asciiSlugFromTitle, pinPath, pinPathSegment } from "../content/pin-path";
+import { asciiSlugFromTitle, pinPath } from "../content/pin-path";
 import { prisma } from "../db";
-import { prerenderSafe } from "../prerender-safe";
 import { absoluteUrl } from "../seo/site";
 import { PIN_IMAGES_MAX, PIN_MANUAL_TARGETS, isPinEditable, type PinStatus } from "./constants";
 import type { PinCreateInput, PinImageAddInput, PinUpdateInput } from "./schemas";
@@ -29,6 +29,14 @@ export class PinError extends Error {
     super(message);
   }
 }
+
+// ── 兼容出口:公开读实现住 ./public-read(M47 批D 拆出),既有调用方仍从 repo 取 ──
+export {
+  listPublishedPins,
+  getPublishedPin,
+  listPinSegmentsForPrerender,
+  listPublishedPinsForSeo,
+} from "./public-read";
 
 async function requirePin(id: bigint): Promise<ContentPin> {
   const pin = await prisma.contentPin.findUnique({ where: { id } });
@@ -294,76 +302,4 @@ export async function getPinDetail(id: bigint) {
     },
   });
   return pin;
-}
-
-// ── 公开读(published 瀑布流/详情,ISR 取数)─────────────────────
-
-export async function listPublishedPins(q: { page?: number; pageSize?: number } = {}) {
-  const pageSize = q.pageSize ?? 24;
-  const page = Math.max(1, q.page ?? 1);
-  return prerenderSafe("pins.published", { items: [], total: 0 }, async () => {
-    const [rows, total] = await Promise.all([
-      prisma.contentPin.findMany({
-        where: { status: "published" },
-        orderBy: { publishedAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          _count: { select: { images: true } },
-          images: {
-            orderBy: { sortOrder: "asc" },
-            take: 1,
-            select: { mediaPath: true, width: true, height: true },
-          },
-        },
-      }),
-      prisma.contentPin.count({ where: { status: "published" } }),
-    ]);
-    return {
-      items: rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        content: r.content,
-        publishedAt: r.publishedAt,
-        coverPath: r.images[0]?.mediaPath ?? null,
-        coverWidth: r.images[0]?.width ?? null,
-        coverHeight: r.images[0]?.height ?? null,
-        imageCount: r._count?.images ?? 0,
-      })),
-      total,
-    };
-  });
-}
-
-/** /pins/[segment] 详情(published only;运行时 ISR 取数,同 getPostById 口径) */
-export async function getPublishedPin(id: bigint) {
-  return prisma.contentPin.findFirst({
-    where: { id, status: "published" },
-    include: { images: { orderBy: { sortOrder: "asc" } } },
-  });
-}
-
-/** /pins/[segment] generateStaticParams 数据源(canonical 段;构建期无库降级按需 ISR) */
-export async function listPinSegmentsForPrerender(): Promise<string[]> {
-  try {
-    const rows = await prisma.contentPin.findMany({
-      where: { status: "published" },
-      select: { id: true, title: true },
-    });
-    return rows.map((r) => pinPathSegment(r.id, asciiSlugFromTitle(r.title)));
-  } catch (e) {
-    console.warn(JSON.stringify({ event: "pins.prerender.degraded", error: String(e) }));
-    return [];
-  }
-}
-
-/** sitemap 全量投影(轻字段;slug 由标题派生,同 pinPath 口径) */
-export async function listPublishedPinsForSeo() {
-  return prerenderSafe("pins.allForSeo", [], () =>
-    prisma.contentPin.findMany({
-      where: { status: "published" },
-      select: { id: true, title: true, updatedAt: true },
-      orderBy: { publishedAt: "desc" },
-    }),
-  );
 }
