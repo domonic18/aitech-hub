@@ -15,7 +15,7 @@
  */
 import { createHash } from "node:crypto";
 
-import { prisma } from "@/lib/db";
+import { deleteBatchedWhere, prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
@@ -197,21 +197,19 @@ export async function ingestGeoFetch(
 /** 明细保留天数(2026-10-04 用户定调:全量 IP + 7 天短留存) */
 const VISIT_LOG_RETENTION_DAYS = 7;
 
-/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志) */
+/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeVisitLogs(): Promise<number> {
   const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * 86_400_000);
-  const r = await prisma.statsVisitLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  return r.count;
+  return deleteBatchedWhere(prisma.statsVisitLog, { createdAt: { lt: cutoff } });
 }
 
 /** 搜索词明细保留天数(无 PII,比访问明细长;排行「全部」窗口的实际上界) */
 const SEARCH_LOG_RETENTION_DAYS = 180;
 
-/** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志) */
+/** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeSearchLogs(): Promise<number> {
   const cutoff = new Date(Date.now() - SEARCH_LOG_RETENTION_DAYS * 86_400_000);
-  const r = await prisma.statsSearchLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  return r.count;
+  return deleteBatchedWhere(prisma.statsSearchLog, { createdAt: { lt: cutoff } });
 }
 
 function hash16(s: string): string {

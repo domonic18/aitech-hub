@@ -165,3 +165,8 @@ export async function jobRunHealth(): Promise<JobRunHealth> {
   }
   return { keys, hung, streaks };
 }
+
+/** 末次运行原行(组件层裸 Prisma 下沉,M48 批F;jobKey 精确匹配) */
+export async function latestJobRun(jobKey: string): Promise<JobRun | null> {
+  return prisma.jobRun.findFirst({ where: { jobKey }, orderBy: { startedAt: "desc" } });
+}

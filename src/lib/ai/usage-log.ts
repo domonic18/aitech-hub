@@ -3,7 +3,7 @@
  * 封面生图三类调用逐次落 ai_usage_log。写入失败只告警不反噬业务管道(观测数据
  * 不得阻塞主流程);聚合读侧在 usage-queries,费用读时按牌价现折算(不落库)。
  */
-import { prisma } from "../db";
+import { deleteBatchedWhere, prisma } from "../db";
 import { logger } from "../logger";
 
 /** 台账单列 role 值(不属于 AI_MODEL_PURPOSES 四角色,看板单独给标签) */
@@ -62,10 +62,9 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
 /** 保留期(天):worker 日清与手动清理同口径 */
 export const AI_USAGE_RETENTION_DAYS = 90;
 
-/** 清理保留期前行数(手动触发与 worker cron 共用;返回删除行数) */
+/** 清理保留期前行数(手动触发与 worker cron 共用;返回删除行数);分批防超时(M48 批F) */
 export async function purgeAiUsageOlderThan(days = AI_USAGE_RETENTION_DAYS): Promise<number> {
-  const r = await prisma.aiUsageLog.deleteMany({
-    where: { createdAt: { lt: new Date(Date.now() - days * 86_400_000) } },
+  return deleteBatchedWhere(prisma.aiUsageLog, {
+    createdAt: { lt: new Date(Date.now() - days * 86_400_000) },
   });
-  return r.count;
 }

@@ -6,13 +6,11 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { statsDay } from "@/lib/datetime";
+import { DAY_MS, cnDayKeyRange, statsDay } from "@/lib/datetime";
 
 import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 
 const ENABLED = [...INSIGHT_SOURCES_ENABLED];
-const DAY_MS = 86_400_000;
-
 export interface InsightTrendDay {
   /** 北京日 YYYY-MM-DD(旧→新,含今日) */
   date: string;
@@ -33,13 +31,9 @@ function weekStart(now: Date = new Date()): Date {
   return new Date(start.getTime() - 6 * DAY_MS);
 }
 
-/** 北京日字符串序列(纯日期串运算,锚 statsDay 避开时区偏移陷阱;旧→新含今日) */
+/** 北京日字符串序列(旧→新含今日;M48 批F 单源至 datetime#cnDayKeyRange) */
 function beijingDayKeys(now: Date = new Date()): string[] {
-  const [y, m, d] = statsDay(now).split("-").map(Number);
-  const anchorUtc = Date.UTC(y, m - 1, d);
-  return Array.from({ length: 7 }, (_, i) =>
-    new Date(anchorUtc - (6 - i) * DAY_MS).toISOString().slice(0, 10),
-  );
+  return cnDayKeyRange(statsDay(now), 7, "back");
 }
 
 /** 近 7 日分源日增(含今日,缺日/缺源补 0;北京日界) */

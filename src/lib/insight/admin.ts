@@ -9,7 +9,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { statsDay } from "@/lib/datetime";
+import { DAY_MS, cnDayKeyRange, statsDay } from "@/lib/datetime";
 
 import { SIGNAL_TAKE_DEFAULT, SIGNAL_TAKE_MAX } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
@@ -54,8 +54,6 @@ export interface InsightSignalRow {
   signalAt: string;
 }
 
-const DAY_MS = 86_400_000;
-
 /** 总览(验收二批②:窗口参数化 7/30/90,读侧不动数据——信号/快照本就逐日
  * 累积,「每天重算」是固定窗口的读侧假象)。windowDays 夹取 1..90 */
 export async function insightOverview(windowDays = 7): Promise<InsightOverview> {
@@ -88,12 +86,10 @@ export async function insightOverview(windowDays = 7): Promise<InsightOverview> 
   // 缺日补 0:键=北京日(SQL 显式 AT TIME ZONE 切桶,与 trends.ts 同口径;
   // 曾用 UTC date_trunc → 日界错 8 小时,今日 8 点后信号落出序列尾部)
   const countByDay = new Map(dailyRows.map((r) => [r.d, Number(r.c)]));
-  const [y, m, d] = statsDay(since).split("-").map(Number);
-  const anchorUtc = Date.UTC(y, m - 1, d);
-  const daily = Array.from({ length: window }, (_, i) => {
-    const date = new Date(anchorUtc + i * DAY_MS).toISOString().slice(0, 10);
-    return { date, count: countByDay.get(date) ?? 0 };
-  });
+  const daily = cnDayKeyRange(statsDay(since), window, "fwd").map((date) => ({
+    date,
+    count: countByDay.get(date) ?? 0,
+  }));
 
   const todayBySource = new Map(todays.map((r) => [r.source, r._count._all]));
   const bySource: InsightSourceStat[] = totals
@@ -152,4 +148,17 @@ export async function listInsightSignals(opts: {
     rawText: r.rawText,
     signalAt: r.signalAt.toISOString(),
   }));
+}
+
+/** 关键词云 KPI:近 7 天候选增量 / 转正确认数(组件层裸 Prisma 下沉,M48 批F) */
+export async function discoveryKeyword7dCounts(): Promise<{
+  candidates7d: number;
+  confirmed7d: number;
+}> {
+  const since7d = new Date(Date.now() - 7 * DAY_MS);
+  const [candidates7d, confirmed7d] = await Promise.all([
+    prisma.discoveryKeyword.count({ where: { createdAt: { gte: since7d } } }),
+    prisma.discoveryKeyword.count({ where: { confirmedAt: { gte: since7d } } }),
+  ]);
+  return { candidates7d, confirmed7d };
 }
