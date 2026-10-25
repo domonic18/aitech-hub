@@ -21,14 +21,9 @@ import {
 } from "./channels";
 import { DistributeError } from "./errors";
 import { ensureCoverMedia } from "./wechat-media";
-import {
-  wechatDraftAdd,
-  wechatDraftUpdate,
-  WechatApiError,
-  type WechatCredentials,
-  type WechatNewsPicArticle,
-} from "./wechat-client";
+import { type WechatCredentials, type WechatNewsPicArticle } from "./wechat-client";
 import { requireReadyConfig } from "./wechat-sync";
+import { submitWechatDraft } from "./wechat-draft-submit";
 
 export interface PinWechatSyncJobData {
   token: string;
@@ -107,33 +102,16 @@ export async function enqueuePinWechatSync(
 }
 
 /**
- * newspic 草稿提交(add/update 分流 + 41039 去阅读原文重试一次):
- * 微信对 content_source_url 有域名校验,草稿可发优先于导流,落 warn 留痕。
+ * newspic 草稿提交统一走 wechat-draft-submit(add/update 分流 + 41039 去阅读
+ * 原文重试一次,M48 批D-2 收口);事件名保留 pin 前缀,日志面不破。
  */
 async function submitNewsPic(
   creds: WechatCredentials,
   article: WechatNewsPicArticle,
   updateMediaId: string | null,
 ): Promise<string> {
-  try {
-    if (updateMediaId) {
-      await wechatDraftUpdate(creds, updateMediaId, article);
-      return updateMediaId;
-    }
-    return await wechatDraftAdd(creds, article);
-  } catch (e) {
-    if (!(e instanceof WechatApiError) || e.errcode !== 41039) throw e;
-    logger.warn({ event: "pin.source_url_dropped", errcode: e.errcode });
-    const { content_source_url: _dropped, ...withoutSourceUrl } = article;
-    if (updateMediaId) {
-      await wechatDraftUpdate(creds, updateMediaId, withoutSourceUrl);
-      return updateMediaId;
-    }
-    return await wechatDraftAdd(creds, withoutSourceUrl);
-  }
+  return submitWechatDraft(creds, article, updateMediaId, "pin.source_url_dropped");
 }
-
-/** 失败落行(人话进 lastError;返回不抛,worker attempts 兜底瞬态抖动) */
 async function failSync(
   rowId: bigint,
   pinId: string,
