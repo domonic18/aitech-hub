@@ -8,7 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { CRAWL_SOURCE_TYPES } from "@/lib/telegram/constants";
+import { CRAWL_SOURCE_TYPES_IMPLEMENTED } from "@/lib/telegram/constants";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -136,7 +136,7 @@ export default function ChannelDialog({
                 onChange={(e) => setType(e.target.value)}
                 className={`mt-1 ${field}`}
               >
-                {CRAWL_SOURCE_TYPES.map((t) => (
+                {CRAWL_SOURCE_TYPES_IMPLEMENTED.map((t) => (
                   <option key={t} value={t}>
                     {TYPE_LABELS[t] ?? t}
                   </option>

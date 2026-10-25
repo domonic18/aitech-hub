@@ -5,7 +5,7 @@
  */
 import Link from "next/link";
 
-import { crawlerActiveRuns } from "@/lib/collect/channel-ledger";
+import { crawlerActiveRuns } from "@/lib/collect/crawler-runs";
 import { upcomingRuns } from "@/lib/collect/plan-rows";
 import { formatCnTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";

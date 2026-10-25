@@ -70,12 +70,17 @@ export interface CronScheduleDef {
   desc: string;
   cron: string;
   category: ScheduleCategory;
+  /** jobRun jobKey(最近运行落账映射;M48 批E 单源化——原 plan-rows 手工第二张
+   * 映射表,漏登记则计划页「最近运行」恒显「—」)。缺省 = 不入账(如
+   * embed-reconcile 准心跳) */
+  jobRunKey?: string;
 }
 
 /** 定时任务登记(cron 顺序=凌晨时间线序,列表视图按此序展示) */
 export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   {
     key: "db-backup",
+    jobRunKey: "db-backup/run",
     label: "数据库备份",
     desc: "pg_dump → 备份桶,本地留 3 份",
     cron: DB_BACKUP_CRON,
@@ -83,6 +88,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "media-audit",
+    jobRunKey: "media-audit/audit",
     label: "媒体体检",
     desc: "媒体库完整性审计(每日定时)",
     cron: MEDIA_AUDIT_CRON,
@@ -90,6 +96,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "insight-daily",
+    jobRunKey: "insight/daily",
     label: "洞察日批",
     desc: "增量聚类 + LLM 打标 + 覆盖度 + 快照",
     cron: INSIGHT_DAILY_CRON,
@@ -97,6 +104,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "pay-daily-audit",
+    jobRunKey: "pay-reconcile/daily-audit",
     label: "支付日对账",
     desc: "近 7 天 paid 查单比对流水,不一致只告警",
     cron: PAY_DAILY_AUDIT_CRON,
@@ -104,6 +112,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "visit-purge",
+    jobRunKey: "stats/purge-visit-log",
     label: "访问明细清理",
     desc: "访问明细 7 天保留期滚动清理",
     cron: VISIT_LOG_PURGE_CRON,
@@ -111,6 +120,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "cover-sweep",
+    jobRunKey: "cover-gen/temp-sweep",
     label: "封面候选清扫",
     desc: "cover-gen hold 候选临时件日频清扫",
     cron: COVER_TEMP_SWEEP_CRON,
@@ -118,6 +128,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "agent-purge",
+    jobRunKey: "stats/purge-agent-session",
     label: "会话清退",
     desc: "Drawer 会话 30 天前留档清理",
     cron: AGENT_SESSION_PURGE_CRON,
@@ -125,6 +136,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "job-run-purge",
+    jobRunKey: "stats/purge-job-run",
     label: "任务台账清理",
     desc: "任务运行台账 30 天保留期清理(worker 分发器落账,验收二批③)",
     cron: JOB_RUN_PURGE_CRON,
@@ -132,6 +144,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "discovery-hotwords",
+    jobRunKey: "discovery/discovery-hotwords",
     label: "发现热词",
     desc: "外站热词日频直拉入发现池",
     cron: DISCOVERY_HOTWORDS_CRON,
@@ -139,6 +152,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "usage-purge",
+    jobRunKey: "stats/purge-usage-log",
     label: "用量台账清理",
     desc: "AI 用量台账 90 天保留期清理",
     cron: USAGE_LOG_PURGE_CRON,
@@ -146,6 +160,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "insight-fetch",
+    jobRunKey: "insight/fetch",
     label: "热榜拉取",
     desc: "百度/知乎/B站热搜榜面小时级入信号池(在榜续热,新词入池)",
     cron: INSIGHT_FETCH_CRON,
@@ -153,6 +168,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "discovery-bili",
+    jobRunKey: "discovery/discovery-bili",
     label: "B站发现",
     desc: "双窗全词扫描,周频(周一早)",
     cron: DISCOVERY_BILI_CRON,
@@ -167,6 +183,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
   },
   {
     key: "insight-embed",
+    jobRunKey: "insight/embed",
     label: "洞察向量回填",
     desc: "信号高频向量回填 + 增量聚类",
     cron: INSIGHT_EMBED_CRON,

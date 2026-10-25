@@ -15,7 +15,7 @@ import {
   QueueFold,
   SignalFold,
 } from "@/components/admin/data/run/OverviewFolds";
-import { crawlerActiveRuns } from "@/lib/collect/channel-ledger";
+import { crawlerActiveRuns } from "@/lib/collect/crawler-runs";
 
 export default async function RunOverview(): Promise<React.ReactElement> {
   const active = await crawlerActiveRuns();
