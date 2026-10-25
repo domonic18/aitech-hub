@@ -40,14 +40,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # uv 管理依赖(仿 ai-invest):uv.lock 锚定解析,setup-uv 带锁文件缓存
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/douyin-gateway/uv.lock
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: services/douyin-gateway/requirements*.txt
-      - run: pip install -r services/douyin-gateway/requirements.txt -r services/douyin-gateway/requirements-dev.txt
       - working-directory: services/douyin-gateway
-        run: python -m pytest tests/ -q
+        run: |
+          uv sync --frozen
+          uv run pytest tests/ -q
 
   # 卡片渲染服务(M31):纯函数单测(node:test,零依赖零安装);仅校验/白名单逻辑
   card-renderer:
@@ -142,7 +146,7 @@ jobs:
         timeout-minutes: 25
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -159,7 +163,7 @@ jobs:
         timeout-minutes: 30
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -215,8 +219,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
-          context: ./services/douyin-gateway
-          file: services/douyin-gateway/Dockerfile
+          context: .
+          file: docker/gateway/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -229,8 +233,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
-          context: ./services/douyin-gateway
-          file: services/douyin-gateway/Dockerfile
+          context: .
+          file: docker/gateway/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -281,8 +285,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
-          context: ./services/card-renderer
-          file: services/card-renderer/Dockerfile
+          context: .
+          file: docker/card-renderer/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64
@@ -295,8 +299,8 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
-          context: ./services/card-renderer
-          file: services/card-renderer/Dockerfile
+          context: .
+          file: docker/card-renderer/Dockerfile
           push: true
           provenance: false
           platforms: linux/amd64

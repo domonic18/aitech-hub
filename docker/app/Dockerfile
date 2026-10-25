@@ -1,4 +1,5 @@
-# 多阶段构建(standard/02-cicd-deployment §3):deps → builder → runner
+# app 镜像(web+worker 双角色;standard/02-cicd-deployment §3):deps → builder → runner
+# 镜像定义集中 docker/<image>/ 目录册,构建上下文一律仓库根(本文件 COPY 即证)
 # 同一镜像双角色:SERVICE_ROLE=web|worker 由 entrypoint 区分启动目标
 FROM node:22-slim AS deps
 WORKDIR /app
@@ -81,7 +82,7 @@ COPY --from=builder --chown=next:nodejs /app/src ./src
 # prisma generate 产物;取 deps 层会覆盖 standalone 内 traced 生成物,
 # 运行时报 "client did not initialize")
 COPY --from=builder --chown=next:nodejs /app/node_modules ./node_modules
-COPY --chown=next:nodejs docker/entrypoint.sh ./entrypoint.sh
+COPY --chown=next:nodejs docker/app/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
 USER next

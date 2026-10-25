@@ -1,0 +1,25 @@
+# 抖音数据网关(arch/05 §4.4):uv 管理依赖,uv.lock 锚定解析(2026-10-25 自 requirements*.txt 迁移)
+# 虚拟项目(无 build-system):uv sync 只装依赖不装项目本身,uvicorn 从 cwd 导入 app/
+[project]
+name = "douyin-gateway"
+version = "0.1.0"
+description = "抖音数据网关:签名(Playwright chromium 常驻页)+ 数据端点(curl_cffi Chrome TLS 指纹)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "playwright>=1.49",
+    "curl_cffi>=0.7",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]

@@ -61,7 +61,7 @@ services:
     #  github release,docker VM 直连常被 reset(2026-10-05 实测);置空串可强制回退 github)
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/app/Dockerfile
       args:
         BUILD_REF: ${BUILD_REF:-}
         BUILD_TIME: ${BUILD_TIME:-}
@@ -150,7 +150,8 @@ services:
   card-renderer:
     image: ${CARD_RENDERER_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub-card-renderer:latest}
     build:
-      context: ./services/card-renderer
+      context: .
+      dockerfile: docker/card-renderer/Dockerfile
     environment:
       TZ: Asia/Shanghai
     tmpfs:
@@ -172,7 +173,7 @@ services:
     logging: *logging
 
   postgres:
-    # M20 混合检索:pgvector 自编译(alpine 底座,同 docker/postgres-pgvector.Dockerfile)。
+    # M20 混合检索:pgvector 自编译(alpine 底座,同 docker/pgvector/Dockerfile)。
     # 镜像发布:本机 --platform linux/amd64 build → save|ssh load 175 → 175 内网 tag+push TCR
     # (standard/02 §? 发布 runbook);禁用官方 pgvector Debian 镜像——musl→glibc collation 错配
     image: ccr.ccs.tencentyun.com/domonic18/aitech-hub-pgvector:pg16
