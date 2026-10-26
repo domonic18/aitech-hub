@@ -18,6 +18,7 @@ vi.mock("./tools", () => ({
   ],
   EDIT_TOOLS: [{ name: "read_draft" }, { name: "propose_edits" }],
   XHS_TOOLS: [{ name: "save_xhs_draft" }],
+  publishXhsNoteTool: { name: "publish_xhs_note" },
 }));
 vi.mock("./topic-tools", () => ({
   TOPIC_TOOLS: [
@@ -105,6 +106,7 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "measure_wechat_budget",
       "render_card",
       "save_xhs_draft",
+      "publish_xhs_note",
     ]);
   });
 });

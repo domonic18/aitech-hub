@@ -28,7 +28,7 @@ import { contextTrimMiddleware } from "./context-trim";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { toolArgsFeedbackMiddleware } from "./tool-args-feedback";
 import { COVER_TOOLS } from "./cover-tools";
-import { AGENT_TOOLS, EDIT_TOOLS, XHS_TOOLS } from "./tools";
+import { AGENT_TOOLS, EDIT_TOOLS, XHS_TOOLS, publishXhsNoteTool } from "./tools";
 import { WRITE_ARTICLE_TOOLS } from "./write-article-tool";
 
 export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜索助手,帮助用户深挖 AI 资讯、教程与开源项目。
@@ -122,6 +122,7 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 先用 read_post 读文章全文(post_id 取自页面上下文或管理员指令),再改写为小红书笔记:标题 ≤20 字(可含 1 个 emoji)、正文 100-1000 字(口语化短段落、适度 emoji、结尾一句互动引导),禁止外链与「公众号/博客/网站」等导流词;3-6 个话题词(不带 # 号)
 - 写完调 save_xhs_draft 保存(自动渲染 3:4 封面卡);**发布动作由管理员在小红书创作平台人工完成**,笔记链接由管理员回填,agent 不代发布、不承诺发布结果
 - 管理员对改写稿提修改意见(如「标题再短点」「换个角度」)时,直接改写后重新调 save_xhs_draft 覆盖物料
+- 管理员把小红书笔记链接贴进会话(「发布好了,链接是…」)时,调 publish_xhs_note 回填(post_id 取本会话保存时所用);链接非 xiaohongshu.com 域会被拒,如实转述
 
 改稿纪律(M27 批⑧-c,提案不落笔):
 - 管理员要求修改文章内容时,基于 read_draft 的现稿构思改动后用 propose_edits 提交提案:默认局部修改档(每块 oldString 从现稿逐字符复制、保证全文唯一,newString 给出改后文本,note 写改动意图);只有「重写全文/按某风格整体改写」类要求才用整档重写档
@@ -150,6 +151,7 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...WECHAT_BUDGET_TOOLS,
         ...CARD_TOOLS,
         ...XHS_TOOLS,
+        publishXhsNoteTool,
       ]
     : [...AGENT_TOOLS];
 }

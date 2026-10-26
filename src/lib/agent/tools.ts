@@ -23,7 +23,7 @@ import { searchAll } from "../search/unified-search";
 import { TOOL_BODY_MAX } from "./edit-tools";
 
 export { EDIT_TOOLS, proposeEditsTool, readDraftTool, TOOL_BODY_MAX } from "./edit-tools";
-export { XHS_TOOLS } from "./xhs-tools";
+export { XHS_TOOLS, publishXhsNoteTool } from "./xhs-tools";
 
 /** 三域检索结果 → 模型友好摘要(items 每域限量已在 searchAll 内收口) */
 export function summarizeSearchGroups(result: Awaited<ReturnType<typeof searchAll>>): string {

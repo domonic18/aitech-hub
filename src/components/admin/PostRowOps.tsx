@@ -13,7 +13,6 @@ import { useState } from "react";
 import SyncWechatDialog, {
   type WechatSyncDialogPost,
 } from "@/components/admin/distribute/SyncWechatDialog";
-import SyncXhsDialog from "@/components/admin/distribute/SyncXhsDialog";
 import type { PostDisplayState } from "@/lib/content/post-schema";
 import { CHANNEL_WECHAT, wechatSyncActionLabel } from "@/lib/distribute/channels";
 import { AGENT_OPEN_EVENT } from "@/lib/agent/agent-host";
@@ -50,7 +49,6 @@ export default function PostRowOps({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
-  const [xhsOpen, setXhsOpen] = useState(false);
 
   const status = sync?.channels.find((c) => c.channel === CHANNEL_WECHAT)?.status ?? null;
   const syncDisabled = !wechatReady || !sync?.syncable || status === "pending";
@@ -141,12 +139,14 @@ export default function PostRowOps({
               window.dispatchEvent(
                 new CustomEvent(AGENT_OPEN_EVENT, {
                   detail: {
-                    ask: `请先用 read_post 工具阅读文章(post_id=${id}),然后把它改写成一篇小红书笔记并保存:标题 ≤20 字(可含 1 个 emoji);正文 100-1000 字,口语化短段落、适度 emoji、结尾一句互动引导,禁止外链与「公众号/博客」等导流词;3-6 个话题词(不带 # 号)。写完调用 save_xhs_draft 工具保存(post_id="${id}"),保存成功后告诉我。`,
-                    send: true,
+                    // 协议形状:FAB 读 detail.ask.question/send(嵌套),非平铺字符串
+                    ask: {
+                      question: `请先用 read_post 工具阅读文章(post_id=${id}),然后把它改写成一篇小红书笔记并保存:标题 ≤20 字(可含 1 个 emoji);正文 100-1000 字,口语化短段落、适度 emoji、结尾一句互动引导,禁止外链与「公众号/博客」等导流词;3-6 个话题词(不带 # 号)。写完调用 save_xhs_draft 工具保存(post_id="${id}"),保存成功后告诉我。`,
+                      send: true,
+                    },
                   },
                 }),
               );
-              setXhsOpen(true);
             }}
           >
             小红书
@@ -154,7 +154,6 @@ export default function PostRowOps({
         )}
       </span>
       {error && <span className="text-[11px] text-red">{error}</span>}
-      {xhsOpen && <SyncXhsDialog postId={id} onClose={() => setXhsOpen(false)} />}
       {syncOpen && sync && (
         <SyncWechatDialog
           post={

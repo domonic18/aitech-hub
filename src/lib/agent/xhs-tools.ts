@@ -123,4 +123,30 @@ export const saveXhsDraftTool = tool(
   },
 );
 
-export const XHS_TOOLS = [saveXhsDraftTool];
+/** 发布回填(M49 批X2' 会话闭环):管理员人工发布后把笔记链接贴进会话,
+ * agent 调此工具落 synced——发布动作仍是人工,工具只做回填记账 */
+export const publishXhsNoteTool = tool(
+  async ({ post_id, note_url }) => {
+    try {
+      const { publishXhsNote } = await import("../distribute/xhs");
+      await publishXhsNote(BigInt(post_id), note_url);
+      return JSON.stringify({ ok: true, message: "已回填,该文章小红书分发状态 → 已同步" });
+    } catch (e) {
+      return JSON.stringify({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+  {
+    name: "publish_xhs_note",
+    description:
+      "回填小红书笔记链接(管理员人工发布后把链接贴进会话时调用):将该文章的小红书分发状态标记为已同步。仅收 xiaohongshu.com 域链接。",
+    schema: z.object({
+      post_id: z.string().regex(/^\d+$/).describe("文章 id"),
+      note_url: z.string().url().describe("小红书笔记链接"),
+    }),
+  },
+);
+
+export const XHS_TOOLS = [saveXhsDraftTool, publishXhsNoteTool];

@@ -5,7 +5,6 @@
  */
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { relToUploadsUrl } from "../media/storage";
 import { DistributeError } from "./errors";
 import { CHANNEL_XHS, PUBLISH_STATUS_READY, PUBLISH_STATUS_SYNCED } from "./channels";
 
@@ -61,43 +60,4 @@ export async function publishXhsNote(postId: bigint, noteUrl: string): Promise<v
     },
   });
   logger.info({ event: "xhs.synced", postId: postId.toString(), noteUrl });
-}
-
-/** 物料视图(编辑弹窗消费):行态 + 草稿 + 封面 URL + 正文图清单 */
-export async function getXhsMaterial(postId: bigint): Promise<{
-  status: string | null;
-  material: XhsRowData | null;
-  lastError: string | null;
-  postTitle: string;
-  coverUrl: string | null;
-  images: Array<{ path: string; url: string }>;
-} | null> {
-  const row = await prisma.publishChannel.findFirst({
-    where: { postId, channel: CHANNEL_XHS },
-    orderBy: { id: "desc" },
-  });
-  if (!row) return null;
-  const post = await prisma.post.findUnique({
-    where: { id: postId },
-    select: { title: true, contentMd: true },
-  });
-  const images: Array<{ path: string; url: string }> = [];
-  const seen = new Set<string>();
-  for (const m of (post?.contentMd ?? "").matchAll(MD_IMG_RE)) {
-    const p = m[1] ?? "";
-    if (p === "" || seen.has(p)) continue;
-    seen.add(p);
-    images.push({ path: p, url: relToUploadsUrl(p) ?? p });
-  }
-  const material = (row.data ?? null) as XhsRowData | null;
-  return {
-    status: row.status,
-    material,
-    lastError: row.lastError,
-    postTitle: post?.title ?? "",
-    coverUrl: material?.coverMediaPath
-      ? (relToUploadsUrl(material.coverMediaPath) ?? material.coverMediaPath)
-      : null,
-    images,
-  };
 }
