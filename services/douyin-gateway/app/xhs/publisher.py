@@ -107,13 +107,18 @@ class XhsPublisher:
         """步骤统一壳:进出日志 + 失败现场快照与包装(唯一日志出口)。"""
         t0 = time.monotonic()
         logger.info("xhs.step_start", pin_id=pin_id, step=name)
+
+        def log_fail(kind: str, error: str, artifact: str | None = None) -> None:
+            logger.warning(
+                "xhs.step_failed", pin_id=pin_id, step=name, kind=kind,
+                duration_ms=self._ms(t0), url=page.url, error=error[:200],
+                artifact=artifact,
+            )
+
         try:
             await action()
         except XhsStateError as exc:
-            logger.warning(
-                "xhs.step_failed", pin_id=pin_id, step=name, kind=KIND_LOGIN,
-                duration_ms=self._ms(t0), url=page.url, error=str(exc)[:200],
-            )
+            log_fail(KIND_LOGIN, str(exc))
             raise
         except XhsStepError as exc:
             if exc.artifact_dir is None:
@@ -122,20 +127,13 @@ class XhsPublisher:
                         page, name, self._debug_root, cfg.DEBUG_KEEP
                     )
                 )
-            logger.warning(
-                "xhs.step_failed", pin_id=pin_id, step=name, kind=exc.kind,
-                duration_ms=self._ms(t0), url=page.url, error=str(exc)[:200],
-            )
+            log_fail(exc.kind, str(exc))
             raise
         except Exception as exc:
             dir_path = await save_failure_artifacts(
                 page, name, self._debug_root, cfg.DEBUG_KEEP
             )
-            logger.warning(
-                "xhs.step_failed", pin_id=pin_id, step=name, kind=KIND_UNKNOWN,
-                duration_ms=self._ms(t0), url=page.url, error=str(exc)[:200],
-                artifact=dir_path,
-            )
+            log_fail(KIND_UNKNOWN, str(exc), dir_path)
             raise XhsStepError(
                 name, KIND_UNKNOWN, f"执行异常:{str(exc)[:200]}", dir_path
             ) from exc
@@ -209,6 +207,14 @@ class XhsPublisher:
                 )
                 logged_in = self._settings.login_marker not in page.url
                 if logged_in:
+                    # 地标由客户端渲染后挂出:轮询等出现(与 tab 渲染竞态同源)
+                    deadline = time.monotonic() + cfg.LANDMARK_WAIT_S
+                    while time.monotonic() < deadline:
+                        if await page.locator(
+                            self._settings.selectors["creator_tab"]
+                        ).count():
+                            break
+                        await page.wait_for_timeout(cfg.TAB_POLL_MS)
                     landmarks = {
                         "creator_tab": await page.locator(
                             self._settings.selectors["creator_tab"]

@@ -61,3 +61,4 @@ PUBLISH_CLICK_Y = 675 # 相对计算——宿主含整个内容列,曾点到红�
 PUBLISH_BAR_HOST = "xhs-publish-btn" # 发布操作栏 Web Component 宿主(closed
 # shadow root 对 DOM 查询全盲,仅可作存在性断言/坐标参照)
 DEBUG_KEEP = 5 # 失败现场快照保留份数(超限删最旧)
+LANDMARK_WAIT_S = 10 # /xhs/state 地标轮询等待(客户端渲染后挂出)
