@@ -10,6 +10,7 @@ import { renderCardPng } from "../card/render";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { mediaStorage, relToUploadsUrl } from "../media/storage";
+import { AI_PURPOSE_WRITING } from "../ai/constants";
 import { resolveAiModel } from "../ai/resolver";
 import { getQueue, QUEUE_DISTRIBUTE_XHS, DISTRIBUTE_JOB_XHS_PREPARE } from "../queue";
 import { DistributeError } from "./errors";
@@ -58,12 +59,12 @@ function coverHtml(title: string): string {
 export async function enqueueXhsPrepare(postId: bigint): Promise<{ jobId: string }> {
   // 模型绑定人话早失败(resolver 抛错形态不定,统一包成 DistributeError)
   try {
-    const model = await resolveAiModel("xhs_rewrite");
+    const model = await resolveAiModel(AI_PURPOSE_WRITING);
     if (model === null) throw new Error("未绑定");
   } catch {
     throw new DistributeError(
       "disabled",
-      "先到 AI 配置·任务绑定 绑定「小红书改写」模型,再生成小红书笔记",
+      "先到 AI 配置·任务绑定 绑定「文章撰写」模型,再生成小红书笔记",
     );
   }
   const post = await prisma.post.findUnique({
@@ -111,8 +112,8 @@ export async function xhsPrepareJob(postId: bigint): Promise<void> {
       select: { title: true, contentMd: true },
     });
     if (!post?.contentMd?.trim()) throw new Error("无 Markdown 正文");
-    const model = await resolveAiModel("xhs_rewrite");
-    if (model === null) throw new Error("「小红书改写」模型未绑定");
+    const model = await resolveAiModel(AI_PURPOSE_WRITING);
+    if (model === null) throw new Error("「文章撰写」模型未绑定");
     const draft = await rewriteForXhs(model, post.title, post.contentMd);
     const rendered = await renderCardPng(coverHtml(draft.title), {
       width: 1080,
