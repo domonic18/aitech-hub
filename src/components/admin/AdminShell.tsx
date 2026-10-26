@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminTopbar from "@/components/admin/AdminTopbar";
+import ToastProvider from "@/components/admin/Toast";
 import {
   loadSidebarPrefs,
   saveSidebarPrefs,
@@ -75,26 +76,28 @@ export default function AdminShell({
 
   return (
     // 展开宽经 CSS 变量下发(fixed 侧栏与内容 margin 同源继承)
-    <div style={{ "--admin-sidebar-w": `${sidebar.w}px` } as React.CSSProperties}>
-      {open && (
-        <div
-          className="fixed inset-0 z-20 bg-black/40 lg:hidden"
-          aria-hidden="true"
-          onClick={() => setOpen(false)}
+    <ToastProvider>
+      <div style={{ "--admin-sidebar-w": `${sidebar.w}px` } as React.CSSProperties}>
+        {open && (
+          <div
+            className="fixed inset-0 z-20 bg-black/40 lg:hidden"
+            aria-hidden="true"
+            onClick={() => setOpen(false)}
+          />
+        )}
+        <AdminSidebar
+          open={open}
+          onClose={() => setOpen(false)}
+          collapsed={sidebar.collapsed}
+          width={sidebar.w}
+          onToggleCollapsed={handleToggleCollapsed}
+          onWidthChange={handleWidthChange}
         />
-      )}
-      <AdminSidebar
-        open={open}
-        onClose={() => setOpen(false)}
-        collapsed={sidebar.collapsed}
-        width={sidebar.w}
-        onToggleCollapsed={handleToggleCollapsed}
-        onWidthChange={handleWidthChange}
-      />
-      <div className={sidebar.collapsed ? "lg:ml-14" : "lg:ml-[var(--admin-sidebar-w)]"}>
-        <AdminTopbar nickname={nickname} phone={phone} onMenu={() => setOpen(true)} />
-        <main className="px-4 py-4 sm:px-6 sm:py-6">{children}</main>
+        <div className={sidebar.collapsed ? "lg:ml-14" : "lg:ml-[var(--admin-sidebar-w)]"}>
+          <AdminTopbar nickname={nickname} phone={phone} onMenu={() => setOpen(true)} />
+          <main className="px-4 py-4 sm:px-6 sm:py-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

@@ -2,14 +2,16 @@
 
 /**
  * 贴图组装台编排(M41):详情态 + 全部写操作收口(元数据 PATCH/状态流转/
- * 同步入队/序列重排/移除/删除)+ 两个异步完成轮询(AI 出图按序列张数增长、
- * 公众号同步按渠道行状态变化,5s 步进,4min 超时自停)。布局:顶部状态步进
- * 条,下方左序列轨 / 中预览裁剪 / 右元数据与渠道面板。
+ * 同步入队/序列重排/移除/删除)+ 异步完成轮询(AI 出图按序列张数增长、
+ * 渠道行到终态,5s 步进,4min 超时自停)。动作反馈统一 toast(右下角,
+ * M49 验收反馈:顶部 notice 条在页面底部操作时不可见)。布局:顶部状态
+ * 步进条,下方左序列轨 / 中预览裁剪 / 右元数据与渠道面板。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useToast } from "@/components/admin/Toast";
 import type { PinDetailDto } from "@/lib/pins/dto";
 import type { PinCropSpec, PinStatus } from "@/lib/pins/constants";
 
@@ -44,10 +46,9 @@ export default function PinEditor({
   workshopRoots: WorkshopRootOption[];
 }): React.ReactElement {
   const router = useRouter();
+  const { push } = useToast();
   const [detail, setDetail] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(0);
   const [resetSignal, setResetSignal] = useState(0);
@@ -62,9 +63,10 @@ export default function PinEditor({
     [],
   );
 
-  /** 异步完成轮询:每 5s 拉详情刷态,done 判真或超时自停 */
+  /** 异步完成轮询:每 5s 拉详情刷态,done 判真或超时自停;判真时回调
+   * onFinish(终态提示由调用方按渠道行状态 toast,超时静默、渠道行为准) */
   const startPolling = useCallback(
-    (done: (d: PinDetailDto) => boolean) => {
+    (done: (d: PinDetailDto) => boolean, onFinish?: (d: PinDetailDto) => void) => {
       if (pollRef.current) clearInterval(pollRef.current);
       doneRef.current = done;
       deadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
@@ -72,7 +74,11 @@ export default function PinEditor({
         void callPinApi<PinDetailDto>(`/api/pins/${initial.id}`).then((body) => {
           if (body.code !== 0 || !body.data) return;
           setDetail(body.data);
-          if (doneRef.current?.(body.data) || Date.now() > deadlineRef.current) {
+          if (doneRef.current?.(body.data)) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            onFinish?.(body.data);
+          } else if (Date.now() > deadlineRef.current) {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
           }
@@ -82,21 +88,25 @@ export default function PinEditor({
     [initial.id],
   );
 
+  /** 立即拉取详情(入队类动作成功后马上刷行状态,防「点了没反应」感知) */
+  async function refreshDetail(): Promise<void> {
+    const body = await callPinApi<PinDetailDto>(`/api/pins/${initial.id}`);
+    if (body.code === 0 && body.data) setDetail(body.data);
+  }
+
   async function mutate(
     url: string,
     init: RequestInit,
     okMsg: string,
   ): Promise<PinDetailDto | null> {
     setBusy(true);
-    setError(null);
-    setNotice(null);
     const body = await callPinApi<PinDetailDto>(url, init);
     setBusy(false);
     if (body.code !== 0 || !body.data) {
-      setError(body.message);
+      push("error", body.message);
       return null;
     }
-    setNotice(okMsg);
+    push("success", okMsg);
     return body.data;
   }
 
@@ -121,38 +131,58 @@ export default function PinEditor({
     if (nextDetail) setDetail(nextDetail);
   }
 
+  /** 渠道行终态谓词(轮询停止条件;基线对比会误停在中间态 pending) */
+  const wechatTerminal = (d: PinDetailDto): boolean => {
+    const s = d.channels.find((c) => c.channel === "wechat")?.status ?? null;
+    return s === "synced" || s === "failed";
+  };
+  const xhsTerminal = (d: PinDetailDto): boolean => {
+    const s = d.channels.find((c) => c.channel === "xiaohongshu")?.status ?? null;
+    return s === "synced" || s === "failed";
+  };
+
+  function finishWechat(d: PinDetailDto): void {
+    const row = d.channels.find((c) => c.channel === "wechat");
+    if (row?.status === "synced") push("success", "公众号草稿已同步");
+    if (row?.status === "failed") push("error", `公众号同步失败:${row.lastError ?? "原因未知"}`);
+  }
+
+  function finishXhs(d: PinDetailDto): void {
+    const row = d.channels.find((c) => c.channel === "xiaohongshu");
+    if (row?.status === "synced")
+      push("success", `小红书已发布${row.publishId ? `:${row.publishId}` : ""}`);
+    if (row?.status === "failed")
+      push("error", `小红书发布失败(自动重试后仍失败):${row.lastError ?? "原因未知"}`);
+  }
+
   async function syncWechat() {
+    setBusy(true);
     const body = await callPinApi<{ jobId: string }>(`/api/pins/${initial.id}/sync`, {
       method: "POST",
     });
-    setError(null);
-    setNotice(null);
+    await refreshDetail();
+    setBusy(false);
     if (body.code !== 0) {
-      setError(body.message);
+      push("error", body.message);
       return;
     }
-    setNotice("已入队公众号同步,完成后渠道状态自动刷新(约 10~60s)…");
-    const baseline = detail.channels.find((c) => c.channel === "wechat")?.status ?? null;
-    startPolling(
-      (d) => (d.channels.find((c) => c.channel === "wechat")?.status ?? null) !== baseline,
-    );
+    push("success", "已入队公众号同步,完成后自动提示(约 10~60s)");
+    startPolling(wechatTerminal, finishWechat);
   }
 
   /** 小红书全自动发布(M49 批X3):入队 job(worker 调 gateway Playwright),
    * 轮询渠道行到终态(含 3 次自动重试,超 4min 轮询自停、渠道行为准) */
   async function autoPublishXhs() {
+    setBusy(true);
     const body = await callPinApi(`/api/pins/${initial.id}/xhs/distribute`, { method: "POST" });
-    setError(null);
-    setNotice(null);
+    await refreshDetail();
+    setBusy(false);
     if (body.code !== 0) {
-      setError(body.message);
+      push("error", body.message);
       return;
     }
-    setNotice("已入队小红书自动发布(浏览器自动化,约 1-3 分钟),完成后渠道状态自动刷新…");
-    startPolling((d) => {
-      const s = d.channels.find((c) => c.channel === "xiaohongshu")?.status ?? null;
-      return s === "synced" || s === "failed";
-    });
+    push("success", "已入队小红书自动发布,完成后自动提示(约 1-3 分钟)");
+    startPolling(xhsTerminal, finishXhs);
   }
 
   async function reorder(from: number, to: number) {
@@ -165,7 +195,7 @@ export default function PinEditor({
       { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ ids }) },
     );
     if (body.code !== 0 || !body.data) {
-      setError(body.message);
+      push("error", body.message);
       return;
     }
     setDetail((d) => ({ ...d, images: body.data!.images }));
@@ -178,7 +208,7 @@ export default function PinEditor({
       { method: "DELETE" },
     );
     if (body.code !== 0 || !body.data) {
-      setError(body.message);
+      push("error", body.message);
       return;
     }
     setDetail((d) => ({ ...d, images: body.data!.images }));
@@ -189,7 +219,7 @@ export default function PinEditor({
     if (!window.confirm("删除该贴图?图片序列与渠道记录一并删除,不可恢复。")) return;
     const body = await callPinApi(`/api/pins/${initial.id}`, { method: "DELETE" });
     if (body.code !== 0) {
-      setError(body.message);
+      push("error", body.message);
       return;
     }
     router.push("/admin/pins/");
@@ -198,8 +228,7 @@ export default function PinEditor({
   /** AI 出图入队(AddImageModal 回调):关弹窗 + 轮询到序列增长 */
   function onGenerated(baseline: number) {
     setAddOpen(false);
-    setError(null);
-    setNotice(`AI 出图中(约 15~60s,单批计费不重试),完成后自动挂到序列尾…`);
+    push("success", "AI 出图中(约 15~60s,单批计费不重试),完成后自动挂到序列尾");
     startPolling((d) => d.images.length > baseline);
   }
 
@@ -234,10 +263,6 @@ export default function PinEditor({
         busy={busy}
         onTransition={(n) => void transition(n)}
       />
-
-      {(error || notice) && (
-        <p className={`mb-3 text-xs ${error ? "text-red" : "text-green"}`}>{error ?? notice}</p>
-      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[176px_minmax(0,1fr)_400px]">
         <ImageRail
@@ -278,7 +303,7 @@ export default function PinEditor({
           onAdded={(res) => {
             setDetail((d) => ({ ...d, images: res.images }));
             setAddOpen(false);
-            setNotice(`已添加 ${res.added} 张图片`);
+            push("success", `已添加 ${res.added} 张图片`);
           }}
           onGenerated={onGenerated}
         />
