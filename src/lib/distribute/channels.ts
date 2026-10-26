@@ -5,8 +5,9 @@
  */
 
 export const CHANNEL_WECHAT = "wechat";
-/** 渠道合法值(应用层 Zod 管控,arch/03 枚举演进条款) */
-export const PUBLISH_CHANNELS = [CHANNEL_WECHAT] as const;
+export const CHANNEL_XHS = "xiaohongshu";
+/** 渠道合法值(应用层 Zod 管控,arch/03 枚举演进条款;xhs 特有数据行内 data JSON) */
+export const PUBLISH_CHANNELS = [CHANNEL_WECHAT, CHANNEL_XHS] as const;
 
 /** 渠道注册表(M48 批D 转活:原 PUBLISH_CHANNELS 零消费方死脚手架)——分发中心
  * 读侧渠道枚举校验/渠道名的唯一源。新渠道(小红书等)在此登记即获得:校验放行、
@@ -15,6 +16,7 @@ export const PUBLISH_CHANNELS = [CHANNEL_WECHAT] as const;
  * 加渠道漏登记 label 编译期即红。 */
 export const DISTRIBUTE_CHANNELS: Record<(typeof PUBLISH_CHANNELS)[number], { label: string }> = {
   [CHANNEL_WECHAT]: { label: "微信公众号" },
+  [CHANNEL_XHS]: { label: "小红书" },
 };
 
 /** 渠道参数校验(读侧唯一口):合法返回渠道名,非法/缺省返回 undefined(不过滤) */

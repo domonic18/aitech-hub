@@ -14,7 +14,7 @@ import SyncWechatDialog, {
   type WechatSyncDialogPost,
 } from "@/components/admin/distribute/SyncWechatDialog";
 import type { PostDisplayState } from "@/lib/content/post-schema";
-import { wechatSyncActionLabel } from "@/lib/distribute/channels";
+import { CHANNEL_WECHAT, wechatSyncActionLabel } from "@/lib/distribute/channels";
 
 const OP_BTN =
   "cursor-pointer rounded-sm bg-transparent px-1.5 py-1 text-xs text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50";
@@ -26,7 +26,7 @@ export interface PostSyncView {
   excerpt: string | null;
   seoDescription: string | null;
   syncable: boolean;
-  wechat: { status: string } | null;
+  channels: Array<{ channel: string; status: string }>;
 }
 
 export default function PostRowOps({
@@ -49,7 +49,7 @@ export default function PostRowOps({
   const [error, setError] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
 
-  const status = sync?.wechat?.status ?? null;
+  const status = sync?.channels.find((c) => c.channel === CHANNEL_WECHAT)?.status ?? null;
   const syncDisabled = !wechatReady || !sync?.syncable || status === "pending";
   const syncTitle = !wechatReady
     ? "先到「内容分发」完成公众号配置并启用渠道"

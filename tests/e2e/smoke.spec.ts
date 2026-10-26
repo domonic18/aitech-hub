@@ -2596,7 +2596,22 @@ test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口
     await prisma.publishChannel.deleteMany();
     if (syncRecords.length > 0) {
       await prisma.publishChannel.createMany({
-        data: syncRecords.map((r) => ({ ...r, id: undefined })),
+        // 显式列字段(批X1 起行含 data JSON 列,Json.Value 不可直入 CreateManyInput)
+        data: syncRecords.map((r) => ({
+          postId: r.postId,
+          channel: r.channel,
+          status: r.status,
+          mediaId: r.mediaId,
+          title: r.title,
+          digest: r.digest,
+          thumbPath: r.thumbPath,
+          theme: r.theme,
+          attempts: r.attempts,
+          lastError: r.lastError,
+          syncedAt: r.syncedAt,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+        })),
       });
     }
     await restoreWechatConfig(snap);

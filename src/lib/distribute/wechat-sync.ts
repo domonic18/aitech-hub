@@ -6,7 +6,7 @@
  * (依赖单向 run→sync,本文件是 job 数据契约与行级工具的唯一出口)。 */
 import { randomUUID } from "node:crypto";
 
-import { isP2002, prisma } from "../db";
+import { prisma } from "../db";
 import { logger } from "../logger";
 import {
   getQueue,
@@ -16,6 +16,7 @@ import {
   DISTRIBUTE_JOB_WECHAT_COPY,
 } from "../queue";
 import { getWechatRuntimeConfig, type WechatRuntimeConfig } from "./wechat-config-admin";
+import { ensureChannelRowUnique } from "./channel-row";
 import { DistributeError } from "./errors";
 import { getWechatTheme } from "./wechat-themes";
 import {
@@ -77,15 +78,14 @@ export async function requireReadyConfig(): Promise<WechatRuntimeConfig & { appS
 
 /** 渠道行取用(缺则建 pending 默认行;唯一约束兜底并发建行) */
 export async function ensureChannelRow(postId: bigint) {
-  const where = { postId_channel: { postId, channel: CHANNEL_WECHAT } };
-  const found = await prisma.publishChannel.findUnique({ where });
-  if (found) return found;
-  try {
-    return await prisma.publishChannel.create({ data: { postId, channel: CHANNEL_WECHAT } });
-  } catch (e) {
-    if (isP2002(e)) return prisma.publishChannel.findUniqueOrThrow({ where });
-    throw e;
-  }
+  // M49 批X1:P2002 兜底收口至 channel-row 统一口
+  return ensureChannelRowUnique(
+    () =>
+      prisma.publishChannel.findUnique({
+        where: { postId_channel: { postId, channel: CHANNEL_WECHAT } },
+      }),
+    () => prisma.publishChannel.create({ data: { postId, channel: CHANNEL_WECHAT } }),
+  );
 }
 
 /** 覆盖值校验(弹窗已拦,入口双保险):title 1-64 字、digest ≤120 字 */

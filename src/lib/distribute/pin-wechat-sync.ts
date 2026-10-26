@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { isP2002, prisma } from "../db";
+import { prisma } from "../db";
 import { logger } from "../logger";
 import { DISTRIBUTE_JOB_PIN_WECHAT, getQueue, QUEUE_DISTRIBUTE } from "../queue";
 import {
@@ -20,6 +20,7 @@ import {
   PUBLISH_STATUS_SYNCED,
 } from "./channels";
 import { DistributeError } from "./errors";
+import { ensureChannelRowUnique } from "./channel-row";
 import { ensureCoverMedia } from "./wechat-media";
 import { type WechatCredentials, type WechatNewsPicArticle } from "./wechat-client";
 import { requireReadyConfig } from "./wechat-sync";
@@ -37,24 +38,15 @@ export interface PinWechatSyncResult {
   reason?: string;
 }
 
-/** 渠道留痕行(每贴图×渠道一行;循 publish_channel ensureChannelRow 口径) */
-async function ensurePinChannelRow(pinId: bigint) {
-  const existing = await prisma.contentPinChannel.findUnique({
-    where: { pinId_channel: { pinId, channel: CHANNEL_WECHAT } },
-  });
-  if (existing) return existing;
-  try {
-    return await prisma.contentPinChannel.create({
-      data: { pinId, channel: CHANNEL_WECHAT },
-    });
-  } catch (e) {
-    if (!isP2002(e)) throw e;
-    const row = await prisma.contentPinChannel.findUnique({
-      where: { pinId_channel: { pinId, channel: CHANNEL_WECHAT } },
-    });
-    if (!row) throw e;
-    return row;
-  }
+/** 渠道留痕行(每贴图×渠道一行;P2002 兜底走 channel-row 统一口,M49 批X1) */
+function ensurePinChannelRow(pinId: bigint) {
+  return ensureChannelRowUnique(
+    () =>
+      prisma.contentPinChannel.findUnique({
+        where: { pinId_channel: { pinId, channel: CHANNEL_WECHAT } },
+      }),
+    () => prisma.contentPinChannel.create({ data: { pinId, channel: CHANNEL_WECHAT } }),
+  );
 }
 
 /**
