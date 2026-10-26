@@ -17,8 +17,6 @@ vi.mock("./tools", () => ({
     { name: "submit_feedback" },
   ],
   EDIT_TOOLS: [{ name: "read_draft" }, { name: "propose_edits" }],
-  XHS_TOOLS: [{ name: "save_xhs_draft" }],
-  publishXhsNoteTool: { name: "publish_xhs_note" },
 }));
 vi.mock("./topic-tools", () => ({
   TOPIC_TOOLS: [
@@ -51,9 +49,6 @@ vi.mock("./skill-tools", () => ({
 }));
 vi.mock("./wechat-budget-tool", () => ({
   WECHAT_BUDGET_TOOLS: [{ name: "measure_wechat_budget" }],
-}));
-vi.mock("./xhs-tools", () => ({
-  XHS_TOOLS: [{ name: "save_xhs_draft" }],
 }));
 vi.mock("./checkpointer", () => ({
   ensureAgentCheckpointer: vi.fn(),
@@ -105,8 +100,6 @@ describe("agentToolsFor(工具面按身份分发)", () => {
       "get_skill",
       "measure_wechat_budget",
       "render_card",
-      "save_xhs_draft",
-      "publish_xhs_note",
     ]);
   });
 });

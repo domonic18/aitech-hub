@@ -204,6 +204,24 @@ export default function PinDetailDrawer({
                     : "未同步 · 验收通过后执行「同步草稿箱」"
                 }
               />
+              {(() => {
+                const xhs = detail.channels.find((c) => c.channel === "xiaohongshu");
+                return (
+                  <ChannelRow
+                    label="小红书(人工发布)"
+                    ok={xhs?.status === "synced"}
+                    note={
+                      xhs
+                        ? `${PUBLISH_STATUS_LABELS[xhs.status] ?? `状态 ${xhs.status}`}${
+                            xhs.lastError ? ` · ${xhs.lastError}` : ""
+                          }${xhs.syncedAt ? ` · ${formatCnDateTime(new Date(xhs.syncedAt))}` : ""}${
+                            xhs.publishId ? ` · ${xhs.publishId}` : ""
+                          }`
+                        : "未分发 · 验收通过后执行「标记分发到小红书」"
+                    }
+                  />
+                );
+              })()}
             </>
           )}
         </div>

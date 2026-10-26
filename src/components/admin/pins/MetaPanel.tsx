@@ -24,6 +24,8 @@ export default function MetaPanel({
   resetSignal,
   onSave,
   onSync,
+  onDistributeXhs,
+  onBackfillXhs,
 }: {
   detail: PinDetailDto;
   topics: TopicOption[];
@@ -32,6 +34,8 @@ export default function MetaPanel({
   resetSignal: number;
   onSave: (patch: Record<string, unknown>) => void;
   onSync: () => void;
+  onDistributeXhs: () => void;
+  onBackfillXhs: (noteUrl: string) => void;
 }): React.ReactElement {
   const [title, setTitle] = useState(detail.title);
   const [content, setContent] = useState(detail.content);
@@ -62,6 +66,8 @@ export default function MetaPanel({
     urlOk;
 
   const wechat = detail.channels.find((c) => c.channel === "wechat");
+  const xhs = detail.channels.find((c) => c.channel === "xiaohongshu");
+  const [xhsUrl, setXhsUrl] = useState("");
 
   return (
     <div className="rounded-sm border border-line bg-panel p-3.5">
@@ -207,6 +213,68 @@ export default function MetaPanel({
           同步公众号草稿箱
         </button>
         <p className="mt-1 text-[10.5px] text-text-3">资格:已配置公众号 + 待验收态 + 至少 1 张图</p>
+      </div>
+      <div
+        className={`rounded-sm border border-line border-l-2 px-3 py-2 text-[12px] text-text-2 ${
+          xhs?.status === "synced" ? "border-l-green" : "border-l-accent"
+        }`}
+      >
+        <div className="flex items-center font-medium text-text-1">小红书(人工发布)</div>
+        <div className="mt-0.5 font-mono text-[11px] text-text-3">
+          {xhs
+            ? `状态 ${xhs.status}${xhs.syncedAt ? ` · ${formatCnDateTime(new Date(xhs.syncedAt))}` : ""}${
+                xhs.publishId ? ` · ${xhs.publishId}` : ""
+              }`
+            : "未分发"}
+        </div>
+        {/* 分发是渠道操作非内容编辑:验收过(非草稿)即可,发布态贴图正是分发主对象 */}
+        {detail.status !== "draft" && !xhs && (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onDistributeXhs}
+              className="mt-2 w-full cursor-pointer rounded-sm border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              标记分发到小红书
+            </button>
+            <p className="mt-1 text-[10.5px] text-text-3">
+              小红书无公开发布 API:复制标题与轻文字,到创作平台人工上传图片发布,完成后回填笔记链接
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(`${detail.title}\n\n${detail.content}`)
+                  .catch(() => undefined)
+              }
+              className="mt-1.5 w-full cursor-pointer rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+            >
+              复制发布文案(标题 + 轻文字)
+            </button>
+          </>
+        )}
+        {xhs && xhs.status !== "synced" && (
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              value={xhsUrl}
+              onChange={(e) => setXhsUrl(e.target.value)}
+              placeholder="粘贴小红书笔记链接"
+              className="min-w-0 flex-1 rounded-sm border border-line bg-panel px-2.5 py-1.5 text-xs text-text-1 placeholder:text-text-3 focus:border-accent focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={busy || xhsUrl.trim() === ""}
+              onClick={() => {
+                onBackfillXhs(xhsUrl.trim());
+                setXhsUrl("");
+              }}
+              className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              标记已发布
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -15,7 +15,6 @@ import SyncWechatDialog, {
 } from "@/components/admin/distribute/SyncWechatDialog";
 import type { PostDisplayState } from "@/lib/content/post-schema";
 import { CHANNEL_WECHAT, wechatSyncActionLabel } from "@/lib/distribute/channels";
-import { AGENT_OPEN_EVENT } from "@/lib/agent/agent-host";
 
 const OP_BTN =
   "cursor-pointer rounded-sm bg-transparent px-1.5 py-1 text-xs text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50";
@@ -126,30 +125,6 @@ export default function PostRowOps({
             onClick={() => setSyncOpen(true)}
           >
             {wechatSyncActionLabel(status)}
-          </button>
-        )}
-        {!legacy && (
-          <button
-            type="button"
-            title="唤起 AI 助手撰写小红书笔记(半自动)"
-            className={OP_BTN}
-            onClick={() => {
-              // M49 批X2':撰写走侧边栏 agent 会话(可见可迭代);物料/回填面板
-              // 同步打开,轮询 agent 工具落库后的 ready 物料
-              window.dispatchEvent(
-                new CustomEvent(AGENT_OPEN_EVENT, {
-                  detail: {
-                    // 协议形状:FAB 读 detail.ask.question/send(嵌套),非平铺字符串
-                    ask: {
-                      question: `请先用 read_post 工具阅读文章(post_id=${id}),然后把它改写成一篇小红书笔记并保存:标题 ≤20 字(可含 1 个 emoji);正文 100-1000 字,口语化短段落、适度 emoji、结尾一句互动引导,禁止外链与「公众号/博客」等导流词;3-6 个话题词(不带 # 号)。写完调用 save_xhs_draft 工具保存(post_id="${id}"),保存成功后告诉我。`,
-                      send: true,
-                    },
-                  },
-                }),
-              );
-            }}
-          >
-            小红书
           </button>
         )}
       </span>
