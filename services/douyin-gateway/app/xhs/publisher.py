@@ -156,6 +156,7 @@ class XhsPublisher:
         """发布图文笔记:切换到「上传图文」tab → 上传图片 → 标题/正文 → 提交。"""
         if not images:
             raise XhsStateError("至少需要 1 张图片")
+        step = "打开发布页"
         context = await self._new_context()
         page = await context.new_page()
         try:
@@ -171,25 +172,42 @@ class XhsPublisher:
                 pass
             if "login" in page.url:
                 raise XhsStateError("登录态失效,请到后台分发中心-小红书渠道卡重新配置 Cookie")
-            # 切换到「上传图文」tab:发布页默认选中「上传视频」,须先点击切换
-            # (选择器译自 xhs-mcp-server 实证 .creator-tab;POC 需实测迭代)
-            tabs = page.locator(".creator-tab")
-            if await tabs.count() > 1:
-                await tabs.nth(2).click()
-                await page.wait_for_timeout(1000)
-            # 上传封面图(首张;POC 选择器,平台改版需迭代)
-            upload = page.locator(".upload-input").first
+            # 切「上传图文」tab:按「可见文本+视口内」定位(平台 DOM 每个 tab
+            # 都有视口外的隐藏克隆节点,序号定位会点中克隆,超时报
+            # 「element is outside of the viewport」,2026-10-26 实测)
+            step = "切换上传图文 tab"
+            sel = self._settings.selectors
+            tabs = page.locator(sel["creator_tab"])
+            target = None
+            for i in range(await tabs.count()):
+                t = tabs.nth(i)
+                if self._settings.image_tab_text not in (await t.inner_text()):
+                    continue
+                box = await t.bounding_box()
+                if box and box["x"] >= 0 and box["y"] >= 0:
+                    target = t
+                    break
+            if target is None:
+                raise RuntimeError(
+                    f"发布页找不到可见的「{self._settings.image_tab_text}」入口(平台改版?)"
+                )
+            await target.click()
+            await page.wait_for_timeout(1000)
+            # 上传封面图(首张)
+            step = "上传图片"
+            upload = page.locator(sel["upload_input"]).first
             await upload.set_input_files(images[0])
             await page.wait_for_timeout(3000)
             # 标题/正文按平台上限截断(全自动流程不被超长卡住):标题 20 字
+            step = "填写标题"
             trimmed = title[:20]
-            title_input = page.locator(".d-text").first
-            await title_input.fill(trimmed)
+            await page.locator(sel["title_input"]).first.fill(trimmed)
             # 正文(ql-editor 富文本,平台上限 1000 字)
-            content_box = page.locator(".ql-editor").first
-            await content_box.fill(content[:1000])
+            step = "填写正文"
+            await page.locator(sel["content_editor"]).first.fill(content[:1000])
             # 发布
-            await page.locator(".publishBtn").first.click()
+            step = "点击发布"
+            await page.locator(sel["publish_btn"]).first.click()
             # 发布后跳转/成功提示需数秒;尽力抓笔记链接(抓不到留空,人工补)
             note_url: str | None = None
             try:
@@ -202,6 +220,7 @@ class XhsPublisher:
         except XhsStateError:
             raise
         except Exception as exc:
-            raise RuntimeError(f"小红书发布失败: {exc}") from exc
+            # 人话+步骤名进渠道行 lastError(§6.2);Playwright 日志截断防撑爆
+            raise RuntimeError(f"小红书发布失败[{step}]: {str(exc)[:300]}") from exc
         finally:
             await context.close()
