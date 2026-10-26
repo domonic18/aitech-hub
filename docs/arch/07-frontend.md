@@ -7,9 +7,9 @@
 | 路由 | 策略 | 说明 |
 |------|------|------|
 | `/`(首页) | ISR 600s | 最新/精选文章 + 电报流 LIVE 带(M7 批⑤:SSR 首屏,岛内 60s 轮询;M10 批②:条数后台可配 `site_config.band.item_count` 默认 12,钳 1..50,滚动到底按服务端 `nextOffset` 游标翻页——保底视频只占展示位不占游标,被替换项由后续页补达;客户端 id 去重防轮询前插与翻页追加打架;保存条数即 `revalidatePath("/", "layout")`;M12 批②:项目/文章 rail 条数 `home.repo_count` 默认 3、`home.post_count` 默认 5(均钳 1..12)、站名 `site.title` 与 hub 主文案 `home.hero_md`(行内 markdown,空回退内置)同键族后台可配,站名传播 generateMetadata/Header/Footer/feed.xml/llms.txt) |
-| `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath` |
+| `/post/[slug]`(文章详情,`<slug>`=`<id>-<ascii>` 段) | ISR + 按需 revalidate | 构建期全量预渲染 canonical 段;后台保存文章后由 post service 直调 `revalidatePath`;M23:评论区(`PostComments`)+ 点赞(`PostLikeButton`)为 client island——挂载后 fetch `force-dynamic` API 直查(含个人化 liked),**不进 ISR、治理动作零 revalidate**(隐藏/恢复对访客即时收敛) |
 | `/[slug]`(旧中文链承接) | ISR 600s | 纯 legacy 引擎:查 `legacy_url_map` 命中 → 308,否则 404(不再直接供文) |
-| `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族;M12 批①:条目区客户端「列表 ⇄ 封面卡」视图切换(两视图皆服务端渲染、切换纯显隐零二次请求;localStorage `articles-view` 记忆,默认列表——SSR HTML 即列表,SEO/LCP 不受影响;视图记忆是个人偏好不进 URL,可分享的筛选走 /category、/tag 路由)+ /articles 头部 tag 筛选条(chip 链既有 `/tag/<slug>/` 静态路由,零 searchParams 不破 ISR/canonical) |
+| `/articles`、`/category/[slug]`、`/tag/[slug]`、`/archive` | ISR 600s | 列表族;M12 批①:条目区客户端「列表 ⇄ 封面卡」视图切换(两视图皆服务端渲染、切换纯显隐零二次请求;localStorage `articles-view` 记忆,默认列表——SSR HTML 即列表,SEO/LCP 不受影响;视图记忆是个人偏好不进 URL,可分享的筛选走 /category、/tag 路由)+ /articles 头部 tag 筛选条(chip 链既有 `/tag/<slug>/` 静态路由,零 searchParams 不破 ISR/canonical);M23 延伸:列表卡 meta 行带 评论数/点赞数(列表出口按页内 id groupBy 现查,评论只数 visible,随 ISR 600s 刷新——与详情页实时计数口径差异见 arch/03 决策②) |
 | `/projects/`(开源项目列表,M11) | ISR 600s | 白名单展示仓全量卡片(sortOrder→stars),不分页;admin 写侧即时 revalidate,同步新鲜度走本窗口;首页右栏同源 rail 卡(空白名单整卡不渲染) |
 | `/projects/[slug]/`(项目详情,M11) | ISR 600s + 按需 revalidate | slug 是唯一解析键(登记时派生此后冻结;**无 id 锚点,错 slug 直接 404 不做 308 归一**,构造唯一出口 `src/lib/github/project-path.ts`);README 渲染 + 进展动态 + 配套文章;下架(display=false)即 404 |
 | `/search` | 动态 SSR | 每请求查询;K1 三域分组 + K2 AI 答案卡(arch/04 §3,2026-10-06 第一迭代):分组命中即时 SSR(mark 高亮 + 渠道 chip + 命中度),答案卡 `AnswerCard` 客户端 **fetch + getReader 手解 SSE**(站内流式消费先例;**禁 EventSource**——自动重连会重复计费)流式增强不阻塞命中;0 命中同样挂答案卡(「AI 直接作答」标注);组件 `src/components/site/search/`:SearchConsole/SearchHits/TelegramHit/PostHit/RepoHit/SearchEmpty/AnswerCard/GenTime;noindex 仅页内 robots meta(不在 middleware `X-Robots-Tag` 名单) |
@@ -41,7 +41,13 @@
 7. 分类/标签/legacy 兜底仍走 `src/lib/slug.ts#normalizeSlug`(percent-encoded 中文,与文章 URL 无关):输入可能是解码中文或编码形态,统一归一化为编码形态再查库;`normalizeSlug` 单测钉死编码↔解码往返、`%` 字面量、`+`/空格边界
 8. `generateStaticParams` 只返回 canonical 段(`listPostSegmentsForPrerender`);e2e 冒烟断言:canonical 200、bare-id/错误尾巴 308、旧中文链单跳 301/308 到 `/post/`、410 行 404
 
-## 3. SEO 实现清单
+### 2.1 贴图 URL 终态:/pins/&lt;id&gt;-&lt;slug&gt;(2026-10-22 M41 新增)
+
+与文章同款 id 锚定纪律,唯一构造/解析出口 `src/lib/content/pin-path.ts`(纯函数零 IO,单测钉死;全站贴图链接只许经 `pinPath` 构造):
+
+1. 贴图详情 URL = `/pins/<id>-<ascii-slug>/`;slug 无库列,渲染时由 `asciiSlugFromTitle(title)` 派生(与文章同款实现),纯中文标题 → bare-id `/pins/<id>/` canonical
+2. 解析 `parsePinSegment` 只认 `<digits>[-anything]`,按前导数字段取 id;`/pins/[segment]` 页对比 canonical 段,不一致 `permanentRedirect`(308)归一
+3. 墙页 `/pins/`(瀑布流,revalidate 600)+ 详情 `generateStaticParams` 只返 canonical 段(`listPinSegmentsForPrerender`);sitemap 收录墙页 + 全部 published 贴图(priority 0.7 weekly)
 
 - `app/layout.tsx`:默认 metadata(template `%s | 一起AI`;品牌 2026-10-02 定稿,src 已同批落地:Header 17 monogram 芯片 + icon.svg),`metadataBase = NEXT_PUBLIC_SITE_URL`
 - 文章页 `generateMetadata`:title=seo_title||title,description=seo_description||excerpt,canonical=`/post/<id>-<slug>/`(post-path 构造),OG(article + cover + published_time)
@@ -78,7 +84,8 @@
 2. 命中 → `NextResponse.redirect(target, status)`;`target_url` 为 NULL → 410;未命中 → `notFound()`
 3. Nginx 把新站未命中路由兜底转发到 `/legacy/<path>`(standard/02-cicd-deployment §4),即"先新站路由、后映射表"
 4. **双层兜底(实现注)**:`/category/[slug]`、`/tag/[slug]` 页面查无内容时同进程直查映射表(`lib/content/legacy.ts#legacyRedirectOrNotFound`),命中则 `permanentRedirect`——RSC 页面语境拿不到精确 301(固定 308,同为永久类),表内 `http_status` 的精确表达由本 route 层完成;E2E 断言精确 301 须打 `/legacy/<path>`
-5. **2026-10 URL 迁移行**:`legacy_url_map` 增 103×301(旧中文单段链 → `/post/<id>-<slug>/`,目标带尾斜杠单跳直达)与 53×410(下架删除文);`/[slug]` 页自迁移起为纯 legacy 引擎(不再直接供文,见 §1);Redis `legacy:map:*` 缓存 1h——**部署后须 flush 该前缀**,否则旧行(404/旧目标)最长多活 1h
+5. **后台路由迁移(M42)**:`next.config.ts` redirects 承接 `/admin/topics` → `/admin/studio` 与 `/admin/topics/:path*` → `/admin/studio/:path*`(308;`trailingSlash` 归一后尾斜杠形态另列一条),老书签不断
+6. **2026-10 URL 迁移行**:`legacy_url_map` 增 103×301(旧中文单段链 → `/post/<id>-<slug>/`,目标带尾斜杠单跳直达)与 53×410(下架删除文);`/[slug]` 页自迁移起为纯 legacy 引擎(不再直接供文,见 §1);Redis `legacy:map:*` 缓存 1h——**部署后须 flush 该前缀**,否则旧行(404/旧目标)最长多活 1h
 
 ## 7. 管理后台(/admin)
 
@@ -88,6 +95,8 @@
   - Markdown 导入:「导入 .md / 粘贴」→ 解析全部图片引用 → 弹窗批量上传本地图片(选择文件夹/拖拽/zip,sha1 去重)+ 外链图调 `POST /api/media/import` 转存 → 以返回映射自动替换 md 中的引用为站内 URL → 进编辑器;编辑器内截图粘贴直接走上传管线
   - 封面工作流(M14 批⑤⑥ 已交付):`CoverDialog` 双源选图(本地上传 / 媒体库轻列表 `GET /api/media/pick`)+ 内置裁剪器(react-easy-crop),五模板一次裁剪多尺寸导出——微信公众号 2.35:1 / OG 1200×630 / CSDN 16:9 / 通用横图 / 列表缩略图(前端 canvas 裁剪压缩后按 `cover` 变体上传);AI 文生图已点亮(`cover-gen` 队列 attempts=1 按张计费,coverContext 无标题禁用,逐张落 ai_usage_log 台账)
 - 编辑旧文:content_html 只读展示(提示"旧文保真,如需改写请转 Markdown 重发布"),避免双向转换损毁
+- **创作中心 `/admin/studio`(M42,原专题管理 `/admin/topics*` 308 承接;M43 v2 交互重构为三栏工作台)**:端到端创作台——一个创作项目可出 1 篇长文 + N 张贴图,创作素材必须来自系统内既有条目(解读视频/电报文本/历史文章),agent 可自行搜索补挂。列表(M43 v2):状态分段带计数 × 产出过滤(全部产出/长文创作/贴图创作,`?status=&output=`)× 标题搜索(`?q=`,insensitive contains),三列创作卡(标题/状态徽标/产出徽标 + 进度链「素材 n · 长文 ✓|未生成 · 贴图 n」,整卡链入详情,`pinCountByTopic` groupBy 计数)。详情(M43 v2,参照 Figma/剪映类三栏创作台)= 顶栏 + 工作台:顶栏(返回/状态徽标/标题行内编辑/人工流转钮/状态提示语);左素材栏 264px(分型素材卡 + 「添加素材」弹层:电报/文章页签 + 搜索 + 候选行 + 分页,客户端只持开关态、候选列表仍服务端由 `?mount/q/page` 驱动,深链 `?mount=` 直开);中舞台页签「长文 n | 贴图 n」单点驱动舞台与右配置(`hidden` 切换不卸载,未保存配置不丢;默认页签随主意图)——长文页签=长文产出卡,贴图页签=贴图网格(hover 浮层「去组装台/前台预览/删除」)+ 底部吸附创作条(补充要求 + 恒有「生成长文」「生成贴图」两动作,均经 `openAgentAssistant` 交全局宿主卡执行);右配置栏 312px(长文=四维写作要求 chips+封面勾选+补充要求;贴图=张数/比例/首图裁剪/风格/参照图/补充要求(参照图轨:服务端候选点选[绑定样例图 → 样例图库全量 → 视频封面 → 文章配图 → 本创作贴图] + 上传/剪贴板粘贴入口,均经 `uploadImageFile`→`POST /api/media` 管线入库,路径写「参照图:」条款行随保存落库;M44 验收反馈);两套独立列互不派生;M43 修订:窄栏紧凑重排,选项说明降为悬浮提示,样例与样例参照图库入口移除——`/api/writing-samples` 与已绑数据保留;M44 状态驱动交互(按定稿原型 F2/F5/F6/F7):**生成态=纯前端态**(topic 与 agent 线程无持久化关联,零 schema 改动;跨标签页不可见为已知取舍)——点生成时记落库基线 `{status,updatedAt,linkedPostId,pinIds}`(服务端随 props 下发),`StudioGenerationProvider` 5s 轮询 `GET /api/topics/[id]/studio-state` + 监听 `agent:run-inactive` 即时比对双路径判完成,**完成信号按 kind 分**:post=linkedPostId 出现或 updatedAt 推进,pin=pinIds 集合新 id(`save_topic_pin` 对 drafted 重生成不动 topic 行);完成 → `router.refresh()` 整页重取+绿色横幅(可关)+ 新贴图卡「新」徽标(基线集差集),sessionStorage 同标签页刷新恢复,8min 超时静默清态(成败以助手对话与落库真值为准,不发假横幅)。舞台四态:产出空=三步引导卡(挂素材→确认配置→点创作条,首个未完成步标「当前步骤」)/生成中=进度卡(阶段示意四步+indeterminate 条+骨架瓦片,不伪造逐张进度)/刚完成=横幅+「新」徽标/稳态=产出卡;素材栏底部就绪锚点(n≥2 绿「素材已就绪·可以开始生成」/n=1 amber)与右栏 items-stretch 拉满实现三栏底边对齐;创作条状态化(barLeft 标题态机:先准备素材/下一步:生成初稿(随主意图)/创作动作·生成中(按钮禁用)/本轮已完成 ✓/创作动作,长文已发布带 ✓;barRight 两按钮统一 `px-4 py-2 text-[13px]` 长文实底/贴图描边;补充要求收 details 折叠;按钮 accessible name 与空素材行内拦截回显不漂移——e2e 依赖))
+- **评论管理页 `/admin/comments`(M23 批③,照 /admin/feedback 模板)**:RSC 直调 service(不开列表 API);三分段 tab(全部/显示/隐藏——先发后审无 pending 段)+ 内容/作者关键词搜索 + 分页;行内状态流转(隐藏/恢复两态互切)+ 删根连带(confirm 明示回复数,物理不可逆);WP 迁移评论带「WP」徽标;写 API `PUT/DELETE /api/post-comments/[id]`(仅会话)
 - **媒体库页(重点,详见 arch/08-media)**:图片/视频/文件 Tab + 引用状态过滤(已引用/未引用孤儿/断链)+ 重复检测 + 批量操作 + 存储统计
 - 用户/数据页:AntD Table + 服务端分页
 - 用量统计页 `/admin/usage`(M14 批⑦):RSC 直聚合一屏出数(`lib/ai/usage-queries`,轻聚合不进 BullMQ);KPI×4(tokens/估算费用/ASR 转写/降级次数)+ CN 日趋势 + 任务·模型分布 + 明细 spark;窗口 7/30/90 天链接切换;费用读时按牌价现折,台账 `ai_usage_log` 逐次落行、90 天保留期(worker 04:52 日清 + 手动清理按钮)

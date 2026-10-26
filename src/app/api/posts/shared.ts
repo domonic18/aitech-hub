@@ -17,11 +17,13 @@ const ERROR_STATUS = {
   legacy_readonly: 409,
   category_missing: 400,
   invalid_body: 400,
+  stale_update: 409,
 } as const satisfies Record<PostAdminErrorCode, number>;
 
 export function postErrorResponse(e: unknown): NextResponse {
   if (e instanceof PostAdminError) {
-    return apiEnvelope(ERROR_STATUS[e.code], e.message);
+    // reason 随包络:客户端区分同类状态码的业务错形(如 409 的 slug_conflict/stale_update)
+    return apiEnvelope(ERROR_STATUS[e.code], e.message, { reason: e.code });
   }
   logger.error({ event: "post.write.fail", error: String(e) });
   return apiEnvelope(500, "internal error");

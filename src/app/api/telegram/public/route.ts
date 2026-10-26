@@ -17,6 +17,7 @@ import {
   type PublicTelegramItem,
 } from "@/lib/telegram/public-feed";
 import { FEED_MEDIA_FILTERS, type FeedMediaFilter } from "@/lib/telegram/feed-view";
+import { apiEnvelope } from "@/lib/http/response";
 
 export const dynamic = "force-dynamic";
 
@@ -54,8 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     nextOffset = offset + items.length;
   }
   const today = await countTodayVisible();
-  return NextResponse.json(
-    { code: 0, message: "ok", data: { items, today, nextOffset } },
-    { headers: { "cache-control": "no-store" } },
-  );
+  return apiEnvelope(0, "ok", { items, today, nextOffset }, 200, {
+    "cache-control": "no-store",
+  });
 }

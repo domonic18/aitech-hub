@@ -3,7 +3,8 @@
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
  *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5);
  *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥);
- *    /search 页带 q 时行级直插 stats_search_log(搜索词排行,180 天,2026-10-06)。
+ *    /search 页带 q 时行级直插 stats_search_log(搜索词排行,180 天,2026-10-06);
+ *    在线用户 presence 心跳(5 分钟滑窗 Redis ZSET,M28 批②,online.ts)。
  *  - purgeVisitLogs / purgeSearchLogs:worker 日调度清理保留窗口外明细行。
  *  - ingestBotFetch:爬虫抓取入账(2026-10-07 方案B,middleware→内部端点→
  *    同一 ref 日缓冲 source_class='bot';识别名单见同目录 bots.ts)。
@@ -14,12 +15,14 @@
  */
 import { createHash } from "node:crypto";
 
-import { prisma } from "@/lib/db";
+import { deleteBatchedWhere, prisma } from "@/lib/db";
 import { statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
+import { ingestInsightSignal } from "@/lib/insight/ingest";
 import { geoPostIdOf, type GeoSurface } from "./geo";
+import { touchPresence } from "./online";
 import {
   classifyReferrer,
   isBotUa,
@@ -43,6 +46,12 @@ export interface IngestInput {
   isAdmin: boolean;
   /** /search 页携带的查询词原文(可选;仅在 path 为 /search 且 counted 时记入排行) */
   q?: string;
+  /** /search 命中数(M34 批①,SearchHitMeta 经 beacon 透传):0=零结果(内容缺口
+   * 信号);缺省=未统计(hit_count 落 null,增强前旧数据同口径) */
+  hitCount?: number;
+  /** 在线用户展示标识(可选):登录用户传用户名/邮箱,未登录不传——presence 心跳
+   * 落 IP(M28 批②增量,标识解析在路由侧) */
+  presenceLabel?: string;
 }
 
 export interface IngestResult {
@@ -104,17 +113,41 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
     .catch((e: unknown) => logger.warn({ event: "stats.visit_log.failed", error: String(e) }));
 
   // 搜索词排行(2026-10-06 需求):仅 /search 页 counted PV 记词;行级直插不经缓冲,
-  // 同样不 await 不阻断 beacon,失败仅告警(排行少计一次可接受,不阻塞主口径)
+  // 同样不 await 不阻断 beacon,失败仅告警(排行少计一次可接受,不阻塞主口径)。
+  // M34 批①:命中数随行落 stats_search_log(0=零结果),并链式入洞察信号池
+  // (ingestInsightSignal 自吞异常不 reject,refId=搜索词行 id,幂等)
   if ((path === "/search" || path === "/search/") && input.q) {
     const term = normalizeSearchTerm(input.q);
     if (term !== "") {
+      const hitCount = input.hitCount;
       prisma.statsSearchLog
-        .create({ data: { term } })
+        .create({ data: { term, ...(hitCount === undefined ? {} : { hitCount }) } })
+        .then((row) =>
+          ingestInsightSignal({
+            source: "internal-search",
+            refId: row.id.toString(),
+            rawText: term,
+            signalAt: row.createdAt,
+            meta: hitCount === undefined ? undefined : { hitCount },
+          }),
+        )
         .catch((e: unknown) => logger.warn({ event: "stats.search_log.failed", error: String(e) }));
     }
   }
 
   const postCounted = await countPostView(path, vhash, day);
+
+  // 在线用户 presence(M28 批②):5 分钟滑窗心跳(去 bot/管理员后的真实访客);
+  // 标识=登录用户名/邮箱,未登录落明文 IP(仅 Redis 内存键不入表);fire-and-forget
+  // 失败仅告警(在线数少刷一次可接受)
+  touchPresence(
+    vhash,
+    path,
+    input.presenceLabel
+      ? { kind: "user", label: input.presenceLabel }
+      : { kind: "guest", label: input.ip },
+  ).catch((e: unknown) => logger.warn({ event: "stats.presence.failed", error: String(e) }));
+
   return { counted: true, reason: "ok", postCounted };
 }
 
@@ -164,21 +197,19 @@ export async function ingestGeoFetch(
 /** 明细保留天数(2026-10-04 用户定调:全量 IP + 7 天短留存) */
 const VISIT_LOG_RETENTION_DAYS = 7;
 
-/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志) */
+/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeVisitLogs(): Promise<number> {
   const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * 86_400_000);
-  const r = await prisma.statsVisitLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  return r.count;
+  return deleteBatchedWhere(prisma.statsVisitLog, { createdAt: { lt: cutoff } });
 }
 
 /** 搜索词明细保留天数(无 PII,比访问明细长;排行「全部」窗口的实际上界) */
 const SEARCH_LOG_RETENTION_DAYS = 180;
 
-/** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志) */
+/** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeSearchLogs(): Promise<number> {
   const cutoff = new Date(Date.now() - SEARCH_LOG_RETENTION_DAYS * 86_400_000);
-  const r = await prisma.statsSearchLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  return r.count;
+  return deleteBatchedWhere(prisma.statsSearchLog, { createdAt: { lt: cutoff } });
 }
 
 function hash16(s: string): string {

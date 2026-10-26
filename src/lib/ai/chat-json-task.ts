@@ -22,6 +22,9 @@ export async function chatJsonTask<T>(
   user: string,
   /** 用量台账角色(interpret/summarize/…);缺省不落台账(seo-suggest 等复用方按需传) */
   usageRole?: string,
+  /** 输出预算覆盖(缺省 2000:interpret/summarize 概括规格富余;笔记类长文任务
+   * 按需放大——截断即废 JSON,预算不足会在契约层表现为解析失败) */
+  opts?: { maxTokens?: number },
 ): Promise<T> {
   let lastParseError = "";
   let lastUsage: ChatUsage = { tokensIn: 0, tokensOut: 0 };
@@ -36,6 +39,7 @@ export async function chatJsonTask<T>(
         system,
         user: attempt === 0 ? user : `${user}\n(再次提醒:只输出一个 JSON 对象,不要任何解释)`,
         timeoutSec: model.timeoutSec,
+        maxTokens: opts?.maxTokens,
       },
       (u) => {
         lastUsage = u;

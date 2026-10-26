@@ -16,10 +16,11 @@ const selectField =
   "w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs text-text-1 outline-none focus:border-accent";
 
 /** 日配额输入框仅出现在有真实消费方的角色卡:interpret/summarize(worker 消费
- * getRoleDailyMax,超限延迟 30min 重投)与 search(K1/K2 起答案路由消费,超限
- * 同步降级 unavailable 不重入队——语义差异,arch/04 §3.4)各自可配;cover 存储
- * 与 API 已预留但无消费方,不渲染输入框避免假配置。 */
-const QUOTA_ROLES = ["interpret", "summarize", "search"] as const;
+ * getRoleDailyMax,超限延迟 30min 重投)、search(K1/K2 起答案路由消费,超限
+ * 同步降级 unavailable 不重入队——语义差异,arch/04 §3.4)、insight(M34 批②
+ * 洞察日批消费,超限自动截批不打失败)各自可配;cover 存储与 API 已预留但无
+ * 消费方,不渲染输入框避免假配置。 */
+const QUOTA_ROLES = ["interpret", "summarize", "search", "insight"] as const;
 
 function RoleCard({
   role,

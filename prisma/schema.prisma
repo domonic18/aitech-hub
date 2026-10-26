@@ -15,34 +15,36 @@ datasource db {
 
 /// 文章主表;wpPostId 是与旧站的溯源锚点
 model Post {
-  id              BigInt        @id @default(autoincrement())
-  slug            String?       @unique(map: "uq_content_post_slug") @db.VarChar(255) // 装饰性 ASCII slug(可空可改;URL 由 id 锚定 /post/<id>-<slug>,2026-10 迁移自 percent-encoded 中文)
-  title           String        @db.VarChar(500)
-  excerpt         String?       @db.Text
-  contentHtml     String?       @map("content_html") @db.Text // 旧文正文(清洗后 HTML,只读保真)
-  contentMd       String?       @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
-  coverPath       String?       @map("cover_path") @db.VarChar(500)
-  categoryId      BigInt        @map("category_id")
-  status          String        @default("draft") @db.VarChar(20) // draft/published/deleted(软删;下架=回 draft 保留 published_at;合法值应用层 Zod 管控,arch/03 枚举演进条款)
-  contentOrigin   String        @default("human") @map("content_origin") @db.VarChar(20) // 创作方式:human/ai_assisted/ai_generated(AI 生成内容显式标识,2026-10-05 合规;合法值应用层枚举,见 content/post-schema)
-  isPinned        Boolean       @default(false) @map("is_pinned")
-  viewsCount      BigInt        @default(0) @map("views_count")
-  isPurchasable   Boolean       @default(false) @map("is_purchasable") // M21 批①:付费解锁开关
-  purchasePrice   Decimal?      @map("purchase_price") @db.Decimal(10, 2) // M21 批①:解锁价 CNY(仅 isPurchasable 时有意义)
-  isLoginRequired Boolean       @default(false) @map("is_login_required") // M21 补齐批:登录可见(仿旧站 unlock_type=1;与付费互斥,应用层校验)
-  seoTitle        String?       @map("seo_title") @db.VarChar(255)
-  seoDescription  String?       @map("seo_description") @db.Text
-  publishedAt     DateTime?     @map("published_at") @db.Timestamptz(6)
-  wpPostId        BigInt?       @unique(map: "uq_content_post_wp_post_id") @map("wp_post_id")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              BigInt    @id @default(autoincrement())
+  slug            String?   @unique(map: "uq_content_post_slug") @db.VarChar(255) // 装饰性 ASCII slug(可空可改;URL 由 id 锚定 /post/<id>-<slug>,2026-10 迁移自 percent-encoded 中文)
+  title           String    @db.VarChar(500)
+  excerpt         String?   @db.Text
+  contentHtml     String?   @map("content_html") @db.Text // 旧文正文(清洗后 HTML,只读保真)
+  contentMd       String?   @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
+  coverPath       String?   @map("cover_path") @db.VarChar(500)
+  categoryId      BigInt    @map("category_id")
+  status          String    @default("draft") @db.VarChar(20) // draft/published/deleted(软删;下架=回 draft 保留 published_at;合法值应用层 Zod 管控,arch/03 枚举演进条款)
+  contentOrigin   String    @default("human") @map("content_origin") @db.VarChar(20) // 创作方式:human/ai_assisted/ai_generated(AI 生成内容显式标识,2026-10-05 合规;合法值应用层枚举,见 content/post-schema)
+  isPinned        Boolean   @default(false) @map("is_pinned")
+  viewsCount      BigInt    @default(0) @map("views_count")
+  isPurchasable   Boolean   @default(false) @map("is_purchasable") // M21 批①:付费解锁开关
+  purchasePrice   Decimal?  @map("purchase_price") @db.Decimal(10, 2) // M21 批①:解锁价 CNY(仅 isPurchasable 时有意义)
+  isLoginRequired Boolean   @default(false) @map("is_login_required") // M21 补齐批:登录可见(仿旧站 unlock_type=1;与付费互斥,应用层校验)
+  seoTitle        String?   @map("seo_title") @db.VarChar(255)
+  seoDescription  String?   @map("seo_description") @db.Text
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  wpPostId        BigInt?   @unique(map: "uq_content_post_wp_post_id") @map("wp_post_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  category Category            @relation(fields: [categoryId], references: [id])
-  tags     PostTag[]
-  viewDays StatsPostViewDaily[]
-  mediaRefs MediaRef[]
+  category    Category             @relation(fields: [categoryId], references: [id])
+  tags        PostTag[]
+  viewDays    StatsPostViewDaily[]
+  mediaRefs   MediaRef[]
   githubRepos GithubRepoPost[]
-  channels PublishChannel[]
+  channels    PublishChannel[]
+  comments    PostComment[]
+  likes       PostLike[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -54,6 +56,9 @@ model Category {
   slug        String   @unique(map: "uq_content_category_slug") @db.VarChar(100) // blog / report / news / advertising
   name        String   @db.VarChar(100)
   description String?  @db.Text
+  // 原创分类标记(2026-10-20 验收反馈:首页按「博主文章/推荐视频」分流;
+  // 文章随分类继承——blog/report=true,推荐视频/资讯/推广=false,后台可改)
+  isOriginal  Boolean  @default(false) @map("is_original")
   sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -88,21 +93,21 @@ model PostTag {
 
 /// 媒体统一资产(图片+视频+文件;kind 现在就位,二期视频零迁移)
 model Media {
-  id              BigInt   @id @default(autoincrement())
-  path            String   @unique(map: "uq_content_media_path") @db.VarChar(500) // URL 路径;/wp-content/uploads/... 或 /media/videos/...
-  filename        String   @db.VarChar(255)
-  kind            String   @default("image") @db.VarChar(20) // image/video/file
-  status          String   @default("active") @db.VarChar(20) // active/orphan/missing/processing/error/deleted(应用层 Zod 管控,arch/03 枚举演进条款)
-  sizeBytes       BigInt?  @map("size_bytes")
+  id              BigInt    @id @default(autoincrement())
+  path            String    @unique(map: "uq_content_media_path") @db.VarChar(500) // URL 路径;/wp-content/uploads/... 或 /media/videos/...
+  filename        String    @db.VarChar(255)
+  kind            String    @default("image") @db.VarChar(20) // image/video/file
+  status          String    @default("active") @db.VarChar(20) // active/orphan/missing/processing/error/deleted(应用层 Zod 管控,arch/03 枚举演进条款)
+  sizeBytes       BigInt?   @map("size_bytes")
   width           Int?
   height          Int?
-  durationSeconds Int?     @map("duration_seconds") // 视频用;图片 NULL
-  thumbPath       String?  @map("thumb_path") @db.VarChar(500)
-  sha1            String?  @db.Char(40) // 重复检测与去重
-  storage         String   @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
-  wpAttachmentId  BigInt?  @map("wp_attachment_id")
+  durationSeconds Int?      @map("duration_seconds") // 视频用;图片 NULL
+  thumbPath       String?   @map("thumb_path") @db.VarChar(500)
+  sha1            String?   @db.Char(40) // 重复检测与去重;未软删行唯一约束 uq_content_media_sha1(批⑦ partial unique,Prisma 不表达,见迁移 20261013120000——全列唯一与回收站软删留档语义互斥)
+  storage         String    @default("local") @db.VarChar(20) // local/cos(arch/08-media 演进)
+  wpAttachmentId  BigInt?   @map("wp_attachment_id")
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6) // 软删回收站:7 天后 audit 任务物理删除(arch/08-media §3.2)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([kind, status], map: "idx_content_media_kind_status")
   @@map("content_media")
@@ -120,31 +125,82 @@ model MediaRef {
   @@map("content_media_ref")
 }
 
+/// 文章评论(M23;先发后审:无 pending 态,新发即 visible,治理=隐藏/恢复)。
+/// 仅登录用户可评论;userId 无 FK(账号删除留档,feedback 同纪律),authorName
+/// 为写侧快照(登录=nickname,迁移=WP 原名),渲染零 join。parentId 自引用无 FK,
+/// 应用层两级封顶(子回复一律挂根 id),删根连带直接子由 service 事务显式收集。
+/// wpCommentId 为旧站 wp_comments 迁移幂等键(legacy-comments oneoff 脚本)。
+model PostComment {
+  id          BigInt   @id @default(autoincrement())
+  postId      BigInt   @map("post_id")
+  userId      BigInt?  @map("user_id")
+  authorName  String   @map("author_name") @db.VarChar(100)
+  content     String   @db.VarChar(4000) // 列宽 4000 容旧站迁移实测 max 2143(dry-run 2026-10-10);新提交 zod 限 1..1000
+  status      String   @default("visible") @db.VarChar(16) // visible | hidden(应用层 Zod 管控)
+  parentId    BigInt?  @map("parent_id") // 自引用无 FK:两级封顶由应用层校验(仅挂根)
+  wpCommentId BigInt?  @unique(map: "uq_content_post_comment_wp_comment_id") @map("wp_comment_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  post  Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  likes PostCommentLike[]
+
+  @@index([postId, status, createdAt], map: "idx_content_post_comment_post_visible")
+  @@index([status, createdAt(sort: Desc)], map: "idx_content_post_comment_status_recent")
+  @@map("content_post_comment")
+}
+
+/// 文章点赞(M23):游客可赞;identityKey 单列去重("u:<userId>" | "v:<ah_av uuid>"),
+/// 不用 (userId?, visitorId?) 双列——PG unique 中 NULL 互不判重,双列拦不住游客
+/// 重复赞。不加冗余计数列:计数由 API 现查 COUNT(arch/03 决策注记)。
+model PostLike {
+  postId      BigInt   @map("post_id")
+  identityKey String   @map("identity_key") @db.VarChar(42)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, identityKey], map: "uq_content_post_like_post_identity")
+  @@map("content_post_like")
+}
+
+/// 评论点赞(M23):与 PostLike 同构;commentId FK Cascade 随评论收尸。
+model PostCommentLike {
+  commentId   BigInt   @map("comment_id")
+  identityKey String   @map("identity_key") @db.VarChar(42)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  comment PostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, identityKey], map: "uq_content_post_comment_like_comment_identity")
+  @@map("content_post_comment_like")
+}
+
 // ── user_(账号域)───────────────────────────────────────────────
 
 model UserAccount {
-  id              BigInt    @id @default(autoincrement())
-  phone           String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
-  username        String?   @unique(map: "uq_user_account_username") @db.VarChar(100) // M21 批⓪:邮箱注册用户名,登录标识之一
-  email           String?   @unique(map: "uq_user_account_email") @db.VarChar(255) // M21 批⓪:邮箱通道(D1)
-  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
-  nickname        String?   @db.VarChar(100)
-  avatarPath      String?   @map("avatar_path") @db.VarChar(500)
-  bio             String?   @db.VarChar(500)
-  assistantVisible Boolean  @default(true) @map("assistant_visible") // M22:悬浮助手 FAB 显隐(账号级,跨设备;游客走 localStorage)
-  role           String    @default("user") @db.VarChar(20) // user/admin
-  status         String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
-  passwordHash   String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
-  wpUserId       BigInt?   @unique(map: "uq_user_account_wp_user_id") @map("wp_user_id")
-  legacyUsername String?   @map("legacy_username") @db.VarChar(100)
-  legacyPhpass   String?   @map("legacy_phpass") @db.VarChar(255) // 仅审计留存,登录永不使用
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               BigInt    @id @default(autoincrement())
+  phone            String?   @unique(map: "uq_user_account_phone") @db.VarChar(20)
+  username         String?   @unique(map: "uq_user_account_username") @db.VarChar(100) // M21 批⓪:邮箱注册用户名,登录标识之一
+  email            String?   @unique(map: "uq_user_account_email") @db.VarChar(255) // M21 批⓪:邮箱通道(D1)
+  emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  nickname         String?   @db.VarChar(100)
+  avatarPath       String?   @map("avatar_path") @db.VarChar(500)
+  bio              String?   @db.VarChar(500)
+  assistantVisible Boolean   @default(true) @map("assistant_visible") // M22:悬浮助手 FAB 显隐(账号级,跨设备;游客走 localStorage)
+  role             String    @default("user") @db.VarChar(20) // user/admin
+  status           String    @default("active") @db.VarChar(20) // active/disabled/pending_binding
+  passwordHash     String?   @map("password_hash") @db.VarChar(255) // 可空,自愿补设(bcrypt)
+  wpUserId         BigInt?   @unique(map: "uq_user_account_wp_user_id") @map("wp_user_id")
+  legacyUsername   String?   @map("legacy_username") @db.VarChar(100)
+  legacyPhpass     String?   @map("legacy_phpass") @db.VarChar(255) // 仅审计留存,登录永不使用
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  pats UserPat[]
+  pats               UserPat[]
   verificationTokens UserVerificationToken[]
-  tokenWallet UserTokenWallet?
-  tokenLedger UserTokenLedger[]
+  tokenWallet        UserTokenWallet?
+  tokenLedger        UserTokenLedger[]
 
   @@index([status], map: "idx_user_account_status")
   @@map("user_account")
@@ -395,10 +451,27 @@ model StatsVisitLog {
 model StatsSearchLog {
   id        BigInt   @id @default(autoincrement())
   term      String   @db.VarChar(100) // 用户输入原文(trim + 空白折叠后截 100 字,不折叠大小写)
+  hitCount  Int?     @map("hit_count") // 命中数(M34 批① 增强):null=增强前旧数据;0=零结果(内容缺口信号,洞察中心消费)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([createdAt(sort: Desc)], map: "idx_stats_search_log_created_at")
   @@map("stats_search_log")
+}
+
+/// 条目点击明细(M28 批①):首页/电报流条目点击行为统计,行级直插不经缓冲;
+/// 无 PII(无 IP/无访客哈希,行为聚合不需要访客维度),循 stats_search_log 先例
+/// 180 天保留(worker 日清)。ref 无外键:telegram/post 存 BigInt id 文本、
+/// project 存冻结 slug,标题查询侧反解(删文/删条目 title 兜底占位)
+model StatsClickLog {
+  id        BigInt   @id @default(autoincrement())
+  surface   String   @db.VarChar(20) // home/telegram(点击发生的页面)
+  kind      String   @db.VarChar(20) // telegram/project/post(条目类型)
+  ref       String   @db.VarChar(100) // 条目键:telegram/post=BigInt id 文本,project=slug
+  domain    String   @default("") @db.VarChar(100) // 外链域名(服务端从 target 解析;站内链接空串)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "idx_stats_click_log_created_at")
+  @@map("stats_click_log")
 }
 
 /// 混合检索语义向量(M20,arch/04 §3.2):三域内容 embedding(pgvector 余弦召回,
@@ -453,7 +526,7 @@ model CrawlSource {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  telegrams Telegram[]
+  telegrams      Telegram[]
   socialAccounts SocialAccount[]
 
   @@map("crawl_source")
@@ -461,32 +534,33 @@ model CrawlSource {
 
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
 model Telegram {
-  id          BigInt    @id @default(autoincrement())
-  sourceId    Int       @map("source_id")
-  title       String?   @db.VarChar(500)
-  summary     String    @db.VarChar(1000) // 1-3 句(一期规则截断,LLM 摘要后置开关)
-  url         String    @db.VarChar(1000) // 原文外链(一律跳原站)
-  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
-  contentHash String    @unique(map: "uq_telegram_content_hash") @map("content_hash") @db.Char(40) // sha1(title+url 规范化)
-  status      String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
-  filterHit   String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
-  mediaType   String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
+  id              BigInt    @id @default(autoincrement())
+  sourceId        Int       @map("source_id")
+  title           String?   @db.VarChar(500)
+  summary         String    @db.VarChar(1000) // 1-3 句(一期规则截断,LLM 摘要后置开关)
+  url             String    @db.VarChar(1000) // 原文外链(一律跳原站)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  contentHash     String    @unique(map: "uq_telegram_content_hash") @map("content_hash") @db.Char(40) // sha1(title+url 规范化)
+  status          String    @default("visible") @db.VarChar(20) // visible/hidden/archived/deleted(软删)
+  filterHit       String?   @map("filter_hit") @db.VarChar(200) // 命中的过滤规则/屏蔽词(命中默认不 visible)
+  mediaType       String    @default("text") @map("media_type") @db.VarChar(10) // text/video(M8 混合流)
   // 视频字段组(media_type=video;解读列组见下——不设 transcript/play_url,版权红线 arch/02 §3.2)
-  videoPlatform   String? @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
-  videoBlogger    String? @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
-  videoCoverUrl   String? @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
-  videoDuration   Int?    @map("video_duration") // 秒
-  videoEngagement Json?   @map("video_engagement") // {play,like,comment}
+  videoPlatform   String?   @map("video_platform") @db.VarChar(20) // douyin/xhs/bilibili
+  videoBlogger    String?   @map("video_blogger") @db.VarChar(100) // 冗余博主名,博主删除不影响历史条目
+  videoCoverUrl   String?   @map("video_cover_url") @db.VarChar(1000) // 封面缩略图
+  videoDuration   Int?      @map("video_duration") // 秒
+  videoEngagement Json?     @map("video_engagement") // {play,like,comment}
   // AI 解读列组(M9,interpreter 队列产物):仅持久化分析结论(topic/summary/points),
   // 转写文本是输入不是资产、play_url 不落库(临时音视频文件判读即删)
-  aiStatus    String?   @map("ai_status") @db.VarChar(20) // null=未解读/pending/processing/done/missing_transcript/failed
-  aiTopic     String?   @map("ai_topic") @db.VarChar(50)
-  aiSummary   String?   @map("ai_summary") @db.VarChar(1000)
-  aiPoints    Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
-  aiKeywords  Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
-  aiRanAt     DateTime? @map("ai_ran_at") @db.Timestamptz(6)
-  lastAiError String?   @map("last_ai_error") @db.VarChar(500)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  aiStatus        String?   @map("ai_status") @db.VarChar(20) // null=未解读/pending/processing/done/missing_transcript/failed
+  aiTopic         String?   @map("ai_topic") @db.VarChar(50)
+  aiSummary       String?   @map("ai_summary") @db.VarChar(1000)
+  aiPoints        Json?     @map("ai_points") // string[](≤3 条,应用层 Zod 管控)
+  aiKeywords      Json?     @map("ai_keywords") // string[](3-5 个,M12 批⑥ 文字条关键词 tag;禁泛词)
+  aiNote          String?   @map("ai_note") @db.Text // 解读笔记(M26):interpreter 二次调用产出的分析笔记 markdown;null=未产出/存量(转写即删红线不变,笔记是分析产物)
+  aiRanAt         DateTime? @map("ai_ran_at") @db.Timestamptz(6)
+  lastAiError     String?   @map("last_ai_error") @db.VarChar(500)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
@@ -559,7 +633,7 @@ model AiModel {
   pricePerImage     Float?    @map("price_per_image") // 生图牌价 ¥/张(cover 角色)
   concurrency       Int       @default(4)
   timeoutSec        Int       @default(60) @map("timeout_sec")
-  extraParams       Json?     @map("extra_params") // 供应商扩展参数(如生图 watermark_enabled),浅合并进请求体;保留键不可覆盖
+  extraParams       Json?     @map("extra_params") // 供应商扩展参数(如生图 watermark_enabled),浅合并进请求体;保留键不可覆盖,生图保留键显式 null=剔除(严格校验供应商适配)
   enabled           Boolean   @default(true)
   lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
   lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
@@ -657,6 +731,160 @@ model AiUsageLog {
   @@map("ai_usage_log")
 }
 
+// ── ai_illu_(配图工坊,M40 批 B,arch/05 §4.7)──────────────────────
+// 版本链/图层组/图层行三表:根版本=进入工坊的原始整图(generate_illustration
+// 出图即登记,拆层仍纯手动——M40 决策);编辑回路确认后产新版本(parent 单链);
+// 拆层一次运行=一个图层组(干净底板+透明 PNG 图层行)。spike 实证契约
+// (2026-10-22,workspace/tmp/spike-illustration-studio/):底图=抠净元素的
+// 干净底板(显隐组合导出语义成立,藏层即元素真消失);官方水印烙在底板上
+// (导出恒带水印,合规自动闭环);图层=bbox 区域高分重提(纵横比与 bbox 一致、
+// 尺寸非等比),合成按 normalized bbox 定位缩放。
+
+/// 配图版本(版本链节点):mediaPath=该版本整图(站内媒体路径,编辑回路输入
+/// 与产物);origin 记产生方式;edit_instruction/edit_bbox 记复现依据
+/// (original 两列为 null)。name=展示名(登记时从提示词派生,链上随根;
+/// NULL=历史行,展示兜底「配图 #id」);source=登记口('agent'|'studio',
+/// NULL=历史行不显来源)。parent 单链不分支(评审史即链);不设删除
+/// (版本不可变历史,M40 无删除面)。
+model IllustrationVersion {
+  id              BigInt   @id @default(autoincrement())
+  mediaPath       String   @map("media_path") @db.VarChar(500)
+  parentVersionId BigInt?  @map("parent_version_id")
+  origin          String   @db.VarChar(20) // original/text_edit/erase/redraw
+  name            String?  @db.VarChar(200) // 展示名(提示词派生前 40 字,链内继承)
+  source          String?  @db.VarChar(20) // 登记口:agent(会话生图)/studio(工坊直出)
+  editInstruction String?  @map("edit_instruction") @db.VarChar(1000) // 产生本版本的编辑指令
+  editBbox        String?  @map("edit_bbox") @db.VarChar(40) // normalized "x1 y1 x2 y2"
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  parent  IllustrationVersion?   @relation("illu_version_chain", fields: [parentVersionId], references: [id])
+  children IllustrationVersion[] @relation("illu_version_chain")
+  groups  IllustrationLayerGroup[]
+
+  @@index([parentVersionId], map: "idx_ai_illu_version_parent")
+  @@index([mediaPath], map: "idx_ai_illu_version_media")
+  @@map("ai_illu_version")
+}
+
+/// 图层组(一次拆层运行):version 维度手动触发;改字后旧组即过期(手动重拆
+/// 产新组,旧组保留供回看)。status=processing 时编辑器轮询;ready 后 layers
+/// 可用;failed 带人话 error。baseMediaPath=干净底板(data[0] 转存,合成
+/// 与画布预览的背景层——非 version.mediaPath 整图)。
+model IllustrationLayerGroup {
+  id            BigInt   @id @default(autoincrement())
+  versionId     BigInt   @map("version_id")
+  baseMediaPath String?  @map("base_media_path") @db.VarChar(500) // 底板转存路径(ready 后非空)
+  status        String   @default("processing") @db.VarChar(12) // processing/ready/failed
+  error         String?  @db.VarChar(500)
+  modelId       Int      @map("model_id") // ai_model.id(拆层调用溯源,与用量台账对账)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  version IllustrationVersion @relation(fields: [versionId], references: [id])
+  layers  IllustrationLayer[]
+
+  @@index([versionId, createdAt], map: "idx_ai_illu_group_version_created")
+  @@map("ai_illu_layer_group")
+}
+
+/// 图层行(拆层产物单层):bbox=官方 normalized[0-999] x1/y1/x2/y2(合成定位
+/// 唯一依据,spike 实证图层尺寸非等比必须按 bbox 缩放);mediaPath=透明 PNG
+/// 站内转存路径(官方 URL 24h 过期前由 worker 转存);visible=显隐组合
+/// (默认全显,导出在前端画布按 z 序合成底板+可见层)。
+model IllustrationLayer {
+  id          BigInt   @id @default(autoincrement())
+  groupId     BigInt   @map("group_id")
+  zIndex      Int      @map("z_index")
+  name        String   @db.VarChar(200)
+  description String?  @db.VarChar(500)
+  bboxX1      Int      @map("bbox_x1")
+  bboxY1      Int      @map("bbox_y1")
+  bboxX2      Int      @map("bbox_x2")
+  bboxY2      Int      @map("bbox_y2")
+  mediaPath   String   @map("media_path") @db.VarChar(500)
+  visible     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  group IllustrationLayerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, zIndex], map: "idx_ai_illu_layer_group_zindex")
+  @@map("ai_illu_layer")
+}
+
+// ── content_pin(贴图域,M41 渠道三)──────────────────────────────
+
+/// 贴图(渠道三主实体,「一文看懂XXX」轻图文):标题 ≤32 码点(公众号
+/// newspic 硬上限,应用层 Zod)+ 轻文字纯文本(≤2 万码点,UI 软帽 2000)+
+/// 有序图片列表(content_pin_image,引用配图工坊 ai_illu_version 不拷文件)+
+/// 专题软关联。status 状态机:draft(草稿)→ pending(待验收)→ synced(已推
+/// 公众号草稿箱)→ published(站点 /pins 上架);回退仅 pending→draft。
+/// read_more_url 同步时写公众号 content_source_url(阅读原文回跳站内)。
+/// crop_spec 为封面裁剪快照(cover_info.crop_percent_list,同步随 draft/add)。
+model ContentPin {
+  id          BigInt    @id @default(autoincrement())
+  title       String    @db.VarChar(64) // ≤32 码点(应用层 Zod;VarChar 留字节数余量)
+  content     String    @default("") @map("content") @db.Text // 轻文字纯文本(禁 Markdown/内联 HTML)
+  topicId     BigInt?   @map("topic_id") // 专题软关联(应用层完整性:删专题由编辑侧改挂)
+  status      String    @default("draft") @db.VarChar(20) // draft/pending/synced/published(应用层 Zod)
+  readMoreUrl String?   @map("read_more_url") @db.VarChar(500)
+  cropSpec    String    @default("1_1") @map("crop_spec") @db.VarChar(40) // 1_1/16_9/2.35_9
+  referenceMediaPath String? @map("reference_media_path") @db.VarChar(500) // 生图采纳的参照图(站内 uploads 路径,soft ref;缺省回落到创作样例图/素材封面)
+  syncedAt    DateTime? @map("synced_at") @db.Timestamptz(6) // 最近一次公众号草稿同步成功
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6) // 站点 /pins 上架时间
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  images   ContentPinImage[]
+  channels ContentPinChannel[]
+
+  @@index([status, updatedAt(sort: Desc)], map: "idx_content_pin_status_updated")
+  @@index([topicId, updatedAt(sort: Desc)], map: "idx_content_pin_topic_updated")
+  @@map("content_pin")
+}
+
+/// 贴图有序图片:version_id 引用配图工坊版本(soft ref 应用层完整性,不拷
+/// 文件不回写;本地上传为 null);media_path 为挂载时快照——工坊后续改字产
+/// 新版本不篡改已挂序列,升版由人工在组装台重挂。首张即封面(公众号
+/// image_list 顺序 = 本表 sort_order;站点瀑布流封面同源)。
+model ContentPinImage {
+  id        BigInt   @id @default(autoincrement())
+  pinId     BigInt   @map("pin_id")
+  versionId BigInt?  @map("version_id")
+  mediaPath String   @map("media_path") @db.VarChar(500) // 站内路径(/wp-content/uploads/…)
+  width     Int?
+  height    Int?
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  pin ContentPin @relation(fields: [pinId], references: [id], onDelete: Cascade)
+
+  @@index([pinId, sortOrder], map: "idx_content_pin_image_pin_sort")
+  @@map("content_pin_image")
+}
+
+/// 贴图渠道留痕(循 publish_channel 同款):每贴图×渠道一行,(pin,channel)
+/// 唯一;media_id=公众号草稿 media_id(draft/add newspic 回执,重推走
+/// draft/update);publish_id 预留 freepublish 发表回执。失败可重试
+/// (attempts/last_error 人话,同步管线落)。
+model ContentPinChannel {
+  id        BigInt    @id @default(autoincrement())
+  pinId     BigInt    @map("pin_id")
+  channel   String    @db.VarChar(20) // wechat(合法值应用层 Zod,arch/03 枚举演进条款)
+  status    String    @default("pending") @db.VarChar(20) // pending/synced/failed(应用层 Zod)
+  mediaId   String?   @map("media_id") @db.VarChar(100) // 公众号草稿 media_id
+  publishId String?   @map("publish_id") @db.VarChar(100) // freepublish 回执(预留)
+  attempts  Int       @default(0) @map("attempts")
+  lastError String?   @map("last_error") @db.VarChar(500)
+  syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pin ContentPin @relation(fields: [pinId], references: [id], onDelete: Cascade)
+
+  @@unique([pinId, channel], map: "uq_content_pin_channel_pin_channel")
+  @@map("content_pin_channel")
+}
+
 // ── site_(站点配置域,M10)────────────────────────────────────────
 
 /// 站点配置 kv(通用底座,后续设置键在此登记复用):value 一律字符串,
@@ -688,9 +916,9 @@ model GithubRepo {
   homepage         String?   @db.VarChar(500)
   defaultBranch    String    @default("main") @map("default_branch") @db.VarChar(100)
   // README 缓存(base64 解码后 md;渲染时相对链接按 fullName/defaultBranch 重写)
-  readmeMd        String?   @map("readme_md") @db.Text
-  readmeSha       String?   @map("readme_sha") @db.Char(40) // sha 不变跳写,防 updatedAt/sitemap lastmod 空转
-  readmeFetchedAt DateTime? @map("readme_fetched_at") @db.Timestamptz(6)
+  readmeMd         String?   @map("readme_md") @db.Text
+  readmeSha        String?   @map("readme_sha") @db.Char(40) // sha 不变跳写,防 updatedAt/sitemap lastmod 空转
+  readmeFetchedAt  DateTime? @map("readme_fetched_at") @db.Timestamptz(6)
   // 展示与调度
   display          Boolean   @default(true) // 前台展示开关(下架不删数据)
   sortOrder        Int       @default(0) @map("sort_order") // 展示排序(小在前)
@@ -769,6 +997,59 @@ model WechatConfig {
   @@map("publish_wechat_config")
 }
 
+/// 飞书工作台免登配置单例(M29 批①,plan M29):自建应用凭证;appSecret
+/// write-only AES-256-GCM(secret-box,循 publish_wechat_config 同口径);
+/// enabled=免登通道总开关(凭证齐+测试通过后再开)。
+model AdminFeishuConfig {
+  id                Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  appId             String    @default("") @map("app_id") @db.VarChar(50) // cli_ 开头;空=未配置
+  appSecretEnc      String?   @map("app_secret_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  appSecretMask     String?   @map("app_secret_mask") @db.VarChar(20) // 脱敏回显冗余列
+  enabled           Boolean   @default(false) // 免登通道总开关
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("admin_feishu_config")
+}
+
+/// 系统出口代理单例(M33 批B,plan M33):采集网关全部出站走家宽代理
+/// (全局单点,用户定调);proxyUrl write-only AES-256-GCM(secret-box,
+/// 循 admin_feishu_config 同口径),URL 只过境不回显;enabled=代理通道
+/// 总开关(连通测试通过后再开)。网关零密钥不变:worker 解密后随请求携带。
+model SystemProxyConfig {
+  id                Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  proxyUrlEnc       String?   @map("proxy_url_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  proxyUrlMask      String?   @map("proxy_url_mask") @db.VarChar(60) // 脱敏回显冗余列(scheme://host:port 形)
+  enabled           Boolean   @default(false) // 代理通道总开关
+  lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus    String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError     String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?      @map("last_test_latency_ms")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_proxy_config")
+}
+
+/// admin 账号 ↔ 飞书身份绑定(M29 批①):免登白名单本体——fail-closed,
+/// 仅本表 unionId 可静默兑换 admin 会话;无 DB 外键,应用层完整性
+/// (userId 由 requireAdminRequest 会话锚定,unionId 由服务端兑换锚定)。
+model AdminFeishuBinding {
+  id         BigInt   @id @default(autoincrement())
+  userId     BigInt   @unique(map: "uq_admin_feishu_binding_user") @map("user_id") // 一账号一飞书身份
+  unionId    String   @unique(map: "uq_admin_feishu_binding_union") @map("union_id") @db.VarChar(64) // 一飞书身份一账号
+  openId     String   @map("open_id") @db.VarChar(64) // 应用内 openId(兑换回传,冗余留展示)
+  feishuName String?  @map("feishu_name") @db.VarChar(100) // 兑换时姓名快照(审计友好)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("admin_feishu_binding")
+}
+
 /// 渠道分发状态(requirement §4 publish_channel;channel 字段渠道中立,
 /// 一期仅 wechat,CSDN/知乎/掘金后置接入):每篇×渠道一行,(post,channel) 唯一。
 /// media_id 有值重推走 draft/update,无值走 draft/add;title/digest/thumb_path
@@ -785,6 +1066,10 @@ model PublishChannel {
   theme     String?   @db.VarChar(20) // 正文主题快照(上次推送所用 id;空=渠道默认,重推沿用)
   attempts  Int       @default(0) @map("attempts") // 推送尝试次数(观测)
   lastError String?   @map("last_error") @db.VarChar(500)
+  /// 渠道扩展数据(M49 批X1:xiaohongshu 起非微信渠道的渠道特有字段走此 JSON——
+  /// xhs: noteUrl(发布回填)/materialPath(物料包)/coverPath(3:4 封面卡)等;
+  /// wechat 既有类型化列保留不动(零搬迁零回归),新渠道禁再加渠道专名列)
+  data      Json?
   syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -887,4 +1172,264 @@ model Feedback {
 
   @@index([status, createdAt(sort: Desc)], map: "idx_feedback_status_recent")
   @@map("feedback")
+}
+
+// ── discovery_(优质内容发现域,M25,方案锚 docs/plan/discovery-plan.md)──
+
+/// 发现词库(任务A 联想词 + 人工种子):active 词是任务B 发现输入,
+/// 新词 pending 经治理台确认后滚雪球闭环。word 落库即归一形(trim+lower),
+/// 唯一约束与查重同一口径;origin/status 合法值应用层 Zod 管控。
+model DiscoveryKeyword {
+  id            BigInt    @id @default(autoincrement())
+  word          String    @unique(map: "uq_discovery_keyword_word") @db.VarChar(100) // 归一形(trim+lower)
+  origin        String    @db.VarChar(10) // manual | hotword
+  status        String    @default("pending") @db.VarChar(10) // pending | active | dismissed | merged(并入已有词的别名)
+  source        String?   @db.VarChar(30) // hotword 来源标识(如 bili-suggest/bing-suggest)
+  mergedIntoId  BigInt?   @map("merged_into_id") // 合并目标词(候选治理 F24;合并词命中统计随目标词)
+  mergedInto    DiscoveryKeyword? @relation("KeywordMergeTarget", fields: [mergedIntoId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mergedFrom    DiscoveryKeyword[] @relation("KeywordMergeTarget")
+  firstSeenAt   DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([mergedIntoId], map: "idx_discovery_keyword_merged_into")
+  @@map("discovery_keyword")
+}
+
+/// 发现候选(任务B 产物,L0 元数据预筛 + 治理台人工终审):
+/// blogger=博主候选(治理台唯一系统出口,批准后人工至博主管理登记);
+/// video=热点视频(治理台人工终审)。数据唯一真相源在本系统;外部分发
+/// (如飞书选题库)不经系统内代码,后续经 MCP 接口由 Claude Code 打通。
+/// upsert 幂等键 (type, platform, externalId);重复发现刷新统计与 round,
+/// 不动 status(人工终审结论不回退)。
+model DiscoveryCandidate {
+  id           BigInt   @id @default(autoincrement())
+  type         String   @db.VarChar(10) // blogger | video
+  platform     String   @db.VarChar(20) // v1: bilibili
+  externalId   String   @map("external_id") @db.VarChar(100) // B站 mid(博主)或 bvid(视频)
+  round        String   @db.VarChar(8) // 发现批次 YYYYMMDD(Asia/Shanghai)
+  title        String?  @db.VarChar(500) // video 标题;blogger 置空(样本见 sample_titles)
+  author       String?  @db.VarChar(100)
+  homepageUrl  String?  @map("homepage_url") @db.VarChar(500) // 博主主页/视频链接
+  hitKeywords  Json?    @map("hit_keywords") // string[] 命中词(多词前排反复出现=强信号)
+  hitCount     Int?     @map("hit_count")
+  maxPlay      Int?     @map("max_play")
+  totalPlay    Int?     @map("total_play")
+  fans         Int? // card 接口补齐,失败可空(后续轮次或人工补)
+  archives     Int? // card 接口补齐,失败可空
+  sampleTitles Json?    @map("sample_titles") // string[] 标题样本前5
+  l0Verdict    String   @map("l0_verdict") @db.VarChar(10) // pass | reject
+  l0Reason     String?  @map("l0_reason") @db.VarChar(300) // 人话理由,治理台直读(如「名称命中营销特征词:学院」)
+  status       String   @default("pending") @db.VarChar(10) // pending | approved | rejected
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([type, platform, externalId], map: "uq_discovery_candidate_identity")
+  @@index([status, type], map: "idx_discovery_candidate_status_type")
+  @@index([round], map: "idx_discovery_candidate_round")
+  @@map("discovery_candidate")
+}
+
+// ── insight_(洞察中心域,M34,方案锚 docs/plan/insight-plan.md)──────────────
+// 五介质痕迹模型(方案 §2):钱/时间/声音/搜索/AI 记录,真需求 ≥2 介质留痕。
+
+/// 洞察信号(批① 只入内部零采集源:搜索词/agent 问句/评论/feedback/电报 AI
+/// 产物;外部源批③④ 接入)。写侧唯一入口 lib/insight/ingest(fire-and-forget,
+/// 幂等键 (source, ref_id) 撞唯一即跳过,回填与实时入池可并发)。domain 为
+/// 跨域伏笔(远期 AI invest 财经打通/分布式爬虫多领域,方案 §1),批① 恒 tech。
+/// embedding 批② 回填,读写 raw SQL(SearchEmbedding 同款,client 不暴露)。
+model InsightSignal {
+  id             BigInt                       @id @default(autoincrement())
+  source         String                       @db.VarChar(30) // internal-search/internal-agent/internal-comment/internal-feedback/telegram-ai(批③起扩 hotboard-* 等)
+  domain         String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔)
+  medium         String                       @db.VarChar(12) // money/time/voice/search/ai-record(五介质)
+  refId          String                       @map("ref_id") @db.VarChar(120) // 溯源锚:源行 id 文本/会话 id(幂等键半)
+  rawText        String                       @map("raw_text") @db.Text // 原文(截 4000)
+  normalizedText String                       @map("normalized_text") @db.Text // 归一后(trim+空白折叠,截 2000;聚类/向量输入)
+  meta           Json? // 源相关:{hitCount,postId,category,title,topic...}
+  embedding      Unsupported("vector(1024)")? // 批② 回填;raw SQL 读写
+  signalAt       DateTime                     @map("signal_at") @db.Timestamptz(6) // 信号发生时间(非采集时间)
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  members InsightClusterMember[]
+
+  @@unique([source, refId], map: "uq_insight_signal_source_ref")
+  @@index([signalAt(sort: Desc)], map: "idx_insight_signal_recent")
+  @@index([source, signalAt(sort: Desc)], map: "idx_insight_signal_source_recent")
+  @@map("insight_signal")
+}
+
+/// 痛点/热点簇(批② 聚类产物):信号向量近邻归簇建簇,LLM 日批打标可读化。
+/// media=留痕介质集合(机会评分卡输入,方案 §2;批②=成员介质并集,LLM 判定批③
+/// 多介质外部源接入再收)。status 流转纪律:批② 仅 fading 兜底(14 天无新成员),
+/// 阈值实测后定参(方案 §9-5)。labeledMemberCount=打标时成员数(增量重打标判定);
+/// coverageScore/coverageState=内容覆盖度(日批对 post 向量近邻回写,看板直读免连查)。
+model InsightCluster {
+  id          BigInt   @id @default(autoincrement())
+  kind        String   @db.VarChar(8) // hot | pain
+  sentiment   String?  @map("sentiment") @db.VarChar(8) // 舆情倾向(LLM 打标扩展位):positive|neutral|negative|mixed;null=未打标,读侧按中性显示
+  domain      String   @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
+  label       String?  @db.VarChar(200) // LLM 命名(人话;未打标 null)
+  summary     String?  @db.VarChar(1000) // LLM 一句话概括
+  keywords    Json? // string[]
+  media       Json? // string[] 留痕介质集合
+  score       Float? // 最新机会分
+  labeledAt          DateTime? @map("labeled_at") @db.Timestamptz(6) // 最近 LLM 打标时间
+  labeledMemberCount Int       @default(0) @map("labeled_member_count") // 打标时成员数
+  coverageScore      Float?    @map("coverage_score") // 内容覆盖度 0-1(日批回写)
+  coverageState      String?   @map("coverage_state") @db.VarChar(10) // covered | partial | blank
+  status      String   @default("active") @db.VarChar(10) // active | fading | closed
+  firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  peakAt      DateTime? @map("peak_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members   InsightClusterMember[]
+  snapshots InsightSnapshot[]
+
+  @@index([kind, status], map: "idx_insight_cluster_kind_status")
+  @@map("insight_cluster")
+}
+
+/// 簇-信号归属(同域 FK Cascade:信号/簇删除自动收尸,不靠应用层)
+model InsightClusterMember {
+  id        BigInt         @id @default(autoincrement())
+  clusterId BigInt         @map("cluster_id")
+  signalId  BigInt         @map("signal_id")
+  weight    Float?
+  cluster   InsightCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  signal    InsightSignal  @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, signalId], map: "uq_insight_cluster_member")
+  @@index([signalId], map: "idx_insight_cluster_member_signal")
+  @@map("insight_cluster_member")
+}
+
+/// 簇每日快照(趋势 sparkline/异动告警输入,批② 写入)
+model InsightSnapshot {
+  id        BigInt         @id @default(autoincrement())
+  clusterId BigInt         @map("cluster_id")
+  date      DateTime       @db.Date
+  score     Float
+  rank      Int?
+  cluster   InsightCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, date], map: "uq_insight_snapshot_cluster_date")
+  @@map("insight_snapshot")
+}
+
+/// 热榜源登记(M34 批③ 验收反馈:纳入采集计划管理):fetcher 注册表(代码)
+/// 的运行态投影——enabled=运行时启停闸(fetch 轮按表过滤,停用源不拉取),
+/// lastRunAt/consecutiveFails/lastError 由 fetch 编排逐源回写(crawl_source
+/// 同口径,连败可见)。缺行按启用处理:新 fetcher 上线免迁移即生效,台账读侧
+/// 懒登记;启停只挡采集,不动 INSIGHT_SOURCES_ENABLED 读侧白名单。
+model InsightHotSource {
+  source           String    @id @db.VarChar(30) // hot-baidu/hot-zhihu/hot-bilibili(=InsightSource hot-*)
+  enabled          Boolean   @default(true)
+  consecutiveFails Int       @default(0) @map("consecutive_fails")
+  lastRunAt        DateTime? @map("last_run_at") @db.Timestamptz(6)
+  lastError        String?   @map("last_error") @db.VarChar(300)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("insight_hot_source")
+}
+
+// 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
+// 真相源(零飞书耦合),compose 初稿锚 content_post;itemId 应用层完整性
+// (同 discovery 两表口径,无 FK)
+model Topic {
+  id             BigInt    @id @default(autoincrement())
+  title          String    @db.VarChar(200)
+  positioning    String?   @db.VarChar(1000) // 长文创作配置(四维条款文本,compose prompt 主输入)
+  pinPositioning String?   @map("pin_positioning") @db.VarChar(1000) // 贴图创作配置(张数/比例/裁剪/风格条款文本;与 positioning 独立,互不派生)
+  outputType     String    @default("article") @map("output_type") @db.VarChar(20) // article | pin:主意图(决定新建默认与 agent 分支,不限制另一种产出;应用层 Zod)
+  status         String    @default("collecting") @db.VarChar(20) // collecting | drafted | published(合法值应用层 Zod,arch/03 枚举演进条款)
+  skillKey       String?   @map("skill_key") @db.VarChar(50) // 绑定 agent_skill 的稳定引用(M30 批②;合成写稿按它取指南,soft ref 随 skill 删降级)
+  linkedPostId   BigInt?   @map("linked_post_id") // 创作长文 content_post 锚(落稿时写,应用层完整性;一创作至多一篇)
+  sampleImageId  BigInt?   @map("sample_image_id") // 样例参照图(writing_sample_image,soft ref 应用层完整性;M39 批③ 生图风格参照)
+  composedAt   DateTime? @map("composed_at") @db.Timestamptz(6)
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  items TopicItem[]
+
+  @@index([status, updatedAt(sort: Desc)], map: "idx_topic_status_updated")
+  @@map("topic")
+}
+
+model TopicItem {
+  id        BigInt   @id @default(autoincrement())
+  topicId   BigInt   @map("topic_id")
+  itemType  String   @map("item_type") @db.VarChar(20) // telegram | post(合法值应用层 Zod)
+  itemId    BigInt   @map("item_id") // 应用层完整性:telegram.id / content_post.id
+  note      String?  @db.VarChar(500) // 人工批注(compose 取舍指令)
+  sortOrder Int      @default(0) @map("sort_order") // 合成时的叙事顺序
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, itemType, itemId], map: "uq_topic_item_identity")
+  @@index([topicId, sortOrder], map: "idx_topic_item_topic_sort")
+  @@map("topic_item")
+}
+
+/// 样例参照图库(M39 批③):管理员上传的风格参照图,绑到 topic.sample_image_id,
+/// 合成生图(generate_illustration reference_path)时以 data URL 传 Seedream
+/// `image` 参数,出图向参照风格靠拢。media_path 为媒体库站内路径
+/// (/wp-content/uploads/…);文件归媒体库治理(sha1 去重、可能被正文引用),
+/// 本表删行不删媒体;topic 引用为 soft ref(删行事务置空,应用层完整性)。
+model WritingSampleImage {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.VarChar(100) // 展示名(可重命名,默认取上传文件名去扩展)
+  mediaPath String   @map("media_path") @db.VarChar(500) // 媒体库站内路径(uploadsUrlToRel 可逆)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("writing_sample_image")
+}
+
+/// Agent skill(M30 批①):业务流程纪律从 agent 系统提示提取为可管理资产——
+/// 写作指南、分发流程等「知识型」扩展均落此表,后台建改即时生效零发版;
+/// agent 经统一两工具渐进披露取用(批② 接线:list 元数据先行、get 按需全文)。
+/// key 为 agent 侧/topic.skillKey 的稳定引用名;scenario 为适用场景(一行,
+/// 供 agent 选 skill 对号);guideMd 为指南正文(markdown,可引用既有工具名);
+/// 种子收编「博主×视频」指南 + 码点预算段(幂等 seed,不覆盖后台后续编辑)。
+model AgentSkill {
+  id        BigInt   @id @default(autoincrement())
+  key       String   @unique(map: "uq_agent_skill_key") @db.VarChar(50)
+  name      String   @db.VarChar(100)
+  scenario  String   @db.VarChar(200) // 适用场景(供 agent/管理员选 skill 时对号)
+  guideMd   String   @map("guide_md") @db.Text // 指南正文(markdown,流程纪律;机械执行归工具/管线)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("agent_skill")
+}
+
+/// 任务运行台账(验收二批③,学习 ai-invest collector_log):系统全部周期批任务
+/// (cron 调度 + 手动触发,含 LLM/向量调用类)的持久运行记录——BullMQ
+/// removeOnComplete 只留近几次,挂死/失败/耗时无处可查。单一写入口=worker
+/// 分发器包装(worker/job-run#withJobRunLog):执行前先落 running 行(挂死
+/// 立即可见),终态回写 summary/error。tick 类纯心跳(crawler/github/stats-flush
+ /// /pay-sweep)不落账——其工作单元在各自台账(crawl_source/github_repo)有账。
+model JobRun {
+  id         BigInt    @id @default(autoincrement())
+  jobKey     String    @map("job_key") @db.VarChar(60) // 稳定键 queue/name(如 insight/fetch)
+  queue      String    @db.VarChar(40)
+  jobName    String    @map("job_name") @db.VarChar(60)
+  trigger    String    @db.VarChar(10) // cron | manual(jobId 带 -manual- 前缀)
+  status     String    @db.VarChar(10) // running | success | failed
+  startedAt  DateTime  @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  durationMs Int?      @map("duration_ms")
+  summary    Json? // job 级汇总(处理器返回值;超长截断)
+  error      String? @db.Text // 失败信息(截 4000)
+
+  @@index([startedAt(sort: Desc)], map: "idx_job_run_recent")
+  @@index([jobKey, startedAt(sort: Desc)], map: "idx_job_run_key_recent")
+  @@map("job_run")
 }

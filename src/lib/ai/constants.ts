@@ -19,13 +19,29 @@ export const AI_PURPOSE_SUMMARIZE = "summarize";
 export const AI_PURPOSE_SEARCH = "search";
 export const AI_PURPOSE_COVER = "cover";
 export const AI_PURPOSE_EMBEDDING = "embedding";
-/** 模型用途 = 任务角色(五角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化) */
+/** 文章写作(2026-10-17 验收反馈:撰写文章捆绑为独立单任务 write_article,
+ * 与编排模型解耦——起草可绑长输出模型,编排照旧走 search 绑定) */
+export const AI_PURPOSE_WRITING = "writing";
+/** 洞察归纳(M34 批②,insight-plan §5.4):簇命名/一句话概括/关键词日批 LLM,
+ * 走 AiTaskBinding 治理(ai_usage_log 落 role=insight) */
+export const AI_PURPOSE_INSIGHT = "insight";
+/** 配图生图(M39,topic-pipeline-plan §13;§13.9 重定义为内容可视化图文):
+ * 正文带字内容图生成(编排形态由 agent 决定),与封面(cover)分角色——模型
+ * 偏好与成本档位不同,绑定校验按角色隔离;走同一 images 探针与生图管线 */
+export const AI_PURPOSE_ILLUSTRATE = "illustrate";
+/** 模型用途 = 任务角色(八角色,arch/04 §4 任务绑定;embedding=M20 混合检索向量化,
+ * writing=专题文章起草单任务,insight=M34 洞察簇归纳,illustrate=M39 配图生图)。
+ * compose(专题合成)已退役(M27 批⑤):合成改走会话 agent(search 绑定),
+ * 历史台账 role=compose 行保留读侧回退原值展示 */
 export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SUMMARIZE,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_COVER,
+  AI_PURPOSE_ILLUSTRATE,
   AI_PURPOSE_EMBEDDING,
+  AI_PURPOSE_WRITING,
+  AI_PURPOSE_INSIGHT,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -52,10 +68,25 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     icon: "i-picture",
     sub: "文章题图 + OG 图生成",
   },
+  [AI_PURPOSE_ILLUSTRATE]: {
+    label: "配图生图",
+    icon: "i-picture",
+    sub: "正文带字内容图生成(专题写作配图工艺·文生图图文)",
+  },
   [AI_PURPOSE_EMBEDDING]: {
     label: "语义向量",
     icon: "i-aim",
     sub: "混合检索:三域内容 embedding + 查询向量化(pgvector 余弦召回)",
+  },
+  [AI_PURPOSE_WRITING]: {
+    label: "文章写作",
+    icon: "i-edit",
+    sub: "专题文章正文起草(write_article 单任务;与编排模型解耦,可绑长输出模型)",
+  },
+  [AI_PURPOSE_INSIGHT]: {
+    label: "洞察归纳",
+    icon: "i-eye",
+    sub: "洞察中心簇命名/概括/关键词日批打标(信号向量聚类后的可读化)",
   },
 };
 
@@ -92,3 +123,18 @@ export const AI_CONFIG_PAT_DENY = "PAT must not manage AI service config";
 
 /** 错误详情截断宽度(HTTP 响应体摘要/探测错误落 last_test_error 前统一截断) */
 export const AI_ERR_DETAIL_MAX = 200;
+
+/** 生图宽高比档位(§13.9:宽高比是模型物理约束属机制参数,不携带内容语义;
+ * 键序=UI 展示序,横版与封面同档 16:9,竖版适配小红书 3:4,方图兜底)。此前
+ * illustrate-generate 与三个 UI 组件四份平行,改分辨率要动四处(M47 批A' 收敛) */
+export const ILLUSTRATE_ASPECT_SIZES: Record<string, string> = {
+  "3:4": "864x1152",
+  "1:1": "1024x1024",
+  "16:9": "1344x768",
+};
+
+/** 宽高比下拉选项(标签「比例 · 分辨率」,自上映射派生;1:1 自此显全尺寸) */
+export const ILLUSTRATE_ASPECT_OPTIONS = Object.keys(ILLUSTRATE_ASPECT_SIZES).map((key) => ({
+  key,
+  label: `${key} · ${ILLUSTRATE_ASPECT_SIZES[key].replace("x", "×")}`,
+}));

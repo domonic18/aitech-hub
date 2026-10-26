@@ -15,6 +15,14 @@ export const CRAWL_SOURCE_TYPES = [
 ] as const;
 export type CrawlSourceType = (typeof CRAWL_SOURCE_TYPES)[number];
 
+/** 已实现采集管线的类型(M48 批E:adapters 仅 rss,web/api 建了必「适配器未实现」
+ * 每轮报错;social-video 走博主采集管线,真实存在)——渠道创建/编辑 Zod 与 UI
+ * 选项一律用本清单,全集 CRAWL_SOURCE_TYPES 仅保留类型语义 */
+export const CRAWL_SOURCE_TYPES_IMPLEMENTED = [
+  CRAWL_SOURCE_TYPE_RSS,
+  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+] as const;
+
 export const CRAWL_SOURCE_STATUS_HEALTHY = "healthy";
 export const CRAWL_SOURCE_STATUS_DEGRADED = "degraded";
 export const CRAWL_SOURCE_STATUS_ERROR = "error";
@@ -52,6 +60,9 @@ export const VIDEO_PLATFORM_LABELS: Record<string, string> = {
 export const SOCIAL_CRAWL_INTERVAL_MIN = 120;
 /** 博主连续失败阈值(语义同渠道侧 ≥3 → 观测降级;写 last_error 供博主台账) */
 export const SOCIAL_MAX_CONSECUTIVE_FAILS = 3;
+/** 池耗尽(NoJarAvailable)顺延重试间隔:风控冷却分钟~小时级,15min 短延探恢复;
+ * 不计博主连续失败(2026-10-14:单视频门冷却唯一 jar 连带 9 博主连败的免疫) */
+export const SOCIAL_POOL_COOLDOWN_RETRY_MIN = 15;
 /** 首采回填窗口(天)与条数上限:防新登记博主刷屏(arch/02 §3.2 shell 降级可见) */
 export const SOCIAL_BACKFILL_DAYS = 7;
 export const SOCIAL_BACKFILL_MAX_ITEMS = 10;
@@ -99,10 +110,12 @@ export const TELEGRAM_ID_RE = /^\d{1,19}$/;
 export const BLOCKLIST_SCOPE_TITLE = "title";
 export const BLOCKLIST_SCOPE_SUMMARY = "summary";
 export const BLOCKLIST_SCOPE_ALL = "all";
+export const BLOCKLIST_SCOPE_COMMENT = "comment"; // M23:文章评论先发后审的自动闸
 export const BLOCKLIST_SCOPES = [
   BLOCKLIST_SCOPE_TITLE,
   BLOCKLIST_SCOPE_SUMMARY,
   BLOCKLIST_SCOPE_ALL,
+  BLOCKLIST_SCOPE_COMMENT,
 ] as const;
 export type BlocklistScope = (typeof BLOCKLIST_SCOPES)[number];
 

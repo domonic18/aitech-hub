@@ -21,7 +21,8 @@
     "admin": "tsx scripts/ops/admin.ts",
     "prepare": "husky",
     "backup:run": "tsx scripts/ops/db-backup-trigger.ts",
-    "embed:run": "tsx scripts/ops/embed-reconcile-trigger.ts"
+    "embed:run": "tsx scripts/ops/embed-reconcile-trigger.ts",
+    "insight:run": "tsx scripts/ops/insight-trigger.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -38,6 +39,11 @@
   "dependencies": {
     "@assistant-ui/react": "^0.15.25",
     "@assistant-ui/react-langgraph": "^0.14.33",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/merge": "^6.12.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
     "@langchain/anthropic": "^1.5.12",
     "@langchain/langgraph": "^1.4.19",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
@@ -51,6 +57,7 @@
     "cheerio": "^1.2.0",
     "cos-nodejs-sdk-v5": "^3.0.0",
     "deepagents": "^1.14.2",
+    "diff-match-patch": "^1.0.5",
     "fast-xml-parser": "^5.11.2",
     "ffmpeg-static": "^5.3.0",
     "ioredis": "^6.0.0",
@@ -66,6 +73,8 @@
     "react-easy-crop": "^6.2.3",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "sharp": "^0.35.5",
     "turndown": "^7.2.4",
@@ -77,6 +86,7 @@
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
+    "@types/diff-match-patch": "^1.0.36",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^22",
     "@types/pg": "^8.23.1",

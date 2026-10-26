@@ -3,7 +3,8 @@
  * 平台行取 jar 池 → 适配器 listing → 增量地板(publishedAt > last_post_at,
  * 首采回填窗口限条)→ content_hash 去重 → 屏蔽词/启发式 → 视频 shell 落库
  * (media_type=video,降级可见)→ 解读就绪则入 interpreter 队列(M9)→ 推进博主地板与调度。
- * 失败归因:网关不可达=基础设施(不计博主连续失败);上游风控/结构=计失败。
+ * 失败归因:网关不可达与 Cookie 池耗尽=基础设施/运营态(不计博主连续失败,
+ * 池耗尽 15min 短延探恢复);上游风控/结构=计失败。
  * 无水印 play_url 不落库,仅经 interpret job data 过境即焚(版权红线 arch/02 §3.2)。
  */
 import { isP2002, prisma } from "../db";
@@ -11,6 +12,7 @@ import { logger } from "../logger";
 import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { jarsFromConfig } from "./cookies";
+import { getEgressProxyRuntime } from "./egress-proxy";
 import { isInterpretReady, markPendingAndEnqueue } from "./interpret-video";
 import {
   SOCIAL_BACKFILL_DAYS,
@@ -18,6 +20,7 @@ import {
   SOCIAL_BACKFILL_MAX_PAGES,
   SOCIAL_MANUAL_BACKFILL_DAYS,
   SOCIAL_MAX_CONSECUTIVE_FAILS,
+  SOCIAL_POOL_COOLDOWN_RETRY_MIN,
   TELEGRAM_MEDIA_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
@@ -27,18 +30,8 @@ import {
 import { matchBlocklist, matchHeuristics, type BlocklistWord, type FilterHit } from "./filter";
 import { canonicalUrl, contentHash, decodeHtmlEntities, truncateSummary } from "./normalize";
 import { tryConsumeDailyQuota } from "./rate-limit";
-import { douyinAdapter } from "./adapters/video/douyin";
-import {
-  GatewayUnavailableError,
-  GatewayUpstreamError,
-  type VideoAdapter,
-  type VideoItem,
-} from "./adapters/video";
-
-/** 平台适配器注册表(B站后补只加一行) */
-const ADAPTERS: Partial<Record<VideoPlatform, VideoAdapter>> = {
-  douyin: douyinAdapter,
-};
+import { ADAPTERS } from "./adapters/video/registry";
+import { GatewayUnavailableError, GatewayUpstreamError, type VideoItem } from "./adapters/video";
 
 export interface VideoCrawlOutcome {
   accountId: number;
@@ -51,6 +44,8 @@ export interface VideoCrawlOutcome {
   duplicated: number;
   skippedDailyCap: boolean;
   skippedNoCookies: boolean;
+  /** 池耗尽顺延(M30 批A):网关 jar 全冷却,本轮未执行,短延重探 */
+  deferredPoolCooldown: boolean;
 }
 
 function nextRunAt(intervalMin: number, from: Date): Date {
@@ -158,6 +153,7 @@ export async function crawlVideoAccount(
     duplicated: 0,
     skippedDailyCap: false,
     skippedNoCookies: false,
+    deferredPoolCooldown: false,
   };
   if (!account || !account.enabled || !account.platformRow.enabled) return outcome;
 
@@ -209,9 +205,12 @@ export async function crawlVideoAccount(
   }
 
   try {
+    // 出口代理(M33 批B,全局单点):启用了就随请求携带(网关零密钥);未配置=直连零分叉
+    const egress = await getEgressProxyRuntime();
     const items = await adapter.fetchRecentVideos({
       secUid: account.secUid,
       cookies: jars,
+      ...(egress ? { proxy: egress.proxyUrl } : {}),
       ...(outcome.backfill ? { maxPages: SOCIAL_BACKFILL_MAX_PAGES } : {}),
     });
     outcome.fetched = items.length;
@@ -257,6 +256,22 @@ export async function crawlVideoAccount(
     });
     return outcome;
   } catch (err) {
+    if (err instanceof GatewayUpstreamError && err.kind === "NoJarAvailableError") {
+      // 池耗尽 ≠ 博主采集失败(M30 批A 免疫):请求未发出、无归因到该博主——
+      // 2026-10-14 实证单视频 voucher 门冷却唯一 jar 时 9 博主被连带计连败。
+      // 风控恢复期 15min 短延重探,不计连续失败不烧告警
+      outcome.deferredPoolCooldown = true;
+      await advance({
+        lastError: "Cookie 池冷却中(风控恢复期),约 15 分钟后自动重试",
+        nextRunAt: new Date(now.getTime() + SOCIAL_POOL_COOLDOWN_RETRY_MIN * 60_000),
+      });
+      logger.warn({
+        event: "crawler.video.pool_cooldown_deferred",
+        accountId: account.id,
+        nickname: account.nickname,
+      });
+      return outcome;
+    }
     if (err instanceof GatewayUnavailableError) {
       // 基础设施故障 ≠ 博主采集失败:顺延本轮,连续失败不累计(告警走 BullMQ failed)
       await advance();

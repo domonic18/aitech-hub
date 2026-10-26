@@ -2,36 +2,45 @@
  * 文章管理写侧 + 管理列表 service(M5-a;arch/05-services §1/§2):
  * 事务只在 service 层;revalidatePath 在事务提交成功后编排(revalidate.ts 是唯一落点)。
  * 旧文保真红线:WP 迁移的 HTML 正文(contentHtml 且无 contentMd)不可经后台改写。
+ * 管理列表(listPostsAdmin)已拆 posts-admin-list(技术债批⑤),此处 re-export
+ * 维持消费面同入口。
  */
 import { prisma } from "@/lib/db";
 // M17 发布自动分发(渠道开关默认关):跨域单向依赖(distribute 不回头依赖 content 写侧)
 import { maybeEnqueueAutoWechat } from "@/lib/distribute/wechat-sync";
 import { logger } from "@/lib/logger";
 import { extractMediaRefs, syncMediaRefs } from "@/lib/media/refs";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { normalizeSlug } from "@/lib/slug";
 
 import { revalidatePostPaths } from "./revalidate";
 import { asciiSlugCandidates, asciiSlugFromTitle } from "./post-path";
-import { POST_STATUS_DELETED, type PostCreateInput, type PostUpdateInput } from "./post-schema";
+import {
+  POST_STATUS_DELETED,
+  coverPathSchema,
+  type PostCreateInput,
+  type PostUpdateInput,
+} from "./post-schema";
 
-export const ADMIN_PAGE_SIZE = 15;
+export { ADMIN_PAGE_SIZE, listPostsAdmin, type AdminListQuery } from "./posts-admin-list";
 
 /**
  * 路径/字符串 id → BigInt(管理 API 与编辑页共用,评审 W4 收口双轨):
  * 非纯数字或溢出返回 null,由调用方决定 404/400 语义。
+ * M47 批B 委托 parse-id 单源(此前无界 /^\d+$/,int64 上限外BigInt 不炸但落库无意义)。
  */
 export function parsePostId(raw: string): bigint | null {
-  if (!/^\d+$/.test(raw)) return null;
-  try {
-    return BigInt(raw);
-  } catch {
-    return null;
-  }
+  return parseBigIntId(raw);
 }
 
 /** 业务错误 → Handler 按码映射 HTTP 状态,不裸抛 */
 export type PostAdminErrorCode =
-  "not_found" | "slug_conflict" | "legacy_readonly" | "category_missing" | "invalid_body";
+  | "not_found"
+  | "slug_conflict"
+  | "legacy_readonly"
+  | "category_missing"
+  | "invalid_body"
+  | "stale_update";
 
 export class PostAdminError extends Error {
   constructor(
@@ -42,70 +51,6 @@ export class PostAdminError extends Error {
   }
 }
 
-/** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString)。
- * M17 批④:同步弹窗默认值需 coverPath/seoTitle/seoDescription/excerpt,
- * 行操作「同步公众号」需 channels 状态(pending 禁点/synced 提示覆盖)。 */
-const ADMIN_LIST_SELECT = {
-  id: true,
-  slug: true,
-  title: true,
-  status: true,
-  publishedAt: true,
-  updatedAt: true,
-  viewsCount: true,
-  wpPostId: true,
-  contentMd: true,
-  coverPath: true,
-  seoTitle: true,
-  seoDescription: true,
-  excerpt: true,
-  category: { select: { slug: true, name: true } },
-  tags: { select: { tag: { select: { name: true } } } },
-  channels: { select: { channel: true, status: true } },
-} as const;
-
-export type AdminPostRow = Awaited<ReturnType<typeof listPostsAdmin>>["items"][number];
-
-export interface AdminListQuery {
-  page: number;
-  segment: "all" | "published" | "draft" | "unpublished";
-  q?: string;
-}
-
-function segmentWhere(segment: AdminListQuery["segment"], q?: string) {
-  const text = q
-    ? {
-        OR: [{ title: { contains: q } }, { slug: { contains: q } }],
-      }
-    : {};
-  // 软删(deleted)任何分段都不可见;下架 = draft 且 publishedAt 非空
-  const base = { status: { not: POST_STATUS_DELETED }, ...text };
-  if (segment === "published") return { ...base, status: "published" };
-  if (segment === "draft") return { ...base, status: "draft", publishedAt: null };
-  if (segment === "unpublished") return { ...base, status: "draft", publishedAt: { not: null } };
-  return base;
-}
-
-/** 管理列表(草稿含)+ 四分段计数;updatedAt 倒序(最近改动优先) */
-export async function listPostsAdmin({ page, segment, q }: AdminListQuery) {
-  const where = segmentWhere(segment, q);
-  const countWhere = (seg: AdminListQuery["segment"]) => segmentWhere(seg, q);
-  const [items, all, published, draft, unpublished] = await prisma.$transaction([
-    prisma.post.findMany({
-      where,
-      select: ADMIN_LIST_SELECT,
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      skip: (page - 1) * ADMIN_PAGE_SIZE,
-      take: ADMIN_PAGE_SIZE,
-    }),
-    prisma.post.count({ where: countWhere("all") }),
-    prisma.post.count({ where: countWhere("published") }),
-    prisma.post.count({ where: countWhere("draft") }),
-    prisma.post.count({ where: countWhere("unpublished") }),
-  ]);
-  return { items, total: all, counts: { all, published, draft, unpublished }, page, segment };
-}
-
 /** 编辑器取稿:草稿含;软删不可取 */
 export async function getPostForAdmin(id: bigint) {
   const post = await prisma.post.findFirst({
@@ -113,6 +58,8 @@ export async function getPostForAdmin(id: bigint) {
     include: {
       category: { select: { slug: true, name: true } },
       tags: { select: { tag: { select: { slug: true, name: true } } } },
+      // M31:编辑页顶栏公众号同步入口回显渠道行状态
+      channels: { select: { channel: true, status: true } },
     },
   });
   return post;
@@ -129,8 +76,9 @@ export async function getPostBySlugAdmin(slug: string) {
   });
 }
 
-/** 标签按名 upsert(Prototype admin-editor:tags 按名自动建),返回关联 id 集 */
-async function upsertTags(
+/** 标签按名 upsert(Prototype admin-editor:tags 按名自动建),返回关联 id 集;
+ * 导出供专题落稿核(compose)在覆盖分支复用 */
+export async function upsertTags(
   tx: Pick<typeof prisma, "tag">,
   names: string[],
 ): Promise<Array<{ tagId: bigint }>> {
@@ -215,12 +163,13 @@ export async function createPost(
 /**
  * 更新(草稿含)。旧文保真:WP 迁移的纯 HTML 正文拒绝改写;
  * slug 可改(id 锚定 URL,改后旧 /post/<id>-<旧>/ 由 canonical 对比 308 归一;缺省 = 不修改);
+ * expectedUpdatedAt(M27 批①):与加载时刻不一致 → stale_update 409,人工刷新决策,不强覆盖;
  * 已发布文章更新后重放 revalidate(slug 变更时新旧缓存面都失效)。
  */
 export async function updatePost(
   id: bigint,
   input: PostUpdateInput,
-): Promise<{ slug: string | null }> {
+): Promise<{ slug: string | null; updatedAt: string }> {
   const post = await prisma.post.findFirst({
     where: { id, status: { not: POST_STATUS_DELETED } },
   });
@@ -230,6 +179,12 @@ export async function updatePost(
       "legacy_readonly",
       "旧文保真:HTML 正文不可改写,请转 Markdown 重新发布",
     );
+  }
+  if (
+    input.expectedUpdatedAt !== undefined &&
+    input.expectedUpdatedAt !== post.updatedAt.toISOString()
+  ) {
+    throw new PostAdminError("stale_update", "文章已在其他端被修改,请刷新页面后重试");
   }
   const category = await prisma.category.findUnique({ where: { slug: input.categorySlug } });
   if (!category) {
@@ -247,9 +202,9 @@ export async function updatePost(
     nextSlug = input.slug;
   }
 
-  await prisma.$transaction(async (tx) => {
+  const updatedAt = await prisma.$transaction(async (tx) => {
     const tags = await upsertTags(tx, input.tags);
-    await tx.post.update({
+    const updated = await tx.post.update({
       where: { id },
       data: {
         title: input.title,
@@ -272,6 +227,7 @@ export async function updatePost(
         ...(input.isLoginRequired === undefined ? {} : { isLoginRequired: input.isLoginRequired }),
         tags: { deleteMany: {}, ...(tags.length > 0 ? { create: tags } : {}) },
       },
+      select: { updatedAt: true },
     });
     // 引用先删后插,与正文/封面原子一致(编辑器封面工作流 M5-b 起真实写 cover_path)
     await syncMediaRefs(
@@ -279,12 +235,32 @@ export async function updatePost(
       id,
       extractMediaRefs({ contentMd: input.contentMd, coverPath: input.coverPath || null }),
     );
+    return updated.updatedAt;
   });
   if (post.status === "published") {
     if (post.slug && post.slug !== nextSlug) revalidatePostPaths({ id, slug: post.slug });
     revalidatePostPaths({ id, slug: nextSlug });
   }
-  return { slug: nextSlug };
+  return { slug: nextSlug, updatedAt: updatedAt.toISOString() };
+}
+
+/**
+ * 封面窄口更新(2026-10-15 验收反馈问题二:agent 封面候选「入库」即设为文章
+ * 封面):只动 coverPath 一列,不触 slug/分类/标签/分发面。路径走
+ * coverPathSchema 单轨校验;@updatedAt 随写推进(编辑器经 adopt 事件 +
+ * router.refresh() 跟随新基线,2026-10-16 反馈问题一)。已发布文同步刷前台
+ * ISR 缓存(与 update 全量路径同口径,详情页不再滞留旧封面)。
+ */
+export async function updatePostCover(id: bigint, coverPath: string): Promise<void> {
+  const parsed = coverPathSchema.safeParse(coverPath);
+  if (!parsed.success) {
+    throw new PostAdminError("invalid_body", parsed.error.issues[0]?.message ?? "封面路径不合法");
+  }
+  const post = await loadMutable(id);
+  await prisma.post.update({ where: { id }, data: { coverPath: parsed.data } });
+  if (post.status === "published") {
+    revalidatePostPaths({ id, slug: post.slug });
+  }
 }
 
 async function loadMutable(id: bigint) {

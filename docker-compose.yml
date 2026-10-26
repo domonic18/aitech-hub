@@ -3,9 +3,9 @@
 # 持久化:全部收敛到 ./workspace/(PG 数据库;dev redis 无持久化,重启即失)
 services:
   postgres:
-    # M20 混合检索:pgvector 自编译(alpine 底座,见 docker/postgres-pgvector.Dockerfile);
+    # M20 混合检索:pgvector 自编译(alpine 底座,见 docker/pgvector/Dockerfile);
     # 镜像缺失时 docker compose build postgres(需 git 网络)
-    build: { context: ./docker, dockerfile: postgres-pgvector.Dockerfile }
+    build: { context: ./docker/pgvector }
     image: aitech-hub-local/pg-pgvector:16
     container_name: aitech_hub_pg
     environment:
@@ -38,7 +38,7 @@ services:
   # 抖音数据网关(M8):签名 sidecar + 数据端点;按需启用,不影响日常 pg/redis 起
   # 停:docker compose --profile douyin up -d douyin-gateway;冒烟 curl 127.0.0.1:8010/health
   douyin-gateway:
-    build: { context: ./services/douyin-gateway }
+    build: { context: ., dockerfile: docker/gateway/Dockerfile }
     container_name: aitech_hub_douyin_gateway
     profiles: ["douyin"]
     environment:
@@ -48,6 +48,10 @@ services:
       - "127.0.0.1:8010:8010" # 仅回环,便于本机 curl 冒烟
     tmpfs:
       - /tmp/playwright-profiles
+    # M49 批X3:小红书自动发布(本地联调)——登录态与贴图图片
+    volumes:
+      - ./workspace/xhs-state:/app/xhs-state
+      - ./workspace/media:/app/media:ro
     healthcheck:
       test:
         [

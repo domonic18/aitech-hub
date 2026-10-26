@@ -17,8 +17,10 @@ import type {
   LangGraphStreamCallback,
 } from "@assistant-ui/react-langgraph";
 
+import { AGENT_RUN_INACTIVE_EVENT, type AgentRunInactiveDetail } from "@/lib/agent/agent-host";
+import { updatesHasInterrupt } from "@/lib/agent/hitl";
 import { createSseEventReader } from "@/lib/agent/sse";
-import { extractTodos, type AgentTodo } from "@/lib/agent/todos";
+import { extractTodos, extractTodosFromValues, type AgentTodo } from "@/lib/agent/todos";
 
 const API_BASE = "/api/search/agent";
 
@@ -91,6 +93,9 @@ export interface AgentRuntimeAdapterOptions {
   /** run 起止上报(stream 生成器进出;宿主运行中暂缓受控 threadId 回写,
    * 防 SDK 受控切换 abort 在跑的 run——2026-10-09 FAB 首条消息闪断根因) */
   onRunActiveChange?: (active: boolean) => void;
+  /** 发送瞬间取页面上下文(M27 批⑧-b,ai-invest page_context 纪律:纯
+   * getter 零订阅,本模块不感知 React;返回值经服务端宽松解析,坏值弃用) */
+  getContext?: () => unknown;
 }
 
 /** 后端 404 话术(身份路由统一);命中即走自愈而非当普通错误挂横幅 */
@@ -118,6 +123,11 @@ export interface AgentRuntimeAdapter {
 export function createAgentRuntimeAdapter(
   options: AgentRuntimeAdapterOptions = {},
 ): AgentRuntimeAdapter {
+  // 本 runtime 最近一次 run 是否以中断收尾(ask_user 挂起):onUpdates 见
+  // __interrupt__ 即置位,stream 收尾随 run-inactive 广播带给消费方(创作
+  // 中心生成态据此区分「等用户回答」与「真收尾」);run 串行,单槽即够
+  let lastRunInterrupted = false;
+
   // 后端会话即 remote 线程。InMemory adapter 不认识列表外的线程 id,切换历史
   // 会话时 fetch 会拒绝且被 runtime 静默吞掉——覆写 initialize(首条消息真实
   // create,延迟建线程省配额)与 fetch(历史会话直接采用传入 id)。
@@ -147,9 +157,14 @@ export function createAgentRuntimeAdapter(
     load: async (externalId: string) => {
       try {
         const { values, interrupts } = await apiJson<{
-          values: { messages?: unknown[] };
+          values: { messages?: unknown[]; todos?: unknown };
           interrupts?: LangGraphInterruptState[];
         }>(`${API_BASE}/threads/${externalId}/state`);
+        // 历史计划恢复(M27 批⑥):todoListMiddleware 存 state.todos(顶层值,
+        // 非 updates 帧),extractTodos 只认帧形态故这里直接读;空数组不上抛,
+        // Drawer 维持既有清空语义
+        const todos = extractTodosFromValues(values.todos);
+        if (todos.length > 0) options.onTodos?.(todos);
         return {
           messages: (values.messages ?? []) as LangChainMessage[],
           // 刷新/切会话恢复 ask_user 提问卡(SDK reconcileInterrupt;无中断
@@ -163,9 +178,19 @@ export function createAgentRuntimeAdapter(
     },
     stream: async function* (messages, config) {
       options.onRunActiveChange?.(true);
+      lastRunInterrupted = false; // 每 run 重置,中断态只描述最近一次 run
       try {
         const { externalId } = await config.initialize();
         if (!externalId) throw new Error("会话尚未初始化");
+        // M31 验收反馈修复:中断卡挂起时再触发程序化发送(PendingAskSender 只
+        // gate isRunning 不 gate 中断态,如封面候选在挂再次点「生成候选」),
+        // SDK runUserMessage 会把悬空 tool_call 打包成 type:"tool" 取消桩前置
+        // (autoCancelPendingToolCalls 默认开);后端 inputSchema 只收单条
+        // human 文本,桩入线即 union 全败 → 400 "invalid body: Invalid input"。
+        // 取消桩是 SDK 本地簿记(本地历史照记),工具全在服务端,出线收敛为
+        // 最后一条 human 即可;resume(空消息批)不受影响。
+        const humanOnly = messages.filter((m) => m.type === "human");
+        const wireMessages = humanOnly.length > 0 ? humanOnly.slice(-1) : messages;
         // 自有 fetch 替代官方 SDK(头注:错误包装丢人话 + 盲重试)。载荷与 SDK
         // 同形:后端 bodySchema 只消费 input,command(resume/regenerate)透传备用。
         let res: Response;
@@ -174,8 +199,12 @@ export function createAgentRuntimeAdapter(
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              input: messages.length ? { messages } : null,
+              input: wireMessages.length ? { messages: wireMessages } : null,
               ...(config.command ? { command: config.command } : {}),
+              // 新提问才附上下文(resume 服务端不注入;checkpoint 历史已含)
+              ...(wireMessages.length && options.getContext
+                ? { context: options.getContext() }
+                : {}),
             }),
             signal: config.abortSignal,
           });
@@ -216,10 +245,23 @@ export function createAgentRuntimeAdapter(
         }
       } finally {
         options.onRunActiveChange?.(false); // 正常收尾/中断/异常全路径覆盖
+        // M44:run 收尾全局广播(创作中心生成态据此即时比对落库结果,免等
+        // 下一跳轮询;无消费方时零开销。轮询仍是兜底路径——run 与页面不同窗
+        // 或广播先于监听的时序竞态由 5s 轮询覆盖)。node 单测环境无 window,
+        // 与 lib 侧 sessionStorage 同式守卫。detail.interrupted 供消费方区分
+        // ask_user 挂起(在途态保持,等用户作答续跑)与真收尾(本轮定局)
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(AGENT_RUN_INACTIVE_EVENT, {
+              detail: { interrupted: lastRunInterrupted } satisfies AgentRunInactiveDetail,
+            }),
+          );
+        }
       }
     },
     eventHandlers: {
       onUpdates: (updates: unknown) => {
+        if (updatesHasInterrupt(updates)) lastRunInterrupted = true;
         const todos = extractTodos(updates);
         if (todos.length > 0) options.onTodos?.(todos);
       },

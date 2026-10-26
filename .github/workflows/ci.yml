@@ -40,14 +40,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # uv 管理依赖(仿 ai-invest):uv.lock 锚定解析,setup-uv 带锁文件缓存
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/douyin-gateway/uv.lock
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: services/douyin-gateway/requirements*.txt
-      - run: pip install -r services/douyin-gateway/requirements.txt -r services/douyin-gateway/requirements-dev.txt
       - working-directory: services/douyin-gateway
-        run: python -m pytest tests/ -q
+        run: |
+          uv sync --frozen
+          uv run pytest tests/ -q
+
+  # 卡片渲染服务(M31):纯函数单测(node:test,零依赖零安装);仅校验/白名单逻辑
+  card-renderer:
+    name: card-renderer(node 单测)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: services/card-renderer
+        run: npm test
 
   migrate-replay:
     name: 迁移重放守卫
@@ -87,12 +103,17 @@ jobs:
 
   # 镜像发布线:三检查 job 全绿后,app 与网关镜像各自独立 job 并行构建推送
   # (2026-10-04 拆分,仿 ai-invest-assisstant 每镜像一 job:互不拖累,失败可
-  #  re-run failed jobs 单镜像重试;standard/02-cicd-deployment §1;
-  #  跨境推送偶发 stall → 步骤级超时 + 失败重推一次)
+  #  re-run failed jobs 单镜像重试;standard/02-cicd-deployment §1)
   # develop 出 develop-<sha> 供演练;latest 只从 main 出,保证 compose pull 默认拉到发布版
+  # 2026-10-16 构建推送迁 Mac mini self-hosted runner(仿 acore-manager):GitHub 托管
+  #  runner 跨境推 TCR 偶发 stall,曾逼出本地 save/scp/load 兜底;自托管机直推国内 TCR
+  #  链路快且稳。机内前置(仓外一次性,见 standard/02-cicd-deployment §1):注册
+  #  [self-hosted] runner + 预建持久 builder `ci-builder`(buildkitd.toml 配国内
+  #  docker.io 镜像源,本地缓存跨 job 复用,弃 gha cache)。Apple Silicon 出 175 所需
+  #  amd64:显式 platforms: linux/amd64(Rosetta/QEMU 模拟,首跑冷缓存偏慢属预期)
   docker-release:
     name: release(app 镜像构建推送 TCR)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     needs: [app, gateway, migrate-replay]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
@@ -105,7 +126,9 @@ jobs:
             echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
             echo "build_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           } >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v4
+      # 预建持久 builder(见 job 注释);不用 setup-buildx-action——它会另建临时 builder 顶掉选择
+      - name: Select builder / 选择构建器
+        run: docker buildx use ci-builder
       # id + 重试条件:登录失败属配置错误,不进重试(避免白建镜像且盖住真错;2026-10-02 首跑实测教训)
       - id: login
         uses: docker/login-action@v4
@@ -114,9 +137,8 @@ jobs:
           username: ${{ secrets.TCR_USERNAME }}
           password: ${{ secrets.TCR_PASSWORD }}
       # provenance: false——TCR 不认 OCI attestation 附加清单
-      # continue-on-error:首试失败不染红 job,成败由重试步裁定(run 37106851119 教训:
-      # 冷缓存首试超时→重试推图成功,job 仍红,误导发布判断)。连带:重试条件必须用
-      # outcome 而非 failure()(continue-on-error 会把 failure() 归 false)
+      # continue-on-error:首推失败不染红 job,成败由 gate 步骤裁定(重试条件须用
+      # outcome 而非 failure(),continue-on-error 会把 failure() 归 false)
       - name: Build and Push / 构建并推送(第 1 次尝试)
         id: build1
         continue-on-error: true
@@ -124,41 +146,54 @@ jobs:
         timeout-minutes: 25
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           provenance: false
+          platforms: linux/amd64
           tags: |
             ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
           build-args: |
             BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             BUILD_TIME=${{ steps.vars.outputs.build_time }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
       - name: Build and Push / 构建并推送(重试)
         if: steps.build1.outcome == 'failure' && steps.login.conclusion == 'success'
+        id: build-retry
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           provenance: false
+          platforms: linux/amd64
           tags: |
             ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
           build-args: |
             BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             BUILD_TIME=${{ steps.vars.outputs.build_time }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Conclude push outcome / 推送结论裁定
+        if: always()
+        # 任一次尝试成功即 job 成功;两次皆败才判红(run 37106851119 教训:
+        # 首推超时→重试成功,job 仍红,误导发布判断)
+        run: |
+          if [ "${{ steps.build1.outcome }}" = "success" ] || [ "${{ steps.build-retry.outcome }}" = "success" ]; then
+            echo "[OK] image push succeeded"
+          else
+            echo "[FAIL] image push failed in both attempts" >&2
+            exit 1
+          fi
+      - name: Output image info / 输出镜像信息
+        run: |
+          echo "Image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
 
-  # 网关镜像(M8,独立 Dockerfile):与 app 镜像同语义的独立 job,cache scope=gateway 隔离。
-  # 登录守卫/continue-on-error + outcome 重试/provenance:false 语义与 docker-release 同款
+  # 网关镜像(M8,独立 Dockerfile):与 app 镜像同语义的独立 job。
+  # self-hosted runner / ci-builder / platforms / gate 裁定等语义与 docker-release 同款
   # (逐条教训注释见上,勿只改一处)
   docker-release-gateway:
     name: release(网关镜像构建推送 TCR)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     needs: [app, gateway, migrate-replay]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
@@ -170,7 +205,8 @@ jobs:
             echo "sha_short=$(git rev-parse --short HEAD)"
             echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
           } >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v4
+      - name: Select builder / 选择构建器
+        run: docker buildx use ci-builder
       - id: login
         uses: docker/login-action@v4
         with:
@@ -183,26 +219,104 @@ jobs:
         uses: docker/build-push-action@v6
         timeout-minutes: 25
         with:
-          context: ./services/douyin-gateway
-          file: services/douyin-gateway/Dockerfile
+          context: .
+          file: docker/gateway/Dockerfile
           push: true
           provenance: false
+          platforms: linux/amd64
           tags: |
             ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-gateway:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-          cache-from: type=gha,scope=gateway
-          cache-to: type=gha,mode=max,scope=gateway
       - name: Build and Push gateway / 网关镜像(重试)
         if: steps.gbuild1.outcome == 'failure' && steps.login.conclusion == 'success'
+        id: gbuild-retry
         uses: docker/build-push-action@v6
         timeout-minutes: 30
         with:
-          context: ./services/douyin-gateway
-          file: services/douyin-gateway/Dockerfile
+          context: .
+          file: docker/gateway/Dockerfile
           push: true
           provenance: false
+          platforms: linux/amd64
           tags: |
             ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-gateway:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-          cache-from: type=gha,scope=gateway
-          cache-to: type=gha,mode=max,scope=gateway
+      - name: Conclude push outcome / 推送结论裁定
+        if: always()
+        # 任一次尝试成功即 job 成功;两次皆败才判红(教训同 docker-release)
+        run: |
+          if [ "${{ steps.gbuild1.outcome }}" = "success" ] || [ "${{ steps.gbuild-retry.outcome }}" = "success" ]; then
+            echo "[OK] gateway image push succeeded"
+          else
+            echo "[FAIL] gateway image push failed in both attempts" >&2
+            exit 1
+          fi
+      - name: Output image info / 输出镜像信息
+        run: |
+          echo "Gateway image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
+
+  # 卡片渲染镜像(M31,独立 Dockerfile):与网关镜像同语义的独立 job(self-hosted /
+  # ci-builder / platforms / gate 裁定等逐条教训注释见 docker-release,勿只改一处)
+  docker-release-card-renderer:
+    name: release(卡片渲染镜像构建推送 TCR)
+    runs-on: [self-hosted]
+    needs: [app, card-renderer, migrate-replay]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+          } >> "$GITHUB_OUTPUT"
+      - name: Select builder / 选择构建器
+        run: docker buildx use ci-builder
+      - id: login
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+      - name: Build and Push card-renderer / 卡片渲染镜像(第 1 次尝试)
+        id: cbuild1
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        timeout-minutes: 25
+        with:
+          context: .
+          file: docker/card-renderer/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-card-renderer:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+      - name: Build and Push card-renderer / 卡片渲染镜像(重试)
+        if: steps.cbuild1.outcome == 'failure' && steps.login.conclusion == 'success'
+        id: cbuild-retry
+        uses: docker/build-push-action@v6
+        timeout-minutes: 30
+        with:
+          context: .
+          file: docker/card-renderer/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-card-renderer:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
+      - name: Conclude push outcome / 推送结论裁定
+        if: always()
+        # 任一次尝试成功即 job 成功;两次皆败才判红(教训同 docker-release)
+        run: |
+          if [ "${{ steps.cbuild1.outcome }}" = "success" ] || [ "${{ steps.cbuild-retry.outcome }}" = "success" ]; then
+            echo "[OK] card-renderer image push succeeded"
+          else
+            echo "[FAIL] card-renderer image push failed in both attempts" >&2
+            exit 1
+          fi
+      - name: Output image info / 输出镜像信息
+        run: |
+          echo "Card-renderer image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"

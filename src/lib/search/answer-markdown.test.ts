@@ -162,6 +162,42 @@ describe("parseAnswerBlocks", () => {
     ]);
   });
 
+  it("独占一行的站内卡片图成 img 块,切断前后段落", () => {
+    const blocks = parseAnswerBlocks(
+      "前文说明\n![](/wp-content/uploads/2026/10/abc123.png)\n![性能对比](/wp-content/uploads/2026/10/def456.webp)  \n后文",
+    );
+    expect(blocks).toEqual([
+      { kind: "p", segs: [{ t: "text", v: "前文说明" }] },
+      { kind: "img", src: "/wp-content/uploads/2026/10/abc123.png", alt: "" },
+      { kind: "img", src: "/wp-content/uploads/2026/10/def456.webp", alt: "性能对比" },
+      { kind: "p", segs: [{ t: "text", v: "后文" }] },
+    ]);
+  });
+
+  it("外链/相对路径/行内嵌图的图片标记按字面量(只渲站内媒体)", () => {
+    const blocks = parseAnswerBlocks(
+      "![](https://cdn.a.com/x.png)\n![](/img/x.png)\n前文 ![](/wp-content/uploads/2026/10/a.png) 后文",
+    );
+    expect(blocks).toEqual([
+      {
+        kind: "p",
+        segs: [
+          {
+            t: "text",
+            v: "![](https://cdn.a.com/x.png)![](/img/x.png)前文 ![](/wp-content/uploads/2026/10/a.png) 后文",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("围栏内的图片标记不做解析", () => {
+    const blocks = parseAnswerBlocks("```md\n![](/wp-content/uploads/2026/10/a.png)\n```");
+    expect(blocks).toEqual([
+      { kind: "pre", lang: "md", v: "![](/wp-content/uploads/2026/10/a.png)" },
+    ]);
+  });
+
   it("列表项内链接成 link 段(清单场景)", () => {
     const blocks = parseAnswerBlocks("- [MCP 教程](https://a.com/p/1):用 FastMCP");
     expect(blocks).toEqual([

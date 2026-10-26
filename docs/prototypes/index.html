@@ -6,7 +6,7 @@
 <title>一起AI — 原型图索引 · aitech-hub prototypes</title>
 <script>document.documentElement.dataset.theme = localStorage.getItem("proto-theme") || "dark";</script>
 <style>
-/* ==== 设计 token(真相源:common.css v0.5.0,内联副本;双主题) ==== */
+/* ==== 设计 token(真相源:common.css v0.6.0,内联副本;双主题) ==== */
 :root, [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0e12; --panel: #181a21; --panel-2: #1f2229; --border: #2a2d37;
@@ -30,7 +30,7 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ==== 图标系统(common.css v0.5.0 §图标系统,内联副本) ==== */
+/* ==== 图标系统(common.css v0.6.0 §图标系统,内联副本) ==== */
 .ic { width: 14px; height: 14px; vertical-align: -2px; fill: currentColor; flex: none; }
 .ic-sm { width: 12px; height: 12px; vertical-align: -1.5px; }
 body {
@@ -71,7 +71,7 @@ a { color: inherit; text-decoration: none; }
 .head .desc a { color: var(--blue); border-bottom: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); }
 .head .desc a:hover { color: var(--accent-hover); }
 
-/* ==== 主题切换胶囊(约定见 common.css v0.5.0) ==== */
+/* ==== 主题切换胶囊(约定见 common.css v0.6.0) ==== */
 .theme-toggle {
   width: 44px; height: 24px; padding: 0; flex: none; cursor: pointer;
   border: 1px solid var(--border); border-radius: 12px;
@@ -185,7 +185,7 @@ a { color: inherit; text-decoration: none; }
     </div>
     <button class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-pressed="false" id="themeBtn"><span class="tt-track"><span class="tt-thumb"></span><svg class="ic tt-ic tt-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic tt-ic tt-sun" aria-hidden="true"><use href="#i-sun"/></svg></span></button>
     <div class="prompt">
-      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 23 screens · 3 groups · dual-theme(暗黑默认/明亮可选)· <span class="a">v0.5.0</span>
+      <span class="c">➜</span> prototypes <span class="c">ls -la</span> → 26 screens · 3 groups · dual-theme(暗黑默认/明亮可选)· <span class="a">v0.6.0</span>
     </div>
     <p class="desc">
       一起AI(17aitech.com)全站 UI 原型。<b>AI 信息 Hub</b> 定位(2026-09-30 升级):连接用户与快速变化的 AI 信息——资讯、教程、开源项目与博主实战文章的聚合平台;深色终端风 + 明暗双主题。
@@ -233,6 +233,12 @@ a { color: inherit; text-decoration: none; }
         <div class="top"><span class="ico"><svg class="ic" style="width:20px;height:20px;vertical-align:0" aria-hidden="true"><use href="#i-send"/></svg></span><h3>电报流(混合)</h3><span class="route">/telegram</span></div>
         <p>混合信息流(二期):文字资讯 + 短视频解读(抖音/小红书/B站,竖版封面 + AI 解读 + 原视频外链)+ 博主文章条目(渠道标识);媒体类型/渠道双组过滤、版权边界卡(转写是输入不是资产)、新讯息浮条。noindex。</p>
         <div class="foot"><span class="badge b-plan">二期规划</span><span class="b-ref"><a href="../arch/02-data-collection.md">arch/02 §6</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="site-pins.html" aria-label="贴图瀑布流"></a>
+        <div class="top"><span class="ico"><svg class="ic" style="width:20px;height:20px;vertical-align:0" aria-hidden="true"><use href="#i-picture"/></svg></span><h3>贴图瀑布流</h3><span class="route">/pins</span></div>
+        <p>渠道三站点呈现:图片驱动的轻浏览(区别于文章列表),CSS columns 瀑布流、3:4/1:1/4:5 混排、专题过滤、轻文字三行摘要;详情页 /pins/[id] 未出图。</p>
+        <div class="foot"><span class="badge b-plan">M41 讨论稿</span><span class="b-ref"><a href="admin-pins.html">ref 工作台</a></span></div>
       </div>
     </div>
   </section>
@@ -303,6 +309,18 @@ a { color: inherit; text-decoration: none; }
         <div class="top"><span class="ico"><svg class="ic" style="width:20px;height:20px;vertical-align:0" aria-hidden="true"><use href="#i-picture"/></svg></span><h3>媒体库</h3><span class="route">/admin/media <svg class="ic" style="width:12px;height:12px;vertical-align:-1px" aria-hidden="true"><use href="#i-star"/></svg></span></div>
         <p>图片/视频/文件 Tab × 引用状态过滤(已引用/孤儿/断链)、存储统计卡、缩略图网格、详情抽屉(引用方文章)、重复检测(sha1 分组合并)、软删回收站。</p>
         <div class="foot"><span class="badge b-core">M5 核心</span><span class="b-ref"><a href="../arch/08-media.md">arch/08 §3</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-pins.html" aria-label="贴图工作台"></a>
+        <div class="top"><span class="ico"><svg class="ic" style="width:20px;height:20px;vertical-align:0" aria-hidden="true"><use href="#i-appstore"/></svg></span><h3>贴图工作台</h3><span class="route">/admin/pins</span></div>
+        <p>渠道三主控台:生产流水线条(洞察→专题→agent 生成→工坊精修→同步→发布)、状态页签(草稿/待验收/已同步/已发布)、3:4 贴图卡网格、详情抽屉(工坊版本链 + 渠道记录)。</p>
+        <div class="foot"><span class="badge b-plan">M41 讨论稿</span><span class="b-ref"><a href="admin-pin-editor.html">ref 组装台</a></span></div>
+      </div>
+      <div class="card">
+        <a class="card-link" href="admin-pin-editor.html" aria-label="贴图组装台"></a>
+        <div class="top"><span class="ico"><svg class="ic" style="width:20px;height:20px;vertical-align:0" aria-hidden="true"><use href="#i-edit"/></svg></span><h3>贴图组装台</h3><span class="route">/admin/pins/[id]</span></div>
+        <p>发布前最后一站:图片序列轨(排序/工坊精修/移除)+ 预览台(封面裁剪 1:1/16:9/2.35:1)+ 发布面板(标题 32 字/轻文字/阅读原文/渠道记录);添加图片三通道(工坊选/AI 生成/本地上传)。</p>
+        <div class="foot"><span class="badge b-plan">M41 讨论稿</span><span class="b-ref"><a href="admin-pins.html">ref 工作台</a></span></div>
       </div>
       <div class="card">
         <a class="card-link" href="admin-users.html" aria-label="用户管理"></a>
@@ -379,8 +397,8 @@ a { color: inherit; text-decoration: none; }
   </div>
 
   <footer class="base">
-    <span class="v">v0.5.0</span>
-    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-10-02 · v0.5.0 品牌「一起AI」+ 17 monogram logo(v0.4.0 矢量图标/双栏 Hub 仪表盘/采集与 AI 服务治理后台,23 屏)</span>
+    <span class="v">v0.6.0</span>
+    <span>Design System: aitech dark-terminal · Indigo #5e6ad2 · 2026-10-02 · v0.6.0 品牌「一起AI」+ 17 monogram logo(v0.4.0 矢量图标/双栏 Hub 仪表盘/采集与 AI 服务治理后台,23 屏)</span>
     <a href="DESIGN-SPEC.md">设计规范</a>
     <a href="../README.md" style="margin-left:auto">← 文档中心</a>
     <a href="https://github.com/domonic18/aitech-hub" target="_blank">GitHub</a>

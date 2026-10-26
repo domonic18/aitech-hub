@@ -40,6 +40,8 @@ export default function PostCard({ post }: { post: PostListItem }): React.ReactE
           </Link>
         ))}
         <span>阅读 {post.viewsCount.toLocaleString("zh-CN")}</span>
+        <span>评论 {post.commentCount}</span>
+        <span>赞 {post.likeCount}</span>
       </div>
     </article>
   );

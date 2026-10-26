@@ -1,13 +1,16 @@
 /**
  * 公众号草稿同步·执行侧(M17 批⑥自 wechat-sync 拆出,≤350 行红线):
  * worker 消费的同步管线——封面 add_material + 正文图 uploadimg 转存(wechat-media
- * 缓存防重推)→ renderWechatHtml 内联样式 → draft/add(首推)| draft/update(重推,
+ * 缓存防重推)→ 追加公众号渠道尾注(channel-tails,2026-10-20 正文渠道中性化)→
+ * renderWechatHtml 内联样式 → draft/add(首推)| draft/update(重推,
  * 行 mediaId 锚定)。行状态机 pending → synced/failed;批量 failedIds 隔离、篇间
  * gap 防频控。入队三口(一键/批量/发布自动)在 ./wechat-sync,依赖单向 run→sync。 */
 import { postPath } from "../content/post-path";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { absoluteUrl } from "../seo/site";
+import { wechatTail } from "./channel-tails";
+import { submitWechatDraft } from "./wechat-draft-submit";
 import { renderWechatHtml } from "./wechat-html";
 import { ensureCoverMedia, transloadContentImages } from "./wechat-media";
 import {
@@ -19,13 +22,7 @@ import {
   WECHAT_TITLE_MAX,
 } from "./channels";
 import { WECHAT_THEME_DEFAULT } from "./wechat-themes";
-import {
-  wechatDraftAdd,
-  wechatDraftUpdate,
-  WechatApiError,
-  type WechatCredentials,
-  type WechatDraftArticle,
-} from "./wechat-client";
+import { type WechatCredentials, type WechatDraftArticle } from "./wechat-client";
 import {
   requireReadyConfig,
   ensureChannelRow,
@@ -49,34 +46,6 @@ export interface WechatBatchProgress {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-
-/**
- * draft 提交(add/update 分流):微信对 content_source_url 有域名校验
- * (errcode 41039,本地 localhost/站点 URL 配置失误必触发)——该字段可选,
- * 被拒时去掉重试一次:草稿可发优先于「阅读原文」导流,落 warn 留痕。
- */
-async function submitDraft(
-  creds: WechatCredentials,
-  article: WechatDraftArticle,
-  updateMediaId: string | null,
-): Promise<string> {
-  try {
-    if (updateMediaId) {
-      await wechatDraftUpdate(creds, updateMediaId, article);
-      return updateMediaId;
-    }
-    return await wechatDraftAdd(creds, article);
-  } catch (e) {
-    if (!(e instanceof WechatApiError) || e.errcode !== 41039) throw e;
-    logger.warn({ event: "wechat.source_url_dropped", errcode: e.errcode });
-    const { content_source_url: _dropped, ...withoutSourceUrl } = article;
-    if (updateMediaId) {
-      await wechatDraftUpdate(creds, updateMediaId, withoutSourceUrl);
-      return updateMediaId;
-    }
-    return await wechatDraftAdd(creds, withoutSourceUrl);
-  }
-}
 
 /** 失败落行(人话进 lastError;返回不抛,批量隔离靠它) */
 async function failSync(rowId: bigint, postId: string, reason: string): Promise<WechatSyncResult> {
@@ -140,7 +109,9 @@ export async function syncOnePost(
 
     const creds: WechatCredentials = { appid: cfg.appid, appSecret: cfg.appSecret };
     const cover = await ensureCoverMedia(creds, coverPath);
-    const finalMd = await transloadContentImages(creds, contentMd);
+    // 渠道尾注在分发侧追加(2026-10-20 问题四):正文存库渠道中性,「阅读原文」
+    // 导流话术仅公众号草稿携带(码点预算按追加后计)
+    const finalMd = await transloadContentImages(creds, `${contentMd}\n\n${wechatTail()}`);
     const { html } = renderWechatHtml(finalMd, themeId);
     const contentChars = [...html].length;
     if (contentChars > WECHAT_CONTENT_MAX_CHARS) {
@@ -161,7 +132,7 @@ export async function syncOnePost(
       need_open_comment: 0,
       only_fans_can_comment: 0,
     };
-    const mediaId = await submitDraft(creds, article, row.mediaId);
+    const mediaId = await submitWechatDraft(creds, article, row.mediaId);
 
     await prisma.publishChannel.update({
       where: { id: row.id },

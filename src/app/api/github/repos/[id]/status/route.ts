@@ -6,6 +6,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseNumericId } from "@/lib/http/parse-id";
 import { GithubAdminError, RepoStatusSchema, setRepoStatus } from "@/lib/github/repos-admin";
 
 export const dynamic = "force-dynamic";
@@ -19,11 +20,12 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   const parsed = RepoStatusSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "enabled/display 须为布尔且至少一项");
   try {
-    await setRepoStatus(Number(id), parsed.data);
+    await setRepoStatus(nid, parsed.data);
     return apiEnvelope(0, "updated");
   } catch (e) {
     if (e instanceof GithubAdminError) return apiEnvelope(404, e.message);

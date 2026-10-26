@@ -21,6 +21,8 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379/0
   # 抖音网关容器网内地址(.env 里的 127.0.0.1:8010 是 dev 值;M8)
   DOUYIN_GATEWAY_URL: http://douyin-gateway:8010
+  # 卡片渲染服务网内地址(M31;.env 里的 127.0.0.1:8011 是 dev 值)
+  CARD_RENDERER_URL: http://card-renderer:8011
   # environment 优先级高于 env_file(.env):容器内媒体路径钉死为挂载点,不随宿主 .env 漂移
   MEDIA_DIR: /app/media
 
@@ -59,7 +61,7 @@ services:
     #  github release,docker VM 直连常被 reset(2026-10-05 实测);置空串可强制回退 github)
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/app/Dockerfile
       args:
         BUILD_REF: ${BUILD_REF:-}
         BUILD_TIME: ${BUILD_TIME:-}
@@ -92,6 +94,7 @@ services:
       retries: 3
       start_period: 60s # 首启含全量 migrate deploy,放宽
     mem_limit: 768m
+    stop_grace_period: 30s # M48 批A③:在途请求/ISR 再生收尾窗
     <<: *restart
     logging: *logging
 
@@ -100,6 +103,11 @@ services:
     environment:
       SERVICE_ROLE: worker
       <<: *app-env
+      # M48 批A②:worker 独立低连接预算——job 并发普遍 1-2,无需 web 侧的 10。
+      # 勘误:实测生产 max_connections=100(checkpointer 旧注释「20」系本地 dev 值),
+      # 原判「超卖急症」不成立;本项按角色右移,压绝对峰值
+      # (web10+worker4+checkpointer 3×2+备份1=21,余量大)
+      DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=4
     env_file:
       - .env
     volumes:
@@ -116,6 +124,9 @@ services:
       web:
         condition: service_healthy # web entrypoint 先 migrate deploy;healthy 即 schema 就绪
     mem_limit: 512m
+    # M48 批A③:发版 SIGTERM 给在跑 job 收尾窗(短中任务可完成;10min 级长批仍会
+    # 到期被杀,由 stalled 重试承接——彻底排空需分钟级 grace,部署时长不可接受)
+    stop_grace_period: 120s
     <<: *restart
     logging: *logging
 
@@ -126,8 +137,13 @@ services:
     environment:
       TZ: Asia/Shanghai
       DOUYIN_SIGNER_WARM_SLOTS: 1
+      XHS_STORAGE_STATE_PATH: /app/xhs-state/storage_state.json
     tmpfs:
       - /tmp/playwright-profiles # chromium Profile 写 tmpfs,避免容器层写放大
+    # M49 批X3:小红书自动发布——登录态(storage_state)与贴图图片(发布上传)
+    volumes:
+      - ./workspace/xhs-state:/app/xhs-state
+      - ./workspace/media:/app/media:ro
     healthcheck:
       test:
         [
@@ -142,8 +158,36 @@ services:
     <<: *restart
     logging: *logging
 
+  # 卡片渲染服务(M31):HTML→PNG 专职渲染;仅内网(web 经服务名访问),媒体卷 ro 共享
+  # 供站内引图 file:// 直读。浏览器常驻 + 每请求新 context;本地构建验收:
+  #   CARD_RENDERER_IMAGE=aitech-hub-card-renderer:m31 docker compose -f docker-compose.prod.yml build card-renderer
+  card-renderer:
+    image: ${CARD_RENDERER_IMAGE:-ccr.ccs.tencentyun.com/domonic18/aitech-hub-card-renderer:latest}
+    build:
+      context: .
+      dockerfile: docker/card-renderer/Dockerfile
+    environment:
+      TZ: Asia/Shanghai
+    tmpfs:
+      - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
+    volumes:
+      - ./workspace/media:/app/media:ro # 站内引图直读;MEDIA_ROOT 钉在镜像 ENV=/app/media
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:8011/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s # 首启含 chromium 拉起
+    mem_limit: 768m
+    <<: *restart
+    logging: *logging
+
   postgres:
-    # M20 混合检索:pgvector 自编译(alpine 底座,同 docker/postgres-pgvector.Dockerfile)。
+    # M20 混合检索:pgvector 自编译(alpine 底座,同 docker/pgvector/Dockerfile)。
     # 镜像发布:本机 --platform linux/amd64 build → save|ssh load 175 → 175 内网 tag+push TCR
     # (standard/02 §? 发布 runbook);禁用官方 pgvector Debian 镜像——musl→glibc collation 错配
     image: ccr.ccs.tencentyun.com/domonic18/aitech-hub-pgvector:pg16
@@ -166,7 +210,18 @@ services:
   redis:
     image: redis:7-alpine
     # AOF 持久化:BullMQ 队列与统计缓冲不因容器重启丢任务
-    command: ["redis-server", "--appendonly", "yes"]
+    # M48 批A⑤:maxmemory 显式封顶(noeviction——stats 缓冲键属持久数据,LRU 静默
+    # 丢统计不可接受,满了写报错可见可控);mem_limit 相应放宽留 AOF 重写 COW 余量
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "96mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
     volumes:
       - ./workspace/redis:/data
     healthcheck:
@@ -174,6 +229,6 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-    mem_limit: 128m
+    mem_limit: 192m
     <<: *restart
     logging: *logging

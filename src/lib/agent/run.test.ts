@@ -1,6 +1,9 @@
 /**
  * run 编排单测(getAgentGraph mock):帧序列 metadata→…→end、todos 提取、
- * usage 聚合、工具调用去重计数、50k/12 次护栏主动收束(degraded)、
+ * usage 聚合、工具调用去重计数、护栏按身份档主动收束(基础档 12/50k,
+ * admin 档放宽见 config/agent-limits 默认值,M27 批⑤/2026-10-17 验收反馈;
+ * 额度经 limits 入参注入——后台站点设置可调,2026-10-17)、收束帧纪律
+ * (2026-10-21:纯文本撞线帧放行/工具调用帧不外泄)、
  * 断开(signal aborted)即停不产 end 前的更多帧。
  */
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
@@ -11,7 +14,16 @@ const getAgentGraphMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./agent", () => ({ getAgentGraph: getAgentGraphMock }));
 
-import { AGENT_MAX_TOKENS, extractTodos, runAgentTurn, type AgentTodo } from "./run";
+import { DEFAULT_AGENT_LIMITS, deriveRecursionLimit } from "../config/agent-limits";
+import { extractTodos, runAgentTurn, type AgentTodo } from "./run";
+
+/** 测试档 = 默认额度 + 派生 recursion(与路由侧 toRunLimits 同构) */
+function runLimits(kind: "guest" | "user" | "admin" = "guest") {
+  return {
+    ...DEFAULT_AGENT_LIMITS[kind],
+    recursion: deriveRecursionLimit(DEFAULT_AGENT_LIMITS[kind].toolCalls),
+  };
+}
 
 /** 假图:getAgentGraph 返回形状({graph, resolved}),按序产出 [mode, payload] 元组 */
 function fakeGraph(frames: [string, unknown][], onStream?: () => void) {
@@ -78,6 +90,8 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
@@ -89,13 +103,44 @@ describe("runAgentTurn", () => {
     expect(outcome.truncatedReason).toBeNull();
   });
 
+  it("页面上下文(批⑧-b):新提问 human 消息加 [页面上下文] 前缀;缺省不注入", async () => {
+    const fg = fakeGraph([]);
+    getAgentGraphMock.mockResolvedValue(fg);
+    await runAgentTurn({
+      threadId: "t1",
+      message: "帮我校对这篇文章",
+      context: { page: "文章编辑", edit: { postId: "123", title: "标题" } },
+      identityKind: "admin",
+      limits: runLimits("admin"),
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    const calls = fg.graph.stream.mock.calls as unknown[][];
+    const withCtx = calls[0][0] as { messages: { content: string }[] };
+    expect(isCommand(withCtx)).toBe(false);
+    expect(withCtx.messages[0].content).toContain("[页面上下文]");
+    expect(withCtx.messages[0].content).toContain('"postId":"123"');
+    expect(withCtx.messages[0].content.endsWith("帮我校对这篇文章")).toBe(true);
+
+    await runAgentTurn({
+      threadId: "t1",
+      message: "普通提问",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    const plain = calls[1][0] as { messages: { content: string }[] };
+    expect(plain.messages[0].content).toBe("普通提问");
+  });
+
   it("50k 超限:主动收束,truncatedReason 人话,end 帧仍发", async () => {
     const big = new AIMessageChunk({
       content: "",
       usage_metadata: {
-        input_tokens: AGENT_MAX_TOKENS,
+        input_tokens: DEFAULT_AGENT_LIMITS.guest.tokens,
         output_tokens: 1,
-        total_tokens: AGENT_MAX_TOKENS + 1,
+        total_tokens: DEFAULT_AGENT_LIMITS.guest.tokens + 1,
       },
     });
     getAgentGraphMock.mockResolvedValue(
@@ -108,17 +153,70 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
     expect(outcome.truncatedReason).toContain("用量已达上限");
-    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(0); // 检在发前
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(0); // 空帧不放行
+    expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("撞线帧带纯文本(模型收尾总结)→ 放行文本帧再收束(2026-10-21 验收反馈)", async () => {
+    const big = new AIMessageChunk({
+      content: "初稿已落库,配图 3 张,封面已采纳",
+      usage_metadata: {
+        input_tokens: DEFAULT_AGENT_LIMITS.guest.tokens,
+        output_tokens: 1,
+        total_tokens: DEFAULT_AGENT_LIMITS.guest.tokens + 1,
+      },
+    });
+    getAgentGraphMock.mockResolvedValue(fakeGraph([["messages", [big, {}]]]));
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    expect(outcome.truncatedReason).toContain("用量已达上限");
+    const msgFrames = frames.filter((f) => f.startsWith("event: messages"));
+    expect(msgFrames).toHaveLength(1);
+    expect(msgFrames[0]).toContain("初稿已落库");
+    expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("撞线帧带工具调用 → 不放行(它不会再执行,渲染出去界面恒挂)", async () => {
+    const big = new AIMessageChunk({
+      content: "",
+      tool_call_chunks: [{ name: "search_site", args: "{}", id: "call-x", index: 0 }],
+      usage_metadata: {
+        input_tokens: DEFAULT_AGENT_LIMITS.guest.tokens,
+        output_tokens: 1,
+        total_tokens: DEFAULT_AGENT_LIMITS.guest.tokens + 1,
+      },
+    });
+    getAgentGraphMock.mockResolvedValue(fakeGraph([["messages", [big, {}]]]));
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    expect(outcome.truncatedReason).toContain("用量已达上限");
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(0);
     expect(frames.at(-1)).toContain("event: end");
   });
 
   it("12 次工具调用超限:主动收束", async () => {
     const framesIn: [string, unknown][] = [];
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < DEFAULT_AGENT_LIMITS.guest.toolCalls + 1; i++) {
       framesIn.push([
         "messages",
         [
@@ -135,13 +233,52 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
     expect(outcome.truncatedReason).toContain("工具调用已达上限");
-    expect(outcome.toolCalls).toBe(13); // 第 13 次触发即断(≤12 允许),计数如实
-    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(12);
+    expect(outcome.toolCalls).toBe(DEFAULT_AGENT_LIMITS.guest.toolCalls + 1); // 档+1 次触发即断,计数如实
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(
+      DEFAULT_AGENT_LIMITS.guest.toolCalls,
+    );
     expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("admin 档护栏放宽:recursionLimit 跟档(2.5× 派生),工具调用超限(档+1)主动收束", async () => {
+    const adminToolCalls = DEFAULT_AGENT_LIMITS.admin.toolCalls;
+    const framesIn: [string, unknown][] = [];
+    for (let i = 0; i < adminToolCalls + 1; i++) {
+      framesIn.push([
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "",
+            tool_call_chunks: [{ name: "get_topic_brief", args: "{}", id: `call-${i}`, index: 0 }],
+          }),
+          {},
+        ],
+      ]);
+    }
+    const g = fakeGraph(framesIn);
+    getAgentGraphMock.mockResolvedValue(g);
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "admin",
+      limits: runLimits("admin"),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    const config = (
+      g.graph.stream.mock.calls as unknown as [[unknown, { recursionLimit: number }]]
+    )[0]?.[1];
+    expect(config?.recursionLimit).toBe(deriveRecursionLimit(DEFAULT_AGENT_LIMITS.admin.toolCalls));
+    expect(outcome.truncatedReason).toContain("工具调用已达上限");
+    expect(outcome.toolCalls).toBe(adminToolCalls + 1);
+    expect(frames.filter((f) => f.startsWith("event: messages"))).toHaveLength(adminToolCalls);
   });
 
   it("断开(signal 已 abort):循环即停,end 帧不发", async () => {
@@ -152,6 +289,8 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
       signal: signalSettled(true),
       onFrame,
     });
@@ -172,7 +311,9 @@ describe("runAgentTurn", () => {
     const outcome = await runAgentTurn({
       threadId: "t1",
       message: null,
+      identityKind: "guest",
       resume: { message: "报问题", option: "报问题" },
+      limits: runLimits(),
       signal: signalSettled(false),
       onFrame,
     });
@@ -182,5 +323,106 @@ describe("runAgentTurn", () => {
     const events = frames.map((f) => f.split("\n")[0].replace("event: ", ""));
     expect(events).toEqual(["metadata", "updates", "messages", "end"]);
     expect(outcome.truncatedReason).toBeNull();
+  });
+});
+
+describe("死端检测(max_tokens 截断零产出,2026-10-17)", () => {
+  it("思考型空轮 stop=max_tokens → deadEndReason 人话(前轮工具调用不串味)", async () => {
+    const framesIn: [string, unknown][] = [
+      // 第 1 轮:正常工具调用,stop=tool_use(应结算并复位)
+      [
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "",
+            tool_call_chunks: [{ name: "write_todos", args: "{}", id: "call-1", index: 0 }],
+            response_metadata: { stop_reason: "tool_use" },
+          }),
+          {},
+        ],
+      ],
+      // 第 2 轮:纯思考(零文本零工具调用),stop=max_tokens → 死端
+      ["messages", [new AIMessageChunk({ content: "", response_metadata: {} }), {}]],
+      [
+        "messages",
+        [new AIMessageChunk({ content: "", response_metadata: { stop_reason: "max_tokens" } }), {}],
+      ],
+    ];
+    getAgentGraphMock.mockResolvedValue(fakeGraph(framesIn));
+    const { frames, onFrame } = captureFrames();
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "admin",
+      limits: runLimits("admin"),
+      signal: signalSettled(false),
+      onFrame,
+    });
+    expect(outcome.deadEndReason).toContain("max_tokens 截断");
+    expect(outcome.deadEndReason).toContain("max_tokens");
+    expect(outcome.truncatedReason).toBeNull();
+    expect(frames.at(-1)).toContain("event: end");
+  });
+
+  it("有文本或有工具调用的截断轮不误报;正常 end_turn 不触发", async () => {
+    const framesIn: [string, unknown][] = [
+      // 截断但有部分文本 → 不算死端(UI 有可见产出)
+      [
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "写到一半被截",
+            response_metadata: { stop_reason: "max_tokens" },
+          }),
+          {},
+        ],
+      ],
+      // 工具调用轮截断 → 不算死端(参数修复中间件兜)
+      [
+        "messages",
+        [
+          new AIMessageChunk({
+            content: "",
+            tool_call_chunks: [{ name: "search_site", args: "{}", id: "call-9", index: 0 }],
+            response_metadata: { stop_reason: "max_tokens" },
+          }),
+          {},
+        ],
+      ],
+      // 正常收尾
+      [
+        "messages",
+        [new AIMessageChunk({ content: "完", response_metadata: { stop_reason: "end_turn" } }), {}],
+      ],
+    ];
+    getAgentGraphMock.mockResolvedValue(fakeGraph(framesIn));
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    expect(outcome.deadEndReason).toBeNull();
+  });
+
+  it("openai 口径 finish_reason=length 同样识别", async () => {
+    const framesIn: [string, unknown][] = [
+      [
+        "messages",
+        [new AIMessageChunk({ content: "", response_metadata: { finish_reason: "length" } }), {}],
+      ],
+    ];
+    getAgentGraphMock.mockResolvedValue(fakeGraph(framesIn));
+    const outcome = await runAgentTurn({
+      threadId: "t1",
+      message: "q",
+      identityKind: "guest",
+      limits: runLimits(),
+      signal: signalSettled(false),
+      onFrame: () => {},
+    });
+    expect(outcome.deadEndReason).toContain("max_tokens");
   });
 });

@@ -29,6 +29,9 @@ export default async function AdminLayout({
       <AdminShell nickname={user?.nickname ?? null} phone={maskPhone(user?.phone)}>
         {children}
       </AdminShell>
+      {/* 悬浮 AI 助手已上移根 layout(M35 宿主唯一化):admin 会话经
+          /api/search/agent 解析 admin 身份档(细粒度生产工具在位),且 run
+          跨 admin 路由切换不中断 */}
     </div>
   );
 }

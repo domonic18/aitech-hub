@@ -5,7 +5,8 @@
  * K1 unified-search#searchAll(给人搜索 = 给智能体检索,同源不漂移);除反馈
  * 外维持只读红线:无站外网络/文件/代码执行能力(系统提示明示边界)。返回串
  * 直接进模型上下文,一律 JSON.stringify 且正文截断(50k tokens 会话护栏的
- * 口径基础)。
+ * 口径基础)。编辑域(read_draft/propose_edits)已拆 edit-tools(技术债批⑤),
+ * 此处 re-export 维持工具面同入口。
  */
 import { tool } from "@langchain/core/tools";
 import { interrupt } from "@langchain/langgraph";
@@ -14,12 +15,14 @@ import { z } from "zod";
 import { PUBLISHED } from "../content/posts";
 import { submitFeedbackSchema } from "../feedback/feedback-schema";
 import { prisma } from "../db";
+import { ingestInsightSignal } from "../insight/ingest";
 import { AGENT_ASK_USER_TOOL, type AgentAskUserResume } from "./hitl";
 import { logger } from "../logger";
 import { searchAll } from "../search/unified-search";
 
-/** 单篇正文进上下文的截断长度(字符;约 4-6k tokens,12 步护栏内可承受多轮) */
-export const TOOL_BODY_MAX = 6000;
+import { TOOL_BODY_MAX } from "./edit-tools";
+
+export { EDIT_TOOLS, proposeEditsTool, readDraftTool, TOOL_BODY_MAX } from "./edit-tools";
 
 /** 三域检索结果 → 模型友好摘要(items 每域限量已在 searchAll 内收口) */
 export function summarizeSearchGroups(result: Awaited<ReturnType<typeof searchAll>>): string {
@@ -121,11 +124,12 @@ export const getTimeTool = tool(
  * 由 stream 路由 zod 把关,此处防御性规整(旧客户端/绕道路径兜底)。
  */
 export const askUserTool = tool(
-  async ({ question, options }) => {
+  async ({ question, options, detail }) => {
     const answer = interrupt({
       kind: AGENT_ASK_USER_TOOL,
       question,
       ...(options && options.length > 0 ? { options } : {}),
+      ...(detail && detail.trim() !== "" ? { detail: detail.trim().slice(0, 2000) } : {}),
     });
     let message = "";
     let option: string | undefined;
@@ -151,8 +155,11 @@ export const askUserTool = tool(
       "向用户提问并等待回答:需要用户确认、拍板或补充关键信息时调用,用户会在前端看到交互卡片并作答," +
       "答案作为本工具结果返回。不要用普通对话文本提问——纯文本问法前端弹不出卡片,用户无法结构化作答。" +
       "规则:一次只问一个问题,不要并行发起多个;question 为问题文本(≤500 字);options 为候选选项" +
-      "(2-4 个,每个 ≤100 字,推荐项放第一个,可省略);用户回答后先简要确认理解再继续;" +
-      "仅当关键信息缺失且无法靠 search_site 检索补足时使用。",
+      "(2-4 个纯字符串,不要用对象包裹,每个 ≤100 字,推荐项放第一个,可省略);用户回答后先简要确认理解再继续;" +
+      "仅当关键信息缺失且无法靠 search_site 检索补足时使用。" +
+      "两段式确认模式(产出类任务适用):先问方向选项;用户选定后,把据此撰写的完整产出内容" +
+      "(如生图提示词)放进 detail 字段(≤2000 字,卡片会完整展示供逐字确认),options 给" +
+      "「确认执行/再调整」类选项,获明确确认后才执行产出动作。",
     schema: z.object({
       question: z.string().min(1).max(500).describe("要问用户的问题"),
       options: z
@@ -161,6 +168,13 @@ export const askUserTool = tool(
         .max(4)
         .optional()
         .describe("候选选项,用户可直接点选;无可选项则省略"),
+      detail: z
+        .string()
+        .max(2000)
+        .optional()
+        .describe(
+          "附属详情全文(卡片以独立文本块完整展示):需要用户逐字确认的产出内容,如待确认的生图提示词",
+        ),
     }),
   },
 );
@@ -192,6 +206,14 @@ export const submitFeedbackTool = tool(
         feedbackId: row.id.toString(),
         category,
         fromAgent: true,
+      });
+      // 洞察信号入池(M34 批①):反馈是「声音」介质强信号,fire-and-forget
+      void ingestInsightSignal({
+        source: "internal-feedback",
+        refId: row.id.toString(),
+        rawText: content,
+        signalAt: new Date(),
+        meta: { category },
       });
       return JSON.stringify({ ok: true, message: "反馈已提交,感谢你的反馈!" });
     } catch (e) {

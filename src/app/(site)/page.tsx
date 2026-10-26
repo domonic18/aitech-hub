@@ -12,18 +12,84 @@ import HeroConsole from "@/components/site/HeroConsole";
 import HeroBrandLine from "@/components/site/HeroBrandLine";
 import SiteSprite from "@/components/site/SiteSprite";
 import TelegramBand from "@/components/site/TelegramBand";
+import TrackedLink from "@/components/site/TrackedLink";
 
 /**
  * 首页 Hub(原型 site-home v0.5.0 双栏仪表盘;arch/07-frontend §1:ISR 600s):
- * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=开源项目卡 + 博主文章紧凑卡 +
- * GEO)。电报带/项目/文章条数与 hub 主文案后台可配(M10/M12,site_config,保存后
+ * 终端 hero + hub-grid(左主轴=电报流 LIVE 带;右栏=开源项目卡 + 博主文章/推荐视频
+ * 紧凑卡 + GEO)。电报带/项目/文章条数与 hub 主文案后台可配(M10/M12,site_config,保存后
  * on-demand revalidate 本页);客户端 60s 轮询(M7 批⑤;下滚加载更多 M10 已于
  * 2026-10-05 移除,带内固定一页)。
  * GitHub 项目卡 M11:白名单空(全部下架)整卡不渲染,「三区可独立降级」。
  * 2026-10-05 性能批次:配置走 getSiteSettings 单查询;取数三段串行改两段
  * (band 只依赖配置段,与 rails 并行);hero markdown 服务端渲染下传。
+ * 2026-10-20 验收反馈问题二:文章 rail 按分类原创标记分流——原创分类
+ * (blog/report)进「博主文章」,非原创(推荐视频等)进「推荐视频」rail
+ * (空则整卡不渲染,同开源项目卡降级口径)。
  */
 export const revalidate = 600;
+
+/** 右栏文章紧凑卡(博主文章/推荐视频共用布局;footerLink 省略即不渲染底栏) */
+function PostRail({
+  icon,
+  title,
+  tag,
+  posts,
+  footerLink,
+}: {
+  icon: string;
+  title: string;
+  tag: string;
+  posts: Awaited<ReturnType<typeof listLatestPosts>>;
+  footerLink?: { href: string; label: string };
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+      <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
+        <svg className="ic text-text-2" aria-hidden="true">
+          <use href={icon} />
+        </svg>
+        {title}
+        <span className="ml-auto font-mono text-[11px] font-normal tracking-wider text-text-3">
+          [{tag}]
+        </span>
+      </div>
+      {posts.map((post) => (
+        <TrackedLink
+          key={post.id}
+          href={postPath(post.id, post.slug)}
+          surface="home"
+          kind="post"
+          entryKey={post.id.toString()}
+          className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
+        >
+          <span className="block truncate text-[13px] font-semibold leading-normal text-text-1 hover:text-accent-hover">
+            {post.title}
+          </span>
+          <span className="mt-1 flex items-center gap-2.5 font-mono text-[11.5px] text-text-3">
+            <span className="rounded border border-green/30 bg-green/10 px-1.5 text-green-hi">
+              {post.category.name}
+            </span>
+            {post.publishedAt ? <span>{formatCnDate(post.publishedAt).slice(5)}</span> : null}
+            <span className="ml-auto inline-flex items-center gap-1">
+              <svg className="ic ic-sm" aria-hidden="true">
+                <use href="#i-eye" />
+              </svg>
+              {post.viewsCount.toLocaleString("zh-CN")}
+            </span>
+          </span>
+        </TrackedLink>
+      ))}
+      {footerLink && (
+        <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
+          <Link href={footerLink.href} className="text-[13px] text-text-2 hover:text-accent-hover">
+            {footerLink.label}
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default async function HomePage(): Promise<React.ReactElement> {
   // 配置段先行(rail/band 条数是后续取数的入参):getSiteSettings 单查询读全键,
@@ -33,9 +99,10 @@ export default async function HomePage(): Promise<React.ReactElement> {
     countTodayVisible(),
     listPublicChannels(),
   ]);
-  // rails 与电报带并行(band 仅依赖 cfg.bandItemCount)
-  const [latest, postCount, repos, band] = await Promise.all([
-    listLatestPosts(cfg.postCount),
+  // rails 与电报带并行(band 仅依赖 cfg.bandItemCount);文章 rail 按原创标记分流
+  const [latest, videos, postCount, repos, band] = await Promise.all([
+    listLatestPosts(cfg.postCount, { original: true }),
+    listLatestPosts(cfg.postCount, { original: false }),
     countPublishedPosts(),
     listShowcaseRepos(cfg.repoCount),
     listBandFeed({ limit: cfg.bandItemCount }),
@@ -58,7 +125,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           initialNow={Date.now()}
         />
 
-        {/* 右栏:开源项目(M11 白名单 rail)+ 博主文章(紧凑 rail 卡)+ GEO */}
+        {/* 右栏:开源项目(M11 白名单 rail)+ 博主文章/推荐视频(原创标记分流)+ GEO */}
         <aside className="flex min-w-0 flex-col gap-4">
           {repos.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
@@ -72,9 +139,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
                 </span>
               </div>
               {repos.map((repo) => (
-                <Link
+                <TrackedLink
                   key={repo.id}
                   href={projectPath(repo.slug)}
+                  surface="home"
+                  kind="project"
+                  entryKey={repo.slug}
                   className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
                 >
                   <span className="flex items-center gap-2">
@@ -106,7 +176,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
                       {repo._count.posts > 0 ? `配套文章 ×${repo._count.posts}` : "查看详情 →"}
                     </span>
                   </span>
-                </Link>
+                </TrackedLink>
               ))}
               <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
                 <Link href="/projects/" className="text-[13px] text-text-2 hover:text-accent-hover">
@@ -115,45 +185,19 @@ export default async function HomePage(): Promise<React.ReactElement> {
               </div>
             </div>
           )}
-          <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
-            <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
-              <svg className="ic text-text-2" aria-hidden="true">
-                <use href="#i-read" />
-              </svg>
-              博主文章
-              <span className="ml-auto font-mono text-[11px] font-normal tracking-wider text-text-3">
-                [BLOG]
-              </span>
-            </div>
-            {latest.map((post) => (
-              <Link
-                key={post.id}
-                href={postPath(post.id, post.slug)}
-                className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
-              >
-                <span className="block truncate text-[13px] font-semibold leading-normal text-text-1 hover:text-accent-hover">
-                  {post.title}
-                </span>
-                <span className="mt-1 flex items-center gap-2.5 font-mono text-[11.5px] text-text-3">
-                  <span className="rounded border border-green/30 bg-green/10 px-1.5 text-green-hi">
-                    {post.category.name}
-                  </span>
-                  {post.publishedAt ? <span>{formatCnDate(post.publishedAt).slice(5)}</span> : null}
-                  <span className="ml-auto inline-flex items-center gap-1">
-                    <svg className="ic ic-sm" aria-hidden="true">
-                      <use href="#i-eye" />
-                    </svg>
-                    {post.viewsCount.toLocaleString("zh-CN")}
-                  </span>
-                </span>
-              </Link>
-            ))}
-            <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
-              <Link href="/articles/" className="text-[13px] text-text-2 hover:text-accent-hover">
-                全部文章 →
-              </Link>
-            </div>
-          </div>
+          <PostRail
+            icon="#i-read"
+            title="博主文章"
+            tag="BLOG"
+            posts={latest}
+            footerLink={{ href: "/articles/", label: "全部文章 →" }}
+          />
+          {/* 推荐视频 rail:非原创分类(推荐视频等);空则整卡不渲染。
+              不设底栏「更多」链接——非原创集合≠单一分类,硬编码 slug 会随分类
+              漂移,后续确有聚合页诉求再立 */}
+          {videos.length > 0 && (
+            <PostRail icon="#i-caret-right-fill" title="推荐视频" tag="VIDEO" posts={videos} />
+          )}
           <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
             <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
               <svg className="ic text-text-2" aria-hidden="true">
@@ -170,7 +214,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
                 助手引用即流量。
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
-                {["/llms.txt", "/llms-full.txt", "/feed.xml"].map((href) => (
+                {["/llms.txt", "/feed.xml"].map((href) => (
                   <a
                     key={href}
                     href={href}

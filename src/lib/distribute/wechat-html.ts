@@ -1,8 +1,15 @@
 /**
- * 公众号正文 HTML 生成(M17 批②;主题扩展:仿 md.openwrite.cn 多主题):
+ * 公众号正文 HTML 生成(M17 批②;M31 批① 样式引擎重构):
  * markdown-it(doocs/md 同引擎)渲染,全内联样式(公众号编辑器滤 <style>/
- * class,只有 style 属性保真)。强调元素(标题/加粗/引用框/行内码/链接角标)
- * 随主题变色(wechat-themes.ts 注册表),正文段落保持深灰;代码块统一暗底。
+ * class,只有 style 属性保真)。
+ *
+ * 体积纪律(2026-10-15 立项,「美观且码点不膨胀」):外层全局 <section> 一次性
+ * 声明可继承属性(font-size/color/line-height),元素级样式只写与全局的**差异**
+ * ——码点大头从「每段重复全套」降为「每段一行 margin」;观感靠结构性声明
+ * (标题左竖条/引用卡/暗底代码块)保证,不靠声明堆叠。嵌套列表展平为
+ * section+文字标记(微信编辑器对 ul/ol 直接嵌套会重复出 bullet,文颜同款
+ * 规避)。校验口径不变:全文码点(wechat-budget/wechat-sync-run)。
+ *
  * 外链在公众号正文不可点击(<a> 被剥):链接文字染色 + [n] 角标,文末
  * References 列出链接(≤20 条,同 href 去重;超出只染色不编号)。
  * 纯函数零 IO;图片 URL 已由 sync 管线在 md 文本层替换为 mmbiz(此处只渲染)。
@@ -12,36 +19,38 @@ import MarkdownIt from "markdown-it";
 import { WECHAT_REFERENCE_MAX } from "./channels";
 import { getWechatTheme, type WechatTheme } from "./wechat-themes";
 
-/** 由主题调色板实例化的内联样式表(零 class;中性色不随主题) */
+/** 由主题调色板实例化的内联样式表:global 可继承项只在此处;元素级只写差异 */
 function stylesFor(t: WechatTheme) {
   return {
-    p: "margin:12px 0;font-size:15px;color:#3f3f46;line-height:1.75;",
+    global: "font-size:15px;color:#3f3f46;line-height:1.75;",
+    p: "margin:12px 0;",
+    // h1/h2 带主题色左竖条(视觉锚点);h3/h4 阶梯字号
     h: [
-      `margin:24px 0 12px;font-size:17px;font-weight:600;color:${t.heading};line-height:1.4;`,
-      `margin:22px 0 10px;font-size:16px;font-weight:600;color:${t.heading};line-height:1.4;`,
+      `margin:28px 0 14px;font-size:18px;font-weight:600;color:${t.heading};line-height:1.4;border-left:3px solid ${t.heading};padding-left:10px;`,
+      `margin:24px 0 12px;font-size:17px;font-weight:600;color:${t.heading};line-height:1.4;border-left:3px solid ${t.heading};padding-left:10px;`,
       `margin:20px 0 10px;font-size:15px;font-weight:600;color:${t.heading};line-height:1.4;`,
       `margin:18px 0 8px;font-size:15px;font-weight:600;color:${t.heading};line-height:1.4;`,
     ],
-    /** h5/h6 降级为加粗段(公众号层级过深显示无意义) */
-    hDeep: `margin:16px 0 8px;font-size:14px;font-weight:600;color:${t.heading};`,
+    /** h5/h6 降级为加粗段(公众号层级过深显示无意义;字号继承全局 15px) */
+    hDeep: `margin:16px 0 8px;font-weight:600;color:${t.heading};`,
     strong: `font-weight:600;color:${t.strong};`,
     em: "font-style:italic;",
     del: "text-decoration:line-through;color:#71717a;",
-    inlineCode: `background-color:rgba(0,0,0,.06);color:${t.inlineCode};padding:1px 4px;border-radius:3px;font-family:Consolas,Menlo,monospace;font-size:13px;`,
+    inlineCode: `background-color:rgba(0,0,0,.06);color:${t.inlineCode};padding:1px 4px;border-radius:3px;font-family:Menlo,monospace;font-size:13px;`,
     // 代码块统一暗底不随主题(长代码对比度;主题只染强调元素)
     preSection:
       "background-color:#0d1117;border-radius:6px;padding:12px;overflow-x:auto;margin:12px 0;",
-    pre: "margin:0;background:transparent;",
-    code: "color:#e6edf3;font-family:Consolas,Menlo,monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;",
+    pre: "margin:0;",
+    code: "color:#e6edf3;font-family:Menlo,monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;",
     blockquote: `border-left:3px solid ${t.quoteBorder};background-color:${t.quoteBg};padding:8px 12px;margin:12px 0;color:${t.quoteText};`,
     ul: "margin:12px 0;padding-left:24px;",
     ol: "margin:12px 0;padding-left:24px;",
-    li: "margin:4px 0;font-size:15px;color:#3f3f46;line-height:1.75;",
+    li: "margin:4px 0;",
     img: "max-width:100%;border-radius:4px;margin:8px auto;display:block;",
     hr: "border:none;border-top:1px solid #d0d7de;margin:20px 0;",
     table: "border-collapse:collapse;margin:12px 0;width:100%;font-size:13px;",
-    th: "border:1px solid #d0d7de;background-color:#f6f8fa;padding:6px 10px;text-align:left;font-weight:600;color:#1f2328;",
-    td: "border:1px solid #d0d7de;padding:6px 10px;color:#3f3f46;",
+    th: "padding:6px 10px;text-align:left;border:1px solid #ddd;background-color:#f6f8fa;",
+    td: "padding:6px 10px;border:1px solid #ddd;",
     link: `color:${t.link};`,
     refSup: `color:${t.link};font-size:11px;`,
     refsSection: "border-top:1px solid #d0d7de;margin-top:20px;padding-top:12px;",
@@ -69,8 +78,11 @@ const escape = (s: string): string => md.utils.escapeHtml(s);
 
 // ── 渲染器覆写(全内联样式;样式表经 env 注入,规则只在注册期绑定一次)───────
 
-md.renderer.rules.paragraph_open = (_t, _i, _o, env) => `<p style="${envOf(env).styles.p}">`;
-md.renderer.rules.paragraph_close = () => "</p>";
+// 紧列表的段落 token 带 hidden=true(默认规则跳过标签)——无视它会给列表项
+// 硬塞 <p>(M17 潜在缺陷:列表项多出段落边距+每项 ~38 码点)
+md.renderer.rules.paragraph_open = (tokens, idx, _o, env) =>
+  tokens[idx].hidden ? "" : `<p style="${envOf(env).styles.p}">`;
+md.renderer.rules.paragraph_close = (tokens, idx) => (tokens[idx].hidden ? "" : "</p>");
 
 md.renderer.rules.heading_open = (tokens, idx, _o, env) => {
   const level = Number(tokens[idx].tag.slice(1)); // h1..h6
@@ -91,11 +103,11 @@ md.renderer.rules.s_open = (_t, _i, _o, env) => `<del style="${envOf(env).styles
 md.renderer.rules.s_close = () => "</del>";
 
 md.renderer.rules.code_inline = (tokens, idx, _o, env) =>
-  `<code style="${envOf(env).styles.inlineCode}">${escape(tokens[idx].content)}</code>`;
+  `<code style="${envOf(env).styles.inlineCode}">${md.utils.escapeHtml(tokens[idx].content)}</code>`;
 
 md.renderer.rules.fence = (tokens, idx, _o, env) => {
   const s = envOf(env).styles;
-  return `<section style="${s.preSection}"><pre style="${s.pre}"><code style="${s.code}">${escape(
+  return `<section style="${s.preSection}"><pre style="${s.pre}"><code style="${s.code}">${md.utils.escapeHtml(
     tokens[idx].content.replace(/\n$/, ""),
   )}</code></pre></section>`;
 };
@@ -106,7 +118,10 @@ md.renderer.rules.blockquote_close = () => "</blockquote>";
 
 md.renderer.rules.bullet_list_open = (_t, _i, _o, env) => `<ul style="${envOf(env).styles.ul}">`;
 md.renderer.rules.bullet_list_close = () => "</ul>";
-md.renderer.rules.ordered_list_open = (_t, _i, _o, env) => `<ol style="${envOf(env).styles.ol}">`;
+md.renderer.rules.ordered_list_open = (tokens, idx, _o, env) => {
+  const start = tokens[idx].attrGet("start");
+  return `<ol style="${envOf(env).styles.ol}"${start ? ` start="${start}"` : ""}>`;
+};
 md.renderer.rules.ordered_list_close = () => "</ol>";
 md.renderer.rules.list_item_open = (_t, _i, _o, env) => `<li style="${envOf(env).styles.li}">`;
 md.renderer.rules.list_item_close = () => "</li>";
@@ -153,8 +168,87 @@ md.renderer.rules.link_close = (_tokens, _idx, _options, _env) => {
   return n ? `<sup style="${e.styles.refSup}">[${n}]</sup></span>` : "</span>";
 };
 
+// ── 嵌套列表展平(微信兼容):ul/ol 直接嵌套会重复出 bullet,内层转 ───────────
+// section+文字标记(文颜 wechatPostRender 同款规避;视觉层次保留)
+
+const LIST_TAG_RE = /<(\/?)(ul|ol)\b[^>]*>/g;
+
+/** 自 from(指向 <tag 开标签)起做标签深度计数,返回配对闭标签之后的下标 */
+function listBlockEnd(html: string, from: number): number {
+  const m = /^<(ul|ol)\b/.exec(html.slice(from));
+  if (!m) return -1;
+  const tag = m[1];
+  const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, "g");
+  re.lastIndex = from;
+  let depth = 0;
+  for (let hit = re.exec(html); hit; hit = re.exec(html)) {
+    depth += hit[1] === "/" ? -1 : 1;
+    if (depth === 0) return hit.index + hit[0].length;
+  }
+  return html.length; // 防御:不平衡则吃到文末(我们的渲染器输出恒平衡)
+}
+
+/** 展平一个叶子 list 块(内部已无嵌套 list)为 section+文字标记序列 */
+function flattenLeafList(html: string, openStart: number): string {
+  const openTagEnd = html.indexOf(">", openStart) + 1;
+  const blockEnd = listBlockEnd(html, openStart);
+  if (openTagEnd === 0 || blockEnd < 0) return html;
+  // 闭标签长度固定(</ul>/</ol> 5 字符),直接裁
+  const body = html.slice(openTagEnd, blockEnd - 5);
+  const ordered = html.slice(openStart, openTagEnd).startsWith("<ol");
+  const startAttr = /\bstart="(\d+)"/.exec(html.slice(openStart, openTagEnd));
+  let counter = startAttr ? Number(startAttr[1]) : 1;
+
+  // 叶子块内 <li …>…</li> 即顶层条目(无嵌套 list,深度恒 0)
+  const items: string[] = [];
+  const liRe = /<li\b[^>]*>/g;
+  for (let hit = liRe.exec(body); hit; hit = liRe.exec(body)) {
+    const contentStart = hit.index + hit[0].length;
+    const close = body.indexOf("</li>", contentStart);
+    if (close < 0) break; // 防御
+    items.push(body.slice(contentStart, close));
+    liRe.lastIndex = close + 5;
+  }
+  if (items.length === 0) return html.slice(0, openStart) + html.slice(blockEnd);
+  const marker = ordered ? () => `${counter++}. ` : () => "• ";
+  // 宽松列表项以 <p> 开头:marker 注入段内,避免落单成独立行
+  const wrap = (m: string, content: string): string => {
+    const pm = /^<p style="[^">]*">/.exec(content);
+    return `<section style="margin-left:1em;">${
+      pm ? content.slice(0, pm[0].length) + m + content.slice(pm[0].length) : m + content
+    }</section>`;
+  };
+  const flattened = items.map((content) => wrap(marker(), content)).join("");
+  return html.slice(0, openStart) + flattened + html.slice(blockEnd);
+}
+
+/** 递归展平全部嵌套 list:恒取「最右一个嵌套层」(必为叶子)先展,直到无嵌套 */
+function flattenNestedLists(html: string): string {
+  for (;;) {
+    LIST_TAG_RE.lastIndex = 0;
+    // 单遍扫描记深度;记录最后一个深度 ≥2 的开标签(其块内不含更晚的 list,
+    // 即叶子——更晚的开标签若在其块内深度只会更深,已被「最右」优先覆盖)
+    let target = -1;
+    const stack: string[] = [];
+    for (
+      let hit = LIST_TAG_RE.exec(html), guard = 0;
+      hit && guard < 10_000;
+      hit = LIST_TAG_RE.exec(html), guard++
+    ) {
+      if (hit[0].startsWith("</")) {
+        stack.pop();
+        continue;
+      }
+      if (stack.length >= 1) target = hit.index; // 深度 ≥2(外层 list 已在栈)
+      stack.push(hit[1]);
+    }
+    if (target < 0) return html;
+    html = flattenLeafList(html, target);
+  }
+}
+
 export interface WechatHtmlResult {
-  /** 全内联样式正文 HTML(含文末 References 节,无外链则无该节) */
+  /** 全内联样式正文 HTML(全局节包裹,含文末 References 节,无外链则无该节) */
   html: string;
   /** 外链引用(编号从 1 起,与正文 [n] 对应;已按 href 去重) */
   refs: string[];
@@ -176,5 +270,8 @@ export function renderWechatHtml(mdText: string, themeId?: string | null): Wecha
             return `<p style="${env.styles.refItem}">[${i + 1}] ${label}</p>`;
           })
           .join("")}</section>`;
-  return { html: body + refsHtml, refs };
+  return {
+    html: `<section style="${env.styles.global}">${flattenNestedLists(body + refsHtml)}</section>`,
+    refs,
+  };
 }

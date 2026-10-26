@@ -45,6 +45,8 @@ aitech-hub/
 │   │   │   ├── media/page.tsx    # 媒体库:图片/视频/文件 + 孤儿/断链/重复清洗(arch/08-media)
 │   │   │   ├── users/page.tsx
 │   │   │   ├── github/page.tsx   # GitHub 仓库台账:白名单登记/健康度/调度/展示开关(M11)
+│   │   │   ├── studio/{page,[id]}/page.tsx # 创作中心(M42,原 topics):列表(状态×主意图) + 详情四区(概览/双配置页签/素材/产出)
+│   │   │   ├── pins/{page,[id]}/page.tsx   # 贴图工作台与组装台(M41)
 │   │   │   ├── distribute/page.tsx # 内容分发:公众号配置卡+同步记录表(筛选/分页;M17)
 │   │   │   └── overview/page.tsx
 │   │   ├── api/                  # Route Handlers(REST 风格,camelCase JSON)
@@ -53,14 +55,14 @@ aitech-hub/
 │   │   │   ├── media/route.ts、media/[id]/route.ts、media/{orphans,duplicates,stats}/route.ts
 │   │   │   ├── users/route.ts、users/[id]/route.ts
 │   │   │   ├── github/repos/route.ts、repos/[id]/{route,status,sync,posts}/route.ts # 仓库台账 CRUD/开关/立即同步/配套文章(M11;PAT 拒绝)
-│   │   │   ├── distribute/wechat-config/{route,test/route}.ts、wechat/{sync,batch}/[jobId]/route.ts、wechat/preview/route.ts、records/[id]/reset/route.ts # 公众号配置/探针/单篇·批量同步 202+token 轮询/正文主题预览纯渲染/清绑定(M17;PAT 拒绝)
+│   │   │   ├── distribute/wechat-config/{route,test/route}.ts、wechat/{sync,batch,copy}/{route,[jobId]/route}.ts、wechat/preview/route.ts、records/[id]/reset/route.ts # 公众号配置/探针/单篇·批量同步+复制公众号格式 202+token 轮询/正文主题预览纯渲染/清绑定(M17;M31 批④;PAT 拒绝)
 │   │   │   ├── search/agent/threads/route.ts、threads/[threadId]/{route,state/route,runs/stream/route}.ts # K2.5 Drawer 会话:列表/新建(配额)/删除/checkpoint 恢复/langgraph 协议 SSE(arch/04 §3;K2.6 身份分流:admin 会话行/游客 Redis 线程)
 │   │   │   ├── agent-sessions/route.ts、agent-sessions/[threadId]/route.ts # K2.6 后台会话管理:两源合并列表(page/kind/q)+详情(checkpoint 时间线,游客过期标「已过期」;PAT 拒绝)
 │   │   │   ├── view/route.ts     # 浏览计数(去重窗口)
 │   │   │   ├── revalidate/route.ts
 │   │   │   └── health/route.ts
 │   │   └── layout.tsx            # 根布局:字体/主题/providers
-│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘七件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
+│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer;M27 批⑧ 增 ProposeReviewCard 改稿评审模态/ProposeUnavailableCard 降级卡),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
 │   ├── lib/
 │   │   ├── db.ts                 # Prisma client 单例
 │   │   ├── redis.ts              # Redis 单例
@@ -69,8 +71,10 @@ aitech-hub/
 │   │   ├── media/                # storage(LocalDisk→COS Provider)/ refs(引用解析)/ rules(类型白名单)
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
 │   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)
-│   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队三口+job 数据契约)、wechat-sync-run(执行管线,依赖单向 run→sync)、records(读侧+reset)
-│   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合)
+│   │   ├── topics/               # 创作中心域(M42,原专题域):repo(读写)/materials(素材搜索与挂载,幂等)/compose(底料装配)/references(参照候选装配)/writing-config(长文条款往返)/writing-pin-config(贴图条款往返,与长文互不派生)/constants/reference-labels(零依赖,客户端安全)
+│   │   ├── pins/                 # 贴图域(M41/M42):repo(读写)/assemble(createPinWithImages 单事务落库)/schemas/constants(与 topics 贴图配置同源裁剪档)
+│   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队四口+job 数据契约)、wechat-sync-run(草稿执行管线,依赖单向 run→sync)、wechat-copy-run(复制公众号格式执行管线,无码点门不写状态机;M31 批④)、records(读侧+reset)
+│   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口;M27 批⑧ 增 read_draft/propose_edits=EDIT_TOOLS,admin 档装配)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏;批⑧ 起携 context 注入)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合);M27 批⑧ 增 run-context(页面/编辑上下文构建注入)、edit-proposal(提案契约/解析)、admin-thread(admin 会话守卫)、ask-user-guard 泛化 interrupt_guard(中断类单飞)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
 │   │   ├── seo/                  # metadata/jsonld/sitemap 构造
 │   │   ├── queue.ts              # BullMQ producer(enqueue 封装)
@@ -90,10 +94,15 @@ aitech-hub/
 │       ├── legacy-orders/        # 旧 WP 订单导入(M21 批⑥,生产导入执行后删)
 │       └── telegram-decode/      # 电报流存量标题实体解码(2026-10-09,生产清洗执行后删)
 ├── tests/e2e/                    # Playwright:首页/中文 slug 文章页/301/登录/sitemap
-├── docker/
-│   ├── Dockerfile                # 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)
-│   ├── entrypoint.sh             # 容器入口:web 先 migrate deploy + ISR 预热;worker 直起
-│   └── nginx/                    # nginx.conf + conf.d/aitech-hub.conf(standard/02-cicd-deployment §4)
+├── services/                     # 独立 sidecar,自包含(依赖/测试/契约随目录,arch/05 §4.4/§4.6);镜像定义不入此处,见 docker/ 目录册
+│   ├── douyin-gateway/           # 抖音数据网关(Python,签名+数据端点)
+│   └── card-renderer/            # 卡片渲染 sidecar(Node+chromium,HTML→PNG)
+├── docker/                       # 镜像目录册:全部镜像定义集中 docker/<image>/Dockerfile,构建上下文一律仓库根(standard/02-cicd-deployment §3)
+│   ├── app/                      # Dockerfile 多阶段:deps → next build(standalone)→ runner(web+worker 同镜像)+ entrypoint.sh(web 先 migrate deploy + ISR 预热;worker 直起)
+│   ├── gateway/                  # Dockerfile(python sidecar;源码住 services/douyin-gateway/)
+│   ├── card-renderer/            # Dockerfile(node sidecar;源码住 services/card-renderer/)
+│   ├── pgvector/                 # Dockerfile(postgres:16-alpine + pgvector 自编译,M20)
+│   └── nginx/                    # nginx.conf + conf.d/aitech-hub.conf(standard/02 §4;compose 挂载配置,非镜像)
 ├── docs/                         # 本文档体系(索引 docs/README.md;UI 原型 docs/prototypes/index.html)
 ├── public/                       # 静态字节资源(favicon 等)
 │

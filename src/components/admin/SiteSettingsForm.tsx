@@ -4,9 +4,11 @@
  * 站点设置表单(M10 批② 电报带条数;M12 批② 键族:首页项目/文章条数、
  * 站点标题、hub 主文案 markdown;2026-10-05 反馈:关于页内容 markdown。
  * 2026-10-09 验收反馈问题1:重构为分区设置形态——首页展示/站点标识/关于页
- * 三分区卡 + 底部 sticky 保存条)。空/越界由服务端 Zod 校验返回 400 文案原样
- * 展示;PUT /api/site-config 多键 partial 一次保存,保存后 revalidatePath
- * ("/","layout") 全站即时再生。
+ * 三分区卡 + 底部 sticky 保存条。2026-10-17 验收反馈:增「Agent 额度」
+ * 分区——三档(游客/登录用户/管理员)×工具调用次数/tokens 上限,recursion
+ * 按 2.5×toolCalls 服务端派生不入表单)。空/越界由服务端 Zod 校验返回 400
+ * 文案原样展示;PUT /api/site-config 多键 partial 一次保存,保存后
+ * revalidatePath ("/","layout") 全站即时再生。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -19,10 +21,43 @@ import {
   SettingsGrid,
   SettingsSection,
 } from "@/components/admin/settings-controls";
+import {
+  AGENT_LIMIT_KINDS,
+  TOKENS_MAX,
+  TOKENS_MIN,
+  TOOL_CALLS_MAX,
+  TOOL_CALLS_MIN,
+  type AgentLimitKind,
+  type AgentLimitsConfig,
+} from "@/lib/config/agent-limits";
 import { ABOUT_MD_MAX, type SiteSettings } from "@/lib/config/site-config";
 import type { ApiEnvelope } from "@/lib/http/response";
 
-export default function SiteSettingsForm({ initial }: { initial: SiteSettings }) {
+/** 三档额度展示名与默认值(默认值仅作 hint 文案) */
+const AGENT_KIND_META: Record<AgentLimitKind, { label: string; def: AgentLimitsConfig }> = {
+  guest: { label: "游客", def: { toolCalls: 12, tokens: 50_000 } },
+  user: { label: "登录用户", def: { toolCalls: 12, tokens: 50_000 } },
+  admin: { label: "管理员", def: { toolCalls: 120, tokens: 600_000 } },
+};
+
+/** 输入框字符串态(提交时 Number 化,服务端 Zod 把关) */
+type AgentFormState = Record<AgentLimitKind, { toolCalls: string; tokens: string }>;
+
+function toAgentFormState(v: Record<AgentLimitKind, AgentLimitsConfig>): AgentFormState {
+  return {
+    guest: { toolCalls: String(v.guest.toolCalls), tokens: String(v.guest.tokens) },
+    user: { toolCalls: String(v.user.toolCalls), tokens: String(v.user.tokens) },
+    admin: { toolCalls: String(v.admin.toolCalls), tokens: String(v.admin.tokens) },
+  };
+}
+
+export default function SiteSettingsForm({
+  initial,
+  agentLimits,
+}: {
+  initial: SiteSettings;
+  agentLimits: Record<AgentLimitKind, AgentLimitsConfig>;
+}) {
   const router = useRouter();
   const [bandCount, setBandCount] = useState(String(initial.bandItemCount));
   const [repoCount, setRepoCount] = useState(String(initial.repoCount));
@@ -31,9 +66,14 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
   const [heroMd, setHeroMd] = useState(initial.heroMd);
   const [aboutMd, setAboutMd] = useState(initial.aboutMd);
   const [icp, setIcp] = useState(initial.icp);
+  const [agent, setAgent] = useState<AgentFormState>(toAgentFormState(agentLimits));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const setAgentField = (kind: AgentLimitKind, field: "toolCalls" | "tokens", v: string): void => {
+    setAgent((prev) => ({ ...prev, [kind]: { ...prev[kind], [field]: v } }));
+  };
 
   const save = async (): Promise<void> => {
     setBusy(true);
@@ -51,6 +91,12 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
           heroMd,
           aboutMd,
           icp,
+          guestToolCalls: Number(agent.guest.toolCalls),
+          guestTokens: Number(agent.guest.tokens),
+          userToolCalls: Number(agent.user.toolCalls),
+          userTokens: Number(agent.user.tokens),
+          adminToolCalls: Number(agent.admin.toolCalls),
+          adminTokens: Number(agent.admin.tokens),
         }),
       });
       const body = (await res.json()) as ApiEnvelope;
@@ -58,7 +104,9 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
         setError(body.message || `HTTP ${res.status}`);
         return;
       }
-      setNotice("已保存,首页即时再生;其余页面的标题在 ISR 周期(≤10 分钟)内更新");
+      setNotice(
+        "已保存,首页即时再生;其余页面的标题在 ISR 周期(≤10 分钟)内更新;Agent 额度对收到的下一条消息生效",
+      );
       router.refresh();
     } catch (e) {
       setError(String(e));
@@ -197,6 +245,55 @@ export default function SiteSettingsForm({ initial }: { initial: SiteSettings })
             className={`font-mono ${INPUT} resize-y`}
           />
         </SettingsField>
+      </SettingsSection>
+
+      <SettingsSection
+        icon="i-robot"
+        title="Agent 额度"
+        description="站内 AI 助手(搜索/专题生产)的单轮护栏,按身份分档;保存后新会话即时生效。递归上限按工具调用次数 2.5 倍自动推导,不单独设置。"
+      >
+        <SettingsGrid cols={3}>
+          {AGENT_LIMIT_KINDS.map((kind) => (
+            <SettingsField
+              key={`${kind}-toolcalls`}
+              label={`${AGENT_KIND_META[kind].label} · 工具调用次数`}
+              htmlFor={`cfg-agent-${kind}-toolcalls`}
+              hint={`1-200,默认 ${AGENT_KIND_META[kind].def.toolCalls}`}
+            >
+              <input
+                id={`cfg-agent-${kind}-toolcalls`}
+                type="number"
+                min={TOOL_CALLS_MIN}
+                max={TOOL_CALLS_MAX}
+                step={1}
+                value={agent[kind].toolCalls}
+                onChange={(e) => setAgentField(kind, "toolCalls", e.target.value)}
+                aria-label={`${AGENT_KIND_META[kind].label}工具调用次数上限`}
+                className={INPUT}
+              />
+            </SettingsField>
+          ))}
+          {AGENT_LIMIT_KINDS.map((kind) => (
+            <SettingsField
+              key={`${kind}-tokens`}
+              label={`${AGENT_KIND_META[kind].label} · tokens 上限`}
+              htmlFor={`cfg-agent-${kind}-tokens`}
+              hint={`1000-2000000,默认 ${AGENT_KIND_META[kind].def.tokens}`}
+            >
+              <input
+                id={`cfg-agent-${kind}-tokens`}
+                type="number"
+                min={TOKENS_MIN}
+                max={TOKENS_MAX}
+                step={1000}
+                value={agent[kind].tokens}
+                onChange={(e) => setAgentField(kind, "tokens", e.target.value)}
+                aria-label={`${AGENT_KIND_META[kind].label}tokens 用量上限`}
+                className={INPUT}
+              />
+            </SettingsField>
+          ))}
+        </SettingsGrid>
       </SettingsSection>
 
       <SettingsActions message={message} sticky>

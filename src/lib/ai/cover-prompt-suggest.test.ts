@@ -45,12 +45,16 @@ describe("parseCoverPrompt", () => {
 });
 
 describe("coverPromptInputSchema", () => {
-  it("title/excerpt 双空可过 schema(路由层拒),tags 超限判废", () => {
+  it("title/excerpt 双空可过 schema(路由层拒);tags 超 5 放行、50 帽判废", () => {
+    expect(
+      coverPromptInputSchema.safeParse({ title: "t", excerpt: "", tags: Array(51).fill("tag") })
+        .success,
+    ).toBe(false);
     expect(coverPromptInputSchema.safeParse({ title: "", excerpt: "摘要" }).success).toBe(true);
     expect(
       coverPromptInputSchema.safeParse({ title: "t", excerpt: "", tags: Array(9).fill("tag") })
         .success,
-    ).toBe(false);
+    ).toBe(true); // M31:标签数不再限 5(主题稿可超编辑器上限)
   });
 });
 
@@ -64,6 +68,9 @@ describe("buildCoverPromptSuggestPrompt", () => {
     });
     expect(withContent.user).toContain("正文(可能截断)");
     expect(withContent.user).toContain("正文内容");
+    // 2026-10-16 反馈问题四:spec 要求画面融入主题词文字(原全禁字令反转)
+    expect(withContent.system).toContain("主题词");
+    expect(withContent.system).toContain("简体中文文字");
 
     const noContent = buildCoverPromptSuggestPrompt({
       title: "标题",

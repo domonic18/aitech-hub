@@ -15,7 +15,7 @@
 **⚠️ 执行任何任务前,先读本文件;涉及哪一层,再读 docs/ 对应 arch 文档(按需,勿全量加载)。**
 
 - `src/app/(site|user|admin)/` 页面(用户中心落 `(site)/account` 共享站点壳,不开 `(user)` 组;悬浮 AI 助手挂 `(site)/layout` 全站);`src/app/api/` Route Handlers(admin API 按惯例落顶层域目录如 `/api/users`、`/api/feedback`,无 `/api/admin/` 命名空间);`src/lib/` 业务库(按 domain 分包)
-- `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/` 分 ops/(长期运维,npm 绑定)与 oneoff/(一次性订正/清洗,应用后删除、git 历史存档),脚本 docblock 带 @status;`services/douyin-gateway/` 抖音数据网关(Python sidecar,独立镜像,契约 arch/05 §4.4)
+- `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/` 分 ops/(长期运维,npm 绑定)与 oneoff/(一次性订正/清洗,应用后删除、git 历史存档),脚本 docblock 带 @status;`services/douyin-gateway/` 抖音数据网关(Python sidecar,独立镜像,契约 arch/05 §4.4);`services/card-renderer/` 卡片渲染 sidecar(HTML→PNG,Node+chromium,契约 arch/05 §4.6)
 - `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库
 - 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)plan/development-plan.md(状态真相源)
 
@@ -31,6 +31,7 @@
 | 搜索/AI 答案卡/Drawer 会话 Agent | docs/arch/04 §3(检索/答案卡/K2.5) |
 | UI 原型(M4/M5 开发依据)      | docs/prototypes/index.html       |
 | 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
+| 后台 UI/IA 设计板(Ardot 定稿) | 文件 739246438907714(F1-F27;创作域已落码,余域待立项) |
 | 测试规范                      | docs/standard/01-testing         |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 

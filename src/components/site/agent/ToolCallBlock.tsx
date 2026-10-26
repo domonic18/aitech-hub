@@ -7,13 +7,18 @@
  */
 import { useState } from "react";
 
-/** 站内三工具 + 时间/计划工具的图标(sprite 体系,禁手绘) */
+/** 站内三工具 + 时间/计划/专题生产四件工具的图标(sprite 体系,禁手绘;
+ * 取 Site/Admin 双 sheet 交集,抽屉在两端宿主页都要能显示) */
 const TOOL_ICON: Record<string, string> = {
   search_site: "#i-search",
   read_post: "#i-read",
   read_repo: "#i-github",
   get_time: "#i-clock",
   write_todos: "#i-bars",
+  get_topic_brief: "#i-book",
+  transfer_video_cover: "#i-export",
+  generate_cover_candidates: "#i-star",
+  save_topic_draft: "#i-plus",
 };
 
 /** 只取渲染所需子集(assistant-ui 完整 part 含 type/toolCallId/argsText) */

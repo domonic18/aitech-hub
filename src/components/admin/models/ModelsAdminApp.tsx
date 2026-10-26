@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * AI 服务治理三 Tab 客户端岛(M8 批⑥;原型 admin-models.html):
- * 模型条目 / ASR 渠道 / 任务绑定。数据由 RSC 注入,变更后 router.refresh()。
+ * AI 服务治理三 Tab 客户端岛(M8 批⑥建;M30 批① 曾增 Agent 技能页签,
+ * 2026-10-16 验收反馈问题二技能提为独立页 /admin/skills 后摘除;原型
+ * admin-models.html):模型条目 / ASR 渠道 / 任务绑定。数据由 RSC 注入,
+ * 变更后 router.refresh()。
  */
 import { useState } from "react";
 
@@ -39,35 +41,38 @@ export default function ModelsAdminApp({
       <div>
         <h2 className="text-base font-semibold">模型配置</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          AI 服务治理:模型按用途接入,任务经「任务绑定」解析主力/备用;API Key
-          服务端加密存储,界面仅回显掩码(编辑留空表示不修改)。
+          AI 服务治理:模型按用途接入,任务经「任务绑定」解析主力/备用;API Key 服务端加密存储,
+          界面仅回显掩码(编辑留空表示不修改)。
         </p>
       </div>
 
       <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            aria-selected={tab === t.key}
-            role="tab"
-            className={`-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] ${
-              tab === t.key
-                ? "border-accent font-medium text-accent"
-                : "border-transparent text-text-2 hover:text-text-1"
-            }`}
-          >
-            {t.label}
-            {t.key === "models" && models.length > 0 && (
-              <span className="ml-1.5 rounded-sm bg-panel-2 px-1 py-px font-mono text-[10px] text-text-3">
-                {models.length}
-              </span>
-            )}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const count = t.key === "models" ? models.length : 0;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-selected={tab === t.key}
+              role="tab"
+              className={`-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] ${
+                tab === t.key
+                  ? "border-accent font-medium text-accent"
+                  : "border-transparent text-text-2 hover:text-text-1"
+              }`}
+            >
+              {t.label}
+              {count > 0 && (
+                <span className="ml-1.5 rounded-sm bg-panel-2 px-1 py-px font-mono text-[10px] text-text-3">
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
         <span className="ml-auto pb-2">
-          <ModelDialog label="+ 新增模型" />
+          {tab === "models" && <ModelDialog label="+ 新增模型" />}
         </span>
       </div>
 

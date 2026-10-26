@@ -50,6 +50,7 @@ CREATE TABLE content_category (
     slug        VARCHAR(100) NOT NULL,               -- blog / report / news / advertising
     name        VARCHAR(100) NOT NULL,
     description TEXT,
+    is_original BOOLEAN NOT NULL DEFAULT false,      -- 原创分类标记(2026-10-20):首页「博主文章/推荐视频」分流 + /articles 过滤;文章随分类继承
     sort_order  INT NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -97,6 +98,51 @@ CREATE TABLE content_media_ref (
     PRIMARY KEY (media_path, post_id)
 );
 CREATE INDEX idx_content_media_ref_post ON content_media_ref (post_id);
+
+-- 评论 + 点赞(M23,迁移 20261010120000_m23_post_comment_like)。三表设计决策:
+-- ① 点赞去重 = identity_key 单列("u:<userId>"|"v:<ah_av uuid>",最长 21/38),
+--    不用 (user_id?, visitor_id?) 双列——PG unique 中 NULL 互不判重,双列拦不住
+--    游客重复赞;两表分立(文章/评论)而非多态单表,FK Cascade 自动收尸;
+-- ② 不加 likes_count/comments_count 冗余计数列:前台全走 force-dynamic API
+--    现查 COUNT(量级 154 文/百级评论);列表卡显数(2026-10-10 M23 延伸需求)
+--    同走现查——listPostsPage/latest/pinned 出口按页内 id 两次索引 groupBy
+--    附带计数(posts.attachInteractionCounts,评论只数 visible),零写路径
+--    耦合零漂移;冗余列待列表量级真起来再按单事务入口补列;
+-- ③ parent_id 自引用无 FK:两级封顶(仅挂根)由应用层校验;admin 删根连带
+--    直接子在事务内显式收集(FK 不级联自引用);
+-- ④ user_id 无 FK(feedback 纪律:账号删除评论留档),author_name 为写侧快照
+--    (登录=昵称、迁移=WP 原名),渲染零 join;wp_comment_id unique = 迁移幂等键;
+-- ⑤ status 仅 visible|hidden 两态(先发后审,无 pending),应用层 Zod 管控;
+-- ⑥ content 列宽 4000 容旧站迁移实测 max 2143(dry-run 2026-10-10),
+--    新提交 zod 限 1..1000。
+CREATE TABLE content_post_comment (
+    id            BIGSERIAL PRIMARY KEY,
+    post_id       BIGINT NOT NULL REFERENCES content_post(id) ON DELETE CASCADE,
+    user_id       BIGINT,
+    author_name   VARCHAR(100) NOT NULL,
+    content       VARCHAR(4000) NOT NULL,
+    status        VARCHAR(16) NOT NULL DEFAULT 'visible',
+    parent_id     BIGINT,
+    wp_comment_id BIGINT UNIQUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_content_post_comment_post_visible ON content_post_comment (post_id, status, created_at);
+CREATE INDEX idx_content_post_comment_status_recent ON content_post_comment (status, created_at DESC);
+
+CREATE TABLE content_post_like (
+    post_id      BIGINT NOT NULL REFERENCES content_post(id) ON DELETE CASCADE,
+    identity_key VARCHAR(42) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (post_id, identity_key)
+);
+
+CREATE TABLE content_post_comment_like (
+    comment_id   BIGINT NOT NULL REFERENCES content_post_comment(id) ON DELETE CASCADE,
+    identity_key VARCHAR(42) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (comment_id, identity_key)
+);
 ```
 
 ### 2.2 user_(账号域)
@@ -256,7 +302,7 @@ CREATE TABLE legacy_url_map (
 **电报流表族已落地(M7 文字管道 + M8 视频管道,增量迁移进 `prisma/migrations/`,字段终态以 schema 为准)**:
 
 - `crawl_source`(文字渠道台账;M8 起兼**平台行**:`type=social-video + platform=douyin` 每平台一行,承载 Cookie 池密文 `config.cookieJars`/平台总开关/日上限,自身不调度——设计见 [arch/02 §2 落地注记](02-data-collection.md))
-- `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
+- `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;**sec_uid 语义 per-platform(M24 起定档)**——douyin=sec_uid(`MS4wLjAB…` 开头),bilibili=纯数字 mid(1-16 位),判等与登记校验按平台分发(见 [arch/05 §4.4](05-services.md));调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
 - `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2);AI 解读列组视频/文字共用:`ai_status/ai_topic/ai_summary/ai_points jsonb/ai_keywords jsonb(M12 批⑥ 新列,文字条关键词 tag)/ai_ran_at/last_ai_error`(语义与契约演进见 arch/02 §3.2 落地注记)
 - `blocklist`(屏蔽词)
 
@@ -273,6 +319,7 @@ CREATE TABLE legacy_url_map (
 - `site_config`(kv 通用底座):`key varchar(50) PK + value text + updated_at`;value 一律字符串,消费方自行解析 + clamp(键注册表 `SITE_CONFIG_KEYS` + per-key Zod,`src/lib/config/site-config.ts`;缺行/非数值/越界一律回落默认)。**M12 批② value 放宽为 text**(hero_md 存 markdown,varchar(200) 不够)并扩键族:`band.item_count`(默认 12,钳 1..50)/`home.repo_count`(默认 3,钳 1..12)/`home.post_count`(默认 5,钳 1..12)/`site.title`(默认「一起AI」,1..50 字;传播 generateMetadata/Header/Footer/feed.xml/llms.txt)/`home.hero_md`(≤2000 字,空 = 回退内置品牌语)/`site.icp`(2026-10-05,≤60 字,空 = 页脚不渲染备案行;页脚链 beian.miit.gov.cn)
 - `stats_visit_log`(近期访问明细,行级):`path varchar(500)/ip varchar(45)/browser/os varchar(50)/device_type varchar(20)/source_class varchar(20)/source_name varchar(50)/visitor_hash varchar(32)/created_at`;索引 `created_at DESC`。**口径例外**:统计族其余表不存明文 IP,此表存全量 IP(2026-10-04 用户定调)但仅 7 天短留存——ingestView 同步落行(不 await 不阻断 beacon,失败仅 warn,聚合口径不受影响),worker 日调度 `visit-log-purge` 清过期行
 - `stats_search_log`(搜索词明细,行级,2026-10-06 排行需求):`term varchar(100)/created_at`;索引 `created_at DESC`。口径:/search 页 counted PV 携带的 q(trim + 空白折叠截 100 字,`classify.ts#normalizeSearchTerm`,保留原样大小写),仅 path 为 /search 记;无 PII(不存 IP/访客哈希);行级直插不经缓冲(不 await 不阻断 beacon,失败仅 warn),worker `visit-log-purge` 同 job 清 180 天前行——排行「全部」窗口的实际上界
+- `stats_click_log`(条目点击明细,行级,M28 批① 2026-10-14):`surface varchar(20)/kind varchar(20)/ref varchar(100)/domain varchar(100) default ''/created_at`;索引 `created_at DESC`。口径:首页/电报流条目锚点点击(telegram/post 存 BigInt id 文本、project 存冻结 slug,**ref 无外键**,标题读侧反解删除兜底占位);domain 服务端从 target 解析(不信任客户端,站内链接空串);无 PII(循 stats_search_log);行级直插不经缓冲,worker `visit-log-purge` 同 job 清 180 天前。**在线用户不入表**:Redis ZSET `stats:online`(member=`vhash(32hex)|<u|g>:<标识>|path` 定长前缀切片+标识段,score=最后活跃 ms,5 分钟滑窗,键 TTL 24h 兜底),实时读零落库;标识=登录用户用户名(缺省邮箱)或未登录明文 IP(2026-10-14 用户定调承接 WP 展示口径)——仅存本内存键、随滑窗滑出,不入任何表,仅 admin 统计页可见
 
 **混合检索向量表已落地(2026-10-08 M20 批①迁移 `20261008110000_hybrid_search_pgvector`,检索架构见 [arch/04 §3.2](04-ai-agent.md))**:
 
@@ -301,6 +348,44 @@ CREATE TABLE legacy_url_map (
 - `pay_notify_log`(回调留痕):`order_no/gateway_status varchar(8)` 枚举 `OD|WP|CD|RD|UD`/`sign_valid/payload jsonb`(回调原文全量存,可追溯伪造尝试)/`handled 默认 false`(是否触发状态迁移);索引 `order_no`
 - `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
 - `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
+
+**飞书免登域两表已落地(2026-10-14 M29 批①迁移 `20261014160000_admin_feishu_sso`,交互与兑换链见 [arch/05 §3.1](05-services.md))**:
+
+- `admin_feishu_config`(应用凭证单例 `id=1`,get-or-create,镜像 `email_config`/`publish_wechat_config` 形态;2026-10-14 拍板凭证入数据库不入 env):`app_id varchar(50) 默认 ''`/`app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`enabled 默认 false`(免登兑换总开关——绑定/appId 下发只要求凭证齐,enabled 可后开)/`last_test` 四件套(探测 app_token+jsapi_ticket 双链路)
+- `admin_feishu_binding`(免登白名单本体,fail-closed:兑换仅 unionId 精确命中行放行):`user_id bigint` 唯一(`uq_admin_feishu_binding_user`,一账号一身份)/`union_id varchar(64)` 唯一(`uq_admin_feishu_binding_union`,一身份一账号)/`open_id varchar(64)`/`feishu_name? varchar(100)`(兑换时姓名快照);**无 DB 外键,应用层完整性**(跨锚冲突 409;目标账号 role/status 兑换时复核,失配拒绝)
+
+**Agent 技能表已落地(2026-10-14 M30 批①迁移 `20261014200000_agent_skill`,机制与工具面见 [arch/04 §3 K2.8 补注五](04-ai-agent.md))**:
+
+- `agent_skill`(通用技能表——写作指南/分发流程等知识型流程纪律,后台「模型配置→Agent 技能」页签建改即时生效零发版):`key varchar(50)` 唯一(`uq_agent_skill_key`,agent 稳定引用,**建后不可改**)/`name varchar(100)`/`scenario varchar(200)`(一行,agent 选 skill 时对号场景)/`guide_md text`(指南正文 markdown,可引用既有工具名)/`enabled bool 默认 true`(停用后 agent 侧 list/get 即时不可见);key 格式 `^[a-z0-9]([a-z0-9-]{0,48}[a-z0-9])?$` 应用层 Zod 管控
+- `topic.skill_key`(批②迁移 `20261014210000_topic_skill_key` 增列):`varchar(50)?` 绑定技能稳定引用——**soft ref 无 FK**(skill 删/停后合成写稿降级为按场景自动匹配,不阻塞);PATCH 存在性+启用核验 400
+
+**系统出口代理单例已落地(2026-10-14 M33 批B迁移 `20261014220000_system_proxy_config`,网关接线与代理语义见 [arch/05 §4.4](05-services.md))**:
+
+- `system_proxy_config`(全局单点家宽出口,采集网关全部出站过境;**id=1 锚点 get-or-create,镜像 `admin_feishu_config` 形态**):`proxy_url_enc? varchar(500)`(secret-box AES-256-GCM,AUTH_SECRET 轮换失效重录)/`proxy_url_mask? varchar(60)`(`scheme://host:port` 脱敏冗余列,凭据段剥除永不回显)/`enabled 默认 false`(总开关,关闭=全部直连配置保留)/`last_test` 四件套(经网关 `/proxy-test` 探 B 站一跳);**网关零密钥不变**——worker 解密后随网关请求携带,代理地址不落网关不进日志
+
+**任务运行台账已落地(2026-10-19 验收二批③迁移 `20261019120000_job_run_log`,调度接线与读侧页签见 [arch/05 §4](05-services.md))**:
+
+- `job_run`(系统周期/手动批任务运行记录——BullMQ removeOnComplete 只留近几次,挂死/失败/耗时无处可查;学习 ai-invest collector_log 单一写入口形态):`job_key varchar(60)`(`queue/jobName` 稳定键,如 `insight/fetch`)/`queue varchar(40)`/`job_name varchar(60)`/`trigger varchar(10)` 枚举 `cron|manual`(jobId 带 `-manual-` 即 manual)/`status varchar(10)` 枚举 `running|success|failed`(**先落 running 行再执行——挂死立即停留可见,不必等超时**)/`started_at/finished_at?/duration_ms?`/`summary jsonb?`(处理器返回值,超 4000 字符截为 `{truncated,preview}`)/`error? text`(截 4000);索引 `idx_job_run_recent(started_at DESC)` + `idx_job_run_key_recent(job_key,started_at DESC)`。**单一写入口=worker 分发器包装**(worker/job-run#withJobRunLog,白名单 14 批任务 ≈400 行/日;tick 心跳与请求驱动单元任务不入账);30 天保留,04:47 日清批顺带把 running 超 24h 的崩溃残留代标 failed 收口
+
+**配图工坊三表已落地(2026-10-22 M40 批 B 迁移 `20261022090000_m40_illustration_studio`,队列纪律与契约见 [arch/05 §4.7](05-services.md);forward-only,三 FK 无 onDelete 默认 RESTRICT 语义显式声明)**:
+
+- `ai_illu_version`(版本链,编辑评审史):`media_path varchar(500)`(整图站内路径)/`parent_version_id?`(自引用 FK `SET NULL`,根版本 null;单链逐级回溯)/`origin varchar(20)` 枚举 `original|text_edit|erase|redraw`(应用层 Zod 管控)/`name? varchar(200)`(展示名,登记时从提示词派生前 40 字,链内随根继承;NULL=历史行展示兜底「配图 #id」,2026-10-23 F13/F14 对齐批加列)/`source? varchar(20)` 枚举 `agent|studio`(登记口:agent 会话生图/工坊直出;NULL=历史行不显来源)/`edit_instruction? varchar(1000)/edit_bbox? varchar(40)`(normalized `"x1 y1 x2 y2"`);索引 parent + media_path(`ensureStudioRoot` get-or-create 查询锚)
+- `ai_illu_layer_group`(图层组=一次拆层运行):`version_id` FK **RESTRICT**/`base_media_path?`(干净底板,ready 后回填)/`status varchar(12)` 枚举 `processing|ready|failed`/`error? varchar(500)`(人话失败原因)/`model_id`(溯源列入队时定格,绑定主备选边同 resolver 口径,无绑定 0);索引 `(version_id, created_at)`(取最新组)
+- `ai_illu_layer`(图层行):`group_id` FK **CASCADE**(重拆清旧组连图层)/`z_index/name varchar(200)/description? varchar(500)`/`bbox_x1..bbox_y2 int`(normalized 0-999,左上原点)/`media_path`(bbox 区域高分重提透明 PNG)/`visible bool 默认 true`(显隐组合持久化,导出前端合成);索引 `(group_id, z_index)`
+
+**贴图三表已落地(2026-10-22 M41 迁移 `20261022150000_m41_content_pin`,队列与接口见 [arch/05 §4.8](05-services.md)、URL 终态见 [arch/07 §2](07-frontend.md);forward-only)**:
+
+- `content_pin`(贴图主实体,公众号「小绿书」newspic 图片帖):`title varchar(64)`(≤32 码点公众号硬上限,VarChar 留字节数余量)/`content text 默认 ''`(轻文字纯文本,禁 Markdown/内联 HTML,≤2 万码点)/`topic_id?`(专题 soft ref,应用层完整性不设跨域 FK,同 `topic.linked_post_id` 口径)/`status varchar(20) 默认 draft` 枚举 `draft|pending|synced|published`(应用层 Zod,人工迁移表 `PIN_MANUAL_TARGETS` 收敛)/`read_more_url? varchar(500)`(阅读原文,http(s) 白名单)/`crop_spec varchar(40) 默认 1_1`(封面裁剪档 `1_1|16_9|2.35_1`,随 draft/add 透传)/`reference_media_path? varchar(500)`(M42 生图采纳的参照图,见下)/`synced_at?/published_at?`(首进 published 落,回退再上架不覆盖);索引 `(status, updated_at DESC)`(工作台页签)
+- `content_pin_image`(有序图片,首张即封面——公众号 `image_list` 顺序 = sort_order,站点瀑布流封面同源):`pin_id` FK **CASCADE**(删贴图连图)/`version_id?`(引用 `ai_illu_version` soft ref 不拷文件不回写,本地上传为 null)/`media_path varchar(500)`(**挂载时快照**——工坊后续改字产新版本不篡改已挂序列,升版由人工在组装台重挂)/`width?/height?`(本地上传取自然尺寸;工坊引用缺省)/`sort_order`;索引 `(pin_id, sort_order)`
+- `content_pin_channel`(渠道留痕,每贴图×渠道一行,`@@unique([pinId, channel])`,循 `publish_channel` ensure 形态):`channel varchar(20)`(一期仅 `wechat`)/`status varchar(20) 默认 pending` 枚举 `pending|synced|failed`/`media_id?/publish_id?`(公众号草稿/发布锚,重推 update 以 media_id 定位)/`attempts`(含人工重试)/`last_error? varchar(500)`(人话)/`synced_at?`;`pin_id` FK **CASCADE**
+
+**创作中心域扩列已落地(2026-10-22 M42 迁移 `20261022180000_m42_studio_output`,概念重构见 [arch/05 §1](05-services.md)、创作台信息架构见 [arch/07 §2](07-frontend.md);forward-only,全部 ADD COLUMN 带缺省不锁表)**:
+
+- `topic.output_type varchar(20) 默认 article`:主意图枚举 `article|pin`(应用层 Zod `TOPIC_OUTPUT_TYPES`)——**只决定新建默认面板与 agent 分支,不限制另一种产出**(产出区恒有「生成长文」「生成贴图」两个动作);回填规则幂等:无 `linked_post_id` 且已有 `content_pin` 挂靠的存量行标 `pin`
+- `topic.pin_positioning? varchar(1000)`:贴图配置条款文本(张数/比例/首图裁剪/风格/参照图 + `【补充要求】` 块),与长文 `positioning` **独立列、互不派生**(各自 `writing-config.ts` / `writing-pin-config.ts` 往返,未识别行无损收进补充块)
+- 关系口径(均 **soft ref,应用层完整性**):长文 1:1 走 `topic.linked_post_id`;**贴图 N:1 走 `content_pin.topic_id`**(不新增关联表,删创作由编辑侧改挂)
+- `content_pin.reference_media_path? varchar(500)`:本次生图采纳的参照图(站内 `/wp-content/uploads/` 路径,soft ref;缺省回落创作样例图/素材封面),让「按素材出图」可追溯可复现
+- 索引 `idx_content_pin_topic_updated (topic_id, updated_at DESC)`:创作台按创作聚合贴图产出
 
 ## 3. Prisma 模型约定
 

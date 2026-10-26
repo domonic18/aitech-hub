@@ -1,16 +1,19 @@
 /**
- * 内容分发页(M17 批①,requirement §4 多渠道分发):公众号渠道配置 +
- * 同步记录。RSC 直读(records 免 API 路由),客户端岛负责交互。
- * 批⑤:记录表状态筛选(?status=,段式同 posts 页)+ 分页(AdminPagination
- * hrefFor 注入)。
+ * 分发中心页(M17 批①建;F16 板对齐):pageHead + KPI 三卡 + 渠道四卡 +
+ * 最近同步记录。RSC 直读(records 免 API 路由),客户端岛负责交互;
+ * 批⑤筛选(?status=,段式同 posts 页)/ 分页(AdminPagination hrefFor 注入)。
  */
 import Link from "next/link";
 
 import AdminPagination from "@/components/admin/AdminPagination";
 import DistributeAdminApp from "@/components/admin/distribute/DistributeAdminApp";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { CHANNEL_WECHAT } from "@/lib/distribute/channels";
-import { PUBLISH_RECORD_SEGMENTS, listPublishChannelRecords } from "@/lib/distribute/records";
+import { DISTRIBUTE_CHANNELS, parseChannelParam } from "@/lib/distribute/channels";
+import {
+  PUBLISH_RECORD_SEGMENTS,
+  getDistributeOverview,
+  listPublishChannelRecords,
+} from "@/lib/distribute/records";
 import { getWechatConfigAdmin } from "@/lib/distribute/wechat-config-admin";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
@@ -19,12 +22,13 @@ export const dynamic = "force-dynamic";
 const SEG_LABELS: Record<(typeof PUBLISH_RECORD_SEGMENTS)[number], string> = {
   all: "全部",
   synced: "已同步",
-  pending: "同步中",
+  ready: "待发布",
+  pending: "生成中",
   failed: "失败",
 };
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; page?: string; channel?: string }>;
 }
 
 export default async function AdminDistributePage({
@@ -34,45 +38,87 @@ export default async function AdminDistributePage({
   const sp = await searchParams;
   const segment = parseListSegment(PUBLISH_RECORD_SEGMENTS, sp.status, "all");
   const page = parsePage(sp.page);
+  // M48 批D:渠道维度接线(?channel=,经注册表校验)——缺省不过滤;一期仅
+  // wechat 行,数据面与旧硬编码一致
+  const channel = parseChannelParam(sp.channel);
 
-  const [config, records] = await Promise.all([
+  const [config, records, overview] = await Promise.all([
     getWechatConfigAdmin(),
     listPublishChannelRecords({
-      channel: CHANNEL_WECHAT,
+      ...(channel ? { channel } : {}),
       ...(segment !== "all" ? { status: segment } : {}),
       page,
     }),
+    getDistributeOverview(channel),
   ]);
   const totalPages = Math.max(1, Math.ceil(records.total / records.pageSize));
   const hrefFor = (p: number): string =>
     adminListHref("/admin/distribute", {
       status: segment === "all" ? undefined : segment,
+      ...(channel ? { channel } : {}),
       page: p,
     });
 
-  const filter = (
+  // M49 批X2:渠道 chips(?channel=,注册表单源)+ 状态 chips 双行
+  const channelChips = (
     <div className="flex overflow-hidden rounded-sm border border-line">
-      {PUBLISH_RECORD_SEGMENTS.map((seg) => (
+      <Link
+        href={adminListHref("/admin/distribute", {
+          status: segment === "all" ? undefined : segment,
+        })}
+        className={`px-3 py-1 text-xs ${channel === undefined ? "bg-accent-dim font-semibold text-accent" : "bg-panel text-text-2 hover:bg-panel-2"}`}
+      >
+        全部渠道
+      </Link>
+      {Object.entries(DISTRIBUTE_CHANNELS).map(([ch, def]) => (
         <Link
-          key={seg}
+          key={ch}
           href={adminListHref("/admin/distribute", {
-            status: seg === "all" ? undefined : seg,
+            status: segment === "all" ? undefined : segment,
+            channel: ch,
           })}
-          className={`border-r border-line px-3 py-1 text-xs last:border-r-0 ${
-            seg === segment
+          className={`border-l border-line px-3 py-1 text-xs ${
+            channel === ch
               ? "bg-accent-dim font-semibold text-accent"
               : "bg-panel text-text-2 hover:bg-panel-2"
           }`}
         >
-          {SEG_LABELS[seg]}
+          {def.label}
         </Link>
       ))}
+    </div>
+  );
+  const filter = (
+    <div className="flex flex-wrap items-center gap-2">
+      {channelChips}
+      <div className="flex overflow-hidden rounded-sm border border-line">
+        {PUBLISH_RECORD_SEGMENTS.map((seg) => (
+          <Link
+            key={seg}
+            href={adminListHref("/admin/distribute", {
+              status: seg === "all" ? undefined : seg,
+              ...(channel ? { channel } : {}),
+            })}
+            className={`border-r border-line px-3 py-1 text-xs last:border-r-0 ${
+              seg === segment
+                ? "bg-accent-dim font-semibold text-accent"
+                : "bg-panel text-text-2 hover:bg-panel-2"
+            }`}
+          >
+            {/* F16 板:失败 chip 带计数(「失败 2」),其余段不带 */}
+            {seg === "failed" && overview.failedCount > 0
+              ? `${SEG_LABELS[seg]} ${overview.failedCount}`
+              : SEG_LABELS[seg]}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 
   return (
     <DistributeAdminApp
       config={config}
+      overview={overview}
       records={records.rows}
       total={records.total}
       filter={filter}

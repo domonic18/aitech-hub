@@ -4,7 +4,8 @@
  * run 后 consumeTokens 按实际用量实扣(user 专属,admin/游客不扣);扣减失败
  * 只告警不反噬。resume:透传 Command 值、不计游客提问配额、不回填标题、空
  * message 400。重依赖(run/sessions/quota/prisma/token-balance)全 mock,
- * 只验路由接线与护栏次序。
+ * 只验路由接线与护栏次序;额度读档走真 config/agent-limits(kv 桩回空 →
+ * 默认档,兼验派生注入 limits)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +15,6 @@ const balanceMock = vi.hoisted(() => ({
   consumeTokens: vi.fn(),
 }));
 const runMock = vi.hoisted(() => ({
-  AGENT_MAX_TOKENS: 50_000,
   runAgentTurn: vi.fn(),
   recordAgentRun: vi.fn(),
 }));
@@ -25,6 +25,7 @@ const quotaMock = vi.hoisted(() => ({
 }));
 const prismaMock = vi.hoisted(() => ({
   searchAgentSession: { findUnique: vi.fn() },
+  siteConfig: { findMany: vi.fn() },
 }));
 const loggerMock = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
@@ -72,6 +73,7 @@ beforeEach(() => {
     visitorId: "user:42",
     tokensTotal: 0,
   });
+  prismaMock.siteConfig.findMany.mockResolvedValue([]); // 额度 kv 无行 → 默认档
   sessionsMock.backfillSessionTitle.mockResolvedValue(undefined);
   runMock.recordAgentRun.mockResolvedValue(undefined);
 });
@@ -217,5 +219,95 @@ describe("command.resume 分支(HITL 提问卡回答,2026-10-09 验收反馈)", 
     });
     expect(res.status).toBe(400);
     expect(runMock.runAgentTurn).not.toHaveBeenCalled();
+  });
+});
+
+describe("command.resume propose_edits 评审结果(M27 批⑧-c union 分流)", () => {
+  const setupUser = (): void => {
+    identityMock.resolveAgentIdentity.mockResolvedValue(USER);
+    balanceMock.hasTokenBalance.mockResolvedValue(true);
+    runMock.runAgentTurn.mockResolvedValue({
+      tokensIn: 1,
+      tokensOut: 1,
+      toolCalls: 0,
+      truncatedReason: null,
+      resolved: null,
+    });
+  };
+
+  it("propose_edits resume 放行 run:透传评审值,不计配额不回填标题", async () => {
+    setupUser();
+    const body = {
+      command: { resume: { kind: "propose_edits", decision: "rejected", comment: "第二块不对" } },
+    };
+    const res = await POST(req(body), { params: Promise.resolve({ threadId: TID }) });
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(runMock.runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: null,
+        resume: { kind: "propose_edits", decision: "rejected", comment: "第二块不对" },
+      }),
+    );
+    expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it("partial 带 applied 数放行;applied 越界(>20)400", async () => {
+    setupUser();
+    const ok = await POST(
+      req({ command: { resume: { kind: "propose_edits", decision: "partial", applied: 2 } } }),
+      { params: Promise.resolve({ threadId: TID }) },
+    );
+    expect(ok.status).toBe(200);
+    await ok.text();
+
+    const bad = await POST(
+      req({ command: { resume: { kind: "propose_edits", decision: "applied", applied: 21 } } }),
+      { params: Promise.resolve({ threadId: TID }) },
+    );
+    expect(bad.status).toBe(400);
+    expect(runMock.runAgentTurn).toHaveBeenCalledTimes(1); // 只有 ok 那次进 run
+  });
+
+  it("decision 非法 / propose_edits 缺 decision:400 不进 run(union 双支都不中)", async () => {
+    setupUser();
+    const badDecision = await POST(
+      req({ command: { resume: { kind: "propose_edits", decision: "whatever" } } }),
+      { params: Promise.resolve({ threadId: TID }) },
+    );
+    expect(badDecision.status).toBe(400);
+    const badShape = await POST(
+      req({ command: { resume: { kind: "propose_edits", message: "x" } } }),
+      { params: Promise.resolve({ threadId: TID }) },
+    );
+    expect(badShape.status).toBe(400);
+    expect(runMock.runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it("kind 缺省仍放行(线上真实形状:构造器注入前的载荷/早版客户端)", async () => {
+    setupUser();
+    const res = await POST(
+      req({ command: { resume: { decision: "applied", applied: 2, comment: "都改了" } } }),
+      { params: Promise.resolve({ threadId: TID }) },
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(runMock.runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resume: { decision: "applied", applied: 2, comment: "都改了" },
+      }),
+    );
+  });
+
+  it("ask_user kind 显式携带仍兼容(union 第一支)", async () => {
+    setupUser();
+    const res = await POST(req({ command: { resume: { kind: "ask_user", message: "好" } } }), {
+      params: Promise.resolve({ threadId: TID }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(runMock.runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ resume: { kind: "ask_user", message: "好" } }),
+    );
   });
 });

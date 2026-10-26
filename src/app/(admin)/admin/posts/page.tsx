@@ -4,13 +4,17 @@
  * 数据编排与瘦身映射(不把 contentMd 等重字段传给客户端);分页以 children 注入
  * (AdminPagination 需服务端 hrefFor)。旧文保真:WP 迁移行底色区分,操作收敛为
  * 查看/下架(无编辑/删除)。
+ * 验收二批①:文章分类并入「分类」页签(?t= 切换,原独立页 308 承接)。
  */
 import Link from "next/link";
 
 import ImportPostsButton from "@/components/admin/ImportPostsButton";
 import PostsTable from "@/components/admin/PostsTable";
+import CategoriesSection from "@/components/admin/categories/CategoriesSection";
+import SubTabs from "@/components/admin/data/SubTabs";
 import {
   ADMIN_LIST_SEGMENTS,
+  POST_DISPLAY_STATE_LABEL,
   postDisplayState,
   type AdminListSegment,
 } from "@/lib/content/post-schema";
@@ -24,13 +28,17 @@ export const dynamic = "force-dynamic";
 
 const SEG_LABELS: Record<AdminListSegment, string> = {
   all: "全部",
-  published: "已发布",
-  draft: "草稿",
-  unpublished: "已下架",
+  ...POST_DISPLAY_STATE_LABEL,
 };
 
+/** 文章/分类双视图(?t= 切换;分类原为侧栏一级项,验收二批①降级并入) */
+const VIEW_TABS = [
+  ["posts", "文章"],
+  ["categories", "分类"],
+] as const;
+
 interface PageProps {
-  searchParams: Promise<{ status?: string; page?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; page?: string; q?: string; t?: string }>;
 }
 
 function listHref(segment: AdminListSegment, page: number, q?: string): string {
@@ -45,6 +53,18 @@ export default async function AdminPostsPage({
   searchParams,
 }: PageProps): Promise<React.ReactElement> {
   const sp = await searchParams;
+  const view = VIEW_TABS.some(([k]) => k === sp.t) ? sp.t! : "posts";
+
+  // 分类视图:不查文章表,直接落分类区块(原独立页内容,CategoriesSection 自带说明)
+  if (view === "categories") {
+    return (
+      <div className="flex flex-col gap-4">
+        <SubTabs tabs={VIEW_TABS} active="categories" basePath="/admin/posts/" />
+        <CategoriesSection />
+      </div>
+    );
+  }
+
   const segment = parseListSegment(ADMIN_LIST_SEGMENTS, sp.status, "all");
   const page = parsePage(sp.page);
   const q = sp.q?.trim() || undefined;
@@ -74,11 +94,14 @@ export default async function AdminPostsPage({
     excerpt: row.excerpt,
     seoDescription: row.seoDescription,
     syncable: row.contentMd !== null,
-    wechat: row.channels.find((c) => c.channel === "wechat") ?? null,
+    // M49 批X1 渠道化:行形状改 channels 数组下发(UI 按 channel 自取;新增渠道
+    // 不再加链)
+    channels: row.channels.map((c) => ({ channel: c.channel, status: c.status })),
   }));
 
   return (
     <div className="flex flex-col gap-4">
+      <SubTabs tabs={VIEW_TABS} active="posts" basePath="/admin/posts/" />
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/admin/posts/new"

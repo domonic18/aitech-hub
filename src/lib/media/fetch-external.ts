@@ -13,6 +13,7 @@ export async function fetchExternalImage(url: string): Promise<{ data: Uint8Arra
     redirect: "follow",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // mime 仅作展示提示:M27 批⑦ 起 uploadMedia 以魔数嗅探裁决,响应头缺省/漂移不再致 415
   const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength > MEDIA_LIMITS.maxFetchBytes) throw new Error("超过大小上限");

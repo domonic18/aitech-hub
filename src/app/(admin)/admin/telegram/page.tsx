@@ -1,13 +1,14 @@
 /**
  * 电报流治理页(M7 批④,侧栏「电报流治理」;原型 admin-telegram):
  * 四分段 + 来源/媒体/解读态筛选 + 搜索 + 分页;行内 恢复/隐藏/归档/编辑/解读;
- * 页尾屏蔽词管理。本件只做参数解析与取数编排,行/筛选栏/分页条在 components/admin。
+ * 批量 归档/隐藏/删除(M31 验收反馈,TelegramTable);页尾屏蔽词管理。
+ * 本件只做参数解析与取数编排,表体/筛选栏/分页条在 components/admin。
  * M10 批⑤:解读态下拉(?ai=,存量视频以此导向行内「解读」按钮)。
  */
 import BlocklistManager from "@/components/admin/BlocklistManager";
 import AdminPagination from "@/components/admin/AdminPagination";
-import TelegramFilterBar from "@/components/admin/TelegramFilterBar";
-import TelegramItemRow from "@/components/admin/TelegramItemRow";
+import TelegramFilterBar from "@/components/admin/telegram/TelegramFilterBar";
+import TelegramTable from "@/components/admin/telegram/TelegramTable";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { parseListSegment, parsePage } from "@/lib/admin/list";
 import {
@@ -100,31 +101,7 @@ export default async function AdminTelegramPage({
       />
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line text-xs text-text-3">
-              <th className="px-4 py-2.5 font-medium">条目</th>
-              <th className="px-3 py-2.5 font-medium">媒体</th>
-              <th className="px-3 py-2.5 font-medium">来源</th>
-              <th className="px-3 py-2.5 font-medium">过滤命中</th>
-              <th className="px-3 py-2.5 font-medium">状态</th>
-              <th className="px-3 py-2.5 font-medium">时间</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((t) => (
-              <TelegramItemRow key={t.id} item={t} />
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
-                  没有符合条件的条目
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <TelegramTable items={items} />
 
         <AdminPagination
           page={page}

@@ -75,6 +75,16 @@ export interface InterpretPromptSource {
   transcript: string | null;
 }
 
+/** 转写注入 prompt 截断帽(M27 批⑦ 长视频:分段转写全文可至数万字,帽防上下文
+ * 爆炸与成本失控;尾部标注防模型误以为材料自然结束) */
+export const TRANSCRIPT_PROMPT_MAX = 30_000;
+
+export function clipTranscriptForPrompt(transcript: string): string {
+  return transcript.length <= TRANSCRIPT_PROMPT_MAX
+    ? transcript
+    : `${transcript.slice(0, TRANSCRIPT_PROMPT_MAX)}\n…(转写过长已截断,仅基于已有部分作答)`;
+}
+
 const OUTPUT_SPEC =
   "输出一个 JSON 对象,字段:topic(视频主题,不超过20个字)、" +
   "summary(内容概括,120~200字,讲清这条视频说了什么)、" +
@@ -94,7 +104,7 @@ export function buildInterpretPrompt(src: InterpretPromptSource): { system: stri
   if (src.transcript) {
     return {
       system: `你是科技资讯编辑,为入库短视频撰写摘要。${OUTPUT_SPEC}`,
-      user: `${meta}\n——视频转写全文——\n${src.transcript}`,
+      user: `${meta}\n——视频转写全文——\n${clipTranscriptForPrompt(src.transcript)}`,
     };
   }
   return {

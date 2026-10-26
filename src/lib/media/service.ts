@@ -10,9 +10,9 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { loadReferencedPathSet } from "@/lib/media/queries";
 import {
-  IMAGE_MIME_WHITELIST,
   MEDIA_LIMITS,
   extByMime,
+  sniffImageMime,
   type BatchDeleteResult,
   type DupeMergeResult,
   type MediaPurgeResult,
@@ -49,12 +49,25 @@ export function parseMediaId(raw: string): bigint | null {
   }
 }
 
-/** sharp 管线投递(jobId 以 sha1 幂等,重复投递直接去重,arch/05 §4.1) */
-export function enqueueMediaProcess(mediaId: bigint, sha1: string): Promise<unknown> {
-  return getQueue(QUEUE_MEDIA_PROCESS).add(
+/**
+ * sharp 管线投递(jobId 以 sha1 幂等,arch/05 §4.1)。M27 批⑦:确定性 jobId
+ * 必须先查态再投——旧 job 残留在保留窗口(error 行自愈重投/回收站复活重投)
+ * 时同 jobId add 会被 BullMQ 静默丢弃;在途(waiting/delayed/active)即幂等
+ * 返回,终态先 remove 再 add。
+ */
+export async function enqueueMediaProcess(mediaId: bigint, sha1: string): Promise<unknown> {
+  const queue = getQueue(QUEUE_MEDIA_PROCESS);
+  const jobId = `media-${sha1}-process`;
+  const stale = await queue.getJob(jobId);
+  if (stale) {
+    const state = await stale.getState();
+    if (state === "waiting" || state === "delayed" || state === "active") return undefined;
+    await stale.remove();
+  }
+  return queue.add(
     "process",
     { mediaId: mediaId.toString() },
-    { jobId: `media-${sha1}-process`, attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
+    { jobId, attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
   );
 }
 
@@ -66,63 +79,91 @@ export interface UploadResult {
 }
 
 /**
- * 图片上传入库(arch/08-media §3.4):白名单校验 → sha1 命名 → 本地卷 →
+ * 图片上传入库(arch/08-media §3.4):字节嗅探裁决 → sha1 命名 → 本地卷 →
  * DB(status=processing)→ enqueue media.process(worker 出 WebP 副本 + 缩略图 + 宽高回填)。
- * 同 sha1 未软删即复用已有记录(一键发文「sha1 去重命中,复用已有」);
- * 命中回收站软删行则复活原行(路径全站唯一,不允许二次建行)。
+ * M27 批⑦ 验收反馈「封面上传出错且重复」根治:mime 以魔数嗅探为唯一裁决
+ * (入参 mime 仅作展示提示,CDN 头漂移/传参错不再 415);sha1 唯一约束
+ * (uq_content_media_sha1)+ create 撞约束判负复用赢家,并发同字节转存竞态
+ * 不再产出重复行/P2002 报错;判负侧落盘文件即焚(无行孤儿)。
+ * 同 sha1 未软删即复用已有记录(error 行重投 sharp 管线自愈,不再永久复用
+ * 「成功却看不到图」);命中回收站软删行则复活原行(路径全站唯一,不允许二次建行)。
  */
 export async function uploadMedia(input: {
   data: Uint8Array;
   mime: string;
   filename: string;
 }): Promise<UploadResult> {
-  if (!(IMAGE_MIME_WHITELIST as readonly string[]).includes(input.mime)) {
-    throw new MediaError("unsupported", `不支持的类型 ${input.mime},仅支持 jpg/png/webp/gif`);
-  }
   if (input.data.byteLength > MEDIA_LIMITS.maxUploadBytes) {
     throw new MediaError(
       "too_large",
       `单文件不超过 ${MEDIA_LIMITS.maxUploadBytes / 1024 / 1024}MB`,
     );
   }
-  const ext = extByMime(input.mime);
-  if (!ext) throw new MediaError("unsupported", `不支持的类型 ${input.mime}`);
+  const mime = sniffImageMime(input.data);
+  if (mime === null) {
+    throw new MediaError("unsupported", "不支持的图片内容(仅支持 jpg/png/webp/gif,或文件已损坏)");
+  }
+  const ext = extByMime(mime);
+  if (!ext) throw new MediaError("unsupported", `不支持的类型 ${mime}`);
 
   const sha1 = createHash("sha1").update(input.data).digest("hex");
-  const dup = await prisma.media.findFirst({
-    where: { sha1 },
-    select: { id: true, path: true, status: true, deletedAt: true },
-  });
+  // 排序取最早行:历史竞态重复组(迁移前存量)判定确定化;含软删行走复活分支
+  const findDup = () =>
+    prisma.media.findFirst({
+      where: { sha1 },
+      select: { id: true, path: true, status: true, deletedAt: true },
+      orderBy: { id: "asc" },
+    });
+  const revive = (row: { id: bigint; path: string }) =>
+    prisma.media
+      .update({
+        where: { id: row.id },
+        data: { deletedAt: null, status: "processing" satisfies MediaStatus },
+      })
+      .then(() => enqueueMediaProcess(row.id, sha1))
+      .then(() => ({ id: row.id.toString(), path: row.path, reused: true, status: "processing" }));
+
+  const dup = await findDup();
   if (dup && dup.deletedAt === null) {
+    if (dup.status === "error") {
+      // sharp 终败行:重投管线自愈(管线上抛失败已落 error,见 worker/media.ts)
+      await enqueueMediaProcess(dup.id, sha1);
+      return { id: dup.id.toString(), path: dup.path, reused: true, status: "processing" };
+    }
     return { id: dup.id.toString(), path: dup.path, reused: true, status: dup.status };
   }
-  if (dup) {
-    // 命中回收站里的同 sha1:URL 路径全站唯一(文件仍在盘上),复活原行重新走 sharp 管线
-    await prisma.media.update({
-      where: { id: dup.id },
-      data: { deletedAt: null, status: "processing" satisfies MediaStatus },
-    });
-    await enqueueMediaProcess(dup.id, sha1);
-    return { id: dup.id.toString(), path: dup.path, reused: true, status: "processing" };
-  }
+  if (dup) return revive(dup); // 回收站软删行:文件仍在盘上,复活原行重走管线
 
   const now = new Date();
   const rel = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${sha1}.${ext}`;
   const url = relToUploadsUrl(rel);
   await mediaStorage.put(rel, input.data);
-  const row = await prisma.media.create({
-    data: {
-      path: url,
-      filename: input.filename.slice(0, MEDIA_LIMITS.maxFilenameChars),
-      kind: "image",
-      status: "processing" satisfies MediaStatus,
-      sizeBytes: BigInt(input.data.byteLength),
-      sha1,
-      storage: mediaStorageKind,
-    },
-  });
-  await enqueueMediaProcess(row.id, sha1);
-  return { id: row.id.toString(), path: url, reused: false, status: "processing" };
+  try {
+    const row = await prisma.media.create({
+      data: {
+        path: url,
+        filename: input.filename.slice(0, MEDIA_LIMITS.maxFilenameChars),
+        kind: "image",
+        status: "processing" satisfies MediaStatus,
+        sizeBytes: BigInt(input.data.byteLength),
+        sha1,
+        storage: mediaStorageKind,
+      },
+    });
+    await enqueueMediaProcess(row.id, sha1);
+    return { id: row.id.toString(), path: url, reused: false, status: "processing" };
+  } catch (err) {
+    // 并发同 sha1 竞态:唯一约束判负 → 复用/复活赢家行;本批落盘文件即焚(无行孤儿)
+    await mediaStorage.delete(rel).catch(() => undefined);
+    const winner = await findDup();
+    if (!winner) throw err;
+    if (winner.deletedAt !== null) return revive(winner);
+    if (winner.status === "error") {
+      await enqueueMediaProcess(winner.id, sha1);
+      return { id: winner.id.toString(), path: winner.path, reused: true, status: "processing" };
+    }
+    return { id: winner.id.toString(), path: winner.path, reused: true, status: winner.status };
+  }
 }
 
 /** 单条删除(arch/08 §4:必须过引用检查):有引用拒绝并列出引用方;否则软删入回收站 */

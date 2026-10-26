@@ -1,22 +1,43 @@
+# 单一根级 .dockerignore:四镜像定义集中 docker/<image>/ 目录册,构建上下文一律仓库根
+# (standard/02-cicd-deployment §3)。裸目录名只匹配根级,子级一律 **/ 前缀
+# (ai-invest 教训:裸 .venv/ 漏挡 backend/.venv,308MB 缓存打进镜像)。
+# 代价说明:services/ 不整体排除(gateway/card-renderer 源码要进各自上下文),
+# sidecar 目录变更会失效 app builder 的 COPY . . 层缓存——sidecar 演进低频,接受;
+# deps 层(package-lock 不变)仍缓存,不受影响。
+
+# Git / 密钥 / 运维文件
 .git
 .env
 .env.*
 !.env.example
 .secret/
-node_modules/
-.next/
-dist/
-coverage/
-docs/
-tests/
 workspace
 media
 CLAUDE.md
 Makefile
 docker-compose*.yml
-services/
-*.log
-.DS_Store
+
+# Node
+**/node_modules/
+.next/
+**/dist/
+# vditor 编辑器运行时资源是仓库内的静态资产(public/ 经 COPY 进镜像),
+# 非构建产物——负例外放行,否则容器内编辑器全资源 404(2026-10-27 实测)
+!public/vditor/dist/
+coverage/
+**/*.tsbuildinfo
 .test-results/
 playwright-report/
-tsconfig.tsbuildinfo
+
+# Python(services/douyin-gateway 本地产物,CI 干净 checkout 天然满足)
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/.pytest_cache/
+
+# 文档 / 测试 / 日志 / OS
+docs/
+tests/
+**/*.md
+*.log
+.DS_Store

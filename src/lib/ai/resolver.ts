@@ -34,7 +34,8 @@ export function pickBoundModel(
   return null;
 }
 
-/** extraParams 归一(纯函数,单测锚点):null/数组/标量 → 空对象;对象原样 */
+/** extraParams 归一(纯函数,单测锚点):null/数组/标量 → 空对象;对象原样。
+ * 读取侧(max_tokens/output_config 类型门)见 extra-params(零依赖独立件) */
 export function normalizeExtraParams(v: unknown): Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
     ? (v as Record<string, unknown>)

@@ -1,412 +1,46 @@
-import { Worker, type Processor, type Job } from "bullmq";
+/**
+ * worker 引导入口:处理器映射见 ./processors,周期调度注册见 ./schedules;
+ * 本文件只做装配——起 Worker(队列级并发/锁参数)+ 挂调度 + checkpoint 表
+ * 框架双保险 + 优雅停机。
+ */
+import { Worker, type Job } from "bullmq";
 
 import { env } from "../src/lib/env";
-import { SITE_TZ } from "../src/lib/datetime";
 import {
-  AGENT_SESSION_PURGE_CRON,
-  CRAWL_JOB_AI_BACKFILL,
-  DB_BACKUP_CRON,
-  DB_BACKUP_JOB_RUN,
-  CRAWL_JOB_TICK,
-  CRAWL_JOB_VIDEO,
-  DISTRIBUTE_JOB_WECHAT_BATCH,
-  EMBED_JOB_RECONCILE,
-  EMBED_RECONCILE_CRON,
-  GITHUB_JOB_TICK,
-  MEDIA_AUDIT_CRON,
-  PAY_DAILY_AUDIT_CRON,
-  PAY_JOB_DAILY_AUDIT,
-  PAY_JOB_SWEEP,
   QUEUE_COVER_GEN,
-  QUEUE_CRAWLER,
-  QUEUE_DISTRIBUTE,
   QUEUE_DB_BACKUP,
-  QUEUE_EMBED,
-  QUEUE_EMAIL,
-  QUEUE_GITHUB,
+  QUEUE_DISCOVERY,
+  QUEUE_DISTRIBUTE,
+  QUEUE_DISTRIBUTE_XHS,
+  QUEUE_ILLUSTRATION_STUDIO,
+  QUEUE_INSIGHT,
   QUEUE_INTERPRETER,
-  QUEUE_MEDIA_AUDIT,
-  QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_PAY_RECONCILE,
-  QUEUE_STATS,
   QUEUE_SEO_BATCH,
   QUEUE_SUMMARIZER,
-  STATS_JOB_AGENT_PURGE,
-  STATS_JOB_FLUSH,
-  STATS_JOB_PURGE,
-  STATS_JOB_USAGE_PURGE,
-  USAGE_LOG_PURGE_CRON,
-  VISIT_LOG_PURGE_CRON,
   bullConnection,
-  getQueue,
 } from "../src/lib/queue";
-import { flushStatsBuffer } from "../src/lib/stats/flush";
-import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
-import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
-import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/purge";
 import { ensureAgentCheckpointer } from "../src/lib/agent/checkpointer";
-import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
-import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
-import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
-import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
-import { coverGenJob, type CoverGenJobData } from "../src/lib/ai/cover-generate";
-import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
-import { type WechatBatchJobData, type WechatSyncJobData } from "../src/lib/distribute/wechat-sync";
-import { wechatBatchJob, wechatSyncJob } from "../src/lib/distribute/wechat-sync-run";
-import { interpretVideoJob, type InterpretJobData } from "../src/lib/telegram/interpret-video";
-import { summarizeTextJob, type SummarizeJobData } from "../src/lib/telegram/summarize-text";
-import { processMediaJob, transferMediaJob } from "./media";
-import { runAudit } from "../src/lib/media/audit";
-import { dbBackupJob } from "../src/lib/backup/db-backup";
-import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
-import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
-import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
-
-/** 各队列处理器;未到里程碑的队列保持显式失败,避免静默吞任务 */
-const PROCESSORS: Record<string, Processor> = {
-  [QUEUE_MEDIA_PROCESS]: (job) => processMediaJob(job),
-  [QUEUE_MEDIA_TRANSFER]: (job) => transferMediaJob(job),
-  [QUEUE_MEDIA_AUDIT]: async () => {
-    const summary = await runAudit();
-    console.log(JSON.stringify({ event: "media.audit", ...summary }));
-    return summary;
-  },
-  [QUEUE_STATS]: async (job) => {
-    // 明细保留期清理(M10 批⑥ 访问 7 天;2026-10-06 搜索词 180 天;与 flush 同队列按 job.name 分流)
-    if (job.name === STATS_JOB_PURGE) {
-      const visitRemoved = await purgeVisitLogs();
-      if (visitRemoved > 0) {
-        console.log(JSON.stringify({ event: "stats.visit_log.purge", removed: visitRemoved }));
-      }
-      const searchRemoved = await purgeSearchLogs();
-      if (searchRemoved > 0) {
-        console.log(JSON.stringify({ event: "stats.search_log.purge", removed: searchRemoved }));
-      }
-      return { removed: visitRemoved + searchRemoved };
-    }
-    // AI 用量台账 90 天保留期清理(M14 批⑦;与手动清理同口径 usage-log.ts)
-    if (job.name === STATS_JOB_USAGE_PURGE) {
-      const removed = await purgeAiUsageOlderThan();
-      if (removed > 0) {
-        console.log(JSON.stringify({ event: "ai_usage.purge", removed }));
-      }
-      return { removed };
-    }
-    // Drawer 会话清退(K2.5 member 30 天 + K2.6 游客 TTL 键消失;checkpoint 残留由下轮再扫)
-    if (job.name === STATS_JOB_AGENT_PURGE) {
-      const removed = await purgeAgentSessions();
-      if (removed > 0) {
-        console.log(JSON.stringify({ event: "agent.session.purge", removed }));
-      }
-      const guestRemoved = await purgeExpiredGuestThreads();
-      if (guestRemoved > 0) {
-        console.log(JSON.stringify({ event: "agent.guest_thread.purge", removed: guestRemoved }));
-      }
-      return { removed, guestRemoved };
-    }
-    const summary = await flushStatsBuffer();
-    if (summary.keysFlushed > 0) {
-      console.log(JSON.stringify({ event: "stats.flush", ...summary }));
-    }
-    return summary;
-  },
-  // tick(每分钟)、crawl(单渠道)、crawl-video(单博主)、ai-backfill(5min)共用队列,按 job.name 分流
-  [QUEUE_CRAWLER]: async (job) => {
-    if (job.name === CRAWL_JOB_TICK) {
-      const summary = await crawlDueSources();
-      // 同拍扫视频博主(平台行不调度,social_account 才是调度主体;M8)
-      const video = await enqueueDueVideoAccounts();
-      const due = summary.due + video.due;
-      if (due > 0) {
-        console.log(JSON.stringify({ event: "crawler.tick", ...summary, videoDue: video.due }));
-      }
-      return { ...summary, videoDue: video.due };
-    }
-    if (job.name === CRAWL_JOB_AI_BACKFILL) {
-      // AI 存量补扫(M12 批③):未解读条目分流入 interpret/summarize 队列
-      const summary = await backfillAiPending();
-      if (summary.video > 0 || summary.text > 0) {
-        console.log(JSON.stringify({ event: "ai.backfill", ...summary }));
-      }
-      return summary;
-    }
-    if (job.name === CRAWL_JOB_VIDEO) {
-      // data.backfill 由手动回填路由置真(批⑧);旧 worker 收到退化为常规增量(良性)
-      const summary = await crawlVideoAccount(Number(job.data.accountId), {
-        backfill: job.data.backfill === true,
-      });
-      console.log(JSON.stringify({ event: "crawler.video.crawl", ...summary }));
-      return summary;
-    }
-    const summary = await crawlSource(Number(job.data.sourceId));
-    console.log(JSON.stringify({ event: "crawler.crawl", ...summary }));
-    return summary;
-  },
-  // 视频解读(M9):下载→抽轨→ASR→LLM;分支语义在 interpretVideoJob 内收敛
-  [QUEUE_INTERPRETER]: (job) => interpretVideoJob(job.data as InterpretJobData),
-  // 文字资讯轻解读(M12 批③):中心思想 + 关键词,LLM 网络调用为主(默认并发 2)
-  [QUEUE_SUMMARIZER]: (job) => summarizeTextJob(job.data as SummarizeJobData),
-  // 文生图封面(M14 批⑥):云厂商生图 10-30s,按张计费不自动重试(attempts=1 入队侧钉)
-  [QUEUE_COVER_GEN]: (job) => coverGenJob(job.data as CoverGenJobData),
-  // 批量 SEO 补全(M16 问题8,仅补空缺):单批次 job 顺序逐篇 LLM 调用,进度逐篇上报
-  [QUEUE_SEO_BATCH]: (job) =>
-    seoBatchJob(job.data as SeoBatchJobData, (p) => job.updateProgress(p)),
-  // GitHub 项目同步(二期③/M11):tick(5min)扫到期白名单仓逐仓入队;sync 为缺省路径
-  [QUEUE_GITHUB]: async (job) => {
-    if (job.name === GITHUB_JOB_TICK) {
-      const summary = await syncDueRepos();
-      if (summary.due > 0) {
-        console.log(JSON.stringify({ event: "github.tick", ...summary }));
-      }
-      return summary;
-    }
-    const summary = await syncGithubRepo(Number(job.data.repoId));
-    console.log(JSON.stringify({ event: "github.sync", ...summary }));
-    return summary;
-  },
-  // 数据库每日备份(M19 批②):pg_dump -Fc → 备份桶;结果事件在 job 内落日志
-  [QUEUE_DB_BACKUP]: async () => {
-    const r = await dbBackupJob();
-    console.log(
-      JSON.stringify({
-        event: "db.backup_job_done",
-        key: r.key,
-        sizeBytes: r.sizeBytes,
-        ms: r.durationMs,
-      }),
-    );
-    return r;
-  },
-  // embedding 对账(M20 批②):扫 stale 三域 → 批 embed → upsert;汇总事件在 reconcile 内落日志
-  [QUEUE_EMBED]: async () => {
-    const r = await reconcileEmbeddings();
-    if (r.embedded > 0 || r.failed > 0 || r.cleaned > 0 || r.skipped) {
-      console.log(JSON.stringify({ event: "embed.reconcile_job", ...r }));
-    }
-    return r;
-  },
-  // 事务邮件(M21 批⓪,D1 邮箱通道):SMTP 未配置显式 skipped(dev 兜底;生产必配);
-  // 日志只记事件与主题,收件人不落日志(PII)
-  [QUEUE_EMAIL]: async (job) => {
-    const data = job.data as EmailJobData;
-    const { skipped } = await sendMail(data);
-    console.log(
-      JSON.stringify({ event: skipped ? "email.skipped" : "email.sent", subject: data.subject }),
-    );
-    return { skipped };
-  },
-  // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量
-  [QUEUE_DISTRIBUTE]: async (job) => {
-    if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
-      const progress = await wechatBatchJob(job.data as WechatBatchJobData, (p) =>
-        job.updateProgress(p),
-      );
-      console.log(JSON.stringify({ event: "wechat.batch_result", ...progress }));
-      return progress;
-    }
-    const r = await wechatSyncJob(job.data as WechatSyncJobData);
-    console.log(
-      JSON.stringify({
-        event: "wechat.sync_result",
-        postId: r.postId,
-        ok: r.ok,
-        mediaId: r.mediaId ?? null,
-      }),
-    );
-    return r;
-  },
-  // 支付对账(M21 批④,§5.2):sweep 5min 收敛近过期 pending(先查单:已付
-  // 补发/确认未付过 TTL 才关单);daily-audit 每日 04:13 paid 单流水锚比对。
-  // 明细事件(reconcile_error/mismatch 等)在服务内落日志,这里只报汇总
-  [QUEUE_PAY_RECONCILE]: async (job) => {
-    if (job.name === PAY_JOB_DAILY_AUDIT) {
-      const r = await dailyAuditOrders();
-      console.log(JSON.stringify({ event: "pay.reconcile_daily_audit", ...r }));
-      return r;
-    }
-    const r = await sweepExpiredOrders();
-    if (r.scanned > 0 || r.errors > 0) {
-      console.log(JSON.stringify({ event: "pay.reconcile_sweep", ...r }));
-    }
-    return r;
-  },
-};
-
-/** 周期调度(BullMQ v6 job scheduler;upsert 幂等,同 id 不重复建) */
-const STATS_FLUSH_EVERY_MS = 60_000;
-
-async function scheduleStatsFlush(): Promise<void> {
-  const queue = getQueue(QUEUE_STATS);
-  await queue.upsertJobScheduler(
-    "stats-flush",
-    { every: STATS_FLUSH_EVERY_MS },
-    {
-      name: STATS_JOB_FLUSH,
-      data: {},
-      opts: { removeOnComplete: 100 },
-    },
-  );
-}
-
-async function scheduleMediaAudit(): Promise<void> {
-  const queue = getQueue(QUEUE_MEDIA_AUDIT);
-  await queue.upsertJobScheduler(
-    "media-audit",
-    // tz 显式声明:缺省走进程系统时区,靠镜像 ENV TZ 兜底属侥幸(2026-10-05 review 定级)
-    { pattern: MEDIA_AUDIT_CRON, tz: SITE_TZ },
-    {
-      name: "audit",
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** 访问明细清理:每日 04:14 清 7 天前行(M10 批⑥) */
-async function scheduleVisitLogPurge(): Promise<void> {
-  const queue = getQueue(QUEUE_STATS);
-  await queue.upsertJobScheduler(
-    "visit-log-purge",
-    { pattern: VISIT_LOG_PURGE_CRON, tz: SITE_TZ },
-    {
-      name: STATS_JOB_PURGE,
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** AI 用量台账清理:每日 04:52 清 90 天前行(M14 批⑦) */
-async function scheduleUsageLogPurge(): Promise<void> {
-  const queue = getQueue(QUEUE_STATS);
-  await queue.upsertJobScheduler(
-    "usage-log-purge",
-    { pattern: USAGE_LOG_PURGE_CRON, tz: SITE_TZ },
-    {
-      name: STATS_JOB_USAGE_PURGE,
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** Drawer 会话清退:每日 04:33 清 30 天前留档(K2.5;行+checkpoint 同删) */
-async function scheduleAgentSessionPurge(): Promise<void> {
-  const queue = getQueue(QUEUE_STATS);
-  await queue.upsertJobScheduler(
-    "agent-session-purge",
-    { pattern: AGENT_SESSION_PURGE_CRON, tz: SITE_TZ },
-    {
-      name: STATS_JOB_AGENT_PURGE,
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** 数据库每日备份:03:23 pg_dump → 备份桶(M19 批②,M6 异机存放落地) */
-async function scheduleDbBackup(): Promise<void> {
-  const queue = getQueue(QUEUE_DB_BACKUP);
-  await queue.upsertJobScheduler(
-    "db-backup",
-    { pattern: DB_BACKUP_CRON, tz: SITE_TZ },
-    {
-      name: DB_BACKUP_JOB_RUN,
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** embedding 对账:每 15 分钟扫 stale 三域向量(M20 批②;批 120 条,存量回填多轮收敛) */
-async function scheduleEmbedReconcile(): Promise<void> {
-  const queue = getQueue(QUEUE_EMBED);
-  await queue.upsertJobScheduler(
-    "embed-reconcile",
-    { pattern: EMBED_RECONCILE_CRON, tz: SITE_TZ },
-    {
-      name: EMBED_JOB_RECONCILE,
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** 支付对账 sweep:每 5 分钟收敛近过期 pending 单(提案 §5.2;tick 粒度同 github) */
-const PAY_SWEEP_EVERY_MS = 300_000;
-
-async function schedulePayReconcile(): Promise<void> {
-  const queue = getQueue(QUEUE_PAY_RECONCILE);
-  await queue.upsertJobScheduler(
-    "pay-reconcile-sweep",
-    { every: PAY_SWEEP_EVERY_MS },
-    {
-      name: PAY_JOB_SWEEP,
-      data: {},
-      opts: { removeOnComplete: 50 },
-    },
-  );
-  await queue.upsertJobScheduler(
-    "pay-reconcile-daily-audit",
-    { pattern: PAY_DAILY_AUDIT_CRON, tz: SITE_TZ },
-    {
-      name: PAY_JOB_DAILY_AUDIT,
-      data: {},
-      opts: { removeOnComplete: 7 },
-    },
-  );
-}
-
-/** 采集 tick:每分钟扫描到期来源逐源入队(渠道频率差异由 crawl_source.next_run_at 表达) */
-const CRAWLER_TICK_EVERY_MS = 60_000;
-
-async function scheduleCrawlerTick(): Promise<void> {
-  const queue = getQueue(QUEUE_CRAWLER);
-  await queue.upsertJobScheduler(
-    "crawler-tick",
-    { every: CRAWLER_TICK_EVERY_MS },
-    {
-      name: CRAWL_JOB_TICK,
-      data: {},
-      opts: { removeOnComplete: 50 },
-    },
-  );
-}
-
-/** GitHub 同步 tick:每 5 分钟扫到期白名单仓(逐仓间隔由 github_repo.next_sync_at 表达;
- * 5min 粒度相对 600s ISR 前台窗口不可见) */
-const GITHUB_TICK_EVERY_MS = 300_000;
-
-async function scheduleGithubTick(): Promise<void> {
-  const queue = getQueue(QUEUE_GITHUB);
-  await queue.upsertJobScheduler(
-    "github-tick",
-    { every: GITHUB_TICK_EVERY_MS },
-    {
-      name: GITHUB_JOB_TICK,
-      data: {},
-      opts: { removeOnComplete: 50 },
-    },
-  );
-}
-
-/** AI 存量补扫 tick(M12 批③):每 5 分钟扫未解读可见条分流入 interpret/summarize;
- * 就绪检查与每类 5 条上限在 backfillAiPending 内收敛 */
-const AI_BACKFILL_TICK_EVERY_MS = 300_000;
-
-async function scheduleAiBackfillTick(): Promise<void> {
-  const queue = getQueue(QUEUE_CRAWLER);
-  await queue.upsertJobScheduler(
-    "ai-backfill-tick",
-    { every: AI_BACKFILL_TICK_EVERY_MS },
-    {
-      name: CRAWL_JOB_AI_BACKFILL,
-      data: {},
-      opts: { removeOnComplete: 50 },
-    },
-  );
-}
+import { PROCESSORS } from "./processors";
+import { withJobRunLog } from "./job-run";
+import {
+  scheduleAgentSessionPurge,
+  scheduleAiBackfillTick,
+  scheduleCoverTempSweep,
+  scheduleCrawlerTick,
+  scheduleDbBackup,
+  scheduleDiscovery,
+  scheduleEmbedReconcile,
+  scheduleGithubTick,
+  scheduleInsight,
+  scheduleJobRunPurge,
+  scheduleMediaAudit,
+  schedulePayReconcile,
+  scheduleStatsFlush,
+  scheduleUsageLogPurge,
+  scheduleVisitLogPurge,
+} from "./schedules";
 
 function logFailed(queue: string): (job: Job | undefined, err: Error) => void {
   return (job, err) => {
@@ -431,28 +65,46 @@ async function main(): Promise<void> {
         : name === QUEUE_INTERPRETER || name === QUEUE_SEO_BATCH
           ? { concurrency: 1, lockDuration: 600_000 }
           : name === QUEUE_DISTRIBUTE
-            ? { concurrency: 1, lockDuration: 900_000 }
-            : name === QUEUE_DB_BACKUP
-              ? { concurrency: 1, lockDuration: 600_000 }
-              : name === QUEUE_PAY_RECONCILE
-                ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
-                : {};
-    const w = new Worker(name, PROCESSORS[name], { connection, concurrency: 2, ...opts });
+            ? // 批D:wechat 沿用历史队列(在途 job 兼容);新渠道走 distributeQueueFor
+              // 子队列,届时在此按渠道各建 worker(同并发 1 语义),互不队头阻塞
+              { concurrency: 1, lockDuration: 900_000 }
+            : name === QUEUE_DISTRIBUTE_XHS
+              ? { concurrency: 1, lockDuration: 600_000 } // M49 批X3:Playwright 发布分钟级
+              : name === QUEUE_DB_BACKUP
+                ? { concurrency: 1, lockDuration: 600_000 }
+                : name === QUEUE_PAY_RECONCILE
+                  ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
+                  : name === QUEUE_DISCOVERY
+                    ? { concurrency: 1, lockDuration: 900_000 } // B站风控纪律全局串行;双窗全词 5-10min
+                    : name === QUEUE_INSIGHT
+                      ? { concurrency: 1, lockDuration: 600_000 } // 日批 LLM 分钟级;并发 1 防双拍交错归簇
+                      : name === QUEUE_ILLUSTRATION_STUDIO
+                        ? { concurrency: 1, lockDuration: 600_000 } // 拆层 ~75s+逐层转存;并发 1 防打爆单绑定模型
+                        : {};
+    const w = new Worker(name, withJobRunLog(name, PROCESSORS[name]), {
+      connection,
+      concurrency: 2,
+      ...opts,
+    });
     w.on("failed", logFailed(name));
     workers.push(w);
   }
 
   await scheduleStatsFlush();
   await scheduleMediaAudit();
+  await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();
   await scheduleAgentSessionPurge();
+  await scheduleJobRunPurge();
   await scheduleDbBackup();
   await scheduleEmbedReconcile();
   await schedulePayReconcile();
   await scheduleCrawlerTick();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
+  await scheduleDiscovery();
+  await scheduleInsight();
 
   // checkpoint 表框架双保险(web 侧 getAgentGraph 懒加载为主;失败不拦 boot,
   // 首个 agent 任务内部 ensure 重试)

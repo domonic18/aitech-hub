@@ -4,12 +4,13 @@
  */
 import { notFound } from "next/navigation";
 
-import PostEditor from "@/components/admin/PostEditor";
+import PostEditor from "@/components/admin/editor/PostEditor";
 import ArticleBody from "@/components/article/ArticleBody";
 import { asContentOrigin, postDisplayState } from "@/lib/content/post-schema";
 import { getPostForAdmin, parsePostId } from "@/lib/content/posts-admin";
 import { listCategories } from "@/lib/content/taxonomy";
 import { formatCnDateTime } from "@/lib/datetime";
+import { isWechatReady } from "@/lib/distribute/wechat-config-admin";
 import { postPath } from "@/lib/content/post-path";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
   if (postId === null) notFound();
   const post = await getPostForAdmin(postId);
   if (!post) notFound();
-  const categories = await listCategories();
+  const [categories, wechatReady] = await Promise.all([listCategories(), isWechatReady()]);
 
   if (post.wpPostId !== null && !post.contentMd) {
     return (
@@ -54,7 +55,7 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
 
   return (
     <PostEditor
-      categories={categories.map((c) => ({ slug: c.slug, name: c.name }))}
+      categories={categories.map((c) => ({ slug: c.slug, name: c.name, isOriginal: c.isOriginal }))}
       post={{
         id: post.id.toString(),
         title: post.title,
@@ -71,6 +72,12 @@ export default async function EditPostPage({ params }: PageProps): Promise<React
         purchasePrice: post.purchasePrice === null ? null : Number(post.purchasePrice),
         isLoginRequired: post.isLoginRequired,
         status: postDisplayState(post),
+        // 乐观锁基准(M27 批①):编辑器据此携带 expectedUpdatedAt,自动保存链写读闭环
+        updatedAt: post.updatedAt.toISOString(),
+      }}
+      wechat={{
+        ready: wechatReady,
+        status: post.channels.find((c) => c.channel === "wechat")?.status ?? null,
       }}
     />
   );

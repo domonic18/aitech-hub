@@ -6,15 +6,17 @@
  * (依赖单向 run→sync,本文件是 job 数据契约与行级工具的唯一出口)。 */
 import { randomUUID } from "node:crypto";
 
-import { isP2002, prisma } from "../db";
+import { prisma } from "../db";
 import { logger } from "../logger";
 import {
   getQueue,
   QUEUE_DISTRIBUTE,
   DISTRIBUTE_JOB_WECHAT,
   DISTRIBUTE_JOB_WECHAT_BATCH,
+  DISTRIBUTE_JOB_WECHAT_COPY,
 } from "../queue";
 import { getWechatRuntimeConfig, type WechatRuntimeConfig } from "./wechat-config-admin";
+import { ensureChannelRowUnique } from "./channel-row";
 import { DistributeError } from "./errors";
 import { getWechatTheme } from "./wechat-themes";
 import {
@@ -45,6 +47,14 @@ export interface WechatBatchJobData {
   ids: string[];
 }
 
+/** 「复制公众号格式」job 数据(M31 批④备用通道;与 sync 独立,无码点门) */
+export interface WechatCopyJobData {
+  token: string;
+  postId: string;
+  coverPath?: string;
+  theme?: string;
+}
+
 /** 批量入队结果(路由 202 响应体;skipped 携带人话原因) */
 export interface WechatBatchEnqueue {
   jobId: string;
@@ -68,15 +78,14 @@ export async function requireReadyConfig(): Promise<WechatRuntimeConfig & { appS
 
 /** 渠道行取用(缺则建 pending 默认行;唯一约束兜底并发建行) */
 export async function ensureChannelRow(postId: bigint) {
-  const where = { postId_channel: { postId, channel: CHANNEL_WECHAT } };
-  const found = await prisma.publishChannel.findUnique({ where });
-  if (found) return found;
-  try {
-    return await prisma.publishChannel.create({ data: { postId, channel: CHANNEL_WECHAT } });
-  } catch (e) {
-    if (isP2002(e)) return prisma.publishChannel.findUniqueOrThrow({ where });
-    throw e;
-  }
+  // M49 批X1:P2002 兜底收口至 channel-row 统一口
+  return ensureChannelRowUnique(
+    () =>
+      prisma.publishChannel.findUnique({
+        where: { postId_channel: { postId, channel: CHANNEL_WECHAT } },
+      }),
+    () => prisma.publishChannel.create({ data: { postId, channel: CHANNEL_WECHAT } }),
+  );
 }
 
 /** 覆盖值校验(弹窗已拦,入口双保险):title 1-64 字、digest ≤120 字 */
@@ -136,6 +145,41 @@ export async function enqueueWechatSync(
     data: { status: PUBLISH_STATUS_PENDING, lastError: null },
   });
   logger.info({ event: "wechat.sync_enqueued", jobId, postId: postId.toString() });
+  return { jobId, token };
+}
+
+/**
+ * 「复制公众号格式」入队(M31 批④备用通道):与草稿同步独立——无码点门、
+ * 不置 pending(不动草稿状态机);图片/封面转存与同步共享 sha1 缓存行,
+ * 两通道先后执行不重复上传。资格前置:已配置 + 正文为 Markdown(缺封面
+ * 不拦——正文复制仍可用,封面须人工处理)。
+ */
+export async function enqueueWechatCopy(
+  postId: bigint,
+  opts?: { coverPath?: string; theme?: string },
+): Promise<{ jobId: string; token: string }> {
+  await requireReadyConfig();
+  if (opts?.theme !== undefined && getWechatTheme(opts.theme).id !== opts.theme) {
+    throw new DistributeError("invalid", "未知的正文主题");
+  }
+  const post = await prisma.post.findUnique({ where: { id: postId }, select: { contentMd: true } });
+  if (!post) throw new DistributeError("not_found", "文章不存在");
+  if (!(post.contentMd ?? "").trim()) {
+    throw new DistributeError("invalid", "旧文(HTML 保真正文)不支持:请先在编辑器转写为 Markdown");
+  }
+  const token = randomUUID();
+  const jobId = `wechat-copy-${Date.now().toString(36)}`; // BullMQ jobId 禁冒号
+  await getQueue(QUEUE_DISTRIBUTE).add(
+    DISTRIBUTE_JOB_WECHAT_COPY,
+    {
+      token,
+      postId: postId.toString(),
+      ...(opts?.coverPath ? { coverPath: opts.coverPath } : {}),
+      ...(opts?.theme ? { theme: opts.theme } : {}),
+    },
+    { jobId, attempts: 2, removeOnComplete: 50, removeOnFail: 50 },
+  );
+  logger.info({ event: "wechat.copy_enqueued", jobId, postId: postId.toString() });
   return { jobId, token };
 }
 

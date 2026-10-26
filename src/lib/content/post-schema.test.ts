@@ -199,8 +199,9 @@ describe("付费阅读字段(M21 批⑤:isPurchasable/purchasePrice)", () => {
     expect(postCreateSchema.safeParse({ ...paid, purchasePrice: -1 }).success).toBe(false);
   });
 
-  it("postUpdateSchema 与创建同口径(= 同一 schema),开付费缺价同样拒", () => {
-    expect(postUpdateSchema).toBe(postCreateSchema);
+  it("postUpdateSchema 与创建同字段口径(M27 批① 起仅多可选乐观锁),开付费缺价同样拒", () => {
+    // extend 分叉:除 expectedUpdatedAt 外解析结果与 create 全等(MCP 通道零感知)
+    expect(postUpdateSchema.parse(base)).toEqual(postCreateSchema.parse(base));
     expect(
       postUpdateSchema.safeParse({ ...base, isPurchasable: true, purchasePrice: null }).success,
     ).toBe(false);
@@ -229,5 +230,31 @@ describe("付费阅读字段(M21 批⑤:isPurchasable/purchasePrice)", () => {
 describe("ADMIN_LIST_SEGMENTS(四分段与原型一致)", () => {
   it("all/published/draft/unpublished", () => {
     expect(ADMIN_LIST_SEGMENTS).toEqual(["all", "published", "draft", "unpublished"]);
+  });
+});
+
+describe("postUpdateSchema.expectedUpdatedAt(乐观锁,M27 批①)", () => {
+  const base = {
+    title: "乐观锁标题",
+    categorySlug: "blog",
+    contentMd: "正文",
+    contentOrigin: "human",
+  } as const;
+
+  it("update 可携带 ISO 串并透传;缺省 = 不校验", () => {
+    const withLock = postUpdateSchema.parse({
+      ...base,
+      expectedUpdatedAt: "2026-10-13T00:00:00.000Z",
+    });
+    expect(withLock.expectedUpdatedAt).toBe("2026-10-13T00:00:00.000Z");
+    expect(postUpdateSchema.parse(base).expectedUpdatedAt).toBeUndefined();
+  });
+
+  it("create 无此字段(未知键被剥除,MCP upsert 通道零感知)", () => {
+    const created = postCreateSchema.parse({
+      ...base,
+      expectedUpdatedAt: "2026-10-13T00:00:00.000Z",
+    });
+    expect("expectedUpdatedAt" in created).toBe(false);
   });
 });

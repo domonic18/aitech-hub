@@ -14,6 +14,10 @@ const prismaMock = vi.hoisted(() => ({
   },
   asrConfig: { findUnique: vi.fn<(args?: unknown) => Promise<unknown>>() },
   crawlSource: { findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null) },
+  // 出口代理单例(M33 批B):默认未配置(findUnique→null)= 直连
+  systemProxyConfig: {
+    findUnique: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
+  },
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
 
@@ -55,10 +59,17 @@ const transcribeMock = vi.hoisted(() =>
 );
 vi.mock("../ai/asr-client", () => ({ transcribeAudio: transcribeMock }));
 
-// LLM 默认回合法 JSON(parseInterpretResult/buildInterpretPrompt 用真实现)
+// LLM 默认回合法 JSON(parseInterpretResult/buildInterpretPrompt 用真实现);
+// M26 批②:笔记调用(system 含「解读笔记」)与主概括调用按 system 分流
 const GOOD_JSON = vi.hoisted(() =>
   JSON.stringify({ topic: "主题", summary: "概括内容", points: ["要点一"] }),
 );
+const NOTE_TEXT = vi.hoisted(() => "## 背景与问题\n" + "细".repeat(320)); // >300 过契约底线
+const NOTE_JSON = vi.hoisted(() => JSON.stringify({ note: NOTE_TEXT }));
+const isNoteCall = (args: unknown): boolean => {
+  const system = (args as { system?: unknown })?.system;
+  return typeof system === "string" && system.includes("解读笔记");
+};
 const chatJsonMock = vi.hoisted(() =>
   vi.fn<(args: unknown) => Promise<string>>(async () => GOOD_JSON),
 );
@@ -71,18 +82,28 @@ const fetchVideosMock = vi.hoisted(() =>
     async () => [],
   ),
 );
-vi.mock("./adapters/video/douyin", () => ({
-  douyinAdapter: { fetchRecentVideos: fetchVideosMock },
+// douyin 只 mock fetchRecentVideos,resolvePlayUrl 用真实现(M24 分发后直链重拉
+// 走 adapter.resolvePlayUrl → this.fetchRecentVideos → 本 mock,保住「翻 3 页
+// listing 匹配」的既有语义测试)
+vi.mock("./adapters/video/douyin", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./adapters/video/douyin")>();
+  return {
+    douyinAdapter: { ...actual.douyinAdapter, fetchRecentVideos: fetchVideosMock },
+  };
+});
+
+const bilibiliResolveMock = vi.hoisted(() =>
+  vi.fn<(args: unknown) => Promise<string | null>>(async () => null),
+);
+vi.mock("./adapters/video/bilibili", () => ({
+  bilibiliAdapter: { fetchRecentVideos: vi.fn(), resolvePlayUrl: bilibiliResolveMock },
 }));
 
-// 媒体操作整桩(下载走全局 fetch 桩保留「直链过期重拉」语义;即删/抽轨记录调用)。
+// 媒体操作整桩(下载走全局 fetch 桩保留「直链过期重拉」语义;即删/切片记录调用)。
 // 真实现的下载护栏/ffmpeg 参数由 lib/media 侧职责,不进本测试面。
 const mediaMock = vi.hoisted(() => ({
   makeInterpretTmpDir: vi.fn(async () => "/tmp/interpret-fake"),
-  tmpMediaPaths: vi.fn((dir: string) => ({
-    videoPath: `${dir}/video.mp4`,
-    audioPath: `${dir}/audio.mp3`,
-  })),
+  tmpMediaPaths: vi.fn((dir: string) => ({ videoPath: `${dir}/video.mp4` })),
   removeTmpDir: vi.fn(async () => undefined),
   downloadVideoToTmp: vi.fn(async (playUrl: string, destPath: string) => {
     const res = await fetch(playUrl);
@@ -90,7 +111,7 @@ const mediaMock = vi.hoisted(() => ({
     const buf = Buffer.from(await res.arrayBuffer());
     mediaMock.writeCalls.push([destPath, buf]);
   }),
-  extractAudioMp3: vi.fn(async () => undefined),
+  extractAudioSegments: vi.fn(async () => ["/tmp/interpret-fake/seg-000.mp3"]),
   readAudioFile: vi.fn(async () => Buffer.from("audio-bytes")),
   writeCalls: [] as Array<[string, Buffer]>,
 }));
@@ -102,6 +123,8 @@ import {
   markPendingAndEnqueue,
   type InterpretJobData,
 } from "./interpret-video";
+import { logger } from "../logger";
+import { GatewayUpstreamError } from "./adapters/video";
 
 const ASR_ROW = {
   id: 1,
@@ -146,11 +169,15 @@ beforeEach(() => {
   prismaMock.asrConfig.findUnique.mockResolvedValue(ASR_ROW);
   prismaMock.crawlSource.findUnique.mockResolvedValue(null);
   transcribeMock.mockResolvedValue("转写全文");
-  chatJsonMock.mockResolvedValue(GOOD_JSON);
+  chatJsonMock.mockImplementation(async (args: unknown) =>
+    isNoteCall(args) ? NOTE_JSON : GOOD_JSON,
+  );
   fetchVideosMock.mockResolvedValue([]);
+  bilibiliResolveMock.mockResolvedValue(null);
   mediaMock.writeCalls.length = 0;
   mediaMock.removeTmpDir.mockResolvedValue(undefined);
   mediaMock.readAudioFile.mockResolvedValue(Buffer.from("audio-bytes"));
+  mediaMock.extractAudioSegments.mockResolvedValue(["/tmp/interpret-fake/seg-000.mp3"]);
   queueMock.add.mockResolvedValue(undefined);
 });
 
@@ -160,7 +187,7 @@ afterEach(() => {
 });
 
 describe("interpretVideoJob 状态机", () => {
-  it("成功全链:processing → done,ai_* 落库,临时目录即删,不再入队", async () => {
+  it("成功全链:processing → done,ai_* 含解读笔记落库,临时目录即删,不再入队", async () => {
     stubDownload();
     const outcome = await interpretVideoJob(DATA);
     expect(outcome).toMatchObject({ telegramId: "1", status: "done", transcriptUsed: true });
@@ -175,6 +202,7 @@ describe("interpretVideoJob 状态机", () => {
         aiTopic: "主题",
         aiSummary: "概括内容",
         aiPoints: ["要点一"],
+        aiNote: NOTE_TEXT,
         aiRanAt: expect.any(Date),
         lastAiError: null,
       },
@@ -191,6 +219,38 @@ describe("interpretVideoJob 状态机", () => {
         system: expect.stringContaining("JSON"),
       }),
       expect.any(Function),
+    );
+    // M26 批②:第二次调用产解读笔记(透传转写全文,输出预算放大)
+    expect(chatJsonMock).toHaveBeenCalledTimes(2);
+    expect(chatJsonMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        system: expect.stringContaining("解读笔记"),
+        user: expect.stringContaining("——视频转写全文——"),
+        maxTokens: 4000,
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("笔记调用终败 → 解读仍 done,ai_note=null,lastAiError 契约不变(仅事件日志)", async () => {
+    stubDownload();
+    chatJsonMock.mockImplementation(async (args: unknown) => {
+      if (isNoteCall(args)) throw new Error("笔记网关炸了");
+      return GOOD_JSON;
+    });
+    const outcome = await interpretVideoJob(DATA);
+    expect(outcome).toMatchObject({ status: "done", transcriptUsed: true });
+    expect(chatJsonMock).toHaveBeenCalledTimes(3); // 主概括 1 + 笔记首试 1 + 重试 1
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({ aiStatus: "done", aiNote: null, lastAiError: null }),
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "interpret.video.note_retry", attempt: 1 }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "interpret.video.note_failed" }),
     );
   });
 
@@ -220,6 +280,8 @@ describe("interpretVideoJob 状态机", () => {
       where: { id: BigInt(1) },
       data: expect.objectContaining({ aiStatus: "missing_transcript", lastAiError: null }),
     });
+    // 无转写轮不产笔记(缺时间线叙事材料,不硬凑——同存量不补口径)
+    expect(chatJsonMock).toHaveBeenCalledTimes(1);
   });
 
   it("interpret 角色未绑定 → skipped_not_ready", async () => {
@@ -260,7 +322,60 @@ describe("interpretVideoJob 状态机", () => {
     );
     expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
       where: { id: BigInt(1) },
-      data: expect.objectContaining({ aiStatus: "missing_transcript", lastAiError: "ASR 限流" }),
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("ASR 限流"),
+      }),
+    });
+  });
+
+  it("长视频分段转写(批⑦):多段按序拼接进 prompt,逐段独立吃重试预算", async () => {
+    stubDownload();
+    mediaMock.extractAudioSegments.mockResolvedValue([
+      "/tmp/interpret-fake/seg-000.mp3",
+      "/tmp/interpret-fake/seg-001.mp3",
+    ]);
+    transcribeMock.mockResolvedValueOnce("第一段内容").mockResolvedValueOnce("第二段内容");
+    const outcome = await interpretVideoJob(DATA);
+    expect(outcome).toMatchObject({ status: "done", transcriptUsed: true });
+    expect(transcribeMock).toHaveBeenCalledTimes(2);
+    expect(transcribeMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ filename: "seg-000.mp3" }),
+    );
+    expect(transcribeMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ filename: "seg-001.mp3" }),
+    );
+    expect(chatJsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.stringContaining("第一段内容\n第二段内容") }),
+      expect.any(Function),
+    );
+  });
+
+  it("分段转写任一段终败(批⑦)→ 整体降级 missing_transcript,半篇转写弃用", async () => {
+    stubDownload();
+    mediaMock.extractAudioSegments.mockResolvedValue([
+      "/tmp/interpret-fake/seg-000.mp3",
+      "/tmp/interpret-fake/seg-001.mp3",
+    ]);
+    transcribeMock.mockResolvedValueOnce("第一段内容").mockRejectedValue(new Error("ASR 限流"));
+    vi.useFakeTimers();
+    const pending = interpretVideoJob(DATA);
+    await vi.advanceTimersByTimeAsync(10_000); // 第 2 段 2 次 3s 重试间隔
+    const outcome = await pending;
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
+    expect(transcribeMock).toHaveBeenCalledTimes(4); // 段 1 成功 1 次 + 段 2 三连败
+    expect(chatJsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.not.stringContaining("视频转写全文") }),
+      expect.any(Function),
+    );
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("第 2/2 段"),
+      }),
     });
   });
 
@@ -342,6 +457,142 @@ describe("interpretVideoJob 状态机", () => {
     expect(prismaMock.telegram.update).toHaveBeenCalledWith({
       where: { id: BigInt(1) },
       data: { aiStatus: "failed", lastAiError: "fetch failed" },
+    });
+  });
+
+  it("B站:过境直链缺失 → 分发 bilibili resolvePlayUrl 现查,下载透传 Referer(M24)", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockResolvedValue("https://bilivideo.com/x");
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "done", transcriptUsed: true });
+    expect(bilibiliResolveMock).toHaveBeenCalledWith({
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      cookies: ["ck"],
+    });
+    expect(fetchVideosMock).not.toHaveBeenCalled(); // 不串台 douyin listing
+    expect(mediaMock.downloadVideoToTmp).toHaveBeenLastCalledWith(
+      "https://bilivideo.com/x",
+      "/tmp/interpret-fake/video.mp4",
+      { Referer: "https://www.bilibili.com/" }, // B站 CDN 防盗链(douyin 传空对象)
+    );
+  });
+
+  it("B站:现查无直链(play_url null)→ missing_transcript 降级,不触下载", async () => {
+    const calls = stubDownload();
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
+    expect(bilibiliResolveMock).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(0);
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({ aiStatus: "missing_transcript" }),
+    });
+  });
+
+  it("B站:playurl 风控门 → 不烧 attempts,延迟 20min 重投顺延(deferCount 自增,行留 processing)", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
+    );
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "deferred_riskcontrol", transcriptUsed: false });
+    expect(queueMock.add).toHaveBeenCalledTimes(1);
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      expect.objectContaining({ telegramId: "1", deferCount: 1, videoId: "BV1xx411c7mD" }),
+      expect.objectContaining({
+        jobId: expect.stringMatching(/^interpret-1-rc\d+$/),
+        delay: 20 * 60_000,
+      }),
+    );
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: { lastAiError: "风控门顺延重试中(1/2)" },
+    });
+    expect(mediaMock.downloadVideoToTmp).not.toHaveBeenCalled();
+  });
+
+  it("B站:池耗尽(NoJarAvailableError)同路顺延——等的就是同一份冷却", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("NoJarAvailableError", "无可用 Cookie jar(共 1 份,全部冷却)"),
+    );
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+    });
+    expect(outcome).toMatchObject({ status: "deferred_riskcontrol", transcriptUsed: false });
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      expect.objectContaining({ deferCount: 1 }),
+      expect.objectContaining({ delay: 20 * 60_000 }),
+    );
+  });
+
+  it("B站:第二轮顺延拉长到 2h(节奏 20min → 2h)", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
+    );
+    await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+      deferCount: 1,
+    });
+    expect(queueMock.add).toHaveBeenCalledWith(
+      "interpret-video",
+      expect.objectContaining({ deferCount: 2 }),
+      expect.objectContaining({ delay: 2 * 60 * 60_000 }),
+    );
+  });
+
+  it("B站:风控门顺延节奏耗尽(deferCount=2)→ 放弃重试降级 missing_transcript,不烧 attempts", async () => {
+    stubDownload();
+    bilibiliResolveMock.mockRejectedValue(
+      new GatewayUpstreamError("RiskControlError", "code=0 v_voucher 软风控"),
+    );
+    const outcome = await interpretVideoJob({
+      ...DATA,
+      platform: "bilibili",
+      videoId: "BV1xx411c7mD",
+      secUid: "9469941",
+      playUrl: null,
+      deferCount: 2,
+    });
+    // 48 趟/3 天全天候喂门实证:顺延必须有终点——降级概括而非 failed 重投
+    expect(outcome).toMatchObject({ status: "missing_transcript", transcriptUsed: false });
+    expect(queueMock.add).not.toHaveBeenCalled();
+    expect(prismaMock.telegram.update).toHaveBeenLastCalledWith({
+      where: { id: BigInt(1) },
+      data: expect.objectContaining({
+        aiStatus: "missing_transcript",
+        lastAiError: expect.stringContaining("顺延重试耗尽"),
+      }),
     });
   });
 });

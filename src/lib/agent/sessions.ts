@@ -4,6 +4,7 @@
  * 同删。今/昨/更早分组在前端做(Date 原生),服务端只出平铺列表。
  */
 import { prisma } from "../db";
+import { ingestInsightSignal } from "../insight/ingest";
 import { logger } from "../logger";
 
 import { deleteThread } from "./checkpointer";
@@ -62,10 +63,19 @@ export async function touchSessionAfterRun(sessionId: string, tokens: number): P
   });
 }
 
-/** 标题回填(仅首个 run:标题为空的行) */
+/** 标题回填(仅首个 run:标题为空的行);回填命中即首问——fire-and-forget 入
+ * 洞察信号池(M34 批①,完整首问比 title 20 字截断更利于聚类,ingest 自吞异常) */
 export async function backfillSessionTitle(sessionId: string, message: string): Promise<void> {
-  await prisma.searchAgentSession.updateMany({
+  const r = await prisma.searchAgentSession.updateMany({
     where: { id: sessionId, title: null },
     data: { title: deriveTitle(message) },
   });
+  if (r.count > 0) {
+    void ingestInsightSignal({
+      source: "internal-agent",
+      refId: sessionId,
+      rawText: message,
+      signalAt: new Date(),
+    });
+  }
 }

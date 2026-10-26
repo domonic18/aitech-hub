@@ -24,6 +24,7 @@
 
 - 新上传的图片路径规则:一期沿用 `/wp-content/uploads/YYYY/MM/<sha1>.<ext>`(与旧站路径风格一致,前台无差别);切 COS 后改写为 CDN 域路径
 - 流量账:一期图片直出服务器(月流量包 1TB 量级,154 篇文章的图量级完全够);二期反代后源站在 COS(同地域内网取数,175 流量包不耗);**视频从第一天就不落服务器**(下一节)
+- **渲染引图只读消费(2026-10-17,M31 card-renderer;2026-10-19 COS 引图补丁改 app 侧内联)**:卡片渲染 sidecar 曾以 `workspace/media:/app/media:ro` 只读挂媒体卷直读引图(MEDIA_ROOT 映射同上)——COS 主存后卷不增新图,10-08 后新图被静默替换 1×1 占位(已修):现 app 侧 `src/lib/card/media-inline.ts` 渲染前经 `mediaStorage`(prod=cos/dev=local 同一抽象)读字节内联 data-URI 再 POST,sidecar 收自包含 HTML 零文件接触零密钥不变;缺失即报错(不再静默占位),单图 >220KB sharp 压缩、data URI 总量 360k 字符预算;`CARD_RENDERER_MEDIA_ROOT` env 与卷挂载暂留回滚锚;渲染产物 PNG 经 `uploadMedia` 走标准入库规则(`YYYY/MM/<sha1>.png`),URL 永不变原则不受影响
 
 ## 2. 视频:COS 直链 + B 站嵌入(2026-09-29 决策)
 
@@ -85,6 +86,8 @@ worker:sharp 生成 WebP 副本(质量 80)+ 缩略图 640w(thumb_path)
 
 - 正文插入编辑器时优先引用 WebP 副本(原格式作为降级 `<picture>` source 由 ArticleBody 处理)
 - 旧迁移图片不做批量 WebP 重生成(正文 HTML 保真原则);后台提供可选的"重压缩"单条操作
+
+**落地注记(2026-10-13,M27 批⑦ 已交付;封面上传「传参错误/重复」根治)**:验收反馈三根因收口——(1) **mime 魔数嗅探裁决**:uploadMedia 不再信任响应头/调用方传参(此前 CDN content-type 缺省漂移、`image/jpg` 类传参错统一炸成 415),字节嗅探(`sniffImageMime`,jpg/png/webp/gif 四魔数)为唯一裁决,声明 mime 仅作展示提示;体积检查先于嗅探(超限 413 优先);(2) **sha1 并发竞态封堵**:去重原为「查后插」无约束,Promise.all 并发转存同封面时双双落空 → 同 ext 撞 path 唯一键报错/跨月双插成重复行。现以 **partial unique index `uq_content_media_sha1`(WHERE deleted_at IS NULL,迁移 20261013120000)** 封并发窗口——全列唯一与回收站语义互斥(merge 副本软删留 trash 7 天,同 sha1 双行合法共存),故 Prisma schema 不表达、约束落迁移 SQL(migrate diff 会视其为多余索引,同 checkpointer 外部表,部署纪律走 migrate deploy 不受影响);create 撞约束判负复用赢家行,判负侧落盘文件即焚(无行孤儿);历史竞态存量由迁移 SQL 手术(引用/封面改指最早行,副本软删入回收站,语义同 mergeDupeGroup);(3) **失败自愈**:sharp 管线终败落 `status=error`(§3.4 原设计,此前枚举死值无人写入、行永卡 processing 被 audit 跳过、去重复用恒「reused 却看不到图」),uploadMedia 命中 error 行重投管线自愈;`enqueueMediaProcess` 确定性 jobId 先查态——在途幂等返回、终态残留先 remove 再 add(防 BullMQ 静默丢弃)。去重 findFirst 加 orderBy id asc(历史重复组判定确定化)。
 
 ## 4. 纪律汇总
 

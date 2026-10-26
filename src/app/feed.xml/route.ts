@@ -20,7 +20,7 @@ function escapeXml(s: string): string {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const [posts, siteTitle] = await Promise.all([listAllPostsForSeo(), getSiteTitle()]);
+  const [posts, siteTitle] = await Promise.all([listAllPostsForSeo(RSS_FEED_SIZE), getSiteTitle()]);
   const items = posts
     .map((p) => {
       const link = absoluteUrl(postPath(p.id, p.slug));

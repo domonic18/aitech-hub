@@ -59,21 +59,23 @@ async function prepareWechatImage(bytes: Uint8Array): Promise<PreparedImage> {
   return { bytes: new Uint8Array(jpeg), mime: "image/jpeg", filename: "image.jpg" };
 }
 
-/** 转存缓存取用:命中零上传;miss 上传后落行(并发同图 P2002 兜底,以库内为准) */
+/** 转存缓存取用:命中零上传;miss 上传后落行(并发同图 P2002 兜底,以库内为准)。
+ * channel 入参化(M48 批F:表渠道中立,缓存键不该硬编码) */
 async function cachedRemote(
+  channel: string,
   sourceKey: string,
   sourceUrl: string,
   upload: () => Promise<{ url: string; mediaId?: string }>,
 ): Promise<{ url: string; mediaId?: string }> {
   const hit = await prisma.publishMediaCache.findUnique({
-    where: { channel_sourceKey: { channel: CHANNEL_WECHAT, sourceKey } },
+    where: { channel_sourceKey: { channel, sourceKey } },
   });
   if (hit) return { url: hit.remoteUrl, mediaId: hit.remoteMediaId ?? undefined };
   const r = await upload();
   try {
     await prisma.publishMediaCache.create({
       data: {
-        channel: CHANNEL_WECHAT,
+        channel,
         sourceKey,
         sourceUrl: sourceUrl.slice(0, 1000),
         remoteUrl: r.url,
@@ -101,7 +103,7 @@ export async function transloadContentImages(
       // sourceKey 用源字节锚定:同图即使转换路径变化也命中缓存
       const sourceKey = (ref.external ? "u:" : "b:") + sha1Hex(bytes);
       const prepared = await prepareWechatImage(bytes);
-      const r = await cachedRemote(sourceKey, ref.src, () =>
+      const r = await cachedRemote(CHANNEL_WECHAT, sourceKey, ref.src, () =>
         wechatUploadImage(creds, prepared.bytes, prepared.filename, prepared.mime).then((url) => ({
           url,
         })),
@@ -128,7 +130,7 @@ export async function ensureCoverMedia(
 ): Promise<{ mediaId: string }> {
   const bytes = await loadImageBytes(coverPath, /^https?:\/\//i.test(coverPath));
   const prepared = await prepareWechatImage(bytes);
-  const r = await cachedRemote(`m:${sha1Hex(bytes)}`, coverPath, async () => {
+  const r = await cachedRemote(CHANNEL_WECHAT, `m:${sha1Hex(bytes)}`, coverPath, async () => {
     const added = await wechatAddCoverMaterial(
       creds,
       prepared.bytes,

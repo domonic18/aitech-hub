@@ -1,0 +1,129 @@
+/**
+ * Agent 调用额度配置(2026-10-17 验收反馈:护栏不再硬编码,后台「站点设置」
+ * 可调)。存 site_config kv(键族 agent.*,同「通用底座」纪律:value 一律
+ * 字符串,消费方解析+clamp;缺行/非法回默认)。recursionLimit 不开放设置——
+ * 按 2.5×toolCalls 派生(与历史默认 12→30、80→200 完全一致):护栏步数与
+ * 递归兜底必须同步放大(run.ts docblock),派生消掉「配小 recursion 中途
+ * 断流」的脚枪。读侧:run 路由每请求一次 findMany(热路径随即开 LLM 流,
+ * 单键索引查询开销可忽略)。
+ */
+import { z } from "zod";
+
+import { prisma } from "../db";
+
+/** 身份档(与 AgentIdentity["kind"] 同域;字面量防 config→agent 反向依赖) */
+export const AGENT_LIMIT_KINDS = ["guest", "user", "admin"] as const;
+export type AgentLimitKind = (typeof AGENT_LIMIT_KINDS)[number];
+
+/** 单档额度(次/tokens;recursion 派生不入库) */
+export interface AgentLimitsConfig {
+  toolCalls: number;
+  tokens: number;
+}
+
+/** 默认档(= 硬编码时代 2026-10-17 放宽值;缺行/构建期回落);
+ * 2026-10-20 富 HTML 改造:一篇文章 = 素材/指南 + 写作 + 1~2 轮自审 + 3~5 张卡
+ * (含重试) + 两段封面 HITL,80 次无重试余量;tokens 同调 600k(大 HTML 卡
+ * 单次 8~12k token,多轮累积) */
+export const DEFAULT_AGENT_LIMITS: Record<AgentLimitKind, AgentLimitsConfig> = {
+  guest: { toolCalls: 12, tokens: 50_000 },
+  user: { toolCalls: 12, tokens: 50_000 },
+  admin: { toolCalls: 120, tokens: 600_000 },
+};
+
+/** 合法域(三档同域;admin 长编排实测 80/400k→120/600k,上限留足余量) */
+export const TOOL_CALLS_MIN = 1;
+export const TOOL_CALLS_MAX = 200;
+export const TOKENS_MIN = 1_000;
+export const TOKENS_MAX = 2_000_000;
+
+/** KV 键登记(agent.<kind>.<field>;site_config 表,消费方经常量取键) */
+export const AGENT_LIMIT_KEYS: Record<AgentLimitKind, { toolCalls: string; tokens: string }> = {
+  guest: { toolCalls: "agent.guest.tool_calls", tokens: "agent.guest.tokens" },
+  user: { toolCalls: "agent.user.tool_calls", tokens: "agent.user.tokens" },
+  admin: { toolCalls: "agent.admin.tool_calls", tokens: "agent.admin.tokens" },
+};
+
+/** recursionLimit 派生:2.5×toolCalls 四舍五入,硬夹 16..500(防极小/极大档) */
+export function deriveRecursionLimit(toolCalls: number): number {
+  return Math.max(16, Math.min(500, Math.round(toolCalls * 2.5)));
+}
+
+function clampInt(n: number, fallback: number, min: number, max: number): number {
+  if (!Number.isInteger(n) || n < min) return fallback;
+  return Math.min(max, n);
+}
+
+// ── 读侧 ──────────────────────────────────────────────────────
+
+/** 三档全量读(单次 findMany;缺行/非法 → 默认;run 路由与设置页共用) */
+export async function getAgentLimitsAll(): Promise<Record<AgentLimitKind, AgentLimitsConfig>> {
+  const keys = Object.values(AGENT_LIMIT_KEYS).flatMap((k) => [k.toolCalls, k.tokens]);
+  const rows = await prisma.siteConfig.findMany({
+    where: { key: { in: keys } },
+    select: { key: true, value: true },
+  });
+  const byKey = new Map(rows.map((r) => [r.key, r.value]));
+  const out = {} as Record<AgentLimitKind, AgentLimitsConfig>;
+  for (const kind of AGENT_LIMIT_KINDS) {
+    const def = DEFAULT_AGENT_LIMITS[kind];
+    const k = AGENT_LIMIT_KEYS[kind];
+    const tcRaw = byKey.get(k.toolCalls);
+    const tkRaw = byKey.get(k.tokens);
+    out[kind] = {
+      toolCalls:
+        tcRaw === undefined
+          ? def.toolCalls
+          : clampInt(Number(tcRaw), def.toolCalls, TOOL_CALLS_MIN, TOOL_CALLS_MAX),
+      tokens:
+        tkRaw === undefined
+          ? def.tokens
+          : clampInt(Number(tkRaw), def.tokens, TOKENS_MIN, TOKENS_MAX),
+    };
+  }
+  return out;
+}
+
+/** 单档 run 闸(额度 + 派生 recursion;runAgentTurn 入参形状) */
+export function toRunLimits(cfg: AgentLimitsConfig): {
+  toolCalls: number;
+  tokens: number;
+  recursion: number;
+} {
+  return { ...cfg, recursion: deriveRecursionLimit(cfg.toolCalls) };
+}
+
+// ── 写侧 ──────────────────────────────────────────────────────
+
+/** PUT 请求体(六键扁平 optional;越界/非法由 Zod 先行拒绝,路由层给 400 文案) */
+export const AgentLimitsUpdateSchema = z.object({
+  guestToolCalls: z.number().int().min(TOOL_CALLS_MIN).max(TOOL_CALLS_MAX).optional(),
+  guestTokens: z.number().int().min(TOKENS_MIN).max(TOKENS_MAX).optional(),
+  userToolCalls: z.number().int().min(TOOL_CALLS_MIN).max(TOOL_CALLS_MAX).optional(),
+  userTokens: z.number().int().min(TOKENS_MIN).max(TOKENS_MAX).optional(),
+  adminToolCalls: z.number().int().min(TOOL_CALLS_MIN).max(TOOL_CALLS_MAX).optional(),
+  adminTokens: z.number().int().min(TOKENS_MIN).max(TOKENS_MAX).optional(),
+});
+
+export type AgentLimitsUpdateInput = z.infer<typeof AgentLimitsUpdateSchema>;
+
+/** 保存(partial 多键一次事务 upsert;与站点键共表互不感知) */
+export async function setAgentLimits(input: AgentLimitsUpdateInput): Promise<void> {
+  const entries: Array<[string, number | undefined]> = [
+    [AGENT_LIMIT_KEYS.guest.toolCalls, input.guestToolCalls],
+    [AGENT_LIMIT_KEYS.guest.tokens, input.guestTokens],
+    [AGENT_LIMIT_KEYS.user.toolCalls, input.userToolCalls],
+    [AGENT_LIMIT_KEYS.user.tokens, input.userTokens],
+    [AGENT_LIMIT_KEYS.admin.toolCalls, input.adminToolCalls],
+    [AGENT_LIMIT_KEYS.admin.tokens, input.adminTokens],
+  ];
+  const rows = entries
+    .filter((e): e is [string, number] => e[1] !== undefined)
+    .map(([key, value]) => ({ key, value: String(value) }));
+  if (rows.length === 0) return;
+  await prisma.$transaction(
+    rows.map((r) =>
+      prisma.siteConfig.upsert({ where: { key: r.key }, update: { value: r.value }, create: r }),
+    ),
+  );
+}

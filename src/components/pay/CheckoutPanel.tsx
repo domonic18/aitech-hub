@@ -37,7 +37,6 @@ export default function CheckoutPanel({
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("init");
   const [payUrl, setPayUrl] = useState<string | null>(null);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [leftText, setLeftText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -168,10 +167,6 @@ export default function CheckoutPanel({
               <span className="ml-2 font-mono text-text-3">剩余 {leftText}</span>
             )}
           </p>
-          {qrUrl && (
-            // eslint-disable-next-line @next/next/no-img-element -- 网关动态二维码,外域链无 next/image 配置价值
-            <img src={qrUrl} alt="支付二维码" className="h-44 w-44 rounded-sm border border-line" />
-          )}
           {payUrl && (
             <a
               href={payUrl}

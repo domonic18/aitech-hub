@@ -27,3 +27,12 @@ export function revalidatePostPaths(post: RevalidatePostRef): void {
   // "layout" 型命中的 `_N_T_/sitemap.xml/layout` 在其 tag 列表内(2026-10-05 e2e 实证)
   revalidatePath("/sitemap.xml", "layout");
 }
+
+/** 分类写侧失效面(2026-10-16 后台增删改查):分类页 + 首页 + sitemap。
+ * slug 建后不可改(URL 红线),故无新旧 slug 对;新建分类的 /category/<slug>/
+ * 首次访问按需 ISR,无需预失效。 */
+export function revalidateCategoryPaths(slug: string): void {
+  revalidatePath(`/category/${slug}/`);
+  revalidatePath("/");
+  revalidatePath("/sitemap.xml", "layout");
+}

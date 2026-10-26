@@ -6,6 +6,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseNumericId } from "@/lib/http/parse-id";
 import {
   GithubAdminError,
   RepoPostsSchema,
@@ -24,9 +25,10 @@ export async function GET(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   try {
-    const items = await listRepoPostOptions(Number(id));
+    const items = await listRepoPostOptions(nid);
     return apiEnvelope(0, "ok", { items });
   } catch (e) {
     if (e instanceof GithubAdminError) return apiEnvelope(404, e.message);
@@ -41,11 +43,12 @@ export async function PUT(
   const actor = await requireSessionActor(req, PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) return apiEnvelope(400, "invalid id");
+  const nid = parseNumericId(id);
+  if (nid === null) return apiEnvelope(400, "invalid id");
   const parsed = RepoPostsSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "postIds 须为 id 字符串数组(至多 50)");
   try {
-    const r = await setRepoPosts(Number(id), parsed.data.postIds);
+    const r = await setRepoPosts(nid, parsed.data.postIds);
     return apiEnvelope(0, "updated", r);
   } catch (e) {
     if (e instanceof GithubAdminError) {

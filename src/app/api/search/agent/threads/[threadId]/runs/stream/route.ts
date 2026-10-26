@@ -1,8 +1,10 @@
 /**
  * 会话 run SSE 端点(K2.5 核心,arch/04 §3.3;K2.6 身份分流,M22 批④扩
  * 三路):SDK runs.stream 契约的自实现——POST /threads/{threadId}/runs/stream,
- * body 二选一:input.messages 单条 human 文本,或 command.resume(HITL 提问
- * 卡回答,2026-10-09 验收反馈)。登录身份(admin/user):归属查会话行、会话
+ * body 二选一:input.messages 单条 human 文本,或 command.resume(HITL 中断
+ * 回答:ask_user 提问卡 2026-10-09 / propose_edits 评审结果 M27 批⑧-c,union
+ * 分流);M27 批⑧-b 起新提问可附 context(页面上下文,
+ * 宽松解析弃坏值,edit 段非 admin 剥除)。登录身份(admin/user):归属查会话行、会话
  * 累计 50k 前置拒绝、标题回填(resume 不回填);user 另走 Token 余额链路——
  * run 前 hasTokenBalance 预检(≤0 拒),run 后按实际用量 consumeTokens 实扣
  * (流水 reason=consume,扣减失败只告警不反噬已完成的 run);admin 与游客不
@@ -14,7 +16,10 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { AGENT_MAX_TOKENS, recordAgentRun, runAgentTurn } from "@/lib/agent/run";
+import { AGENT_COVER_CANDIDATES_TOOL } from "@/lib/agent/cover-tool";
+import { AGENT_PROPOSE_EDITS_TOOL } from "@/lib/agent/edit-proposal";
+import { recordAgentRun, runAgentTurn } from "@/lib/agent/run";
+import { getAgentLimitsAll, toRunLimits } from "@/lib/config/agent-limits";
 import { backfillSessionTitle } from "@/lib/agent/sessions";
 import { tryConsumeAgentRunQuota, tryConsumeGuestAskQuota } from "@/lib/agent/quota";
 import {
@@ -23,6 +28,7 @@ import {
   refreshGuestThread,
 } from "@/lib/agent/guest-threads";
 import { resolveAgentIdentity } from "@/lib/agent/identity";
+import { parseAgentRunContext, sanitizeAgentRunContext } from "@/lib/agent/run-context";
 import { hasTokenBalance, consumeTokens } from "@/lib/users/token-balance";
 import { prisma } from "@/lib/db";
 import { isSameOrigin } from "@/lib/http/origin";
@@ -51,12 +57,32 @@ const inputSchema = z.object({
     .max(1),
 });
 
-/** HITL 恢复:ask_user 提问卡的用户回答(hitl.ts 形状的 zod 把关) */
+/** HITL 恢复(M27 批⑧-c 起 discriminated union,契约形状 zod 把关):
+ * ask_user 提问卡回答(kind 缺省兼容存量客户端)与 propose_edits 评审结果 */
 const resumeSchema = z.object({
-  resume: z.object({
-    message: z.string().min(1).max(2000),
-    option: z.string().min(1).max(100).optional(),
-  }),
+  resume: z.union([
+    z.object({
+      kind: z.literal("ask_user").optional(),
+      message: z.string().min(1).max(2000),
+      option: z.string().min(1).max(100).optional(),
+    }),
+    z.object({
+      // kind 容忍缺省(构造器统一注入,判别靠 decision;缺省兼容早版客户端)
+      kind: z.literal(AGENT_PROPOSE_EDITS_TOOL).optional(),
+      decision: z.enum(["applied", "partial", "rejected", "unavailable"]),
+      applied: z.number().int().min(0).max(20).optional(),
+      comment: z.string().min(1).max(2000).optional(),
+    }),
+    z.object({
+      // 封面候选 HITL(M31):adopt 必带 candidateId;discard 整批弃
+      kind: z.literal(AGENT_COVER_CANDIDATES_TOOL).optional(),
+      decision: z.enum(["adopt", "discard"]),
+      candidateId: z
+        .string()
+        .regex(/^\d{1,19}$/)
+        .optional(),
+    }),
+  ]),
 });
 
 const bodySchema = z.union([z.object({ input: inputSchema }), z.object({ command: resumeSchema })]);
@@ -110,9 +136,9 @@ export async function POST(
   if (!parsed.success) {
     return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }
-  // 二分支:resume(HITL 提问卡回答)或新提问。resume 不计游客提问配额、
+  // 二分支:resume(HITL 中断回答)或新提问。resume 不计游客提问配额、
   // 不回填标题(非新 ask;原 ask 已消费配额并回填过)。
-  let resume: { message: string; option?: string } | undefined;
+  let resume: z.infer<typeof resumeSchema>["resume"] | undefined;
   let message: string | null = null;
   if ("command" in parsed.data) {
     resume = parsed.data.command.resume;
@@ -122,7 +148,19 @@ export async function POST(
     message = text;
   }
 
-  if (identity.kind !== "guest" && tokensTotal >= AGENT_MAX_TOKENS) {
+  // 页面上下文(M27 批⑧-b,body.context,宽松解析):坏形状弃用不 400——聊天
+  // 不因附带上下文挂掉;edit 段非 admin 身份剥除(fail-safe,sanitize 收口)
+  const rawContext =
+    typeof rawBody === "object" && rawBody !== null
+      ? (rawBody as { context?: unknown }).context
+      : undefined;
+  const context = sanitizeAgentRunContext(parseAgentRunContext(rawContext), identity.kind);
+
+  // 护栏额度(2026-10-17 起后台「站点设置」可调):每请求一次 kv 读档,
+  // 会话累计前置闸与单轮三闸同源,recursionLimit 按 2.5×toolCalls 派生
+  const limits = toRunLimits((await getAgentLimitsAll())[identity.kind]);
+
+  if (identity.kind !== "guest" && tokensTotal >= limits.tokens) {
     return apiEnvelope(429, "本会话用量已达上限,请新建会话继续");
   }
   if (
@@ -158,12 +196,18 @@ export async function POST(
         closed = true;
       };
       abort.signal.addEventListener("abort", onAbort);
+      // 心跳:思考期/长工具调用(出卡、封面)无业务帧,代理 read timeout 会静默
+      // 断流(sse.ts 忽略 ":" 注释行,客户端零影响);15s < nginx 300s 留足余量
+      const heartbeat = setInterval(() => push(": ping\n\n"), 15_000);
 
       try {
         const outcome = await runAgentTurn({
           threadId,
           message,
           ...(resume !== undefined ? { resume } : {}),
+          ...(context !== null ? { context } : {}),
+          identityKind: identity.kind,
+          limits,
           signal: abort.signal,
           onFrame: push,
         });
@@ -195,6 +239,10 @@ export async function POST(
           // 护栏收束:error 帧人话(前端挂末条 AI 消息 incomplete/error)
           push(`event: error\ndata: ${JSON.stringify({ message: outcome.truncatedReason })}\n\n`);
         }
+        if (outcome.deadEndReason) {
+          // 死端(max_tokens 截断零产出):消灭静默中断——UI 不再恒「运行中」
+          push(`event: error\ndata: ${JSON.stringify({ message: outcome.deadEndReason })}\n\n`);
+        }
       } catch (e) {
         logger.warn({
           event: "agent.run_failed",
@@ -203,6 +251,7 @@ export async function POST(
         });
         push(`event: error\ndata: ${JSON.stringify({ message: "处理中断,请重试" })}\n\n`);
       } finally {
+        clearInterval(heartbeat);
         abort.signal.removeEventListener("abort", onAbort);
         try {
           controller.close();

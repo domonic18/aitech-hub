@@ -1,4 +1,4 @@
-"""网关 wire 层测试:sec_uid 提取、请求校验边界、jar 池身份热替换。"""
+"""网关 wire 层测试:sec_uid/mid 提取、请求校验边界(双平台)、jar 池身份热替换。"""
 
 from typing import Any
 
@@ -8,7 +8,14 @@ from pydantic import ValidationError
 
 from app.adapters.douyin.signing import generate_fingerprint
 from app.adapters.douyin.transport import DouyinTransport
-from app.gateway import PostsRequest, ResolveRequest, extract_sec_uid
+from app.gateway import (
+    PlayUrlRequest,
+    PostsRequest,
+    ProfileRequest,
+    ResolveRequest,
+    extract_mid,
+    extract_sec_uid,
+)
 from app.gateway_runtime import GatewayRuntime
 from app.signer.settings import SignerSettings
 
@@ -22,6 +29,13 @@ def test_extract_sec_uid_from_various_inputs() -> None:
     assert extract_sec_uid("看看这个 https://v.douyin.com/iabcDEF/ 太强了") is None
 
 
+def test_extract_mid_from_various_inputs() -> None:
+    assert extract_mid("https://space.bilibili.com/9469941?spm=a") == "9469941"
+    assert extract_mid("9469941") == "9469941"
+    assert extract_mid("https://www.bilibili.com/video/BV1xx411c7mD") is None
+    assert extract_mid("看看这个 https://b23.tv/iabcDEF 太强了") is None
+
+
 def test_posts_request_rejects_short_sec_uid() -> None:
     with pytest.raises(ValidationError):
         PostsRequest(sec_uid="short")
@@ -32,9 +46,42 @@ def test_posts_request_caps_pages() -> None:
         PostsRequest(sec_uid="MS4wLjABAAAA1234567890abcdefghij", max_pages=10)
 
 
+def test_posts_request_bilibili_mid_accepted() -> None:
+    request = PostsRequest(platform="bilibili", sec_uid="9469941")
+    assert request.platform == "bilibili"
+
+
+def test_posts_request_bilibili_rejects_non_numeric_mid() -> None:
+    with pytest.raises(ValidationError):
+        PostsRequest(platform="bilibili", sec_uid="BV1xx411c7mD")
+
+
+def test_profile_request_bilibili_rejects_douyin_sec_uid() -> None:
+    with pytest.raises(ValidationError):
+        ProfileRequest(platform="bilibili", sec_uid="MS4wLjABAAAA1234567890abcdefghij")
+
+
 def test_resolve_request_min_length() -> None:
     with pytest.raises(ValidationError):
         ResolveRequest(url="v.co")
+
+
+def test_resolve_request_bilibili_allows_bare_mid() -> None:
+    assert ResolveRequest(platform="bilibili", url="9469941").url == "9469941"
+
+
+def test_resolve_request_douyin_keeps_url_floor() -> None:
+    with pytest.raises(ValidationError):
+        ResolveRequest(platform="douyin", url="1234567")
+
+
+def test_play_url_request_bvid_shape() -> None:
+    request = PlayUrlRequest(video_id="BV1xx411c7mD")
+    assert request.platform == "bilibili"
+    with pytest.raises(ValidationError):
+        PlayUrlRequest(video_id="av170001")
+    with pytest.raises(ValidationError):
+        PlayUrlRequest(platform="douyin", video_id="BV1xx411c7mD")
 
 
 class _RecordingRuntime(GatewayRuntime):
@@ -69,6 +116,43 @@ def test_runtime_keeps_cooldown_state_when_identity_unchanged() -> None:
     assert runtime.replacements == 2
 
 
+def test_runtime_hot_swaps_proxy_without_rebuilding_transport() -> None:
+    """M33 批B:代理热切换不重建 transport(冷却态保留);/health 只出布尔。"""
+    runtime = GatewayRuntime(SignerSettings(log_level="warning"))
+    t1 = runtime.transport_for(["ttwid=a"])
+    assert runtime.jar_stats()["egress_proxy"] is False
+    t2 = runtime.transport_for(["ttwid=a"], "http://192.0.2.1:7890")
+    assert t2 is t1  # 同一单例,jar 池原样
+    assert t2.proxy == "http://192.0.2.1:7890"
+    assert runtime.jar_stats()["egress_proxy"] is True
+    t3 = runtime.transport_for(["ttwid=a"], None)
+    assert t3 is t1
+    assert t3.proxy is None
+    assert runtime.jar_stats()["egress_proxy"] is False
+
+
+def test_proxy_test_endpoint_mirrors_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """/proxy-test 经注入桩零真网;代理 URL 不回显。"""
+
+    async def _fake_probe(proxy: str) -> tuple[bool, int, str]:
+        return proxy == "http://good:7890", 42, "HTTP 200"
+
+    monkeypatch.setattr("app.gateway._probe_runner", _fake_probe)
+    with _client() as client:
+        resp = client.post("/proxy-test", json={"proxy": "http://good:7890"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == {"ok": True, "latency_ms": 42, "detail": "HTTP 200"}
+        bad = client.post("/proxy-test", json={"proxy": "http://bad:7890"})
+        assert bad.json()["ok"] is False
+
+
+def test_proxy_test_rejects_short_proxy() -> None:
+    with _client() as client:
+        resp = client.post("/proxy-test", json={"proxy": "short"})
+        assert resp.status_code == 422
+
+
 def _client() -> TestClient:
     from app.gateway import create_app
 
@@ -82,6 +166,10 @@ def test_health_always_answers_200() -> None:
         body = resp.json()
         assert body["status"] in {"ok", "starting", "unavailable"}
         assert "jars_total" in body
+        # per-platform 段:顶层 jars_* 仍 = douyin(旧 TS zod 兼容)
+        assert set(body["platforms"]) == {"douyin", "bilibili"}
+        assert body["platforms"]["douyin"]["jars_total"] == body["jars_total"]
+        assert "wbi_age_seconds" in body["platforms"]["bilibili"]
 
 
 def test_sign_rejects_bad_path_without_touching_browser() -> None:
@@ -118,5 +206,5 @@ def test_transport_settings_env_contract() -> None:
     )
     assert transport._base_url == "https://example.com"
     assert transport._request_timeout == 3.0
-    assert transport._cooldown_base == 5
-    assert transport._cooldown_max == 9
+    assert transport._pool._cooldown_base == 5
+    assert transport._pool._cooldown_max == 9

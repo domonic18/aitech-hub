@@ -24,8 +24,15 @@ export default function StatsBeacon(): null {
     // trailingSlash 站点 usePathname 无尾斜杠;剥尾斜杠判定,兼容历史带斜杠形态
     const onSearch = pathname.replace(/\/+$/, "") === "/search";
     const q = onSearch ? (searchParams.get("q") ?? "").trim().slice(0, 100) : "";
+    // M34 批①:命中数经 SearchHitMeta 挂的 window 全局透传(q 一致才采信,
+    // 防软导航陈旧值;0=零结果,是洞察池的内容缺口信号,必须原样上报)
+    const meta = (window as { __searchHitMeta?: { q?: string; hits?: number } }).__searchHitMeta;
+    const hitCount =
+      q !== "" && meta && meta.q === q && typeof meta.hits === "number" ? meta.hits : undefined;
     const payload = JSON.stringify(
-      q !== "" ? { path: pathname, referrer, q } : { path: pathname, referrer },
+      q !== ""
+        ? { path: pathname, referrer, q, ...(hitCount === undefined ? {} : { hitCount }) }
+        : { path: pathname, referrer },
     );
     try {
       // trailingSlash 站点:直接打带斜杠地址,省一次 308

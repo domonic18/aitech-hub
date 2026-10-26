@@ -26,9 +26,11 @@ vi.mock("@/lib/ai/resolver", () => ({
 }));
 vi.mock("@/lib/ai/usage-queries", () => ({ countTodayRoleUsage: hoisted.countTodayRoleUsage }));
 vi.mock("@/lib/ai/usage-log", () => ({ recordAiUsage: hoisted.recordAiUsage }));
-vi.mock("@/lib/ai/llm-client", () => ({ chatStream: hoisted.chatStream }));
+vi.mock("@/lib/ai/llm-stream", () => ({ chatStream: hoisted.chatStream }));
 vi.mock("./unified-search", () => ({
   searchAll: hoisted.searchAll,
+}));
+vi.mock("./citation-bodies", () => ({
   loadCitationBodies: hoisted.loadCitationBodies,
   CITATION_SNIPPET_MAX: 300,
 }));
@@ -50,6 +52,7 @@ const MODEL = {
   timeoutSec: 30,
   concurrency: 1,
   supportsVision: false,
+  extraParams: {},
   source: "primary" as const,
 };
 
@@ -189,6 +192,18 @@ describe("createAnswerStream 生成管线", () => {
       expect.objectContaining({ role: "search", status: "ok", tokensIn: 11, tokensOut: 22 }),
     );
     expect(hoisted.writeAnswerCache).toHaveBeenCalledTimes(1);
+  });
+
+  it("output_config 从台账 extraParams 透传(2026-10 模型切换:K3 effort 不默认 max)", async () => {
+    hoisted.resolveAiModel.mockResolvedValue({
+      ...MODEL,
+      protocol: "anthropic",
+      extraParams: { max_tokens: 800, output_config: { effort: "low" } },
+    });
+    await collect(await createAnswerStream("MCP"));
+    expect(hoisted.chatStream.mock.calls[0]![0]).toMatchObject({
+      outputConfig: { effort: "low" },
+    });
   });
 
   it("0 命中仍生成(需求红线):meta noHits,系统 prompt 用无资料变体", async () => {

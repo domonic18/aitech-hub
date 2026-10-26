@@ -18,6 +18,9 @@ export interface AgentAskUserPayload {
   question: string;
   /** 候选选项(用户可直接点选;缺省 = 纯自由文本回答) */
   options?: string[];
+  /** 附属详情长文本(2026-10-16 验收反馈问题三):需用户逐字确认的内容全文,
+   * 如待确认的生图提示词;卡片以等宽文本块完整展示。schema 上限 2000 字 */
+  detail?: string;
 }
 
 /** 用户回答的 resume 值(interrupt() 在恢复后原样返回给工具体) */
@@ -44,14 +47,77 @@ export function parseAgentAskUserInterrupt(value: unknown): AgentAskUserPayload 
   const options = Array.isArray(v.options)
     ? v.options.filter((o): o is string => typeof o === "string" && o.trim() !== "")
     : undefined;
+  const detail =
+    typeof v.detail === "string" && v.detail.trim() !== ""
+      ? v.detail.trim().slice(0, 2000)
+      : undefined;
   return {
     kind: AGENT_ASK_USER_TOOL,
     question: v.question,
     ...(options && options.length > 0 ? { options } : {}),
+    ...(detail ? { detail } : {}),
   };
 }
 
 /** 构造 resume 命令体(runtime sendCommand → POST body.command) */
 export function buildAskUserResumeCommand(resume: AgentAskUserResume): AgentAskUserResumeCommand {
   return { resume };
+}
+
+/**
+ * updates 帧是否携带中断(langgraph streamMode updates:图挂起时以 __interrupt__
+ * 键入增量,loop._emit 实证)。run 收尾广播据此区分「等用户回答」与「真收尾」
+ * ——前者在途态保持(用户作答后续 run 仍计本轮),后者本轮定局,生成在途态
+ * 据此判定立即清态而非干等超时。
+ */
+export function updatesHasInterrupt(updates: unknown): boolean {
+  return typeof updates === "object" && updates !== null && "__interrupt__" in updates;
+}
+
+/**
+ * options 入参归一化(M31 验收反馈 2026-10-15:MiniMax 三连败 checkpoint 实证
+ * ——options 反复发成对象数组 [{content:"…"}],严 schema 硬拒后模型无自纠能力,
+ * 弃问降级自动出图)。模型侧工具 spec 保持纯 string[] 不变,归一在执行前做,
+ * 容忍漂移形态:
+ * - 对象数组:按 content/label/text/value/title/name/option 首个命中字段取值;
+ * - JSON 串(以 [ 开头):整体解析后递归;
+ * - 普通串:按分号/换行切分;
+ * 归一后 trim、每项截 100、最多取 4;有效项不足 2 → undefined(降级为无选项
+ * 提问,卡片自由文本可答),不硬拒。其余形状原样交 zod(反馈中间件兜底)。
+ */
+export function normalizeAskUserOptions(value: unknown): unknown {
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (s === "") return undefined;
+    if (s.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(s);
+        if (Array.isArray(parsed)) return normalizeAskUserOptions(parsed);
+      } catch {
+        /* 非 JSON 落分隔符切分 */
+      }
+    }
+    const parts = s
+      .split(/[;;\n]+/)
+      .map((t) => t.trim())
+      .filter((t) => t !== "");
+    return parts.length >= 2 ? parts : undefined;
+  }
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (typeof item === "object" && item !== null) {
+          const o = item as Record<string, unknown>;
+          for (const key of ["content", "label", "text", "value", "title", "name", "option"]) {
+            const v = o[key];
+            if (typeof v === "string" && v.trim() !== "") return v.trim();
+          }
+        }
+        return "";
+      })
+      .filter((t) => t !== "");
+    return items.length >= 2 ? items.slice(0, 4).map((t) => t.slice(0, 100)) : undefined;
+  }
+  return value;
 }

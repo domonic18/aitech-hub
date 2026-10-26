@@ -48,12 +48,18 @@ export function parseCoverPrompt(raw: string): ParsedTask<CoverPromptResult> {
   return { ok: true, data: { prompt: parsed.data.prompt.slice(0, COVER_PROMPT_MAX) } };
 }
 
-/** 路由入参边界校验(编辑器字段快照;正文超长在 prompt 侧取样,不整拒) */
+/** 路由入参边界校验(编辑器字段快照;正文超长在 prompt 侧取样,不整拒)。
+ * tags 不限个数:主题稿(agent 撰写)可超编辑器 5 枚上限,数量级 50 兜底;
+ * postId 命中时路由层改以库内文章为上下文真相源,以下字段仅创建态兜底 */
 export const coverPromptInputSchema = z.object({
+  postId: z
+    .string()
+    .regex(/^\d{1,19}$/)
+    .optional(),
   title: z.string().trim().max(POST_LIMITS.title).default(""),
   contentMd: z.string().max(POST_LIMITS.contentMd).default(""),
   excerpt: z.string().trim().max(POST_LIMITS.excerpt).default(""),
-  tags: z.array(z.string().trim().max(POST_LIMITS.tag)).max(POST_LIMITS.tagsMax).default([]),
+  tags: z.array(z.string().trim().max(POST_LIMITS.tag)).max(50).default([]),
 });
 
 export type CoverPromptInput = z.infer<typeof coverPromptInputSchema>;
@@ -72,7 +78,8 @@ const OUTPUT_SPEC =
   `输出一个 JSON 对象,字段:prompt(文生图提示词,不超过${COVER_PROMPT_MAX}字)。` +
   "prompt 要求:一句连贯的中文画面描述,适合CogView/DALL-E类文生图模型;" +
   "包含画面主体、场景氛围、艺术风格、配色与构图(横版 16:9 封面);" +
-  "明确写出「画面中不出现任何文字、字母、水印、logo」;" +
+  "从标题提炼 2~8 字主题词,明确写出「画面中融入主题词『××』的简体中文文字," +
+  "清晰可读、排版协调」;禁止水印、logo与人脸特写,除主题词外不出现其他文字;" +
   "只描述画面,不要输出标题、解释、引号或代码围栏;" +
   "不编造正文没有的事物;全部使用简体中文(专有名词保留原文)。";
 

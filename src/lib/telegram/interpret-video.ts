@@ -1,45 +1,39 @@
 /**
  * 视频解读(M9,arch/02 §3.2;M12 批③ 默认化):interpreter 队列编排——下载无水印
- * 流 → ffmpeg 抽音轨 → 云 ASR 转写 → LLM 结构化概括(topic/summary/points)→
- * telegram.ai_* 列落库。M12 起就绪条件解耦 ASR:仅 interpret 绑定即开动,ASR 未
- * 启用/直链不可得时降级「基于文案」概括(buildInterpretPrompt 既有分支),配 ASR
- * 即增强。版权红线:「转写是输入,不是资产」——不设 transcript 列,play_url 仅经
- * job data 过境(removeOnComplete/Fail 50 压 Redis 痕迹),临时音视频文件判读
- * try/finally 即删。ASR 终败(重试≤2)→ missing_transcript 降级,不阻塞入流。
- * 两层重试语义:ASR/LLM 解析失败在管道内兜住;下载/网关/LLM 网络层上抛给 BullMQ attempts。
+ * 流(批⑦ 流式落盘)→ ffmpeg 抽音轨按段切片 → 云 ASR 逐段转写按序拼接(批⑦ 长视频)→
+ * telegram.ai_* 列落库。转写获取段(字幕优先/分段 ASR)已拆 interpret-transcript
+ * (技术债批⑤),本件留 job 状态机:就绪判定/配额与风控门顺延/LLM 概括/解读笔记
+ * 落库。M12 起就绪条件解耦 ASR:仅 interpret 绑定即开动,ASR 未启用/直链不可得时
+ * 降级「基于文案」概括,配 ASR 即增强。M26 批②起转写可用轮次追加解读笔记二次调用
+ * (ai_note,ai/interpret-note;失败置 null 不阻塞解读终态)。版权红线:「转写是输入,
+ * 不是资产」——不设 transcript 列,play_url 仅经 job data 过境(removeOnComplete/
+ * Fail 50 压 Redis 痕迹)。ASR 终败(重试≤2)→ missing_transcript 降级,不阻塞入流。
+ * 三层重试语义:ASR/LLM 解析失败在管道内兜住;下载/网关/LLM 网络层上抛给 BullMQ
+ * attempts;B站 playurl 风控门(M24)为分钟~小时级上下文门,60s 退避跨不过——
+ * 延迟重投顺延(RISK_CONTROL_*)跨门自愈,顺延耗尽才终败。
  */
 import { getAsrRuntimeConfig } from "../ai/asr-admin";
-import { transcribeAudio, type TranscribeInput } from "../ai/asr-client";
 import { chatJsonTask } from "../ai/chat-json-task";
-import { AI_ERR_DETAIL_MAX, AI_PURPOSE_INTERPRET } from "../ai/constants";
+import { AI_PURPOSE_INTERPRET } from "../ai/constants";
 import { AiClientError } from "../ai/errors";
 import { buildInterpretPrompt, parseInterpretResult } from "../ai/interpret-result";
+import { runInterpretNote } from "../ai/interpret-note";
 import { getRoleDailyMax, resolveAiModel, type ResolvedAiModel } from "../ai/resolver";
-import { AI_USAGE_ROLE_ASR, recordAiUsage } from "../ai/usage-log";
 import { prisma } from "../db";
+import { ingestInsightSignal } from "../insight/ingest";
 import { logger } from "../logger";
-import {
-  downloadVideoToTmp,
-  extractAudioMp3,
-  makeInterpretTmpDir,
-  readAudioFile,
-  removeTmpDir,
-  tmpMediaPaths,
-} from "../media/interpret-media";
+
 import { getQueue, QUEUE_INTERPRETER } from "../queue";
 
-import { douyinAdapter } from "./adapters/video/douyin";
-import { aiJobOpts, errMessage, markAiFailed, markAiPendingAndEnqueue } from "./ai-shared";
+import { aiJobOpts, markAiFailed, markAiPendingAndEnqueue } from "./ai-shared";
 import {
-  SOCIAL_BACKFILL_MAX_PAGES,
   TELEGRAM_AI_DONE,
   TELEGRAM_AI_MISSING_TRANSCRIPT,
-  TELEGRAM_AI_PENDING,
   TELEGRAM_AI_PROCESSING,
   TELEGRAM_MEDIA_VIDEO,
-  VIDEO_PLATFORM_DOUYIN,
 } from "./constants";
-import { jarsFromConfig } from "./cookies";
+import { acquireTranscript } from "./interpret-transcript";
+import { GatewayUpstreamError } from "./adapters/video";
 import { countTodayAiDone } from "./spider-queries";
 
 /** interpret job data:playUrl 过境字段(job 消费完随保留窗口即焚),禁落库 */
@@ -53,6 +47,8 @@ export interface InterpretJobData {
   platform: string;
   /** 博主台账 secUid(直链重拉用);null=博主已删,只能吃过境直链 */
   secUid: string | null;
+  /** B站 playurl 风控门顺延计数(延迟重投自增;超出 RISK_CONTROL_DEFER_SCHEDULE_MS 即放弃重试降级) */
+  deferCount?: number;
 }
 
 /** 解读就绪 = interpret 角色已绑定可用模型(M12 起不再前置 ASR:未配 ASR 走文案
@@ -99,71 +95,19 @@ export interface InterpretOutcome {
     | "skipped_not_found"
     | "skipped_done"
     | "skipped_not_ready"
-    | "deferred_quota";
+    | "deferred_quota"
+    | "deferred_riskcontrol";
   transcriptUsed: boolean;
   error?: string;
 }
 
-const ASR_RETRIES = 2; // 管道内重试(首次 + 2 重试);终败降级不抛
-const ASR_RETRY_DELAY_MS = 3_000;
 const QUOTA_DEFER_MS = 30 * 60_000;
-const ASR_TIMEOUT_SEC = 120;
-
-/** 经网关重拉 listing(maxPages=3)按 videoId 匹配直链(存量补读/过境链过期两路) */
-async function fetchFreshPlayUrl(sourceId: number, data: InterpretJobData): Promise<string | null> {
-  if (data.platform !== VIDEO_PLATFORM_DOUYIN || !data.secUid || !data.videoId) return null;
-  const platformRow = await prisma.crawlSource.findUnique({
-    where: { id: sourceId },
-    select: { config: true },
-  });
-  const jars = jarsFromConfig(platformRow?.config);
-  if (jars.length === 0) return null;
-  const items = await douyinAdapter.fetchRecentVideos({
-    secUid: data.secUid,
-    cookies: jars,
-    maxPages: SOCIAL_BACKFILL_MAX_PAGES,
-  });
-  return items.find((it) => it.videoId === data.videoId)?.playUrl ?? null;
-}
-
-/** ASR 管道内重试;终败返回 null(调用方降级 missing_transcript),不抛。
- * 批⑦:逐次落 ai_usage_log(成功记音频秒;终败记 degraded——缺转写降级口径) */
-async function runTranscribeWithRetry(
-  input: TranscribeInput,
-  audioSeconds: number,
-): Promise<{ text: string | null; error: string | null }> {
-  let lastError = "";
-  for (let attempt = 0; attempt <= ASR_RETRIES; attempt++) {
-    if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, ASR_RETRY_DELAY_MS));
-    }
-    const startedAt = Date.now();
-    try {
-      const text = await transcribeAudio(input);
-      await recordAiUsage({
-        role: AI_USAGE_ROLE_ASR,
-        modelKey: input.modelId,
-        audioSeconds,
-        durationMs: Date.now() - startedAt,
-      });
-      return { text, error: null };
-    } catch (err) {
-      lastError = errMessage(err);
-      logger.warn({
-        event: "interpret.video.asr_retry",
-        attempt: attempt + 1,
-        error: lastError.slice(0, AI_ERR_DETAIL_MAX),
-      });
-    }
-  }
-  await recordAiUsage({
-    role: AI_USAGE_ROLE_ASR,
-    modelKey: input.modelId,
-    audioSeconds,
-    status: "degraded",
-  });
-  return { text: null, error: lastError };
-}
+/** B站 playurl 软风控门顺延节奏(M30 批A 收口):门为分钟~小时级上下文门,
+ * 延迟重投跨门——20min 跨短门、2h 跨长门,仍门即放弃重试降级「基于文案概括」。
+ * 2026-10-14 生产实证:单视频 voucher 门 3 天 48 趟(20min×3 无上限顺延=全天候
+ * 喂门训练),每趟冷却池里唯一 jar,采集被连带全灭——顺延必须有终点。
+ * 池耗尽(NoJarAvailableError)同路顺延:等的就是同一份冷却,归因不同节奏同 */
+const RISK_CONTROL_DEFER_SCHEDULE_MS = [20 * 60_000, 2 * 60 * 60_000];
 
 /** LLM 调用 + 解析(解析重试在 chatJsonTask;网络/HTTP 错误上抛给 BullMQ attempts);
  * 批⑦:usage 角色入台账(备用=degraded,解析终败=failed) */
@@ -183,6 +127,8 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       aiStatus: true,
       sourceId: true,
       videoDuration: true,
+      publishedAt: true, // 洞察信号 signalAt 锚(M34 批①,发表时间优先于解读时间)
+      createdAt: true,
     },
   });
   if (!row)
@@ -226,54 +172,66 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     data: { aiStatus: TELEGRAM_AI_PROCESSING, lastAiError: null },
   });
 
-  // 下载/抽轨/ASR(M12 起整段可选):ASR 未启用直接跳过;直链过境缺失且网关重拉
-  // 未命中也不再硬失败——两者都降级「基于文案」概括(missing_transcript)。
-  // 临时文件 try/finally 即删(版权红线);下载/网关网络层失败上抛给 BullMQ 重试
+  // 转写获取(字幕优先/ASR 分段,技术债批⑤拆 interpret-transcript):ASR 未启用
+  // 直接跳过;直链过境缺失且网关重拉未命中也不再硬失败——两者都降级「基于文案」
+  // 概括(missing_transcript)。临时文件 try/finally 即删(版权红线);下载/网关
+  // 网络层失败上抛给 BullMQ 重试
   let transcript: string | null = null;
   let transcriptError: string | null = null;
-  if (asr?.enabled) {
-    const tmpDir = await makeInterpretTmpDir();
-    try {
-      let playUrl = data.playUrl;
-      if (!playUrl) playUrl = await fetchFreshPlayUrl(row.sourceId, data);
-      if (playUrl) {
-        const { videoPath, audioPath } = tmpMediaPaths(tmpDir);
-        try {
-          await downloadVideoToTmp(playUrl, videoPath);
-        } catch (err) {
-          // 过境直链是数小时有效的签名 URL,积压 job 会过期:重拉一次再试
-          const fresh = await fetchFreshPlayUrl(row.sourceId, data);
-          if (!fresh) throw err;
-          await downloadVideoToTmp(fresh, videoPath);
-        }
-        await extractAudioMp3(videoPath, audioPath, asr.maxAudioSeconds);
-        const asrResult = await runTranscribeWithRetry(
-          {
-            protocol: asr.protocol,
-            baseUrl: asr.baseUrl,
-            modelId: asr.modelId,
-            apiKey: asr.apiKey,
-            audio: await readAudioFile(audioPath),
-            filename: "audio.mp3",
-            hotwords: asr.hotwords,
-            timeoutSec: ASR_TIMEOUT_SEC,
-          },
-          row.videoDuration ?? 0,
-        );
-        transcript = asrResult.text;
-        transcriptError = asrResult.error;
-      } else {
-        transcriptError = "无可用播放直链(过境直链缺失且网关重拉未命中),基于文案概括";
-      }
-    } catch (err) {
+  try {
+    if (asr?.enabled) {
+      ({ transcript, transcriptError } = await acquireTranscript({
+        sourceId: row.sourceId,
+        data,
+        asr,
+      }));
+    }
+  } catch (err) {
+    // B站 playurl 软风控门(v_voucher,经 resolvePlayUrl)与字幕链/player v2
+    // 风控、池耗尽(NoJarAvailable,等的就是同一份冷却):按节奏延迟重投顺延
+    // 跨门(行留 processing);节奏耗尽仍门 → 放弃重试降级「基于文案概括」
+    // (可治理台「重解读」)。下载/其余网关网络层照旧上抛 attempts
+    const riskGate =
+      err instanceof GatewayUpstreamError &&
+      (err.kind === "RiskControlError" || err.kind === "NoJarAvailableError");
+    if (riskGate && (data.deferCount ?? 0) < RISK_CONTROL_DEFER_SCHEDULE_MS.length) {
+      const deferCount = (data.deferCount ?? 0) + 1;
+      await prisma.telegram.update({
+        where: { id },
+        data: {
+          lastAiError: `风控门顺延重试中(${deferCount}/${RISK_CONTROL_DEFER_SCHEDULE_MS.length})`,
+        },
+      });
+      await getQueue(QUEUE_INTERPRETER).add(
+        INTERPRET_JOB_NAME,
+        { ...data, deferCount },
+        aiJobOpts({
+          jobId: interpretJobId(data.telegramId, `rc${Date.now()}`),
+          delayMs: RISK_CONTROL_DEFER_SCHEDULE_MS[data.deferCount ?? 0],
+        }),
+      );
+      logger.warn({
+        event: "interpret.video.riskcontrol_deferred",
+        telegramId: data.telegramId,
+        kind: err.kind,
+        deferCount,
+      });
+      return {
+        telegramId: data.telegramId,
+        status: "deferred_riskcontrol",
+        transcriptUsed: false,
+      };
+    }
+    if (riskGate) {
+      // 顺延节奏耗尽:不硬失败烧 attempts,降级缺转写概括,终态可见 lastAiError
+      transcriptError = "风控门未过(顺延重试耗尽),基于文案概括";
+    } else {
       await markAiFailed(id, err);
       throw err; // 下载/网关网络层 → BullMQ attempts 兜重试
-    } finally {
-      await removeTmpDir(tmpDir).catch(() => undefined);
     }
   }
 
-  // LLM 概括(ASR 终败降级:仅基于文案元数据,公开信息不触红线)
+  // LLM 概括(ASR/字幕终败降级:仅基于文案元数据,公开信息不触红线)
   const prompt = buildInterpretPrompt({
     title: row.title,
     caption: row.summary,
@@ -297,6 +255,18 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     throw err;
   }
 
+  // 解读笔记(M26 批②,方案 §4):仅转写可用轮产出——文案降级缺时间线叙事材料,
+  // 不硬凑(同存量不补口径);失败置 null 不阻塞解读终态,lastAiError 契约不变
+  // (终败详情在 ai/interpret-note 重试事件里)
+  let note: string | null = null;
+  if (transcript !== null) {
+    note = (await runInterpretNote(model, { title: row.title, caption: row.summary, transcript }))
+      .note;
+    if (note === null) {
+      logger.warn({ event: "interpret.video.note_failed", telegramId: data.telegramId });
+    }
+  }
+
   const status = transcript === null ? TELEGRAM_AI_MISSING_TRANSCRIPT : TELEGRAM_AI_DONE;
   await prisma.telegram.update({
     where: { id },
@@ -305,6 +275,7 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
       aiTopic: result.topic,
       aiSummary: result.summary,
       aiPoints: result.points,
+      aiNote: note,
       aiRanAt: new Date(),
       lastAiError: transcriptError,
     },
@@ -314,6 +285,18 @@ export async function interpretVideoJob(data: InterpretJobData): Promise<Interpr
     telegramId: data.telegramId,
     status,
     transcriptUsed: transcript !== null,
+    noteUsed: note !== null,
   });
+  // 洞察信号入池(M34 批①):AI 解读产物=行业动态信号(热点引擎主料),
+  // 仅终态 done 记;fire-and-forget(ingest 自吞异常,解读主链路不感知)
+  if (status === TELEGRAM_AI_DONE) {
+    void ingestInsightSignal({
+      source: "telegram-ai",
+      refId: id.toString(),
+      rawText: result.summary,
+      signalAt: row.publishedAt ?? row.createdAt,
+      meta: { title: row.title, topic: result.topic },
+    });
+  }
   return { telegramId: data.telegramId, status, transcriptUsed: transcript !== null };
 }

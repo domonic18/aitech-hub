@@ -22,6 +22,7 @@ import {
   FEED_CHIP_TONE_CLASSES,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
+import { trackEntryClick } from "@/lib/stats/track-click";
 
 /** 封面缩略(抖音图床带防盗链:no-referrer + 失败换占位块,不重试) */
 function VideoCover({ src, alt }: { src: string | null; alt: string }) {
@@ -63,6 +64,9 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
         href={t.url}
         target="_blank"
         rel="noopener nofollow"
+        onClick={() =>
+          trackEntryClick({ surface: "telegram", kind: "telegram", ref: t.id, target: t.url })
+        }
         className="relative h-[128px] w-[72px] overflow-hidden rounded-sm bg-panel-2 sm:h-[157px] sm:w-[88px]"
         aria-label={`打开原视频:${t.title}`}
       >
@@ -106,6 +110,9 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
             href={t.url}
             target="_blank"
             rel="noopener nofollow"
+            onClick={() =>
+              trackEntryClick({ surface: "telegram", kind: "telegram", ref: t.id, target: t.url })
+            }
             className="text-text-1 hover:text-accent-hover"
           >
             {t.title}
@@ -152,6 +159,9 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
             href={t.url}
             target="_blank"
             rel="noopener nofollow"
+            onClick={() =>
+              trackEntryClick({ surface: "telegram", kind: "telegram", ref: t.id, target: t.url })
+            }
             className="text-text-2 hover:text-accent-hover"
           >
             原视频 ↗

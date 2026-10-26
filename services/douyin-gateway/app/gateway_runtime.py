@@ -4,10 +4,16 @@
 - UA/指纹与签名绑定——transport 进程内只建一次,不随请求重建;
 - jar 池以「身份集合」判定:调用方传来的 cookie 集合未变则保留冷却态,
   变了才整体替换(重启丢冷却态可接受,冷却只是退避加速)。
+B 站与抖音各自独立单例(身份判等互不影响);wbi 键缓存进程级共享。
 """
 
 from __future__ import annotations
 
+from typing import Any
+
+from app.adapters.bilibili.settings import BilibiliSettings
+from app.adapters.bilibili.transport import BilibiliTransport
+from app.adapters.bilibili.wbi import WbiKeyCache
 from app.adapters.douyin.settings import DouyinSettings
 from app.adapters.douyin.signer_client import (
     SignerRejectedError,
@@ -54,12 +60,19 @@ class GatewayRuntime:
         self,
         signer_settings: SignerSettings | None = None,
         douyin_settings: DouyinSettings | None = None,
+        bilibili_settings: BilibiliSettings | None = None,
     ) -> None:
         self.signer_settings = signer_settings or SignerSettings()
         self.douyin_settings = douyin_settings or DouyinSettings()
+        self.bilibili_settings = bilibili_settings or BilibiliSettings()
         self.service: SignerService | None = None
         self._transport: DouyinTransport | None = None
         self._jar_identity: frozenset[str] | None = None
+        self._douyin_proxy: str | None = None
+        self._bilibili_transport: BilibiliTransport | None = None
+        self._bilibili_jar_identity: frozenset[str] | None = None
+        self._bilibili_proxy: str | None = None
+        self._wbi_cache = WbiKeyCache(self.bilibili_settings.wbi_cache_ttl_seconds)
 
     async def start(self) -> None:
         from app.signer.backend import PlaywrightBackend
@@ -74,31 +87,85 @@ class GatewayRuntime:
         if self.service is not None:
             await self.service.close()
 
-    def transport_for(self, cookies: list[str]) -> DouyinTransport:
-        """按请求 cookie 集合取 transport(单例;jar 池身份变化才替换)。"""
+    def transport_for(self, cookies: list[str], proxy: str | None = None) -> DouyinTransport:
+        """按请求 cookie 集合与出口代理取抖音 transport(单例;jar 身份变化才
+        整体替换,代理变化仅热切会话工厂——冷却态保留,M33 批B)。"""
         identity = frozenset(cookies)
         if self._transport is None:
             self._transport = DouyinTransport(
                 cookies=cookies,
                 signer=LocalSigner(self.service) if self.service else None,
                 settings=self.douyin_settings,
+                proxy=proxy,
             )
             self._jar_identity = identity
+            self._douyin_proxy = proxy
             logger.info(
                 "gateway.transport_created",
                 jars=len(cookies),
                 ua=self._transport.user_agent,
+                proxy=bool(proxy),
             )
-        elif identity != self._jar_identity:
-            self._transport.replace_jars(cookies)
-            self._jar_identity = identity
-            logger.info("gateway.jars_replaced", jars=len(cookies))
+        else:
+            if identity != self._jar_identity:
+                self._transport.replace_jars(cookies)
+                self._jar_identity = identity
+                logger.info("gateway.jars_replaced", jars=len(cookies))
+            if proxy != self._douyin_proxy:
+                self._transport.set_proxy(proxy)
+                self._douyin_proxy = proxy
+                logger.info("gateway.proxy_switched", platform="douyin", proxy=bool(proxy))
         return self._transport
 
-    def jar_stats(self) -> dict[str, int]:
-        if self._transport is None:
-            return {"jars_total": 0, "jars_available": 0}
+    def transport_for_bilibili(
+        self, cookies: list[str], proxy: str | None = None
+    ) -> BilibiliTransport:
+        """按请求 cookie 集合与出口代理取 B 站 transport(单例;身份判等独立
+        于抖音;代理热切不重建,冷却态保留——M33 批B)。"""
+        identity = frozenset(cookies)
+        if self._bilibili_transport is None:
+            self._bilibili_transport = BilibiliTransport(
+                cookies=cookies,
+                settings=self.bilibili_settings,
+                proxy=proxy,
+            )
+            self._bilibili_jar_identity = identity
+            self._bilibili_proxy = proxy
+            logger.info("gateway.bilibili_transport_created", jars=len(cookies), proxy=bool(proxy))
+        else:
+            if identity != self._bilibili_jar_identity:
+                self._bilibili_transport.replace_jars(cookies)
+                self._bilibili_jar_identity = identity
+                logger.info("gateway.bilibili_jars_replaced", jars=len(cookies))
+            if proxy != self._bilibili_proxy:
+                self._bilibili_transport.set_proxy(proxy)
+                self._bilibili_proxy = proxy
+                logger.info("gateway.proxy_switched", platform="bilibili", proxy=bool(proxy))
+        return self._bilibili_transport
+
+    def wbi_cache(self) -> WbiKeyCache:
+        """B 站 wbi 键缓存(进程级单例,跨请求复用避免 nav 风暴)。"""
+        return self._wbi_cache
+
+    def jar_stats(self) -> dict[str, Any]:
+        """顶层 jars_* 保留 = 抖音段(旧 TS zod 兼容);platforms 为 per-platform 全量。"""
+        douyin = self._transport
+        bilibili = self._bilibili_transport
         return {
-            "jars_total": self._transport.jars_total,
-            "jars_available": self._transport.jars_available,
+            "jars_total": douyin.jars_total if douyin else 0,
+            "jars_available": douyin.jars_available if douyin else 0,
+            # 出口代理在用与否(布尔,永不透出 URL——M33 批B;网关零密钥,
+            # 只反映最近一次请求携带的代理态)
+            "egress_proxy": bool(self._douyin_proxy or self._bilibili_proxy),
+            "platforms": {
+                "douyin": {
+                    "jars_total": douyin.jars_total if douyin else 0,
+                    "jars_available": douyin.jars_available if douyin else 0,
+                },
+                "bilibili": {
+                    "jars_total": bilibili.jars_total if bilibili else 0,
+                    "jars_available": bilibili.jars_available if bilibili else 0,
+                    "wbi_age_seconds": self._wbi_cache.age_seconds(),
+                },
+            },
         }

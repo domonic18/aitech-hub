@@ -9,14 +9,14 @@
  * - 偏差声明:原型页为 docs 交付物,不受 src 代码「文件 ≤350 行」红线约束;
  *   单文件自包含优先于行数指标。
  *
- * 视觉方向(2026-09-30 用户定稿;v0.3.0 扩双主题、v0.4.0 去 emoji 换矢量图标、v0.5.0 品牌「一起AI」+ 17 monogram logo):
+ * 视觉方向(2026-09-30 用户定稿;v0.3.0 扩双主题、v0.4.0 去 emoji 换矢量图标、v0.6.0 品牌「一起AI」+ 17 monogram logo):
  * - 深色终端风为基底(深空三层底 + 靛蓝主色 + 等宽字体点缀;气质:终端、量化、智能体实战)
  * - 双主题:暗黑默认,明亮可选;页面 <html data-theme="dark|light">,
  *   主题胶囊(.theme-toggle)写 documentElement.dataset.theme 并记 localStorage("proto-theme");
  *   无存储默认 dark。前台与后台(admin)使用同一组 token,任何主题下同一风格。
  * - 全站禁止 emoji 作图标;一律内联 SVG sprite(见 §图标系统)。
  *
- * 版本:v0.5.0(与 index.html 页脚一致)
+ * 版本:v0.6.0(与 index.html 页脚一致)
  */
 
 /* ==== 暗黑主题(默认) ==== */
@@ -195,7 +195,7 @@
  *                图标全 SVG(.sb-item .ic);顶栏 = 主题胶囊 + 头像菜单。
  * ---------------------------------------------------------- */
 
-/* ==== §Logo(v0.5.0;品牌「一起AI」2026-10-02 定稿) ====
+/* ==== §Logo(v0.6.0;品牌「一起AI」2026-10-02 定稿) ====
  * 唯一形态:17 monogram 芯片 + 名称「一起AI」+ 弱色 mono tld;静态无闪烁。
  * - 芯片 .logo-mark:圆角方块 var(--r-sm),var(--accent) 底 + #fff mono 粗体「17」,
  *   letter-spacing -0.5px,box-shadow 走 --glow;尺寸三档:

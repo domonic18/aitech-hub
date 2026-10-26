@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 from urllib.parse import urlencode
 
+from app.adapters.common.egress import egress_get, make_session_factory
+from app.adapters.common.jar_pool import CookieJar, JarPool
 from app.adapters.douyin.exceptions import (
+    NoJarAvailableError,
     RiskControlError,
     SignatureError,
     StructureDriftError,
@@ -61,37 +62,8 @@ class _AsyncHttpSession(Protocol):
 
 
 def _default_session_factory() -> _AsyncHttpSession:
-    from curl_cffi.requests import AsyncSession
-
-    session: Any = AsyncSession(impersonate="chrome")
-    return cast("_AsyncHttpSession", session)
-
-
-@dataclass
-class _CookieJar:
-    """一份 Cookie 身份；命中风控后按指数退避冷却（基数/上限来自 config）。"""
-
-    cookie: str
-    cooldown_base_seconds: int
-    cooldown_max_seconds: int
-    cool_until: datetime | None = None
-    strikes: int = 0
-
-    def is_available(self, now: datetime) -> bool:
-        return self.cool_until is None or self.cool_until <= now
-
-    def cool_down(self) -> None:
-        self.strikes += 1
-        seconds = min(
-            self.cooldown_base_seconds * (2 ** (self.strikes - 1)),
-            self.cooldown_max_seconds,
-        )
-        self.cool_until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-
-    def revive(self) -> None:
-        """请求成功后重置退避。"""
-        self.strikes = 0
-        self.cool_until = None
+    """直连缺省工厂(M33 批B 起代理感知缺省见 __init__/set_proxy)。"""
+    return make_session_factory()
 
 
 class DouyinTransport:
@@ -106,18 +78,19 @@ class DouyinTransport:
         signer: DouyinSignerProtocol | None = None,
         rate_limit_retry_delays: tuple[float, ...] | None = None,
         settings: DouyinSettings | None = None,
+        proxy: str | None = None,
     ) -> None:
         settings = settings or DouyinSettings()
         self._base_url = settings.base_url
         self._request_timeout = settings.request_timeout
-        self._cooldown_base = settings.jar_cooldown_base_seconds
-        self._cooldown_max = settings.jar_cooldown_max_seconds
         self._user_agent = user_agent or DEFAULT_USER_AGENT
         self._fingerprint = fingerprint or generate_fingerprint()
         self._abogus = ABogus(
             user_agent=self._user_agent, fp=self._fingerprint, options=[0, 1, 8]
         )
-        self._session_factory = session_factory or _default_session_factory
+        self._proxy = proxy
+        self._injected_factory = session_factory is not None
+        self._session_factory = session_factory or make_session_factory(proxy)
         self._signer = signer
         # 限速型 403/429 与 200 空 body 是瞬时的（douyin-downloader 实测同
         # cookie 秒级恢复）：冷却会杀死秒级重试，sleep 后换 jar 重签重发
@@ -126,18 +99,11 @@ class DouyinTransport:
             if rate_limit_retry_delays is not None
             else settings.rate_limit_retry_delays
         )
-        self._jars: list[_CookieJar] = self._make_jars(cookies or [])
-        self._cursor = 0
-
-    def _make_jars(self, cookies: list[str]) -> list[_CookieJar]:
-        return [
-            _CookieJar(
-                c,
-                cooldown_base_seconds=self._cooldown_base,
-                cooldown_max_seconds=self._cooldown_max,
-            )
-            for c in cookies
-        ]
+        self._pool = JarPool(
+            cookies or [],
+            cooldown_base_seconds=settings.jar_cooldown_base_seconds,
+            cooldown_max_seconds=settings.jar_cooldown_max_seconds,
+        )
 
     @property
     def user_agent(self) -> str:
@@ -145,31 +111,39 @@ class DouyinTransport:
 
     @property
     def jars_available(self) -> int:
-        now = datetime.now(timezone.utc)
-        return sum(1 for jar in self._jars if jar.is_available(now))
+        return self._pool.jars_available
+
+    @property
+    def proxy(self) -> str | None:
+        """当前出站代理(观测用;值本身不进日志)。"""
+        return self._proxy
+
+    def set_proxy(self, proxy: str | None) -> None:
+        """热切换出站代理(M33 批B):仅换会话工厂,jar 池与冷却态原样保留。
+        注入 session_factory 的场景(测试)代理不生效,由桩自证。"""
+        self._proxy = proxy
+        if not self._injected_factory:
+            self._session_factory = make_session_factory(proxy)
 
     @property
     def jars_total(self) -> int:
-        return len(self._jars)
+        return self._pool.jars_total
 
     def replace_jars(self, cookies: list[str]) -> None:
         """整体替换 jar 池（自举/手动导入后调用）。"""
-        self._jars = self._make_jars(cookies)
-        self._cursor = 0
+        self._pool.replace_all(cookies)
 
-    def _next_available_jar(self) -> _CookieJar:
-        now = datetime.now(timezone.utc)
-        total = len(self._jars)
-        for offset in range(total):
-            jar = self._jars[(self._cursor + offset) % total]
-            if jar.is_available(now):
-                self._cursor = (self._cursor + offset + 1) % total
-                return jar
-        raise RiskControlError(
-            f"无可用 Cookie jar（共 {total} 份，全部冷却或未配置）"
-        )
+    def _next_available_jar(self) -> CookieJar:
+        jar = self._pool.next_available()
+        if jar is None:
+            # 池耗尽独立归因(≠真风控):请求未发出,不冷却不喂门,Node 侧
+            # 采集免疫顺延;类名即网关 error 字段
+            raise NoJarAvailableError(
+                f"无可用 Cookie jar（共 {self._pool.jars_total} 份，全部冷却或未配置）"
+            )
+        return jar
 
-    def _headers(self, jar: _CookieJar) -> dict[str, str]:
+    def _headers(self, jar: CookieJar) -> dict[str, str]:
         return {
             "User-Agent": self._user_agent,
             "Referer": f"{self._base_url}/",
@@ -198,7 +172,8 @@ class DouyinTransport:
             url = f"{self._base_url}{path}?{await self._sign(path, params, jar)}"
 
             async with self._session_factory() as session:
-                response = await session.get(
+                response = await egress_get(
+                    session,
                     url,
                     headers=self._headers(jar),
                     timeout=self._request_timeout,
@@ -238,7 +213,7 @@ class DouyinTransport:
             f"限速/扣发重试耗尽（{len(self._retry_delays) + 1} 次）: {last_body[:200]}"
         )
 
-    def _parse_json(self, status: int, text: str, jar: _CookieJar) -> dict[str, Any]:
+    def _parse_json(self, status: int, text: str, jar: CookieJar) -> dict[str, Any]:
         """解析 2xx body；验证页 HTML 判风控（jar 冷却），其余非 JSON 判结构漂移。"""
         try:
             data = json.loads(text)
@@ -269,7 +244,8 @@ class DouyinTransport:
     async def resolve_redirect(self, url: str) -> str:
         """跟随一次 302 取最终地址（分享短链展开用，不带 Cookie 不签名）。"""
         async with self._session_factory() as session:
-            response = await session.get(
+            response = await egress_get(
+                session,
                 url,
                 headers={"User-Agent": self._user_agent},
                 timeout=self._request_timeout,

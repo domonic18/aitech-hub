@@ -8,20 +8,26 @@
 ```
 PR / push(develop, main)
 ├── job app       npm ci 缓存 → prettier --check → eslint → tsc --noEmit → vitest 单测
-├── job gateway   Python 3.11 + pip 缓存 → pytest services/douyin-gateway/tests(M8 批①;纯单测无网依赖)
+├── job gateway   Python 3.11 + uv(setup-uv 锁文件缓存)→ uv run pytest services/douyin-gateway/tests(M8 批①;纯单测无网依赖)
 ├── job migration 起 pgvector/pgvector:pg16(M20 批①,search_embedding 迁移需 vector 扩展)→
 │                 幂等重放 → migrate diff --exit-code 一致性断言(standard/01-testing §5)
 
 push(develop, main)/ 手动
 ├── job docker-release          [依赖 app+gateway+migration 全绿] app 镜像 buildx 构建推送 TCR
-└── job docker-release-gateway  [同上依赖] 网关镜像 buildx 构建推送 TCR(services/douyin-gateway/Dockerfile,M8 批①)
+└── job docker-release-gateway  [同上依赖] 网关镜像 buildx 构建推送 TCR(docker/gateway/Dockerfile,M8 批①)
                                 两镜像 job 并行互不拖累;tag = <branch>-<短 sha>;latest 仅 main(保证 compose pull 默认即发布版)
+                                构建/推送跑 Mac mini self-hosted runner(2026-10-16 起,见下)
 ```
 
 > 实装(M6,2026-10-02):`app` + `migrate-replay` + `docker-release` 三 job(见 `.github/workflows/ci.yml`)。
 > docker-release 支持 `workflow_dispatch` 手动触发(首次打通 TCR 用);build 构建在镜像内完成,不设独立 build job。
 > 跨境推送(美国 runner → 大陆 TCR)偶发 stall:构建步骤级超时 25 分钟,失败自动重推一次(同范例仓实测经验;gha cache 网关走 scope=gateway 独立)。
 > 2026-10-04:发布线拆分为 `docker-release`(app)+ `docker-release-gateway`(网关)两个独立并行 job(仿 ai-invest-assisstant 每镜像一 job,互不拖累,失败可 re-run failed jobs 单镜像重试);触发条件/依赖门/tag 规则不变。
+> 2026-10-16:两个 release job 迁 Mac mini self-hosted runner(`runs-on: [self-hosted]`,仿 acore-manager):
+> GitHub 托管 runner 跨境推 TCR 偶发 stall,曾逼出本地 save/scp/load 兜底通道;自托管机直推国内 TCR 链路快且稳,兜底通道随之退役。
+> 机内前置(仓外一次性,参照 acore-manager 同名设施):① 注册 self-hosted runner(repo Settings → Actions → Runners,标签含默认 `self-hosted`);② 预建持久 builder `docker buildx create --name ci-builder --driver docker-container --config ~/actions-runner/buildkitd.toml`(buildkitd.toml 配国内 docker.io 镜像源;本地缓存跨 job 复用,**弃 gha cache**;workflow 里 `docker buildx use ci-builder` 选择,不用 setup-buildx-action——它会另建临时 builder 顶掉选择)。
+> Apple Silicon 构建机出 175 所需 amd64:build-push 显式 `platforms: linux/amd64`(Rosetta/QEMU 模拟,冷缓存首跑偏慢属预期;步骤级超时 25/30 分钟与登录守卫保留)。
+> 首推 `continue-on-error` + 末尾 gate 裁定步(任一次尝试成功即绿):此前无 gate,首推超时→重试成功 job 仍染红,误导发布判断(run 37106851119 教训,同 acore-manager 方案收口)。
 
 - Node 22(`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 同范例);npm 缓存走 `cache: npm`
 - husky + lint-staged 本地门禁(eslint/prettier 限改文件);CI 全量跑,双保险
@@ -46,9 +52,10 @@ make migrate   # npx prisma migrate deploy
 - dev compose 只含基础设施;应用本地跑保热更;prod compose 全栈
 - pre-commit:lint-staged;pre-push:`make check`
 
-## 3. 镜像(docker/Dockerfile)
+## 3. 镜像(docker/<image>/ 目录册)
 
-- 多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
+- **镜像目录册**(2026-10-25 收编,仿 ai-invest-assisstant):全部镜像定义集中 `docker/<image>/Dockerfile`——`app/`(web+worker 同镜像)/`gateway/`/`card-renderer/`/`pgvector/`;构建上下文一律**仓库根**(Dockerfile 内 COPY 前缀即源码出处),单一根级 `.dockerignore` 服务全部上下文(子级排除用 `**/` 前缀,裸目录名只匹配根级);sidecar 源码住 `services/`(自包含:依赖/测试/契约),镜像定义不入服务目录;`docker/nginx/` 为 compose 挂载配置非镜像
+- app 镜像多阶段:`deps`(npm ci)→ `builder`(next build standalone + tsc worker)→ `runner`(node:22-slim,非 root)
 - **构建信息注入**(2026-10-05):`npm run build` 经 `scripts/ops/build-with-info.sh` 包装,`NEXT_PUBLIC_BUILD_REF`/`NEXT_PUBLIC_BUILD_TIME` 构建期内联客户端 bundle,页脚展示版本追踪行;CI build-args 传 `branch-sha` 与 UTC 时间,本地直跑回退 `git describe --always --dirty`(`.dockerignore` 排除 `.git`,容器内必须显式传参),均缺省页脚显示 dev
 - 产物:`.next/standalone` + `.next/static` + `dist/`(worker 编译产物,tsconfig.worker outDir,入口 `dist/worker/index.js`)+ `prisma/`(migrate 需 schema)+ `scripts/` 与 `src/`(ops 脚本如 `npm run admin` 以 tsx 直跑,依赖 src 源码;显式整拷,勿依赖 standalone 追踪);entrypoint 按 `SERVICE_ROLE=web|worker` 区分启动目标
 - `.dockerignore` 排除 `.env`/`docs`/`tests`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
@@ -68,20 +75,20 @@ make migrate   # npx prisma migrate deploy
   - ops 脚本依赖的 src 必须**显式 COPY**:standalone 追踪对源码只带碎片(2026-10-03 实测 `src/lib/auth/` 仅剩 `*.test.ts`,生产镜像 `npm run admin` 必 MODULE_NOT_FOUND);`scripts/`、`src/` 勿依赖追踪带入
   - 定属主用 `COPY --chown`,勿 `RUN chown -R /app`:后者把已拷内容整层 CoW 复制一遍,实测多出 1.08GB 层(镜像层只增不删)
 
-### 3.2 网关镜像(services/douyin-gateway/Dockerfile,M8 批①)
+### 3.2 网关镜像(docker/gateway/Dockerfile,M8 批①)
 
-- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 装 requirements 后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,`.dockerignore` 仓库级排除互不影响
+- 独立第二镜像 `aitech-hub-gateway`:`python:3.11-slim` 单阶段,pip 引导 uv 按 `uv.lock` 精确装依赖(`--frozen`,2026-10-25 自 requirements*.txt 迁移 pyproject+uv.lock)后 `playwright install --with-deps chromium`(签名驱动,含系统依赖层,镜像偏大属预期);与主镜像零共享,单一根级 `.dockerignore` 服务全部上下文(源码住 `services/douyin-gateway/`,镜像定义收编 `docker/gateway/`)
 - CI 与主镜像各自独立 job 并行构建推送(`docker-release-gateway`,2026-10-04 起;各带重推重试,互不拖累);tag 规则同款 `<branch>-<短 sha>` + `latest` 仅 main
 - prod compose 服务 `douyin-gateway`:`image: ${GATEWAY_IMAGE:-…aitech-hub-gateway:latest}`,内网无 ports(worker 经服务名 `http://douyin-gateway:8010` 访问,`x-app-env` 注 `DOUYIN_GATEWAY_URL`);tmpfs 挂 `/tmp/playwright-profiles`(chromium Profile 防容器层写放大);healthcheck urllib 探 `/health`(slim 无 curl 同款问题),`start_period: 60s`(首启含 chromium 拉起);`mem_limit: 1g` + `DOUYIN_SIGNER_WARM_SLOTS: 1`(warm 页吃内存,2C4G 预算钉死单槽)
 - dev compose 走 `--profile douyin` 按需起(build 本地,`127.0.0.1:8010` 仅回环,便于 curl 冒烟),不影响日常 pg/redis 起;契约见 arch/05 §4.4
 - **网关镜像升级步骤**(契约护栏):黄金样本双侧对拍已进 CI(pytest `test_contract_fixtures.py` + vitest `gateway-contract.test.ts`),升级后另跑一次实弹对拍——`docker compose --profile douyin up -d douyin-gateway` 起本地网关,`npm run test:integration`(gateway 未起自动跳过;真实拉取对拍设 `DOUYIN_INTEGRATION_SEC_UID`/`DOUYIN_INTEGRATION_SHARE_URL` 开启)
 - 镜像现状 ≈2.4GB → 消除 chown 复制层后 ≈1.4GB(runner 全量 node_modules 为既有取舍:worker 与 prisma CLI 同镜像所需——web 启动即跑 `npx prisma migrate deploy`,CLI 必须在);进一步瘦身方向:`npm ci --omit=dev` 拆 prod-deps 层 + tsx 入 dependencies,非一期阻塞(2026-10-03 评估)
 
-### 3.3 PG pgvector 镜像(M20 批①,docker/postgres-pgvector.Dockerfile)
+### 3.3 PG pgvector 镜像(M20 批①,docker/pgvector/Dockerfile)
 
 - **为什么自编译**:dev/prod PG 现网 postgres:16-alpine(musl),`datcollversion` 为 NULL(musl 不记录 collation 版本);官方 `pgvector/pgvector` 镜像是 Debian(glibc)——原位换镜像 = 既有 PGDATA 文本排序**静默**变更(locale 无版本锚,不报错),禁用官方镜像直换现网。自编译 = postgres:16-alpine 基座 + 源码编 pgvector v0.8.7(`make with_llvm=no`——alpine pgxs 缺省要 clang 出 LLVM bitcode,构建必挂),基座不变零 collation 风险;CI 迁移重放库无历史数据,直接用官方 `pgvector/pgvector:pg16` 无碍
-- 构建推送(175 无 buildx 不能构建,本机出):`docker build --platform linux/amd64 -f docker/postgres-pgvector.Dockerfile -t <TCR>/<namespace>/aitech-hub-pgvector:pg16 docker/` → `docker save | ssh <prod> docker load` → 服务器内网 `docker tag` + `docker push` TCR(内网秒级);本机直推 TCR 无权限
-- compose:dev postgres `build: {context: ./docker, dockerfile: postgres-pgvector.Dockerfile}`(卷 `./workspace/postgres-dev`,dev/prod 卷禁共挂);prod 引 TCR `aitech-hub-pgvector:pg16`
+- 构建推送(175 无 buildx 不能构建,本机出):`docker build --platform linux/amd64 -t <TCR>/<namespace>/aitech-hub-pgvector:pg16 docker/pgvector` → `docker save | ssh <prod> docker load` → 服务器内网 `docker tag` + `docker push` TCR(内网秒级);本机直推 TCR 无权限
+- compose:dev postgres `build: {context: ./docker/pgvector}`(卷 `./workspace/postgres-dev`,dev/prod 卷禁共挂);prod 引 TCR `aitech-hub-pgvector:pg16`
 - **175 换 PG 容器 runbook(M20 部署批执行,变更操作先批准;实参以 `docker inspect` 旧容器为准)**:①`pg_dump` 全量安全留档 → ②`docker stop`+`docker rm` 旧 postgres(数据卷 `workspace/postgres` 不动)→ ③`docker run` 同参重建(仅镜像换 pgvector 版;挂载/端口/env 逐项对齐)→ ④`psql -c "CREATE EXTENSION IF NOT EXISTS vector"` 验证 → ⑤部署新版应用镜像(启动即 `migrate deploy` 落 `search_embedding` 表)→ ⑥admin 绑定 embedding-3 → `npm run embed:run` 回填 → ⑦线上混合检索抽查(含降级:停绑定后纯词项回归)
 
 ## 4. 生产拓扑与 Nginx(compose 服务)

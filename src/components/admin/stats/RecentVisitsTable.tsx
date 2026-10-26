@@ -8,7 +8,7 @@
 import Link from "next/link";
 
 import { formatCnDateTime } from "@/lib/datetime";
-import type { RecentVisitRow } from "@/lib/stats/queries";
+import type { RecentVisitRow } from "@/lib/stats/queries-log";
 
 export default function RecentVisitsTable({
   rows,

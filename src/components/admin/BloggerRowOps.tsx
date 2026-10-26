@@ -4,7 +4,10 @@
  * 博主行操作(M8 批③:立即采集 + 编辑 + 删除两步武装——启用中先 409 提示停用;
  * 停用后 confirm 物理删。批⑧:补「作品」与「回填」,对齐原型 ops 序;
  * 容器 flex-wrap,窄列自然换行。2026-10-06 验收反馈问题4:启停改由表格
- * 「启用」列 StatusSwitch 承担,删除钮启用态直接 disabled(原型口径)。
+ * 「启用」列 StatusSwitch 承担。2026-10-11 验收反馈:删除钮启用态禁用无反馈
+ * 像坏了——改可点击,点击给两步武装引导(服务端 409 语义不变)。
+ * F27 板(2026-10-23):启用列取消,启停收进行内(暂停/启用);增「日志」
+ * 跳运行·采集日志;首采前「采集」兼验证连通。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -28,6 +31,28 @@ export default function BloggerRowOps({
       const body = (await res.json()) as ApiEnvelope;
       if (body.code !== 0) {
         alert(`触发失败:${body.message}`);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggle(): Promise<void> {
+    const next = !blogger.enabled;
+    if (!next && !confirm(`确认停用「${blogger.nickname}」?停用后调度器不再派发该博主的采集任务。`))
+      return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/bloggers/${blogger.id}/status`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const body = (await res.json()) as ApiEnvelope;
+      if (body.code !== 0) {
+        alert(`操作失败:${body.message}`);
         return;
       }
       router.refresh();
@@ -86,7 +111,17 @@ export default function BloggerRowOps({
           onClick={() => void crawlNow()}
           className="cursor-pointer rounded-sm px-2 py-1 text-accent hover:bg-accent-dim disabled:opacity-50"
         >
-          立即采集
+          采集
+        </button>
+      )}
+      {blogger.enabled && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void backfillNow()}
+          className="cursor-pointer rounded-sm px-2 py-1 text-accent hover:bg-accent-dim disabled:opacity-50"
+        >
+          回填
         </button>
       )}
       <BloggerDialog
@@ -101,22 +136,27 @@ export default function BloggerRowOps({
       >
         作品
       </Link>
-      {blogger.enabled && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void backfillNow()}
-          className="cursor-pointer rounded-sm px-2 py-1 text-accent hover:bg-accent-dim disabled:opacity-50"
-        >
-          回填
-        </button>
-      )}
+      <Link
+        href="/admin/data/run/?t=jobs"
+        className="rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2"
+        title="该博主的采集任务运行记录"
+      >
+        日志
+      </Link>
       <button
         type="button"
-        disabled={busy || blogger.enabled}
+        disabled={busy}
+        onClick={() => void toggle()}
+        className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
+      >
+        {blogger.enabled ? "暂停" : "启用"}
+      </button>
+      <button
+        type="button"
+        disabled={busy}
         title={blogger.enabled ? "两步武装删除:先停用,再物理删除" : undefined}
         onClick={() => void remove()}
-        className="cursor-pointer rounded-sm px-2 py-1 text-red hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-40"
+        className="cursor-pointer rounded-sm px-2 py-1 text-red hover:bg-red/10 disabled:opacity-50"
       >
         删除
       </button>

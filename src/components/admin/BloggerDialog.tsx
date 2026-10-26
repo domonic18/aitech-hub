@@ -2,13 +2,18 @@
 
 /**
  * 博主登记/编辑弹窗(M8 批③,ChannelDialog 同款交互):
- * 登记填主页链接或 sec_uid(经网关自动拉昵称头像,手填昵称兜底网关不可达);
+ * 登记先选平台(M24:抖音/B站,xhs 规划中),填主页链接或裸身份标识
+ * (经网关自动拉昵称头像,手填昵称兜底网关不可达);
  * 编辑不改身份(sec_uid),只改昵称/分类/频率/备注。
  */
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { SOCIAL_CRAWL_INTERVAL_MIN } from "@/lib/telegram/constants";
+import {
+  SOCIAL_CRAWL_INTERVAL_MIN,
+  VIDEO_PLATFORM_BILIBILI,
+  VIDEO_PLATFORM_DOUYIN,
+} from "@/lib/telegram/constants";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -20,6 +25,24 @@ export interface BloggerDialogData {
   crawlIntervalMin: number;
   remark: string | null;
 }
+
+/** 登记平台选项(xhs 规划中灰置;与 BloggerCreateSchema REGISTERABLE 同口径) */
+const PLATFORM_OPTIONS = [
+  { value: VIDEO_PLATFORM_DOUYIN, label: "抖音" },
+  { value: VIDEO_PLATFORM_BILIBILI, label: "B站" },
+] as const;
+
+/** 平台相关输入提示(身份标签/placeholder) */
+const PLATFORM_INPUT_META: Record<string, { label: string; placeholder: string }> = {
+  [VIDEO_PLATFORM_DOUYIN]: {
+    label: "主页链接或 sec_uid",
+    placeholder: "https://www.douyin.com/user/MS4wLjABAAAA… 或分享口令",
+  },
+  [VIDEO_PLATFORM_BILIBILI]: {
+    label: "主页链接或 mid",
+    placeholder: "https://space.bilibili.com/9469941 或纯数字 mid(b23.tv 短链亦可)",
+  },
+};
 
 export default function BloggerDialog({
   label,
@@ -35,6 +58,7 @@ export default function BloggerDialog({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [platform, setPlatform] = useState<string>(VIDEO_PLATFORM_DOUYIN);
   const [input, setInput] = useState("");
   const [nickname, setNickname] = useState(blogger?.nickname ?? "");
   const [category, setCategory] = useState(blogger?.category ?? "");
@@ -61,6 +85,7 @@ export default function BloggerDialog({
           remark: remark.trim() || null,
         }
       : {
+          platform,
           input: input.trim(),
           nickname: nickname.trim() || undefined,
           category: category.trim() || null,
@@ -106,16 +131,44 @@ export default function BloggerDialog({
         <DialogShell width="lg" scroll title={editing ? "编辑博主" : "登记博主"}>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {!editing && (
-              <label className="col-span-2 text-xs text-text-3">
-                主页链接或 sec_uid *
-                <input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="https://www.douyin.com/user/MS4wLjABAAAA… 或分享口令"
-                  className={`mt-1 ${field}`}
-                />
-              </label>
+              <>
+                <div className="sm:col-span-2 text-xs text-text-3">
+                  平台 *
+                  <div className="mt-1 flex items-center gap-2">
+                    {PLATFORM_OPTIONS.map((p) => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => setPlatform(p.value)}
+                        aria-pressed={platform === p.value}
+                        className={`rounded-sm border px-3 py-1.5 text-xs transition-colors ${
+                          platform === p.value
+                            ? "border-accent bg-accent/10 font-medium text-accent"
+                            : "border-line text-text-2 hover:bg-panel-2"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                    <span
+                      title="规划中"
+                      className="cursor-not-allowed rounded-sm border border-line px-3 py-1.5 text-xs text-text-3 opacity-50"
+                    >
+                      小红书·规划中
+                    </span>
+                  </div>
+                </div>
+                <label className="sm:col-span-2 text-xs text-text-3">
+                  {PLATFORM_INPUT_META[platform]?.label ?? "主页链接或身份标识"} *
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={PLATFORM_INPUT_META[platform]?.placeholder ?? ""}
+                    className={`mt-1 ${field}`}
+                  />
+                </label>
+              </>
             )}
             <label className="col-span-1 text-xs text-text-3">
               昵称 {editing ? "*" : "(可选,手填兜底)"}

@@ -1,180 +1,88 @@
 "use client";
 
 /**
- * 公众号渠道卡(M17 批①,镜像 AsrCard):单例配置描述网格 + 编辑弹窗 + 测试连接。
- * 测试连接实调 /cgi/bin/token;40164(IP 白名单)错误人话透出(errmsg 自带出口 IP)。
+ * 微信公众号渠道卡(F16 板渠道行①):head(图形 + 名称 + 连接 chip)+
+ * 最近同步 / 失败·累计 / 自动同步三行 meta + 「配置」「查看记录」文本钮。
+ * 配置详情与测试连接收进配置弹层(WechatConfigDialog,F9);「查看记录」
+ * 平滑滚动定位到记录卡(#distribute-records)。
  */
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { PUBLISH_STATUS_LABELS } from "@/lib/distribute/channels";
+import type { DistributeOverview } from "@/lib/distribute/records";
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
-import { getWechatTheme } from "@/lib/distribute/wechat-themes";
-import type { ApiEnvelope } from "@/lib/http/response";
-import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import { formatCnRelative } from "@/lib/datetime";
 import WechatConfigDialog from "./WechatConfigDialog";
 
-function TestStatusBadge({
-  status,
-  latencyMs,
-  error,
+const ACTION_BTN =
+  "cursor-pointer rounded-sm px-1 py-0.5 text-[11px] text-accent hover:bg-accent-dim";
+
+export default function WechatConfigCard({
+  config,
+  overview,
 }: {
-  status: string | null;
-  latencyMs: number | null;
-  error: string | null;
+  config: WechatConfigView;
+  overview: DistributeOverview;
 }) {
-  if (status === "ok") {
-    return (
-      <span className="text-green" title={latencyMs != null ? `${latencyMs}ms` : undefined}>
-        ✓ {latencyMs ?? "?"}ms
-      </span>
-    );
-  }
-  if (status === "fail") {
-    return (
-      <span className="cursor-help text-red" title={error ?? undefined}>
-        ✗ 失败
-      </span>
-    );
-  }
-  return <span className="text-text-3">未测试</span>;
-}
-
-function Lb({
-  label,
-  value,
-  mono,
-  title,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-  title?: string;
-}) {
-  return (
-    <>
-      <div className="text-[11px] text-text-3">{label}</div>
-      <div
-        className={`truncate text-[12.5px] text-text-1 ${mono ? "font-mono" : ""}`}
-        title={title}
-      >
-        {value}
-      </div>
-    </>
-  );
-}
-
-interface TestOutcome {
-  ok: boolean;
-  latencyMs: number;
-  detail: string;
-}
-
-export default function WechatConfigCard({ config }: { config: WechatConfigView }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [outcome, setOutcome] = useState<TestOutcome | null>(null);
 
-  const runTest = async (): Promise<void> => {
-    setTesting(true);
-    setOutcome(null);
-    try {
-      const res = await fetch("/api/distribute/wechat-config/test", { method: "POST" });
-      const body = (await res.json()) as ApiEnvelope<TestOutcome | null>;
-      if (body.code !== 0 || !body.data) {
-        setOutcome({ ok: false, latencyMs: 0, detail: body.message || `HTTP ${res.status}` });
-        return;
+  const last = overview.lastRecord;
+  const lastLine = last
+    ? {
+        time: formatCnRelative(new Date(last.updatedAt)),
+        label: PUBLISH_STATUS_LABELS[last.status] ?? "同步中",
+        cls: last.status === "synced" ? "text-green" : last.status === "failed" ? "text-red" : "",
       }
-      setOutcome(body.data);
-      router.refresh();
-    } catch (e) {
-      setOutcome({ ok: false, latencyMs: 0, detail: String(e) });
-    } finally {
-      setTesting(false);
-    }
-  };
+    : null;
+
+  function scrollToRecords(): void {
+    document
+      .getElementById("distribute-records")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return (
-    <div className="rounded-md border border-line bg-panel px-4 py-4">
+    <div className="flex flex-col rounded-md border border-line bg-panel px-4 py-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
+        <div className="flex items-center gap-1.5">
           <svg className="ic text-accent" aria-hidden="true">
             <use href="#i-send" />
           </svg>
-          微信公众号 · {config.enabled ? "已启用" : "未启用"}
-          {config.enabled && config.autoSyncEnabled && (
-            <span className="rounded-sm bg-accent-dim px-1 py-px font-mono text-[10px] text-accent">
-              发布自动同步
-            </span>
+          <span className="text-[12.5px] font-medium text-text-1">微信公众号</span>
+        </div>
+        <span
+          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${
+            config.enabled ? "bg-green/12 text-green" : "bg-panel-2 text-text-3"
+          }`}
+        >
+          {config.enabled ? "已连接" : "未启用"}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-1 flex-col gap-1.5 text-[11.5px] text-text-2">
+        <div>
+          {lastLine ? (
+            <>
+              最近同步:{lastLine.time} · <span className={lastLine.cls}>{lastLine.label}</span>
+            </>
+          ) : (
+            "暂无同步"
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="cursor-pointer rounded-sm border border-line px-2 py-1 text-[11px] text-text-2 hover:bg-panel-2"
-          >
-            编辑配置
-          </button>
-          <button
-            type="button"
-            disabled={testing}
-            onClick={() => void runTest()}
-            className="cursor-pointer rounded-sm bg-accent px-2 py-1 text-[11px] font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {testing ? "测试中…" : "测试连接"}
-          </button>
+        <div>
+          失败 {overview.failedCount} · 累计 {overview.totalSynced.toLocaleString("en-US")} 篇
         </div>
+        <div>自动同步:{config.autoSyncEnabled ? "已开启" : "已关闭"}</div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
-        <Lb label="AppID" value={config.appid || "—"} mono />
-        <Lb label="AppSecret" value={config.appSecretMask ?? "未录入"} mono />
-        <Lb label="图文作者" value={config.author ?? "一起AI(缺省)"} />
-        <Lb
-          label="默认主题"
-          value={
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ backgroundColor: getWechatTheme(config.theme).heading }}
-                aria-hidden="true"
-              />
-              {getWechatTheme(config.theme).label}
-            </span>
-          }
-          title="公众号正文默认主题;单篇同步时可在弹窗临时更改"
-        />
-        <Lb label="自动同步" value={config.autoSyncEnabled ? "发布即推草稿" : "关闭(仅手动)"} />
-        <Lb
-          label="最后测试"
-          value={
-            <TestStatusBadge
-              status={config.lastTestStatus}
-              latencyMs={config.lastTestLatencyMs}
-              error={config.lastTestError}
-            />
-          }
-        />
+      <div className="mt-3 flex items-center gap-1">
+        <button type="button" className={ACTION_BTN} onClick={() => setOpen(true)}>
+          配置
+        </button>
+        <button type="button" className={ACTION_BTN} onClick={scrollToRecords}>
+          查看记录
+        </button>
       </div>
-
-      <div className="mt-3 text-[11px] leading-relaxed text-text-3">
-        <svg className="ic ic-sm mr-1 inline align-[-2px] text-text-3" aria-hidden="true">
-          <use href="#i-infocircle" />
-        </svg>
-        测试为实调 <code>GET /cgi-bin/token</code>;若报「IP 不在白名单」,把提示中的 IP 加入
-        <b className="text-text-2">「公众号后台-设置与开发-基本配置-IP 白名单」</b>
-        后重试(本机与生产服务器出口 IP 都需加白)。
-      </div>
-
-      {outcome && (
-        <div
-          className={`mt-2 font-mono text-xs ${outcome.ok ? "whitespace-pre-wrap text-green" : "whitespace-pre-wrap text-red"}`}
-        >
-          {outcome.ok ? "✓ " : "✗ "}
-          {outcome.detail}
-        </div>
-      )}
 
       {open && <WechatConfigDialog config={config} onClose={() => setOpen(false)} />}
     </div>

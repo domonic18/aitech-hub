@@ -10,7 +10,8 @@ function delta(cur: number, prev: number): { text: string; cls: string } {
   if (prev === 0) return { text: "— vs 昨日 0", cls: "text-text-3" };
   const pct = ((cur - prev) / prev) * 100;
   const arrow = pct >= 0 ? "↑" : "↓";
-  const cls = pct >= 0 ? "text-green" : "text-red";
+  // 红涨绿跌(国内数据习惯;green/red 的成功失败语义色不受影响)
+  const cls = pct >= 0 ? "text-red" : "text-green";
   return {
     text: `${arrow} ${Math.abs(pct).toFixed(1)}% vs 昨日 ${prev.toLocaleString("en-US")}`,
     cls,

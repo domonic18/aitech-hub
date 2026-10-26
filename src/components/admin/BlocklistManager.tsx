@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 屏蔽词管理岛(M7 批④):添加(scope 三选)+ 行内启停/删除。
+ * 屏蔽词管理岛(M7 批④):添加(scope 多选)+ 行内启停/删除。
  * 停用词只影响新条目准入,已在库条目不回溯。
  */
 import { useRouter } from "next/navigation";
@@ -10,7 +10,12 @@ import { useState } from "react";
 import { BLOCKLIST_SCOPES } from "@/lib/telegram/constants";
 import type { ApiEnvelope } from "@/lib/http/response";
 
-const SCOPE_LABELS: Record<string, string> = { title: "标题", summary: "摘要", all: "全部" };
+const SCOPE_LABELS: Record<string, string> = {
+  title: "标题",
+  summary: "摘要",
+  all: "全部",
+  comment: "评论",
+};
 
 export default function BlocklistManager({
   words,

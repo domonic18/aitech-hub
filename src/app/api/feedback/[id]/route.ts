@@ -15,6 +15,7 @@ import {
 } from "@/lib/feedback/feedback-admin";
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
+import { parseBigIntId } from "@/lib/http/parse-id";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,8 @@ export async function PUT(
   if (!admin) return apiEnvelope(401, "unauthorized");
 
   const { id } = await params;
-  if (!/^\d+$/.test(id)) return apiEnvelope(400, "invalid id");
+  const bigId = parseBigIntId(id);
+  if (bigId === null) return apiEnvelope(400, "invalid id");
 
   const parsed = feedbackUpdateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
@@ -36,12 +38,12 @@ export async function PUT(
   }
 
   try {
-    await requireFeedback(BigInt(id));
+    await requireFeedback(bigId);
   } catch (e) {
     if (e instanceof FeedbackAdminError) return apiEnvelope(404, e.message);
     throw e;
   }
-  const item = await updateFeedbackStatus(BigInt(id), parsed.data.status, parsed.data.adminNote);
+  const item = await updateFeedbackStatus(bigId, parsed.data.status, parsed.data.adminNote);
   logger.info({
     event: "admin.feedback.status_changed",
     operatorId: admin.sub,

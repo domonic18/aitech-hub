@@ -7,11 +7,12 @@
  */
 import type { Metadata } from "next";
 
-import AgentDrawer from "@/components/site/agent/AgentDrawer";
+import AgentDrawerLazy from "@/components/site/agent/AgentDrawerLazy";
 import AnswerCard from "@/components/site/search/AnswerCard";
 import GenTime from "@/components/site/search/GenTime";
 import SearchConsole from "@/components/site/search/SearchConsole";
 import SearchEmpty from "@/components/site/search/SearchEmpty";
+import SearchHitMeta from "@/components/site/SearchHitMeta";
 import SearchHits from "@/components/site/search/SearchHits";
 import { searchAll } from "@/lib/search/unified-search";
 
@@ -40,6 +41,8 @@ export default async function SearchPage({
       <SearchConsole q={q} />
       {result ? (
         <>
+          {/* 命中数上报桥(M34 批①):SSR 命中数 → window 全局 → StatsBeacon 采集 */}
+          <SearchHitMeta q={q} hits={result.total} />
           {result.total > 0 ? (
             <>
               <div className="mb-[18px] mt-9 border-b border-line pb-3 font-mono text-[13px] text-text-2">
@@ -61,7 +64,7 @@ export default async function SearchPage({
         </>
       ) : null}
       {/* K2.5 Drawer:搜索场景深挖会话;chips/「继续深挖」经 search:agent-ask 唤起 */}
-      <AgentDrawer />
+      <AgentDrawerLazy />
     </section>
   );
 }

@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * 公众号配置编辑弹窗(M17 批①,镜像 AsrDialog):表单态与提交仅弹窗内消费,
- * 卡片描述网格直接读 config prop;每次挂载即打开,关闭即卸载(编辑态不残留)。
+ * 公众号配置弹层(F9 板 configModal):560 单列表单(AppID / AppSecret /
+ * 作者署名 / 内容主题)+ 两枚 pill 开关(启用渠道 / 发布自动同步)+
+ * 底部「测试连接 · 取消 · 保存」。测试连接实调已保存配置(/cgi-bin/token),
+ * 表单有未保存修改时先提示;失败结果行附 IP 白名单指引(40164 人话透出)。
  * AppSecret 只写不读:留空 = 保留旧钥,非空 = 换钥重加密(AES-256-GCM 落库)。
  */
 import { useRouter } from "next/navigation";
@@ -13,6 +15,46 @@ import { WECHAT_THEMES } from "@/lib/distribute/wechat-themes";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+
+interface TestOutcome {
+  ok: boolean;
+  latencyMs: number;
+  detail: string;
+}
+
+/** pill 开关(F9 板 34×18 胶囊;受控,视觉同 StatusSwitch 不带 endpoint) */
+function PillToggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-center justify-between rounded-sm border border-line px-3 py-2 text-xs text-text-2 hover:bg-panel-2"
+    >
+      {label}
+      <span
+        className={`relative h-[18px] w-[34px] flex-none rounded-full border transition-colors ${
+          checked ? "border-accent bg-accent" : "border-line bg-panel-2"
+        }`}
+      >
+        <span
+          className={`absolute left-[1px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform ${
+            checked ? "translate-x-[16px]" : ""
+          }`}
+        />
+      </span>
+    </button>
+  );
+}
 
 export default function WechatConfigDialog({
   config,
@@ -30,6 +72,25 @@ export default function WechatConfigDialog({
   const [theme, setTheme] = useState(config.theme);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(config.autoSyncEnabled);
   const [enabled, setEnabled] = useState(config.enabled);
+
+  // 测试结果行:初始回显上次测试态,重测后就地更新
+  const [outcome, setOutcome] = useState<TestOutcome | null>(
+    config.lastTestStatus === "ok"
+      ? { ok: true, latencyMs: config.lastTestLatencyMs ?? 0, detail: `上次测试通过` }
+      : config.lastTestStatus === "fail"
+        ? { ok: false, latencyMs: 0, detail: config.lastTestError ?? "上次测试失败" }
+        : null,
+  );
+  const [testing, setTesting] = useState(false);
+  const [testHint, setTestHint] = useState<string | null>(null);
+
+  const dirty =
+    appid !== config.appid ||
+    appSecret !== "" ||
+    author !== (config.author ?? "") ||
+    theme !== config.theme ||
+    autoSyncEnabled !== config.autoSyncEnabled ||
+    enabled !== config.enabled;
 
   const submit = async (): Promise<void> => {
     setBusy(true);
@@ -61,10 +122,34 @@ export default function WechatConfigDialog({
     }
   };
 
+  const runTest = async (): Promise<void> => {
+    if (dirty) {
+      setTestHint("表单有未保存的修改,请先保存再测试(「测试连接」探测的是已保存配置)");
+      return;
+    }
+    setTestHint(null);
+    setTesting(true);
+    try {
+      const res = await fetch("/api/distribute/wechat-config/test", { method: "POST" });
+      const body = (await res.json()) as ApiEnvelope<TestOutcome | null>;
+      if (body.code !== 0 || !body.data) {
+        setOutcome({ ok: false, latencyMs: 0, detail: body.message || `HTTP ${res.status}` });
+        return;
+      }
+      setOutcome(body.data);
+    } catch (e) {
+      setOutcome({ ok: false, latencyMs: 0, detail: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const Lb = "block text-xs text-text-3";
+
   return (
-    <DialogShell width="xl" scroll title="编辑公众号配置">
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="text-xs text-text-3">
+    <DialogShell width="md" scroll title="公众号配置">
+      <div className="mt-3 flex flex-col gap-3">
+        <label className={Lb}>
           AppID *
           <input
             autoFocus
@@ -75,8 +160,20 @@ export default function WechatConfigDialog({
             className={`mt-1 font-mono ${field}`}
           />
         </label>
-        <label className="text-xs text-text-3">
-          图文作者
+        <label className={Lb}>
+          AppSecret(写入后加密,不再回显)
+          <input
+            type="password"
+            value={appSecret}
+            onChange={(e) => setAppSecret(e.target.value)}
+            maxLength={400}
+            placeholder={config.appSecretMask ? `留空 = 保留 ${config.appSecretMask}` : "••••••••"}
+            autoComplete="new-password"
+            className={`mt-1 font-mono ${field}`}
+          />
+        </label>
+        <label className={Lb}>
+          作者署名
           <input
             value={author}
             onChange={(e) => setAuthor(e.target.value)}
@@ -85,8 +182,8 @@ export default function WechatConfigDialog({
             className={`mt-1 ${field}`}
           />
         </label>
-        <label className="text-xs text-text-3">
-          默认正文主题
+        <label className={Lb}>
+          内容主题(排版配色)
           <select
             value={theme}
             onChange={(e) => setTheme(e.target.value)}
@@ -98,49 +195,51 @@ export default function WechatConfigDialog({
               </option>
             ))}
           </select>
-          <span className="mt-1 block text-[11px] text-text-3">
-            标题/引用/链接等强调色;单篇可覆盖
-          </span>
         </label>
-        <label className="col-span-2 text-xs text-text-3">
-          AppSecret{" "}
-          <span className="text-amber">(留空 = 保留 {config.appSecretMask ?? "现有密钥"})</span>
-          <input
-            type="password"
-            value={appSecret}
-            onChange={(e) => setAppSecret(e.target.value)}
-            maxLength={400}
-            placeholder="••••••••"
-            autoComplete="new-password"
-            className={`mt-1 font-mono ${field}`}
-          />
-          <span className="mt-1 block text-[11px] text-amber">
-            保存后 AES-256-GCM 加密落库,界面仅回显掩码;AUTH_SECRET 轮换会使密文失效,需重录。
-          </span>
-        </label>
-      </div>
-      <div className="mt-3 flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-xs text-text-2">
-          <input
-            type="checkbox"
+
+        <div className="flex flex-col gap-2">
+          <PillToggle checked={enabled} label="启用公众号渠道" onChange={(v) => setEnabled(v)} />
+          <PillToggle
             checked={autoSyncEnabled}
-            onChange={(e) => setAutoSyncEnabled(e.target.checked)}
-            className="accent-[var(--accent)]"
+            label="文章发布后自动同步"
+            onChange={(v) => setAutoSyncEnabled(v)}
           />
-          发布文章时自动推公众号草稿(默认关)
-        </label>
-        <label className="flex items-center gap-2 text-xs text-text-2">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="accent-[var(--accent)]"
-          />
-          启用公众号渠道(建议测试连接通过后再开启)
-        </label>
+        </div>
+
+        <p className="text-[11px] leading-relaxed text-text-3">
+          凭据仅存服务端加密存储;「测试连接」探测 access_token 获取接口。
+        </p>
+
+        {testHint && <p className="font-mono text-xs text-amber">{testHint}</p>}
+        {outcome && (
+          <div
+            className={`font-mono text-xs ${
+              outcome.ok ? "whitespace-pre-wrap text-green" : "whitespace-pre-wrap text-red"
+            }`}
+          >
+            {outcome.ok ? "✓ " : "✗ "}
+            {outcome.detail}
+            {outcome.ok ? "" : outcome.latencyMs > 0 ? `(${outcome.latencyMs}ms)` : ""}
+          </div>
+        )}
+        {outcome && !outcome.ok && (
+          <p className="text-[11px] leading-relaxed text-text-3">
+            若报「IP 不在白名单」,把提示中的 IP 加入
+            <b className="text-text-2">「公众号后台-设置与开发-基本配置-IP 白名单」</b>
+            后重试(本机与生产服务器出口 IP 都需加白)。
+          </p>
+        )}
+        {error && <p className="font-mono text-xs text-red">{error}</p>}
       </div>
-      {error && <p className="mt-2 font-mono text-xs text-red">{error}</p>}
       <DialogActions>
+        <button
+          type="button"
+          disabled={testing}
+          onClick={() => void runTest()}
+          className="cursor-pointer rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2 disabled:opacity-50"
+        >
+          {testing ? "测试中…" : "测试连接"}
+        </button>
         <button
           type="button"
           onClick={onClose}

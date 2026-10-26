@@ -27,6 +27,8 @@ interface AgentRuntimeProviderProps {
   onSessionExpired: () => void;
   /** run 起止上报(宿主运行中暂缓受控 threadId 回写,防运行中切换 abort) */
   onRunActiveChange: (active: boolean) => void;
+  /** 发送瞬间取页面上下文(M27 批⑧-b;纯 getter 引用须稳定,可省 = 不注入) */
+  getContext?: () => unknown;
 }
 
 export default function AgentRuntimeProvider({
@@ -37,10 +39,18 @@ export default function AgentRuntimeProvider({
   onError,
   onSessionExpired,
   onRunActiveChange,
+  getContext,
 }: AgentRuntimeProviderProps): React.ReactElement {
   const adapter = useMemo(
-    () => createAgentRuntimeAdapter({ onTodos, onError, onSessionExpired, onRunActiveChange }),
-    [onTodos, onError, onSessionExpired, onRunActiveChange],
+    () =>
+      createAgentRuntimeAdapter({
+        onTodos,
+        onError,
+        onSessionExpired,
+        onRunActiveChange,
+        ...(getContext ? { getContext } : {}),
+      }),
+    [onTodos, onError, onSessionExpired, onRunActiveChange, getContext],
   );
 
   const runtime = useLangGraphRuntime({
