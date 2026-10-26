@@ -178,31 +178,42 @@ class XhsPublisher:
             # 「element is outside of the viewport」,2026-10-26 实测)
             step = "切换上传图文 tab"
             sel = self._settings.selectors
-            # tab 渲染可能慢于固定 sleep(实测 3s 不够):轮询 15s 直到出现
-            # 「文本匹配 + 坐标在视口内」节点。隐藏克隆须按 bounding_box 坐标
-            # 排除——off-screen 元素 is_visible 仍为 True,:visible 挡不住
-            target = None
+            # tab 定位三轮实弹收敛(2026-10-26):同位克隆/序号漂移防不胜防
+            # (aria-hidden 装饰节点与真身同坐标,序号随渲染漂移)——终态策略:
+            # 15s 内轮询收集全部候选(文本匹配 + 视口内 + 非 aria-hidden),
+            # 逐个 5s 短超时试点,谁真正吃下点击用谁
+            candidates: list[Any] = []
             deadline = time.monotonic() + 15
-            while target is None and time.monotonic() < deadline:
+            while not candidates and time.monotonic() < deadline:
                 tabs = page.locator(sel["creator_tab"])
                 for i in range(await tabs.count()):
                     t = tabs.nth(i)
                     try:
                         if self._settings.image_tab_text not in (await t.inner_text()):
                             continue
+                        if (await t.get_attribute("aria-hidden")) == "true":
+                            continue
                         box = await t.bounding_box()
                     except Exception:
                         continue  # 节点尚在挂载/等待中被导航打断
                     if box and box["x"] >= 0 and box["y"] >= 0:
-                        target = t
-                        break
-                if target is None:
+                        candidates.append(t)
+                if not candidates:
                     await page.wait_for_timeout(500)
-            if target is None:
+            if not candidates:
                 raise RuntimeError(
                     f"等待「{self._settings.image_tab_text}」tab 超时(15s):页面可能改版或渲染异常"
                 )
-            await target.click()
+            for t in candidates:
+                try:
+                    await t.click(timeout=5000)
+                    break
+                except Exception:
+                    continue
+            else:
+                raise RuntimeError(
+                    f"「{self._settings.image_tab_text}」tab 点击失败:候选均不可点(平台改版?)"
+                )
             await page.wait_for_timeout(1000)
             # 上传封面图(首张)
             step = "上传图片"
