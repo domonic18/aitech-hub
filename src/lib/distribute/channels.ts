@@ -30,10 +30,13 @@ export function parseChannelParam(
 }
 
 export const PUBLISH_STATUS_PENDING = "pending";
+/** 物料就绪待人工发布(M49 批X2 小红书半自动:AI 改写完成,等人工粘贴发布) */
+export const PUBLISH_STATUS_READY = "ready";
 export const PUBLISH_STATUS_SYNCED = "synced";
 export const PUBLISH_STATUS_FAILED = "failed";
 export const PUBLISH_CHANNEL_STATUSES = [
   PUBLISH_STATUS_PENDING,
+  PUBLISH_STATUS_READY,
   PUBLISH_STATUS_SYNCED,
   PUBLISH_STATUS_FAILED,
 ] as const;

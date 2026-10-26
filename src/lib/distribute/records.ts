@@ -9,7 +9,7 @@ import { startOfCnDay } from "../datetime";
 import { DistributeError } from "./errors";
 
 /** 记录筛选分段(页码走 ?page=,状态走 ?status=;all 时不带 status 参数) */
-export const PUBLISH_RECORD_SEGMENTS = ["all", "synced", "pending", "failed"] as const;
+export const PUBLISH_RECORD_SEGMENTS = ["all", "synced", "ready", "pending", "failed"] as const;
 
 export interface PublishRecordRow {
   id: string;

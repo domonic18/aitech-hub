@@ -13,6 +13,7 @@ import { useState } from "react";
 import SyncWechatDialog, {
   type WechatSyncDialogPost,
 } from "@/components/admin/distribute/SyncWechatDialog";
+import SyncXhsDialog from "@/components/admin/distribute/SyncXhsDialog";
 import type { PostDisplayState } from "@/lib/content/post-schema";
 import { CHANNEL_WECHAT, wechatSyncActionLabel } from "@/lib/distribute/channels";
 
@@ -48,6 +49,7 @@ export default function PostRowOps({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [xhsOpen, setXhsOpen] = useState(false);
 
   const status = sync?.channels.find((c) => c.channel === CHANNEL_WECHAT)?.status ?? null;
   const syncDisabled = !wechatReady || !sync?.syncable || status === "pending";
@@ -127,8 +129,19 @@ export default function PostRowOps({
             {wechatSyncActionLabel(status)}
           </button>
         )}
+        {!legacy && (
+          <button
+            type="button"
+            title="生成小红书笔记物料(半自动)"
+            className={OP_BTN}
+            onClick={() => setXhsOpen(true)}
+          >
+            小红书
+          </button>
+        )}
       </span>
       {error && <span className="text-[11px] text-red">{error}</span>}
+      {xhsOpen && <SyncXhsDialog postId={id} onClose={() => setXhsOpen(false)} />}
       {syncOpen && sync && (
         <SyncWechatDialog
           post={

@@ -3,7 +3,7 @@ import type { ConnectionOptions } from "bullmq";
 import IORedis from "ioredis";
 
 import { env } from "./env";
-import { CHANNEL_WECHAT } from "./distribute/channels";
+import { CHANNEL_WECHAT, CHANNEL_XHS } from "./distribute/channels";
 
 /**
  * BullMQ producer 侧封装(arch/00-overview §2:请求内只 enqueue,处理一律在 worker 进程)。
@@ -39,6 +39,11 @@ export const QUEUE_DISTRIBUTE = "distribute";
 export function distributeQueueFor(channel: string): string {
   return channel === CHANNEL_WECHAT ? QUEUE_DISTRIBUTE : `${QUEUE_DISTRIBUTE}:${channel}`;
 }
+
+/** 小红书物料准备(M49 批X2):LLM 改写 + 3:4 封面卡渲染,产物落行 data */
+export const DISTRIBUTE_JOB_XHS_PREPARE = "xhs-prepare";
+/** 小红书子队列(渠道化路由首批接线;wechat 沿用历史 distribute 队列) */
+export const QUEUE_DISTRIBUTE_XHS = distributeQueueFor(CHANNEL_XHS);
 /** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
  * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */
 export const QUEUE_DB_BACKUP = "db-backup";
@@ -81,6 +86,7 @@ export const QUEUE_NAMES = [
   QUEUE_DISCOVERY,
   QUEUE_INSIGHT,
   QUEUE_ILLUSTRATION_STUDIO,
+  QUEUE_DISTRIBUTE_XHS,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 

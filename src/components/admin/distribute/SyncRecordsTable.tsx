@@ -16,10 +16,12 @@ import { useState } from "react";
 import { formatCnDateTime } from "@/lib/datetime";
 
 import { pollJobUntil } from "@/lib/http/poll-client";
+import { DISTRIBUTE_CHANNELS } from "@/lib/distribute/channels";
 import type { ApiEnvelope } from "@/lib/http/response";
 import type { PublishRecordRow } from "@/lib/distribute/records";
 
 const STATUS_STYLES: Record<string, { chip: string; dot: string; label: string }> = {
+  ready: { chip: "bg-accent/12 text-accent", dot: "bg-accent", label: "待发布" },
   synced: { chip: "bg-green/12 text-green", dot: "bg-green", label: "已同步" },
   pending: { chip: "bg-amber/12 text-amber", dot: "bg-amber", label: "同步中" },
   failed: { chip: "bg-red/12 text-red", dot: "bg-red", label: "失败" },
@@ -199,7 +201,10 @@ export default function SyncRecordsTable({
                     key={r.id}
                     className="border-b border-line/60 last:border-0 hover:bg-panel-2/60"
                   >
-                    <td className="whitespace-nowrap px-4 py-2 text-text-2">微信公众号</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-text-2">
+                      {DISTRIBUTE_CHANNELS[r.channel as keyof typeof DISTRIBUTE_CHANNELS]?.label ??
+                        r.channel}
+                    </td>
                     <td className="max-w-[220px] px-3 py-2">
                       <Link
                         href={`/admin/posts/${r.postId}`}
@@ -217,7 +222,7 @@ export default function SyncRecordsTable({
                       {fmtTime(r.syncedAt ?? r.updatedAt)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">
-                      {busy ? (
+                      {busy || r.channel !== "wechat" ? (
                         <span className="text-[11px] text-text-3">—</span>
                       ) : (
                         <>

@@ -11,6 +11,7 @@ import {
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
   QUEUE_DISTRIBUTE,
+  QUEUE_DISTRIBUTE_XHS,
   QUEUE_ILLUSTRATION_STUDIO,
   QUEUE_INSIGHT,
   QUEUE_INTERPRETER,
@@ -67,17 +68,19 @@ async function main(): Promise<void> {
             ? // 批D:wechat 沿用历史队列(在途 job 兼容);新渠道走 distributeQueueFor
               // 子队列,届时在此按渠道各建 worker(同并发 1 语义),互不队头阻塞
               { concurrency: 1, lockDuration: 900_000 }
-            : name === QUEUE_DB_BACKUP
-              ? { concurrency: 1, lockDuration: 600_000 }
-              : name === QUEUE_PAY_RECONCILE
-                ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
-                : name === QUEUE_DISCOVERY
-                  ? { concurrency: 1, lockDuration: 900_000 } // B站风控纪律全局串行;双窗全词 5-10min
-                  : name === QUEUE_INSIGHT
-                    ? { concurrency: 1, lockDuration: 600_000 } // 日批 LLM 分钟级;并发 1 防双拍交错归簇
-                    : name === QUEUE_ILLUSTRATION_STUDIO
-                      ? { concurrency: 1, lockDuration: 600_000 } // 拆层 ~75s+逐层转存;并发 1 防打爆单绑定模型
-                      : {};
+            : name === QUEUE_DISTRIBUTE_XHS
+              ? { concurrency: 1, lockDuration: 300_000 } // M49 批X2:LLM 改写+封面渲染,单并发防连发
+              : name === QUEUE_DB_BACKUP
+                ? { concurrency: 1, lockDuration: 600_000 }
+                : name === QUEUE_PAY_RECONCILE
+                  ? { concurrency: 1 } // 查单/关单/补发按单串行,防双拍交错
+                  : name === QUEUE_DISCOVERY
+                    ? { concurrency: 1, lockDuration: 900_000 } // B站风控纪律全局串行;双窗全词 5-10min
+                    : name === QUEUE_INSIGHT
+                      ? { concurrency: 1, lockDuration: 600_000 } // 日批 LLM 分钟级;并发 1 防双拍交错归簇
+                      : name === QUEUE_ILLUSTRATION_STUDIO
+                        ? { concurrency: 1, lockDuration: 600_000 } // 拆层 ~75s+逐层转存;并发 1 防打爆单绑定模型
+                        : {};
     const w = new Worker(name, withJobRunLog(name, PROCESSORS[name]), {
       connection,
       concurrency: 2,

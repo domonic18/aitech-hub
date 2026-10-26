@@ -13,6 +13,8 @@ import {
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
   DISTRIBUTE_JOB_PIN_WECHAT,
+  DISTRIBUTE_JOB_XHS_PREPARE,
+  QUEUE_DISTRIBUTE_XHS,
   DISTRIBUTE_JOB_WECHAT_BATCH,
   DISTRIBUTE_JOB_WECHAT_COPY,
   GITHUB_JOB_TICK,
@@ -73,6 +75,7 @@ import {
   type IllustrationGenerateJobData,
 } from "../src/lib/ai/illustration-generate";
 import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
+import { xhsPrepareJob } from "../src/lib/distribute/xhs";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
   type WechatBatchJobData,
@@ -284,6 +287,15 @@ export const PROCESSORS: Record<string, Processor> = {
       }),
     );
     return r;
+  },
+  // 小红书物料准备(M49 批X2):LLM 改写 + 3:4 封面卡,产物落行 data;失败落
+  // 行 failed(attempts=1 不自动重试,人工重新生成)
+  [QUEUE_DISTRIBUTE_XHS]: async (job) => {
+    const postId = BigInt((job.data as { postId: string }).postId);
+    await xhsPrepareJob(postId);
+    console.log(
+      JSON.stringify({ event: "xhs.prepared", postId: (job.data as { postId: string }).postId }),
+    );
   },
   // 支付对账(M21 批④,§5.2):sweep 5min 收敛近过期 pending(先查单:已付
   // 补发/确认未付过 TTL 才关单);daily-audit 每日 04:13 paid 单流水锚比对。
