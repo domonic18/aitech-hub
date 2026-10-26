@@ -83,10 +83,7 @@ class XhsPublisher:
             storage_state=self._settings.storage_state_path,
             locale="zh-CN",
             timezone_id="Asia/Shanghai",
-            viewport={
-                "width": self._settings.viewport_width,
-                "height": self._settings.viewport_height,
-            },
+            viewport={"width": self._settings.viewport_width, "height": self._settings.viewport_height},
         )
         if record:
             os.makedirs(self._video_dir, exist_ok=True)
@@ -150,20 +147,13 @@ class XhsPublisher:
         """
         if not self.started:
             raise XhsStateError("浏览器未启动")
-        pairs: list[dict[str, str]] = []
-        for part in cookie_header.split(";"):
-            if "=" not in part:
-                continue
-            name, _, value = part.strip().partition("=")
-            if name and value:
-                pairs.append(
-                    {
-                        "name": name.strip(),
-                        "value": value.strip(),
-                        "domain": ".xiaohongshu.com",
-                        "path": "/",
-                    }
-                )
+        pairs = [
+            {"name": n.strip(), "value": v.strip(), "domain": ".xiaohongshu.com", "path": "/"}
+            for part in cookie_header.split(";")
+            if "=" in part
+            for n, _, v in [part.strip().partition("=")]
+            if n and v
+        ]
         if not pairs:
             raise XhsStateError("cookie 串解析为空")
         context = await self._new_context()
@@ -192,8 +182,9 @@ class XhsPublisher:
         return {"ok": True, "logged_in": True, "cookies": len(pairs)}
 
     async def state(self) -> dict[str, Any]:
-        """登录态概况 + 页面结构地标(只读导航,零发布风险):改版早发现,
-        不必拿真实发布当探针。"""
+        """登录态概况 + 页面结构地标(只读导航):改版早发现,不必拿真实
+        发布当探针。creator_tab 计数为唯一裸页地标(发布操作栏要等内容
+        填写后才挂载,不作为地标)。"""
         ready = self.storage_state_ready()
         logged_in: bool | None = None
         landmarks: dict[str, Any] | None = None
@@ -219,7 +210,6 @@ class XhsPublisher:
                         "creator_tab": await page.locator(
                             self._settings.selectors["creator_tab"]
                         ).count(),
-                        "publish_bar": await page.locator(cfg.PUBLISH_BAR_HOST).count(),
                     }
             except Exception:
                 logged_in = None
@@ -262,15 +252,15 @@ class XhsPublisher:
                 await page.wait_for_timeout(cfg.LOGIN_SETTLE_MS)
             except Exception:
                 pass
+
             if self._settings.login_marker in page.url:
                 raise XhsStateError(
                     "登录态失效,请到后台分发中心-小红书渠道卡重新配置 Cookie"
                 )
 
         async def switch_image_tab() -> None:
-            # 候选全收(文本匹配+视口内+非 aria-hidden)逐个短超时试点:
-            # 平台 DOM 存在视口外/aria-hidden 同位克隆且序号随渲染漂移,
-            # 序号定位必炸(2026-10-26 三轮实弹收敛)
+            # 候选全收(文本+视口内+非 aria-hidden)逐个试点:平台 DOM 存在
+            # 同位克隆且序号随渲染漂移,序号定位必炸(2026-10-26 实弹收敛)
             candidates: list[Any] = []
             deadline = time.monotonic() + cfg.TAB_RENDER_TIMEOUT_S
             while not candidates and time.monotonic() < deadline:
@@ -319,8 +309,8 @@ class XhsPublisher:
             await page.locator(sel["content_editor"]).first.fill(content[:1000])
 
         async def click_publish() -> None:
-            # closed shadow root 对 DOM 查询全盲:宿主仅作存在性断言,点击用
-            # 绝对坐标=红钮中心(宿主相对计算曾点到红钮右侧空白,m49-x9 教训)
+            # closed shadow root 对 DOM 查询全盲:宿主仅作存在性断言;绝对
+            # 坐标=红钮中心(宿主相对计算曾点到空白,m49-x9 教训)
             if not await page.locator(cfg.PUBLISH_BAR_HOST).count():
                 raise XhsStepError(
                     "点击发布", KIND_SELECTOR, "发布页底部操作栏缺失(平台改版?)"
@@ -328,9 +318,8 @@ class XhsPublisher:
             await page.mouse.click(cfg.PUBLISH_CLICK_X, cfg.PUBLISH_CLICK_Y)
 
         async def await_success() -> None:
-            # 成功信号(实测):跳 /publish/success → 回跳带 published=true;
-            # explore 不发生。超时=未发出,必须按失败上抛(不得无条件 ok——
-            # 曾把未发出误记 synced)
+            # 成功信号(实测):跳 /publish/success → 回跳带 published=true。
+            # 超时=未发出,必须按失败上抛(不得无条件 ok——曾误记 synced)
             deadline = time.monotonic() + cfg.PUBLISH_CONFIRM_TIMEOUT_S
             while time.monotonic() < deadline:
                 u = page.url
@@ -355,17 +344,12 @@ class XhsPublisher:
                 "xhs.publish_done", pin_id=pin_id, ok=True, duration_ms=self._ms(t0)
             )
             return XhsPublishResult(ok=True, note_url=None)
-        except XhsStateError as exc:
+        except (XhsStateError, XhsStepError) as exc:
             logger.warning(
-                "xhs.publish_done", pin_id=pin_id, ok=False, kind=KIND_LOGIN,
+                "xhs.publish_done", pin_id=pin_id, ok=False,
+                kind=KIND_LOGIN if isinstance(exc, XhsStateError) else exc.kind,
                 duration_ms=self._ms(t0), error=str(exc)[:200],
-            )
-            raise
-        except XhsStepError as exc:
-            artifact_dir = exc.artifact_dir
-            logger.warning(
-                "xhs.publish_done", pin_id=pin_id, ok=False, kind=exc.kind,
-                duration_ms=self._ms(t0), error=str(exc)[:200], artifact=artifact_dir,
+                artifact=getattr(exc, "artifact_dir", None),
             )
             raise
         finally:
