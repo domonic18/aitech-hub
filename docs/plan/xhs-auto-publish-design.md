@@ -189,11 +189,22 @@ scripts/xhs_login.py 有头登录脚本已删除(用户裁定:配置界面为唯
 | 9. 发布按钮 | .publishBtn 类名可能改版 | 改用 text=发布 定位兜底 |
 | 11. 链接抓取 | 成功页面结构可能不同 | 尽力抓取,抓不到留空人工补 |
 
-### 6.2 选择器维护策略
+### 6.2 适配 Runbook(平台改版标准处理流)
 
-- 每个选择器定义集中在 xhs/settings.py 的 SELECTORS 常量字典(非散落在代码中)
-- 选择器失效时,渠道行 lastError 包含失败步骤名,辅助定位
-- 定期(月度)用 /xhs/state 探针验证登录态与页面结构
+发布链路已步骤化(批X3'):每步统一日志(`xhs.step_*`,带 pin_id/耗时/
+URL),任一步失败自动落现场快照——`workspace/xhs-state/debug/<时间戳>_<步骤>/`
+(video + 截图 + DOM + URL,滚动保留最近 5 份)。改版处理流:
+
+1. 看渠道行 lastError——格式 `小红书发布失败[步骤名]: 人话(现场已存 …)`,直接打开对应快照目录
+2. 看 flow.webm / page.png / page.html,定位失效的选择器或坐标
+3. 只改 `xhs/settings.py`(SELECTORS / 节奏常量 / PUBLISH_CLICK_*),不动流程
+4. `/xhs/state` 探针验证地标(creator_tab 计数、publish_bar 宿主在否),再实弹「重新发布」
+5. 快照目录未生成 → 失败在浏览器外(登录态/浏览器未启动),按 lastError 的 login/browser 类处理
+
+错误分类:`login`(重配 Cookie)/ `selector`(改选择器)/ `upload` /
+`click` / `success_signal`(素材校验被拒,如图片 <720P)/ `unknown`(看快照)。
+节奏参数为**纯代码常量不入 env**(用户裁定:调参=改码发版,防环境漂移);
+发布按钮坐标依赖 viewport 钉死 1280×720。
 
 ---
 
@@ -201,8 +212,9 @@ scripts/xhs_login.py 有头登录脚本已删除(用户裁定:配置界面为唯
 
 | 文件 | 职责 |
 |---|---|
-| services/douyin-gateway/app/xhs/publisher.py | Playwright 发布流程(本文件核心) |
-| services/douyin-gateway/app/xhs/settings.py | 运行参数(env 前缀 XHS_) |
+| services/douyin-gateway/app/xhs/publisher.py | Playwright 发布流程(步骤化:统一步骤日志/失败快照/视频) |
+| services/douyin-gateway/app/xhs/settings.py | 选择器与节奏常量(纯代码,不入 env)+ env 字段 |
+| services/douyin-gateway/app/xhs/support.py | 错误分类 + XhsStepError + 失败现场快照 |
 | src/lib/pins/xhs.ts | 系统侧:入队/渠道行落账/attempts 单点计数 |
 | src/app/api/pins/[id]/xhs/distribute/route.ts | 发布触发/重新发布路由(唯一入口) |
 | src/app/api/distribute/xiaohongshu/cookies/route.ts | Cookie 录入路由 |

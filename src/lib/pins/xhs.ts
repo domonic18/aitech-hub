@@ -124,6 +124,7 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        pinId: pinId.toString(),
         title: material.title,
         content: material.content,
         images: material.images,

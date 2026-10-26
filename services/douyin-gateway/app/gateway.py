@@ -366,8 +366,11 @@ def create_app(
         title = str(payload.get("title", ""))
         content = str(payload.get("content", ""))
         images = [str(p) for p in payload.get("images", [])]
+        pin_id = payload.get("pin_id")
         try:
-            result = await xhs_publisher.publish(title, content, images)
+            result = await xhs_publisher.publish(
+                title, content, images, pin_id=str(pin_id) if pin_id else None
+            )
             return {"ok": result.ok, "note_url": result.note_url}
         except XhsStateError as exc:
             logger.error("xhs.publish.state_error", error=str(exc))
