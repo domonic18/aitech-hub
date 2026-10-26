@@ -155,7 +155,7 @@ class XhsPublisher:
     async def publish(
         self, title: str, content: str, images: list[str]
     ) -> XhsPublishResult:
-        """发布图文笔记:上传图片 → 标题/正文 → 提交;尽力抓笔记链接。"""
+        """发布图文笔记:切换到「上传图文」tab → 上传图片 → 标题/正文 → 提交。"""
         if not images:
             raise XhsStateError("至少需要 1 张图片")
         context = await self._new_context()
@@ -173,9 +173,15 @@ class XhsPublisher:
                 pass
             if "login" in page.url:
                 raise XhsStateError("登录态失效,请重跑 xhs_login 续期")
-            # 上传图片(POC 选择器,平台改版需迭代)
+            # 切换到「上传图文」tab:发布页默认选中「上传视频」,须先点击切换
+            # (选择器译自 xhs-mcp-server 实证 .creator-tab;POC 需实测迭代)
+            tabs = page.locator(".creator-tab")
+            if await tabs.count() > 1:
+                await tabs.nth(2).click()
+                await page.wait_for_timeout(1000)
+            # 上传封面图(首张;POC 选择器,平台改版需迭代)
             upload = page.locator(".upload-input").first
-            await upload.set_input_files(images)
+            await upload.set_input_files(images[0])
             await page.wait_for_timeout(3000)
             # 标题(截断到 20 字,与渠道行硬闸同口径)
             trimmed = title[:20]
