@@ -14,7 +14,9 @@ class XhsSettings(BaseSettings):
     selectors: dict[str, str] = {
         "creator_tab": ".creator-tab",
         "upload_input": ".upload-input",
-        "title_input": ".d-text",
+        # 标题用 placeholder 定位——.d-text 类被 21 个节点(含装饰 span)共用,
+        # DOM 序漂移会致 .first 命中 span 被 fill 拒绝(2026-10-26 实测,§6.1 兜底)
+        "title_input": 'input[placeholder*="填写标题"]',
         # 正文富文本已由 Quill 换成 TipTap/ProseMirror(2026-10-26 实测:
         # .ql-editor 零命中,页面唯一 contenteditable 即 .tiptap.ProseMirror)
         "content_editor": ".tiptap.ProseMirror",
