@@ -20,7 +20,8 @@ class XhsSettings(BaseSettings):
         # 正文富文本已由 Quill 换成 TipTap/ProseMirror(2026-10-26 实测:
         # .ql-editor 零命中,页面唯一 contenteditable 即 .tiptap.ProseMirror)
         "content_editor": ".tiptap.ProseMirror",
-        "publish_btn": ".publishBtn",
+        # 发布按钮无选择器可用:<xhs-publish-btn> closed shadow root 对查询
+        # 全盲,publisher 按宿主存在性断言 + 绝对坐标 (700,675) 点击
     }
     # 图文 tab 文本(tab 一律按「可见文本+视口内」定位,禁用序号——平台 DOM
     # 存在视口外的隐藏克隆节点,nth 会点中克隆致「outside of the viewport」

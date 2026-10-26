@@ -236,30 +236,35 @@ class XhsPublisher:
             # 正文(TipTap/ProseMirror 富文本,平台上限 1000 字)
             step = "填写正文"
             await page.locator(sel["content_editor"]).first.fill(content[:1000])
-            # 发布:底部操作栏是 Web Component <xhs-publish-btn>,按钮渲染在
-            # closed shadow root 里——DOM 查询全盲(text=/CSS/button 枚举 0 命中,
-            # 截图却可见,2026-10-26 实证);宿主在主文档可定位,横跨「暂存离开
-            # +发布」整条栏,红色发布钮在右段。坐标点击走浏览器原生命中测试,
-            # 可进 shadow;点右侧内缩 40px(勿点中段=暂存离开)
+            # 发布:操作栏是 Web Component <xhs-publish-btn>,按钮渲染在 closed
+            # shadow root——DOM 查询全盲(text=/CSS/button 枚举 0 命中,截图却
+            # 可见)。宿主仅作存在性断言;点击用绝对坐标 (700,675)=红钮中心
+            # (viewport 钉死 1280×720 下两次截图实测;宿主几何含整个内容列,
+            # 相对计算会点到红钮右侧空白——m49-x9 实弹教训)
             step = "点击发布"
-            host = page.locator("xhs-publish-btn")
-            box = await host.first.bounding_box() if await host.count() else None
-            if box and box["width"] > 0:
-                await page.mouse.click(
-                    box["x"] + box["width"] - 40, box["y"] + box["height"] / 2
+            if not await page.locator("xhs-publish-btn").count():
+                raise RuntimeError("发布页底部操作栏缺失(平台改版?)")
+            await page.mouse.click(700, 675)
+            # 成功判定(必须实测,不得无条件 ok=True——曾把未发出误记 synced):
+            # 平台跳 /publish/success(「发布成功」页,4s 后自动回发布页),
+            # 最终 URL 带 published=true;explore 跳转并不发生
+            step = "确认发布结果"
+            deadline = time.monotonic() + 40
+            success = False
+            while time.monotonic() < deadline:
+                u = page.url
+                if "/publish/success" in u or "published=true" in u:
+                    success = True
+                    break
+                await page.wait_for_timeout(500)
+            if not success:
+                raise RuntimeError(
+                    "点击发布后未检测到成功跳转(可能素材校验被拒,如图片低于 720P)"
                 )
-            else:
-                # 布局锚丢失时退固定几何(viewport 1280×720 下发布钮中心)
-                await page.mouse.click(700, 675)
-            # 发布后跳转/成功提示需数秒;尽力抓笔记链接(抓不到留空,人工补)
-            note_url: str | None = None
-            try:
-                await page.wait_for_url("**/explore/**", timeout=30_000)
-                note_url = page.url
-            except Exception:
-                note_url = None
-            logger.info("xhs.published", title=trimmed, note_url=note_url)
-            return XhsPublishResult(ok=True, note_url=note_url)
+            # success 页无笔记链接可抓(实测),note_url 留空(设计允许,渠道行
+            # 记账不受影响;链接可日后从创作平台笔记管理人工补)
+            logger.info("xhs.published", title=trimmed, note_url=None)
+            return XhsPublishResult(ok=True, note_url=None)
         except XhsStateError:
             raise
         except Exception as exc:
