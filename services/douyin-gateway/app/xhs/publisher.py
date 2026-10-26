@@ -126,7 +126,12 @@ class XhsPublisher:
         ]
         if not pairs:
             raise XhsStateError("cookie 串解析为空")
-        context = await self._new_context()
+        # 引导自举:首配时 storage_state 尚不存在,不能走 _new_context(其前置
+        # 要求登录态已落盘——鸡生蛋死锁,2026-10-27 生产首配实测);此处裸建
+        # context 只带 viewport,验证登录通过后才落盘 storage_state
+        context = await self._browser.new_context(
+            viewport={"width": self._settings.viewport_width, "height": self._settings.viewport_height}
+        )
         await context.add_cookies(pairs)
         page = await context.new_page()
         try:
