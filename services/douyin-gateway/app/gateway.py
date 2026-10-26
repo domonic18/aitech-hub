@@ -36,6 +36,9 @@ from app.log import get_logger
 from app.signer.backend import BrowserUnavailableError, SignPageError
 from app.signer.models import HealthResponse, SignRequest, SignResponse
 from app.signer.settings import SignerSettings
+from app.xhs.publisher import XhsPublisher
+from app.xhs.settings import XhsSettings
+from app.xhs.publisher import XhsStateError
 from app.signer.validation import (
     SignRequestError,
     parse_cookie_header,
@@ -247,17 +250,21 @@ def extract_sec_uid(text: str) -> str | None:
 
 def create_app(
     signer_settings: SignerSettings | None = None,
+    xhs_settings: XhsSettings | None = None,
 ) -> FastAPI:
     """构建网关应用;runtime 可注入(测试用)。"""
     runtime = GatewayRuntime(signer_settings)
     runtime_holder: dict[str, GatewayRuntime] = {"runtime": runtime}
+    xhs_publisher = XhsPublisher(xhs_settings or XhsSettings())
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await runtime.start()
+        await xhs_publisher.start()
         try:
             yield
         finally:
+            await xhs_publisher.close()
             await runtime.close()
 
     app = FastAPI(
@@ -350,6 +357,50 @@ def create_app(
         if service is None:
             return GatewayHealthResponse(status="starting", **stats)
         return GatewayHealthResponse(**service.health().model_dump(), **stats)
+
+    # ── 小红书自动发布(M49 批X3 POC:选择器译自 xhs-mcp-server,平台改版需迭代)──
+
+    @app.post("/xhs/publish")
+    async def xhs_publish(payload: dict) -> dict:
+        """发布图文笔记:贴图物料(标题/轻文字/图片容器内绝对路径)→ 创作平台。"""
+        title = str(payload.get("title", ""))
+        content = str(payload.get("content", ""))
+        images = [str(p) for p in payload.get("images", [])]
+        try:
+            result = await xhs_publisher.publish(title, content, images)
+            return {"ok": result.ok, "note_url": result.note_url}
+        except XhsStateError as exc:
+            logger.error("xhs.publish.state_error", error=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            # 全捕获:人话进 detail 供 worker 解析落 lastError,不丢具体原因
+            logger.error("xhs.publish.failed", error=str(exc))
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get("/xhs/state")
+    async def xhs_state() -> dict:
+        """登录态探针(运维:storage_state 在否 + 创作平台登录判定)。"""
+        try:
+            return await xhs_publisher.state()
+        except Exception as exc:
+            # 探针必须可答:登录态缺失/浏览器未启动都以 200 结构化返回
+            logger.warning("xhs.state_probe_failed", error=str(exc))
+            return {"storage_state_ready": False, "logged_in": None, "error": str(exc)}
+
+    @app.post("/xhs/cookies")
+    async def xhs_cookies(payload: dict) -> dict:
+        """手动贴 Cookie(抖音同款心智):F12 复制的 cookie 串 → 登录验证 →
+        storage_state 落盘(卷持久化,后续发布免登)。"""
+        header = str(payload.get("cookie_header", "")).strip()
+        if not header:
+            raise HTTPException(status_code=400, detail="cookie_header 缺失")
+        try:
+            return await xhs_publisher.ingest_cookie_header(header)
+        except XhsStateError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            # 导航中断等自动化噪声:人话进 detail,前端/worker 可读
+            raise HTTPException(status_code=500, detail=f"登录态录入失败: {exc}") from exc
 
     # ── 数据端点(逐请求注入平台级 jar 池;platform 分发,默认 douyin)──
 

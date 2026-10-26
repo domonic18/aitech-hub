@@ -36,14 +36,17 @@ export const QUEUE_DISTRIBUTE = "distribute";
 /** 分发队列按渠道路由(M48 批D 地基):wechat 沿用历史队列名——改名会弃生产
  * 在途 job,禁;新渠道(小红书等)一律 `distribute:<channel>` 子队列,worker 侧
  * 按渠道各建 worker(同 concurrency=1 语义),渠道间互不队头阻塞 */
+/** 子队列命名规约:分隔符用「-」——BullMQ 队列名禁冒号(与 jobId 同规),
+ * 2026-10-26 曾用「:」致 worker 启动即崩(M49 批X2' 转向 agent 会话后此路
+ * 由保留给未来真实 job 渠道) */
 export function distributeQueueFor(channel: string): string {
-  return channel === CHANNEL_WECHAT ? QUEUE_DISTRIBUTE : `${QUEUE_DISTRIBUTE}:${channel}`;
+  return channel === CHANNEL_WECHAT ? QUEUE_DISTRIBUTE : `${QUEUE_DISTRIBUTE}-${channel}`;
 }
 
-/** 小红书物料准备(M49 批X2):LLM 改写 + 3:4 封面卡渲染,产物落行 data */
-export const DISTRIBUTE_JOB_XHS_PREPARE = "xhs-prepare";
-/** 小红书子队列(渠道化路由首批接线;wechat 沿用历史 distribute 队列) */
+/** 小红书自动发布(M49 批X3):贴图渠道行的发布 job(worker 调 xhs-gateway) */
+export const DISTRIBUTE_JOB_XHS_AUTO = "xhs-auto-publish";
 export const QUEUE_DISTRIBUTE_XHS = distributeQueueFor(CHANNEL_XHS);
+
 /** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
  * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */
 export const QUEUE_DB_BACKUP = "db-backup";

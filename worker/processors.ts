@@ -13,7 +13,6 @@ import {
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
   DISTRIBUTE_JOB_PIN_WECHAT,
-  DISTRIBUTE_JOB_XHS_PREPARE,
   QUEUE_DISTRIBUTE_XHS,
   DISTRIBUTE_JOB_WECHAT_BATCH,
   DISTRIBUTE_JOB_WECHAT_COPY,
@@ -75,7 +74,8 @@ import {
   type IllustrationGenerateJobData,
 } from "../src/lib/ai/illustration-generate";
 import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
-import { xhsPrepareJob } from "../src/lib/distribute/xhs";
+import { prisma } from "../src/lib/db";
+import { autoPublishPinToXhs } from "../src/lib/pins/xhs";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
   type WechatBatchJobData,
@@ -288,13 +288,33 @@ export const PROCESSORS: Record<string, Processor> = {
     );
     return r;
   },
-  // 小红书物料准备(M49 批X2):LLM 改写 + 3:4 封面卡,产物落行 data;失败落
-  // 行 failed(attempts=1 不自动重试,人工重新生成)
+  // 小红书自动发布(M49 批X3):贴图物料 → xhs-gateway(Playwright 创作平台自动
+  // 发布)→ 渠道行 synced+noteUrl / failed(attempts=1,失败降级人工回填)
   [QUEUE_DISTRIBUTE_XHS]: async (job) => {
-    const postId = BigInt((job.data as { postId: string }).postId);
-    await xhsPrepareJob(postId);
+    const raw = (job.data as { pinId?: string }).pinId;
+    if (!raw) throw new Error("job.data.pinId missing");
+    const pinId = BigInt(raw);
+    try {
+      await autoPublishPinToXhs(pinId);
+    } catch (e) {
+      // 失败落渠道行(人话进 lastError,降级人工回填);再上抛给 BullMQ 记 failed
+      await prisma.contentPinChannel
+        .updateMany({
+          where: { pinId, channel: "xiaohongshu" },
+          data: {
+            status: "failed",
+            lastError: (e instanceof Error ? e.message : String(e)).slice(0, 500),
+            attempts: { increment: 1 },
+          },
+        })
+        .catch(() => undefined);
+      throw e;
+    }
     console.log(
-      JSON.stringify({ event: "xhs.prepared", postId: (job.data as { postId: string }).postId }),
+      JSON.stringify({
+        event: "pins.xhs.auto_published",
+        pinId: raw,
+      }),
     );
   },
   // 支付对账(M21 批④,§5.2):sweep 5min 收敛近过期 pending(先查单:已付

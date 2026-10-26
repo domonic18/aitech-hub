@@ -138,6 +138,23 @@ export default function PinEditor({
     );
   }
 
+  /** 小红书全自动发布(M49 批X3):入队 job(worker 调 gateway Playwright),
+   * 轮询渠道行到终态(含 3 次自动重试,超 4min 轮询自停、渠道行为准) */
+  async function autoPublishXhs() {
+    const body = await callPinApi(`/api/pins/${initial.id}/xhs/distribute`, { method: "POST" });
+    setError(null);
+    setNotice(null);
+    if (body.code !== 0) {
+      setError(body.message);
+      return;
+    }
+    setNotice("已入队小红书自动发布(浏览器自动化,约 1-3 分钟),完成后渠道状态自动刷新…");
+    startPolling((d) => {
+      const s = d.channels.find((c) => c.channel === "xiaohongshu")?.status ?? null;
+      return s === "synced" || s === "failed";
+    });
+  }
+
   async function reorder(from: number, to: number) {
     if (to < 0 || to >= detail.images.length) return;
     const ids = detail.images.map((i) => i.id);
@@ -248,6 +265,7 @@ export default function PinEditor({
           resetSignal={resetSignal}
           onSave={(patch) => void saveMeta(patch)}
           onSync={() => void syncWechat()}
+          onAutoPublishXhs={() => void autoPublishXhs()}
         />
       </div>
 

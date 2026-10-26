@@ -69,7 +69,7 @@ async function main(): Promise<void> {
               // 子队列,届时在此按渠道各建 worker(同并发 1 语义),互不队头阻塞
               { concurrency: 1, lockDuration: 900_000 }
             : name === QUEUE_DISTRIBUTE_XHS
-              ? { concurrency: 1, lockDuration: 300_000 } // M49 批X2:LLM 改写+封面渲染,单并发防连发
+              ? { concurrency: 1, lockDuration: 600_000 } // M49 批X3:Playwright 发布分钟级
               : name === QUEUE_DB_BACKUP
                 ? { concurrency: 1, lockDuration: 600_000 }
                 : name === QUEUE_PAY_RECONCILE

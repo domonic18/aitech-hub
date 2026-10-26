@@ -48,6 +48,10 @@ services:
       - "127.0.0.1:8010:8010" # 仅回环,便于本机 curl 冒烟
     tmpfs:
       - /tmp/playwright-profiles
+    # M49 批X3:小红书自动发布(本地联调)——登录态与贴图图片
+    volumes:
+      - ./workspace/xhs-state:/app/xhs-state
+      - ./workspace/media:/app/media:ro
     healthcheck:
       test:
         [
