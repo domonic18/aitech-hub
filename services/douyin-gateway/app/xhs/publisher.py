@@ -94,13 +94,8 @@ class XhsPublisher:
     def _ms(t0: float) -> int:
         return int((time.monotonic() - t0) * 1000)
 
-    async def _run_step(
-        self,
-        page: Any,
-        pin_id: str | None,
-        name: str,
-        action: Callable[[], Awaitable[None]],
-    ) -> None:
+    async def _run_step(self, page: Any, pin_id: str | None, name: str,
+                        action: Callable[[], Awaitable[None]]) -> None:
         """步骤统一壳:进出日志 + 失败现场快照与包装(唯一日志出口)。"""
         t0 = time.monotonic()
         logger.info("xhs.step_start", pin_id=pin_id, step=name)
@@ -156,11 +151,8 @@ class XhsPublisher:
         await context.add_cookies(pairs)
         page = await context.new_page()
         try:
-            await page.goto(
-                self._settings.creator_publish_url,
-                wait_until="domcontentloaded",
-                timeout=cfg.NAV_TIMEOUT_MS,
-            )
+            await page.goto(self._settings.creator_publish_url,
+                            wait_until="domcontentloaded", timeout=cfg.NAV_TIMEOUT_MS)
             # 401 重定向由客户端 JS 触发:等落定再判(wait 被打断则吞掉)
             try:
                 await page.wait_for_timeout(cfg.LOGIN_SETTLE_MS)
@@ -178,9 +170,8 @@ class XhsPublisher:
         return {"ok": True, "logged_in": True, "cookies": len(pairs)}
 
     async def state(self) -> dict[str, Any]:
-        """登录态概况 + 页面结构地标(只读导航):改版早发现,不必拿真实
-        发布当探针。creator_tab 计数为唯一裸页地标(发布操作栏要等内容
-        填写后才挂载,不作为地标)。"""
+        """登录态 + 结构地标(只读):creator_tab 计数为唯一裸页地标
+        (发布操作栏要等内容填写才挂载,不作地标)。"""
         ready = self.storage_state_ready()
         logged_in: bool | None = None
         landmarks: dict[str, Any] | None = None
@@ -188,10 +179,8 @@ class XhsPublisher:
             context = await self._new_context()
             page = await context.new_page()
             try:
-                await page.goto(
-                    self._settings.creator_publish_url,
-                    timeout=cfg.STATE_NAV_TIMEOUT_MS,
-                )
+                await page.goto(self._settings.creator_publish_url,
+                                timeout=cfg.STATE_NAV_TIMEOUT_MS)
                 logged_in = self._settings.login_marker not in page.url
                 if logged_in:
                     # 地标由客户端渲染后挂出:轮询等出现(与 tab 渲染竞态同源)
@@ -217,13 +206,8 @@ class XhsPublisher:
             "landmarks": landmarks,
         }
 
-    async def publish(
-        self,
-        title: str,
-        content: str,
-        images: list[str],
-        pin_id: str | None = None,
-    ) -> XhsPublishResult:
+    async def publish(self, title: str, content: str, images: list[str],
+                      pin_id: str | None = None) -> XhsPublishResult:
         """发布图文笔记:打开→登录检查→切 tab→上传→标题→正文→发布→确认。"""
         if not images:
             raise XhsStateError("至少需要 1 张图片")
@@ -286,10 +270,9 @@ class XhsPublisher:
                 f"「{self._settings.image_tab_text}」tab 候选均不可点(平台改版?)")
 
         async def upload_images() -> None:
-            # 批量一次传入全部图片(set_input_files 数组直传,「N/18」计数
-            # 实测即时到位);轮询计数到齐再进下一步——图片上传中平台会禁用
-            # 发布钮,未到齐就点只会白失败。计数元素缺失(平台改版)则退回
-            # 固定等待。平台拒收 <720P 图片但报错只在发布期出现
+            # 批量数组直传(set_input_files 原生支持,「N/18」计数实测);
+            # 轮询计数到齐再进下一步——上传中平台禁用发布钮,未到齐就点
+            # 只会白失败;计数缺失(改版)退回固定等待。<720P 发布期被拒
             await page.locator(sel["upload_input"]).first.set_input_files(images)
             counter = page.get_by_text(re.compile(rf"^{len(images)}/\d+$"))
             deadline = time.monotonic() + cfg.UPLOAD_SETTLE_TIMEOUT_S
@@ -300,10 +283,8 @@ class XhsPublisher:
             if not await page.get_by_text(re.compile(r"\d+/\d+")).count():
                 await page.wait_for_timeout(cfg.UPLOAD_SETTLE_MS)
                 return
-            raise XhsStepError(
-                "上传图片", KIND_UPLOAD,
-                f"上传计数未到 {len(images)}(超时 {cfg.UPLOAD_SETTLE_TIMEOUT_S}s)",
-            )
+            raise XhsStepError("上传图片", KIND_UPLOAD,
+                f"上传计数未到 {len(images)}(超时 {cfg.UPLOAD_SETTLE_TIMEOUT_S}s)")
 
         async def fill_title() -> None:
             await page.locator(sel["title_input"]).first.fill(title[:20])  # 平台上限 20 字
@@ -315,9 +296,8 @@ class XhsPublisher:
             # closed shadow root 对 DOM 查询全盲:宿主仅作存在性断言;绝对
             # 坐标=红钮中心(宿主相对计算曾点到空白,m49-x9 教训)
             if not await page.locator(cfg.PUBLISH_BAR_HOST).count():
-                raise XhsStepError(
-                    "点击发布", KIND_SELECTOR, "发布页底部操作栏缺失(平台改版?)"
-                )
+                raise XhsStepError("点击发布", KIND_SELECTOR,
+                    "发布页底部操作栏缺失(平台改版?)")
             await page.mouse.click(cfg.PUBLISH_CLICK_X, cfg.PUBLISH_CLICK_Y)
 
         async def await_success() -> None:
