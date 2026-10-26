@@ -75,6 +75,7 @@ import {
   type IllustrationGenerateJobData,
 } from "../src/lib/ai/illustration-generate";
 import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
+import { prisma } from "../src/lib/db";
 import { autoPublishPinToXhs } from "../src/lib/pins/xhs";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
@@ -291,12 +292,29 @@ export const PROCESSORS: Record<string, Processor> = {
   // 小红书自动发布(M49 批X3):贴图物料 → xhs-gateway(Playwright 创作平台自动
   // 发布)→ 渠道行 synced+noteUrl / failed(attempts=1,失败降级人工回填)
   [QUEUE_DISTRIBUTE_XHS]: async (job) => {
-    const pinId = BigInt((job.data as { pinId: string }).pinId);
-    await autoPublishPinToXhs(pinId);
+    const raw = (job.data as { pinId?: string }).pinId;
+    if (!raw) throw new Error("job.data.pinId missing");
+    const pinId = BigInt(raw);
+    try {
+      await autoPublishPinToXhs(pinId);
+    } catch (e) {
+      // 失败落渠道行(人话进 lastError,降级人工回填);再上抛给 BullMQ 记 failed
+      await prisma.contentPinChannel
+        .updateMany({
+          where: { pinId, channel: "xiaohongshu" },
+          data: {
+            status: "failed",
+            lastError: (e instanceof Error ? e.message : String(e)).slice(0, 500),
+            attempts: { increment: 1 },
+          },
+        })
+        .catch(() => undefined);
+      throw e;
+    }
     console.log(
       JSON.stringify({
         event: "pins.xhs.auto_published",
-        pinId: (job.data as { pinId: string }).pinId,
+        pinId: raw,
       }),
     );
   },
