@@ -14,6 +14,11 @@ export const PUBLISH_CHANNELS = [CHANNEL_WECHAT, CHANNEL_XHS] as const;
  * overview/listPublishChannelRecords 的 channel 维度、分发页渠道名;同步管线
  * 按 queue.ts#distributeQueueFor 落子队列。Record 键域锁 PUBLISH_CHANNELS,
  * 加渠道漏登记 label 编译期即红。 */
+/** 小红书物料上限(M49 批X2;平台口径:标题 ≤20 字、正文 ≤1000 字、话题 3-6 个) */
+export const XHS_TITLE_MAX = 20;
+export const XHS_CONTENT_MAX = 1000;
+export const XHS_TAGS_MAX = 6;
+
 export const DISTRIBUTE_CHANNELS: Record<(typeof PUBLISH_CHANNELS)[number], { label: string }> = {
   [CHANNEL_WECHAT]: { label: "微信公众号" },
   [CHANNEL_XHS]: { label: "小红书" },

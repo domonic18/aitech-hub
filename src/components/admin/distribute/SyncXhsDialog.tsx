@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import { AGENT_OPEN_EVENT } from "@/lib/agent/agent-host";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 const XHS_TITLE_MAX = 20;
@@ -91,27 +92,15 @@ export default function SyncXhsDialog({
     return () => clearInterval(t);
   }, [view?.status === "pending"]);
 
-  const generate = async (): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/distribute/xiaohongshu/sync", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ postId }),
-      });
-      const json = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
-      if (!res.ok || json?.code !== 0) {
-        setError(json?.message ?? `提交失败(${res.status})`);
-        return;
-      }
-      setLoading(true);
-      await refresh();
-    } catch {
-      setError("网络错误,请重试");
-    } finally {
-      setBusy(false);
-    }
+  /** 唤起侧边栏 agent 撰写(M49 批X2' 转向:过程在会话里可见可多轮迭代;
+   *  产物经 save_xhs_draft 工具落库,本面板轮询到 ready 即展示物料) */
+  const wakeAgent = (): void => {
+    const ask =
+      `请先用 read_post 工具阅读文章(post_id=${postId}),然后把它改写成一篇小红书笔记并保存:` +
+      `标题 ≤20 字(可含 1 个 emoji);正文 100-1000 字,口语化短段落、适度 emoji、结尾一句互动引导,` +
+      `禁止外链与「公众号/博客」等导流词;3-6 个话题词(不带 # 号)。` +
+      `写完调用 save_xhs_draft 工具保存(post_id="${postId}"),保存成功后告诉我。`;
+    window.dispatchEvent(new CustomEvent(AGENT_OPEN_EVENT, { detail: { ask, send: true } }));
   };
 
   const copy = async (key: string, text: string): Promise<void> => {
@@ -160,10 +149,10 @@ export default function SyncXhsDialog({
           <button
             type="button"
             disabled={busy}
-            onClick={() => void generate()}
+            onClick={wakeAgent}
             className="mt-3 cursor-pointer rounded-sm bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {busy ? "提交中…" : "生成小红书笔记"}
+            唤起侧边栏撰写
           </button>
         </div>
       );
@@ -182,7 +171,7 @@ export default function SyncXhsDialog({
           <button
             type="button"
             disabled={busy}
-            onClick={() => void generate()}
+            onClick={wakeAgent}
             className="mt-3 cursor-pointer rounded-sm bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
             重新生成
@@ -329,7 +318,7 @@ export default function SyncXhsDialog({
         <button
           type="button"
           disabled={busy}
-          onClick={() => void generate()}
+          onClick={wakeAgent}
           className="w-fit cursor-pointer text-[11px] text-text-3 hover:text-accent disabled:opacity-50"
         >
           重新生成(AI 重写,覆盖当前物料)

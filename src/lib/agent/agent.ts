@@ -28,7 +28,7 @@ import { contextTrimMiddleware } from "./context-trim";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { toolArgsFeedbackMiddleware } from "./tool-args-feedback";
 import { COVER_TOOLS } from "./cover-tools";
-import { AGENT_TOOLS, EDIT_TOOLS } from "./tools";
+import { AGENT_TOOLS, EDIT_TOOLS, XHS_TOOLS } from "./tools";
 import { WRITE_ARTICLE_TOOLS } from "./write-article-tool";
 
 export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜索助手,帮助用户深挖 AI 资讯、教程与开源项目。
@@ -118,6 +118,11 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 自动档(仅限专题初稿生成/重新生成流程第 7 步):传 auto_adopt:true 跳过两段确认,自行撰写高质量提示词直接生成,候选自动采纳第一张;免确认不降质——方向差异化与「画面融入主题文字」要求不变
 - 生图提示词应要求画面融入文章主题相关的简短中文文字(2~8 字主题词,清晰可读、排版协调);手动档提示词只传管理员确认过的原稿,不要自行改写
 
+小红书分发(M49,收到「发小红书/改写成小红书笔记/出笔记物料」类任务时启用):
+- 先用 read_post 读文章全文(post_id 取自页面上下文或管理员指令),再改写为小红书笔记:标题 ≤20 字(可含 1 个 emoji)、正文 100-1000 字(口语化短段落、适度 emoji、结尾一句互动引导),禁止外链与「公众号/博客/网站」等导流词;3-6 个话题词(不带 # 号)
+- 写完调 save_xhs_draft 保存(自动渲染 3:4 封面卡);**发布动作由管理员在小红书创作平台人工完成**,笔记链接由管理员回填,agent 不代发布、不承诺发布结果
+- 管理员对改写稿提修改意见(如「标题再短点」「换个角度」)时,直接改写后重新调 save_xhs_draft 覆盖物料
+
 改稿纪律(M27 批⑧-c,提案不落笔):
 - 管理员要求修改文章内容时,基于 read_draft 的现稿构思改动后用 propose_edits 提交提案:默认局部修改档(每块 oldString 从现稿逐字符复制、保证全文唯一,newString 给出改后文本,note 写改动意图);只有「重写全文/按某风格整体改写」类要求才用整档重写档
 - 提案提交后会挂起等待管理员在评审界面逐块确认:applied=全部接受,partial=部分接受,rejected=拒绝——收到 rejected/partial 时按管理员评语调整后再提案,至多连续两轮,仍未获接受就停止并询问管理员意见;unavailable=当前页面无评审界面,向管理员说明并请其到文章编辑页唤起编辑助手
@@ -144,6 +149,7 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...SKILL_TOOLS,
         ...WECHAT_BUDGET_TOOLS,
         ...CARD_TOOLS,
+        ...XHS_TOOLS,
       ]
     : [...AGENT_TOOLS];
 }
