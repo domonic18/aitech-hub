@@ -51,7 +51,7 @@ export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: str
 
 /** 登录态录入(抖音同款手动 Cookie 心智,M49 批X3):F12 复制的 cookie 串
  * 转发 xhs-gateway 验证登录并落 storage_state(卷持久化,后续发布免登) */
-export async function ingestXhsCookies(pinId: bigint, cookieHeader: string): Promise<void> {
+export async function ingestXhsCookies(cookieHeader: string): Promise<void> {
   const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
   const res = await fetch(`${base}/xhs/cookies`, {
     method: "POST",

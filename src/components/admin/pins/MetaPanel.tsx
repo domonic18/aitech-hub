@@ -27,7 +27,6 @@ export default function MetaPanel({
   onDistributeXhs,
   onBackfillXhs,
   onAutoPublishXhs,
-  onIngestXhsCookies,
 }: {
   detail: PinDetailDto;
   topics: TopicOption[];
@@ -39,7 +38,6 @@ export default function MetaPanel({
   onDistributeXhs: () => void;
   onBackfillXhs: (noteUrl: string) => void;
   onAutoPublishXhs: () => void;
-  onIngestXhsCookies: (cookieHeader: string) => void;
 }): React.ReactElement {
   const [title, setTitle] = useState(detail.title);
   const [content, setContent] = useState(detail.content);
@@ -72,7 +70,6 @@ export default function MetaPanel({
   const wechat = detail.channels.find((c) => c.channel === "wechat");
   const xhs = detail.channels.find((c) => c.channel === "xiaohongshu");
   const [xhsUrl, setXhsUrl] = useState("");
-  const [xhsCookie, setXhsCookie] = useState("");
 
   return (
     <div className="rounded-sm border border-line bg-panel p-3.5">
@@ -235,29 +232,6 @@ export default function MetaPanel({
         {/* 分发是渠道操作非内容编辑:验收过(非草稿)即可,发布态贴图正是分发主对象 */}
         {detail.status !== "draft" && !xhs && (
           <>
-            <details className="rounded-sm border border-line bg-panel-2 px-3 py-2">
-              <summary className="cursor-pointer text-[11px] text-text-3">
-                登录态 Cookie(已登录创作平台的浏览器 F12 复制;一次粘贴长期有效)
-              </summary>
-              <textarea
-                value={xhsCookie}
-                onChange={(e) => setXhsCookie(e.target.value)}
-                rows={3}
-                placeholder="粘贴 creator.xiaohongshu.com 的 Cookie 串(a=b; c=d …)"
-                className={`${FIELD} mt-1.5 font-mono text-[11px]`}
-              />
-              <button
-                type="button"
-                disabled={busy || xhsCookie.trim().length < 10}
-                onClick={() => {
-                  onIngestXhsCookies(xhsCookie.trim());
-                  setXhsCookie("");
-                }}
-                className="mt-1.5 w-full cursor-pointer rounded-sm border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                保存登录态
-              </button>
-            </details>
             <button
               type="button"
               disabled={busy}

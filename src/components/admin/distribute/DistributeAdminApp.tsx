@@ -9,6 +9,8 @@
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
 import type { DistributeOverview, PublishRecordRow } from "@/lib/distribute/records";
 
+import XhsChannelCard from "./XhsChannelCard";
+
 import StatsRow from "./StatsRow";
 import SyncRecordsTable from "./SyncRecordsTable";
 import WechatConfigCard from "./WechatConfigCard";
@@ -68,7 +70,7 @@ export default function DistributeAdminApp({
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <WechatConfigCard config={config} overview={overview} />
-        <ChannelPlaceholder name="小红书" tag="即将接入" desc="图文笔记发布" />
+        <XhsChannelCard />
         <ChannelPlaceholder name="掘金" tag="即将接入" desc="技术文章发布" />
         <ChannelPlaceholder name="更多渠道" desc="CSDN · 知乎" note="接入形态规划中" />
       </div>
