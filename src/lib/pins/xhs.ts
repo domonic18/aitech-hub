@@ -9,8 +9,8 @@
 import path from "node:path";
 
 import { prisma } from "../db";
-import { env } from "../env";
 import { logger } from "../logger";
+import { mediaStorage } from "../media/storage";
 import { DistributeError } from "../distribute/errors";
 import { ensureChannelRowUnique } from "../distribute/channel-row";
 import { PUBLISH_STATUS_PENDING, PUBLISH_STATUS_SYNCED } from "../distribute/channels";
@@ -80,14 +80,25 @@ export async function ingestXhsCookies(cookieHeader: string): Promise<void> {
   }
 }
 
-/** 发布物料(标题/轻文字/图片容器内绝对路径)——worker 消费侧组装用 */
+/** 发布物料(标题/轻文字/图片字节 base64)——worker 消费侧组装用 */
+export interface PinXhsImage {
+  name: string;
+  dataB64: string;
+}
+
 export interface PinXhsMaterial {
   title: string;
   content: string;
-  images: string[];
+  images: PinXhsImage[];
 }
 
-/** 收集贴图发布物料:图片站内 URL → 容器内绝对路径(worker MEDIA_DIR 挂载点) */
+/** 收集贴图发布物料:图片经存储抽象读字节(base64 下发)。
+ *
+ * 生产 MEDIA_STORAGE=cos 后新图只在桶里(本地卷 M19 后不增新图),容器间
+ * 传本地绝对路径在新图场景必不存在(2026-10-27 生产实收:No such file);
+ * mediaStorage.get 双后端同源,字节过内网、gateway 保持零密钥。任一图缺失
+ * 视为物料不完整直接失败——静默跳过会复刻「只发单图」类缺陷。
+ */
 export async function gatherPinXhsMaterial(pinId: bigint): Promise<PinXhsMaterial> {
   const pin = await prisma.contentPin.findUnique({
     where: { id: pinId },
@@ -98,14 +109,24 @@ export async function gatherPinXhsMaterial(pinId: bigint): Promise<PinXhsMateria
     },
   });
   if (!pin) throw new Error("贴图不存在");
-  const images = pin.images.map((img) => {
-    // 站内 URL /wp-content/uploads/<key> ↔ $MEDIA_DIR/<key>(storage.ts 路径约定)
-    const marker = "/wp-content/uploads/";
+  const marker = "/wp-content/uploads/";
+  const images: PinXhsImage[] = [];
+  const missing: string[] = [];
+  for (const img of pin.images) {
     const idx = img.mediaPath.indexOf(marker);
-    const key =
-      idx >= 0 ? img.mediaPath.slice(idx + marker.length) : img.mediaPath.replace(/^\//, "");
-    return path.resolve(env.MEDIA_DIR, decodeURIComponent(key));
-  });
+    const key = decodeURIComponent(
+      idx >= 0 ? img.mediaPath.slice(idx + marker.length) : img.mediaPath.replace(/^\//, ""),
+    );
+    const buf = await mediaStorage.get(key);
+    if (!buf) {
+      missing.push(key);
+      continue;
+    }
+    images.push({ name: path.basename(key), dataB64: buf.toString("base64") });
+  }
+  if (missing.length > 0) {
+    throw new Error(`图片不在存储(共 ${missing.length} 张):${missing.join(", ")}`);
+  }
   return { title: pin.title, content: pin.content, images };
 }
 

@@ -9,8 +9,12 @@ transport/service/slots。容器入口 ``app.gateway:app``(uvicorn 单 worker—
 
 from __future__ import annotations
 
+import base64
 import logging
+import os
 import re
+import shutil
+import tempfile
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -362,12 +366,29 @@ def create_app(
 
     @app.post("/xhs/publish")
     async def xhs_publish(payload: dict) -> dict:
-        """发布图文笔记:贴图物料(标题/轻文字/图片容器内绝对路径)→ 创作平台。"""
+        """发布图文笔记:贴图物料(标题/轻文字/图片 base64)→ 创作平台。
+
+        图片走 base64 字节下发:生产 MEDIA_STORAGE=cos 后新图只在桶里,本地
+        路径跨容器必不存在(2026-10-27 实收 No such file);字节落临时文件
+        供 Playwright set_input_files,发布后清理。gateway 保持零密钥。
+        """
         title = str(payload.get("title", ""))
         content = str(payload.get("content", ""))
-        images = [str(p) for p in payload.get("images", [])]
+        raw_images = payload.get("images", [])
         pin_id = payload.get("pin_id") or payload.get("pinId")
+        tmp_root: str | None = None
         try:
+            images: list[str] = []
+            if raw_images and isinstance(raw_images[0], dict):
+                tmp_root = tempfile.mkdtemp(prefix="xhs-upload-")
+                for i, item in enumerate(raw_images):
+                    name = re.sub(r"[^A-Za-z0-9._-]", "_", str(item.get("name") or "")) or f"image-{i}.jpg"
+                    path = os.path.join(tmp_root, f"{i:02d}-{name}")
+                    with open(path, "wb") as f:
+                        f.write(base64.b64decode(str(item.get("data", ""))))
+                    images.append(path)
+            else:  # 兼容旧路径形态(本地盘存储场景)
+                images = [str(p) for p in raw_images]
             result = await xhs_publisher.publish(
                 title, content, images, pin_id=str(pin_id) if pin_id else None
             )
@@ -379,6 +400,9 @@ def create_app(
             # 全捕获:人话进 detail 供 worker 解析落 lastError,不丢具体原因
             logger.error("xhs.publish.failed", error=str(exc))
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        finally:
+            if tmp_root:
+                shutil.rmtree(tmp_root, ignore_errors=True)
 
     @app.get("/xhs/state")
     async def xhs_state() -> dict:
