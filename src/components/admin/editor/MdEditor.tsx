@@ -11,6 +11,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
+import { useToast } from "@/components/admin/Toast";
 import { WECHAT_CONTENT_MAX_CHARS } from "@/lib/distribute/channels";
 import { renderWechatHtml } from "@/lib/distribute/wechat-html";
 import { WECHAT_THEME_DEFAULT } from "@/lib/distribute/wechat-themes";
@@ -35,7 +36,7 @@ export default function MdEditor({
   imported: boolean;
 }): React.ReactElement {
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [note, setNote] = useState<string | null>(null);
+  const { push } = useToast();
   /** 微信正文码点(按默认主题渲染后计数;渠道实际主题差异仅内联样式,量级可忽略) */
   const [chars, setChars] = useState<number | null>(null);
 
@@ -52,7 +53,7 @@ export default function MdEditor({
         setWarnings(parsed.warnings ?? []);
       }
     } catch {
-      setNote("导入交接数据损坏,请回列表重新导入");
+      push("error", "导入交接数据损坏,请回列表重新导入");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 mount/imported 变化时消费一次
   }, [imported]);
@@ -76,11 +77,6 @@ export default function MdEditor({
           ))}
         </div>
       )}
-      {note && (
-        <div className="border-b border-line px-4 py-1.5 font-mono text-[11px] text-text-3">
-          {note}
-        </div>
-      )}
       <div className="flex items-baseline justify-end gap-1 px-1 pb-1 font-mono text-[11px]">
         {chars !== null && (
           <span
@@ -92,7 +88,7 @@ export default function MdEditor({
           </span>
         )}
       </div>
-      <VditorEditor value={value} onChange={onChange} onNote={setNote} />
+      <VditorEditor value={value} onChange={onChange} />
     </div>
   );
 }

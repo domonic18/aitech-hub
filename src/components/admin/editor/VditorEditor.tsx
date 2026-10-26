@@ -17,6 +17,7 @@ import "vditor/dist/index.css";
 import { useEffect, useRef, useState } from "react";
 import Vditor from "vditor";
 
+import { useToast } from "@/components/admin/Toast";
 import MediaInsertDialog from "@/components/admin/media/MediaInsertDialog";
 import { IMAGE_ACCEPT, MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { uploadImageFile } from "@/lib/media/upload-client";
@@ -87,11 +88,9 @@ function withMediaPicker(items: string[], onClick: () => void): Array<string | I
 export default function VditorEditor({
   value,
   onChange,
-  onNote,
 }: {
   value: string;
   onChange: (md: string) => void;
-  onNote: (note: string | null) => void;
 }): React.ReactElement {
   const ref = useRef<HTMLDivElement>(null);
   const vditorRef = useRef<Vditor | null>(null);
@@ -102,6 +101,7 @@ export default function VditorEditor({
   /** 媒体库选图弹窗(工具栏自定义钮开;IMenuItem.click 经 openPickerRef 会合) */
   const [pickerOpen, setPickerOpen] = useState(false);
   const openPickerRef = useRef<() => void>(() => {});
+  const { push } = useToast();
   useEffect(() => {
     openPickerRef.current = () => setPickerOpen(true);
   }, []);
@@ -138,14 +138,17 @@ export default function VditorEditor({
         handler: async (files) => {
           for (const file of files) {
             if (file.size > MEDIA_LIMITS.maxUploadBytes) {
-              onNote(`图片超过 ${MEDIA_LIMITS.maxUploadBytes / 1024 / 1024}MB,未上传:${file.name}`);
+              push(
+                "error",
+                `图片超过 ${MEDIA_LIMITS.maxUploadBytes / 1024 / 1024}MB,未上传:${file.name}`,
+              );
               continue;
             }
             const r = await uploadImageFile(file, file.name || "paste.png");
             if (r.ok) {
               vditor.insertValue(`\n![${file.name || "图片"}](${r.path})\n`);
             } else {
-              onNote(`图片上传失败(${r.error}):${file.name}`);
+              push("error", `图片上传失败(${r.error}):${file.name}`);
             }
           }
           return null; // 插入已手动完成,不走 vditor 默认响应解析
@@ -166,7 +169,17 @@ export default function VditorEditor({
       },
     });
     vditorRef.current = vditor;
+    // 初始化看门狗:vditor 资源(lute/i18n)404 时静默半死,编辑区空白无提示
+    // (2026-10-27 docker 栈 public/vditor/dist 被 .dockerignore 挡掉实测)——
+    // 8s 未初始化完成即全局 toast 显性报错
+    const watchdog = setTimeout(() => {
+      if (!disposed && !initedRef.current) {
+        push("error", "编辑器加载失败:静态资源未就绪(可能镜像缺 public/vditor),请刷新或联系排查");
+      }
+    }, 8_000);
     return () => {
+      clearTimeout(watchdog);
+      disposed = true;
       disposed = true;
       // destroy 在异步初始化(图标/lute 加载)完成前调用会抛
       // "Cannot read properties of undefined":吞掉即可,初始化若已完成则正常销毁
@@ -178,7 +191,7 @@ export default function VditorEditor({
       vditorRef.current = null;
       initedRef.current = false;
     };
-    // 仅 mount 一次;onChange/onNote 为 setState 包装(引用稳定),主题切换由下方 effect 跟随
+    // 仅 mount 一次;onChange 为 setState 包装(引用稳定),主题切换由下方 effect 跟随
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

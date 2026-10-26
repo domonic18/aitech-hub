@@ -21,6 +21,9 @@ docker-compose*.yml
 **/node_modules/
 .next/
 **/dist/
+# vditor 编辑器运行时资源是仓库内的静态资产(public/ 经 COPY 进镜像),
+# 非构建产物——负例外放行,否则容器内编辑器全资源 404(2026-10-27 实测)
+!public/vditor/dist/
 coverage/
 **/*.tsbuildinfo
 .test-results/
