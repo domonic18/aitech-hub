@@ -29,7 +29,10 @@ function escHtml(s: string): string {
 
 function coverHtml(title: string): string {
   const t = escHtml(title);
+  // body margin 重置:UA 默认 body margin 8px×2 会把定高 1440 顶成 1456 超限
+  // (M49 验收实测,agent 自诊断定位;渲染器不注入 reset,须自带)
   return (
+    `<style>body{margin:0;padding:0}</style>` +
     `<div style="width:1080px;height:1440px;box-sizing:border-box;display:flex;flex-direction:column;` +
     `justify-content:space-between;padding:96px;background:linear-gradient(160deg,#1e1b4b 0%,#312e81 55%,#4c1d95 100%);` +
     `font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif;">` +
