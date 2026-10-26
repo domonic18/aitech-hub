@@ -71,12 +71,25 @@ export default function SyncXhsDialog({
     void refresh();
   }, [refresh]);
 
-  // pending → 3s 轮询至 ready/failed(上限由用户关闭弹窗自然终止)
+  // pending → 3s 轮询至 ready/failed(M49 验收修复:原 deps 挂 view?.status,
+  // 状态维持 pending 时 effect 不重跑,轮询一次即停——弹窗僵在「改写中」永不翻转)
   useEffect(() => {
     if (view?.status !== "pending") return;
-    const t = setTimeout(() => void refresh(), POLL_MS);
-    return () => clearTimeout(t);
-  }, [view?.status, refresh]);
+    const t = setInterval(() => void refresh(), POLL_MS);
+    return () => clearInterval(t);
+  }, [view?.status === "pending", refresh]);
+
+  // 改写进行秒数(体感进度;状态离开 pending 即复位)
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (view?.status !== "pending") {
+      setElapsed(0);
+      return;
+    }
+    setElapsed(0);
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [view?.status === "pending"]);
 
   const generate = async (): Promise<void> => {
     setBusy(true);
@@ -157,8 +170,8 @@ export default function SyncXhsDialog({
     }
     if (status === "pending") {
       return (
-        <p className="px-1 py-8 text-center text-xs text-accent">
-          AI 改写中…(生成小红书体文案与封面卡,约需十几秒)
+        <p className="animate-pulse px-1 py-8 text-center text-xs text-accent">
+          AI 改写中… {elapsed}s(生成小红书体文案与封面卡;完成后本窗自动刷新)
         </p>
       );
     }
