@@ -81,6 +81,10 @@ class XhsPublisher:
             storage_state=self._settings.storage_state_path,
             locale="zh-CN",
             timezone_id="Asia/Shanghai",
+            viewport={
+                "width": self._settings.viewport_width,
+                "height": self._settings.viewport_height,
+            },
         )
 
     async def ingest_cookie_header(self, cookie_header: str) -> dict[str, Any]:
@@ -109,7 +113,12 @@ class XhsPublisher:
                 )
         if not pairs:
             raise XhsStateError("cookie 串解析为空")
-        context = await self._browser.new_context()
+        context = await self._browser.new_context(
+            viewport={
+                "width": self._settings.viewport_width,
+                "height": self._settings.viewport_height,
+            }
+        )
         await context.add_cookies(pairs)
         page = await context.new_page()
         try:
@@ -227,9 +236,21 @@ class XhsPublisher:
             # 正文(TipTap/ProseMirror 富文本,平台上限 1000 字)
             step = "填写正文"
             await page.locator(sel["content_editor"]).first.fill(content[:1000])
-            # 发布
+            # 发布:底部操作栏是 Web Component <xhs-publish-btn>,按钮渲染在
+            # closed shadow root 里——DOM 查询全盲(text=/CSS/button 枚举 0 命中,
+            # 截图却可见,2026-10-26 实证);宿主在主文档可定位,横跨「暂存离开
+            # +发布」整条栏,红色发布钮在右段。坐标点击走浏览器原生命中测试,
+            # 可进 shadow;点右侧内缩 40px(勿点中段=暂存离开)
             step = "点击发布"
-            await page.locator(sel["publish_btn"]).first.click()
+            host = page.locator("xhs-publish-btn")
+            box = await host.first.bounding_box() if await host.count() else None
+            if box and box["width"] > 0:
+                await page.mouse.click(
+                    box["x"] + box["width"] - 40, box["y"] + box["height"] / 2
+                )
+            else:
+                # 布局锚丢失时退固定几何(viewport 1280×720 下发布钮中心)
+                await page.mouse.click(700, 675)
             # 发布后跳转/成功提示需数秒;尽力抓笔记链接(抓不到留空,人工补)
             note_url: str | None = None
             try:

@@ -32,5 +32,8 @@ class XhsSettings(BaseSettings):
     # 发布页跳登录页判定:URL 含 login 即登录态失效
     login_marker: str = "login"
     headless: bool = True
+    # viewport 钉死:发布按钮按 <xhs-publish-btn> 宿主几何坐标点击,几何须确定
+    viewport_width: int = 1280
+    viewport_height: int = 720
     # 发布动作(上传+表单+提交)整体超时秒
     publish_timeout_seconds: int = 180
