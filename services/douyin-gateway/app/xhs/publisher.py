@@ -1,9 +1,8 @@
 """XHS 创作平台自动发布(M49 批X3;批X3' 步骤化收口)。
 
 每步统一日志(xhs.step_*,带 pin_id/耗时/URL)+ 失败自动落现场快照
-(workspace/xhs-state/debug/,video+截图+DOM+URL 滚动保留)——适配平台
-改版先看现场,禁止盲猜选择器;步骤闭包内注释均为实弹实证,勿凭直觉改。
-登录态经后台分发中心渠道卡粘贴 Cookie 录入;风控边界:个人号低频(plan M49)。
+(debug/,video+截图+DOM+URL 滚动保留)——适配改版先看现场;闭包内
+注释均为实弹实证。登录态经分发中心配置 Cookie;个人号低频(plan M49)。
 """
 from __future__ import annotations
 
@@ -140,11 +139,7 @@ class XhsPublisher:
         )
 
     async def ingest_cookie_header(self, cookie_header: str) -> dict[str, Any]:
-        """「手动贴 Cookie」入口:F12 复制的 cookie 串 → 验证登录 → storage_state。
-
-        只解析 name=value(域/路径按 .xiaohongshu.com + / 补全);粘贴后访问
-        创作平台验证,成功才落盘覆盖。
-        """
+        """「手动贴 Cookie」:F12 cookie 串 → 验证登录 → storage_state 覆盖。"""
         if not self.started:
             raise XhsStateError("浏览器未启动")
         pairs = [
@@ -228,11 +223,7 @@ class XhsPublisher:
         images: list[str],
         pin_id: str | None = None,
     ) -> XhsPublishResult:
-        """发布图文笔记:打开→登录检查→切 tab→上传→标题→正文→发布→确认。
-
-        各步骤闭包内注释均为实弹实证(2026-10-26/27 五层排障);选择器与
-        节奏参数实证依据见 settings.py 注释与设计文档 §6.2 Runbook。
-        """
+        """发布图文笔记:打开→登录检查→切 tab→上传→标题→正文→发布→确认。"""
         if not images:
             raise XhsStateError("至少需要 1 张图片")
         context = await self._new_context(record=True)
@@ -280,11 +271,9 @@ class XhsPublisher:
                 if not candidates:
                     await page.wait_for_timeout(cfg.TAB_POLL_MS)
             if not candidates:
-                raise XhsStepError(
-                    "切换上传图文 tab", KIND_SELECTOR,
+                raise XhsStepError("切换上传图文 tab", KIND_SELECTOR, (
                     f"等待「{self._settings.image_tab_text}」tab 超时"
-                    f"({cfg.TAB_RENDER_TIMEOUT_S}s):页面可能改版或渲染异常",
-                )
+                    f"({cfg.TAB_RENDER_TIMEOUT_S}s):页面可能改版或渲染异常"))
             for t in candidates:
                 try:
                     await t.click(timeout=cfg.TAB_CLICK_TIMEOUT_MS)
@@ -292,10 +281,8 @@ class XhsPublisher:
                     return
                 except Exception:
                     continue
-            raise XhsStepError(
-                "切换上传图文 tab", KIND_CLICK,
-                f"「{self._settings.image_tab_text}」tab 候选均不可点(平台改版?)",
-            )
+            raise XhsStepError("切换上传图文 tab", KIND_CLICK,
+                f"「{self._settings.image_tab_text}」tab 候选均不可点(平台改版?)")
 
         async def upload_images() -> None:
             # 仅传首张(封面);平台拒收 <720P 图片但报错只在发布期出现
@@ -326,10 +313,8 @@ class XhsPublisher:
                 if "/publish/success" in u or "published=true" in u:
                     return
                 await page.wait_for_timeout(cfg.PUBLISH_POLL_MS)
-            raise XhsStepError(
-                "确认发布结果", KIND_SUCCESS_SIGNAL,
-                "点击发布后未检测到成功跳转(可能素材校验被拒,如图片低于 720P)",
-            )
+            raise XhsStepError("确认发布结果", KIND_SUCCESS_SIGNAL,
+                "点击发布后未检测到成功跳转(可能素材校验被拒,如图片低于 720P)")
 
         try:
             await self._run_step(page, pin_id, "打开发布页", open_page)
