@@ -119,8 +119,12 @@ class XhsPublisher:
                 wait_until="domcontentloaded",
                 timeout=60_000,
             )
-            # 401 重定向为客户端 JS 触发:等落定再判,否则假阳性
-            await page.wait_for_timeout(3000)
+            # 401 重定向为客户端 JS 触发:等落定再判,否则假阳性。
+            # 等待期间页面可能被导航走(wait 被打断)——吞掉中断,以最终 URL 为准
+            try:
+                await page.wait_for_timeout(3000)
+            except Exception:
+                pass
             logged_in = "login" not in page.url
         finally:
             await page.close()
@@ -163,7 +167,10 @@ class XhsPublisher:
                 timeout=60_000,
             )
             # 同 ingest:等客户端 401 重定向落定再判登录态
-            await page.wait_for_timeout(3000)
+            try:
+                await page.wait_for_timeout(3000)
+            except Exception:
+                pass
             if "login" in page.url:
                 raise XhsStateError("登录态失效,请重跑 xhs_login 续期")
             # 上传图片(POC 选择器,平台改版需迭代)

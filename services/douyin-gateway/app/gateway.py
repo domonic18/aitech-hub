@@ -38,6 +38,7 @@ from app.signer.models import HealthResponse, SignRequest, SignResponse
 from app.signer.settings import SignerSettings
 from app.xhs.publisher import XhsPublisher
 from app.xhs.settings import XhsSettings
+from app.xhs.publisher import XhsStateError
 from app.signer.validation import (
     SignRequestError,
     parse_cookie_header,
@@ -392,6 +393,9 @@ def create_app(
             return await xhs_publisher.ingest_cookie_header(header)
         except XhsStateError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            # 导航中断等自动化噪声:人话进 detail,前端/worker 可读
+            raise HTTPException(status_code=500, detail=f"登录态录入失败: {exc}") from exc
 
     # ── 数据端点(逐请求注入平台级 jar 池;platform 分发,默认 douyin)──
 
