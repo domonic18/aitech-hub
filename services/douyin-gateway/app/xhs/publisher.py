@@ -4,8 +4,8 @@ Playwright 驱动创作平台(creator.xiaohongshu.com)网页发布流程——�
 译自社区 xhs-mcp-server v0.2.8 实证(creator-tab/upload-input/d-text/
 ql-editor/publishBtn),**平台改版即漂移,需实测迭代**。
 
-登录态:storage_state JSON(scripts/xhs_login.py 有头浏览器人工登录一次
-落盘,cookie 过期后重跑续期);发布动作在无头容器执行。
+登录态:storage_state JSON(后台分发中心渠道卡粘贴 Cookie 录入,gateway
+验证登录后落盘;过期后在配置界面重贴续期);发布动作在无头容器执行。
 
 风控边界:自动化属 ToS 灰区——限定站长个人号低频使用(plan M49)。
 """
@@ -75,9 +75,7 @@ class XhsPublisher:
         if not self.started:
             raise XhsStateError("浏览器未启动")
         if not self.storage_state_ready():
-            raise XhsStateError(
-                "登录态未初始化:先在有头环境跑 scripts/xhs_login.py 人工登录一次"
-            )
+            raise XhsStateError("登录态未配置:请到后台分发中心-小红书渠道卡粘贴 Cookie")
         return await self._browser.new_context(
             storage_state=self._settings.storage_state_path,
             locale="zh-CN",
@@ -172,7 +170,7 @@ class XhsPublisher:
             except Exception:
                 pass
             if "login" in page.url:
-                raise XhsStateError("登录态失效,请重跑 xhs_login 续期")
+                raise XhsStateError("登录态失效,请到后台分发中心-小红书渠道卡重新配置 Cookie")
             # 切换到「上传图文」tab:发布页默认选中「上传视频」,须先点击切换
             # (选择器译自 xhs-mcp-server 实证 .creator-tab;POC 需实测迭代)
             tabs = page.locator(".creator-tab")
@@ -183,13 +181,13 @@ class XhsPublisher:
             upload = page.locator(".upload-input").first
             await upload.set_input_files(images[0])
             await page.wait_for_timeout(3000)
-            # 标题(截断到 20 字,与渠道行硬闸同口径)
+            # 标题/正文按平台上限截断(全自动流程不被超长卡住):标题 20 字
             trimmed = title[:20]
             title_input = page.locator(".d-text").first
             await title_input.fill(trimmed)
-            # 正文(ql-editor 富文本)
+            # 正文(ql-editor 富文本,平台上限 1000 字)
             content_box = page.locator(".ql-editor").first
-            await content_box.fill(content)
+            await content_box.fill(content[:1000])
             # 发布
             await page.locator(".publishBtn").first.click()
             # 发布后跳转/成功提示需数秒;尽力抓笔记链接(抓不到留空,人工补)

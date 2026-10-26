@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class XhsSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="XHS_", frozen=True)
 
-    # 登录态(scripts/xhs_login.py 在有头浏览器人工登录一次后落盘)
+    # 登录态(/xhs/cookies 粘贴录入验证登录后落盘;配置界面为唯一录入入口)
     storage_state_path: str = "/app/xhs-state/storage_state.json"
     creator_publish_url: str = (
         "https://creator.xiaohongshu.com/publish/publish?from=menu"

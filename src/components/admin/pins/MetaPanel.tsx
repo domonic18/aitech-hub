@@ -3,7 +3,7 @@
 /**
  * 元数据与渠道面板(M41):标题/轻文字/专题/阅读原文 + 保存(草稿态独立,
  * 仅保存成功信号 resetSignal 时从服务端定稿灌回,防轮询/其他写清掉未保存
- * 输入);下段渠道留痕(站点 /pins + 公众号贴图)与同步草稿箱入口。
+ * 输入);下段渠道留痕(站点 /pins + 公众号贴图 + 小红书)与发布入口。
  */
 import { useEffect, useState } from "react";
 
@@ -24,8 +24,6 @@ export default function MetaPanel({
   resetSignal,
   onSave,
   onSync,
-  onDistributeXhs,
-  onBackfillXhs,
   onAutoPublishXhs,
 }: {
   detail: PinDetailDto;
@@ -35,8 +33,6 @@ export default function MetaPanel({
   resetSignal: number;
   onSave: (patch: Record<string, unknown>) => void;
   onSync: () => void;
-  onDistributeXhs: () => void;
-  onBackfillXhs: (noteUrl: string) => void;
   onAutoPublishXhs: () => void;
 }): React.ReactElement {
   const [title, setTitle] = useState(detail.title);
@@ -69,7 +65,6 @@ export default function MetaPanel({
 
   const wechat = detail.channels.find((c) => c.channel === "wechat");
   const xhs = detail.channels.find((c) => c.channel === "xiaohongshu");
-  const [xhsUrl, setXhsUrl] = useState("");
 
   return (
     <div className="rounded-sm border border-line bg-panel p-3.5">
@@ -241,45 +236,24 @@ export default function MetaPanel({
               onClick={onAutoPublishXhs}
               className="mt-2 w-full cursor-pointer rounded-sm bg-accent px-3 py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              一键发布到小红书(自动)
+              一键发布到小红书
             </button>
             <p className="mt-1 text-[10.5px] text-text-3">
-              自动:agent 经浏览器自动化在创作平台发布(标题+轻文字+全部图片),约 1-3 分钟;
-              失败自动降级为人工回填模式
+              浏览器自动化在创作平台发布(标题截 20 字/正文截 1000 字 + 全部图片),约 1-3
+              分钟;失败自动重试 3 次,仍失败可重新发起
             </p>
-            <button
-              type="button"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(`${detail.title}\n\n${detail.content}`)
-                  .catch(() => undefined)
-              }
-              className="mt-1.5 w-full cursor-pointer rounded-sm border border-line px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
-            >
-              复制发布文案(标题 + 轻文字)
-            </button>
           </>
         )}
-        {xhs && xhs.status !== "synced" && (
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              value={xhsUrl}
-              onChange={(e) => setXhsUrl(e.target.value)}
-              placeholder="粘贴小红书笔记链接"
-              className="min-w-0 flex-1 rounded-sm border border-line bg-panel px-2.5 py-1.5 text-xs text-text-1 placeholder:text-text-3 focus:border-accent focus:outline-none"
-            />
-            <button
-              type="button"
-              disabled={busy || xhsUrl.trim() === ""}
-              onClick={() => {
-                onBackfillXhs(xhsUrl.trim());
-                setXhsUrl("");
-              }}
-              className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              标记已发布
-            </button>
-          </div>
+        {/* 终态失败唯一出路 = 修正原因(如重配 Cookie)后重新入队;无人工回填 */}
+        {xhs?.status === "failed" && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onAutoPublishXhs}
+            className="mt-2 w-full cursor-pointer rounded-sm border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            重新发布
+          </button>
         )}
       </div>
     </div>

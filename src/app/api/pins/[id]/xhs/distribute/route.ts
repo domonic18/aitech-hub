@@ -1,6 +1,8 @@
 /**
- * POST /api/pins/[id]/xhs/distribute(M49 批X1':贴图 → 小红书渠道行)。
- * 半自动模式:贴图本身即物料,发布人工;系统只创建渠道行记账(幂等)。
+ * POST /api/pins/[id]/xhs/distribute(M49 批X3:贴图 → 小红书全自动发布)。
+ * 贴图即物料直发:创建/复位渠道行 + 发布 job 入子队列(worker 调 gateway
+ * Playwright 创作平台发布);失败自动重试 3 次,终态 failed 后界面「重新
+ * 发布」复用本路由重新入队。零人工流程。
  */
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -8,7 +10,6 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { parseBigIntId } from "@/lib/http/parse-id";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
-import { distributePinToXhs } from "@/lib/pins/xhs";
 import { enqueueXhsAutoPublish } from "@/lib/pins/xhs";
 
 export const dynamic = "force-dynamic";
@@ -26,15 +27,9 @@ export async function POST(
   if (pinId === null) {
     return apiEnvelope(400, "贴图 id 不合法");
   }
-  const auto = (await req.json().catch(() => null)) as { auto?: boolean } | null;
   try {
-    const row = await distributePinToXhs(pinId);
-    if (auto?.auto === true) {
-      // M49 批X3:全自动——入队发布 job(worker 调 xhs-gateway)
-      await enqueueXhsAutoPublish(pinId);
-      return apiEnvelope(0, "ok", { status: "pending", channel: row.channel, auto: true });
-    }
-    return apiEnvelope(0, "ok", { status: row.status, channel: row.channel });
+    await enqueueXhsAutoPublish(pinId);
+    return apiEnvelope(0, "ok", { status: "pending", channel: "xiaohongshu", auto: true });
   } catch (e) {
     if (e instanceof DistributeError) {
       return apiEnvelope(distributeErrorStatus(e.code), e.message);

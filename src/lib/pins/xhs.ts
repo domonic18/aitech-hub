@@ -1,8 +1,10 @@
 /**
- * 贴图 → 小红书渠道分发(M49 批X1' 定稿:小红书笔记载体 = 贴图,「小绿书」
- * 定位天然同构)。半自动模式:贴图本身即物料(标题/轻文字/图片序列),
- * 发布动作人工(无官方发布 API,plan M49 调研);系统只记账渠道行 + 回填
- * 笔记链接。零 worker 零 LLM——与 pin→公众号(自动同步管线)形态不同。
+ * 贴图 → 小红书渠道分发(M49 定稿:小红书笔记载体 = 贴图,「小绿书」定位
+ * 天然同构)。全自动发布:贴图本身即物料(标题/轻文字/图片序列)直发,
+ * 无 LLM 改写;入队 worker 子队列 → gateway Playwright 创作平台发布
+ * (无官方发布 API,plan M49 调研)。登录态经后台分发中心渠道卡粘贴
+ * Cookie 录入(gateway 验证落 storage_state)。零人工流程:失败自动重试
+ * 3 次,终态 failed 后界面「重新发布」重新入队。
  */
 import path from "node:path";
 
@@ -16,9 +18,8 @@ import { DISTRIBUTE_JOB_XHS_AUTO, QUEUE_DISTRIBUTE_XHS, getQueue } from "../queu
 // 贴图渠道枚举独立于文章侧 PUBLISH_CHANNELS(贴图载体:xiaohongshu 不入文章分发枚举)
 const CHANNEL_XHS = "xiaohongshu";
 
-/** 标记分发到小红书:创建渠道行(pending=已分发待人工发布)。幂等:已存在
- * 直接返回既存行(发布是人工动作,重复标记无意义但不害)。 */
-export async function distributePinToXhs(pinId: bigint) {
+/** 创建/复用渠道行(pending;验收门槛:草稿拒)。幂等,仅供本模块入队使用。 */
+async function distributePinToXhs(pinId: bigint) {
   const pin = await prisma.contentPin.findUnique({
     where: { id: pinId },
     select: { status: true },
@@ -36,14 +37,28 @@ export async function distributePinToXhs(pinId: bigint) {
   );
 }
 
-/** 全自动入队:创建渠道行 + 发布 job 入子队列(worker 调 xhs-gateway) */
+/** 全自动入队:创建渠道行 + 发布 job 入子队列(worker 调 xhs-gateway)。
+ * 重试:attempts 3 + 指数退避 30s→60s→120s;终态 failed 重新发起时复位
+ * pending(UI 立即转「重试中」)。 */
 export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: string }> {
   const row = await distributePinToXhs(pinId);
+  if (row.status === "failed") {
+    await prisma.contentPinChannel.update({
+      where: { id: row.id },
+      data: { status: PUBLISH_STATUS_PENDING, lastError: null },
+    });
+  }
   const jobId = `xhs-auto-${pinId.toString()}-${Date.now().toString(36)}`;
   await getQueue(QUEUE_DISTRIBUTE_XHS).add(
     DISTRIBUTE_JOB_XHS_AUTO,
     { pinId: pinId.toString() },
-    { jobId, attempts: 1, removeOnComplete: 50, removeOnFail: 50 },
+    {
+      jobId,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 30_000 },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    },
   );
   logger.info({ event: "pins.xhs.auto_enqueued", jobId, pinId: pinId.toString() });
   return { jobId };
@@ -63,33 +78,6 @@ export async function ingestXhsCookies(cookieHeader: string): Promise<void> {
     const text = await res.text().catch(() => "");
     throw new Error(`登录态录入失败: ${text.slice(0, 200) || res.status}`);
   }
-}
-
-/** 笔记链接回填(人工发布确认):pending → synced,publishId 落笔记链接 */
-export async function backfillXhsNote(pinId: bigint, noteUrl: string): Promise<void> {
-  let host = "";
-  try {
-    host = new URL(noteUrl).hostname;
-  } catch {
-    throw new DistributeError("invalid", "笔记链接格式无效");
-  }
-  if (!host.endsWith("xiaohongshu.com")) {
-    throw new DistributeError("invalid", "仅接受 xiaohongshu.com 域名的笔记链接");
-  }
-  const row = await prisma.contentPinChannel.findUnique({
-    where: { pinId_channel: { pinId, channel: CHANNEL_XHS } },
-  });
-  if (!row) throw new DistributeError("not_found", "尚未分发到小红书(先标记分发)");
-  if (row.status === PUBLISH_STATUS_SYNCED && row.publishId === noteUrl) return; // 幂等
-  await prisma.contentPinChannel.update({
-    where: { id: row.id },
-    data: {
-      status: PUBLISH_STATUS_SYNCED,
-      publishId: noteUrl,
-      syncedAt: new Date(),
-      lastError: null,
-    },
-  });
 }
 
 /** 发布物料(标题/轻文字/图片容器内绝对路径)——worker 消费侧组装用 */
@@ -121,13 +109,15 @@ export async function gatherPinXhsMaterial(pinId: bigint): Promise<PinXhsMateria
   return { title: pin.title, content: pin.content, images };
 }
 
-/** 全自动发布:调 xhs-gateway(/xhs/publish)→ 渠道行 synced+noteUrl / failed+lastError */
+/** 全自动发布(worker 消费):调 xhs-gateway(/xhs/publish)→ 成功落
+ * synced+noteUrl;失败上抛——failed 落账由 worker handler 单点承担
+ * (此处重复落账会致 attempts 双计数)。 */
 export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
   const row = await prisma.contentPinChannel.findUnique({
     where: { pinId_channel: { pinId, channel: CHANNEL_XHS } },
   });
   if (!row) throw new Error("渠道行不存在(先标记分发)");
-  try {
+  {
     const material = await gatherPinXhsMaterial(pinId);
     const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
     const res = await fetch(`${base}/xhs/publish`, {
@@ -166,14 +156,5 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
       },
     });
     console.log(JSON.stringify({ event: "pins.xhs.auto_published", pinId: pinId.toString() }));
-  } catch (e) {
-    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 500);
-    await prisma.contentPinChannel
-      .update({
-        where: { id: row.id },
-        data: { status: "failed", lastError: msg, attempts: { increment: 1 } },
-      })
-      .catch(() => undefined);
-    throw e;
   }
 }

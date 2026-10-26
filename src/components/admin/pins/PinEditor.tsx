@@ -138,8 +138,9 @@ export default function PinEditor({
     );
   }
 
-  /** 小红书半自动分发(M49 批X1'):贴图即物料,标记分发 + 人工发布后回填链接 */
-  async function distributeXhs() {
+  /** 小红书全自动发布(M49 批X3):入队 job(worker 调 gateway Playwright),
+   * 轮询渠道行到终态(含 3 次自动重试,超 4min 轮询自停、渠道行为准) */
+  async function autoPublishXhs() {
     const body = await callPinApi(`/api/pins/${initial.id}/xhs/distribute`, { method: "POST" });
     setError(null);
     setNotice(null);
@@ -147,42 +148,11 @@ export default function PinEditor({
       setError(body.message);
       return;
     }
-    setNotice("已标记分发到小红书:复制标题与轻文字,在创作平台人工上传发布,完成后回填笔记链接");
-    const fresh = await callPinApi<PinDetailDto>(`/api/pins/${initial.id}`);
-    if (fresh.code === 0 && fresh.data) setDetail(fresh.data);
-  }
-
-  /** 全自动发布(M49 批X3):创建渠道行 + 入队发布 job(worker 调 xhs-gateway) */
-  async function autoPublishXhs() {
-    const body = await callPinApi(`/api/pins/${initial.id}/xhs/distribute`, {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ auto: true }),
-    });
-    setError(null);
-    setNotice(null);
-    if (body.code !== 0) {
-      setError(body.message);
-      return;
-    }
     setNotice("已入队小红书自动发布(浏览器自动化,约 1-3 分钟),完成后渠道状态自动刷新…");
-    const fresh = await callPinApi<PinDetailDto>(`/api/pins/${initial.id}`);
-    if (fresh.code === 0 && fresh.data) setDetail(fresh.data);
-  }
-
-  async function backfillXhs(noteUrl: string) {
-    const body = await callPinApi(`/api/pins/${initial.id}/xhs/publish`, {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ noteUrl }),
+    startPolling((d) => {
+      const s = d.channels.find((c) => c.channel === "xiaohongshu")?.status ?? null;
+      return s === "synced" || s === "failed";
     });
-    if (body.code !== 0) {
-      setError(body.message);
-      return;
-    }
-    setNotice("笔记链接已回填,渠道状态 → 已同步");
-    const fresh = await callPinApi<PinDetailDto>(`/api/pins/${initial.id}`);
-    if (fresh.code === 0 && fresh.data) setDetail(fresh.data);
   }
 
   async function reorder(from: number, to: number) {
@@ -295,8 +265,6 @@ export default function PinEditor({
           resetSignal={resetSignal}
           onSave={(patch) => void saveMeta(patch)}
           onSync={() => void syncWechat()}
-          onDistributeXhs={() => void distributeXhs()}
-          onBackfillXhs={(url) => void backfillXhs(url)}
           onAutoPublishXhs={() => void autoPublishXhs()}
         />
       </div>
