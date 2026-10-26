@@ -102,6 +102,7 @@ async def settle_video(video: Any, artifact_dir: str | None) -> None:
         return
     try:
         src = await video.path()
+        logger.info("xhs.video_path", src=src, exists=os.path.exists(src) if src else False)
         if not src or not os.path.exists(src):
             return
         if artifact_dir:

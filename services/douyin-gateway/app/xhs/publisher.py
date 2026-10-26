@@ -278,6 +278,7 @@ class XhsPublisher:
             deadline = time.monotonic() + cfg.UPLOAD_SETTLE_TIMEOUT_S
             while time.monotonic() < deadline:
                 if await counter.count():
+                    await page.wait_for_timeout(cfg.UPLOAD_TAIL_SETTLE_MS)  # 字节传完余量
                     return
                 await page.wait_for_timeout(cfg.UPLOAD_POLL_MS)
             if not await page.get_by_text(re.compile(r"\d+/\d+")).count():
@@ -302,15 +303,21 @@ class XhsPublisher:
 
         async def await_success() -> None:
             # 成功信号(实测):跳 /publish/success → 回跳带 published=true。
-            # 超时=未发出,必须按失败上抛(不得无条件 ok——曾误记 synced)
+            # 补击:计数到齐≠字节传完,首击可能落禁用钮无效果——每
+            # PUBLISH_RECLICK_MS 复点一次直至成功或超时(成功即跳离发布页,
+            # 复点不会二次发布;2026-10-27 多图实弹教训)
             deadline = time.monotonic() + cfg.PUBLISH_CONFIRM_TIMEOUT_S
+            next_click = time.monotonic() + cfg.PUBLISH_RECLICK_MS
             while time.monotonic() < deadline:
                 u = page.url
                 if "/publish/success" in u or "published=true" in u:
                     return
+                if time.monotonic() >= next_click:
+                    await page.mouse.click(cfg.PUBLISH_CLICK_X, cfg.PUBLISH_CLICK_Y)
+                    next_click = time.monotonic() + cfg.PUBLISH_RECLICK_MS
                 await page.wait_for_timeout(cfg.PUBLISH_POLL_MS)
             raise XhsStepError("确认发布结果", KIND_SUCCESS_SIGNAL,
-                "点击发布后未检测到成功跳转(可能素材校验被拒,如图片低于 720P)")
+                "点击发布后未检测到成功跳转(素材校验被拒或上传未完成)")
 
         try:
             await self._run_step(page, pin_id, "打开发布页", open_page)

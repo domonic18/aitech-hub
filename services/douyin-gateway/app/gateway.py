@@ -366,7 +366,7 @@ def create_app(
         title = str(payload.get("title", ""))
         content = str(payload.get("content", ""))
         images = [str(p) for p in payload.get("images", [])]
-        pin_id = payload.get("pin_id")
+        pin_id = payload.get("pin_id") or payload.get("pinId")
         try:
             result = await xhs_publisher.publish(
                 title, content, images, pin_id=str(pin_id) if pin_id else None
