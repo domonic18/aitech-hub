@@ -221,14 +221,17 @@ export default function MetaPanel({
           xhs?.status === "synced" ? "border-l-green" : "border-l-accent"
         }`}
       >
-        <div className="flex items-center font-medium text-text-1">小红书(人工发布)</div>
+        <div className="flex items-center font-medium text-text-1">小红书</div>
         <div className="mt-0.5 font-mono text-[11px] text-text-3">
           {xhs
-            ? `状态 ${xhs.status}${xhs.syncedAt ? ` · ${formatCnDateTime(new Date(xhs.syncedAt))}` : ""}${
+            ? `状态 ${xhs.status} · 尝试 ${xhs.attempts ?? 0} 次${
+                xhs.syncedAt ? ` · ${formatCnDateTime(new Date(xhs.syncedAt))}` : ""
+              }${xhs.lastError ? ` · ${xhs.lastError}` : ""}${
                 xhs.publishId ? ` · ${xhs.publishId}` : ""
               }`
             : "未分发"}
         </div>
+        {xhs?.lastError && <p className="mt-1 text-[11px] text-red">{xhs.lastError}</p>}
         {/* 分发是渠道操作非内容编辑:验收过(非草稿)即可,发布态贴图正是分发主对象 */}
         {detail.status !== "draft" && !xhs && (
           <>

@@ -370,7 +370,12 @@ def create_app(
             result = await xhs_publisher.publish(title, content, images)
             return {"ok": result.ok, "note_url": result.note_url}
         except XhsStateError as exc:
+            logger.error("xhs.publish.state_error", error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            # 全捕获:人话进 detail 供 worker 解析落 lastError,不丢具体原因
+            logger.error("xhs.publish.failed", error=str(exc))
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get("/xhs/state")
     async def xhs_state() -> dict:
