@@ -1,24 +1,23 @@
 """XHS 创作平台自动发布(M49 批X3;批X3' 步骤化收口)。
 
-每步统一日志(xhs.step_*,带 pin_id/耗时/URL)+ 失败自动落现场快照
-(debug/,video+截图+DOM+URL 滚动保留)——适配改版先看现场;闭包内
-注释均为实弹实证。登录态经分发中心配置 Cookie;个人号低频(plan M49)。
+本模块只管浏览器生命周期与发布编排;页面交互细节在 steps.py(命名步骤库,
+PUBLISH_STEPS 为流程权威顺序),错误/现场快照在 support.py,选择器与节奏
+参数在 settings.py。每步统一日志(xhs.step_*,带 pin_id/耗时/URL)+ 失败
+自动落现场快照(debug/,video+截图+DOM+URL 滚动保留)——适配平台改版
+先看现场。登录态经分发中心配置 Cookie;个人号低频(plan M49)。
 """
 from __future__ import annotations
 
 import os
-import re
 import time
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from app.log import get_logger
 from app.xhs import settings as cfg
+from app.xhs import steps
 from app.xhs.settings import XhsSettings
 from app.xhs.support import (
-    KIND_CLICK,
     KIND_LOGIN,
-    KIND_SELECTOR,
-    KIND_SUCCESS_SIGNAL,
     KIND_UNKNOWN,
     XhsPublishResult,
     XhsStateError,
@@ -38,17 +37,15 @@ class XhsPublisher:
         self._pw: Any = None
         self._browser: Any = None
         self._debug_root = os.path.join(os.path.dirname(settings.storage_state_path), "debug")
+        self._video_dir = os.path.join(self._debug_root, "_videos")
 
     async def start(self) -> None:
-        # 容错降级(对齐 signer BrowserUnavailable 语义):测试环境无 chromium
-        # 不拦 app 构建,publish 端点以「浏览器未启动」人话失败
+        # 容错降级(对齐 signer 语义):无 chromium 不拦 app 构建
         try:
             from playwright.async_api import async_playwright
 
             self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(
-                headless=self._settings.headless
-            )
+            self._browser = await self._pw.chromium.launch(headless=self._settings.headless)
             logger.info("xhs.browser_started")
         except Exception as exc:
             logger.warning("xhs.browser_start_failed", error=str(exc))
@@ -89,18 +86,14 @@ class XhsPublisher:
     def _ms(t0: float) -> int:
         return int((time.monotonic() - t0) * 1000)
 
-    async def _run_step(self, page: Any, pin_id: str | None, name: str,
-                        action: Callable[[], Awaitable[None]]) -> None:
+    async def _run_step(self, page: Any, pin_id: str | None, name: str, action: Any) -> None:
         """步骤统一壳:进出日志 + 失败现场快照与包装(唯一日志出口)。"""
         t0 = time.monotonic()
         logger.info("xhs.step_start", pin_id=pin_id, step=name)
 
         def log_fail(kind: str, error: str, artifact: str | None = None) -> None:
-            logger.warning(
-                "xhs.step_failed", pin_id=pin_id, step=name, kind=kind,
-                duration_ms=self._ms(t0), url=page.url, error=error[:200],
-                artifact=artifact,
-            )
+            logger.warning("xhs.step_failed", pin_id=pin_id, step=name, kind=kind,
+                duration_ms=self._ms(t0), url=page.url, error=error[:200], artifact=artifact)
 
         try:
             await action()
@@ -114,17 +107,11 @@ class XhsPublisher:
             log_fail(exc.kind, str(exc))
             raise
         except Exception as exc:
-            dir_path = await save_failure_artifacts(
-                page, name, self._debug_root, cfg.DEBUG_KEEP
-            )
+            dir_path = await save_failure_artifacts(page, name, self._debug_root, cfg.DEBUG_KEEP)
             log_fail(KIND_UNKNOWN, str(exc), dir_path)
-            raise XhsStepError(
-                name, KIND_UNKNOWN, f"执行异常:{str(exc)[:200]}", dir_path
-            ) from exc
-        logger.info(
-            "xhs.step_ok", pin_id=pin_id, step=name,
-            duration_ms=self._ms(t0), url=page.url,
-        )
+            raise XhsStepError(name, KIND_UNKNOWN, f"执行异常:{str(exc)[:200]}", dir_path) from exc
+        logger.info("xhs.step_ok", pin_id=pin_id, step=name,
+            duration_ms=self._ms(t0), url=page.url)
 
     async def ingest_cookie_header(self, cookie_header: str) -> dict[str, Any]:
         """「手动贴 Cookie」:F12 cookie 串 → 验证登录 → storage_state 覆盖。"""
@@ -162,8 +149,7 @@ class XhsPublisher:
         return {"ok": True, "logged_in": True, "cookies": len(pairs)}
 
     async def state(self) -> dict[str, Any]:
-        """登录态 + 结构地标(只读):creator_tab 计数为唯一裸页地标
-        (发布操作栏要等内容填写才挂载,不作地标)。"""
+        """登录态 + 结构地标(只读;creator_tab 计数为唯一裸页地标)。"""
         ready = self.storage_state_ready()
         logged_in: bool | None = None
         landmarks: dict[str, Any] | None = None
@@ -195,147 +181,24 @@ class XhsPublisher:
 
     async def publish(self, title: str, content: str, images: list[str],
                       pin_id: str | None = None) -> XhsPublishResult:
-        """发布图文笔记:打开→登录检查→切 tab→上传→标题→正文→发布→确认。"""
+        """发布图文笔记:按 PUBLISH_STEPS 权威顺序逐步执行(细节见 steps.py)。
+
+        success 页无笔记链接可抓(实测),note_url 留空(设计允许)。
+        """
         if not images:
             raise XhsStateError("至少需要 1 张图片")
         context = await self._new_context(record=True)
         page = await context.new_page()
         artifact_dir: str | None = None
         t0 = time.monotonic()
-        sel = self._settings.selectors
-
-        async def open_page() -> None:
-            await page.goto(
-                self._settings.creator_publish_url,
-                wait_until="domcontentloaded",
-                timeout=cfg.NAV_TIMEOUT_MS,
-            )
-            # 登录重定向由客户端 JS 触发:等落定再判(wait 被打断则吞掉)
-            try:
-                await page.wait_for_timeout(cfg.LOGIN_SETTLE_MS)
-            except Exception:
-                pass
-
-            if self._settings.login_marker in page.url:
-                raise XhsStateError(
-                    "登录态失效,请到后台分发中心-小红书渠道卡重新配置 Cookie"
-                )
-
-        async def switch_image_tab() -> None:
-            # 候选全收(文本+视口内+非 aria-hidden)逐个试点:平台 DOM 存在
-            # 同位克隆且序号随渲染漂移,序号定位必炸(2026-10-26 实弹收敛)
-            candidates: list[Any] = []
-            deadline = time.monotonic() + cfg.TAB_RENDER_TIMEOUT_S
-            while not candidates and time.monotonic() < deadline:
-                tabs = page.locator(sel["creator_tab"])
-                for i in range(await tabs.count()):
-                    t = tabs.nth(i)
-                    try:
-                        if self._settings.image_tab_text not in (await t.inner_text()):
-                            continue
-                        if (await t.get_attribute("aria-hidden")) == "true":
-                            continue
-                        box = await t.bounding_box()
-                    except Exception:
-                        continue  # 节点尚在挂载/等待中被导航打断
-                    if box and box["x"] >= 0 and box["y"] >= 0:
-                        candidates.append(t)
-                if not candidates:
-                    await page.wait_for_timeout(cfg.TAB_POLL_MS)
-            if not candidates:
-                raise XhsStepError("切换上传图文 tab", KIND_SELECTOR, (
-                    f"等待「{self._settings.image_tab_text}」tab 超时"
-                    f"({cfg.TAB_RENDER_TIMEOUT_S}s):页面可能改版或渲染异常"))
-            for t in candidates:
-                try:
-                    await t.click(timeout=cfg.TAB_CLICK_TIMEOUT_MS)
-                    await page.wait_for_timeout(cfg.TAB_SETTLE_MS)
-                    return
-                except Exception:
-                    continue
-            raise XhsStepError("切换上传图文 tab", KIND_CLICK,
-                f"「{self._settings.image_tab_text}」tab 候选均不可点(平台改版?)")
-
-        async def upload_images() -> None:
-            # 批量数组直传(set_input_files 原生支持,「N/18」计数实测);
-            # 轮询计数到齐再进下一步——上传中平台禁用发布钮,未到齐就点
-            # 只会白失败;计数缺失(改版)退回固定等待。<720P 发布期被拒
-            await page.locator(sel["upload_input"]).first.set_input_files(images)
-            counter = page.get_by_text(re.compile(rf"^{len(images)}/\d+$"))
-            deadline = time.monotonic() + cfg.UPLOAD_SETTLE_TIMEOUT_S
-            while time.monotonic() < deadline:
-                if await counter.count():
-                    await page.wait_for_timeout(cfg.UPLOAD_TAIL_SETTLE_MS)  # 字节传完余量
-                    return
-                await page.wait_for_timeout(cfg.UPLOAD_POLL_MS)
-            if not await page.get_by_text(re.compile(r"\d+/\d+")).count():
-                await page.wait_for_timeout(cfg.UPLOAD_SETTLE_MS)
-                return
-            raise XhsStepError("上传图片", KIND_UPLOAD,
-                f"上传计数未到 {len(images)}(超时 {cfg.UPLOAD_SETTLE_TIMEOUT_S}s)")
-
-        async def fill_fields() -> None:
-            # 图片异步上传完成触发编辑区重渲染,先填的标题可能被清空
-            # (2026-10-27 实收:多图笔记有文无题)——回读校验,不稳则重填
-            cases = [
-                ("填写标题", page.locator(sel["title_input"]).first,
-                 title[:20], lambda b: b.input_value()),
-                ("填写正文", page.locator(sel["content_editor"]).first,
-                 content[:1000], lambda b: b.inner_text()),
-            ]
-            for name, box, expected, read in cases:
-                want = re.sub(r"\s", "", expected)
-                deadline = time.monotonic() + cfg.FILL_VERIFY_TIMEOUT_S
-                while True:
-                    await box.fill(expected)
-                    got = re.sub(r"\s", "", await read(box))
-                    if want in got:
-                        break
-                    if time.monotonic() > deadline:
-                        raise XhsStepError(name, KIND_FILL,
-                            "回读校验失败(填入即被清空,页面重渲染?)")
-                    await page.wait_for_timeout(cfg.FILL_RETRY_MS)
-
-        async def click_publish() -> None:
-            # closed shadow root 对 DOM 查询全盲:宿主仅作存在性断言;绝对
-            # 坐标=红钮中心(宿主相对计算曾点到空白,m49-x9 教训)
-            if not await page.locator(cfg.PUBLISH_BAR_HOST).count():
-                raise XhsStepError("点击发布", KIND_SELECTOR,
-                    "发布页底部操作栏缺失(平台改版?)")
-            # 发布前复核标题(迟到的重渲染仍可能清空)
-            t = page.locator(sel["title_input"]).first
-            if (await t.input_value()) != title[:20]:
-                await t.fill(title[:20])
-            await page.mouse.click(cfg.PUBLISH_CLICK_X, cfg.PUBLISH_CLICK_Y)
-
-        async def await_success() -> None:
-            # 成功信号(实测):跳 /publish/success → 回跳带 published=true。
-            # 补击:计数到齐≠字节传完,首击可能落禁用钮——每 PUBLISH_RECLICK_MS
-            # 复点直至成功或超时(成功即跳离发布页,复点不会二次发布)
-            deadline = time.monotonic() + cfg.PUBLISH_CONFIRM_TIMEOUT_S
-            next_click = time.monotonic() + cfg.PUBLISH_RECLICK_MS
-            while time.monotonic() < deadline:
-                u = page.url
-                if "/publish/success" in u or "published=true" in u:
-                    return
-                if time.monotonic() >= next_click:
-                    await page.mouse.click(cfg.PUBLISH_CLICK_X, cfg.PUBLISH_CLICK_Y)
-                    next_click = time.monotonic() + cfg.PUBLISH_RECLICK_MS
-                await page.wait_for_timeout(cfg.PUBLISH_POLL_MS)
-            raise XhsStepError("确认发布结果", KIND_SUCCESS_SIGNAL,
-                "点击发布后未检测到成功跳转(素材校验被拒或上传未完成)")
-
+        ctx = steps.PublishCtx(
+            page=page, settings=self._settings, pin_id=pin_id,
+            title=title, content=content, images=images,
+        )
         try:
-            await self._run_step(page, pin_id, "打开发布页", open_page)
-            await self._run_step(page, pin_id, "切换上传图文 tab", switch_image_tab)
-            await self._run_step(page, pin_id, "上传图片", upload_images)
-            await self._run_step(page, pin_id, "填写标题与正文", fill_fields)
-            await self._run_step(page, pin_id, "点击发布", click_publish)
-            await self._run_step(page, pin_id, "确认发布结果", await_success)
-            # success 页无笔记链接可抓(实测),note_url 留空(设计允许)
-            logger.info(
-                "xhs.publish_done", pin_id=pin_id, ok=True, duration_ms=self._ms(t0)
-            )
+            for name, step in steps.PUBLISH_STEPS:
+                await self._run_step(page, pin_id, name, lambda s=step: s(ctx))
+            logger.info("xhs.publish_done", pin_id=pin_id, ok=True, duration_ms=self._ms(t0))
             return XhsPublishResult(ok=True, note_url=None)
         except (XhsStateError, XhsStepError) as exc:
             logger.warning("xhs.publish_done", pin_id=pin_id, ok=False,
