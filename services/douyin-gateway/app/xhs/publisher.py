@@ -11,6 +11,7 @@ ql-editor/publishBtn),**平台改版即漂移,需实测迭代**。
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -177,19 +178,29 @@ class XhsPublisher:
             # 「element is outside of the viewport」,2026-10-26 实测)
             step = "切换上传图文 tab"
             sel = self._settings.selectors
-            tabs = page.locator(sel["creator_tab"])
+            # tab 渲染可能慢于固定 sleep(实测 3s 不够):轮询 15s 直到出现
+            # 「文本匹配 + 坐标在视口内」节点。隐藏克隆须按 bounding_box 坐标
+            # 排除——off-screen 元素 is_visible 仍为 True,:visible 挡不住
             target = None
-            for i in range(await tabs.count()):
-                t = tabs.nth(i)
-                if self._settings.image_tab_text not in (await t.inner_text()):
-                    continue
-                box = await t.bounding_box()
-                if box and box["x"] >= 0 and box["y"] >= 0:
-                    target = t
-                    break
+            deadline = time.monotonic() + 15
+            while target is None and time.monotonic() < deadline:
+                tabs = page.locator(sel["creator_tab"])
+                for i in range(await tabs.count()):
+                    t = tabs.nth(i)
+                    try:
+                        if self._settings.image_tab_text not in (await t.inner_text()):
+                            continue
+                        box = await t.bounding_box()
+                    except Exception:
+                        continue  # 节点尚在挂载/等待中被导航打断
+                    if box and box["x"] >= 0 and box["y"] >= 0:
+                        target = t
+                        break
+                if target is None:
+                    await page.wait_for_timeout(500)
             if target is None:
                 raise RuntimeError(
-                    f"发布页找不到可见的「{self._settings.image_tab_text}」入口(平台改版?)"
+                    f"等待「{self._settings.image_tab_text}」tab 超时(15s):页面可能改版或渲染异常"
                 )
             await target.click()
             await page.wait_for_timeout(1000)
