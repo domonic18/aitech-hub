@@ -84,6 +84,54 @@ class XhsPublisher:
             timezone_id="Asia/Shanghai",
         )
 
+    async def ingest_cookie_header(self, cookie_header: str) -> dict[str, Any]:
+        """抖音同款「手动贴 Cookie」入口:F12 复制的 cookie 串 → storage_state。
+
+        只解析 name=value(域/路径按 .xiaohongshu.com + / 补全,session 级足够
+        单次发布 context 存活);粘贴后访问创作平台验证登录,成功才落盘覆盖。
+        """
+        import os
+
+        if not self.started:
+            raise XhsStateError("浏览器未启动")
+        pairs: list[dict[str, str]] = []
+        for part in cookie_header.split(";"):
+            if "=" not in part:
+                continue
+            name, _, value = part.strip().partition("=")
+            if name and value:
+                pairs.append(
+                    {
+                        "name": name.strip(),
+                        "value": value.strip(),
+                        "domain": ".xiaohongshu.com",
+                        "path": "/",
+                    }
+                )
+        if not pairs:
+            raise XhsStateError("cookie 串解析为空")
+        context = await self._browser.new_context()
+        await context.add_cookies(pairs)
+        page = await context.new_page()
+        try:
+            await page.goto(
+                self._settings.creator_publish_url,
+                wait_until="domcontentloaded",
+                timeout=60_000,
+            )
+            # 401 重定向为客户端 JS 触发:等落定再判,否则假阳性
+            await page.wait_for_timeout(3000)
+            logged_in = "login" not in page.url
+        finally:
+            await page.close()
+        if not logged_in:
+            await context.close()
+            raise XhsStateError("cookie 登录验证失败(未跳离登录页),请重新复制完整 cookie")
+        await context.storage_state(path=self._settings.storage_state_path)
+        await context.close()
+        logger.info("xhs.cookie_ingested", cookies=len(pairs))
+        return {"ok": True, "logged_in": True, "cookies": len(pairs)}
+
     async def state(self) -> dict[str, Any]:
         """登录态概况(运维探针):state 文件在否 + 探测页登录判定。"""
         ready = self.storage_state_ready()
@@ -114,6 +162,8 @@ class XhsPublisher:
                 wait_until="domcontentloaded",
                 timeout=60_000,
             )
+            # 同 ingest:等客户端 401 重定向落定再判登录态
+            await page.wait_for_timeout(3000)
             if "login" in page.url:
                 raise XhsStateError("登录态失效,请重跑 xhs_login 续期")
             # 上传图片(POC 选择器,平台改版需迭代)

@@ -365,13 +365,33 @@ def create_app(
         title = str(payload.get("title", ""))
         content = str(payload.get("content", ""))
         images = [str(p) for p in payload.get("images", [])]
-        result = await xhs_publisher.publish(title, content, images)
-        return {"ok": result.ok, "note_url": result.note_url}
+        try:
+            result = await xhs_publisher.publish(title, content, images)
+            return {"ok": result.ok, "note_url": result.note_url}
+        except XhsStateError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/xhs/state")
     async def xhs_state() -> dict:
         """登录态探针(运维:storage_state 在否 + 创作平台登录判定)。"""
-        return await xhs_publisher.state()
+        try:
+            return await xhs_publisher.state()
+        except Exception as exc:
+            # 探针必须可答:登录态缺失/浏览器未启动都以 200 结构化返回
+            logger.warning("xhs.state_probe_failed", error=str(exc))
+            return {"storage_state_ready": False, "logged_in": None, "error": str(exc)}
+
+    @app.post("/xhs/cookies")
+    async def xhs_cookies(payload: dict) -> dict:
+        """手动贴 Cookie(抖音同款心智):F12 复制的 cookie 串 → 登录验证 →
+        storage_state 落盘(卷持久化,后续发布免登)。"""
+        header = str(payload.get("cookie_header", "")).strip()
+        if not header:
+            raise HTTPException(status_code=400, detail="cookie_header 缺失")
+        try:
+            return await xhs_publisher.ingest_cookie_header(header)
+        except XhsStateError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # ── 数据端点(逐请求注入平台级 jar 池;platform 分发,默认 douyin)──
 

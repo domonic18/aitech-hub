@@ -49,6 +49,22 @@ export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: str
   return { jobId };
 }
 
+/** 登录态录入(抖音同款手动 Cookie 心智,M49 批X3):F12 复制的 cookie 串
+ * 转发 xhs-gateway 验证登录并落 storage_state(卷持久化,后续发布免登) */
+export async function ingestXhsCookies(pinId: bigint, cookieHeader: string): Promise<void> {
+  const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
+  const res = await fetch(`${base}/xhs/cookies`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cookie_header: cookieHeader }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`登录态录入失败: ${text.slice(0, 200) || res.status}`);
+  }
+}
+
 /** 笔记链接回填(人工发布确认):pending → synced,publishId 落笔记链接 */
 export async function backfillXhsNote(pinId: bigint, noteUrl: string): Promise<void> {
   let host = "";
@@ -125,12 +141,20 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
       signal: AbortSignal.timeout(180_000),
     });
     if (!res.ok) {
+      // gateway 错误体形如 {"detail":"人话"}——解析出人话进 lastError
       const text = await res.text().catch(() => "");
-      throw new Error(`xhs-gateway ${res.status}: ${text.slice(0, 200)}`);
+      let reason = text.slice(0, 200);
+      try {
+        reason = (JSON.parse(text) as { detail?: string }).detail ?? reason;
+      } catch {}
+      throw new Error(reason || `xhs-gateway ${res.status}`);
     }
-    const payload = (await res.json()) as { ok?: boolean; note_url?: string | null };
-    if (payload.ok !== true)
-      throw new Error(payload.note_url === undefined ? "发布失败" : "发布失败");
+    const payload = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      note_url?: string | null;
+    };
+    if (payload.ok !== true) throw new Error(payload.error ?? "发布失败");
     await prisma.contentPinChannel.update({
       where: { id: row.id },
       data: {

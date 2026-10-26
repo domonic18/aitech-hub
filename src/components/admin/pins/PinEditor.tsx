@@ -153,6 +153,21 @@ export default function PinEditor({
   }
 
   /** 全自动发布(M49 批X3):创建渠道行 + 入队发布 job(worker 调 xhs-gateway) */
+  async function ingestXhsCookies(cookieHeader: string) {
+    const body = await callPinApi(`/api/pins/${initial.id}/xhs/cookies`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ cookieHeader }),
+    });
+    setError(null);
+    setNotice(null);
+    if (body.code !== 0) {
+      setError(body.message);
+      return;
+    }
+    setNotice("小红书登录态已保存,可直接一键发布");
+  }
+
   async function autoPublishXhs() {
     const body = await callPinApi(`/api/pins/${initial.id}/xhs/distribute`, {
       method: "POST",
@@ -298,6 +313,7 @@ export default function PinEditor({
           onDistributeXhs={() => void distributeXhs()}
           onBackfillXhs={(url) => void backfillXhs(url)}
           onAutoPublishXhs={() => void autoPublishXhs()}
+          onIngestXhsCookies={(h) => void ingestXhsCookies(h)}
         />
       </div>
 
