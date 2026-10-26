@@ -37,11 +37,7 @@ class XhsPublisher:
         self._settings = settings
         self._pw: Any = None
         self._browser: Any = None
-        # 失败现场根 = 登录态卷同级 debug/(宿主 workspace/xhs-state/debug)
-        self._debug_root = os.path.join(
-            os.path.dirname(settings.storage_state_path), "debug"
-        )
-        self._video_dir = os.path.join(self._debug_root, "_videos")
+        self._debug_root = os.path.join(os.path.dirname(settings.storage_state_path), "debug")
 
     async def start(self) -> None:
         # 容错降级(对齐 signer BrowserUnavailable 语义):测试环境无 chromium
@@ -64,8 +60,7 @@ class XhsPublisher:
                     await closer.close()
                 except Exception as exc:
                     logger.warning("xhs.browser_close_failed", error=str(exc))
-        self._browser = None
-        self._pw = None
+        self._browser = self._pw = None
 
     @property
     def started(self) -> bool:
@@ -114,11 +109,8 @@ class XhsPublisher:
             raise
         except XhsStepError as exc:
             if exc.artifact_dir is None:
-                exc.attach_artifact(
-                    await save_failure_artifacts(
-                        page, name, self._debug_root, cfg.DEBUG_KEEP
-                    )
-                )
+                exc.attach_artifact(await save_failure_artifacts(
+                    page, name, self._debug_root, cfg.DEBUG_KEEP))
             log_fail(exc.kind, str(exc))
             raise
         except Exception as exc:
@@ -184,18 +176,13 @@ class XhsPublisher:
                 logged_in = self._settings.login_marker not in page.url
                 if logged_in:
                     # 地标由客户端渲染后挂出:轮询等出现(与 tab 渲染竞态同源)
+                    tabs = page.locator(self._settings.selectors["creator_tab"])
                     deadline = time.monotonic() + cfg.LANDMARK_WAIT_S
                     while time.monotonic() < deadline:
-                        if await page.locator(
-                            self._settings.selectors["creator_tab"]
-                        ).count():
+                        if await tabs.count():
                             break
                         await page.wait_for_timeout(cfg.TAB_POLL_MS)
-                    landmarks = {
-                        "creator_tab": await page.locator(
-                            self._settings.selectors["creator_tab"]
-                        ).count(),
-                    }
+                    landmarks = {"creator_tab": await tabs.count()}
             except Exception:
                 logged_in = None
             finally:
@@ -287,11 +274,27 @@ class XhsPublisher:
             raise XhsStepError("上传图片", KIND_UPLOAD,
                 f"上传计数未到 {len(images)}(超时 {cfg.UPLOAD_SETTLE_TIMEOUT_S}s)")
 
-        async def fill_title() -> None:
-            await page.locator(sel["title_input"]).first.fill(title[:20])  # 平台上限 20 字
-
-        async def fill_content() -> None:
-            await page.locator(sel["content_editor"]).first.fill(content[:1000])
+        async def fill_fields() -> None:
+            # 图片异步上传完成触发编辑区重渲染,先填的标题可能被清空
+            # (2026-10-27 实收:多图笔记有文无题)——回读校验,不稳则重填
+            cases = [
+                ("填写标题", page.locator(sel["title_input"]).first,
+                 title[:20], lambda b: b.input_value()),
+                ("填写正文", page.locator(sel["content_editor"]).first,
+                 content[:1000], lambda b: b.inner_text()),
+            ]
+            for name, box, expected, read in cases:
+                want = re.sub(r"\s", "", expected)
+                deadline = time.monotonic() + cfg.FILL_VERIFY_TIMEOUT_S
+                while True:
+                    await box.fill(expected)
+                    got = re.sub(r"\s", "", await read(box))
+                    if want in got:
+                        break
+                    if time.monotonic() > deadline:
+                        raise XhsStepError(name, KIND_FILL,
+                            "回读校验失败(填入即被清空,页面重渲染?)")
+                    await page.wait_for_timeout(cfg.FILL_RETRY_MS)
 
         async def click_publish() -> None:
             # closed shadow root 对 DOM 查询全盲:宿主仅作存在性断言;绝对
@@ -299,13 +302,16 @@ class XhsPublisher:
             if not await page.locator(cfg.PUBLISH_BAR_HOST).count():
                 raise XhsStepError("点击发布", KIND_SELECTOR,
                     "发布页底部操作栏缺失(平台改版?)")
+            # 发布前复核标题(迟到的重渲染仍可能清空)
+            t = page.locator(sel["title_input"]).first
+            if (await t.input_value()) != title[:20]:
+                await t.fill(title[:20])
             await page.mouse.click(cfg.PUBLISH_CLICK_X, cfg.PUBLISH_CLICK_Y)
 
         async def await_success() -> None:
             # 成功信号(实测):跳 /publish/success → 回跳带 published=true。
-            # 补击:计数到齐≠字节传完,首击可能落禁用钮无效果——每
-            # PUBLISH_RECLICK_MS 复点一次直至成功或超时(成功即跳离发布页,
-            # 复点不会二次发布;2026-10-27 多图实弹教训)
+            # 补击:计数到齐≠字节传完,首击可能落禁用钮——每 PUBLISH_RECLICK_MS
+            # 复点直至成功或超时(成功即跳离发布页,复点不会二次发布)
             deadline = time.monotonic() + cfg.PUBLISH_CONFIRM_TIMEOUT_S
             next_click = time.monotonic() + cfg.PUBLISH_RECLICK_MS
             while time.monotonic() < deadline:
@@ -323,8 +329,7 @@ class XhsPublisher:
             await self._run_step(page, pin_id, "打开发布页", open_page)
             await self._run_step(page, pin_id, "切换上传图文 tab", switch_image_tab)
             await self._run_step(page, pin_id, "上传图片", upload_images)
-            await self._run_step(page, pin_id, "填写标题", fill_title)
-            await self._run_step(page, pin_id, "填写正文", fill_content)
+            await self._run_step(page, pin_id, "填写标题与正文", fill_fields)
             await self._run_step(page, pin_id, "点击发布", click_publish)
             await self._run_step(page, pin_id, "确认发布结果", await_success)
             # success 页无笔记链接可抓(实测),note_url 留空(设计允许)
@@ -333,12 +338,10 @@ class XhsPublisher:
             )
             return XhsPublishResult(ok=True, note_url=None)
         except (XhsStateError, XhsStepError) as exc:
-            logger.warning(
-                "xhs.publish_done", pin_id=pin_id, ok=False,
+            logger.warning("xhs.publish_done", pin_id=pin_id, ok=False,
                 kind=KIND_LOGIN if isinstance(exc, XhsStateError) else exc.kind,
                 duration_ms=self._ms(t0), error=str(exc)[:200],
-                artifact=getattr(exc, "artifact_dir", None),
-            )
+                artifact=getattr(exc, "artifact_dir", None))
             raise
         finally:
             video = page.video
