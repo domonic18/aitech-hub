@@ -15,7 +15,9 @@ class XhsSettings(BaseSettings):
         "creator_tab": ".creator-tab",
         "upload_input": ".upload-input",
         "title_input": ".d-text",
-        "content_editor": ".ql-editor",
+        # 正文富文本已由 Quill 换成 TipTap/ProseMirror(2026-10-26 实测:
+        # .ql-editor 零命中,页面唯一 contenteditable 即 .tiptap.ProseMirror)
+        "content_editor": ".tiptap.ProseMirror",
         "publish_btn": ".publishBtn",
     }
     # 图文 tab 文本(tab 一律按「可见文本+视口内」定位,禁用序号——平台 DOM

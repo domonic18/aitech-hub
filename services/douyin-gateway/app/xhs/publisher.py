@@ -224,7 +224,7 @@ class XhsPublisher:
             step = "填写标题"
             trimmed = title[:20]
             await page.locator(sel["title_input"]).first.fill(trimmed)
-            # 正文(ql-editor 富文本,平台上限 1000 字)
+            # 正文(TipTap/ProseMirror 富文本,平台上限 1000 字)
             step = "填写正文"
             await page.locator(sel["content_editor"]).first.fill(content[:1000])
             # 发布
