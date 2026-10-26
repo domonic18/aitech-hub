@@ -168,7 +168,7 @@ scripts/xhs_login.py 有头登录脚本已删除(用户裁定:配置界面为唯
 2. goto creator.xiaohongshu.com/publish/publish
 3. 等待页面稳定(3s)→ 检查 URL 不含 login
 4. 确认当前 tab 为「上传图文」(非视频)
-5. set_input_files 上传图片(首张=封面)
+5. set_input_files 批量上传全部图片(数组直传,「N/18」计数实测;轮询到齐再进下一步)
 6. 等待上传完成(缩略图出现)
 7. 填写标题(.d-text,超 20 字自动截断——用户裁定)
 8. 填写正文(.ql-editor,超 1000 字自动截断——用户裁定)
@@ -183,7 +183,7 @@ scripts/xhs_login.py 有头登录脚本已删除(用户裁定:配置界面为唯
 | 步骤 | 脆弱原因 | 缓解 |
 |---|---|---|
 | 4. tab 切换 | .creator-tab 类名可能改版 | 加 try/catch,输出当前可见 tab 列表辅助调试 |
-| 5. 上传 | .upload-input 可能不含 multiple 属性 | 先传首张,多图需逐张(平台「继续添加」)|
+| 5. 上传 | 计数未到齐就点发布会被平台禁用发布钮 | 批量数组直传 + 「N/18」计数轮询到齐(2026-10-27 实测)|
 | 7. 标题输入 | .d-text 类名可能改版 | 改用 placeholder 定位兜底 |
 | 8. 正文输入 | .ql-editor 类名可能改版 | 改用 contenteditable 定位兜底 |
 | 9. 发布按钮 | .publishBtn 类名可能改版 | 改用 text=发布 定位兜底 |

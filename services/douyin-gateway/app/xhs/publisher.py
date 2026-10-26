@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any, Awaitable, Callable
 
@@ -285,9 +286,24 @@ class XhsPublisher:
                 f"「{self._settings.image_tab_text}」tab 候选均不可点(平台改版?)")
 
         async def upload_images() -> None:
-            # 仅传首张(封面);平台拒收 <720P 图片但报错只在发布期出现
-            await page.locator(sel["upload_input"]).first.set_input_files(images[0])
-            await page.wait_for_timeout(cfg.UPLOAD_SETTLE_MS)
+            # 批量一次传入全部图片(set_input_files 数组直传,「N/18」计数
+            # 实测即时到位);轮询计数到齐再进下一步——图片上传中平台会禁用
+            # 发布钮,未到齐就点只会白失败。计数元素缺失(平台改版)则退回
+            # 固定等待。平台拒收 <720P 图片但报错只在发布期出现
+            await page.locator(sel["upload_input"]).first.set_input_files(images)
+            counter = page.get_by_text(re.compile(rf"^{len(images)}/\d+$"))
+            deadline = time.monotonic() + cfg.UPLOAD_SETTLE_TIMEOUT_S
+            while time.monotonic() < deadline:
+                if await counter.count():
+                    return
+                await page.wait_for_timeout(cfg.UPLOAD_POLL_MS)
+            if not await page.get_by_text(re.compile(r"\d+/\d+")).count():
+                await page.wait_for_timeout(cfg.UPLOAD_SETTLE_MS)
+                return
+            raise XhsStepError(
+                "上传图片", KIND_UPLOAD,
+                f"上传计数未到 {len(images)}(超时 {cfg.UPLOAD_SETTLE_TIMEOUT_S}s)",
+            )
 
         async def fill_title() -> None:
             await page.locator(sel["title_input"]).first.fill(title[:20])  # 平台上限 20 字
