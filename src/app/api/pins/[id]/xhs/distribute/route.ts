@@ -9,6 +9,7 @@ import { apiEnvelope } from "@/lib/http/response";
 import { parseBigIntId } from "@/lib/http/parse-id";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
 import { distributePinToXhs } from "@/lib/pins/xhs";
+import { enqueueXhsAutoPublish } from "@/lib/pins/xhs";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,14 @@ export async function POST(
   if (pinId === null) {
     return apiEnvelope(400, "贴图 id 不合法");
   }
+  const auto = (await req.json().catch(() => null)) as { auto?: boolean } | null;
   try {
     const row = await distributePinToXhs(pinId);
+    if (auto?.auto === true) {
+      // M49 批X3:全自动——入队发布 job(worker 调 xhs-gateway)
+      await enqueueXhsAutoPublish(pinId);
+      return apiEnvelope(0, "ok", { status: "pending", channel: row.channel, auto: true });
+    }
     return apiEnvelope(0, "ok", { status: row.status, channel: row.channel });
   } catch (e) {
     if (e instanceof DistributeError) {

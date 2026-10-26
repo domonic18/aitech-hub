@@ -26,6 +26,7 @@ export default function MetaPanel({
   onSync,
   onDistributeXhs,
   onBackfillXhs,
+  onAutoPublishXhs,
 }: {
   detail: PinDetailDto;
   topics: TopicOption[];
@@ -36,6 +37,7 @@ export default function MetaPanel({
   onSync: () => void;
   onDistributeXhs: () => void;
   onBackfillXhs: (noteUrl: string) => void;
+  onAutoPublishXhs: () => void;
 }): React.ReactElement {
   const [title, setTitle] = useState(detail.title);
   const [content, setContent] = useState(detail.content);
@@ -233,13 +235,14 @@ export default function MetaPanel({
             <button
               type="button"
               disabled={busy}
-              onClick={onDistributeXhs}
-              className="mt-2 w-full cursor-pointer rounded-sm border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onAutoPublishXhs}
+              className="mt-2 w-full cursor-pointer rounded-sm bg-accent px-3 py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              标记分发到小红书
+              一键发布到小红书(自动)
             </button>
             <p className="mt-1 text-[10.5px] text-text-3">
-              小红书无公开发布 API:复制标题与轻文字,到创作平台人工上传图片发布,完成后回填笔记链接
+              自动:agent 经浏览器自动化在创作平台发布(标题+轻文字+全部图片),约 1-3 分钟;
+              失败自动降级为人工回填模式
             </p>
             <button
               type="button"

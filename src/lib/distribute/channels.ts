@@ -5,6 +5,8 @@
  */
 
 export const CHANNEL_WECHAT = "wechat";
+/** 贴图载体渠道:小红书(M49 定稿,属 contentPinChannel;与文章侧 PUBLISH_CHANNELS 分离) */
+export const CHANNEL_XHS = "xiaohongshu";
 /** 渠道合法值(应用层 Zod 管控,arch/03 枚举演进条款)。M49 定稿:文章载体只分发公众号——
  * 小红书属贴图载体(contentPinChannel),不入本枚举 */
 export const PUBLISH_CHANNELS = [CHANNEL_WECHAT] as const;

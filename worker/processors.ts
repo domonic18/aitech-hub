@@ -13,6 +13,8 @@ import {
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
   DISTRIBUTE_JOB_PIN_WECHAT,
+  DISTRIBUTE_JOB_XHS_AUTO,
+  QUEUE_DISTRIBUTE_XHS,
   DISTRIBUTE_JOB_WECHAT_BATCH,
   DISTRIBUTE_JOB_WECHAT_COPY,
   GITHUB_JOB_TICK,
@@ -73,6 +75,7 @@ import {
   type IllustrationGenerateJobData,
 } from "../src/lib/ai/illustration-generate";
 import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
+import { autoPublishPinToXhs } from "../src/lib/pins/xhs";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
   type WechatBatchJobData,
@@ -284,6 +287,18 @@ export const PROCESSORS: Record<string, Processor> = {
       }),
     );
     return r;
+  },
+  // 小红书自动发布(M49 批X3):贴图物料 → xhs-gateway(Playwright 创作平台自动
+  // 发布)→ 渠道行 synced+noteUrl / failed(attempts=1,失败降级人工回填)
+  [QUEUE_DISTRIBUTE_XHS]: async (job) => {
+    const pinId = BigInt((job.data as { pinId: string }).pinId);
+    await autoPublishPinToXhs(pinId);
+    console.log(
+      JSON.stringify({
+        event: "pins.xhs.auto_published",
+        pinId: (job.data as { pinId: string }).pinId,
+      }),
+    );
   },
   // 支付对账(M21 批④,§5.2):sweep 5min 收敛近过期 pending(先查单:已付
   // 补发/确认未付过 TTL 才关单);daily-audit 每日 04:13 paid 单流水锚比对。

@@ -20,7 +20,6 @@ RUN pip install --no-cache-dir uv \
 
 COPY services/douyin-gateway/app/ ./app/
 
-COPY services/douyin-gateway/app/ ./app/
-
 # 单 worker:进程内有状态运行时(jar 冷却/签名槽位),禁多 worker 横向分叉
+# 登录态与贴图图片由 compose 卷挂载(xhs-state rw / media ro),不在镜像内
 CMD ["uvicorn", "app.gateway:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "1"]

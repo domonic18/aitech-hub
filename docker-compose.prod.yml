@@ -137,8 +137,13 @@ services:
     environment:
       TZ: Asia/Shanghai
       DOUYIN_SIGNER_WARM_SLOTS: 1
+      XHS_STORAGE_STATE_PATH: /app/xhs-state/storage_state.json
     tmpfs:
       - /tmp/playwright-profiles # chromium Profile 写 tmpfs,避免容器层写放大
+    # M49 批X3:小红书自动发布——登录态(storage_state)与贴图图片(发布上传)
+    volumes:
+      - ./workspace/xhs-state:/app/xhs-state
+      - ./workspace/media:/app/media:ro
     healthcheck:
       test:
         [

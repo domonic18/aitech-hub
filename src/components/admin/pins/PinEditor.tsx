@@ -152,6 +152,24 @@ export default function PinEditor({
     if (fresh.code === 0 && fresh.data) setDetail(fresh.data);
   }
 
+  /** 全自动发布(M49 批X3):创建渠道行 + 入队发布 job(worker 调 xhs-gateway) */
+  async function autoPublishXhs() {
+    const body = await callPinApi(`/api/pins/${initial.id}/xhs/distribute`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ auto: true }),
+    });
+    setError(null);
+    setNotice(null);
+    if (body.code !== 0) {
+      setError(body.message);
+      return;
+    }
+    setNotice("已入队小红书自动发布(浏览器自动化,约 1-3 分钟),完成后渠道状态自动刷新…");
+    const fresh = await callPinApi<PinDetailDto>(`/api/pins/${initial.id}`);
+    if (fresh.code === 0 && fresh.data) setDetail(fresh.data);
+  }
+
   async function backfillXhs(noteUrl: string) {
     const body = await callPinApi(`/api/pins/${initial.id}/xhs/publish`, {
       method: "POST",
@@ -279,6 +297,7 @@ export default function PinEditor({
           onSync={() => void syncWechat()}
           onDistributeXhs={() => void distributeXhs()}
           onBackfillXhs={(url) => void backfillXhs(url)}
+          onAutoPublishXhs={() => void autoPublishXhs()}
         />
       </div>
 
