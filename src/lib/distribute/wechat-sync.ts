@@ -15,7 +15,11 @@ import {
   DISTRIBUTE_JOB_WECHAT_BATCH,
   DISTRIBUTE_JOB_WECHAT_COPY,
 } from "../queue";
-import { getWechatRuntimeConfig, type WechatRuntimeConfig } from "./wechat-config-admin";
+import {
+  getWechatRuntimeConfig,
+  wechatConfigReady,
+  type WechatRuntimeConfig,
+} from "./wechat-config-admin";
 import { ensureChannelRowUnique } from "./channel-row";
 import { DistributeError } from "./errors";
 import { getWechatTheme } from "./wechat-themes";
@@ -66,14 +70,13 @@ export interface WechatBatchEnqueue {
 /** 渠道就绪配置(解密后凭证;未启用/缺凭证 → disabled 指引配置页) */
 export async function requireReadyConfig(): Promise<WechatRuntimeConfig & { appSecret: string }> {
   const cfg = await getWechatRuntimeConfig();
-  const secret = cfg?.appSecret;
-  if (!cfg || !cfg.enabled || !cfg.appid || !secret) {
+  if (!wechatConfigReady(cfg)) {
     throw new DistributeError(
       "disabled",
       "公众号渠道未就绪:先到「内容分发」完成凭证配置、启用渠道并通过测试连接",
     );
   }
-  return { ...cfg, appSecret: secret };
+  return cfg;
 }
 
 /** 渠道行取用(缺则建 pending 默认行;唯一约束兜底并发建行) */
@@ -243,7 +246,7 @@ export async function enqueueWechatBatch(ids: string[]): Promise<WechatBatchEnqu
 export async function maybeEnqueueAutoWechat(postId: bigint): Promise<void> {
   try {
     const cfg = await getWechatRuntimeConfig();
-    if (!cfg?.enabled || !cfg.autoSyncEnabled || !cfg.appid || !cfg.appSecret) return;
+    if (!wechatConfigReady(cfg) || !cfg.autoSyncEnabled) return;
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: { coverPath: true, contentMd: true },

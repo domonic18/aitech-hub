@@ -46,6 +46,8 @@ export function distributeQueueFor(channel: string): string {
 /** 小红书自动发布(M49 批X3):贴图渠道行的发布 job(worker 调 xhs-gateway) */
 export const DISTRIBUTE_JOB_XHS_AUTO = "xhs-auto-publish";
 export const QUEUE_DISTRIBUTE_XHS = distributeQueueFor(CHANNEL_XHS);
+/** 小红书登录态每日探照(M50 批F;挂 distribute 队列,04 段错峰) */
+export const DISTRIBUTE_JOB_XHS_STATE_PROBE = "xhs-state-probe";
 
 /** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
  * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */

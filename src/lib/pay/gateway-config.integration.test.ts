@@ -15,7 +15,8 @@ process.env.LOG_LEVEL = "silent";
 import { prisma } from "@/lib/db";
 
 const { GET: configGET, PUT: configPUT } = await import("@/app/api/pay-config/route");
-const { getPayGatewayRuntimeConfig, maskSecret } = await import("@/lib/pay/gateway-config");
+const { getPayGatewayRuntimeConfig } = await import("@/lib/pay/gateway-config");
+const { maskSecret } = await import("@/lib/crypto/secret-box");
 
 const PHONE = "13900000004";
 const PASSWORD = "it-admin-pass1";

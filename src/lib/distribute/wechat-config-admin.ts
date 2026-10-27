@@ -154,12 +154,20 @@ export async function recordWechatTest(r: {
   logger.info({ event: "wechat_config.probe", ok: r.ok, latencyMs: r.latencyMs });
 }
 
+/** 渠道就绪纯谓词(M50 批A 单源化:原三处同判不同形——isWechatReady/
+ * requireReadyConfig/maybeEnqueueAutoWechat 各写一份 enabled+凭证判定——收编;
+ * 类型守卫形状,通过即 appSecret 收窄非空) */
+export function wechatConfigReady(
+  cfg: WechatRuntimeConfig | null | undefined,
+): cfg is WechatRuntimeConfig & { appSecret: string } {
+  return cfg?.enabled === true && cfg.appid !== "" && cfg.appSecret !== null;
+}
+
 /** 渠道就绪判定(同步入口前置):enabled 且凭证齐;解密失败按未就绪
  * (入口禁用 + 配置页指引重录),不向上抛 */
 export async function isWechatReady(): Promise<boolean> {
   try {
-    const cfg = await getWechatRuntimeConfig();
-    return cfg?.enabled === true && cfg.appid !== "" && cfg.appSecret !== null;
+    return wechatConfigReady(await getWechatRuntimeConfig());
   } catch {
     return false;
   }

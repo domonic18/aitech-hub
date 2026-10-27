@@ -8,6 +8,7 @@
 import { createTransport, type Transporter } from "nodemailer";
 
 import { getSmtpConfigRow } from "@/lib/email/smtp-config";
+import { readSecretCompat } from "@/lib/crypto/secret-box";
 
 export interface MailInput {
   to: string;
@@ -33,7 +34,7 @@ async function getTransport(): Promise<{ transport: Transporter; fromAddr: strin
         host: row.host,
         port: row.port,
         secure: row.port === 465,
-        auth: { user: row.username, pass: row.password },
+        auth: { user: row.username, pass: readSecretCompat(row.password) ?? "" },
       }),
     };
   }

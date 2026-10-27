@@ -48,6 +48,8 @@ import {
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
   getQueue,
+  QUEUE_DISTRIBUTE,
+  DISTRIBUTE_JOB_XHS_STATE_PROBE,
 } from "../src/lib/queue";
 import { SITE_TZ } from "../src/lib/datetime";
 
@@ -153,6 +155,21 @@ export async function scheduleJobRunPurge(): Promise<void> {
     { pattern: JOB_RUN_PURGE_CRON, tz: SITE_TZ },
     {
       name: STATS_JOB_RUN_PURGE,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 小红书登录态每日探照:04:37 错峰(M50 批F;结果落 site_config kv,
+ * 分发中心渠道卡直读;探照异常只 warn 不进队列失败计数) */
+export async function scheduleXhsStateProbe(): Promise<void> {
+  const queue = getQueue(QUEUE_DISTRIBUTE);
+  await queue.upsertJobScheduler(
+    "xhs-state-probe",
+    { pattern: "37 4 * * *", tz: SITE_TZ },
+    {
+      name: DISTRIBUTE_JOB_XHS_STATE_PROBE,
       data: {},
       opts: schedulerOpts(7),
     },

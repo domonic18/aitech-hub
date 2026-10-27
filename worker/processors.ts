@@ -7,6 +7,7 @@ import type { Processor } from "bullmq";
 
 import {
   COVER_JOB_TEMP_SWEEP,
+  DISTRIBUTE_JOB_XHS_STATE_PROBE,
   CRAWL_JOB_AI_BACKFILL,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
@@ -47,6 +48,9 @@ import {
   STATS_JOB_USAGE_PURGE,
 } from "../src/lib/queue";
 import { purgeJobRuns } from "../src/lib/jobs/runlog";
+import { markPinChannelFailed } from "../src/lib/distribute/pin-channel-state";
+import { runXhsStateProbe } from "../src/lib/distribute/xhs-probe";
+import { CHANNEL_XHS } from "../src/lib/distribute/channels";
 import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
 import { runBiliDiscovery } from "../src/lib/discovery/discover";
 import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
@@ -74,7 +78,6 @@ import {
   type IllustrationGenerateJobData,
 } from "../src/lib/ai/illustration-generate";
 import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
-import { prisma } from "../src/lib/db";
 import { autoPublishPinToXhs } from "../src/lib/pins/xhs";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
@@ -252,6 +255,11 @@ export const PROCESSORS: Record<string, Processor> = {
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量;
   // wechat-copy 复制公众号格式(M31 批④备用通道,无码点门不落库)
   [QUEUE_DISTRIBUTE]: async (job) => {
+    if (job.name === DISTRIBUTE_JOB_XHS_STATE_PROBE) {
+      // 小红书登录态每日探照(M50 批F):结果落 kv,异常不进失败计数
+      const r = await runXhsStateProbe();
+      return r;
+    }
     if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
       const progress = await wechatBatchJob(job.data as WechatBatchJobData, (p) =>
         job.updateProgress(p),
@@ -297,17 +305,12 @@ export const PROCESSORS: Record<string, Processor> = {
     try {
       await autoPublishPinToXhs(pinId);
     } catch (e) {
-      // 失败落渠道行(人话进 lastError,降级人工回填);再上抛给 BullMQ 记 failed
-      await prisma.contentPinChannel
-        .updateMany({
-          where: { pinId, channel: "xiaohongshu" },
-          data: {
-            status: "failed",
-            lastError: (e instanceof Error ? e.message : String(e)).slice(0, 500),
-            attempts: { increment: 1 },
-          },
-        })
-        .catch(() => undefined);
+      // 失败落渠道行(人话进 lastError);再上抛给 BullMQ 记 failed
+      await markPinChannelFailed(
+        pinId,
+        CHANNEL_XHS,
+        e instanceof Error ? e.message : String(e),
+      ).catch(() => undefined);
       throw e;
     }
     console.log(

@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * 最近同步记录卡(M17 批①建;批⑤筛选/分页插槽;F16 板对齐 6 列:
- * 渠道/文章/状态/推送标题/同步时间/操作——失败行错误并入推送标题列,
- * pending 行推送标题与操作显 —,行操作「重试 · 重置」)。
+ * 最近同步记录卡(M17 批①建;批⑤筛选/分页插槽;F16 板对齐;M50 批B 跨载体:
+ * 渠道/内容(文章+贴图,载体小注)/状态/推送结果/同步时间/操作——失败行错误
+ * 并入推送结果列,pending 行推送结果与操作显 —,行操作「重试 · 重置」仅文章行
+ * (贴图行重试在组装台)。小红书行推送结果=笔记外链。
  * 状态 soft chip(同 PostStatusBadge 三色语言:synced 绿 / pending 琥珀 /
  * failed 红)。「重试」POST sync + 轮询后刷新(pending 禁点);「重置」
  * 清 media_id(公众号侧草稿被人工删后重推走新建)。筛选条/分页由 RSC 页面
@@ -19,6 +20,12 @@ import { pollJobUntil } from "@/lib/http/poll-client";
 import { DISTRIBUTE_CHANNELS } from "@/lib/distribute/channels";
 import type { ApiEnvelope } from "@/lib/http/response";
 import type { PublishRecordRow } from "@/lib/distribute/records";
+
+/** 载体展示词 */
+const CARRIER_LABELS: Record<PublishRecordRow["carrier"], string> = {
+  article: "文章",
+  pin: "贴图",
+};
 
 const STATUS_STYLES: Record<string, { chip: string; dot: string; label: string }> = {
   ready: { chip: "bg-accent/12 text-accent", dot: "bg-accent", label: "待发布" },
@@ -73,7 +80,7 @@ function makeResync(
       const res = await fetch("/api/distribute/wechat/sync", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ postId: row.postId }),
+        body: JSON.stringify({ postId: row.targetId }),
       });
       const json = (await res.json().catch(() => null)) as ApiEnvelope<{
         jobId?: string;
@@ -161,7 +168,7 @@ export default function SyncRecordsTable({
       </div>
       {rows.length === 0 ? (
         <div className="px-4 py-10 text-center text-xs text-text-3">
-          暂无同步记录——在文章列表或编辑页点「同步公众号」后,这里记录每次推送状态
+          暂无同步记录——文章点「同步公众号」、组装台推公众号/小红书后,这里记录每次推送状态
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -169,9 +176,9 @@ export default function SyncRecordsTable({
             <thead>
               <tr className="border-b border-line bg-panel-2 text-[11px] text-text-3">
                 <th className="px-4 py-2 font-medium">渠道</th>
-                <th className="px-3 py-2 font-medium">文章</th>
+                <th className="px-3 py-2 font-medium">内容</th>
                 <th className="px-3 py-2 font-medium">状态</th>
-                <th className="px-3 py-2 font-medium">推送标题</th>
+                <th className="px-3 py-2 font-medium">推送结果</th>
                 <th className="px-3 py-2 font-medium">同步时间</th>
                 <th className="px-4 py-2 text-right font-medium">操作</th>
               </tr>
@@ -180,7 +187,8 @@ export default function SyncRecordsTable({
               {rows.map((r) => {
                 const busy = busyIds.has(r.id) || r.status === "pending";
                 const shownStatus = busyIds.has(r.id) ? "pending" : r.status;
-                // F16 板:pending 行推送标题「—」;失败行此列显错误(红字)
+                // F16 板:pending 行推送结果「—」;失败行此列显错误(红字);
+                // 小红书行 synced 显笔记外链
                 const titleCell =
                   shownStatus === "pending" ? (
                     "—"
@@ -191,6 +199,16 @@ export default function SyncRecordsTable({
                     >
                       {rowErrors[r.id] ?? r.lastError ?? "—"}
                     </span>
+                  ) : r.publishId ? (
+                    <a
+                      href={r.publishId}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block truncate text-accent hover:underline"
+                      title={r.publishId}
+                    >
+                      查看笔记 ↗
+                    </a>
                   ) : (
                     <span className="block truncate" title={r.title ?? ""}>
                       {r.title ?? "—"}
@@ -204,14 +222,21 @@ export default function SyncRecordsTable({
                     <td className="whitespace-nowrap px-4 py-2 text-text-2">
                       {DISTRIBUTE_CHANNELS[r.channel as keyof typeof DISTRIBUTE_CHANNELS]?.label ??
                         r.channel}
+                      <span className="ml-1 text-[11px] text-text-3">
+                        · {CARRIER_LABELS[r.carrier]}
+                      </span>
                     </td>
                     <td className="max-w-[220px] px-3 py-2">
                       <Link
-                        href={`/admin/posts/${r.postId}`}
+                        href={
+                          r.carrier === "pin"
+                            ? `/admin/studio/${r.targetId}`
+                            : `/admin/posts/${r.targetId}`
+                        }
                         className="block truncate text-accent hover:underline"
-                        title={r.postTitle}
+                        title={r.targetTitle}
                       >
-                        {r.postTitle}
+                        {r.targetTitle}
                       </Link>
                     </td>
                     <td className="px-3 py-2">
@@ -222,7 +247,9 @@ export default function SyncRecordsTable({
                       {fmtTime(r.syncedAt ?? r.updatedAt)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">
-                      {busy || r.channel !== "wechat" ? (
+                      {/* 行操作仅文章行(贴图行的公众号重试在组装台,小红书为
+                          纯自动无行操作——M49 批X3 拆人工流程) */}
+                      {busy || r.carrier !== "article" ? (
                         <span className="text-[11px] text-text-3">—</span>
                       ) : (
                         <>

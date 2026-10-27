@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * 小红书渠道卡(M49 批X1',F16 渠道行同构):head(名称 + 登录态 chip)+
- * 分发模式 meta + 「配置」钮 → 登录态弹层(Cookie 粘贴,WechatConfigCard
- * 「配置→弹窗」同款交互)。
- * 半自动模式:发布动作人工(无官方发布 API,plan M49 调研)。
+ * 小红书渠道卡(M49 批X1',F16 渠道行同构;M50 批F 接每日探照):head(名称 +
+ * 登录态 chip)+ 分发模式 meta(全自动,批X3)+ 探照行(RSC 直读 kv)+
+ * 「配置」钮 → 登录态弹层(Cookie 粘贴,弹窗内实时探针优先于每日快照)。
  */
 import { useCallback, useState } from "react";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 import type { ApiEnvelope } from "@/lib/http/response";
+import type { XhsProbeRecord } from "@/lib/distribute/xhs-probe";
+import { formatCnDateTime } from "@/lib/datetime";
 
 const FIELD =
   "w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-[13px] text-text-1 outline-none focus:border-accent disabled:opacity-60";
@@ -23,7 +24,12 @@ interface XhsStateView {
 const ACTION_BTN =
   "cursor-pointer rounded-sm px-1 py-0.5 text-[11px] text-accent hover:bg-accent-dim";
 
-export default function XhsChannelCard(): React.ReactElement {
+export default function XhsChannelCard({
+  lastProbe,
+}: {
+  /** 每日探照快照(RSC 直读;null=尚未探测过) */
+  lastProbe?: XhsProbeRecord | null;
+}): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<XhsStateView | null>(null);
   const [cookie, setCookie] = useState("");
@@ -71,7 +77,10 @@ export default function XhsChannelCard(): React.ReactElement {
     }
   }, [cookie, refreshState]);
 
-  const loggedIn = state?.logged_in === true;
+  // 弹窗实时探针优先;未开弹窗时回退每日快照(批F 前 card 面恒「未配置」)
+  const loggedIn = state?.logged_in === true || (state === null && lastProbe?.loggedIn === true);
+  const knownFailed =
+    state?.logged_in === false || (state === null && lastProbe?.loggedIn === false);
 
   return (
     <div className="flex flex-col rounded-md border border-line bg-panel px-4 py-4">
@@ -84,18 +93,34 @@ export default function XhsChannelCard(): React.ReactElement {
         </div>
         <span
           className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${
-            loggedIn ? "bg-green/12 text-green" : "bg-panel-2 text-text-3"
+            loggedIn
+              ? "bg-green/12 text-green"
+              : knownFailed
+                ? "bg-red/12 text-red"
+                : "bg-panel-2 text-text-3"
           }`}
         >
-          {loggedIn ? "已连接" : "未配置"}
+          {loggedIn ? "已连接" : knownFailed ? "已失效" : "未配置"}
         </span>
       </div>
 
       <div className="mt-3 flex flex-1 flex-col gap-1.5 text-[11.5px] text-text-2">
-        <div>发布方式:半自动(创作平台人工发布,系统回填记录)</div>
+        <div>发布方式:全自动(创作平台 Playwright,失败自动重试)</div>
         <div>
           登录态:
-          {loggedIn ? "有效" : state === null ? "未探测" : "未配置/已失效"}
+          {loggedIn ? "有效" : knownFailed ? "已失效(请重贴 Cookie)" : "未探测"}
+        </div>
+        <div className="text-text-3">
+          每日探测:
+          {lastProbe
+            ? `${formatCnDateTime(new Date(lastProbe.checkedAt))} · ${
+                lastProbe.loggedIn === true
+                  ? "有效"
+                  : lastProbe.loggedIn === false
+                    ? "失效"
+                    : `不可达${lastProbe.error ? `(gateway 异常)` : ""}`
+              }`
+            : "未探测"}
         </div>
       </div>
 

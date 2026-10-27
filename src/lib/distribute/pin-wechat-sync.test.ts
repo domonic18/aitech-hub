@@ -11,8 +11,19 @@ vi.mock("../db", () => ({
     typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002",
   prisma: {
     contentPin: { findUnique: vi.fn(), update: vi.fn() },
-    contentPinChannel: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    $transaction: vi.fn(async (ops: unknown[]) => ops),
+    contentPinChannel: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    $transaction: vi.fn(async (arg: unknown) => {
+      if (typeof arg === "function") {
+        // 批C 交互式事务:tx 路由到同一批 mock fn(markPinChannelSynced 走 tx 通道)
+        return (arg as (t: unknown) => Promise<unknown>)(txClient);
+      }
+      return arg;
+    }),
   },
 }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -41,7 +52,17 @@ import {
 import { requireReadyConfig } from "./wechat-sync";
 import { enqueuePinWechatSync, pinWechatSyncJob, syncOnePin } from "./pin-wechat-sync";
 
-const { addMock } = vi.hoisted(() => ({ addMock: vi.fn() }));
+const { addMock, txClient } = vi.hoisted(() => ({
+  addMock: vi.fn(),
+  txClient: {
+    contentPinChannel: {
+      update: vi.fn(),
+    },
+    contentPin: {
+      update: vi.fn(),
+    },
+  },
+}));
 
 const mocked = {
   findPin: vi.mocked(prisma.contentPin.findUnique),
@@ -49,6 +70,7 @@ const mocked = {
   findChannel: vi.mocked(prisma.contentPinChannel.findUnique),
   createChannel: vi.mocked(prisma.contentPinChannel.create),
   updateChannel: vi.mocked(prisma.contentPinChannel.update),
+  updateChannelMany: vi.mocked(prisma.contentPinChannel.updateMany),
   tx: vi.mocked(prisma.$transaction),
   cfg: vi.mocked(requireReadyConfig),
   cover: vi.mocked(ensureCoverMedia),
@@ -171,15 +193,15 @@ describe("syncOnePin 管线", () => {
     expect(article.cover_info?.crop_percent_list).toEqual([{ ratio: "1_1" }]);
     expect(article.content_source_url).toContain("/post/1-x/");
     expect(mocked.tx).toHaveBeenCalledTimes(1);
-    expect(mocked.updatePin).toHaveBeenCalledWith(
+    expect(txClient.contentPinChannel.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "synced", mediaId: "DRAFT_NEW" }),
+      }),
+    );
+    expect(txClient.contentPin.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: BigInt(1) },
         data: expect.objectContaining({ status: "synced" }),
-      }),
-    );
-    expect(mocked.updateChannel).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: "synced", mediaId: "DRAFT_NEW" }),
       }),
     );
   });
@@ -196,7 +218,7 @@ describe("syncOnePin 管线", () => {
       expect.anything(),
     );
     expect(mocked.draftAdd).not.toHaveBeenCalled();
-    expect(mocked.updatePin).toHaveBeenCalledWith(
+    expect(txClient.contentPin.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.not.objectContaining({ status: expect.anything() }),
       }),
@@ -223,8 +245,11 @@ describe("syncOnePin 管线", () => {
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("至少需要 1 张图");
     expect(mocked.draftAdd).not.toHaveBeenCalled();
-    expect(mocked.updateChannel).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) }),
+    expect(mocked.updateChannelMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { pinId: BigInt(1), channel: "wechat" },
+        data: expect.objectContaining({ status: "failed" }),
+      }),
     );
     await expect(pinWechatSyncJob({ token: "t", pinId: "1" })).rejects.toThrow("至少需要 1 张图");
   });
@@ -244,8 +269,9 @@ describe("syncOnePin 管线", () => {
     const r = await syncOnePin(BigInt(1));
     expect(r.ok).toBe(false);
     expect(mocked.updatePin).not.toHaveBeenCalled();
-    expect(mocked.updateChannel).toHaveBeenCalledWith(
+    expect(mocked.updateChannelMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { pinId: BigInt(1), channel: "wechat" },
         data: expect.objectContaining({ status: "failed", attempts: { increment: 1 } }),
       }),
     );
