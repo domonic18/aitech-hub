@@ -64,7 +64,6 @@
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "markdown-it": "^14.3.2",
-    "markdown-it-footnote": "^4.0.0",
     "markdown-it-github-alerts": "^1.0.1",
     "mysql2": "^3.24.4",
     "next": "15.5.26",

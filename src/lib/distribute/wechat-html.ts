@@ -74,11 +74,10 @@ function stylesFor(t: WechatTheme, paraStyle: WechatParaStyle) {
 type WechatStyles = ReturnType<typeof stylesFor>;
 
 const md: MarkdownIt = new MarkdownIt({ html: true, linkify: false, typographer: false });
-// M51 P1/P2:脚注 [^1] 语法 + GFM 提示块(> [!NOTE] 等)——两者输出 class 化
-// HTML,经 postprocessFootnotes/postprocessAlerts 转内联样式(微信滤 class)
-import footnotePlugin from "markdown-it-footnote";
+// M51 P1/P2:脚注 [^1] 语法(自研规则——markdown-it-footnote v4 无类型声明,
+// 其 CJS 解析路径下 ambient 声明不生效致 CI TS7016 两次实收)+ GFM 提示块
+// (> [!NOTE] 等,class 化输出经 postprocessAlerts 转内联样式,微信滤 class)
 import githubAlerts from "markdown-it-github-alerts";
-md.use(footnotePlugin);
 md.use(githubAlerts);
 
 const HLJS_COLORS: Record<string, string> = {
@@ -165,16 +164,101 @@ function highlightToWechatLines(code: string, lang: string): string {
   return out.join("");
 }
 
-/** 渲染 env(引用收集 + link 配对栈 + 本次渲染的主题样式表) */
+/** 渲染 env(引用收集 + link 配对栈 + 本次渲染的主题样式表 + 脚注簿) */
 interface WechatEnv {
   refs: { href: string; title: string }[];
   linkNums: number[];
   styles: WechatStyles;
+  /** 脚注簿:正文角标按首引顺序编号(nums);定义正文按 label 存放(defs)。
+   * 卡片按 nums 排序渲染,未被引用的定义不显示(GFM 语义) */
+  footnoteNums: Map<string, number>;
+  footnoteDefs: Map<string, string>;
 }
 
 function envOf(env: unknown): WechatEnv {
   return env as WechatEnv;
 }
+
+// ── 脚注 [^label](M51 自研规则,替代 markdown-it-footnote 依赖)──────────────
+
+const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s*/;
+const FOOTNOTE_REF_LABEL = "[^";
+
+/** markdown-it 规则最小结构(State*):只用到 pos/src/getLines/line/env */
+interface MdInlineState {
+  src: string;
+  pos: number;
+  env: unknown;
+  push(type: string, tag: string, nesting: number): { content: string };
+}
+interface MdBlockState {
+  env: unknown;
+  line: number;
+  getLines(begin: number, end?: number): string;
+}
+
+/** 行内角标规则:[^label] → 内联样式 sup [n](未定义的 label 按字面文本渲染) */
+function footnoteRefRule(state: MdInlineState, silent: boolean): boolean {
+  const src = state.src;
+  if (state.pos + 2 > src.length || !src.startsWith(FOOTNOTE_REF_LABEL, state.pos)) return false;
+  const labelMatch = /^\[\^([^\]\s]+)\]/.exec(src.slice(state.pos));
+  if (!labelMatch) return false;
+  const label = labelMatch[1];
+  if (!silent) {
+    const env = envOf(state.env);
+    let n = env.footnoteNums.get(label);
+    if (n === undefined) {
+      n = env.footnoteNums.size + 1;
+      env.footnoteNums.set(label, n);
+    }
+    const token = state.push("html_inline", "", 0);
+    token.content = `<sup style="${env.styles.refSup}">[${n}]</sup>`;
+  }
+  state.pos += labelMatch[0].length;
+  return true;
+}
+
+/** 块级定义规则:[^label]: 正文(续行以空白缩进并入,空行即止) */
+function footnoteDefRule(
+  state: MdBlockState,
+  startLine: number,
+  endLine: number,
+  silent: boolean,
+): boolean {
+  const startLineText = state.getLines(startLine, startLine + 1);
+  const def = FOOTNOTE_DEF_RE.exec(startLineText);
+  if (!def) return false;
+  if (silent) return true;
+  const env = envOf(state.env);
+  const label = def[1];
+  const lines: string[] = [startLineText.slice(def[0].length).trim()];
+  let line = startLine + 1;
+  while (line < endLine) {
+    const text = state.getLines(line, line + 1);
+    if (!/^\s+\S/.test(text)) break; // 非缩进续行即定义结束
+    lines.push(text.trim());
+    line += 1;
+  }
+  // 定义正文过完整 inline 渲染(粗体/行内码等带样式);同 label 重定义后到先得
+  if (!env.footnoteDefs.has(label)) {
+    env.footnoteDefs.set(label, md.renderInline(lines.join(" "), env));
+  }
+  state.line = line;
+  return true;
+}
+
+md.inline.ruler.before("link", "wechat_footnote_ref", footnoteRefRule);
+md.block.ruler.before(
+  // 必须先于 reference 规则——`[^1]: 文本` 会被链接引用定义吃掉(实收:
+  // markdown-it-footnote 同款注册位)
+  "reference",
+  "wechat_footnote_def",
+  // RuleBlock 联合重载与 4 参签名互斥,never 断言(实参形状由本文件接口约束)
+  footnoteDefRule as never,
+  {
+    alt: ["paragraph", "reference", "blockquote", "list"],
+  },
+);
 
 const escape = (s: string): string => md.utils.escapeHtml(s);
 
@@ -393,33 +477,6 @@ function postprocessAlerts(html: string): string {
     .replaceAll("</div>", "</section>"); // 渲染器本体零 div,闭标签全属提示块
 }
 
-/** 脚注后处理:markdown-it-footnote 的 class 化输出转内联样式。
- * 角标 sup 保 [n] 文本去链接;文末 section 重排为「脚注」卡(条目 [n] 前缀,
- * 回跳链接剥除——微信外链本就不可点)。 */
-function postprocessFootnotes(html: string, styles: WechatStyles): string {
-  let out = html
-    .replace(
-      /<sup class="footnote-ref"><a[^>]*>\[(\d+)\]<\/a><\/sup>/g,
-      (_m, n: string) => `<sup style="${styles.refSup}">[${n}]</sup>`,
-    )
-    .replace(/<hr class="footnotes-sep"[^>]*>/g, ""); // 插件分隔线由卡片 border-top 承担
-  const sectionRe = /<section class="footnotes"[^>]*>([\s\S]*?)<\/section>/;
-  const sec = sectionRe.exec(out);
-  if (!sec) return out;
-  const items = [...sec[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) =>
-    m[1]
-      .replace(/<a[^>]*class="footnote-(?:ref|backref)"[^>]*>[\s\S]*?<\/a>/g, "")
-      .replace(/<\/?p[^>]*>/g, "")
-      .trim(),
-  );
-  const card =
-    `<section style="${styles.refsSection}"><p style="${styles.refsTitle}">脚注</p>` +
-    items.map((t, i) => `<p style="${styles.refItem}">[${i + 1}] ${t}</p>`).join("") +
-    `</section>`;
-  out = out.replace(sectionRe, card);
-  return out;
-}
-
 export interface WechatHtmlResult {
   /** 全内联样式正文 HTML(全局节包裹,含文末 References 节,无外链则无该节) */
   html: string;
@@ -465,11 +522,29 @@ export function renderWechatHtml(
 ): WechatHtmlResult {
   const theme = getWechatTheme(themeId);
   const paraStyle = (opts?.paraStyle ?? "default") as WechatParaStyle;
-  const env: WechatEnv = { refs: [], linkNums: [], styles: stylesFor(theme, paraStyle) };
+  const env: WechatEnv = {
+    refs: [],
+    linkNums: [],
+    styles: stylesFor(theme, paraStyle),
+    footnoteNums: new Map(),
+    footnoteDefs: new Map(),
+  };
   // h2 目录在渲染前收集(渲染后无裸文本)
   const tocMetaHtml = opts?.tocMeta ? buildTocMeta(mdText, env.styles) : "";
-  const body = postprocessFootnotes(postprocessAlerts(md.render(mdText, env)), env.styles);
+  const body = postprocessAlerts(md.render(mdText, env));
   const refs = env.refs.map((r) => r.href);
+  const footnotesHtml =
+    env.footnoteNums.size === 0
+      ? ""
+      : `<section style="${env.styles.refsSection}"><p style="${env.styles.refsTitle}">脚注</p>${[
+          ...env.footnoteNums.entries(),
+        ]
+          .sort((a, b) => a[1] - b[1])
+          .map(
+            ([label, n]) =>
+              `<p style="${env.styles.refItem}">[${n}] ${env.footnoteDefs.get(label) ?? ""}</p>`,
+          )
+          .join("")}</section>`;
   const refsHtml =
     env.refs.length === 0
       ? ""
@@ -481,7 +556,7 @@ export function renderWechatHtml(
           .join("")}</section>`;
   return {
     html: `<section style="${env.styles.global}">${tocMetaHtml}${flattenNestedLists(
-      body + refsHtml,
+      body + refsHtml + footnotesHtml,
     )}</section>`,
     refs,
   };
