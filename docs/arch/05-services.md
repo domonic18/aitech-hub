@@ -87,7 +87,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 
 **专题合成不入队(M26 批④,2026-10-12)**:compose 走**同步 Route Handler**(admin 专题详情页点击触发,单次 LLM 调用 ≤15s,超时受绑定模型 timeoutSec 约束),编排 `src/lib/topics/compose.ts`;实测超限时再演进 BullMQ 入队(方案 §5 预留),当前不设队列不加 worker 任务。
 
-### 4.4 视频采集网关 sidecar(services/douyin-gateway/,2026-10-04 M8 新增)
+### 4.4 数据网关 sidecar(services/douyin-gateway/,2026-10-04 M8 新增;M49 起兼小红书发布)
 
 Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 a_bogus + curl_cffi Chrome TLS 指纹 transport + Playwright 签名驱动 + Cookie jar 轮换/冷却/风控归因)。存在理由:抖音 WAF 按 TLS 指纹拦截标准 HTTP 客户端,只有 curl_cffi impersonate 实战验证有效(技术栈决策与平移记录见 memory `douyin-gateway-stays-python`);Node 侧只做编排与落库。
 
@@ -102,6 +102,11 @@ Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 
   - `GET /health` → `{status,driver,warm_slots,in_use,last_error,jars_total,jars_available,egress_proxy,+platforms:{douyin:{jars_total,jars_available},bilibili:{…,wbi_age_seconds?}}}`(**永远 200**,浏览器/池态异常在 body 里表达——Node 侧探测不靠状态码;**M24 起 platforms per-platform 段**,顶层 `jars_*` 保留 = douyin 段,旧 TS zod 兼容;**M33 批B 起 `egress_proxy` 布尔**=网关内存有出口代理,永不出 URL)
   - 错误包络:适配层异常 `{error,detail}`(404/502);pydantic 校验/签名未就绪 `{detail}`(422/503,detail 兼容数组);B 站异常类与抖音**同名双端镜像**(RiskControlError/NoJarAvailableError/AccountInvalidError/StructureDriftError,Node 归因零感知)
 - **错误归因三分**(Node 侧消费约定,**按状态码+error 字段分流**):网络层失败与 `503`(签名服务未就绪)= `GatewayUnavailableError` = 基础设施故障,顺延下轮**不计**博主连败;`502` 且 `error=NoJarAvailableError`(M30 批A 拆分:池耗尽≠真风控——请求未发出、不冷却任何 jar,2026-10-14 实证单视频门冷却唯一 jar 连带 9 博主连败)= 采集侧 **15min 短延重探不计连败**、解读侧同路顺延等同一份冷却;其余非 2xx(`404/422/502`)与响应不合契约(`ContractDrift`)= `GatewayUpstreamError` = 计入 `consecutive_fails` + `last_error`
+- **小红书发布面(M49,`app/xhs/`:publisher 浏览器生命周期 + steps 命名步骤库 + support 现场/错误 + settings 选择器与节奏参数)**:
+  - `POST /xhs/publish {pin_id|pinId,title,content,images:[{name,dataB64}]}` → `{ok,note_url|null}`;图片字节下发(worker 经 mediaStorage.get 读桶 base64 过内网,gateway 落临时文件供 set_input_files 后即清,保持零密钥),`decode_publish_images` 契约解码(dataB64 主读/data 别名兼容,**空字节即刻 400**——2026-10-27 字段名错位实弹:0 字节文件被平台静默忽略,上传假通过);错误包络:`400` XhsStateError 人话(登录态)/`500` detail=步骤人话+现场目录,worker 解析落 lastError
+  - `POST /xhs/cookies {cookie_header}`:F12 串解析→裸 context 验证登录(首配 storage_state 未存自举,7d1c863)→落盘 storage_state;`GET /xhs/state`:登录态+页面结构地标(creator_tab 计数,平台改版早发现)
+  - 发布流程=PUBLISH_STEPS 权威序(开页→切「上传图文」tab→上传→填标题正文(回读校验重填)→发布(closed shadow root 按宿主断言+绝对坐标点击)→确认成功信号(无响应周期补击));重试 3 次指数退避 30s→60s→120s(worker 侧),终态 failed 界面「重新发布」复位重入队
+  - 韧性纪律:选择器/节奏一律 settings.py 集中(实证注释随常量,纯代码常量不入 env);失败现场=截图+DOM+URL+录屏 `debug/<ts>_<步>/` 滚动留 5 份(成功删视频);登录态唯一入口=分发中心渠道卡 Cookie 弹窗。适配 Runbook 与完整设计见 docs/plan/xhs-auto-publish-design.md §6.2/§8
 - **B 站适配面(M24,`app/adapters/bilibili/`)**:wbi 纯算法签名(MIXIN_KEY_ENC_TAB 重排 + md5;nav 匿名接口取 img/sub key,12h 缓存 + 陈旧兜底,无 a_bogus 故 Playwright signer 子系统不参与);curl_cffi 同款 Chrome 指纹 transport;jar 池与抖音共用 `adapters/common/jar_pool.py`(平台独立实例)。**B 站错误主流形态是 HTTP 200 + body code≠0**(异于抖音):-352/-412/-116 → RiskControl(冷却 jar);-404/-400 → AccountInvalid;未知码 → StructureDrift;**code=0 但 data 带 v_voucher(无 durl)→ 同 RiskControl**(软风控挑战不走非零码,2026-10-11 实测;durl 并存时放行不误伤);HTTP 412/403 → RiskControl 即冷却不重试(风控墙确定性,重试加速拉黑);429/5xx/空 200 body → 重试预算 (1,2,5)s 不冷却。**观测事件**:网关侧留痕适配层错误 `social_bilibili_adapter_error`、软风控门 `social_bilibili_voucher_gate`、playurl 结果 `social_bilibili_playurl`(只记事件形态,直链值禁落日志)。**环境信誉门禁(2026-10-09 真机实测)**:`arc/search` 对 headless/数据中心上下文整段 -352(同请求 headed 浏览器过、headless 被拦,HTML 挑战页),与请求形状无关(wbi 参数/cookie/dm_img_* 复刻均无效)——登录态 jar 是生产答案(与抖音 ttwid-only 空响应同类运营缺口),游客 buvid3 仅够 nav/view/playurl
 - 部署:compose 服务 `douyin-gateway`(prod 内网无 ports、tmpfs 指纹目录、mem_limit 1g、healthcheck urllib 探 /health、warm_slots=1 适配 2C4G);本地 `127.0.0.1:8010` 便于冒烟;发布段见 standard/02-cicd-deployment。env:`DOUYIN_GATEWAY_URL`(default `http://127.0.0.1:8010`)
 
