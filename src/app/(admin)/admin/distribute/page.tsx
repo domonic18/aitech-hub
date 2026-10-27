@@ -12,7 +12,7 @@ import { DISTRIBUTE_CHANNELS, parseChannelParam } from "@/lib/distribute/channel
 import {
   PUBLISH_RECORD_SEGMENTS,
   getDistributeOverview,
-  listPublishChannelRecords,
+  listDistributeRecords,
 } from "@/lib/distribute/records";
 import { getWechatConfigAdmin } from "@/lib/distribute/wechat-config-admin";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
@@ -38,13 +38,13 @@ export default async function AdminDistributePage({
   const sp = await searchParams;
   const segment = parseListSegment(PUBLISH_RECORD_SEGMENTS, sp.status, "all");
   const page = parsePage(sp.page);
-  // M48 批D:渠道维度接线(?channel=,经注册表校验)——缺省不过滤;一期仅
-  // wechat 行,数据面与旧硬编码一致
+  // M48 批D:渠道维度接线(?channel=,经注册表校验)——缺省不过滤;
+  // M50 批B:校验放行双载体全渠道,xiaohongshu 命中贴图行
   const channel = parseChannelParam(sp.channel);
 
   const [config, records, overview] = await Promise.all([
     getWechatConfigAdmin(),
-    listPublishChannelRecords({
+    listDistributeRecords({
       ...(channel ? { channel } : {}),
       ...(segment !== "all" ? { status: segment } : {}),
       page,
