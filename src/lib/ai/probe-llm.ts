@@ -7,7 +7,7 @@ export async function probeLlm(input: ProbeInput): Promise<ProbeResult> {
   if (input.protocol === AI_PROTOCOL_SYSTEMONE) {
     // System One 决策模型(M53):最小 Noul 决策探针(state 1 词,输入几无成本)
     if (!input.baseUrl) return { ok: false, latencyMs: 0, detail: "Base URL 未配置" };
-    const raw = await runProbe(`${input.baseUrl}/alpha/decisions`, {
+    const raw = await runProbe(`${input.baseUrl}/v1/systemone`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -15,12 +15,12 @@ export async function probeLlm(input: ProbeInput): Promise<ProbeResult> {
       },
       body: JSON.stringify({
         model: input.modelId,
-        state: ["ok"],
+        state: { text: "ok" },
         questions: {
           ok: {
             type: "noul",
             criteria: { true: "文本恰为 ok", false: "文本不是 ok" },
-            instructions: "state 文本恰为 ok 吗?",
+            instructions: "state.text 恰为 ok 吗?",
           },
         },
       }),
