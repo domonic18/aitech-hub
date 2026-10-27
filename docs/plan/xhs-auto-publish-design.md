@@ -233,7 +233,7 @@ URL),任一步失败自动落现场快照——`workspace/xhs-state/debug/<时�
 | creator 平台改版致选择器失效 | 中 | 中 | 失败人话 lastError→人工降级;月度探针验证 |
 | cookie 过期发布中断 | 高(数周) | 低 | 失败人话提示续期;续期后重试即恢复 |
 | 服务器 IP 与登录 IP 不一致 | 中 | 低 | Cookie 取自管理员本机浏览器,服务器使用时 IP 不同——低频可接受;若触发风控,在同网络环境登录后导出 Cookie 重贴 |
-| 图片路径容器间不一致 | 低 | 中 | worker 与 gateway 挂同一 media 卷到同路径,已对齐 |
+| 图片物料跨容器不可达/空字节 | 已发生×2 | 中 | **字节下发 {name,dataB64}**(worker 经 mediaStorage.get 读桶,base64 过内网,gateway 零密钥)——「同卷同路径」缓解已被生产证伪(MEDIA_STORAGE=cos 后新图只在桶里,2026-10-27 实收 No such file);字节化后又实收字段名错位(worker 发 dataB64/网关读 data → 全部落 0 字节文件,平台静默忽略,上传假通过),现网关/步骤双闸拒空字节(decode_publish_images + upload_images 前置检查) |
 
 ---
 

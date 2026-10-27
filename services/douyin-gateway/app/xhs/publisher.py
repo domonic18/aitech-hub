@@ -206,12 +206,18 @@ class XhsPublisher:
             logger.info("xhs.publish_done", pin_id=pin_id, ok=True, duration_ms=self._ms(t0))
             return XhsPublishResult(ok=True, note_url=None)
         except (XhsStateError, XhsStepError) as exc:
+            # 现场目录回填给 finally 的视频归置(2026-10-27 实弹:此赋值曾遗漏,
+            # artifact_dir 恒 None → 失败视频全走删除分支,现场只剩截图+DOM)
+            artifact_dir = getattr(exc, "artifact_dir", None)
             logger.warning("xhs.publish_done", pin_id=pin_id, ok=False,
                 kind=KIND_LOGIN if isinstance(exc, XhsStateError) else exc.kind,
                 duration_ms=self._ms(t0), error=str(exc)[:200],
-                artifact=getattr(exc, "artifact_dir", None))
+                artifact=artifact_dir)
             raise
         finally:
             video = page.video
-            await context.close()
+            try:
+                await context.close()  # 关闭后视频才写完,失败不得阻断归置
+            except Exception as exc:
+                logger.warning("xhs.context_close_failed", error=str(exc))
             await settle_video(video, artifact_dir)
