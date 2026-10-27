@@ -16,6 +16,7 @@ import OverviewHero from "@/components/admin/insight/OverviewHero";
 import OverviewYield from "@/components/admin/insight/OverviewYield";
 import PainCardGrid from "@/components/admin/insight/PainCardGrid";
 import RadarTable from "@/components/admin/insight/RadarTable";
+import SourceMatrix from "@/components/admin/insight/SourceMatrix";
 import TrendBoard from "@/components/admin/insight/TrendBoard";
 import SignalsSection from "@/components/admin/insight/SignalsSection";
 import {
@@ -28,7 +29,7 @@ import {
 } from "@/components/admin/insight/shared";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
-import { listClusterTrends } from "@/lib/insight/trend";
+import { listClusterTrends, listSourceMatrix } from "@/lib/insight/trend";
 import { SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
 import { hotBoardForDay, insightKeywordCloud } from "@/lib/insight/hotboard";
 import { HOT_SOURCE_KEYS } from "@/lib/insight/hot-source";
@@ -96,8 +97,8 @@ export default async function AdminInsightPage({
   const w = params.w === undefined ? 7 : Number(params.w);
   const today = todayCn();
 
-  const [overview, painClusters, hotClusters, signals, hotBoard, cloud, trends] = await Promise.all(
-    [
+  const [overview, painClusters, hotClusters, signals, hotBoard, cloud, trends, matrix] =
+    await Promise.all([
       insightOverview(w),
       listInsightClusters({ kind: "pain", limit: 8 }),
       listInsightClusters({ kind: "hot", limit: 20 }),
@@ -115,8 +116,8 @@ export default async function AdminInsightPage({
       hotBoardForDay(params.day),
       insightKeywordCloud({ windowDays: w }),
       listClusterTrends(),
-    ],
-  );
+      listSourceMatrix(),
+    ]);
   const scored = hotClusters.filter((c) => c.score !== null);
   const hotAvg =
     scored.length === 0 ? null : scored.reduce((a, c) => a + (c.score ?? 0), 0) / scored.length;
@@ -182,6 +183,14 @@ export default async function AdminInsightPage({
           <PainCardGrid clusters={painClusters} />
         </Card>
       </div>
+
+      <Card
+        id="source-matrix"
+        title="源×簇覆盖矩阵"
+        hint="内容空白 = 热源有需求 × 站内无痛点信号 · 一键转选题补覆盖"
+      >
+        <SourceMatrix matrix={matrix} />
+      </Card>
 
       <Card
         id="trend-board"

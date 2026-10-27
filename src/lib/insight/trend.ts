@@ -105,3 +105,52 @@ export async function listClusterTrends(
     };
   });
 }
+
+// ── 源×簇覆盖矩阵(M52 批C;Content Gap 方法论:热源有簇×内部痛源零信号 =
+// 内容空白,站内强×外部冷=自有特色)────────────────────────────────────────
+
+export interface SourceMatrixCluster {
+  clusterId: bigint;
+  kind: string;
+  label: string | null;
+  score: number | null;
+}
+
+export interface SourceMatrix {
+  /** 活跃簇(按机会分降序取前 N) */
+  clusters: SourceMatrixCluster[];
+  /** 在役源(固定顺序,列头) */
+  sources: string[];
+  /** 计数格:键 `${clusterId}:${source}`;缺格=0 */
+  cells: Record<string, number>;
+}
+
+/** 源×簇信号计数矩阵(top N 活跃簇 × 在役源;零迁移,member→signal 现表聚合) */
+export async function listSourceMatrix(limit = 12): Promise<SourceMatrix> {
+  const enabled = [...INSIGHT_SOURCES_ENABLED];
+  const clusters = await prisma.insightCluster.findMany({
+    where: { status: "active" },
+    orderBy: { score: "desc" },
+    take: limit,
+    select: { id: true, kind: true, label: true, score: true },
+  });
+  const ids = clusters.map((c) => c.id);
+  const matrixClusters: SourceMatrixCluster[] = clusters.map((c) => ({
+    clusterId: c.id,
+    kind: c.kind,
+    label: c.label,
+    score: c.score,
+  }));
+  const cells: Record<string, number> = {};
+  if (ids.length > 0) {
+    const rows = await prisma.$queryRaw<{ cluster_id: bigint; source: string; cnt: bigint }[]>`
+      SELECT m.cluster_id, s.source, count(*) AS cnt
+        FROM insight_cluster_member m
+        JOIN insight_signal s ON s.id = m.signal_id
+       WHERE m.cluster_id IN (${Prisma.join(ids)})
+         AND s.source IN (${Prisma.join(enabled)})
+       GROUP BY m.cluster_id, s.source`;
+    for (const r of rows) cells[`${r.cluster_id}:${r.source}`] = Number(r.cnt);
+  }
+  return { clusters: matrixClusters, sources: enabled, cells };
+}
