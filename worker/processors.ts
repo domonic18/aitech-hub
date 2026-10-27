@@ -47,6 +47,8 @@ import {
   STATS_JOB_USAGE_PURGE,
 } from "../src/lib/queue";
 import { purgeJobRuns } from "../src/lib/jobs/runlog";
+import { markPinChannelFailed } from "../src/lib/distribute/pin-channel-state";
+import { CHANNEL_XHS } from "../src/lib/distribute/channels";
 import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
 import { runBiliDiscovery } from "../src/lib/discovery/discover";
 import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
@@ -74,7 +76,6 @@ import {
   type IllustrationGenerateJobData,
 } from "../src/lib/ai/illustration-generate";
 import { pinWechatSyncJob, type PinWechatSyncJobData } from "../src/lib/distribute/pin-wechat-sync";
-import { prisma } from "../src/lib/db";
 import { autoPublishPinToXhs } from "../src/lib/pins/xhs";
 import { seoBatchJob, type SeoBatchJobData } from "../src/lib/ai/seo-batch";
 import {
@@ -297,17 +298,12 @@ export const PROCESSORS: Record<string, Processor> = {
     try {
       await autoPublishPinToXhs(pinId);
     } catch (e) {
-      // 失败落渠道行(人话进 lastError,降级人工回填);再上抛给 BullMQ 记 failed
-      await prisma.contentPinChannel
-        .updateMany({
-          where: { pinId, channel: "xiaohongshu" },
-          data: {
-            status: "failed",
-            lastError: (e instanceof Error ? e.message : String(e)).slice(0, 500),
-            attempts: { increment: 1 },
-          },
-        })
-        .catch(() => undefined);
+      // 失败落渠道行(人话进 lastError);再上抛给 BullMQ 记 failed
+      await markPinChannelFailed(
+        pinId,
+        CHANNEL_XHS,
+        e instanceof Error ? e.message : String(e),
+      ).catch(() => undefined);
       throw e;
     }
     console.log(

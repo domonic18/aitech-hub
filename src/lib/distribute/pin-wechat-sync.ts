@@ -13,14 +13,14 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { DISTRIBUTE_JOB_PIN_WECHAT, getQueue, QUEUE_DISTRIBUTE } from "../queue";
-import {
-  CHANNEL_WECHAT,
-  PUBLISH_STATUS_FAILED,
-  PUBLISH_STATUS_PENDING,
-  PUBLISH_STATUS_SYNCED,
-} from "./channels";
+import { CHANNEL_WECHAT, PUBLISH_STATUS_PENDING } from "./channels";
 import { DistributeError } from "./errors";
-import { ensureChannelRowUnique } from "./channel-row";
+import {
+  ensurePinChannelRow,
+  markPinChannelFailed,
+  markPinChannelPending,
+  markPinChannelSynced,
+} from "./pin-channel-state";
 import { ensureCoverMedia } from "./wechat-media";
 import { type WechatCredentials, type WechatNewsPicArticle } from "./wechat-client";
 import { requireReadyConfig } from "./wechat-sync";
@@ -38,15 +38,9 @@ export interface PinWechatSyncResult {
   reason?: string;
 }
 
-/** 渠道留痕行(每贴图×渠道一行;P2002 兜底走 channel-row 统一口,M49 批X1) */
-function ensurePinChannelRow(pinId: bigint) {
-  return ensureChannelRowUnique(
-    () =>
-      prisma.contentPinChannel.findUnique({
-        where: { pinId_channel: { pinId, channel: CHANNEL_WECHAT } },
-      }),
-    () => prisma.contentPinChannel.create({ data: { pinId, channel: CHANNEL_WECHAT } }),
-  );
+/** 渠道留痕行(每贴图×渠道一行;批C 起原语入 pin-channel-state) */
+function ensureRow(pinId: bigint) {
+  return ensurePinChannelRow(pinId, CHANNEL_WECHAT);
 }
 
 /**
@@ -77,7 +71,7 @@ export async function enqueuePinWechatSync(
   if (existing?.status === PUBLISH_STATUS_PENDING) {
     throw new DistributeError("pending", "该贴图已在同步队列中,请等待完成后再试");
   }
-  const row = await ensurePinChannelRow(pinId);
+  const row = await ensureRow(pinId);
   const token = randomUUID();
   const jobId = `pin-wechat-${Date.now().toString(36)}`; // BullMQ jobId 禁冒号
   await getQueue(QUEUE_DISTRIBUTE).add(
@@ -85,10 +79,7 @@ export async function enqueuePinWechatSync(
     { token, pinId: pinId.toString() },
     { jobId, attempts: 2, removeOnComplete: 50, removeOnFail: 50 },
   );
-  await prisma.contentPinChannel.update({
-    where: { id: row.id },
-    data: { status: PUBLISH_STATUS_PENDING, lastError: null },
-  });
+  await markPinChannelPending(row.id);
   logger.info({ event: "pin.sync_enqueued", jobId, pinId: pinId.toString() });
   return { jobId, token };
 }
@@ -105,20 +96,11 @@ async function submitNewsPic(
   return submitWechatDraft(creds, article, updateMediaId, "pin.source_url_dropped");
 }
 async function failSync(
-  rowId: bigint,
-  pinId: string,
+  pinId: bigint,
   reason: string,
 ): Promise<PinWechatSyncResult> {
-  await prisma.contentPinChannel.update({
-    where: { id: rowId },
-    data: {
-      status: PUBLISH_STATUS_FAILED,
-      lastError: reason.slice(0, 500),
-      attempts: { increment: 1 },
-    },
-  });
-  logger.warn({ event: "pin.sync_failed", pinId, error: reason });
-  return { ok: false, pinId, reason };
+  await markPinChannelFailed(pinId, CHANNEL_WECHAT, reason);
+  return { ok: false, pinId: pinId.toString(), reason };
 }
 
 /** 单贴同步全管线(worker 消费):失败落行返回 false,成功落 synced */
@@ -130,17 +112,17 @@ export async function syncOnePin(pinId: bigint): Promise<PinWechatSyncResult> {
     include: { images: { orderBy: { sortOrder: "asc" } } },
   });
   if (!pin) return { ok: false, pinId: id, reason: "贴图不存在" };
-  const row = await ensurePinChannelRow(pinId);
+  const row = await ensureRow(pinId);
   try {
     if (pin.images.length === 0) {
-      return await failSync(row.id, id, "缺少图片:公众号图片消息至少需要 1 张图");
+      return await failSync(pinId, "缺少图片:公众号图片消息至少需要 1 张图");
     }
     if ([...pin.title].length > 32) {
-      return await failSync(row.id, id, `标题 ${[...pin.title].length} 字超过图片消息上限 32`);
+      return await failSync(pinId, `标题 ${[...pin.title].length} 字超过图片消息上限 32`);
     }
     const contentChars = [...pin.content].length;
     if (contentChars > 20000) {
-      return await failSync(row.id, id, `轻文字 ${contentChars} 码点超过微信上限 20000`);
+      return await failSync(pinId, `轻文字 ${contentChars} 码点超过微信上限 20000`);
     }
     const creds: WechatCredentials = { appid: cfg.appid, appSecret: cfg.appSecret };
     // 逐张永久素材(add_material;uploadimg 的 URL 不可用于 image_list)——
@@ -162,26 +144,17 @@ export async function syncOnePin(pinId: bigint): Promise<PinWechatSyncResult> {
     // 阅读原文(read_more_url)由组装台显式维护,缺省不带(不擅自覆盖导流)
     const mediaId = await submitNewsPic(creds, article, row.mediaId);
 
-    await prisma.$transaction([
-      prisma.contentPinChannel.update({
-        where: { id: row.id },
-        data: {
-          status: PUBLISH_STATUS_SYNCED,
-          mediaId,
-          syncedAt: new Date(),
-          lastError: null,
-          attempts: { increment: 1 },
-        },
-      }),
+    await prisma.$transaction(async (tx) => {
+      await markPinChannelSynced(row.id, { mediaId }, tx);
       // pending→synced;已发布保持 published(重推草稿不动站点态);draft 不可能入队
-      prisma.contentPin.update({
+      await tx.contentPin.update({
         where: { id: pinId },
         data: {
           ...(pin.status === "pending" ? { status: "synced" } : {}),
           syncedAt: new Date(),
         },
-      }),
-    ]);
+      });
+    });
     logger.info({
       event: "pin.synced",
       pinId: id,
@@ -191,7 +164,7 @@ export async function syncOnePin(pinId: bigint): Promise<PinWechatSyncResult> {
     });
     return { ok: true, pinId: id, mediaId };
   } catch (e) {
-    return failSync(row.id, id, (e instanceof Error ? e.message : String(e)).slice(0, 500));
+    return failSync(pinId, (e instanceof Error ? e.message : String(e)).slice(0, 500));
   }
 }
 

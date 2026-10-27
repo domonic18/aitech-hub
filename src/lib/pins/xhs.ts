@@ -12,12 +12,12 @@ import { prisma } from "../db";
 import { logger } from "../logger";
 import { mediaStorage } from "../media/storage";
 import { DistributeError } from "../distribute/errors";
-import { ensureChannelRowUnique } from "../distribute/channel-row";
 import {
-  CHANNEL_XHS,
-  PUBLISH_STATUS_PENDING,
-  PUBLISH_STATUS_SYNCED,
-} from "../distribute/channels";
+  ensurePinChannelRow,
+  markPinChannelPending,
+  markPinChannelSynced,
+} from "../distribute/pin-channel-state";
+import { CHANNEL_XHS, PUBLISH_STATUS_FAILED } from "../distribute/channels";
 import { DISTRIBUTE_JOB_XHS_AUTO, QUEUE_DISTRIBUTE_XHS, getQueue } from "../queue";
 
 /** 创建/复用渠道行(pending;验收门槛:草稿拒)。幂等,仅供本模块入队使用。 */
@@ -30,13 +30,7 @@ async function distributePinToXhs(pinId: bigint) {
   if (pin.status === "draft") {
     throw new DistributeError("invalid", "草稿尚未验收:先提交验收再分发小红书");
   }
-  return ensureChannelRowUnique(
-    () =>
-      prisma.contentPinChannel.findUnique({
-        where: { pinId_channel: { pinId, channel: CHANNEL_XHS } },
-      }),
-    () => prisma.contentPinChannel.create({ data: { pinId, channel: CHANNEL_XHS } }),
-  );
+  return ensurePinChannelRow(pinId, CHANNEL_XHS);
 }
 
 /** 全自动入队:创建渠道行 + 发布 job 入子队列(worker 调 xhs-gateway)。
@@ -44,11 +38,8 @@ async function distributePinToXhs(pinId: bigint) {
  * pending(UI 立即转「重试中」)。 */
 export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: string }> {
   const row = await distributePinToXhs(pinId);
-  if (row.status === "failed") {
-    await prisma.contentPinChannel.update({
-      where: { id: row.id },
-      data: { status: PUBLISH_STATUS_PENDING, lastError: null },
-    });
+  if (row.status === PUBLISH_STATUS_FAILED) {
+    await markPinChannelPending(row.id);
   }
   const jobId = `xhs-auto-${pinId.toString()}-${Date.now().toString(36)}`;
   await getQueue(QUEUE_DISTRIBUTE_XHS).add(
@@ -169,16 +160,7 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
       note_url?: string | null;
     };
     if (payload.ok !== true) throw new Error(payload.error ?? "发布失败");
-    await prisma.contentPinChannel.update({
-      where: { id: row.id },
-      data: {
-        status: PUBLISH_STATUS_SYNCED,
-        publishId: payload.note_url ?? "",
-        syncedAt: new Date(),
-        lastError: null,
-        attempts: { increment: 1 },
-      },
-    });
+    await markPinChannelSynced(row.id, { publishId: payload.note_url ?? "" });
     console.log(JSON.stringify({ event: "pins.xhs.auto_published", pinId: pinId.toString() }));
   }
 }
