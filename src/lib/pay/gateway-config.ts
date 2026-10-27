@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import { encryptTagged, maskSecret, readSecretCompat } from "@/lib/crypto/secret-box";
 
 export const GATEWAY_XUNHU = "xunhu";
 export const GATEWAY_MOCK = "mock";
@@ -82,12 +83,6 @@ export interface PayGatewayConfigView {
   updatedAt: string | null;
 }
 
-/** 掩码形态(提案 §8:9191…3184);过短密钥整体打码 */
-export function maskSecret(secret: string): string {
-  if (secret.length < 8) return "…";
-  return `${secret.slice(0, 4)}…${secret.slice(-4)}`;
-}
-
 /** 网关运行时配置(xunhu 签名/下单参数与 order-service TTL 消费;无行或未启用 → null) */
 export interface PayGatewayRuntimeConfig {
   appId: string;
@@ -114,7 +109,7 @@ export async function getPayGatewayRuntimeConfig(
       key,
       cfg: {
         appId: row.appId,
-        appSecret: row.appSecret,
+        appSecret: readSecretCompat(row.appSecret) ?? "",
         apiBase: row.apiBase,
         apiBaseBackup: row.apiBaseBackup ?? undefined,
         notifyUrl: row.notifyUrl,
@@ -151,7 +146,8 @@ export async function getPayGatewayConfigView(): Promise<PayGatewayConfigView> {
     returnUrl: xunhuRow?.returnUrl ?? "",
     orderTtlMin: xunhuRow?.orderTtlMin ?? 30,
     secretSet: Boolean(xunhuRow?.appSecret),
-    secretMask: xunhuRow ? maskSecret(xunhuRow.appSecret) : "",
+    // 批E':掩真实值(readSecretCompat 兼容旧明文/新密文),掩存储形态无意义
+    secretMask: xunhuRow ? (maskSecret(readSecretCompat(xunhuRow.appSecret) ?? "")) : "",
     updatedAt:
       (mode !== "off"
         ? (enabledRow ?? xunhuRow)
@@ -184,7 +180,8 @@ export async function savePayGatewayConfig(
       ? { appId: "", appSecret: "", apiBase: "", apiBaseBackup: null }
       : {
           appId: data.appId,
-          ...(data.appSecret ? { appSecret: data.appSecret } : {}),
+          // 批E':入库即密文(e1: 前缀);读侧 readSecretCompat 兼容旧明文
+          ...(data.appSecret ? { appSecret: encryptTagged(data.appSecret) } : {}),
           apiBase: data.apiBase,
           apiBaseBackup: data.apiBaseBackup || null,
         };

@@ -48,3 +48,22 @@ export function maskSecret(secret: string): string {
   if (secret.length <= 8) return "****";
   return `${secret.slice(0, 3)}****${secret.slice(-4)}`;
 }
+
+// ---- 同列密文升级形态(M50 批E':pay appSecret/email password 明文列转密)----
+// 历史列存明文(varchar 不动结构),升级后写侧一律带前缀密文;读侧兼容双形态
+// ——无前缀=旧明文原样返回(下次保存转密),有前缀=解密。列宽须容密文膨胀
+// (base64 ≈ 1.33×+iv/tag 28B;pay app_secret 已随批迁移放宽 varchar(255))。
+
+export const CIPHER_PREFIX = "e1:";
+
+/** 写侧统一入口:前缀 + AES-256-GCM 密文 */
+export function encryptTagged(plaintext: string): string {
+  return CIPHER_PREFIX + encryptSecret(plaintext);
+}
+
+/** 读侧兼容:密文解密(失败→null,调用方定降级);旧明文原样透传 */
+export function readSecretCompat(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  if (!stored.startsWith(CIPHER_PREFIX)) return stored;
+  return decryptSecret(stored.slice(CIPHER_PREFIX.length));
+}

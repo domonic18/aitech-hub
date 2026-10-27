@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
+import { encryptTagged } from "@/lib/crypto/secret-box";
 
 export const SMTP_PORT_MIN = 1;
 export const SMTP_PORT_MAX = 65535;
@@ -84,12 +85,11 @@ export async function getSmtpConfigView(): Promise<SmtpConfigView> {
 }
 
 /**
- * 保存(整行覆盖;password 缺省时保留原值——首行且未给密码属请求构造错误,
- * 由调用方 Zod 层先行拒绝)。返回脱敏视图供 API 应答。
+ * 保存(整行覆盖;password 缺省/空 = 保留原值——首行且未给密码属请求构造
+ * 错误,由调用方 Zod 层先行拒绝)。返回脱敏视图供 API 应答。
  */
 export async function saveSmtpConfig(input: SmtpConfigUpdateInput): Promise<SmtpConfigView> {
   const data = SmtpConfigUpdateSchema.parse(input);
-  const keepPassword = !data.password;
   const row = await getSmtpConfigRow();
   if (!row) {
     const created = await prisma.emailConfig.create({
@@ -97,7 +97,7 @@ export async function saveSmtpConfig(input: SmtpConfigUpdateInput): Promise<Smtp
         host: data.host,
         port: data.port,
         username: data.username,
-        password: data.password ?? "",
+        password: data.password ? encryptTagged(data.password) : "",
         fromAddr: data.fromAddr,
         enabled: data.enabled,
       },
@@ -110,7 +110,8 @@ export async function saveSmtpConfig(input: SmtpConfigUpdateInput): Promise<Smtp
       host: data.host,
       port: data.port,
       username: data.username,
-      ...(keepPassword ? {} : { password: data.password }),
+      // 批E':入库即密文(e1: 前缀);mailer 读侧 readSecretCompat 兼容旧明文
+      ...(data.password ? { password: encryptTagged(data.password) } : {}),
       fromAddr: data.fromAddr,
       enabled: data.enabled,
     },

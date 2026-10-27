@@ -338,12 +338,13 @@ model PayNotifyLog {
 /// 变量):admin 专属页唯一写入口,读取一律脱敏,明文不进日志/API 响应/git。
 /// 支付模式落表形态:enabled=true 的行即当前生效网关(至多一行;全 false
 /// = 收银台关闭);mock 行仅开发环境可启用(生产保存拒绝+运行时忽略)。
-/// appSecret 明文列,日后可升级应用层加密
+/// appSecret 密文列(M50 批E':e1: 前缀 AES-256-GCM 同列升级;旧行明文读兼容,
+/// 下次保存转密;读侧 secret-box#readSecretCompat 双形态)
 model PayGatewayConfig {
   id            BigInt   @id @default(autoincrement())
   gateway       String   @unique(map: "uq_pay_gateway_config_gateway") @db.VarChar(24) // xunhu | mock(仅开发)
   appId         String   @map("app_id") @db.VarChar(64)
-  appSecret     String   @map("app_secret") @db.VarChar(128) // 明文列:admin 页维护,读取脱敏
+  appSecret     String   @map("app_secret") @db.VarChar(255) // 密文/legacy 明文双形态(批E'),读取侧脱敏
   apiBase       String   @map("api_base") @db.VarChar(128) // 主用 https://api.dpweixin.com(2026-10-08 实证)
   apiBaseBackup String?  @map("api_base_backup") @db.VarChar(128) // 备用域,下单失败自动切换
   notifyUrl     String   @default("") @map("notify_url") @db.VarChar(500) // 异步回调(https 生产域名;空=未配置,下单前校验)
