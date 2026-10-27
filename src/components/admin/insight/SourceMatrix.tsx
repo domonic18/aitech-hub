@@ -156,7 +156,7 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
                   colSpan={sources.length + 2}
                   className="px-2 py-6 text-center text-xs text-text-3"
                 >
-                  暂无活跃簇
+                  暂无成熟簇(已打标且 ≥3 条信号)——等 LLM 打标日批把簇养熟后进矩阵
                 </td>
               </tr>
             )}

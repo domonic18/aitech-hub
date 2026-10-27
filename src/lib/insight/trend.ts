@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "../db";
 import { DAY_MS } from "../datetime";
+import { MATRIX_MIN_MEMBERS } from "./constants";
 import {
   GROWTH_BREAKOUT,
   GROWTH_DECLINING,
@@ -125,17 +126,25 @@ export interface SourceMatrix {
   cells: Record<string, number>;
 }
 
-/** 源×簇信号计数矩阵(top N 活跃簇 × 在役源;零迁移,member→signal 现表聚合) */
+/** 源×簇信号计数矩阵(top N 成熟簇 × 在役源;零迁移,member→signal 现表聚合)。
+ * 成熟 = 已打标(label 非空)+ 成员 ≥ MATRIX_MIN_MEMBERS——M52 验收实收:单信号
+ * 簇 coverage=null 拉满 gap 分,按分排序全屏「待打标」,矩阵不可读且补空白过早 */
 export async function listSourceMatrix(limit = 12): Promise<SourceMatrix> {
   const enabled = [...INSIGHT_SOURCES_ENABLED];
-  const clusters = await prisma.insightCluster.findMany({
-    where: { status: "active" },
-    orderBy: { score: "desc" },
-    take: limit,
-    select: { id: true, kind: true, label: true, score: true },
-  });
-  const ids = clusters.map((c) => c.id);
-  const matrixClusters: SourceMatrixCluster[] = clusters.map((c) => ({
+  const clusters = await prisma.$queryRaw<
+    { id: bigint; kind: string; label: string; score: number | null }[]
+  >`
+    SELECT c.id, c.kind, c.label, c.score
+      FROM insight_cluster c
+     WHERE c.status = 'active'
+       AND c.label IS NOT NULL
+       AND (SELECT count(*) FROM insight_cluster_member m WHERE m.cluster_id = c.id)
+             >= ${MATRIX_MIN_MEMBERS}
+     ORDER BY c.score DESC NULLS LAST
+     LIMIT ${limit}`;
+  const clusterRows = clusters;
+  const ids = clusterRows.map((c) => c.id);
+  const matrixClusters: SourceMatrixCluster[] = clusterRows.map((c) => ({
     clusterId: c.id,
     kind: c.kind,
     label: c.label,
