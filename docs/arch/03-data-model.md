@@ -329,7 +329,7 @@ CREATE TABLE legacy_url_map (
 **内容分发域三表已落地(2026-10-06 M17 批①迁移 `20261006122422_publish_channel_wechat`,多渠道分发首渠道=微信公众号,requirement §4)**:
 
 - `publish_wechat_config`(渠道配置单例 `id=1`,get-or-create,镜像 `asr_config`):`appid/app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`author?`(图文作者,缺省「一起AI」)/`theme 默认 "default"`(渠道默认正文主题 id,wechat-themes 注册表)/`auto_sync_enabled 默认 false`(发布即推,用户定调默认关)/`enabled 默认 false`(渠道总开关)+ `last_test` 四件套
-- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?/theme?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段;theme 快照=上次推送所用主题 id,重推沿用,空=渠道默认)/`attempts/last_error?(截 500)/synced_at?`
+- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?/theme?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段;theme 快照=上次推送所用主题 id,重推沿用,空=渠道默认)/`attempts/last_error?(截 500)/synced_at?`;`data jsonb?`(M49 迁移 `20261026100000_publish_channel_data` 预埋的渠道扩展载荷,文章侧未来渠道用,wechat 行为不变)
 - `publish_media_cache`(转存防重推):`channel+source_key` 唯一;`source_key` 前缀分区:`b:<sha1 源字节>`(站内正文图)/`u:<sha1 url>`(外链图)/`m:<sha1 源字节>`(封面,`remote_media_id` 有值);`remote_url`(uploadimg 回传 mmbiz 链,永久有效无 TTL)/`remote_media_id?`(add_material 回传);缓存命中零上传,公众号频控友好
 
 **搜索 Drawer 会话表已落地(2026-10-07 K2.5 批①迁移 `20261006190159_search_agent_session`,交互见 [arch/04 §3](04-ai-agent.md))**:
@@ -377,7 +377,7 @@ CREATE TABLE legacy_url_map (
 
 - `content_pin`(贴图主实体,公众号「小绿书」newspic 图片帖):`title varchar(64)`(≤32 码点公众号硬上限,VarChar 留字节数余量)/`content text 默认 ''`(轻文字纯文本,禁 Markdown/内联 HTML,≤2 万码点)/`topic_id?`(专题 soft ref,应用层完整性不设跨域 FK,同 `topic.linked_post_id` 口径)/`status varchar(20) 默认 draft` 枚举 `draft|pending|synced|published`(应用层 Zod,人工迁移表 `PIN_MANUAL_TARGETS` 收敛)/`read_more_url? varchar(500)`(阅读原文,http(s) 白名单)/`crop_spec varchar(40) 默认 1_1`(封面裁剪档 `1_1|16_9|2.35_1`,随 draft/add 透传)/`reference_media_path? varchar(500)`(M42 生图采纳的参照图,见下)/`synced_at?/published_at?`(首进 published 落,回退再上架不覆盖);索引 `(status, updated_at DESC)`(工作台页签)
 - `content_pin_image`(有序图片,首张即封面——公众号 `image_list` 顺序 = sort_order,站点瀑布流封面同源):`pin_id` FK **CASCADE**(删贴图连图)/`version_id?`(引用 `ai_illu_version` soft ref 不拷文件不回写,本地上传为 null)/`media_path varchar(500)`(**挂载时快照**——工坊后续改字产新版本不篡改已挂序列,升版由人工在组装台重挂)/`width?/height?`(本地上传取自然尺寸;工坊引用缺省)/`sort_order`;索引 `(pin_id, sort_order)`
-- `content_pin_channel`(渠道留痕,每贴图×渠道一行,`@@unique([pinId, channel])`,循 `publish_channel` ensure 形态):`channel varchar(20)`(一期仅 `wechat`)/`status varchar(20) 默认 pending` 枚举 `pending|synced|failed`/`media_id?/publish_id?`(公众号草稿/发布锚,重推 update 以 media_id 定位)/`attempts`(含人工重试)/`last_error? varchar(500)`(人话)/`synced_at?`;`pin_id` FK **CASCADE**
+- `content_pin_channel`(渠道留痕,每贴图×渠道一行,`@@unique([pinId, channel])`,循 `publish_channel` ensure 形态):`channel varchar(20)`(wechat\|xiaohongshu——M49 批X1' 放行 xiaohongshu,小红书笔记载体=贴图,发布锚存笔记 URL)/`status varchar(20) 默认 pending` 枚举 `pending|synced|failed`/`media_id?/publish_id?`(公众号草稿/发布锚(小红书=笔记 URL),重推 update 以 media_id 定位)/`attempts`(含人工重试)/`last_error? varchar(500)`(人话)/`synced_at?`;`pin_id` FK **CASCADE**
 
 **创作中心域扩列已落地(2026-10-22 M42 迁移 `20261022180000_m42_studio_output`,概念重构见 [arch/05 §1](05-services.md)、创作台信息架构见 [arch/07 §2](07-frontend.md);forward-only,全部 ADD COLUMN 带缺省不锁表)**:
 
