@@ -41,7 +41,7 @@ function stylesFor(t: WechatTheme) {
     preSection:
       "background-color:#0d1117;border-radius:6px;padding:12px;overflow-x:auto;margin:12px 0;",
     pre: "margin:0;",
-    code: "color:#e6edf3;font-family:Menlo,monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;",
+    code: "color:#e6edf3;font-family:Menlo,monospace;font-size:13px;line-height:1.6;word-break:break-word;",
     blockquote: `border-left:3px solid ${t.quoteBorder};background-color:${t.quoteBg};padding:8px 12px;margin:12px 0;color:${t.quoteText};`,
     ul: "margin:12px 0;padding-left:24px;",
     ol: "margin:12px 0;padding-left:24px;",
@@ -107,9 +107,16 @@ md.renderer.rules.code_inline = (tokens, idx, _o, env) =>
 
 md.renderer.rules.fence = (tokens, idx, _o, env) => {
   const s = envOf(env).styles;
-  return `<section style="${s.preSection}"><pre style="${s.pre}"><code style="${s.code}">${md.utils.escapeHtml(
-    tokens[idx].content.replace(/\n$/, ""),
-  )}</code></pre></section>`;
+  // 微信粘贴管线不保真 white-space(裸换行被折叠成空格,2026-10-27 生产实收):
+  // 行间改 <br>;空格(含缩进)全量转 &nbsp;——代码对齐不可折叠,长行由外层
+  // overflow-x 横滚兜底
+  const body = md.utils
+    .escapeHtml(tokens[idx].content.replace(/\n$/, ""))
+    .replace(/\t/g, "    ")
+    .split("\n")
+    .map((line) => line.replaceAll(" ", "&nbsp;"))
+    .join("<br>");
+  return `<section style="${s.preSection}"><section style="${s.pre}${s.code}">${body}</section></section>`;
 };
 
 md.renderer.rules.blockquote_open = (_t, _i, _o, env) =>
@@ -168,8 +175,9 @@ md.renderer.rules.link_close = (_tokens, _idx, _options, _env) => {
   return n ? `<sup style="${e.styles.refSup}">[${n}]</sup></span>` : "</span>";
 };
 
-// ── 嵌套列表展平(微信兼容):ul/ol 直接嵌套会重复出 bullet,内层转 ───────────
-// section+文字标记(文颜 wechatPostRender 同款规避;视觉层次保留)
+// ── 列表一律展平(微信兼容):ul/ol 在微信编辑器里嵌套会重复出 bullet,顶层
+// 也会在带样式行内元素处断行(2026-10-27 生产实收)——统一转 section+文字标记
+// (文颜 wechatPostRender 同款规避;视觉层次保留)
 
 const LIST_TAG_RE = /<(\/?)(ul|ol)\b[^>]*>/g;
 
@@ -222,7 +230,8 @@ function flattenLeafList(html: string, openStart: number): string {
   return html.slice(0, openStart) + flattened + html.slice(blockEnd);
 }
 
-/** 递归展平全部嵌套 list:恒取「最右一个嵌套层」(必为叶子)先展,直到无嵌套 */
+/** 递归展平全部 list:恒取「最右一个开标签」(其块内无更晚 list,必为叶子)
+ * 先展,直到无 list 标签残留 */
 function flattenNestedLists(html: string): string {
   for (;;) {
     LIST_TAG_RE.lastIndex = 0;
@@ -239,7 +248,7 @@ function flattenNestedLists(html: string): string {
         stack.pop();
         continue;
       }
-      if (stack.length >= 1) target = hit.index; // 深度 ≥2(外层 list 已在栈)
+      target = hit.index; // 深度 ≥1:微信对顶层 list 同样断行(2026-10-27 实收),一律展平
       stack.push(hit[1]);
     }
     if (target < 0) return html;

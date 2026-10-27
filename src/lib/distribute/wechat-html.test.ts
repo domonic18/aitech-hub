@@ -45,6 +45,15 @@ describe("renderWechatHtml 全局节与差异声明", () => {
     expect(html).not.toContain("<script>");
   });
 
+  it("代码块行间 <br>+缩进 &nbsp;(M50 修复:微信粘贴管线折叠裸换行)", () => {
+    const { html } = renderWechatHtml("```yaml\n目标:\n  1、缩进行\n\n下一段\n```");
+    expect(html).toContain("<br>");
+    expect(html).not.toContain("white-space:pre-wrap");
+    expect(html).toContain("&nbsp;&nbsp;1、缩进行");
+    // 空行 = 相邻 <br>(块元素空行仍占行高)
+    expect(html).toContain("<br><br>");
+  });
+
   it("表格全内联(th 底色+td 边框);hr 转边框 section", () => {
     const { html } = renderWechatHtml("| a | b |\n| - | - |\n| 1 | 2 |\n\n---");
     expect(html).toContain("<table");
@@ -62,18 +71,19 @@ describe("renderWechatHtml 全局节与差异声明", () => {
     expect(html).toContain('src="https://mmbiz.qpic.cn/x.png"');
   });
 
-  it("列表 ul/ol/li 内联样式(li 不再重复可继承声明)", () => {
+  it("列表一律展平为 section+行内标记(M50 修复:微信对 li 内带样式行内元素断行)", () => {
     const { html } = renderWechatHtml("- 甲\n- 乙\n\n1. 丙");
-    expect(html).toContain('<ul style="margin:12px 0;padding-left:24px;">');
-    expect(html).toContain('<li style="margin:4px 0;">');
-    expect(html).toContain('<ol style="margin:12px 0;padding-left:24px;">');
+    expect(html).not.toMatch(/<(ul|ol|li)\b/);
+    expect(html).toContain('<section style="margin-left:1em;">• 甲</section>');
+    expect(html).toContain('<section style="margin-left:1em;">• 乙</section>');
+    expect(html).toContain('<section style="margin-left:1em;">1. 丙</section>');
   });
 });
 
 describe("嵌套列表展平(微信兼容)", () => {
-  it("ul 嵌 ul:内层转 section+• 标记,仅剩外层一个 <ul>", () => {
+  it("ul 嵌 ul:内外全展平,零 list 标签残留(M50 修复后顶层同样展平)", () => {
     const { html } = renderWechatHtml("- 甲\n  - 甲一\n  - 甲二\n- 乙");
-    expect(html.match(/<ul\b/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<(ul|ol|li)\b/);
     expect(html).toContain('<section style="margin-left:1em;">• 甲一</section>');
     expect(html).toContain('<section style="margin-left:1em;">• 甲二</section>');
     expect(html).toContain("乙");
@@ -88,10 +98,13 @@ describe("嵌套列表展平(微信兼容)", () => {
     expect(html2).toContain('<section style="margin-left:1em;">4. 子乙</section>');
   });
 
-  it("顶层列表不展平(微信对顶层 ul/ol 渲染正常)", () => {
-    const { html } = renderWechatHtml("- 甲\n- 乙");
-    expect(html).toContain('<li style="margin:4px 0;">甲</li>');
-    expect(html).not.toContain('style="margin-left:1em;"');
+  it("顶层列表同样展平(2026-10-27 生产实收:微信在 li 内带样式行内元素处断行)", () => {
+    const { html } = renderWechatHtml("1. **加粗项**。后续正文接排不换行。");
+    expect(html).not.toMatch(/<(ul|ol|li)\b/);
+    expect(html).toContain(
+      '<section style="margin-left:1em;">1. <strong style="font-weight:600;color:',
+    );
+    expect(html).toContain("</strong>。后续正文接排不换行。</section>");
   });
 
   it("引用块内嵌套列表同样展平", () => {
