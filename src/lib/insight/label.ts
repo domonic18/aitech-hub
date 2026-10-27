@@ -155,7 +155,10 @@ async function judgeByJev(
       baseUrl: judge.baseUrl ?? "",
       apiKey: judge.apiKey,
       model: judge.modelId,
-      state: samples.map((s) => `[${s.source}] ${s.rawText}`),
+      // state 对象形态(systemone wire 契约):单键承载样本全文
+      state: {
+        signals: samples.map((s) => `[${s.source}] ${s.rawText}`).join("\n"),
+      },
       questions: {
         sentiment: {
           type: "choice",
@@ -222,7 +225,7 @@ async function judgeByJev(
     logger.info({
       event: "insight.judged",
       clusterId: clusterId.toString(),
-      cost: r.usageCost,
+      cost: r.usage.cost,
     });
   } catch (e) {
     // Jev 不可用(网络/配额/协议漂移)→ 保留 LLM 判定(自动回退)
