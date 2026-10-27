@@ -142,6 +142,8 @@ export const TREND_WINDOW_DAYS = 7;
 /** 短文本(< CLUSTER_MIN_TEXT_LEN)归簇严阈值:不建簇,仅就近严配归入既有簇
  * (M52 批D,BERTopic outlier reduction 思路——短搜索不再全盲) */
 export const CLUSTER_SHORT_MATCH_DISTANCE = 0.28;
+/** Jev 判定最低置信(M53):低于此值保留归纳模型判定(实测定参) */
+export const JUDGE_MIN_CONFIDENCE = 0.7;
 /** 源×簇矩阵最小成员数(M52 验收实收:单信号簇未达 LLM 打标门槛,全屏「待打标」
  * 无信息量且补空白过早——矩阵只收与打标同门槛的成熟簇) */
 export const MATRIX_MIN_MEMBERS = 3;

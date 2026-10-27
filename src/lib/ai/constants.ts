@@ -7,10 +7,13 @@
 export const AI_PROTOCOL_OPENAI = "openai";
 export const AI_PROTOCOL_ANTHROPIC = "anthropic";
 export const AI_PROTOCOL_OTHER = "other";
-/** 模型协议(连通性测试仅支持前两者;other=自管端点,诚实标暂不支持) */
+/** System One 决策模型协议(M53;OpenRouter Decisions API,typesafe/jev) */
+export const AI_PROTOCOL_SYSTEMONE = "systemone";
+/** 模型协议(连通性测试支持 openai/anthropic/systemone;other=自管端点,诚实标暂不支持) */
 export const AI_MODEL_PROTOCOLS = [
   AI_PROTOCOL_OPENAI,
   AI_PROTOCOL_ANTHROPIC,
+  AI_PROTOCOL_SYSTEMONE,
   AI_PROTOCOL_OTHER,
 ] as const;
 
@@ -25,6 +28,9 @@ export const AI_PURPOSE_WRITING = "writing";
 /** 洞察归纳(M34 批②,insight-plan §5.4):簇命名/一句话概括/关键词日批 LLM,
  * 走 AiTaskBinding 治理(ai_usage_log 落 role=insight) */
 export const AI_PURPOSE_INSIGHT = "insight";
+/** 洞察判定(M53):簇舆情倾向 + hot·pain 覆判走 Jev 结构化决策(System One)——
+ * 打标批的「判定半场」;生成半场(命名/概括/关键词)仍在 insight 主模型 */
+export const AI_PURPOSE_INSIGHT_JUDGE = "insight_judge";
 /** 配图生图(M39,topic-pipeline-plan §13;§13.9 重定义为内容可视化图文):
  * 正文带字内容图生成(编排形态由 agent 决定),与封面(cover)分角色——模型
  * 偏好与成本档位不同,绑定校验按角色隔离;走同一 images 探针与生图管线 */
@@ -42,6 +48,7 @@ export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_EMBEDDING,
   AI_PURPOSE_WRITING,
   AI_PURPOSE_INSIGHT,
+  AI_PURPOSE_INSIGHT_JUDGE,
 ] as const;
 
 export type AiTaskRole = (typeof AI_MODEL_PURPOSES)[number];
@@ -87,6 +94,11 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "洞察归纳",
     icon: "i-eye",
     sub: "洞察中心簇命名/概括/关键词日批打标(信号向量聚类后的可读化)",
+  },
+  [AI_PURPOSE_INSIGHT_JUDGE]: {
+    label: "洞察判定",
+    icon: "i-eye",
+    sub: "簇舆情倾向 + hot·pain 覆判(Jev 结构化决策;高置信覆写归纳模型的判定)",
   },
 };
 

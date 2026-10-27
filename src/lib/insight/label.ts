@@ -11,13 +11,16 @@
  *   其余,下轮重扫自愈(embed-reconcile 同取向)。
  * 日批编排(配额/评分/快照/覆盖/fading)在 ./daily。
  */
-import { AI_PURPOSE_INSIGHT } from "../ai/constants";
+import { AI_PURPOSE_INSIGHT, AI_PURPOSE_INSIGHT_JUDGE } from "../ai/constants";
+import { decideQuestions } from "../ai/decisions-client";
+import { resolveAiModel } from "../ai/resolver";
 import { chatJsonTask, type ParsedTask } from "../ai/chat-json-task";
 import { readExtraMaxTokens } from "../ai/extra-params";
-import type { resolveAiModel } from "../ai/resolver";
 import { prisma } from "../db";
+import { logger } from "../logger";
 import { unionMedia } from "./cluster";
 import {
+  JUDGE_MIN_CONFIDENCE,
   LABEL_MIN_MEMBERS,
   LABEL_SAMPLE_SIZE,
   LABEL_SAMPLE_TEXT_MAX,
@@ -131,6 +134,91 @@ async function fetchLabelSamples(clusterId: bigint): Promise<LabelSample[]> {
   }));
 }
 
+/** Jev 判定半场(M53):舆情倾向 + hot·pain 覆判,两问合一次 decisions 请求。
+ * 高置信(≥JUDGE_MIN_CONFIDENCE)逐项覆写 LLM 判定;低置信/不可用保留 LLM 值
+ * (自动回退,打标永不因 Jev 失败失败)。双跑差异留痕=一致性抽查数据源。 */
+async function judgeByJev(
+  clusterId: bigint,
+  samples: LabelSample[],
+  llm: { kind: "hot" | "pain"; sentiment: InsightLabelContract["sentiment"] },
+): Promise<{ kind: "hot" | "pain"; sentiment: InsightLabelContract["sentiment"] }> {
+  const out = { ...llm };
+  let judge: Awaited<ReturnType<typeof resolveAiModel>>;
+  try {
+    judge = await resolveAiModel(AI_PURPOSE_INSIGHT_JUDGE);
+  } catch {
+    return out;
+  }
+  if (!judge) return out; // 未绑定判定模型 → 全量走归纳模型(零行为变化)
+  try {
+    const r = await decideQuestions({
+      baseUrl: judge.baseUrl ?? "",
+      apiKey: judge.apiKey,
+      model: judge.modelId,
+      state: samples.map((s) => `[${s.source}] ${s.rawText}`),
+      questions: {
+        sentiment: {
+          type: "choice",
+          options: ["positive", "neutral", "negative", "mixed"],
+        },
+        kind: { type: "choice", options: ["hot", "pain"] },
+      },
+      timeoutMs: judge.timeoutSec * 1000,
+    });
+    const sent = r.answers.sentiment;
+    if (
+      sent &&
+      sent.confidence !== null &&
+      sent.confidence >= JUDGE_MIN_CONFIDENCE &&
+      ["positive", "neutral", "negative", "mixed"].includes(sent.answer)
+    ) {
+      if (sent.answer !== out.sentiment) {
+        logger.info({
+          event: "insight.judge.diff",
+          clusterId: clusterId.toString(),
+          field: "sentiment",
+          llm: out.sentiment,
+          jev: sent.answer,
+          confidence: sent.confidence,
+        });
+      }
+      out.sentiment = sent.answer as InsightLabelContract["sentiment"];
+    }
+    const kind = r.answers.kind;
+    if (
+      kind &&
+      kind.confidence !== null &&
+      kind.confidence >= JUDGE_MIN_CONFIDENCE &&
+      (kind.answer === "hot" || kind.answer === "pain")
+    ) {
+      if (kind.answer !== out.kind) {
+        logger.info({
+          event: "insight.judge.diff",
+          clusterId: clusterId.toString(),
+          field: "kind",
+          llm: out.kind,
+          jev: kind.answer,
+          confidence: kind.confidence,
+        });
+      }
+      out.kind = kind.answer as "hot" | "pain";
+    }
+    logger.info({
+      event: "insight.judged",
+      clusterId: clusterId.toString(),
+      cost: r.usageCost,
+    });
+  } catch (e) {
+    // Jev 不可用(网络/配额/协议漂移)→ 保留 LLM 判定(自动回退)
+    logger.warn({
+      event: "insight.judge_failed",
+      clusterId: clusterId.toString(),
+      error: String(e),
+    });
+  }
+  return out;
+}
+
 /** 单簇打标(日批主链路 + 一次性重判脚本复用);永不 throw(失败返回 false
  * 交批次汇总) */
 export async function labelCluster(
@@ -168,16 +256,21 @@ export async function labelCluster(
     }),
     prisma.insightClusterMember.count({ where: { clusterId } }),
   ]);
+  // 判定半场(M53):Jev 高置信覆写舆情/hot·pain(未绑定判定模型时原值直通)
+  const judged = await judgeByJev(clusterId, samples, {
+    kind: parsed.kind,
+    sentiment: parsed.sentiment,
+  });
   await prisma.insightCluster.update({
     where: { id: clusterId },
     data: {
       label: parsed.label,
       summary: parsed.summary,
       keywords: parsed.keywords,
-      // 簇别语义覆判(痛点扩围):LLM 判定覆盖源映射引导值
-      kind: parsed.kind,
-      // 舆情倾向(M46 验收批):词云四色数据源
-      sentiment: parsed.sentiment,
+      // 簇别语义覆判(痛点扩围):LLM 判定覆盖源映射引导值;M53 起 Jev 高置信覆写
+      kind: judged.kind,
+      // 舆情倾向(M46 验收批):词云四色数据源;M53 起 Jev 高置信覆写
+      sentiment: judged.sentiment,
       media: unionMedia([mediaRows.map((r) => r.medium)]),
       labeledAt: new Date(),
       // 基 LLM 调用期间的最新成员数记账,避免把打标间隙的新增误判为「未打标新增」
