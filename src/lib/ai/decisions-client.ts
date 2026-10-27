@@ -13,27 +13,34 @@ import { authHeaders } from "./probe-shared";
 
 export interface JevChoiceQuestion {
   type: "choice";
-  /** 选项(答案answer=其中之一) */
-  options: string[];
+  /** 选项 → 判定指引(每选项一句「什么样算这个选项」;官方 ticket 分诊同构) */
+  criteria: Record<string, string>;
+  /** 指令(问题句) */
+  instructions: string;
 }
 
 export interface JevNoulQuestion {
   type: "noul";
-  /** 判定条件(答案=成立概率) */
-  criteria: string;
+  /** 成立/不成立各自的判定指引(官方 schema 为 true/false 双键对象) */
+  criteria: { true: string; false: string };
+  /** 指令(问题句) */
+  instructions: string;
 }
 
 export type JevQuestion = JevChoiceQuestion | JevNoulQuestion;
 
-export interface JevDecisionAnswer {
-  /** 决策答案(choice=选中选项;probe/noul 场景为文本) */
-  answer: string;
-  /** 置信 0-1(低置信回落由调用方定阈值) */
+export interface JevAnswer {
+  type: string;
+  /** choice:选中选项 */
+  choice?: string;
+  /** noul:成立概率 0-1 */
+  noul?: number;
   confidence: number | null;
+  probabilities?: Record<string, number>;
 }
 
 export interface DecideResult {
-  answers: Record<string, JevDecisionAnswer>;
+  answers: Record<string, JevAnswer>;
   usageCost: number | null;
 }
 
@@ -75,15 +82,27 @@ export async function decideQuestions(input: {
     throw new JevError(`Decisions API ${res.status}: ${text.slice(0, 200)}`, res.status);
   }
   const json = (await res.json().catch(() => null)) as {
-    answers?: Record<string, { answer?: unknown; confidence?: unknown }>;
+    answers?: Record<string, Record<string, unknown>>;
     usage?: { cost?: unknown };
   } | null;
   if (!json?.answers) throw new JevError("Decisions API 响应缺 answers", res.status);
-  const answers: Record<string, JevDecisionAnswer> = {};
+  const answers: Record<string, JevAnswer> = {};
   for (const [name, a] of Object.entries(json.answers)) {
     answers[name] = {
-      answer: typeof a.answer === "string" ? a.answer : String(a.answer ?? ""),
+      type: typeof a.type === "string" ? a.type : "unknown",
+      ...(typeof a.choice === "string" ? { choice: a.choice } : {}),
+      ...(typeof a.noul === "number" ? { noul: a.noul } : {}),
       confidence: typeof a.confidence === "number" ? a.confidence : null,
+      ...(a.probabilities !== null && typeof a.probabilities === "object"
+        ? {
+            probabilities: Object.fromEntries(
+              Object.entries(a.probabilities as Record<string, unknown>).map(([k, v]) => [
+                k,
+                typeof v === "number" ? v : Number(v),
+              ]),
+            ),
+          }
+        : {}),
     };
   }
   return {

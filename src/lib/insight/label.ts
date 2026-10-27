@@ -159,49 +159,65 @@ async function judgeByJev(
       questions: {
         sentiment: {
           type: "choice",
-          options: ["positive", "neutral", "negative", "mixed"],
+          criteria: {
+            positive: "整体呈正面情绪",
+            neutral: "中性陈述为主,无明显情绪",
+            negative: "负面情绪为主(抱怨/不满/吐槽)",
+            mixed: "正负情绪混杂",
+          },
+          instructions: "这组用户信号的总体舆情倾向是哪一类?",
         },
-        kind: { type: "choice", options: ["hot", "pain"] },
+        kind: {
+          type: "choice",
+          criteria: {
+            hot: "外部热点话题(大家在讨论/关注什么)",
+            pain: "用户痛点或需求(大家希望有什么/遇到什么困难)",
+          },
+          instructions: "这组信号更接近外部热点话题还是用户痛点?",
+        },
       },
       timeoutMs: judge.timeoutSec * 1000,
     });
+    // 判定采信:置信 ≥ 阈值 且 选项合法 → 覆写;低置信/非法 → 保留 LLM 值
     const sent = r.answers.sentiment;
     if (
-      sent &&
+      sent?.type === "choice" &&
+      sent.choice !== undefined &&
       sent.confidence !== null &&
       sent.confidence >= JUDGE_MIN_CONFIDENCE &&
-      ["positive", "neutral", "negative", "mixed"].includes(sent.answer)
+      ["positive", "neutral", "negative", "mixed"].includes(sent.choice)
     ) {
-      if (sent.answer !== out.sentiment) {
+      if (sent.choice !== out.sentiment) {
         logger.info({
           event: "insight.judge.diff",
           clusterId: clusterId.toString(),
           field: "sentiment",
           llm: out.sentiment,
-          jev: sent.answer,
+          jev: sent.choice,
           confidence: sent.confidence,
         });
       }
-      out.sentiment = sent.answer as InsightLabelContract["sentiment"];
+      out.sentiment = sent.choice as InsightLabelContract["sentiment"];
     }
     const kind = r.answers.kind;
     if (
-      kind &&
+      kind?.type === "choice" &&
+      kind.choice !== undefined &&
       kind.confidence !== null &&
       kind.confidence >= JUDGE_MIN_CONFIDENCE &&
-      (kind.answer === "hot" || kind.answer === "pain")
+      (kind.choice === "hot" || kind.choice === "pain")
     ) {
-      if (kind.answer !== out.kind) {
+      if (kind.choice !== out.kind) {
         logger.info({
           event: "insight.judge.diff",
           clusterId: clusterId.toString(),
           field: "kind",
           llm: out.kind,
-          jev: kind.answer,
+          jev: kind.choice,
           confidence: kind.confidence,
         });
       }
-      out.kind = kind.answer as "hot" | "pain";
+      out.kind = kind.choice as "hot" | "pain";
     }
     logger.info({
       event: "insight.judged",

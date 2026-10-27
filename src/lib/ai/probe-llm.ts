@@ -16,7 +16,13 @@ export async function probeLlm(input: ProbeInput): Promise<ProbeResult> {
       body: JSON.stringify({
         model: input.modelId,
         state: ["ok"],
-        questions: { ok: { type: "noul", criteria: "state 文本恰为 ok" } },
+        questions: {
+          ok: {
+            type: "noul",
+            criteria: { true: "文本恰为 ok", false: "文本不是 ok" },
+            instructions: "state 文本恰为 ok 吗?",
+          },
+        },
       }),
     });
     return { ok: raw.ok, latencyMs: raw.latencyMs, detail: raw.detail };
