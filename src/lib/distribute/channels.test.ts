@@ -33,8 +33,11 @@ describe("parseChannelParam(M48 批D 渠道注册表)", () => {
     expect(parseChannelParam("wechat")).toBe("wechat");
   });
 
-  it("非法/缺省 → undefined(不过滤;xiaohongshu 属贴图载体渠道,不入文章分发枚举)", () => {
-    expect(parseChannelParam("xiaohongshu")).toBeUndefined();
+  it("xiaohongshu 注册表放行(M50 批A:双载体全渠道,读侧按载体路由)", () => {
+    expect(parseChannelParam("xiaohongshu")).toBe("xiaohongshu");
+  });
+
+  it("非法/缺省 → undefined(不过滤)", () => {
     expect(parseChannelParam("instagram")).toBeUndefined();
     expect(parseChannelParam(undefined)).toBeUndefined();
   });

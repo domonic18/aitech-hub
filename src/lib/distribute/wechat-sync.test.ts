@@ -28,7 +28,8 @@ vi.mock("../queue", () => ({
   DISTRIBUTE_JOB_WECHAT_BATCH: "wechat-batch",
   getQueue: vi.fn(() => ({ add: addMock })),
 }));
-vi.mock("./wechat-config-admin", () => ({
+vi.mock("./wechat-config-admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./wechat-config-admin")>()), // 保留真实 wechatConfigReady 纯谓词(批A 单源化)
   getWechatRuntimeConfig: vi.fn(),
 }));
 vi.mock("./wechat-client", async (importOriginal) => ({

@@ -11,22 +11,32 @@ export const CHANNEL_XHS = "xiaohongshu";
  * 小红书属贴图载体(contentPinChannel),不入本枚举 */
 export const PUBLISH_CHANNELS = [CHANNEL_WECHAT] as const;
 
-/** 渠道注册表(M48 批D 转活:原 PUBLISH_CHANNELS 零消费方死脚手架)——分发中心
- * 读侧渠道枚举校验/渠道名的唯一源。新渠道(小红书等)在此登记即获得:校验放行、
- * overview/listPublishChannelRecords 的 channel 维度、分发页渠道名;同步管线
- * 按 queue.ts#distributeQueueFor 落子队列。Record 键域锁 PUBLISH_CHANNELS,
- * 加渠道漏登记 label 编译期即红。 */
-export const DISTRIBUTE_CHANNELS: Record<(typeof PUBLISH_CHANNELS)[number], { label: string }> = {
-  [CHANNEL_WECHAT]: { label: "微信公众号" },
+/** 分发载体(M50 批A):文章侧走 publish_channel,贴图侧走 content_pin_channel */
+export const DISTRIBUTE_CARRIERS = ["article", "pin"] as const;
+export type DistributeCarrier = (typeof DISTRIBUTE_CARRIERS)[number];
+
+/** 渠道注册表 v2(M50 批A:加载体维度+收编小红书,原 M48 批D 转活)——分发中心
+ * 读侧渠道枚举校验/渠道名/载体归因的唯一源。键域=双载体全渠道;文章侧管线
+ * (publish_channel 表与队列路由)键域仍锁 PUBLISH_CHANNELS。carriers=该渠道
+ * 可挂的载体(wechat 双载体都有——文章与贴图各有公众号同步;行级载体归因
+ * 看记录来源表,见 records.ts PublishRecordRow.carrier)。 */
+export const DISTRIBUTE_CHANNELS: Record<
+  typeof CHANNEL_WECHAT | typeof CHANNEL_XHS,
+  { label: string; carriers: DistributeCarrier[] }
+> = {
+  [CHANNEL_WECHAT]: { label: "微信公众号", carriers: ["article", "pin"] },
+  [CHANNEL_XHS]: { label: "小红书", carriers: ["pin"] },
 };
 
-/** 渠道参数校验(读侧唯一口):合法返回渠道名,非法/缺省返回 undefined(不过滤) */
+/** 渠道参数校验(读侧唯一口):合法返回渠道名,非法/缺省返回 undefined(不过滤)。
+ * 双载体全放行——xiaohongshu 的记录在 content_pin_channel,读侧按 carrier 路由
+ * 查询(批B),publishChannel 表无此渠道行属预期。 */
 export function parseChannelParam(
   raw: string | undefined,
-): (typeof PUBLISH_CHANNELS)[number] | undefined {
+): keyof typeof DISTRIBUTE_CHANNELS | undefined {
   if (!raw) return undefined;
-  return (PUBLISH_CHANNELS as readonly string[]).includes(raw)
-    ? (raw as (typeof PUBLISH_CHANNELS)[number])
+  return raw in DISTRIBUTE_CHANNELS
+    ? (raw as keyof typeof DISTRIBUTE_CHANNELS)
     : undefined;
 }
 

@@ -13,10 +13,12 @@ import { logger } from "../logger";
 import { mediaStorage } from "../media/storage";
 import { DistributeError } from "../distribute/errors";
 import { ensureChannelRowUnique } from "../distribute/channel-row";
-import { PUBLISH_STATUS_PENDING, PUBLISH_STATUS_SYNCED } from "../distribute/channels";
+import {
+  CHANNEL_XHS,
+  PUBLISH_STATUS_PENDING,
+  PUBLISH_STATUS_SYNCED,
+} from "../distribute/channels";
 import { DISTRIBUTE_JOB_XHS_AUTO, QUEUE_DISTRIBUTE_XHS, getQueue } from "../queue";
-// 贴图渠道枚举独立于文章侧 PUBLISH_CHANNELS(贴图载体:xiaohongshu 不入文章分发枚举)
-const CHANNEL_XHS = "xiaohongshu";
 
 /** 创建/复用渠道行(pending;验收门槛:草稿拒)。幂等,仅供本模块入队使用。 */
 async function distributePinToXhs(pinId: bigint) {
