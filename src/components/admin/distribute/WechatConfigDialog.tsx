@@ -70,6 +70,8 @@ export default function WechatConfigDialog({
   const [appSecret, setAppSecret] = useState("");
   const [author, setAuthor] = useState(config.author ?? "");
   const [theme, setTheme] = useState(config.theme);
+  const [paraStyle, setParaStyle] = useState<string>(config.paraStyle);
+  const [enableTocMeta, setEnableTocMeta] = useState(config.enableTocMeta);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(config.autoSyncEnabled);
   const [enabled, setEnabled] = useState(config.enabled);
 
@@ -89,6 +91,8 @@ export default function WechatConfigDialog({
     appSecret !== "" ||
     author !== (config.author ?? "") ||
     theme !== config.theme ||
+    paraStyle !== config.paraStyle ||
+    enableTocMeta !== config.enableTocMeta ||
     autoSyncEnabled !== config.autoSyncEnabled ||
     enabled !== config.enabled;
 
@@ -104,6 +108,8 @@ export default function WechatConfigDialog({
           appSecret: appSecret.trim() || null,
           author: author.trim() || null,
           theme,
+          paraStyle,
+          enableTocMeta,
           autoSyncEnabled,
           enabled,
         }),
@@ -197,7 +203,26 @@ export default function WechatConfigDialog({
           </select>
         </label>
 
+        <label className={Lb}>
+          段落排版(M51)
+          <select
+            value={paraStyle}
+            onChange={(e) => setParaStyle(e.target.value)}
+            className={`mt-1 ${field}`}
+          >
+            <option value="default">默认(不缩进不对齐)</option>
+            <option value="indent">首行缩进两字</option>
+            <option value="justify">两端对齐</option>
+            <option value="indent_justify">缩进 + 两端对齐</option>
+          </select>
+        </label>
+
         <div className="flex flex-col gap-2">
+          <PillToggle
+            checked={enableTocMeta}
+            label="文首阅读时间 + 目录卡(M51)"
+            onChange={(v) => setEnableTocMeta(v)}
+          />
           <PillToggle checked={enabled} label="启用公众号渠道" onChange={(v) => setEnabled(v)} />
           <PillToggle
             checked={autoSyncEnabled}
