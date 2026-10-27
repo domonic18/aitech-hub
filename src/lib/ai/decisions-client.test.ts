@@ -16,8 +16,8 @@ function okResponse(): Response {
     ok: true,
     json: async () => ({
       answers: {
-        sentiment: { answer: "negative", confidence: 0.91 },
-        kind: { answer: "hot", confidence: 0.8 },
+        sentiment: { type: "choice", choice: "negative", confidence: 0.91 },
+        kind: { type: "choice", choice: "hot", confidence: 0.8 },
       },
       usage: { cost: 0.0031 },
     }),
@@ -30,8 +30,21 @@ const BASE_INPUT = {
   model: "typesafe/jev-1.14",
   state: ["[hot-baidu] 文本A", "[hot-zhihu] 文本B"],
   questions: {
-    sentiment: { type: "choice" as const, options: ["positive", "neutral", "negative", "mixed"] },
-    kind: { type: "choice" as const, options: ["hot", "pain"] },
+    sentiment: {
+      type: "choice" as const,
+      criteria: {
+        positive: "整体呈正面情绪",
+        neutral: "中性陈述为主",
+        negative: "负面情绪为主",
+        mixed: "正负混杂",
+      },
+      instructions: "这组用户信号的总体舆情倾向是哪类?",
+    },
+    kind: {
+      type: "choice" as const,
+      criteria: { hot: "外部热点话题", pain: "用户痛点/需求" },
+      instructions: "这组信号更接近热点话题还是用户痛点?",
+    },
   },
 };
 
@@ -52,11 +65,16 @@ describe("decideQuestions wire", () => {
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe("typesafe/jev-1.14");
     expect(body.state).toHaveLength(2);
-    expect(body.questions.sentiment.options).toHaveLength(4);
-    expect(body.questions.kind.options).toEqual(["hot", "pain"]);
+    expect(body.questions.sentiment.criteria).toHaveProperty("positive");
+    expect(Object.keys(body.questions.sentiment.criteria)).toHaveLength(4);
+    expect(body.questions.kind.criteria).toHaveProperty("hot");
 
-    expect(r.answers.sentiment).toEqual({ answer: "negative", confidence: 0.91 });
-    expect(r.answers.kind).toEqual({ answer: "hot", confidence: 0.8 });
+    expect(r.answers.sentiment).toMatchObject({
+      type: "choice",
+      choice: "negative",
+      confidence: 0.91,
+    });
+    expect(r.answers.kind).toMatchObject({ type: "choice", choice: "hot" });
     expect(r.usageCost).toBeCloseTo(0.0031);
   });
 
@@ -84,7 +102,9 @@ describe("decideQuestions wire", () => {
       "fetch",
       vi.fn(async () => ({
         ok: true,
-        json: async () => ({ answers: { kind: { answer: "hot", confidence: "high" } } }),
+        json: async () => ({
+          answers: { kind: { type: "choice", choice: "hot", confidence: "high" } },
+        }),
       })),
     );
     const r = await decideQuestions(BASE_INPUT);
