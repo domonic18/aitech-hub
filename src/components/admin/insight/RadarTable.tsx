@@ -8,6 +8,7 @@ import Link from "next/link";
 
 import type { InsightClusterRow } from "@/lib/insight/admin";
 import type { ClusterMomentum } from "@/lib/insight/scoring";
+import { TREND_TIER_LABELS, type ClusterTrendRow, type TrendTier } from "@/lib/insight/trend";
 
 import { AnomalyBadge, clusterHref } from "./shared";
 
@@ -25,6 +26,28 @@ const MOMENTUM_META: Record<ClusterMomentum, { text: string; cls: string; title:
   steady: { text: "→平稳", cls: "bg-panel-2 text-text-3", title: "活跃度持平" },
   cooling: { text: "↓退潮", cls: "bg-panel-2 text-text-3", title: "近 24h 零新增,逐步冷却" },
 };
+
+/** 增长分五态徽章(M52 批B:近 7 天 vs 前 7 天,取代 24h 单点方向;无趋势行
+ * 的簇回退 24h 形态) */
+const TREND_CLS: Record<TrendTier, string> = {
+  new: "bg-red/12 text-red",
+  breakout: "bg-red/12 text-red",
+  rising: "bg-green/12 text-green",
+  flat: "bg-panel-2 text-text-3",
+  declining: "bg-panel-2 text-text-3",
+};
+
+function TrendBadge({ tier, growth }: { tier: TrendTier; growth: number }): React.ReactElement {
+  const pct = `${growth >= 0 ? "+" : ""}${Math.round(growth * 100)}%`;
+  return (
+    <span
+      className={`shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[10px] leading-4 ${TREND_CLS[tier]}`}
+      title={`近 7 天 vs 前 7 天在役源信号增长 ${pct}`}
+    >
+      {TREND_TIER_LABELS[tier]}
+    </span>
+  );
+}
 
 function MomentumBadge({ m }: { m: ClusterMomentum }): React.ReactElement {
   const meta = MOMENTUM_META[m];
@@ -52,11 +75,14 @@ function RadarRow({
   c,
   rank,
   maxScore,
+  trends,
 }: {
   c: InsightClusterRow;
   rank: number;
   maxScore: number;
+  trends?: ReadonlyMap<string, ClusterTrendRow>;
 }): React.ReactElement {
+  const trend = trends?.get(String(c.id));
   const kws = c.keywords
     .slice(0, 3)
     .map((k) => `#${k}`)
@@ -74,7 +100,11 @@ function RadarRow({
           <span className="truncate text-[13px] text-text-1" title={c.label ?? undefined}>
             {c.label ?? "待打标簇"}
           </span>
-          <MomentumBadge m={c.momentum} />
+          {trend ? (
+            <TrendBadge tier={trend.tier} growth={trend.growth} />
+          ) : (
+            <MomentumBadge m={c.momentum} />
+          )}
           {c.anomaly && <AnomalyBadge />}
         </span>
         {kws !== "" && (
@@ -106,8 +136,11 @@ function RadarRow({
 
 export default function RadarTable({
   clusters,
+  trends,
 }: {
   clusters: InsightClusterRow[];
+  /** 簇增长分级(M52 批B;键=簇 id 字符串;缺省回退 24h 动量徽) */
+  trends?: ReadonlyMap<string, ClusterTrendRow>;
 }): React.ReactElement {
   if (clusters.length === 0) {
     return (
@@ -125,7 +158,7 @@ export default function RadarTable({
   return (
     <div className="grid gap-x-4 lg:grid-cols-2">
       {clusters.map((c, i) => (
-        <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} />
+        <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} trends={trends} />
       ))}
     </div>
   );
