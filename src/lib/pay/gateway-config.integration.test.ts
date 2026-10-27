@@ -13,6 +13,7 @@ loadEnvConfig(process.cwd());
 process.env.LOG_LEVEL = "silent";
 
 import { prisma } from "@/lib/db";
+import { readSecretCompat } from "@/lib/crypto/secret-box";
 
 const { GET: configGET, PUT: configPUT } = await import("@/app/api/pay-config/route");
 const { getPayGatewayRuntimeConfig } = await import("@/lib/pay/gateway-config");
@@ -131,7 +132,9 @@ describe("支付配置 API(admin-only,模式即总闸,secret 只写不读)", () 
     expect(offView.data.secretSet).toBe(true); // 凭据保留,先填后开
     expect(await prisma.payGatewayConfig.findFirst({ where: { enabled: true } })).toBeNull();
     const kept = await prisma.payGatewayConfig.findUnique({ where: { gateway: "xunhu" } });
-    expect(kept?.appSecret).toBe(SECRET_A);
+    // M50 批E':存储形态=密文;运行时语义=读兼容还原后与原值一致
+    expect(kept?.appSecret?.startsWith("e1:")).toBe(true);
+    expect(readSecretCompat(kept?.appSecret)).toBe(SECRET_A);
 
     // off 态更新凭据字段(照常入库)+ http apiBase 被拒
     expect((await call("PUT", { mode: "off", apiBase: "http://api.dpweixin.com" })).status).toBe(
@@ -163,7 +166,7 @@ describe("支付配置 API(admin-only,模式即总闸,secret 只写不读)", () 
     expect(mockRow?.orderTtlMin).toBe(20);
     const xunhuOff = await prisma.payGatewayConfig.findUnique({ where: { gateway: "xunhu" } });
     expect(xunhuOff?.enabled).toBe(false);
-    expect(xunhuOff?.appSecret).toBe(SECRET_A); // 切走不动凭据
+    expect(readSecretCompat(xunhuOff?.appSecret)).toBe(SECRET_A); // 切走不动凭据
 
     const back = await call("PUT", {
       mode: "xunhu",
@@ -174,7 +177,9 @@ describe("支付配置 API(admin-only,模式即总闸,secret 只写不读)", () 
     expect(back.status).toBe(200);
     expect(((await back.json()) as { data: { mode: string } }).data.mode).toBe("xunhu");
     expect(
-      (await prisma.payGatewayConfig.findUnique({ where: { gateway: "xunhu" } }))?.appSecret,
+      readSecretCompat(
+        (await prisma.payGatewayConfig.findUnique({ where: { gateway: "xunhu" } }))?.appSecret,
+      ),
     ).toBe(SECRET_A);
     expect(
       await prisma.payGatewayConfig.findFirst({ where: { enabled: true, gateway: "mock" } }),

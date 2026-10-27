@@ -13,6 +13,7 @@ loadEnvConfig(process.cwd());
 process.env.LOG_LEVEL = "silent";
 
 import { prisma } from "@/lib/db";
+import { readSecretCompat } from "@/lib/crypto/secret-box";
 
 const { GET: configGET, PUT: configPUT } = await import("@/app/api/email-config/route");
 const { POST: testPOST } = await import("@/app/api/email-config/test/route");
@@ -124,7 +125,9 @@ describe("SMTP 配置 API(admin-only,password 只写不读)", () => {
     expect(updated.status).toBe(200);
     const row = await prisma.emailConfig.findFirst();
     expect(row).toMatchObject({ host: "smtp2.example.com", port: 587, enabled: true });
-    expect(row?.password).toBe("smtp-secret-1"); // 留空 = 保留
+    // M50 批E':入库即密文(e1: 前缀);读兼容还原=留空保留语义不变
+    expect(row?.password?.startsWith("e1:")).toBe(true);
+    expect(readSecretCompat(row?.password)).toBe("smtp-secret-1");
 
     expect(
       (
