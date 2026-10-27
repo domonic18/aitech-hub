@@ -37,12 +37,14 @@ const BASE_INPUT = {
 
 describe("decideQuestions wire", () => {
   it("POST decisions 端点 + Bearer 认证 + model/state/questions 结构;应答映射与成本", async () => {
-    const fetchMock = vi.fn(async () => okResponse());
+    const fetchMock = vi.fn(async (url: string | URL | globalThis.Request, init?: RequestInit) =>
+      okResponse(),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const r = await decideQuestions(BASE_INPUT);
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://openrouter.ai/api/alpha/decisions");
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
