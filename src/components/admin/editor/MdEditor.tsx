@@ -13,7 +13,9 @@ import { useEffect, useState } from "react";
 
 import { useToast } from "@/components/admin/Toast";
 import { WECHAT_CONTENT_MAX_CHARS } from "@/lib/distribute/channels";
+import { wechatTail } from "@/lib/distribute/channel-tails";
 import { renderWechatHtml } from "@/lib/distribute/wechat-html";
+import type { WechatParaStyle } from "@/lib/distribute/wechat-html";
 import { WECHAT_THEME_DEFAULT } from "@/lib/distribute/wechat-themes";
 import { IMPORT_MD_STORE_KEY } from "@/lib/media/import-md";
 
@@ -37,8 +39,15 @@ export default function MdEditor({
 }): React.ReactElement {
   const [warnings, setWarnings] = useState<string[]>([]);
   const { push } = useToast();
-  /** 微信正文码点(按默认主题渲染后计数;渠道实际主题差异仅内联样式,量级可忽略) */
+  /** 微信正文码点(M51 口径对齐:渠道主题/段落排版/目录卡 + 渠道尾注,与推送
+   * 管线同源;配置拉取失败回退默认,差量仅内联样式与目录卡) */
   const [chars, setChars] = useState<number | null>(null);
+  /** 渠道渲染配置(挂载拉取一次;失败回退默认,不阻塞编辑) */
+  const [renderCfg, setRenderCfg] = useState({
+    theme: WECHAT_THEME_DEFAULT,
+    paraStyle: "default",
+    enableTocMeta: false,
+  });
 
   // 一键发文交接:mount 时消费一次,取完即删(刷新不重放)
   useEffect(() => {
@@ -58,10 +67,36 @@ export default function MdEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 mount/imported 变化时消费一次
   }, [imported]);
 
-  // 码点计数防抖 300ms(与预览渲染同量级,长文 markdown-it 数毫秒)
+  // 渠道渲染配置:挂载拉取一次(编辑器与推送管线同口径的前提)
+  useEffect(() => {
+    let dead = false;
+    fetch("/api/distribute/wechat-config")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const cfg = json?.data?.config;
+        if (!dead && cfg) {
+          setRenderCfg({
+            theme: typeof cfg.theme === "string" && cfg.theme ? cfg.theme : WECHAT_THEME_DEFAULT,
+            paraStyle: typeof cfg.paraStyle === "string" ? cfg.paraStyle : "default",
+            enableTocMeta: cfg.enableTocMeta === true,
+          });
+        }
+      })
+      .catch(() => undefined); // 回退默认,不阻塞编辑
+    return () => {
+      dead = true;
+    };
+  }, []);
+
+  // 码点计数防抖 300ms(与预览渲染同量级,长文 markdown-it 数毫秒)。
+  // M51 口径对齐:+ 渠道尾注 + 渠道主题/段落排版/目录卡(推送管线同源)
   useEffect(() => {
     const t = setTimeout(() => {
-      setChars([...renderWechatHtml(value, WECHAT_THEME_DEFAULT).html].length);
+      const { html } = renderWechatHtml(`${value}\n\n${wechatTail()}`, renderCfg.theme, {
+        paraStyle: renderCfg.paraStyle as WechatParaStyle,
+        tocMeta: renderCfg.enableTocMeta,
+      });
+      setChars([...html].length);
     }, 300);
     return () => clearTimeout(t);
   }, [value]);
@@ -80,7 +115,7 @@ export default function MdEditor({
       <div className="flex items-baseline justify-end gap-1 px-1 pb-1 font-mono text-[11px]">
         {chars !== null && (
           <span
-            title="按微信公众号正文口径预估(默认主题渲染后码点数);超预算同步将被拒稿"
+            title="按微信公众号推送同源口径预估(渠道主题/段落排版/目录卡+渠道尾注);超预算同步将被拒稿"
             className={over ? "text-red" : "text-text-3"}
           >
             微信正文 {chars.toLocaleString()} / {WECHAT_CONTENT_MAX_CHARS.toLocaleString()} 码点

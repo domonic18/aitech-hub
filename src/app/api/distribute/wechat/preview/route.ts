@@ -12,6 +12,7 @@ import { parsePostId } from "@/lib/content/posts-admin";
 import { CHANNEL_WECHAT } from "@/lib/distribute/channels";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
 import { renderWechatHtml, type WechatParaStyle } from "@/lib/distribute/wechat-html";
+import { wechatTail } from "@/lib/distribute/channel-tails";
 import { getWechatTheme, WECHAT_THEME_IDS } from "@/lib/distribute/wechat-themes";
 import { WECHAT_CONFIG_ID } from "@/lib/distribute/wechat-config-admin";
 import { requireSessionActor } from "@/lib/http/session-guard";
@@ -58,8 +59,10 @@ export async function POST(req: NextRequest) {
       throw new DistributeError("invalid", "旧文(HTML 保真正文)暂不支持预览:请先转写为 Markdown");
     }
     const theme = getWechatTheme(parsed.data.theme ?? channel?.theme ?? cfg?.theme).id;
-    // 段落排版/目录卡取渠道默认(M51;预览与推送同观感)
-    const { html } = renderWechatHtml(post.contentMd ?? "", theme, {
+    // 预览=推送同源(M51 码点口径对齐):同样追加渠道尾注(阅读原文导流段),
+    // 弹窗所见即草稿所得,码点计数不再缺尾注
+    const finalMd = `${post.contentMd ?? ""}\n\n${wechatTail()}`;
+    const { html } = renderWechatHtml(finalMd, theme, {
       paraStyle: (cfg?.paraStyle ?? "default") as WechatParaStyle,
       tocMeta: cfg?.enableTocMeta ?? false,
     });
