@@ -55,6 +55,8 @@ export function shortSource(source: string): string {
  * hs=热榜源展示切换,source/from/to=信号明细过滤) */
 export type InsightViewParams = {
   source?: string;
+  /** 介质筛选(M52 批D:钱/时间/声音/搜索/AI记录) */
+  medium?: string;
   w?: string;
   from?: string;
   to?: string;

@@ -13,6 +13,7 @@ import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 import {
   CLUSTER_MATCH_DISTANCE,
   CLUSTER_MIN_TEXT_LEN,
+  CLUSTER_SHORT_MATCH_DISTANCE,
   INSIGHT_MEDIA_VOCAB,
   INSIGHT_SOURCE_KIND,
 } from "./constants";
@@ -29,14 +30,25 @@ export interface AssignDecision {
   clusterId?: bigint;
 }
 
-/** 归簇判定(纯函数):文本过短不入簇;最近簇距离 ≤ 阈值归簇,否则建新簇 */
+/** 归簇判定(纯函数):短文本不建簇、仅严阈值就近归入既有簇(M52 批D,
+ * outlier reduction 思路);正常文本距离 ≤ 阈值归簇,否则建新簇 */
 export function decideAssignment(
   nearest: ClusterNearMatch | undefined,
   textLen: number,
   minTextLen: number,
   matchDistance: number,
+  shortMatchDistance?: number,
 ): AssignDecision {
-  if (textLen < minTextLen) return { action: "short" };
+  if (textLen < minTextLen) {
+    if (
+      shortMatchDistance !== undefined &&
+      nearest !== undefined &&
+      nearest.distance <= shortMatchDistance
+    ) {
+      return { action: "join", clusterId: nearest.clusterId };
+    }
+    return { action: "short" };
+  }
   if (nearest !== undefined && nearest.distance <= matchDistance) {
     return { action: "join", clusterId: nearest.clusterId };
   }
@@ -70,9 +82,8 @@ export interface ClusterRunSummary {
 
 /** 聚类主流程(embed job 与手动脚本共用;process 级自愈,不抛) */
 export async function runInsightClustering(limit: number): Promise<ClusterRunSummary> {
-  const workset = await findUnclusteredSignals(limit, CLUSTER_MIN_TEXT_LEN, [
-    ...INSIGHT_SOURCES_ENABLED,
-  ]);
+  // 工作集下限 1(M52 批D):短文本进工作集走严配归簇,不再整段盲区
+  const workset = await findUnclusteredSignals(limit, 1, [...INSIGHT_SOURCES_ENABLED]);
   const summary: ClusterRunSummary = {
     scanned: workset.length,
     joined: 0,
@@ -97,6 +108,7 @@ export async function runInsightClustering(limit: number): Promise<ClusterRunSum
         sig.normalizedText.length,
         CLUSTER_MIN_TEXT_LEN,
         CLUSTER_MATCH_DISTANCE,
+        CLUSTER_SHORT_MATCH_DISTANCE,
       );
       if (decision.action === "short") {
         summary.short += 1;

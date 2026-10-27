@@ -128,3 +128,17 @@ export const MEDIUM_LABELS: Record<InsightMediumVocab, string> = {
   search: "搜索",
   "ai-record": "AI记录",
 };
+
+// ── 增长分与趋势分级(M52 批A;行业对标 Google Trends Rising/Breakout 分级+
+// 趋势生命周期四段)──
+/** 增长分 = (近窗信号数 − 前窗信号数) / max(前窗信号数, 1) */
+export const GROWTH_BREAKOUT = 1.0; // ≥100%(翻倍)→ breakout
+export const GROWTH_RISING = 0.2; // 20%~100% → rising
+export const GROWTH_DECLINING = -0.2; // ≤−20% → declining,其间 flat
+/** 前窗为 0 时,近窗 ≥3 条才判 new(不足视为噪音,判 flat) */
+export const TREND_NEW_MIN_RECENT = 3;
+/** 趋势对比窗口:近窗/前窗各 N 天(跨窗对比与簇动量共用) */
+export const TREND_WINDOW_DAYS = 7;
+/** 短文本(< CLUSTER_MIN_TEXT_LEN)归簇严阈值:不建簇,仅就近严配归入既有簇
+ * (M52 批D,BERTopic outlier reduction 思路——短搜索不再全盲) */
+export const CLUSTER_SHORT_MATCH_DISTANCE = 0.28;

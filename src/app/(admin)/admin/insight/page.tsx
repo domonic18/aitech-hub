@@ -16,6 +16,8 @@ import OverviewHero from "@/components/admin/insight/OverviewHero";
 import OverviewYield from "@/components/admin/insight/OverviewYield";
 import PainCardGrid from "@/components/admin/insight/PainCardGrid";
 import RadarTable from "@/components/admin/insight/RadarTable";
+import SourceMatrix from "@/components/admin/insight/SourceMatrix";
+import TrendBoard from "@/components/admin/insight/TrendBoard";
 import SignalsSection from "@/components/admin/insight/SignalsSection";
 import {
   WINDOWS,
@@ -27,7 +29,8 @@ import {
 } from "@/components/admin/insight/shared";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
-import { SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
+import { listClusterTrends, listSourceMatrix } from "@/lib/insight/trend";
+import { INSIGHT_MEDIA_VOCAB, SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
 import { hotBoardForDay, insightKeywordCloud } from "@/lib/insight/hotboard";
 import { HOT_SOURCE_KEYS } from "@/lib/insight/hot-source";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
@@ -85,6 +88,7 @@ export default async function AdminInsightPage({
   const sp = await searchParams;
   const params: InsightViewParams = {
     source: ENABLED_SOURCES.find((s) => s === sp.source),
+    medium: INSIGHT_MEDIA_VOCAB.find((m) => m === sp.medium),
     w: WINDOWS.some((n) => String(n) === sp.w) ? sp.w : undefined,
     day: DATE_RE.test(sp.day ?? "") ? sp.day : undefined,
     from: DATE_RE.test(sp.from ?? "") ? sp.from : undefined,
@@ -94,22 +98,28 @@ export default async function AdminInsightPage({
   const w = params.w === undefined ? 7 : Number(params.w);
   const today = todayCn();
 
-  const [overview, painClusters, hotClusters, signals, hotBoard, cloud] = await Promise.all([
-    insightOverview(w),
-    listInsightClusters({ kind: "pain", limit: 8 }),
-    listInsightClusters({ kind: "hot", limit: 20 }),
-    listInsightSignals({
-      source: params.source as InsightSource | undefined,
-      // 北京日界折算(表单口径见 SignalsSection:from ≥ 当日零点,to < 次日零点;
-      // 此前 from/to 只进 URL 不进查询,日期筛选是空转)
-      from: params.from === undefined ? undefined : new Date(`${params.from}T00:00:00+08:00`),
-      to:
-        params.to === undefined ? undefined : new Date(`${shiftDay(params.to, 1)}T00:00:00+08:00`),
-      limit: SIGNAL_TAKE_DEFAULT,
-    }),
-    hotBoardForDay(params.day),
-    insightKeywordCloud({ windowDays: w }),
-  ]);
+  const [overview, painClusters, hotClusters, signals, hotBoard, cloud, trends, matrix] =
+    await Promise.all([
+      insightOverview(w),
+      listInsightClusters({ kind: "pain", limit: 8 }),
+      listInsightClusters({ kind: "hot", limit: 20 }),
+      listInsightSignals({
+        source: params.source as InsightSource | undefined,
+        // 北京日界折算(表单口径见 SignalsSection:from ≥ 当日零点,to < 次日零点;
+        // 此前 from/to 只进 URL 不进查询,日期筛选是空转)
+        from: params.from === undefined ? undefined : new Date(`${params.from}T00:00:00+08:00`),
+        to:
+          params.to === undefined
+            ? undefined
+            : new Date(`${shiftDay(params.to, 1)}T00:00:00+08:00`),
+        medium: params.medium,
+        limit: SIGNAL_TAKE_DEFAULT,
+      }),
+      hotBoardForDay(params.day),
+      insightKeywordCloud({ windowDays: w }),
+      listClusterTrends(),
+      listSourceMatrix(),
+    ]);
   const scored = hotClusters.filter((c) => c.score !== null);
   const hotAvg =
     scored.length === 0 ? null : scored.reduce((a, c) => a + (c.score ?? 0), 0) / scored.length;
@@ -117,6 +127,8 @@ export default async function AdminInsightPage({
     params.hs === undefined ? hotBoard : hotBoard.filter((b) => b.source === params.hs);
   /** 窗口徽章口径:活跃簇=词云取数,信号=insightOverview.daily 求和(窗口内在役源) */
   const windowSignals = overview.daily.reduce((a, d) => a + d.count, 0);
+  /** 簇增长分级映射(M52 批B:键=簇 id 字符串,雷达行徽章查表) */
+  const trendMap = new Map(trends.map((t) => [String(t.clusterId), t]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -163,13 +175,32 @@ export default async function AdminInsightPage({
       <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
 
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Card title="机会分趋势" hint="按机会分排序 · 点击行进簇详情 · 动量徽=近 24h 方向">
-          <RadarTable clusters={hotClusters} />
+        <Card
+          title="机会分趋势"
+          hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级(M52)"
+        >
+          <RadarTable clusters={hotClusters} trends={trendMap} />
         </Card>
         <Card title="痛点榜" hint="按信号聚合 · 空白标红=选题机会">
           <PainCardGrid clusters={painClusters} />
         </Card>
       </div>
+
+      <Card
+        id="source-matrix"
+        title="源×簇覆盖矩阵"
+        hint="内容空白 = 热源有需求 × 站内无痛点信号 · 一键转选题补覆盖"
+      >
+        <SourceMatrix matrix={matrix} />
+      </Card>
+
+      <Card
+        id="trend-board"
+        title="跨窗对比"
+        hint="近 7 天 vs 前 7 天在役源信号数 · 增长分五级 · 点击簇名进详情"
+      >
+        <TrendBoard rows={trends} />
+      </Card>
 
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card

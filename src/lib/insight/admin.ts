@@ -116,6 +116,7 @@ const SIGNAL_SELECT = {
  * 调用方折算);limit 上限 200 */
 export async function listInsightSignals(opts: {
   source?: InsightSource;
+  medium?: string;
   from?: Date;
   to?: Date;
   limit?: number;
@@ -125,6 +126,7 @@ export async function listInsightSignals(opts: {
       AND: [
         { source: { in: ENABLED } },
         ...(opts.source === undefined ? [] : [{ source: opts.source }]),
+        ...(opts.medium === undefined ? [] : [{ medium: opts.medium }]),
         ...(opts.from === undefined && opts.to === undefined
           ? []
           : [
