@@ -147,7 +147,7 @@ export async function getPayGatewayConfigView(): Promise<PayGatewayConfigView> {
     orderTtlMin: xunhuRow?.orderTtlMin ?? 30,
     secretSet: Boolean(xunhuRow?.appSecret),
     // 批E':掩真实值(readSecretCompat 兼容旧明文/新密文),掩存储形态无意义
-    secretMask: xunhuRow ? (maskSecret(readSecretCompat(xunhuRow.appSecret) ?? "")) : "",
+    secretMask: xunhuRow ? maskSecret(readSecretCompat(xunhuRow.appSecret) ?? "") : "",
     updatedAt:
       (mode !== "off"
         ? (enabledRow ?? xunhuRow)

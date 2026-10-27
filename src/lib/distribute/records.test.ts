@@ -26,11 +26,7 @@ vi.mock("../db", () => ({
 
 import { prisma } from "../db";
 import { DistributeError } from "./errors";
-import {
-  getDistributeOverview,
-  listDistributeRecords,
-  resetRecordBinding,
-} from "./records";
+import { getDistributeOverview, listDistributeRecords, resetRecordBinding } from "./records";
 
 const mockedFind = vi.mocked(prisma.publishChannel.findUnique);
 const mockedUpdate = vi.mocked(prisma.publishChannel.update);
@@ -80,8 +76,7 @@ describe("getDistributeOverview 双载体 union(M50 批B)", () => {
   // Prisma count 参数取原生类型(mockImplementation 参数逆变,结构化窄类型不可作形参)
   type ArtCountArgs = Parameters<typeof prisma.publishChannel.count>[0];
   type PinCountArgs = Parameters<typeof prisma.contentPinChannel.count>[0];
-  const statusOf = (a: { where?: { status?: unknown } } | undefined): unknown =>
-    a?.where?.status;
+  const statusOf = (a: { where?: { status?: unknown } } | undefined): unknown => a?.where?.status;
   const hasSyncedAt = (a: { where?: { syncedAt?: unknown } } | undefined): boolean =>
     Boolean(a?.where?.syncedAt);
   function mockEmpty(): void {
@@ -146,9 +141,7 @@ describe("getDistributeOverview 双载体 union(M50 批B)", () => {
       if (st === "failed") return Promise.resolve(0) as never;
       return Promise.resolve(0) as never;
     });
-    mockedPinGroupBy.mockResolvedValue([
-      { status: "synced", _count: { _all: 6 } },
-    ] as never);
+    mockedPinGroupBy.mockResolvedValue([{ status: "synced", _count: { _all: 6 } }] as never);
     mockedPinFind.mockResolvedValue({
       status: "synced",
       syncedAt: new Date("2026-10-27T11:00:00+08:00"),
@@ -169,18 +162,34 @@ describe("listDistributeRecords 跨载体 union(M50 批B)", () => {
 
   function artRow(id: number, updatedAt: Date): Record<string, unknown> {
     return {
-      id: BigInt(id), postId: BigInt(100 + id), channel: "wechat", status: "synced",
-      mediaId: "M1", title: "T", digest: null, thumbPath: null, attempts: 1,
-      lastError: null, syncedAt: null, updatedAt,
+      id: BigInt(id),
+      postId: BigInt(100 + id),
+      channel: "wechat",
+      status: "synced",
+      mediaId: "M1",
+      title: "T",
+      digest: null,
+      thumbPath: null,
+      attempts: 1,
+      lastError: null,
+      syncedAt: null,
+      updatedAt,
       post: { title: `文章${id}` },
     };
   }
 
   function pinRow(id: number, updatedAt: Date): Record<string, unknown> {
     return {
-      id: BigInt(id), pinId: BigInt(200 + id), channel: "xiaohongshu", status: "failed",
-      mediaId: null, publishId: null, attempts: 3, lastError: "发布失败",
-      syncedAt: null, updatedAt,
+      id: BigInt(id),
+      pinId: BigInt(200 + id),
+      channel: "xiaohongshu",
+      status: "failed",
+      mediaId: null,
+      publishId: null,
+      attempts: 3,
+      lastError: "发布失败",
+      syncedAt: null,
+      updatedAt,
       pin: { title: `贴图${id}` },
     };
   }
@@ -198,8 +207,12 @@ describe("listDistributeRecords 跨载体 union(M50 批B)", () => {
       ["pin", "贴图9"],
     ]);
     expect(res.rows[1]).toMatchObject({
-      carrier: "pin", targetId: "209", channel: "xiaohongshu",
-      status: "failed", lastError: "发布失败", mediaId: null,
+      carrier: "pin",
+      targetId: "209",
+      channel: "xiaohongshu",
+      status: "failed",
+      lastError: "发布失败",
+      mediaId: null,
     });
     expect(res.total).toBe(3);
   });

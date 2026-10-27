@@ -35,7 +35,12 @@ describe("fetchXhsState 三态", () => {
   });
 
   it("gateway 不可达 → loggedIn null(不可达 ≠ Cookie 过期)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connect ECONNREFUSED"); }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
+    );
     const snap = await fetchXhsState();
     expect(snap).toEqual({
       storage_state_ready: false,

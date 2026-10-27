@@ -78,8 +78,7 @@ export default function XhsChannelCard({
   }, [cookie, refreshState]);
 
   // 弹窗实时探针优先;未开弹窗时回退每日快照(批F 前 card 面恒「未配置」)
-  const loggedIn =
-    state?.logged_in === true || (state === null && lastProbe?.loggedIn === true);
+  const loggedIn = state?.logged_in === true || (state === null && lastProbe?.loggedIn === true);
   const knownFailed =
     state?.logged_in === false || (state === null && lastProbe?.loggedIn === false);
 

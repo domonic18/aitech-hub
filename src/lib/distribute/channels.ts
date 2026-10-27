@@ -35,9 +35,7 @@ export function parseChannelParam(
   raw: string | undefined,
 ): keyof typeof DISTRIBUTE_CHANNELS | undefined {
   if (!raw) return undefined;
-  return raw in DISTRIBUTE_CHANNELS
-    ? (raw as keyof typeof DISTRIBUTE_CHANNELS)
-    : undefined;
+  return raw in DISTRIBUTE_CHANNELS ? (raw as keyof typeof DISTRIBUTE_CHANNELS) : undefined;
 }
 
 export const PUBLISH_STATUS_PENDING = "pending";

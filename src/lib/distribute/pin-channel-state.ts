@@ -11,11 +11,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { logger } from "../logger";
 
-import {
-  PUBLISH_STATUS_FAILED,
-  PUBLISH_STATUS_PENDING,
-  PUBLISH_STATUS_SYNCED,
-} from "./channels";
+import { PUBLISH_STATUS_FAILED, PUBLISH_STATUS_PENDING, PUBLISH_STATUS_SYNCED } from "./channels";
 import { ensureChannelRowUnique } from "./channel-row";
 
 /** 渠道留痕行(每贴图×渠道一行;P2002 兜底走 channel-row 统一口) */

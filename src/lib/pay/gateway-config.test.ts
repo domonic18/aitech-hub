@@ -6,10 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import {
-  assertModeAllowedInEnv,
-  PayGatewayConfigUpdateSchema,
-} from "@/lib/pay/gateway-config";
+import { assertModeAllowedInEnv, PayGatewayConfigUpdateSchema } from "@/lib/pay/gateway-config";
 
 const XUNHU_BASE = {
   mode: "xunhu",
@@ -65,5 +62,3 @@ describe("assertModeAllowedInEnv(mock 生产拒绝,双护栏之保存侧)", () =
     expect(() => assertModeAllowedInEnv("mock", "test")).not.toThrow();
   });
 });
-
-

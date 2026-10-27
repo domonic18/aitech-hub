@@ -95,10 +95,7 @@ async function submitNewsPic(
 ): Promise<string> {
   return submitWechatDraft(creds, article, updateMediaId, "pin.source_url_dropped");
 }
-async function failSync(
-  pinId: bigint,
-  reason: string,
-): Promise<PinWechatSyncResult> {
+async function failSync(pinId: bigint, reason: string): Promise<PinWechatSyncResult> {
   await markPinChannelFailed(pinId, CHANNEL_WECHAT, reason);
   return { ok: false, pinId: pinId.toString(), reason };
 }
