@@ -499,7 +499,7 @@ function estimateReadingMinutes(mdText: string): { minutes: number; chars: numbe
 }
 
 /** 文首 meta 卡:阅读时间 + h2 目录(层级导航在微信不可锚,纯文字结构预告) */
-function buildTocMeta(mdText: string, styles: WechatStyles): string {
+function buildTocMeta(mdText: string): string {
   const { minutes, chars } = estimateReadingMinutes(mdText);
   const toc = [...mdText.matchAll(/^##\s+(?!#)(.+)$/gm)]
     .map((m) => m[1].trim())
@@ -530,7 +530,7 @@ export function renderWechatHtml(
     footnoteDefs: new Map(),
   };
   // h2 目录在渲染前收集(渲染后无裸文本)
-  const tocMetaHtml = opts?.tocMeta ? buildTocMeta(mdText, env.styles) : "";
+  const tocMetaHtml = opts?.tocMeta ? buildTocMeta(mdText) : "";
   const body = postprocessAlerts(md.render(mdText, env));
   const refs = env.refs.map((r) => r.href);
   const footnotesHtml =

@@ -97,8 +97,11 @@ function RadarRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] text-text-1" title={c.label ?? undefined}>
-            {c.label ?? "待打标簇"}
+          <span
+            className={`truncate text-[13px] ${c.label ? "text-text-1" : "text-text-3 italic"}`}
+            title={c.label ?? `未打标 · 信号样本:${trend?.sample ?? "—"}`}
+          >
+            {c.label ?? (trend?.sample ? `未命名 · ${trend.sample}…` : "待打标簇")}
           </span>
           {trend ? (
             <TrendBadge tier={trend.tier} growth={trend.growth} />

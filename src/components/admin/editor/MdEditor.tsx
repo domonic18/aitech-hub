@@ -99,7 +99,7 @@ export default function MdEditor({
       setChars([...html].length);
     }, 300);
     return () => clearTimeout(t);
-  }, [value]);
+  }, [value, renderCfg]);
 
   const over = chars !== null && chars > WECHAT_CONTENT_MAX_CHARS;
 

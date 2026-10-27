@@ -10,14 +10,6 @@ import { TREND_TIER_LABELS, type ClusterTrendRow, type TrendTier } from "@/lib/i
 
 const TIER_ORDER: TrendTier[] = ["new", "breakout", "rising", "flat", "declining"];
 
-const TIER_CLS: Record<TrendTier, string> = {
-  new: "bg-red/12 text-red",
-  breakout: "bg-red/12 text-red",
-  rising: "bg-green/12 text-green",
-  flat: "bg-panel-2 text-text-3",
-  declining: "bg-panel-2 text-text-3",
-};
-
 const COL_HINT: Record<TrendTier, string> = {
   new: "前窗无信号,近窗 ≥3 条",
   breakout: "增长 ≥100%(翻倍)",
@@ -49,9 +41,16 @@ function TierCol({ tier, rows }: { tier: TrendTier; rows: ClusterTrendRow[] }): 
             >
               {r.kind === "hot" ? "热" : "痛"}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-1">
-              {r.label ?? "待打标簇"}
-            </span>
+            {r.label ? (
+              <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-1">{r.label}</span>
+            ) : (
+              <span
+                className="min-w-0 flex-1 truncate text-[11.5px] text-text-3 italic"
+                title={`未打标 · 信号样本:${r.sample ?? "—"}`}
+              >
+                未命名 · {r.sample ?? "…"}
+              </span>
+            )}
             <span className="shrink-0 font-mono text-[10px] text-text-3">
               {r.recent}/{r.prior}
             </span>

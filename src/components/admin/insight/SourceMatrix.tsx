@@ -6,6 +6,8 @@
  * (红虚线框 + 一键转选题,POST /api/insight/clusters/[id]/topic);内部痛源
  * 强 × 外部热源零 = 自有特色选题(蓝底标)。格底色按行内相对热度着色。
  * 客户端组件(useRouter 转选题交互)。
+ * M52 验收修订:①转选题幂等(服务端同题去重 + 客户端已转题禁点);②源停滞
+ * 列弱化(最新信号超 14 天的源不参与空白判定,列头「停滞」标)。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -27,14 +29,19 @@ const INTERNAL_SOURCE = "internal-comment";
 export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): React.ReactElement {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** 已转题簇(客户端防重;服务端另有同题去重兜底) */
+  const [converted, setConverted] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
 
   const { clusters, sources, cells } = matrix;
+  const staleSources = new Set(sources.filter((s) => s.stale).map((s) => s.source));
+  const internalStale = staleSources.has(INTERNAL_SOURCE);
   const cell = (id: bigint, source: string): number => cells[`${id}:${source}`] ?? 0;
-  const rowTotal = (id: bigint): number => sources.reduce((a, s) => a + cell(id, s), 0);
   const internalCount = (id: bigint): number => cell(id, INTERNAL_SOURCE);
   const hotTotal = (id: bigint): number =>
-    sources.filter((s) => !SOURCE_SHORT[s]?.internal).reduce((a, s) => a + cell(id, s), 0);
+    sources
+      .filter((s) => !SOURCE_SHORT[s.source]?.internal)
+      .reduce((a, s) => a + cell(id, s.source), 0);
 
   async function toTopic(id: bigint, label: string | null): Promise<void> {
     setBusyId(String(id));
@@ -44,8 +51,10 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
       const json = (await res.json().catch(() => null)) as {
         code?: number;
         message?: string;
+        data?: { topic_id?: string };
       } | null;
       if (res.ok && json?.code === 0) {
+        setConverted((prev) => new Set(prev).add(String(id)));
         setMsg(`「${label ?? "未命名簇"}」已转选题,创作中心可见`);
         router.refresh();
       } else {
@@ -65,13 +74,16 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
           <thead>
             <tr className="border-b border-line text-[11px] text-text-3">
               <th className="px-2 py-1.5 font-medium">簇(机会分降序)</th>
-              {sources.map((src) => (
+              {sources.map((s) => (
                 <th
-                  key={src}
-                  className="px-2 py-1.5 text-center font-medium"
-                  title={SOURCE_SHORT[src]?.full ?? src}
+                  key={s.source}
+                  className={`px-2 py-1.5 text-center font-medium ${s.stale ? "text-text-3/50" : ""}`}
+                  title={`${SOURCE_SHORT[s.source]?.full ?? s.source}${
+                    s.stale ? "(源停滞:14 天无新信号,不参与空白判定)" : ""
+                  }`}
                 >
-                  {SOURCE_SHORT[src]?.short ?? src}
+                  {SOURCE_SHORT[s.source]?.short ?? s.source}
+                  {s.stale && <span className="ml-0.5 text-[9px]">(停滞)</span>}
                 </th>
               ))}
               <th className="px-2 py-1.5 text-right font-medium">行动</th>
@@ -80,10 +92,14 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
           <tbody>
             {clusters.map((c) => {
               const blank =
-                c.kind === "hot" && internalCount(c.clusterId) === 0 && hotTotal(c.clusterId) > 0;
+                !internalStale &&
+                c.kind === "hot" &&
+                internalCount(c.clusterId) === 0 &&
+                hotTotal(c.clusterId) > 0;
               const signature =
                 c.kind === "pain" && internalCount(c.clusterId) >= 3 && hotTotal(c.clusterId) === 0;
-              const max = Math.max(...sources.map((s) => cell(c.clusterId, s)), 1);
+              const max = Math.max(...sources.map((s) => cell(c.clusterId, s.source)), 1);
+              const isConverted = converted.has(String(c.clusterId));
               return (
                 <tr key={String(c.clusterId)} className="border-b border-line/50 last:border-0">
                   <td className="max-w-[200px] px-2 py-1.5">
@@ -104,25 +120,32 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
                       <span className="truncate text-text-1">{c.label ?? "待打标簇"}</span>
                     </Link>
                   </td>
-                  {sources.map((src) => {
-                    const n = cell(c.clusterId, src);
-                    const gap = c.kind === "hot" && src === INTERNAL_SOURCE && n === 0;
+                  {sources.map((s) => {
+                    const n = cell(c.clusterId, s.source);
+                    const gap =
+                      !s.stale && c.kind === "hot" && s.source === INTERNAL_SOURCE && n === 0;
+                    const dim = s.stale;
                     return (
-                      <td key={src} className="px-2 py-1.5 text-center">
+                      <td key={s.source} className="px-2 py-1.5 text-center">
                         <span
                           className={`inline-block min-w-7 rounded-sm px-1 py-0.5 font-mono text-[11px] ${
                             gap
                               ? "border border-dashed border-red text-red"
-                              : signature && !SOURCE_SHORT[src].internal
+                              : signature && !SOURCE_SHORT[s.source]?.internal
                                 ? "bg-blue/10 text-blue"
                                 : n > 0
                                   ? "bg-panel-2 text-text-1"
-                                  : "text-text-3/50"
+                                  : "text-text-3/30"
                           }`}
                           style={
-                            !gap && !(signature && !SOURCE_SHORT[src].internal) && n > 0
+                            !gap &&
+                            !(signature && !SOURCE_SHORT[s.source]?.internal) &&
+                            n > 0 &&
+                            !dim
                               ? { opacity: 0.45 + (0.55 * n) / max }
-                              : undefined
+                              : dim
+                                ? { opacity: 0.35 }
+                                : undefined
                           }
                         >
                           {n}
@@ -131,7 +154,9 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
                     );
                   })}
                   <td className="px-2 py-1.5 text-right">
-                    {blank ? (
+                    {isConverted ? (
+                      <span className="text-[10.5px] text-green">已转题</span>
+                    ) : blank ? (
                       <button
                         type="button"
                         disabled={busyId === String(c.clusterId)}
@@ -166,7 +191,8 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
       {msg && <p className="text-[11px] text-green">{msg}</p>}
       <p className="text-[10.5px] leading-relaxed text-text-3">
         读法:热源簇在「评论」列空白 = 外部有需求、站内无痛点信号(内容空白,建议转选题补覆盖);
-        评论列强 × 外部全零 = 站内自有特色选题。格深浅=行内相对信号量。
+        评论列强 × 外部全零 = 站内自有特色选题。格深浅=行内相对信号量;源停滞(14 天无新信号)期间
+        该列置灰不参与空白判定。
       </p>
     </div>
   );

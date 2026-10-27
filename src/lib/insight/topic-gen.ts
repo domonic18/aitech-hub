@@ -58,6 +58,17 @@ export async function createTopicFromCluster(clusterId: bigint): Promise<TopicFr
     .filter((s): s is string => s !== null)
     .join("\n")
     .slice(0, POSITIONING_MAX);
+  // 幂等守卫(M52 验收实收:补空白可重复点击建重复题)——同标题选题已存在
+  // 即视为已转,返回既有题(簇 label 变更前标题稳定)
+  const existing = await prisma.topic.findFirst({ where: { title }, select: { id: true } });
+  if (existing) {
+    return {
+      topicId: existing.id,
+      title,
+      mounted: 0,
+      scanned: 0,
+    };
+  }
   const topic = await createTopic({ title, positioning: positioning || undefined });
 
   const candidates = cluster.members
