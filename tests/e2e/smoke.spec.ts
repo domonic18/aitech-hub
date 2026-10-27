@@ -2638,9 +2638,7 @@ test("27. 分发中心页(M17:配置卡渲染/记录空态/渠道未就绪入口
   }
 });
 
-test("27b. 分发记录跨载体汇总(M50 批B/F:载体归因/chips 筛选/探照三态)", async ({
-  page,
-}) => {
+test("27b. 分发记录跨载体汇总(M50 批B/F:载体归因/chips 筛选/探照三态)", async ({ page }) => {
   const MARK = "e2e-m50-union";
   // 幂等:上轮失败残留先清(finally 兜底外的极端残留)
   await prisma.contentPin.deleteMany({ where: { title: { startsWith: MARK } } });
