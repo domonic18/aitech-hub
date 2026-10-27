@@ -119,6 +119,7 @@ export default function ModelDialog({
               >
                 <option value="openai">OpenAI 兼容</option>
                 <option value="anthropic">Anthropic</option>
+                <option value="systemone">SystemOne 决策(OpenRouter)</option>
                 <option value="other">其他(自管端点)</option>
               </select>
             </label>
