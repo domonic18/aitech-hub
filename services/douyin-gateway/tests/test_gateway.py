@@ -208,3 +208,37 @@ def test_transport_settings_env_contract() -> None:
     assert transport._request_timeout == 3.0
     assert transport._pool._cooldown_base == 5
     assert transport._pool._cooldown_max == 9
+
+
+def test_decode_publish_images_reads_datab64_and_keeps_names(tmp_path: Any) -> None:
+    """worker 契约字段 = dataB64;文件名保序保扩展名(平台按名 accept)。"""
+    import base64
+
+    from app.gateway import decode_publish_images
+
+    raw = [
+        {"name": "封面 图.jpg", "dataB64": base64.b64encode(b"jpg-bytes").decode()},
+        {"name": "two.webp", "dataB64": base64.b64encode(b"webp-bytes").decode()},
+    ]
+    paths = decode_publish_images(raw, str(tmp_path))
+    assert [p.split("/")[-1] for p in paths] == ["00-____.jpg", "01-two.webp"]
+    assert tmp_path.joinpath("00-____.jpg").read_bytes() == b"jpg-bytes"
+    assert tmp_path.joinpath("01-two.webp").read_bytes() == b"webp-bytes"
+
+
+def test_decode_publish_images_accepts_data_alias_and_rejects_empty(
+    tmp_path: Any,
+) -> None:
+    """data 兼容别名可用;空字节拒绝(2026-10-27 生产字段名错位实弹)。"""
+    import base64
+
+    from app.gateway import decode_publish_images
+
+    ok = decode_publish_images(
+        [{"name": "a.jpg", "data": base64.b64encode(b"x").decode()}], str(tmp_path)
+    )
+    assert tmp_path.joinpath("00-a.jpg").read_bytes() == b"x"
+    with pytest.raises(ValueError, match="空字节"):
+        decode_publish_images([{"name": "b.jpg", "dataB64": ""}, ], str(tmp_path))
+    with pytest.raises(ValueError, match="空字节"):
+        decode_publish_images([{"name": "c.jpg"}], str(tmp_path))

@@ -252,6 +252,32 @@ def extract_sec_uid(text: str) -> str | None:
     return match.group(0) if match else None
 
 
+def decode_publish_images(raw_images: list[Any], tmp_root: str) -> list[str]:
+    """base64 图片物料落临时文件(序号前缀保序,原名保留扩展名)。
+
+    字段契约 = {name,dataB64}(data 为兼容别名)。空字节即刻拒绝,禁止把
+    0 字节文件交给 set_input_files——平台对空文件静默忽略(无计数器无编辑
+    区),2026-10-27 生产实弹:worker 发 dataB64 网关读 data,全部落成空
+    文件,上传步假通过把故障推迟到填标题步且归因误导(kind=unknown)。
+    """
+    paths: list[str] = []
+    for i, item in enumerate(raw_images):
+        name = (
+            re.sub(r"[^A-Za-z0-9._-]", "_", str(item.get("name") or ""))
+            or f"image-{i}.jpg"
+        )
+        raw = base64.b64decode(str(item.get("dataB64") or item.get("data") or ""))
+        if not raw:
+            raise ValueError(
+                f"第 {i + 1} 张图片解码为空字节({name}):物料字段缺失或不匹配"
+            )
+        path = os.path.join(tmp_root, f"{i:02d}-{name}")
+        with open(path, "wb") as f:
+            f.write(raw)
+        paths.append(path)
+    return paths
+
+
 def create_app(
     signer_settings: SignerSettings | None = None,
     xhs_settings: XhsSettings | None = None,
@@ -381,12 +407,10 @@ def create_app(
             images: list[str] = []
             if raw_images and isinstance(raw_images[0], dict):
                 tmp_root = tempfile.mkdtemp(prefix="xhs-upload-")
-                for i, item in enumerate(raw_images):
-                    name = re.sub(r"[^A-Za-z0-9._-]", "_", str(item.get("name") or "")) or f"image-{i}.jpg"
-                    path = os.path.join(tmp_root, f"{i:02d}-{name}")
-                    with open(path, "wb") as f:
-                        f.write(base64.b64decode(str(item.get("data", ""))))
-                    images.append(path)
+                try:
+                    images = decode_publish_images(raw_images, tmp_root)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
             else:  # 兼容旧路径形态(本地盘存储场景)
                 images = [str(p) for p in raw_images]
             result = await xhs_publisher.publish(

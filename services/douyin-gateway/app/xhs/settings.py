@@ -52,7 +52,6 @@ TAB_RENDER_TIMEOUT_S = 15 # 「上传图文」tab 轮询等待上限(3s 固定�
 TAB_POLL_MS = 500 # tab 轮询步进
 TAB_SETTLE_MS = 1_000 # tab 点击后窗格切换稳定等待
 TAB_CLICK_TIMEOUT_MS = 5_000 # 单个 tab 候选试点超时(逐个试点,总时长受上限制约)
-UPLOAD_SETTLE_MS = 8_000 # 图片上传固定等待(计数元素缺失时的兜底)
 UPLOAD_SETTLE_TIMEOUT_S = 30 # 上传计数到齐轮询上限
 UPLOAD_POLL_MS = 1_000 # 上传计数轮询步进
 FILL_SETTLE_MS = 1_500 # 标题/正文填写后稳定等待
@@ -61,6 +60,8 @@ FILL_RETRY_MS = 500 # 回读校验重填步进
 PUBLISH_CONFIRM_TIMEOUT_S = 40 # 点击发布→成功信号轮询上限
 PUBLISH_RECLICK_MS = 5_000 # 无响应补击间隔(计数到齐≠字节传完,首击可能落禁用钮)
 UPLOAD_TAIL_SETTLE_MS = 3_000 # 计数到齐后的字节传完余量
+UPLOAD_EDITOR_WAIT_S = 15 # 计数器缺失兜底下等编辑区挂载上限(上传发生的实证;
+# 编辑区只有上传成功才挂载——两者皆无即上传未发生,见 steps.upload_images)
 PUBLISH_POLL_MS = 500 # 成功信号轮询步进
 PUBLISH_CLICK_X = 700 # 发布钮中心(viewport 1280×720 截图两次实测;勿用宿主
 PUBLISH_CLICK_Y = 675 # 相对计算——宿主含整个内容列,曾点到红钮右侧空白)
