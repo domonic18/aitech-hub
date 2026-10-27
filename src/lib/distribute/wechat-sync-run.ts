@@ -112,7 +112,11 @@ export async function syncOnePost(
     // 渠道尾注在分发侧追加(2026-10-20 问题四):正文存库渠道中性,「阅读原文」
     // 导流话术仅公众号草稿携带(码点预算按追加后计)
     const finalMd = await transloadContentImages(creds, `${contentMd}\n\n${wechatTail()}`);
-    const { html } = renderWechatHtml(finalMd, themeId);
+    const renderOpts = {
+      paraStyle: cfg.paraStyle,
+      tocMeta: cfg.enableTocMeta,
+    } as const;
+    const { html } = renderWechatHtml(finalMd, themeId, renderOpts);
     const contentChars = [...html].length;
     if (contentChars > WECHAT_CONTENT_MAX_CHARS) {
       return await failSync(

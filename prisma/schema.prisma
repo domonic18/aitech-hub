@@ -986,6 +986,8 @@ model WechatConfig {
   appSecretMask     String?   @map("app_secret_mask") @db.VarChar(20) // 脱敏回显冗余列
   author            String?   @db.VarChar(64) // 图文 author 字段(空=管道缺省「一起AI」)
   theme             String    @default("default") @db.VarChar(20) // 默认正文主题 id(wechat-themes 注册表;同步弹窗单篇可覆盖)
+  paraStyle         String    @default("default") @map("para_style") @db.VarChar(20) // 段落排版(M51):default/indent/justify/indent_justify
+  enableTocMeta     Boolean   @default(false) @map("enable_toc_meta") // 文首阅读时间+目录卡(M51)
   autoSyncEnabled   Boolean   @default(false) @map("auto_sync_enabled") // 发布即自动推草稿
   enabled           Boolean   @default(false) // 渠道总开关:配置并测试通过后再开
   lastTestedAt      DateTime? @map("last_tested_at") @db.Timestamptz(6)

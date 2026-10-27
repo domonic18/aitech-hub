@@ -11,10 +11,23 @@ import { decryptSecret, encryptSecret, maskSecret } from "../crypto/secret-box";
 import { TEST_STATUS_FAIL, TEST_STATUS_OK } from "../ai/constants";
 import { WECHAT_DEFAULT_AUTHOR } from "./channels";
 import { DistributeError } from "./errors";
+import type { WechatParaStyle } from "./wechat-html";
 import { WECHAT_THEME_IDS } from "./wechat-themes";
 
 /** 单例行锚点(全库唯一 id;消费方禁再裸写 id:1) */
 export const WECHAT_CONFIG_ID = 1;
+
+const PARA_STYLE_VALUES: readonly WechatParaStyle[] = [
+  "default",
+  "indent",
+  "justify",
+  "indent_justify",
+];
+
+/** 库列 string → 段落排版字面量(未知值回退 default;边界归一唯一口) */
+function toParaStyle(v: string): WechatParaStyle {
+  return PARA_STYLE_VALUES.includes(v as WechatParaStyle) ? (v as WechatParaStyle) : "default";
+}
 
 /** 脱敏视图(永不含 appSecretEnc) */
 export interface WechatConfigView {
@@ -23,6 +36,10 @@ export interface WechatConfigView {
   author: string | null;
   /** 渠道默认正文主题 id(wechat-themes 注册表;单篇弹窗可覆盖) */
   theme: string;
+  /** 段落排版(M51 P2):default/indent/justify/indent_justify */
+  paraStyle: WechatParaStyle;
+  /** 文首阅读时间+目录卡(M51 P2) */
+  enableTocMeta: boolean;
   autoSyncEnabled: boolean;
   enabled: boolean;
   lastTestedAt: Date | null;
@@ -42,6 +59,8 @@ export async function getWechatConfigAdmin(): Promise<WechatConfigView> {
     appSecretMask: row.appSecretMask,
     author: row.author,
     theme: row.theme,
+    paraStyle: toParaStyle(row.paraStyle),
+    enableTocMeta: row.enableTocMeta,
     autoSyncEnabled: row.autoSyncEnabled,
     enabled: row.enabled,
     lastTestedAt: row.lastTestedAt,
@@ -59,6 +78,8 @@ export const WechatConfigUpdateSchema = z.object({
   author: z.string().trim().max(64).optional().nullable(),
   /** 缺省 = 保留现值(e2e/旧客户端 PUT 不带 theme 不落 400) */
   theme: z.enum(WECHAT_THEME_IDS).optional(),
+  paraStyle: z.enum(["default", "indent", "justify", "indent_justify"]).optional(),
+  enableTocMeta: z.boolean().optional(),
   autoSyncEnabled: z.boolean(),
   enabled: z.boolean(),
 });
@@ -76,6 +97,8 @@ export async function updateWechatConfig(input: WechatConfigUpdateInput): Promis
       ...(secret ? { appSecretEnc: encryptSecret(secret), appSecretMask: maskSecret(secret) } : {}),
       author: input.author?.trim() ? input.author.trim() : null,
       theme: input.theme ?? current.theme,
+      paraStyle: input.paraStyle ?? current.paraStyle,
+      enableTocMeta: input.enableTocMeta ?? current.enableTocMeta,
       autoSyncEnabled: input.autoSyncEnabled,
       enabled: input.enabled,
     },
@@ -100,6 +123,10 @@ export interface WechatRuntimeConfig {
   author: string;
   /** 渠道默认正文主题 id */
   theme: string;
+  /** 段落排版(M51 P2) */
+  paraStyle: WechatParaStyle;
+  /** 文首阅读时间+目录卡(M51 P2) */
+  enableTocMeta: boolean;
 }
 
 export async function getWechatRuntimeConfig(): Promise<WechatRuntimeConfig | null> {
@@ -117,6 +144,8 @@ export async function getWechatRuntimeConfig(): Promise<WechatRuntimeConfig | nu
     }
   }
   return {
+    paraStyle: toParaStyle(row.paraStyle),
+    enableTocMeta: row.enableTocMeta,
     enabled: row.enabled,
     autoSyncEnabled: row.autoSyncEnabled,
     appid: row.appid,

@@ -63,7 +63,10 @@ export async function wechatCopyJob(data: {
       coverReady = true;
     }
     const finalMd = await transloadContentImages(creds, post.contentMd ?? "");
-    const { html } = renderWechatHtml(finalMd, themeId);
+    const { html } = renderWechatHtml(finalMd, themeId, {
+      paraStyle: cfg.paraStyle,
+      tocMeta: cfg.enableTocMeta,
+    });
     const chars = [...html].length;
     logger.info({ event: "wechat.copy_ready", postId: id, chars, coverReady });
     return { ok: true, postId: id, html, chars, coverReady };

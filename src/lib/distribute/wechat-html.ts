@@ -14,16 +14,28 @@
  * References 列出链接(≤20 条,同 href 去重;超出只染色不编号)。
  * 纯函数零 IO;图片 URL 已由 sync 管线在 md 文本层替换为 mmbiz(此处只渲染)。
  */
+import hljs from "highlight.js/lib/common";
 import MarkdownIt from "markdown-it";
 
 import { WECHAT_REFERENCE_MAX } from "./channels";
 import { getWechatTheme, type WechatTheme } from "./wechat-themes";
 
+// ── 代码语法高亮(M51 P1):hljs token → 内联色(公众号滤 class;GitHub Dark 取色,
+// 暗底代码块统一不随主题)。未知语言回退转义纯文本。
+
+/** 段落排版选项(M51 P2,镜像 doocs isUseIndent/isUseJustify):
+ * default | indent(首行缩进两字)| justify(两端对齐)| indent_justify */
+export const WECHAT_PARA_STYLES = ["default", "indent", "justify", "indent_justify"] as const;
+export type WechatParaStyle = (typeof WECHAT_PARA_STYLES)[number];
+
 /** 由主题调色板实例化的内联样式表:global 可继承项只在此处;元素级只写差异 */
-function stylesFor(t: WechatTheme) {
+function stylesFor(t: WechatTheme, paraStyle: WechatParaStyle) {
+  const pExtra =
+    (paraStyle.includes("indent") ? "text-indent:2em;" : "") +
+    (paraStyle.includes("justify") ? "text-align:justify;" : "");
   return {
     global: "font-size:15px;color:#3f3f46;line-height:1.75;",
-    p: "margin:12px 0;",
+    p: `margin:12px 0;${pExtra}`,
     // h1/h2 带主题色左竖条(视觉锚点);h3/h4 阶梯字号
     h: [
       `margin:28px 0 14px;font-size:18px;font-weight:600;color:${t.heading};line-height:1.4;border-left:3px solid ${t.heading};padding-left:10px;`,
@@ -62,6 +74,96 @@ function stylesFor(t: WechatTheme) {
 type WechatStyles = ReturnType<typeof stylesFor>;
 
 const md: MarkdownIt = new MarkdownIt({ html: true, linkify: false, typographer: false });
+// M51 P1/P2:脚注 [^1] 语法 + GFM 提示块(> [!NOTE] 等)——两者输出 class 化
+// HTML,经 postprocessFootnotes/postprocessAlerts 转内联样式(微信滤 class)
+import footnotePlugin from "markdown-it-footnote";
+import githubAlerts from "markdown-it-github-alerts";
+md.use(footnotePlugin);
+md.use(githubAlerts);
+
+const HLJS_COLORS: Record<string, string> = {
+  keyword: "#ff7b72",
+  built_in: "#79c0ff",
+  type: "#ffa657",
+  class: "#ffa657",
+  string: "#a5d6ff",
+  number: "#79c0ff",
+  literal: "#79c0ff",
+  comment: "#8b949e",
+  title: "#d2a8ff",
+  function: "#d2a8ff",
+  params: "#e6edf3",
+  attr: "#79c0ff",
+  attribute: "#79c0ff",
+  variable: "#ffa657",
+  property: "#e6edf3",
+  symbol: "#e6edf3",
+  tag: "#7ee787",
+  name: "#7ee787",
+  selector_tag: "#7ee787",
+  meta: "#8b949e",
+  meta_keyword: "#ff7b72",
+  operator: "#ff7b72",
+  punctuation: "#e6edf3",
+  regexp: "#a5d6ff",
+  section: "#1f6feb",
+  addition: "#aff5b4",
+  deletion: "#ffdcd7",
+};
+
+/** 高亮整块代码 → 逐行内联样式 HTML(<br> 行间,文本空格全量 &nbsp;)。
+ * 跨行 token(块注释/多行字符串)在换行处闭栈重开,span 恒配平;
+ * 未知语言/高亮异常回退转义纯文本(同管线,永不抛)。 */
+function highlightToWechatLines(code: string, lang: string): string {
+  let highlighted: string;
+  try {
+    highlighted = hljs.getLanguage(lang)
+      ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+      : md.utils.escapeHtml(code);
+  } catch {
+    highlighted = md.utils.escapeHtml(code);
+  }
+  const openSpan = (cls: string): string => `<span style="color:${HLJS_COLORS[cls] ?? "inherit"}">`;
+  const out: string[] = [];
+  const stack: string[] = [];
+  let i = 0;
+  while (i < highlighted.length) {
+    if (highlighted[i] === "<") {
+      const close = highlighted.indexOf(">", i);
+      if (close < 0) {
+        out.push(highlighted.slice(i));
+        break;
+      }
+      const tag = highlighted.slice(i, close + 1);
+      const cls = /class="hljs-([\w-]+)/.exec(tag)?.[1]; // 首类即可(hljs 多子类 title function_)
+      if (tag.startsWith("</")) {
+        if (stack.length > 0) {
+          stack.pop();
+          out.push("</span>");
+        }
+      } else if (cls) {
+        stack.push(cls);
+        out.push(openSpan(cls));
+      } else {
+        out.push(tag); // 非 hljs span(防御,现行输出无)
+      }
+      i = close + 1;
+      continue;
+    }
+    const nextTag = highlighted.indexOf("<", i);
+    const seg = highlighted.slice(i, nextTag < 0 ? highlighted.length : nextTag);
+    const reopen = stack.map(openSpan).join("");
+    const closes = "</span>".repeat(stack.length);
+    out.push(
+      seg
+        .split("\n")
+        .map((line) => line.replaceAll(" ", "&nbsp;"))
+        .join(`${closes}<br>${reopen}`),
+    );
+    i = nextTag < 0 ? highlighted.length : nextTag;
+  }
+  return out.join("");
+}
 
 /** 渲染 env(引用收集 + link 配对栈 + 本次渲染的主题样式表) */
 interface WechatEnv {
@@ -107,15 +209,10 @@ md.renderer.rules.code_inline = (tokens, idx, _o, env) =>
 
 md.renderer.rules.fence = (tokens, idx, _o, env) => {
   const s = envOf(env).styles;
-  // 微信粘贴管线不保真 white-space(裸换行被折叠成空格,2026-10-27 生产实收):
-  // 行间改 <br>;空格(含缩进)全量转 &nbsp;——代码对齐不可折叠,长行由外层
-  // overflow-x 横滚兜底
-  const body = md.utils
-    .escapeHtml(tokens[idx].content.replace(/\n$/, ""))
-    .replace(/\t/g, "    ")
-    .split("\n")
-    .map((line) => line.replaceAll(" ", "&nbsp;"))
-    .join("<br>");
+  // 微信粘贴管线不保真 white-space(M50 修复):行间 <br> + 空格 &nbsp; 由
+  // highlightToWechatLines 承担(M51 起叠加语法高亮)
+  const lang = (tokens[idx].info || "").trim().split(/\s+/)[0];
+  const body = highlightToWechatLines(tokens[idx].content.replace(/\n$/, ""), lang);
   return `<section style="${s.preSection}"><section style="${s.pre}${s.code}">${body}</section></section>`;
 };
 
@@ -226,7 +323,24 @@ function flattenLeafList(html: string, openStart: number): string {
       pm ? content.slice(0, pm[0].length) + m + content.slice(pm[0].length) : m + content
     }</section>`;
   };
-  const flattened = items.map((content) => wrap(marker(), content)).join("");
+  const flattened = items
+    .map((content) => {
+      // 任务列表(GFM - [ ] / - [x]):勾选框取代 marker(M51 P1;微信滤 input,
+      // 以字形 ☑/☐ 呈现)
+      const pm = /^<p style="[^">]*">/.exec(content);
+      const bare = pm ? content.slice(pm[0].length) : content;
+      const tm = /^\[([ xX])\] /.exec(bare);
+      if (tm) {
+        const glyph =
+          tm[1] === " "
+            ? '<span style="color:#8b949e;">☐</span>'
+            : '<span style="color:#1a7f37;">☑</span>';
+        const rest = bare.slice(tm[0].length);
+        return `<section style="margin-left:1em;">${pm ? pm[0] : ""}${glyph} ${rest}</section>`;
+      }
+      return wrap(marker(), content);
+    })
+    .join("");
   return html.slice(0, openStart) + flattened + html.slice(blockEnd);
 }
 
@@ -256,6 +370,56 @@ function flattenNestedLists(html: string): string {
   }
 }
 
+/** GFM 提示块配色(Note/Tip/Important/Warning/Caution → 左边框/底色/标题) */
+const ALERT_STYLES: Record<string, { border: string; bg: string; label: string; glyph: string }> = {
+  note: { border: "#0969da", bg: "#ddf4ff", label: "提示", glyph: "ℹ️" },
+  tip: { border: "#1a7f37", bg: "#dafbe1", label: "建议", glyph: "💡" },
+  important: { border: "#8250df", bg: "#fbefff", label: "重要", glyph: "❗" },
+  warning: { border: "#9a6700", bg: "#fff8c5", label: "警告", glyph: "⚠️" },
+  caution: { border: "#cf222e", bg: "#ffebe9", label: "注意", glyph: "🛑" },
+};
+
+/** GFM 提示块后处理:markdown-it-github-alerts 的 class div 转内联样式卡片
+ * (微信滤 class;标题中文+字形,正文继承全局)。未知类型按 note 处理。 */
+function postprocessAlerts(html: string): string {
+  return html
+    .replace(
+      /<div class="markdown-alert markdown-alert-(\w+)">\s*<p class="markdown-alert-title">[\s\S]*?<\/p>/g,
+      (_m, type: string) => {
+        const cfg = ALERT_STYLES[type.toLowerCase()] ?? ALERT_STYLES.note;
+        return `<section style="border-left:3px solid ${cfg.border};background-color:${cfg.bg};padding:8px 12px;margin:12px 0;"><p style="margin:0 0 4px;font-weight:600;color:${cfg.border};">${cfg.glyph} ${cfg.label}</p>`;
+      },
+    )
+    .replaceAll("</div>", "</section>"); // 渲染器本体零 div,闭标签全属提示块
+}
+
+/** 脚注后处理:markdown-it-footnote 的 class 化输出转内联样式。
+ * 角标 sup 保 [n] 文本去链接;文末 section 重排为「脚注」卡(条目 [n] 前缀,
+ * 回跳链接剥除——微信外链本就不可点)。 */
+function postprocessFootnotes(html: string, styles: WechatStyles): string {
+  let out = html
+    .replace(
+      /<sup class="footnote-ref"><a[^>]*>\[(\d+)\]<\/a><\/sup>/g,
+      (_m, n: string) => `<sup style="${styles.refSup}">[${n}]</sup>`,
+    )
+    .replace(/<hr class="footnotes-sep"[^>]*>/g, ""); // 插件分隔线由卡片 border-top 承担
+  const sectionRe = /<section class="footnotes"[^>]*>([\s\S]*?)<\/section>/;
+  const sec = sectionRe.exec(out);
+  if (!sec) return out;
+  const items = [...sec[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) =>
+    m[1]
+      .replace(/<a[^>]*class="footnote-(?:ref|backref)"[^>]*>[\s\S]*?<\/a>/g, "")
+      .replace(/<\/?p[^>]*>/g, "")
+      .trim(),
+  );
+  const card =
+    `<section style="${styles.refsSection}"><p style="${styles.refsTitle}">脚注</p>` +
+    items.map((t, i) => `<p style="${styles.refItem}">[${i + 1}] ${t}</p>`).join("") +
+    `</section>`;
+  out = out.replace(sectionRe, card);
+  return out;
+}
+
 export interface WechatHtmlResult {
   /** 全内联样式正文 HTML(全局节包裹,含文末 References 节,无外链则无该节) */
   html: string;
@@ -263,12 +427,48 @@ export interface WechatHtmlResult {
   refs: string[];
 }
 
+export interface WechatRenderOptions {
+  /** 段落排版(缺省 default=不缩进不对齐) */
+  paraStyle?: WechatParaStyle | null;
+  /** 文首阅读时间+目录卡(M51 P2;缺省关) */
+  tocMeta?: boolean | null;
+}
+
+/** 阅读时长估算(中文口径:码点数 / 450 字每分,60s 内短文兜 1 分钟) */
+function estimateReadingMinutes(mdText: string): { minutes: number; chars: number } {
+  const text = mdText.replace(/```[\s\S]*?```/g, "").replace(/\s+/g, "");
+  const chars = [...text].length;
+  return { minutes: Math.max(1, Math.round(chars / 450)), chars };
+}
+
+/** 文首 meta 卡:阅读时间 + h2 目录(层级导航在微信不可锚,纯文字结构预告) */
+function buildTocMeta(mdText: string, styles: WechatStyles): string {
+  const { minutes, chars } = estimateReadingMinutes(mdText);
+  const toc = [...mdText.matchAll(/^##\s+(?!#)(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .filter((t) => t.length > 0);
+  const tocLine =
+    toc.length > 0
+      ? `<p style="margin:0;font-size:12px;color:#71717a;">目录:${toc
+          .map((t, i) => `${i + 1}. ${escape(t)}`)
+          .join(" · ")}</p>`
+      : "";
+  return `<section style="border-left:3px solid #d0d7de;background-color:#f6f8fa;padding:8px 12px;margin:12px 0;"><p style="margin:0 0 4px;font-size:12px;color:#71717a;">预计阅读 ${minutes} 分钟 · 全文 ${chars} 字</p>${tocLine}</section>`;
+}
+
 /** markdown → 公众号内联样式 HTML(纯函数;env 每次新建防串渲染。
  * themeId 未知/缺省回退默认主题,渲染永不抛) */
-export function renderWechatHtml(mdText: string, themeId?: string | null): WechatHtmlResult {
+export function renderWechatHtml(
+  mdText: string,
+  themeId?: string | null,
+  opts?: WechatRenderOptions,
+): WechatHtmlResult {
   const theme = getWechatTheme(themeId);
-  const env: WechatEnv = { refs: [], linkNums: [], styles: stylesFor(theme) };
-  const body = md.render(mdText, env);
+  const paraStyle = (opts?.paraStyle ?? "default") as WechatParaStyle;
+  const env: WechatEnv = { refs: [], linkNums: [], styles: stylesFor(theme, paraStyle) };
+  // h2 目录在渲染前收集(渲染后无裸文本)
+  const tocMetaHtml = opts?.tocMeta ? buildTocMeta(mdText, env.styles) : "";
+  const body = postprocessFootnotes(postprocessAlerts(md.render(mdText, env)), env.styles);
   const refs = env.refs.map((r) => r.href);
   const refsHtml =
     env.refs.length === 0
@@ -280,7 +480,9 @@ export function renderWechatHtml(mdText: string, themeId?: string | null): Wecha
           })
           .join("")}</section>`;
   return {
-    html: `<section style="${env.styles.global}">${flattenNestedLists(body + refsHtml)}</section>`,
+    html: `<section style="${env.styles.global}">${tocMetaHtml}${flattenNestedLists(
+      body + refsHtml,
+    )}</section>`,
     refs,
   };
 }

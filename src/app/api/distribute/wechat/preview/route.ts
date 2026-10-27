@@ -11,7 +11,7 @@ import { prisma } from "@/lib/db";
 import { parsePostId } from "@/lib/content/posts-admin";
 import { CHANNEL_WECHAT } from "@/lib/distribute/channels";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
-import { renderWechatHtml } from "@/lib/distribute/wechat-html";
+import { renderWechatHtml, type WechatParaStyle } from "@/lib/distribute/wechat-html";
 import { getWechatTheme, WECHAT_THEME_IDS } from "@/lib/distribute/wechat-themes";
 import { WECHAT_CONFIG_ID } from "@/lib/distribute/wechat-config-admin";
 import { requireSessionActor } from "@/lib/http/session-guard";
@@ -48,14 +48,21 @@ export async function POST(req: NextRequest) {
         where: { postId_channel: { postId: id, channel: CHANNEL_WECHAT } },
         select: { theme: true },
       }),
-      prisma.wechatConfig.findUnique({ where: { id: WECHAT_CONFIG_ID }, select: { theme: true } }),
+      prisma.wechatConfig.findUnique({
+        where: { id: WECHAT_CONFIG_ID },
+        select: { theme: true, paraStyle: true, enableTocMeta: true },
+      }),
     ]);
     if (!post) throw new DistributeError("not_found", "文章不存在");
     if (!(post.contentMd ?? "").trim()) {
       throw new DistributeError("invalid", "旧文(HTML 保真正文)暂不支持预览:请先转写为 Markdown");
     }
     const theme = getWechatTheme(parsed.data.theme ?? channel?.theme ?? cfg?.theme).id;
-    const { html } = renderWechatHtml(post.contentMd ?? "", theme);
+    // 段落排版/目录卡取渠道默认(M51;预览与推送同观感)
+    const { html } = renderWechatHtml(post.contentMd ?? "", theme, {
+      paraStyle: (cfg?.paraStyle ?? "default") as WechatParaStyle,
+      tocMeta: cfg?.enableTocMeta ?? false,
+    });
     return apiEnvelope(0, "ok", { html, theme });
   } catch (err) {
     if (err instanceof DistributeError) {
