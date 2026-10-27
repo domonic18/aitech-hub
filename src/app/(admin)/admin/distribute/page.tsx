@@ -14,6 +14,7 @@ import {
   getDistributeOverview,
   listDistributeRecords,
 } from "@/lib/distribute/records";
+import { getXhsLastProbe } from "@/lib/distribute/xhs-probe";
 import { getWechatConfigAdmin } from "@/lib/distribute/wechat-config-admin";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 
@@ -42,7 +43,7 @@ export default async function AdminDistributePage({
   // M50 批B:校验放行双载体全渠道,xiaohongshu 命中贴图行
   const channel = parseChannelParam(sp.channel);
 
-  const [config, records, overview] = await Promise.all([
+  const [config, records, overview, lastProbe] = await Promise.all([
     getWechatConfigAdmin(),
     listDistributeRecords({
       ...(channel ? { channel } : {}),
@@ -50,6 +51,7 @@ export default async function AdminDistributePage({
       page,
     }),
     getDistributeOverview(channel),
+    getXhsLastProbe(),
   ]);
   const totalPages = Math.max(1, Math.ceil(records.total / records.pageSize));
   const hrefFor = (p: number): string =>
@@ -122,6 +124,7 @@ export default async function AdminDistributePage({
       records={records.rows}
       total={records.total}
       filter={filter}
+      lastProbe={lastProbe}
     >
       <AdminPagination
         page={page}

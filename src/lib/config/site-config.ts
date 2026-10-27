@@ -27,6 +27,9 @@ export const SITE_CONFIG_KEYS = {
   heroMd: "home.hero_md",
   aboutMd: "about.content",
   icp: "site.icp",
+  /** 小红书登录态每日探照快照(M50 批F;非配置是遥测——落 kv 免单行新表,
+   * 读写仅经 distribute/xhs-probe.ts,不走 settings 页 Zod 解析器) */
+  distributeXhsState: "distribute.xhs_state",
 } as const;
 
 /** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退) */

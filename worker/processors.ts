@@ -7,6 +7,7 @@ import type { Processor } from "bullmq";
 
 import {
   COVER_JOB_TEMP_SWEEP,
+  DISTRIBUTE_JOB_XHS_STATE_PROBE,
   CRAWL_JOB_AI_BACKFILL,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
@@ -48,6 +49,7 @@ import {
 } from "../src/lib/queue";
 import { purgeJobRuns } from "../src/lib/jobs/runlog";
 import { markPinChannelFailed } from "../src/lib/distribute/pin-channel-state";
+import { runXhsStateProbe } from "../src/lib/distribute/xhs-probe";
 import { CHANNEL_XHS } from "../src/lib/distribute/channels";
 import { DISCOVERY_MAX_WORDS_PER_ROUND } from "../src/lib/discovery/constants";
 import { runBiliDiscovery } from "../src/lib/discovery/discover";
@@ -253,6 +255,11 @@ export const PROCESSORS: Record<string, Processor> = {
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量;
   // wechat-copy 复制公众号格式(M31 批④备用通道,无码点门不落库)
   [QUEUE_DISTRIBUTE]: async (job) => {
+    if (job.name === DISTRIBUTE_JOB_XHS_STATE_PROBE) {
+      // 小红书登录态每日探照(M50 批F):结果落 kv,异常不进失败计数
+      const r = await runXhsStateProbe();
+      return r;
+    }
     if (job.name === DISTRIBUTE_JOB_WECHAT_BATCH) {
       const progress = await wechatBatchJob(job.data as WechatBatchJobData, (p) =>
         job.updateProgress(p),

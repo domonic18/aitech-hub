@@ -30,6 +30,7 @@ import {
   scheduleCoverTempSweep,
   scheduleCrawlerTick,
   scheduleDbBackup,
+  scheduleXhsStateProbe,
   scheduleDiscovery,
   scheduleEmbedReconcile,
   scheduleGithubTick,
@@ -98,6 +99,7 @@ async function main(): Promise<void> {
   await scheduleAgentSessionPurge();
   await scheduleJobRunPurge();
   await scheduleDbBackup();
+  await scheduleXhsStateProbe();
   await scheduleEmbedReconcile();
   await schedulePayReconcile();
   await scheduleCrawlerTick();
