@@ -1,9 +1,11 @@
+"use client";
+
 /**
  * 源×簇覆盖矩阵(M52 批C):活跃簇(机会分降序前 N)× 在役源信号计数。
  * Content Gap 方法论落地——热源有簇 × 内部痛源(评论)零信号 = 内容空白格
  * (红虚线框 + 一键转选题,POST /api/insight/clusters/[id]/topic);内部痛源
  * 强 × 外部热源零 = 自有特色选题(蓝底标)。格底色按行内相对热度着色。
- * 客户端组件(转选题交互)。
+ * 客户端组件(useRouter 转选题交互)。
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
