@@ -56,3 +56,23 @@ describe("unionMedia", () => {
     expect(unionMedia([["search"], ["bogus"], null, undefined, []])).toEqual(["search"]);
   });
 });
+
+describe("decideAssignment 短文本严配归簇(M52 批D)", () => {
+  const nearest = { clusterId: BigInt(7), distance: 0.25 };
+
+  it("短文本 + 严阈值内 → join(不建簇)", () => {
+    const d = decideAssignment(nearest, 2, 4, 0.35, 0.28);
+    expect(d).toEqual({ action: "join", clusterId: BigInt(7) });
+  });
+
+  it("短文本 + 超严阈值(常规阈值内也不行)→ short", () => {
+    // 0.3 在常规阈值(0.35)内但超严阈值(0.28)→ 仍 short(短文本永不建簇)
+    expect(decideAssignment({ clusterId: BigInt(7), distance: 0.3 }, 2, 4, 0.35, 0.28)).toEqual({
+      action: "short",
+    });
+    expect(decideAssignment({ clusterId: BigInt(7), distance: 0.32 }, 2, 4, 0.35, 0.28)).toEqual({
+      action: "short",
+    });
+    expect(decideAssignment(undefined, 2, 4, 0.35, 0.28)).toEqual({ action: "short" });
+  });
+});

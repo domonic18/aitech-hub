@@ -30,7 +30,7 @@ import {
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
 import { listClusterTrends, listSourceMatrix } from "@/lib/insight/trend";
-import { SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
+import { INSIGHT_MEDIA_VOCAB, SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
 import { hotBoardForDay, insightKeywordCloud } from "@/lib/insight/hotboard";
 import { HOT_SOURCE_KEYS } from "@/lib/insight/hot-source";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
@@ -88,6 +88,7 @@ export default async function AdminInsightPage({
   const sp = await searchParams;
   const params: InsightViewParams = {
     source: ENABLED_SOURCES.find((s) => s === sp.source),
+    medium: INSIGHT_MEDIA_VOCAB.find((m) => m === sp.medium),
     w: WINDOWS.some((n) => String(n) === sp.w) ? sp.w : undefined,
     day: DATE_RE.test(sp.day ?? "") ? sp.day : undefined,
     from: DATE_RE.test(sp.from ?? "") ? sp.from : undefined,
@@ -111,6 +112,7 @@ export default async function AdminInsightPage({
           params.to === undefined
             ? undefined
             : new Date(`${shiftDay(params.to, 1)}T00:00:00+08:00`),
+        medium: params.medium,
         limit: SIGNAL_TAKE_DEFAULT,
       }),
       hotBoardForDay(params.day),

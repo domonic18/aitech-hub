@@ -139,3 +139,6 @@ export const GROWTH_DECLINING = -0.2; // ≤−20% → declining,其间 flat
 export const TREND_NEW_MIN_RECENT = 3;
 /** 趋势对比窗口:近窗/前窗各 N 天(跨窗对比与簇动量共用) */
 export const TREND_WINDOW_DAYS = 7;
+/** 短文本(< CLUSTER_MIN_TEXT_LEN)归簇严阈值:不建簇,仅就近严配归入既有簇
+ * (M52 批D,BERTopic outlier reduction 思路——短搜索不再全盲) */
+export const CLUSTER_SHORT_MATCH_DISTANCE = 0.28;

@@ -1,11 +1,13 @@
 /**
- * 洞察中心 §3 信号明细分区(验收二批② 自页面抽出 + 日期范围筛选):
- * 源 chips + from/to 日期表单(GET,北京日界,lt 次日零点)+ 原始信号表。
- * from/to 只作用于本分区;w(总览窗口)/day(热榜回看)经隐藏域跨提交保留。
+ * 洞察中心 §3 信号明细分区(验收二批② 自页面抽出 + 日期范围筛选;M52 批D
+ * 增介质筛选):源 chips + 介质 chips + from/to 日期表单(GET,北京日界,
+ * lt 次日零点)+ 原始信号表。from/to 只作用于本分区;w(总览窗口)/day
+ * (热榜回看)经隐藏域跨提交保留。
  */
 import Link from "next/link";
 
 import type { InsightSignalRow } from "@/lib/insight/admin";
+import { INSIGHT_MEDIA_VOCAB, MEDIUM_LABELS } from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
 
 import { SOURCE_LABELS, formatTime, insightHref, type InsightViewParams } from "./shared";
@@ -25,6 +27,7 @@ export default function SignalsSection({
   params: InsightViewParams;
 }): React.ReactElement {
   const source = sources.find((s) => s === params.source);
+  const medium = INSIGHT_MEDIA_VOCAB.find((m) => m === params.medium);
   const { from, to } = params;
   return (
     <div className="rounded-md border border-line bg-panel">
@@ -47,11 +50,30 @@ export default function SignalsSection({
             {SOURCE_LABELS[k]}
           </Link>
         ))}
+        <span className="ml-1 text-[10px] text-text-3">介质</span>
+        <Link
+          href={insightHref(params, { medium: undefined })}
+          scroll={false}
+          className={medium === undefined ? chipOn : chipOff}
+        >
+          全部
+        </Link>
+        {INSIGHT_MEDIA_VOCAB.map((m) => (
+          <Link
+            key={m}
+            href={insightHref(params, { medium: m })}
+            scroll={false}
+            className={medium === m ? chipOn : chipOff}
+          >
+            {MEDIUM_LABELS[m]}
+          </Link>
+        ))}
         <form method="GET" action="/admin/insight/" className="ml-auto flex items-center gap-1.5">
-          {/* 跨分区参数保真:窗口/热榜回看日/当前源随表单提交 */}
+          {/* 跨分区参数保真:窗口/热榜回看日/当前源/介质随表单提交 */}
           {params.w && <input type="hidden" name="w" value={params.w} />}
           {params.day && <input type="hidden" name="day" value={params.day} />}
           {source && <input type="hidden" name="source" value={source} />}
+          {medium && <input type="hidden" name="medium" value={medium} />}
           <input
             type="date"
             name="from"
