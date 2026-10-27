@@ -151,7 +151,6 @@ export default async function AdminInsightPage({
           ]}
         />
       </div>
-
       {/* 窗口 chips(统计取景)+ 窗口徽章(取景范围可见)+ dayNav(热榜回看日,板定头部位置) */}
       <div className="flex flex-wrap items-center gap-2">
         {WINDOWS.map((n) => (
@@ -171,10 +170,8 @@ export default async function AdminInsightPage({
           近 {w} 天 · 活跃簇 {cloud.length} · 信号 {windowSignals.toLocaleString()}
         </span>
       </div>
-
       <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
-
-      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card
           title="机会分趋势"
           hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级(M52)"
@@ -185,7 +182,6 @@ export default async function AdminInsightPage({
           <PainCardGrid clusters={painClusters} />
         </Card>
       </div>
-
       <Card
         id="source-matrix"
         title="源×簇覆盖矩阵"
@@ -193,7 +189,6 @@ export default async function AdminInsightPage({
       >
         <SourceMatrix matrix={matrix} />
       </Card>
-
       <Card
         id="trend-board"
         title="跨窗对比"
@@ -201,7 +196,6 @@ export default async function AdminInsightPage({
       >
         <TrendBoard rows={trends} />
       </Card>
-
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card
           id="hot-board"
@@ -286,7 +280,6 @@ export default async function AdminInsightPage({
         </Card>
         <OverviewYield />
       </div>
-
       {/* 信号明细默认折叠(板定):展开付筛选与 50 条原始信号 */}
       <details className="group rounded-md border border-line bg-panel">
         <summary className="flex cursor-pointer select-none items-center justify-between px-4 py-3 text-sm font-semibold marker:content-none">

@@ -52,6 +52,8 @@ export interface ClusterTrendRow {
   kind: string; // hot | pain
   label: string | null;
   score: number | null; // 最新机会分(Top 榜排序用)
+  /** 成员首条信号归一文本前 24 字(未打标簇的可读占位,待打标不再裸奔) */
+  sample: string | null;
   recent: number;
   prior: number;
   growth: number;
@@ -73,6 +75,7 @@ export async function listClusterTrends(
       kind: string;
       label: string | null;
       score: number | null;
+      sample: string | null;
       recent: bigint;
       prior: bigint;
     }[]
@@ -82,7 +85,13 @@ export async function listClusterTrends(
            c.label,
            c.score,
            count(s.id) FILTER (WHERE s.signal_at >= ${recentStart}) AS recent,
-           count(s.id) FILTER (WHERE s.signal_at <  ${recentStart}) AS prior
+           count(s.id) FILTER (WHERE s.signal_at <  ${recentStart}) AS prior,
+           (SELECT left(s2.normalized_text, 24)
+              FROM insight_cluster_member m2
+              JOIN insight_signal s2 ON s2.id = m2.signal_id
+             WHERE m2.cluster_id = c.id
+             ORDER BY m2.id
+             LIMIT 1) AS sample
       FROM insight_cluster c
       LEFT JOIN insight_cluster_member m ON m.cluster_id = c.id
       LEFT JOIN insight_signal s ON s.id = m.signal_id
@@ -99,6 +108,7 @@ export async function listClusterTrends(
       kind: r.kind,
       label: r.label,
       score: r.score,
+      sample: r.sample,
       recent,
       prior,
       growth: growthOf(recent, prior),
@@ -117,11 +127,19 @@ export interface SourceMatrixCluster {
   score: number | null;
 }
 
+export interface SourceMatrixSource {
+  source: string;
+  /** 该源最近一条信号时间(null=从未有数据) */
+  latestAt: string | null;
+  /** 源停滞:最近信号早于 SOURCE_STALE_DAYS 天(停滞列零值不参与空白判定) */
+  stale: boolean;
+}
+
 export interface SourceMatrix {
   /** 活跃簇(按机会分降序取前 N) */
   clusters: SourceMatrixCluster[];
-  /** 在役源(固定顺序,列头) */
-  sources: string[];
+  /** 在役源(固定顺序,列头,带停滞元数据) */
+  sources: SourceMatrixSource[];
   /** 计数格:键 `${clusterId}:${source}`;缺格=0 */
   cells: Record<string, number>;
 }
@@ -131,6 +149,7 @@ export interface SourceMatrix {
  * 簇 coverage=null 拉满 gap 分,按分排序全屏「待打标」,矩阵不可读且补空白过早 */
 export async function listSourceMatrix(limit = 12): Promise<SourceMatrix> {
   const enabled = [...INSIGHT_SOURCES_ENABLED];
+  const staleCutoff = new Date(Date.now() - 14 * DAY_MS);
   const clusters = await prisma.$queryRaw<
     { id: bigint; kind: string; label: string; score: number | null }[]
   >`
@@ -161,5 +180,19 @@ export async function listSourceMatrix(limit = 12): Promise<SourceMatrix> {
        GROUP BY m.cluster_id, s.source`;
     for (const r of rows) cells[`${r.cluster_id}:${r.source}`] = Number(r.cnt);
   }
-  return { clusters: matrixClusters, sources: enabled, cells };
+  const latestRows = await prisma.$queryRaw<{ source: string; latest: Date | null }[]>`
+    SELECT s.source, max(s.signal_at) AS latest
+      FROM insight_signal s
+     WHERE s.source IN (${Prisma.join(enabled)})
+     GROUP BY s.source`;
+  const latestBy = new Map(latestRows.map((r) => [r.source, r.latest]));
+  const sources: SourceMatrixSource[] = enabled.map((source) => {
+    const latest = latestBy.get(source) ?? null;
+    return {
+      source,
+      latestAt: latest ? latest.toISOString() : null,
+      stale: latest === null || latest < staleCutoff,
+    };
+  });
+  return { clusters: matrixClusters, sources, cells };
 }
