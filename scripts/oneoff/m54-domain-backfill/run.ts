@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
   const clusters = await prisma.insightCluster.findMany({
     where: { status: "active" },
-    select: { id: true },
+    select: { id: true, domain: true },
   });
   let rebucketed = 0;
   for (const c of clusters) {
