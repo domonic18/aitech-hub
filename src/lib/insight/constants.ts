@@ -147,3 +147,5 @@ export const JUDGE_MIN_CONFIDENCE = 0.7;
 /** 源×簇矩阵最小成员数(M52 验收实收:单信号簇未达 LLM 打标门槛,全屏「待打标」
  * 无信息量且补空白过早——矩阵只收与打标同门槛的成熟簇) */
 export const MATRIX_MIN_MEMBERS = 3;
+/** 分类 sweep 单轮条数上限(M54 批B;Jev 逐条决策,15min tick 节奏) */
+export const CLASSIFY_BATCH_SIZE = 50;

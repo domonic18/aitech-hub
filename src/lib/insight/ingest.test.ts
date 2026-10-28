@@ -45,6 +45,7 @@ describe("ingestInsightSignal", () => {
         refId: "42",
         rawText: "怎么用  AI 做\n\tPPT",
         normalizedText: "怎么用 AI 做 PPT",
+        domain: "unclassified",
         meta: { foo: 1 },
         signalAt: new Date("2026-10-17T08:00:00+08:00"),
       },

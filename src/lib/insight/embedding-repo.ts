@@ -46,18 +46,27 @@ export async function findUnclusteredSignals(
   minTextLen: number,
   enabledSources: readonly string[],
 ): Promise<
-  { id: bigint; source: string; medium: string; normalizedText: string; vector: number[] }[]
+  {
+    id: bigint;
+    source: string;
+    medium: string;
+    domain: string;
+    normalizedText: string;
+    vector: number[];
+  }[]
 > {
   const rows = await prisma.$queryRaw<
     {
       id: bigint;
       source: string;
       medium: string;
+      domain: string;
       normalizedText: string;
       vec: string;
     }[]
   >`
-    SELECT s.id, s.source, s.medium, s.normalized_text AS "normalizedText", s.embedding::text AS vec
+    SELECT s.id, s.source, s.medium, s.domain, s.normalized_text AS "normalizedText",
+           s.embedding::text AS vec
       FROM insight_signal s
      WHERE s.embedding IS NOT NULL
        AND s.source IN (${Prisma.join(enabledSources)})
@@ -69,6 +78,7 @@ export async function findUnclusteredSignals(
     id: r.id,
     source: r.source,
     medium: r.medium,
+    domain: r.domain,
     normalizedText: r.normalizedText,
     vector: r.vec
       .slice(1, -1)

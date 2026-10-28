@@ -11,11 +11,16 @@ import { recordAiUsage } from "../ai/usage-log";
 import { resolveAiModel } from "../ai/resolver";
 import { logger } from "../logger";
 import { CLUSTER_BATCH_SIZE } from "./constants";
+import { runInsightClassify } from "./classify";
 import { runInsightClustering } from "./cluster";
 import { findUnembeddedSignals, saveSignalEmbeddings } from "./embedding-repo";
 import { EMBEDDING_DIMS } from "../search/embedding";
 
 export interface InsightEmbedSummary {
+  /** 领域分类(M54):本轮落库 domain/subdomain 的信号数 */
+  classified: number;
+  /** 分类未采信(低置信/失败,保留 unclassified 待下轮) */
+  classifyKept: number;
   /** 本轮回填向量数 */
   embedded: number;
   /** 回填失败数(chunk 级) */
@@ -34,6 +39,8 @@ export async function runInsightEmbedBatch(
   limit: number = CLUSTER_BATCH_SIZE,
 ): Promise<InsightEmbedSummary> {
   const empty: InsightEmbedSummary = {
+    classified: 0,
+    classifyKept: 0,
     embedded: 0,
     failed: 0,
     joined: 0,
@@ -91,8 +98,12 @@ export async function runInsightEmbedBatch(
     }
   }
 
+  // 分类先于聚类(M54 批B):domain 落定后同域聚类,新信号当轮即入对桶
+  const classify = await runInsightClassify(limit);
   const clustering = await runInsightClustering(limit);
   const summary: InsightEmbedSummary = {
+    classified: classify.classified,
+    classifyKept: classify.kept + classify.failed,
     embedded: signals.length - failed,
     failed,
     joined: clustering.joined,
