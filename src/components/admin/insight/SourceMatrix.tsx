@@ -154,22 +154,30 @@ export default function SourceMatrix({ matrix }: { matrix: SourceMatrix }): Reac
                     );
                   })}
                   <td className="px-2 py-1.5 text-right">
+                    {/* 每行恒有转选题钮(M53 验收反馈:原误删——用户要的是防抖防呆,
+                        不是移除);防重双保险=服务端同题去重+已转题禁点;空白行红样式
+                        保留 gap 语义,其余行中性样式 */}
                     {isConverted ? (
                       <span className="text-[10.5px] text-green">已转题</span>
-                    ) : blank ? (
+                    ) : busyId === String(c.clusterId) ? (
+                      <span className="text-[10.5px] text-text-3">转题中…</span>
+                    ) : (
                       <button
                         type="button"
-                        disabled={busyId === String(c.clusterId)}
                         onClick={() => void toTopic(c.clusterId, c.label)}
-                        className="cursor-pointer rounded-sm border border-dashed border-red px-1.5 py-0.5 text-[10.5px] text-red hover:bg-red/10 disabled:opacity-50"
-                        title="热源有需求 × 站内无痛点信号 = 内容空白,一键转选题补覆盖"
+                        className={
+                          blank
+                            ? "cursor-pointer rounded-sm border border-dashed border-red px-1.5 py-0.5 text-[10.5px] text-red hover:bg-red/10"
+                            : "cursor-pointer rounded-sm border border-line px-1.5 py-0.5 text-[10.5px] text-text-2 hover:border-line-hover hover:text-text-1"
+                        }
+                        title={
+                          blank
+                            ? "热源有需求 × 站内无痛点信号 = 内容空白,一键转选题补覆盖"
+                            : "在创作中心创建对应主题"
+                        }
                       >
-                        {busyId === String(c.clusterId) ? "转题中…" : "补空白"}
+                        {blank ? "补空白" : "转选题"}
                       </button>
-                    ) : signature ? (
-                      <span className="text-[10.5px] text-blue">自有特色</span>
-                    ) : (
-                      <span className="text-text-3/50">—</span>
                     )}
                   </td>
                 </tr>
