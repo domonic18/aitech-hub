@@ -1245,7 +1245,8 @@ model DiscoveryCandidate {
 model InsightSignal {
   id             BigInt                       @id @default(autoincrement())
   source         String                       @db.VarChar(30) // internal-search/internal-agent/internal-comment/internal-feedback/telegram-ai(批③起扩 hotboard-* 等)
-  domain         String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔)
+  domain         String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔;M54 起分类器落库,未分类=unclassified)
+  subdomain      String?                      @map("subdomain") @db.VarChar(30) // tech 子域(M54:词表 key,如 ai-learning;域非 tech 时空)
   medium         String                       @db.VarChar(12) // money/time/voice/search/ai-record(五介质)
   refId          String                       @map("ref_id") @db.VarChar(120) // 溯源锚:源行 id 文本/会话 id(幂等键半)
   rawText        String                       @map("raw_text") @db.Text // 原文(截 4000)
@@ -1338,6 +1339,25 @@ model InsightHotSource {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("insight_hot_source")
+}
+
+/// 领域词表(M54:领域/子域两层 taxonomy)——分类器(Jev Choice)输出的合法
+/// 键域与呈现层领域 chips 的唯一真相源。key=稳定标识(英文,分类器输出/查询
+/// 过滤用,禁改);label=中文显示名;parent=子域所属领域 key(subdomain 行
+/// 必填,domain 行空);enabled=停用后不参与分类与筛选(存量行保留)。
+/// CRUD 走 /api/insight/taxonomy(会话鉴权);种子见迁移 20261028100000。
+model InsightTaxonomy {
+  id        Int      @id @default(autoincrement())
+  kind      String   @db.VarChar(12) // domain | subdomain
+  key       String   @unique @db.VarChar(30)
+  label     String   @db.VarChar(30)
+  parent    String?  @db.VarChar(30) // subdomain → 所属 domain key
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("insight_taxonomy")
 }
 
 // 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
