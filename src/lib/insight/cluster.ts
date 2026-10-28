@@ -101,8 +101,8 @@ export async function runInsightClustering(limit: number): Promise<ClusterRunSum
         summary.short += 1;
         continue;
       }
-      // 单池近邻:跨 kind 搜索(痛点扩围,见模块头注)
-      const nearest = await nearestClustersByMembers(sig.vector, "tech", 1);
+      // 单池近邻:按信号自身领域搜索(M54 同域分桶——领域来自分类 sweep)
+      const nearest = await nearestClustersByMembers(sig.vector, sig.domain, 1);
       const decision = decideAssignment(
         nearest[0],
         sig.normalizedText.length,
@@ -138,7 +138,7 @@ export async function runInsightClustering(limit: number): Promise<ClusterRunSum
         await prisma.insightCluster.create({
           data: {
             kind,
-            domain: "tech",
+            domain: sig.domain,
             media: [sig.medium],
             members: { create: { signalId: sig.id, weight: 1 } },
           },

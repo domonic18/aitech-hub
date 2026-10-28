@@ -1349,11 +1349,11 @@ model InsightHotSource {
 model InsightTaxonomy {
   id        Int      @id @default(autoincrement())
   kind      String   @db.VarChar(12) // domain | subdomain
-  key       String   @unique @db.VarChar(30)
-  label     String   @db.VarChar(30)
-  parent    String?  @db.VarChar(30) // subdomain → 所属 domain key
+  key       String   @unique @map("key") @db.VarChar(30)
+  label     String   @map("label") @db.VarChar(30)
+  parent    String?  @map("parent") @db.VarChar(30) // subdomain → 所属 domain key
   enabled   Boolean  @default(true)
-  sortOrder Int      @default(0)
+  sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

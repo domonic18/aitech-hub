@@ -93,6 +93,9 @@ export async function ingestInsightSignal(
         refId,
         rawText: raw,
         normalizedText: normalized,
+        // M54:落库为未分类,分类 sweep(Jev)落 domain/subdomain——
+        // 分类先于同域聚类,新信号当轮即入对桶
+        domain: "unclassified",
         meta: input.meta === undefined ? undefined : (input.meta as Prisma.InputJsonValue),
         signalAt: input.signalAt,
       },
