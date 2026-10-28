@@ -20,8 +20,10 @@ import SourceMatrix from "@/components/admin/insight/SourceMatrix";
 import TrendBoard from "@/components/admin/insight/TrendBoard";
 import SignalsSection from "@/components/admin/insight/SignalsSection";
 import {
+  DOMAIN_ALL,
   WINDOWS,
   insightHref,
+  resolveDomainView,
   shortSource,
   shiftDay,
   todayCn,
@@ -30,10 +32,15 @@ import {
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignals } from "@/lib/insight/admin";
 import { listClusterTrends, listSourceMatrix } from "@/lib/insight/trend";
-import { INSIGHT_MEDIA_VOCAB, SIGNAL_TAKE_DEFAULT } from "@/lib/insight/constants";
+import {
+  INSIGHT_MEDIA_VOCAB,
+  SIGNAL_TAKE_DEFAULT,
+  TREND_WINDOW_DAYS,
+} from "@/lib/insight/constants";
 import { hotBoardForDay, insightKeywordCloud } from "@/lib/insight/hotboard";
 import { HOT_SOURCE_KEYS } from "@/lib/insight/hot-source";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/ingest";
+import { listTaxonomy } from "@/lib/insight/taxonomy";
 
 export const dynamic = "force-dynamic";
 
@@ -98,11 +105,18 @@ export default async function AdminInsightPage({
   const w = params.w === undefined ? 7 : Number(params.w);
   const today = todayCn();
 
+  // 领域视图(M54 批C):启用域词表供 chips 与参数钳制;all→查询层不筛
+  const domainRows = (await listTaxonomy(true)).filter((r) => r.kind === "domain");
+  const domainKeys = domainRows.map((r) => r.key);
+  const domainLabel = new Map(domainRows.map((r) => [r.key, r.label]));
+  const view = resolveDomainView(sp.domain, domainKeys);
+  const domainFilter = view === DOMAIN_ALL ? undefined : view;
+
   const [overview, painClusters, hotClusters, signals, hotBoard, cloud, trends, matrix] =
     await Promise.all([
-      insightOverview(w),
-      listInsightClusters({ kind: "pain", limit: 8 }),
-      listInsightClusters({ kind: "hot", limit: 20 }),
+      insightOverview(w, domainFilter),
+      listInsightClusters({ kind: "pain", domain: domainFilter, limit: 8 }),
+      listInsightClusters({ kind: "hot", domain: domainFilter, limit: 20 }),
       listInsightSignals({
         source: params.source as InsightSource | undefined,
         // 北京日界折算(表单口径见 SignalsSection:from ≥ 当日零点,to < 次日零点;
@@ -113,12 +127,13 @@ export default async function AdminInsightPage({
             ? undefined
             : new Date(`${shiftDay(params.to, 1)}T00:00:00+08:00`),
         medium: params.medium,
+        domain: domainFilter,
         limit: SIGNAL_TAKE_DEFAULT,
       }),
       hotBoardForDay(params.day),
-      insightKeywordCloud({ windowDays: w }),
-      listClusterTrends(),
-      listSourceMatrix(),
+      insightKeywordCloud({ windowDays: w, domain: domainFilter }),
+      listClusterTrends(TREND_WINDOW_DAYS, domainFilter),
+      listSourceMatrix(undefined, domainFilter),
     ]);
   const scored = hotClusters.filter((c) => c.score !== null);
   const hotAvg =
@@ -151,7 +166,8 @@ export default async function AdminInsightPage({
           ]}
         />
       </div>
-      {/* 窗口 chips(统计取景)+ 窗口徽章(取景范围可见)+ dayNav(热榜回看日,板定头部位置) */}
+      {/* 窗口 chips(统计取景)+ 窗口徽章(取景范围可见)+ 领域 chips(M54 批C:
+          默认 tech 视图,全部=含未分类;热榜榜面/种子词产出榜不随域)+ dayNav */}
       <div className="flex flex-wrap items-center gap-2">
         {WINDOWS.map((n) => (
           <Link
@@ -165,10 +181,31 @@ export default async function AdminInsightPage({
         ))}
         <span
           className="rounded-sm bg-panel-2 px-2 py-0.5 font-mono text-[11px] text-text-3"
-          title={`窗口 chips 只影响词云与该徽章;KPI 四卡为板定固定口径`}
+          title={`窗口 chips 只影响词云与本徽章;领域 chips 影响除热榜榜面/种子词产出外全部卡片(KPI 词库两卡恒全局)`}
         >
-          近 {w} 天 · 活跃簇 {cloud.length} · 信号 {windowSignals.toLocaleString()}
+          近 {w} 天 · {view === DOMAIN_ALL ? "全量" : (domainLabel.get(view) ?? view)} · 活跃簇{" "}
+          {cloud.length} · 信号 {windowSignals.toLocaleString()}
         </span>
+        <span className="mx-1 h-4 w-px bg-line" aria-hidden />
+        <Link
+          href={insightHref(params, { domain: DOMAIN_ALL })}
+          scroll={false}
+          className={view === DOMAIN_ALL ? chipOn : chipOff}
+          title="全量视图:含未分类信号(分类器未采信/失败的留档)"
+        >
+          全部
+        </Link>
+        {domainRows.map((r) => (
+          <Link
+            key={r.key}
+            href={insightHref(params, { domain: r.key === "tech" ? undefined : r.key })}
+            scroll={false}
+            className={view === r.key ? chipOn : chipOff}
+            title={`领域视图:仅 ${r.label} 信号与簇(未分类不进任何领域)`}
+          >
+            {r.label}
+          </Link>
+        ))}
       </div>
       <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
       <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

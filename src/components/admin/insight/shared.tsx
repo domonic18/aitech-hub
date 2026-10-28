@@ -52,7 +52,8 @@ export function shortSource(source: string): string {
 }
 
 /** 洞察页查询参数全集(跨分区互保:w=总览/云图窗口,day=热榜回看日,
- * hs=热榜源展示切换,source/from/to=信号明细过滤) */
+ * hs=热榜源展示切换,source/from/to=信号明细过滤,domain=领域视图(M54 批C:
+ * 缺省 tech;"all"=全量含未分类;热榜榜面/种子词产出榜不受域过滤)) */
 export type InsightViewParams = {
   source?: string;
   /** 介质筛选(M52 批D:钱/时间/声音/搜索/AI记录) */
@@ -62,7 +63,21 @@ export type InsightViewParams = {
   to?: string;
   day?: string;
   hs?: string;
+  domain?: string;
 };
+
+/** 领域视图「全部」哨兵值(domain=all → 查询层不筛,unclassified 亦可见) */
+export const DOMAIN_ALL = "all";
+
+/** 领域视图解析(页侧唯一出口):合法启用域回原值,缺省/非法回 tech,
+ * "all" 哨兵原样返回;查询层约定 all→undefined(不筛) */
+export function resolveDomainView(
+  raw: string | undefined,
+  enabledDomains: readonly string[],
+): string {
+  if (raw === DOMAIN_ALL) return DOMAIN_ALL;
+  return enabledDomains.includes(raw ?? "") ? raw! : "tech";
+}
 
 /** 洞察页链接构造:未定义值不落串,其余参数原样保留 */
 export function insightHref(

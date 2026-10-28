@@ -40,14 +40,21 @@ export interface InsightClusterRow {
 const CLUSTER_ROW_TAKE = 20;
 
 /** 簇列表(痛点榜/热点雷达共用;score 降序未计分沉底,再按最近活跃)。
- * 成员数与最近活跃时间二次聚合;7 日快照序列供 sparkline+异动判定 */
+ * 成员数与最近活跃时间二次聚合;7 日快照序列供 sparkline+异动判定。
+ * domain(M54 批C):领域视图过滤(undefined=全量)——簇已同域分桶,簇侧
+ * where 即成员语义域,无需下探 member/signal */
 export async function listInsightClusters(opts: {
   kind?: "hot" | "pain";
+  domain?: string;
   limit?: number;
 }): Promise<InsightClusterRow[]> {
   const take = Math.min(Math.max(opts.limit ?? CLUSTER_ROW_TAKE, 1), CLUSTER_TAKE_MAX);
   const clusters = await prisma.insightCluster.findMany({
-    where: { status: { not: "closed" }, ...(opts.kind === undefined ? {} : { kind: opts.kind }) },
+    where: {
+      status: { not: "closed" },
+      ...(opts.kind === undefined ? {} : { kind: opts.kind }),
+      ...(opts.domain === undefined ? {} : { domain: opts.domain }),
+    },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],
     take,
     select: {

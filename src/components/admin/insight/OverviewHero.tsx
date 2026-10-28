@@ -1,10 +1,12 @@
 /**
  * F11 分析总览 hero 行:左关键词云图卡(搜索 + 舆情四色 + 图例筛选 + 点词入
  * 词库),右 KPI 四竖列(候选增量·7天 / 信号总数 / 机会均分(人写内容) /
- * 新入词库)+ 底部日批 status 行「每日分析 · 今日 HH:MM 成功」。KPI 固定口径
- * 不随窗口 chips(板定 7 天增量与全量总数);机会均分由页侧按当前 hot 簇均分
- * 传入;词云卡头标窗口口径(windowDays)——窗口 chips 只影响词云,标识让取景
- * 范围可见。读法提示(字号=机会分/颜色=舆情/点词入词库)随图例行在 KeywordCloud。
+ * 新入词库)+ 底部日批 status 行「每日分析 · 今日 HH:MM 成功」。KPI 不随窗口
+ * chips(板定 7 天增量与全量总数);领域口径(M54 批C):信号总数/机会均分
+ * 随页头领域 chips(词库两卡恒全局,发现词库无域维度);机会均分由页侧按当前
+ * hot 簇均分传入;词云卡头标窗口口径(windowDays)——窗口 chips 只影响词云,
+ * 标识让取景范围可见。读法提示(字号=机会分/颜色=舆情/点词入词库)随图例行在
+ * KeywordCloud。
  */
 import KeywordCloud from "@/components/admin/insight/KeywordCloud";
 import type { InsightCloudWord } from "@/lib/insight/hotboard";
@@ -78,24 +80,32 @@ export default async function OverviewHero({
         <div className="mb-2 text-sm font-semibold">
           关键词云图
           <span className="ml-2 text-[11px] font-normal text-text-3">
-            近 {windowDays} 天活跃 · 窗口随页头 chips
+            近 {windowDays} 天活跃 · 窗口/领域随页头 chips
           </span>
         </div>
         <KeywordCloud words={cloud} />
       </div>
       <div className="flex flex-col gap-2">
-        <Kpi label="候选增量 · 7天" value={`+${candidates7d}`} title="近 7 天新增发现候选词" />
+        <Kpi
+          label="候选增量 · 7天"
+          value={`+${candidates7d}`}
+          title="近 7 天新增发现候选词(词库全局,不随领域)"
+        />
         <Kpi
           label="信号总数"
           value={totalSignals.toLocaleString()}
-          title="在役源(百度/知乎/B站热榜)信号池累计"
+          title="在役源信号池累计(随页头领域 chips;全部=含未分类)"
         />
         <Kpi
           label="机会均分(人写内容)"
           value={hotAvg === null ? "—" : String(Math.round(hotAvg))}
-          title="当前机会簇(hot)机会分均值"
+          title="当前机会簇(hot)机会分均值(随页头领域 chips)"
         />
-        <Kpi label="新入词库" value={`+${confirmed7d}`} title="近 7 天确认生效词" />
+        <Kpi
+          label="新入词库"
+          value={`+${confirmed7d}`}
+          title="近 7 天确认生效词(词库全局,不随领域)"
+        />
         <DailyStatusLine />
       </div>
     </div>

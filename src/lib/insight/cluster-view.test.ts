@@ -100,6 +100,18 @@ describe("listInsightClusters", () => {
     expect((clusterFindMany.mock.calls[0]![0] as { take: number }).take).toBe(1);
   });
 
+  it("领域过滤进 where,undefined 不筛(M54 批C:簇侧 where 即成员语义域)", async () => {
+    clusterFindMany.mockResolvedValue([]);
+    await listInsightClusters({ domain: "tech" });
+    expect((clusterFindMany.mock.calls[0]![0] as { where: { domain?: string } }).where.domain).toBe(
+      "tech",
+    );
+    await listInsightClusters({});
+    expect(
+      (clusterFindMany.mock.calls[1]![0] as { where: { domain?: string } }).where.domain,
+    ).toBeUndefined();
+  });
+
   it("映射:成员数/快照升序 history/动量与异动/非串词面滤除/时间 ISO 化", async () => {
     mockTwoClusters();
     const rows = await listInsightClusters({});

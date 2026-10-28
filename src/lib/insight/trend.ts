@@ -61,14 +61,18 @@ export interface ClusterTrendRow {
 }
 
 /** 活跃簇趋势行:双窗信号计数 + 增长分级(恒限在役源;快照/词云不受影响)。
- * LEFT JOIN 信号过滤条件放 ON(放 WHERE 会把 LEFT 退化成 INNER,无信号簇消失)。 */
+ * LEFT JOIN 信号过滤条件放 ON(放 WHERE 会把 LEFT 退化成 INNER,无信号簇消失)。
+ * domain(M54 批C):领域视图过滤(undefined=全量)——簇已同域分桶,簇侧
+ * WHERE 即全行语义域,JOIN 信号侧不需重复过滤 */
 export async function listClusterTrends(
   windowDays: number = TREND_WINDOW_DAYS,
+  domain?: string,
 ): Promise<ClusterTrendRow[]> {
   const now = Date.now();
   const recentStart = new Date(now - windowDays * DAY_MS);
   const priorStart = new Date(now - windowDays * 2 * DAY_MS);
   const enabled = [...INSIGHT_SOURCES_ENABLED];
+  const domainSql = domain === undefined ? Prisma.empty : Prisma.sql` AND c.domain = ${domain}`;
   const rows = await prisma.$queryRaw<
     {
       id: bigint;
@@ -97,7 +101,7 @@ export async function listClusterTrends(
       LEFT JOIN insight_signal s ON s.id = m.signal_id
        AND s.signal_at >= ${priorStart}
        AND s.source IN (${Prisma.join(enabled)})
-     WHERE c.status = 'active'
+     WHERE c.status = 'active'${domainSql}
      GROUP BY c.id, c.kind, c.label, c.score
      ORDER BY c.score DESC NULLS LAST`;
   return rows.map((r) => {
@@ -146,17 +150,20 @@ export interface SourceMatrix {
 
 /** 源×簇信号计数矩阵(top N 成熟簇 × 在役源;零迁移,member→signal 现表聚合)。
  * 成熟 = 已打标(label 非空)+ 成员 ≥ MATRIX_MIN_MEMBERS——M52 验收实收:单信号
- * 簇 coverage=null 拉满 gap 分,按分排序全屏「待打标」,矩阵不可读且补空白过早 */
-export async function listSourceMatrix(limit = 12): Promise<SourceMatrix> {
+ * 簇 coverage=null 拉满 gap 分,按分排序全屏「待打标」,矩阵不可读且补空白过早。
+ * domain(M54 批C):领域视图过滤(undefined=全量)只收簇侧;源健康度列
+ * (latestAt/stale)是源属性不随域,cells 按簇 id 集合自然随域 */
+export async function listSourceMatrix(limit = 12, domain?: string): Promise<SourceMatrix> {
   const enabled = [...INSIGHT_SOURCES_ENABLED];
   const staleCutoff = new Date(Date.now() - 14 * DAY_MS);
+  const domainSql = domain === undefined ? Prisma.empty : Prisma.sql` AND c.domain = ${domain}`;
   const clusters = await prisma.$queryRaw<
     { id: bigint; kind: string; label: string; score: number | null }[]
   >`
     SELECT c.id, c.kind, c.label, c.score
       FROM insight_cluster c
      WHERE c.status = 'active'
-       AND c.label IS NOT NULL
+       AND c.label IS NOT NULL${domainSql}
        AND (SELECT count(*) FROM insight_cluster_member m WHERE m.cluster_id = c.id)
              >= ${MATRIX_MIN_MEMBERS}
      ORDER BY c.score DESC NULLS LAST

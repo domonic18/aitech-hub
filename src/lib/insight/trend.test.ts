@@ -2,6 +2,7 @@
  * 洞察趋势层单测(M52 批A):增长分纯函数全分支(五级判据边界+前窗为零两态)+
  * listClusterTrends 的 SQL 形状与分级映射(prisma mock)。
  */
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({
@@ -90,5 +91,15 @@ describe("listClusterTrends", () => {
     expect(sqlText).toContain("status = 'active'");
     expect(sqlText).toContain("signal_at >=");
     expect(sqlText).toContain("LEFT JOIN");
+  });
+
+  it("领域视图:簇侧 WHERE 注入域片段;全部视图片段为空(M54 批C)", async () => {
+    mockedRaw.mockResolvedValue([] as never);
+    await listClusterTrends(7, "tech");
+    // 域片段恒为模板末位插值;Prisma.empty(空片段)即未筛
+    expect(mockedRaw.mock.calls[0]!.at(-1)).not.toBe(Prisma.empty);
+
+    await listClusterTrends(7);
+    expect(mockedRaw.mock.calls[1]!.at(-1)).toBe(Prisma.empty);
   });
 });
