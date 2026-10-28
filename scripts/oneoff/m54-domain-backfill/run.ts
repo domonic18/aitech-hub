@@ -26,14 +26,16 @@ async function main(): Promise<void> {
     classified += r.classified;
     kept += r.kept;
     failed += r.failed;
-    console.log(`round ${round}: scanned=${r.scanned} classified=${r.classified} kept=${r.kept} failed=${r.failed}`);
+    console.log(
+      `round ${round}: scanned=${r.scanned} classified=${r.classified} kept=${r.kept} failed=${r.failed}`,
+    );
     if (r.scanned === 0) break;
   }
   console.log(`step2 分类完成:classified=${classified} kept=${kept} failed=${failed}`);
 
   const clusters = await prisma.insightCluster.findMany({
     where: { status: "active" },
-    select: { id: true },
+    select: { id: true, domain: true },
   });
   let rebucketed = 0;
   for (const c of clusters) {
