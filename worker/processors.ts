@@ -39,6 +39,7 @@ import {
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_PAY_RECONCILE,
+  QUEUE_PRICING,
   QUEUE_SEO_BATCH,
   QUEUE_STATS,
   QUEUE_SUMMARIZER,
@@ -97,6 +98,7 @@ import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/daily";
+import { syncOpenrouterPrefill } from "../src/lib/pricing/openrouter";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {
@@ -105,6 +107,12 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_MEDIA_AUDIT]: async () => {
     const summary = await runAudit();
     console.log(JSON.stringify({ event: "media.audit", ...summary }));
+    return summary;
+  },
+  [QUEUE_PRICING]: async () => {
+    // 牌价预填(M55 批B):OpenRouter 初稿;enabled/disabled 人工终审行不覆盖
+    const summary = await syncOpenrouterPrefill();
+    console.log(JSON.stringify({ event: "pricing.openrouter_sync", ...summary }));
     return summary;
   },
   [QUEUE_STATS]: async (job) => {

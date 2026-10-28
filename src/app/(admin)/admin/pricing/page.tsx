@@ -5,6 +5,7 @@
  */
 import ModelsBoard from "@/components/admin/pricing/ModelsBoard";
 import PlansBoard from "@/components/admin/pricing/PlansBoard";
+import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { listCodingPlans, listModelPricing } from "@/lib/pricing/admin";
 
@@ -15,12 +16,24 @@ export default async function AdminPricingPage(): Promise<React.ReactElement> {
   const [models, plans] = await Promise.all([listModelPricing(), listCodingPlans()]);
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-base font-semibold">价格速查</h2>
-        <p className="mt-0.5 text-xs text-text-3">
-          /pricing/ 公开页的数据源:官方一手牌价人工策展 · 三通道数据均落「待审」,点状态钮终审发布 ·
-          额度口径按官方原文呈现
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">价格速查</h2>
+          <p className="mt-0.5 text-xs text-text-3">
+            /pricing/ 公开页的数据源:官方一手牌价人工策展 · 三通道数据均落「待审」,点状态钮终审发布
+            · 额度口径按官方原文呈现
+          </p>
+        </div>
+        <TriggerButtons
+          endpoint="/api/pricing/sync"
+          jobs={[
+            {
+              job: "sync-openrouter",
+              label: "拉取 OpenRouter 初稿",
+              hint: "白名单 9 厂商全量模型落待审(平台价,终审须对官方页);已发布行不覆盖",
+            },
+          ]}
+        />
       </div>
       <ModelsBoard rows={models} />
       <PlansBoard rows={plans} />

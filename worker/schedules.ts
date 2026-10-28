@@ -28,10 +28,12 @@ import {
   JOB_RUN_PURGE_CRON,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
+  PRICING_SYNC_CRON,
   PAY_DAILY_AUDIT_CRON,
   PAY_JOB_DAILY_AUDIT,
   PAY_JOB_SWEEP,
   QUEUE_COVER_GEN,
+  PRICING_JOB_SYNC,
   QUEUE_CRAWLER,
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
@@ -39,6 +41,7 @@ import {
   QUEUE_GITHUB,
   QUEUE_MEDIA_AUDIT,
   QUEUE_PAY_RECONCILE,
+  QUEUE_PRICING,
   QUEUE_STATS,
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_FLUSH,
@@ -83,6 +86,19 @@ export async function scheduleMediaAudit(): Promise<void> {
     { pattern: MEDIA_AUDIT_CRON, tz: SITE_TZ },
     {
       name: "audit",
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+}
+
+export async function schedulePricingSync(): Promise<void> {
+  const queue = getQueue(QUEUE_PRICING);
+  await queue.upsertJobScheduler(
+    PRICING_JOB_SYNC,
+    { pattern: PRICING_SYNC_CRON, tz: SITE_TZ },
+    {
+      name: PRICING_JOB_SYNC,
       data: {},
       opts: schedulerOpts(7),
     },
