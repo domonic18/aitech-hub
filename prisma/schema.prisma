@@ -1463,18 +1463,18 @@ model JobRun {
 model ModelPricing {
   id            BigInt   @id @default(autoincrement())
   vendor        String   @db.VarChar(40) // 厂商(如 DeepSeek)
-  modelKey      String   @db.VarChar(60) // 模型标识(如 deepseek-v3.2)
+  modelKey      String   @map("model_key") @db.VarChar(60) // 模型标识(如 deepseek-v3.2)
   currency      String   @default("CNY") @db.VarChar(8) // CNY | USD(国际原币直出)
-  inputPrice    Decimal? @db.Decimal(12, 4) // 每百万 tokens;null=未公布(禁臆测)
-  outputPrice   Decimal? @db.Decimal(12, 4)
-  freeTier      String?  @db.VarChar(60) // 免费额度口径原文;null=「—」
-  contextWindow String?  @db.VarChar(20) // 如 128K
+  inputPrice    Decimal? @map("input_price") @db.Decimal(12, 4) // 每百万 tokens;null=未公布(禁臆测)
+  outputPrice   Decimal? @map("output_price") @db.Decimal(12, 4)
+  freeTier      String?  @map("free_tier") @db.VarChar(60) // 免费额度口径原文;null=「—」
+  contextWindow String?  @map("context_window") @db.VarChar(20) // 如 128K
   note          String?  @db.VarChar(200)
   dataAsOf      DateTime @map("data_as_of") @db.Timestamptz(6) // 数据截稿(页面横幅+行级溯源)
-  sourceUrl     String   @db.VarChar(300) // 来源(官方牌价页)
+  sourceUrl     String   @map("source_url") @db.VarChar(300) // 来源(官方牌价页)
   region        String   @default("cn") @db.VarChar(8) // cn | intl(页面分组)
   status        String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
-  sortOrder     Int      @default(0)
+  sortOrder     Int      @default(0) @map("sort_order")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1488,17 +1488,17 @@ model ModelPricing {
 model CodingPlan {
   id          BigInt   @id @default(autoincrement())
   vendor      String   @db.VarChar(40)
-  planName    String   @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
+  planName    String   @map("plan_name") @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
   currency    String   @default("CNY") @db.VarChar(8)
-  monthlyFee  Decimal? @db.Decimal(12, 2) // null=未公布
-  quotaDesc   String   @db.VarChar(200) // 额度口径原文(口径不归一)
-  peakRate    String?  @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
-  offPeakRate String?  @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
-  bestFor     String?  @db.VarChar(80) // 适合人群
+  monthlyFee  Decimal? @map("monthly_fee") @db.Decimal(12, 2)
+  quotaDesc   String   @map("quota_desc") @db.VarChar(200) // 额度口径原文(口径不归一)
+  peakRate    String?  @map("peak_rate") @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
+  offPeakRate String?  @map("off_peak_rate") @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
+  bestFor     String?  @map("best_for") @db.VarChar(80) // 适合人群
   dataAsOf    DateTime @map("data_as_of") @db.Timestamptz(6)
-  sourceUrl   String   @db.VarChar(300)
+  sourceUrl   String   @map("source_url") @db.VarChar(300)
   status      String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
-  sortOrder   Int      @default(0)
+  sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
