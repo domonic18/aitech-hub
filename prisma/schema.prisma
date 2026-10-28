@@ -758,9 +758,9 @@ model IllustrationVersion {
   editBbox        String?  @map("edit_bbox") @db.VarChar(40) // normalized "x1 y1 x2 y2"
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  parent  IllustrationVersion?   @relation("illu_version_chain", fields: [parentVersionId], references: [id])
-  children IllustrationVersion[] @relation("illu_version_chain")
-  groups  IllustrationLayerGroup[]
+  parent   IllustrationVersion?     @relation("illu_version_chain", fields: [parentVersionId], references: [id])
+  children IllustrationVersion[]    @relation("illu_version_chain")
+  groups   IllustrationLayerGroup[]
 
   @@index([parentVersionId], map: "idx_ai_illu_version_parent")
   @@index([mediaPath], map: "idx_ai_illu_version_media")
@@ -822,18 +822,18 @@ model IllustrationLayer {
 /// read_more_url 同步时写公众号 content_source_url(阅读原文回跳站内)。
 /// crop_spec 为封面裁剪快照(cover_info.crop_percent_list,同步随 draft/add)。
 model ContentPin {
-  id          BigInt    @id @default(autoincrement())
-  title       String    @db.VarChar(64) // ≤32 码点(应用层 Zod;VarChar 留字节数余量)
-  content     String    @default("") @map("content") @db.Text // 轻文字纯文本(禁 Markdown/内联 HTML)
-  topicId     BigInt?   @map("topic_id") // 专题软关联(应用层完整性:删专题由编辑侧改挂)
-  status      String    @default("draft") @db.VarChar(20) // draft/pending/synced/published(应用层 Zod)
-  readMoreUrl String?   @map("read_more_url") @db.VarChar(500)
-  cropSpec    String    @default("1_1") @map("crop_spec") @db.VarChar(40) // 1_1/16_9/2.35_9
-  referenceMediaPath String? @map("reference_media_path") @db.VarChar(500) // 生图采纳的参照图(站内 uploads 路径,soft ref;缺省回落到创作样例图/素材封面)
-  syncedAt    DateTime? @map("synced_at") @db.Timestamptz(6) // 最近一次公众号草稿同步成功
-  publishedAt DateTime? @map("published_at") @db.Timestamptz(6) // 站点 /pins 上架时间
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 BigInt    @id @default(autoincrement())
+  title              String    @db.VarChar(64) // ≤32 码点(应用层 Zod;VarChar 留字节数余量)
+  content            String    @default("") @map("content") @db.Text // 轻文字纯文本(禁 Markdown/内联 HTML)
+  topicId            BigInt?   @map("topic_id") // 专题软关联(应用层完整性:删专题由编辑侧改挂)
+  status             String    @default("draft") @db.VarChar(20) // draft/pending/synced/published(应用层 Zod)
+  readMoreUrl        String?   @map("read_more_url") @db.VarChar(500)
+  cropSpec           String    @default("1_1") @map("crop_spec") @db.VarChar(40) // 1_1/16_9/2.35_9
+  referenceMediaPath String?   @map("reference_media_path") @db.VarChar(500) // 生图采纳的参照图(站内 uploads 路径,soft ref;缺省回落到创作样例图/素材封面)
+  syncedAt           DateTime? @map("synced_at") @db.Timestamptz(6) // 最近一次公众号草稿同步成功
+  publishedAt        DateTime? @map("published_at") @db.Timestamptz(6) // 站点 /pins 上架时间
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   images   ContentPinImage[]
   channels ContentPinChannel[]
@@ -1183,18 +1183,18 @@ model Feedback {
 /// 新词 pending 经治理台确认后滚雪球闭环。word 落库即归一形(trim+lower),
 /// 唯一约束与查重同一口径;origin/status 合法值应用层 Zod 管控。
 model DiscoveryKeyword {
-  id            BigInt    @id @default(autoincrement())
-  word          String    @unique(map: "uq_discovery_keyword_word") @db.VarChar(100) // 归一形(trim+lower)
-  origin        String    @db.VarChar(10) // manual | hotword
-  status        String    @default("pending") @db.VarChar(10) // pending | active | dismissed | merged(并入已有词的别名)
-  source        String?   @db.VarChar(30) // hotword 来源标识(如 bili-suggest/bing-suggest)
-  mergedIntoId  BigInt?   @map("merged_into_id") // 合并目标词(候选治理 F24;合并词命中统计随目标词)
-  mergedInto    DiscoveryKeyword? @relation("KeywordMergeTarget", fields: [mergedIntoId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  mergedFrom    DiscoveryKeyword[] @relation("KeywordMergeTarget")
-  firstSeenAt   DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(6)
-  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz(6)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           BigInt             @id @default(autoincrement())
+  word         String             @unique(map: "uq_discovery_keyword_word") @db.VarChar(100) // 归一形(trim+lower)
+  origin       String             @db.VarChar(10) // manual | hotword
+  status       String             @default("pending") @db.VarChar(10) // pending | active | dismissed | merged(并入已有词的别名)
+  source       String?            @db.VarChar(30) // hotword 来源标识(如 bili-suggest/bing-suggest)
+  mergedIntoId BigInt?            @map("merged_into_id") // 合并目标词(候选治理 F24;合并词命中统计随目标词)
+  mergedInto   DiscoveryKeyword?  @relation("KeywordMergeTarget", fields: [mergedIntoId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mergedFrom   DiscoveryKeyword[] @relation("KeywordMergeTarget")
+  firstSeenAt  DateTime           @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  confirmedAt  DateTime?          @map("confirmed_at") @db.Timestamptz(6)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([mergedIntoId], map: "idx_discovery_keyword_merged_into")
   @@map("discovery_keyword")
@@ -1270,25 +1270,25 @@ model InsightSignal {
 /// 阈值实测后定参(方案 §9-5)。labeledMemberCount=打标时成员数(增量重打标判定);
 /// coverageScore/coverageState=内容覆盖度(日批对 post 向量近邻回写,看板直读免连查)。
 model InsightCluster {
-  id          BigInt   @id @default(autoincrement())
-  kind        String   @db.VarChar(8) // hot | pain
-  sentiment   String?  @map("sentiment") @db.VarChar(8) // 舆情倾向(LLM 打标扩展位):positive|neutral|negative|mixed;null=未打标,读侧按中性显示
-  domain      String   @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
-  label       String?  @db.VarChar(200) // LLM 命名(人话;未打标 null)
-  summary     String?  @db.VarChar(1000) // LLM 一句话概括
-  keywords    Json? // string[]
-  media       Json? // string[] 留痕介质集合
-  score       Float? // 最新机会分
+  id                 BigInt    @id @default(autoincrement())
+  kind               String    @db.VarChar(8) // hot | pain
+  sentiment          String?   @map("sentiment") @db.VarChar(8) // 舆情倾向(LLM 打标扩展位):positive|neutral|negative|mixed;null=未打标,读侧按中性显示
+  domain             String    @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
+  label              String?   @db.VarChar(200) // LLM 命名(人话;未打标 null)
+  summary            String?   @db.VarChar(1000) // LLM 一句话概括
+  keywords           Json? // string[]
+  media              Json? // string[] 留痕介质集合
+  score              Float? // 最新机会分
   labeledAt          DateTime? @map("labeled_at") @db.Timestamptz(6) // 最近 LLM 打标时间
   labeledMemberCount Int       @default(0) @map("labeled_member_count") // 打标时成员数
   coverageScore      Float?    @map("coverage_score") // 内容覆盖度 0-1(日批回写)
   coverageState      String?   @map("coverage_state") @db.VarChar(10) // covered | partial | blank
-  status      String   @default("active") @db.VarChar(10) // active | fading | closed
-  firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
-  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
-  peakAt      DateTime? @map("peak_at") @db.Timestamptz(6)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  status             String    @default("active") @db.VarChar(10) // active | fading | closed
+  firstSeenAt        DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt         DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  peakAt             DateTime? @map("peak_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   members   InsightClusterMember[]
   snapshots InsightSnapshot[]
@@ -1373,10 +1373,10 @@ model Topic {
   skillKey       String?   @map("skill_key") @db.VarChar(50) // 绑定 agent_skill 的稳定引用(M30 批②;合成写稿按它取指南,soft ref 随 skill 删降级)
   linkedPostId   BigInt?   @map("linked_post_id") // 创作长文 content_post 锚(落稿时写,应用层完整性;一创作至多一篇)
   sampleImageId  BigInt?   @map("sample_image_id") // 样例参照图(writing_sample_image,soft ref 应用层完整性;M39 批③ 生图风格参照)
-  composedAt   DateTime? @map("composed_at") @db.Timestamptz(6)
-  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  composedAt     DateTime? @map("composed_at") @db.Timestamptz(6)
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   items TopicItem[]
 
@@ -1438,7 +1438,7 @@ model AgentSkill {
 /// removeOnComplete 只留近几次,挂死/失败/耗时无处可查。单一写入口=worker
 /// 分发器包装(worker/job-run#withJobRunLog):执行前先落 running 行(挂死
 /// 立即可见),终态回写 summary/error。tick 类纯心跳(crawler/github/stats-flush
- /// /pay-sweep)不落账——其工作单元在各自台账(crawl_source/github_repo)有账。
+/// /pay-sweep)不落账——其工作单元在各自台账(crawl_source/github_repo)有账。
 model JobRun {
   id         BigInt    @id @default(autoincrement())
   jobKey     String    @map("job_key") @db.VarChar(60) // 稳定键 queue/name(如 insight/fetch)
@@ -1450,9 +1450,59 @@ model JobRun {
   finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
   durationMs Int?      @map("duration_ms")
   summary    Json? // job 级汇总(处理器返回值;超长截断)
-  error      String? @db.Text // 失败信息(截 4000)
+  error      String?   @db.Text // 失败信息(截 4000)
 
   @@index([startedAt(sort: Desc)], map: "idx_job_run_recent")
   @@index([jobKey, startedAt(sort: Desc)], map: "idx_job_run_key_recent")
   @@map("job_run")
+}
+
+/// 模型牌价(M55 工具钩子·价格速查页):官方一手牌价人工策展,三通道数据
+/// (OpenRouter 预填/官方页爬虫/手工)均落 pending,enabled=终审可见。
+/// 价格统一「货币 / 百万 tokens」口径;时段折扣与缓存价 v1 不收(note 提及)。
+model ModelPricing {
+  id            BigInt   @id @default(autoincrement())
+  vendor        String   @db.VarChar(40) // 厂商(如 DeepSeek)
+  modelKey      String   @db.VarChar(60) // 模型标识(如 deepseek-v3.2)
+  currency      String   @default("CNY") @db.VarChar(8) // CNY | USD(国际原币直出)
+  inputPrice    Decimal? @db.Decimal(12, 4) // 每百万 tokens;null=未公布(禁臆测)
+  outputPrice   Decimal? @db.Decimal(12, 4)
+  freeTier      String?  @db.VarChar(60) // 免费额度口径原文;null=「—」
+  contextWindow String?  @db.VarChar(20) // 如 128K
+  note          String?  @db.VarChar(200)
+  dataAsOf      DateTime @map("data_as_of") @db.Timestamptz(6) // 数据截稿(页面横幅+行级溯源)
+  sourceUrl     String   @db.VarChar(300) // 来源(官方牌价页)
+  region        String   @default("cn") @db.VarChar(8) // cn | intl(页面分组)
+  status        String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([vendor, modelKey], map: "uq_model_pricing_vendor_model")
+  @@index([status, region, sortOrder], map: "idx_model_pricing_page")
+  @@map("model_pricing")
+}
+
+/// Coding Plan 订阅套餐(M55):额度口径各家不一,按官方原文呈现不强行归一;
+/// 峰谷倍率原文直出(如「峰 1× · 谷 0.5×」),字段拆存便于页面分列。
+model CodingPlan {
+  id          BigInt   @id @default(autoincrement())
+  vendor      String   @db.VarChar(40)
+  planName    String   @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
+  currency    String   @default("CNY") @db.VarChar(8)
+  monthlyFee  Decimal? @db.Decimal(12, 2) // null=未公布
+  quotaDesc   String   @db.VarChar(200) // 额度口径原文(口径不归一)
+  peakRate    String?  @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
+  offPeakRate String?  @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
+  bestFor     String?  @db.VarChar(80) // 适合人群
+  dataAsOf    DateTime @map("data_as_of") @db.Timestamptz(6)
+  sourceUrl   String   @db.VarChar(300)
+  status      String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([vendor, planName], map: "uq_coding_plan_vendor_plan")
+  @@index([status, sortOrder], map: "idx_coding_plan_page")
+  @@map("coding_plan")
 }

@@ -68,6 +68,8 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-cloudserver", label: "数据中心", href: "/admin/data" },
       // 洞察中心(IA v5 板定):独立域(分析总览 + 发现),自数据壳迁出
       { icon: "i-aim", label: "洞察中心", href: "/admin/insight" },
+      // 价格速查(M55 工具钩子):/pricing/ 公开页的牌价策展面(双表终审)
+      { icon: "i-global", label: "价格速查", href: "/admin/pricing" },
     ],
   },
   {
