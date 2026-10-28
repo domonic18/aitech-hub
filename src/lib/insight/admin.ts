@@ -55,29 +55,34 @@ export interface InsightSignalRow {
 }
 
 /** 总览(验收二批②:窗口参数化 7/30/90,读侧不动数据——信号/快照本就逐日
- * 累积,「每天重算」是固定窗口的读侧假象)。windowDays 夹取 1..90 */
-export async function insightOverview(windowDays = 7): Promise<InsightOverview> {
+ * 累积,「每天重算」是固定窗口的读侧假象)。windowDays 夹取 1..90;
+ * domain(M54 批C):领域视图过滤(undefined=全量,页侧把 "all" 解析为 undefined) */
+export async function insightOverview(windowDays = 7, domain?: string): Promise<InsightOverview> {
   const window = Math.min(Math.max(Math.trunc(windowDays), 1), 90);
   const start = todayStart();
   const since = new Date(start.getTime() - (window - 1) * DAY_MS);
+  const domainWhere = domain === undefined ? {} : { domain };
+  const domainSql = domain === undefined ? Prisma.empty : Prisma.sql` AND domain = ${domain}`;
 
   const [total, today, totals, todays, dailyRows] = await Promise.all([
-    prisma.insightSignal.count({ where: { source: { in: ENABLED } } }),
-    prisma.insightSignal.count({ where: { source: { in: ENABLED }, signalAt: { gte: start } } }),
+    prisma.insightSignal.count({ where: { source: { in: ENABLED }, ...domainWhere } }),
+    prisma.insightSignal.count({
+      where: { source: { in: ENABLED }, signalAt: { gte: start }, ...domainWhere },
+    }),
     prisma.insightSignal.groupBy({
       by: ["source"],
-      where: { source: { in: ENABLED } },
+      where: { source: { in: ENABLED }, ...domainWhere },
       _count: { _all: true },
     }),
     prisma.insightSignal.groupBy({
       by: ["source"],
-      where: { source: { in: ENABLED }, signalAt: { gte: start } },
+      where: { source: { in: ENABLED }, signalAt: { gte: start }, ...domainWhere },
       _count: { _all: true },
     }),
     prisma.$queryRaw<{ d: string; c: bigint }[]>`
       SELECT to_char(signal_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS d, count(*) AS c
       FROM insight_signal
-      WHERE signal_at >= ${since} AND source IN (${Prisma.join(ENABLED)})
+      WHERE signal_at >= ${since} AND source IN (${Prisma.join(ENABLED)})${domainSql}
       GROUP BY 1
       ORDER BY 1
     `,
@@ -112,11 +117,12 @@ const SIGNAL_SELECT = {
   signalAt: true,
 } as const;
 
-/** 最近信号流(可按源过滤,恒限在役源);from/to 钳 signal_at(北京日界由
+/** 最近信号流(可按源/领域过滤,恒限在役源);from/to 钳 signal_at(北京日界由
  * 调用方折算);limit 上限 200 */
 export async function listInsightSignals(opts: {
   source?: InsightSource;
   medium?: string;
+  domain?: string;
   from?: Date;
   to?: Date;
   limit?: number;
@@ -127,6 +133,7 @@ export async function listInsightSignals(opts: {
         { source: { in: ENABLED } },
         ...(opts.source === undefined ? [] : [{ source: opts.source }]),
         ...(opts.medium === undefined ? [] : [{ medium: opts.medium }]),
+        ...(opts.domain === undefined ? [] : [{ domain: opts.domain }]),
         ...(opts.from === undefined && opts.to === undefined
           ? []
           : [

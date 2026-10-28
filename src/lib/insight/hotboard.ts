@@ -151,7 +151,7 @@ const CLOUD_CLUSTER_TAKE = 60;
  * 计权。未打标(需「洞察归纳」模型)或零活跃簇时返回空,渲染侧给引导。
  */
 export async function insightKeywordCloud(
-  opts: { windowDays?: number; limit?: number } = {},
+  opts: { windowDays?: number; domain?: string; limit?: number } = {},
 ): Promise<InsightCloudWord[]> {
   const windowDays = opts.windowDays ?? CLOUD_WINDOW_DAYS;
   const clusters = await prisma.insightCluster.findMany({
@@ -159,6 +159,7 @@ export async function insightKeywordCloud(
       label: { not: null },
       status: { not: "closed" },
       lastSeenAt: { gte: new Date(Date.now() - windowDays * 86_400_000) },
+      ...(opts.domain === undefined ? {} : { domain: opts.domain }),
     },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],
     take: CLOUD_CLUSTER_TAKE,

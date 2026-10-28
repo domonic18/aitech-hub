@@ -127,4 +127,16 @@ describe("insightKeywordCloud", () => {
     clusterFindMany.mockResolvedValue([]);
     expect(await insightKeywordCloud()).toEqual([]);
   });
+
+  it("领域过滤进 where,undefined 不筛(M54 批C)", async () => {
+    clusterFindMany.mockResolvedValue([]);
+    await insightKeywordCloud({ domain: "tech" });
+    expect((clusterFindMany.mock.calls[0]![0] as { where: { domain?: string } }).where.domain).toBe(
+      "tech",
+    );
+    await insightKeywordCloud({});
+    expect(
+      (clusterFindMany.mock.calls[1]![0] as { where: { domain?: string } }).where.domain,
+    ).toBeUndefined();
+  });
 });

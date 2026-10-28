@@ -1,5 +1,7 @@
 /** 洞察中心读侧单测(prisma mock,无真库):overview 缺日补 0/在役源过滤/
- * 分源合并 + 信号流恒限在役源与过滤传参(批③ 渠道转向后口径)。 */
+ * 分源合并 + 信号流恒限在役源与过滤传参(批③ 渠道转向后口径)+ 领域视图
+ * 过滤传参(M54 批C)。 */
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/datetime", async (importOriginal) => ({
@@ -95,6 +97,25 @@ describe("insightOverview", () => {
     const sql = (dailyQuery.mock.calls[0]?.[0] as TemplateStringsArray).join("${v}");
     expect(sql).toContain("AT TIME ZONE 'Asia/Shanghai'");
   });
+
+  it("领域视图:where 携带 domain,日增 SQL 注入域过滤片段(M54 批C)", async () => {
+    mockOverview();
+    await insightOverview(7, "tech");
+    const enabled = [...INSIGHT_SOURCES_ENABLED];
+    expect(signalCount).toHaveBeenNthCalledWith(1, {
+      where: { source: { in: enabled }, domain: "tech" },
+    });
+    // 模板第 4 个插值 = 域过滤片段(recent/since、enabled 之后);空 Prisma.empty 即未筛
+    const domainArg = (dailyQuery.mock.calls[0] as unknown[])[3];
+    expect(domainArg).not.toBe(Prisma.empty);
+  });
+
+  it("全部视图:domain=undefined 不筛(SQL 域片段为 Prisma.empty)", async () => {
+    mockOverview();
+    await insightOverview(7, undefined);
+    const domainArg = (dailyQuery.mock.calls[0] as unknown[])[3];
+    expect(domainArg).toBe(Prisma.empty);
+  });
 });
 
 describe("listInsightSignals", () => {
@@ -132,6 +153,24 @@ describe("listInsightSignals", () => {
           AND: [{ source: { in: [...INSIGHT_SOURCES_ENABLED] } }, { source: "hot-baidu" }],
         },
         take: 200,
+      }),
+    );
+  });
+
+  it("按领域过滤(M54 批C:AND 数组加 domain,undefined 不筛)", async () => {
+    signalFindMany.mockResolvedValue([]);
+    await listInsightSignals({ domain: "tech" });
+    expect(signalFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [{ source: { in: [...INSIGHT_SOURCES_ENABLED] } }, { domain: "tech" }],
+        },
+      }),
+    );
+    await listInsightSignals({});
+    expect(signalFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { AND: [{ source: { in: [...INSIGHT_SOURCES_ENABLED] } }] },
       }),
     );
   });
