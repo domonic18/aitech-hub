@@ -8,6 +8,7 @@ const recordAiUsage = vi.fn();
 const findUnembeddedSignals = vi.fn();
 const saveSignalEmbeddings = vi.fn();
 const runInsightClustering = vi.fn();
+const runInsightClassify = vi.fn();
 
 vi.mock("../ai/resolver", () => ({ resolveAiModel: (...a: unknown[]) => resolveAiModel(...a) }));
 vi.mock("../ai/embedding-client", () => ({
@@ -17,6 +18,10 @@ vi.mock("../ai/embedding-client", () => ({
 vi.mock("../ai/usage-log", () => ({ recordAiUsage: (...a: unknown[]) => recordAiUsage(...a) }));
 vi.mock("./cluster", () => ({
   runInsightClustering: (...a: unknown[]) => runInsightClustering(...a),
+}));
+// classify(M54 批B 新增依赖)顶层引入 ../db,不 mock 会在 CI 无 DB 环境实例化真 PrismaClient
+vi.mock("./classify", () => ({
+  runInsightClassify: (...a: unknown[]) => runInsightClassify(...a),
 }));
 vi.mock("./embedding-repo", () => ({
   findUnembeddedSignals: (...a: unknown[]) => findUnembeddedSignals(...a),
@@ -42,6 +47,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resolveAiModel.mockResolvedValue(MODEL);
   runInsightClustering.mockResolvedValue({ joined: 2, created: 1, short: 0, failed: 0 });
+  runInsightClassify.mockResolvedValue({ scanned: 0, classified: 0, kept: 0, failed: 0 });
   recordAiUsage.mockResolvedValue(undefined);
   saveSignalEmbeddings.mockResolvedValue(undefined);
 });
