@@ -11,6 +11,7 @@ import {
   createCodingPlan,
   listCodingPlans,
   type PricingStatus,
+  formatZodIssues,
 } from "@/lib/pricing/admin";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   if (actor.kind === "reject") return actor.response;
   const parsed = codingPlanCreateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
+    return apiEnvelope(400, `invalid body: ${formatZodIssues(parsed.error)}`);
   }
   try {
     const row = await createCodingPlan(parsed.data);

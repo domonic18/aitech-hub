@@ -11,6 +11,7 @@ import {
   deleteModelPricing,
   modelPricingUpdateSchema,
   updateModelPricing,
+  formatZodIssues,
 } from "@/lib/pricing/admin";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (id === null) return apiEnvelope(400, "id 不合法");
   const parsed = modelPricingUpdateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
+    return apiEnvelope(400, `invalid body: ${formatZodIssues(parsed.error)}`);
   }
   try {
     const row = await updateModelPricing(id, parsed.data);

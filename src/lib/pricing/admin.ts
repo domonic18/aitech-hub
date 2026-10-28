@@ -37,7 +37,7 @@ export const modelPricingCreateSchema = z.object({
   outputPrice: money,
   freeTier: z.string().trim().max(60).nullable(),
   contextWindow: z.string().trim().max(20).nullable(),
-  note: z.string().trim().max(200).nullable(),
+  note: z.string().trim().max(200).nullish(),
   dataAsOf: asOf,
   sourceUrl: source,
   region: z.enum(["cn", "intl"]).default("cn"),
@@ -74,6 +74,11 @@ export type ModelPricingCreateInput = z.infer<typeof modelPricingCreateSchema>;
 export type ModelPricingUpdateInput = z.infer<typeof modelPricingUpdateSchema>;
 export type CodingPlanCreateInput = z.infer<typeof codingPlanCreateSchema>;
 export type CodingPlanUpdateInput = z.infer<typeof codingPlanUpdateSchema>;
+
+/** 校验错误人话化:带字段路径(此前裸 message 聚合丢路径,表单排错靠猜) */
+export function formatZodIssues(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+}
 
 export interface PricingRowShape {
   id: string;

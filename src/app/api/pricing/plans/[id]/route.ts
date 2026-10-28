@@ -6,7 +6,12 @@ import { type NextRequest } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
-import { codingPlanUpdateSchema, deleteCodingPlan, updateCodingPlan } from "@/lib/pricing/admin";
+import {
+  codingPlanUpdateSchema,
+  deleteCodingPlan,
+  updateCodingPlan,
+  formatZodIssues,
+} from "@/lib/pricing/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +29,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (id === null) return apiEnvelope(400, "id 不合法");
   const parsed = codingPlanUpdateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
+    return apiEnvelope(400, `invalid body: ${formatZodIssues(parsed.error)}`);
   }
   try {
     const row = await updateCodingPlan(id, parsed.data);
