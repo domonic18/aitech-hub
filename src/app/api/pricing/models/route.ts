@@ -1,6 +1,6 @@
 /**
  * GET/POST /api/pricing/models(M55 批A):模型牌价策展——GET 全量(status/
- * region 过滤,管理台直读);POST 新建(三通道数据统一入口,缺省落 pending;
+ * region 过滤,管理台直读);POST 新建(爬虫/手工数据统一入口,缺省落 pending;
  * 输入价>输出价需 confirmInverted 显式确认)。仅会话(PAT 不得操纵牌价)。
  */
 import { type NextRequest } from "next/server";

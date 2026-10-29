@@ -1,6 +1,6 @@
 /**
  * 模型牌价策展读侧(M55 批A):model_pricing / coding_plan 双表的 Zod 契约
- * 与 CRUD 单源。三通道数据(OpenRouter 预填/官方页爬虫/手工)均落 pending,
+ * 与 CRUD 单源。爬虫/手工数据均落 pending,
  * enabled=终审可见(disabled=停用下架);价格统一「货币 / 百万 tokens」。
  * 反常态守卫:输入价 > 输出价需 confirmInverted 显式确认(防小数点错位静默发布)。
  * 鉴权在路由层(仅会话,PAT 拒绝,同 taxonomy 口径);唯一冲突上抛由路由映射 409。
@@ -55,10 +55,15 @@ export const codingPlanCreateSchema = z.object({
   planName: z.string().trim().min(1).max(60),
   currency: z.enum(CURRENCIES).default("CNY"),
   monthlyFee: money,
+  quarterlyFee: money.nullish(),
+  yearlyFee: money.nullish(),
+  billingNote: z.string().trim().max(120).nullish(),
+  benefits: z.array(z.string().trim().min(1).max(200)).max(20).nullish(),
   quotaDesc: z.string().trim().min(1).max(200),
   peakRate: z.string().trim().max(60).nullable(),
   offPeakRate: z.string().trim().max(60).nullable(),
   bestFor: z.string().trim().max(80).nullable(),
+  note: z.string().trim().max(200).nullish(),
   dataAsOf: asOf,
   sourceUrl: source,
   status: z.enum(PRICING_STATUSES).default("pending"),
@@ -131,10 +136,15 @@ function serializePlanRow(row: {
   planName: string;
   currency: string;
   monthlyFee: Prisma.Decimal | null;
+  quarterlyFee: Prisma.Decimal | null;
+  yearlyFee: Prisma.Decimal | null;
+  billingNote: string | null;
+  benefits: Prisma.JsonValue | null;
   quotaDesc: string;
   peakRate: string | null;
   offPeakRate: string | null;
   bestFor: string | null;
+  note: string | null;
   dataAsOf: Date;
   sourceUrl: string;
   status: string;
@@ -146,10 +156,15 @@ function serializePlanRow(row: {
     planName: row.planName,
     currency: row.currency,
     monthlyFee: row.monthlyFee === null ? null : Number(row.monthlyFee),
+    quarterlyFee: row.quarterlyFee === null ? null : Number(row.quarterlyFee),
+    yearlyFee: row.yearlyFee === null ? null : Number(row.yearlyFee),
+    billingNote: row.billingNote,
+    benefits: Array.isArray(row.benefits) ? (row.benefits as string[]) : null,
     quotaDesc: row.quotaDesc,
     peakRate: row.peakRate,
     offPeakRate: row.offPeakRate,
     bestFor: row.bestFor,
+    note: row.note,
     dataAsOf: row.dataAsOf.toISOString().slice(0, 10),
     sourceUrl: row.sourceUrl,
     status: row.status,
@@ -230,9 +245,18 @@ export async function listCodingPlans(
   return rows.map(serializePlanRow);
 }
 
+/** benefits null → Prisma.DbNull(Json 列空值入参需显式哨兵,直传 null 类型不通) */
+function benefitsInput(
+  v: CodingPlanCreateInput["benefits"],
+): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return v === null || v === undefined ? Prisma.DbNull : v;
+}
+
 export async function createCodingPlan(input: CodingPlanCreateInput): Promise<CodingPlanRow> {
-  const { confirmInverted: _confirm, ...data } = input;
-  const row = await prisma.codingPlan.create({ data });
+  const { confirmInverted: _confirm, benefits, ...data } = input;
+  const row = await prisma.codingPlan.create({
+    data: { ...data, benefits: benefitsInput(benefits) },
+  });
   return serializePlanRow(row);
 }
 
@@ -242,7 +266,14 @@ export async function updateCodingPlan(
 ): Promise<CodingPlanRow | null> {
   const existing = await prisma.codingPlan.findUnique({ where: { id } });
   if (!existing) return null;
-  const row = await prisma.codingPlan.update({ where: { id }, data: input });
+  const { confirmInverted: _confirm, benefits, ...data } = input;
+  const row = await prisma.codingPlan.update({
+    where: { id },
+    data: {
+      ...data,
+      ...(benefits === undefined ? {} : { benefits: benefitsInput(benefits) }),
+    },
+  });
   return serializePlanRow(row);
 }
 

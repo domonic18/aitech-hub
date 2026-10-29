@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 模型牌价策展台(M55 批A,/admin/pricing 上半区):三通道数据统一治理——
+ * 模型牌价策展台(M55 批A,/admin/pricing 上半区):爬虫/手工数据统一治理——
  * 手工新建(缺省落 pending)/ 行内启停(enabled=终审可见,disabled=停用)/
  * 改价(label+价格行内编辑,反常态前端预检)+ 删除。pending 行半透明+「待审」
  * 徽章;变更走 /api/pricing/models,router.refresh 重取。
@@ -271,6 +271,18 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                     <div className="text-[11px] text-text-3">
                       {r.vendor} · {r.region === "cn" ? "国内" : "国际"}
                     </div>
+                    {r.note !== null && r.note !== "" && (
+                      // note 承载通道溯源与爬虫矩阵;含「待复核」= 源爬取失败旧数据,
+                      // 琥珀提醒直至该源爬取成功(pending 自动摘标)或人工复核改写
+                      <div
+                        title={r.note}
+                        className={`mt-0.5 max-w-[280px] truncate text-[11px] ${
+                          r.note.includes("待复核") ? "text-amber" : "text-text-3"
+                        }`}
+                      >
+                        {r.note}
+                      </div>
+                    )}
                   </td>
                   <td className="px-2 py-2 font-mono text-xs">
                     {editing ? (

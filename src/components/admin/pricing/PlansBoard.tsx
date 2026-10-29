@@ -250,6 +250,42 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
                   <td className="px-4 py-2">
                     <div className="font-mono text-xs text-text-1">{r.planName}</div>
                     <div className="text-[11px] text-text-3">{r.vendor}</div>
+                    {r.note !== null && r.note !== "" && (
+                      // 含「待复核」= 源爬取失败旧数据,琥珀提醒直至该源爬取成功
+                      // (pending 自动摘标)或人工复核改写(同 ModelsBoard 纪律)
+                      <div
+                        title={r.note}
+                        className={`mt-0.5 max-w-[240px] truncate text-[11px] ${
+                          r.note.includes("待复核") ? "text-amber" : "text-text-3"
+                        }`}
+                      >
+                        {r.note}
+                      </div>
+                    )}
+                    {(r.quarterlyFee !== null ||
+                      r.yearlyFee !== null ||
+                      (r.benefits !== null && r.benefits.length > 0)) && (
+                      // 周期价与权益详情(<details> 零 JS;终审比价用)
+                      <details className="mt-1">
+                        <summary className="cursor-pointer select-none text-[11px] text-accent">
+                          周期与权益
+                        </summary>
+                        <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-text-2">
+                          {r.quarterlyFee !== null && <div>包季 ¥ {r.quarterlyFee}/月</div>}
+                          {r.yearlyFee !== null && <div>包年 ¥ {r.yearlyFee}</div>}
+                          {r.billingNote !== null && (
+                            <div className="text-text-3">{r.billingNote}</div>
+                          )}
+                          {r.benefits !== null && r.benefits.length > 0 && (
+                            <ul className="mt-0.5 flex list-disc flex-col gap-0.5 pl-4">
+                              {r.benefits.map((b) => (
+                                <li key={b}>{b}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </details>
+                    )}
                   </td>
                   <td className="px-2 py-2 font-mono text-xs">
                     {r.monthlyFee === null
