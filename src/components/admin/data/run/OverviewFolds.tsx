@@ -12,7 +12,7 @@ import QueueLane from "@/components/admin/spider/QueueLane";
 import SpiderKpiCards from "@/components/admin/spider/SpiderKpiCards";
 import SourceLedger, { LEDGER_SOURCES } from "@/components/admin/spider/SourceLedger";
 import { insightOverview } from "@/lib/insight/admin";
-import { insightHourHeat, insightTrendDaily } from "@/lib/insight/trends";
+import { insightHourHeat, insightTrendDaily } from "@/lib/insight/trend-series";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import {
   getCrawlerQueueSnapshot,

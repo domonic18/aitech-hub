@@ -18,6 +18,7 @@ const { createOrReuseOrder } = await import("@/lib/pay/order-service");
 const { dailyAuditOrders, sweepExpiredOrders } = await import("@/lib/pay/reconcile");
 const { savePayGatewayConfig } = await import("@/lib/pay/gateway-config");
 const { MockGateway } = await import("@/lib/pay/gateway/mock");
+const { GatewayQueryError } = await import("@/lib/pay/gateway/errors");
 
 const BUYER = "13900000008";
 const PASSWORD = "it-pay-rec-pass1";
@@ -171,6 +172,44 @@ describe("pay-reconcile sweep(M21 批④,§5.2)", () => {
     expect(r.skipped).toBe("gateway_off");
     expect((await byOrderNo(orderNo)).status).toBe("pending");
     await resetGateway(); // 恢复 mock,不污染后续测试
+  });
+
+  it("网关明确答「单不存在」+ 已过期:关单收口,不计 errors,失败计数清零", async () => {
+    await cleanupUserData();
+    await resetGateway();
+    const orderNo = await newPendingOrder();
+    await expire(orderNo);
+    await redis.set(`pay:reconcile:fail:${orderNo}`, "9"); // 关单前遗留的连续失败
+    const spy = vi.spyOn(MockGateway.prototype, "query");
+    spy.mockRejectedValueOnce(
+      new GatewayQueryError("12345", "虎皮椒查询失败: Order is not found!", true),
+    );
+
+    const r = await sweepExpiredOrders();
+    expect(r.closed).toBe(1); // 终态收口走关单计数,不再算 errors
+    expect(r.errors).toBe(0);
+    const order = await byOrderNo(orderNo);
+    expect(order.status).toBe("closed");
+    expect(order.closedAt).toBeTruthy();
+    expect(await redis.get(`pay:reconcile:fail:${orderNo}`)).toBeNull();
+    expect(await prisma.contentPostPurchase.count({ where: { userId, postId } })).toBe(0);
+    spy.mockRestore();
+  });
+
+  it("网关业务错但非「单不存在」:仍计 errors 累加失败计数,不关单", async () => {
+    await cleanupUserData();
+    await resetGateway();
+    const orderNo = await newPendingOrder();
+    await expire(orderNo);
+    const spy = vi.spyOn(MockGateway.prototype, "query");
+    spy.mockRejectedValueOnce(new GatewayQueryError("40029", "虎皮椒查询失败: 错误的签名!", false));
+
+    const r = await sweepExpiredOrders();
+    expect(r.closed).toBe(0); // 全局配置问题:关单会吞掉全部过期单,必须只报错
+    expect(r.errors).toBe(1);
+    expect((await byOrderNo(orderNo)).status).toBe("pending");
+    expect(await redis.get(`pay:reconcile:fail:${orderNo}`)).toBe("1");
+    spy.mockRestore();
   });
 
   it("查询失败:连续计数留存,成功后清零", async () => {

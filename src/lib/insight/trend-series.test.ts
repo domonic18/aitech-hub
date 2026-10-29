@@ -10,7 +10,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { insightHourHeat, insightTrendDaily } from "./trends";
+import { insightHourHeat, insightTrendDaily } from "./trend-series";
 
 beforeEach(() => {
   vi.clearAllMocks();

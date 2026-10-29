@@ -2,7 +2,7 @@
  * 近 7 日时段热力(M34 批③ 可视化增强):周一→周日 × 0-23 时格子矩阵,
  * 深浅=信号密度(峰值归一,HeatGrid 同取向);北京墙钟口径。纯 div 零依赖。
  */
-import type { InsightHourCell } from "@/lib/insight/trends";
+import type { InsightHourCell } from "@/lib/insight/trend-series";
 
 const DOW_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 const ROW_ORDER = [1, 2, 3, 4, 5, 6, 0];

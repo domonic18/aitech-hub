@@ -88,7 +88,7 @@ export async function insightOverview(windowDays = 7, domain?: string): Promise<
     `,
   ]);
 
-  // 缺日补 0:键=北京日(SQL 显式 AT TIME ZONE 切桶,与 trends.ts 同口径;
+  // 缺日补 0:键=北京日(SQL 显式 AT TIME ZONE 切桶,与 trend-series.ts 同口径;
   // 曾用 UTC date_trunc → 日界错 8 小时,今日 8 点后信号落出序列尾部)
   const countByDay = new Map(dailyRows.map((r) => [r.d, Number(r.c)]));
   const daily = cnDayKeyRange(statsDay(since), window, "fwd").map((date) => ({

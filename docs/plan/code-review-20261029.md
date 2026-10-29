@@ -64,8 +64,8 @@
 
 - [ ] **P3-1 admin.ts×4 命名约定(各域治理台读侧)写进 arch/06**。
 - [ ] **P3-2 桌移双渲染(9 处)取舍备注留档,暂不推翻**。
-- [ ] **P3-3 MCP 声明式注册留待工具破 10 个;审计日志补 get/list**。
-- [ ] **P3-4 trend/trends、hotboard/hot-source 近义双文件合并**(引用面大,单独小批)。
+- [x] **P3-3 MCP 声明式注册留待工具破 10 个;审计日志补 get/list** —— 读侧审计已补(`mcp.get_article`/`mcp.list_articles`,记 key/筛选/命中量不记正文);注册方式维持显式 `server.tool`,触发条件(破 10 只)写进 `src/lib/mcp/tools.ts` 文件头,不再口头留债。
+- [x] **P3-4 trend/trends、hotboard/hot-source 近义双文件合并**(引用面大,单独小批)—— 复核后**不合并**:四者职责互不相交(trend=增长分/分级 · trends=时序读数 · hotboard=榜面聚合 · hot-source=源登记台账),合并只降内聚。真问题是 `trend.ts`/`trends.ts` 一字之差:已将 `trends.ts`→`trend-series.ts`(含测试与 3 处引用),`hotboard`/`hot-source` 词面已可区分,原样保留。
 
 ## 亮点(保持)
 
@@ -78,4 +78,4 @@ cron 三层真相源+re-export 链 · admin 薄壳纪律(26-57 行) · channels 
 - 批C(P2 前端):be5d358e(内含)—— P2-14 四类下沉 + P2-15 排序下沉 + P2-16 PageHeader
 - 批D(P2 admin/洞察):2ea805c5(内含)—— P2-17/18/19/20/21/22/23/24/25/26
 - 专项:978e403e sprite 单源(P2-13);be5d358e 终审即时可见+专题二级菜单+专题页目录化(2026-10-29 晚间验收反馈)
-- P3-1/P3-2 已随批D/批C 文档化;P3-3/P3-4 留待(触发条件见清单)
+- P3-1/P3-2 已随批D/批C 文档化;P3-3/P3-4 已收口(见清单内两条,2026-10-29)

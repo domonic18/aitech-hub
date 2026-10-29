@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { makeSign } from "@/lib/pay/sign";
+import { GatewayQueryError } from "@/lib/pay/gateway/errors";
 import {
   buildCreateParams,
   buildQueryParams,
@@ -141,7 +142,33 @@ describe("parseQueryResponse/mapGatewayStatus(§2.5)", () => {
       /40029|签名/,
     );
   });
+
+  it("errcode≠0 → GatewayQueryError;「Order is not found!」标终态,签名错不标", () => {
+    const notFound = thrownBy(() =>
+      parseQueryResponse({ errcode: "12345", errmsg: "Order is not found!" }),
+    );
+    expect(notFound).toBeInstanceOf(GatewayQueryError);
+    expect(notFound.orderNotFound).toBe(true);
+    expect(notFound.code).toBe("12345"); // errcode 原样透传(生产日志据此钉口径)
+    expect(notFound.message).toContain("Order is not found!");
+
+    // 全局配置类错误(签名/appid)不得标终态:对账侧据 orderNotFound 关单,
+    // 误标会在配置错时把全部过期 pending 单一起关掉
+    const badSign = thrownBy(() => parseQueryResponse({ errcode: "40029", errmsg: "错误的签名!" }));
+    expect(badSign).toBeInstanceOf(GatewayQueryError);
+    expect(badSign.orderNotFound).toBe(false);
+  });
 });
+
+/** 取出抛出物(断言类型用;不可达路径直接失败) */
+function thrownBy(fn: () => unknown): GatewayQueryError {
+  try {
+    fn();
+  } catch (e) {
+    return e as GatewayQueryError;
+  }
+  throw new Error("预期抛出 GatewayQueryError,实际未抛");
+}
 
 describe("XunhuGateway.verifyNotify(§2.3 回调)", () => {
   it("合法签名通过并抽出业务字段;坏签 valid=false(不抛,交业务层拒)", () => {

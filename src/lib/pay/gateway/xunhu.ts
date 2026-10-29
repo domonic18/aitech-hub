@@ -9,6 +9,7 @@
  */
 import { randomBytes } from "node:crypto";
 
+import { GatewayQueryError } from "@/lib/pay/gateway/errors";
 import { makeSign, verifySign } from "@/lib/pay/sign";
 import type {
   GatewayCreateInput,
@@ -143,10 +144,22 @@ export function mapGatewayStatus(status: string): GatewayQueryStatus {
   }
 }
 
+/**
+ * 网关「单不存在」措辞(线上实证 2026-10-29 原样日志:
+ * `虎皮椒查询失败: Order is not found!`)。errcode 随错误带出,措辞若漂移
+ * 可据生产日志里的 code 收紧判别。
+ */
+const ORDER_NOT_FOUND_RE = /order\s+is\s+not\s+found/i;
+
 export function parseQueryResponse(raw: unknown): GatewayQueryResult {
   const res = raw as Record<string, unknown>;
   if (String(res.errcode) !== "0") {
-    throw new Error(`虎皮椒查询失败: ${String(res.errmsg ?? "unknown")}`);
+    const errmsg = String(res.errmsg ?? "unknown");
+    throw new GatewayQueryError(
+      String(res.errcode ?? ""),
+      `虎皮椒查询失败: ${errmsg}`,
+      ORDER_NOT_FOUND_RE.test(errmsg),
+    );
   }
   const data = (res.data ?? {}) as Record<string, unknown>;
   return {

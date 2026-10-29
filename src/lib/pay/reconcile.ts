@@ -2,7 +2,8 @@
  * 支付对账补偿(M21 批④,提案 §5.2):worker pay-reconcile 队列两个入口——
  * sweep 每 5 分钟收敛近过期/已过期 pending 单(先查单再动状态:回调丢失而
  * 网关已付则补发货,确认未付且过 TTL 才关单;查询失败等下一拍自然退避,
- * 连续 3 次升告警级日志);dailyAudit 每日 04:13 对近 7 天 paid 单查单比对
+ * 连续 3 次升告警级日志;网关明确答「单不存在」是单笔终态——已过期即关单收口,
+ * 不再计失败重试,见 GatewayQueryError);dailyAudit 每日 04:13 对近 7 天 paid 单查单比对
  * 流水锚,不一致只告警不动账(钱域人工裁决)。两路都只扫当前生效网关的单
  * (gateway 字段过滤)——模式切换后旧网关单查询口径不符,留原网关启用时再
  * 收敛;收银台 off 不关单(查不了单,宁挂起不吞单)。
@@ -10,6 +11,7 @@
 import { prisma } from "@/lib/db";
 import { GATEWAY_MOCK } from "@/lib/pay/gateway-config";
 import { getPayGateway } from "@/lib/pay/gateway";
+import { GatewayQueryError } from "@/lib/pay/gateway/errors";
 import type { GatewayQueryResult } from "@/lib/pay/gateway/types";
 import { logger } from "@/lib/logger";
 import { markOrderPaidAndGrant } from "@/lib/pay/order-service";
@@ -113,6 +115,29 @@ export async function sweepExpiredOrders(): Promise<SweepSummary> {
         });
       }
     } catch (e) {
+      // 网关明确作答「单不存在」:业务终态,同参同答,重试无意义——不能按传输
+      // 抖动无限重试(2026-10-09 M21 首发日 create 失败留下的本地孤儿单,网关
+      // 侧从未落单,曾每小时计数清零后升 error 连报 13 次 pay.reconcile_error)。
+      // 本地已过期即关单收口:关单不吞单,notify 与 sweep 补发货都走
+      // closed→paid 兜底迁移(order-notify §5.2 宁多发货);未过期保留观察
+      // (本地建单早于网关下单,亚秒间隙内单次 not found 不作关单依据)。
+      if (e instanceof GatewayQueryError && e.orderNotFound && order.expiresAt <= now) {
+        const bumped = await prisma.payOrder.updateMany({
+          where: { id: order.id, status: "pending" },
+          data: { status: "closed", closedAt: now },
+        });
+        if (bumped.count > 0) {
+          summary.closed += 1;
+          logger.warn({
+            event: "pay.order_closed",
+            orderNo: order.orderNo,
+            reason: "gateway_order_not_found",
+            code: e.code,
+          });
+        }
+        await redis.del(failKey); // 终态收口,失败计数无意义
+        continue;
+      }
       summary.errors += 1;
       const consecutive = await redis.incr(failKey);
       if (consecutive === 1) await redis.expire(failKey, FAIL_TTL_SECONDS);
@@ -180,6 +205,19 @@ export async function dailyAuditOrders(): Promise<DailyAuditSummary> {
         });
       }
     } catch (e) {
+      // 本地已 paid 而网关答「无此单」:流水锚丧失外部核验面,计 mismatch 且
+      // reason 单列。warn 级:网关侧历史单留存期未知,不排除超期清理导致。
+      if (e instanceof GatewayQueryError && e.orderNotFound) {
+        summary.mismatches += 1;
+        logger.warn({
+          event: "pay.reconcile_mismatch",
+          orderNo: order.orderNo,
+          reason: "gateway_order_not_found",
+          localStatus: "paid",
+          code: e.code,
+        });
+        continue;
+      }
       summary.errors += 1;
       logger.warn({
         event: "pay.reconcile_error",
