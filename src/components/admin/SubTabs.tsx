@@ -1,6 +1,8 @@
 /**
- * 数据壳页内二级切换(源管理/运行/挖掘的 ?t= 子段):纯服务端链接条,
+ * admin 通用二级切换条(?t= 子段;P2-17 自 admin/data 上移——posts 文章/分类
+ * 双视图同样消费,非数据域私有):纯服务端链接条,
  * active 由当前段号判定,无客户端钩子;样式与 AdminTabNav 同一套视觉语言。
+ * 段名钳制统一走 ./subtab#parseSubTab。
  */
 import Link from "next/link";
 

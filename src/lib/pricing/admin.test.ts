@@ -9,6 +9,8 @@ const modelFindMany = vi.fn();
 const modelCreate = vi.fn();
 const planFindMany = vi.fn();
 
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
     modelPricing: {

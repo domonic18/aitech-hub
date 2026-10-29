@@ -4,6 +4,7 @@
  */
 import Link from "next/link";
 
+import { ShowcaseCard } from "@/components/site/ShowcaseCard";
 import { formatStars } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import type { ShowcaseRepo } from "@/lib/github/public";
@@ -39,30 +40,33 @@ export default function ProjectsView({ repos }: { repos: ShowcaseRepo[] }): Reac
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {repos.map((repo) => (
-            <Link
+            <ShowcaseCard
               key={repo.id}
               href={projectPath(repo.slug)}
-              className="group flex flex-col rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-accent/40 hover:bg-panel-2"
-            >
-              <span className="flex items-center gap-2">
-                <svg className="ic flex-none text-accent" aria-hidden="true">
-                  <use href="#i-code" />
-                </svg>
-                <span className="truncate font-mono text-[13.5px] font-semibold text-text-1 group-hover:text-accent-hover">
-                  {repo.fullName}
-                </span>
+              icon="#i-code"
+              title={repo.fullName}
+              titleClassName="font-mono"
+              badge={
                 <span className="ml-auto inline-flex flex-none items-center gap-1 font-mono text-[11.5px] text-text-3">
                   <svg className="ic ic-sm" aria-hidden="true">
                     <use href="#i-star" />
                   </svg>
                   {formatStars(repo.stars)}
                 </span>
-              </span>
-              {repo.description && (
-                <span className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-text-3">
-                  {repo.description}
+              }
+              description={repo.description}
+              lines={2}
+              footer={
+                <span className="inline-flex items-center gap-1">
+                  <svg className="ic ic-sm" aria-hidden="true">
+                    <use href="#i-book" />
+                  </svg>
+                  配套文章 ×{repo._count.posts}
                 </span>
-              )}
+              }
+              footerClassName="gap-4 font-mono"
+              footerAction="详情 →"
+            >
               <span className="mt-3 flex flex-wrap items-center gap-1.5">
                 {repo.language && (
                   <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[10.5px] text-blue">
@@ -78,18 +82,7 @@ export default function ProjectsView({ repos }: { repos: ShowcaseRepo[] }): Reac
                   </span>
                 ))}
               </span>
-              <span className="mt-3 flex items-center gap-4 border-t border-line/55 pt-2.5 font-mono text-[11.5px] text-text-3">
-                <span className="inline-flex items-center gap-1">
-                  <svg className="ic ic-sm" aria-hidden="true">
-                    <use href="#i-book" />
-                  </svg>
-                  配套文章 ×{repo._count.posts}
-                </span>
-                <span className="ml-auto inline-flex items-center gap-1 text-accent opacity-0 transition-opacity group-hover:opacity-100">
-                  详情 →
-                </span>
-              </span>
-            </Link>
+            </ShowcaseCard>
           ))}
         </div>
       )}

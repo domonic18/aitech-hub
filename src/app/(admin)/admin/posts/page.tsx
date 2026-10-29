@@ -11,7 +11,7 @@ import Link from "next/link";
 import ImportPostsButton from "@/components/admin/ImportPostsButton";
 import PostsTable from "@/components/admin/PostsTable";
 import CategoriesSection from "@/components/admin/categories/CategoriesSection";
-import SubTabs from "@/components/admin/data/SubTabs";
+import SubTabs from "@/components/admin/SubTabs";
 import {
   ADMIN_LIST_SEGMENTS,
   POST_DISPLAY_STATE_LABEL,

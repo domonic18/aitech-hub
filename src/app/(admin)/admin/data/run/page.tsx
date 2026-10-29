@@ -7,7 +7,8 @@
 import RunHealth from "@/components/admin/data/RunHealth";
 import RunJobs from "@/components/admin/data/RunJobs";
 import RunOverview from "@/components/admin/data/RunOverview";
-import SubTabs from "@/components/admin/data/SubTabs";
+import SubTabs from "@/components/admin/SubTabs";
+import { parseSubTab } from "@/components/admin/subtab";
 import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function AdminDataRunPage({
 }): Promise<React.ReactElement> {
   await requireAdminPage();
   const sp = await searchParams;
-  const t = TABS.some(([k]) => k === sp.t) ? (sp.t as (typeof TABS)[number][0]) : "overview";
+  const t = parseSubTab(TABS, sp.t, "overview");
   const HINTS: Record<(typeof TABS)[number][0], string> = {
     overview: "跑了什么、跑得怎样:实时看当前采集与队列,源的启停回「源管理」,排程看「计划」。",
     jobs: "job_run 全量执行流水 · 触发方式 cron / manual · 运行中每 3 秒自动刷新",

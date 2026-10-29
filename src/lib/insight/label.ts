@@ -13,7 +13,7 @@
  */
 import { AI_PURPOSE_INSIGHT, AI_PURPOSE_INSIGHT_JUDGE } from "../ai/constants";
 import { decideQuestions } from "../ai/decisions-client";
-import { resolveAiModel } from "../ai/resolver";
+import type { ResolvedAiModel } from "../ai/resolver";
 import { chatJsonTask, type ParsedTask } from "../ai/chat-json-task";
 import { readExtraMaxTokens } from "../ai/extra-params";
 import { prisma } from "../db";
@@ -26,6 +26,7 @@ import {
   LABEL_SAMPLE_TEXT_MAX,
   type InsightSentiment,
 } from "./constants";
+import { resolveInsightModel } from "./model";
 
 export interface InsightLabelContract {
   label: string;
@@ -143,13 +144,10 @@ async function judgeByJev(
   llm: { kind: "hot" | "pain"; sentiment: InsightLabelContract["sentiment"] },
 ): Promise<{ kind: "hot" | "pain"; sentiment: InsightLabelContract["sentiment"] }> {
   const out = { ...llm };
-  let judge: Awaited<ReturnType<typeof resolveAiModel>>;
-  try {
-    judge = await resolveAiModel(AI_PURPOSE_INSIGHT_JUDGE);
-  } catch {
-    return out;
-  }
-  if (!judge) return out; // 未绑定判定模型 → 全量走归纳模型(零行为变化)
+  // 未绑定/解析失败判定模型 → 全量走归纳模型(零行为变化;P2-25 统一经
+  // resolveInsightModel,吞异常与未绑定同途)
+  const judge = await resolveInsightModel(AI_PURPOSE_INSIGHT_JUDGE);
+  if (!judge) return out;
   try {
     const r = await decideQuestions({
       baseUrl: judge.baseUrl ?? "",
@@ -243,7 +241,7 @@ async function judgeByJev(
 export async function labelCluster(
   clusterId: bigint,
   memberCount: number,
-  model: Awaited<ReturnType<typeof resolveAiModel>>,
+  model: ResolvedAiModel | null,
 ): Promise<boolean> {
   if (!model) return false;
   const [samples, cluster] = await Promise.all([

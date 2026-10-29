@@ -2,23 +2,10 @@
  * 洞察加工层常量(M34 批②,方案 docs/plan/insight-plan.md §5):聚类/打标/
  * 覆盖度/评分/流转参数。取值=上线起点,批② 实测后按簇内聚度调参(方案 §9-5
  * 簇流转阈值实测定参同此);改值即发版,配置化留实测证据后另批。
+ * 源属性(kind/label 及 medium/enabled)已收口 ./source-registry 单表(P2-24),
+ * 此处仅转出口保持既有 import 路径。
  */
-import type { InsightSource } from "./ingest";
-
-/** 信号源 → 簇别初始引导值(批③ 验收三轮·痛点扩围:kind 不再按源定生死)。
- * 聚类已单池归簇(近邻跨 kind),此处映射仅作新建簇的引导值,LLM 打标日批
- * 按簇内容语义覆判 hot|pain(label.ts 契约);新源仍须在此登记(未登记源
- * 不入簇,见 cluster.ts 未知源分支) */
-export const INSIGHT_SOURCE_KIND: Record<InsightSource, "hot" | "pain"> = {
-  "internal-search": "pain",
-  "internal-agent": "pain",
-  "internal-comment": "pain",
-  "internal-feedback": "pain",
-  "telegram-ai": "hot",
-  "hot-baidu": "hot",
-  "hot-zhihu": "hot",
-  "hot-bilibili": "hot",
-};
+export { INSIGHT_SOURCE_KIND, SOURCE_LABELS } from "./source-registry";
 
 /** 归簇余弦距离阈值:信号与既有簇成员最近向量的距离 ≤ 阈值即归簇,否则建新簇
  * (embedding-3 中文短文本实测起点;上线后按簇内聚度调参) */
@@ -102,20 +89,7 @@ export const SIGNAL_TAKE_MAX = 200;
 /** 簇列表单次上限(listInsightClusters;行内缺省 CLUSTER_ROW_TAKE=20) */
 export const CLUSTER_TAKE_MAX = 50;
 
-/** 洞察源展示名单源(页签/合并榜 chip/热榜台账/蜘蛛源台账共用;曾 shared.tsx
- * 与 hot-source.ts 两份手抄) */
-export const SOURCE_LABELS: Record<InsightSource, string> = {
-  "internal-search": "站内搜索",
-  "internal-agent": "助手问句",
-  "internal-comment": "文章评论",
-  "internal-feedback": "站点反馈",
-  "telegram-ai": "电报AI解读",
-  "hot-baidu": "百度热搜",
-  "hot-zhihu": "知乎热榜",
-  "hot-bilibili": "B站热搜",
-};
-
-/** 簇介质词表(方案 §2 留痕介质五值;unionMedia 白名单与徽章标签同源;比当前
+/** 簇介质词表(方案 §2 留痕介质五值;unionMedia 白名单与徽章标签同源;比源注册表
  * INSIGHT_SOURCE_MEDIUM 值域宽——money/time 为留痕扩展位,不随源映射收窄) */
 export const INSIGHT_MEDIA_VOCAB = ["money", "time", "voice", "search", "ai-record"] as const;
 export type InsightMediumVocab = (typeof INSIGHT_MEDIA_VOCAB)[number];

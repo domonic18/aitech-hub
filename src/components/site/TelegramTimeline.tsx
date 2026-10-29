@@ -7,8 +7,9 @@
  * 重排,不打断浏览位置),未读锚 seenTopId(已见列表首行 id)之上条数即未读
  * ——虚线浮条提示,点击平滑回顶并重置锚(与 ai-invest 电报流同款交互语义)。
  * 视频卡形抽至 TelegramArticle(壳文件守 350 行限);文字卡同构展示 AI 轻解读。
+ * 60s 轮询样板 / NEW·AI 徽章 / 要点折叠块已收敛至 telegram/(P2-14,code-review-20261029)。
  */
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import VideoArticle from "@/components/site/TelegramArticle";
 import {
@@ -26,7 +27,9 @@ import {
 } from "@/lib/telegram/feed-view";
 import { trackEntryClick } from "@/lib/stats/track-click";
 
-const POLL_MS = 60_000;
+import { AiBadge, NewBadge } from "./telegram/TelegramBadges";
+import { TelegramPoints } from "./telegram/TelegramPoints";
+import { useFeedPolling } from "./telegram/useFeedPolling";
 
 export default function TelegramTimeline({
   initialItems,
@@ -49,8 +52,6 @@ export default function TelegramTimeline({
    * 入库时,空态改述为「AI 解读处理中」——条目在解读终态才上屏(M15 批①) */
   initialToday: number;
 }) {
-  const [items, setItems] = useState(initialItems);
-  const [now, setNow] = useState(initialNow);
   const [today, setToday] = useState(initialToday);
   // 未读锚=用户已见的列表首行 id(ai-invest 同款;id 稳定,不受排序变动影响):
   // SSR 首屏首行视为已见;轮询前插后锚不动 → 其上条数即未读;点击浮条回顶重置;
@@ -65,47 +66,30 @@ export default function TelegramTimeline({
     ),
   );
 
-  useEffect(() => {
-    let alive = true;
-    const tick = async (): Promise<void> => {
+  // 60s 轮询增量(P2-14c 收敛至 useFeedPolling):after 增量锚在 afterRef 内
+  // 自推进,合流走 mergeFeedItems 同构重排,今日计数经 onData 透出
+  const { items, now } = useFeedPolling({
+    initialItems,
+    initialNow,
+    buildQuery: () => {
       const after = afterRef.current;
       const sp = new URLSearchParams({ limit: "50" });
       if (after) sp.set("after", after);
       if (sourceId !== undefined) sp.set("source", String(sourceId));
       if (media !== "all") sp.set("media", media);
-      try {
-        const res = await fetch(`/api/telegram/public?${sp.toString()}`, { cache: "no-store" });
-        const body = (await res.json()) as {
-          code: number;
-          data?: { items: PublicTelegramItem[]; today: number };
-        };
-        if (alive && body.code === 0 && body.data) {
-          if (body.data.items.length > 0) {
-            // 即刷即渲染(M15 批③):mergeFeedItems 同构重排;增量锚推进到全表
-            // 最大 aiRanAt(updater 内 max 推进幂等,StrictMode 双调无副作用)
-            setItems((prev) => {
-              const merged = mergeFeedItems(prev, body.data!.items);
-              for (const t of merged) {
-                if (afterRef.current === null || t.aiRanAt > afterRef.current)
-                  afterRef.current = t.aiRanAt;
-              }
-              return merged;
-            });
-          }
-          setToday(body.data.today);
-        }
-      } catch {
-        /* 轮询失败静默保留旧值 */
+      return sp.toString();
+    },
+    merge: (prev, fresh) => {
+      // 即刷即渲染(M15 批③):mergeFeedItems 同构重排;增量锚推进到全表
+      // 最大 aiRanAt(updater 内 max 推进幂等,StrictMode 双调无副作用)
+      const merged = mergeFeedItems(prev, fresh);
+      for (const t of merged) {
+        if (afterRef.current === null || t.aiRanAt > afterRef.current) afterRef.current = t.aiRanAt;
       }
-      if (alive) setNow(Date.now());
-    };
-    const t = setInterval(() => void tick(), POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-    // 锚在 afterRef 内自推进,不随轮询重建定时器
-  }, [sourceId, media]);
+      return merged;
+    },
+    onData: (d) => setToday(d.today),
+  });
 
   // 浮条点击:重置未读锚到当前首行 + 平滑回顶(ai-invest 同款;即刷即渲染下
   // 内容已在列表,「载入」即回到顶部阅读)
@@ -156,11 +140,7 @@ export default function TelegramTimeline({
                       {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
                     </span>
                     {/* NEW 基准=aiRanAt(变可见时刻,M15 批①) */}
-                    {isNew(t.aiRanAt, now) && (
-                      <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
-                        NEW
-                      </span>
-                    )}
+                    {isNew(t.aiRanAt, now) && <NewBadge />}
                   </div>
                   <h3 className="mt-2 text-[15px] font-semibold leading-relaxed">
                     <a
@@ -188,23 +168,10 @@ export default function TelegramTimeline({
                   {t.ai ? (
                     <>
                       <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">
-                        <span className="mr-1.5 inline-block rounded-sm bg-accent-dim px-1.5 py-px align-middle font-mono text-[10px] text-accent">
-                          AI 解读
-                        </span>
+                        <AiBadge />
                         {t.ai.summary}
                       </p>
-                      {t.ai.points.length > 0 && (
-                        <details className="mt-0.5">
-                          <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
-                            关键要点 ×{t.ai.points.length}
-                          </summary>
-                          <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
-                            {t.ai.points.map((p, i) => (
-                              <li key={i}>{p}</li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
+                      <TelegramPoints points={t.ai.points} />
                       {t.ai.keywords && t.ai.keywords.length > 0 && (
                         <p className="mt-1.5 flex flex-wrap gap-1.5">
                           {t.ai.keywords.map((k) => (

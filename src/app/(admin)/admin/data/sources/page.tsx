@@ -7,7 +7,8 @@
 import ChannelLedger from "@/components/admin/data/ChannelLedger";
 import MineBloggers from "@/components/admin/data/MineBloggers";
 import MineCandidates from "@/components/admin/data/MineCandidates";
-import SubTabs from "@/components/admin/data/SubTabs";
+import SubTabs from "@/components/admin/SubTabs";
+import { parseSubTab } from "@/components/admin/subtab";
 import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export default async function AdminDataSourcesPage({
 }): Promise<React.ReactElement> {
   await requireAdminPage();
   const sp = await searchParams;
-  const t = TABS.some(([k]) => k === sp.t) ? (sp.t as (typeof TABS)[number][0]) : "channels";
+  const t = parseSubTab(TABS, sp.t, "channels");
   return (
     <div className="flex flex-col gap-4">
       <div>

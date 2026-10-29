@@ -8,12 +8,12 @@
 import { AI_PURPOSE_EMBEDDING } from "../ai/constants";
 import { embedTexts, EMBED_BATCH_SIZE } from "../ai/embedding-client";
 import { recordAiUsage } from "../ai/usage-log";
-import { resolveAiModel } from "../ai/resolver";
 import { logger } from "../logger";
 import { CLASSIFY_BATCH_SIZE, CLUSTER_BATCH_SIZE } from "./constants";
 import { runInsightClassify } from "./classify";
 import { runInsightClustering } from "./cluster";
 import { findUnembeddedSignals, saveSignalEmbeddings } from "./embedding-repo";
+import { resolveInsightModel } from "./model";
 import { EMBEDDING_DIMS } from "../search/embedding";
 
 export interface InsightEmbedSummary {
@@ -49,7 +49,8 @@ export async function runInsightEmbedBatch(
     clusterFailed: 0,
     skipped: false,
   };
-  const model = await resolveAiModel(AI_PURPOSE_EMBEDDING);
+  // 未绑定/解析失败(embedding 模型)→ 功能关闭整轮跳过(P2-25 统一降级口径)
+  const model = await resolveInsightModel(AI_PURPOSE_EMBEDDING);
   if (!model) {
     logger.info({ event: "insight.embed_skipped", reason: "embedding_unbound" });
     return { ...empty, skipped: true };
