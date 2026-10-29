@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { absoluteUrl } from "@/lib/seo/site";
+import { SITE_TOPICS } from "@/lib/content/topics";
 
 /**
  * /topics/ 专题索引(A1 专题聚合,2026-10-29 验收拍板):工具钩子类参考页的
@@ -21,21 +22,6 @@ export function generateMetadata(): Metadata {
   };
 }
 
-/** 专题注册表(v1 静态常量:单主题 YAGNI;第二主题出现时再考虑 DB 化) */
-const TOPICS: ReadonlyArray<{
-  href: string;
-  title: string;
-  desc: string;
-  tag: string;
-}> = [
-  {
-    href: "/pricing/",
-    title: "AI 模型价格速查",
-    desc: "主流大模型官方牌价一觉:输入/输出价、免费额度与上下文窗口,Coding Plan 套餐额度口径。官方一手价人工核对,USD 原币直出,持续更新。",
-    tag: "价格速查",
-  },
-];
-
 export default function TopicsPage(): React.ReactElement {
   return (
     <section className="mx-auto w-full max-w-[var(--site-max-w)]">
@@ -45,7 +31,7 @@ export default function TopicsPage(): React.ReactElement {
         参考工具与数据速查类页面的聚合入口,随工具箱扩充持续上新。
       </p>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {TOPICS.map((t) => (
+        {SITE_TOPICS.map((t) => (
           <Link
             key={t.href}
             href={t.href}
@@ -56,7 +42,7 @@ export default function TopicsPage(): React.ReactElement {
                 <use href="#i-tool" />
               </svg>
               <span className="truncate font-semibold text-[13.5px] text-text-1 group-hover:text-accent-hover">
-                {t.title}
+                {t.label}
               </span>
               <span className="ml-auto shrink-0 rounded border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[10.5px] text-blue">
                 {t.tag}

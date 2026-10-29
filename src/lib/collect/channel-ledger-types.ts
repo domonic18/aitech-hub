@@ -6,7 +6,7 @@
  */
 import type { DiscoveryTriggerJob } from "@/lib/discovery/admin";
 
-export type ChannelKind = "rss" | "video" | "hot" | "discovery" | "github";
+export type ChannelKind = "rss" | "video" | "hot" | "discovery" | "github" | "pricing";
 export type LedgerHealth = "healthy" | "fail" | "degraded" | "paused";
 
 /** 主钮(手动触发列第一位;running = 呈现「● 采集中 mm:ss」替代按钮) */
@@ -59,6 +59,7 @@ export const CHANNEL_KIND_TABS: Array<[ChannelKind | "all", string, boolean]> = 
   ["hot", "热榜源", true],
   ["discovery", "发现任务", true],
   ["github", "GitHub", false],
+  ["pricing", "牌价渠道", true],
 ];
 
 /** 健康 pill 四态(板 ●健康/●故障·连败 N/●降级·限频/○暂停):文字渠道以
@@ -100,6 +101,7 @@ export function lastRunLabel(at: Date | null, count: number | null, unit: string
 }
 
 export function intervalText(min: number): string {
+  if (min >= 1440 && min % 1440 === 0) return `每 ${min / 1440} 天`;
   if (min >= 60 && min % 60 === 0) return `每 ${min / 60} 小时`;
   return `每 ${min} 分钟`;
 }

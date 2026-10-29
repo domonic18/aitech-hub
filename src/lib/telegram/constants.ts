@@ -7,11 +7,13 @@ export const CRAWL_SOURCE_TYPE_RSS = "rss";
 export const CRAWL_SOURCE_TYPE_WEB = "web";
 export const CRAWL_SOURCE_TYPE_API = "api";
 export const CRAWL_SOURCE_TYPE_SOCIAL_VIDEO = "social-video";
+export const CRAWL_SOURCE_TYPE_PRICING = "pricing";
 export const CRAWL_SOURCE_TYPES = [
   CRAWL_SOURCE_TYPE_RSS,
   CRAWL_SOURCE_TYPE_WEB,
   CRAWL_SOURCE_TYPE_API,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPE_PRICING,
 ] as const;
 export type CrawlSourceType = (typeof CRAWL_SOURCE_TYPES)[number];
 
@@ -21,6 +23,7 @@ export type CrawlSourceType = (typeof CRAWL_SOURCE_TYPES)[number];
 export const CRAWL_SOURCE_TYPES_IMPLEMENTED = [
   CRAWL_SOURCE_TYPE_RSS,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPE_PRICING,
 ] as const;
 
 export const CRAWL_SOURCE_STATUS_HEALTHY = "healthy";

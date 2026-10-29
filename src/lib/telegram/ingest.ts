@@ -12,12 +12,14 @@ import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
+import { runPricingSourceCrawl } from "../pricing/source-registry";
 import {
   CRAWL_MAX_CONSECUTIVE_FAILS,
   CRAWL_MAX_ITEMS_PER_RUN,
   CRAWL_SOURCE_STATUS_DEGRADED,
   CRAWL_SOURCE_STATUS_ERROR,
   CRAWL_SOURCE_STATUS_HEALTHY,
+  CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   TELEGRAM_STATUS_HIDDEN,
   TELEGRAM_STATUS_VISIBLE,
@@ -151,34 +153,43 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
   }
 
   try {
-    const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);
-    outcome.fetched = items.length;
+    // 牌价渠道(M56 批B:type=pricing,config.pricingKey 路由解析器):
+    // 取数+解析+落库在 source-registry 收敛,失败抛错走下方通用 catch
+    // (consecutiveFails/健康度);抛错前该源旧数据已打「待复核」标
+    if (source.type === CRAWL_SOURCE_TYPE_PRICING) {
+      const r = await runPricingSourceCrawl(source, now);
+      if (!r.ok) throw new Error(r.error ?? "pricing 源失败");
+      outcome.fetched = r.fetched;
+    } else {
+      const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);
+      outcome.fetched = items.length;
 
-    const words: BlocklistWord[] = (
-      await prisma.blocklist.findMany({
-        where: { enabled: true },
-        select: { word: true, scope: true },
-      })
-    ).map((w) => ({ word: w.word, scope: w.scope as BlocklistScope }));
-    // 主题准入(M14):全站源经 config.includeKeywords 限定 AI 相关条目才入库,解析一轮
-    const includeKeywords = parseIncludeKeywords(source.config);
-    // summarize 就绪整轮 resolve 一次(镜像 ingest-video 的 interpretReady,省逐条双查)
-    const summarizeReady = await isSummarizeReady();
-    for (const item of items.slice(0, CRAWL_MAX_ITEMS_PER_RUN)) {
-      // 主题外直接跳过(查重/落库都不做;观测走 topicSkipped 计数;
-      // 准入匹配同用解码后形态,与 ingestItem 口径一致)
-      if (
-        !matchesIncludeKeywords(
-          decodeHtmlEntities(item.title),
-          decodeHtmlEntities(item.summaryCandidate ?? ""),
-          includeKeywords,
-        )
-      ) {
-        outcome.topicSkipped += 1;
-        continue;
+      const words: BlocklistWord[] = (
+        await prisma.blocklist.findMany({
+          where: { enabled: true },
+          select: { word: true, scope: true },
+        })
+      ).map((w) => ({ word: w.word, scope: w.scope as BlocklistScope }));
+      // 主题准入(M14):全站源经 config.includeKeywords 限定 AI 相关条目才入库,解析一轮
+      const includeKeywords = parseIncludeKeywords(source.config);
+      // summarize 就绪整轮 resolve 一次(镜像 ingest-video 的 interpretReady,省逐条双查)
+      const summarizeReady = await isSummarizeReady();
+      for (const item of items.slice(0, CRAWL_MAX_ITEMS_PER_RUN)) {
+        // 主题外直接跳过(查重/落库都不做;观测走 topicSkipped 计数;
+        // 准入匹配同用解码后形态,与 ingestItem 口径一致)
+        if (
+          !matchesIncludeKeywords(
+            decodeHtmlEntities(item.title),
+            decodeHtmlEntities(item.summaryCandidate ?? ""),
+            includeKeywords,
+          )
+        ) {
+          outcome.topicSkipped += 1;
+          continue;
+        }
+        outcome[await ingestItem(source.id, item, words, summarizeReady)] += 1;
       }
-      outcome[await ingestItem(source.id, item, words, summarizeReady)] += 1;
-    }
+    } // end else(非 pricing 常规条目管线)
 
     await prisma.crawlSource.update({
       where: { id: source.id },

@@ -13,6 +13,7 @@ import { prisma } from "../db";
 import { DISCOVERY_JOB_BILI, DISCOVERY_JOB_HOTWORDS, QUEUE_DISCOVERY } from "../queue";
 import { INSIGHT_FETCH_CRON } from "./schedules";
 import {
+  CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   SOCIAL_CRAWL_INTERVAL_MIN,
   TELEGRAM_MEDIA_VIDEO,
@@ -65,6 +66,46 @@ async function rssRows(): Promise<ChannelLedgerRow[]> {
         remark: c.remark,
         enabled: c.enabled,
         credentialMask: c.maskedConfig?.token ?? "",
+      },
+    };
+  });
+}
+
+/** 牌价渠道行(M56 验收:统一并入采集渠道维护;次钮=源页外链) */
+async function pricingRows(): Promise<ChannelLedgerRow[]> {
+  const items = await prisma.crawlSource.findMany({
+    where: { type: CRAWL_SOURCE_TYPE_PRICING },
+    orderBy: { id: "asc" },
+  });
+  return items.map((c) => {
+    const { health, healthText } = healthOf(
+      c.enabled,
+      c.consecutiveFails,
+      c.status as "healthy" | "error" | "degraded" | null,
+    );
+    return {
+      key: `pricing-${c.id}`,
+      kind: "pricing" as const,
+      name: c.remark ?? c.name,
+      cadence: c.enabled ? intervalText(c.crawlIntervalMin) : "已暂停",
+      enabled: c.enabled,
+      health,
+      healthText,
+      lastRunLabel: lastRunLabel(c.lastRunAt, null, "项"),
+      statusEndpoint: `/api/channels/${c.id}/status`,
+      primary: { type: "crawl", channelId: c.id },
+      secondary: { type: "link", href: c.url, label: "源页" },
+      editChannel: {
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        platform: c.platform,
+        url: c.url,
+        crawlIntervalMin: c.crawlIntervalMin,
+        dailyMaxRequests: c.dailyMaxRequests,
+        remark: c.remark,
+        enabled: c.enabled,
+        credentialMask: "",
       },
     };
   });
@@ -242,14 +283,15 @@ async function githubRows(): Promise<ChannelLedgerRow[]> {
 
 /** 台账全量(RSC 一次装配;行序 = 板面序:文字 → 视频 → 热榜 → 发现 → GitHub) */
 export async function buildChannelLedger(): Promise<ChannelLedgerRow[]> {
-  const [rss, video, hot, discovery, github] = await Promise.all([
+  const [rss, video, hot, discovery, github, pricing] = await Promise.all([
     rssRows(),
     videoRows(),
     hotRows(),
     discoveryRows(),
     githubRows(),
+    pricingRows(),
   ]);
-  return [...rss, ...video, ...hot, ...discovery, ...github];
+  return [...rss, ...video, ...hot, ...discovery, ...github, ...pricing];
 }
 
 /** F19 健康表/F20 引擎卡的读侧已拆至 ./channel-health 与 ./crawler-runs(≤350 行红线) */

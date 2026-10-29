@@ -1,12 +1,14 @@
 /**
- * 牌价渠道注册表·代码侧真相源 + DB 驱动编排(M56 批B):
+ * 牌价渠道注册表·代码侧真相源(M56 批B;2026-10-29 验收反馈:渠道统一并入
+ * 采集渠道 crawl_source 体系维护):
  * - 解析器/取数器/默认 URL 按 key 注册在本文件(改解析逻辑才发版);
- * - URL/启停落 pricing_source 表后台可调零发版(策展台渠道管理块;
- *   syncPricingSources 幂等种子只补缺不改值——url/enabled 归后台所有);
+ * - 渠道行落 crawl_source(type=pricing,config.pricingKey 路由),URL/启停/
+ *   采集周期(crawlIntervalMin,默认周级)在 数据中心·源管理·采集渠道 后台
+ *   可调零发版,与文字渠道同一套调度(tick 扫 due)/健康度/台账;
  * - 渲染白名单 RENDER_ALLOWED_HOSTS 为渲染侧 host 兜底闸(compose 层),
  *   与本表 host 集合的同步关系见 compose 注释(新 host 渠道接入时两处同步)。
- * 失败编排:单源失败自吞爬取,成功源照常落库;收尾失败源旧数据打「待复核」,
- * 任一源失败整 job 上抛(job_run 记 failed 连败健康页可见,不静默腐烂)。
+ * 失败语义:单源失败抛错 → crawlSource 通用 catch 记 consecutiveFails/健康度;
+ * 本模块在抛错前先把该源旧数据按 sourceUrl 打「待复核」标(不静默腐烂)。
  */
 import { prisma } from "@/lib/db";
 
@@ -103,172 +105,64 @@ export const SOURCE_DEFS: SourceDef[] = [
   },
 ];
 
-export interface PricingSourceRow {
-  key: string;
-  target: string;
-  kind: string;
-  label: string;
-  vendor: string;
-  url: string;
-  enabled: boolean;
+export interface PricingSourceCrawlResult {
+  ok: boolean;
+  /** 解析出的模型行+套餐行总数(供 crawlSource 台账 fetched) */
+  fetched: number;
+  error?: string;
 }
 
-/** 幂等种子:DB 缺则建(url 取默认);已存在不覆盖任何字段——url/enabled 归
- * 后台所有,vendor/label 等代码侧信息如需订正走显式迁移/脚本(同 agent_skill 惯例) */
-export async function syncPricingSources(): Promise<number> {
+/** 单牌价渠道爬取(crawlSource type=pricing 分发入口):
+ * config.pricingKey → def → 取数+解析+按 target 落库三规则;失败先打该源
+ * 旧数据「待复核」标再抛错(crawlSource 通用 catch 记健康度)。 */
+export async function runPricingSourceCrawl(
+  source: { url: string; config: unknown },
+  now: Date = new Date(),
+): Promise<PricingSourceCrawlResult> {
+  const key =
+    typeof source.config === "object" && source.config !== null && "pricingKey" in source.config
+      ? String((source.config as Record<string, unknown>).pricingKey)
+      : "";
+  const def = SOURCE_DEFS.find((d) => d.key === key);
+  if (def === undefined) {
+    throw new Error(`pricing 渠道 key=${key || "(空)"} 无注册解析器(config.pricingKey)`);
+  }
+  try {
+    const rows = await def.run(source.url, now);
+    const modelRows = rows.filter((r): r is ModelPrefillRow => "modelKey" in r);
+    const planRows = rows.filter((r): r is PlanPrefillRow => "planName" in r);
+    await persistModelRows(modelRows);
+    await persistPlanRows(planRows);
+    return { ok: true, fetched: rows.length };
+  } catch (e) {
+    const marked =
+      (await markModelSourceStale(source.url, now)) + (await markPlanSourceStale(source.url, now));
+    const message = `${e instanceof Error ? e.message : String(e)};已标待复核 ${marked} 行`;
+    throw new Error(message);
+  }
+}
+
+/** 渠道种子幂等(crawl_source 只补缺不改值):url/启停/周期归后台所有
+ * (数据中心·源管理·采集渠道维护);config.pricingKey 路由代码侧解析器。 */
+export async function syncPricingChannels(): Promise<number> {
   let created = 0;
   for (const def of SOURCE_DEFS) {
-    const r = await prisma.pricingSource.upsert({
-      where: { key: def.key },
+    const name = `pricing:${def.key}`;
+    const r = await prisma.crawlSource.upsert({
+      where: { name },
       update: {},
       create: {
-        key: def.key,
-        target: def.target,
-        kind: def.kind,
-        label: def.label,
-        vendor: def.vendor,
+        name,
+        type: "pricing",
         url: def.defaultUrl,
+        crawlIntervalMin: 10_080, // 周级(官方牌价页礼貌采集;源管理可调)
         enabled: true,
-        sortOrder: def.sortOrder,
+        config: { pricingKey: def.key },
+        remark: def.label,
       },
       select: { id: true },
     });
     if (r !== null) created += 1;
   }
   return created;
-}
-
-/** DB enabled 渠道 → 可执行运行时源(def 补全;未知 key 跳过——代码侧未注册) */
-export async function listEnabledSources(
-  target: "model" | "plan",
-): Promise<Array<{ key: string; url: string; label: string; run: SourceDef["run"] }>> {
-  const rows = await prisma.pricingSource.findMany({
-    where: { target, enabled: true },
-    orderBy: [{ sortOrder: "asc" }],
-  });
-  const out: Array<{ key: string; url: string; label: string; run: SourceDef["run"] }> = [];
-  for (const row of rows) {
-    const def = SOURCE_DEFS.find((d) => d.key === row.key);
-    if (def === undefined) continue; // DB 行先于代码(渠道已下线)→ 跳过
-    out.push({ key: def.key, url: row.url, label: def.label, run: def.run });
-  }
-  return out;
-}
-
-export interface PricingCrawlSummary {
-  models: {
-    fetched: number;
-    created: number;
-    refreshed: number;
-    untouched: number;
-    failed: number;
-    markedStale: number;
-    sources: Array<{ source: string; ok: boolean; rows: number; error?: string }>;
-  };
-  plans: {
-    created: number;
-    refreshed: number;
-    untouched: number;
-    failed: number;
-    markedStale: number;
-    sources: Array<{ source: string; ok: boolean; rows: number; error?: string }>;
-  };
-}
-
-/** 牌价爬虫总编排(DB 渠道驱动):模型面+套餐面双爬;任一源失败整 job 上抛
- * (成功源数据先落库不浪费;失败源旧数据打待复核——不静默腐烂)。 */
-export async function runPricingCrawl(now: Date = new Date()): Promise<PricingCrawlSummary> {
-  const errors: string[] = [];
-  const summary: PricingCrawlSummary = {
-    models: {
-      fetched: 0,
-      created: 0,
-      refreshed: 0,
-      untouched: 0,
-      failed: 0,
-      markedStale: 0,
-      sources: [],
-    },
-    plans: {
-      created: 0,
-      refreshed: 0,
-      untouched: 0,
-      failed: 0,
-      markedStale: 0,
-      sources: [],
-    },
-  };
-
-  // 模型面
-  const modelSources = await listEnabledSources("model");
-  const modelRows: ModelPrefillRow[] = [];
-  for (const source of modelSources) {
-    const r = await runSourceVia(source, now);
-    summary.models.sources.push({
-      source: source.key,
-      ok: r.ok,
-      rows: r.rows.length,
-      error: r.error,
-    });
-    if (r.ok) modelRows.push(...(r.rows as ModelPrefillRow[]));
-    else errors.push(`${source.key}(${r.error ?? "unknown"})`);
-  }
-  summary.models.fetched = modelRows.length;
-  Object.assign(summary.models, await persistModelRows(modelRows));
-  for (const s of modelSources) {
-    const failed = summary.models.sources.find((x) => x.source === s.key && !x.ok);
-    if (failed !== undefined) {
-      const url = (
-        await prisma.pricingSource.findUnique({ where: { key: s.key }, select: { url: true } })
-      )?.url;
-      if (url !== undefined) summary.models.markedStale += await markModelSourceStale(url, now);
-    }
-  }
-
-  // 套餐面
-  const planSources = await listEnabledSources("plan");
-  const planRows: PlanPrefillRow[] = [];
-  for (const source of planSources) {
-    const r = await runSourceVia(source, now);
-    summary.plans.sources.push({
-      source: source.key,
-      ok: r.ok,
-      rows: r.rows.length,
-      error: r.error,
-    });
-    if (r.ok) planRows.push(...(r.rows as PlanPrefillRow[]));
-    else errors.push(`${source.key}(${r.error ?? "unknown"})`);
-  }
-  Object.assign(summary.plans, await persistPlanRows(planRows));
-  for (const s of planSources) {
-    const failed = summary.plans.sources.find((x) => x.source === s.key && !x.ok);
-    if (failed !== undefined) {
-      const url = (
-        await prisma.pricingSource.findUnique({ where: { key: s.key }, select: { url: true } })
-      )?.url;
-      if (url !== undefined) summary.plans.markedStale += await markPlanSourceStale(url, now);
-    }
-  }
-
-  if (errors.length > 0) {
-    throw new Error(
-      `pricing crawl 源失败: ${errors.join("; ")};已标待复核 ${
-        summary.models.markedStale + summary.plans.markedStale
-      } 行`,
-    );
-  }
-  return summary;
-}
-
-/** 单源执行统一入口:def.run 抛错即源失败(成功源返回行) */
-async function runSourceVia(
-  source: { key: string; url: string; run: SourceDef["run"] },
-  now: Date,
-): Promise<{ ok: boolean; rows: AnyRow[]; error?: string }> {
-  try {
-    const rows = await source.run(source.url, now);
-    return { ok: true, rows };
-  } catch (e) {
-    return { ok: false, rows: [], error: e instanceof Error ? e.message : String(e) };
-  }
 }

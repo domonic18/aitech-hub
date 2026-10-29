@@ -73,7 +73,8 @@ export const ChannelInputSchema = z.object({
   type: z.enum(CRAWL_SOURCE_TYPES_IMPLEMENTED),
   platform: z.string().trim().max(20).nullable().optional(),
   url: z.url().max(500),
-  crawlIntervalMin: z.number().int().min(5).max(1440),
+  // 上限 43200(30 天):牌价等低频渠道周级采集(M56 批B;原 1440 只够日频)
+  crawlIntervalMin: z.number().int().min(5).max(43200),
   dailyMaxRequests: z.number().int().min(1).max(10000).nullable().optional(),
   remark: z.string().trim().max(200).nullable().optional(),
   enabled: z.boolean().optional(),

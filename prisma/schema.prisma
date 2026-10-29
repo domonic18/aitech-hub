@@ -1513,23 +1513,3 @@ model CodingPlan {
   @@map("coding_plan")
 }
 
-/// 牌价渠道注册(M56 批B):URL/启停后台可调零发版——改参数不发版,改解析
-/// 逻辑才发版。key 路由到代码侧解析器(source-registry.ts 唯一真相源,种子
-/// 只补缺不改值;url/enabled 落库后归后台所有);kind 路由取数机制
-/// (static=直取 HTML/rendered=经渲染端点快照)。
-model PricingSource {
-  id        BigInt   @id @default(autoincrement())
-  key       String   @unique(map: "uq_pricing_source_key") @db.VarChar(50)
-  target    String   @db.VarChar(20) // model | plan(模型行/套餐行双面)
-  kind      String   @db.VarChar(20) // static | rendered | api
-  label     String   @db.VarChar(60) // 人话名(策展台显示)
-  vendor    String   @db.VarChar(40) // 落库厂商名
-  url       String   @db.VarChar(500) // 官方页 URL(后台可调;rendered 型=快照目标)
-  enabled   Boolean  @default(true)
-  sortOrder Int      @default(0) @map("sort_order")
-  remark    String?  @db.VarChar(200)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@map("pricing_source")
-}

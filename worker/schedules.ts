@@ -28,12 +28,10 @@ import {
   JOB_RUN_PURGE_CRON,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
-  PRICING_CRAWL_CRON,
   PAY_DAILY_AUDIT_CRON,
   PAY_JOB_DAILY_AUDIT,
   PAY_JOB_SWEEP,
   QUEUE_COVER_GEN,
-  PRICING_JOB_CRAWL,
   QUEUE_CRAWLER,
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
@@ -41,7 +39,6 @@ import {
   QUEUE_GITHUB,
   QUEUE_MEDIA_AUDIT,
   QUEUE_PAY_RECONCILE,
-  QUEUE_PRICING,
   QUEUE_STATS,
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_FLUSH,
@@ -86,34 +83,6 @@ export async function scheduleMediaAudit(): Promise<void> {
     { pattern: MEDIA_AUDIT_CRON, tz: SITE_TZ },
     {
       name: "audit",
-      data: {},
-      opts: schedulerOpts(7),
-    },
-  );
-}
-
-/** 官方页爬虫(M55 批C 首批 DeepSeek/Kimi,M56 扩套餐源):周三 08:53;
- * 同队列同 processor,worker 按 job name 分流(批B OpenRouter 周批 2026-10-29 砍除) */
-export async function schedulePricingCrawl(): Promise<void> {
-  // 渠道注册幂等种子(只补缺不改值;url/enabled 归后台所有,策展台渠道管理块)
-  const { syncPricingSources } = await import("../src/lib/pricing/source-registry");
-  await syncPricingSources().catch((e: unknown) =>
-    console.error(
-      JSON.stringify({
-        event: "pricing.source_sync_failed",
-        error: e instanceof Error ? e.message : String(e),
-      }),
-    ),
-  );
-  const queue = getQueue(QUEUE_PRICING);
-  // 批B 遗留调度器清理:upsertJobScheduler 只增改不删,旧 sync-openrouter
-  // 周批 scheduler 会残留 redis 继续空转,引导处显式摘除(常量已随通道砍除)
-  await queue.removeJobScheduler("sync-openrouter").catch(() => {});
-  await queue.upsertJobScheduler(
-    PRICING_JOB_CRAWL,
-    { pattern: PRICING_CRAWL_CRON, tz: SITE_TZ },
-    {
-      name: PRICING_JOB_CRAWL,
       data: {},
       opts: schedulerOpts(7),
     },

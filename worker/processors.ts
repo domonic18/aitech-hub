@@ -39,7 +39,6 @@ import {
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_PAY_RECONCILE,
-  QUEUE_PRICING,
   QUEUE_SEO_BATCH,
   QUEUE_STATS,
   QUEUE_SUMMARIZER,
@@ -98,7 +97,6 @@ import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/daily";
-import { runPricingCrawl } from "../src/lib/pricing/source-registry";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {
@@ -107,13 +105,6 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_MEDIA_AUDIT]: async () => {
     const summary = await runAudit();
     console.log(JSON.stringify({ event: "media.audit", ...summary }));
-    return summary;
-  },
-  [QUEUE_PRICING]: async () => {
-    // 官方页爬虫(M55 批C):只产/刷 pending,enabled/disabled 人工终审行不覆盖
-    // (批B OpenRouter 预填分流已随通道砍除,2026-10-29)
-    const summary = await runPricingCrawl();
-    console.log(JSON.stringify({ event: "pricing.crawl", ...summary }));
     return summary;
   },
   [QUEUE_STATS]: async (job) => {

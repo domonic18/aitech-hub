@@ -13,8 +13,6 @@ import { createJobRun, finishJobRun } from "../src/lib/jobs/runlog";
 import {
   COVER_JOB_TEMP_SWEEP,
   CRAWL_JOB_AI_BACKFILL,
-  PRICING_JOB_CRAWL,
-  QUEUE_PRICING,
   DB_BACKUP_JOB_RUN,
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
@@ -46,7 +44,6 @@ const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_DB_BACKUP}/${DB_BACKUP_JOB_RUN}`,
   `${QUEUE_MEDIA_AUDIT}/audit`, // 媒体体检 job name 无常量(worker/schedules 内联 "audit")
   `${QUEUE_PAY_RECONCILE}/${PAY_JOB_DAILY_AUDIT}`,
-  `${QUEUE_PRICING}/${PRICING_JOB_CRAWL}`, // 官方页爬虫(周批;源失败整 job 上抛连败可见)
   `${QUEUE_STATS}/${STATS_JOB_PURGE}`,
   `${QUEUE_STATS}/${STATS_JOB_USAGE_PURGE}`,
   `${QUEUE_STATS}/${STATS_JOB_AGENT_PURGE}`,

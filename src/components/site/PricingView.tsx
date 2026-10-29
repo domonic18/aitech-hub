@@ -6,8 +6,6 @@
  * 移动端表格降维卡片(P2 口径,纯 CSS 无 JS);停用/待审行服务端已滤
  * (仅 enabled),本组件零状态纯展示,取数在页面侧(ISR 600s)。
  */
-import Link from "next/link";
-
 import { formatPrice, isPricingStale, PRICING_STALE_DAYS } from "@/lib/pricing/public";
 import type { PublicModelRow, PublicPlanRow, PublicPricing } from "@/lib/pricing/public";
 
