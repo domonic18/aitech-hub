@@ -5,7 +5,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { HTML_MAX_CHARS, isInsideMediaRoot, parseRenderBody } from "../validate.js";
+import {
+  HTML_MAX_CHARS,
+  isInsideMediaRoot,
+  parseRenderBody,
+  parseSnapshotBody,
+} from "../validate.js";
 
 const ROOT = "/app/media";
 
@@ -66,4 +71,45 @@ test("媒体卷白名单:非 file 协议与空根全拒", () => {
   assert.equal(isInsideMediaRoot(ROOT, "data:image/png;base64,AAAA"), false);
   assert.equal(isInsideMediaRoot(null, "file:///app/media/a.png"), false);
   assert.equal(isInsideMediaRoot("", "file:///app/media/a.png"), false);
+});
+
+// ---------- /snapshot(M56 批A:URL 白名单校验) ----------
+
+test("parseSnapshotBody:白名单未配置 = 端点整体禁用(403)", () => {
+  const r = parseSnapshotBody({ url: "https://bigmodel.cn/glm-coding" }, []);
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 403);
+});
+
+test("parseSnapshotBody:协议/host 校验(白名单内放行,白名单外/非 http 拒绝)", () => {
+  const hosts = ["bigmodel.cn", "www.kimi.com"];
+  const ok = parseSnapshotBody({ url: "https://bigmodel.cn/glm-coding" }, hosts);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.value, {
+    url: "https://bigmodel.cn/glm-coding",
+    timeoutMs: 30000,
+    settleMs: 2500,
+  });
+  assert.equal(parseSnapshotBody({ url: "https://evil.example.com/x" }, hosts).ok, false);
+  assert.equal(parseSnapshotBody({ url: "file:///etc/passwd" }, hosts).ok, false);
+  assert.equal(parseSnapshotBody({ url: "" }, hosts).ok, false);
+  assert.equal(parseSnapshotBody({}, hosts).ok, false);
+  // host 大小写归一后比对
+  assert.equal(parseSnapshotBody({ url: "https://BIGMODEL.CN/glm-coding" }, hosts).ok, true);
+});
+
+test("parseSnapshotBody:timeout/settle 边界与缺省", () => {
+  const hosts = ["bigmodel.cn"];
+  const bad = parseSnapshotBody(
+    { url: "https://bigmodel.cn/x", timeoutMs: 1, settleMs: 99999 },
+    hosts,
+  );
+  assert.equal(bad.ok, false);
+  const ok = parseSnapshotBody(
+    { url: "https://bigmodel.cn/x", timeoutMs: 45000, settleMs: 0 },
+    hosts,
+  );
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.timeoutMs, 45000);
+  assert.equal(ok.value.settleMs, 0);
 });

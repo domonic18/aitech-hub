@@ -14,9 +14,13 @@
  *   POST /render  {html, width?, scale?, maxHeight?, timeoutMs?}
  *              → 200 image/png(X-Card-Width/X-Card-Height = 逻辑像素)
  *              → 400 校验失败 / 413 高度超限 / 429 忙 / 504 超时 / 500 渲染失败
+ *   POST /snapshot {url, timeoutMs?, settleMs?}(M56 批A:URL → 渲染后 HTML;
+ *              JS 开启,RENDER_ALLOWED_HOSTS 白名单钉死 SSRF 面,未配置=403)
+ *              → 200 {html, finalUrl, httpStatus}
  *
- * 资源:浏览器常驻单例(崩溃惰性重启);并发信号量 MAX_CONCURRENT,
- * 满员即刻 429(排队会让 Agent 工具白等,不如快速失败提示重试)。
+ * 资源:浏览器常驻单例(崩溃惰性重启;跑满 MAX_RUNS_PER_BROWSER 个 context
+ * 主动弃置换新,防长跑退化——gateway chromium 自旋拖垮 VM 前科的对应纪律);
+ * 并发信号量 MAX_CONCURRENT(两端点共享),满员即刻 429。
  */
 import fs from "node:fs";
 import http from "node:http";
@@ -25,13 +29,27 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
 
-import { isInsideMediaRoot, parseRenderBody, RAW_BODY_MAX_BYTES } from "./validate.js";
+import {
+  isInsideMediaRoot,
+  parseRenderBody,
+  parseSnapshotBody,
+  RAW_BODY_MAX_BYTES,
+} from "./validate.js";
 
 const PORT = Number(process.env.PORT ?? 8011);
 const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT ?? 2);
 // 媒体卷根(ro 挂载,与 web 容器 MEDIA_DIR 同卷):站内引图 file:// 内联的唯一根。
 // 未设置(如本地裸跑)则 file:// 一律替换为占位图(不读盘)。
 const MEDIA_ROOT = process.env.MEDIA_ROOT ? path.resolve(process.env.MEDIA_ROOT) : null;
+// /snapshot URL 白名单(M56 批A,逗号分隔 host;未配置=端点禁用 403)。
+// 渠道注册表内的官方页主机,防 JS 开启渲染被当 SSRF 跳板。
+const RENDER_ALLOWED_HOSTS = (process.env.RENDER_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+// 进程级渲染轮次上限(防退化纪律,gateway chromium 自旋拖垮 VM 前科):
+// 跑满 N 个 context 主动弃置浏览器,下次请求惰性重启换新进程内存。
+const MAX_RUNS_PER_BROWSER = Number(process.env.MAX_RUNS_PER_BROWSER ?? 300);
 
 const MIME_BY_EXT = {
   ".png": "image/png",
@@ -77,6 +95,8 @@ async function getBrowser() {
 
 /** 并发信号量:满员返回 false(fail-fast 429) */
 let active = 0;
+/** 浏览器累计渲染轮次(两端点共计数;满 MAX_RUNS_PER_BROWSER 弃置重启) */
+let browserRuns = 0;
 function tryAcquire() {
   if (active >= MAX_CONCURRENT) return false;
   active += 1;
@@ -84,6 +104,20 @@ function tryAcquire() {
 }
 function release() {
   active -= 1;
+  browserRuns += 1;
+  if (browserRuns >= MAX_RUNS_PER_BROWSER && browser) {
+    console.log(
+      JSON.stringify({
+        event: "renderer.browser_recycle",
+        runs: browserRuns,
+        max: MAX_RUNS_PER_BROWSER,
+      }),
+    );
+    const stale = browser;
+    browser = null;
+    browserRuns = 0;
+    void stale.close().catch(() => undefined); // 惰性重启:下次 getBrowser 拉新实例
+  }
 }
 
 /**
@@ -119,6 +153,64 @@ async function renderCard({ html, width, scale, maxHeight, timeoutMs }) {
     }
     const png = await page.screenshot({ fullPage: true, type: "png", timeout: timeoutMs });
     return { png: Buffer.from(png), width, height };
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+}
+
+/**
+ * /snapshot(M56 批A):导航到白名单 URL,等 SPA 挂载后回传渲染后 HTML。
+ * JS 开启(与 /render 相反——目标页是真实公开站点,需客户端渲染);
+ * 不做请求拦截(子资源 CDN 与分析埋点照常,页首 load 后定时 settle 收尾,
+ * 不用 networkidle——埋点长连会让它永不空闲)。
+ * @returns {Promise<{html: string, finalUrl: string, httpStatus: number | null}>}
+ */
+async function snapshotPage({ url, timeoutMs, settleMs, clickText }) {
+  const b = await getBrowser();
+  const context = await b.newContext({
+    viewport: { width: 1440, height: 900 },
+    javaScriptEnabled: true,
+    colorScheme: "light",
+    locale: "zh-CN",
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  });
+  try {
+    const page = await context.newPage();
+    const resp = await page.goto(url, { waitUntil: "load", timeout: timeoutMs });
+    if (clickText !== undefined) {
+      // tab 切换(周期价格页):点击含该文本的元素;找不到不炸——返回当前态,
+      // 由调用方按解析结果决定是否连败(页面改版可见优于静默空数据)
+      await page
+        .getByText(clickText, { exact: false })
+        .first()
+        .click({ timeout: 5000 })
+        .catch(() => undefined);
+    }
+    // 自动滚底触发懒加载定价区(SPA 常见:视口外区块不挂载),再回顶
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          let y = 0;
+          const step = () => {
+            y += 600;
+            window.scrollTo(0, y);
+            if (y < document.documentElement.scrollHeight + 600) setTimeout(step, 120);
+            else {
+              window.scrollTo(0, 0);
+              resolve(undefined);
+            }
+          };
+          step();
+        }),
+    );
+    await page.waitForTimeout(settleMs); // SPA 挂载/懒加载收尾
+    const html = await page.content();
+    return {
+      html,
+      finalUrl: page.url(),
+      httpStatus: resp === null ? null : resp.status(),
+    };
   } finally {
     await context.close().catch(() => undefined);
   }
@@ -161,8 +253,39 @@ const server = http.createServer((req, res) => {
       .catch(() => sendJson(res, 503, { ok: false, browser: "down" }));
     return;
   }
+  if (req.method === "POST" && req.url === "/snapshot") {
+    if (!tryAcquire()) {
+      sendJson(res, 429, { error: `渲染忙(并发上限 ${MAX_CONCURRENT}),请稍后重试` });
+      return;
+    }
+    void (async () => {
+      let params;
+      try {
+        const raw = await readJsonBody(req);
+        const parsed = parseSnapshotBody(raw, RENDER_ALLOWED_HOSTS);
+        if (!parsed.ok) {
+          sendJson(res, parsed.status, { error: parsed.error });
+          return;
+        }
+        params = parsed.value;
+      } catch (e) {
+        sendJson(res, e.statusCode ?? 400, { error: e.message });
+        return;
+      }
+      try {
+        const out = await snapshotPage(params);
+        sendJson(res, 200, out);
+      } catch (e) {
+        const status = e.statusCode ?? (e.name === "TimeoutError" ? 504 : 500);
+        sendJson(res, status, { error: e.message || "快照失败" });
+      } finally {
+        release();
+      }
+    })();
+    return;
+  }
   if (req.method !== "POST" || req.url !== "/render") {
-    sendJson(res, 404, { error: "仅支持 POST /render 与 GET /health" });
+    sendJson(res, 404, { error: "仅支持 POST /render、POST /snapshot 与 GET /health" });
     return;
   }
   if (!tryAcquire()) {

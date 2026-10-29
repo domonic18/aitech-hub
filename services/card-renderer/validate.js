@@ -74,3 +74,73 @@ export function parseRenderBody(body) {
 
 /** 原始请求体字节上限(http 层用;超限 413) */
 export const RAW_BODY_MAX_BYTES = 6 * 1024 * 1024;
+
+// ---------- /snapshot(M56 批A:URL → 渲染后 HTML;SPA 套餐页取数) ----------
+
+export const SNAPSHOT_TIMEOUT_MAX_MS = 45_000;
+export const SNAPSHOT_SETTLE_MAX_MS = 15_000;
+
+/**
+ * /snapshot 请求体校验:URL 白名单(RENDER_ALLOWED_HOSTS,逗号分隔 host 小写)。
+ * 白名单未配置 = 端点整体禁用(403,不静默放行任意 URL——snapshot 是 JS 开启的
+ * 真实浏览器会话,SSRF 面必须钉死在渠道注册表内的官方页主机上)。
+ * clickText 可选:导航后点击匹配文本的元素再 settle(周期价格页 tab 切换,
+ * 月/季/年三态各拍一次由调用方合并;2026-10-29 验收反馈)。
+ * @returns {{ ok: true, value: {url: string, timeoutMs: number, settleMs: number, clickText?: string} }
+ *          | { ok: false, error: string, status: number }}
+ */
+export function parseSnapshotBody(body, allowedHosts) {
+  if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) {
+    return {
+      ok: false,
+      error: "snapshot 未配置白名单(RENDER_ALLOWED_HOSTS),端点禁用",
+      status: 403,
+    };
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, error: "请求体必须是 JSON 对象", status: 400 };
+  }
+  const errors = [];
+  let host = "";
+  let url = "";
+  if (typeof body.url === "string" && body.url !== "") {
+    url = body.url;
+    try {
+      const u = new URL(url);
+      if (u.protocol !== "http:" && u.protocol !== "https:") errors.push("url 仅支持 http/https");
+      host = u.hostname.toLowerCase();
+    } catch {
+      errors.push("url 不是合法 URL");
+    }
+  } else {
+    errors.push("url 不能为空");
+  }
+  if (host !== "" && !allowedHosts.includes(host)) {
+    errors.push(`url 主机不在白名单: ${host}`);
+  }
+  let clickText;
+  if (body.clickText !== undefined) {
+    if (
+      typeof body.clickText === "string" &&
+      body.clickText.trim() !== "" &&
+      body.clickText.length <= 40
+    ) {
+      clickText = body.clickText.trim();
+    } else {
+      errors.push("clickText 须为 1-40 字符文本");
+    }
+  }
+  const timeoutMs =
+    intInRange(body.timeoutMs, TIMEOUT_MIN_MS, SNAPSHOT_TIMEOUT_MAX_MS, "timeoutMs", errors) ??
+    30_000;
+  const settleMs =
+    intInRange(body.settleMs, 0, SNAPSHOT_SETTLE_MAX_MS, "settleMs", errors) ?? 2_500;
+  if (errors.length > 0) return { ok: false, error: errors.join(";"), status: 400 };
+  return {
+    ok: true,
+    value:
+      clickText === undefined
+        ? { url, timeoutMs, settleMs }
+        : { url, timeoutMs, settleMs, clickText },
+  };
+}
