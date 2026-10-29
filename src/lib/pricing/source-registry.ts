@@ -28,8 +28,8 @@ import {
   type ModelPrefillRow,
 } from "./crawlers";
 import {
-  BAILIAN_CODING_URL,
-  fetchBailianCoding,
+  BAILIAN_TOKEN_URL,
+  fetchBailianPage,
   fetchGlmCoding,
   fetchKimiMember,
   fetchMiniMaxMember,
@@ -38,7 +38,7 @@ import {
   KIMI_MEMBER_URL,
   markPlanSourceStale,
   MINIMAX_MPLAN_URL,
-  parseBailianCoding,
+  parseBailianToken,
   parseGlmCoding,
   parseKimiCoding,
   parseMiniMaxCoding,
@@ -143,15 +143,15 @@ export const SOURCE_DEFS: SourceDef[] = [
       parseXiaomiToken(await fetchXiaomiToken(url, sink), url, now),
   },
   {
-    key: "bailian-coding",
+    key: "bailian-token",
     target: "plan",
     kind: "static",
-    label: "阿里云百炼 Coding Plan",
+    label: "阿里云百炼 Token Plan",
     vendor: "阿里云百炼",
-    defaultUrl: BAILIAN_CODING_URL,
-    sortOrder: 7,
+    defaultUrl: BAILIAN_TOKEN_URL,
+    sortOrder: 9,
     run: async (url, { now, sink }) =>
-      parseBailianCoding(await fetchBailianCoding(url, sink), url, now),
+      parseBailianToken(await fetchBailianPage(url, sink), url, now),
   },
   {
     key: "glm-coding",
@@ -205,6 +205,13 @@ export async function runPricingSourceCrawl(
   }
 }
 
+/** 已退役的渠道默认 URL → 新默认(2026-10-29 MiniMax 切国内版 www.minimax.cn)。
+ * 只改写「仍是旧默认值」的行;后台改过的 URL 一律不动(URL 归后台所有的纪律不破),
+ * 故可随 worker 启动幂等重放。 */
+const RETIRED_DEFAULT_URLS: Record<string, string> = {
+  "https://www.minimax.io/m-plan": MINIMAX_MPLAN_URL,
+};
+
 /** 渠道种子幂等(crawl_source 只补缺不改值):url/启停/周期归后台所有
  * (数据中心·源管理·采集渠道维护);config.pricingKey 路由代码侧解析器。 */
 export async function syncPricingChannels(): Promise<number> {
@@ -227,5 +234,22 @@ export async function syncPricingChannels(): Promise<number> {
     });
     if (r !== null) created += 1;
   }
+  for (const [oldUrl, newUrl] of Object.entries(RETIRED_DEFAULT_URLS)) {
+    await prisma.crawlSource.updateMany({
+      where: { type: "pricing", url: oldUrl },
+      data: { url: newUrl },
+    });
+  }
+  // 已撤除渠道收尾(2026-10-29 百炼 Coding Plan 撤除):注册表里没有的 pricing 渠道行
+  // 每次调度必抛「无注册解析器」,不停用会在健康度/台账上永久刷红。只关 enabled 不删行
+  // ——渠道台账与历史快照仍可回溯;随 worker 启动幂等重放。
+  await prisma.crawlSource.updateMany({
+    where: {
+      type: "pricing",
+      enabled: true,
+      NOT: { name: { in: SOURCE_DEFS.map((d) => `pricing:${d.key}`) } },
+    },
+    data: { enabled: false },
+  });
   return created;
 }

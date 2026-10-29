@@ -7,6 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const csUpsert = vi.fn();
+const csUpdateMany = vi.fn();
 const findModels = vi.fn();
 const createModel = vi.fn();
 const updateModel = vi.fn();
@@ -18,6 +19,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     crawlSource: {
       upsert: (...a: unknown[]) => csUpsert(...a),
+      updateMany: (...a: unknown[]) => csUpdateMany(...a),
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
@@ -61,6 +63,7 @@ const DEEPSEEK_HTML = `<table><tr><td>百万tokens输入 （缓存命中） 空�
 beforeEach(() => {
   vi.clearAllMocks();
   csUpsert.mockResolvedValue({ id: 1 });
+  csUpdateMany.mockResolvedValue({ count: 0 });
   findModels.mockResolvedValue([]);
   findPlans.mockResolvedValue([]);
   createModel.mockResolvedValue({ id: BigInt(1) });
@@ -89,6 +92,22 @@ describe("syncPricingChannels", () => {
     expect(first.create.type).toBe("pricing");
     expect(first.create.crawlIntervalMin).toBe(10_080); // 周级,不天天采集
     expect(first.create.config).toEqual({ pricingKey: SOURCE_DEFS[0]!.key });
+    // 退役默认 URL 迁移:只改仍是旧默认值的行(后台改过的不动),故按 url 等值圈定
+    // 第二枪=撤除渠道收尾:注册表无此 key 的 pricing 行停用(否则每次调度必抛无解析器)
+    expect(csUpdateMany.mock.calls.map((c) => c[0])).toEqual([
+      {
+        where: { type: "pricing", url: "https://www.minimax.io/m-plan" },
+        data: { url: "https://www.minimax.cn/m-plan" },
+      },
+      {
+        where: {
+          type: "pricing",
+          enabled: true,
+          NOT: { name: { in: SOURCE_DEFS.map((d) => `pricing:${d.key}`) } },
+        },
+        data: { enabled: false },
+      },
+    ]);
   });
 });
 

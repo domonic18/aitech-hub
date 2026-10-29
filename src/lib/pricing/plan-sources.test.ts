@@ -21,7 +21,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import {
-  parseBailianCoding,
+  parseBailianToken,
   parseGlmCoding,
   parseKimiCoding,
   parseKimiCards,
@@ -289,33 +289,139 @@ describe("markPlanSourceStale 打标", () => {
   });
 });
 
-// ---------- 新三源 fixture(2026-10-29 真实快照文本裁剪) ----------
+// ---------- 新三源 fixture(2026-10-29 真实快照裁剪) ----------
 
-/** 真实快照是整页 DOM(含 script/style):逐词包 span 是最严苛形态——
- * 标签插在每两个词之间,解析器必须先在折叠文本上做匹配
- * (2026-10-29 实跑回归:MiniMax 直喂 HTML 必失配) */
-function asHtml(text: string): string {
-  const body = text
-    .split(/(\s+)/)
-    .map((w) => (w.trim() === "" ? " " : `<span class="w">${w}</span>`))
-    .join("");
-  return `<html><head><style>.w{color:red}</style><script>var price="$999";</script></head><body><div class="page">${body}</div></body></html>`;
+/** MiniMax 国内版(www.minimax.cn/m-plan)真实快照裁剪:三张卡按原 DOM 结构
+ * (header>h3 定位卡片根 / 划线价 span.line-through / 现价 span.tabular-nums /
+ * 周期文案 div / 权益 article>p),仅删样式类与图片、每卡保留 3 条权益。
+ * 2026-10-29 换国内版前该源为海外站($ + 英文档名),旧折叠文本正则已退役。 */
+const MM_CN_CARD = (
+  title: string,
+  tagline: string,
+  orig: string,
+  now: string,
+  per: string,
+  b1: string,
+  b2: string,
+  b3: string,
+  promo?: string,
+): string =>
+  `<div class="card"><header><h3>${title}</h3>${promo === undefined ? "" : `<span>${promo}</span>`}</header><p>${tagline}</p><div><span class="line-through">${orig}</span></div><div><span>￥</span><span class="tabular-nums">${now}</span></div><div>${per}</div><button><span>立即订阅</span></button><article><p>${b1}</p><p>${b2}</p><p>${b3}</p></article></div>`;
+
+const MM_YEARLY = [
+  MM_CN_CARD(
+    "Go",
+    "轻松上手",
+    "￥588",
+    "490",
+    "每年，按年订阅",
+    "更多用量",
+    "文本模型，如 M3.1 Flash",
+    "图像和声音模型",
+  ),
+  MM_CN_CARD(
+    "Explore",
+    "日常使用",
+    "￥1,490",
+    "1,190",
+    "每年，按年订阅",
+    "Go 的 3 倍用量",
+    "文本模型，如 M3.1 Flash",
+    "视频模型，如 H3",
+  ),
+  MM_CN_CARD(
+    "Build",
+    "全力创造",
+    "￥5,628",
+    "4,690",
+    "每年，按年订阅",
+    "Go 的 12 倍用量",
+    "文本模型，如 M3.1 Flash",
+    "视频模型，如 H3",
+  ),
+].join("");
+const MM_MONTHLY = [
+  MM_CN_CARD(
+    "Go",
+    "轻松上手",
+    "￥49",
+    "24.5",
+    "每月，按月订阅",
+    "更多用量",
+    "文本模型，如 M3.1 Flash",
+    "图像和声音模型",
+    "限时首月5折",
+  ),
+  MM_CN_CARD(
+    "Explore",
+    "日常使用",
+    "￥119",
+    "59.5",
+    "每月，按月订阅",
+    "Go 的 3 倍用量",
+    "文本模型，如 M3.1 Flash",
+    "视频模型，如 H3",
+    "限时首月5折",
+  ),
+  MM_CN_CARD(
+    "Build",
+    "全力创造",
+    "￥469",
+    "234.5",
+    "每月，按月订阅",
+    "Go 的 12 倍用量",
+    "文本模型，如 M3.1 Flash",
+    "视频模型，如 H3",
+    "限时首月5折",
+  ),
+].join("");
+/** 小米 Token Plan 卡片(按 2026-10-29 真实 DOM 裁剪):档名 `<p>`(24px)定位
+ * 卡片根 `rounded-[16px]`,主价 `span.font-misans`、划线价 `span.line-through`,
+ * 权益为 14px 明细行对(主行 #1a1a1a 开条、次行 text-black/45 并入上一条)。 */
+function xmCard(
+  title: string,
+  tagline: string,
+  shown: string,
+  standard: string,
+  discount: string,
+  credits: string,
+  extra: string,
+): string {
+  const line = (main: string, sub?: string): string =>
+    `<p class="text-[14px] leading-4 text-[#1a1a1a]">${main}</p>${
+      sub === undefined ? "" : `<p class="text-[14px] leading-4 text-black/45">${sub}</p>`
+    }`;
+  return `<div class="relative flex w-full"><div class="flex flex-col gap-2"><p class="whitespace-nowrap text-[24px] font-medium leading-8">${title}</p><p class="text-[14px] leading-5 text-black/45">${tagline}</p></div></div><div class="relative overflow-visible rounded-[16px]"><div class="relative flex w-full"><div class="flex flex-col gap-2"><p class="whitespace-nowrap text-[24px] font-medium leading-8 tracking-[0.14px] text-[#1A1A1A]">${title}</p><p class="text-[14px] leading-5 text-black/45">${tagline}</p><div class="flex items-baseline"><span class="pt-1 text-[20px] font-medium">¥</span><span class="font-misans text-[48px] leading-[48px]">${shown}</span><span class="self-end text-[14px] leading-[22px]">/ 月</span><span class="self-end text-[14px] leading-[22px] text-[rgba(0,0,0,0.6)] line-through">¥${standard}</span></div><p class="shrink-0 text-[14px] leading-[22px] text-black/45">按年计费</p><span class="inline-flex items-center gap-0.5">${discount}</span><button class="ant-btn"><span>立即订阅</span></button></div></div><div class="flex flex-col gap-2">${line(
+    "支持 V2.6 全新旗舰模型",
+    "文本模型 / 全模态 / 语音",
+  )}${line(credits, extra)}${line("支持主流编程框架", "OpenClaw / Codex / MiMo Claw 等")}${line(
+    "夜间 0.8x 消耗",
+    "00:00—08:00 · UTC+8",
+  )}</div><div class="rounded-[8px] bg-black/5"><span>MiMo Claw</span><span>¥233.80 /年</span><p class="w-full break-words text-[12px] leading-4">专属龙虾 · 金山办公 · 多任务并行</p></div></div>`;
 }
 
-const MM_YEARLY =
-  "M Plan Go For light use $264 $ 220 Per year, billed annually Purchase More usage Text models, e.g., M3.1 Flash Image and speech models Web search and multimodal understanding Explore For everyday use $648 $ 550 Per year, billed annually Purchase 3x Go usage Video models, e.g., H3 Build For heavy use $1,560 $ 1,320 Per year, billed annually Purchase 7.5x Go usage Priority access";
-const MM_MONTHLY =
-  "M Plan Go For light use $22 Per month, billed monthly Purchase More usage Explore For everyday use $55 Per month, billed monthly Purchase 3x Go usage Build For heavy use $130 Per month, billed monthly Purchase 7.5x Go usage";
-const XIAOMI_HTML =
-  "<div>Token Plan 连续包月 首购优惠 连续包年 88 折 Max 高强度开发 ¥ 579 / 月 ¥659 按年计费 立减 960 元 含 MiMo Claw 立即订阅 支持 V2.6 全新旗舰模型 文本模型 / 全模态 / 语音 9840 亿 Credits = 20 x Lite 支持主流编程框架 OpenClaw / Codex / MiMo Claw 等 TTS 模型免费 限时免费使用 夜间 0.8x 消耗 00:00—08:00 · UTC+8 畅快使用 无周限额 · 无 5 小时限额 Pro 专业开发 ¥ 289 / 月 ¥329 按年计费 立减 480 元 立即订阅 4560 亿 Credits = 9.3 x Lite Lite 轻量体验 ¥ 34 / 月 ¥39 按年计费 立减 60 元 立即订阅 492 亿 Credits 套餐年总量</div>";
-const BAILIAN_HTML =
-  "<div>价格 ¥ 200 /月 用量限制 每 5 小时 6,000 次请求 每周 45,000 次请求 每月 90,000 次请求 新客首月特惠: 首次订阅 Pro 套餐可享首月 ¥39.90(官网目录价 ¥200/月),后续按 ¥200/月 续费 支持的模型 推荐模型:qwen3.7-plus(支持图片理解)、qwen3.6-plus(支持图片理解)、kimi-k2.5、glm-5、MiniMax-M2.5 更多模型:qwen3.5-plus</div>";
+/** 混合页:四档卡 + 页脚噪音(邀请返现/工具矩阵/FAQ/版权)——验收问题二的回归锚,
+ * 旧版按折叠文本切段会把页脚吞进末档权益 */
+const XIAOMI_HTML = `<div>个人版 团队版 NEW 连续包月 首购优惠 连续包年88 折${[
+  xmCard("Max", "高强度开发", "579", "659", "立减 960 元", "9840 亿 Credits", "= 20 x Lite"),
+  xmCard("Pro", "专业开发", "289", "329", "立减 480 元", "4560 亿 Credits", "= 9.3 x Lite"),
+  xmCard("Standard", "日常办公", "87", "99", "立减 144 元", "1320 亿 Credits", "= 2.7 x Lite"),
+  xmCard("Lite", "轻量体验", "34", "39", "立减 60 元", "492 亿 Credits", "套餐年总量"),
+].join(
+  "",
+)}<div>邀好友首单 9 折 ,您最高返实付 20% 首单返 10% · 邀请人为 Max / Standard 年费会员 立即邀请 编程工具支持 MiMo Desktop MiMo Code OpenCode OpenClaw Claude Code Codex 快速开始 订阅套餐 选择适合你的套餐并完成订阅 立即购买 常见问题 目前 Token Plan 有哪些订阅优惠？ 首购优惠：个人版首次购买享 88 折 Copyright©2026 Xiaomi. All Rights Reserved</div></div>`;
+
+/** 百炼 Token Plan 概述页(2026-10-29 真实页折叠文本,保留两处陷阱:
+ * ① 用量包「100 元/个/月」与团队版「元/座席/月」不得混入个人版定价;
+ * ② 正文「Standard 与 Pro 套餐附赠…」是散落提及,不得多算档位) */
+const BAILIAN_TOKEN_HTML =
+  "<div>个人版 Lite 套餐 Essential 套餐 Standard 套餐 Pro 套餐 用量包 定价 原价 60 元/月 限时 39 元/月 原价 120 元/月 限时 79 元/月 原价 180 元/月 限时 139 元/月 原价 600 元/月 限时 499 元/月 100 元/个/月 20,000 Credits/个 最多同时持有 5 个 每月限额 11,500 Credits 25,500 Credits 45,000 Credits 180,000 Credits 不计入套餐月限额 并发 Agent 1-2 个 2-3 个 3-4 个 6-8 个 - Harness 权益 Standard 与 Pro 套餐附赠 AgentStudio 工具免费额度与折扣,不占 Credits 团队版 标准座席 Standard 高级座席 Pro 尊享座席 Max 共享用量包 Extra Bundle 定价 原价 198 元/座席/月 限时 150 元/座席/月 原价 698 元/座席/月 限时 550 元/座席/月</div>";
 
 describe("新三源解析(M56 三渠道扩容)", () => {
   it("MiniMax 双态:年付标准/促销分离,月付价并入;权益整段直出", () => {
     const rows = parseMiniMaxCoding(
-      { yearly: asHtml(MM_YEARLY), monthly: asHtml(MM_MONTHLY) },
-      "https://www.minimax.io/m-plan",
+      { yearly: MM_YEARLY, monthly: MM_MONTHLY },
+      "https://www.minimax.cn/m-plan",
       NOW,
     );
     expect(rows.map((r) => r.planName)).toEqual([
@@ -325,51 +431,104 @@ describe("新三源解析(M56 三渠道扩容)", () => {
     ]);
     expect(rows[0]).toMatchObject({
       vendor: "MiniMax 稀宇科技",
-      currency: "USD",
-      monthlyFee: 22,
-      yearlyFee: 264, // 标准年付(促销 220 入 billingNote)
+      currency: "CNY",
+      monthlyFee: 49, // 月付标准价(首月 5 折 24.5 入 billingNote)
+      yearlyFee: 588, // 划线价即标准年付(促销 490 入 billingNote)
       quarterlyFee: null,
+      bestFor: "轻松上手",
     });
-    expect(rows[0]!.billingNote).toContain("促销 $220/年");
-    expect(rows[0]!.benefits![0]).toContain("More usage");
-    // 档间切片不串味:Explore 权益起于 3x Go usage,不含 Go 档的 More usage
-    expect(rows[1]!.benefits![0]).toContain("3x Go usage");
-    expect(rows[1]!.benefits![0]).not.toContain("More usage");
+    expect(rows[0]!.billingNote).toBe(
+      "年付标准 ¥588/年(促销 ¥490/年);月付 ¥49/月(限时首月5折 ¥24.5)",
+    );
+    // 权益=本卡 article 逐条原文,不跨档
+    expect(rows[0]!.benefits).toEqual(["更多用量", "文本模型，如 M3.1 Flash", "图像和声音模型"]);
+    expect(rows[1]!.benefits![0]).toBe("Go 的 3 倍用量");
+    expect(rows[1]!.benefits![0]).not.toContain("更多用量");
+    expect(rows[2]).toMatchObject({ monthlyFee: 469, yearlyFee: 5628 });
   });
 
-  it("小米单态:首价=年付折合月,次价=连续包月标准;Credits=额度口径", () => {
+  it("小米:展示价=年付折合月,划线价=连续包月标准;权益按卡内明细行配对", () => {
     const rows = parseXiaomiToken(XIAOMI_HTML, "https://platform.xiaomimimo.com/token-plan", NOW);
     expect(rows.map((r) => r.planName)).toEqual([
       "MiMo Token Plan · Max",
       "MiMo Token Plan · Pro",
+      "MiMo Token Plan · Standard",
       "MiMo Token Plan · Lite",
     ]);
     expect(rows[0]).toMatchObject({
       vendor: "小米 MiMo",
-      monthlyFee: 659, // 连续包月标准价
-      yearlyFee: 579, // 包年 88 折折合月
-      quotaDesc: "9840 亿 Credits",
+      monthlyFee: 659, // 连续包月标准价(划线价)
+      yearlyFee: 579, // 年付折合月
+      quotaDesc: "9840 亿 Credits(= 20 x Lite)",
       offPeakRate: "谷 0.8×",
+      bestFor: "高强度开发",
     });
-    expect(rows[0]!.billingNote).toContain("88 折折合 ¥579/月");
+    // 折扣口径取页签原文(88 折),不按取整后的展示价反推(会漂成 87 折)
+    expect(rows[0]!.billingNote).toBe(
+      "连续包年 88 折折合 ¥579/月(连续包月 ¥659/月);按年计费立减 960 元",
+    );
+    // 主行+次行配对;每卡只取本卡明细,不跨卡
+    expect(rows[0]!.benefits).toEqual([
+      "支持 V2.6 全新旗舰模型(文本模型 / 全模态 / 语音)",
+      "9840 亿 Credits(= 20 x Lite)",
+      "支持主流编程框架(OpenClaw / Codex / MiMo Claw 等)",
+      "夜间 0.8x 消耗(00:00—08:00 · UTC+8)",
+    ]);
   });
 
-  it("百炼静态单档 Pro:¥200/月+首月特惠入 billingNote;推荐模型=权益", () => {
-    const rows = parseBailianCoding(
-      BAILIAN_HTML,
-      "https://help.aliyun.com/zh/model-studio/coding-plan",
+  it("小米页脚不进权益(验收问题二回归:旧版切段吞整页页脚)", () => {
+    const rows = parseXiaomiToken(XIAOMI_HTML, "https://platform.xiaomimimo.com/token-plan", NOW);
+    const all = rows.flatMap((r) => r.benefits ?? []).join("|");
+    for (const noise of [
+      "邀好友",
+      "Copyright",
+      "立即购买",
+      "常见问题",
+      "首购优惠",
+      "加购",
+      "MiMo Claw ¥",
+    ]) {
+      expect(all).not.toContain(noise);
+    }
+    expect(rows.every((r) => r.quotaDesc.includes("Credits"))).toBe(true);
+  });
+
+  it("百炼 Token Plan 个人版四档:原价入 fee/限时价入注记;用量包与团队座席不入库", () => {
+    const rows = parseBailianToken(
+      BAILIAN_TOKEN_HTML,
+      "https://help.aliyun.com/zh/model-studio/token-plan-overview",
       NOW,
     );
-    expect(rows).toHaveLength(1);
+    expect(rows.map((r) => r.planName)).toEqual([
+      "百炼 Token Plan · Lite",
+      "百炼 Token Plan · Essential",
+      "百炼 Token Plan · Standard",
+      "百炼 Token Plan · Pro",
+    ]);
     expect(rows[0]).toMatchObject({
       vendor: "阿里云百炼",
-      planName: "百炼 Coding Plan · Pro",
-      monthlyFee: 200,
+      currency: "CNY",
+      monthlyFee: 60, // 原价(限时 39 入注记)
       quarterlyFee: null,
       yearlyFee: null,
-      billingNote: "新客首月 ¥39.90(官网目录价 ¥200/月),后续按 ¥200/月 续费",
-      quotaDesc: "每5小时6,000次请求每周45,000次请求每月90,000次请求",
+      billingNote: "限时优惠 ¥39/月(原价 ¥60/月)",
+      quotaDesc: "11,500 Credits/月",
+      note: "仅支持华北2(北京)地域",
     });
-    expect(rows[0]!.benefits).toContain("qwen3.7-plus(支持图片理解)");
+    expect(rows[3]).toMatchObject({ monthlyFee: 600, quotaDesc: "180,000 Credits/月" });
+    expect(rows[0]!.benefits).toEqual([
+      "每月限额 11,500 Credits",
+      "并发 Agent 1-2 个",
+      "文本/图像/视频/语音模型与模型内置工具统一按 Credits 抵扣",
+    ]);
+    // Standard/Pro 独有 AgentStudio 附赠(官方原文)
+    expect(rows[2]!.benefits).toHaveLength(4);
+    expect(rows[2]!.benefits![3]).toBe("附赠 AgentStudio 工具额度与折扣");
+  });
+
+  it("百炼 Token Plan 结构错位(改版)抛错,不静默错配价格", () => {
+    expect(() => parseBailianToken("<p>Lite 套餐</p>", "https://x/", NOW)).toThrow(
+      "bailian token 结构未匹配",
+    );
   });
 });
