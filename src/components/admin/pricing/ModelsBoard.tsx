@@ -1,24 +1,56 @@
 "use client";
 
 /**
- * 模型牌价策展台(M55 批A,/admin/pricing 上半区):爬虫/手工数据统一治理——
- * 手工新建(缺省落 pending)/ 行内启停(enabled=终审可见,disabled=停用)/
- * 改价(label+价格行内编辑,反常态前端预检)+ 删除。pending 行半透明+「待审」
- * 徽章;变更走 /api/pricing/models,router.refresh 重取。
+ * 模型牌价策展板 v2(M56 策展台重构,2026-10-29 验收反馈):列表优先——
+ * 状态页签筛选(全部/待审/已发布/停用)+ 关键词搜索(厂商/模型/备注)+
+ * 行内高频操作(状态终审/改价/删)+ 来源列(官方页↗,验收问题三);
+ * 低频新建收进抽屉表单(字段三段:归属/价格/溯源),不再常驻占首屏。
+ * 三规则不变:新建落 pending;刷新不动终审行;currency 随价格走。
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ModelPricingRow } from "@/lib/pricing/admin";
 import type { ApiEnvelope } from "@/lib/http/response";
 
+import Drawer from "./Drawer";
+
 type Msg = { tone: "ok" | "err"; text: string } | null;
+type StatusFilter = "all" | "pending" | "enabled" | "disabled";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待审",
   enabled: "已发布",
   disabled: "停用",
 };
+
+const FILTERS: ReadonlyArray<{ key: StatusFilter; label: string }> = [
+  { key: "all", label: "全部" },
+  { key: "pending", label: "待审" },
+  { key: "enabled", label: "已发布" },
+  { key: "disabled", label: "停用" },
+];
+
+const EMPTY_FORM = {
+  vendor: "",
+  modelKey: "",
+  currency: "CNY",
+  region: "cn",
+  inputPrice: "",
+  outputPrice: "",
+  freeTier: "",
+  contextWindow: "",
+  dataAsOf: "",
+  sourceUrl: "",
+};
+
+const input =
+  "w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs outline-none focus:border-accent";
+const label = "mb-1 block text-[11px] text-text-3";
+
+function SectionTitle({ children }: { children: React.ReactNode }): React.ReactElement {
+  return <div className="col-span-full mt-1 text-[11px] font-semibold text-text-2">{children}</div>;
+}
 
 /** 反常态前端预检(与后端 Zod 守卫双落,弱提交早反馈) */
 function isInverted(a: string, b: string): boolean {
@@ -27,28 +59,39 @@ function isInverted(a: string, b: string): boolean {
   return a !== "" && b !== "" && Number.isFinite(x) && Number.isFinite(y) && x > y;
 }
 
-const input =
-  "rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent";
-
 export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): React.ReactElement {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
-  const [form, setForm] = useState({
-    vendor: "",
-    modelKey: "",
-    currency: "CNY",
-    inputPrice: "",
-    outputPrice: "",
-    freeTier: "",
-    contextWindow: "",
-    region: "cn",
-    dataAsOf: "",
-    sourceUrl: "",
-    confirmInverted: false,
-  });
+  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [query, setQuery] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_FORM, confirmInverted: false });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState({ inputPrice: "", outputPrice: "" });
+
+  const counts = useMemo(
+    () => ({
+      all: rows.length,
+      pending: rows.filter((r) => r.status === "pending").length,
+      enabled: rows.filter((r) => r.status === "enabled").length,
+      disabled: rows.filter((r) => r.status === "disabled").length,
+    }),
+    [rows],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (filter !== "all" && r.status !== filter) return false;
+      if (q === "") return true;
+      return (
+        r.modelKey.toLowerCase().includes(q) ||
+        r.vendor.toLowerCase().includes(q) ||
+        (r.note ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [rows, filter, query]);
 
   async function send(
     url: string,
@@ -93,28 +136,19 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
         vendor: form.vendor.trim(),
         modelKey: form.modelKey.trim(),
         currency: form.currency,
+        region: form.region,
         inputPrice: form.inputPrice === "" ? null : Number(form.inputPrice),
         outputPrice: form.outputPrice === "" ? null : Number(form.outputPrice),
         freeTier: form.freeTier.trim() === "" ? null : form.freeTier.trim(),
         contextWindow: form.contextWindow.trim() === "" ? null : form.contextWindow.trim(),
-        region: form.region,
         dataAsOf: form.dataAsOf,
         sourceUrl: form.sourceUrl.trim(),
         confirmInverted: inverted,
       });
       if (env?.code === 0) {
-        setForm({
-          ...form,
-          vendor: "",
-          modelKey: "",
-          inputPrice: "",
-          outputPrice: "",
-          freeTier: "",
-          contextWindow: "",
-          sourceUrl: "",
-          confirmInverted: false,
-        });
-        return { ok: true, message: "已新建(待审)" };
+        setForm({ ...EMPTY_FORM, confirmInverted: false });
+        setDrawerOpen(false);
+        return { ok: true, message: "已新建(待审),在「待审」页签终审发布" };
       }
       return { ok: false, message: env?.message ?? "新建失败" };
     });
@@ -138,111 +172,48 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">模型牌价</h3>
-        <span className="text-[11px] text-text-3">
-          {rows.filter((r) => r.status === "enabled").length} 已发布 ·{" "}
-          {rows.filter((r) => r.status === "pending").length} 待审 · 单位:货币 / 百万 tokens
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-1.5 rounded-md border border-line bg-panel px-4 py-3 sm:grid-cols-4 lg:grid-cols-6">
+      {/* 工具行:状态筛选 + 搜索 + 新建 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-sm border border-line bg-panel-2 p-0.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={`rounded-sm px-2.5 py-1 text-xs ${
+                filter === f.key
+                  ? "bg-panel font-medium text-text-1"
+                  : "text-text-3 hover:text-text-2"
+              }`}
+            >
+              {f.label}
+              <span className="ml-1 font-mono text-[10px]">{counts[f.key]}</span>
+            </button>
+          ))}
+        </div>
         <input
-          value={form.vendor}
-          onChange={(e) => setForm({ ...form, vendor: e.target.value })}
-          placeholder="厂商 *"
-          className={input}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索厂商 / 模型 / 备注"
+          className="w-48 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent"
         />
-        <input
-          value={form.modelKey}
-          onChange={(e) => setForm({ ...form, modelKey: e.target.value })}
-          placeholder="模型标识 * (如 deepseek-v3.2)"
-          className={input}
-        />
-        <select
-          value={form.currency}
-          onChange={(e) => setForm({ ...form, currency: e.target.value })}
-          className={input}
-          aria-label="币种"
-        >
-          <option value="CNY">¥ CNY</option>
-          <option value="USD">$ USD</option>
-        </select>
-        <select
-          value={form.region}
-          onChange={(e) => setForm({ ...form, region: e.target.value })}
-          className={input}
-          aria-label="分组"
-        >
-          <option value="cn">国内</option>
-          <option value="intl">国际</option>
-        </select>
-        <input
-          value={form.inputPrice}
-          onChange={(e) => setForm({ ...form, inputPrice: e.target.value })}
-          placeholder="输入价"
-          className={input}
-          inputMode="decimal"
-        />
-        <input
-          value={form.outputPrice}
-          onChange={(e) => setForm({ ...form, outputPrice: e.target.value })}
-          placeholder="输出价"
-          className={input}
-          inputMode="decimal"
-        />
-        <input
-          value={form.freeTier}
-          onChange={(e) => setForm({ ...form, freeTier: e.target.value })}
-          placeholder="免费额度(空=—)"
-          className={input}
-        />
-        <input
-          value={form.contextWindow}
-          onChange={(e) => setForm({ ...form, contextWindow: e.target.value })}
-          placeholder="上下文(如 128K)"
-          className={input}
-        />
-        <input
-          type="date"
-          value={form.dataAsOf}
-          onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
-          className={input}
-          aria-label="数据截至"
-        />
-        <input
-          value={form.sourceUrl}
-          onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
-          placeholder="来源链接 * (https://…)"
-          className={`${input} lg:col-span-2`}
-        />
-        <label className="flex items-center gap-1 text-[11px] text-text-3">
-          <input
-            type="checkbox"
-            checked={form.confirmInverted}
-            onChange={(e) => setForm({ ...form, confirmInverted: e.target.checked })}
-          />
-          确认反常态
-        </label>
         <button
           type="button"
-          onClick={submitNew}
-          disabled={busy}
-          className="rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
+          onClick={() => setDrawerOpen(true)}
+          className="ml-auto rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90"
         >
-          添加(待审)
+          ＋ 新建牌价
         </button>
-        {msg !== null && (
-          <span
-            className={`col-span-full text-xs ${msg.tone === "ok" ? "text-green" : "text-red"}`}
-          >
-            {msg.text}
-          </span>
-        )}
       </div>
 
+      {msg !== null && (
+        <span className={`text-xs ${msg.tone === "ok" ? "text-green" : "text-red"}`}>
+          {msg.text}
+        </span>
+      )}
+
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full min-w-[860px] text-left text-[13px]">
+        <table className="w-full min-w-[900px] text-left text-[13px]">
           <thead>
             <tr className="border-b border-line bg-panel-2 text-[11px] text-text-3">
               <th className="px-4 py-2 font-medium">模型 / 厂商</th>
@@ -251,17 +222,18 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
               <th className="px-2 py-2 font-medium">免费额度</th>
               <th className="px-2 py-2 font-medium">上下文</th>
               <th className="px-2 py-2 font-medium">截至</th>
+              <th className="px-2 py-2 font-medium">来源</th>
               <th className="px-2 py-2 font-medium">状态</th>
               <th className="px-2 py-2 font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {filtered.map((r) => {
               const editing = editingId === r.id;
               return (
                 <tr
                   key={r.id}
-                  className={`border-b border-line/60 last:border-0 ${r.status === "pending" ? "opacity-60" : ""}`}
+                  className={`border-b border-line/60 last:border-0 ${r.status === "pending" ? "opacity-70" : ""}`}
                 >
                   <td className="px-4 py-2">
                     <div className="font-mono text-xs text-text-1">
@@ -272,11 +244,9 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                       {r.vendor} · {r.region === "cn" ? "国内" : "国际"}
                     </div>
                     {r.note !== null && r.note !== "" && (
-                      // note 承载通道溯源与爬虫矩阵;含「待复核」= 源爬取失败旧数据,
-                      // 琥珀提醒直至该源爬取成功(pending 自动摘标)或人工复核改写
                       <div
                         title={r.note}
-                        className={`mt-0.5 max-w-[280px] truncate text-[11px] ${
+                        className={`mt-0.5 max-w-[220px] truncate text-[11px] ${
                           r.note.includes("待复核") ? "text-amber" : "text-text-3"
                         }`}
                       >
@@ -317,6 +287,18 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                     {r.contextWindow ?? "—"}
                   </td>
                   <td className="px-2 py-2 font-mono text-[11px] text-text-3">{r.dataAsOf}</td>
+                  <td className="px-2 py-2">
+                    {/* 验收问题三:策展行直达官方源页核对 */}
+                    <a
+                      href={r.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={r.sourceUrl}
+                      className="text-[11px] text-blue hover:text-blue/80"
+                    >
+                      官方↗
+                    </a>
+                  </td>
                   <td className="px-2 py-2">
                     <button
                       type="button"
@@ -403,9 +385,149 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                 </tr>
               );
             })}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-4 py-8 text-center text-xs text-text-3">
+                  {rows.length === 0
+                    ? "暂无牌价行:点右上「新建牌价」或爬取初稿"
+                    : "无匹配行(调整筛选或搜索词)"}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* 新建抽屉(字段三段:归属/价格/溯源) */}
+      <Drawer
+        open={drawerOpen}
+        title="新建牌价(落待审)"
+        onClose={() => setDrawerOpen(false)}
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1 text-[11px] text-text-3">
+              <input
+                type="checkbox"
+                checked={form.confirmInverted}
+                onChange={(e) => setForm({ ...form, confirmInverted: e.target.checked })}
+              />
+              确认反常态
+            </label>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={submitNew}
+              className="rounded-sm bg-accent px-4 py-1.5 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
+            >
+              提交(待审)
+            </button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <SectionTitle>归属</SectionTitle>
+          <div>
+            <span className={label}>厂商 *</span>
+            <input
+              value={form.vendor}
+              onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+              placeholder="如 DeepSeek 深度求索"
+              className={input}
+            />
+          </div>
+          <div>
+            <span className={label}>模型标识 *</span>
+            <input
+              value={form.modelKey}
+              onChange={(e) => setForm({ ...form, modelKey: e.target.value })}
+              placeholder="如 deepseek-v3.2"
+              className={input}
+            />
+          </div>
+          <div>
+            <span className={label}>币种</span>
+            <select
+              value={form.currency}
+              onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              className={input}
+              aria-label="币种"
+            >
+              <option value="CNY">¥ CNY</option>
+              <option value="USD">$ USD</option>
+            </select>
+          </div>
+          <div>
+            <span className={label}>分组</span>
+            <select
+              value={form.region}
+              onChange={(e) => setForm({ ...form, region: e.target.value })}
+              className={input}
+              aria-label="分组"
+            >
+              <option value="cn">国内</option>
+              <option value="intl">国际</option>
+            </select>
+          </div>
+          <SectionTitle>价格(货币 / 百万 tokens)</SectionTitle>
+          <div>
+            <span className={label}>输入价</span>
+            <input
+              value={form.inputPrice}
+              onChange={(e) => setForm({ ...form, inputPrice: e.target.value })}
+              placeholder="空=未公布"
+              className={input}
+              inputMode="decimal"
+            />
+          </div>
+          <div>
+            <span className={label}>输出价</span>
+            <input
+              value={form.outputPrice}
+              onChange={(e) => setForm({ ...form, outputPrice: e.target.value })}
+              placeholder="空=未公布"
+              className={input}
+              inputMode="decimal"
+            />
+          </div>
+          <div>
+            <span className={label}>免费额度</span>
+            <input
+              value={form.freeTier}
+              onChange={(e) => setForm({ ...form, freeTier: e.target.value })}
+              placeholder="空=—"
+              className={input}
+            />
+          </div>
+          <div>
+            <span className={label}>上下文</span>
+            <input
+              value={form.contextWindow}
+              onChange={(e) => setForm({ ...form, contextWindow: e.target.value })}
+              placeholder="如 128K"
+              className={input}
+            />
+          </div>
+          <SectionTitle>溯源</SectionTitle>
+          <div>
+            <span className={label}>数据截至 *</span>
+            <input
+              type="date"
+              value={form.dataAsOf}
+              onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
+              className={input}
+            />
+          </div>
+          <div className="col-span-2">
+            <span className={label}>来源链接 *(官方牌价页)</span>
+            <input
+              value={form.sourceUrl}
+              onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+              placeholder="https://…"
+              className={input}
+            />
+          </div>
+        </div>
+      </Drawer>
     </div>
   );
 }

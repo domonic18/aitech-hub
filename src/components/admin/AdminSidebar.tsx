@@ -51,6 +51,9 @@ const GROUPS: ReadonlyArray<Group> = [
       // 贴图管理(M41):公众号小绿书图片帖工作台(流水线+组装台)
       { icon: "i-appstore", label: "贴图管理", href: "/admin/pins" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
+      // 牌价管理(M55 工具钩子,M56 验收 IA 归位 2026-10-29):/pricing/ 公开页
+      // 的牌价策展面(双表终审+渠道管理)——内容策展队列维度,自「数据」组迁入
+      { icon: "i-global", label: "牌价管理", href: "/admin/pricing" },
     ],
   },
   {
@@ -68,8 +71,6 @@ const GROUPS: ReadonlyArray<Group> = [
       { icon: "i-cloudserver", label: "数据中心", href: "/admin/data" },
       // 洞察中心(IA v5 板定):独立域(分析总览 + 发现),自数据壳迁出
       { icon: "i-aim", label: "洞察中心", href: "/admin/insight" },
-      // 价格速查(M55 工具钩子):/pricing/ 公开页的牌价策展面(双表终审)
-      { icon: "i-global", label: "价格速查", href: "/admin/pricing" },
     ],
   },
   {

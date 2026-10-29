@@ -13,7 +13,9 @@ const NAV = [
   { href: "/articles/", label: "文章" },
   { href: "/projects/", label: "项目" },
   { href: "/pins/", label: "贴图" },
-  { href: "/pricing/", label: "价格速查" },
+  // 专题聚合(A1 专题聚合 2026-10-29):价格速查等参考工具页归入专题,
+  // 主导航保持内容频道维度;价格速查直达入口保留在 footer 与专题页
+  { href: "/topics/", label: "专题" },
 ];
 
 /**

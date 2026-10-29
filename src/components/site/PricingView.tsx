@@ -196,6 +196,18 @@ function PlanCycleDetails({ r }: { r: PublicPlanRow }): React.ReactElement | nul
             ))}
           </ul>
         )}
+        {/* 验收问题三:来源页直达(数据可溯源) */}
+        <div>
+          来源:
+          <a
+            href={r.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue hover:text-blue/80"
+          >
+            官方页↗
+          </a>
+        </div>
       </div>
     </details>
   );
