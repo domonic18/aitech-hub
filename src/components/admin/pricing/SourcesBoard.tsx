@@ -1,13 +1,17 @@
 "use client";
 
 /**
- * 渠道管理(M56 批B):牌价渠道 URL/启停后台可调零发版——解析器住代码
- * (key/kind 只读展示),url/enabled 落 pricing_source 表即改即生效(下次
- * 爬取按新值执行)。PUT /api/pricing/sources/[key],router.refresh 重取。
+ * 渠道管理(M56 批B 建;2026-10-29 验收反馈二重构,对齐系统交互范式):
+ * URL 列只读展示(截断+外链),编辑走 DialogShell 弹窗(与 ChannelDialog
+ * 等七处同壳防漂移);启停用 StatusSwitch 胶囊开关(同渠道/博主台账);
+ * 行操作按钮对齐 RowOps 样式(px-2 py-1 hover:bg)。解析器住代码,key/kind
+ * 只读;url/enabled 后台可调零发版。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import StatusSwitch from "@/components/admin/StatusSwitch";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 export interface PricingSourceView {
@@ -20,8 +24,6 @@ export interface PricingSourceView {
   enabled: boolean;
 }
 
-type Msg = { tone: "ok" | "err"; text: string } | null;
-
 const TARGET_LABELS: Record<string, string> = { model: "模型行", plan: "套餐" };
 const KIND_LABELS: Record<string, string> = {
   static: "静态直取",
@@ -32,44 +34,31 @@ const KIND_LABELS: Record<string, string> = {
 export default function SourcesBoard({ rows }: { rows: PricingSourceView[] }): React.ReactElement {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<Msg>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(rows.map((r) => [r.key, r.url])),
-  );
+  const [editing, setEditing] = useState<PricingSourceView | null>(null);
+  const [draftUrl, setDraftUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  async function save(key: string): Promise<void> {
-    if (busy) return;
+  async function saveUrl(): Promise<void> {
+    if (editing === null || busy) return;
     setBusy(true);
-    setMsg(null);
-    const url = (drafts[key] ?? "").trim();
-    const res = await fetch(`/api/pricing/sources/${key}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    const env = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
-    setMsg({ tone: (env?.code ?? 1) === 0 ? "ok" : "err", text: env?.message ?? "保存失败" });
-    if (env?.code === 0) router.refresh();
-    setBusy(false);
+    setError(null);
+    try {
+      const res = await fetch(`/api/pricing/sources/${editing.key}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: draftUrl.trim() }),
+      });
+      const env = (await res.json().catch(() => null)) as ApiEnvelope | null;
+      if ((env?.code ?? 1) !== 0) {
+        setError(env?.message ?? "保存失败");
+        return;
+      }
+      setEditing(null);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
-
-  async function toggle(key: string, enabled: boolean): Promise<void> {
-    if (busy) return;
-    setBusy(true);
-    setMsg(null);
-    const res = await fetch(`/api/pricing/sources/${key}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    });
-    const env = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
-    setMsg({ tone: (env?.code ?? 1) === 0 ? "ok" : "err", text: env?.message ?? "操作失败" });
-    if (env?.code === 0) router.refresh();
-    setBusy(false);
-  }
-
-  const input =
-    "w-full rounded-sm border border-line bg-panel-2 px-2 py-1 font-mono text-xs outline-none focus:border-accent";
 
   return (
     <div className="flex flex-col gap-3">
@@ -85,7 +74,7 @@ export default function SourcesBoard({ rows }: { rows: PricingSourceView[] }): R
             <tr className="border-b border-line bg-panel-2 text-[11px] text-text-3">
               <th className="px-4 py-2 font-medium">渠道</th>
               <th className="px-2 py-2 font-medium">官方页 URL</th>
-              <th className="px-2 py-2 font-medium">状态</th>
+              <th className="px-2 py-2 font-medium">启用</th>
               <th className="px-2 py-2 font-medium">操作</th>
             </tr>
           </thead>
@@ -100,47 +89,79 @@ export default function SourcesBoard({ rows }: { rows: PricingSourceView[] }): R
                     <span>· {KIND_LABELS[r.kind] ?? r.kind}</span>
                   </div>
                 </td>
+                <td className="max-w-[380px] px-2 py-2.5">
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`${r.url}(点击打开)`}
+                    className="block truncate font-mono text-xs text-text-2 hover:text-blue"
+                  >
+                    {r.url}
+                  </a>
+                </td>
                 <td className="px-2 py-2.5">
-                  <input
-                    value={drafts[r.key] ?? r.url}
-                    onChange={(e) => setDrafts({ ...drafts, [r.key]: e.target.value })}
-                    className={input}
-                    aria-label={`${r.label} URL`}
+                  <StatusSwitch
+                    endpoint={`/api/pricing/sources/${r.key}`}
+                    enabled={r.enabled}
+                    name={r.label}
+                    disableHint={`确认停用渠道「${r.label}」?停用后下次爬取不再执行该渠道。`}
                   />
                 </td>
                 <td className="px-2 py-2.5">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void toggle(r.key, !r.enabled)}
-                    className={`rounded-sm px-2 py-0.5 text-[11px] disabled:opacity-50 ${
-                      r.enabled
-                        ? "bg-green/12 text-green"
-                        : "bg-panel-2 text-text-3 hover:text-text-1"
-                    }`}
-                  >
-                    {r.enabled ? "启用中" : "已停用"}
-                  </button>
-                </td>
-                <td className="px-2 py-2.5">
-                  <button
-                    type="button"
-                    disabled={busy || (drafts[r.key] ?? r.url) === r.url}
-                    onClick={() => void save(r.key)}
-                    className="text-xs text-accent hover:underline disabled:opacity-40"
-                  >
-                    保存 URL
-                  </button>
+                  <div className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(r);
+                        setDraftUrl(r.url);
+                        setError(null);
+                      }}
+                      className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
+                      disabled={busy}
+                    >
+                      编辑 URL
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {msg !== null && (
-        <span className={`text-xs ${msg.tone === "ok" ? "text-green" : "text-red"}`}>
-          {msg.text}
-        </span>
+
+      {editing !== null && (
+        <DialogShell width="lg" title={`编辑渠道 URL:${editing.label}`}>
+          <p className="mb-3 font-mono text-[11px] text-text-3">{editing.key}</p>
+          <label className="mb-1 block text-[11px] text-text-3" htmlFor="source-url-input">
+            官方页 URL(rendered 型渠道为快照目标;即改即生效)
+          </label>
+          <input
+            id="source-url-input"
+            value={draftUrl}
+            onChange={(e) => setDraftUrl(e.target.value)}
+            className="w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 font-mono text-xs outline-none focus:border-accent"
+            placeholder="https://…"
+          />
+          {error !== null && <p className="mt-2 text-xs text-red">{error}</p>}
+          <DialogActions>
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="cursor-pointer rounded-sm px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={busy || draftUrl.trim() === ""}
+              onClick={() => void saveUrl()}
+              className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
+            >
+              保存
+            </button>
+          </DialogActions>
+        </DialogShell>
       )}
     </div>
   );

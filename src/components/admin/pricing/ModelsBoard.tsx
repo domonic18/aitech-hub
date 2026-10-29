@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import type { ModelPricingRow } from "@/lib/pricing/admin";
 import type { ApiEnvelope } from "@/lib/http/response";
 
-import Drawer from "./Drawer";
+import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
 type Msg = { tone: "ok" | "err"; text: string } | null;
 type StatusFilter = "all" | "pending" | "enabled" | "disabled";
@@ -65,7 +65,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
   const [msg, setMsg] = useState<Msg>(null);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM, confirmInverted: false });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState({ inputPrice: "", outputPrice: "" });
@@ -147,7 +147,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
       });
       if (env?.code === 0) {
         setForm({ ...EMPTY_FORM, confirmInverted: false });
-        setDrawerOpen(false);
+        setDialogOpen(false);
         return { ok: true, message: "已新建(待审),在「待审」页签终审发布" };
       }
       return { ok: false, message: env?.message ?? "新建失败" };
@@ -199,7 +199,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
         />
         <button
           type="button"
-          onClick={() => setDrawerOpen(true)}
+          onClick={() => setDialogOpen(true)}
           className="ml-auto rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90"
         >
           ＋ 新建牌价
@@ -334,14 +334,14 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                             type="button"
                             disabled={busy}
                             onClick={() => savePrice(r)}
-                            className="text-accent hover:underline disabled:opacity-50"
+                            className="cursor-pointer rounded-sm px-2 py-1 text-accent hover:bg-accent-dim disabled:opacity-50"
                           >
                             保存
                           </button>
                           <button
                             type="button"
                             onClick={() => setEditingId(null)}
-                            className="text-text-3 hover:text-text-1"
+                            className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2"
                           >
                             取消
                           </button>
@@ -357,7 +357,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                                 outputPrice: r.outputPrice === null ? "" : String(r.outputPrice),
                               });
                             }}
-                            className="text-text-2 hover:text-text-1"
+                            className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2"
                           >
                             改价
                           </button>
@@ -374,7 +374,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                                 };
                               });
                             }}
-                            className="text-text-3 hover:text-red disabled:opacity-50"
+                            className="cursor-pointer rounded-sm px-2 py-1 text-text-3 hover:bg-red/10 hover:text-red disabled:opacity-50"
                           >
                             删
                           </button>
@@ -398,14 +398,114 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
         </table>
       </div>
 
-      {/* 新建抽屉(字段三段:归属/价格/溯源) */}
-      <Drawer
-        open={drawerOpen}
-        title="新建牌价(落待审)"
-        onClose={() => setDrawerOpen(false)}
-        footer={
-          <div className="flex items-center justify-between gap-2">
-            <label className="flex items-center gap-1 text-[11px] text-text-3">
+      {/* 新建弹窗(字段三段:归属/价格/溯源;系统 DialogShell 同壳) */}
+      {dialogOpen && (
+        <DialogShell width="2xl" scroll title="新建牌价(落待审)">
+          <div className="grid grid-cols-2 gap-3">
+            <SectionTitle>归属</SectionTitle>
+            <div>
+              <span className={label}>厂商 *</span>
+              <input
+                value={form.vendor}
+                onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+                placeholder="如 DeepSeek 深度求索"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>模型标识 *</span>
+              <input
+                value={form.modelKey}
+                onChange={(e) => setForm({ ...form, modelKey: e.target.value })}
+                placeholder="如 deepseek-v3.2"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>币种</span>
+              <select
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className={input}
+                aria-label="币种"
+              >
+                <option value="CNY">¥ CNY</option>
+                <option value="USD">$ USD</option>
+              </select>
+            </div>
+            <div>
+              <span className={label}>分组</span>
+              <select
+                value={form.region}
+                onChange={(e) => setForm({ ...form, region: e.target.value })}
+                className={input}
+                aria-label="分组"
+              >
+                <option value="cn">国内</option>
+                <option value="intl">国际</option>
+              </select>
+            </div>
+            <SectionTitle>价格(货币 / 百万 tokens)</SectionTitle>
+            <div>
+              <span className={label}>输入价</span>
+              <input
+                value={form.inputPrice}
+                onChange={(e) => setForm({ ...form, inputPrice: e.target.value })}
+                placeholder="空=未公布"
+                className={input}
+                inputMode="decimal"
+              />
+            </div>
+            <div>
+              <span className={label}>输出价</span>
+              <input
+                value={form.outputPrice}
+                onChange={(e) => setForm({ ...form, outputPrice: e.target.value })}
+                placeholder="空=未公布"
+                className={input}
+                inputMode="decimal"
+              />
+            </div>
+            <div>
+              <span className={label}>免费额度</span>
+              <input
+                value={form.freeTier}
+                onChange={(e) => setForm({ ...form, freeTier: e.target.value })}
+                placeholder="空=—"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>上下文</span>
+              <input
+                value={form.contextWindow}
+                onChange={(e) => setForm({ ...form, contextWindow: e.target.value })}
+                placeholder="如 128K"
+                className={input}
+              />
+            </div>
+            <SectionTitle>溯源</SectionTitle>
+            <div>
+              <span className={label}>数据截至 *</span>
+              <input
+                type="date"
+                value={form.dataAsOf}
+                onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
+                className={input}
+              />
+            </div>
+            <div className="col-span-2">
+              <span className={label}>来源链接 *(官方牌价页)</span>
+              <input
+                value={form.sourceUrl}
+                onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+                placeholder="https://…"
+                className={input}
+              />
+            </div>
+          </div>
+          <DialogActions>
+            <label className="mr-auto flex items-center gap-1 text-[11px] text-text-3">
               <input
                 type="checkbox"
                 checked={form.confirmInverted}
@@ -415,119 +515,22 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
             </label>
             <button
               type="button"
+              onClick={() => setDialogOpen(false)}
+              className="cursor-pointer rounded-sm px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+            >
+              取消
+            </button>
+            <button
+              type="button"
               disabled={busy}
               onClick={submitNew}
-              className="rounded-sm bg-accent px-4 py-1.5 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
+              className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
             >
               提交(待审)
             </button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3">
-          <SectionTitle>归属</SectionTitle>
-          <div>
-            <span className={label}>厂商 *</span>
-            <input
-              value={form.vendor}
-              onChange={(e) => setForm({ ...form, vendor: e.target.value })}
-              placeholder="如 DeepSeek 深度求索"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>模型标识 *</span>
-            <input
-              value={form.modelKey}
-              onChange={(e) => setForm({ ...form, modelKey: e.target.value })}
-              placeholder="如 deepseek-v3.2"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>币种</span>
-            <select
-              value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
-              className={input}
-              aria-label="币种"
-            >
-              <option value="CNY">¥ CNY</option>
-              <option value="USD">$ USD</option>
-            </select>
-          </div>
-          <div>
-            <span className={label}>分组</span>
-            <select
-              value={form.region}
-              onChange={(e) => setForm({ ...form, region: e.target.value })}
-              className={input}
-              aria-label="分组"
-            >
-              <option value="cn">国内</option>
-              <option value="intl">国际</option>
-            </select>
-          </div>
-          <SectionTitle>价格(货币 / 百万 tokens)</SectionTitle>
-          <div>
-            <span className={label}>输入价</span>
-            <input
-              value={form.inputPrice}
-              onChange={(e) => setForm({ ...form, inputPrice: e.target.value })}
-              placeholder="空=未公布"
-              className={input}
-              inputMode="decimal"
-            />
-          </div>
-          <div>
-            <span className={label}>输出价</span>
-            <input
-              value={form.outputPrice}
-              onChange={(e) => setForm({ ...form, outputPrice: e.target.value })}
-              placeholder="空=未公布"
-              className={input}
-              inputMode="decimal"
-            />
-          </div>
-          <div>
-            <span className={label}>免费额度</span>
-            <input
-              value={form.freeTier}
-              onChange={(e) => setForm({ ...form, freeTier: e.target.value })}
-              placeholder="空=—"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>上下文</span>
-            <input
-              value={form.contextWindow}
-              onChange={(e) => setForm({ ...form, contextWindow: e.target.value })}
-              placeholder="如 128K"
-              className={input}
-            />
-          </div>
-          <SectionTitle>溯源</SectionTitle>
-          <div>
-            <span className={label}>数据截至 *</span>
-            <input
-              type="date"
-              value={form.dataAsOf}
-              onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
-              className={input}
-            />
-          </div>
-          <div className="col-span-2">
-            <span className={label}>来源链接 *(官方牌价页)</span>
-            <input
-              value={form.sourceUrl}
-              onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
-              placeholder="https://…"
-              className={input}
-            />
-          </div>
-        </div>
-      </Drawer>
+          </DialogActions>
+        </DialogShell>
+      )}
     </div>
   );
 }

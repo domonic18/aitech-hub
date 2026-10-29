@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import type { CodingPlanRow } from "@/lib/pricing/admin";
 import type { ApiEnvelope } from "@/lib/http/response";
 
-import Drawer from "./Drawer";
+import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
 type Msg = { tone: "ok" | "err"; text: string } | null;
 type StatusFilter = "all" | "pending" | "enabled" | "disabled";
@@ -60,7 +60,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
   const [msg, setMsg] = useState<Msg>(null);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState<CodingPlanRow | null>(null);
 
@@ -127,7 +127,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
       dataAsOf: row.dataAsOf,
       sourceUrl: row.sourceUrl,
     });
-    setDrawerOpen(true);
+    setDialogOpen(true);
     setMsg(null);
   }
 
@@ -164,7 +164,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
           : await send(`/api/pricing/plans/${editing.id}`, "PUT", body);
       if (env?.code === 0) {
         setForm(EMPTY_FORM);
-        setDrawerOpen(false);
+        setDialogOpen(false);
         setEditing(null);
         return { ok: true, message: editing === null ? "已新建(待审)" : "已保存" };
       }
@@ -202,7 +202,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
         />
         <button
           type="button"
-          onClick={() => setDrawerOpen(true)}
+          onClick={() => setDialogOpen(true)}
           className="ml-auto rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90"
         >
           ＋ 新建套餐
@@ -273,7 +273,19 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
                     </details>
                   )}
                 </td>
-                <td className="px-2 py-2 font-mono text-xs">{money(r.monthlyFee)}</td>
+                <td className="px-2 py-2">
+                  <div className="font-mono text-xs">{money(r.monthlyFee)}</div>
+                  {(r.quarterlyFee !== null || r.yearlyFee !== null) && (
+                    // 周期价直显(验收问题一):比价所需季/年不必展开
+                    <div
+                      className="mt-0.5 font-mono text-[10.5px] text-text-3"
+                      title={r.billingNote ?? undefined}
+                    >
+                      {r.quarterlyFee !== null && <div>季 {money(r.quarterlyFee)}</div>}
+                      {r.yearlyFee !== null && <div>年 {money(r.yearlyFee)}</div>}
+                    </div>
+                  )}
+                </td>
                 <td className="px-2 py-2 text-xs text-text-2">{r.quotaDesc}</td>
                 <td className="px-2 py-2 font-mono text-[11px] text-amber">
                   {[r.peakRate, r.offPeakRate].filter(Boolean).join(" · ") || "—"}
@@ -322,7 +334,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
                       type="button"
                       disabled={busy}
                       onClick={() => startEdit(r)}
-                      className="text-text-2 hover:text-text-1 disabled:opacity-50"
+                      className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
                     >
                       编辑
                     </button>
@@ -339,7 +351,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
                           };
                         });
                       }}
-                      className="text-xs text-text-3 hover:text-red disabled:opacity-50"
+                      className="cursor-pointer rounded-sm px-2 py-1 text-text-3 hover:bg-red/10 hover:text-red disabled:opacity-50"
                     >
                       删
                     </button>
@@ -360,154 +372,163 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
         </table>
       </div>
 
-      {/* 新建抽屉(字段三段:归属/价格与周期/溯源) */}
-      <Drawer
-        open={drawerOpen}
-        title={editing === null ? "新建套餐(落待审)" : `编辑套餐:${editing.planName}`}
-        onClose={() => {
-          setDrawerOpen(false);
-          setEditing(null);
-        }}
-        footer={
-          <button
-            type="button"
-            disabled={busy}
-            onClick={submit}
-            className="w-full rounded-sm bg-accent px-4 py-1.5 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
-          >
-            {editing === null ? "提交(待审)" : "保存修改"}
-          </button>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3">
-          <SectionTitle>归属</SectionTitle>
-          <div>
-            <span className={label}>厂商 *</span>
-            <input
-              value={form.vendor}
-              onChange={(e) => setForm({ ...form, vendor: e.target.value })}
-              placeholder="如 智谱 AI · BigModel"
-              className={input}
-            />
+      {/* 新建/编辑弹窗(字段三段:归属/价格与周期/溯源;系统 DialogShell 同壳) */}
+      {dialogOpen && (
+        <DialogShell
+          width="2xl"
+          scroll
+          title={editing === null ? "新建套餐(落待审)" : `编辑套餐:${editing.planName}`}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <SectionTitle>归属</SectionTitle>
+            <div>
+              <span className={label}>厂商 *</span>
+              <input
+                value={form.vendor}
+                onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+                placeholder="如 智谱 AI · BigModel"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>套餐名 *</span>
+              <input
+                value={form.planName}
+                onChange={(e) => setForm({ ...form, planName: e.target.value })}
+                placeholder="如 GLM Coding Plan · Lite"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>币种</span>
+              <select
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className={input}
+                aria-label="币种"
+              >
+                <option value="CNY">¥ CNY</option>
+                <option value="USD">$ USD</option>
+              </select>
+            </div>
+            <div>
+              <span className={label}>适合人群</span>
+              <input
+                value={form.bestFor}
+                onChange={(e) => setForm({ ...form, bestFor: e.target.value })}
+                placeholder="如 个人日常"
+                className={input}
+              />
+            </div>
+            <SectionTitle>价格与周期(口径不归一,按官方原文)</SectionTitle>
+            <div>
+              <span className={label}>月费</span>
+              <input
+                value={form.monthlyFee}
+                onChange={(e) => setForm({ ...form, monthlyFee: e.target.value })}
+                placeholder="空=未公布"
+                className={input}
+                inputMode="decimal"
+              />
+            </div>
+            <div>
+              <span className={label}>连续包季(折合/月)</span>
+              <input
+                value={form.quarterlyFee}
+                onChange={(e) => setForm({ ...form, quarterlyFee: e.target.value })}
+                placeholder="空=无季付"
+                className={input}
+                inputMode="decimal"
+              />
+            </div>
+            <div>
+              <span className={label}>连续包年</span>
+              <input
+                value={form.yearlyFee}
+                onChange={(e) => setForm({ ...form, yearlyFee: e.target.value })}
+                placeholder="折合/月或周期总价"
+                className={input}
+                inputMode="decimal"
+              />
+            </div>
+            <div className="col-span-2">
+              <span className={label}>周期口径说明</span>
+              <input
+                value={form.billingNote}
+                onChange={(e) => setForm({ ...form, billingNote: e.target.value })}
+                placeholder="如 连续包季9折/包年8折,季年价为折合每月"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>高峰倍率</span>
+              <input
+                value={form.peakRate}
+                onChange={(e) => setForm({ ...form, peakRate: e.target.value })}
+                placeholder="如 峰 1×"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>闲时倍率</span>
+              <input
+                value={form.offPeakRate}
+                onChange={(e) => setForm({ ...form, offPeakRate: e.target.value })}
+                placeholder="如 谷 0.5×"
+                className={input}
+              />
+            </div>
+            <SectionTitle>溯源</SectionTitle>
+            <div className="col-span-2">
+              <span className={label}>额度口径 *(官方原文)</span>
+              <input
+                value={form.quotaDesc}
+                onChange={(e) => setForm({ ...form, quotaDesc: e.target.value })}
+                placeholder="如 GLM-4.6:120 prompts / 5h"
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>数据截至 *</span>
+              <input
+                type="date"
+                value={form.dataAsOf}
+                onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
+                className={input}
+              />
+            </div>
+            <div>
+              <span className={label}>来源链接 *</span>
+              <input
+                value={form.sourceUrl}
+                onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+                placeholder="https://…"
+                className={input}
+              />
+            </div>
           </div>
-          <div>
-            <span className={label}>套餐名 *</span>
-            <input
-              value={form.planName}
-              onChange={(e) => setForm({ ...form, planName: e.target.value })}
-              placeholder="如 GLM Coding Plan · Lite"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>币种</span>
-            <select
-              value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
-              className={input}
-              aria-label="币种"
+          <DialogActions>
+            <button
+              type="button"
+              onClick={() => {
+                setDialogOpen(false);
+                setEditing(null);
+              }}
+              className="cursor-pointer rounded-sm px-3 py-1.5 text-xs text-text-2 hover:bg-panel-2"
             >
-              <option value="CNY">¥ CNY</option>
-              <option value="USD">$ USD</option>
-            </select>
-          </div>
-          <div>
-            <span className={label}>适合人群</span>
-            <input
-              value={form.bestFor}
-              onChange={(e) => setForm({ ...form, bestFor: e.target.value })}
-              placeholder="如 个人日常"
-              className={input}
-            />
-          </div>
-          <SectionTitle>价格与周期(口径不归一,按官方原文)</SectionTitle>
-          <div>
-            <span className={label}>月费</span>
-            <input
-              value={form.monthlyFee}
-              onChange={(e) => setForm({ ...form, monthlyFee: e.target.value })}
-              placeholder="空=未公布"
-              className={input}
-              inputMode="decimal"
-            />
-          </div>
-          <div>
-            <span className={label}>连续包季(折合/月)</span>
-            <input
-              value={form.quarterlyFee}
-              onChange={(e) => setForm({ ...form, quarterlyFee: e.target.value })}
-              placeholder="空=无季付"
-              className={input}
-              inputMode="decimal"
-            />
-          </div>
-          <div>
-            <span className={label}>连续包年</span>
-            <input
-              value={form.yearlyFee}
-              onChange={(e) => setForm({ ...form, yearlyFee: e.target.value })}
-              placeholder="折合/月或周期总价"
-              className={input}
-              inputMode="decimal"
-            />
-          </div>
-          <div className="col-span-2">
-            <span className={label}>周期口径说明</span>
-            <input
-              value={form.billingNote}
-              onChange={(e) => setForm({ ...form, billingNote: e.target.value })}
-              placeholder="如 连续包季9折/包年8折,季年价为折合每月"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>高峰倍率</span>
-            <input
-              value={form.peakRate}
-              onChange={(e) => setForm({ ...form, peakRate: e.target.value })}
-              placeholder="如 峰 1×"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>闲时倍率</span>
-            <input
-              value={form.offPeakRate}
-              onChange={(e) => setForm({ ...form, offPeakRate: e.target.value })}
-              placeholder="如 谷 0.5×"
-              className={input}
-            />
-          </div>
-          <SectionTitle>溯源</SectionTitle>
-          <div className="col-span-2">
-            <span className={label}>额度口径 *(官方原文)</span>
-            <input
-              value={form.quotaDesc}
-              onChange={(e) => setForm({ ...form, quotaDesc: e.target.value })}
-              placeholder="如 GLM-4.6:120 prompts / 5h"
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>数据截至 *</span>
-            <input
-              type="date"
-              value={form.dataAsOf}
-              onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
-              className={input}
-            />
-          </div>
-          <div>
-            <span className={label}>来源链接 *</span>
-            <input
-              value={form.sourceUrl}
-              onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
-              placeholder="https://…"
-              className={input}
-            />
-          </div>
-        </div>
-      </Drawer>
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={submit}
+              className="cursor-pointer rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
+            >
+              {editing === null ? "提交(待审)" : "保存修改"}
+            </button>
+          </DialogActions>
+        </DialogShell>
+      )}
     </div>
   );
 }

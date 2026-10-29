@@ -167,35 +167,35 @@ function ModelCards({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
   );
 }
 
-function PlanCycleDetails({ r }: { r: PublicPlanRow }): React.ReactElement | null {
-  const hasCycle = r.quarterlyFee !== null || r.yearlyFee !== null;
-  if (!hasCycle && (r.benefits === null || r.benefits.length === 0)) return null;
+/** 周期价直显行(验收问题一 2026-10-29:比价所需季/年不必展开;口径原文 title) */
+function PlanCycleLines({ r }: { r: PublicPlanRow }): React.ReactElement | null {
+  if (r.quarterlyFee === null && r.yearlyFee === null) return null;
   return (
-    // <details> 原生展开收起,零 JS(D6 纯静态纪律);比价所需周期折扣与
-    // 权益详情全在此(2026-10-29 验收反馈:不只看月费,要看周期折扣+权益)
+    <div
+      className="mt-1 font-mono text-[10.5px] leading-relaxed text-text-3"
+      title={r.billingNote ?? undefined}
+    >
+      {r.quarterlyFee !== null && <div>季付 ¥ {r.quarterlyFee}/月</div>}
+      {r.yearlyFee !== null && <div>年付 ¥ {r.yearlyFee}</div>}
+    </div>
+  );
+}
+
+/** 权益详情+来源(details 展开收起,零 JS 贴 D6;周期价已直显不在此) */
+function PlanBenefitsDetails({ r }: { r: PublicPlanRow }): React.ReactElement | null {
+  if (r.benefits === null || r.benefits.length === 0) return null;
+  return (
     <details className="mt-1.5">
       <summary className="cursor-pointer select-none text-[11px] text-accent hover:text-accent-hover">
-        周期价格与权益详情
+        权益详情
       </summary>
       <div className="mt-1.5 flex flex-col gap-1 text-[11.5px] leading-relaxed text-text-2">
-        {r.quarterlyFee !== null && (
-          <div>
-            连续包季 <span className="font-mono text-text-1">¥ {r.quarterlyFee}/月</span>
-          </div>
-        )}
-        {r.yearlyFee !== null && (
-          <div>
-            连续包年 <span className="font-mono text-text-1">¥ {r.yearlyFee}</span>
-          </div>
-        )}
         {r.billingNote !== null && <div className="text-text-3">{r.billingNote}</div>}
-        {r.benefits !== null && r.benefits.length > 0 && (
-          <ul className="mt-0.5 flex list-disc flex-col gap-0.5 pl-4">
-            {r.benefits.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-        )}
+        <ul className="mt-0.5 flex list-disc flex-col gap-0.5 pl-4">
+          {r.benefits.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
         {/* 验收问题三:来源页直达(数据可溯源) */}
         <div>
           来源:
@@ -238,10 +238,11 @@ function PlanTable({ rows }: { rows: PublicPlanRow[] }): React.ReactElement {
                 <td className="px-4 py-3.5">
                   <div className="text-[13px] font-semibold text-text-1">{r.planName}</div>
                   <div className="mt-0.5 text-[11px] text-text-3">{r.vendor}</div>
-                  <PlanCycleDetails r={r} />
+                  <PlanBenefitsDetails r={r} />
                 </td>
                 <td className="px-3 py-3.5 font-mono text-text-1">
                   {formatPrice(r.monthlyFee, r.currency)}
+                  <PlanCycleLines r={r} />
                 </td>
                 <td className="px-3 py-3.5 text-[12.5px] text-text-2">{r.quotaDesc}</td>
                 <td className="px-3 py-3.5 font-mono text-[12px] text-amber">
@@ -267,11 +268,12 @@ function PlanTable({ rows }: { rows: PublicPlanRow[] }): React.ReactElement {
             </div>
             <div className="mt-0.5 text-[11px] text-text-3">{r.vendor}</div>
             <div className="mt-2 text-[12.5px] text-text-2">额度:{r.quotaDesc}</div>
+            <PlanCycleLines r={r} />
             <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
               {peakText(r) !== "" && <span className="font-mono text-amber">{peakText(r)}</span>}
               {r.bestFor !== null && <span className="text-text-3">适合:{r.bestFor}</span>}
             </div>
-            <PlanCycleDetails r={r} />
+            <PlanBenefitsDetails r={r} />
           </div>
         ))}
       </div>
