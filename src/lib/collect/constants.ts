@@ -37,3 +37,17 @@ export const CRAWL_MAX_CONSECUTIVE_FAILS = 3;
 
 /** 牌价渠道默认采集周期(周级:官方牌价页礼貌采集;源管理可调,M56 批B) */
 export const PRICING_CRAWL_INTERVAL_MIN = 10_080;
+
+/** 每源保留的快照份数(P0 回溯档案;采集后按时间倒序清理,COS 生命周期兜底) */
+export const SNAPSHOT_KEEP_PER_SOURCE = 20;
+
+/** 快照解析状态合法值(库列 String,边界 Zod 引用) */
+export const SNAPSHOT_PARSE_PENDING = "pending";
+export const SNAPSHOT_PARSE_SUCCESS = "success";
+export const SNAPSHOT_PARSE_FAILED = "failed";
+export const SNAPSHOT_PARSE_EMPTY = "empty";
+export type SnapshotParseStatus =
+  | typeof SNAPSHOT_PARSE_PENDING
+  | typeof SNAPSHOT_PARSE_SUCCESS
+  | typeof SNAPSHOT_PARSE_FAILED
+  | typeof SNAPSHOT_PARSE_EMPTY;

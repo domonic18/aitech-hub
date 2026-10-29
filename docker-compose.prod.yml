@@ -75,6 +75,9 @@ services:
     volumes:
       # 读写:M14 起媒体库/编辑器上传经 web 路由同步写盘(曾 ro 挂载致 EROFS 500,M16 修复)
       - ./workspace/media:/app/media
+      # 采集快照本地兜底(2026-10-29):未配 COS_BACKUP_BUCKET 时 worker 写、web 读,
+      # 两容器必须同卷;配了 COS 时此卷仅留空目录,不影响
+      - ./workspace/snapshots:/app/workspace/snapshots
     ports:
       - "127.0.0.1:3000:3000" # 宿主回环发布:切换日 runbook curl 127.0.0.1:3000 验证用
     depends_on:
@@ -116,6 +119,8 @@ services:
       # cwd 相对路径约定(workspace/backups、workspace/ssl)对齐,零 env 覆盖
       - ./workspace/backups:/app/workspace/backups
       - ./workspace/ssl:/app/workspace/ssl:ro
+      # 采集快照本地兜底(与 web 同卷:写入在 worker,读取在 web)
+      - ./workspace/snapshots:/app/workspace/snapshots
     depends_on:
       postgres:
         condition: service_healthy
