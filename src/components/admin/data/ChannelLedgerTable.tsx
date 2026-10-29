@@ -269,6 +269,15 @@ export default function ChannelLedgerTable({ rows }: { rows: ChannelLedgerRow[] 
                         >
                           删除
                         </button>
+                        {r.snapshotsHref !== null && (
+                          <a
+                            href={r.snapshotsHref}
+                            className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-text-2 hover:border-accent hover:text-accent"
+                            title="取数原文与整页截图(解析前落盘)"
+                          >
+                            快照
+                          </a>
+                        )}
                       </div>
                     )}
                   </td>

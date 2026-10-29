@@ -1,7 +1,7 @@
 /**
  * 热榜拉取插件契约(M34 批③ 渠道拓宽,方案 §3):HotFetcher 每源一个,产出
  * 归一 HotItem 列表(run 层负责入池)。新增渠道=实现接口+注册表登记,入池闸门
- * (INSIGHT_SOURCES_ENABLED)与 kind/medium 映射见 ingest/constants。
+ * (enabled)与 kind/medium/label 见 insight/source-registry.ts 单表(P2-24)。
  * 契约红线:各源解析器只按真机探得的响应形态写(2026-10-18 探针样本,见各
  * 文件注),形状偏离抛 HotlistParseError 单源失败,不拖垮整轮。
  */

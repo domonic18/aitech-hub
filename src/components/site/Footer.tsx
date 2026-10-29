@@ -24,6 +24,9 @@ export default async function Footer(): Promise<React.ReactElement> {
             隐私政策
           </Link>
           <ContactLauncher />
+          <Link href="/topics/" className="hover:text-text-1">
+            专题
+          </Link>
           <Link href="/archive/" className="hover:text-text-1">
             归档
           </Link>

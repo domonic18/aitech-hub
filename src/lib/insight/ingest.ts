@@ -8,8 +8,8 @@
  * 位次/热度)与 signal_at(持续在榜=持续热度),返回 refreshed。
  * 停接入闸(批③ 渠道转向,2026-10-18 用户定调:站内搜索/agent 问句/站点反馈
  * 三源退出洞察中心,外部渠道为主):不在 INSIGHT_SOURCES_ENABLED 的源直接短路
- * 返 disabled——存量行保留不删,读侧与聚类工作集同步按白名单过滤;恢复=集合
- * 加回,调用点无需动。
+ * 返 disabled——存量行保留不删,读侧与聚类工作集同步按白名单过滤;恢复=
+ * source-registry 该源 enabled 翻回 true,调用点无需动。
  * 归一=trim+连续空白折叠(与 normalizeSearchTerm 同构,上限不同各源自截);
  * raw 截 4000、归一截 2000(聚类/向量输入批② 消费)。
  */
@@ -18,35 +18,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-/** 源 → 五介质映射(方案 §2):内部搜索问句=search,评论反馈=voice,
- * 电报 AI 产物=ai-record;热榜(批③)=百度/B站热搜词=搜索形态,
- * 知乎热榜=社区讨论声音 */
-export const INSIGHT_SOURCE_MEDIUM = {
-  "internal-search": "search",
-  "internal-agent": "search",
-  "internal-comment": "voice",
-  "internal-feedback": "voice",
-  "telegram-ai": "ai-record",
-  "hot-baidu": "search",
-  "hot-zhihu": "voice",
-  "hot-bilibili": "search",
-} as const;
+// 源→介质映射 / 在役源白名单 / InsightSource·InsightMedium 类型(M56 review P2-24
+// 起单表收口):真相源在 ./source-registry,此处仅转出口保持既有 import 路径
+import {
+  INSIGHT_SOURCES_ENABLED,
+  INSIGHT_SOURCE_MEDIUM,
+  type InsightSource,
+} from "./source-registry";
 
-export type InsightSource = keyof typeof INSIGHT_SOURCE_MEDIUM;
-
-export type InsightMedium = (typeof INSIGHT_SOURCE_MEDIUM)[InsightSource];
-
-/**
- * 在役源白名单(停接入闸,见文件头注):站内三源(搜索/agent/反馈)批③ 退出,
- * 评论与电报 AI 保留;热榜三源为批③ 新渠道。
- */
-export const INSIGHT_SOURCES_ENABLED: ReadonlySet<InsightSource> = new Set([
-  "internal-comment",
-  "telegram-ai",
-  "hot-baidu",
-  "hot-zhihu",
-  "hot-bilibili",
-]);
+export { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM } from "./source-registry";
+export type { InsightMedium, InsightSource } from "./source-registry";
 
 export type IngestOutcome = "ingested" | "duplicate" | "refreshed" | "disabled" | "error";
 

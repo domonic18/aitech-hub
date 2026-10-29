@@ -75,6 +75,9 @@ services:
     volumes:
       # 读写:M14 起媒体库/编辑器上传经 web 路由同步写盘(曾 ro 挂载致 EROFS 500,M16 修复)
       - ./workspace/media:/app/media
+      # 采集快照本地兜底(2026-10-29):未配 COS_BACKUP_BUCKET 时 worker 写、web 读,
+      # 两容器必须同卷;配了 COS 时此卷仅留空目录,不影响
+      - ./workspace/snapshots:/app/workspace/snapshots
     ports:
       - "127.0.0.1:3000:3000" # 宿主回环发布:切换日 runbook curl 127.0.0.1:3000 验证用
     depends_on:
@@ -116,13 +119,17 @@ services:
       # cwd 相对路径约定(workspace/backups、workspace/ssl)对齐,零 env 覆盖
       - ./workspace/backups:/app/workspace/backups
       - ./workspace/ssl:/app/workspace/ssl:ro
+      # 采集快照本地兜底(与 web 同卷:写入在 worker,读取在 web)
+      - ./workspace/snapshots:/app/workspace/snapshots
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # web entrypoint 先 migrate deploy;healthy 即 schema 就绪(worker 引导的
+      # 渠道注册种子 M56 批B 由此保证迁移完成后执行)
       web:
-        condition: service_healthy # web entrypoint 先 migrate deploy;healthy 即 schema 就绪
+        condition: service_healthy
     mem_limit: 512m
     # M48 批A③:发版 SIGTERM 给在跑 job 收尾窗(短中任务可完成;10min 级长批仍会
     # 到期被杀,由 stalled 重试承接——彻底排空需分钟级 grace,部署时长不可接受)
@@ -168,6 +175,11 @@ services:
       dockerfile: docker/card-renderer/Dockerfile
     environment:
       TZ: Asia/Shanghai
+      # /snapshot URL 白名单(M56 批A:牌价渠道注册表官方页主机;未配置=端点禁用)
+      # M56 三新源:www.minimax.cn(M Plan 国内版)/platform.xiaomimimo.com(Token Plan)
+      # 渲染型;help.aliyun.com(百炼)为 static 型不走渲染,不加白名单。
+      # www.minimax.io 为旧默认(海外版),渠道 URL 切 .cn 后下一轮删
+      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn,www.minimax.cn,www.minimax.io,platform.xiaomimimo.com
     tmpfs:
       - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
     volumes:

@@ -8,7 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { CRAWL_SOURCE_TYPES_IMPLEMENTED } from "@/lib/telegram/constants";
+import { CRAWL_SOURCE_TYPES_IMPLEMENTED } from "@/lib/collect/constants";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";

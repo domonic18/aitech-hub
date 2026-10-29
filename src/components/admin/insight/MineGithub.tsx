@@ -2,6 +2,7 @@
  * GitHub 仓库台账页(M11 批②;2026-10-18 数据壳重组迁入为挖掘·项目视图):
  * 页顶同步健康 + API 令牌双状态卡,白名单台账表(仓库/热度/展示/健康/调度/操作)。
  * GITHUB_TOKEN 只出「已配置/未配置」布尔,值永不回显。
+ * P2-17 自 admin/data 归位洞察域目录——唯一消费方是洞察·发现页 ?t=github 段。
  */
 import RepoDialog from "@/components/admin/github/RepoDialog";
 import RepoRowOps from "@/components/admin/github/RepoRowOps";

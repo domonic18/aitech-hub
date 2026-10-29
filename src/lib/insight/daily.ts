@@ -5,7 +5,7 @@
  */
 import { AI_PURPOSE_INSIGHT } from "../ai/constants";
 import { countTodayRoleUsage } from "../ai/usage-queries";
-import { getRoleDailyMax, resolveAiModel } from "../ai/resolver";
+import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { statsDay } from "../datetime";
@@ -19,6 +19,7 @@ import {
 } from "./constants";
 import { getClusterCentroid } from "./embedding-repo";
 import { findStaleClusters, labelCluster } from "./label";
+import { resolveInsightModel } from "./model";
 import { computeCoverageScore, computeOpportunityScore, coverageStateOf } from "./scoring";
 
 // ── 覆盖度/评分/快照段 ────────────────────────────────────────────────
@@ -128,7 +129,8 @@ export async function runInsightDaily(): Promise<InsightDailySummary> {
     faded: 0,
     covered: 0,
   };
-  const model = await resolveAiModel(AI_PURPOSE_INSIGHT);
+  // 未绑定/解析失败(insight 模型)→ 跳过打标,机械段照常(P2-25 统一降级口径)
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT);
   if (!model) {
     logger.info({ event: "insight.daily_label_skipped", reason: "insight_unbound" });
     summary.labelSkipped = true;

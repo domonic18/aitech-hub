@@ -1,12 +1,14 @@
 /**
- * middleware(arch/05-services §3.2/§6,三职合一):
+ * middleware(arch/05-services §3.2/§6,四职合一):
  * 1) /admin 预检:Cookie 存在性 + exp 本地解读(decodeJwt 不验签、不查 Redis、不依赖
  *    AUTH_SECRET)——防伪不靠 middleware,完整校验在 guard.ts;
  * 2) request id:全路由生成并回写 X-Request-Id(响应头),排障对账用;
  * 3) 爬虫抓取入账(2026-10-07 方案B;2026-10-09 方案A扩 GEO 面):已命名爬虫
  *    (bots.ts 名单)抓 HTML 页面,以及任何 UA 抓 GEO 机器面(llms*.txt/文章 .md,
  *    geo.ts 分类)时,waitUntil 内部端点异步记 PV——爬虫不发 beacon,这是唯一
- *    逐请求捕获点;失败静默(统计尽力而为,不影响主链路)。
+ *    逐请求捕获点;失败静默(统计尽力而为,不影响主链路);
+ * 4) 当前路径注入请求头 x-pathname(P2-23):server component 取不到自身路径,
+ *    requireAdminPage 深链回跳以此为准。
  */
 import { decodeJwt } from "jose";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
@@ -88,7 +90,13 @@ export async function middleware(req: NextRequest, event: NextFetchEvent): Promi
     }
   }
 
-  const res = NextResponse.next();
+  // 当前路径注入请求头(P2-23):server component 无 self-path 可查,页面守卫
+  // requireAdminPage 深链回跳依赖此头;x-invoke-path/x-matched-path 均非 Next 15
+  // 可靠面,middleware matcher 覆盖全部页面路由故本头为可信源(登录页侧仍二次校验)
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", bare);
+
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set("X-Request-Id", requestId);
   return res;
 }

@@ -4,7 +4,7 @@
  * error 状态,后台台账可观测。首批渠道均 rss:量子位匿名 feed;
  * 机器之心 token 鉴权 feed(凭证由 source.config 注入,不经环境变量)。
  */
-import { CRAWL_SOURCE_TYPE_RSS } from "../constants";
+import { CRAWL_SOURCE_TYPE_RSS } from "../../collect/constants";
 
 import { fetchRssItems, type AdapterItem } from "./rss";
 

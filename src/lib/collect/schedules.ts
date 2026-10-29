@@ -9,6 +9,7 @@
 
 /** 媒体体检每日调度(避开整点;arch/08-media §3.2;worker 与媒体库页脚同源,评审 W2) */
 export const MEDIA_AUDIT_CRON = "41 3 * * *";
+// 牌价渠道采集(M55 批C;M56 批B 起并入 crawl_source tick 频率调度,无独立 cron)
 
 /** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
 export const VISIT_LOG_PURGE_CRON = "14 4 * * *";

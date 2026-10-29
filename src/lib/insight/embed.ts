@@ -8,12 +8,12 @@
 import { AI_PURPOSE_EMBEDDING } from "../ai/constants";
 import { embedTexts, EMBED_BATCH_SIZE } from "../ai/embedding-client";
 import { recordAiUsage } from "../ai/usage-log";
-import { resolveAiModel } from "../ai/resolver";
 import { logger } from "../logger";
-import { CLUSTER_BATCH_SIZE } from "./constants";
+import { CLASSIFY_BATCH_SIZE, CLUSTER_BATCH_SIZE } from "./constants";
 import { runInsightClassify } from "./classify";
 import { runInsightClustering } from "./cluster";
 import { findUnembeddedSignals, saveSignalEmbeddings } from "./embedding-repo";
+import { resolveInsightModel } from "./model";
 import { EMBEDDING_DIMS } from "../search/embedding";
 
 export interface InsightEmbedSummary {
@@ -49,7 +49,8 @@ export async function runInsightEmbedBatch(
     clusterFailed: 0,
     skipped: false,
   };
-  const model = await resolveAiModel(AI_PURPOSE_EMBEDDING);
+  // 未绑定/解析失败(embedding 模型)→ 功能关闭整轮跳过(P2-25 统一降级口径)
+  const model = await resolveInsightModel(AI_PURPOSE_EMBEDDING);
   if (!model) {
     logger.info({ event: "insight.embed_skipped", reason: "embedding_unbound" });
     return { ...empty, skipped: true };
@@ -99,7 +100,9 @@ export async function runInsightEmbedBatch(
   }
 
   // 分类先于聚类(M54 批B):domain 落定后同域聚类,新信号当轮即入对桶
-  const classify = await runInsightClassify(limit);
+  // 分类段用 CLASSIFY_BATCH_SIZE(50,按 tick 节奏设定),不吃嵌入批 limit
+  // (M56 review P1-1:原透传致单轮最多 200 次串行 Jev 调用)
+  const classify = await runInsightClassify(CLASSIFY_BATCH_SIZE);
   const clustering = await runInsightClustering(limit);
   const summary: InsightEmbedSummary = {
     classified: classify.classified,

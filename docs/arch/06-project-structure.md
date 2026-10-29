@@ -124,6 +124,8 @@ aitech-hub/
 - 提交纪律:Conventional Commits;`make check` 过了才提交;husky + lint-staged(eslint/prettier);未经用户批准不 commit
 - 分支纪律:开发主线 `develop`;新功能建 `feature/<topic>` 等类型前缀分支 PR 合回 develop;`main` 只经 develop→main 的 PR 更新,禁直推
 - 文档纪律:不主动建 .md;行为变更同步 CLAUDE.md;arch 文档写终态,过程进提交历史
+- 各域 `admin.ts` = 该域「治理台读侧」(list/CRUD/契约),命名即约定(M56 review P3-1:discovery/insight/pay/pricing 四处一致;新管理域照此落位)
+- 扩展点接入手册见 §5
 
 ## 3. 命名规范速查
 
@@ -136,6 +138,7 @@ aitech-hub/
 | 约束/索引 | unique/普通索引 `uq_<table>_<cols>` / `idx_*`(schema `map` 显式落名);PK/FK 保留 Prisma 默认名 `*_pkey`/`*_fkey`(见 arch/03-data-model §3,保 CI introspect 对齐);枚举值不加 DB CHECK,应用层 Zod 管控 | `uq_content_post_slug` |
 | 审计字段 | 业务表统一 `createdAt`/`updatedAt`(timestamptz,aware UTC) | |
 | API JSON | camelCase 一致(单体内部无 query 参数历史包袱,统一 camelCase) | `postId`、`pageSize` |
+| 域治理台读侧 | `<域>.admin.ts`(list/CRUD/Zod 契约单点) | `lib/pricing/admin.ts`、`lib/insight/admin.ts` |
 
 ## 4. CLAUDE.md 体系(单根文档)
 
@@ -144,3 +147,32 @@ aitech-hub/
 - **唯一真相源是根目录 `CLAUDE.md` 文件本身**,本文不复刻全文(此前的全文草案已删——副本必漂移,M1 后它与实际文件已出现缺漏),仅记录组织意图
 - 更新纪律:规范/红线/文档索引变更直接改 `CLAUDE.md` 并随行为变更提交;本文仅在目录结构或组织方式调整时更新 §1/§2
 - 二期爬虫/COS 同步进入 `worker/` 后,如规范膨胀再考虑拆 `worker/CLAUDE.md`;当前形态即根文档 + 本 docs 体系
+
+
+## 5. 扩展点接入手册(M56 review P2-12:把隐性清单显性化)
+
+新增一种采集源类型(crawl_source.type)需要改动的位置——缺一即产生旁路缺陷
+(M56 实测:pricing 并入漏台账过滤,渠道双行渲染):
+
+1. `lib/collect/constants.ts`:类型常量 + `CRAWL_SOURCE_TYPES` / `_IMPLEMENTED`
+2. `lib/telegram/adapters/index.ts`(条目型)或 `source-registry.ts`(整源型):取数+解析
+3. `lib/telegram/ingest.ts` `crawlSource`:type 分发分支(条目型走 adapters 自动)
+4. `lib/collect/channel-ledger.ts`:台账行构建器(kind 联合 + TABS 同步
+   `channel-ledger-types.ts`)
+5. 渠道创建/编辑 Zod(经 `CRAWL_SOURCE_TYPES_IMPLEMENTED` 自动)
+6. 健康页归属核对(`channel-health.ts` group 联合,按需)
+
+取数侧另有**快照义务**(2026-10-29 M56 P0 回溯档案落地后):取数函数签一名
+可选 `sink?: SnapshotSink`,并在**解析之前**把原文交出去
+(`await sink?.({ tab, html, httpStatus, png? })`)——解析失败恰恰是最需要
+回溯的样本,故不能等解析成功再存;static 型直 fetch 的源同样落一枪
+(`tab="page"`,走 fetch 无浏览器故只有 HTML,`hasPng=false`、详情页截图 tab
+置灰)。渠道行台账自动出「快照」入口,时间线页
+`/admin/data/sources/[id]/snapshots/`(存储=`src/lib/collect/snapshot-store.ts`
+私有桶 `COS_BACKUP_BUCKET` 的 `crawl-snapshots/` 前缀,元数据=`crawl_snapshot`,
+每源 20 份;桶侧生命周期规则为部署侧运维步骤,见 deploy 清册;未配桶时退
+`workspace/snapshots` 本地盘,web/worker 必须同卷)。
+
+新增一个 admin 管理域:侧栏 `AdminSidebar.tsx` 1 行 + 路由目录 + 页面
+`requireAdminPage`(最长前缀点亮已处理 data/insight 前缀冲突)+ 治理台读侧
+落 `<域>.admin.ts`(§3)。

@@ -9,13 +9,14 @@ import type { Prisma } from "@prisma/client";
 
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_SOURCE_TYPE_PRICING } from "../collect/constants";
 import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
-} from "./constants";
+  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+} from "../collect/constants";
 
 /** 视为凭证的 config 键(读侧脱敏 + 写侧空串清除) */
 export const SECRET_CONFIG_KEYS = ["token", "apiKey", "api_key", "secret"] as const;
@@ -55,7 +56,8 @@ export function maskUrlSecrets(raw: string): string {
   return changed ? u.toString() : raw;
 }
 
-export type ChannelAdminErrorCode = "not_found" | "name_taken" | "disabled" | "in_use";
+export type ChannelAdminErrorCode =
+  "not_found" | "name_taken" | "disabled" | "in_use" | "not_supported"; // 牌价渠道试拉语义断裂(M56 review P2-11)
 
 /** 业务错误 → 路由按码映射 HTTP 状态(同 UserAdminError 模式) */
 export class ChannelAdminError extends Error {
@@ -73,7 +75,8 @@ export const ChannelInputSchema = z.object({
   type: z.enum(CRAWL_SOURCE_TYPES_IMPLEMENTED),
   platform: z.string().trim().max(20).nullable().optional(),
   url: z.url().max(500),
-  crawlIntervalMin: z.number().int().min(5).max(1440),
+  // 上限 43200(30 天):牌价等低频渠道周级采集(M56 批B;原 1440 只够日频)
+  crawlIntervalMin: z.number().int().min(5).max(43200),
   dailyMaxRequests: z.number().int().min(1).max(10000).nullable().optional(),
   remark: z.string().trim().max(200).nullable().optional(),
   enabled: z.boolean().optional(),
@@ -222,7 +225,7 @@ export async function triggerChannelCrawl(id: number): Promise<{ enqueued: true 
   if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
   if (!src.enabled) throw new ChannelAdminError("disabled", "渠道已停用,启用后再采集");
   await getQueue(QUEUE_CRAWLER).add(
-    "crawl",
+    CRAWL_JOB_SOURCE,
     { sourceId: src.id, sourceName: src.name },
     {
       // 手动 job id 与调度 job(id 锚定 next_run_at)不冲突;入队即返回,结果看台账
@@ -248,6 +251,10 @@ export interface ChannelDebugResult {
 export async function debugChannel(id: number): Promise<ChannelDebugResult> {
   const src = await prisma.crawlSource.findUnique({ where: { id } });
   if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
+  // 牌价渠道无条目适配器(M56 review P2-11):试拉语义断裂,明示改走「立即采集」
+  if (src.type === CRAWL_SOURCE_TYPE_PRICING) {
+    throw new ChannelAdminError("not_supported", "牌价渠道不支持试拉:请使用「立即采集」查看结果");
+  }
   const started = Date.now();
   try {
     const items = await fetchSourceItems(src.type, src.url, src.config);

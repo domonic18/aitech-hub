@@ -82,6 +82,18 @@ export async function syncOnePost(
     },
   });
   if (!post) return { ok: false, postId: id, reason: "文章不存在" };
+  // 站内互链落点(M55 批E):价格表稿的「阅读原文」锚到 /pricing/ 速查页而非
+  // 文章快照——稿是截稿快照,速查页持续更新(周批爬取+人工终审),读者落点
+  // 应是活数据。经 topic.skillKey 判别(创作体裁服务端单点回写),无 topic 或
+  // 其他体裁维持文章 URL;URL 被微信域名校验拒时 submit 层已有降级,此处不重复
+  const topic = await prisma.topic.findFirst({
+    where: { linkedPostId: postId },
+    select: { skillKey: true },
+  });
+  const sourceUrl =
+    topic?.skillKey === "model-pricing"
+      ? absoluteUrl("/pricing/")
+      : absoluteUrl(postPath(post.id, post.slug));
   const row = await ensureChannelRow(postId);
   try {
     const contentMd = post.contentMd ?? "";
@@ -131,7 +143,7 @@ export async function syncOnePost(
       author: cfg.author,
       digest,
       content: html,
-      content_source_url: absoluteUrl(postPath(post.id, post.slug)),
+      content_source_url: sourceUrl,
       thumb_media_id: cover.mediaId,
       need_open_comment: 0,
       only_fans_can_comment: 0,

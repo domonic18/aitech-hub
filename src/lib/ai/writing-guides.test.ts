@@ -45,6 +45,15 @@ describe("WRITING_SKILLS 注册表", () => {
     }
   });
 
+  it("M55 批E:model-pricing 指南携带数据同步口径(活牌价库语义+互链落分发层)", () => {
+    const g = WRITING_SKILLS.find((s) => s.key === "model-pricing");
+    expect(g).toBeDefined();
+    expect(g!.guideMd).toContain("数据同步口径");
+    expect(g!.guideMd).toContain("截稿快照"); // 稿=快照,站内页=活数据
+    expect(g!.guideMd).toContain("以官方页面为准"); // >45 天引用纪律
+    expect(g!.guideMd).toContain("阅读原文"); // 互链由分发层落,正文渠道中性
+  });
+
   it("文生图内容规划标准单源插值(E1:六指南同文,防再走三处同步改的发版老路)", () => {
     for (const key of [
       "blogger-video",

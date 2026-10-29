@@ -93,6 +93,24 @@ async function main(): Promise<void> {
 
   await scheduleStatsFlush();
   await scheduleMediaAudit();
+  // 牌价渠道(M56 批B):并入 crawler tick 频率调度——种子幂等入 crawl_source
+  // (源管理可调周期),旧周批 BullMQ scheduler 就地摘除
+  {
+    const { syncPricingChannels } = await import("../src/lib/pricing/source-registry");
+    await syncPricingChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "pricing.source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+    const { getQueue } = await import("../src/lib/queue");
+    const pq = getQueue("pricing");
+    await pq.removeJobScheduler("crawl-official").catch(() => undefined);
+    await pq.removeJobScheduler("sync-openrouter").catch(() => undefined);
+    await pq.close().catch(() => undefined);
+  }
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();

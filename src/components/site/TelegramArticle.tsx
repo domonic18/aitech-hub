@@ -24,6 +24,9 @@ import {
 } from "@/lib/telegram/feed-view";
 import { trackEntryClick } from "@/lib/stats/track-click";
 
+import { AiBadge, NewBadge } from "./telegram/TelegramBadges";
+import { TelegramPoints } from "./telegram/TelegramPoints";
+
 /** 封面缩略(抖音图床带防盗链:no-referrer + 失败换占位块,不重试) */
 function VideoCover({ src, alt }: { src: string | null; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -99,11 +102,7 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
           </span>
           {/* NEW 基准=aiRanAt(变可见时刻,M15 批①):视频采集周期 3h,按源发布
               时间窗口几乎永不亮;按解读完成时刻 30min 内真实可亮 */}
-          {isNew(t.aiRanAt, now) && (
-            <span className="rounded-sm bg-green/10 px-1.5 py-px font-mono text-[10px] text-green-hi">
-              NEW
-            </span>
-          )}
+          {isNew(t.aiRanAt, now) && <NewBadge />}
         </div>
         <h3 className="text-[15px] font-semibold leading-relaxed">
           <a
@@ -124,9 +123,7 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
         {ai ? (
           // AI 解读替代原始 summary 段(原型 v.ai 口径;line-clamp-3 防长解读撑破卡)
           <p className="line-clamp-3 text-[13px] leading-relaxed text-text-2">
-            <span className="mr-1.5 inline-block rounded-sm bg-accent-dim px-1.5 py-px align-middle font-mono text-[10px] text-accent">
-              AI 解读
-            </span>
+            <AiBadge />
             {ai.summary}
           </p>
         ) : (
@@ -134,18 +131,7 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
             <p className="line-clamp-3 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
           )
         )}
-        {ai && ai.points.length > 0 && (
-          <details className="mt-0.5">
-            <summary className="cursor-pointer font-mono text-[11px] text-text-3 hover:text-accent-hover">
-              关键要点 ×{ai.points.length}
-            </summary>
-            <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
-              {ai.points.map((p, i) => (
-                <li key={i}>{p}</li>
-              ))}
-            </ul>
-          </details>
-        )}
+        {ai && <TelegramPoints points={ai.points} />}
         <div className="mt-auto flex flex-wrap items-center gap-3 pt-1 font-mono text-[11px] text-text-3">
           {engagement.map((e) => (
             <span key={e.label} className="flex items-center gap-1" title={e.label}>

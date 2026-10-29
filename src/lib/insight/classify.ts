@@ -1,19 +1,20 @@
 /**
- * 洞察信号领域分类(M54 批B):未分类信号经 Jev Choice 双问(领域 + tech 子域,
+ * 洞察信号领域分类(M54 批B):未分类信号经 Jev Choice 双问(领域 + 子域,
  * 合一次 decisions 请求)落 domain/subdomain。挂 embed tick 最前(分类先于
  * 同域聚类,新信号当轮即入对桶)。
  *
  * 采信纪律(与打标判定半场同构):置信 ≥JUDGE_MIN_CONFIDENCE 且答案在词表内
  * → 落库;低置信/失败/答案非法 → 保留 unclassified 待下轮(永不猜测)。
- * domain 非 tech 时忽略子域应答。分类器=insight_judge 绑定(与打标判定同一
- * Jev 通道);未绑定 → sweep 空转(零行为变化)。
+ * 子域追问按「该 domain 启用子域数 ≥2」动态判定(P2-26,taxonomy 词表驱动,
+ * 不再硬编码 tech);子域应答须属已答领域才采信。分类器=insight_judge 绑定
+ * (与打标判定同一 Jev 通道);未绑定 → sweep 空转(零行为变化)。
  */
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { resolveAiModel } from "../ai/resolver";
 import { decideQuestions } from "../ai/decisions-client";
 import { AI_PURPOSE_INSIGHT_JUDGE } from "../ai/constants";
 import { CLASSIFY_BATCH_SIZE, JUDGE_MIN_CONFIDENCE } from "./constants";
+import { resolveInsightModel } from "./model";
 import { listEnabledDomainKeys, listEnabledSubdomainKeys } from "./taxonomy";
 
 export interface ClassifySummary {
@@ -33,16 +34,25 @@ export async function runInsightClassify(limit = CLASSIFY_BATCH_SIZE): Promise<C
     failed: 0,
     skipped: false,
   };
-  const judge = await resolveAiModel(AI_PURPOSE_INSIGHT_JUDGE).catch(() => null);
+  // 判定模型未绑定/解析失败 → sweep 空转(P2-25 统一降级口径,零行为变化)
+  const judge = await resolveInsightModel(AI_PURPOSE_INSIGHT_JUDGE);
   if (!judge?.baseUrl || !judge.apiKey) {
     summary.skipped = true;
     return summary;
   }
   const domains = await listEnabledDomainKeys();
-  const techSubs = await listEnabledSubdomainKeys("tech");
   if (domains.length < 2) {
     summary.skipped = true;
     return summary;
+  }
+  // 子域第二问动态判定(P2-26):不再硬编码 tech——逐领域取启用子域,凡启用
+  // 子域数 ≥2 的领域进入第二问;criteria 为这些领域子域并集(key 全局唯一)。
+  // 单次 decisions 请求须先于 domain 应答出题,故出题按「任一合格领域」判定,
+  // 采信侧再校验子域确属已答领域(跨域答案不采信,tech 现行为等价)。
+  const subOwner = new Map<string, string>(); // 子域 key → 所属领域
+  for (const d of domains) {
+    const subs = await listEnabledSubdomainKeys(d);
+    if (subs.length >= 2) for (const s of subs) subOwner.set(s, d);
   }
   const signals = await prisma.insightSignal.findMany({
     where: { domain: "unclassified" },
@@ -64,14 +74,14 @@ export async function runInsightClassify(limit = CLASSIFY_BATCH_SIZE): Promise<C
             criteria: Object.fromEntries(domains.map((d) => [d, `属于「${d}」领域的内容`])),
             instructions: "这条信号属于哪个领域?",
           },
-          ...(techSubs.length >= 2
+          ...(subOwner.size > 0
             ? {
                 subdomain: {
                   type: "choice" as const,
                   criteria: Object.fromEntries(
-                    techSubs.map((d) => [d, `属于「${d}」子方向的内容`]),
+                    [...subOwner.keys()].map((s) => [s, `属于「${s}」子方向的内容`]),
                   ),
-                  instructions: "若属科技领域,细分到哪个子方向?",
+                  instructions: "若属带子方向的领域,细分到哪个子方向?",
                 },
               }
             : {}),
@@ -92,12 +102,13 @@ export async function runInsightClassify(limit = CLASSIFY_BATCH_SIZE): Promise<C
       const subAnswer = r.answers.subdomain;
       const subChoice = subAnswer?.choice;
       if (
-        domain === "tech" &&
+        domain !== null &&
         subAnswer?.type === "choice" &&
         subChoice !== undefined &&
         subAnswer.confidence !== null &&
         subAnswer.confidence >= JUDGE_MIN_CONFIDENCE &&
-        techSubs.includes(subChoice)
+        // 子域确属已答领域才采信(跨域答案不落库;P2-26 动态判定)
+        subOwner.get(subChoice) === domain
       ) {
         subdomain = subChoice;
       }

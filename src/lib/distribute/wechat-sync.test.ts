@@ -11,6 +11,7 @@ vi.mock("../db", () => ({
     typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002",
   prisma: {
     post: { findUnique: vi.fn(), findMany: vi.fn() },
+    topic: { findFirst: vi.fn() }, // M55 批E:互链落点判别(价格表稿阅读原文→速查页)
     publishChannel: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -72,6 +73,7 @@ import {
 import { syncOnePost, wechatBatchJob } from "./wechat-sync-run";
 
 const mockedPost = vi.mocked(prisma.post);
+const mockedTopic = vi.mocked(prisma.topic);
 const mockedChannel = vi.mocked(prisma.publishChannel);
 const mockedCache = vi.mocked(prisma.publishMediaCache);
 const mockedStorageGet = vi.mocked(mediaStorage.get);
@@ -320,6 +322,30 @@ describe("syncOnePost 管线", () => {
       mediaId: "DRAFT1",
       thumbPath: mdPost().coverPath,
     });
+  });
+
+  it("价格表稿互链(M55 批E):topic.skillKey=model-pricing → 阅读原文锚速查页", async () => {
+    mockedPost.findUnique.mockResolvedValue(mdPost() as never);
+    mockedTopic.findFirst.mockResolvedValue({ skillKey: "model-pricing" } as never);
+    const r = await syncOnePost(BigInt(101));
+    expect(r.ok).toBe(true);
+    const article = mockedDraftAdd.mock.calls[0][1] as WechatDraftArticle;
+    expect(article.content_source_url).toContain("/pricing/");
+    expect(article.content_source_url).not.toContain("/post/");
+  });
+
+  it("非价格表稿(其他 skillKey / 无 topic)维持文章 URL", async () => {
+    mockedPost.findUnique.mockResolvedValue(mdPost() as never);
+    mockedTopic.findFirst.mockResolvedValue({ skillKey: "weekly-news" } as never);
+    await syncOnePost(BigInt(101));
+    expect((mockedDraftAdd.mock.calls[0][1] as WechatDraftArticle).content_source_url).toContain(
+      "/post/101-hello",
+    );
+    mockedTopic.findFirst.mockResolvedValueOnce(null);
+    await syncOnePost(BigInt(101));
+    expect((mockedDraftAdd.mock.calls[1][1] as WechatDraftArticle).content_source_url).toContain(
+      "/post/101-hello",
+    );
   });
 
   it("重推:行有 mediaId → draft/update,draft/add 不调", async () => {
