@@ -309,3 +309,193 @@ export async function persistPlanRows(rows: PlanPrefillRow[]): Promise<{
       }),
   });
 }
+
+// ---------- MiniMax M Plan(年付/月付双态;页为 EN,档名 Go/Explore/Build) ----------
+
+export const MINIMAX_MPLAN_URL = "https://www.minimax.io/m-plan";
+
+export async function fetchMiniMaxMember(
+  url: string,
+): Promise<{ yearly: string; monthly: string }> {
+  const yearly = await snapshotHtml(url, "Yearly");
+  const monthly = await snapshotHtml(url, "Monthly");
+  return { yearly: yearly.html, monthly: monthly.html };
+}
+
+/** MiniMax 单态折叠文本 → 档位(纯函数):档名 + 首个 $ 金额 + 可选第二个 $ 金额 */
+export function miniMaxTiers(
+  text: string,
+): Array<{ title: string; tagline: string; first: number; second: number | null }> {
+  const out: Array<{ title: string; tagline: string; first: number; second: number | null }> = [];
+  const re = /\b(Go|Explore|Build) ([^$]{2,40}?)\$ ?([\d,]+)(?: \$ ?([\d,]+))?/g;
+  for (const m of text.matchAll(re)) {
+    out.push({
+      title: m[1] ?? "",
+      tagline: (m[2] ?? "").trim().slice(-30),
+      first: Number((m[3] ?? "").replace(/,/g, "")),
+      second: m[4] === undefined ? null : Number(m[4].replace(/,/g, "")),
+    });
+  }
+  return out;
+}
+
+/** 双态合并 → 套餐初稿行(纯函数,fixture 单测锚):
+ * 年付态两笔 $ = 标准年付(大)/促销年付(小,立减 2 个月);月付态单 $ = 月付价;
+ * 权益=年付文本本档 Purchase 之后至下一档的原文段(整段直出不失真)。
+ * 限注:档名随官方页语言(Go/Explore/Build),权益原文随渲染语言。 */
+export function parseMiniMaxCoding(raw: unknown, sourceUrl: string, now: Date): PlanPrefillRow[] {
+  const read = (k: string): string =>
+    typeof raw === "object" && raw !== null && k in raw
+      ? String((raw as Record<string, unknown>)[k])
+      : "";
+  const yearlyText = read("yearly").replace(/\s+/g, " ").trim();
+  const yearlyTiers = miniMaxTiers(yearlyText);
+  // 首见为准:权益文案可能复现档名词(如「3x Go usage」),后到不覆盖
+  const monthlyByTitle = new Map<string, number>();
+  for (const t of miniMaxTiers(read("monthly").replace(/\s+/g, " "))) {
+    if (!monthlyByTitle.has(t.title)) monthlyByTitle.set(t.title, t.first);
+  }
+
+  const rows: PlanPrefillRow[] = [];
+  for (let i = 0; i < yearlyTiers.length; i += 1) {
+    const t = yearlyTiers[i]!;
+    const next = yearlyTiers[i + 1];
+    if (!Number.isFinite(t.first) || t.first <= 0) continue;
+    const monthly = monthlyByTitle.get(t.title) ?? null;
+    const segStart = yearlyText.indexOf("Purchase", yearlyText.indexOf(`$ ${t.first}`));
+    const segEnd =
+      next === undefined ? yearlyText.length : yearlyText.indexOf(`${next.title} `, segStart);
+    const benefitsBlob =
+      segStart > -1
+        ? yearlyText.slice(segStart + "Purchase".length, segEnd > 0 ? segEnd : undefined).trim()
+        : "";
+    rows.push({
+      vendor: "MiniMax 稀宇科技",
+      planName: `MiniMax M Plan · ${t.title}`,
+      currency: "USD",
+      monthlyFee: monthly,
+      quarterlyFee: null, // MiniMax 无季付档
+      yearlyFee: t.first, // 标准年付(大位);促销位入 billingNote
+      billingNote:
+        t.second !== null
+          ? `年付标准 $${t.first}/年(促销 $${t.second}/年,立减 2 个月);月付 $${monthly ?? "?"}/月`
+          : null,
+      benefits: benefitsBlob !== "" ? [benefitsBlob] : null,
+      quotaDesc: "权益口径以官方页为准",
+      peakRate: null,
+      offPeakRate: null,
+      bestFor: t.tagline,
+      note: "档名随官方页语言;权益原文随渲染语言",
+      dataAsOf: now,
+      sourceUrl,
+    });
+  }
+  if (rows.length === 0) throw new Error("minimax 卡片结构未匹配(前端可能重构)");
+  return rows;
+}
+
+// ---------- Xiaomi MiMo Token Plan(连续包年默认态:折合月价+包月原价) ----------
+
+export const XIAOMI_TOKEN_URL = "https://platform.xiaomimimo.com/token-plan";
+
+export async function fetchXiaomiToken(url: string): Promise<string> {
+  return (await snapshotHtml(url)).html;
+}
+
+/** 小米单态卡片解析(纯函数,fixture 单测锚):折叠文本
+ * `Lite 轻量体验 ¥ 34 / 月 ¥39 按年计费 …9840 亿 Credits…`——
+ * 首价=当前 tab(默认连续包年 88 折折合月),次价=连续包月标准价;Credits=额度口径。 */
+export function parseXiaomiToken(html: string, sourceUrl: string, now: Date): PlanPrefillRow[] {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const rows: PlanPrefillRow[] = [];
+  const re =
+    /\b(Lite|Standard|Pro|Max) ([^¥]{2,12}?)¥ ?([\d.]+) ?\/ ?月\s*¥ ?([\d,.]+)([\s\S]*?)(?=\b(?:Lite|Standard|Pro|Max) [^¥]{2,12}¥|$)/g;
+  for (const m of text.matchAll(re)) {
+    const title = m[1] ?? "";
+    const bestFor = (m[2] ?? "").trim();
+    const shown = Number((m[3] ?? "").replace(/,/g, ""));
+    const standard = Number((m[4] ?? "").replace(/,/g, ""));
+    if (!Number.isFinite(standard) || standard <= 0) continue;
+    const seg = m[5] ?? "";
+    const credits = seg.match(/([\d,.]+ ?(?:亿|万)? ?Credits)/)?.[1]?.trim() ?? null;
+    rows.push({
+      vendor: "小米 MiMo",
+      planName: `MiMo Token Plan · ${title}`,
+      currency: "CNY",
+      monthlyFee: standard,
+      quarterlyFee: null, // 小米无季付档(首购优惠为一次性活动价不收)
+      yearlyFee: shown,
+      billingNote: `连续包年 88 折折合 ¥${shown}/月(连续包月 ¥${standard}/月)`,
+      benefits: seg.trim() !== "" ? [seg.trim()] : null,
+      quotaDesc: credits ?? "权益口径以官方页为准",
+      peakRate: null,
+      offPeakRate: "谷 0.8×", // 官方页原文:夜间 00:00—08:00(UTC+8)消耗 0.8×
+      bestFor,
+      note: null,
+      dataAsOf: now,
+      sourceUrl,
+    });
+  }
+  if (rows.length === 0) throw new Error("xiaomi 卡片结构未匹配(前端可能重构)");
+  return rows;
+}
+
+// ---------- 阿里云百炼 Coding Plan(帮助中心静态页,单档 Pro) ----------
+
+export const BAILIAN_CODING_URL = "https://help.aliyun.com/zh/model-studio/coding-plan";
+
+export async function fetchBailianCoding(url: string): Promise<string> {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`bailian http ${res.status}`);
+  return res.text();
+}
+
+/** 帮助页静态文本解析(纯函数,fixture 单测锚):单档 Pro
+ * 价格 ¥200/月(新客首月 ¥39.90);用量=5h/周/月三行;推荐模型=权益。 */
+export function parseBailianCoding(html: string, sourceUrl: string, now: Date): PlanPrefillRow[] {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const price = text.match(/价格 ¥ ?([\d,.]+) ?\/月/) ?? text.match(/价格 ¥ ?([\d,.]+)/);
+  if (price === null) throw new Error("bailian 价格结构未匹配(页面可能改版)");
+  const monthlyFee = Number(price[1]);
+  const firstMonth = text.match(/首月 ¥ ?([\d,.]+)/)?.[1] ?? null;
+  const quota =
+    text.match(
+      /每 5 小时 ?[\d,]+ ?次请求[\s\S]*?每周 ?[\d,]+ ?次请求[\s\S]*?每月 ?[\d,]+ ?次请求/,
+    )?.[0] ?? "";
+  const models = text.match(/推荐模型:([\s\S]{5,160}?)(?:更多模型|额度消耗|$)/)?.[1] ?? "";
+  const benefits = models
+    .split(/[、,]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 1)
+    .slice(0, 6);
+  return [
+    {
+      vendor: "阿里云百炼",
+      planName: "百炼 Coding Plan · Pro",
+      currency: "CNY",
+      monthlyFee,
+      quarterlyFee: null,
+      yearlyFee: null, // 官方页仅月付口径
+      billingNote:
+        firstMonth !== null
+          ? `新客首月 ¥${firstMonth}(官网目录价 ¥${monthlyFee}/月),后续按 ¥${monthlyFee}/月 续费`
+          : null,
+      benefits: benefits.length > 0 ? benefits : null,
+      quotaDesc: (quota !== "" ? quota : "权益口径以官方页为准").replace(/\s+/g, "").slice(0, 200),
+      peakRate: null,
+      offPeakRate: null,
+      bestFor: null,
+      note: null,
+      dataAsOf: now,
+      sourceUrl,
+    },
+  ];
+}

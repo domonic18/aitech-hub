@@ -21,9 +21,12 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import {
+  parseBailianCoding,
   parseGlmCoding,
   parseKimiCoding,
   parseKimiCards,
+  parseMiniMaxCoding,
+  parseXiaomiToken,
   markPlanSourceStale,
   persistPlanRows,
 } from "./plan-sources";
@@ -283,5 +286,76 @@ describe("markPlanSourceStale 打标", () => {
     expect((updatePlan.mock.calls[1]![0] as { data: { note: string } }).data.note).toBe(
       "【待复核 2026-10-29 爬取失败】",
     );
+  });
+});
+
+// ---------- 新三源 fixture(2026-10-29 真实快照文本裁剪) ----------
+
+const MM_YEARLY =
+  "M Plan Go For light use $264 $ 220 Per year, billed annually Purchase More usage Text models, e.g., M3.1 Flash Image and speech models Web search and multimodal understanding Explore For everyday use $648 $ 550 Per year, billed annually Purchase 3x Go usage Video models, e.g., H3 Build For heavy use $1,560 $ 1,320 Per year, billed annually Purchase 7.5x Go usage Priority access";
+const MM_MONTHLY =
+  "M Plan Go For light use $22 Per month, billed monthly Purchase More usage Explore For everyday use $55 Per month, billed monthly Purchase 3x Go usage Build For heavy use $130 Per month, billed monthly Purchase 7.5x Go usage";
+const XIAOMI_HTML =
+  "<div>Token Plan 连续包月 首购优惠 连续包年 88 折 Max 高强度开发 ¥ 579 / 月 ¥659 按年计费 立减 960 元 含 MiMo Claw 立即订阅 支持 V2.6 全新旗舰模型 文本模型 / 全模态 / 语音 9840 亿 Credits = 20 x Lite 支持主流编程框架 OpenClaw / Codex / MiMo Claw 等 TTS 模型免费 限时免费使用 夜间 0.8x 消耗 00:00—08:00 · UTC+8 畅快使用 无周限额 · 无 5 小时限额 Pro 专业开发 ¥ 289 / 月 ¥329 按年计费 立减 480 元 立即订阅 4560 亿 Credits = 9.3 x Lite Lite 轻量体验 ¥ 34 / 月 ¥39 按年计费 立减 60 元 立即订阅 492 亿 Credits 套餐年总量</div>";
+const BAILIAN_HTML =
+  "<div>价格 ¥ 200 /月 用量限制 每 5 小时 6,000 次请求 每周 45,000 次请求 每月 90,000 次请求 新客首月特惠: 首次订阅 Pro 套餐可享首月 ¥39.90(官网目录价 ¥200/月),后续按 ¥200/月 续费 支持的模型 推荐模型:qwen3.7-plus(支持图片理解)、qwen3.6-plus(支持图片理解)、kimi-k2.5、glm-5、MiniMax-M2.5 更多模型:qwen3.5-plus</div>";
+
+describe("新三源解析(M56 三渠道扩容)", () => {
+  it("MiniMax 双态:年付标准/促销分离,月付价并入;权益整段直出", () => {
+    const rows = parseMiniMaxCoding(
+      { yearly: MM_YEARLY, monthly: MM_MONTHLY },
+      "https://www.minimax.io/m-plan",
+      NOW,
+    );
+    expect(rows.map((r) => r.planName)).toEqual([
+      "MiniMax M Plan · Go",
+      "MiniMax M Plan · Explore",
+      "MiniMax M Plan · Build",
+    ]);
+    expect(rows[0]).toMatchObject({
+      vendor: "MiniMax 稀宇科技",
+      currency: "USD",
+      monthlyFee: 22,
+      yearlyFee: 264, // 标准年付(促销 220 入 billingNote)
+      quarterlyFee: null,
+    });
+    expect(rows[0]!.billingNote).toContain("促销 $220/年");
+    expect(rows[0]!.benefits![0]).toContain("More usage");
+  });
+
+  it("小米单态:首价=年付折合月,次价=连续包月标准;Credits=额度口径", () => {
+    const rows = parseXiaomiToken(XIAOMI_HTML, "https://platform.xiaomimimo.com/token-plan", NOW);
+    expect(rows.map((r) => r.planName)).toEqual([
+      "MiMo Token Plan · Max",
+      "MiMo Token Plan · Pro",
+      "MiMo Token Plan · Lite",
+    ]);
+    expect(rows[0]).toMatchObject({
+      vendor: "小米 MiMo",
+      monthlyFee: 659, // 连续包月标准价
+      yearlyFee: 579, // 包年 88 折折合月
+      quotaDesc: "9840 亿 Credits",
+      offPeakRate: "谷 0.8×",
+    });
+    expect(rows[0]!.billingNote).toContain("88 折折合 ¥579/月");
+  });
+
+  it("百炼静态单档 Pro:¥200/月+首月特惠入 billingNote;推荐模型=权益", () => {
+    const rows = parseBailianCoding(
+      BAILIAN_HTML,
+      "https://help.aliyun.com/zh/model-studio/coding-plan",
+      NOW,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      vendor: "阿里云百炼",
+      planName: "百炼 Coding Plan · Pro",
+      monthlyFee: 200,
+      quarterlyFee: null,
+      yearlyFee: null,
+      billingNote: "新客首月 ¥39.90(官网目录价 ¥200/月),后续按 ¥200/月 续费",
+      quotaDesc: "每5小时6,000次请求每周45,000次请求每月90,000次请求",
+    });
+    expect(rows[0]!.benefits).toContain("qwen3.7-plus(支持图片理解)");
   });
 });

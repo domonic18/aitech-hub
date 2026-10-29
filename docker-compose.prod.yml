@@ -171,7 +171,9 @@ services:
     environment:
       TZ: Asia/Shanghai
       # /snapshot URL 白名单(M56 批A:牌价渠道注册表官方页主机;未配置=端点禁用)
-      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn
+      # M56 三新源:www.minimax.io(M Plan)/platform.xiaomimimo.com(Token Plan)渲染型;
+      # help.aliyun.com(百炼)为 static 型不走渲染,不加白名单
+      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn,www.minimax.io,platform.xiaomimimo.com
     tmpfs:
       - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
     volumes:
