@@ -140,6 +140,52 @@ export function sortPublicModels(models: PublicModelRow[]): PublicModelRow[] {
   return [...models].sort((a, b) => rank(key(a)) - rank(key(b)) || key(a).localeCompare(key(b)));
 }
 
+// ---------- 展示侧筛选(M55 批E 验收问题一:内容多 → 厂商/价格区间) ----------
+
+/** 价格区间档(左闭右开):套餐按**月费**,模型按**输入价 / 百万 tokens**
+ * (行内币种,不做汇率折算——D4 原币直出的延伸)。价格未公布(null)只出现在
+ * 「全部」档:归入任何具体区间都是臆测。 */
+export const PRICE_BANDS = [
+  { id: "all", label: "全部", min: 0, max: Number.POSITIVE_INFINITY },
+  { id: "lt10", label: "≤ 10", min: 0, max: 10 },
+  { id: "10-50", label: "10 – 50", min: 10, max: 50 },
+  { id: "50-100", label: "50 – 100", min: 50, max: 100 },
+  { id: "100-300", label: "100 – 300", min: 100, max: 300 },
+  { id: "gte300", label: "300 以上", min: 300, max: Number.POSITIVE_INFINITY },
+] as const;
+
+export type PriceBandId = (typeof PRICE_BANDS)[number]["id"];
+
+export function inPriceBand(price: number | null, id: PriceBandId): boolean {
+  if (id === "all") return true;
+  if (price === null) return false;
+  const band = PRICE_BANDS.find((b) => b.id === id);
+  if (band === undefined) return true;
+  return price >= band.min && price < band.max;
+}
+
+/** 厂商选项(去重 + 字典序,中英文混排按 localeCompare) */
+export function vendorOptions<T>(rows: T[], vendorOf: (r: T) => string): string[] {
+  return [...new Set(rows.map(vendorOf))].sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+}
+
+/** 厂商(空=全选)× 价格区间 联合筛选;纯函数,单测锚 */
+export function filterPricingRows<T>(
+  rows: T[],
+  opts: {
+    vendors: string[];
+    band: PriceBandId;
+    vendorOf: (r: T) => string;
+    priceOf: (r: T) => number | null;
+  },
+): T[] {
+  return rows.filter(
+    (r) =>
+      (opts.vendors.length === 0 || opts.vendors.includes(opts.vendorOf(r))) &&
+      inPriceBand(opts.priceOf(r), opts.band),
+  );
+}
+
 /** JSON-LD 清单(纯函数,单测锚):ItemList+Product 携双价描述;无价格页退化为
  * 空清单(页骨架仍 SSR,SEO 面不空)。截稿日期入 description 溯源。 */
 export function buildPricingJsonLd(data: PublicPricing, pageUrl: string): Record<string, unknown> {

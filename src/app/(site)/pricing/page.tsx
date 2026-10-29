@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import PricingView from "@/components/site/PricingView";
+import PricingExplorer from "@/components/site/pricing/PricingExplorer";
 import { absoluteUrl } from "@/lib/seo/site";
 import { buildPricingJsonLd, listPublicPricing } from "@/lib/pricing/public";
 
@@ -32,7 +32,7 @@ export default async function PricingPage(): Promise<React.ReactElement> {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PricingView data={data} />
+      <PricingExplorer data={data} />
     </>
   );
 }

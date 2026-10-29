@@ -18,11 +18,16 @@ vi.mock("@/lib/db", () => ({
 
 import {
   buildPricingJsonLd,
+  filterPricingRows,
   formatPrice,
+  inPriceBand,
   isPricingStale,
   listPublicPricing,
+  PRICE_BANDS,
   PRICING_STALE_DAYS,
   sortPublicModels,
+  vendorOptions,
+  type PriceBandId,
   type PublicModelRow,
 } from "./public";
 
@@ -133,6 +138,68 @@ describe("listPublicPricing", () => {
     expect(data.modelsAsOf).toBe("2026-10-28"); // max 而非首行
     expect(data.plans).toHaveLength(0);
     expect(data.plansAsOf).toBeNull();
+  });
+});
+
+describe("展示侧筛选(验收问题一)", () => {
+  it("inPriceBand 左闭右开;null 只在「全部」档(false 归入具体区间=臆测)", () => {
+    expect(inPriceBand(0, "lt10")).toBe(true);
+    expect(inPriceBand(9.99, "lt10")).toBe(true);
+    expect(inPriceBand(10, "lt10")).toBe(false); // 右开
+    expect(inPriceBand(10, "10-50")).toBe(true); // 左闭
+    expect(inPriceBand(50, "10-50")).toBe(false);
+    expect(inPriceBand(300, "gte300")).toBe(true);
+    expect(inPriceBand(299.9, "gte300")).toBe(false);
+    for (const b of PRICE_BANDS) {
+      expect(inPriceBand(null, b.id as PriceBandId)).toBe(b.id === "all");
+    }
+    // 区间无缝无叠:相邻具体档边界恰好交接(「全部」档不参与,它是全集)
+    for (let i = 2; i < PRICE_BANDS.length; i += 1) {
+      expect(PRICE_BANDS[i]!.min).toBe(PRICE_BANDS[i - 1]!.max);
+    }
+  });
+
+  it("vendorOptions 去重 + 中英文混排字典序(不改动入参)", () => {
+    const rows = [
+      { vendor: "智谱 AI · BigModel" },
+      { vendor: "小米 MiMo" },
+      { vendor: "小米 MiMo" },
+    ];
+    const opts = vendorOptions(rows, (r) => r.vendor);
+    expect(opts).toHaveLength(2);
+    expect(new Set(opts).size).toBe(2);
+    expect(rows).toHaveLength(3);
+    expect(vendorOptions([], (r: { vendor: string }) => r.vendor)).toEqual([]);
+  });
+
+  it("filterPricingRows:厂商空数组=全选;厂商×区间取交集;价格 null 被具体区间排除", () => {
+    const row = (vendor: string, monthlyFee: number | null) => ({ vendor, monthlyFee });
+    const rows = [
+      row("小米 MiMo", 39),
+      row("小米 MiMo", 99),
+      row("智谱 AI · BigModel", 149),
+      row("阿里云百炼", null),
+    ];
+    const opts = (vendors: string[], band: PriceBandId) => ({
+      vendors,
+      band,
+      vendorOf: (r: { vendor: string }) => r.vendor,
+      priceOf: (r: { monthlyFee: number | null }) => r.monthlyFee,
+    });
+
+    expect(filterPricingRows(rows, opts([], "all"))).toHaveLength(4);
+    expect(filterPricingRows(rows, opts(["小米 MiMo"], "all"))).toHaveLength(2);
+    expect(filterPricingRows(rows, opts([], "50-100")).map((r) => r.monthlyFee)).toEqual([99]);
+    expect(
+      filterPricingRows(rows, opts(["小米 MiMo", "智谱 AI · BigModel"], "100-300")).map(
+        (r) => r.vendor,
+      ),
+    ).toEqual(["智谱 AI · BigModel"]);
+    // 价格未公布(null)不进具体区间档,但「全部」档照常可见(仍是有效商品)
+    expect(filterPricingRows(rows, opts([], "lt10")).map((r) => r.vendor)).not.toContain(
+      "阿里云百炼",
+    );
+    expect(filterPricingRows(rows, opts(["阿里云百炼"], "all"))).toHaveLength(1);
   });
 });
 
