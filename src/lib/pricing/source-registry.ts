@@ -9,9 +9,14 @@
  *   与本表 host 集合的同步关系见 compose 注释(新 host 渠道接入时两处同步)。
  * 失败语义:单源失败抛错 → crawlSource 通用 catch 记 consecutiveFails/健康度;
  * 本模块在抛错前先把该源旧数据按 sourceUrl 打「待复核」标(不静默腐烂)。
+ * 快照档案(2026-10-29):每次采集由 SourceCapture 把取数原文(+整页截图)在
+ * 解析之前落私有桶,crawl_snapshot 记结论;后台 数据中心·源管理 渠道行「快照」
+ * 可回溯(页面改版当天,失败的原文恰恰是唯一证据)。
  */
 import { prisma } from "@/lib/db";
 
+import { PRICING_CRAWL_INTERVAL_MIN } from "../collect/constants";
+import { SourceCapture, type SnapshotSink } from "../collect/snapshot-capture";
 import {
   DEEPSEEK_PRICING_URL,
   MOONSHOT_PRICING_URL,
@@ -22,7 +27,6 @@ import {
   persistModelRows,
   type ModelPrefillRow,
 } from "./crawlers";
-import { PRICING_CRAWL_INTERVAL_MIN } from "../collect/constants";
 import {
   BAILIAN_CODING_URL,
   fetchBailianCoding,
@@ -46,6 +50,12 @@ import {
 
 type AnyRow = ModelPrefillRow | PlanPrefillRow;
 
+/** 取数上下文:now 供 dataAsOf/注记;sink 为快照回调(原文落档,编排层注入) */
+export interface SourceContext {
+  now: Date;
+  sink: SnapshotSink;
+}
+
 export interface SourceDef {
   key: string;
   target: "model" | "plan";
@@ -55,7 +65,7 @@ export interface SourceDef {
   defaultUrl: string;
   sortOrder: number;
   /** 取数+解析(URL 由 DB 行传入,后台可调零发版);抛错=源失败 */
-  run: (url: string, now: Date) => Promise<AnyRow[]>;
+  run: (url: string, ctx: SourceContext) => Promise<AnyRow[]>;
 }
 
 export const SOURCE_DEFS: SourceDef[] = [
@@ -67,9 +77,15 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "DeepSeek 深度求索",
     defaultUrl: DEEPSEEK_PRICING_URL,
     sortOrder: 1,
-    run: async (url, now) => {
+    run: async (url, { now, sink }) => {
       // crawlModelSource 自吞取数失败 → 此处转抛(编排层统一捕获记源失败)
-      const r = await crawlModelSource("static", url, (h, u, n) => parseDeepseek(h, u, n), now);
+      const r = await crawlModelSource(
+        "static",
+        url,
+        (h, u, n) => parseDeepseek(h, u, n),
+        now,
+        sink,
+      );
       if (!r.ok) throw new Error(r.error ?? "deepseek 源失败");
       return r.rows;
     },
@@ -82,8 +98,14 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "月之暗面 Moonshot",
     defaultUrl: MOONSHOT_PRICING_URL,
     sortOrder: 2,
-    run: async (url, now) => {
-      const r = await crawlModelSource("static", url, (h, u, n) => parseMoonshot(h, u, n), now);
+    run: async (url, { now, sink }) => {
+      const r = await crawlModelSource(
+        "static",
+        url,
+        (h, u, n) => parseMoonshot(h, u, n),
+        now,
+        sink,
+      );
       if (!r.ok) throw new Error(r.error ?? "moonshot 源失败");
       return r.rows;
     },
@@ -96,7 +118,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "月之暗面 Kimi",
     defaultUrl: KIMI_MEMBER_URL,
     sortOrder: 3,
-    run: async (url, now) => parseKimiCoding(await fetchKimiMember(url), url, now),
+    run: async (url, { now, sink }) => parseKimiCoding(await fetchKimiMember(url, sink), url, now),
   },
   {
     key: "minimax-mplan",
@@ -106,7 +128,8 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "MiniMax 稀宇科技",
     defaultUrl: MINIMAX_MPLAN_URL,
     sortOrder: 5,
-    run: async (url, now) => parseMiniMaxCoding(await fetchMiniMaxMember(url), url, now),
+    run: async (url, { now, sink }) =>
+      parseMiniMaxCoding(await fetchMiniMaxMember(url, sink), url, now),
   },
   {
     key: "xiaomi-mimo",
@@ -116,7 +139,8 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "小米 MiMo",
     defaultUrl: XIAOMI_TOKEN_URL,
     sortOrder: 6,
-    run: async (url, now) => parseXiaomiToken(await fetchXiaomiToken(url), url, now),
+    run: async (url, { now, sink }) =>
+      parseXiaomiToken(await fetchXiaomiToken(url, sink), url, now),
   },
   {
     key: "bailian-coding",
@@ -126,7 +150,8 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "阿里云百炼",
     defaultUrl: BAILIAN_CODING_URL,
     sortOrder: 7,
-    run: async (url, now) => parseBailianCoding(await fetchBailianCoding(url), url, now),
+    run: async (url, { now, sink }) =>
+      parseBailianCoding(await fetchBailianCoding(url, sink), url, now),
   },
   {
     key: "glm-coding",
@@ -136,7 +161,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "智谱 AI · BigModel",
     defaultUrl: GLM_CODING_URL,
     sortOrder: 8,
-    run: async (url, now) => parseGlmCoding(await fetchGlmCoding(url), url, now),
+    run: async (url, { now, sink }) => parseGlmCoding(await fetchGlmCoding(url, sink), url, now),
   },
 ];
 
@@ -148,10 +173,10 @@ export interface PricingSourceCrawlResult {
 }
 
 /** 单牌价渠道爬取(crawlSource type=pricing 分发入口):
- * config.pricingKey → def → 取数+解析+按 target 落库三规则;失败先打该源
- * 旧数据「待复核」标再抛错(crawlSource 通用 catch 记健康度)。 */
+ * config.pricingKey → def → 取数(原文快照落档)+解析+按 target 落库三规则;
+ * 失败先打该源旧数据「待复核」标再抛错(crawlSource 通用 catch 记健康度)。 */
 export async function runPricingSourceCrawl(
-  source: { url: string; config: unknown },
+  source: { id: number; url: string; config: unknown },
   now: Date = new Date(),
 ): Promise<PricingSourceCrawlResult> {
   const key =
@@ -162,17 +187,20 @@ export async function runPricingSourceCrawl(
   if (def === undefined) {
     throw new Error(`pricing 渠道 key=${key || "(空)"} 无注册解析器(config.pricingKey)`);
   }
+  const capture = new SourceCapture(source.id, source.url);
   try {
-    const rows = await def.run(source.url, now);
+    const rows = await def.run(source.url, { now, sink: (draft) => capture.capture(draft) });
     const modelRows = rows.filter((r): r is ModelPrefillRow => "modelKey" in r);
     const planRows = rows.filter((r): r is PlanPrefillRow => "planName" in r);
     await persistModelRows(modelRows);
     await persistPlanRows(planRows);
+    await capture.finish(rows.length === 0 ? "empty" : "success", rows.length);
     return { ok: true, fetched: rows.length };
   } catch (e) {
     const marked =
       (await markModelSourceStale(source.url, now)) + (await markPlanSourceStale(source.url, now));
     const message = `${e instanceof Error ? e.message : String(e)};已标待复核 ${marked} 行`;
+    await capture.finish("failed", null, message);
     throw new Error(message);
   }
 }

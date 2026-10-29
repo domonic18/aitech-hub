@@ -11,8 +11,8 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 
+import type { SnapshotSink } from "../collect/snapshot-capture";
 import { markCuratedSourceStale, persistCuratedRows } from "./curated-persist";
-import { withRecheckMark } from "./crawlers";
 import { snapshotHtml } from "./render-fetch";
 
 export interface PlanPrefillRow {
@@ -45,9 +45,15 @@ export const GLM_CODING_URL = "https://bigmodel.cn/glm-coding";
 
 // ---------- Kimi 会员定价页(月付/年付双态) ----------
 
-export async function fetchKimiMember(url: string): Promise<{ monthly: string; yearly: string }> {
-  const monthly = await snapshotHtml(url, "连续包月");
-  const yearly = await snapshotHtml(url, "连续包年");
+export async function fetchKimiMember(
+  url: string,
+  sink?: SnapshotSink,
+): Promise<{ monthly: string; yearly: string }> {
+  const shot = { screenshot: sink !== undefined };
+  const monthly = await snapshotHtml(url, "连续包月", shot);
+  await sink?.({ tab: "monthly", ...monthly });
+  const yearly = await snapshotHtml(url, "连续包年", shot);
+  await sink?.({ tab: "yearly", ...yearly });
   return { monthly: monthly.html, yearly: yearly.html };
 }
 
@@ -163,10 +169,15 @@ export function parseKimiCoding(raw: unknown, sourceUrl: string, now: Date): Pla
 
 export async function fetchGlmCoding(
   url: string,
+  sink?: SnapshotSink,
 ): Promise<{ monthly: string; quarterly: string; yearly: string }> {
-  const monthly = await snapshotHtml(url, "连续包月");
-  const quarterly = await snapshotHtml(url, "连续包季");
-  const yearly = await snapshotHtml(url, "连续包年");
+  const shot = { screenshot: sink !== undefined };
+  const monthly = await snapshotHtml(url, "连续包月", shot);
+  await sink?.({ tab: "monthly", ...monthly });
+  const quarterly = await snapshotHtml(url, "连续包季", shot);
+  await sink?.({ tab: "quarterly", ...quarterly });
+  const yearly = await snapshotHtml(url, "连续包年", shot);
+  await sink?.({ tab: "yearly", ...yearly });
   return { monthly: monthly.html, quarterly: quarterly.html, yearly: yearly.html };
 }
 
@@ -323,9 +334,13 @@ export const MINIMAX_MPLAN_URL = "https://www.minimax.io/m-plan";
 
 export async function fetchMiniMaxMember(
   url: string,
+  sink?: SnapshotSink,
 ): Promise<{ yearly: string; monthly: string }> {
-  const yearly = await snapshotHtml(url, "Yearly");
-  const monthly = await snapshotHtml(url, "Monthly");
+  const shot = { screenshot: sink !== undefined };
+  const yearly = await snapshotHtml(url, "Yearly", shot);
+  await sink?.({ tab: "yearly", ...yearly });
+  const monthly = await snapshotHtml(url, "Monthly", shot);
+  await sink?.({ tab: "monthly", ...monthly });
   return { yearly: yearly.html, monthly: monthly.html };
 }
 
@@ -414,8 +429,10 @@ export function parseMiniMaxCoding(raw: unknown, sourceUrl: string, now: Date): 
 
 export const XIAOMI_TOKEN_URL = "https://platform.xiaomimimo.com/token-plan";
 
-export async function fetchXiaomiToken(url: string): Promise<string> {
-  return (await snapshotHtml(url)).html;
+export async function fetchXiaomiToken(url: string, sink?: SnapshotSink): Promise<string> {
+  const page = await snapshotHtml(url, undefined, { screenshot: sink !== undefined });
+  await sink?.({ tab: "page", ...page });
+  return page.html;
 }
 
 /** 小米单态卡片解析(纯函数,fixture 单测锚):折叠文本
@@ -460,10 +477,13 @@ export function parseXiaomiToken(html: string, sourceUrl: string, now: Date): Pl
 
 export const BAILIAN_CODING_URL = "https://help.aliyun.com/zh/model-studio/coding-plan";
 
-export async function fetchBailianCoding(url: string): Promise<string> {
+export async function fetchBailianCoding(url: string, sink?: SnapshotSink): Promise<string> {
   const res = await fetch(url, { cache: "no-store" });
+  // 失败也留证:错误页/风控页本身就是排查材料(先落快照再抛)
+  const html = await res.text();
+  await sink?.({ tab: "page", html, httpStatus: res.status });
   if (!res.ok) throw new Error(`bailian http ${res.status}`);
-  return res.text();
+  return html;
 }
 
 /** 帮助页静态文本解析(纯函数,fixture 单测锚):单档 Pro

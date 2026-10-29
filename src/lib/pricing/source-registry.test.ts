@@ -31,7 +31,24 @@ vi.mock("@/lib/db", () => ({
       create: (...a: unknown[]) => createPlan(...a),
       update: (...a: unknown[]) => updatePlan(...a),
     },
+    // 快照档案(源码解析前落盘):单测不落盘,只验不阻断主流程
+    crawlSnapshot: {
+      create: vi.fn(async () => ({ id: BigInt(1) })),
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+      delete: vi.fn(async () => ({})),
+    },
   },
+}));
+
+// 快照存储:单测用 no-op(真实现落 workspace/snapshots 或 COS)
+vi.mock("../collect/snapshot-store", () => ({
+  snapshotStore: {
+    put: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    delete: vi.fn(async () => undefined),
+  },
+  isCosSnapshotConfigured: () => false,
 }));
 
 import { SOURCE_DEFS, runPricingSourceCrawl, syncPricingChannels } from "./source-registry";
@@ -81,7 +98,7 @@ describe("runPricingSourceCrawl", () => {
     globalThis.fetch = (async () => new Response(DEEPSEEK_HTML, { status: 200 })) as typeof fetch;
     try {
       const r = await runPricingSourceCrawl(
-        { url: DS_URL, config: { pricingKey: "deepseek" } },
+        { id: 42, url: DS_URL, config: { pricingKey: "deepseek" } },
         NOW,
       );
       expect(r).toEqual({ ok: true, fetched: 2 });
@@ -103,7 +120,7 @@ describe("runPricingSourceCrawl", () => {
       findModels.mockResolvedValue([{ id: BigInt(9), note: null }]);
       updateModel.mockResolvedValue({ id: BigInt(9) });
       await expect(
-        runPricingSourceCrawl({ url: DS_URL, config: { pricingKey: "deepseek" } }, NOW),
+        runPricingSourceCrawl({ id: 42, url: DS_URL, config: { pricingKey: "deepseek" } }, NOW),
       ).rejects.toThrow(/http 503[\s\S]*已标待复核 1 行/);
       expect((updateModel.mock.calls[0]![0] as { data: { note: string } }).data.note).toBe(
         "【待复核 2026-10-29 爬取失败】",
@@ -114,11 +131,11 @@ describe("runPricingSourceCrawl", () => {
   });
 
   it("config 无 key / key 未注册:抛错指认(可见故障)", async () => {
-    await expect(runPricingSourceCrawl({ url: DS_URL, config: {} }, NOW)).rejects.toThrow(
+    await expect(runPricingSourceCrawl({ id: 42, url: DS_URL, config: {} }, NOW)).rejects.toThrow(
       "无注册解析器",
     );
     await expect(
-      runPricingSourceCrawl({ url: DS_URL, config: { pricingKey: "nope" } }, NOW),
+      runPricingSourceCrawl({ id: 42, url: DS_URL, config: { pricingKey: "nope" } }, NOW),
     ).rejects.toThrow("无注册解析器");
   });
 });

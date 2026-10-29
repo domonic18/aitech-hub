@@ -9,6 +9,7 @@
  * note 打「待复核」标,整 job 上抛 job_run 记 failed 连败可见,不静默腐烂。
  */
 import { prisma } from "@/lib/db";
+import type { SnapshotSink } from "../collect/snapshot-capture";
 import { markCuratedSourceStale, persistCuratedRows } from "./curated-persist";
 
 export interface ModelPrefillRow {
@@ -27,12 +28,6 @@ export interface ModelPrefillRow {
 /** 默认官方页(种子初始值;运行期 URL 归 pricing_source 表后台可调) */
 export const DEEPSEEK_PRICING_URL = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing";
 export const MOONSHOT_PRICING_URL = "https://platform.moonshot.cn/docs/pricing/chat";
-
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`http ${res.status}`);
-  return res.text();
-}
 
 /** 去 tag 纯文本(表格结构折叠为空格分隔;矩阵解析用) */
 function stripTags(html: string): string {
@@ -138,17 +133,22 @@ export interface ModelSourceResult {
   error?: string;
 }
 
-/** 单模型源取数+解析(static 型直取;编排层按渠道逐个调,失败自吞) */
+/** 单模型源取数+解析(static 型直取;编排层按渠道逐个调,失败自吞)。
+ * 快照在解析之前落(sink):改版当天的原文恰恰是最需要的证据。 */
 export async function crawlModelSource(
   kind: string,
   url: string,
   parse: (html: string, sourceUrl: string, now: Date) => ModelPrefillRow[],
   now: Date,
+  sink?: SnapshotSink,
 ): Promise<ModelSourceResult> {
   try {
     if (kind !== "static") throw new Error(`模型源不支持 kind=${kind}(仅 static)`);
-    const rows = parse(await fetchText(url), url, now);
-    return { ok: true, rows };
+    const res = await fetch(url, { cache: "no-store" });
+    const html = await res.text();
+    await sink?.({ tab: "page", html, httpStatus: res.status });
+    if (!res.ok) throw new Error(`http ${res.status}`);
+    return { ok: true, rows: parse(html, url, now) };
   } catch (e) {
     return {
       ok: false,
