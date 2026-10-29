@@ -71,6 +71,7 @@ export async function buildLlmsIndex(): Promise<string> {
     `- [首页](${absoluteUrl("/")})`,
     `- [全部文章](${absoluteUrl("/articles/")})`,
     `- [开源项目](${absoluteUrl("/projects/")})`,
+    `- [AI 模型价格速查](${absoluteUrl("/pricing/")})(官方一手牌价:API 输入/输出价 + Coding Plan 套餐,USD 原币直出)`,
     `- [归档](${absoluteUrl("/archive/")})`,
     `- [关于](${absoluteUrl("/about/")})`,
     `- [用户协议](${absoluteUrl("/agreement/")})`,

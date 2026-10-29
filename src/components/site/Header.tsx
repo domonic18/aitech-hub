@@ -13,11 +13,13 @@ const NAV = [
   { href: "/articles/", label: "文章" },
   { href: "/projects/", label: "项目" },
   { href: "/pins/", label: "贴图" },
+  { href: "/pricing/", label: "价格速查" },
 ];
 
 /**
  * 站点顶栏(DESIGN-SPEC §5):logo 17 monogram 芯片 + 站名(site_config
  * site.title,缺省「一起AI」,规格见 common.css §Logo)+ 域名 tld;nav 电报流随 M7(批⑤)挂入;
+ * 价格速查随 M55 批D 挂入(Ardot P1 定稿);
  * 搜索入口为图标 → /search;主题胶囊全站可用;头像菜单随三期用户体系,一期不渲染。
  * 窄屏降级(DESIGN-SPEC §6):tld 隐藏;横滚兜底只包 logo+导航(M22 验收修复:
  * overflow-x 容器会裁剪头像下拉,操作区必须留在横滚容器外);操作区顺序
