@@ -23,14 +23,11 @@ const NAV: ReadonlyArray<NavItem> = [
   { href: "/projects/", label: "项目" },
   { href: "/pins/", label: "贴图" },
   // 专题聚合(A1 2026-10-29):价格速查等参考工具页归入专题;lg 悬停二级
-  // 菜单直达各专题(注册表与 /topics/ 同源防漂移),窄屏保持直链进索引页
+  // 菜单直达各专题(注册表与 /topics/ 同源防漂移),点击「专题」本体进索引页
   {
     href: "/topics/",
     label: "专题",
-    children: [
-      { href: "/topics/", label: "专题索引" },
-      ...SITE_TOPICS.map((t) => ({ href: t.href, label: t.label })),
-    ],
+    children: SITE_TOPICS.map((t) => ({ href: t.href, label: t.label })),
   },
 ];
 
