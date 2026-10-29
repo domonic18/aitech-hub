@@ -8,6 +8,7 @@ import { getSiteTitle } from "@/lib/config/site-config";
 import { htmlToMarkdown } from "@/lib/content/html-to-md";
 import { excerptOf } from "@/lib/content/format";
 import { listAllPostsForSeo } from "@/lib/content/posts";
+import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
 import { postPath } from "@/lib/content/post-path";
 import { listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
@@ -55,8 +56,8 @@ function postMarkdown(p: SeoPost): string {
 export async function buildLlmsIndex(): Promise<string> {
   const [posts, categories, tags, repos] = await Promise.all([
     listAllPostsForSeo(),
-    import("@/lib/content/taxonomy").then((m) => m.listCategories()),
-    import("@/lib/content/taxonomy").then((m) => m.listTagsWithCount()),
+    listCategories(),
+    listTagsWithCount(),
     listShowcaseRepos(),
   ]);
 
@@ -72,7 +73,6 @@ export async function buildLlmsIndex(): Promise<string> {
     `- [全部文章](${absoluteUrl("/articles/")})`,
     `- [开源项目](${absoluteUrl("/projects/")})`,
     `- [专题](${absoluteUrl("/topics/")})(参考工具聚合:模型价格速查等)`,
-    `- [AI 模型价格速查](${absoluteUrl("/pricing/")})(官方一手牌价:API 输入/输出价 + Coding Plan 套餐,USD 原币直出)`,
     `- [AI 模型价格速查](${absoluteUrl("/pricing/")})(官方一手牌价:API 输入/输出价 + Coding Plan 套餐,USD 原币直出)`,
     `- [归档](${absoluteUrl("/archive/")})`,
     `- [关于](${absoluteUrl("/about/")})`,
