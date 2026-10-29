@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import PaidBadge from "./PaidBadge";
 import { excerptOf } from "@/lib/content/format";
 import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
@@ -15,12 +16,7 @@ export default function PostCard({ post }: { post: PostListItem }): React.ReactE
           {post.title}
         </Link>
         {post.isPurchasable && (
-          <span
-            title="付费文章,解锁后阅读全文"
-            className="ml-2 inline-block translate-y-[-1px] rounded-sm border border-accent/30 bg-accent/10 px-1.5 py-0.5 align-middle font-mono text-[11px] font-medium text-accent"
-          >
-            ¥ 付费
-          </span>
+          <PaidBadge className="ml-2 inline-block translate-y-[-1px] align-middle" />
         )}
       </h2>
       {excerpt ? <p className="mt-2 line-clamp-2 text-sm text-text-2">{excerpt}</p> : null}

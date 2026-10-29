@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import CardCover, { CoverPlaceholder } from "@/components/site/CardCover";
+import PaidBadge from "./PaidBadge";
 import { excerptOf } from "@/lib/content/format";
 import { postPath } from "@/lib/content/post-path";
 import { formatCnDate } from "@/lib/datetime";
@@ -36,6 +37,7 @@ export default function PostCardGrid({ posts }: { posts: PostListItem[] }): Reac
                 >
                   {post.category.name}
                 </Link>
+                {post.isPurchasable && <PaidBadge />}
                 {post.tags.map(({ tag }) => (
                   <Link
                     key={tag.slug}

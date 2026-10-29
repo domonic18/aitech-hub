@@ -21,10 +21,13 @@ export async function requireAdminPage(): Promise<FullClaims> {
   return claims;
 }
 
-/** admin 端点守卫:完整校验 + role 判定,不过返回 null */
+/** admin 端点守卫:完整校验 + role 判定,不过返回 null。
+ * M56 review P1-2:与 requireSessionActor 语义对齐——Authorization 头在场
+ * 一律拒绝(PAT 不得搭会话 cookie 调会话专用端点),消除两套守卫灰面。 */
 export async function requireAdminRequest(
   req: Pick<Request, "headers">,
 ): Promise<FullClaims | null> {
+  if (req.headers.get("authorization") !== null) return null;
   const claims = await readFullSessionUser(req.headers.get("cookie"));
   if (!claims || claims.role !== ADMIN_ROLE) return null;
   return claims;

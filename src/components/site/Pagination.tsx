@@ -17,8 +17,9 @@ export default function Pagination({
   const windowStart = Math.max(1, Math.min(page - 2, totalPages - 4));
   const windowEnd = Math.min(totalPages, windowStart + 4);
   const pages = Array.from({ length: windowEnd - windowStart + 1 }, (_, i) => windowStart + i);
-  const itemClass = "rounded-md px-2.5 py-1 hover:bg-neutral-100";
-  const currentClass = "rounded-md bg-neutral-900 px-2.5 py-1 text-white";
+  const itemClass = "rounded-md px-2.5 py-1 text-text-2 hover:bg-panel-2 hover:text-text-1";
+  const currentClass =
+    "rounded-md bg-accent px-2.5 py-1 font-medium text-[color:var(--accent-contrast)]";
   return (
     <nav
       aria-label="分页"
