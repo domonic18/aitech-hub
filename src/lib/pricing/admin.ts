@@ -6,6 +6,7 @@
  * 鉴权在路由层(仅会话,PAT 拒绝,同 taxonomy 口径);唯一冲突上抛由路由映射 409。
  */
 import { Prisma } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
@@ -206,10 +207,18 @@ export async function listModelPricing(
   return rows.map(serializeModelRow);
 }
 
+/** 公开页即时再验证(M56 验收反馈一:终审后 /pricing/ 被 ISR 600s 挡住,
+ * 空态误导「未上架」;管理侧任何行变更统一刷公开页。爬虫只产 pending
+ * 不影响公开面,不需触发)。 */
+function revalidatePublicPricing(): void {
+  revalidatePath("/pricing/");
+}
+
 export async function createModelPricing(input: ModelPricingCreateInput): Promise<ModelPricingRow> {
   assertNotInverted(input.inputPrice, input.outputPrice, input.confirmInverted);
   const { confirmInverted: _confirm, ...data } = input;
   const row = await prisma.modelPricing.create({ data });
+  revalidatePublicPricing();
   return serializeModelRow(row);
 }
 
@@ -226,11 +235,13 @@ export async function updateModelPricing(
   );
   const { confirmInverted: _confirm, ...data } = input;
   const row = await prisma.modelPricing.update({ where: { id }, data });
+  revalidatePublicPricing();
   return serializeModelRow(row);
 }
 
 export async function deleteModelPricing(id: bigint): Promise<void> {
   await prisma.modelPricing.delete({ where: { id } });
+  revalidatePublicPricing();
 }
 
 export async function listCodingPlans(
@@ -257,6 +268,7 @@ export async function createCodingPlan(input: CodingPlanCreateInput): Promise<Co
   const row = await prisma.codingPlan.create({
     data: { ...data, benefits: benefitsInput(benefits) },
   });
+  revalidatePublicPricing();
   return serializePlanRow(row);
 }
 
@@ -274,9 +286,11 @@ export async function updateCodingPlan(
       ...(benefits === undefined ? {} : { benefits: benefitsInput(benefits) }),
     },
   });
+  revalidatePublicPricing();
   return serializePlanRow(row);
 }
 
 export async function deleteCodingPlan(id: bigint): Promise<void> {
   await prisma.codingPlan.delete({ where: { id } });
+  revalidatePublicPricing();
 }

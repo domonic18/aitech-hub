@@ -1,7 +1,8 @@
 /**
  * /pricing/ 公开读侧单测(M55 批D,prisma mock 无真库):仅 enabled 行可见
  * (停用/待审不可见)/ 45 天过期判定(空表不出提醒,边界刚好 45 天不出)/
- * 价格格(USD 原币直出,null=未公布)/ JSON-LD 清单构造(双价+截稿溯源)。
+ * 价格格(USD 原币直出,null=未公布)/ JSON-LD 清单构造(双价+截稿溯源)/
+ * 分组排序(P2-15:国内¥→国际$→混合组,同组内稳定)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,8 @@ import {
   isPricingStale,
   listPublicPricing,
   PRICING_STALE_DAYS,
+  sortPublicModels,
+  type PublicModelRow,
 } from "./public";
 
 beforeEach(() => {
@@ -45,6 +48,46 @@ describe("formatPrice", () => {
     expect(formatPrice(2, "CNY")).toBe("¥ 2");
     expect(formatPrice(0.25, "USD")).toBe("$ 0.25");
     expect(formatPrice(null, "CNY")).toBe("未公布");
+  });
+});
+
+describe("sortPublicModels", () => {
+  // P2-15:国内¥ → 国际$ → 混合组(组间 region|currency 字典序);稳定排序
+  const row = (region: string, currency: string, modelKey: string): PublicModelRow => ({
+    vendor: "V",
+    modelKey,
+    currency,
+    inputPrice: null,
+    outputPrice: null,
+    freeTier: null,
+    contextWindow: null,
+    note: null,
+    dataAsOf: "2026-10-28",
+    sourceUrl: "https://x",
+    region,
+  });
+  it("混合组排序:国内¥→国际$→其余按键字典序;同组内保持入参原序", () => {
+    const sorted = sortPublicModels([
+      row("intl", "USD", "gpt-a"),
+      row("cn", "USD", "cn-usd-1"),
+      row("intl", "CNY", "intl-cny-1"),
+      row("cn", "CNY", "deepseek-a"),
+      row("cn", "CNY", "deepseek-b"),
+    ]);
+    expect(sorted.map((r) => r.modelKey)).toEqual([
+      "deepseek-a", // cn|CNY 权重 0(组内原序:稳定排序)
+      "deepseek-b",
+      "gpt-a", // intl|USD 权重 1
+      "cn-usd-1", // 混合组权重 2,键字典序 cn|USD < intl|CNY
+      "intl-cny-1",
+    ]);
+  });
+  it("不改动入参数组(纯函数);空表原样返回", () => {
+    const input = [row("intl", "USD", "gpt-a"), row("cn", "CNY", "deepseek-a")];
+    const sorted = sortPublicModels(input);
+    expect(input.map((r) => r.modelKey)).toEqual(["gpt-a", "deepseek-a"]);
+    expect(sorted.map((r) => r.modelKey)).toEqual(["deepseek-a", "gpt-a"]);
+    expect(sortPublicModels([])).toEqual([]);
   });
 });
 

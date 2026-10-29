@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { PageHeader } from "@/components/site/PageHeader";
 import { absoluteUrl } from "@/lib/seo/site";
 import { SITE_TOPICS } from "@/lib/content/topics";
 
 /**
- * /topics/ 专题索引(A1 专题聚合,2026-10-29 验收拍板):工具钩子类参考页的
- * 聚合入口——主导航维度归位(内容频道 vs 参考专题),后续专题(如硬件配置
- * 计算器)在此入列,导航不再膨胀。价格速查为首个主题,/pricing/ 为其终态
- * URL(SEO 已收录,本页只做聚合可达性)。ISR 600s 纯静态卡墙。
+ * /topics/ 专题索引(A1 专题聚合;2026-10-29 验收反馈三重设计:卡墙在单主题
+ * 时孤单,改目录列表式——多主题自然成目录,单主题也是干净的一行入口)。
+ * 工具钩子类参考页的聚合入口,后续专题(如硬件配置计算器)在此入列。价格
+ * 速查为首个主题,/pricing/ 为其终态 URL(SEO 已收录,本页只做聚合可达性)。
+ * ISR 600s 纯静态目录。
  */
 export const revalidate = 600;
 
@@ -24,48 +26,46 @@ export function generateMetadata(): Metadata {
 
 export default function TopicsPage(): React.ReactElement {
   return (
-    <section className="mx-auto w-full max-w-[var(--site-max-w)]">
-      <p className="font-mono text-[11px] tracking-[0.2em] text-blue">TOPICS · 专题</p>
-      <h1 className="mt-3 text-2xl font-bold sm:text-3xl">专题</h1>
-      <p className="mt-2.5 max-w-2xl text-[13.5px] leading-relaxed text-text-2">
-        参考工具与数据速查类页面的聚合入口,随工具箱扩充持续上新。
-      </p>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <PageHeader
+      eyebrow="TOPICS · 专题"
+      title="专题"
+      description="参考工具与数据速查类页面的聚合入口,随工具箱扩充持续上新。"
+    >
+      <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel">
         {SITE_TOPICS.map((t) => (
           <Link
             key={t.href}
             href={t.href}
-            className="group flex flex-col rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-accent/40 hover:bg-panel-2"
+            className="group flex items-center gap-4 border-b border-line/60 px-5 py-4 transition-colors last:border-b-0 hover:bg-panel-2"
           >
-            <span className="flex items-center gap-2">
-              <svg className="ic flex-none text-accent" aria-hidden="true">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md border border-accent/25 bg-accent/10 text-accent">
+              <svg className="ic" aria-hidden="true">
                 <use href="#i-tool" />
               </svg>
-              <span className="truncate font-semibold text-[13.5px] text-text-1 group-hover:text-accent-hover">
-                {t.label}
-              </span>
-              <span className="ml-auto shrink-0 rounded border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[10.5px] text-blue">
-                {t.tag}
-              </span>
             </span>
-            <span className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-text-3">
-              {t.desc}
-            </span>
-            <span className="mt-3 flex items-center gap-1 border-t border-line/55 pt-2.5 text-[11.5px] text-text-3">
-              <svg className="ic ic-sm" aria-hidden="true">
-                <use href="#i-caret-right-fill" />
-              </svg>
-              进入专题
-              <span className="ml-auto text-accent opacity-0 transition-opacity group-hover:opacity-100">
-                →
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="text-[13.5px] font-semibold text-text-1 group-hover:text-accent-hover">
+                  {t.label}
+                </span>
+                <span className="shrink-0 rounded border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[10.5px] text-blue">
+                  {t.tag}
+                </span>
               </span>
+              <span className="mt-0.5 block truncate text-xs text-text-3">{t.desc}</span>
+            </span>
+            <span
+              className="flex-none text-text-3 transition-all group-hover:translate-x-0.5 group-hover:text-accent"
+              aria-hidden="true"
+            >
+              →
             </span>
           </Link>
         ))}
       </div>
       <p className="mt-6 text-[11.5px] text-text-3">
-        本页聚合地址:{absoluteUrl(PAGE_PATH)} · 各专题页 URL 独立且稳定
+        本页聚合地址:{absoluteUrl(PAGE_PATH)} · 各专题页 URL 独立且稳定 · 新专题随工具箱扩充在此上架
       </p>
-    </section>
+    </PageHeader>
   );
 }

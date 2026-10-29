@@ -6,7 +6,13 @@
  * 移动端表格降维卡片(P2 口径,纯 CSS 无 JS);停用/待审行服务端已滤
  * (仅 enabled),本组件零状态纯展示,取数在页面侧(ISR 600s)。
  */
-import { formatPrice, isPricingStale, PRICING_STALE_DAYS } from "@/lib/pricing/public";
+import { PageHeader } from "@/components/site/PageHeader";
+import {
+  formatPrice,
+  isPricingStale,
+  PRICING_STALE_DAYS,
+  sortPublicModels,
+} from "@/lib/pricing/public";
 import type { PublicModelRow, PublicPlanRow, PublicPricing } from "@/lib/pricing/public";
 
 const REGION_TITLES: Record<string, string> = { cn: "国内厂商", intl: "国际厂商" };
@@ -280,20 +286,16 @@ function PlanTable({ rows }: { rows: PublicPlanRow[] }): React.ReactElement {
 }
 
 export default function PricingView({ data }: { data: PublicPricing }): React.ReactElement {
-  // 分组顺序:国内¥ → 国际$ → 其余混合组(region×currency 字典序)
-  const groups = [...new Set(data.models.map(groupKey))].sort((a, b) => {
-    const rank = (k: string): number => (k === "cn|CNY" ? 0 : k === "intl|USD" ? 1 : 2);
-    return rank(a) - rank(b) || a.localeCompare(b);
-  });
-  const vendorCount = new Set(data.models.map((m) => m.vendor)).size;
+  // 分组顺序:国内¥ → 国际$ → 其余混合组(region×currency 字典序;P2-15 下沉 lib)
+  const models = sortPublicModels(data.models);
+  const groups = [...new Set(models.map(groupKey))];
+  const vendorCount = new Set(models.map((m) => m.vendor)).size;
   return (
-    <section className="mx-auto w-full max-w-[var(--site-max-w)]">
-      <p className="font-mono text-[11px] tracking-[0.2em] text-blue">TOOL HOOK · 工具钩子 01</p>
-      <h1 className="mt-3 text-2xl font-bold sm:text-3xl">AI 模型价格速查</h1>
-      <p className="mt-2.5 max-w-2xl text-[13.5px] leading-relaxed text-text-2">
-        主流大模型官方牌价一觉:输入 /
-        输出价、免费额度与上下文窗口。每月人工核对更新,价格以各厂商官方页面为准。
-      </p>
+    <PageHeader
+      eyebrow="TOOL HOOK · 工具钩子 01"
+      title="AI 模型价格速查"
+      description="主流大模型官方牌价一觉:输入 / 输出价、免费额度与上下文窗口。每月人工核对更新,价格以各厂商官方页面为准。"
+    >
       <div className="mt-5">
         <StatusBanner data={data} />
       </div>
@@ -307,7 +309,7 @@ export default function PricingView({ data }: { data: PublicPricing }): React.Re
           {data.models.length > 0 && (
             <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
               {groups.map((key, i) => {
-                const rows = data.models.filter((m) => groupKey(m) === key);
+                const rows = models.filter((m) => groupKey(m) === key);
                 return (
                   <div key={key} className={i > 0 ? "border-t border-line" : ""}>
                     <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
@@ -341,6 +343,6 @@ export default function PricingView({ data }: { data: PublicPricing }): React.Re
           )}
         </>
       )}
-    </section>
+    </PageHeader>
   );
 }

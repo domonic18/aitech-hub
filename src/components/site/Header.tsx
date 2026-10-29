@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import ThemeToggle from "@/components/ThemeToggle";
+import TopicNavMenu from "@/components/site/TopicNavMenu";
 import { SITE_TOPICS } from "@/lib/content/topics";
 
 import { getSiteTitle } from "@/lib/config/site-config";
@@ -77,34 +78,10 @@ export default async function Header(): Promise<React.ReactElement> {
                   {item.label}
                 </Link>
               ) : (
-                // 二级下拉(lg 悬停;窄屏横滚导航无悬停,点击直进索引页)
-                <div key={item.href} className="group relative">
-                  <Link
-                    href={item.href}
-                    className="flex items-center gap-0.5 whitespace-nowrap rounded-sm px-2 py-1.5 text-text-2 hover:bg-panel-2 hover:text-text-1 sm:px-3"
-                  >
-                    {item.label}
-                    <svg
-                      className="ic ic-sm hidden transition-transform group-hover:rotate-180 lg:block"
-                      aria-hidden="true"
-                    >
-                      <use href="#i-caret-down" />
-                    </svg>
-                  </Link>
-                  <div className="absolute left-0 top-full z-50 hidden pt-1 group-hover:block">
-                    <div className="flex min-w-[160px] flex-col rounded-md border border-line bg-panel py-1 shadow-lg">
-                      {item.children.map((c) => (
-                        <Link
-                          key={c.href}
-                          href={c.href}
-                          className="whitespace-nowrap px-3 py-1.5 text-[13px] text-text-2 hover:bg-panel-2 hover:text-text-1"
-                        >
-                          {c.label}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                // 二级下拉(客户端岛屿:fixed 定位逃出横滚裁剪;悬停展开,点击进索引页)
+                <TopicNavMenu key={item.href} label={item.label} href={item.href}>
+                  {item.children}
+                </TopicNavMenu>
               ),
             )}
           </nav>

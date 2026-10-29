@@ -131,6 +131,15 @@ export function formatPrice(price: number | null, currency: string): string {
   return `${currency === "USD" ? "$" : "¥"} ${price}`;
 }
 
+/** 模型分组排序(P2-15 纯函数,单测锚;自 PricingView 下沉):国内¥ → 国际$ →
+ * 其余混合组(组间按 region|currency 字典序,展示侧 groupKey 键格式须与此一致);
+ * 稳定排序——同组内保持入参原序(行序由取数侧 orderBy 决定,排序不改写)。 */
+export function sortPublicModels(models: PublicModelRow[]): PublicModelRow[] {
+  const key = (r: PublicModelRow): string => `${r.region}|${r.currency}`;
+  const rank = (k: string): number => (k === "cn|CNY" ? 0 : k === "intl|USD" ? 1 : 2);
+  return [...models].sort((a, b) => rank(key(a)) - rank(key(b)) || key(a).localeCompare(key(b)));
+}
+
 /** JSON-LD 清单(纯函数,单测锚):ItemList+Product 携双价描述;无价格页退化为
  * 空清单(页骨架仍 SSR,SEO 面不空)。截稿日期入 description 溯源。 */
 export function buildPricingJsonLd(data: PublicPricing, pageUrl: string): Record<string, unknown> {
