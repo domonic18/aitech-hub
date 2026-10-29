@@ -1457,9 +1457,10 @@ model JobRun {
   @@map("job_run")
 }
 
-/// 模型牌价(M55 工具钩子·价格速查页):官方一手牌价人工策展,三通道数据
-/// (OpenRouter 预填/官方页爬虫/手工)均落 pending,enabled=终审可见。
-/// 价格统一「货币 / 百万 tokens」口径;时段折扣与缓存价 v1 不收(note 提及)。
+/// 模型牌价(M55 工具钩子·价格速查页):官方一手牌价人工策展,官方页爬虫+
+/// 手工两通道落 pending,enabled=终审可见。价格统一「货币 / 百万 tokens」
+/// 口径;时段折扣与缓存价 v1 不收(note 提及)。
+/// (批B OpenRouter 预填通道 2026-10-29 砍除——非刚需;其产出行已清)
 model ModelPricing {
   id            BigInt   @id @default(autoincrement())
   vendor        String   @db.VarChar(40) // 厂商(如 DeepSeek)
@@ -1486,23 +1487,49 @@ model ModelPricing {
 /// Coding Plan 订阅套餐(M55):额度口径各家不一,按官方原文呈现不强行归一;
 /// 峰谷倍率原文直出(如「峰 1× · 谷 0.5×」),字段拆存便于页面分列。
 model CodingPlan {
-  id          BigInt   @id @default(autoincrement())
-  vendor      String   @db.VarChar(40)
-  planName    String   @map("plan_name") @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
-  currency    String   @default("CNY") @db.VarChar(8)
-  monthlyFee  Decimal? @map("monthly_fee") @db.Decimal(12, 2)
-  quotaDesc   String   @map("quota_desc") @db.VarChar(200) // 额度口径原文(口径不归一)
-  peakRate    String?  @map("peak_rate") @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
-  offPeakRate String?  @map("off_peak_rate") @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
-  bestFor     String?  @map("best_for") @db.VarChar(80) // 适合人群
-  dataAsOf    DateTime @map("data_as_of") @db.Timestamptz(6)
-  sourceUrl   String   @map("source_url") @db.VarChar(300)
-  status      String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            BigInt   @id @default(autoincrement())
+  vendor        String   @db.VarChar(40)
+  planName      String   @map("plan_name") @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
+  currency      String   @default("CNY") @db.VarChar(8)
+  monthlyFee    Decimal? @map("monthly_fee") @db.Decimal(12, 2) // 连续包月标准价
+  quarterlyFee  Decimal? @map("quarterly_fee") @db.Decimal(12, 2) // 连续包季展示价(M56 验收反馈:折合每月,口径见 billingNote)
+  yearlyFee     Decimal? @map("yearly_fee") @db.Decimal(12, 2) // 连续包年展示价(口径见 billingNote)
+  billingNote   String?  @map("billing_note") @db.VarChar(120) // 周期价格口径原文说明(如「季/年价为折合每月;连续包季9折/包年8折」)
+  benefits      Json?    // 套餐权益详情原文列表(M56 验收反馈;string[],按官方页序)
+  quotaDesc     String   @map("quota_desc") @db.VarChar(200) // 额度口径原文(口径不归一)
+  peakRate      String?  @map("peak_rate") @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
+  offPeakRate   String?  @map("off_peak_rate") @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
+  bestFor       String?  @map("best_for") @db.VarChar(80) // 适合人群
+  note          String?  @db.VarChar(200) // 爬虫待复核标记/策展备注(M56 批C;模型表同名列同纪律)
+  dataAsOf      DateTime @map("data_as_of") @db.Timestamptz(6)
+  sourceUrl     String   @map("source_url") @db.VarChar(300)
+  status        String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([vendor, planName], map: "uq_coding_plan_vendor_plan")
   @@index([status, sortOrder], map: "idx_coding_plan_page")
   @@map("coding_plan")
+}
+
+/// 牌价渠道注册(M56 批B):URL/启停后台可调零发版——改参数不发版,改解析
+/// 逻辑才发版。key 路由到代码侧解析器(source-registry.ts 唯一真相源,种子
+/// 只补缺不改值;url/enabled 落库后归后台所有);kind 路由取数机制
+/// (static=直取 HTML/rendered=经渲染端点快照)。
+model PricingSource {
+  id        BigInt   @id @default(autoincrement())
+  key       String   @unique(map: "uq_pricing_source_key") @db.VarChar(50)
+  target    String   @db.VarChar(20) // model | plan(模型行/套餐行双面)
+  kind      String   @db.VarChar(20) // static | rendered | api
+  label     String   @db.VarChar(60) // 人话名(策展台显示)
+  vendor    String   @db.VarChar(40) // 落库厂商名
+  url       String   @db.VarChar(500) // 官方页 URL(后台可调;rendered 型=快照目标)
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  remark    String?  @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("pricing_source")
 }

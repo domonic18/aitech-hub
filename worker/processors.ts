@@ -98,7 +98,7 @@ import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/daily";
-import { syncOpenrouterPrefill } from "../src/lib/pricing/openrouter";
+import { runPricingCrawl } from "../src/lib/pricing/source-registry";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {
@@ -110,9 +110,10 @@ export const PROCESSORS: Record<string, Processor> = {
     return summary;
   },
   [QUEUE_PRICING]: async () => {
-    // 牌价预填(M55 批B):OpenRouter 初稿;enabled/disabled 人工终审行不覆盖
-    const summary = await syncOpenrouterPrefill();
-    console.log(JSON.stringify({ event: "pricing.openrouter_sync", ...summary }));
+    // 官方页爬虫(M55 批C):只产/刷 pending,enabled/disabled 人工终审行不覆盖
+    // (批B OpenRouter 预填分流已随通道砍除,2026-10-29)
+    const summary = await runPricingCrawl();
+    console.log(JSON.stringify({ event: "pricing.crawl", ...summary }));
     return summary;
   },
   [QUEUE_STATS]: async (job) => {

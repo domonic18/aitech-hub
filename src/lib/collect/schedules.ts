@@ -9,8 +9,8 @@
 
 /** 媒体体检每日调度(避开整点;arch/08-media §3.2;worker 与媒体库页脚同源,评审 W2) */
 export const MEDIA_AUDIT_CRON = "41 3 * * *";
-/** 牌价预填(M55 批B):周一 08:23 拉 OpenRouter 初稿(避开整点;失败 job_run 连败可见) */
-export const PRICING_SYNC_CRON = "23 8 * * 1";
+/** 官方页爬虫(M55 批C 首批 DeepSeek/Kimi;M56 扩套餐源):周三 08:53 */
+export const PRICING_CRAWL_CRON = "53 8 * * 3";
 
 /** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
 export const VISIT_LOG_PURGE_CRON = "14 4 * * *";

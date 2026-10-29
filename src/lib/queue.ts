@@ -33,9 +33,9 @@ export const QUEUE_SEO_BATCH = "seo-batch";
 /** 内容分发(M17,requirement §4 多渠道分发):公众号推草稿;
  * 并发 1 全局串行(微信接口频控),lockDuration 900s 覆盖单批 30 篇 × ~15s */
 export const QUEUE_DISTRIBUTE = "distribute";
-/** 牌价预填(M55 批B:OpenRouter 初稿拉取;路由手动触发共用同一 sync 函数) */
+/** 牌价数据通道(M55:官方页爬虫;批B OpenRouter 预填通道 2026-10-29 砍除) */
 export const QUEUE_PRICING = "pricing";
-export const PRICING_JOB_SYNC = "sync-openrouter";
+export const PRICING_JOB_CRAWL = "crawl-official";
 /** 分发队列按渠道路由(M48 批D 地基):wechat 沿用历史队列名——改名会弃生产
  * 在途 job,禁;新渠道(小红书等)一律 `distribute:<channel>` 子队列,worker 侧
  * 按渠道各建 worker(同 concurrency=1 语义),渠道间互不队头阻塞 */
@@ -114,7 +114,7 @@ export {
   JOB_RUN_PURGE_CRON,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
-  PRICING_SYNC_CRON,
+  PRICING_CRAWL_CRON,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
 } from "./collect/schedules";

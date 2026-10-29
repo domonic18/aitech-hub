@@ -37,7 +37,7 @@ import {
   scheduleInsight,
   scheduleJobRunPurge,
   scheduleMediaAudit,
-  schedulePricingSync,
+  schedulePricingCrawl,
   schedulePayReconcile,
   scheduleStatsFlush,
   scheduleUsageLogPurge,
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
 
   await scheduleStatsFlush();
   await scheduleMediaAudit();
-  await schedulePricingSync();
+  await schedulePricingCrawl();
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();

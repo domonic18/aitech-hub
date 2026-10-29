@@ -27,7 +27,7 @@ export const JOB_RUN_LABELS: Record<string, string> = {
   "discovery/discovery-bili": "发现·B站发现",
   "db-backup/run": "运维·数据库备份",
   "media-audit/audit": "媒体·体检",
-  "pricing/sync-openrouter": "牌价·预填",
+  "pricing/crawl-official": "牌价·官方爬取",
   "pay-reconcile/daily-audit": "支付·日对账",
   "stats/purge-visit-log": "清理·访问明细",
   "stats/purge-usage-log": "清理·用量台账",
