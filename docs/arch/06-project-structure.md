@@ -162,6 +162,17 @@ aitech-hub/
 5. 渠道创建/编辑 Zod(经 `CRAWL_SOURCE_TYPES_IMPLEMENTED` 自动)
 6. 健康页归属核对(`channel-health.ts` group 联合,按需)
 
+取数侧另有**快照义务**(2026-10-29 M56 P0 回溯档案落地后):取数函数签一名
+可选 `sink?: SnapshotSink`,并在**解析之前**把原文交出去
+(`await sink?.({ tab, html, httpStatus, png? })`)——解析失败恰恰是最需要
+回溯的样本,故不能等解析成功再存;static 型直 fetch 的源同样落一枪
+(`tab="page"`,走 fetch 无浏览器故只有 HTML,`hasPng=false`、详情页截图 tab
+置灰)。渠道行台账自动出「快照」入口,时间线页
+`/admin/data/sources/[id]/snapshots/`(存储=`src/lib/collect/snapshot-store.ts`
+私有桶 `COS_BACKUP_BUCKET` 的 `crawl-snapshots/` 前缀,元数据=`crawl_snapshot`,
+每源 20 份;桶侧生命周期规则为部署侧运维步骤,见 deploy 清册;未配桶时退
+`workspace/snapshots` 本地盘,web/worker 必须同卷)。
+
 新增一个 admin 管理域:侧栏 `AdminSidebar.tsx` 1 行 + 路由目录 + 页面
 `requireAdminPage`(最长前缀点亮已处理 data/insight 前缀冲突)+ 治理台读侧
 落 `<域>.admin.ts`(§3)。
