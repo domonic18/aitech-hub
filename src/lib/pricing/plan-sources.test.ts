@@ -291,6 +291,17 @@ describe("markPlanSourceStale 打标", () => {
 
 // ---------- 新三源 fixture(2026-10-29 真实快照文本裁剪) ----------
 
+/** 真实快照是整页 DOM(含 script/style):逐词包 span 是最严苛形态——
+ * 标签插在每两个词之间,解析器必须先在折叠文本上做匹配
+ * (2026-10-29 实跑回归:MiniMax 直喂 HTML 必失配) */
+function asHtml(text: string): string {
+  const body = text
+    .split(/(\s+)/)
+    .map((w) => (w.trim() === "" ? " " : `<span class="w">${w}</span>`))
+    .join("");
+  return `<html><head><style>.w{color:red}</style><script>var price="$999";</script></head><body><div class="page">${body}</div></body></html>`;
+}
+
 const MM_YEARLY =
   "M Plan Go For light use $264 $ 220 Per year, billed annually Purchase More usage Text models, e.g., M3.1 Flash Image and speech models Web search and multimodal understanding Explore For everyday use $648 $ 550 Per year, billed annually Purchase 3x Go usage Video models, e.g., H3 Build For heavy use $1,560 $ 1,320 Per year, billed annually Purchase 7.5x Go usage Priority access";
 const MM_MONTHLY =
@@ -303,7 +314,7 @@ const BAILIAN_HTML =
 describe("新三源解析(M56 三渠道扩容)", () => {
   it("MiniMax 双态:年付标准/促销分离,月付价并入;权益整段直出", () => {
     const rows = parseMiniMaxCoding(
-      { yearly: MM_YEARLY, monthly: MM_MONTHLY },
+      { yearly: asHtml(MM_YEARLY), monthly: asHtml(MM_MONTHLY) },
       "https://www.minimax.io/m-plan",
       NOW,
     );
@@ -321,6 +332,9 @@ describe("新三源解析(M56 三渠道扩容)", () => {
     });
     expect(rows[0]!.billingNote).toContain("促销 $220/年");
     expect(rows[0]!.benefits![0]).toContain("More usage");
+    // 档间切片不串味:Explore 权益起于 3x Go usage,不含 Go 档的 More usage
+    expect(rows[1]!.benefits![0]).toContain("3x Go usage");
+    expect(rows[1]!.benefits![0]).not.toContain("More usage");
   });
 
   it("小米单态:首价=年付折合月,次价=连续包月标准;Credits=额度口径", () => {

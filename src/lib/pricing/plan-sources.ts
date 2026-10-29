@@ -66,6 +66,17 @@ function toNumber(raw: string | undefined): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** HTML → 折叠文本(去脚本/样式/标签):快照取回的是整页 DOM,
+ * 正则/切片一律在折叠文本上做(2026-10-29 实跑:HTML 直喂正则必失配) */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** 单态卡片解析(纯函数):plan-container 系类名锚(2026-10-29 实测 DOM;
  * 权益=plan-feature 列表项(核心+实验性功能按页序合并),段落式旧形回退) */
 export function parseKimiCards(html: string): KimiCard[] {
@@ -197,11 +208,7 @@ export function parseGlmCoding(raw: unknown, sourceUrl: string, now: Date): Plan
   const monthlyCards = parseGlmCards(read("monthly"));
   const quarterly = new Map(parseGlmCards(read("quarterly")).map((c) => [c.title, c] as const));
   const yearly = new Map(parseGlmCards(read("yearly")).map((c) => [c.title, c] as const));
-  const folded = read("monthly")
-    .replace(/<script[\s\S]*?<\/script>/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const folded = htmlToText(read("monthly"));
   const qDiscount = folded.match(/连续包季\s*([0-9.]+折)/)?.[1] ?? null;
   const yDiscount = folded.match(/连续包年\s*([0-9.]+折)/)?.[1] ?? null;
 
@@ -322,11 +329,19 @@ export async function fetchMiniMaxMember(
   return { yearly: yearly.html, monthly: monthly.html };
 }
 
-/** MiniMax 单态折叠文本 → 档位(纯函数):档名 + 首个 $ 金额 + 可选第二个 $ 金额 */
+/** MiniMax 单态折叠文本 → 档位(纯函数):档名 + 首个 $ 金额 + 可选第二个 $ 金额
+ * + 匹配下标(权益切片按档位原位定位,勿用金额字符串反查——真实文本 `$264`
+ * 无空格,`$ 264` 查不到会把多档切片全落到第一档) */
 export function miniMaxTiers(
   text: string,
-): Array<{ title: string; tagline: string; first: number; second: number | null }> {
-  const out: Array<{ title: string; tagline: string; first: number; second: number | null }> = [];
+): Array<{ title: string; tagline: string; first: number; second: number | null; index: number }> {
+  const out: Array<{
+    title: string;
+    tagline: string;
+    first: number;
+    second: number | null;
+    index: number;
+  }> = [];
   const re = /\b(Go|Explore|Build) ([^$]{2,40}?)\$ ?([\d,]+)(?: \$ ?([\d,]+))?/g;
   for (const m of text.matchAll(re)) {
     out.push({
@@ -334,6 +349,7 @@ export function miniMaxTiers(
       tagline: (m[2] ?? "").trim().slice(-30),
       first: Number((m[3] ?? "").replace(/,/g, "")),
       second: m[4] === undefined ? null : Number(m[4].replace(/,/g, "")),
+      index: m.index ?? 0,
     });
   }
   return out;
@@ -348,11 +364,11 @@ export function parseMiniMaxCoding(raw: unknown, sourceUrl: string, now: Date): 
     typeof raw === "object" && raw !== null && k in raw
       ? String((raw as Record<string, unknown>)[k])
       : "";
-  const yearlyText = read("yearly").replace(/\s+/g, " ").trim();
+  const yearlyText = htmlToText(read("yearly"));
   const yearlyTiers = miniMaxTiers(yearlyText);
   // 首见为准:权益文案可能复现档名词(如「3x Go usage」),后到不覆盖
   const monthlyByTitle = new Map<string, number>();
-  for (const t of miniMaxTiers(read("monthly").replace(/\s+/g, " "))) {
+  for (const t of miniMaxTiers(htmlToText(read("monthly")))) {
     if (!monthlyByTitle.has(t.title)) monthlyByTitle.set(t.title, t.first);
   }
 
@@ -362,12 +378,12 @@ export function parseMiniMaxCoding(raw: unknown, sourceUrl: string, now: Date): 
     const next = yearlyTiers[i + 1];
     if (!Number.isFinite(t.first) || t.first <= 0) continue;
     const monthly = monthlyByTitle.get(t.title) ?? null;
-    const segStart = yearlyText.indexOf("Purchase", yearlyText.indexOf(`$ ${t.first}`));
-    const segEnd =
-      next === undefined ? yearlyText.length : yearlyText.indexOf(`${next.title} `, segStart);
+    // 权益=本档价位块「Purchase」之后至下一档起点(原位切片,档间不串味)
+    const segStart = yearlyText.indexOf("Purchase", t.index);
+    const segEnd = next?.index ?? yearlyText.length;
     const benefitsBlob =
-      segStart > -1
-        ? yearlyText.slice(segStart + "Purchase".length, segEnd > 0 ? segEnd : undefined).trim()
+      segStart > -1 && segEnd > segStart
+        ? yearlyText.slice(segStart + "Purchase".length, segEnd).trim()
         : "";
     rows.push({
       vendor: "MiniMax 稀宇科技",
@@ -406,11 +422,7 @@ export async function fetchXiaomiToken(url: string): Promise<string> {
  * `Lite 轻量体验 ¥ 34 / 月 ¥39 按年计费 …9840 亿 Credits…`——
  * 首价=当前 tab(默认连续包年 88 折折合月),次价=连续包月标准价;Credits=额度口径。 */
 export function parseXiaomiToken(html: string, sourceUrl: string, now: Date): PlanPrefillRow[] {
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = htmlToText(html);
   const rows: PlanPrefillRow[] = [];
   const re =
     /\b(Lite|Standard|Pro|Max) ([^¥]{2,12}?)¥ ?([\d.]+) ?\/ ?月\s*¥ ?([\d,.]+)([\s\S]*?)(?=\b(?:Lite|Standard|Pro|Max) [^¥]{2,12}¥|$)/g;
@@ -457,11 +469,7 @@ export async function fetchBailianCoding(url: string): Promise<string> {
 /** 帮助页静态文本解析(纯函数,fixture 单测锚):单档 Pro
  * 价格 ¥200/月(新客首月 ¥39.90);用量=5h/周/月三行;推荐模型=权益。 */
 export function parseBailianCoding(html: string, sourceUrl: string, now: Date): PlanPrefillRow[] {
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = htmlToText(html);
   const price = text.match(/价格 ¥ ?([\d,.]+) ?\/月/) ?? text.match(/价格 ¥ ?([\d,.]+)/);
   if (price === null) throw new Error("bailian 价格结构未匹配(页面可能改版)");
   const monthlyFee = Number(price[1]);
