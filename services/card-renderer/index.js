@@ -14,9 +14,10 @@
  *   POST /render  {html, width?, scale?, maxHeight?, timeoutMs?}
  *              → 200 image/png(X-Card-Width/X-Card-Height = 逻辑像素)
  *              → 400 校验失败 / 413 高度超限 / 429 忙 / 504 超时 / 500 渲染失败
- *   POST /snapshot {url, timeoutMs?, settleMs?}(M56 批A:URL → 渲染后 HTML;
- *              JS 开启,RENDER_ALLOWED_HOSTS 白名单钉死 SSRF 面,未配置=403)
- *              → 200 {html, finalUrl, httpStatus}
+ *   POST /snapshot {url, timeoutMs?, settleMs?, clickText?, screenshot?}(M56 批A:
+ *              URL → 渲染后 HTML;JS 开启,RENDER_ALLOWED_HOSTS 白名单钉死 SSRF 面,
+ *              未配置=403;screenshot=true 同时回传整页 PNG base64,P0 回溯档案)
+ *              → 200 {html, finalUrl, httpStatus, png?}
  *
  * 资源:浏览器常驻单例(崩溃惰性重启;跑满 MAX_RUNS_PER_BROWSER 个 context
  * 主动弃置换新,防长跑退化——gateway chromium 自旋拖垮 VM 前科的对应纪律);
@@ -163,9 +164,9 @@ async function renderCard({ html, width, scale, maxHeight, timeoutMs }) {
  * JS 开启(与 /render 相反——目标页是真实公开站点,需客户端渲染);
  * 不做请求拦截(子资源 CDN 与分析埋点照常,页首 load 后定时 settle 收尾,
  * 不用 networkidle——埋点长连会让它永不空闲)。
- * @returns {Promise<{html: string, finalUrl: string, httpStatus: number | null}>}
+ * @returns {Promise<{html: string, finalUrl: string, httpStatus: number | null, png?: string}>}
  */
-async function snapshotPage({ url, timeoutMs, settleMs, clickText }) {
+async function snapshotPage({ url, timeoutMs, settleMs, clickText, screenshot }) {
   const b = await getBrowser();
   const context = await b.newContext({
     viewport: { width: 1440, height: 900 },
@@ -187,7 +188,9 @@ async function snapshotPage({ url, timeoutMs, settleMs, clickText }) {
         .click({ timeout: 5000 })
         .catch(() => undefined);
     }
-    // 自动滚底触发懒加载定价区(SPA 常见:视口外区块不挂载),再回顶
+    // 自动滚底触发懒加载定价区(SPA 常见:视口外区块不挂载),再回顶。
+    // 内部滚动容器(overflow:auto 的中栏布局)一并下滚——只看 document
+    // 滚动的老逻辑对这类页面等于没滚,视口外区块永远不挂载。
     await page.evaluate(
       () =>
         new Promise((resolve) => {
@@ -195,6 +198,9 @@ async function snapshotPage({ url, timeoutMs, settleMs, clickText }) {
           const step = () => {
             y += 600;
             window.scrollTo(0, y);
+            for (const el of document.querySelectorAll("*")) {
+              if (el.scrollHeight > el.clientHeight + 100) el.scrollTop = el.scrollHeight;
+            }
             if (y < document.documentElement.scrollHeight + 600) setTimeout(step, 120);
             else {
               window.scrollTo(0, 0);
@@ -206,10 +212,36 @@ async function snapshotPage({ url, timeoutMs, settleMs, clickText }) {
     );
     await page.waitForTimeout(settleMs); // SPA 挂载/懒加载收尾
     const html = await page.content();
+    // 整页截图(P0 回溯档案):与 HTML 同一会话同一时刻,人看/比对都靠它。
+    // 先回顶/复位内部滚动条(懒加载那一轮把中栏滚到了底),再量真实内容高:
+    // SPA 把正文塞进内部滚动容器时 documentElement.scrollHeight 只有视口高
+    // (1440x900),直接 fullPage 会截成半张——把视口撑到内容高再截。
+    // 上限 15000px:超长页只保首屏 15000px,避免 PNG/base64 撑爆内存与传输。
+    const png = screenshot
+      ? await (async () => {
+          const height = await page.evaluate(() => {
+            window.scrollTo(0, 0);
+            let max = document.documentElement.scrollHeight;
+            for (const el of document.querySelectorAll("*")) {
+              el.scrollTop = 0;
+              if (el.scrollHeight > max) max = el.scrollHeight;
+            }
+            return max;
+          });
+          if (height > 900) {
+            await page.setViewportSize({ width: 1440, height: Math.min(height, 15000) });
+            await page.waitForTimeout(400); // 撑高后触发一次视口内懒加载
+          }
+          return (
+            await page.screenshot({ fullPage: true, type: "png", timeout: timeoutMs })
+          ).toString("base64");
+        })()
+      : undefined;
     return {
       html,
       finalUrl: page.url(),
       httpStatus: resp === null ? null : resp.status(),
+      ...(png === undefined ? {} : { png }),
     };
   } finally {
     await context.close().catch(() => undefined);

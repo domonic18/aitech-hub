@@ -89,6 +89,7 @@ test("parseSnapshotBody:协议/host 校验(白名单内放行,白名单外/非 h
     url: "https://bigmodel.cn/glm-coding",
     timeoutMs: 30000,
     settleMs: 2500,
+    screenshot: false,
   });
   assert.equal(parseSnapshotBody({ url: "https://evil.example.com/x" }, hosts).ok, false);
   assert.equal(parseSnapshotBody({ url: "file:///etc/passwd" }, hosts).ok, false);
@@ -112,4 +113,29 @@ test("parseSnapshotBody:timeout/settle 边界与缺省", () => {
   assert.equal(ok.ok, true);
   assert.equal(ok.value.timeoutMs, 45000);
   assert.equal(ok.value.settleMs, 0);
+});
+
+test("parseSnapshotBody:clickText 透传与长度边界", () => {
+  const hosts = ["bigmodel.cn"];
+  const ok = parseSnapshotBody({ url: "https://bigmodel.cn/x", clickText: " 连续包月 " }, hosts);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.clickText, "连续包月");
+  assert.equal(parseSnapshotBody({ url: "https://bigmodel.cn/x", clickText: "" }, hosts).ok, false);
+  assert.equal(
+    parseSnapshotBody({ url: "https://bigmodel.cn/x", clickText: "x".repeat(41) }, hosts).ok,
+    false,
+  );
+});
+
+test("parseSnapshotBody:screenshot 布尔闸(缺省 false,非布尔拒绝)", () => {
+  const hosts = ["bigmodel.cn"];
+  const on = parseSnapshotBody({ url: "https://bigmodel.cn/x", screenshot: true }, hosts);
+  assert.equal(on.ok, true);
+  assert.equal(on.value.screenshot, true);
+  const off = parseSnapshotBody({ url: "https://bigmodel.cn/x", screenshot: false }, hosts);
+  assert.equal(off.value.screenshot, false);
+  assert.equal(
+    parseSnapshotBody({ url: "https://bigmodel.cn/x", screenshot: "yes" }, hosts).ok,
+    false,
+  );
 });

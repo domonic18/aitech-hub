@@ -86,7 +86,9 @@ export const SNAPSHOT_SETTLE_MAX_MS = 15_000;
  * 真实浏览器会话,SSRF 面必须钉死在渠道注册表内的官方页主机上)。
  * clickText 可选:导航后点击匹配文本的元素再 settle(周期价格页 tab 切换,
  * 月/季/年三态各拍一次由调用方合并;2026-10-29 验收反馈)。
- * @returns {{ ok: true, value: {url: string, timeoutMs: number, settleMs: number, clickText?: string} }
+ * screenshot 可选:同时回传整页 PNG(base64,P0 回溯档案——人看截图远快于读
+ * HTML;第三方页样式/图片需真实浏览器会话,故不能走 /render 的禁网模式)。
+ * @returns {{ ok: true, value: {url: string, timeoutMs: number, settleMs: number, screenshot: boolean, clickText?: string} }
  *          | { ok: false, error: string, status: number }}
  */
 export function parseSnapshotBody(body, allowedHosts) {
@@ -135,12 +137,20 @@ export function parseSnapshotBody(body, allowedHosts) {
     30_000;
   const settleMs =
     intInRange(body.settleMs, 0, SNAPSHOT_SETTLE_MAX_MS, "settleMs", errors) ?? 2_500;
+  let screenshot = false;
+  if (body.screenshot !== undefined) {
+    if (typeof body.screenshot === "boolean") screenshot = body.screenshot;
+    else errors.push("screenshot 须为布尔值");
+  }
   if (errors.length > 0) return { ok: false, error: errors.join(";"), status: 400 };
   return {
     ok: true,
-    value:
-      clickText === undefined
-        ? { url, timeoutMs, settleMs }
-        : { url, timeoutMs, settleMs, clickText },
+    value: {
+      url,
+      timeoutMs,
+      settleMs,
+      screenshot,
+      ...(clickText === undefined ? {} : { clickText }),
+    },
   };
 }
