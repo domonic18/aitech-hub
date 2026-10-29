@@ -529,8 +529,34 @@ model CrawlSource {
 
   telegrams      Telegram[]
   socialAccounts SocialAccount[]
+  snapshots      CrawlSnapshot[]
 
   @@map("crawl_source")
+}
+
+/// 采集快照(2026-10-29:P0 回溯档案——取数原文归档,改版/解析失配的一手证据)。
+/// 对象存私有备份桶 key=crawl-snapshots/<sourceId>/<ts>[-tab].html.gz(同前缀 .png
+/// 为整页截图);本表只存元数据供后台列表/按源筛选——不靠 COS listAll 翻页。
+/// 解析失败也落快照(失败样本才是回溯重点);保留每源最近 N 份,采集后清理。
+model CrawlSnapshot {
+  id          BigInt   @id @default(autoincrement())
+  sourceId    Int      @map("source_id")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+  url         String   @db.VarChar(500)
+  tab         String?  @db.VarChar(40) // rendered 多态快照的 tab 标签;静态页 null
+  httpStatus  Int?     @map("http_status")
+  sizeBytes   Int      @map("size_bytes") // 原文 HTML 字节数(非 gzip 后)
+  sha1        String   @db.Char(40)
+  parseStatus String   @default("pending") @map("parse_status") @db.VarChar(12) // pending/success/failed/empty
+  rowCount    Int?     @map("row_count")
+  error       String?  @db.Text
+  storageKey  String   @map("storage_key") @db.VarChar(300) // 桶内 html.gz key;截图=同前缀 .png
+  hasPng      Boolean  @default(false) @map("has_png")
+
+  source CrawlSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId, capturedAt(sort: Desc)], map: "idx_crawl_snapshot_source_recent")
+  @@map("crawl_snapshot")
 }
 
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)

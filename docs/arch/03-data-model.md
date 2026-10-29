@@ -305,6 +305,7 @@ CREATE TABLE legacy_url_map (
 - `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;**sec_uid 语义 per-platform(M24 起定档)**——douyin=sec_uid(`MS4wLjAB…` 开头),bilibili=纯数字 mid(1-16 位),判等与登记校验按平台分发(见 [arch/05 §4.4](05-services.md));调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
 - `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2);AI 解读列组视频/文字共用:`ai_status/ai_topic/ai_summary/ai_points jsonb/ai_keywords jsonb(M12 批⑥ 新列,文字条关键词 tag)/ai_ran_at/last_ai_error`(语义与契约演进见 arch/02 §3.2 落地注记)
 - `blocklist`(屏蔽词)
+- `crawl_snapshot`(采集快照档案,2026-10-29 迁移 `crawl_snapshot`):`source_id` FK→crawl_source **CASCADE**/`captured_at`/`url`/`tab`(monthly·quarterly·yearly·page)/`http_status?`/`size_bytes`/`sha1`/`parse_status`(pending/success/failed/empty——pending 残留=worker 中途死亡)/`row_count?`/`error?`/`storage_key varchar(300)`(私有桶 `crawl-snapshots/<sourceId>/<ts>-<tab>.html.gz`)/`has_png`(同前缀 `.png` 整页截图);索引 `(source_id, captured_at DESC)`。行只存元数据,原文在 COS 私有桶;每源保留最近 20 份(应用层裁剪,超量对象+行一并清)
 
 **AI 服务域三表已落地(2026-10-04 M8 批⑥迁移 `ai_service_admin`,治理后台见 [arch/04 §4](04-ai-agent.md))**:
 
