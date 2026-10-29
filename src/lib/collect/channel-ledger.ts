@@ -13,12 +13,11 @@ import { prisma } from "../db";
 import { DISCOVERY_JOB_BILI, DISCOVERY_JOB_HOTWORDS, QUEUE_DISCOVERY } from "../queue";
 import { INSIGHT_FETCH_CRON } from "./schedules";
 import {
-  CRAWL_SOURCE_TYPE_PRICING,
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   SOCIAL_CRAWL_INTERVAL_MIN,
   TELEGRAM_MEDIA_VIDEO,
   VIDEO_PLATFORM_LABELS,
 } from "../telegram/constants";
+import { CRAWL_SOURCE_TYPE_PRICING, CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } from "./constants";
 import { listChannelsAdmin } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
 import { videoRunningSince } from "./crawler-runs";

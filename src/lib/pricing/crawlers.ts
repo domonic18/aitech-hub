@@ -9,6 +9,7 @@
  * note 打「待复核」标,整 job 上抛 job_run 记 failed 连败可见,不静默腐烂。
  */
 import { prisma } from "@/lib/db";
+import { markCuratedSourceStale, persistCuratedRows } from "./curated-persist";
 
 export interface ModelPrefillRow {
   vendor: string;
@@ -167,20 +168,16 @@ export function withRecheckMark(note: string | null, now: Date): string {
   return `【待复核 ${now.toISOString().slice(0, 10)} 爬取失败】${base}`.slice(0, NOTE_MAX);
 }
 
-/** 失败源旧数据整源打标(按 sourceUrl 圈定,不误伤他源行) */
+/** 失败源旧数据整源打标(通用编排薄壳;圈定/写入口径见 curated-persist) */
 export async function markModelSourceStale(sourceUrl: string, now: Date): Promise<number> {
-  const stale = await prisma.modelPricing.findMany({
-    where: { sourceUrl },
-    select: { id: true, note: true },
-  });
-  for (const row of stale) {
-    await prisma.modelPricing.update({
-      where: { id: row.id },
-      data: { note: withRecheckMark(row.note, now) },
-      select: { id: true },
-    });
-  }
-  return stale.length;
+  return markCuratedSourceStale(
+    sourceUrl,
+    now,
+    (url) =>
+      prisma.modelPricing.findMany({ where: { sourceUrl: url }, select: { id: true, note: true } }),
+    (id, note) =>
+      prisma.modelPricing.update({ where: { id }, data: { note }, select: { id: true } }),
+  );
 }
 
 /** 模型行初稿三规则落库(建 pending/刷 pending/终审行不动;currency 随价格走) */
@@ -190,60 +187,47 @@ export async function persistModelRows(rows: ModelPrefillRow[]): Promise<{
   untouched: number;
   failed: number;
 }> {
-  const tally = { created: 0, refreshed: 0, untouched: 0, failed: 0 };
-  const existing = await prisma.modelPricing.findMany({
-    where: {
-      modelKey: { in: rows.map((r) => r.modelKey) },
-      vendor: { in: rows.map((r) => r.vendor) },
+  return persistCuratedRows(rows, {
+    keyOf: (r) => ({ vendor: r.vendor, key: r.modelKey }),
+    listExisting: async (vendors, keys) => {
+      const rows = await prisma.modelPricing.findMany({
+        where: { vendor: { in: vendors }, modelKey: { in: keys } },
+        select: { id: true, vendor: true, modelKey: true, status: true },
+      });
+      return rows.map((r) => ({ id: r.id, vendor: r.vendor, key: r.modelKey, status: r.status }));
     },
-    select: { id: true, vendor: true, modelKey: true, status: true },
+    create: (r) =>
+      prisma.modelPricing.create({
+        data: {
+          vendor: r.vendor,
+          modelKey: r.modelKey,
+          currency: r.currency,
+          inputPrice: r.inputPrice,
+          outputPrice: r.outputPrice,
+          contextWindow: r.contextWindow,
+          note: r.note,
+          dataAsOf: r.dataAsOf,
+          sourceUrl: r.sourceUrl,
+          region: r.region,
+          status: "pending",
+        },
+        select: { id: true },
+      }),
+    update: (id, r) =>
+      prisma.modelPricing.update({
+        where: { id },
+        data: {
+          // currency 必须随价格走:行若由 USD 通道先建,官方 CNY 价刷新时
+          // 币种同步矫正,杜绝「¥ 数字配 $ 符号」的跨通道脏态
+          currency: r.currency,
+          inputPrice: r.inputPrice,
+          outputPrice: r.outputPrice,
+          contextWindow: r.contextWindow,
+          note: r.note,
+          dataAsOf: r.dataAsOf,
+          sourceUrl: r.sourceUrl,
+        },
+        select: { id: true },
+      }),
   });
-  const byKey = new Map(existing.map((e) => [`${e.vendor}|${e.modelKey}`, e]));
-
-  for (const r of rows) {
-    const hit = byKey.get(`${r.vendor}|${r.modelKey}`);
-    try {
-      if (hit === undefined) {
-        await prisma.modelPricing.create({
-          data: {
-            vendor: r.vendor,
-            modelKey: r.modelKey,
-            currency: r.currency,
-            inputPrice: r.inputPrice,
-            outputPrice: r.outputPrice,
-            contextWindow: r.contextWindow,
-            note: r.note,
-            dataAsOf: r.dataAsOf,
-            sourceUrl: r.sourceUrl,
-            region: r.region,
-            status: "pending",
-          },
-          select: { id: true },
-        });
-        tally.created += 1;
-      } else if (hit.status === "pending") {
-        await prisma.modelPricing.update({
-          where: { id: hit.id },
-          data: {
-            // currency 必须随价格走:行若由 USD 通道先建,官方 CNY 价刷新时
-            // 币种同步矫正,杜绝「¥ 数字配 $ 符号」的跨通道脏态
-            currency: r.currency,
-            inputPrice: r.inputPrice,
-            outputPrice: r.outputPrice,
-            contextWindow: r.contextWindow,
-            note: r.note,
-            dataAsOf: r.dataAsOf,
-            sourceUrl: r.sourceUrl,
-          },
-          select: { id: true },
-        });
-        tally.refreshed += 1;
-      } else {
-        tally.untouched += 1;
-      }
-    } catch {
-      tally.failed += 1;
-    }
-  }
-  return tally;
 }

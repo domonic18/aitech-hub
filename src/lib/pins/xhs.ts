@@ -7,6 +7,7 @@
  * 3 次,终态 failed 后界面「重新发布」重新入队。
  */
 import path from "node:path";
+import { douyinGatewayBase } from "@/lib/config/gateways";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
@@ -60,7 +61,7 @@ export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: str
 /** 登录态录入(抖音同款手动 Cookie 心智,M49 批X3):F12 复制的 cookie 串
  * 转发 xhs-gateway 验证登录并落 storage_state(卷持久化,后续发布免登) */
 export async function ingestXhsCookies(cookieHeader: string): Promise<void> {
-  const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
+  const base = douyinGatewayBase();
   const res = await fetch(`${base}/xhs/cookies`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -133,7 +134,7 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
   if (!row) throw new Error("渠道行不存在(先标记分发)");
   {
     const material = await gatherPinXhsMaterial(pinId);
-    const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
+    const base = douyinGatewayBase();
     const res = await fetch(`${base}/xhs/publish`, {
       method: "POST",
       headers: { "content-type": "application/json" },

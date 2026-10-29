@@ -3,7 +3,8 @@
  * 视频平台两组,连败/末次运行原值直出。
  */
 import { prisma } from "../db";
-import { CRAWL_SOURCE_TYPE_SOCIAL_VIDEO, VIDEO_PLATFORM_LABELS } from "../telegram/constants";
+import { VIDEO_PLATFORM_LABELS } from "../telegram/constants";
+import { CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } from "./constants";
 import { listChannelsAdmin } from "../telegram/channels-admin";
 
 /** CrawlSource 无逐渠道错误字段,归因列由页侧显「—」;视频平台行 = 博主聚合

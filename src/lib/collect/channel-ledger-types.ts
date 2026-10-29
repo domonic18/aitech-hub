@@ -5,6 +5,7 @@
  * 的唯一出口,测试直打本件。
  */
 import type { DiscoveryTriggerJob } from "@/lib/discovery/admin";
+import { CRAWL_MAX_CONSECUTIVE_FAILS } from "./constants";
 
 export type ChannelKind = "rss" | "video" | "hot" | "discovery" | "github" | "pricing";
 export type LedgerHealth = "healthy" | "fail" | "degraded" | "paused";
@@ -70,7 +71,8 @@ export function healthOf(
   status: "healthy" | "error" | "degraded" | null,
 ): { health: LedgerHealth; healthText: string } {
   if (!enabled) return { health: "paused", healthText: "暂停" };
-  if (status === "error" || fails >= 3) return { health: "fail", healthText: `故障·连败 ${fails}` };
+  if (status === "error" || fails >= CRAWL_MAX_CONSECUTIVE_FAILS)
+    return { health: "fail", healthText: `故障·连败 ${fails}` };
   if (status === "degraded") return { health: "degraded", healthText: "降级·限频" };
   if (fails > 0) return { health: "degraded", healthText: `降级·连败 ${fails}` };
   return { health: "healthy", healthText: "健康" };

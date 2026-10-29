@@ -9,11 +9,8 @@ import type { JobRun } from "@prisma/client";
 
 import { prisma } from "../db";
 import { formatCnTime } from "../datetime";
-import {
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
-  SOCIAL_CRAWL_INTERVAL_MIN,
-  VIDEO_PLATFORM_LABELS,
-} from "../telegram/constants";
+import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_LABELS } from "../telegram/constants";
+import { CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } from "./constants";
 import { listChannelsAdmin } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
 import {

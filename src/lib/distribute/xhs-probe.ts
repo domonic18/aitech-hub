@@ -6,6 +6,7 @@
  * (gateway 宕机/超时,≠Cookie 过期,不误报)。
  */
 import { z } from "zod";
+import { douyinGatewayBase } from "@/lib/config/gateways";
 
 import { prisma } from "../db";
 import { logger } from "../logger";
@@ -20,7 +21,7 @@ export interface XhsStateSnapshot {
 
 /** 探针取数(web 实时路由与 worker 定时共用;探针必须可答,异常归一不抛) */
 export async function fetchXhsState(): Promise<XhsStateSnapshot> {
-  const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
+  const base = douyinGatewayBase();
   try {
     const res = await fetch(`${base}/xhs/state`, {
       signal: AbortSignal.timeout(30_000),

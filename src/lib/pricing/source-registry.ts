@@ -22,11 +22,15 @@ import {
   persistModelRows,
   type ModelPrefillRow,
 } from "./crawlers";
+import { PRICING_CRAWL_INTERVAL_MIN } from "../collect/constants";
 import {
+  fetchGlmCoding,
+  fetchKimiMember,
   GLM_CODING_URL,
   KIMI_MEMBER_URL,
-  crawlPlanSource,
   markPlanSourceStale,
+  parseGlmCoding,
+  parseKimiCoding,
   persistPlanRows,
   type PlanPrefillRow,
 } from "./plan-sources";
@@ -83,11 +87,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "月之暗面 Kimi",
     defaultUrl: KIMI_MEMBER_URL,
     sortOrder: 3,
-    run: async (url, now) => {
-      const r = await crawlPlanSource("kimi-membership", "rendered", url, now);
-      if (!r.ok) throw new Error(r.error ?? "kimi-membership 源失败");
-      return r.rows;
-    },
+    run: async (url, now) => parseKimiCoding(await fetchKimiMember(url), url, now),
   },
   {
     key: "glm-coding",
@@ -97,11 +97,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "智谱 AI · BigModel",
     defaultUrl: GLM_CODING_URL,
     sortOrder: 4,
-    run: async (url, now) => {
-      const r = await crawlPlanSource("glm-coding", "rendered", url, now);
-      if (!r.ok) throw new Error(r.error ?? "glm-coding 源失败");
-      return r.rows;
-    },
+    run: async (url, now) => parseGlmCoding(await fetchGlmCoding(url), url, now),
   },
 ];
 
@@ -155,7 +151,7 @@ export async function syncPricingChannels(): Promise<number> {
         name,
         type: "pricing",
         url: def.defaultUrl,
-        crawlIntervalMin: 10_080, // 周级(官方牌价页礼貌采集;源管理可调)
+        crawlIntervalMin: PRICING_CRAWL_INTERVAL_MIN, // 周级(官方牌价页礼貌采集;源管理可调)
         enabled: true,
         config: { pricingKey: def.key },
         remark: def.label,

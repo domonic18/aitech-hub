@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 
+import { markCuratedSourceStale, persistCuratedRows } from "./curated-persist";
 import { withRecheckMark } from "./crawlers";
 import { snapshotHtml } from "./render-fetch";
 
@@ -44,7 +45,7 @@ export const GLM_CODING_URL = "https://bigmodel.cn/glm-coding";
 
 // ---------- Kimi 会员定价页(月付/年付双态) ----------
 
-async function fetchKimiMember(url: string): Promise<{ monthly: string; yearly: string }> {
+export async function fetchKimiMember(url: string): Promise<{ monthly: string; yearly: string }> {
   const monthly = await snapshotHtml(url, "连续包月");
   const yearly = await snapshotHtml(url, "连续包年");
   return { monthly: monthly.html, yearly: yearly.html };
@@ -149,7 +150,7 @@ export function parseKimiCoding(raw: unknown, sourceUrl: string, now: Date): Pla
 
 // ---------- GLM /glm-coding(月/季/年三态) ----------
 
-async function fetchGlmCoding(
+export async function fetchGlmCoding(
   url: string,
 ): Promise<{ monthly: string; quarterly: string; yearly: string }> {
   const monthly = await snapshotHtml(url, "连续包月");
@@ -238,43 +239,14 @@ export function parseGlmCoding(raw: unknown, sourceUrl: string, now: Date): Plan
   return rows;
 }
 
-/** 单套餐源取数+解析(rendered 型双/三态快照;编排层按渠道逐个调,失败自吞) */
-export async function crawlPlanSource(
-  key: string,
-  kind: string,
-  url: string,
-  now: Date,
-): Promise<{ ok: boolean; rows: PlanPrefillRow[]; error?: string }> {
-  try {
-    if (kind !== "rendered") throw new Error(`套餐源不支持 kind=${kind}(仅 rendered)`);
-    const raw =
-      key === "kimi-membership"
-        ? await fetchKimiMember(url)
-        : key === "glm-coding"
-          ? await fetchGlmCoding(url)
-          : null;
-    if (raw === null) throw new Error(`套餐渠道 key=${key} 无取数器`);
-    const rows =
-      key === "kimi-membership" ? parseKimiCoding(raw, url, now) : parseGlmCoding(raw, url, now);
-    return { ok: true, rows };
-  } catch (e) {
-    return { ok: false, rows: [], error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
 export async function markPlanSourceStale(sourceUrl: string, now: Date): Promise<number> {
-  const stale = await prisma.codingPlan.findMany({
-    where: { sourceUrl },
-    select: { id: true, note: true },
-  });
-  for (const row of stale) {
-    await prisma.codingPlan.update({
-      where: { id: row.id },
-      data: { note: withRecheckMark(row.note, now) },
-      select: { id: true },
-    });
-  }
-  return stale.length;
+  return markCuratedSourceStale(
+    sourceUrl,
+    now,
+    (url) =>
+      prisma.codingPlan.findMany({ where: { sourceUrl: url }, select: { id: true, note: true } }),
+    (id, note) => prisma.codingPlan.update({ where: { id }, data: { note }, select: { id: true } }),
+  );
 }
 
 /** 套餐行初稿三规则落库(建 pending/刷 pending/终审行不动) */
@@ -284,69 +256,56 @@ export async function persistPlanRows(rows: PlanPrefillRow[]): Promise<{
   untouched: number;
   failed: number;
 }> {
-  const tally = { created: 0, refreshed: 0, untouched: 0, failed: 0 };
-  const existing = await prisma.codingPlan.findMany({
-    where: {
-      vendor: { in: [...new Set(rows.map((r) => r.vendor))] },
-      planName: { in: rows.map((r) => r.planName) },
+  return persistCuratedRows(rows, {
+    keyOf: (r) => ({ vendor: r.vendor, key: r.planName }),
+    listExisting: async (vendors, keys) => {
+      const rows = await prisma.codingPlan.findMany({
+        where: { vendor: { in: vendors }, planName: { in: keys } },
+        select: { id: true, vendor: true, planName: true, status: true },
+      });
+      return rows.map((r) => ({ id: r.id, vendor: r.vendor, key: r.planName, status: r.status }));
     },
-    select: { id: true, vendor: true, planName: true, status: true },
+    create: (r) =>
+      prisma.codingPlan.create({
+        data: {
+          vendor: r.vendor,
+          planName: r.planName,
+          currency: r.currency,
+          monthlyFee: r.monthlyFee,
+          quarterlyFee: r.quarterlyFee,
+          yearlyFee: r.yearlyFee,
+          billingNote: r.billingNote,
+          benefits: r.benefits === null ? Prisma.DbNull : r.benefits,
+          quotaDesc: r.quotaDesc,
+          peakRate: r.peakRate,
+          offPeakRate: r.offPeakRate,
+          bestFor: r.bestFor,
+          note: r.note,
+          dataAsOf: r.dataAsOf,
+          sourceUrl: r.sourceUrl,
+          status: "pending",
+        },
+        select: { id: true },
+      }),
+    update: (id, r) =>
+      prisma.codingPlan.update({
+        where: { id },
+        data: {
+          currency: r.currency,
+          monthlyFee: r.monthlyFee,
+          quarterlyFee: r.quarterlyFee,
+          yearlyFee: r.yearlyFee,
+          billingNote: r.billingNote,
+          benefits: r.benefits === null ? Prisma.DbNull : r.benefits,
+          quotaDesc: r.quotaDesc,
+          peakRate: r.peakRate,
+          offPeakRate: r.offPeakRate,
+          bestFor: r.bestFor,
+          note: r.note,
+          dataAsOf: r.dataAsOf,
+          sourceUrl: r.sourceUrl,
+        },
+        select: { id: true },
+      }),
   });
-  const byKey = new Map(existing.map((e) => [`${e.vendor}|${e.planName}`, e]));
-
-  for (const r of rows) {
-    const hit = byKey.get(`${r.vendor}|${r.planName}`);
-    try {
-      if (hit === undefined) {
-        await prisma.codingPlan.create({
-          data: {
-            vendor: r.vendor,
-            planName: r.planName,
-            currency: r.currency,
-            monthlyFee: r.monthlyFee,
-            quarterlyFee: r.quarterlyFee,
-            yearlyFee: r.yearlyFee,
-            billingNote: r.billingNote,
-            benefits: r.benefits === null ? Prisma.DbNull : r.benefits,
-            quotaDesc: r.quotaDesc,
-            peakRate: r.peakRate,
-            offPeakRate: r.offPeakRate,
-            bestFor: r.bestFor,
-            note: r.note,
-            dataAsOf: r.dataAsOf,
-            sourceUrl: r.sourceUrl,
-            status: "pending",
-          },
-          select: { id: true },
-        });
-        tally.created += 1;
-      } else if (hit.status === "pending") {
-        await prisma.codingPlan.update({
-          where: { id: hit.id },
-          data: {
-            currency: r.currency,
-            monthlyFee: r.monthlyFee,
-            quarterlyFee: r.quarterlyFee,
-            yearlyFee: r.yearlyFee,
-            billingNote: r.billingNote,
-            benefits: r.benefits === null ? Prisma.DbNull : r.benefits,
-            quotaDesc: r.quotaDesc,
-            peakRate: r.peakRate,
-            offPeakRate: r.offPeakRate,
-            bestFor: r.bestFor,
-            note: r.note,
-            dataAsOf: r.dataAsOf,
-            sourceUrl: r.sourceUrl,
-          },
-          select: { id: true },
-        });
-        tally.refreshed += 1;
-      } else {
-        tally.untouched += 1;
-      }
-    } catch {
-      tally.failed += 1;
-    }
-  }
-  return tally;
 }

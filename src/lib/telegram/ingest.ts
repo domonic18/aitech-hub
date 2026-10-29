@@ -13,18 +13,16 @@ import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
 import { runPricingSourceCrawl } from "../pricing/source-registry";
+import { TELEGRAM_STATUS_HIDDEN, TELEGRAM_STATUS_VISIBLE, type BlocklistScope } from "./constants";
 import {
   CRAWL_MAX_CONSECUTIVE_FAILS,
-  CRAWL_MAX_ITEMS_PER_RUN,
   CRAWL_SOURCE_STATUS_DEGRADED,
   CRAWL_SOURCE_STATUS_ERROR,
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
-  TELEGRAM_STATUS_HIDDEN,
-  TELEGRAM_STATUS_VISIBLE,
-  type BlocklistScope,
-} from "./constants";
+} from "../collect/constants";
+import { CRAWL_MAX_ITEMS_PER_RUN } from "./constants";
 import {
   matchBlocklist,
   matchHeuristics,
