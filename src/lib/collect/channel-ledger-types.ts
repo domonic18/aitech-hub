@@ -50,6 +50,8 @@ export interface ChannelLedgerRow {
     enabled: boolean;
     credentialMask: string;
   } | null;
+  /** 采集快照时间线入口(牌价渠道;其余类型 null) */
+  snapshotsHref: string | null;
 }
 
 /** F17 筛选 chips(全部 N / 文字渠道 N / …;GitHub 板面不带计数) */

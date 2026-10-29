@@ -66,6 +66,7 @@ async function rssRows(): Promise<ChannelLedgerRow[]> {
         enabled: c.enabled,
         credentialMask: c.maskedConfig?.token ?? "",
       },
+      snapshotsHref: null,
     };
   });
 }
@@ -106,6 +107,7 @@ async function pricingRows(): Promise<ChannelLedgerRow[]> {
         enabled: c.enabled,
         credentialMask: "",
       },
+      snapshotsHref: `/admin/data/sources/${c.id}/snapshots/`,
     };
   });
 }
@@ -165,6 +167,7 @@ async function videoRows(): Promise<ChannelLedgerRow[]> {
           ? { type: "link", href: "/admin/data/run/?t=overview", label: "查看实时 →" }
           : { type: "link", href: "/admin/data/sources/?t=bloggers", label: "编辑" },
       editChannel: null,
+      snapshotsHref: null,
     };
   });
 }
@@ -191,6 +194,7 @@ async function hotRows(): Promise<ChannelLedgerRow[]> {
       primary: { type: "hotboard" },
       secondary: { type: "link", href: "/admin/data/run/?t=jobs", label: "记录" },
       editChannel: null,
+      snapshotsHref: null,
     };
   });
 }
@@ -239,6 +243,7 @@ async function discoveryRows(): Promise<ChannelLedgerRow[]> {
       primary: { type: "discover", job: d.job },
       secondary: { type: "link", href: "/admin/insight/discovery/?t=words", label: "词库" },
       editChannel: null,
+      snapshotsHref: null,
     };
   });
 }
@@ -276,6 +281,7 @@ async function githubRows(): Promise<ChannelLedgerRow[]> {
       primary: { type: "syncGithub", repoIds: enabled.map((r) => r.id) },
       secondary: { type: "link", href: "/admin/insight/discovery/?t=github", label: "白名单" },
       editChannel: null,
+      snapshotsHref: null,
     },
   ];
 }
