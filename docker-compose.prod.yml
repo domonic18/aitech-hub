@@ -66,6 +66,7 @@ services:
         BUILD_REF: ${BUILD_REF:-}
         BUILD_TIME: ${BUILD_TIME:-}
         FFMPEG_BINARIES_URL: ${FFMPEG_BINARIES_URL:-https://registry.npmmirror.com/-/binary/ffmpeg-static}
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-https://registry.npmmirror.com/-/binary/prisma}
     # SERVICE_ROLE=web:entrypoint 先 prisma migrate deploy,再起 server + ISR 预热
     environment:
       SERVICE_ROLE: web
