@@ -20,6 +20,7 @@ import { logger } from "@/lib/logger";
 import { stripHtml } from "@/lib/telegram/normalize";
 
 import { ingestInsightSignal } from "../ingest";
+import { resolveEntity } from "../entities/resolve";
 import { resolveInsightModel } from "../model";
 import {
   ENTITY_TYPES,
@@ -59,9 +60,30 @@ const EXTRACT_SYSTEM = `你是 AI 行业事件抽取器。给定一家 AI 厂商
 5. title ≤80 字,概括事件本身(谁发布/调整了什么);summary ≤${SUMMARY_MAX} 字,补充关键事实(版本、价格、benchmark 分数等)。
 6. 只输出一个 JSON 对象:{"events":[...]},不要任何解释或代码块标记。`;
 
+/** 实体解析降级包装:建实体失败只记 warn,事件照常入库(entityId 留空) */
+async function resolveEntityIdSafely(
+  vendorKey: string,
+  entityKey: string,
+  entityType: string,
+): Promise<bigint | null> {
+  try {
+    const resolved = await resolveEntity({ vendorKey, rawKey: entityKey, entityType });
+    return resolved?.id ?? null;
+  } catch (e) {
+    logger.warn({
+      event: "insight.entity.resolve_failed",
+      vendor: vendorKey,
+      entityKey,
+      error: String(e),
+    });
+    return null;
+  }
+}
+
 /** 抽取输入:标题+摘要优先;不足 200 字再抓正文(列表页只有锚文本的源)
- * 抓取失败不阻断——标题仍是可用输入,记日志供回溯 */
-async function readArticleText(item: VendorExtractJobData["item"]): Promise<string> {
+ * 抓取失败不阻断——标题仍是可用输入,记日志供回溯 */ async function readArticleText(
+  item: VendorExtractJobData["item"],
+): Promise<string> {
   let text = `${item.title}。${item.summary}`.trim();
   if (text.length < VENDOR_TEXT_MIN_FOR_FETCH) {
     try {
@@ -131,6 +153,10 @@ export async function runVendorExtractJob(
       if (entityKey === "") continue;
       const occurredAt = resolveOccurredAt(draft.occurredAt, fallback, now);
       const dedupeKey = vendorDedupeKey(source, data.item.url, draft.eventType, entityKey);
+      // M60:解析到规范实体(主表+别名)。失败只降级留空,不阻断事件入库;
+      // 未解析的事件由回填脚本按历史顺序补挂。
+      const entityId = await resolveEntityIdSafely(data.vendorKey, entityKey, draft.entityType);
+      const entityPatch = entityId === null ? {} : { entityId };
       const meta = {
         vendor: data.vendorKey,
         entityType: draft.entityType,
@@ -141,7 +167,12 @@ export async function runVendorExtractJob(
       try {
         await prisma.entityEvent.upsert({
           where: { dedupeKey },
-          update: { title: draft.title, summary: draft.summary || null, occurredAt },
+          update: {
+            title: draft.title,
+            summary: draft.summary || null,
+            occurredAt,
+            ...entityPatch,
+          },
           create: {
             source,
             vendor: data.vendorKey,
@@ -154,6 +185,7 @@ export async function runVendorExtractJob(
             occurredAt,
             dedupeKey,
             meta,
+            ...entityPatch,
           },
         });
       } catch (e) {

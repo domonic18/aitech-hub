@@ -568,7 +568,8 @@ model EntityEvent {
   source     String   @db.VarChar(30) // 采集来源标识(vendor-<key>,与洞察 source 同口径)
   vendor     String   @db.VarChar(30) // 厂商 key
   entityType String   @map("entity_type") @db.VarChar(12) // model | product | org
-  entityKey  String   @map("entity_key") @db.VarChar(120) // 实体规范名(如 deepseek-v4)
+  entityKey  String   @map("entity_key") @db.VarChar(120) // 实体规范名(如 deepseek-v4;LLM 原样抽取键,溯源留档)
+  entityId   BigInt?  @map("entity_id") // 解析后的实体(M60 实体主表;null=历史未回填/解析降级)
   eventType  String   @map("event_type") @db.VarChar(20) // release | price_change | open_source | funding | deprecation | benchmark_change
   title      String   @db.VarChar(300)
   summary    String?  @db.VarChar(1000)
@@ -578,10 +579,55 @@ model EntityEvent {
   meta       Json?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  entity InsightEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+
   @@index([vendor, occurredAt(sort: Desc)], map: "idx_entity_event_vendor_recent")
   @@index([eventType, occurredAt(sort: Desc)], map: "idx_entity_event_type_recent")
   @@index([entityKey, occurredAt(sort: Desc)], map: "idx_entity_event_entity_recent")
+  @@index([entityId], map: "idx_entity_event_entity_id")
   @@map("entity_event")
+}
+
+/// 洞察实体主表(M60 实体解析):规范实体(品牌 org / 产品线 line / 模型 product),
+/// 三级层次是实体列表分组与「同名不同写法」归并的唯一锚;LLM 抽取的原始键一律
+/// 落 insight_entity_alias,不从历史改写 entity_event.entityKey(dedupeKey 不变)。
+model InsightEntity {
+  id           BigInt   @id @default(autoincrement())
+  key          String   @unique @db.VarChar(120) // 规范键(展示用,保留官方写法如 qwen2.5-vl)
+  matchKey     String   @unique @map("match_key") @db.VarChar(120) // 匹配键(分隔符归一的去重锚,如 qwen2-5-vl)
+  displayName  String   @map("display_name") @db.VarChar(120) // 展示名(保留大小写,如 Qwen3-Embedding)
+  entityType   String   @map("entity_type") @db.VarChar(12) // org | line | model | product
+  vendorKey    String?  @map("vendor_key") @db.VarChar(30) // 所属厂商/品牌(org 自身为 null)
+  parentId     BigInt?  @map("parent_id")
+  status       String   @default("active") @db.VarChar(10) // active | merged
+  mergedIntoId BigInt?  @map("merged_into_id") // 被归并去向后留痕
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  parent   InsightEntity?       @relation("EntityTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children InsightEntity[]      @relation("EntityTree")
+  aliases  InsightEntityAlias[]
+  events   EntityEvent[]
+
+  @@index([vendorKey], map: "idx_insight_entity_vendor")
+  @@index([parentId], map: "idx_insight_entity_parent")
+  @@map("insight_entity")
+}
+
+/// 实体别名(M60):aliasKey 是 normalizeEntityKey 的原样产物(唯一),归并只改指向、
+/// 不改历史键;origin 记录来源(seed=建表回填 / rule=写入解析 / manual=人工归并)
+model InsightEntityAlias {
+  id         BigInt   @id @default(autoincrement())
+  aliasKey   String   @unique @map("alias_key") @db.VarChar(120)
+  entityId   BigInt   @map("entity_id")
+  origin     String   @db.VarChar(10)
+  confidence Float?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  entity InsightEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@index([entityId], map: "idx_insight_entity_alias_entity")
+  @@map("insight_entity_alias")
 }
 
 /// 榜单快照(M58 批③):每日一抓,同 (source, board, entityKey, capturedDate)

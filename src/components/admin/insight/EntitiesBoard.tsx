@@ -1,7 +1,8 @@
 /**
- * 洞察中心·实体(M59 批B):按 entityKey 聚合的厂商事件视图——实体 · 最近事件 ·
- * 事件数,点实体进详情(事件时间线 + 关联厂商信号)。筛选(厂商/类型/时间窗/
- * 关键词)chip 走 URL,与洞察各页同一套 chip 语法。
+ * 洞察中心·实体(M59 批B → M60 实体层):按顶层品牌分区的实体视图——品牌 ›
+ * 产品线 › 实体,同名不同写法的键折叠在同一品牌下(不再 qwen-mt-turbo /
+ * qwen3-embedding 各占一行互不相干)。筛选(厂商/类型/时间窗/关键词)chip 走
+ * URL,与洞察各页同一套 chip 语法;关键词同时匹配展示名/规范键/别名。
  * 口径:只聚合 entity_event(厂商抽取链);社区/热榜信号暂无实体挂接。
  */
 import Link from "next/link";
@@ -12,6 +13,8 @@ import {
   entityListHref,
   type EntityFilters,
   type EntityPage,
+  type EntityRow,
+  type EntitySection,
 } from "@/lib/insight/entities-admin";
 import {
   ENTITY_TYPES,
@@ -27,8 +30,7 @@ import { chipOff, chipOn, formatTime } from "./shared";
 
 const WINDOW_OPTIONS = [7, 30, 90] as const;
 
-/** 厂商 key → 展示名(与事件页同源注册表) */
-const VENDOR_NAME = new Map(VENDOR_DEFS.map((d) => [d.key, d.vendorName]));
+const COL_COUNT = 7;
 
 function Chip({
   on,
@@ -51,6 +53,86 @@ function Chip({
   );
 }
 
+/** 实体行:展示名(链接)+ 规范键;产品线仅在非品牌层出现 */
+function EntityRowView({ row }: { row: EntityRow }): React.ReactElement {
+  return (
+    <tr className="border-b border-line last:border-b-0 hover:bg-panel-2">
+      <td className="px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <Link href={entityHref(row.key)} className="text-[12.5px] text-text-1 hover:text-accent">
+            {row.displayName}
+          </Link>
+          <span className="truncate font-mono text-[10.5px] text-text-3" title={row.key}>
+            {row.key}
+          </span>
+        </div>
+      </td>
+      <td className="px-2 py-2">
+        <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-text-2">
+          {row.entityType === ""
+            ? "—"
+            : (ENTITY_TYPE_LABELS[row.entityType as keyof typeof ENTITY_TYPE_LABELS] ??
+              row.entityType)}
+        </span>
+      </td>
+      <td className="px-2 py-2 font-mono text-[11px] whitespace-nowrap text-text-3">
+        {row.parentKey === null || row.parentKey === row.rootKey ? "—" : row.parentName}
+      </td>
+      <td className="px-2 py-2 text-right font-mono text-[11px] text-text-3">
+        {row.aliasCount > 0 ? row.aliasCount : "—"}
+      </td>
+      <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">{row.eventCount}</td>
+      <td className="px-2 py-2">
+        <div className="flex items-baseline gap-2">
+          {row.latestEventType !== "" && (
+            <span className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-accent">
+              {EVENT_TYPE_LABELS[row.latestEventType as EntityEventType] ?? row.latestEventType}
+            </span>
+          )}
+          {row.latestUrl === "" ? (
+            <span className="min-w-0 truncate text-text-2">{row.latestTitle}</span>
+          ) : (
+            <a
+              href={row.latestUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-w-0 truncate text-text-1 hover:text-accent"
+              title={row.latestTitle}
+            >
+              {row.latestTitle}
+            </a>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right font-mono text-[11px] whitespace-nowrap text-text-3">
+        {formatTime(row.lastAt)}
+      </td>
+    </tr>
+  );
+}
+
+/** 品牌分区头:品牌名 + 规范键 + 区内事件合计 */
+function SectionHeader({ section }: { section: EntitySection }): React.ReactElement {
+  return (
+    <tr className="border-b border-line bg-panel-2/60">
+      <td colSpan={COL_COUNT} className="px-3 py-1.5">
+        <span className="flex items-baseline gap-2">
+          <Link
+            href={entityHref(section.rootKey)}
+            className="text-[12.5px] font-medium text-text-1 hover:text-accent"
+          >
+            {section.rootName}
+          </Link>
+          <span className="font-mono text-[10.5px] text-text-3">{section.rootKey}</span>
+          <span className="font-mono text-[10.5px] text-text-3">
+            {section.rows.length} 个实体 · 事件 {section.eventCount}
+          </span>
+        </span>
+      </td>
+    </tr>
+  );
+}
+
 export default function EntitiesBoard({
   data,
   filters,
@@ -65,10 +147,15 @@ export default function EntitiesBoard({
   return (
     <PanelCard
       title="实体"
-      hint="按 entityKey 聚合的厂商事件 · 数据来自官方发布抽取,社区/热榜信号暂无实体挂接"
+      hint="按品牌 › 产品线 › 实体分区的厂商事件 · 数据来自官方发布抽取,社区/热榜信号暂无实体挂接"
       extra={
-        <span className="font-mono text-[11px] text-text-3">
-          共 {data.total.toLocaleString()} 个实体
+        <span className="flex items-center gap-3 font-mono text-[11px] text-text-3">
+          <span>共 {data.total.toLocaleString()} 个实体</span>
+          {data.unresolved > 0 && (
+            <span className="text-text-2" title="历史事件尚未挂到实体,回填后自动归位">
+              待归位 {data.unresolved.toLocaleString()} 条事件
+            </span>
+          )}
         </span>
       }
     >
@@ -114,7 +201,7 @@ export default function EntitiesBoard({
             type="search"
             name="q"
             defaultValue={filters.q ?? ""}
-            placeholder="实体关键词"
+            placeholder="实体名 / 别名"
             aria-label="实体关键词"
             maxLength={40}
             className="w-36 rounded-sm border border-line bg-panel px-1.5 py-0.5 font-mono text-[11px] text-text-2"
@@ -137,77 +224,26 @@ export default function EntitiesBoard({
         </form>
       </div>
 
-      {data.rows.length === 0 ? (
+      {data.sections.length === 0 ? (
         <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
           暂无实体——厂商官网采集后由 LLM 抽取事件生成;渠道状态见 数据中心·源管理·采集渠道。
         </p>
       ) : (
-        <table className="w-full text-left text-[12.5px]">
+        <table className="w-full table-fixed text-left text-[12.5px]">
           <thead>
             <tr className="border-b border-line text-[11px] text-text-3">
-              <th className="px-3 py-1.5 font-normal">实体</th>
-              <th className="w-20 px-2 py-1.5 font-normal">类型</th>
-              <th className="w-24 px-2 py-1.5 font-normal">厂商</th>
-              <th className="w-16 px-2 py-1.5 text-right font-normal">事件</th>
+              <th className="w-[26%] px-3 py-1.5 font-normal">实体</th>
+              <th className="w-16 px-2 py-1.5 font-normal">类型</th>
+              <th className="w-[15%] px-2 py-1.5 font-normal">产品线</th>
+              <th className="w-12 px-2 py-1.5 text-right font-normal">别名</th>
+              <th className="w-12 px-2 py-1.5 text-right font-normal">事件</th>
               <th className="px-2 py-1.5 font-normal">最近事件</th>
-              <th className="w-28 px-3 py-1.5 text-right font-normal">最近时间</th>
+              <th className="w-24 px-3 py-1.5 text-right font-normal">最近时间</th>
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((r) => (
-              <tr
-                key={r.entityKey}
-                className="border-b border-line last:border-b-0 hover:bg-panel-2"
-              >
-                <td className="px-3 py-2">
-                  <Link
-                    href={entityHref(r.entityKey)}
-                    className="font-mono text-[12px] text-text-1 hover:text-accent"
-                  >
-                    {r.entityKey}
-                  </Link>
-                </td>
-                <td className="px-2 py-2">
-                  <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[10.5px] text-text-2">
-                    {r.entityType === ""
-                      ? "—"
-                      : (ENTITY_TYPE_LABELS[r.entityType as keyof typeof ENTITY_TYPE_LABELS] ??
-                        r.entityType)}
-                  </span>
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] text-text-3">
-                  {r.vendor === "" ? "—" : (VENDOR_NAME.get(r.vendor) ?? r.vendor)}
-                </td>
-                <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">
-                  {r.eventCount}
-                </td>
-                <td className="px-2 py-2">
-                  <div className="flex items-baseline gap-2">
-                    {r.latestEventType !== "" && (
-                      <span className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[10.5px] text-accent">
-                        {EVENT_TYPE_LABELS[r.latestEventType as EntityEventType] ??
-                          r.latestEventType}
-                      </span>
-                    )}
-                    {r.latestUrl === "" ? (
-                      <span className="min-w-0 truncate text-text-2">{r.latestTitle}</span>
-                    ) : (
-                      <a
-                        href={r.latestUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="min-w-0 truncate text-text-1 hover:text-accent"
-                        title={r.latestTitle}
-                      >
-                        {r.latestTitle}
-                      </a>
-                    )}
-                  </div>
-                </td>
-                <td className="px-3 py-2 text-right font-mono text-[11px] text-text-3">
-                  {formatTime(r.lastAt)}
-                </td>
-              </tr>
+            {data.sections.map((section) => (
+              <SectionRows key={section.rootKey} section={section} />
             ))}
           </tbody>
         </table>
@@ -219,5 +255,16 @@ export default function EntitiesBoard({
         hrefFor={(p) => entityListHref(filters, { page: p })}
       />
     </PanelCard>
+  );
+}
+
+function SectionRows({ section }: { section: EntitySection }): React.ReactElement {
+  return (
+    <>
+      <SectionHeader section={section} />
+      {section.rows.map((row) => (
+        <EntityRowView key={row.key} row={row} />
+      ))}
+    </>
   );
 }

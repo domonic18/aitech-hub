@@ -22,7 +22,8 @@
     "prepare": "husky",
     "backup:run": "tsx scripts/ops/db-backup-trigger.ts",
     "embed:run": "tsx scripts/ops/embed-reconcile-trigger.ts",
-    "insight:run": "tsx scripts/ops/insight-trigger.ts"
+    "insight:run": "tsx scripts/ops/insight-trigger.ts",
+    "insight:entity-backfill": "tsx scripts/ops/insight-entity-backfill.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
