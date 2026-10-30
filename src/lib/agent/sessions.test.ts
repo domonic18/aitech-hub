@@ -1,6 +1,8 @@
 /**
- * sessions 单测(prisma 必 mock):标题派生(首行 20 码点/空回落)、
- * 删除归属校验(checkpoint 删失败不反噬)、touch tokens 累计、标题仅空行回填。
+ * sessions 单测(prisma/redis/ingest 必 mock):标题派生(首行 20 码点/空回落)、
+ * 删除归属校验(checkpoint 删失败不反噬)、touch tokens 累计、标题仅空行回填;
+ * M58 批⑤ 问句入池:后台功能页上下文过滤、meta.surface、游客 Redis NX 判首问
+ * (OK 才入池;null/异常跳过)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,16 +18,21 @@ const prismaMock = vi.hoisted(() => ({
 }));
 const deleteThreadMock = vi.hoisted(() => vi.fn());
 const loggerMock = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+const ingestMock = vi.hoisted(() => vi.fn());
+const redisMock = vi.hoisted(() => ({ set: vi.fn() }));
 
 vi.mock("../db", () => ({ prisma: prismaMock }));
 vi.mock("./checkpointer", () => ({ deleteThread: deleteThreadMock }));
 vi.mock("../logger", () => ({ logger: loggerMock }));
+vi.mock("../insight/ingest", () => ({ ingestInsightSignal: ingestMock }));
+vi.mock("../redis", () => ({ redis: redisMock }));
 
 import {
   backfillSessionTitle,
   createSession,
   deleteSession,
   deriveTitle,
+  recordGuestFirstAsk,
   touchSessionAfterRun,
 } from "./sessions";
 
@@ -33,6 +40,10 @@ beforeEach(() => {
   for (const m of Object.values(prismaMock.searchAgentSession)) m.mockReset();
   deleteThreadMock.mockReset();
   deleteThreadMock.mockResolvedValue(undefined);
+  ingestMock.mockReset();
+  ingestMock.mockResolvedValue("ingested");
+  redisMock.set.mockReset();
+  loggerMock.warn.mockReset();
 });
 
 describe("deriveTitle", () => {
@@ -102,5 +113,81 @@ describe("createSession/touch/backfill", () => {
       where: { id: "t-1", title: null },
       data: { title: "问个问题" },
     });
+  });
+});
+
+describe("问句入池(M58 批⑤,arch/01 §3.4)", () => {
+  it("首问回填命中:公开页放行,meta.surface 记入口", async () => {
+    prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 1 });
+    await backfillSessionTitle("t-1", "怎么用 Claude Code 做爬虫", "搜索");
+    expect(ingestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "internal-agent",
+        refId: "t-1",
+        rawText: "怎么用 Claude Code 做爬虫",
+        meta: { surface: "搜索" },
+      }),
+    );
+  });
+
+  it("后台功能页上下文:不入池(黑名单按页名,与身份无关)", async () => {
+    prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 1 });
+    for (const page of ["后台", "文章新建", "文章编辑", "文章管理", "创作中心"]) {
+      await backfillSessionTitle("t-1", "改一下标题", page);
+    }
+    expect(ingestMock).not.toHaveBeenCalled();
+  });
+
+  it("非首问(标题已填)与无上下文:不入池/不伪造 surface", async () => {
+    prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 0 });
+    await backfillSessionTitle("t-1", "第二个问题", "搜索");
+    expect(ingestMock).not.toHaveBeenCalled();
+
+    prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 1 });
+    await backfillSessionTitle("t-2", "直接站内提问");
+    expect(ingestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ refId: "t-2", meta: undefined }),
+    );
+  });
+
+  it("游客首问:NX 抢到才入池,refId 加 g: 前缀且不存 visitorId", async () => {
+    redisMock.set.mockResolvedValue("OK");
+    await recordGuestFirstAsk("g_t1", "有没有讲 RAG 的文章", "首页");
+    expect(redisMock.set).toHaveBeenCalledWith(
+      "search:agent:ask-recorded:g_t1",
+      "1",
+      "EX",
+      21600,
+      "NX",
+    );
+    expect(ingestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "internal-agent",
+        refId: "g:g_t1",
+        rawText: "有没有讲 RAG 的文章",
+        meta: { surface: "首页" },
+      }),
+    );
+    const arg = ingestMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(arg).not.toHaveProperty("visitorId");
+  });
+
+  it("游客非首问(NX 未抢到)与后台页:跳过", async () => {
+    redisMock.set.mockResolvedValue(null);
+    await recordGuestFirstAsk("g_t1", "再问一次", "搜索");
+    expect(ingestMock).not.toHaveBeenCalled();
+
+    redisMock.set.mockResolvedValue("OK");
+    await recordGuestFirstAsk("g_t2", "后台里问一句", "后台");
+    expect(ingestMock).not.toHaveBeenCalled();
+  });
+
+  it("Redis 不可用:告警并跳过(宁可漏记不误记)", async () => {
+    redisMock.set.mockRejectedValue(new Error("redis down"));
+    await recordGuestFirstAsk("g_t1", "问句", "搜索");
+    expect(ingestMock).not.toHaveBeenCalled();
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "agent.guest_ask_record_failed", threadId: "g_t1" }),
+    );
   });
 });

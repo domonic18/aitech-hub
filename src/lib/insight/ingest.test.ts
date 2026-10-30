@@ -116,6 +116,7 @@ describe("ingestInsightSignal", () => {
       "hot-baidu",
       "hot-bilibili",
       "hot-zhihu",
+      "internal-agent",
       "internal-comment",
       "telegram-ai",
       "vendor-anthropic",
@@ -140,8 +141,8 @@ describe("ingestInsightSignal", () => {
     }
   });
 
-  it("停接源短路返 disabled,零写入零日志(批③ 渠道转向闸)", async () => {
-    for (const source of ["internal-search", "internal-agent", "internal-feedback"] as const) {
+  it("停接源短路返 disabled,零写入零日志(批③ 渠道转向闸;批⑤ 复活 internal-agent)", async () => {
+    for (const source of ["internal-search", "internal-feedback"] as const) {
       const r = await ingestInsightSignal({
         source,
         refId: "1",

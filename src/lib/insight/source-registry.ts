@@ -17,10 +17,11 @@ export const SOURCE_REGISTRY = {
     lang: "zh",
     region: "cn",
   },
-  /** 助手问句(同上,停接入) */
+  /** 助手问句(M58 批⑤ 复活:后台功能页上下文过滤 + 游客首问采集,见
+   * arch/01 §3.4;批③ 曾整体停接) */
   "internal-agent": {
     medium: "search",
-    enabled: false,
+    enabled: true,
     kind: "pain",
     label: "助手问句",
     lang: "zh",
@@ -185,8 +186,9 @@ export const INSIGHT_SOURCE_MEDIUM: Record<InsightSource, InsightMedium> = Objec
 ) as Record<InsightSource, InsightMedium>;
 
 /**
- * 在役源白名单(停接入闸,ingest.ts 文件头注):站内三源(搜索/agent/反馈)批③
- * 退出,评论与电报 AI 保留;热榜三源为批③ 新渠道。恢复=enabled 翻回 true,
+ * 在役源白名单(停接入闸,ingest.ts 文件头注):站内搜索/反馈两源批③ 退出,
+ * 助手问句批⑤ 清洗后复活(后台功能页上下文过滤);评论与电报 AI 保留;
+ * 热榜三源批③、厂商六源与社区四源为 M58 新渠道。恢复=enabled 翻回 true,
  * 调用点无需动。
  */
 export const INSIGHT_SOURCES_ENABLED: ReadonlySet<InsightSource> = new Set(
