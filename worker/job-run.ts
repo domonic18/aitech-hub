@@ -13,6 +13,7 @@ import { createJobRun, finishJobRun } from "../src/lib/jobs/runlog";
 import {
   COVER_JOB_TEMP_SWEEP,
   CRAWL_JOB_AI_BACKFILL,
+  CRAWL_JOB_SOURCE,
   DB_BACKUP_JOB_RUN,
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
@@ -34,7 +35,7 @@ import {
   STATS_JOB_USAGE_PURGE,
 } from "../src/lib/queue";
 
-/** 落账白名单(queue/jobName,约 400 行/日;读侧标签映射 src/lib/jobs/runlog-admin 同批维护) */
+/** 落账白名单(queue/jobName,约 900 行/日;读侧标签映射 src/lib/jobs/runlog-admin 同批维护) */
 const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_INSIGHT}/${INSIGHT_JOB_FETCH}`,
   `${QUEUE_INSIGHT}/${INSIGHT_JOB_DAILY}`,
@@ -50,6 +51,9 @@ const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_STATS}/${STATS_JOB_RUN_PURGE}`,
   `${QUEUE_COVER_GEN}/${COVER_JOB_TEMP_SWEEP}`,
   `${QUEUE_CRAWLER}/${CRAWL_JOB_AI_BACKFILL}`,
+  // 单渠道抓取(2026-10-30 E2E:手动/定时采集原先只在 worker stdout 留痕,
+  // 后台「采集日志」看不到;约 500 行/日,30 天日清内可接受)
+  `${QUEUE_CRAWLER}/${CRAWL_JOB_SOURCE}`,
 ]);
 
 /** 手动触发判别:各触发入口 jobId 统一带 -manual-(insight/discovery 触发路由、

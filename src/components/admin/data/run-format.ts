@@ -33,3 +33,35 @@ export function summaryInserted(summary: unknown): number | null {
   }
   return null;
 }
+
+function numOf(summary: unknown, key: string): number | null {
+  if (summary === null || summary === undefined || typeof summary !== "object") return null;
+  const v = (summary as Record<string, unknown>)[key];
+  return typeof v === "number" ? v : null;
+}
+
+/** 采集任务(crawler/crawl)计数:入库优先、为 0 退抓取——registry 渠道
+ * (vendor/leaderboard/community)产出落信号池/榜单表,电报入库恒 0,
+ * 只看 inserted 会让「采集到了」显示成 0 */
+export function crawlCount(summary: unknown): number | null {
+  const inserted = numOf(summary, "inserted");
+  const fetched = numOf(summary, "fetched");
+  if (inserted !== null && inserted > 0) return inserted;
+  return fetched ?? inserted;
+}
+
+/** crawler/crawl 说明列人话单行:渠道名 · 抓取 N[· 去重 M][· 主题外 K]
+ * [· 超日上限顺延];无渠道名(旧记录)返回 null 走通用 JSON 截头 */
+export function crawlSummaryLine(summary: unknown): string | null {
+  if (summary === null || summary === undefined || typeof summary !== "object") return null;
+  const rec = summary as Record<string, unknown>;
+  const name = typeof rec.sourceName === "string" ? rec.sourceName : null;
+  if (name === null) return null;
+  const parts = [`抓取 ${numOf(summary, "fetched") ?? 0}`];
+  const duplicated = numOf(summary, "duplicated");
+  if (duplicated !== null && duplicated > 0) parts.push(`去重 ${duplicated}`);
+  const topicSkipped = numOf(summary, "topicSkipped");
+  if (topicSkipped !== null && topicSkipped > 0) parts.push(`主题外 ${topicSkipped}`);
+  if (rec.skippedDailyCap === true) parts.push("超日上限顺延");
+  return `${name} · ${parts.join(" · ")}`;
+}
