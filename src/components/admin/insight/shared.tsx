@@ -25,6 +25,13 @@ export const SOURCE_COLORS: Record<InsightSource, string> = {
   "hot-baidu": "bg-blue",
   "hot-zhihu": "bg-green",
   "hot-bilibili": "bg-red",
+  // 厂商动态六源(M58 批②;同图例内复用令牌色,靠标签区分)
+  "vendor-openai": "bg-accent",
+  "vendor-anthropic": "bg-green",
+  "vendor-google": "bg-blue",
+  "vendor-deepseek": "bg-amber",
+  "vendor-qwen": "bg-text-2",
+  "vendor-kimi": "bg-text-3",
 };
 
 export const COVERAGE_LABELS: Record<string, string> = {

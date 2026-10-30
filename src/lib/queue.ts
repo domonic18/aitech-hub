@@ -180,11 +180,13 @@ export const DISCOVERY_JOB_BILI = "discovery-bili";
 
 /** insight 队列 job name 契约(M34 批②;embed 为缺省路径——手动触发
  * scripts/ops 同名一次性 job 可复用;daily=日频打标批;translate=M58
- * 批① 单条翻译(data.signalId)与扫尾批共用。改名需与 worker 同批) */
+ * 批① 单条翻译(data.signalId)与扫尾批共用;extract-event=M58 批②
+ * 厂商单篇事件抽取(crawl 侧逐条入队)。改名需与 worker 同批) */
 export const INSIGHT_JOB_EMBED = "embed";
 export const INSIGHT_JOB_DAILY = "daily";
 export const INSIGHT_JOB_FETCH = "fetch";
 export const INSIGHT_JOB_TRANSLATE = "translate";
+export const INSIGHT_JOB_EXTRACT_EVENT = "extract-event";
 
 /** illustration-studio 队列 job name 契约(M40 批 B;decompose 为缺省路径——
  * 拆层运行首次触发与改字后手动重拆同一入口,jobId 锚 groupId 天然唯一)。

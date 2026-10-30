@@ -107,13 +107,19 @@ describe("ingestInsightSignal", () => {
     );
   });
 
-  it("在役源逐一映射介质(评论/电报AI/热榜三源;方案 §2 五介质口径)", async () => {
+  it("在役源逐一映射介质(评论/电报AI/热榜三源/厂商六源;方案 §2 五介质口径)", async () => {
     expect([...INSIGHT_SOURCES_ENABLED].sort()).toEqual([
       "hot-baidu",
       "hot-bilibili",
       "hot-zhihu",
       "internal-comment",
       "telegram-ai",
+      "vendor-anthropic",
+      "vendor-deepseek",
+      "vendor-google",
+      "vendor-kimi",
+      "vendor-openai",
+      "vendor-qwen",
     ]);
     for (const [source, medium] of Object.entries(INSIGHT_SOURCE_MEDIUM)) {
       await ingestInsightSignal({

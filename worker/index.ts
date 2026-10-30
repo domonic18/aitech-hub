@@ -73,6 +73,18 @@ async function main(): Promise<void> {
     await pq.removeJobScheduler("sync-openrouter").catch(() => undefined);
     await pq.close().catch(() => undefined);
   }
+  // 厂商动态渠道(M58 批②):同牌价——种子幂等入 crawl_source,走 crawler tick
+  {
+    const { syncVendorChannels } = await import("../src/lib/insight/vendor/crawl");
+    await syncVendorChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "insight.vendor_source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+  }
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();

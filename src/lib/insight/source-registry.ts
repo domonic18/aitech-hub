@@ -76,6 +76,56 @@ export const SOURCE_REGISTRY = {
     lang: "zh",
     region: "cn",
   },
+  /** 厂商动态六源(M58 批②):官方发布经事件抽取后按 event 信号入池
+   * (refId=dedupeKey,同一事件恒一条);语言/地域随厂商声明,英文源走翻译链 */
+  "vendor-openai": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "OpenAI 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-anthropic": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Anthropic 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-google": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Google AI 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-deepseek": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "DeepSeek 动态",
+    lang: "zh",
+    region: "cn",
+  },
+  "vendor-qwen": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Qwen 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-kimi": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Kimi 动态",
+    lang: "zh",
+    region: "cn",
+  },
 } as const;
 
 export type InsightSource = keyof typeof SOURCE_REGISTRY;

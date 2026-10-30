@@ -10,7 +10,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 import { insightHourHeat, insightTrendDaily } from "./trend-series";
+
+/** 期望值随白名单派生(M58 批② 起新增源不再需要逐源补断言) */
+const zeroBySource = (over: Record<string, number> = {}): Record<string, number> =>
+  Object.fromEntries([...INSIGHT_SOURCES_ENABLED].map((s) => [s, over[s] ?? 0]));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -27,14 +32,8 @@ describe("insightTrendDaily", () => {
     expect(days).toHaveLength(7);
     expect(days[6].date).toBe("2026-10-18");
     expect(days[0].date).toBe("2026-10-12");
-    // 白名单序:internal-comment, telegram-ai, hot-baidu, hot-zhihu, hot-bilibili
-    expect(days[4].bySource).toEqual({
-      "internal-comment": 0,
-      "telegram-ai": 0,
-      "hot-baidu": 0,
-      "hot-zhihu": 3,
-      "hot-bilibili": 0,
-    });
+    // 白名单序:全源补 0,仅 hot-zhihu 有值
+    expect(days[4].bySource).toEqual(zeroBySource({ "hot-zhihu": 3 }));
     expect(days[6].bySource["hot-bilibili"]).toBe(2);
     expect(days[6].bySource["hot-zhihu"]).toBe(0);
   });

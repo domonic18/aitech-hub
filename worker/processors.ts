@@ -20,6 +20,7 @@ import {
   GITHUB_JOB_TICK,
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
+  INSIGHT_JOB_EXTRACT_EVENT,
   INSIGHT_JOB_FETCH,
   INSIGHT_JOB_TRANSLATE,
   ILLUSTRATION_JOB_EDIT,
@@ -99,6 +100,8 @@ import { runInsightEmbedBatch } from "../src/lib/insight/embed";
 import { runInsightTranslateBatch, translateSignal } from "../src/lib/insight/translate";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/daily";
+import { runVendorExtractJob } from "../src/lib/insight/vendor/extract";
+import type { VendorExtractJobData } from "../src/lib/insight/vendor/crawl";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {
@@ -387,6 +390,15 @@ export const PROCESSORS: Record<string, Processor> = {
       const r = await runInsightTranslateBatch();
       if (r.done + r.cached + r.failed > 0 || r.unbound) {
         console.log(JSON.stringify({ event: "insight.translate_job", ...r }));
+      }
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_EXTRACT_EVENT) {
+      // 厂商单篇事件抽取(M58 批②):失败上抛记 job 失败(抽取侧已释 Redis
+      // 标记,下轮重投重试);不回写 crawl_source 健康度
+      const r = await runVendorExtractJob(job.data as VendorExtractJobData);
+      if (r.events > 0 || r.dropped > 0 || r.empty) {
+        console.log(JSON.stringify({ event: "insight.vendor_extract_job", ...r }));
       }
       return r;
     }

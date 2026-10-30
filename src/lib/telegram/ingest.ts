@@ -13,6 +13,7 @@ import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
 import { runPricingSourceCrawl } from "../pricing/source-registry";
+import { runVendorSourceCrawl } from "../insight/vendor/crawl";
 import { TELEGRAM_STATUS_HIDDEN, TELEGRAM_STATUS_VISIBLE, type BlocklistScope } from "./constants";
 import {
   CRAWL_MAX_CONSECUTIVE_FAILS,
@@ -21,6 +22,7 @@ import {
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPE_VENDOR,
 } from "../collect/constants";
 import { CRAWL_MAX_ITEMS_PER_RUN } from "./constants";
 import {
@@ -157,6 +159,11 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     if (source.type === CRAWL_SOURCE_TYPE_PRICING) {
       const r = await runPricingSourceCrawl(source, now);
       if (!r.ok) throw new Error(r.error ?? "pricing 源失败");
+      outcome.fetched = r.fetched;
+    } else if (source.type === CRAWL_SOURCE_TYPE_VENDOR) {
+      // 厂商动态(M58 批②):取数+快照+逐条入事件抽取队列收敛在
+      // insight/vendor/crawl;抽取失败不回写本表健康度(方案 §5.2 失败隔离)
+      const r = await runVendorSourceCrawl(source, now);
       outcome.fetched = r.fetched;
     } else {
       const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);
