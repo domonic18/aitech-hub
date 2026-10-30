@@ -583,6 +583,29 @@ model EntityEvent {
   @@map("entity_event")
 }
 
+/// 榜单快照(M58 批③):每日一抓,同 (source, board, entityKey, capturedDate)
+/// 幂等覆盖,同日重跑整表覆盖;名次变动不落库,读侧与上一可用日期比较得出
+/// (data-expansion-plan §6.2)。source 落注册表 key,board 为榜单展示名键。
+model LeaderboardSnapshot {
+  id           BigInt   @id @default(autoincrement())
+  source       String   @db.VarChar(30)
+  board        String   @db.VarChar(40)
+  entityKey    String   @map("entity_key") @db.VarChar(200)
+  entityName   String   @map("entity_name") @db.VarChar(300)
+  entityType   String   @map("entity_type") @db.VarChar(12) // model | paper | repo
+  vendor       String?  @db.VarChar(60)
+  rank         Int
+  score        Float?
+  scoreUnit    String?  @map("score_unit") @db.VarChar(20)
+  capturedDate DateTime @map("captured_date") @db.Date
+  meta         Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([source, board, entityKey, capturedDate], map: "uq_leaderboard_snapshot")
+  @@index([source, board, capturedDate(sort: Desc)], map: "idx_leaderboard_snapshot_board")
+  @@map("leaderboard_snapshot")
+}
+
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
 model Telegram {
   id              BigInt    @id @default(autoincrement())
