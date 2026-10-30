@@ -51,10 +51,45 @@ describe("parseVendorEvents", () => {
     if (r.ok) expect(r.data.events).toHaveLength(0);
   });
 
-  it("非法枚举/缺标题/非 JSON → 错误串(交 chatJsonTask 重试)", () => {
-    expect(parseVendorEvents(JSON.stringify({ events: [event({ eventType: "launch" })] })).ok).toBe(
-      false,
+  it("枚举同义归一(launch→release / pricing→price_change / company→org)", () => {
+    const r = parseVendorEvents(
+      JSON.stringify({
+        events: [
+          event({ eventType: "launch" }),
+          event({ eventType: "Pricing", entityType: "company" }),
+          event({ eventType: "price change" }),
+        ],
+      }),
     );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data.events.map((e) => e.eventType)).toEqual([
+        "release",
+        "price_change",
+        "price_change",
+      ]);
+      expect(r.data.events[1].entityType).toBe("org");
+      expect(r.data.dropped).toBe(0);
+    }
+  });
+
+  it("单条不合契约只丢该条并计数,不整篇判废", () => {
+    const r = parseVendorEvents(
+      JSON.stringify({
+        events: [event(), event({ eventType: "totally_unknown" }), event({ title: "" })],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data.events).toHaveLength(1);
+      expect(r.data.dropped).toBe(2);
+    }
+  });
+
+  it("全部条目皆废 / 非 JSON / 缺 events → 错误串(交 chatJsonTask 重试)", () => {
+    expect(
+      parseVendorEvents(JSON.stringify({ events: [event({ eventType: "totally_unknown" })] })).ok,
+    ).toBe(false);
     expect(parseVendorEvents(JSON.stringify({ events: [event({ title: "" })] })).ok).toBe(false);
     expect(parseVendorEvents("not json").ok).toBe(false);
     expect(parseVendorEvents(JSON.stringify({ items: [] })).ok).toBe(false);
