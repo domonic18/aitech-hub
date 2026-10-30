@@ -126,6 +126,40 @@ export const SOURCE_REGISTRY = {
     lang: "zh",
     region: "cn",
   },
+  /** 社区需求语料四源(M58 批④):社区原话=声音;百度下拉=搜索形态。
+   * kind 只作新簇引导值,语义由 LLM 日批覆判;Reddit 经代理仍 403,未注册 */
+  "community-hn": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "Hacker News",
+    lang: "en",
+    region: "global",
+  },
+  "community-v2ex": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "V2EX",
+    lang: "zh",
+    region: "cn",
+  },
+  "community-baidu": {
+    medium: "search",
+    enabled: true,
+    kind: "pain",
+    label: "百度下拉",
+    lang: "zh",
+    region: "cn",
+  },
+  "community-oss": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "开源社区 Issues",
+    lang: "zh",
+    region: "cn",
+  },
 } as const;
 
 export type InsightSource = keyof typeof SOURCE_REGISTRY;

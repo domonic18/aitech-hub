@@ -12,6 +12,7 @@ import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
+import { runCommunitySourceCrawl } from "../insight/community/crawl";
 import { runLeaderboardSourceCrawl } from "../leaderboard/crawl";
 import { runPricingSourceCrawl } from "../pricing/source-registry";
 import { runVendorSourceCrawl } from "../insight/vendor/crawl";
@@ -21,6 +22,7 @@ import {
   CRAWL_SOURCE_STATUS_DEGRADED,
   CRAWL_SOURCE_STATUS_ERROR,
   CRAWL_SOURCE_STATUS_HEALTHY,
+  CRAWL_SOURCE_TYPE_COMMUNITY,
   CRAWL_SOURCE_TYPE_LEADERBOARD,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
@@ -171,6 +173,11 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
       // 榜单(M58 批③):取数+快照+按日 upsert 收敛在 leaderboard/crawl;
       // 失败不写空数据,读侧据「数据截至」降级(方案 §6.1)
       const r = await runLeaderboardSourceCrawl(source, now);
+      outcome.fetched = r.fetched;
+    } else if (source.type === CRAWL_SOURCE_TYPE_COMMUNITY) {
+      // 社区需求语料(M58 批④):取数+快照+L0 准入+日预算收敛在
+      // insight/community/crawl,条目入洞察信号池而非电报流
+      const r = await runCommunitySourceCrawl(source, now);
       outcome.fetched = r.fetched;
     } else {
       const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);

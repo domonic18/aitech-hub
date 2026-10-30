@@ -97,6 +97,18 @@ async function main(): Promise<void> {
       ),
     );
   }
+  // 社区需求语料(M58 批④):种子幂等入 crawl_source(HN/V2EX 时频,其余日频)
+  {
+    const { syncCommunityChannels } = await import("../src/lib/insight/community/crawl");
+    await syncCommunityChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "insight.community_source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+  }
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();

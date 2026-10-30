@@ -16,6 +16,9 @@ export const CRAWL_SOURCE_TYPE_VENDOR = "vendor";
 /** 榜单渠道(M58 批③):config.boardKey 路由 leaderboard/registry,条目落
  * leaderboard_snapshot(公开页 /leaderboards/),不进电报流 */
 export const CRAWL_SOURCE_TYPE_LEADERBOARD = "leaderboard";
+/** 社区需求语料(M58 批④):config.communityKey 路由 insight/community/registry
+ * (HN/V2EX/百度下拉/GitHub Issues),条目经 L0 准入后入洞察信号池,不进电报流 */
+export const CRAWL_SOURCE_TYPE_COMMUNITY = "community";
 export const CRAWL_SOURCE_TYPES = [
   CRAWL_SOURCE_TYPE_RSS,
   CRAWL_SOURCE_TYPE_WEB,
@@ -24,12 +27,14 @@ export const CRAWL_SOURCE_TYPES = [
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_VENDOR,
   CRAWL_SOURCE_TYPE_LEADERBOARD,
+  CRAWL_SOURCE_TYPE_COMMUNITY,
 ] as const;
 export type CrawlSourceType = (typeof CRAWL_SOURCE_TYPES)[number];
 
 /** 已实现采集管线的类型(M48 批E:adapters 仅 rss,web/api 建了必「适配器未实现」
  * 每轮报错;social-video 走博主采集管线,pricing 走牌价解析器路由 M56 批B,
- * vendor 走厂商注册表路由 M58 批②,leaderboard 走榜单注册表路由 M58 批③)
+ * vendor 走厂商注册表路由 M58 批②,leaderboard 走榜单注册表路由 M58 批③,
+ * community 走社区语料注册表路由 M58 批④)
  * ——渠道创建/编辑 Zod 与 UI 选项一律用本清单,全集 CRAWL_SOURCE_TYPES 仅保留类型语义 */
 export const CRAWL_SOURCE_TYPES_IMPLEMENTED = [
   CRAWL_SOURCE_TYPE_RSS,
@@ -37,6 +42,7 @@ export const CRAWL_SOURCE_TYPES_IMPLEMENTED = [
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_VENDOR,
   CRAWL_SOURCE_TYPE_LEADERBOARD,
+  CRAWL_SOURCE_TYPE_COMMUNITY,
 ] as const;
 
 export const CRAWL_SOURCE_STATUS_HEALTHY = "healthy";
