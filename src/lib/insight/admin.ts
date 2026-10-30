@@ -18,8 +18,10 @@ import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } fr
 export {
   listInsightClusters,
   getInsightClusterDetail,
+  countLabelingCoverage,
   type InsightClusterRow,
   type InsightClusterDetail,
+  type LabelingCoverage,
 } from "./cluster-view";
 
 /** 在役源(批③ 渠道转向:站内搜索/agent/反馈退出,读侧全量按白名单过滤;
@@ -246,15 +248,21 @@ export async function listInsightSignalsPage(
   };
 }
 
-/** 实体详情「相关信号」(M59 批B):按 meta.entityKey 精确匹配——仅厂商抽取链
- * 写入该 meta 键(extract.ts),社区/热榜信号暂无实体挂接;恒限在役源 */
+/** 实体详情「相关信号」(M59 批B → M60 别名集合):按 meta.entityKey 精确匹配——
+ * 仅厂商抽取链写入该 meta 键(extract.ts),社区/热榜信号暂无实体挂接;恒限在役源。
+ * M60 起传实体全部别名(含规范键),历史写法与现行写法都算同一实体。 */
 export async function listSignalsByEntityKey(
-  entityKey: string,
+  entityKey: string | readonly string[],
   limit = SIGNAL_TAKE_DEFAULT,
 ): Promise<InsightSignalRow[]> {
+  const keys = typeof entityKey === "string" ? [entityKey] : [...entityKey];
+  if (keys.length === 0) return [];
   const rows = await prisma.insightSignal.findMany({
     where: {
-      AND: [{ source: { in: ENABLED } }, { meta: { path: ["entityKey"], equals: entityKey } }],
+      AND: [
+        { source: { in: ENABLED } },
+        { OR: keys.map((k) => ({ meta: { path: ["entityKey"], equals: k } })) },
+      ],
     },
     orderBy: [{ signalAt: "desc" }, { id: "desc" }],
     take: Math.min(Math.max(limit, 1), SIGNAL_TAKE_MAX),

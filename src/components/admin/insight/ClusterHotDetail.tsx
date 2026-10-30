@@ -7,6 +7,7 @@
 import Link from "next/link";
 
 import AddWordsButton from "@/components/admin/insight/AddWordsButton";
+import LabelNowButton from "@/components/admin/insight/LabelNowButton";
 import TopicGenButton from "@/components/admin/insight/TopicGenButton";
 import {
   CoverageBadge,
@@ -74,7 +75,7 @@ export default function ClusterHotDetail({
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-semibold">机会簇 · {c.label ?? "待打标簇"}</h2>
+          <h2 className="text-base font-semibold">机会簇 · {c.label ?? "待打标"}</h2>
           <span className="flex items-center gap-1">
             {WINDOWS.map((n) => (
               <Link
@@ -90,6 +91,7 @@ export default function ClusterHotDetail({
             ))}
           </span>
           {c.keywords.length > 0 && <AddWordsButton words={c.keywords} label="加入词库" />}
+          <LabelNowButton clusterId={c.id} label={c.label === null ? "立即打标" : "重新打标"} />
         </div>
         {c.summary !== null && <p className="mt-1 text-[13px] text-text-2">{c.summary}</p>}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">

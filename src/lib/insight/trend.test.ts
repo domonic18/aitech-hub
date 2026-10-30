@@ -2,7 +2,6 @@
  * 洞察趋势层单测(M52 批A):增长分纯函数全分支(五级判据边界+前窗为零两态)+
  * listClusterTrends 的 SQL 形状与分级映射(prisma mock)。
  */
-import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({
@@ -10,7 +9,13 @@ vi.mock("../db", () => ({
 }));
 
 import { prisma } from "../db";
-import { growthOf, listClusterTrends, tierOf, TREND_TIER_LABELS } from "./trend";
+import {
+  countPendingClusters,
+  growthOf,
+  listClusterTrends,
+  tierOf,
+  TREND_TIER_LABELS,
+} from "./trend";
 
 const mockedRaw = vi.mocked(prisma.$queryRaw);
 
@@ -93,13 +98,58 @@ describe("listClusterTrends", () => {
     expect(sqlText).toContain("LEFT JOIN");
   });
 
-  it("领域视图:簇侧 WHERE 注入域片段;全部视图片段为空(M54 批C)", async () => {
+  it("成熟簇成员门 + 领域视图:域片段仅在传域时注入(M54/M60 批C)", async () => {
     mockedRaw.mockResolvedValue([] as never);
     await listClusterTrends(7, "tech");
-    // 域片段恒为模板末位插值;Prisma.empty(空片段)即未筛
-    expect(mockedRaw.mock.calls[0]!.at(-1)).not.toBe(Prisma.empty);
+    const call = mockedRaw.mock.calls[0] as unknown[];
+    // 成员数走子查询门(HAVING count(s.id) 数的是窗口内信号,不是成员)
+    expect((call[0] as TemplateStringsArray).join("?")).toContain("insight_cluster_member m3");
+    // Prisma.sql 片段不展开进 strings,取嵌套片段判域过滤
+    const frags = call
+      .slice(1)
+      .filter(
+        (v): v is { strings: string[]; values: unknown[] } =>
+          typeof v === "object" &&
+          v !== null &&
+          Array.isArray((v as { strings?: unknown }).strings),
+      );
+    expect(frags.some((f) => f.strings.join("?").includes("c.domain = ?"))).toBe(true);
+    expect(frags.flatMap((f) => f.values)).toContain("tech");
 
     await listClusterTrends(7);
-    expect(mockedRaw.mock.calls[1]!.at(-1)).toBe(Prisma.empty);
+    const noDomain = (mockedRaw.mock.calls[1] as unknown[])
+      .slice(1)
+      .filter(
+        (v): v is { strings: string[]; values: unknown[] } =>
+          typeof v === "object" &&
+          v !== null &&
+          Array.isArray((v as { strings?: unknown }).strings),
+      );
+    expect(noDomain.some((f) => f.strings.join("?").includes("c.domain = ?"))).toBe(false);
+    expect(noDomain.flatMap((f) => f.values)).not.toContain("tech");
+  });
+});
+
+describe("countPendingClusters", () => {
+  it("成员 1..LABEL_MIN_MEMBERS-1 计数;kind/domain 过滤可选", async () => {
+    mockedRaw.mockResolvedValue([{ n: BigInt(7) }] as never);
+    expect(await countPendingClusters("tech", "hot")).toBe(7);
+    const call = mockedRaw.mock.calls[0] as unknown[];
+    const sqlText = (call[0] as TemplateStringsArray).join("?");
+    expect(sqlText).toContain("BETWEEN 1 AND ?");
+    const frags = call
+      .slice(1)
+      .filter(
+        (v): v is { strings: string[]; values: unknown[] } =>
+          typeof v === "object" &&
+          v !== null &&
+          Array.isArray((v as { strings?: unknown }).strings),
+      ) as { strings: string[]; values: unknown[] }[];
+    const fragText = frags.map((f) => f.strings.join("?")).join("\n");
+    expect(fragText).toContain("c.domain = ?");
+    expect(fragText).toContain("c.kind = ?");
+    expect(frags.flatMap((f) => f.values)).toEqual(["tech", "hot"]);
+    // 外层绑定只剩成员上限(LABEL_MIN_MEMBERS-1=2)
+    expect(call.slice(1).filter((v) => typeof v === "number")).toEqual([2]);
   });
 });

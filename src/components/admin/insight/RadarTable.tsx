@@ -7,6 +7,7 @@
 import Link from "next/link";
 
 import type { InsightClusterRow } from "@/lib/insight/admin";
+import { LABEL_MIN_MEMBERS } from "@/lib/insight/constants";
 import type { ClusterMomentum } from "@/lib/insight/scoring";
 import { TREND_TIER_LABELS, type ClusterTrendRow, type TrendTier } from "@/lib/insight/trend";
 
@@ -96,12 +97,15 @@ function RadarRow({
         {rank}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
           <span
-            className={`truncate text-[13px] ${c.label ? "text-text-1" : "text-text-3 italic"}`}
-            title={c.label ?? `未打标 · 信号样本:${trend?.sample ?? "—"}`}
+            className={`min-w-0 flex-1 truncate text-[13px] ${c.label ? "text-text-1" : "text-text-3 italic"}`}
+            title={
+              c.label ??
+              `待打标 · 信号样本:${trend?.sample ?? "—"}(成员 ≥${LABEL_MIN_MEMBERS} 后进入打标队列,每 30 分钟小批命名)`
+            }
           >
-            {c.label ?? (trend?.sample ? `未命名 · ${trend.sample}…` : "待打标簇")}
+            {c.label ?? "待打标"}
           </span>
           {trend ? (
             <TrendBadge tier={trend.tier} growth={trend.growth} />
@@ -141,10 +145,13 @@ function RadarRow({
 export default function RadarTable({
   clusters,
   trends,
+  pendingClusters,
 }: {
   clusters: InsightClusterRow[];
   /** 簇增长分级(M52 批B;键=簇 id 字符串;缺省回退 24h 动量徽) */
   trends?: ReadonlyMap<string, ClusterTrendRow>;
+  /** 累计中的新簇数(M60 批C:成员 1-2 条,未进榜;页脚交代去向) */
+  pendingClusters?: number;
 }): React.ReactElement {
   if (clusters.length === 0) {
     return (
@@ -153,17 +160,25 @@ export default function RadarTable({
         <Link href="/admin/data/sources/?t=channels" className="mx-0.5 text-accent hover:underline">
           源管理·热榜源
         </Link>
-        启停,或用 CLI <code className="font-mono">insight:run -- cluster</code> 手动跑一轮
+        启停,或用 CLI <code className="font-mono">npm run insight:run -- label</code> 手动跑一轮
       </div>
     );
   }
   const maxScore = Math.max(...clusters.map((c) => c.score ?? 0), 0);
   // 自 F11 起宿主于页侧 Card 壳(F11 板),自身不再画面板框
   return (
-    <div className="grid gap-x-4 lg:grid-cols-2">
-      {clusters.map((c, i) => (
-        <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} trends={trends} />
-      ))}
+    <div className="flex flex-col gap-1.5">
+      <div className="grid gap-x-4 lg:grid-cols-2">
+        {clusters.map((c, i) => (
+          <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} trends={trends} />
+        ))}
+      </div>
+      {pendingClusters !== undefined && pendingClusters > 0 && (
+        <p className="px-2 text-[10.5px] text-text-3">
+          另有 {pendingClusters} 个新簇累计中(成员 1-{LABEL_MIN_MEMBERS - 1} 条,满{" "}
+          {LABEL_MIN_MEMBERS} 条进榜并进入打标队列)
+        </p>
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@
 import Link from "next/link";
 
 import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
+import CoverageBoard from "@/components/admin/insight/CoverageBoard";
 import HotBoard from "@/components/admin/insight/HotBoard";
 import HotBoardDayNav from "@/components/admin/insight/HotBoardDayNav";
 import OverviewHero from "@/components/admin/insight/OverviewHero";
@@ -20,7 +21,6 @@ import PainCardGrid from "@/components/admin/insight/PainCardGrid";
 import { PanelCard } from "@/components/admin/insight/PanelCard";
 import RadarTable from "@/components/admin/insight/RadarTable";
 import SignalRow from "@/components/admin/insight/SignalRow";
-import SourceMatrix from "@/components/admin/insight/SourceMatrix";
 import TrendBoard from "@/components/admin/insight/TrendBoard";
 import {
   DOMAIN_ALL,
@@ -35,7 +35,7 @@ import {
 } from "@/components/admin/insight/shared";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { insightOverview, listInsightClusters, listInsightSignalsPage } from "@/lib/insight/admin";
-import { listClusterTrends, listSourceMatrix } from "@/lib/insight/trend";
+import { listClusterTrends, countPendingClusters, listSourceMatrix } from "@/lib/insight/trend";
 import { TREND_WINDOW_DAYS } from "@/lib/insight/constants";
 import { hotBoardForDay, insightKeywordCloud } from "@/lib/insight/hotboard";
 import { HOT_SOURCE_KEYS } from "@/lib/insight/hot-source";
@@ -70,18 +70,29 @@ export default async function AdminInsightPage({
   const view = resolveDomainView(sp.domain, domainKeys);
   const domainFilter = view === DOMAIN_ALL ? undefined : view;
 
-  const [overview, painClusters, hotClusters, signalPreview, hotBoard, cloud, trends, matrix] =
-    await Promise.all([
-      insightOverview(w, domainFilter),
-      listInsightClusters({ kind: "pain", domain: domainFilter, limit: 8 }),
-      listInsightClusters({ kind: "hot", domain: domainFilter, limit: 20 }),
-      // 预览恒取最新 5 条(全量筛选/分页在 /admin/insight/signals/)
-      listInsightSignalsPage({ page: 1, pageSize: SIGNAL_PREVIEW_COUNT }),
-      hotBoardForDay(params.day),
-      insightKeywordCloud({ windowDays: w, domain: domainFilter }),
-      listClusterTrends(TREND_WINDOW_DAYS, domainFilter),
-      listSourceMatrix(undefined, domainFilter),
-    ]);
+  const [
+    overview,
+    painClusters,
+    hotClusters,
+    signalPreview,
+    hotBoard,
+    cloud,
+    trends,
+    matrix,
+    pending,
+  ] = await Promise.all([
+    insightOverview(w, domainFilter),
+    listInsightClusters({ kind: "pain", domain: domainFilter, limit: 8 }),
+    listInsightClusters({ kind: "hot", domain: domainFilter, limit: 20 }),
+    // 预览恒取最新 5 条(全量筛选/分页在 /admin/insight/signals/)
+    listInsightSignalsPage({ page: 1, pageSize: SIGNAL_PREVIEW_COUNT }),
+    hotBoardForDay(params.day),
+    insightKeywordCloud({ windowDays: w, domain: domainFilter }),
+    listClusterTrends(TREND_WINDOW_DAYS, domainFilter),
+    listSourceMatrix(undefined, domainFilter),
+    // 累计中的新簇(成员 < LABEL_MIN_MEMBERS,不进榜;雷达页脚交代去向)
+    countPendingClusters(domainFilter, "hot"),
+  ]);
   const scored = hotClusters.filter((c) => c.score !== null);
   const hotAvg =
     scored.length === 0 ? null : scored.reduce((a, c) => a + (c.score ?? 0), 0) / scored.length;
@@ -154,13 +165,19 @@ export default async function AdminInsightPage({
           </Link>
         ))}
       </div>
-      <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
+      <OverviewHero
+        cloud={cloud}
+        totalSignals={overview.total}
+        hotAvg={hotAvg}
+        windowDays={w}
+        domain={domainFilter}
+      />
       <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <PanelCard
           title="机会分趋势"
           hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级(M52)"
         >
-          <RadarTable clusters={hotClusters} trends={trendMap} />
+          <RadarTable clusters={hotClusters} trends={trendMap} pendingClusters={pending} />
         </PanelCard>
         <PanelCard title="痛点榜" hint="按信号聚合 · 空白标红=选题机会">
           <PainCardGrid clusters={painClusters} />
@@ -168,10 +185,10 @@ export default async function AdminInsightPage({
       </div>
       <PanelCard
         id="source-matrix"
-        title="源×簇覆盖矩阵"
-        hint="内容空白 = 热源有需求 × 站内无痛点信号 · 一键转选题补覆盖"
+        title="源×簇覆盖矩阵(渠道族)"
+        hint="按渠道族看覆盖结构 · 内容空白 = 外部族有热信号 × 站内族零信号 · 一键转选题补覆盖"
       >
-        <SourceMatrix matrix={matrix} />
+        <CoverageBoard matrix={matrix} />
       </PanelCard>
       <PanelCard
         id="trend-board"

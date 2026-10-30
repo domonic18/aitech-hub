@@ -1,14 +1,17 @@
 /**
- * 实体详情(M59 批B):事件时间线 + 经 meta.entityKey 关联的厂商信号。
- * 口径:事件来自 entity_event;相关信号只覆盖厂商抽取链写入的 meta.entityKey,
- * 社区/热榜信号暂无实体挂接(在空态文案里说明,避免误判丢失)。
+ * 实体详情(M59 批B → M60 实体层):事件时间线 + 经 meta.entityKey 关联的厂商
+ * 信号,外加实体层次(品牌 › 产品线)、别名组与同族实体——归并入口在此。
+ * 口径:事件来自 entity_event(按 entity_id);相关信号覆盖本实体全部别名写入的
+ * meta.entityKey,社区/热榜信号暂无实体挂接(在空态文案里说明,避免误判丢失)。
  */
 import Link from "next/link";
 
 import {
   ENTITIES_PATH,
   ENTITY_EVENT_TAKE,
+  entityHref,
   type EntityDetail as EntityDetailData,
+  type EntityLink,
 } from "@/lib/insight/entities-admin";
 import {
   ENTITY_TYPE_LABELS,
@@ -17,6 +20,7 @@ import {
 } from "@/lib/insight/vendor/constants";
 import { VENDOR_DEFS } from "@/lib/insight/vendor/registry";
 
+import MergeEntityControl from "./MergeEntityControl";
 import { PanelCard } from "./PanelCard";
 import SignalRow from "./SignalRow";
 import { formatTime } from "./shared";
@@ -25,18 +29,38 @@ const VENDOR_NAME = new Map(VENDOR_DEFS.map((d) => [d.key, d.vendorName]));
 
 const badge = "rounded-sm px-1.5 py-0.5 font-mono text-[10.5px] whitespace-nowrap";
 
+/** 同族实体 chip:展示名 + 事件数,点进详情 */
+function RelatedChip({ link }: { link: EntityLink }): React.ReactElement {
+  return (
+    <Link
+      href={entityHref(link.key)}
+      className="inline-flex items-center gap-1 rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] text-text-2 hover:border-line-hover hover:text-accent"
+      title={link.key}
+    >
+      <span className="max-w-[180px] truncate">{link.displayName}</span>
+      {link.eventCount !== undefined && (
+        <span className="font-mono text-[10px] text-text-3">{link.eventCount}</span>
+      )}
+    </Link>
+  );
+}
+
 export default function EntityDetailView({
   detail,
 }: {
   detail: EntityDetailData;
 }): React.ReactElement {
+  const parentIsRoot = detail.parent === null || detail.parent.key === detail.root?.key;
+  const aliases = detail.aliases.filter((k) => k !== detail.key);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Link href={ENTITIES_PATH} className="text-[11px] text-text-3 hover:text-accent">
           ← 实体列表
         </Link>
-        <h2 className="font-mono text-base font-semibold text-text-1">{detail.entityKey}</h2>
+        <h2 className="text-base font-semibold text-text-1">{detail.displayName}</h2>
+        <span className="font-mono text-[11px] text-text-3">{detail.key}</span>
         {detail.vendors.map((v) => (
           <span key={v} className={`${badge} bg-panel-2 text-text-2`}>
             {VENDOR_NAME.get(v) ?? v}
@@ -48,7 +72,65 @@ export default function EntityDetailView({
           </span>
         ))}
         <span className={`${badge} bg-accent-dim text-accent`}>事件 {detail.eventCount}</span>
+        <span className="ml-auto">
+          <MergeEntityControl fromKey={detail.key} />
+        </span>
       </div>
+
+      {(detail.root !== null || aliases.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-3">
+          {detail.root !== null && (
+            <span className="flex items-center gap-1">
+              <span>所属</span>
+              <Link href={entityHref(detail.root.key)} className="text-text-2 hover:text-accent">
+                {detail.root.displayName}
+              </Link>
+              {detail.parent !== null && !parentIsRoot && (
+                <>
+                  <span>›</span>
+                  <Link
+                    href={entityHref(detail.parent.key)}
+                    className="text-text-2 hover:text-accent"
+                  >
+                    {detail.parent.displayName}
+                  </Link>
+                </>
+              )}
+            </span>
+          )}
+          {aliases.length > 0 && (
+            <span className="flex flex-wrap items-center gap-1">
+              <span>别名 {aliases.length}</span>
+              {aliases.map((k) => (
+                <span key={k} className={`${badge} bg-panel-2 text-text-3`}>
+                  {k}
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+      )}
+
+      {(detail.children.length > 0 || detail.siblings.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {detail.children.length > 0 && (
+            <span className="flex flex-wrap items-center gap-1">
+              <span className="text-[11px] text-text-3">下级</span>
+              {detail.children.map((c) => (
+                <RelatedChip key={c.key} link={c} />
+              ))}
+            </span>
+          )}
+          {detail.siblings.length > 0 && (
+            <span className="flex flex-wrap items-center gap-1">
+              <span className="text-[11px] text-text-3">同族</span>
+              {detail.siblings.map((c) => (
+                <RelatedChip key={c.key} link={c} />
+              ))}
+            </span>
+          )}
+        </div>
+      )}
 
       <PanelCard
         title="事件时间线"

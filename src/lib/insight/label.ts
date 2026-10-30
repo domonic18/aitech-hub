@@ -13,9 +13,10 @@
  */
 import { AI_PURPOSE_INSIGHT, AI_PURPOSE_INSIGHT_JUDGE } from "../ai/constants";
 import { decideQuestions } from "../ai/decisions-client";
-import type { ResolvedAiModel } from "../ai/resolver";
+import { getRoleDailyMax, type ResolvedAiModel } from "../ai/resolver";
 import { chatJsonTask, type ParsedTask } from "../ai/chat-json-task";
 import { readExtraMaxTokens } from "../ai/extra-params";
+import { countTodayRoleUsage } from "../ai/usage-queries";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { majorityRegion, unionMedia } from "./cluster";
@@ -294,4 +295,83 @@ export async function labelCluster(
     select: { id: true },
   });
   return true;
+}
+
+// ── 批量/单簇入口(M60 批C:原 daily.ts 内联打标段提取,供每 30 分钟小批
+// job、日批收尾与后台手动补标共用)────────────────────────────────────────
+
+export interface LabelBatchSummary {
+  labeled: number;
+  failed: number;
+  /** 整批跳过(未绑定 insight 模型 / 当日配额耗尽) */
+  skipped: boolean;
+  reason: "insight_unbound" | "quota_exhausted" | null;
+}
+
+/** 打标一批:模型未绑定/配额耗尽即跳过,limit 再被剩余配额钳制(单簇一次
+ * LLM 调用);批内单簇失败自吞,下一轮重扫自愈。 */
+export async function runLabelBatch(limit: number): Promise<LabelBatchSummary> {
+  const summary: LabelBatchSummary = { labeled: 0, failed: 0, skipped: false, reason: null };
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT);
+  if (!model) {
+    logger.info({ event: "insight.daily_label_skipped", reason: "insight_unbound" });
+    return { ...summary, skipped: true, reason: "insight_unbound" };
+  }
+  const [used, dailyMax] = await Promise.all([
+    countTodayRoleUsage(AI_PURPOSE_INSIGHT),
+    getRoleDailyMax(AI_PURPOSE_INSIGHT),
+  ]);
+  const quota = Math.max(0, dailyMax - used);
+  if (quota === 0) {
+    logger.info({ event: "insight.daily_label_skipped", reason: "quota_exhausted" });
+    return { ...summary, skipped: true, reason: "quota_exhausted" };
+  }
+  const stale = await findStaleClusters(Math.min(quota, Math.max(0, Math.trunc(limit))));
+  for (const c of stale) {
+    try {
+      if (await labelCluster(c.id, Number(c.members), model)) summary.labeled += 1;
+      else summary.failed += 1;
+    } catch (e) {
+      summary.failed += 1;
+      logger.warn({
+        event: "insight.label_cluster_failed",
+        clusterId: c.id.toString(),
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return summary;
+}
+
+export type ClusterLabelOutcome =
+  "labeled" | "failed" | "unbound" | "quota_exhausted" | "too_small" | "not_found";
+
+/** 打标前置检查(零 LLM 调用,单簇一次 DB 轮):阻断原因或已就绪的模型+成员数。
+ * 路由层快速失败(入队前给用户明确原因)与 labelClusterNow 共用,免两处各抄
+ * 一份「未绑定/配额/成员数」判定。 */
+export type LabelReadiness =
+  | { ok: true; model: ResolvedAiModel; memberCount: number }
+  | { ok: false; outcome: Exclude<ClusterLabelOutcome, "labeled" | "failed"> };
+
+export async function labelReadiness(clusterId: bigint): Promise<LabelReadiness> {
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT);
+  if (!model) return { ok: false, outcome: "unbound" };
+  const [used, dailyMax] = await Promise.all([
+    countTodayRoleUsage(AI_PURPOSE_INSIGHT),
+    getRoleDailyMax(AI_PURPOSE_INSIGHT),
+  ]);
+  if (dailyMax - used <= 0) return { ok: false, outcome: "quota_exhausted" };
+  const memberCount = await prisma.insightClusterMember.count({ where: { clusterId } });
+  if (memberCount === 0) return { ok: false, outcome: "not_found" };
+  if (memberCount < LABEL_MIN_MEMBERS) return { ok: false, outcome: "too_small" };
+  return { ok: true, model, memberCount };
+}
+
+/** 单簇即时打标(手动补标:簇详情「立即打标」→ label job 带 clusterId)。
+ * 不经 findStaleClusters(手动意图=立刻打,不要求「未打标/有新增」,重打幂等),
+ * 但仍守最小成员数与配额。 */
+export async function labelClusterNow(clusterId: bigint): Promise<ClusterLabelOutcome> {
+  const ready = await labelReadiness(clusterId);
+  if (!ready.ok) return ready.outcome;
+  return (await labelCluster(clusterId, ready.memberCount, ready.model)) ? "labeled" : "failed";
 }

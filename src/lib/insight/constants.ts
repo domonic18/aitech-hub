@@ -25,6 +25,10 @@ export const LABEL_MIN_MEMBERS = 3;
 /** 单次日批最多打标簇数(方案 §5.4 预估 10-30 次 LLM 调用/日,上限兜底防爆量) */
 export const LABEL_BATCH_SIZE = 24;
 
+/** 高频小批单轮打标簇数(M60 批C:label job 每 30 分钟一轮,剩余配额内多打;
+ * 24+40×48 轮上限由配额 300/日兜住,此值只决定单轮节奏) */
+export const LABEL_JOB_BATCH_SIZE = 40;
+
 /** 打标样本条数(最近成员优先,防 prompt 爆量;rawText 截断在此之上) */
 export const LABEL_SAMPLE_SIZE = 12;
 

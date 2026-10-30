@@ -1,18 +1,21 @@
 /**
- * 实体聚合视图取数(M59 批B,data-expansion-plan §5.3 后续):/admin/insight/entities
- * 按 entity_event.entityKey 聚合厂商事件(实体 → 事件数/最近事件),详情页给事件
- * 时间线 + 经 insight_signal.meta.entityKey 关联的厂商信号。
- * 口径边界:只聚合 entity_event(厂商抽取链);榜单快照/社区信号未挂实体,不 join。
- * 列表两段式:groupBy 拿分组与计数(page 内),再按本页 key 集合补最近事件
- * (groupBy 不能带非聚合列);总数用 count(DISTINCT) 子查询(Prisma 无等价 API)。
+ * 实体聚合视图取数(M59 批B → M60 实体层):/admin/insight/entities。
+ *
+ * 读侧以 **insight_entity 为准**(实体主表 + 别名 + 父子层次),事件按
+ * `entity_event.entity_id` 挂到实体;历史未回填(`entity_id IS NULL`)的条数
+ * 单列提示,不混进实体行。列表按「顶层 org 分区 → 产品线 → 实体」折叠:
+ * qwen-mt-turbo / qwen3-embedding / qwen-vlo 同挂 Qwen 之下,不再平铺。
+ *
+ * 分页按实体粒度(事件数/最近时间聚合后排序再切片),分区在页内成形;实体
+ * 总量是「有事件的实体数」量级(几十～几千),页侧内存过滤/排序可接受,
+ * 换来别名关键词命中与三层层次一次装配(避免逐实体 N+1)。
  */
-import { Prisma } from "@prisma/client";
-
 import { parsePage } from "@/lib/admin/list";
 import { DAY_MS, startOfCnDay } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 
 import { listSignalsByEntityKey, type InsightSignalRow } from "./admin";
+import { findEntity } from "./entities/resolve";
 import { isEntityType, type EntityType } from "./vendor/constants";
 import { VENDOR_DEFS } from "./vendor/registry";
 
@@ -26,8 +29,14 @@ export const ENTITY_EVENT_TAKE = 120;
 /** 详情页相关信号上限(与信号流缺省取数同口径) */
 export const ENTITY_SIGNAL_TAKE = 50;
 
+/** 详情页同族实体(子/兄弟)展示上限 */
+export const ENTITY_RELATED_TAKE = 12;
+
 /** 时间窗 chips(近 N 天;不选=全部) */
 export const ENTITY_WINDOWS = [7, 30, 90] as const;
+
+/** 层次最大深度(org → line → model;防脏数据成环时死循环) */
+const MAX_DEPTH = 4;
 
 /** 关键词长度上限(超长截断,避免超宽 ILIKE 模式) */
 const QUERY_MAX = 40;
@@ -42,10 +51,18 @@ export interface EntityFilters {
 }
 
 export interface EntityRow {
-  entityKey: string;
-  /** 最近事件的类型/厂商(实体内多厂商时取最近一条) */
+  /** 规范键(详情路径锚) */
+  key: string;
+  displayName: string;
   entityType: string;
-  vendor: string;
+  vendorKey: string | null;
+  /** 直接父级(产品线或品牌);顶层为 null */
+  parentKey: string | null;
+  parentName: string | null;
+  /** 顶层品牌(分区锚) */
+  rootKey: string;
+  rootName: string;
+  aliasCount: number;
   eventCount: number;
   lastAt: string;
   latestEventType: string;
@@ -53,21 +70,47 @@ export interface EntityRow {
   latestUrl: string;
 }
 
-export interface EntityPage {
+export interface EntitySection {
+  rootKey: string;
+  rootName: string;
+  eventCount: number;
   rows: EntityRow[];
+}
+
+export interface EntityPage {
+  sections: EntitySection[];
   total: number;
   page: number;
   pages: number;
+  /** 未挂实体的历史事件数(回填前/解析降级;单列提示) */
+  unresolved: number;
+}
+
+export interface EntityLink {
+  key: string;
+  displayName: string;
+  /** 事件数(父子/兄弟侧有;头部父级/品牌省略) */
+  eventCount?: number;
 }
 
 export interface EntityDetail {
-  entityKey: string;
+  key: string;
+  displayName: string;
+  entityType: string;
+  vendorKey: string | null;
+  parent: EntityLink | null;
+  root: EntityLink | null;
+  /** 全部别名(含规范键;详情「别名」chips) */
+  aliases: string[];
   eventCount: number;
-  /** 本实体涉及的全部厂商/类型(详情头部徽章) */
   vendors: string[];
   entityTypes: string[];
   events: EntityEventLite[];
   signals: InsightSignalRow[];
+  children: EntityLink[];
+  siblings: EntityLink[];
+  /** 命中已归并实体时的跳转目标(页面据此 redirect) */
+  redirectTo: string | null;
 }
 
 /** 详情事件行(与 events 页 EntityEventRow 同形,去掉筛选无关字段) */
@@ -102,9 +145,9 @@ export function resolveEntityFilters(raw: Record<string, string | undefined>): E
   };
 }
 
-/** 实体详情路径(单源;按段编码,保住 entityKey 里的 / 分隔)。
+/** 实体详情路径(单源;按段编码,保住规范键里的 / 分隔)。
  * 尾斜杠随 `next.config` 的 trailingSlash 走,但末段含「.」时 Next 当文件路径处理、
- * canonical 形态是**无**尾斜杠(带斜杠会 308),链接必须直指 canonical,免每次点击一跳。 */
+ * canonical 形态是**无**尾斜杠(带斜杠会 308),链接必须直指 canonical。 */
 export function entityHref(entityKey: string): string {
   const seg = entityKey.split("/").map(encodeURIComponent).join("/");
   const last = seg.slice(seg.lastIndexOf("/") + 1);
@@ -133,34 +176,6 @@ function windowStart(windowDays: number | undefined, now: Date): Date | undefine
   return new Date(startOfCnDay(now).getTime() - (windowDays - 1) * DAY_MS);
 }
 
-/** Prisma where 唯一出口(列表/补最近事件共用同一套筛选) */
-export function buildEntityWhere(
-  filters: EntityFilters,
-  now: Date = new Date(),
-): Prisma.EntityEventWhereInput {
-  const since = windowStart(filters.windowDays, now);
-  return {
-    ...(filters.vendor === undefined ? {} : { vendor: filters.vendor }),
-    ...(filters.entityType === undefined ? {} : { entityType: filters.entityType }),
-    ...(filters.q === undefined
-      ? {}
-      : { entityKey: { contains: filters.q, mode: Prisma.QueryMode.insensitive } }),
-    ...(since === undefined ? {} : { occurredAt: { gte: since } }),
-  };
-}
-
-/** count(DISTINCT entity_key) 的 SQL 条件(与 buildEntityWhere 同一 filters 投影,
- * 两处相邻便于同步;仅用于总数子查询) */
-function entityWhereSql(filters: EntityFilters, now: Date): Prisma.Sql {
-  const conds: Prisma.Sql[] = [];
-  if (filters.vendor !== undefined) conds.push(Prisma.sql`vendor = ${filters.vendor}`);
-  if (filters.entityType !== undefined) conds.push(Prisma.sql`entity_type = ${filters.entityType}`);
-  if (filters.q !== undefined) conds.push(Prisma.sql`entity_key ILIKE ${`%${filters.q}%`}`);
-  const since = windowStart(filters.windowDays, now);
-  if (since !== undefined) conds.push(Prisma.sql`occurred_at >= ${since}`);
-  return conds.length === 0 ? Prisma.empty : Prisma.sql`WHERE ${Prisma.join(conds, " AND ")}`;
-}
-
 /** 详情页 key 形态校验:必须是 normalizeEntityKey 的不动点,且不含空白/控制
  * 字符/URL 保留字符;允许 /(分赛道命名,由 catch-all 路由承接),拒绝 . / .. 段 */
 export function isCanonicalEntityKey(key: string): boolean {
@@ -170,75 +185,242 @@ export function isCanonicalEntityKey(key: string): boolean {
   return key.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
 }
 
-/** 实体列表:本页分组(事件数/最近时间)+ 最近事件标题外链 + 总数 */
-export async function listEntities(
+type EntityMeta = {
+  id: bigint;
+  key: string;
+  displayName: string;
+  entityType: string;
+  vendorKey: string | null;
+  parentId: bigint | null;
+  status: string;
+  mergedIntoId: bigint | null;
+};
+
+const META_SELECT = {
+  id: true,
+  key: true,
+  displayName: true,
+  entityType: true,
+  vendorKey: true,
+  parentId: true,
+  status: true,
+  mergedIntoId: true,
+} as const;
+
+/** 逐级向上取祖先(最多 MAX_DEPTH 层;脏数据成环时截断) */
+async function loadAncestors(seeds: EntityMeta[]): Promise<Map<bigint, EntityMeta>> {
+  const found = new Map<bigint, EntityMeta>(seeds.map((e) => [e.id, e]));
+  let level: EntityMeta[] = seeds;
+  for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+    const want = [
+      ...new Set(level.map((e) => e.parentId).filter((id): id is bigint => id !== null)),
+    ].filter((id) => !found.has(id));
+    if (want.length === 0) break;
+    const rows: EntityMeta[] = await prisma.insightEntity.findMany({
+      where: { id: { in: want } },
+      select: META_SELECT,
+    });
+    for (const r of rows) found.set(r.id, r);
+    level = rows;
+  }
+  return found;
+}
+
+/** 实体列表:事件聚合 → 过滤(厂商/类型/关键词含别名)→ 分页 → 顶层品牌分区 */
+export async function listEntityTree(
   filters: EntityFilters,
   now: Date = new Date(),
 ): Promise<EntityPage> {
-  const where = buildEntityWhere(filters, now);
-  const whereSql = entityWhereSql(filters, now);
-  const [groups, totals] = await Promise.all([
+  const since = windowStart(filters.windowDays, now);
+  const timeCond = since === undefined ? {} : { occurredAt: { gte: since } };
+  const q = filters.q;
+
+  const [stats, unresolved, aliasHits] = await Promise.all([
     prisma.entityEvent.groupBy({
-      by: ["entityKey"],
-      where,
+      by: ["entityId"],
+      where: { entityId: { not: null }, ...timeCond },
       _count: { _all: true },
       _max: { occurredAt: true },
-      orderBy: [{ _max: { occurredAt: "desc" } }, { entityKey: "asc" }],
-      skip: (filters.page - 1) * ENTITY_PAGE_SIZE,
-      take: ENTITY_PAGE_SIZE,
+      orderBy: [{ _max: { occurredAt: "desc" } }],
     }),
-    prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT count(DISTINCT entity_key) AS count FROM entity_event ${whereSql}
-    `,
+    prisma.entityEvent.count({ where: { entityId: null, ...timeCond } }),
+    q === undefined
+      ? Promise.resolve([])
+      : prisma.insightEntityAlias.findMany({
+          where: { aliasKey: { contains: q, mode: "insensitive" } },
+          select: { entityId: true },
+        }),
   ]);
-  const total = Number(totals[0]?.count ?? 0);
 
-  const keys = groups.map((g) => g.entityKey);
-  const latest =
-    keys.length === 0
+  const ids = stats.map((s) => s.entityId).filter((id): id is bigint => id !== null);
+  const metas: EntityMeta[] =
+    ids.length === 0
       ? []
-      : await prisma.entityEvent.findMany({
-          where: { ...where, entityKey: { in: keys } },
+      : await prisma.insightEntity.findMany({
+          where: { id: { in: ids }, status: "active" },
+          select: META_SELECT,
+        });
+  const metaOf = new Map(metas.map((m) => [m.id, m]));
+  const aliasEntityIds = new Set(aliasHits.map((a) => a.entityId));
+  const needle = q?.toLowerCase();
+
+  const matched = stats.flatMap((s) => {
+    const meta = s.entityId === null ? undefined : metaOf.get(s.entityId);
+    if (!meta || s.entityId === null) return [];
+    if (filters.vendor !== undefined && meta.vendorKey !== filters.vendor) return [];
+    if (filters.entityType !== undefined && meta.entityType !== filters.entityType) return [];
+    if (
+      needle !== undefined &&
+      !meta.key.toLowerCase().includes(needle) &&
+      !meta.displayName.toLowerCase().includes(needle) &&
+      !aliasEntityIds.has(meta.id)
+    ) {
+      return [];
+    }
+    return [{ meta, count: s._count._all, lastAt: s._max.occurredAt ?? new Date(0) }];
+  });
+
+  const total = matched.length;
+  const pageStart = (filters.page - 1) * ENTITY_PAGE_SIZE;
+  const pageRows = matched.slice(pageStart, pageStart + ENTITY_PAGE_SIZE);
+  const pageIds = pageRows.map((r) => r.meta.id);
+
+  const ancestors = await loadAncestors(pageRows.map((r) => r.meta));
+  const [latest, aliasCounts] = await Promise.all([
+    pageIds.length === 0
+      ? Promise.resolve([])
+      : prisma.entityEvent.findMany({
+          where: { entityId: { in: pageIds }, ...timeCond },
           orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
           select: {
-            entityKey: true,
+            entityId: true,
             vendor: true,
             entityType: true,
             eventType: true,
             title: true,
             url: true,
           },
-        });
-  // 已按 occurredAt 倒序:每个 key 首条即最近事件
-  const latestOf = new Map<string, (typeof latest)[number]>();
-  for (const e of latest) if (!latestOf.has(e.entityKey)) latestOf.set(e.entityKey, e);
+        }),
+    pageIds.length === 0
+      ? Promise.resolve([])
+      : prisma.insightEntityAlias.groupBy({
+          by: ["entityId"],
+          where: { entityId: { in: pageIds } },
+          _count: { _all: true },
+        }),
+  ]);
+  const latestOf = new Map<bigint, (typeof latest)[number]>();
+  for (const e of latest) {
+    if (e.entityId !== null && !latestOf.has(e.entityId)) latestOf.set(e.entityId, e);
+  }
+  const aliasOf = new Map(aliasCounts.map((a) => [a.entityId, a._count._all]));
 
-  const rows: EntityRow[] = groups.map((g) => {
-    const l = latestOf.get(g.entityKey);
+  const rows: EntityRow[] = pageRows.map(({ meta, count, lastAt }) => {
+    const parent = meta.parentId === null ? null : (ancestors.get(meta.parentId) ?? null);
+    let root = meta;
+    for (let depth = 0; depth < MAX_DEPTH && root.parentId !== null; depth += 1) {
+      const up = ancestors.get(root.parentId);
+      if (!up) break;
+      root = up;
+    }
+    const l = latestOf.get(meta.id);
     return {
-      entityKey: g.entityKey,
-      entityType: l?.entityType ?? "",
-      vendor: l?.vendor ?? "",
-      eventCount: g._count._all,
-      lastAt: (g._max.occurredAt ?? new Date(0)).toISOString(),
+      key: meta.key,
+      displayName: meta.displayName,
+      entityType: meta.entityType,
+      vendorKey: meta.vendorKey,
+      parentKey: parent?.key ?? null,
+      parentName: parent?.displayName ?? null,
+      rootKey: root.key,
+      rootName: root.displayName,
+      aliasCount: aliasOf.get(meta.id) ?? 0,
+      eventCount: count,
+      lastAt: lastAt.toISOString(),
       latestEventType: l?.eventType ?? "",
-      latestTitle: l?.title ?? g.entityKey,
+      latestTitle: l?.title ?? meta.displayName,
       latestUrl: l?.url ?? "",
     };
   });
+
   return {
-    rows,
+    sections: groupSections(rows),
     total,
     page: filters.page,
     pages: Math.max(1, Math.ceil(total / ENTITY_PAGE_SIZE)),
+    unresolved,
   };
 }
 
-/** 实体详情:事件时间线 + 经 meta.entityKey 关联的厂商信号;两边皆空回 null */
-export async function getEntityDetail(entityKey: string): Promise<EntityDetail | null> {
-  const [events, signals, eventCount, facets] = await Promise.all([
+/** 页内按顶层品牌分区:分区按最新活跃排序,区内按产品线→活跃度排序 */
+function groupSections(rows: EntityRow[]): EntitySection[] {
+  const byRoot = new Map<string, EntitySection>();
+  for (const row of rows) {
+    let section = byRoot.get(row.rootKey);
+    if (!section) {
+      section = { rootKey: row.rootKey, rootName: row.rootName, eventCount: 0, rows: [] };
+      byRoot.set(row.rootKey, section);
+    }
+    section.rows.push(row);
+    section.eventCount += row.eventCount;
+  }
+  const sections = [...byRoot.values()];
+  for (const s of sections) {
+    s.rows.sort(
+      (a, b) =>
+        (a.parentKey ?? "").localeCompare(b.parentKey ?? "") || b.lastAt.localeCompare(a.lastAt),
+    );
+  }
+  // 分区顺序:页内首条(最新活跃)出现的先后
+  const order = new Map(rows.map((r, i) => [r.rootKey, i]));
+  sections.sort((a, b) => (order.get(a.rootKey) ?? 0) - (order.get(b.rootKey) ?? 0));
+  return sections;
+}
+
+/** 详情:按规范键/别名/匹配键解析 → 事件时间线 + 别名集合关联信号 + 同族实体 */
+export async function getEntityDetail(key: string): Promise<EntityDetail | null> {
+  const resolved = await findEntity(key);
+  const meta: EntityMeta | null =
+    resolved === null
+      ? null
+      : await prisma.insightEntity.findUnique({ where: { id: resolved.id }, select: META_SELECT });
+
+  // 未建实体的历史键:按 entityKey 直查(回填前/解析降级时的降级读)
+  const entityId = meta?.id ?? null;
+  if (meta?.status === "merged" && meta.mergedIntoId !== null) {
+    const target = await prisma.insightEntity.findUnique({
+      where: { id: meta.mergedIntoId },
+      select: { key: true },
+    });
+    return {
+      key: meta.key,
+      displayName: meta.displayName,
+      entityType: meta.entityType,
+      vendorKey: meta.vendorKey,
+      parent: null,
+      root: null,
+      aliases: [],
+      eventCount: 0,
+      vendors: [],
+      entityTypes: [],
+      events: [],
+      signals: [],
+      children: [],
+      siblings: [],
+      redirectTo: target?.key ?? null,
+    };
+  }
+
+  const eventWhere = entityId === null ? { entityKey: key } : { entityId };
+  const [aliases, events, eventCount, facets] = await Promise.all([
+    entityId === null
+      ? Promise.resolve([])
+      : prisma.insightEntityAlias.findMany({
+          where: { entityId },
+          orderBy: { aliasKey: "asc" },
+          select: { aliasKey: true },
+        }),
     prisma.entityEvent.findMany({
-      where: { entityKey },
+      where: eventWhere,
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       take: ENTITY_EVENT_TAKE,
       select: {
@@ -252,21 +434,89 @@ export async function getEntityDetail(entityKey: string): Promise<EntityDetail |
         occurredAt: true,
       },
     }),
-    listSignalsByEntityKey(entityKey, ENTITY_SIGNAL_TAKE),
-    prisma.entityEvent.count({ where: { entityKey } }),
+    prisma.entityEvent.count({ where: eventWhere }),
     prisma.entityEvent.groupBy({
       by: ["vendor", "entityType"],
-      where: { entityKey },
+      where: eventWhere,
       _count: { _all: true },
     }),
   ]);
+
+  const aliasKeys = [
+    ...new Set([key, ...(meta ? [meta.key] : []), ...aliases.map((a) => a.aliasKey)]),
+  ];
+  const signals = await listSignalsByEntityKey(aliasKeys, ENTITY_SIGNAL_TAKE);
   if (eventCount === 0 && signals.length === 0) return null;
+
+  const ancestors = meta === null ? new Map<bigint, EntityMeta>() : await loadAncestors([meta]);
+  const parentMeta = meta?.parentId == null ? null : (ancestors.get(meta.parentId) ?? null);
+  let rootMeta: EntityMeta | null = meta;
+  for (
+    let depth = 0;
+    rootMeta !== null && rootMeta.parentId !== null && depth < MAX_DEPTH;
+    depth += 1
+  ) {
+    const up = ancestors.get(rootMeta.parentId);
+    if (!up) break; // 祖先缺失(清理过脏数据)时停在当前层,不丢根
+    rootMeta = up;
+  }
+
+  const [children, siblings] = await loadRelated(meta, parentMeta?.id ?? null);
+
   return {
-    entityKey,
+    key: meta?.key ?? key,
+    displayName: meta?.displayName ?? key,
+    entityType: meta?.entityType ?? "",
+    vendorKey: meta?.vendorKey ?? null,
+    parent:
+      parentMeta === null ? null : { key: parentMeta.key, displayName: parentMeta.displayName },
+    root: rootMeta === null ? null : { key: rootMeta.key, displayName: rootMeta.displayName },
+    aliases: aliasKeys,
     eventCount,
     vendors: [...new Set(facets.map((f) => f.vendor))].sort(),
     entityTypes: [...new Set(facets.map((f) => f.entityType))].sort(),
     events: events.map((e) => ({ ...e, occurredAt: e.occurredAt.toISOString() })),
     signals,
+    children,
+    siblings,
+    redirectTo: null,
   };
+}
+
+/** 子实体 + 同父兄弟(带事件数),各限 ENTITY_RELATED_TAKE 条 */
+async function loadRelated(
+  meta: EntityMeta | null,
+  parentId: bigint | null,
+): Promise<[EntityLink[], EntityLink[]]> {
+  if (meta === null) return [[], []];
+  const [kids, sibs] = await Promise.all([
+    prisma.insightEntity.findMany({
+      where: { parentId: meta.id, status: "active" },
+      select: { id: true, key: true, displayName: true },
+      take: ENTITY_RELATED_TAKE,
+    }),
+    parentId === null
+      ? Promise.resolve([])
+      : prisma.insightEntity.findMany({
+          where: { parentId, status: "active", id: { not: meta.id } },
+          select: { id: true, key: true, displayName: true },
+          take: ENTITY_RELATED_TAKE,
+        }),
+  ]);
+  const ids = [...kids, ...sibs].map((e) => e.id);
+  const counts =
+    ids.length === 0
+      ? []
+      : await prisma.entityEvent.groupBy({
+          by: ["entityId"],
+          where: { entityId: { in: ids } },
+          _count: { _all: true },
+        });
+  const countOf = new Map(counts.map((c) => [c.entityId, c._count._all]));
+  const toLink = (e: { id: bigint; key: string; displayName: string }): EntityLink => ({
+    key: e.key,
+    displayName: e.displayName,
+    eventCount: countOf.get(e.id) ?? 0,
+  });
+  return [kids.map(toLink), sibs.map(toLink)];
 }
