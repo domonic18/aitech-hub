@@ -580,6 +580,7 @@ model EntityEvent {
 
   @@index([vendor, occurredAt(sort: Desc)], map: "idx_entity_event_vendor_recent")
   @@index([eventType, occurredAt(sort: Desc)], map: "idx_entity_event_type_recent")
+  @@index([entityKey, occurredAt(sort: Desc)], map: "idx_entity_event_entity_recent")
   @@map("entity_event")
 }
 

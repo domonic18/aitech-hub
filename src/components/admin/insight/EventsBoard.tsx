@@ -12,6 +12,7 @@ import {
   type EntityEventFilters,
   type EntityEventRow,
 } from "@/lib/insight/events-admin";
+import { entityHref } from "@/lib/insight/entities-admin";
 import {
   EVENT_TYPE_LABELS,
   ENTITY_TYPE_LABELS,
@@ -169,7 +170,13 @@ export default function EventsBoard({
               >
                 {r.title}
               </a>
-              <span className="shrink-0 font-mono text-[10.5px] text-text-3">{r.entityKey}</span>
+              <Link
+                href={entityHref(r.entityKey)}
+                className="shrink-0 font-mono text-[10.5px] text-text-3 hover:text-accent"
+                title="查看该实体的全部事件与关联信号"
+              >
+                {r.entityKey}
+              </Link>
               {r.summary !== null && r.summary !== "" && (
                 <p className="w-full pl-[92px] text-[11.5px] leading-5 text-text-2">{r.summary}</p>
               )}
