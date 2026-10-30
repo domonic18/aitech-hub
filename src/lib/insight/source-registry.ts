@@ -12,6 +12,7 @@ export const SOURCE_REGISTRY = {
   "internal-search": {
     medium: "search",
     enabled: false,
+    family: "internal",
     kind: "pain",
     label: "站内搜索",
     lang: "zh",
@@ -22,6 +23,7 @@ export const SOURCE_REGISTRY = {
   "internal-agent": {
     medium: "search",
     enabled: true,
+    family: "internal",
     kind: "pain",
     label: "助手问句",
     lang: "zh",
@@ -30,6 +32,7 @@ export const SOURCE_REGISTRY = {
   "internal-comment": {
     medium: "voice",
     enabled: true,
+    family: "internal",
     kind: "pain",
     label: "文章评论",
     lang: "zh",
@@ -39,6 +42,7 @@ export const SOURCE_REGISTRY = {
   "internal-feedback": {
     medium: "voice",
     enabled: false,
+    family: "internal",
     kind: "pain",
     label: "站点反馈",
     lang: "zh",
@@ -47,6 +51,7 @@ export const SOURCE_REGISTRY = {
   "telegram-ai": {
     medium: "ai-record",
     enabled: true,
+    family: "hotlist",
     kind: "hot",
     label: "电报AI解读",
     lang: "zh",
@@ -56,6 +61,7 @@ export const SOURCE_REGISTRY = {
   "hot-baidu": {
     medium: "search",
     enabled: true,
+    family: "hotlist",
     kind: "hot",
     label: "百度热搜",
     lang: "zh",
@@ -64,6 +70,7 @@ export const SOURCE_REGISTRY = {
   "hot-zhihu": {
     medium: "voice",
     enabled: true,
+    family: "hotlist",
     kind: "hot",
     label: "知乎热榜",
     lang: "zh",
@@ -72,6 +79,7 @@ export const SOURCE_REGISTRY = {
   "hot-bilibili": {
     medium: "search",
     enabled: true,
+    family: "hotlist",
     kind: "hot",
     label: "B站热搜",
     lang: "zh",
@@ -82,6 +90,7 @@ export const SOURCE_REGISTRY = {
   "vendor-openai": {
     medium: "ai-record",
     enabled: true,
+    family: "vendor",
     kind: "hot",
     label: "OpenAI 动态",
     lang: "en",
@@ -90,6 +99,7 @@ export const SOURCE_REGISTRY = {
   "vendor-anthropic": {
     medium: "ai-record",
     enabled: true,
+    family: "vendor",
     kind: "hot",
     label: "Anthropic 动态",
     lang: "en",
@@ -98,6 +108,7 @@ export const SOURCE_REGISTRY = {
   "vendor-google": {
     medium: "ai-record",
     enabled: true,
+    family: "vendor",
     kind: "hot",
     label: "Google AI 动态",
     lang: "en",
@@ -106,6 +117,7 @@ export const SOURCE_REGISTRY = {
   "vendor-deepseek": {
     medium: "ai-record",
     enabled: true,
+    family: "vendor",
     kind: "hot",
     label: "DeepSeek 动态",
     lang: "zh",
@@ -114,6 +126,7 @@ export const SOURCE_REGISTRY = {
   "vendor-qwen": {
     medium: "ai-record",
     enabled: true,
+    family: "vendor",
     kind: "hot",
     label: "Qwen 动态",
     lang: "en",
@@ -122,6 +135,7 @@ export const SOURCE_REGISTRY = {
   "vendor-kimi": {
     medium: "ai-record",
     enabled: true,
+    family: "vendor",
     kind: "hot",
     label: "Kimi 动态",
     lang: "zh",
@@ -132,6 +146,7 @@ export const SOURCE_REGISTRY = {
   "community-hn": {
     medium: "voice",
     enabled: true,
+    family: "community",
     kind: "pain",
     label: "Hacker News",
     lang: "en",
@@ -140,6 +155,7 @@ export const SOURCE_REGISTRY = {
   "community-v2ex": {
     medium: "voice",
     enabled: true,
+    family: "community",
     kind: "pain",
     label: "V2EX",
     lang: "zh",
@@ -148,6 +164,7 @@ export const SOURCE_REGISTRY = {
   "community-baidu": {
     medium: "search",
     enabled: true,
+    family: "community",
     kind: "pain",
     label: "百度下拉",
     lang: "zh",
@@ -156,6 +173,7 @@ export const SOURCE_REGISTRY = {
   "community-oss": {
     medium: "voice",
     enabled: true,
+    family: "community",
     kind: "pain",
     label: "开源社区 Issues",
     lang: "zh",
@@ -196,6 +214,47 @@ export const INSIGHT_SOURCES_ENABLED: ReadonlySet<InsightSource> = new Set(
     .filter(([, def]) => def.enabled)
     .map(([key]) => key as InsightSource),
 );
+
+/**
+ * 渠道族(M60 覆盖矩阵口径):族是矩阵的**固定维度**——新增源只增加族内成员,
+ * 列数恒等于族数(≤6),不随渠道扩张横向爆炸。news(新闻媒体)/forum(垂直论坛,
+ * 如军事论坛)为后续新域预留:接入时注册表各行填 family 即可,矩阵无需改版。
+ */
+export type InsightSourceFamily =
+  "internal" | "hotlist" | "vendor" | "community" | "news" | "forum";
+
+/** 族展示顺序(分段条/图例/占比同序;新族追加末尾) */
+export const SOURCE_FAMILY_ORDER: readonly InsightSourceFamily[] = [
+  "internal",
+  "hotlist",
+  "vendor",
+  "community",
+  "news",
+  "forum",
+];
+
+export const FAMILY_LABELS: Record<InsightSourceFamily, string> = {
+  internal: "站内行为",
+  hotlist: "热榜资讯",
+  vendor: "厂商官方",
+  community: "社区语料",
+  news: "新闻媒体",
+  forum: "垂直论坛",
+};
+
+export const INSIGHT_SOURCE_FAMILY: Record<InsightSource, InsightSourceFamily> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.family]),
+) as Record<InsightSource, InsightSourceFamily>;
+
+/** 在役源覆盖到的族(按 SOURCE_FAMILY_ORDER 排序;矩阵列只出这些) */
+export const SOURCE_FAMILIES: readonly InsightSourceFamily[] = SOURCE_FAMILY_ORDER.filter((f) =>
+  [...INSIGHT_SOURCES_ENABLED].some((s) => INSIGHT_SOURCE_FAMILY[s] === f),
+);
+
+/** 族 → 在役源成员(段内单源明细/族级汇总共用) */
+export function sourcesInFamily(family: InsightSourceFamily): InsightSource[] {
+  return [...INSIGHT_SOURCES_ENABLED].filter((s) => INSIGHT_SOURCE_FAMILY[s] === family);
+}
 
 /** 信号源 → 簇别初始引导值(批③ 验收三轮·痛点扩围:kind 不再按源定生死)。
  * 聚类已单池归簇(近邻跨 kind),此处映射仅作新建簇的引导值,LLM 打标日批
