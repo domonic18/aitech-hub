@@ -119,7 +119,7 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
           {legend.map((l) => (
             <span
               key={l.family}
-              className={`inline-flex items-center gap-1 rounded-sm border border-line px-1.5 py-0.5 text-[10.5px] ${
+              className={`inline-flex items-center gap-1 rounded-sm border border-line px-1.5 py-0.5 text-[11px] ${
                 l.stale ? "text-text-3/60" : "text-text-2"
               }`}
               title={`${FAMILY_LABELS[l.family]} · 在役源 ${sourcesInFamily(l.family)
@@ -129,7 +129,7 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
               <span className={`inline-block size-2 rounded-[2px] ${FAMILY_BAR[l.family]}`} />
               {FAMILY_LABELS[l.family]}
               <span className="font-mono text-text-3">{l.total}</span>
-              {l.stale && <span className="text-[9px]">● 停滞</span>}
+              {l.stale && <span className="text-[10px]">● 停滞</span>}
             </span>
           ))}
         </div>
@@ -137,7 +137,7 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
           type="button"
           onClick={() => setBlankOnly((v) => !v)}
           aria-pressed={blankOnly}
-          className={`ml-auto cursor-pointer rounded-sm border px-2 py-0.5 text-[10.5px] ${
+          className={`ml-auto cursor-pointer rounded-sm border px-2 py-0.5 text-[11px] ${
             blankOnly
               ? "border-red bg-red/10 text-red"
               : "border-line text-text-2 hover:border-line-hover hover:text-text-1"
@@ -155,23 +155,32 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
           const blank = verdict === "blank";
           return (
             <div key={String(c.clusterId)} className="border-b border-line/50 py-1.5 last:border-0">
-              <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1.1fr)_4.75rem_4.5rem] items-center gap-2 sm:gap-3">
-                <Link
-                  href={`/admin/insight/clusters/${c.clusterId}`}
-                  className="flex min-w-0 items-center gap-1.5 hover:underline"
-                  title={`${c.label ?? "待打标"} · 机会分 ${c.score !== null ? Math.round(c.score) : "—"}`}
-                >
-                  <span
-                    className={`shrink-0 rounded-sm px-1 font-mono text-[10px] leading-4 ${
-                      c.kind === "hot" ? "bg-amber/12 text-amber-hi" : "bg-accent/12 text-accent"
-                    }`}
+              {/* 移动端两行(名/分 · 条+结论+行动):五列定宽在 390px 下只给
+                  簇名留 ~40px,名字被截成「特…」;三行(结论/行动各占一行)又
+                  把行高翻三倍,故结论与行动并排放进同一格(2026-10-30 验收) */}
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1.1fr)_4.75rem_4.5rem] sm:gap-3">
+                {/* 移动端名+分满行(名字拿全宽,长簇名不再半截);sm 起
+                    contents 拆开、名归 1fr 列、分归 2.5rem 列 */}
+                <span className="col-span-2 flex min-w-0 items-center gap-2 sm:contents">
+                  <Link
+                    href={`/admin/insight/clusters/${c.clusterId}`}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 hover:underline"
+                    title={`${c.label ?? "待打标"} · 机会分 ${c.score !== null ? Math.round(c.score) : "—"}`}
                   >
-                    {c.kind === "hot" ? "热" : "痛"}
+                    <span
+                      className={`shrink-0 rounded-sm px-1 font-mono text-[11px] leading-4 ${
+                        c.kind === "hot" ? "bg-amber/12 text-amber-hi" : "bg-accent/12 text-accent"
+                      }`}
+                    >
+                      {c.kind === "hot" ? "热" : "痛"}
+                    </span>
+                    {/* 行标题 13px:此前漏写字号类,继承 body 16px——同一簇名
+                        在上方机会分榜是 13px、本表 16px(2026-10-30 字号审计) */}
+                    <span className="truncate text-[13px] text-text-1">{c.label ?? "待打标"}</span>
+                  </Link>
+                  <span className="text-right font-mono text-[11px] text-text-2" title="机会分">
+                    {c.score !== null ? Math.round(c.score) : "—"}
                   </span>
-                  <span className="truncate text-text-1">{c.label ?? "待打标"}</span>
-                </Link>
-                <span className="text-right font-mono text-[11px] text-text-2" title="机会分">
-                  {c.score !== null ? Math.round(c.score) : "—"}
                 </span>
                 <div
                   className={`flex h-2 overflow-hidden rounded-sm ${
@@ -200,49 +209,53 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
                     );
                   })}
                 </div>
-                <span
-                  className={`whitespace-nowrap rounded-sm px-1.5 py-0.5 text-center text-[10.5px] ${VERDICT_CLASS[verdict]}`}
-                  title={
-                    verdict === "blank"
-                      ? "外部族有热信号 × 站内族零信号 = 内容空白,建议补稿"
-                      : verdict === "signature"
-                        ? "站内族信号强 × 外部族零信号 = 站内独有需求"
-                        : verdict === "covered"
-                          ? "全部非停滞族都有信号"
-                          : "部分渠道族尚无信号(或该族停滞无从判断)"
-                  }
-                >
-                  {VERDICT_LABELS[verdict]}
-                </span>
-                <span className="text-right">
-                  {/* 每行恒有转选题钮(M53 验收反馈:要防抖防呆,不是移除);
-                      定宽 + nowrap 保证行动列永不折行(M60 反馈) */}
-                  {isConverted ? (
-                    <span className="text-[10.5px] text-green">已转题</span>
-                  ) : busyId === String(c.clusterId) ? (
-                    <span className="text-[10.5px] text-text-3">转题中…</span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void toTopic(c.clusterId, c.label)}
-                      className={`w-[72px] cursor-pointer whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-[10.5px] ${
-                        blank
-                          ? "border-dashed border-red text-red hover:bg-red/10"
-                          : "border-line text-text-2 hover:border-line-hover hover:text-text-1"
-                      }`}
-                      title={
-                        blank
-                          ? "热源有需求 × 站内无痛点信号 = 内容空白,一键转选题补覆盖"
-                          : "在创作中心创建对应主题"
-                      }
-                    >
-                      {blank ? "补空白" : "转选题"}
-                    </button>
-                  )}
+                {/* 移动端结论+行动同处第 2 行右格;sm 起 contents 拆开、
+                    分别回到 5 列栅格的结论列与行动列 */}
+                <span className="col-start-2 flex items-center justify-self-end gap-1.5 sm:contents">
+                  <span
+                    className={`whitespace-nowrap rounded-sm px-1.5 py-0.5 text-center text-[11px] ${VERDICT_CLASS[verdict]}`}
+                    title={
+                      verdict === "blank"
+                        ? "外部族有热信号 × 站内族零信号 = 内容空白,建议补稿"
+                        : verdict === "signature"
+                          ? "站内族信号强 × 外部族零信号 = 站内独有需求"
+                          : verdict === "covered"
+                            ? "全部非停滞族都有信号"
+                            : "部分渠道族尚无信号(或该族停滞无从判断)"
+                    }
+                  >
+                    {VERDICT_LABELS[verdict]}
+                  </span>
+                  <span className="text-right">
+                    {/* 每行恒有转选题钮(M53 验收反馈:要防抖防呆,不是移除);
+                        定宽 + nowrap 保证行动列永不折行(M60 反馈) */}
+                    {isConverted ? (
+                      <span className="text-[11px] text-green">已转题</span>
+                    ) : busyId === String(c.clusterId) ? (
+                      <span className="text-[11px] text-text-3">转题中…</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void toTopic(c.clusterId, c.label)}
+                        className={`w-[72px] cursor-pointer whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-[11px] ${
+                          blank
+                            ? "border-dashed border-red text-red hover:bg-red/10"
+                            : "border-line text-text-2 hover:border-line-hover hover:text-text-1"
+                        }`}
+                        title={
+                          blank
+                            ? "热源有需求 × 站内无痛点信号 = 内容空白,一键转选题补覆盖"
+                            : "在创作中心创建对应主题"
+                        }
+                      >
+                        {blank ? "补空白" : "转选题"}
+                      </button>
+                    )}
+                  </span>
                 </span>
               </div>
               <details className="mt-1 pl-1">
-                <summary className="w-fit cursor-pointer list-none text-[10px] text-text-3 hover:text-text-1">
+                <summary className="w-fit cursor-pointer list-none text-[11px] text-text-3 hover:text-text-1">
                   单源明细({families.filter((f) => f.total > 0).length} 族有信号)
                 </summary>
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -280,11 +293,20 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
       </div>
 
       {msg && <p className="text-[11px] text-green">{msg}</p>}
-      <p className="text-[10.5px] leading-relaxed text-text-3">
+      {/* 读法(M60 补充):① 与上方机会分榜同源,只是换维度——榜单答「先写哪个」,
+          本表答「哪里还缺」;② 族口径写清,否则「站内族」「热榜族」都要猜 */}
+      <p className="text-[11px] leading-relaxed text-text-3">
+        行取<b className="text-text-2">机会分前 12</b> 的成熟簇(与上方「机会分趋势」同源,热/痛混排):
+        榜单回答「先写哪个」,本表回答「哪里还缺」。族口径 —— <b className="text-text-2">站内</b>{" "}
+        文章评论 / 助手问句 · <b className="text-text-2">热榜</b> 百度 / 知乎 / B站热搜 ·{" "}
+        <b className="text-text-2">厂商</b> 官方发布 · <b className="text-text-2">社区</b> Hacker
+        News / 开源 Issues。
+      </p>
+      <p className="text-[11px] leading-relaxed text-text-3">
         读法:分段条=该簇信号在各渠道族的占比(悬停看族内单源计数,行下「单源明细」看逐源)。
         热簇有外部族信号而站内族(评论/助手问句)为零 = <b>内容空白</b>(红虚线,建议补稿); 痛簇站内族
-        ≥3 且外部族为零 = <b>自有特色</b>。整族停滞(14 天无新信号)不参与判定。
-        新增渠道只需在源注册表归属到已有族,矩阵列数不变。
+        ≥3 且外部族为零 = <b>自有特色</b>;全部非停滞族都有信号 = 覆盖良好,其余为部分覆盖。
+        整族停滞(14 天无新信号)不参与判定;新增渠道只需在源注册表归属到已有族,矩阵列数不变。
       </p>
     </div>
   );

@@ -108,7 +108,8 @@ export default async function OverviewHero({
         </div>
         <KeywordCloud words={cloud} />
       </div>
-      <div className="flex flex-col gap-2">
+      {/* 移动端 KPI 两列铺(四竖排占满屏高、留白过多);lg 起恢复竖列与云图卡等高 */}
+      <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-col">
         <Kpi
           label="候选增量 · 7天"
           value={`+${candidates7d}`}
@@ -129,8 +130,11 @@ export default async function OverviewHero({
           value={`+${confirmed7d}`}
           title="近 7 天确认生效词(词库全局,不随领域)"
         />
-        <DailyStatusLine />
-        <LabelingStatusLine domain={domain} />
+        {/* 状态行恒占整行(两列栅格里并排会把文案挤成两行半) */}
+        <div className="col-span-2 flex flex-col gap-2">
+          <DailyStatusLine />
+          <LabelingStatusLine domain={domain} />
+        </div>
       </div>
     </div>
   );

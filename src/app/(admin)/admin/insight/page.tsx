@@ -172,14 +172,20 @@ export default async function AdminInsightPage({
         windowDays={w}
         domain={domainFilter}
       />
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {/* xl 起才并排:lg(1024)侧栏吃掉宽度后机会分趋势行只剩 ~450px,
+          名次/徽章/条形/分数/成员挤完簇名基本归零(2026-10-30 验收);
+          1024-1279 改为上下堆叠,两榜各吃满整宽 */}
+      <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <PanelCard
           title="机会分趋势"
           hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级(M52)"
         >
           <RadarTable clusters={hotClusters} trends={trendMap} pendingClusters={pending} />
         </PanelCard>
-        <PanelCard title="痛点榜" hint="按信号聚合 · 空白标红=选题机会">
+        <PanelCard
+          title="痛点榜"
+          hint="站内评论 / 助手提问聚合 · 覆盖度=站内已发文章是否写过 · 空白标红=选题机会"
+        >
           <PainCardGrid clusters={painClusters} />
         </PanelCard>
       </div>
@@ -247,7 +253,7 @@ export default async function AdminInsightPage({
         }
       >
         {signalPreview.rows.length === 0 ? (
-          <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
+          <p className="px-3 py-8 text-center text-[13px] text-text-3">
             暂无信号——去
             <Link
               href="/admin/data/sources/?t=channels"
@@ -260,7 +266,7 @@ export default async function AdminInsightPage({
         ) : (
           <ul className="divide-y divide-line">
             {signalPreview.rows.map((sig) => (
-              <SignalRow key={sig.id} sig={sig} showUrl={false} />
+              <SignalRow key={sig.id} sig={sig} showUrl={false} compact />
             ))}
           </ul>
         )}

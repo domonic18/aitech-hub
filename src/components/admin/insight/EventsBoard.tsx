@@ -99,7 +99,12 @@ export default function EventsBoard({
             {EVENT_TYPE_LABELS[t]}
           </Chip>
         ))}
-        <form method="GET" action={BASE} className="ml-auto flex items-center gap-1.5">
+        {/* 同 SignalsBoard:窄屏整条独占一行并允许换行,防两个日期框撑破面板 */}
+        <form
+          method="GET"
+          action={BASE}
+          className="ml-auto flex w-full flex-wrap items-center gap-1.5 sm:w-auto"
+        >
           {filters.vendor !== undefined && (
             <input type="hidden" name="vendor" value={filters.vendor} />
           )}
@@ -140,7 +145,7 @@ export default function EventsBoard({
       </div>
 
       {rows.length === 0 ? (
-        <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
+        <p className="px-3 py-8 text-center text-[13px] text-text-3">
           暂无事件——渠道首次采集后由抽取任务生成;渠道状态见 数据中心·源管理·采集渠道。
         </p>
       ) : (
@@ -153,32 +158,37 @@ export default function EventsBoard({
               <span className="w-[92px] shrink-0 font-mono text-[11px] text-text-3">
                 {formatTime(r.occurredAt)}
               </span>
-              <span className="shrink-0 rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[10.5px] text-text-2">
+              <span className="shrink-0 rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-text-2">
                 {VENDOR_LABELS[r.vendor] ?? r.vendor}
               </span>
               <span
-                className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[10.5px] text-accent"
+                className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] text-accent"
                 title={`实体类型:${ENTITY_TYPE_LABELS[r.entityType as keyof typeof ENTITY_TYPE_LABELS] ?? r.entityType}`}
               >
                 {EVENT_TYPE_LABELS[r.eventType as EntityEventType] ?? r.eventType}
               </span>
+              {/* 窄屏:时间 92 + 厂商 + 类型 + 实体键已占满首行,标题 flex-1
+                  会被压成两三字一列竖排(2026-10-30 移动端验收)。标题与摘要
+                  各独占一行(order 1/2),sm 起复原为同行 + 摘要缩进 */}
               <a
                 href={r.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="min-w-0 flex-1 text-[12.5px] font-medium hover:text-accent"
+                className="order-1 min-w-0 w-full text-[13px] font-medium hover:text-accent sm:order-none sm:w-auto sm:flex-1"
               >
                 {r.title}
               </a>
               <Link
                 href={entityHref(r.entityKey)}
-                className="shrink-0 font-mono text-[10.5px] text-text-3 hover:text-accent"
+                className="inline-block max-w-[46%] shrink-0 truncate font-mono text-[11px] text-text-3 hover:text-accent sm:max-w-none"
                 title="查看该实体的全部事件与关联信号"
               >
                 {r.entityKey}
               </Link>
               {r.summary !== null && r.summary !== "" && (
-                <p className="w-full pl-[92px] text-[11.5px] leading-5 text-text-2">{r.summary}</p>
+                <p className="order-2 w-full text-[12px] leading-5 text-text-2 sm:order-none sm:pl-[92px]">
+                  {r.summary}
+                </p>
               )}
             </li>
           ))}

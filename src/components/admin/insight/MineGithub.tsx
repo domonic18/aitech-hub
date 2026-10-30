@@ -44,7 +44,7 @@ export default async function MineGithub(): Promise<React.ReactElement> {
       {/* 状态卡 ×2:同步健康概览 + GitHub API 令牌 */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-md border border-line bg-panel px-4 py-4">
-          <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
+          <div className="flex items-center gap-1.5 text-[13px] text-text-2">
             <svg className="ic text-accent" aria-hidden="true">
               <use href="#i-github" />
             </svg>
@@ -61,7 +61,7 @@ export default async function MineGithub(): Promise<React.ReactElement> {
           </div>
         </div>
         <div className="rounded-md border border-line bg-panel px-4 py-4">
-          <div className="flex items-center gap-1.5 text-[12.5px] text-text-2">
+          <div className="flex items-center gap-1.5 text-[13px] text-text-2">
             <svg className="ic text-accent" aria-hidden="true">
               <use href="#i-key" />
             </svg>
@@ -90,15 +90,19 @@ export default async function MineGithub(): Promise<React.ReactElement> {
       </div>
 
       <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
+        {/* min-w + 全列 nowrap:六列挤在 390px 内会把单元格压成一字一行、
+            行高暴涨(实测 185px/行)且描述溢出到卡外(2026-10-30 移动端
+            验收);定最小宽后由外层 overflow-x-auto 横向滚动。操作列
+            min-w 让 6 个按钮排成 2 行而非 6 行 */}
+        <table className="w-full min-w-[900px] text-left text-[13px]">
           <thead>
-            <tr className="border-b border-line text-xs text-text-3">
+            <tr className="border-b border-line text-xs whitespace-nowrap text-text-3">
               <th className="px-4 py-2.5 font-medium">仓库</th>
               <th className="px-3 py-2.5 font-medium">热度</th>
               <th className="px-3 py-2.5 font-medium">展示</th>
               <th className="px-3 py-2.5 font-medium">健康</th>
               <th className="px-3 py-2.5 font-medium">调度</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
+              <th className="min-w-[188px] px-4 py-2.5 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -156,9 +160,9 @@ export default async function MineGithub(): Promise<React.ReactElement> {
                     <br />
                     {r.language ?? "—"}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
                     <span
-                      className={`rounded-sm px-1.5 py-px text-[10px] ${
+                      className={`rounded-sm px-1.5 py-px text-[11px] ${
                         r.display ? "bg-accent-dim text-accent" : "bg-panel-2 text-text-3"
                       }`}
                     >
@@ -169,26 +173,26 @@ export default async function MineGithub(): Promise<React.ReactElement> {
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <span className={`rounded-sm px-1.5 py-px text-[10px] ${badge.cls}`}>
+                    <span className={`rounded-sm px-1.5 py-px text-[11px] ${badge.cls}`}>
                       {badge.text}
                     </span>
                     {r.lastError && (
                       <div
-                        className="mt-0.5 max-w-[160px] truncate font-mono text-[10px] text-red"
+                        className="mt-0.5 max-w-[160px] truncate font-mono text-[11px] text-red"
                         title={r.lastError}
                       >
                         {r.lastError}
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[11px] leading-relaxed text-text-3">
+                  <td className="px-3 py-2.5 text-[11px] leading-relaxed whitespace-nowrap text-text-3">
                     间隔 {r.syncIntervalMin}min
                     <br />
                     上轮 {r.lastSyncAt ? formatCnDateTime(r.lastSyncAt) : "—"}
                     <br />
                     下轮 {r.enabled && r.nextSyncAt ? formatCnDateTime(r.nextSyncAt) : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="min-w-[188px] px-4 py-2.5 text-right">
                     <RepoRowOps
                       repo={{
                         id: r.id,
