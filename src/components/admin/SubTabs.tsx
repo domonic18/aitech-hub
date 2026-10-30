@@ -17,12 +17,13 @@ export default function SubTabs({
   basePath: string;
 }): React.ReactElement {
   return (
-    <div className="flex overflow-hidden self-start rounded-sm border border-line">
+    // 窄屏:段名不折字(逐字换行会变成「种子/词库」两行),放不下改横向滚动
+    <div className="flex max-w-full self-start overflow-x-auto rounded-sm border border-line">
       {tabs.map(([key, label]) => (
         <Link
           key={key}
           href={`${basePath}?t=${key}`}
-          className={`border-r border-line px-4 py-2 text-[13px] last:border-r-0 ${
+          className={`shrink-0 border-r border-line px-2.5 py-2 text-[12.5px] whitespace-nowrap last:border-r-0 sm:px-4 sm:text-[13px] ${
             key === active
               ? "bg-accent-dim font-semibold text-accent"
               : "bg-panel text-text-2 hover:bg-panel-2"

@@ -73,7 +73,13 @@ export default async function WordsBoard({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel px-4 py-2.5">
-        <form method="GET" action="/admin/insight/discovery/" className="flex items-center gap-1.5">
+        {/* 窄屏一行放不下(输入框 176 + 两个下拉 + 筛选),换行不让「来源」
+            卡片被挤出面板右缘(2026-10-30 移动端验收) */}
+        <form
+          method="GET"
+          action="/admin/insight/discovery/"
+          className="flex flex-wrap items-center gap-1.5"
+        >
           <input type="hidden" name="t" value="words" />
           <input
             type="search"
@@ -81,7 +87,7 @@ export default async function WordsBoard({
             defaultValue={kw ?? ""}
             placeholder="搜索词语…"
             aria-label="搜索词语"
-            className="w-44 rounded-sm border border-line bg-panel px-2 py-1 text-xs placeholder:text-text-3 focus:border-accent focus:outline-none"
+            className="w-full min-w-0 rounded-sm border border-line bg-panel px-2 py-1 text-xs placeholder:text-text-3 focus:border-accent focus:outline-none sm:w-44"
           />
           <label className="text-[11px] text-text-3" htmlFor="kw-status">
             状态:
