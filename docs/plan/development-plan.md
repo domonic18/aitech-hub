@@ -82,6 +82,7 @@
 | M57 | 牌价页收尾销账 | M55/M56 收尾与销账 |
 | M58 | 数据面扩展与洞察 v2 | 多语言/地域基座 + 厂商事件 + 榜单公开页 + 社区需求语料 + 问句清洗([data-expansion-plan](data-expansion-plan.md),进行中·批①–⑤ 已落码) |
 | M59 | 洞察浏览与实体层 | 信号独立页 + 实体聚合视图与详情([data-expansion-plan §14](data-expansion-plan.md),进行中·已落码) |
+| M60 | 洞察三项治理 | 实体主表/别名/归并 + 覆盖矩阵渠道族重构 + 未命名打标收敛([data-expansion-plan §15](data-expansion-plan.md),进行中·批A–C 已落码) |
 
 ## 3. 后置池(满足触发条件再立项)
 

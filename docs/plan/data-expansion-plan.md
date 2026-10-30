@@ -446,6 +446,55 @@ TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
 
 ### 14.2 后续(未立项)
 
-- 实体别名归并(榜单 key 与 `entity_event.entityKey` 口径统一)与实体主表/别名表;
+- ~~实体别名归并(榜单 key 与 `entity_event.entityKey` 口径统一)与实体主表/别名表~~ →
+  实体主表/别名表已随 M60 落地(§15);**榜单 key 与事件层 key 的口径统一仍未做**;
 - 社区/热榜信号实体挂接(NER 或 LLM 抽取,成本另评估);
 - 实体 ↔ 榜单快照关联(依赖上一项的口径统一)。
+
+## 15. 后续:实体分层 / 覆盖矩阵 / 未命名治理(M60)
+
+> 触发:2026-10-30 用户 M59 验收反馈三条——(1) 实体列表把 `qwen-mt-turbo` /
+> `qwen-vlo` / `qwen3-embedding` / `qwen3` 等 11 个 qwen 系键平铺,看不出同属 Qwen;
+> (2) 源×簇覆盖矩阵把 16 个在役源铺成列,「行动」列已折行,再扩源必爆;
+> (3) 洞察池 1,603 个活跃簇里 1,446 个未打标,榜单满屏「未命名」且看不出何时补完。
+> 对标:Wikidata(实体+别名)、Crunchbase(厂商→产品层级)、GA/GitHub Insights
+> (渠道分组 + 占比条)、事件驱动增量富化(配额内高频小批,而非日批大延迟)。
+
+### 15.1 批A 实体层:主表 + 别名表 + 三级层次
+
+| 项 | 落点 |
+| --- | --- |
+| 迁移 | `20261030200000_m60_entity_registry`:新增 `insight_entity`(key/match_key 双唯一 + parent 自关联 + status/merged_into_id)、`insight_entity_alias`(alias_key 唯一,origin seed/rule/manual)、`entity_event.entity_id` + 索引(arch/03 §2 洞察域) |
+| 解析 | `src/lib/insight/entities/resolve.ts`:规范键/匹配键(分隔符归一)/别名命中/同厂商最长前缀父级(`qwen3-embedding`→`qwen3`)/org 兜底;单事务 get-or-create,唯一冲突回读;抽取钩子 `vendor/extract.ts` 落 `entity_id`,失败只 warn 不阻断 |
+| 回填 | `scripts/ops/insight-entity-backfill.ts`(`npm run insight:entity-backfill`,幂等,按 `occurred_at` 顺序) |
+| 读侧 | `entities-admin.ts`:厂商 → 产品线 → 实体三层树;别名路径可解析;详情带别名 chips 与子实体 |
+| 归并 | `mergeEntities(fromKey,toKey)` 单事务:迁别名 + 回写事件 `entity_id` + 源实体置 merged;`POST /api/insight/entities/merge`(admin 仅会话,同键/成环 400,查无 404) |
+
+### 15.2 批B 覆盖矩阵:渠道族分段条
+
+- 每源增 `family`(`internal|hotlist|vendor|community` + 预留 `news|forum`),
+  导出 `SOURCE_FAMILIES`/`FAMILY_LABELS`/`sourcesInFamily`(source-registry);
+- 判定从「单源零值」升为族级(`src/lib/insight/coverage.ts`):空白 = 热簇外部族有
+  信号且站内族 0;自有特色 = 痛簇站内 ≥3 且外部 0;覆盖良好 = 非停滞族全有信号;
+  停滞源(14 天无新信号)不参与;
+- `CoverageBoard.tsx` 替换 `SourceMatrix.tsx`(旧文件删,保留 `#source-matrix` 锚):
+  族图例 chips + 每行族分段占比条 + 定宽 nowrap 行动列 + 行内 `<details>` 逐源计数 +
+  「仅看空白」开关。
+
+### 15.3 批C 未命名治理:高频小批 + 只展示成熟簇
+
+- 打标入口拆分:`label.ts#runLabelBatch(limit)` 供日批(24 条收尾)与每 30 分钟
+  小批共用;新 job `insight.label`(`INSIGHT_LABEL_CRON` `12,42 * * * *`),配额
+  (`ai_task_binding.daily_max`,role=insight)由默认 100 调 300;
+- 展示收敛:榜单/趋势/矩阵只收成员 ≥`LABEL_MIN_MEMBERS`(3) 的活跃簇;1–2 条簇由
+  「另有 N 个新簇累计中」页脚交代;未打标文案统一「待打标」+ 样本 tooltip;
+- 手工补标:`labelReadiness` 前置门(未绑定/配额尽/簇不存在/成员不足)→
+  `POST /api/insight/clusters/[id]/label` 入队单簇;簇详情页「立即打标」按钮;
+- 指标:总览头部「打标覆盖 已打标/可打标(N 待打标)」。
+
+### 15.4 验收口径
+
+1. 回填后 qwen 系 11 个键落到 `Qwen → qwen3 / qwen-image / qwq… → 具体模型`,事件 0 未挂;
+2. 矩阵 16 源不出横向滚动、行动列不折行,行展开见单源计数;
+3. 打标小批跑一轮后「待打标」数下降;榜单不再出现 1–2 条簇的「待打标」;
+4. 行内 `<details>` 展开与「仅看空白」互不干扰;归并后事件数合并、旧路径仍可解析。

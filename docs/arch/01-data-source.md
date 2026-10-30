@@ -170,12 +170,30 @@
   (`source=vendor-<key>`,medium=ai-record),事件能进热点簇。
 - **用途**:后台事件台账(`/admin/insight/events`,按厂商/类型/时间筛选)、
   簇的事件轴、后续 MCP 的 `list_events` 工具。
-- **实体视图**(M59):后台 `/admin/insight/entities/` 按 `entityKey` 聚合事件
-  (厂商/实体类型/时间窗/关键词筛选 + 分页),详情 `/admin/insight/entities/<entityKey>/`
-  出事件时间线与经 `insight_signal.meta.entityKey` 关联的厂商信号。聚合**只基于
-  `entity_event`**,不 join `leaderboard_snapshot`(榜单 entityKey 口径不同:HF 保留
-  大小写与 `/`、arXiv 保留版本后缀);社区/热榜信号未挂实体,详情页明确说明。
-  别名归并与跨源实体挂接属后续立项。
+- **实体视图**(M60 定制,替换 M59 的按 `entityKey` 平铺):后台
+  `/admin/insight/entities/` 按实体注册表聚合事件,展示 **厂商 → 产品线 → 实体** 三层
+  (厂商分区 + 产品线折叠组;厂商/实体类型/时间窗/关键词筛选 + 分页),详情
+  `/admin/insight/entities/<key>/` 出事件时间线与经 `insight_signal.meta.entityKey`
+  关联的厂商信号,并列出该实体全部别名与子实体。聚合**只基于 `entity_event`**,
+  不 join `leaderboard_snapshot`(榜单 entityKey 口径不同:HF 保留大小写与 `/`、
+  arXiv 保留版本后缀);社区/热榜信号未挂实体,详情页明确说明。
+- **实体解析**(`src/lib/insight/entities/resolve.ts`,抽取后同步落 `entity_event.entity_id`):
+  1. 规范键 —— LLM 自由生成的 `entityKey` 先 trim/lower/空格转连字符,`/` 分段各自去首尾
+     连字符(展示与 URL 用,如 `qwen2.5-vl`);另算**匹配键**把分隔符归一(`.`/`_`/
+     重复 `-` 全折叠成单 `-`,`gpt-6.1-terra` 与 `gpt-6-1-terra` 同锚),唯一去重在该键上;
+  2. 别名精确命中 → 直接归位(别名表 `insight_entity_alias`,唯一键 `alias_key`);
+  3. 规范键命中 → 补一条别名;
+  4. 前缀推断父级 —— 同厂商下 `-` 边界最长前缀命中即产品线(`qwen3-embedding` →
+     `qwen3`、`qwen-image-edit` → `qwen-image`),否则挂厂商 org 实体
+     (`VENDOR_DEFS.vendorName` 作展示名);实体 get-or-create 于单事务,唯一冲突回读
+     保证并发安全。
+  `entity_key` 原样保留(溯源 + `dedupe_key` 唯一锚不动,归并不改写历史键);解析失败
+  只记 warn、事件照常入库(降级不阻断)。存量经
+  `npm run insight:entity-backfill`(`scripts/ops/insight-entity-backfill.ts`,幂等)按
+  `occurred_at` 顺序回填。
+- **手工归并**:`POST /api/insight/entities/merge`(admin 会话,PAT 拒绝,Zod
+  `{ fromKey, toKey }`)单事务迁移别名、回写 `entity_event.entity_id`、源实体置
+  `status=merged` + `merged_into_id`;旧路径仍可解析到归并目标,不 404。
 - 与牌价跟踪解耦:牌价停更不影响事件层。
 
 ### 3.4 站内 agent 问句清洗(复活规则)
@@ -215,6 +233,25 @@
 - **清退**:会话行 `purgeAgentSessions` 30 天行+checkpoint 同删;按「归属键消失」
   清扫 checkpoint 的旧规则只作用于**无留档行**的历史线程;
 - **依赖**:无 schema 变更(复用 `search_agent_session` 与 `ai_usage_log.session_id`)。
+
+### 3.6 覆盖矩阵与打标展示收敛(M60)
+
+- **矩阵维度 = 渠道族,不是单源**(`src/lib/insight/source-registry.ts`)。
+  `family ∈ {internal 站内行为, hotlist 热榜资讯, vendor 厂商官方,
+  community 社区语料, news 新闻媒体*, forum 垂直论坛*}`
+  (*为后续新域预留,当前无在役源):接入新源只增加族内成员,矩阵列数恒等于
+  在役族数,不随渠道扩张横向爆炸。后台 `/admin/insight/` 每行 = 一个成熟簇
+  (已打标 + 成员 ≥`MATRIX_MIN_MEMBERS`):族分段占比条(结构) + 族级结论 +
+  定宽 nowrap 行动按钮;逐源计数收进行内 `<details>` 展开,不再占列。
+- **族级判定**(`src/lib/insight/coverage.ts`,停滞族不参与——14 天无新信号的源
+  保留 M52 语义):`内容空白` = 热簇外部族有信号、站内族为 0;`自有特色` = 痛簇
+  站内族 ≥`SIGNATURE_MIN_INTERNAL`(3) 且外部族为 0;`覆盖良好` = 全部非停滞族
+  都有信号;其余 `部分覆盖`。
+- **打标展示收敛**:只有成员 ≥`LABEL_MIN_MEMBERS`(3) 的活跃簇进榜单/趋势/矩阵
+  ——1–2 条信号的新簇曾挤占榜位、满屏「待打标」;它们由各榜底部「另有 N 个新簇
+  累计中」一行交代,累计到门槛后自动进队列(每 30 分钟小批,日批 03:57 兜底,
+  见 arch/05 §4 的 `insight.label`)。总览头部「打标覆盖 已打标/可打标(N 待打标)」
+  与榜单同口径。
 
 ## 4. 接入契约
 
