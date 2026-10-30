@@ -1,12 +1,12 @@
 /**
- * 后台会话管理读侧(K2.6 需求5):两类会话一屏可见——
- * - member(admin 登录):search_agent_session 行为准(title/tokens/时间),
+ * 后台会话管理读侧(K2.6 需求5;M58 批⑤ 后续游客留档):两类会话一屏可见——
+ * - member(admin/user 登录):search_agent_session 行为准(title/tokens/时间),
  *   提问数由 ai_usage_log(role=search_agent,session_id=线程)计数;
- * - guest(游客,不落行):ai_usage_log 按 session_id(LIKE 'g%',成员 id 为
- *   uuid 首字符必为 hex,不会撞 g 前缀)聚合还原统计视图,标题不可得固定
- *   null(UI 显「游客会话」),活跃态查 Redis 归属键。
- * 两源合并按最近活动倒排,内存分页(admin 会话 20/日/人 + 游客键 2h 清,
- * distinct 量级小)。详情读 checkpoint 消息时间线,游客过期标注不返消息。
+ * - guest(游客):run 收尾落**匿名**会话行(visitorId=`guest`,不存访客标识),
+ *   行次由 Redis 归属键判定、内容留档 30 天(与成员同口径日清);无行的历史
+ *   线程仍按 ai_usage_log 聚合还原统计(标题不可得固定 null)。
+ * 两源合并按最近活动倒排,内存分页(行量受 30 天清退约束)。详情读 checkpoint
+ * 消息时间线,游客归属键消失只影响「能否继续追问」,不影响留档内容的可读性。
  */
 import type { BaseMessage } from "@langchain/core/messages";
 
@@ -29,16 +29,16 @@ export const AGENT_SESSIONS_PAGE_SIZE = 15;
 export interface AdminAgentSessionRow {
   threadId: string;
   kind: AgentSessionKind;
-  /** member=首问前 20 字;guest 恒 null(UI 显「游客会话」) */
+  /** member/游客行=首问前 20 字;仅台账无行的历史游客线程恒 null(UI 显「游客会话」) */
   title: string | null;
-  /** member=admin:<sub>;guest=visitorId(uuid) */
+  /** member=admin:<sub>;guest=visitorId(uuid,归属键在场时)或「游客」 */
   owner: string;
   /** 提问数(= run 台账行数) */
   runs: number;
   tokensTotal: number;
   firstAt: Date;
   lastAt: Date;
-  /** guest:Redis 归属键在场(null=Redis 不可判);member 恒 null(UI 显「在档」) */
+  /** guest:Redis 归属键在场即「可继续追问」(null=Redis 不可判);member 恒 null */
   live: boolean | null;
 }
 
@@ -106,11 +106,25 @@ export async function listAgentSessionsAdmin({ page, kind, q }: AgentSessionList
   const wantMember = kind === "all" || kind === "member";
   const wantGuest = kind === "all" || kind === "guest";
 
-  const [memberRows, guestAgg] = await Promise.all([
+  const qWhere = q ? { OR: [{ title: { contains: q } }, { id: { contains: q } }] } : {};
+  const [memberRows, guestRows, guestAgg] = await Promise.all([
     wantMember
       ? prisma.searchAgentSession.findMany({
-          where: q ? { OR: [{ title: { contains: q } }, { id: { contains: q } }] } : {},
+          // 游客匿名行也在同表(g_ 前缀),成员视图剔除
+          where: { NOT: { id: { startsWith: "g_" } }, ...qWhere },
           orderBy: { lastMessageAt: "desc" },
+        })
+      : Promise.resolve([]),
+    wantGuest
+      ? prisma.searchAgentSession.findMany({
+          where: { id: { startsWith: "g_" }, ...qWhere },
+          select: {
+            id: true,
+            title: true,
+            tokensTotal: true,
+            createdAt: true,
+            lastMessageAt: true,
+          },
         })
       : Promise.resolve([]),
     wantGuest ? aggregateUsage({ startsWith: "g" }) : Promise.resolve(new Map<string, UsageAgg>()),
@@ -135,19 +149,24 @@ export async function listAgentSessionsAdmin({ page, kind, q }: AgentSessionList
       });
     }
   }
-  for (const [threadId, agg] of guestAgg) {
+  // 游客:留档行(标题/时间/tokens)与台账聚合并集——无行的历史线程只靠台账
+  const guestRowById = new Map(guestRows.map((r) => [r.id, r]));
+  for (const threadId of new Set<string>([...guestAgg.keys(), ...guestRowById.keys()])) {
     // 双保险:LIKE 'g%' 粗筛后前缀精确过滤(成员 uuid 不可能以 g 开头,冗余防御)
     if (!isGuestThreadId(threadId)) continue;
-    if (q && !threadId.includes(q)) continue;
+    const agg = guestAgg.get(threadId);
+    const row = guestRowById.get(threadId);
+    // q 已由 SQL 过滤留档行;仅台账线程退化为 id 包含匹配
+    if (q && !row && !threadId.includes(q)) continue;
     merged.push({
       threadId,
       kind: "guest",
-      title: null,
+      title: row?.title ?? null,
       owner: "游客",
-      runs: agg.runs,
-      tokensTotal: agg.tokensIn + agg.tokensOut,
-      firstAt: agg.firstAt ?? agg.lastAt ?? new Date(0),
-      lastAt: agg.lastAt ?? agg.firstAt ?? new Date(0),
+      runs: agg?.runs ?? 0,
+      tokensTotal: row?.tokensTotal ?? (agg?.tokensIn ?? 0) + (agg?.tokensOut ?? 0),
+      firstAt: row?.createdAt ?? agg?.firstAt ?? agg?.lastAt ?? new Date(0),
+      lastAt: row?.lastMessageAt ?? agg?.lastAt ?? agg?.firstAt ?? new Date(0),
       live: null,
     });
   }
@@ -207,29 +226,38 @@ export interface AgentSessionDetail {
   messages: WireMessage[] | null;
 }
 
-/** 会话详情:meta 统计 + checkpoint 消息时间线(guest 过期只给 meta) */
+/** 会话详情:meta 统计 + checkpoint 消息时间线(游客归属键消失仍可读留档) */
 export async function getAgentSessionDetail(threadId: string): Promise<AgentSessionDetail | null> {
   if (isGuestThreadId(threadId)) {
-    const [agg, owner] = await Promise.all([
+    const [agg, owner, row] = await Promise.all([
       aggregateUsage({ equals: threadId }),
       getGuestThreadOwner(threadId).catch(() => null),
+      prisma.searchAgentSession.findUnique({
+        where: { id: threadId },
+        select: {
+          title: true,
+          tokensTotal: true,
+          createdAt: true,
+          lastMessageAt: true,
+        },
+      }),
     ]);
     const usage = agg.get(threadId);
-    // 台账无行且归属键不在:既无统计也无痕迹 → 404
-    if (!usage && owner === null) return null;
+    // 台账/留档行/归属键三者皆无:毫无痕迹 → 404
+    if (!usage && owner === null && row === null) return null;
     const live = owner !== null;
-    // 活跃游客同样可看时间线(checkpoint 在场);过期/键失只留台账统计
-    const messages = live ? await getThreadMessages(threadId).catch(() => null) : null;
+    // 内容可读性与归属键解耦:留档期内 checkpoint 在场即出时间线
+    const messages = await getThreadMessages(threadId).catch(() => null);
     return {
       meta: {
         threadId,
         kind: "guest",
-        title: null,
+        title: row?.title ?? null,
         owner: owner ?? "游客",
         runs: usage?.runs ?? 0,
-        tokensTotal: (usage?.tokensIn ?? 0) + (usage?.tokensOut ?? 0),
-        firstAt: usage?.firstAt ?? usage?.lastAt ?? new Date(0),
-        lastAt: usage?.lastAt ?? usage?.firstAt ?? new Date(0),
+        tokensTotal: row?.tokensTotal ?? (usage?.tokensIn ?? 0) + (usage?.tokensOut ?? 0),
+        firstAt: row?.createdAt ?? usage?.firstAt ?? usage?.lastAt ?? new Date(0),
+        lastAt: row?.lastMessageAt ?? usage?.lastAt ?? usage?.firstAt ?? new Date(0),
         live,
       },
       expired: messages === null,

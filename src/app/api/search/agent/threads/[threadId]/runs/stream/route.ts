@@ -20,7 +20,11 @@ import { AGENT_COVER_CANDIDATES_TOOL } from "@/lib/agent/cover-tool";
 import { AGENT_PROPOSE_EDITS_TOOL } from "@/lib/agent/edit-proposal";
 import { recordAgentRun, runAgentTurn } from "@/lib/agent/run";
 import { getAgentLimitsAll, toRunLimits } from "@/lib/config/agent-limits";
-import { backfillSessionTitle, recordGuestFirstAsk } from "@/lib/agent/sessions";
+import {
+  backfillSessionTitle,
+  recordGuestFirstAsk,
+  touchGuestSessionAfterRun,
+} from "@/lib/agent/sessions";
 import { tryConsumeAgentRunQuota, tryConsumeGuestAskQuota } from "@/lib/agent/quota";
 import {
   isGuestThreadId,
@@ -232,6 +236,8 @@ export async function POST(
         }
         if (identity.kind === "guest") {
           await refreshGuestThread(threadId); // 活跃滑动 TTL
+          // 游客匿名会话行留档(后台会话管理可见,30 天日清)
+          await touchGuestSessionAfterRun(threadId, message, outcome.tokensIn + outcome.tokensOut);
           // 游客首问入池(M58 批⑤;Redis NX 判首问,resume 无新消息不记)
           if (message !== null) await recordGuestFirstAsk(threadId, message, context?.page);
         } else if (message !== null) {

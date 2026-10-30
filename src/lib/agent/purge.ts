@@ -1,7 +1,8 @@
 /**
- * Drawer 会话清退(K2.5/K2.6):member 行 30 天日清(行+checkpoint 同删);
- * 游客线程(g_ 前缀,无行)按 Redis 活跃键消失清扫 checkpoint。checkpoint
- * 删失败一律不反噬(残留下轮再扫)。
+ * Drawer 会话清退(K2.5/K2.6;M58 批⑤ 后续游客留档):会话行(含游客匿名
+ * 档案行)30 天日清(行+checkpoint 同删);无档案行的历史游客线程按 Redis
+ * 活跃键消失清扫 checkpoint。
+ * checkpoint 删失败一律不反噬(残留下轮再扫)。
  */
 import { prisma } from "../db";
 import { logger } from "../logger";
@@ -45,9 +46,10 @@ export async function purgeAgentSessions(now: Date = new Date()): Promise<number
 }
 
 /**
- * 游客线程 checkpoint 清扫(K2.6):g_ 前缀线程的活跃 TTL 在 Redis
- * (search:agent:gthread:*,2h 滑动),键消失即清退——扫描 checkpoints 表
- * g_ 线程,Redis 键已不在 → deleteThread。返回删除数(供 worker 日志)。
+ * 游客线程 checkpoint 清扫(K2.6;M58 批⑤ 后续留档):g_ 前缀线程的活跃
+ * TTL 在 Redis(search:agent:gthread:*,2h 滑动),但**有存档行**的线程内容
+ * 随行按 30 天日滞留档,不因归属键消失而清 checkpoint——归属键只决定能否
+ * 继续追问。仅无行的历史线程沿用「键消失即清」。返回删除数(供 worker 日志)。
  */
 export async function purgeExpiredGuestThreads(): Promise<number> {
   // LIKE 模式:前缀中 _ 是通配符,转义为字面量(g\_%)
@@ -56,16 +58,28 @@ export async function purgeExpiredGuestThreads(): Promise<number> {
     `SELECT DISTINCT thread_id FROM checkpoints WHERE thread_id LIKE $1 LIMIT ${GUEST_PURGE_LIMIT}`,
     [prefixLike],
   );
+  const threadIds = result.rows.map((r) => r.thread_id);
+  if (threadIds.length === 0) return 0;
+  // 有档案行 = 留档期内,交给会话行 30 天日清统一处理
+  const archived = new Set(
+    (
+      await prisma.searchAgentSession.findMany({
+        where: { id: { in: threadIds } },
+        select: { id: true },
+      })
+    ).map((r) => r.id),
+  );
   let removed = 0;
-  for (const row of result.rows) {
+  for (const threadId of threadIds) {
+    if (archived.has(threadId)) continue;
     try {
-      if (await redis.exists(guestThreadKey(row.thread_id))) continue;
-      await deleteThread(row.thread_id);
+      if (await redis.exists(guestThreadKey(threadId))) continue;
+      await deleteThread(threadId);
       removed += 1;
     } catch (e) {
       logger.warn({
         event: "agent.purge_guest_failed",
-        threadId: row.thread_id,
+        threadId,
         error: e instanceof Error ? e.message : String(e),
       });
     }

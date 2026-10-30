@@ -65,6 +65,49 @@ export async function touchSessionAfterRun(sessionId: string, tokens: number): P
   });
 }
 
+/**
+ * 游客 run 收尾:落/续匿名会话行,供后台会话管理查看标题与内容留档(30 天
+ * 日清,与成员同口径)。归属仍以 Redis 归属键判定,本行只作审计档案;建行
+ * 失败只告警不反噬已完成的 run。
+ */
+export async function touchGuestSessionAfterRun(
+  threadId: string,
+  message: string | null,
+  tokens: number,
+): Promise<void> {
+  try {
+    const now = new Date();
+    await prisma.searchAgentSession.upsert({
+      where: { id: threadId },
+      create: {
+        id: threadId,
+        visitorId: GUEST_SESSION_OWNER,
+        title: message === null ? null : deriveTitle(message),
+        lastMessageAt: now,
+        tokensTotal: Math.max(0, tokens),
+      },
+      update: { lastMessageAt: now, tokensTotal: { increment: Math.max(0, tokens) } },
+    });
+    // 兼容先有行后补标题(upsert 命中既有行且 title 为空)
+    if (message !== null) {
+      await prisma.searchAgentSession.updateMany({
+        where: { id: threadId, title: null },
+        data: { title: deriveTitle(message) },
+      });
+    }
+  } catch (e) {
+    logger.warn({
+      event: "agent.guest_session_touch_failed",
+      threadId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+/** 游客会话行匿名属主(M58 批⑤ 后续):不存访客标识,不做个人关联;归属
+ * 校验仍以 Redis 归属键为界,本行只作后台审计档案。 */
+export const GUEST_SESSION_OWNER = "guest";
+
 /** 站内问句入池(M58 批⑤,arch/01 §3.4):后台功能页上下文一律不入池,
  * 公开页放行且与身份无关;`meta.surface` 记入口便于调规则。ingest 自吞异常,
  * fire-and-forget 不反噬响应流。 */

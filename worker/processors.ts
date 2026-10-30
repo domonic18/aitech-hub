@@ -138,7 +138,8 @@ export const PROCESSORS: Record<string, Processor> = {
       }
       return { removed };
     }
-    // Drawer 会话清退(K2.5 member 30 天 + K2.6 游客 TTL 键消失;checkpoint 残留由下轮再扫)
+    // Drawer 会话清退(成员与游客留档行统一 30 天日清;游客无行的历史线程按
+    // TTL 键消失清扫;checkpoint 残留由下轮再扫)
     if (job.name === STATS_JOB_AGENT_PURGE) {
       const removed = await purgeAgentSessions();
       if (removed > 0) {
