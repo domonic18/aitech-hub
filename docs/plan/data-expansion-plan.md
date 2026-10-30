@@ -238,9 +238,9 @@ model EntityEvent {
 
 | 源 | 方式 | 频率 | refId |
 | --- | --- | --- | --- |
-| Hacker News(含 Show HN) | Algolia API / hnrss | 每小时 | `hn:<objectID>` |
-| V2EX | 公开 JSON API | 每小时 | `v2ex:<topicId>` |
-| 百度下拉 | 公开 suggestion,种子取分类/标签 + 发现热词 | 每日 | `bd:<sha1(seed+word)>` |
+| Hacker News(含 Show HN) | Algolia `search_by_date`(固定单关键词 `query=AI`) | 每小时 | `hn:<objectID>` |
+| V2EX | 节点级 `/api/topics/show.json`(openai/claude/deepseek/gemini) | 每小时 | `v2ex:<topicId>` |
+| 百度下拉 | 公开 suggestion,种子取分类/标签 + 发现热词 | 每日 | `bd:<sha1(seed\0word)>` |
 | 外部 OSS Issues | GitHub API(token 在 `token` 字段,仓库白名单在 `config.repos`) | 每日 | `<repo>#<issue>` |
 
 - 全部走 `crawl_source(type=community, config.communityKey)` + `source-registry` 注册;
@@ -253,7 +253,30 @@ model EntityEvent {
 - **后台可配置**:`ChannelDialog` 增可选「扩展配置(JSON)」字段(服务端 Zod 校验、
   体积上限;凭证仍走 `token` 脱敏通道),`config.repos` 即经此维护;vendor/leaderboard
   的 `vendorKey`/`boardKey` 同口径。
-- Reddit 只做**可达性探针**(经 `system_proxy_config`),通过则按 disabled 注册,不进本批验收。
+- Reddit 只做**可达性探针**(经 `system_proxy_config`):Cloudflare **403**,未注册,不进本批验收。
+
+**落码注(批④)**:
+
+- 渠道行由 worker 启动幂等种子(`community:<key>`),URL/启停/周期(默认 HN/V2EX 60 分钟、
+  百度/OSS 1440 分钟)后台可调;类型在后台只读,与牌价/厂商/榜单同口径。
+- **入池前置去重**:社区源逐轮结果高度重叠(HN 首轮 10 条、次轮 10 条全重复)。逐条撞唯一键
+  会刷 prisma 错误日志并白占日预算,故先按 `refId in (...)` 查一次既有行;日预算随之改为按
+  「本轮新增」计——否则 60 分钟一轮会提前把当日配额耗尽,把后续真正的新信号饿死。
+- 百度下拉响应并非合法 JSON(键未加引号,实测 `cb({q:"…",p:true,s:[…]})`),整体
+  `JSON.parse` 必败:只从 `s:` 起做括号配对扫描,对词条数组本身按 JSON 解析。字符集为 GB18030,
+  取数层 `TextDecoder("gb18030")` 解码。种子缺省 = 站点文章数前 3 的标签 + 48h 内 `hot-baidu`
+  信号 2 条(发现热词回流),两者皆空才用静态兜底。
+- V2EX 全局 `hot.json` 与 AI 无关,改按节点取 `show.json`(每节点最近 10 主题,四节点 40 条/轮)。
+- HN Algolia 多关键词查询(`AI LLM GPT Claude`)会退化为陈旧/跑题结果,固定单关键词 `query=AI`。
+- GitHub Issues 实测约六成未打标,需求判定 = 标签命中(bug/feature/enhancement/feat/
+  feature request)**或**标题前缀(bug/feature/feat/建议/缺陷/功能/优化);PR 按 `pull_request`
+  字段剔除;语言按**标题**判(正文模板英文会把中文诉求误判为 en)。
+
+**真机首跑(2026-10-30,dev 库,验收后已清理)**:HN 10 条 / 百度 20 条(11 条 L0 `too_short`
+拦截——种子为「大模型」类短词,建议词天然短)/ OSS 两仓 15 条(zh 12 / en 3);HN 重跑 10 条
+全部命中既有 refId(existing=10,日预算不增,幂等成立)。V2EX 四节点真机载荷 40 条解析与 L0
+全通,但当日 `system_proxy_config` 出口隧道不可达,`fetchViaEgress` 实链路未跑通(该域直连
+本不可达,隧道恢复即通)。
 
 #### 7.1 知乎探针结论:不做(2026-10-30 实探)
 

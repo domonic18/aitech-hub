@@ -56,8 +56,8 @@
 
 | 渠道 | 地域 | 介质 | 获取方式 | 质量 | 用途 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Hacker News(含 Show HN) | global | voice/search | api(Algolia)/rss(hnrss) | ★★★★★ | 海外讨论、需求信号 | 待接入 |
-| Reddit(r/LocalLLaMA、r/OpenAI、r/ClaudeAI、r/MachineLearning) | global | voice | api/json + 代理 | ★★★★★ | 选型讨论、真实痛点 | 待探(可达性重测) |
+| Hacker News(含 Show HN) | global | voice/search | api(Algolia `search_by_date`,固定 `query=AI`) | ★★★★★ | 海外讨论、需求信号 | 现网(M58 批④) |
+| Reddit(r/LocalLLaMA、r/OpenAI、r/ClaudeAI、r/MachineLearning) | global | voice | api/json + 代理 | ★★★★★ | 选型讨论、真实痛点 | 不做(经出口代理 403) |
 | Product Hunt | global | ai-record | api(GraphQL token) | ★★★★☆ | 新品与需求 | 待接入 |
 | Stack Overflow / Stack Exchange | global | voice/search | api | ★★★☆☆ | 技术痛点 | 待探 |
 | YouTube | global | time | api(配额) | ★★★☆☆ | 视频趋势 | 待探 |
@@ -65,7 +65,8 @@
 
 > **可达性纪律**:arch/02 §7 曾记录 Reddit 在 175 直连超时被墙;M33 批B 起已有
 > `system_proxy_config` 家宽出口。海外源统一**复用该代理**(2026-10-30 决策),
-> 接入前必须先真机重测,不得沿用旧结论。
+> 接入前必须先真机重测,不得沿用旧结论。**重测结果(2026-10-30)**:Reddit 经该代理
+> 仍 403(Cloudflare),未接入;Hacker News 直连可达。
 
 ### 2.4 国内需求/痛点语料
 
@@ -75,9 +76,9 @@
 | 渠道 | 地域 | 介质 | 获取方式 | 质量 | 用途 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 知乎问题/回答 | cn | voice | web | ★★★★★ | 需求原话 | 不做(匿名 403/登录墙,无搜索路由) |
-| V2EX | cn | voice | api(公开 JSON) | ★★★★☆ | 开发者需求/吐槽 | 待接入 |
-| 百度下拉 / 相关搜索 | cn | search | web(公开 suggestion) | ★★★★☆ | 长尾真实需求 | 待接入 |
-| 第三方热门仓库 Issues/Discussions(Dify、LangChain、n8n、ComfyUI 等) | global/cn | voice | api | ★★★★☆ | 真实痛点、功能诉求 | 待接入 |
+| V2EX | cn | voice | api(节点 `show.json`:openai/claude/deepseek/gemini) | ★★★★☆ | 开发者需求/吐槽 | 现网(M58 批④,经出口代理) |
+| 百度下拉 / 相关搜索 | cn | search | web(公开 suggestion,GB18030 JSONP) | ★★★★☆ | 长尾真实需求 | 现网(M58 批④) |
+| 第三方热门仓库 Issues/Discussions(Dify、LangChain、n8n、ComfyUI 等) | global/cn | voice | api | ★★★★☆ | 真实痛点、功能诉求 | 现网(M58 批④:两仓跑通,白名单后台可扩) |
 | 应用商店评论(App Store / 应用宝) | cn/global | voice | rss/web | ★★★☆☆ | AI App 差评=痛点 | 待探 |
 | 掘金 / SegmentFault / OSChina | cn | voice | web/非公开 api | ★★★☆☆ | 技术痛点 | 待探 |
 | 豆瓣小组 / 贴吧 | cn | voice | web(部分需登录) | ★★★☆☆ | 非技术用户需求 | 待探 |
@@ -87,6 +88,11 @@
 | 猪八戒 / 闲鱼 / 小红书 / 抖音评论 | cn | — | — | — | — | 搁置 |
 
 > 第三方仓库 Issues 指**外部热门项目**,不是本站自有仓库(自有仓库无数据量)。
+
+> **社区语料通道(M58 批④)**:`crawl_source(type=community, config.communityKey)` 路由
+> `src/lib/insight/community/` 注册表,复用统一调度/健康度/限频/快照;入池前过 L0 确定性准入
+> (过短/纯符号/营销导流/批内重复),各源日预算见 `COMMUNITY_DAILY_CAPS`。OSS 仓库白名单存
+> `config.repos`(后台可改,零发版);详见 plan §7 落码注。
 
 ### 2.5 站内存量
 
