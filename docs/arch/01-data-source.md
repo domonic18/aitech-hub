@@ -41,11 +41,11 @@
 
 | 渠道 | 地域 | 介质 | 获取方式 | 质量 | 用途 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| LMArena | global | time/search | headless | ★★★★☆ | 模型排名 | 待接入 |
-| Artificial Analysis | global | time | web/api(待核实) | ★★★★☆ | 智能指数/速度 | 待接入 |
-| Hugging Face Hub | global | time/ai-record | api | ★★★★★ | 模型/数据集/Space 热度 | 待接入 |
-| arXiv(cs.AI / cs.CL / cs.LG) | global | ai-record | api | ★★★★☆ | 论文热榜 | 待接入 |
-| GitHub Trending | global | time | web/第三方 | ★★★★☆ | 开源项目热度 | 待接入 |
+| LMArena | global | time/search | headless | ★★★★☆ | 模型排名 | 不做(2026-10-30 实测 Cloudflare 403,代理亦然) |
+| Artificial Analysis | global | time | web(RSC 载荷) | ★★★★☆ | 智能指数/速度 | 现网(免 headless) |
+| Hugging Face Hub | global | time/ai-record | api | ★★★★★ | 模型/数据集/Space 热度 | 现网(须经出口代理) |
+| arXiv(cs.AI / cs.CL / cs.LG) | global | ai-record | api | ★★★★☆ | 论文热榜 | 现网(cs.AI/cs.CL) |
+| GitHub Trending | global | time | web | ★★★★☆ | 开源项目热度 | 现网 |
 | Papers with Code | global | ai-record | api(存续性待核实) | ★★★☆☆ | 论文+代码 | 待探 |
 | npm / PyPI 下载量 | global | time | api | ★★★★☆ | 工具真实采用度 | 待探 |
 | 百度热搜 / 知乎热榜 / B站热搜 | cn | search/voice | api/web | ★★★☆☆ | 热点 | 现网 |
@@ -121,12 +121,25 @@
 ### 3.2 榜单呈现(公开页)
 
 - **数据模型**:`leaderboard_snapshot`(source、board、rank、entityType、entityName、
-  vendor、score、scoreUnit、meta、date),唯一键 `(source, board, entity, date)`。
-- **页面**:公开页 `/leaderboards/`,ISR 日更;支持榜单切换、名次变动(↑↓/新)、
-  厂商 chip、数据截稿时间与来源署名。
-- **入口**:在站内**专题区**添加入口(2026-10-30 决策),与导航并列。
-- **联动**:名次异动 → 事件 → 簇(如「某模型登顶」自动进热点池)。
-- **SEO**:榜单页为常青内容,可收录;但转载前须核对来源方 ToS/署名要求。
+  vendor、score、scoreUnit、meta、capturedDate),唯一键 `(source, board, entityKey,
+  capturedDate)`;`meta.url` 存条目外链,`capturedDate` 为北京日界(存 `@db.Date` UTC 零点)。
+- **采集**:`crawl_source.type=leaderboard`,`config.boardKey` 路由
+  `src/lib/leaderboard/registry.ts`(一源一榜,解析器纯函数配 golden 单测);渠道行由
+  worker 启动幂等种子(`leaderboard:<key>`),URL/启停/周期(默认 1440 分钟)后台可调。
+  每轮按分值倒序(名次榜无分值保原序)截断 ≤20 条,同日重跑整表覆盖(先 upsert 本轮、
+  再删同日掉榜行);解析 0 条按源失败计,不写空数据,原文经 `CrawlSnapshot` 归档。
+  取数形态(2026-10-30 真机):AA 静态 HTML 内嵌 RSC 载荷(**免 headless**)、HF 公开
+  JSON API(**须经 `system_proxy_config` 出口代理**,undici 显式 dispatcher)、arXiv
+  Atom 与 GitHub Trending 直连;LMArena Cloudflare 403(代理亦然)本批不做。
+- **页面**:公开页 `/leaderboards/`,ISR 3600s,全量榜单 SSR 直出进 HTML;榜单切换走
+  页内锚点(不读 `searchParams`,保 ISR);行含名次、变动(↑↓/NEW)、实体、厂商、分数、
+  来源;顶部「数据截至」,超过 2 天出降级横幅。移动端表格转卡片;空榜出空态。
+- **名次变动**:不落库,读时与「上一可用日期」相减(正=上升);同日重跑不产生伪变动。
+- **入口**:站内**专题区** `SITE_TOPICS` 增「模型榜单」(2026-10-30 决策),导航与
+  `/topics/` 索引自动同步。
+- **联动**:名次异动 → 事件 → 簇(如「某模型登顶」自动进热点池)。**未做**:批③ 只落
+  榜单快照,异动事件待后续批。
+- **SEO**:榜单页为常青内容,可收录(`ItemList` JSON-LD);转载前须核对来源方 ToS/署名要求。
 
 ### 3.3 事件层(厂商动态与榜单异动的落点)
 
@@ -167,7 +180,8 @@
 ## 4. 接入契约
 
 - **统一入口**:一律走 `crawl_source`(type = rss / api / web / social-video /
-  pricing / vendor),新渠道优先 rss/api,动态页走 headless(M56);不为单个渠道另建管线。
+  pricing / vendor / leaderboard),新渠道优先 rss/api,动态页走 headless(M56);不为单个渠道另建管线。
+  注:`pricing / vendor / leaderboard` 由系统注册表登记(worker 启动种子),后台不许手工新建或改类型。
 - **运行态**:启停、URL、频控(`crawl_interval_min` / `daily_max_requests`)、
   凭证(`config`,后台维护、展示脱敏、日志禁打)均后台可调,零发版。
 - **快照**:每次采集由 `CrawlSnapshot` 归档原文(改版/失配的一手证据),保留最近 N 份。
@@ -178,7 +192,8 @@
 ## 5. 待探清单(接入前必须先验证)
 
 1. Reddit 经 `system_proxy_config` 的实际可达性与限频。
-2. LMArena / Artificial Analysis 的页面结构、动态渲染成本与转载授权。
+2. LMArena / Artificial Analysis 已探(2026-10-30):AA 静态载荷可直取(免 headless);
+   LMArena Cloudflare 人机校验 403(经系统代理亦然),headless 成本与转载授权待独立评估。
 3. 知乎已探(2026-10-30):问题页/搜索匿名 403,全文需登录态 cookie,RSSHub 自建亦需
    `ZHIHU_COOKIES` 且无搜索路由 → 不做;掘金、豆瓣的公开可达性与登录态要求待探。
 4. 百度下拉接口的稳定性与返回编码。
@@ -195,6 +210,8 @@
 | 日期 | 决策 |
 | --- | --- |
 | 2026-10-30 | 榜单页公开;入口挂在站内专题区 |
+| 2026-10-30 | 榜单公开页 ISR 3600s + 页内锚点切换(不读 query);每源每日前 20 名,名次差读时与上一可用日期计算 |
+| 2026-10-30 | 榜单首批四源上线(AA/HF/arXiv×2/GitHub Trending);LMArena CF 403 本批不做;HF 须经出口代理 |
 | 2026-10-30 | 海外源统一复用 `system_proxy_config`,接入前重测可达性 |
 | 2026-10-30 | 翻译使用独立任务角色 `translate`,绑定低成本模型 |
 | 2026-10-30 | 站内搜索词搁置;agent 问句清洗后复活 |

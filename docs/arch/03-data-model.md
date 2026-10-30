@@ -388,6 +388,12 @@ CREATE TABLE legacy_url_map (
 - `content_pin.reference_media_path? varchar(500)`:本次生图采纳的参照图(站内 `/wp-content/uploads/` 路径,soft ref;缺省回落创作样例图/素材封面),让「按素材出图」可追溯可复现
 - 索引 `idx_content_pin_topic_updated (topic_id, updated_at DESC)`:创作台按创作聚合贴图产出
 
+**洞察 v2 数据域已落地(2026-10-30 M58 三批迁移 `20261030100000_m58_signal_lang_region` / `20261030120000_m58_entity_event` / `20261030130000_m58_leaderboard_snapshot`;口径见 [arch/01 §3](01-data-source.md);forward-only,枚举一律 varchar 由应用层 Zod 收口)**:
+
+- `insight_signal` 增列(批①,中文化基座):`lang? varchar(10)`(zh/en/…,源级声明、混合源逐条覆盖)/`region? varchar(10)`(cn/global)/`translated_text? text`(中文译文;原文恒在 `raw_text`)/`translation_status varchar(10) 默认 none`(none|pending|done|failed);`cluster.region? varchar(10)`(按成员多数派回写 cn|global|mixed)
+- `entity_event`(批②,厂商事件层):`source varchar(30)`(`vendor-<key>`,与洞察 source 同口径)/`vendor varchar(30)`(注册表 key)/`entity_type varchar(12)`(model|product|org)+ `entity_key varchar(120)`(实体规范名,如 deepseek-v4)/`event_type varchar(20)` 枚举 `release|price_change|open_source|funding|deprecation|benchmark_change`/`title varchar(300)`/`summary? varchar(1000)`/`url varchar(500)`/`occurred_at`/`dedupe_key char(40)` **唯一**(sha1(source|url|eventType|entityKey),同 URL 多实体不互相吞并)/`meta jsonb?`;索引 `(vendor, occurred_at DESC)` + `(event_type, occurred_at DESC)`。事件同时按 dedupeKey 作 refId 进洞察池(`source=vendor-<key>`),可回溯到事件行
+- `leaderboard_snapshot`(批③,榜单时序):`source varchar(30)`(注册表 key)/`board varchar(40)`(榜单展示名)/`entity_key varchar(200)`(模型 slug·arXiv id·owner/repo)/`entity_name varchar(300)`/`entity_type varchar(12)`(model|paper|repo)/`vendor? varchar(60)`/`rank int`/`score? float8`/`score_unit? varchar(20)`/`captured_date date`(北京日界 UTC 零点)/`meta jsonb?`(`{url, sourceId}`);唯一键 `(source, board, entity_key, captured_date)`(同日重跑整表覆盖),索引 `(source, board, captured_date DESC)`(读侧取最新与上一可用日期)。名次变动**不落库**,读时相减
+
 ## 3. Prisma 模型约定
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**

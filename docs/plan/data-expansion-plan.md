@@ -7,7 +7,8 @@
 > **进度(2026-10-30)**:批① 多语言/地域基座已落码(`feature/m58-multilingual-base`,
 > schema+迁移/translate 角色/状态机/地域视图);批② 厂商动态与事件层已落码
 > (`entity_event` 迁移/六厂商注册表/`vendor` 采集类型/`extract-event` 抽取队列/
-> 后台事件页签);③–⑤ 待开。
+> 后台事件页签);批③ 榜单接入与公开页已落码(`leaderboard_snapshot` 迁移/五榜注册表
+> (LMArena 因 CF 403 不做)/`leaderboard` 采集类型/`/leaderboards/` 公开页);④–⑤ 待开。
 
 ## 1. 立项依据与目标
 
@@ -180,16 +181,41 @@ model EntityEvent {
   arXiv 热门(cs.AI/cs.CL)、GitHub Trending。LMArena/AA 动态页走 headless + 代理,日频。
 - 抓取失败:保留上一日快照,源状态 degraded,不写空数据。
 
+**真机探源结论(2026-10-30,据实修正上文假设)**:
+
+| 源 | 实际取数形态 | 结论 |
+| --- | --- | --- |
+| Artificial Analysis | 静态 HTML 内嵌 Next.js RSC flight 载荷(`initialModels` 数组) | **无需 headless**,直连可达 |
+| Hugging Face | 公开 JSON API(`sort=trendingScore`) | 境内直连不可达,**须经 `system_proxy_config` 出口代理**(M33 单例) |
+| arXiv(cs.AI / cs.CL) | `export.arxiv.org` Atom 查询接口 | 直连可达;entry `id` 为 `http://arxiv.org/abs/<id>v<n>`,落库前升 https |
+| GitHub Trending | 服务端渲染 HTML(`article.Box-row` 卡片) | 直连可达,首日 11 条 |
+| LMArena | Cloudflare 人机校验 **403**(经代理亦然) | **本批不做**,headless 成本与转载授权另评估(§12 开放决策 1) |
+
+**落码注(批③)**:
+
+- 注册表按 key 固定「一源一榜」,`board` 展示名与公开页同源;渠道行由 worker 启动幂等
+  种子(`leaderboard:<key>`,只补缺不改值),URL/启停/周期(默认 1440 分钟)后台可调。
+- 每轮解析后按分值倒序(名次榜无分值保原序)截断 ≤20 条落库;解析 0 条按源失败计
+  (页面改版与空榜同态,原文快照可回溯),不写空数据。
+- 取数原文经 `CrawlSnapshot` 归档(解析之前落盘);渠道类型在后台只读,不允许手工新建
+  (牌价/厂商/榜单三类同口径)。
+
 ### 6.2 落库
 
 - 每日抓取 → 解析为 `{board, rank, entityKey, entityName, entityType, vendor, score, scoreUnit}`
   → 按 `(source, board, entityKey, capturedDate)` upsert;同日重跑覆盖。
 - 名次变动不落库,读侧与上一可用日期比较得出(↑↓/new)。
+- 落码注:`capturedDate` 取北京日界(存 `@db.Date` UTC 零点);同日重跑先 upsert 本轮条目、
+  再删同日已掉榜行(整表覆盖,幂等);`meta.url` 存条目外链供公开页跳转。快照行不做
+  保留期清理(每源每日 ≤20 行,年增 ~3.6 万行,过期无意义的数据量级)。
 
 ### 6.3 公开页 `/leaderboards/`
 
 - ISR `revalidate = 3600`;榜单切换(URL query 或页签),表格列:名次、变动、实体、厂商、
   分数/热度、来源;顶部「数据截至」与来源署名链接;降级时显示「本期数据未更新」。
+  **落码改档**:切换走页内锚点 chips,不读 `searchParams`——App Router 下读 `searchParams`
+  即转动态渲染,ISR 静态产物失效;全量榜单同时 SSR 直出进 HTML,SEO 与首屏一致。
+  陈旧阈值 2 天(北京日界),超阈值出琥珀色降级横幅;空榜不出页签。
 - 移动端:表格转卡片列表;空态说明。
 - SEO:`metadata` + `ItemList` JSON-LD;SSR 直出当页数据(参考 `/pricing/` 模式)。
 - 入口:`SITE_TOPICS` 增一项(名称「模型榜单」,href `/leaderboards/`),Header 下拉与
@@ -200,7 +226,13 @@ model EntityEvent {
 
 - ≥4 个榜单连续 3 天有数(允许 1 个降级)。
 - 页面 e2e:SSR HTML 含榜单项;专题入口存在;两日数据名次 delta 正确。
-- 解析器单测覆盖正常/改版/空数据;失败不污染历史快照。
+- 解析器单测覆盖正常/改版/空数据;失败不污染历史快照先例。
+
+**真机首跑(2026-10-30,dev 库,验收后已清理)**:5 个种子渠道 → 4 源成功
+(AA 20 条 / arXiv cs.AI 20 / cs.CL 20 / GitHub 11),同日重跑行数与名次完全一致
+(71 行不变,幂等成立);HF 因 `system_proxy_config` 出口代理当日不可达计源失败
+(直连本就不可达,代理恢复即通,HF 解析器已用真机 50 条载荷单独验证)。连续 3 天
+稳定性与页面 e2e 仍待观察。
 
 ## 7. 批④ 社区需求语料
 
