@@ -228,9 +228,9 @@ export function ClusterLabelLink({
     <Link
       href={clusterHref(id)}
       className="text-text-1 hover:text-accent"
-      title={label ?? "未打标簇,详情见信号原话"}
+      title={label ?? "待打标:成员 ≥3 后由每 30 分钟小批命名,详情见信号原话"}
     >
-      {label ?? "待打标簇"}
+      {label ?? "待打标"}
     </Link>
   );
 }

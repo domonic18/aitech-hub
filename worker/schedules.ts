@@ -25,7 +25,9 @@ import {
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_LABEL,
   INSIGHT_JOB_TRANSLATE,
+  INSIGHT_LABEL_CRON,
   INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
   QUEUE_INSIGHT,
@@ -254,8 +256,9 @@ export async function scheduleDiscovery(): Promise<void> {
   );
 }
 
-/** 洞察加工调度(M34 批②→批③):向量回填+聚类 15 分钟错峰 / LLM 打标日批
- * 03:57 / 热榜拉取小时批 :43(验收二批② 提频,外部渠道) */
+/** 洞察加工调度(M34 批②→批③;M60 批C 增 label):向量回填+聚类 15 分钟错峰 /
+ * LLM 打标日批 03:57 + 打标小批 :12/:42 / 热榜拉取小时批 :43(验收二批②
+ * 提频,外部渠道) / 翻译扫尾 */
 export async function scheduleInsight(): Promise<void> {
   const queue = getQueue(QUEUE_INSIGHT);
   await queue.upsertJobScheduler(
@@ -272,6 +275,16 @@ export async function scheduleInsight(): Promise<void> {
     { pattern: INSIGHT_DAILY_CRON, tz: SITE_TZ },
     {
       name: INSIGHT_JOB_DAILY,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+  // 打标小批(M60 批C):每 30 分钟一轮,配额内把养熟的簇命名掉
+  await queue.upsertJobScheduler(
+    "insight-label",
+    { pattern: INSIGHT_LABEL_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_LABEL,
       data: {},
       opts: schedulerOpts(7),
     },

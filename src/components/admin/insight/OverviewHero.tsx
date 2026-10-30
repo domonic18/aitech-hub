@@ -1,7 +1,8 @@
 /**
  * F11 分析总览 hero 行:左关键词云图卡(搜索 + 舆情四色 + 图例筛选 + 点词入
  * 词库),右 KPI 四竖列(候选增量·7天 / 信号总数 / 机会均分(人写内容) /
- * 新入词库)+ 底部日批 status 行「每日分析 · 今日 HH:MM 成功」。KPI 不随窗口
+ * 新入词库)+ 底部日批 status 行「每日分析 · 今日 HH:MM 成功」+ 打标覆盖行
+ * (M60 批C:已打标/可打标(待打标数),与榜单/打标选择器同口径)。KPI 不随窗口
  * chips(板定 7 天增量与全量总数);领域口径(M54 批C):信号总数/机会均分
  * 随页头领域 chips(词库两卡恒全局,发现词库无域维度);机会均分由页侧按当前
  * hot 簇均分传入;词云卡头标窗口口径(windowDays)——窗口 chips 只影响词云,
@@ -9,10 +10,11 @@
  * KeywordCloud。
  */
 import KeywordCloud from "@/components/admin/insight/KeywordCloud";
-import type { InsightCloudWord } from "@/lib/insight/hotboard";
 import { formatCnDate, formatCnTime, startOfCnDay } from "@/lib/datetime";
+import { countLabelingCoverage, discoveryKeyword7dCounts } from "@/lib/insight/admin";
+import { LABEL_MIN_MEMBERS } from "@/lib/insight/constants";
+import type { InsightCloudWord } from "@/lib/insight/hotboard";
 import { latestJobRun } from "@/lib/jobs/runlog-admin";
-import { discoveryKeyword7dCounts } from "@/lib/insight/admin";
 
 function Kpi({
   label,
@@ -60,11 +62,30 @@ async function DailyStatusLine(): Promise<React.ReactElement> {
   );
 }
 
+/** 打标覆盖 status:已打标/可打标(待打标数);待打标 >0 标黄(每 30 分钟小批消化) */
+async function LabelingStatusLine({ domain }: { domain?: string }): Promise<React.ReactElement> {
+  const cov = await countLabelingCoverage(domain);
+  const tone = cov.pending === 0 ? "text-green" : "text-amber-hi";
+  return (
+    <div className="rounded-md border border-line bg-panel px-4 py-2.5 text-[11px]">
+      <span className={`font-medium ${tone}`}>
+        打标覆盖 · {cov.labeled.toLocaleString()}/{cov.labelable.toLocaleString()}
+        {cov.pending > 0 ? `(${cov.pending.toLocaleString()} 待打标)` : " · 已全部命名"}
+      </span>
+      <span className="text-text-3">
+        {" "}
+        · 可打标 = 活跃簇且成员 ≥{LABEL_MIN_MEMBERS};每 30 分钟小批消化,日批兜底
+      </span>
+    </div>
+  );
+}
+
 export default async function OverviewHero({
   cloud,
   totalSignals,
   hotAvg,
   windowDays,
+  domain,
 }: {
   cloud: InsightCloudWord[];
   totalSignals: number;
@@ -72,6 +93,8 @@ export default async function OverviewHero({
   hotAvg: number | null;
   /** 词云窗口(页头窗口 chips),用于卡头口径标识 */
   windowDays: number;
+  /** 领域视图(页头领域 chips;undefined=全量),打标覆盖随域 */
+  domain?: string;
 }): Promise<React.ReactElement> {
   const { candidates7d, confirmed7d } = await discoveryKeyword7dCounts();
   return (
@@ -107,6 +130,7 @@ export default async function OverviewHero({
           title="近 7 天确认生效词(词库全局,不随领域)"
         />
         <DailyStatusLine />
+        <LabelingStatusLine domain={domain} />
       </div>
     </div>
   );

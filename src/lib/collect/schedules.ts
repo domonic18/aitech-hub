@@ -50,6 +50,11 @@ export const INSIGHT_EMBED_CRON = "3,18,33,48 * * * *";
  * visit-purge;LLM 调用分钟级,避开 4 点清理带) */
 export const INSIGHT_DAILY_CRON = "57 3 * * *";
 
+/** 洞察打标小批 :12/:42(M60 批C:未命名簇积压治理——打标从「日批一次 24 条」
+ * 改为配额内高频小批,簇养熟即命名;避开 :43 热榜拉取 / :3,18,33,48 向量回填 /
+ * :5,15,25,35,45,55 翻译扫尾;每轮受当日剩余配额钳制,配额 300/日) */
+export const INSIGHT_LABEL_CRON = "12,42 * * * *";
+
 /** 热榜拉取小时批 :43(验收二批② 提频:热榜日内高波动,日频漏采;refId=
  * 词/问题id/关键词内容锚,unique(source,refId) 幂等——在榜词续热刷新,新词
  * 入池,提频不膨胀;LLM/向量只处理新增,成本增量可忽略) */
@@ -105,6 +110,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     label: "洞察日批",
     desc: "增量聚类 + LLM 打标 + 覆盖度 + 快照",
     cron: INSIGHT_DAILY_CRON,
+    category: "insight",
+  },
+  {
+    key: "insight-label",
+    jobRunKey: "insight/label",
+    label: "洞察打标小批",
+    desc: "每 30 分钟配额内小批打标,簇养熟即命名(未命名积压治理)",
+    cron: INSIGHT_LABEL_CRON,
     category: "insight",
   },
   {

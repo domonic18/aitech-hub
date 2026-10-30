@@ -3,9 +3,6 @@
  * 纪律):LLM 打标段在 label.ts,此处聚合机械段——机会评分 + 每日快照 +
  * fading 兜底 + 痛点簇覆盖度。打标与机械段解耦:LLM 不可用日照常演进。
  */
-import { AI_PURPOSE_INSIGHT } from "../ai/constants";
-import { countTodayRoleUsage } from "../ai/usage-queries";
-import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { logger } from "../logger";
 import { DAY_MS, statsDay } from "../datetime";
@@ -18,8 +15,7 @@ import {
   SCORE_HEAT_WINDOW_DAYS,
 } from "./constants";
 import { getClusterCentroid } from "./embedding-repo";
-import { findStaleClusters, labelCluster } from "./label";
-import { resolveInsightModel } from "./model";
+import { runLabelBatch } from "./label";
 import { computeCoverageScore, computeOpportunityScore, coverageStateOf } from "./scoring";
 
 // ── 覆盖度/评分/快照段 ────────────────────────────────────────────────
@@ -129,37 +125,12 @@ export async function runInsightDaily(): Promise<InsightDailySummary> {
     faded: 0,
     covered: 0,
   };
-  // 未绑定/解析失败(insight 模型)→ 跳过打标,机械段照常(P2-25 统一降级口径)
-  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT);
-  if (!model) {
-    logger.info({ event: "insight.daily_label_skipped", reason: "insight_unbound" });
-    summary.labelSkipped = true;
-  } else {
-    const [used, dailyMax] = await Promise.all([
-      countTodayRoleUsage(AI_PURPOSE_INSIGHT),
-      getRoleDailyMax(AI_PURPOSE_INSIGHT),
-    ]);
-    const quota = Math.max(0, dailyMax - used);
-    if (quota === 0) {
-      logger.info({ event: "insight.daily_label_skipped", reason: "quota_exhausted" });
-      summary.labelSkipped = true;
-    } else {
-      const stale = await findStaleClusters(Math.min(quota, LABEL_BATCH_SIZE));
-      for (const c of stale) {
-        try {
-          if (await labelCluster(c.id, Number(c.members), model)) summary.labeled += 1;
-          else summary.labelFailed += 1;
-        } catch (e) {
-          summary.labelFailed += 1;
-          logger.warn({
-            event: "insight.label_cluster_failed",
-            clusterId: c.id.toString(),
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }
-    }
-  }
+  // 打标段(M60 批C:批内编排收口到 label.ts#runLabelBatch,与每 30 分钟小批
+  // 同一条路径;未绑定模型/配额耗尽 → 跳过,机械段照常)
+  const label = await runLabelBatch(LABEL_BATCH_SIZE);
+  summary.labeled = label.labeled;
+  summary.labelFailed = label.failed;
+  summary.labelSkipped = label.skipped;
 
   // 机械段:评分 + 快照 + fading(与打标解耦,LLM 不可用日照常演进)
   const now = new Date();

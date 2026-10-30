@@ -1,5 +1,5 @@
 /**
- * F26 痛点详情(pain 形态):页头(痛点 · label + 重新归纳=全局日批)→
+ * F26 痛点详情(pain 形态):页头(痛点 · label + 重新归纳=单簇立即打标)→
  * summaryCard(概括全文 + 出现次数/涉及信号/主要平台 metrics)→ 原文证据
  * 6 条(热度优先排序,meta.url 在则跳原文)→ actionCard(关联机会簇 chips +
  * 已产出文章 + 可写角度 + 生成选题:一键转创作选题并自动挂素材,M46 验收批)。
@@ -7,8 +7,8 @@
  */
 import Link from "next/link";
 
+import LabelNowButton from "@/components/admin/insight/LabelNowButton";
 import TopicGenButton from "@/components/admin/insight/TopicGenButton";
-import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
 import {
   SOURCE_LABELS,
   clusterHref,
@@ -61,18 +61,9 @@ export default function ClusterPainDetail({
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">痛点 · {c.label ?? "待打标簇"}</h2>
-          {/* 重新归纳即全局日批(单 LLM 归纳管线),入队后到点即跑 */}
-          <TriggerButtons
-            endpoint="/api/insight/trigger"
-            jobs={[
-              {
-                job: "daily",
-                label: "重新归纳",
-                hint: "走全局日批:LLM 打标+覆盖度+评分快照,耗时数分钟",
-              },
-            ]}
-          />
+          <h2 className="text-base font-semibold">痛点 · {c.label ?? "待打标"}</h2>
+          {/* 重新归纳=单簇立即打标(M60 批C:替代早先「整轮日批」的粗粒度触发) */}
+          <LabelNowButton clusterId={c.id} label={c.label === null ? "立即打标" : "重新归纳"} />
         </div>
         <p className="mt-0.5 text-[11px] text-text-3">AI 归纳 · 每日分析生成,可重新归纳</p>
         <p className="mt-2 font-mono text-[11px] text-text-3">

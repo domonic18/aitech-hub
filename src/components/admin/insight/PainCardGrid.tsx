@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import Sparkline from "@/components/admin/usage/Sparkline";
 import type { InsightClusterRow } from "@/lib/insight/admin";
+import { LABEL_MIN_MEMBERS } from "@/lib/insight/constants";
 import { AnomalyBadge, COVERAGE_LABELS, MediaBadges, RegionBadge, clusterHref } from "./shared";
 
 /** 覆盖度徽章(行内紧凑版;blank 标红=选题机会) */
@@ -33,12 +34,13 @@ export default function PainCardGrid({
   if (clusters.length === 0) {
     return (
       <div className="rounded-md border border-line bg-panel px-4 py-8 text-center text-xs text-text-3">
-        暂无痛点簇:成员 ≥3 的信号簇经日批(03:57)打标后在此出榜——先在
+        暂无痛点簇:成员 ≥{LABEL_MIN_MEMBERS}
+        的信号簇打标后在此出榜(每 30 分钟一次小批,日批 03:57 兜底)——先在
         <Link href="/admin/models" className="mx-0.5 text-accent hover:underline">
           AI 配置
         </Link>
-        绑定「洞察归纳」模型,或用 CLI <code className="font-mono">insight:run -- cluster</code>{" "}
-        手动跑一轮
+        绑定「洞察归纳」模型,或用 CLI{" "}
+        <code className="font-mono">npm run insight:run -- label</code> 手动跑一轮
       </div>
     );
   }
@@ -56,12 +58,15 @@ export default function PainCardGrid({
             {c.score !== null ? Math.round(c.score) : "—"}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5">
+            <span className="flex min-w-0 items-center gap-1.5">
               <span
-                className="truncate text-[13px] font-medium text-text-1"
-                title={c.label ?? undefined}
+                className={`min-w-0 flex-1 truncate text-[13px] ${c.label ? "font-medium text-text-1" : "text-text-3 italic"}`}
+                title={
+                  c.label ??
+                  `待打标 · 信号样本:${c.members} 条成员(成员 ≥${LABEL_MIN_MEMBERS} 后进入打标队列,每 30 分钟小批命名)`
+                }
               >
-                {c.label ?? "待打标簇"}
+                {c.label ?? "待打标"}
               </span>
               <CoveragePill state={c.coverageState} />
               {c.anomaly && <AnomalyBadge />}

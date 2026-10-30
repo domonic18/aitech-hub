@@ -22,6 +22,7 @@ import {
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_EXTRACT_EVENT,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_LABEL,
   INSIGHT_JOB_TRANSLATE,
   ILLUSTRATION_JOB_EDIT,
   ILLUSTRATION_JOB_GENERATE,
@@ -99,7 +100,9 @@ import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
 import { runInsightTranslateBatch, translateSignal } from "../src/lib/insight/translate";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
+import { LABEL_JOB_BATCH_SIZE } from "../src/lib/insight/constants";
 import { runInsightDaily } from "../src/lib/insight/daily";
+import { labelClusterNow, runLabelBatch } from "../src/lib/insight/label";
 import { runVendorExtractJob } from "../src/lib/insight/vendor/extract";
 import type { VendorExtractJobData } from "../src/lib/insight/vendor/crawl";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
@@ -363,6 +366,20 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === INSIGHT_JOB_DAILY) {
       const r = await runInsightDaily();
       console.log(JSON.stringify({ event: "insight.daily_job", ...r }));
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_LABEL) {
+      // 打标小批(M60 批C):cron 无参=配额内小批;data.clusterId=后台手动补标单簇
+      const clusterId = (job.data as { clusterId?: string }).clusterId;
+      if (clusterId !== undefined) {
+        const outcome = await labelClusterNow(BigInt(clusterId));
+        console.log(JSON.stringify({ event: "insight.label_job", clusterId, outcome }));
+        return { outcome };
+      }
+      const r = await runLabelBatch(LABEL_JOB_BATCH_SIZE);
+      if (!r.skipped || r.labeled + r.failed > 0) {
+        console.log(JSON.stringify({ event: "insight.label_job", ...r }));
+      }
       return r;
     }
     if (job.name === INSIGHT_JOB_EMBED) {

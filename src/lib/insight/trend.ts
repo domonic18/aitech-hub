@@ -16,10 +16,12 @@ import {
   GROWTH_BREAKOUT,
   GROWTH_DECLINING,
   GROWTH_RISING,
+  LABEL_MIN_MEMBERS,
   TREND_NEW_MIN_RECENT,
   TREND_WINDOW_DAYS,
 } from "./constants";
 import { INSIGHT_SOURCES_ENABLED } from "./ingest";
+import type { InsightSource } from "./source-registry";
 
 export type TrendTier = "new" | "breakout" | "rising" | "flat" | "declining";
 
@@ -63,7 +65,9 @@ export interface ClusterTrendRow {
 /** 活跃簇趋势行:双窗信号计数 + 增长分级(恒限在役源;快照/词云不受影响)。
  * LEFT JOIN 信号过滤条件放 ON(放 WHERE 会把 LEFT 退化成 INNER,无信号簇消失)。
  * domain(M54 批C):领域视图过滤(undefined=全量)——簇已同域分桶,簇侧
- * WHERE 即全行语义域,JOIN 信号侧不需重复过滤 */
+ * WHERE 即全行语义域,JOIN 信号侧不需重复过滤。
+ * M60 批C:只出成员 ≥LABEL_MIN_MEMBERS 的成熟簇(1-2 条新簇此前满屏「未命名」);
+ * 成员数走子查询——HAVING count(s.id) 数的是窗口内在役源信号,不是成员数。 */
 export async function listClusterTrends(
   windowDays: number = TREND_WINDOW_DAYS,
   domain?: string,
@@ -102,6 +106,8 @@ export async function listClusterTrends(
        AND s.signal_at >= ${priorStart}
        AND s.source IN (${Prisma.join(enabled)})
      WHERE c.status = 'active'${domainSql}
+       AND (SELECT count(*) FROM insight_cluster_member m3 WHERE m3.cluster_id = c.id)
+             >= ${LABEL_MIN_MEMBERS}
      GROUP BY c.id, c.kind, c.label, c.score
      ORDER BY c.score DESC NULLS LAST`;
   return rows.map((r) => {
@@ -121,6 +127,24 @@ export async function listClusterTrends(
   });
 }
 
+/** 累计中的新簇数(M60 批C):active 且成员 1..LABEL_MIN_MEMBERS-1——它们不进
+ * 榜(未成熟),榜单页脚「另有 N 个新簇累计中」把去向交代清楚,避免「消失了」。
+ * kind 对齐所在榜单(雷达只列 hot,痛点榜只列 pain;缺省两者合计) */
+export async function countPendingClusters(
+  domain?: string,
+  kind?: "hot" | "pain",
+): Promise<number> {
+  const domainSql = domain === undefined ? Prisma.empty : Prisma.sql` AND c.domain = ${domain}`;
+  const kindSql = kind === undefined ? Prisma.empty : Prisma.sql` AND c.kind = ${kind}`;
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*) AS n
+      FROM insight_cluster c
+     WHERE c.status = 'active'${domainSql}${kindSql}
+       AND (SELECT count(*) FROM insight_cluster_member m WHERE m.cluster_id = c.id)
+             BETWEEN 1 AND ${LABEL_MIN_MEMBERS - 1}`;
+  return Number(rows[0]?.n ?? 0);
+}
+
 // ── 源×簇覆盖矩阵(M52 批C;Content Gap 方法论:热源有簇×内部痛源零信号 =
 // 内容空白,站内强×外部冷=自有特色)────────────────────────────────────────
 
@@ -132,7 +156,7 @@ export interface SourceMatrixCluster {
 }
 
 export interface SourceMatrixSource {
-  source: string;
+  source: InsightSource;
   /** 该源最近一条信号时间(null=从未有数据) */
   latestAt: string | null;
   /** 源停滞:最近信号早于 SOURCE_STALE_DAYS 天(停滞列零值不参与空白判定) */

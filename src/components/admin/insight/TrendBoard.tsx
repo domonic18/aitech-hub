@@ -6,6 +6,7 @@
  */
 import Link from "next/link";
 
+import { LABEL_MIN_MEMBERS } from "@/lib/insight/constants";
 import { TREND_TIER_LABELS, type ClusterTrendRow, type TrendTier } from "@/lib/insight/trend";
 
 const TIER_ORDER: TrendTier[] = ["new", "breakout", "rising", "flat", "declining"];
@@ -31,7 +32,7 @@ function TierCol({ tier, rows }: { tier: TrendTier; rows: ClusterTrendRow[] }): 
           <Link
             key={r.clusterId}
             href={`/admin/insight/clusters/${r.clusterId}`}
-            title={`${r.label ?? "待打标簇"}:近窗 ${r.recent} / 前窗 ${r.prior} 条`}
+            title={`${r.label ?? "待打标"}:近窗 ${r.recent} / 前窗 ${r.prior} 条`}
             className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-panel-2"
           >
             <span
@@ -46,9 +47,9 @@ function TierCol({ tier, rows }: { tier: TrendTier; rows: ClusterTrendRow[] }): 
             ) : (
               <span
                 className="min-w-0 flex-1 truncate text-[11.5px] text-text-3 italic"
-                title={`未打标 · 信号样本:${r.sample ?? "—"}`}
+                title={`待打标 · 信号样本:${r.sample ?? "—"}(成员 ≥${LABEL_MIN_MEMBERS} 后进入打标队列)`}
               >
-                未命名 · {r.sample ?? "…"}
+                待打标
               </span>
             )}
             <span className="shrink-0 font-mono text-[10px] text-text-3">

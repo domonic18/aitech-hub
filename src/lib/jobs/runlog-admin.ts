@@ -22,6 +22,7 @@ export const JOB_RUN_HUNG_AFTER_MS = 3_600_000;
 export const JOB_RUN_LABELS: Record<string, string> = {
   "insight/fetch": "洞察·热榜拉取",
   "insight/daily": "洞察·日批分析",
+  "insight/label": "洞察·打标小批",
   "insight/embed": "洞察·向量回填",
   "discovery/discovery-hotwords": "发现·热词采集",
   "discovery/discovery-bili": "发现·B站发现",

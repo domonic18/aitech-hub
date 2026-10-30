@@ -108,6 +108,7 @@ export {
   INSIGHT_DAILY_CRON,
   INSIGHT_EMBED_CRON,
   INSIGHT_FETCH_CRON,
+  INSIGHT_LABEL_CRON,
   INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
   MEDIA_AUDIT_CRON,
@@ -187,6 +188,8 @@ export const INSIGHT_JOB_DAILY = "daily";
 export const INSIGHT_JOB_FETCH = "fetch";
 export const INSIGHT_JOB_TRANSLATE = "translate";
 export const INSIGHT_JOB_EXTRACT_EVENT = "extract-event";
+/** 高频小批打标(M60 批C):每 30 分钟一轮,带 data.clusterId 时只打该簇(手动补标) */
+export const INSIGHT_JOB_LABEL = "label";
 
 /** illustration-studio 队列 job name 契约(M40 批 B;decompose 为缺省路径——
  * 拆层运行首次触发与改字后手动重拆同一入口,jobId 锚 groupId 天然唯一)。
