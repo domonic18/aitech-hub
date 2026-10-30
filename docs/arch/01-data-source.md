@@ -26,8 +26,8 @@
 
 | 渠道 | 地域 | 介质 | 获取方式 | 质量 | 用途 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| OpenAI / Anthropic / Google DeepMind / Meta / Mistral / xAI 官方 News/Blog | global | ai-record | rss/headless | ★★★★★ | 发布、能力变化 | 待接入 |
-| DeepSeek / Qwen / 智谱 / Kimi / MiniMax / 字节 Seed 官方站 | cn | ai-record | web/headless | ★★★★★ | 发布、能力变化 | 待接入 |
+| OpenAI / Anthropic / Google DeepMind / Meta / Mistral / xAI 官方 News/Blog | global | ai-record | rss/headless | ★★★★★ | 发布、能力变化 | 部分接入(OpenAI/Anthropic/Google AI) |
+| DeepSeek / Qwen / 智谱 / Kimi / MiniMax / 字节 Seed 官方站 | cn | ai-record | web/headless | ★★★★★ | 发布、能力变化 | 部分接入(DeepSeek/Qwen/Kimi) |
 | 量子位 | cn | ai-record | rss | ★★★★☆ | 资讯 | 现网 |
 | 机器之心 | cn | ai-record | rss(token) | ★★★★☆ | 资讯 | 现网 |
 | 36氪 / 虎嗅 / InfoQ 中文 / Solidot | cn | ai-record | rss | ★★★☆☆ | 资讯补充 | 待探 |
@@ -130,11 +130,27 @@
 
 ### 3.3 事件层(厂商动态与榜单异动的落点)
 
-- **数据模型**:`entity_event`(vendor、entityType、entityKey、eventType、
-  title、url、occurredAt、meta),`eventType ∈ {release, price_change, open_source,
-  funding, deprecation, benchmark_change}`。
-- **抽取**:RSS/HTML → LLM 结构化抽取(复用 `insight` 角色)→ URL + sha1 去重。
-- **用途**:事件流页面、簇的事件轴、后续 MCP 的 `list_events` 工具。
+- **数据模型**:`entity_event`(source、vendor、entityType、entityKey、eventType、
+  title、summary、url、occurredAt、dedupeKey、meta),`eventType ∈ {release,
+  price_change, open_source, funding, deprecation, benchmark_change}`。
+  幂等锚 `dedupeKey = sha1(source | canonical url | eventType | entityKey)`——
+  在「URL+类型」之上加实体,同文多实体齐发布时不互相吞并。
+- **采集**:厂商官方发布走统一采集体系——`crawl_source.type=vendor`,
+  `config.vendorKey` 路由 `src/lib/insight/vendor/registry.ts`(取数形态
+  rss/html/sitemap 按厂商注册,改解析才发版);URL/启停/周期默认半日在
+  数据中心·源管理·采集渠道零发版可调;原文经 `CrawlSnapshot` 归档。
+  单轮按发布日倒序取最新 ≤20 条(feed 升序/列表无日期都归一后截断)。
+  首批六家:OpenAI / Anthropic / Google AI / DeepSeek / Qwen / Kimi
+  (2026-10-30 实探:DeepMind 无独立可达 RSS,取 Google 官方 AI 分类 feed,
+  vendor 记 Google)。
+- **抽取**:列表条目 → BullMQ `extract-event` 单篇任务 → LLM 结构化抽取
+  (role=insight);单篇最多 3 个事件,`occurredAt` 早于 2000 年或晚于今天+1 天
+  丢弃;同一 URL 只抽一次(Redis 已处理标记,失败即释放下轮重试)。
+  抽取失败不回写采集源健康度(抓取成功即健康),失败日志带 URL 供补跑。
+- **入池**:抽取出的事件同时按 `dedupeKey` 作 refId 入洞察信号池
+  (`source=vendor-<key>`,medium=ai-record),事件能进热点簇。
+- **用途**:后台事件台账(`/admin/insight/events`,按厂商/类型/时间筛选)、
+  簇的事件轴、后续 MCP 的 `list_events` 工具。
 - 与牌价跟踪解耦:牌价停更不影响事件层。
 
 ### 3.4 站内 agent 问句清洗(复活规则)
@@ -150,8 +166,8 @@
 
 ## 4. 接入契约
 
-- **统一入口**:一律走 `crawl_source`(type = rss / api / web / social-video / pricing),
-  新渠道优先 rss/api,动态页走 headless(M56);不为单个渠道另建管线。
+- **统一入口**:一律走 `crawl_source`(type = rss / api / web / social-video /
+  pricing / vendor),新渠道优先 rss/api,动态页走 headless(M56);不为单个渠道另建管线。
 - **运行态**:启停、URL、频控(`crawl_interval_min` / `daily_max_requests`)、
   凭证(`config`,后台维护、展示脱敏、日志禁打)均后台可调,零发版。
 - **快照**:每次采集由 `CrawlSnapshot` 归档原文(改版/失配的一手证据),保留最近 N 份。
@@ -167,7 +183,12 @@
    `ZHIHU_COOKIES` 且无搜索路由 → 不做;掘金、豆瓣的公开可达性与登录态要求待探。
 4. 百度下拉接口的稳定性与返回编码。
 5. 应用商店评论接口的存续性。
-6. 厂商官方站的 RSS 覆盖情况(无 RSS 的走 headless)。
+6. 厂商官方站的 RSS 覆盖情况(已探 2026-10-30):OpenAI / Google AI / Qwen 有
+   官方 RSS;Anthropic / Kimi 列表页服务端渲染,静态 HTML 可解析(未启 headless);
+   DeepSeek 走 sitemap(日期编码在 slug,标题由抽取阶段抓正文补齐)。
+   已探边界:Anthropic 列表页服务端只渲染 6 张卡(最新),模型发布页在顶级 slug
+   而非 `/news/`;Qwen 官方 feed 末条 2025-09(已停更,保留待恢复)。新厂商接入前
+   仍逐个实探,不凭假设。
 
 ## 6. 决策记录
 

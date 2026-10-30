@@ -5,7 +5,9 @@
 > 本文回答「这一轮补哪些数据、怎么接、落在哪、怎么验收」;终态实现细节完成后回写 arch 对应章节。
 > **编号 M58**(M57 之后首个立项);未开工前不建分支,开工时按批建 `feature/m58-*`。
 > **进度(2026-10-30)**:批① 多语言/地域基座已落码(`feature/m58-multilingual-base`,
-> schema+迁移/translate 角色/状态机/地域视图);②–⑤ 待开。
+> schema+迁移/translate 角色/状态机/地域视图);批② 厂商动态与事件层已落码
+> (`entity_event` 迁移/六厂商注册表/`vendor` 采集类型/`extract-event` 抽取队列/
+> 后台事件页签);③–⑤ 待开。
 
 ## 1. 立项依据与目标
 
@@ -84,7 +86,7 @@ model EntityEvent {
   summary    String?
   url        String
   occurredAt DateTime
-  dedupeKey  String   @unique // sha1(source + canonical url + eventType)
+  dedupeKey  String   @unique // sha1(source | canonical url | eventType | entityKey)
   meta       Json?
   createdAt  DateTime @default(now())
   @@index([vendor, occurredAt])
@@ -138,15 +140,19 @@ model EntityEvent {
 
 - 新 `crawl_source.type="vendor"`,复用统一调度/健康度/`CrawlSnapshot`/限频;
   `config.vendorKey` 路由到 `src/lib/insight/vendor/registry.ts`。
-- 首批 6 家(有官方 RSS 的优先):OpenAI、Anthropic、Google DeepMind、DeepSeek、Qwen、Kimi;
-  无 RSS 的走 M56 headless 通道。其余厂商(智谱/MiniMax/字节 Seed/xAI/Mistral/Meta)第二批补。
-- 频率:每日 1–2 次;每源单轮 ≤20 条;去重 `sha1(source + canonical url)`。
+- 首批 6 家(有官方 RSS 的优先):OpenAI、Anthropic、Google DeepMind、DeepSeek、Qwen、Kimi。
+  实测(2026-10-30)未启 headless:DeepMind 无独立可达 RSS → 取 Google 官方 AI 分类 feed;
+  Anthropic / Kimi 服务端渲染列表页可直接静态解析;DeepSeek 走 sitemap。
+  其余厂商(智谱/MiniMax/字节 Seed/xAI/Mistral/Meta)第二批补。
+- 频率:每日 1–2 次(默认 720 分钟);单轮按发布日倒序取最新 ≤20 条;
+  已处理去重 = Redis 标记 `sha1(url)`(30 天)+ 事件级 `dedupeKey` 唯一索引。
 
 ### 5.2 事件抽取
 
-- 抓取条目 → 入 `INSIGHT_JOB_EXTRACT_EVENT`(批量、并发 1)→ `insight` 角色结构化抽取
-  → Zod 校验 → `entity_event` upsert(`dedupeKey` 幂等)。
-- 抽取契约:`{events:[{vendor, entityType, entityKey, eventType, title, summary, occurredAt}]}`;
+- 抓取条目 → 入 `INSIGHT_JOB_EXTRACT_EVENT`(单篇一条,队列并发 1;失败隔离粒度最细)
+  → `insight` 角色结构化抽取 → Zod 校验 → `entity_event` upsert(`dedupeKey` 幂等)。
+- 抽取契约:`{events:[{entityType, entityKey, eventType, title, summary, occurredAt}]}`
+  (vendor 由 `config.vendorKey` 回查注册表,不进 LLM 输出);
   单文最多 3 个事件;无事件则跳过并计数;`occurredAt` 早于 2000 年或晚于今天+1 天视为脏数据丢弃。
 - 抽取出的事件同时作为 `ai-record` 信号进水(`source=vendor-<key>`,refId=dedupeKey),
   保证厂商发布能进热点簇;**同一 URL 只入一次**。
