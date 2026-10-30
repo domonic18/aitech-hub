@@ -3,7 +3,7 @@
 /**
  * 会话详情弹窗(K2.6 需求5):按行「详情」打开,拉 /api/agent-sessions/[id]
  * 展示 meta 统计 + checkpoint 消息时间线;assistant 正文走共享 AnswerMarkdown
- * (与前台 Drawer 同一渲染子集)。游客过期只显 meta + 过期标注。
+ * (与前台 Drawer 同一渲染子集)。消息超过留档期被清退时只显 meta + 清退标注。
  */
 import { useState } from "react";
 
@@ -97,7 +97,7 @@ export default function AgentSessionDetailDialog({
                   类型:<b className="text-text-1">{KIND_LABEL[meta.kind]}</b>
                   {meta.kind === "guest" && meta.live !== null && (
                     <b className={`ml-1.5 ${meta.live ? "text-green" : "text-amber"}`}>
-                      {meta.live ? "活跃中" : "已过期"}
+                      {meta.live ? "可继续追问" : "已结束"}
                     </b>
                   )}
                 </span>
@@ -116,7 +116,7 @@ export default function AgentSessionDetailDialog({
 
               {detail?.expired && (
                 <div className="mt-3 rounded-sm border border-amber/35 bg-amber/10 px-3 py-2 text-xs text-amber">
-                  会话数据已过期清退,消息正文不可查看(仅保留台账统计)。
+                  消息正文已被清退(超过留档期),仅保留统计。
                 </div>
               )}
 
