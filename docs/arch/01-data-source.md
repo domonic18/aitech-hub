@@ -170,6 +170,12 @@
   (`source=vendor-<key>`,medium=ai-record),事件能进热点簇。
 - **用途**:后台事件台账(`/admin/insight/events`,按厂商/类型/时间筛选)、
   簇的事件轴、后续 MCP 的 `list_events` 工具。
+- **实体视图**(M59):后台 `/admin/insight/entities/` 按 `entityKey` 聚合事件
+  (厂商/实体类型/时间窗/关键词筛选 + 分页),详情 `/admin/insight/entities/<entityKey>/`
+  出事件时间线与经 `insight_signal.meta.entityKey` 关联的厂商信号。聚合**只基于
+  `entity_event`**,不 join `leaderboard_snapshot`(榜单 entityKey 口径不同:HF 保留
+  大小写与 `/`、arXiv 保留版本后缀);社区/热榜信号未挂实体,详情页明确说明。
+  别名归并与跨源实体挂接属后续立项。
 - 与牌价跟踪解耦:牌价停更不影响事件层。
 
 ### 3.4 站内 agent 问句清洗(复活规则)

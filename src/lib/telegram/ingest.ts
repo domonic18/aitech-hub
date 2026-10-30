@@ -45,6 +45,8 @@ import { isSummarizeReady, markPendingAndEnqueueSummarize } from "./summarize-te
 /** 单来源单轮采集结果(worker 日志与后台台账观测字段) */
 export interface CrawlOutcome {
   sourceId: number;
+  /** 渠道名(台账/运行日志据此认源;源不存在/停用时不带) */
+  sourceName?: string;
   fetched: number;
   /** 可见落库 */
   inserted: number;
@@ -139,6 +141,7 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     rateLimited: false,
   };
   if (!source || !source.enabled) return outcome;
+  outcome.sourceName = source.name;
 
   const now = new Date();
 

@@ -1,9 +1,10 @@
 /**
- * F17 采集渠道统一台账:五类行聚合(文字渠道/视频平台/热榜源/发现任务/GitHub)。
- * 板定五列 渠道|自动调度|健康|最近运行|手动触发。动作全部消费既有 API:
- * 渠道 crawl|debug|status、博主 crawl(平台行「立即采集」= 逐启用博主入队)、
- * insight trigger hotboard、discovery trigger、github repo sync(行级 = 逐仓入队);
- * 「采集中」态取自 crawler 队列活跃视频 job(平台归属经 accountId 反查)。
+ * F17 采集渠道统一台账:按分组装配行(资讯 RSS / 厂商动态 / 榜单 / 社区语料 /
+ * 牌价 / 视频平台 / 热榜源 / 发现任务 / GitHub)。板定六列 渠道|备注|自动调度|
+ * 健康|最近运行|手动触发。动作全部消费既有 API:渠道 crawl|debug|status、
+ * 博主 crawl(平台行「立即采集」= 逐启用博主入队)、insight trigger hotboard、
+ * discovery trigger、github repo sync(行级 = 逐仓入队);「采集中」态取自
+ * crawler 队列活跃视频 job(平台归属经 accountId 反查)。
  * 行类型与纯展示函数在 ./channel-ledger-types(客户端同源,拆文件防
  * prisma/ioredis 拖进浏览器包)。
  */
@@ -18,10 +19,12 @@ import {
   VIDEO_PLATFORM_LABELS,
 } from "../telegram/constants";
 import { CRAWL_SOURCE_TYPE_PRICING, CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } from "./constants";
+import { hasSnapshots, outputCountOf, registryOutputCountByChannel } from "./channel-ledger-counts";
 import { listChannelsAdmin, publicConfigJson } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
 import { videoRunningSince } from "./crawler-runs";
 import {
+  channelGroupOfType,
   healthOf,
   intervalText,
   lastRunLabel,
@@ -30,46 +33,55 @@ import {
 
 // ── 各类行 ────────────────────────────────────────────────────────────────────
 
-async function rssRows(): Promise<ChannelLedgerRow[]> {
-  const items = await listChannelsAdmin();
-  return items.map((c) => {
-    const { health, healthText } = healthOf(
-      c.enabled,
-      c.consecutiveFails,
-      c.status as "healthy" | "error" | "degraded" | null,
-    );
-    return {
-      key: `rss-${c.id}`,
-      kind: "rss" as const,
-      name: `${c.name} · ${c.type === "rss" ? "RSS" : c.type}`,
-      cadence: c.enabled ? intervalText(c.crawlIntervalMin) : "已暂停",
-      enabled: c.enabled,
-      health,
-      healthText,
-      lastRunLabel: lastRunLabel(c.lastRunAt, c.count24h, "条"),
-      statusEndpoint: `/api/channels/${c.id}/status`,
-      primary: { type: "crawl", channelId: c.id },
-      secondary: {
-        type: "debug",
-        channelId: c.id,
-        label: health === "fail" ? "调试" : "试拉",
-      },
-      editChannel: {
-        id: c.id,
+/** 文字类源行(资讯 RSS / 厂商动态 / 榜单 / 社区语料);pricing 走 pricingRows
+ * 单独装配(行带快照入口),此处剔除防重复。产出计数按类型分表(registry 渠道
+ * 落 entity_event/leaderboard_snapshot/insight_signal,见 channel-ledger-counts) */
+async function sourceRows(): Promise<ChannelLedgerRow[]> {
+  const [items, outputCounts] = await Promise.all([
+    listChannelsAdmin(),
+    registryOutputCountByChannel(),
+  ]);
+  return items
+    .filter((c) => c.type !== CRAWL_SOURCE_TYPE_PRICING)
+    .map((c) => {
+      const { health, healthText } = healthOf(
+        c.enabled,
+        c.consecutiveFails,
+        c.status as "healthy" | "error" | "degraded" | null,
+      );
+      return {
+        key: `source-${c.id}`,
+        group: channelGroupOfType(c.type),
         name: c.name,
-        type: c.type,
-        platform: c.platform,
-        url: c.url,
-        crawlIntervalMin: c.crawlIntervalMin,
-        dailyMaxRequests: c.dailyMaxRequests,
         remark: c.remark,
+        cadence: c.enabled ? intervalText(c.crawlIntervalMin) : "已暂停",
         enabled: c.enabled,
-        credentialMask: c.maskedConfig?.token ?? "",
-        configJson: c.configJson,
-      },
-      snapshotsHref: null,
-    };
-  });
+        health,
+        healthText,
+        lastRunLabel: lastRunLabel(c.lastRunAt, outputCountOf(c, outputCounts), "条"),
+        statusEndpoint: `/api/channels/${c.id}/status`,
+        primary: { type: "crawl", channelId: c.id },
+        secondary: {
+          type: "debug",
+          channelId: c.id,
+          label: health === "fail" ? "调试" : "试拉",
+        },
+        editChannel: {
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          platform: c.platform,
+          url: c.url,
+          crawlIntervalMin: c.crawlIntervalMin,
+          dailyMaxRequests: c.dailyMaxRequests,
+          remark: c.remark,
+          enabled: c.enabled,
+          credentialMask: c.maskedConfig?.token ?? "",
+          configJson: c.configJson,
+        },
+        snapshotsHref: hasSnapshots(c.type) ? `/admin/data/sources/${c.id}/snapshots/` : null,
+      };
+    });
 }
 
 /** 牌价渠道行(M56 验收:统一并入采集渠道维护;次钮=源页外链) */
@@ -86,8 +98,9 @@ async function pricingRows(): Promise<ChannelLedgerRow[]> {
     );
     return {
       key: `pricing-${c.id}`,
-      kind: "pricing" as const,
-      name: c.remark ?? c.name,
+      group: "pricing" as const,
+      name: c.name,
+      remark: c.remark,
       cadence: c.enabled ? intervalText(c.crawlIntervalMin) : "已暂停",
       enabled: c.enabled,
       health,
@@ -150,8 +163,9 @@ async function videoRows(): Promise<ChannelLedgerRow[]> {
     const { health, healthText } = healthOf(p.enabled, p.consecutiveFails, null);
     return {
       key: `video-${platform}`,
-      kind: "video" as const,
-      name: `${VIDEO_PLATFORM_LABELS[platform] ?? platform} · 视频平台`,
+      group: "video" as const,
+      name: VIDEO_PLATFORM_LABELS[platform] ?? platform,
+      remark: p.remark,
       cadence: p.enabled
         ? `博主 ${mine.length} · ≥${Math.round(SOCIAL_CRAWL_INTERVAL_MIN / 60)}h`
         : "已暂停",
@@ -185,8 +199,9 @@ async function hotRows(): Promise<ChannelLedgerRow[]> {
     const { health, healthText } = healthOf(h.enabled, h.consecutiveFails, null);
     return {
       key: `hot-${h.source}`,
-      kind: "hot" as const,
-      name: `${h.label} · 热榜源`,
+      group: "hot" as const,
+      name: h.label,
+      remark: null,
       cadence: h.enabled ? hotCadence() : "已暂停",
       enabled: h.enabled,
       health,
@@ -213,12 +228,12 @@ async function discoveryRows(): Promise<ChannelLedgerRow[]> {
   const defs = [
     {
       job: "hotwords" as const,
-      name: "热词发现 · 发现任务",
+      name: "热词发现",
       jobKey: `${QUEUE_DISCOVERY}/${DISCOVERY_JOB_HOTWORDS}`,
     },
     {
       job: "bili" as const,
-      name: "B站发现 · 发现任务",
+      name: "B站发现",
       jobKey: `${QUEUE_DISCOVERY}/${DISCOVERY_JOB_BILI}`,
     },
   ];
@@ -233,8 +248,12 @@ async function discoveryRows(): Promise<ChannelLedgerRow[]> {
     const failed = run?.status === "failed";
     return {
       key: `discovery-${d.job}`,
-      kind: "discovery" as const,
+      group: "discovery" as const,
       name: d.name,
+      remark:
+        d.job === "hotwords"
+          ? "种子词经 B站/Bing 搜索联想扩展,新词落 pending 待人工确认"
+          : "B站双窗搜索(90 天找博主 / 7 天找热门视频),产出候选待终审",
       cadence: d.job === "hotwords" ? "每日 05:37" : "每周一 06:13",
       enabled: true,
       health: failed ? "fail" : "healthy",
@@ -272,8 +291,9 @@ async function githubRows(): Promise<ChannelLedgerRow[]> {
   return [
     {
       key: "github",
-      kind: "github",
-      name: "GitHub · 项目源",
+      group: "github",
+      name: "白名单仓库同步",
+      remark: "元数据/README/commits/releases 增量同步(行级触发 = 逐仓入队)",
       cadence: intervalText(minInterval),
       enabled: enabled.length > 0,
       health,
@@ -288,17 +308,17 @@ async function githubRows(): Promise<ChannelLedgerRow[]> {
   ];
 }
 
-/** 台账全量(RSC 一次装配;行序 = 板面序:文字 → 视频 → 热榜 → 发现 → GitHub) */
+/** 台账全量(RSC 一次装配;组序见 CHANNEL_GROUP_ORDER,组内按装配序) */
 export async function buildChannelLedger(): Promise<ChannelLedgerRow[]> {
-  const [rss, video, hot, discovery, github, pricing] = await Promise.all([
-    rssRows(),
+  const [sources, video, hot, discovery, github, pricing] = await Promise.all([
+    sourceRows(),
     videoRows(),
     hotRows(),
     discoveryRows(),
     githubRows(),
     pricingRows(),
   ]);
-  return [...rss, ...video, ...hot, ...discovery, ...github, ...pricing];
+  return [...sources, ...video, ...hot, ...discovery, ...github, ...pricing];
 }
 
 /** F19 健康表/F20 引擎卡的读侧已拆至 ./channel-health 与 ./crawler-runs(≤350 行红线) */

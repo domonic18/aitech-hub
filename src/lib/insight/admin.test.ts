@@ -28,7 +28,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { insightOverview, listInsightSignals } from "./admin";
+import {
+  insightOverview,
+  listInsightSignals,
+  listInsightSignalsPage,
+  pickSignalUrl,
+} from "./admin";
 import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 
 beforeEach(() => {
@@ -119,14 +124,19 @@ describe("insightOverview", () => {
 });
 
 describe("listInsightSignals", () => {
-  it("行映射(id 字符串化;hitCount 口径随站内源退出移除)", async () => {
+  it("行映射(id 字符串化;meta.url→url,译文/状态/地域原样透传)", async () => {
     signalFindMany.mockResolvedValue([
       {
         id: BigInt(1),
         source: "hot-zhihu",
         medium: "voice",
+        lang: "zh",
+        region: "cn",
         rawText: "热榜问题",
+        translatedText: null,
+        translationStatus: "done",
         signalAt: new Date("2026-10-17T01:00:00Z"),
+        meta: { url: "https://www.zhihu.com/question/1" },
       },
     ]);
     const rows = await listInsightSignals({});
@@ -134,7 +144,12 @@ describe("listInsightSignals", () => {
       id: "1",
       source: "hot-zhihu",
       medium: "voice",
+      lang: "zh",
+      region: "cn",
       rawText: "热榜问题",
+      translatedText: null,
+      translationStatus: "done",
+      url: "https://www.zhihu.com/question/1",
       signalAt: "2026-10-17T01:00:00.000Z",
     });
     expect(signalFindMany).toHaveBeenCalledWith(
@@ -173,5 +188,68 @@ describe("listInsightSignals", () => {
         where: { AND: [{ source: { in: [...INSIGHT_SOURCES_ENABLED] } }] },
       }),
     );
+  });
+});
+
+describe("pickSignalUrl", () => {
+  it("只接受 http(s),其余协议/形态兜底 null(外链注入守门)", () => {
+    expect(pickSignalUrl({ url: "https://v2ex.com/t/1" })).toBe("https://v2ex.com/t/1");
+    expect(pickSignalUrl({ url: "HTTP://example.com/a" })).toBe("HTTP://example.com/a");
+    expect(pickSignalUrl({ url: "javascript:alert(1)" })).toBeNull();
+    expect(pickSignalUrl({ url: "data:text/html,<b>x</b>" })).toBeNull();
+    expect(pickSignalUrl({ url: "" })).toBeNull();
+    expect(pickSignalUrl({ url: 42 })).toBeNull();
+    expect(pickSignalUrl({})).toBeNull();
+    expect(pickSignalUrl(null)).toBeNull();
+    expect(pickSignalUrl(["https://example.com"])).toBeNull();
+  });
+});
+
+describe("listInsightSignalsPage", () => {
+  it("分页 skip/take + 稳定排序 + 总页数;分源计数刻意不套当前源", async () => {
+    signalFindMany.mockResolvedValue([]);
+    signalCount.mockResolvedValue(120);
+    signalGroupBy.mockResolvedValue([
+      { source: "community-v2ex", _count: { _all: 80 } },
+      { source: "hot-baidu", _count: { _all: 40 } },
+    ]);
+    const data = await listInsightSignalsPage({
+      source: "hot-baidu",
+      medium: "voice",
+      page: 3,
+      pageSize: 50,
+    });
+    expect(data.total).toBe(120);
+    expect(data.pages).toBe(3);
+    expect(data.page).toBe(3);
+    expect(data.bySource).toEqual([
+      { source: "community-v2ex", count: 80 },
+      { source: "hot-baidu", count: 40 },
+    ]);
+    expect(signalFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 100,
+        take: 50,
+        orderBy: [{ signalAt: "desc" }, { id: "desc" }],
+      }),
+    );
+    // chips 计数与列表同一套筛选,但去掉 source 维度
+    expect(signalGroupBy).toHaveBeenCalledWith({
+      by: ["source"],
+      where: {
+        AND: [{ source: { in: [...INSIGHT_SOURCES_ENABLED] } }, { medium: "voice" }],
+      },
+      _count: { _all: true },
+    });
+  });
+
+  it("pageSize 钳制到 1..200,页码非法回 1", async () => {
+    signalFindMany.mockResolvedValue([]);
+    signalCount.mockResolvedValue(0);
+    signalGroupBy.mockResolvedValue([]);
+    const data = await listInsightSignalsPage({ page: 0, pageSize: 999 });
+    expect(data.page).toBe(1);
+    expect(data.pages).toBe(1);
+    expect(signalFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 200 }));
   });
 });

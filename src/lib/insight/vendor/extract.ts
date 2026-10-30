@@ -14,6 +14,7 @@
  */
 import { AI_PURPOSE_INSIGHT } from "@/lib/ai/constants";
 import { chatJsonTask } from "@/lib/ai/chat-json-task";
+import { readExtraMaxTokens, readExtraOutputConfig } from "@/lib/ai/extra-params";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { stripHtml } from "@/lib/telegram/normalize";
@@ -108,13 +109,19 @@ export async function runVendorExtractJob(
       return { events: 0, dropped: 0, signals: 0, empty: true };
     }
     const text = await readArticleText(data.item);
+    // 预算/思考深度只住 ai_model.extra_params(代码零数值默认,同 extra-params 口径):
+    // 硬编码 1200 时 MiniMax 的 thinking 块会把预算吃满 → 无 text 块 → 整篇判死
+    // (2026-10-30 E2E:56 次抽取 31 次此因)。台账未配预算时回退 1200 兜底。
     const contract = await chatJsonTask(
       model,
       parseVendorEvents,
       EXTRACT_SYSTEM,
       `厂商:${data.vendorKey}\n文章标题:${data.item.title}\n发布日期:${data.item.publishedAt ?? "未知"}\n今天:${now.toISOString().slice(0, 10)}\n\n正文:\n${text}`,
       AI_PURPOSE_INSIGHT,
-      { maxTokens: 1200 },
+      {
+        maxTokens: readExtraMaxTokens(model.extraParams) ?? 1200,
+        outputConfig: readExtraOutputConfig(model.extraParams) ?? undefined,
+      },
     );
 
     let events = 0;

@@ -8,7 +8,8 @@
 > schema+迁移/translate 角色/状态机/地域视图);批② 厂商动态与事件层已落码
 > (`entity_event` 迁移/六厂商注册表/`vendor` 采集类型/`extract-event` 抽取队列/
 > 后台事件页签);批③ 榜单接入与公开页已落码(`leaderboard_snapshot` 迁移/五榜注册表
-> (LMArena 因 CF 403 不做)/`leaderboard` 采集类型/`/leaderboards/` 公开页);④–⑤ 待开。
+> (LMArena 因 CF 403 不做)/`leaderboard` 采集类型/`/leaderboards/` 公开页);批④ 社区需求语料、
+> 批⑤ 站内问句清洗复活均已落码;**后续:洞察浏览与实体层(M59)见 §14**。
 
 ## 1. 立项依据与目标
 
@@ -363,6 +364,22 @@ TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
   行为准,无行线程仍按台账还原);详情读取 checkpoint 不再依赖归属键。
 - 无 schema 变更;单测 8 条 + 真库探针 18 断言(建行/累计/列表/详情/404/清场)全绿。
 
+### 8.5 采集渠道台账分组与备注列(2026-10-30 用户反馈,批②-④ 后续)
+
+问题:vendor/leaderboard/community/pricing 接入后,源管理平铺列表里出现
+`vendor:anthropic · vendor` 一类内部键,难以辨认;且 pricing 行在列表里重复出现两次。
+
+定稿:
+
+- 台账按分组分节(组头可折叠,口径对齐采集计划板 `PLAN_GROUPS` 形态):
+  资讯 RSS / 厂商动态 / 榜单 / 社区语料 / 牌价渠道 / 视频平台 / 热榜源 / 发现任务 /
+  GitHub 项目源;筛选 chips 与分组 1:1(`CHANNEL_GROUPS`/`CHANNEL_GROUP_ORDER`)。
+- 渠道列只显 `crawl_source.name` 原值(不再拼 ` · <type>`),新增**备注列**:
+  registry 渠道的备注由种子按注册表 label 落库(vendor/leaderboard/community/pricing
+  种子早已带 `remark`),普通 RSS 渠道可在「编辑」里维护;长文截断 + title 悬浮。
+- 修重复:`sourceRows()` 剔除 `type=pricing`(由 `pricingRows()` 单独装配,行带快照入口)。
+- 无 schema 变更;分组映射 `channelGroupOfType` 纯函数 + 单测。
+
 ## 9. 运行与成本
 
 - **调度**:新源全部进 `crawl_source` 台账;cron 只在 `schedules.ts` 注册(翻译扫尾/事件抽取),
@@ -407,3 +424,28 @@ TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
   不是 K3 复活(K3 为站点内容只读工具集,已否决)。
 - **牌价**:M55/M56 停更,事件层与榜单不依赖牌价表;`price_change` 事件独立采集。
 - **渠道纪律**:不新建第二套采集管线,全部落 `crawl_source` + 注册表 + 快照。
+
+## 14. 后续:洞察浏览与实体层(M59)
+
+> 触发:2026-10-30 用户验收反馈——新渠道(社区/厂商)信号入池后,信号流只能滚到洞察中心
+> 页尾的折叠「信号明细」(50 条上限、无分页、无外链);而立项时的「实体层」只有平铺事件
+> 列表(§5.3),没有按实体聚合的视图。
+
+### 14.1 已做(2026-10-30,`feature/m59-insight-signals-entities`)
+
+| 项 | 落点 |
+| --- | --- |
+| 信号独立页 | `/admin/insight/signals/`:源/地域/介质/日期筛选 + 分页(50/页)+ 原文外链(`meta.url`,仅 http/https)。取数 `listInsightSignalsPage`(`findMany`+`count`+`groupBy` 三查并行;分源计数不含当前源筛选,chips 数字可跨源比较) |
+| 总览预览 | 洞察总览底部折叠区改为「最新信号」卡:最近 5 条 + 「查看全部 N 条 →」;总览不再承载信号筛选 |
+| 实体列表 | `/admin/insight/entities/`:按 `entityKey` 聚合厂商事件(实体 / 厂商 / 类型 / 事件数 / 最近事件),可按厂商、实体类型、时间窗(7/30/90 天)、关键词筛选 |
+| 实体详情 | `/admin/insight/entities/<entityKey>/`:事件时间线 + 经 `insight_signal.meta.entityKey` 关联的厂商信号;非法 key 形态与查无实体一律 404 |
+| 索引 | `entity_event(entity_key, occurred_at DESC)`(`idx_entity_event_entity_recent`),列表分组前缀与详情时间线共用 |
+
+口径边界:实体聚合只基于 `entity_event`(厂商抽取链);榜单快照 `leaderboard_snapshot.entityKey`
+命名口径不同(HF 保留大小写与 `/`、arXiv 保留版本后缀),本轮不做 join;社区/热榜信号未挂实体。
+
+### 14.2 后续(未立项)
+
+- 实体别名归并(榜单 key 与 `entity_event.entityKey` 口径统一)与实体主表/别名表;
+- 社区/热榜信号实体挂接(NER 或 LLM 抽取,成本另评估);
+- 实体 ↔ 榜单快照关联(依赖上一项的口径统一)。

@@ -1,7 +1,15 @@
 /** F17 渠道台账纯展示函数:健康 pill 四态与「最近运行」相对时刻文案 */
 import { describe, expect, it } from "vitest";
 
-import { healthOf, intervalText, lastRunLabel } from "./channel-ledger-types";
+import {
+  CHANNEL_GROUPS,
+  CHANNEL_GROUP_ORDER,
+  CHANNEL_GROUP_TABS,
+  channelGroupOfType,
+  healthOf,
+  intervalText,
+  lastRunLabel,
+} from "./channel-ledger-types";
 
 describe("healthOf", () => {
   it("停用优先 → 暂停", () => {
@@ -57,5 +65,35 @@ describe("intervalText 小时档", () => {
 
   it("非整除仍显分钟(板「每 90 分钟」)", () => {
     expect(intervalText(90)).toBe("每 90 分钟");
+  });
+});
+
+describe("分组口径(2026-10-30 分节展示)", () => {
+  it("registry 类型各自成组;rss/web/api 合并为资讯 RSS", () => {
+    expect(channelGroupOfType("rss")).toBe("rss");
+    expect(channelGroupOfType("web")).toBe("rss");
+    expect(channelGroupOfType("api")).toBe("rss");
+    expect(channelGroupOfType("vendor")).toBe("vendor");
+    expect(channelGroupOfType("leaderboard")).toBe("leaderboard");
+    expect(channelGroupOfType("community")).toBe("community");
+    expect(channelGroupOfType("pricing")).toBe("pricing");
+  });
+
+  it("未知类型按文字源兜底(合法值由创建 Zod 约束)", () => {
+    expect(channelGroupOfType("whatever")).toBe("rss");
+  });
+
+  it("组序覆盖全部组且每组有标签与色点", () => {
+    expect(new Set(CHANNEL_GROUP_ORDER).size).toBe(CHANNEL_GROUP_ORDER.length);
+    expect(Object.keys(CHANNEL_GROUPS).sort()).toEqual([...CHANNEL_GROUP_ORDER].sort());
+    for (const g of CHANNEL_GROUP_ORDER) {
+      expect(CHANNEL_GROUPS[g].label.length).toBeGreaterThan(0);
+      expect(CHANNEL_GROUPS[g].color).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it("筛选 chips = 全部 + 各组 1:1", () => {
+    expect(CHANNEL_GROUP_TABS[0][0]).toBe("all");
+    expect(CHANNEL_GROUP_TABS.slice(1).map(([g]) => g)).toEqual(CHANNEL_GROUP_ORDER);
   });
 });

@@ -5,7 +5,14 @@
  */
 import Link from "next/link";
 
-import { MEDIUM_LABELS, SOURCE_LABELS, type InsightMediumVocab } from "@/lib/insight/constants";
+import {
+  MEDIUM_LABELS,
+  REGION_LABELS,
+  SIGNAL_REGIONS,
+  SOURCE_LABELS,
+  resolveRegionParam,
+  type InsightMediumVocab,
+} from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
 import { DAY_MS } from "@/lib/datetime";
 
@@ -81,19 +88,10 @@ export type InsightViewParams = {
   domain?: string;
 };
 
-/** 地域视图合法值(信号明细 chips;簇徽章含 mixed) */
-export const REGIONS = ["cn", "global"] as const;
-
-export const REGION_LABELS: Record<string, string> = {
-  cn: "国内",
-  global: "海外",
-  mixed: "国内外",
-};
-
-/** 地域参数钳制(非法值丢弃,页侧唯一出口) */
-export function resolveRegionParam(raw: string | undefined): string | undefined {
-  return (REGIONS as readonly string[]).includes(raw ?? "") ? raw : undefined;
-}
+/** 地域视图词表/中文标签/参数钳制下沉 domain constants 单源(信号独立页与总览
+ * 共用同一份白名单),此处仅转出口保持既有调用方不变 */
+export const REGIONS = SIGNAL_REGIONS;
+export { REGION_LABELS, resolveRegionParam };
 
 /** 领域视图「全部」哨兵值(domain=all → 查询层不筛,unclassified 亦可见) */
 export const DOMAIN_ALL = "all";

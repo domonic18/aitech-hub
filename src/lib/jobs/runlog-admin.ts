@@ -34,6 +34,7 @@ export const JOB_RUN_LABELS: Record<string, string> = {
   "stats/purge-job-run": "清理·任务台账",
   "cover-gen/temp-sweep": "封面·候选清扫",
   "crawler/ai-backfill": "解读·AI 补扫",
+  "crawler/crawl": "采集·渠道抓取",
 };
 
 export function jobRunLabel(key: string): string {

@@ -16,9 +16,101 @@ import {
   EVENT_MIN_YEAR,
   EVENT_TYPES,
   VENDOR_MAX_EVENTS_PER_ARTICLE,
+  isEntityEventType,
+  isEntityType,
+  type EntityEventType,
+  type EntityType,
 } from "./constants";
 
 export const SUMMARY_MAX = 500;
+
+/** 事件类型同义归一(2026-10-30 E2E:56 次抽取 8 次因枚举漂移整篇判死,
+ * 模型实际会输出 launch/pricing/benchmark 一类近义词)。仅收明确同义项;
+ * 归一后仍非法即丢该条,不整篇判废。 */
+const EVENT_TYPE_ALIASES: Record<string, EntityEventType> = {
+  launch: "release",
+  launched: "release",
+  announce: "release",
+  announcement: "release",
+  new_release: "release",
+  product_launch: "release",
+  general_availability: "release",
+  pricing: "price_change",
+  price: "price_change",
+  price_update: "price_change",
+  pricing_change: "price_change",
+  price_reduction: "price_change",
+  price_cut: "price_change",
+  price_increase: "price_change",
+  opensource: "open_source",
+  open_sourced: "open_source",
+  open_sourcing: "open_source",
+  open_weights: "open_source",
+  funding_round: "funding",
+  investment: "funding",
+  invest: "funding",
+  raise: "funding",
+  financing: "funding",
+  deprecate: "deprecation",
+  deprecated: "deprecation",
+  discontinue: "deprecation",
+  discontinued: "deprecation",
+  sunset: "deprecation",
+  end_of_life: "deprecation",
+  eol: "deprecation",
+  retire: "deprecation",
+  benchmark: "benchmark_change",
+  benchmark_update: "benchmark_change",
+  ranking: "benchmark_change",
+  rank_change: "benchmark_change",
+  leaderboard: "benchmark_change",
+  leaderboard_change: "benchmark_change",
+};
+
+/** 实体类型同义归一(取值少,漂移集中在 org/company、product/tool) */
+const ENTITY_TYPE_ALIASES: Record<string, EntityType> = {
+  llm: "model",
+  ai_model: "model",
+  model_family: "model",
+  foundation_model: "model",
+  checkpoint: "model",
+  tool: "product",
+  app: "product",
+  application: "product",
+  service: "product",
+  platform: "product",
+  feature: "product",
+  api: "product",
+  organization: "org",
+  organisation: "org",
+  company: "org",
+  firm: "org",
+  team: "org",
+  lab: "org",
+  institution: "org",
+};
+
+/** 枚举词归一:小写 + 空白/连字符折成下划线(price change → price_change) */
+function tokenOf(v: unknown): string {
+  return typeof v === "string"
+    ? v
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_")
+    : "";
+}
+
+export function normalizeEventType(v: unknown): EntityEventType | null {
+  const key = tokenOf(v);
+  if (isEntityEventType(key)) return key;
+  return EVENT_TYPE_ALIASES[key] ?? null;
+}
+
+export function normalizeEntityType(v: unknown): EntityType | null {
+  const key = tokenOf(v);
+  if (isEntityType(key)) return key;
+  return ENTITY_TYPE_ALIASES[key] ?? null;
+}
 
 export const vendorEventSchema = z.object({
   entityType: z.enum(ENTITY_TYPES),
@@ -29,20 +121,17 @@ export const vendorEventSchema = z.object({
   occurredAt: z.string().trim().nullable().optional(),
 });
 
-export const vendorEventsPayloadSchema = z.object({
-  // 上限不硬卡:超量截断救底(与 summarize keywords 同取向)
-  events: z.array(vendorEventSchema),
-});
-
 export type VendorEventDraft = z.infer<typeof vendorEventSchema>;
 
 export interface VendorEventsContract {
   events: VendorEventDraft[];
-  /** 超上限被截断的事件数(方案 §5.2 超量丢弃并计数) */
+  /** 被丢弃的事件数(超上限截断 + 单条不合契约) */
   dropped: number;
 }
 
-/** 契约解析(失败只回错误串,chatJsonTask 据此重试;永不 throw) */
+/** 契约解析(失败只回错误串,chatJsonTask 据此重试;永不 throw)。
+ * 逐条解析:单条枚举漂移先归一,仍不合法只丢该条并计数;全部条目皆废才判失败
+ * (交上层重试一次)。 */
 export function parseVendorEvents(raw: string): ParsedTask<VendorEventsContract> {
   const block = extractJsonBlock(raw);
   if (block === null) return { ok: false, error: "输出中未找到 JSON 对象" };
@@ -52,17 +141,37 @@ export function parseVendorEvents(raw: string): ParsedTask<VendorEventsContract>
   } catch (e) {
     return { ok: false, error: `JSON 解析失败:${e instanceof Error ? e.message : String(e)}` };
   }
-  const parsed = vendorEventsPayloadSchema.safeParse(json);
-  if (!parsed.success) {
-    return { ok: false, error: `结构不符:${parsed.error.issues[0]?.message ?? "unknown"}` };
+  const list =
+    typeof json === "object" && json !== null && "events" in json
+      ? (json as { events: unknown }).events
+      : undefined;
+  if (!Array.isArray(list)) return { ok: false, error: "结构不符:events 不是数组" };
+
+  const events: VendorEventDraft[] = [];
+  let dropped = 0;
+  let lastError = "";
+  for (const item of list) {
+    const candidate =
+      typeof item === "object" && item !== null
+        ? {
+            ...item,
+            entityType: normalizeEntityType((item as Record<string, unknown>).entityType),
+            eventType: normalizeEventType((item as Record<string, unknown>).eventType),
+          }
+        : item;
+    const parsed = vendorEventSchema.safeParse(candidate);
+    if (parsed.success) events.push(parsed.data);
+    else {
+      dropped += 1;
+      lastError = parsed.error.issues[0]?.message ?? "unknown";
+    }
   }
-  const all = parsed.data.events;
+  if (events.length === 0 && list.length > 0) return { ok: false, error: `结构不符:${lastError}` };
+
+  const kept = events.slice(0, VENDOR_MAX_EVENTS_PER_ARTICLE);
   return {
     ok: true,
-    data: {
-      events: all.slice(0, VENDOR_MAX_EVENTS_PER_ARTICLE),
-      dropped: Math.max(0, all.length - VENDOR_MAX_EVENTS_PER_ARTICLE),
-    },
+    data: { events: kept, dropped: dropped + (events.length - kept.length) },
   };
 }
 
