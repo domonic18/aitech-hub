@@ -45,7 +45,12 @@ export interface InsightSignalRow {
   id: string;
   source: string;
   medium: string;
+  lang: string | null;
+  region: string | null;
   rawText: string;
+  /** 中文译文(M58;非空时读侧默认展示,原文可切换) */
+  translatedText: string | null;
+  translationStatus: string;
   signalAt: string;
 }
 
@@ -108,16 +113,22 @@ const SIGNAL_SELECT = {
   id: true,
   source: true,
   medium: true,
+  lang: true,
+  region: true,
   rawText: true,
+  translatedText: true,
+  translationStatus: true,
   signalAt: true,
 } as const;
 
-/** 最近信号流(可按源/领域过滤,恒限在役源);from/to 钳 signal_at(北京日界由
+/** 最近信号流(可按源/领域/地域过滤,恒限在役源);from/to 钳 signal_at(北京日界由
  * 调用方折算);limit 上限 200 */
 export async function listInsightSignals(opts: {
   source?: InsightSource;
   medium?: string;
   domain?: string;
+  /** 地域筛选(M58 批①:cn=国内 / global=海外) */
+  region?: string;
   from?: Date;
   to?: Date;
   limit?: number;
@@ -129,6 +140,7 @@ export async function listInsightSignals(opts: {
         ...(opts.source === undefined ? [] : [{ source: opts.source }]),
         ...(opts.medium === undefined ? [] : [{ medium: opts.medium }]),
         ...(opts.domain === undefined ? [] : [{ domain: opts.domain }]),
+        ...(opts.region === undefined ? [] : [{ region: opts.region }]),
         ...(opts.from === undefined && opts.to === undefined
           ? []
           : [
@@ -149,7 +161,11 @@ export async function listInsightSignals(opts: {
     id: r.id.toString(),
     source: r.source,
     medium: r.medium,
+    lang: r.lang,
+    region: r.region,
     rawText: r.rawText,
+    translatedText: r.translatedText,
+    translationStatus: r.translationStatus,
     signalAt: r.signalAt.toISOString(),
   }));
 }

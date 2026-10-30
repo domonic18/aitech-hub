@@ -10,7 +10,7 @@ import type { InsightClusterRow } from "@/lib/insight/admin";
 import type { ClusterMomentum } from "@/lib/insight/scoring";
 import { TREND_TIER_LABELS, type ClusterTrendRow, type TrendTier } from "@/lib/insight/trend";
 
-import { AnomalyBadge, clusterHref } from "./shared";
+import { AnomalyBadge, RegionBadge, clusterHref } from "./shared";
 
 /** 名次头部三色(与 HotBoard 同一套视觉语言) */
 function rankClass(rank: number): string {
@@ -109,6 +109,7 @@ function RadarRow({
             <MomentumBadge m={c.momentum} />
           )}
           {c.anomaly && <AnomalyBadge />}
+          <RegionBadge region={c.region} />
         </span>
         {kws !== "" && (
           <span className="block truncate text-[11px] text-text-3" title={kws}>

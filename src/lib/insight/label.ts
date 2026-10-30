@@ -18,7 +18,7 @@ import { chatJsonTask, type ParsedTask } from "../ai/chat-json-task";
 import { readExtraMaxTokens } from "../ai/extra-params";
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { unionMedia } from "./cluster";
+import { majorityRegion, unionMedia } from "./cluster";
 import {
   INSIGHT_SENTIMENTS,
   isInsightSentiment,
@@ -265,7 +265,7 @@ export async function labelCluster(
   const [mediaRows, memberCountNow] = await Promise.all([
     prisma.insightSignal.findMany({
       where: { members: { some: { clusterId } } },
-      select: { medium: true },
+      select: { medium: true, region: true },
     }),
     prisma.insightClusterMember.count({ where: { clusterId } }),
   ]);
@@ -285,6 +285,8 @@ export async function labelCluster(
       // 舆情倾向(M46 验收批):词云四色数据源;M53 起 Jev 高置信覆写
       sentiment: judged.sentiment,
       media: unionMedia([mediaRows.map((r) => r.medium)]),
+      // 簇地域(M58 批①):成员多数派,cn/global 接近记 mixed
+      region: majorityRegion(mediaRows.map((r) => r.region)),
       labeledAt: new Date(),
       // 基 LLM 调用期间的最新成员数记账,避免把打标间隙的新增误判为「未打标新增」
       labeledMemberCount: Math.max(memberCount, memberCountNow),

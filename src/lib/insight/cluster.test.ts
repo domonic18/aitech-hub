@@ -1,7 +1,7 @@
 /** 增量聚类纯函数单测:归簇判定(过短短路/阈值内外分流)与介质并集(白名单/去重)。 */
 import { describe, expect, it } from "vitest";
 
-import { decideAssignment, unionMedia } from "./cluster";
+import { decideAssignment, majorityRegion, unionMedia } from "./cluster";
 
 describe("decideAssignment", () => {
   const MIN_LEN = 4;
@@ -54,6 +54,51 @@ describe("unionMedia", () => {
 
   it("白名单外介质丢弃,null/undefined 段忽略", () => {
     expect(unionMedia([["search"], ["bogus"], null, undefined, []])).toEqual(["search"]);
+  });
+});
+
+describe("majorityRegion(M58 批①:簇地域=成员多数,差距 <20% 判 mixed)", () => {
+  it("全 cn / 全 global → 对应地域", () => {
+    expect(majorityRegion(["cn", "cn", null])).toBe("cn");
+    expect(majorityRegion(["global", "global", undefined])).toBe("global");
+  });
+
+  it("压倒多数 → 多数方(未知成员不计入分母)", () => {
+    expect(majorityRegion(["cn", "cn", "cn", "global"])).toBe("cn");
+    expect(majorityRegion([null, "global", "global", "cn", undefined])).toBe("global");
+  });
+
+  it("cn/global 差距 <20% → mixed;恰 20% 仍归多数方(边界取 < 而非 ≤)", () => {
+    // 4:4 → 0%;9:8 → 5.9% → mixed
+    expect(majorityRegion(["cn", "global", "cn", "global"])).toBe("mixed");
+    expect(
+      majorityRegion([
+        "cn",
+        "cn",
+        "cn",
+        "cn",
+        "global",
+        "global",
+        "global",
+        "cn",
+        "cn",
+        "cn",
+        "cn",
+        "cn",
+        "global",
+        "global",
+        "global",
+        "global",
+        "global",
+      ]),
+    ).toBe("mixed");
+    // 3:2 → 恰 20% → 不 mixed,取多数
+    expect(majorityRegion(["cn", "cn", "cn", "global", "global"])).toBe("cn");
+  });
+
+  it("无已知地域 → null(存量/未知成员不臆造地域)", () => {
+    expect(majorityRegion([])).toBeNull();
+    expect(majorityRegion([null, undefined])).toBeNull();
   });
 });
 

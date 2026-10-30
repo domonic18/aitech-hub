@@ -59,6 +59,8 @@ export type InsightViewParams = {
   source?: string;
   /** 介质筛选(M52 批D:钱/时间/声音/搜索/AI记录) */
   medium?: string;
+  /** 地域筛选(M58 批①:cn 国内 / global 海外) */
+  region?: string;
   w?: string;
   from?: string;
   to?: string;
@@ -66,6 +68,20 @@ export type InsightViewParams = {
   hs?: string;
   domain?: string;
 };
+
+/** 地域视图合法值(信号明细 chips;簇徽章含 mixed) */
+export const REGIONS = ["cn", "global"] as const;
+
+export const REGION_LABELS: Record<string, string> = {
+  cn: "国内",
+  global: "海外",
+  mixed: "国内外",
+};
+
+/** 地域参数钳制(非法值丢弃,页侧唯一出口) */
+export function resolveRegionParam(raw: string | undefined): string | undefined {
+  return (REGIONS as readonly string[]).includes(raw ?? "") ? raw : undefined;
+}
 
 /** 领域视图「全部」哨兵值(domain=all → 查询层不筛,unclassified 亦可见) */
 export const DOMAIN_ALL = "all";
@@ -154,6 +170,23 @@ export function AnomalyBadge(): React.ReactElement {
   return (
     <span className={`${badge} bg-red/12 text-red`} title="热度异动:近值远超前 3 日均值">
       异动
+    </span>
+  );
+}
+
+/** 地域徽章(M58 批①):cluster.region=cn|global|mixed;signal.region=cn|global。
+ * 无地域(存量/未知源)不渲染。 */
+export function RegionBadge({ region }: { region: string | null }): React.ReactElement | null {
+  if (region === null || region === undefined) return null;
+  const tone =
+    region === "global"
+      ? "bg-blue/12 text-blue"
+      : region === "mixed"
+        ? "bg-accent-dim text-accent"
+        : "bg-panel-2 text-text-2";
+  return (
+    <span className={`${badge} ${tone}`} title="地域:国内/海外">
+      {REGION_LABELS[region] ?? region}
     </span>
   );
 }

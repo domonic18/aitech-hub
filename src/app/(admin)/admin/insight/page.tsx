@@ -28,6 +28,7 @@ import {
   chipOn,
   insightHref,
   resolveDomainView,
+  resolveRegionParam,
   shortSource,
   shiftDay,
   todayCn,
@@ -63,6 +64,7 @@ export default async function AdminInsightPage({
   const params: InsightViewParams = {
     source: ENABLED_SOURCES.find((s) => s === sp.source),
     medium: INSIGHT_MEDIA_VOCAB.find((m) => m === sp.medium),
+    region: resolveRegionParam(sp.region),
     w: WINDOWS.some((n) => String(n) === sp.w) ? sp.w : undefined,
     day: DATE_RE.test(sp.day ?? "") ? sp.day : undefined,
     from: DATE_RE.test(sp.from ?? "") ? sp.from : undefined,
@@ -94,6 +96,7 @@ export default async function AdminInsightPage({
             ? undefined
             : new Date(`${shiftDay(params.to, 1)}T00:00:00+08:00`),
         medium: params.medium,
+        region: params.region,
         domain: domainFilter,
         limit: SIGNAL_TAKE_DEFAULT,
       }),
