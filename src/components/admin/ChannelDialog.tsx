@@ -8,7 +8,11 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { CRAWL_SOURCE_TYPES_IMPLEMENTED } from "@/lib/collect/constants";
+import {
+  CRAWL_SOURCE_TYPE_PRICING,
+  CRAWL_SOURCE_TYPE_VENDOR,
+  CRAWL_SOURCE_TYPES_IMPLEMENTED,
+} from "@/lib/collect/constants";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -31,7 +35,13 @@ const TYPE_LABELS: Record<string, string> = {
   web: "网页",
   api: "API",
   "social-video": "社交/视频",
+  pricing: "牌价(注册表)",
+  vendor: "厂商动态(注册表)",
 };
+
+/** 注册表型渠道由 worker 启动种子登记(config 里的 *Key 是路由锚),不允许手选;
+ * 编辑既有注册表行时只回显原类型(服务端同样拒绝类型变更) */
+const REGISTRY_TYPES: readonly string[] = [CRAWL_SOURCE_TYPE_PRICING, CRAWL_SOURCE_TYPE_VENDOR];
 
 export default function ChannelDialog({
   label,
@@ -44,6 +54,11 @@ export default function ChannelDialog({
 }) {
   const router = useRouter();
   const editing = channel !== undefined;
+  // 注册表行的类型锁定为原值;其余场景隐藏注册表类型(不可手选)
+  const typeChoices =
+    channel !== undefined && REGISTRY_TYPES.includes(channel.type)
+      ? [channel.type]
+      : CRAWL_SOURCE_TYPES_IMPLEMENTED.filter((t) => !REGISTRY_TYPES.includes(t));
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,8 +151,8 @@ export default function ChannelDialog({
                 onChange={(e) => setType(e.target.value)}
                 className={`mt-1 ${field}`}
               >
-                {CRAWL_SOURCE_TYPES_IMPLEMENTED.map((t) => (
-                  <option key={t} value={t}>
+                {typeChoices.map((t) => (
+                  <option key={t} value={t} disabled={REGISTRY_TYPES.includes(t)}>
                     {TYPE_LABELS[t] ?? t}
                   </option>
                 ))}

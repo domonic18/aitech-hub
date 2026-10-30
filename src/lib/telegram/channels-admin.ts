@@ -11,11 +11,14 @@ import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 import { CRAWL_SOURCE_TYPE_PRICING } from "../collect/constants";
+import { sortVendorItems } from "../insight/vendor/parse";
+import { fetchVendorList, resolveVendorDef } from "../insight/vendor/registry";
 import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPE_VENDOR,
 } from "../collect/constants";
 
 /** 视为凭证的 config 键(读侧脱敏 + 写侧空串清除) */
@@ -135,7 +138,20 @@ function mergeConfig(existing: unknown, token: string | undefined): Record<strin
   return { ...base, token };
 }
 
+/** 注册表渠道(牌价/厂商)由 worker 启动种子登记,config 里的 *Key 是路由锚:
+ * 手工新建或改类型出来的行每轮必抛「key 未注册」,台账永久刷红。只拦类型
+ * 变更动作——已有行的 URL/周期/启停仍可编辑。 */
+function assertNotRegistryType(type: string): void {
+  if (type === CRAWL_SOURCE_TYPE_PRICING || type === CRAWL_SOURCE_TYPE_VENDOR) {
+    throw new ChannelAdminError(
+      "not_supported",
+      "牌价/厂商渠道由系统注册表登记(worker 启动同步),不支持手工新建或改类型",
+    );
+  }
+}
+
 export async function createChannel(input: ChannelInput): Promise<{ id: number }> {
+  assertNotRegistryType(input.type);
   const { token, ...data } = input;
   const config = mergeConfig(null, token);
   try {
@@ -169,6 +185,12 @@ export async function createChannel(input: ChannelInput): Promise<{ id: number }
 export async function updateChannel(id: number, input: ChannelInput): Promise<{ id: number }> {
   const existing = await prisma.crawlSource.findUnique({ where: { id } });
   if (!existing) throw new ChannelAdminError("not_found", "渠道不存在");
+  // 类型变更双闸:不能改成注册表类型;注册表类型行也不能改走(改走会脱离
+  // vendorKey 路由,且 worker 种子下轮会重建同名行)。沿用原类型编辑不受限
+  if (input.type !== existing.type) {
+    assertNotRegistryType(input.type);
+    assertNotRegistryType(existing.type);
+  }
   const { token, ...data } = input;
   // 换端点/换类型不继承旧失败计数(新目标从健康起步)
   const targetChanged = data.url !== existing.url || data.type !== existing.type;
@@ -255,9 +277,17 @@ export async function debugChannel(id: number): Promise<ChannelDebugResult> {
   if (src.type === CRAWL_SOURCE_TYPE_PRICING) {
     throw new ChannelAdminError("not_supported", "牌价渠道不支持试拉:请使用「立即采集」查看结果");
   }
+  // 厂商渠道(M58 批②)走注册表取数+解析只读试拉(不入抽取队列)
+  const vendorDef = src.type === CRAWL_SOURCE_TYPE_VENDOR ? resolveVendorDef(src.config) : null;
+  if (src.type === CRAWL_SOURCE_TYPE_VENDOR && vendorDef === null) {
+    throw new ChannelAdminError("not_supported", "厂商渠道 config.vendorKey 未注册");
+  }
   const started = Date.now();
   try {
-    const items = await fetchSourceItems(src.type, src.url, src.config);
+    const items =
+      vendorDef === null
+        ? await fetchSourceItems(src.type, src.url, src.config)
+        : sortVendorItems(vendorDef.parse(await fetchVendorList(vendorDef, src.url), src.url));
     logger.info({ event: "channel.debugged", channelId: src.id, name: src.name, ok: true });
     return {
       ok: true,
