@@ -138,9 +138,11 @@ export default async function DiscoveryJobsBoard(): Promise<React.ReactElement> 
             完整日志见 运行 · 采集日志 →
           </Link>
         </div>
-        <table className="w-full text-left text-[13px]">
+        {/* min-w + 前五列 nowrap:窄屏(<640)表格会被压成「任/务」竖排单字,
+            定最小宽后由外层 overflow-x-auto 横向滚动(2026-10-30 移动端验收) */}
+        <table className="w-full min-w-[640px] text-left text-[13px]">
           <thead>
-            <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
+            <tr className="border-b border-line bg-panel-2 text-xs whitespace-nowrap text-text-2">
               <th className="px-4 py-2.5 font-medium">任务</th>
               <th className="px-3 py-2.5 font-medium">触发</th>
               <th className="px-3 py-2.5 font-medium">状态</th>
@@ -154,22 +156,22 @@ export default async function DiscoveryJobsBoard(): Promise<React.ReactElement> 
               const meta = STATUS_META[r.status] ?? STATUS_META.success!;
               return (
                 <tr key={r.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
-                  <td className="px-4 py-2.5 text-text-1" title={r.jobKey}>
+                  <td className="px-4 py-2.5 whitespace-nowrap text-text-1" title={r.jobKey}>
                     {jobRunLabel(r.jobKey)}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
+                  <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap text-text-2">
                     {r.trigger === "cron" ? "cron" : "手动"}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
                     <span className={`inline-flex items-center gap-1.5 text-xs ${meta.cls}`}>
                       <i className={`inline-block h-1.5 w-1.5 rounded-full ${meta.dot}`} />
                       {meta.label}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
+                  <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap text-text-2">
                     {formatCnDateTime(r.startedAt).slice(5)}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
+                  <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap text-text-2">
                     {duration(r.durationMs)}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-text-2" title={r.error ?? undefined}>

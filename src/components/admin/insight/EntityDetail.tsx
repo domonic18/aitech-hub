@@ -27,7 +27,7 @@ import { formatTime } from "./shared";
 
 const VENDOR_NAME = new Map(VENDOR_DEFS.map((d) => [d.key, d.vendorName]));
 
-const badge = "rounded-sm px-1.5 py-0.5 font-mono text-[10.5px] whitespace-nowrap";
+const badge = "rounded-sm px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap";
 
 /** 同族实体 chip:展示名 + 事件数,点进详情 */
 function RelatedChip({ link }: { link: EntityLink }): React.ReactElement {
@@ -144,7 +144,7 @@ export default function EntityDetailView({
         }
       >
         {detail.events.length === 0 ? (
-          <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
+          <p className="px-3 py-8 text-center text-[13px] text-text-3">
             该实体暂无抽取事件(仅有关联信号)。
           </p>
         ) : (
@@ -167,14 +167,12 @@ export default function EntityDetailView({
                   href={e.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0 flex-1 text-[12.5px] font-medium hover:text-accent"
+                  className="min-w-0 flex-1 text-[13px] font-medium hover:text-accent"
                 >
                   {e.title}
                 </a>
                 {e.summary !== null && e.summary !== "" && (
-                  <p className="w-full pl-[92px] text-[11.5px] leading-5 text-text-2">
-                    {e.summary}
-                  </p>
+                  <p className="w-full pl-[92px] text-[12px] leading-5 text-text-2">{e.summary}</p>
                 )}
               </li>
             ))}
@@ -190,7 +188,7 @@ export default function EntityDetailView({
         }
       >
         {detail.signals.length === 0 ? (
-          <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
+          <p className="px-3 py-8 text-center text-[13px] text-text-3">
             暂无关联信号——该实体的事件抽取完成但原文未入信号池,或信号已越过展示窗。
           </p>
         ) : (

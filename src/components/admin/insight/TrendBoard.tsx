@@ -23,10 +23,12 @@ function TierCol({ tier, rows }: { tier: TrendTier; rows: ClusterTrendRow[] }): 
   return (
     <div className="min-w-0 rounded-sm border border-line bg-panel-2/40 p-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-[11.5px] font-semibold">{TREND_TIER_LABELS[tier]}</span>
+        {/* 栏头档:表头级(与各表 thead 同档 12)而非行标题档,避免与下方
+            13px 簇名同尺寸失层次(M60 字号收敛) */}
+        <span className="text-[12px] font-semibold">{TREND_TIER_LABELS[tier]}</span>
         <span className="font-mono text-[10px] text-text-3">{rows.length}</span>
       </div>
-      <p className="mt-0.5 text-[10px] leading-4 text-text-3">{COL_HINT[tier]}</p>
+      <p className="mt-0.5 text-[11px] leading-4 text-text-3">{COL_HINT[tier]}</p>
       <div className="mt-1.5 flex flex-col gap-1">
         {rows.slice(0, 8).map((r) => (
           <Link
@@ -36,17 +38,17 @@ function TierCol({ tier, rows }: { tier: TrendTier; rows: ClusterTrendRow[] }): 
             className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-panel-2"
           >
             <span
-              className={`shrink-0 rounded-sm px-1 font-mono text-[10px] leading-4 ${
+              className={`shrink-0 rounded-sm px-1 font-mono text-[11px] leading-4 ${
                 r.kind === "hot" ? "bg-amber/12 text-amber-hi" : "bg-accent/12 text-accent"
               }`}
             >
               {r.kind === "hot" ? "热" : "痛"}
             </span>
             {r.label ? (
-              <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-1">{r.label}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-text-1">{r.label}</span>
             ) : (
               <span
-                className="min-w-0 flex-1 truncate text-[11.5px] text-text-3 italic"
+                className="min-w-0 flex-1 truncate text-[13px] text-text-3 italic"
                 title={`待打标 · 信号样本:${r.sample ?? "—"}(成员 ≥${LABEL_MIN_MEMBERS} 后进入打标队列)`}
               >
                 待打标

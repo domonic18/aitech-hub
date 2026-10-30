@@ -59,16 +59,16 @@ function EntityRowView({ row }: { row: EntityRow }): React.ReactElement {
     <tr className="border-b border-line last:border-b-0 hover:bg-panel-2">
       <td className="px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          <Link href={entityHref(row.key)} className="text-[12.5px] text-text-1 hover:text-accent">
+          <Link href={entityHref(row.key)} className="text-[13px] text-text-1 hover:text-accent">
             {row.displayName}
           </Link>
-          <span className="truncate font-mono text-[10.5px] text-text-3" title={row.key}>
+          <span className="truncate font-mono text-[11px] text-text-3" title={row.key}>
             {row.key}
           </span>
         </div>
       </td>
       <td className="px-2 py-2">
-        <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-text-2">
+        <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-text-2">
           {row.entityType === ""
             ? "—"
             : (ENTITY_TYPE_LABELS[row.entityType as keyof typeof ENTITY_TYPE_LABELS] ??
@@ -85,7 +85,7 @@ function EntityRowView({ row }: { row: EntityRow }): React.ReactElement {
       <td className="px-2 py-2">
         <div className="flex items-baseline gap-2">
           {row.latestEventType !== "" && (
-            <span className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-accent">
+            <span className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-accent">
               {EVENT_TYPE_LABELS[row.latestEventType as EntityEventType] ?? row.latestEventType}
             </span>
           )}
@@ -119,12 +119,12 @@ function SectionHeader({ section }: { section: EntitySection }): React.ReactElem
         <span className="flex items-baseline gap-2">
           <Link
             href={entityHref(section.rootKey)}
-            className="text-[12.5px] font-medium text-text-1 hover:text-accent"
+            className="text-[13px] font-medium text-text-1 hover:text-accent"
           >
             {section.rootName}
           </Link>
-          <span className="font-mono text-[10.5px] text-text-3">{section.rootKey}</span>
-          <span className="font-mono text-[10.5px] text-text-3">
+          <span className="font-mono text-[11px] text-text-3">{section.rootKey}</span>
+          <span className="font-mono text-[11px] text-text-3">
             {section.rows.length} 个实体 · 事件 {section.eventCount}
           </span>
         </span>
@@ -178,7 +178,7 @@ export default function EntitiesBoard({
             {ENTITY_TYPE_LABELS[t]}
           </Chip>
         ))}
-        <span className="ml-1 text-[10px] text-text-3">时间</span>
+        <span className="ml-1 text-[11px] text-text-3">时间</span>
         <Chip on={filters.windowDays === undefined} href={swap({ windowDays: undefined })}>
           全部
         </Chip>
@@ -225,11 +225,11 @@ export default function EntitiesBoard({
       </div>
 
       {data.sections.length === 0 ? (
-        <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
+        <p className="px-3 py-8 text-center text-[13px] text-text-3">
           暂无实体——厂商官网采集后由 LLM 抽取事件生成;渠道状态见 数据中心·源管理·采集渠道。
         </p>
       ) : (
-        <table className="w-full table-fixed text-left text-[12.5px]">
+        <table className="w-full table-fixed text-left text-[13px]">
           <thead>
             <tr className="border-b border-line text-[11px] text-text-3">
               <th className="w-[26%] px-3 py-1.5 font-normal">实体</th>

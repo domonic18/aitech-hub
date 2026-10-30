@@ -76,7 +76,7 @@ export default function SignalsBoard({
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-1 border-b border-line px-2 py-2">
-        <span className="text-[10px] text-text-3">地域</span>
+        <span className="text-[11px] text-text-3">地域</span>
         <Chip on={filters.region === undefined} href={swap({ region: undefined })}>
           全部
         </Chip>
@@ -85,7 +85,7 @@ export default function SignalsBoard({
             {REGION_LABELS[r]}
           </Chip>
         ))}
-        <span className="ml-1 text-[10px] text-text-3">介质</span>
+        <span className="ml-1 text-[11px] text-text-3">介质</span>
         <Chip on={filters.medium === undefined} href={swap({ medium: undefined })}>
           全部
         </Chip>
@@ -94,7 +94,13 @@ export default function SignalsBoard({
             {MEDIUM_LABELS[m]}
           </Chip>
         ))}
-        <form method="GET" action={SIGNALS_PATH} className="ml-auto flex items-center gap-1.5">
+        {/* 窄屏(≤360)两个原生日期框 + 查询占 ~300px,面板内只剩 ~296px →
+            整条溢出面板;窄屏独占一行并允许日期框收缩(2026-10-30 验收) */}
+        <form
+          method="GET"
+          action={SIGNALS_PATH}
+          className="ml-auto flex w-full flex-wrap items-center gap-1.5 sm:w-auto"
+        >
           {/* 跨提交保真:当前源/地域/介质随日期表单提交(页码回第 1 页) */}
           {filters.source !== undefined && (
             <input type="hidden" name="source" value={filters.source} />
@@ -139,7 +145,7 @@ export default function SignalsBoard({
       </div>
 
       {data.rows.length === 0 ? (
-        <p className="px-3 py-8 text-center text-[12.5px] text-text-3">
+        <p className="px-3 py-8 text-center text-[13px] text-text-3">
           {filters.source === undefined ? (
             <>
               该范围内暂无信号:信号由外部热榜/社区源小时级采集产生——去

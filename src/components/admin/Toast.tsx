@@ -47,7 +47,8 @@ export default function ToastProvider({
   return (
     <ToastCtx.Provider value={{ push }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-80 flex-col gap-2">
+      {/* max-w:320px 视口下定宽 w-80 超出 right-4 边距把整页撑出横向滚动 */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
         {items.map((t) => (
           <div
             key={t.id}

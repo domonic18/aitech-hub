@@ -26,8 +26,9 @@ export default function InsightTopTabs(): React.ReactElement | null {
     (t) => pathname === t.href || pathname === t.base || pathname.startsWith(`${t.base}/`),
   ).sort((a, b) => b.base.length - a.base.length)[0];
   if (active === undefined) return null;
+  // 窄屏(≤320)五个 chip 挤成一字一行 → 横向滚动条,单个 chip 不再压缩折行
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 py-0.5">
       {ITEMS.map((t) => {
         const on = t.label === active.label;
         return (
@@ -35,7 +36,7 @@ export default function InsightTopTabs(): React.ReactElement | null {
             key={t.label}
             href={t.href}
             aria-current={on ? "page" : undefined}
-            className={`rounded-sm px-3 py-1.5 text-[12.5px] ${
+            className={`shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1.5 text-[13px] sm:px-3 ${
               on
                 ? "bg-accent-dim font-semibold text-accent"
                 : "bg-panel-2 text-text-2 hover:text-text-1"

@@ -29,6 +29,9 @@ const SEG_LABEL: Record<string, string> = {
   run: "运行",
   insight: "洞察中心", // IA v5:洞察独立域 /admin/insight
   discovery: "发现", // IA v5:洞察 › 发现(旧独立发现中心已 308)
+  signals: "信号", // 洞察 › 信号(M59 批A);缺省会裸出 "signa…" 截断
+  events: "事件", // 洞察 › 事件(M58 批②)
+  entities: "实体", // 洞察 › 实体(M60 实体层)
   mine: "挖掘",
   users: "用户管理",
   feedback: "反馈管理",
