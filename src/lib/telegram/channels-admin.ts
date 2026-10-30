@@ -12,6 +12,8 @@ import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 import { sortVendorItems } from "../insight/vendor/parse";
 import { fetchVendorList, resolveVendorDef, type VendorDef } from "../insight/vendor/registry";
+import { previewCommunityItems } from "../insight/community/crawl";
+import { resolveCommunityDef } from "../insight/community/registry";
 import {
   fetchLeaderboardList,
   resolveLeaderboardDef,
@@ -21,6 +23,7 @@ import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
+  CRAWL_SOURCE_TYPE_COMMUNITY,
   CRAWL_SOURCE_TYPE_LEADERBOARD,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
@@ -45,6 +48,17 @@ export function maskConfig(config: unknown): Record<string, string> | null {
     out[k] = SECRET_KEY_SET.has(k) && typeof v === "string" ? maskSecret(v) : String(v ?? "");
   }
   return out;
+}
+
+/** 编辑弹窗用结构化 JSON 投影:凭证键整体剔除(凭证走 token 通道),
+ * 其余键保持原类型(数组/布尔不被 String() 拍平);无公开键返回空串 */
+export function publicConfigJson(config: unknown): string {
+  if (config == null || typeof config !== "object") return "";
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(config as Record<string, unknown>)) {
+    if (!SECRET_KEY_SET.has(k)) out[k] = v;
+  }
+  return Object.keys(out).length === 0 ? "" : JSON.stringify(out, null, 2);
 }
 
 /** URL 展示防御:query 里凭证键的值替换 ****(防把带 token 的完整 URL 粘进端点字段) */
@@ -78,7 +92,11 @@ export class ChannelAdminError extends Error {
   }
 }
 
-/** 渠道表单(创建/编辑共用;token 为凭证写侧,不入库明文日志) */
+/** 扩展配置体积上限(字符;正常 repos/seeds 数组远小于此) */
+export const CHANNEL_CONFIG_MAX_CHARS = 4000;
+
+/** 渠道表单(创建/编辑共用;token 为凭证写侧,不入库明文日志)。
+ * config = 扩展配置(非凭证键;M58 批④ 社区源 repos/seeds、注册表 *Key 经此维护) */
 export const ChannelInputSchema = z.object({
   name: z.string().trim().min(1).max(100),
   type: z.enum(CRAWL_SOURCE_TYPES_IMPLEMENTED),
@@ -90,6 +108,23 @@ export const ChannelInputSchema = z.object({
   remark: z.string().trim().max(200).nullable().optional(),
   enabled: z.boolean().optional(),
   token: z.string().max(200).optional(),
+  config: z
+    .record(z.string(), z.unknown())
+    .superRefine((cfg, ctx) => {
+      const size = JSON.stringify(cfg).length;
+      if (size > CHANNEL_CONFIG_MAX_CHARS) {
+        ctx.addIssue({
+          code: "custom",
+          message: `扩展配置超过 ${CHANNEL_CONFIG_MAX_CHARS} 字符上限`,
+        });
+      }
+      for (const key of Object.keys(cfg)) {
+        if (SECRET_KEY_SET.has(key)) {
+          ctx.addIssue({ code: "custom", message: `凭证键 ${key} 请走「凭证」字段` });
+        }
+      }
+    })
+    .optional(),
 });
 export type ChannelInput = z.infer<typeof ChannelInputSchema>;
 
@@ -124,46 +159,62 @@ export async function listChannelsAdmin() {
     status: c.status,
     remark: c.remark,
     maskedConfig: maskConfig(c.config),
+    // 编辑弹窗「扩展配置」预填(凭证键剔除;空串=无公开配置)
+    configJson: publicConfigJson(c.config),
     count24h: count24h.get(c.id) ?? 0,
     createdAt: c.createdAt,
   }));
 }
 export type ChannelRow = Awaited<ReturnType<typeof listChannelsAdmin>>[number];
 
-/** config 写侧合并:undefined 沿用;空串仅清凭证键保留其它;非空覆盖 */
-function mergeConfig(existing: unknown, token: string | undefined): Record<string, unknown> | null {
-  if (token === undefined) return null;
+/** config 写侧合并:凭证三态(token undefined 沿用/空串清除/非空覆盖);
+ * 扩展配置 patch 给定时整体替换非凭证键(表单 textarea 即全量视图),
+ * 凭证键始终保留既有值,不经扩展配置通道覆盖 */
+function mergeConfig(
+  existing: unknown,
+  token: string | undefined,
+  patch?: Record<string, unknown>,
+): Record<string, unknown> | null {
+  if (token === undefined && patch === undefined) return null;
   const base =
     typeof existing === "object" && existing !== null
       ? { ...(existing as Record<string, unknown>) }
       : {};
+  if (patch !== undefined) {
+    for (const k of Object.keys(base)) {
+      if (!SECRET_KEY_SET.has(k)) delete base[k];
+    }
+    Object.assign(base, patch);
+  }
   if (token === "") {
     for (const k of SECRET_CONFIG_KEYS) delete base[k];
-    return base;
+  } else if (token !== undefined) {
+    base.token = token;
   }
-  return { ...base, token };
+  return base;
 }
 
-/** 注册表渠道(牌价/厂商/榜单)由 worker 启动种子登记,config 里的 *Key 是路由锚:
- * 手工新建或改类型出来的行每轮必抛「key 未注册」,台账永久刷红。只拦类型
- * 变更动作——已有行的 URL/周期/启停仍可编辑。 */
+/** 注册表渠道(牌价/厂商/榜单/社区)由 worker 启动种子登记,config 里的 *Key
+ * 是路由锚:手工新建或改类型出来的行每轮必抛「key 未注册」,台账永久刷红。
+ * 只拦类型变更动作——已有行的 URL/周期/启停/扩展配置仍可编辑。 */
 function assertNotRegistryType(type: string): void {
   if (
     type === CRAWL_SOURCE_TYPE_PRICING ||
     type === CRAWL_SOURCE_TYPE_VENDOR ||
-    type === CRAWL_SOURCE_TYPE_LEADERBOARD
+    type === CRAWL_SOURCE_TYPE_LEADERBOARD ||
+    type === CRAWL_SOURCE_TYPE_COMMUNITY
   ) {
     throw new ChannelAdminError(
       "not_supported",
-      "牌价/厂商/榜单渠道由系统注册表登记(worker 启动同步),不支持手工新建或改类型",
+      "牌价/厂商/榜单/社区渠道由系统注册表登记(worker 启动同步),不支持手工新建或改类型",
     );
   }
 }
 
 export async function createChannel(input: ChannelInput): Promise<{ id: number }> {
   assertNotRegistryType(input.type);
-  const { token, ...data } = input;
-  const config = mergeConfig(null, token);
+  const { token, config: configPatch, ...data } = input;
+  const config = mergeConfig(null, token, configPatch);
   try {
     const created = await prisma.crawlSource.create({
       data: {
@@ -201,10 +252,10 @@ export async function updateChannel(id: number, input: ChannelInput): Promise<{ 
     assertNotRegistryType(input.type);
     assertNotRegistryType(existing.type);
   }
-  const { token, ...data } = input;
+  const { token, config: configPatch, ...data } = input;
   // 换端点/换类型不继承旧失败计数(新目标从健康起步)
   const targetChanged = data.url !== existing.url || data.type !== existing.type;
-  const config = mergeConfig(existing.config, token);
+  const config = mergeConfig(existing.config, token, configPatch);
   const updated = await prisma.crawlSource.update({
     where: { id },
     data: {
@@ -292,6 +343,9 @@ async function fetchDebugItems(
       .parse(raw, src.url)
       .map((r) => ({ title: r.entityName, url: r.url, publishedAt: null }));
   }
+  if (src.type === CRAWL_SOURCE_TYPE_COMMUNITY) {
+    return previewCommunityItems(src);
+  }
   return fetchSourceItems(src.type, src.url, src.config);
 }
 
@@ -314,6 +368,9 @@ export async function debugChannel(id: number): Promise<ChannelDebugResult> {
     src.type === CRAWL_SOURCE_TYPE_LEADERBOARD ? resolveLeaderboardDef(src.config) : null;
   if (src.type === CRAWL_SOURCE_TYPE_LEADERBOARD && boardDef === null) {
     throw new ChannelAdminError("not_supported", "榜单渠道 config.boardKey 未注册");
+  }
+  if (src.type === CRAWL_SOURCE_TYPE_COMMUNITY && resolveCommunityDef(src.config) === null) {
+    throw new ChannelAdminError("not_supported", "社区渠道 config.communityKey 未注册");
   }
   const started = Date.now();
   try {

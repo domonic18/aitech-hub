@@ -32,6 +32,11 @@ export const SOURCE_COLORS: Record<InsightSource, string> = {
   "vendor-deepseek": "bg-amber",
   "vendor-qwen": "bg-text-2",
   "vendor-kimi": "bg-text-3",
+  // 社区需求语料四源(M58 批④;同上复用令牌色)
+  "community-hn": "bg-amber",
+  "community-v2ex": "bg-green",
+  "community-baidu": "bg-blue",
+  "community-oss": "bg-accent",
 };
 
 export const COVERAGE_LABELS: Record<string, string> = {

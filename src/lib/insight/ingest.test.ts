@@ -107,8 +107,12 @@ describe("ingestInsightSignal", () => {
     );
   });
 
-  it("在役源逐一映射介质(评论/电报AI/热榜三源/厂商六源;方案 §2 五介质口径)", async () => {
+  it("在役源逐一映射介质(评论/电报AI/热榜三源/厂商六源/社区四源;方案 §2 五介质口径)", async () => {
     expect([...INSIGHT_SOURCES_ENABLED].sort()).toEqual([
+      "community-baidu",
+      "community-hn",
+      "community-oss",
+      "community-v2ex",
       "hot-baidu",
       "hot-bilibili",
       "hot-zhihu",
