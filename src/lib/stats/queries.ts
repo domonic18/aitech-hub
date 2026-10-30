@@ -11,7 +11,7 @@
  */
 import { prisma } from "@/lib/db";
 import { parsePostSegment } from "@/lib/content/post-path";
-import { statsDay } from "@/lib/datetime";
+import { DAY_MS, statsDay } from "@/lib/datetime";
 
 import type { SourceClass } from "./classify";
 
@@ -69,7 +69,7 @@ export interface HotPageRow {
 
 /** 相对今日偏移 N 天的统计日(北京时区),N 为负表示过去(@internal 姊妹查询模块同用) */
 export function dayStr(offsetDays: number): string {
-  return statsDay(new Date(Date.now() - offsetDays * 86_400_000));
+  return statsDay(new Date(Date.now() - offsetDays * DAY_MS));
 }
 
 /** @db.Date 列的 Prisma 比较参数:UTC 午夜即该日(@internal 姊妹查询模块同用) */

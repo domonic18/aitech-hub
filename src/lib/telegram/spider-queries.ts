@@ -6,7 +6,7 @@
 import { AI_PURPOSE_INTERPRET, AI_PURPOSE_SUMMARIZE, type AiTaskRole } from "../ai/constants";
 import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
-import { formatCnDate } from "../datetime";
+import { DAY_MS, formatCnDate } from "../datetime";
 import {
   getQueue,
   QUEUE_CRAWLER,
@@ -203,7 +203,7 @@ export async function countTodayAiDone(mediaType: TelegramMediaType): Promise<nu
 /** 采集日历:近 N 天入库量(含 hidden,按 created_at 北京时区),缺日补零 */
 export async function getIngestCalendar(days = 14): Promise<Array<{ day: string; count: number }>> {
   const today = formatCnDate(new Date());
-  const fromDay = formatCnDate(new Date(Date.now() - (days - 1) * 86_400_000));
+  const fromDay = formatCnDate(new Date(Date.now() - (days - 1) * DAY_MS));
   const rows = await prisma.$queryRaw<Array<{ day: string; count: bigint }>>`
     WITH d AS (
       SELECT generate_series(${fromDay}::date, ${today}::date, interval '1 day')::date AS day

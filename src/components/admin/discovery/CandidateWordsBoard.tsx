@@ -15,7 +15,7 @@ import {
   WORD_CANDIDATE_SOURCES,
   type CandidateWordSegment,
 } from "@/lib/discovery/candidate-words";
-import { formatCnDate, formatCnTime } from "@/lib/datetime";
+import { DAY_MS, formatCnDate, formatCnTime } from "@/lib/datetime";
 
 const PAGE_SIZE = 8; // 与 lib PAGE_SIZE 对齐(板「本页 8 条」)
 
@@ -47,7 +47,7 @@ function Kpi({
 function relDay(at: Date): string {
   const day = formatCnDate(at);
   if (day === formatCnDate(new Date())) return `今天 ${formatCnTime(at)}`;
-  if (day === formatCnDate(new Date(Date.now() - 86_400_000))) return `昨天 ${formatCnTime(at)}`;
+  if (day === formatCnDate(new Date(Date.now() - DAY_MS))) return `昨天 ${formatCnTime(at)}`;
   return day.slice(5);
 }
 

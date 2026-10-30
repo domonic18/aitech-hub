@@ -6,16 +6,13 @@
  * 日界与统计口径全站统一 Asia/Shanghai(datetime.ts 红线)。
  */
 import { prisma } from "../db";
-import { formatCnDate } from "../datetime";
+import { DAY_MS, formatCnDate } from "../datetime";
 import { ASR_CONFIG_ID } from "./asr-admin";
 import { AI_USAGE_ROLE_ASR } from "./usage-log";
 
 const COVER_ROLE = "cover";
 /** 明细行趋势点数(原型 30 日趋势 spark) */
 const SPARK_BUCKETS = 14;
-/** CN 日毫秒(中国无夏令时,固定偏移安全) */
-const CN_DAY_MS = 86_400_000;
-
 /** 台账行读侧投影(findMany select 与聚合入参共用) */
 export interface UsageRowLike {
   role: string;
@@ -83,7 +80,7 @@ export interface UsageOverview {
 
 /** 窗口起点:含今天在内的 days 个 CN 日,起点为最旧一天的 CN 零点(UTC 即刻) */
 export function usageWindowSince(now: Date, days: number): Date {
-  const oldestCn = formatCnDate(new Date(now.getTime() - (days - 1) * CN_DAY_MS));
+  const oldestCn = formatCnDate(new Date(now.getTime() - (days - 1) * DAY_MS));
   return new Date(Date.parse(`${oldestCn}T00:00:00+08:00`));
 }
 
@@ -143,7 +140,7 @@ export function aggregateUsage(
   // CN 日桶(含今天,共 days 个)
   const dayKeys: string[] = [];
   for (let i = days - 1; i >= 0; i--) {
-    dayKeys.push(formatCnDate(new Date(now.getTime() - i * CN_DAY_MS)));
+    dayKeys.push(formatCnDate(new Date(now.getTime() - i * DAY_MS)));
   }
   const dayMap = new Map<string, UsageDayBucket>(
     dayKeys.map((d) => [d, { date: d, tokens: 0, cost: 0 }]),
@@ -225,7 +222,7 @@ export function aggregateUsage(
 export async function getUsageOverview(days: 7 | 30 | 90): Promise<UsageOverview> {
   const now = new Date();
   const since = usageWindowSince(now, days);
-  const prevSince = new Date(since.getTime() - days * CN_DAY_MS);
+  const prevSince = new Date(since.getTime() - days * DAY_MS);
 
   const [rows, prev, models, asr] = await Promise.all([
     prisma.aiUsageLog.findMany({

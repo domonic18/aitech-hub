@@ -74,6 +74,11 @@ export const HOTLIST_MAX_ITEMS = 50;
 export const INSIGHT_SENTIMENTS = ["positive", "neutral", "negative", "mixed"] as const;
 export type InsightSentiment = (typeof INSIGHT_SENTIMENTS)[number];
 
+/** 情绪值收窄守卫(打标契约校验与 Jev 判定采信共用,免两处手抄字面量) */
+export function isInsightSentiment(value: unknown): value is InsightSentiment {
+  return typeof value === "string" && (INSIGHT_SENTIMENTS as readonly string[]).includes(value);
+}
+
 export const SENTIMENT_LABELS: Record<InsightSentiment, string> = {
   positive: "正面",
   neutral: "中性",

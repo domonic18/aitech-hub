@@ -7,7 +7,7 @@
  * 延迟 30s + 条间 3-4.2s;单窗失败按词留痕不弃整轮。
  */
 import { logger } from "../logger";
-import { statsDay } from "../datetime";
+import { DAY_MS, statsDay } from "../datetime";
 
 import { biliCard, biliSearchVideo } from "./bili/api";
 import { BiliRiskControlError } from "./bili/errors";
@@ -70,7 +70,7 @@ async function searchWindow(
   throw new Error("unreachable");
 }
 
-const DAY_SEC = 86_400;
+const DAY_SEC = DAY_MS / 1000;
 
 export async function runBiliDiscovery(cap: number): Promise<BiliOutcome> {
   const now = new Date();

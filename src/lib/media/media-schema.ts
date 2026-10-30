@@ -27,9 +27,6 @@ export const MEDIA_LIMITS = {
   maxFilenameChars: 255,
 } as const;
 
-/** 一天毫秒数(近 30 天统计 / 回收站到期换算共用) */
-export const DAY_MS = 24 * 3600 * 1000;
-
 /** POST /api/media 的 multipart 文件字段名(服务端与 upload-client 同源,评审 W4) */
 export const UPLOAD_FIELD = "file";
 

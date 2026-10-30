@@ -3,7 +3,7 @@
  * 独立名次、峰值锚点新高才动、fading 兜底、覆盖度计数。 */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/datetime", () => ({ statsDay: () => "2026-10-24" }));
+vi.mock("@/lib/datetime", () => ({ DAY_MS: 86_400_000, statsDay: () => "2026-10-24" }));
 
 const resolveAiModel = vi.fn();
 const countTodayRoleUsage = vi.fn();

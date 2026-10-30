@@ -10,7 +10,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { DAY_MS, cnDayKeyRange, statsDay } from "@/lib/datetime";
+import { DAY_MS, cnDayKeyRange, startOfCnDay, statsDay } from "@/lib/datetime";
 
 import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 
@@ -31,7 +31,7 @@ export interface InsightHourCell {
 
 /** 近 7 日起点(北京今日零点往前 6 天,与 admin.ts 同口径) */
 function weekStart(now: Date = new Date()): Date {
-  const start = new Date(`${statsDay(now)}T00:00:00+08:00`);
+  const start = startOfCnDay(now);
   return new Date(start.getTime() - 6 * DAY_MS);
 }
 

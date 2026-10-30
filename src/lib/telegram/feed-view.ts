@@ -3,7 +3,7 @@
  * 时间口径统一北京时区(与 lib/datetime 同源);条目形态是前台两个消费端
  * (/telegram 时间轴、首页 LIVE 带)与轮询 API 的契约。
  */
-import { formatCnTime } from "../datetime";
+import { DAY_MS, formatCnTime } from "../datetime";
 
 import { VIDEO_PLATFORM_LABELS } from "./constants";
 
@@ -173,8 +173,8 @@ export function timeAgo(iso: string, now = Date.now()): string {
   const diff = now - new Date(iso).getTime();
   if (diff < 60_000) return "刚刚";
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
+  if (diff < DAY_MS) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  return `${Math.floor(diff / DAY_MS)} 天前`;
 }
 
 /** 30 分钟内视为新讯(LIVE 带/时间轴 NEW 徽章;基准 aiRanAt,M15 批①) */
@@ -228,7 +228,7 @@ export function dayLabel(iso: string, now = Date.now()): string {
   const day = new Date(iso).toLocaleDateString("sv-SE", tz);
   const today = new Date(now).toLocaleDateString("sv-SE", tz);
   if (day === today) return "今天";
-  const yesterday = new Date(now - 86_400_000).toLocaleDateString("sv-SE", tz);
+  const yesterday = new Date(now - DAY_MS).toLocaleDateString("sv-SE", tz);
   if (day === yesterday) return "昨天";
   return day;
 }

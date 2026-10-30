@@ -12,16 +12,20 @@ import Link from "next/link";
 
 import TriggerButtons from "@/components/admin/discovery/TriggerButtons";
 import HotBoard from "@/components/admin/insight/HotBoard";
+import HotBoardDayNav from "@/components/admin/insight/HotBoardDayNav";
 import OverviewHero from "@/components/admin/insight/OverviewHero";
 import OverviewYield from "@/components/admin/insight/OverviewYield";
 import PainCardGrid from "@/components/admin/insight/PainCardGrid";
+import { PanelCard } from "@/components/admin/insight/PanelCard";
 import RadarTable from "@/components/admin/insight/RadarTable";
+import SignalsSection from "@/components/admin/insight/SignalsSection";
 import SourceMatrix from "@/components/admin/insight/SourceMatrix";
 import TrendBoard from "@/components/admin/insight/TrendBoard";
-import SignalsSection from "@/components/admin/insight/SignalsSection";
 import {
   DOMAIN_ALL,
   WINDOWS,
+  chipOff,
+  chipOn,
   insightHref,
   resolveDomainView,
   shortSource,
@@ -48,43 +52,6 @@ export const dynamic = "force-dynamic";
 const ENABLED_SOURCES = [...INSIGHT_SOURCES_ENABLED] as InsightSource[];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
-const chipOn = `${chip} bg-accent-dim text-accent`;
-const chipOff = `${chip} bg-panel-2 text-text-2 hover:text-text-1`;
-
-/** 卡壳(row2/row3 四卡统一:标题 + 一句话读法 + 页签槽(热榜渠道页签位,
- * F11 v2 板定紧随标题)+ 右侧 extra + 内容;id 供页头控件锚点跳滚) */
-function Card({
-  title,
-  hint,
-  tabs,
-  extra,
-  id,
-  children,
-}: {
-  title: string;
-  hint: string;
-  tabs?: React.ReactNode;
-  extra?: React.ReactNode;
-  id?: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    // min-w-0:grid item 自动最小尺寸会被 truncate(nowrap)标题的 min-content
-    // 顶爆——移动端视口下热榜长标题把隐式轨道撑到 877px 整页横滚(M48 验收反馈),
-    // 打断 min-content 传播链让 truncate 在视口内真正生效
-    <div id={id} className="min-w-0 rounded-md border border-line bg-panel">
-      <div className="flex flex-wrap items-baseline gap-2 border-b border-line px-4 py-2.5">
-        <span className="text-sm font-semibold">{title}</span>
-        <span className="text-[11px] text-text-3">{hint}</span>
-        {tabs !== undefined && <span className="flex flex-wrap items-center gap-1">{tabs}</span>}
-        {extra !== undefined && <span className="ml-auto flex items-center gap-1.5">{extra}</span>}
-      </div>
-      <div className="px-2 py-2">{children}</div>
-    </div>
-  );
-}
 
 export default async function AdminInsightPage({
   searchParams,
@@ -209,32 +176,32 @@ export default async function AdminInsightPage({
       </div>
       <OverviewHero cloud={cloud} totalSignals={overview.total} hotAvg={hotAvg} windowDays={w} />
       <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Card
+        <PanelCard
           title="机会分趋势"
           hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级(M52)"
         >
           <RadarTable clusters={hotClusters} trends={trendMap} />
-        </Card>
-        <Card title="痛点榜" hint="按信号聚合 · 空白标红=选题机会">
+        </PanelCard>
+        <PanelCard title="痛点榜" hint="按信号聚合 · 空白标红=选题机会">
           <PainCardGrid clusters={painClusters} />
-        </Card>
+        </PanelCard>
       </div>
-      <Card
+      <PanelCard
         id="source-matrix"
         title="源×簇覆盖矩阵"
         hint="内容空白 = 热源有需求 × 站内无痛点信号 · 一键转选题补覆盖"
       >
         <SourceMatrix matrix={matrix} />
-      </Card>
-      <Card
+      </PanelCard>
+      <PanelCard
         id="trend-board"
         title="跨窗对比"
         hint="近 7 天 vs 前 7 天在役源信号数 · 增长分五级 · 点击簇名进详情"
       >
         <TrendBoard rows={trends} />
-      </Card>
+      </PanelCard>
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Card
+        <PanelCard
           id="hot-board"
           title="热榜信号"
           hint="小时级拉取 · 位次/热度为各站原生口径,不跨源可比"
@@ -266,55 +233,10 @@ export default async function AdminInsightPage({
               </Link>
             </>
           }
-          extra={
-            <>
-              {params.day !== undefined && (
-                <Link
-                  href={insightHref(params, { day: undefined })}
-                  scroll={false}
-                  className={chipOn}
-                  title="回看模式:点击回最新榜面"
-                >
-                  回看 {params.day} ✕
-                </Link>
-              )}
-              <Link
-                href={insightHref(params, { day: shiftDay(params.day ?? today, -1) })}
-                scroll={false}
-                className={chipOff}
-                aria-label="前一天"
-              >
-                ‹
-              </Link>
-              {params.day !== undefined ? (
-                <Link
-                  href={insightHref(params, { day: undefined })}
-                  scroll={false}
-                  className={chipOn}
-                  title="回看模式:点击回最新榜面"
-                >
-                  {params.day}
-                </Link>
-              ) : (
-                <span className="font-mono text-[11px] text-text-2">最新</span>
-              )}
-              {params.day !== undefined && params.day < today ? (
-                <Link
-                  href={insightHref(params, { day: shiftDay(params.day, 1) })}
-                  scroll={false}
-                  className={chipOff}
-                  aria-label="后一天"
-                >
-                  ›
-                </Link>
-              ) : (
-                <span className={`${chip} opacity-40`}>›</span>
-              )}
-            </>
-          }
+          extra={<HotBoardDayNav params={params} today={today} />}
         >
           <HotBoard boards={boards} />
-        </Card>
+        </PanelCard>
         <OverviewYield />
       </div>
       {/* 信号明细默认折叠(板定):展开付筛选与 50 条原始信号 */}

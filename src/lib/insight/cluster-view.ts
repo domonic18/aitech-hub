@@ -7,11 +7,10 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { DAY_MS } from "@/lib/datetime";
 
 import { clusterMomentum, isAnomaly, type ClusterMomentum } from "./scoring";
 import { CLUSTER_TAKE_MAX } from "./constants";
-
-const DAY_MS = 86_400_000;
 
 export interface InsightClusterRow {
   id: string;

@@ -7,7 +7,7 @@
 import BloggerDialog from "@/components/admin/BloggerDialog";
 import BloggerRowOps from "@/components/admin/BloggerRowOps";
 import BloggerStatusCards from "@/components/admin/data/BloggerStatusCards";
-import { formatCnTime, startOfCnDay } from "@/lib/datetime";
+import { DAY_MS, formatCnTime, startOfCnDay } from "@/lib/datetime";
 import { videoRunningAccounts } from "@/lib/collect/crawler-runs";
 import { listBloggerVideoCounts, listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
 import {
@@ -32,7 +32,7 @@ function profileUrl(b: { platform: string; secUid: string }): string | null {
 function lastRunAtText(at: Date): string {
   const minutes = Math.floor((Date.now() - at.getTime()) / 60_000);
   if (minutes < 60) return `${Math.max(1, minutes)} 分钟前`;
-  const days = Math.round((startOfCnDay().getTime() - startOfCnDay(at).getTime()) / 86_400_000);
+  const days = Math.round((startOfCnDay().getTime() - startOfCnDay(at).getTime()) / DAY_MS);
   if (days <= 0) return `今天 ${formatCnTime(at)}`;
   if (days === 1) return `昨天 ${formatCnTime(at)}`;
   return formatCnDateShort(at);

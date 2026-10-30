@@ -16,7 +16,7 @@ import BatchActionBar from "@/components/admin/batch/BatchActionBar";
 import { RowCheckbox, SelectAllTh } from "@/components/admin/batch/SelectionCheckbox";
 import { useBatchAction } from "@/components/admin/batch/useBatchAction";
 import { useBatchSelection } from "@/components/admin/batch/useBatchSelection";
-import { formatCnDate, formatCnTime } from "@/lib/datetime";
+import { DAY_MS, formatCnDate, formatCnTime } from "@/lib/datetime";
 import type { KeywordAdminRow } from "@/lib/discovery/admin";
 import type { KeywordYield } from "@/lib/discovery/word-yield";
 import type { WordRelation } from "@/lib/discovery/word-relations";
@@ -32,7 +32,7 @@ function hitLabel(at: Date | null): string {
   const day = formatCnDate(at);
   const today = formatCnDate(new Date());
   if (day === today) return `今天 ${formatCnTime(at)}`;
-  const yesterday = formatCnDate(new Date(Date.now() - 86_400_000));
+  const yesterday = formatCnDate(new Date(Date.now() - DAY_MS));
   if (day === yesterday) return `昨天 ${formatCnTime(at)}`;
   return day.slice(5);
 }
