@@ -559,6 +559,30 @@ model CrawlSnapshot {
   @@map("crawl_snapshot")
 }
 
+/// 厂商事件(M58 批②):官方发布经 LLM 抽取的结构化事件,dedupeKey 幂等锚
+/// (sha1(source|canonical url|eventType|entityKey);较方案多加 entityKey,
+/// 避免同文同类型两实体(如两个模型齐发布)互相吞并)。vendor 落注册表 key
+/// (openai/anthropic/google/deepseek/qwen/kimi),展示名由界面映射。
+model EntityEvent {
+  id         BigInt   @id @default(autoincrement())
+  source     String   @db.VarChar(30) // 采集来源标识(vendor-<key>,与洞察 source 同口径)
+  vendor     String   @db.VarChar(30) // 厂商 key
+  entityType String   @map("entity_type") @db.VarChar(12) // model | product | org
+  entityKey  String   @map("entity_key") @db.VarChar(120) // 实体规范名(如 deepseek-v4)
+  eventType  String   @map("event_type") @db.VarChar(20) // release | price_change | open_source | funding | deprecation | benchmark_change
+  title      String   @db.VarChar(300)
+  summary    String?  @db.VarChar(1000)
+  url        String   @db.VarChar(500) // 原文链接(后台标题外链)
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6) // 事件发生时间(非采集时间)
+  dedupeKey  String   @unique(map: "uq_entity_event_dedupe") @map("dedupe_key") @db.Char(40)
+  meta       Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([vendor, occurredAt(sort: Desc)], map: "idx_entity_event_vendor_recent")
+  @@index([eventType, occurredAt(sort: Desc)], map: "idx_entity_event_type_recent")
+  @@map("entity_event")
+}
+
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
 model Telegram {
   id              BigInt    @id @default(autoincrement())
