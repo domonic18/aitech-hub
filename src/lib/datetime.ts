@@ -37,6 +37,18 @@ export function startOfCnDay(now: Date = new Date()): Date {
   return new Date(`${formatCnDate(now)}T00:00:00+08:00`);
 }
 
+/**
+ * URL/表单来的 YYYY-MM-DD 是否**真实存在**的日历日:2026-13-45 折成 Invalid Date
+ * 会让查询直接 500,2026-02-30 会被 Date 静默进位成 3-2 筛出别的范围——两者都要在
+ * 参数钳制处丢弃(2026-10-30 信号页/事件页实测)。
+ */
+export function isRealDay(v: string | undefined): v is string {
+  if (v === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /** 相对时间(F16 渠道卡「最近同步:N 分钟/小时/天前」;<1 分钟显「刚刚」,超 7 天回落绝对日期) */
 export function formatCnRelative(date: Date, now: Date = new Date()): string {
   const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);

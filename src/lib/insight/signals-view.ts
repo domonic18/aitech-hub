@@ -5,13 +5,12 @@
  * 与总览页历史上的折算口径一致(折算前 from/to 只进 URL 不进查询的坑已修)。
  */
 import { parsePage } from "@/lib/admin/list";
+import { isRealDay } from "@/lib/datetime";
 
 import { INSIGHT_MEDIA_VOCAB, SIGNAL_REGIONS } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "./ingest";
 
 export const SIGNALS_PATH = "/admin/insight/signals/";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface SignalFilters {
   source?: InsightSource;
@@ -32,8 +31,8 @@ export function resolveSignalFilters(raw: Record<string, string | undefined>): S
     region: (SIGNAL_REGIONS as readonly string[]).includes(raw.region ?? "")
       ? raw.region
       : undefined,
-    from: DATE_RE.test(raw.from ?? "") ? raw.from : undefined,
-    to: DATE_RE.test(raw.to ?? "") ? raw.to : undefined,
+    from: isRealDay(raw.from) ? raw.from : undefined,
+    to: isRealDay(raw.to) ? raw.to : undefined,
     page: parsePage(raw.page),
   };
 }

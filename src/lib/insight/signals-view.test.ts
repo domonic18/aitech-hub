@@ -53,6 +53,15 @@ describe("resolveSignalFilters", () => {
     });
   });
 
+  it("格式合法但日历日不存在的一律丢弃(?from=2026-13-45 曾致查询 500)", () => {
+    expect(resolveSignalFilters({ from: "2026-13-45", to: "2026-02-30", page: "1" })).toMatchObject(
+      { from: undefined, to: undefined },
+    );
+    // 闰年 2-29 是真实日期,平年不是
+    expect(resolveSignalFilters({ from: "2024-02-29" }).from).toBe("2024-02-29");
+    expect(resolveSignalFilters({ from: "2026-02-29" }).from).toBeUndefined();
+  });
+
   it("空参数集只回页码 1", () => {
     expect(resolveSignalFilters({})).toEqual({ page: 1 });
   });
