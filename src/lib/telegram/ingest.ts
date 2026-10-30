@@ -12,6 +12,7 @@ import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
+import { runLeaderboardSourceCrawl } from "../leaderboard/crawl";
 import { runPricingSourceCrawl } from "../pricing/source-registry";
 import { runVendorSourceCrawl } from "../insight/vendor/crawl";
 import { TELEGRAM_STATUS_HIDDEN, TELEGRAM_STATUS_VISIBLE, type BlocklistScope } from "./constants";
@@ -20,6 +21,7 @@ import {
   CRAWL_SOURCE_STATUS_DEGRADED,
   CRAWL_SOURCE_STATUS_ERROR,
   CRAWL_SOURCE_STATUS_HEALTHY,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   CRAWL_SOURCE_TYPE_VENDOR,
@@ -164,6 +166,11 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
       // 厂商动态(M58 批②):取数+快照+逐条入事件抽取队列收敛在
       // insight/vendor/crawl;抽取失败不回写本表健康度(方案 §5.2 失败隔离)
       const r = await runVendorSourceCrawl(source, now);
+      outcome.fetched = r.fetched;
+    } else if (source.type === CRAWL_SOURCE_TYPE_LEADERBOARD) {
+      // 榜单(M58 批③):取数+快照+按日 upsert 收敛在 leaderboard/crawl;
+      // 失败不写空数据,读侧据「数据截至」降级(方案 §6.1)
+      const r = await runLeaderboardSourceCrawl(source, now);
       outcome.fetched = r.fetched;
     } else {
       const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);

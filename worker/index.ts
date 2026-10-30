@@ -85,6 +85,18 @@ async function main(): Promise<void> {
       ),
     );
   }
+  // 榜单渠道(M58 批③):种子幂等入 crawl_source(日频),走 crawler tick
+  {
+    const { syncLeaderboardChannels } = await import("../src/lib/leaderboard/crawl");
+    await syncLeaderboardChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "leaderboard.source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+  }
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();

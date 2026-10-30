@@ -10,13 +10,19 @@ import type { Prisma } from "@prisma/client";
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
-import { CRAWL_SOURCE_TYPE_PRICING } from "../collect/constants";
 import { sortVendorItems } from "../insight/vendor/parse";
-import { fetchVendorList, resolveVendorDef } from "../insight/vendor/registry";
+import { fetchVendorList, resolveVendorDef, type VendorDef } from "../insight/vendor/registry";
+import {
+  fetchLeaderboardList,
+  resolveLeaderboardDef,
+  type LeaderboardDef,
+} from "../leaderboard/registry";
 import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
+  CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   CRAWL_SOURCE_TYPE_VENDOR,
 } from "../collect/constants";
@@ -138,14 +144,18 @@ function mergeConfig(existing: unknown, token: string | undefined): Record<strin
   return { ...base, token };
 }
 
-/** 注册表渠道(牌价/厂商)由 worker 启动种子登记,config 里的 *Key 是路由锚:
+/** 注册表渠道(牌价/厂商/榜单)由 worker 启动种子登记,config 里的 *Key 是路由锚:
  * 手工新建或改类型出来的行每轮必抛「key 未注册」,台账永久刷红。只拦类型
  * 变更动作——已有行的 URL/周期/启停仍可编辑。 */
 function assertNotRegistryType(type: string): void {
-  if (type === CRAWL_SOURCE_TYPE_PRICING || type === CRAWL_SOURCE_TYPE_VENDOR) {
+  if (
+    type === CRAWL_SOURCE_TYPE_PRICING ||
+    type === CRAWL_SOURCE_TYPE_VENDOR ||
+    type === CRAWL_SOURCE_TYPE_LEADERBOARD
+  ) {
     throw new ChannelAdminError(
       "not_supported",
-      "牌价/厂商渠道由系统注册表登记(worker 启动同步),不支持手工新建或改类型",
+      "牌价/厂商/榜单渠道由系统注册表登记(worker 启动同步),不支持手工新建或改类型",
     );
   }
 }
@@ -267,6 +277,24 @@ export interface ChannelDebugResult {
   error?: string;
 }
 
+/** 试拉取数:注册表渠道(厂商/榜单)走各自注册表,其余走适配器 */
+async function fetchDebugItems(
+  src: { type: string; url: string; config: unknown },
+  vendorDef: VendorDef | null,
+  boardDef: LeaderboardDef | null,
+): Promise<Array<{ title: string; url: string; publishedAt: Date | null }>> {
+  if (vendorDef !== null) {
+    return sortVendorItems(vendorDef.parse(await fetchVendorList(vendorDef, src.url), src.url));
+  }
+  if (boardDef !== null) {
+    const raw = await fetchLeaderboardList(boardDef, src.url);
+    return boardDef
+      .parse(raw, src.url)
+      .map((r) => ({ title: r.entityName, url: r.url, publishedAt: null }));
+  }
+  return fetchSourceItems(src.type, src.url, src.config);
+}
+
 /** 渠道调试(原型「调试」:拉取最新 3 条 + 耗时;2026-10-06 验收反馈问题3):
  * 直接走采集适配器取数,不入库、不动健康度与调度状态;凭证照常从 config 注入。
  * web/api 类型适配器未实现(fetchSourceItems 显式抛错),如实返回错误不假装成功。 */
@@ -277,17 +305,19 @@ export async function debugChannel(id: number): Promise<ChannelDebugResult> {
   if (src.type === CRAWL_SOURCE_TYPE_PRICING) {
     throw new ChannelAdminError("not_supported", "牌价渠道不支持试拉:请使用「立即采集」查看结果");
   }
-  // 厂商渠道(M58 批②)走注册表取数+解析只读试拉(不入抽取队列)
+  // 厂商/榜单渠道(M58 批②③)走注册表取数+解析只读试拉(不入队、不落库)
   const vendorDef = src.type === CRAWL_SOURCE_TYPE_VENDOR ? resolveVendorDef(src.config) : null;
   if (src.type === CRAWL_SOURCE_TYPE_VENDOR && vendorDef === null) {
     throw new ChannelAdminError("not_supported", "厂商渠道 config.vendorKey 未注册");
   }
+  const boardDef =
+    src.type === CRAWL_SOURCE_TYPE_LEADERBOARD ? resolveLeaderboardDef(src.config) : null;
+  if (src.type === CRAWL_SOURCE_TYPE_LEADERBOARD && boardDef === null) {
+    throw new ChannelAdminError("not_supported", "榜单渠道 config.boardKey 未注册");
+  }
   const started = Date.now();
   try {
-    const items =
-      vendorDef === null
-        ? await fetchSourceItems(src.type, src.url, src.config)
-        : sortVendorItems(vendorDef.parse(await fetchVendorList(vendorDef, src.url), src.url));
+    const items = await fetchDebugItems(src, vendorDef, boardDef);
     logger.info({ event: "channel.debugged", channelId: src.id, name: src.name, ok: true });
     return {
       ok: true,

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import {
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_VENDOR,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
@@ -37,11 +38,16 @@ const TYPE_LABELS: Record<string, string> = {
   "social-video": "社交/视频",
   pricing: "牌价(注册表)",
   vendor: "厂商动态(注册表)",
+  leaderboard: "榜单(注册表)",
 };
 
 /** 注册表型渠道由 worker 启动种子登记(config 里的 *Key 是路由锚),不允许手选;
  * 编辑既有注册表行时只回显原类型(服务端同样拒绝类型变更) */
-const REGISTRY_TYPES: readonly string[] = [CRAWL_SOURCE_TYPE_PRICING, CRAWL_SOURCE_TYPE_VENDOR];
+const REGISTRY_TYPES: readonly string[] = [
+  CRAWL_SOURCE_TYPE_PRICING,
+  CRAWL_SOURCE_TYPE_VENDOR,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
+];
 
 export default function ChannelDialog({
   label,
