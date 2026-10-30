@@ -13,8 +13,8 @@
  * - LMArena:**Cloudflare 人机校验 403**(带代理亦然),本批不做,待独立评估
  *   headless 成本与转载授权(方案 §12 开放决策 1)。
  */
+import { fetchViaEgress } from "../net/egress-fetch";
 import { RateLimitedError } from "../telegram/adapters/rss";
-import { getEgressProxyRuntime } from "../telegram/egress-proxy";
 import type { LeaderboardEntityType } from "./constants";
 import {
   parseArxivFeed,
@@ -107,25 +107,8 @@ export async function fetchLeaderboardList(def: LeaderboardDef, url: string): Pr
     headers: { "user-agent": CRAWLER_UA, accept: "*/*" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   };
-  const res = def.viaProxy ? await fetchViaProxy(url, init) : await fetch(url, init);
+  const res = def.viaProxy ? await fetchViaEgress(url, init) : await fetch(url, init);
   if (res.status === 429) throw new RateLimitedError();
   if (!res.ok) throw new Error(`leaderboard feed HTTP ${res.status}`);
   return res.text();
-}
-
-/** 经系统出口代理取数(undici 显式 dispatcher,不改进程全局 dispatcher——
- * 全局代理会波及站内其它出站请求) */
-async function fetchViaProxy(url: string, init: RequestInit): Promise<Response> {
-  const egress = await getEgressProxyRuntime();
-  if (egress === null) return fetch(url, init);
-  const { fetch: undiciFetch, ProxyAgent } = await import("undici");
-  const dispatcher = new ProxyAgent(egress.proxyUrl);
-  // 只透传 GET 必需字段:Next 的 RequestInit 与 undici 在 body 流类型上不兼容
-  const res = await undiciFetch(url, {
-    method: init.method,
-    headers: init.headers as Record<string, string>,
-    signal: init.signal,
-    dispatcher,
-  });
-  return res as unknown as Response;
 }
