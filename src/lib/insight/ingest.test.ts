@@ -20,12 +20,20 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const queueAdd = vi.fn();
+vi.mock("@/lib/queue", () => ({
+  QUEUE_INSIGHT: "insight",
+  INSIGHT_JOB_TRANSLATE: "translate",
+  getQueue: () => ({ add: (...a: unknown[]) => queueAdd(...a) }),
+}));
+
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, ingestInsightSignal } from "./ingest";
 
 beforeEach(() => {
   vi.clearAllMocks();
   signalCreate.mockResolvedValue({ id: BigInt(1) });
   signalUpdateMany.mockResolvedValue({ count: 1 });
+  queueAdd.mockResolvedValue({ id: "insight-translate-1" });
 });
 
 describe("ingestInsightSignal", () => {
@@ -42,15 +50,61 @@ describe("ingestInsightSignal", () => {
       data: {
         source: "internal-comment",
         medium: "voice",
+        lang: "zh",
+        region: "cn",
         refId: "42",
         rawText: "怎么用  AI 做\n\tPPT",
         normalizedText: "怎么用 AI 做 PPT",
+        translationStatus: "none",
         domain: "unclassified",
         meta: { foo: 1 },
         signalAt: new Date("2026-10-17T08:00:00+08:00"),
       },
       select: { id: true },
     });
+    // 中文源零翻译开销:不入翻译队列
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it("非中文源(M58):逐条 lang 覆盖 → pending + 入翻译队列(单条 job)", async () => {
+    const r = await ingestInsightSignal({
+      source: "internal-comment",
+      refId: "en-1",
+      rawText: "How to use Claude Code",
+      signalAt: new Date(0),
+      lang: "en",
+      region: "global",
+    });
+    expect(r).toBe("ingested");
+    expect(signalCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lang: "en",
+          region: "global",
+          translationStatus: "pending",
+        }),
+      }),
+    );
+    expect(queueAdd).toHaveBeenCalledWith(
+      "translate",
+      { signalId: "1" },
+      expect.objectContaining({ jobId: "insight-translate-1", attempts: 1, removeOnFail: true }),
+    );
+  });
+
+  it("翻译入队失败不影响入池(Redis 抖动,扫尾 cron 兜底)", async () => {
+    queueAdd.mockRejectedValueOnce(new Error("redis down"));
+    const r = await ingestInsightSignal({
+      source: "internal-comment",
+      refId: "en-2",
+      rawText: "Hello world",
+      signalAt: new Date(0),
+      lang: "en",
+    });
+    expect(r).toBe("ingested");
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "insight.translate_enqueue_failed" }),
+    );
   });
 
   it("在役源逐一映射介质(评论/电报AI/热榜三源;方案 §2 五介质口径)", async () => {

@@ -21,6 +21,7 @@ import {
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_TRANSLATE,
   ILLUSTRATION_JOB_EDIT,
   ILLUSTRATION_JOB_GENERATE,
   PAY_JOB_DAILY_AUDIT,
@@ -95,6 +96,7 @@ import { dbBackupJob } from "../src/lib/backup/db-backup";
 import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
+import { runInsightTranslateBatch, translateSignal } from "../src/lib/insight/translate";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/daily";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
@@ -369,6 +371,23 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === INSIGHT_JOB_FETCH) {
       const r = await runHotlistFetch();
       console.log(JSON.stringify({ event: "insight.hotlist_job", ...r }));
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_TRANSLATE) {
+      // 单条(data.signalId,ingest 即时入队)与扫尾批(无参,cron)共用;
+      // 单条 job 失败已落 failed,不再上抛重试
+      const signalId = (job.data as { signalId?: string }).signalId;
+      if (signalId) {
+        const outcome = await translateSignal(BigInt(signalId));
+        if (outcome === "failed") {
+          console.log(JSON.stringify({ event: "insight.translate_job", signalId, outcome }));
+        }
+        return { outcome };
+      }
+      const r = await runInsightTranslateBatch();
+      if (r.done + r.cached + r.failed > 0 || r.unbound) {
+        console.log(JSON.stringify({ event: "insight.translate_job", ...r }));
+      }
       return r;
     }
     throw new Error(`未知 insight job:${job.name}`);

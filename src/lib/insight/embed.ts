@@ -14,6 +14,7 @@ import { runInsightClassify } from "./classify";
 import { runInsightClustering } from "./cluster";
 import { findUnembeddedSignals, saveSignalEmbeddings } from "./embedding-repo";
 import { resolveInsightModel } from "./model";
+import { degradeStalePendingTranslations } from "./translate";
 import { EMBEDDING_DIMS } from "../search/embedding";
 
 export interface InsightEmbedSummary {
@@ -55,6 +56,9 @@ export async function runInsightEmbedBatch(
     logger.info({ event: "insight.embed_skipped", reason: "embedding_unbound" });
     return { ...empty, skipped: true };
   }
+
+  // M58 批①:超时 pending 译文降级(翻译扫尾 cron 之外的兜底;先降级再取待嵌集)
+  await degradeStalePendingTranslations();
 
   const signals = await findUnembeddedSignals(limit);
   let failed = 0;

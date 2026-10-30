@@ -9,7 +9,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { EMBEDDING_DIMS, serializeVector } from "../search/embedding";
 
-/** 待回填信号(先到先嵌,id 即时间序;归一文本即向量输入,2000 字符留足余量) */
+/** 待回填信号(先到先嵌,id 即时间序;归一文本即向量输入,2000 字符留足余量)。
+ * M58 批①:pending 译文未落定前不进 embedding——译文完成后 normalized_text 顶替
+ * 并保持 embedding NULL,自然进入下一轮(幂等重嵌,不重复计费) */
 export async function findUnembeddedSignals(
   limit: number,
 ): Promise<{ id: bigint; normalizedText: string }[]> {
@@ -17,6 +19,7 @@ export async function findUnembeddedSignals(
     SELECT id, normalized_text AS "normalizedText"
       FROM insight_signal
      WHERE embedding IS NULL
+       AND translation_status IN ('none', 'done', 'failed')
      ORDER BY id
      LIMIT ${limit}`;
 }
@@ -51,6 +54,7 @@ export async function findUnclusteredSignals(
     source: string;
     medium: string;
     domain: string;
+    region: string | null;
     normalizedText: string;
     vector: number[];
   }[]
@@ -61,11 +65,12 @@ export async function findUnclusteredSignals(
       source: string;
       medium: string;
       domain: string;
+      region: string | null;
       normalizedText: string;
       vec: string;
     }[]
   >`
-    SELECT s.id, s.source, s.medium, s.domain, s.normalized_text AS "normalizedText",
+    SELECT s.id, s.source, s.medium, s.domain, s.region, s.normalized_text AS "normalizedText",
            s.embedding::text AS vec
       FROM insight_signal s
      WHERE s.embedding IS NOT NULL
@@ -79,6 +84,7 @@ export async function findUnclusteredSignals(
     source: r.source,
     medium: r.medium,
     domain: r.domain,
+    region: r.region,
     normalizedText: r.normalizedText,
     vector: r.vec
       .slice(1, -1)

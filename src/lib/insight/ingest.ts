@@ -17,12 +17,19 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { INSIGHT_JOB_TRANSLATE, QUEUE_INSIGHT, getQueue } from "@/lib/queue";
 
 // 源→介质映射 / 在役源白名单 / InsightSource·InsightMedium 类型(M56 review P2-24
 // 起单表收口):真相源在 ./source-registry,此处仅转出口保持既有 import 路径
+// M58 批① 增语言/地域默认值投影(非中文源 ingest 即 pending 翻译)
 import {
   INSIGHT_SOURCES_ENABLED,
+  INSIGHT_SOURCE_LANG,
   INSIGHT_SOURCE_MEDIUM,
+  INSIGHT_SOURCE_REGION,
+  needsTranslation,
+  type InsightLang,
+  type InsightRegion,
   type InsightSource,
 } from "./source-registry";
 
@@ -40,6 +47,9 @@ export interface InsightSignalInput {
   refId: string;
   rawText: string;
   signalAt: Date;
+  /** 语言/地域逐条覆盖(M58;混合源用,缺省取注册表源级声明) */
+  lang?: InsightLang | null;
+  region?: InsightRegion | null;
   meta?: Record<string, unknown>;
 }
 
@@ -51,6 +61,30 @@ export interface IngestOptions {
 /** 归一口径:trim + 连续空白折叠为单空格(不动大小写;截断由调用侧上限统一收口) */
 function normalizeText(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
+}
+
+/** 非中文信号入翻译队列(单条 job;Redis 抖动不入池失败——扫尾 cron 兜底) */
+async function enqueueTranslation(signalId: bigint): Promise<void> {
+  try {
+    await getQueue(QUEUE_INSIGHT).add(
+      INSIGHT_JOB_TRANSLATE,
+      { signalId: signalId.toString() },
+      {
+        jobId: `insight-translate-${signalId}`,
+        attempts: 1,
+        removeOnComplete: 200,
+        // 失败即删:确定性 jobId 在保留窗口内会静默去重(BullMQ 已知陷阱),
+        // 删掉后扫尾/重投可复用同 id
+        removeOnFail: true,
+      },
+    );
+  } catch (e) {
+    logger.warn({
+      event: "insight.translate_enqueue_failed",
+      signalId: signalId.toString(),
+      error: String(e),
+    });
+  }
 }
 
 /**
@@ -66,14 +100,22 @@ export async function ingestInsightSignal(
   if (raw === "") return "error";
   const normalized = normalizeText(raw).slice(0, NORMALIZED_MAX);
   const refId = input.refId.trim().slice(0, REF_ID_MAX);
+  const lang = input.lang ?? INSIGHT_SOURCE_LANG[input.source];
+  const region = input.region ?? INSIGHT_SOURCE_REGION[input.source];
+  // M58 批①:非中文源先待译——translationStatus=pending 期间不进 embedding
+  // (embedding-repo 过滤),译文落库后顶替 normalizedText 再重嵌
+  const translationStatus = needsTranslation(lang) ? "pending" : "none";
   try {
-    await prisma.insightSignal.create({
+    const created = await prisma.insightSignal.create({
       data: {
         source: input.source,
         medium: INSIGHT_SOURCE_MEDIUM[input.source],
+        lang,
+        region,
         refId,
         rawText: raw,
         normalizedText: normalized,
+        translationStatus,
         // M54:落库为未分类,分类 sweep(Jev)落 domain/subdomain——
         // 分类先于同域聚类,新信号当轮即入对桶
         domain: "unclassified",
@@ -82,6 +124,7 @@ export async function ingestInsightSignal(
       },
       select: { id: true },
     });
+    if (translationStatus === "pending") await enqueueTranslation(created.id);
     return "ingested";
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
