@@ -100,7 +100,7 @@
 | --- | --- | --- | --- | --- |
 | 文章评论 | cn | voice | 现网 | 痛点池现役主进水口 |
 | 电报 AI 解读 | cn | ai-record | 现网 | 视频/文字解读产物 |
-| 站内 agent 问句 | cn | search | 待接入(需清洗) | 剔除站内功能触发会话,见 §3.4 |
+| 站内 agent 问句 | cn | search | 现网(M58 批⑤) | 上下文黑名单清洗后复活,含游客首问,见 §3.4 |
 | 站内搜索词 | cn | search | 搁置 | 当前量太少 |
 
 ## 3. 跨切面能力
@@ -174,14 +174,27 @@
 
 ### 3.4 站内 agent 问句清洗(复活规则)
 
-确定性过滤,不靠模型判断:
+确定性过滤,不靠模型判断——**只按页面上下文排除**(M58 批⑤ 定稿):
 
-1. 排除 `admin:` 身份前缀的会话(`SearchAgentSession.visitorId`);
-2. 排除页面上下文 pathname 以 `/admin` 开头的 run;
-3. 排除含 `compose_topic_draft` / `save_topic_draft` / `render_card` / `propose_edits`
-   等站内功能工具调用的会话;
-4. 仅保留 `/search` 页、答案卡追问、Footer 咨询三类入口发起的会话;
-5. 入库 `meta.surface` 记录入口,便于后续调规则。
+1. 后台功能页集合 {`后台`,`文章新建`,`文章编辑`,`文章管理`,`创作中心`}
+   (即 `buildAgentPageContext` 的派生名,`src/lib/agent/run-context.ts#ADMIN_SURFACES`)
+   发起的会话不入池;
+2. 公开页(首页/搜索/文章页/Footer 咨询/答案卡追问)一律保留,**与身份无关**——
+   管理员在公开页提问同样是真实需求;后台页即便普通用户也无信号价值;
+3. 入库 `meta.surface` 记录上下文标签(无上下文时不写该字段),便于后续调规则。
+
+接线:登录用户/管理员在 `backfillSessionTitle` 命中首问(标题由空转有)时入池
+(refId=sessionId);游客不落会话行,run 收尾用 Redis `SET NX`
+`search:agent:ask-recorded:<threadId>`(TTL 6h)判首问,refId=`g:<threadId>`,
+**不存 visitorId**(只留线程 id,不做个人关联);Redis 不可用宁可漏记不误记。
+`(source, refId)` 唯一键天然兜住键过期后的重记。
+
+存量清理:本批开工时查库,dev 存量 33 条中 31 条指向 `admin:` 归属会话,
+按 session 归属一次性清理(`scripts/oneoff/internal-agent-admin-purge/`,
+执行后删除);非 admin 会话的问句保留。
+
+> 相比初版「排除 admin 身份前缀 + 仅保留三类入口」,改为上下文黑名单:
+> 规则等价、对新增公开页自动放行;身份不再是判据,游客问句也不再是盲区。
 
 ## 4. 接入契约
 

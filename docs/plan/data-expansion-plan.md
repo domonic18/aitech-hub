@@ -326,6 +326,28 @@ model EntityEvent {
 - 抽样 50 条:有效需求占比 ≥80%;日增量与配额可控。
 - `internal-agent` 在 `INSIGHT_SOURCES_ENABLED` 中启用,回归洞察中心各视图。
 
+**落码注(批⑤)**:
+
+- 过滤单点:`src/lib/agent/run-context.ts#ADMIN_SURFACES` + `isAdminSurface`,与
+  `buildAgentPageContext` 同文件,(单测锁「`/admin` 下所有路由派生名必命中黑名单」,
+  防新增后台页漏网)。入池在 `sessions.ts#captureAsk` 收口,登录/游客共用。
+- 接线:路由把 `context?.page` 传给 `backfillSessionTitle`(登录/管理员,首问判定沿用
+  标题空→有)与 `recordGuestFirstAsk`(游客,Redis `SET NX` + TTL 6h,refId=`g:<threadId>`)。
+  游客路径先抢 NX 再过滤,顺序无关(后台页抢到键也不写信号)。
+- **不设日配额**:该源体量由真实流量自然约束(与爬虫源不同),异常刷量时经后台
+  `crawl_source` 启停关闸。
+- 存量清理:`scripts/oneoff/internal-agent-admin-purge/`,按 session 归属删
+  (`ref_id` 指向 `admin:` 会话)。dev dry-run:admin 会话 77 个 / `internal-agent`
+  存量 33 条 / 命中 31 条(另 2 条为普通用户问句,保留)。**dev `--apply` 未执行**
+  (权限拦截);生产执行前按「生产操作先确认」报批。
+
+**真机验收(2026-10-30,dev 库 + Redis,探针自清场)**:后台(文章编辑)页提问——标题
+照常回填、信号 0 条;搜索页首问入池 1 条(`medium=search` / `lang=zh` / `region=cn` /
+`meta.surface=搜索` / 原文完整),续问不重复;游客首问两次调用只入 1 条(NX 生效,
+TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
+注:`captureAsk` 为 fire-and-forget,探针与断言之间需留一拍(定稿验证脚本即如此;
+生产无影响)。抽样 50 条有效率待真实流量积累后随日批复核。
+
 ## 9. 运行与成本
 
 - **调度**:新源全部进 `crawl_source` 台账;cron 只在 `schedules.ts` 注册(翻译扫尾/事件抽取),
