@@ -91,6 +91,24 @@ export const SENTIMENT_LABELS: Record<InsightSentiment, string> = {
 /** 信号明细取数边界(缺省/上限;listInsightSignals 与总览页调用侧同源) */
 export const SIGNAL_TAKE_DEFAULT = 50;
 export const SIGNAL_TAKE_MAX = 200;
+/** 信号明细分页(信号独立页每页条数,listInsightSignalsPage 与页侧同源) */
+export const SIGNAL_PAGE_SIZE = 50;
+
+/** 地域视图合法值(信号页 chips 与参数钳制共用;簇徽章另有 mixed 展示值) */
+export const SIGNAL_REGIONS = ["cn", "global"] as const;
+
+/** 地域中文标签(含簇徽章的 mixed) */
+export const REGION_LABELS: Record<string, string> = {
+  cn: "国内",
+  global: "海外",
+  mixed: "国内外",
+};
+
+/** 地域参数钳制(非法值丢弃,页侧唯一出口) */
+export function resolveRegionParam(raw: string | undefined): string | undefined {
+  return (SIGNAL_REGIONS as readonly string[]).includes(raw ?? "") ? raw : undefined;
+}
+
 /** 簇列表单次上限(listInsightClusters;行内缺省 CLUSTER_ROW_TAKE=20) */
 export const CLUSTER_TAKE_MAX = 50;
 
