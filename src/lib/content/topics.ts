@@ -21,4 +21,10 @@ export const SITE_TOPICS: readonly SiteTopic[] = [
     desc: "主流大模型官方牌价一觉:输入/输出价、免费额度与上下文窗口,Coding Plan 套餐额度口径。官方一手价人工核对,USD 原币直出,持续更新。",
     tag: "价格速查",
   },
+  {
+    label: "模型榜单",
+    href: "/leaderboards/",
+    desc: "AI 模型与社区热度多榜聚合:智能指数、模型趋势、最新论文与热门仓库,每日采集,名次变动与上一可用日期比较。",
+    tag: "榜单",
+  },
 ];
