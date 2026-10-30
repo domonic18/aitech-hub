@@ -135,6 +135,12 @@ model insight_snapshot {
 | 痛点榜(核心) | 痛点卡:一句话概括/信号数/典型原话/介质徽章/**内容覆盖度%(空白标红=选题机会)** |
 | 选题工作台 | 热点×痛点交叉矩阵+机会评分卡+一键转 Topic(绑 skillKey 进既有合成管线) |
 
+> 后续增补(M58/M59,详见 [data-expansion-plan §14](data-expansion-plan.md)):顶部页签为
+> 分析总览 / 发现 / **信号** / **事件** / **实体**。信号独立页 `/admin/insight/signals/`
+> 承载源/地域/介质/日期筛选、分页与原文外链(总览只留最近 5 条预览);事件台账
+> `/admin/insight/events/` 按厂商/类型/时间筛选;实体聚合 `/admin/insight/entities/`
+> 按 `entityKey` 聚合厂商事件,详情含事件时间线与关联厂商信号。
+
 ## 7. 触达层
 
 - **Web 看板**:§6(系统内,admin)
