@@ -102,13 +102,21 @@
 ### 3.1 海外信息中文化(统一视图的前提)
 
 - **字段口径**:`insight_signal` 增 `lang`(zh/en/…)与 `region`(cn/global);
-  原文保留在 `rawText`,中文译文落 `translatedText`。
+  原文保留在 `rawText`,中文译文落 `translatedText`,翻译态落 `translation_status`。
+- **状态机**(`none | pending | done | failed`):中文源 `none`;非中文源 ingest 即
+  `pending` 且**不进 embedding**(`findUnembeddedSignals` 过滤);翻译成 `done` 时译文
+  顶替 `normalizedText`、`embedding` 置空由下一轮自然重嵌(幂等不重复计费);失败
+  `failed` 保留原文照常 embedding(翻译是增强,不阻塞采集);`pending` 超 24h
+  自动降级 `failed`,防角色未绑定/队列积压永久卡池。
 - **聚类口径**:中文译文进 `normalizedText` 与 embedding,保证跨语言同簇;
   `rawText` 只用于展示与溯源。
 - **展示口径**:默认中文,可切换原文;国内/海外筛选;**统一视图**与地域视图并存。
 - **翻译角色**:新增独立任务角色 `translate`(2026-10-30 决策),绑定低成本模型,
-  与 `insight` 归纳角色解耦,便于单独控预算;只翻非中文,按 sha1 缓存。
-- **簇的地域**:`cluster.region` 取成员多数派;读侧支持按成员地域过滤。
+  与 `insight` 归纳角色解耦,便于单独控预算;只翻非中文,按 `sha1(rawText)` 缓存 7 天,
+  单条 ≤1 次成功调用(失败重试 ≤2),用量按 role 记账;ingest 单条入队 +
+  每 10 分钟扫尾捞漏(补翻 + 超时降级双保险)。
+- **簇的地域**:`cluster.region` 取成员多数派(`cn`/`global`,差距 <20% 记 `mixed`);
+  读侧支持按成员地域过滤。
 
 ### 3.2 榜单呈现(公开页)
 

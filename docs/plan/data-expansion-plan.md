@@ -4,6 +4,8 @@
 > 采集纪律见 [arch/02](../arch/02-data-collection.md),洞察基线见 [insight-plan](insight-plan.md)。
 > 本文回答「这一轮补哪些数据、怎么接、落在哪、怎么验收」;终态实现细节完成后回写 arch 对应章节。
 > **编号 M58**(M57 之后首个立项);未开工前不建分支,开工时按批建 `feature/m58-*`。
+> **进度(2026-10-30)**:批① 多语言/地域基座已落码(`feature/m58-multilingual-base`,
+> schema+迁移/translate 角色/状态机/地域视图);②–⑤ 待开。
 
 ## 1. 立项依据与目标
 
@@ -126,7 +128,7 @@ model EntityEvent {
 ### 4.4 验收
 
 - 至少 1 组「英文源 + 中文源」同簇实证(人工抽样)。
-- 未绑定 `translate` 时:48h 内降级为 `failed` 并正常聚类,不阻塞采集。
+- 未绑定 `translate` 时:24h 内降级为 `failed` 并正常聚类,不阻塞采集。
 - 状态机单测:非法迁移被拒,`done` 重嵌幂等。
 - 迁移从零重放通过;`make check` 绿。
 
