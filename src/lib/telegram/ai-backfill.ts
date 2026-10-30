@@ -11,6 +11,7 @@
  */
 import { prisma } from "../db";
 import { logger } from "../logger";
+import { DAY_MS } from "../datetime";
 import { getQueue, QUEUE_INTERPRETER, QUEUE_SUMMARIZER } from "../queue";
 
 import { markAiPendingAndEnqueue } from "./ai-shared";
@@ -34,7 +35,7 @@ export interface AiBackfillOutcome {
 /** worker「ai-backfill」job 入口(crawler 队列 ai-backfill-tick 每 5min 调度) */
 export async function backfillAiPending(): Promise<AiBackfillOutcome> {
   const outcome: AiBackfillOutcome = { video: 0, text: 0 };
-  const since = new Date(Date.now() - SOCIAL_BACKFILL_DAYS * 86_400_000);
+  const since = new Date(Date.now() - SOCIAL_BACKFILL_DAYS * DAY_MS);
   const baseWhere = {
     aiStatus: null,
     status: TELEGRAM_STATUS_VISIBLE,

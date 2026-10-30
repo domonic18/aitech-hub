@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { DAY_MS } from "@/lib/datetime";
 
 import { type InsightSentiment } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "./ingest";
@@ -59,7 +60,7 @@ export async function hotBoardForDay(day?: string): Promise<InsightHotSourceBoar
     day === undefined
       ? Prisma.empty
       : Prisma.sql` AND (meta->>'batch')::bigint >= ${new Date(`${day}T00:00:00+08:00`).getTime()}
-                   AND (meta->>'batch')::bigint < ${new Date(`${day}T00:00:00+08:00`).getTime() + 86_400_000}`;
+                   AND (meta->>'batch')::bigint < ${new Date(`${day}T00:00:00+08:00`).getTime() + DAY_MS}`;
   const [rows, prevRows] = await Promise.all([
     prisma.$queryRaw<BoardRow[]>`
       SELECT s.id, s.source, s.ref_id,
@@ -158,7 +159,7 @@ export async function insightKeywordCloud(
     where: {
       label: { not: null },
       status: { not: "closed" },
-      lastSeenAt: { gte: new Date(Date.now() - windowDays * 86_400_000) },
+      lastSeenAt: { gte: new Date(Date.now() - windowDays * DAY_MS) },
       ...(opts.domain === undefined ? {} : { domain: opts.domain }),
     },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],

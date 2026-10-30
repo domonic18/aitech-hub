@@ -5,7 +5,7 @@
  * channel-ledger-types 拆法)。文案在服务端预格式化为字符串下发,避免
  * 「今天/明天」日界在客户端水合时漂移。
  */
-import { formatCnTime, startOfCnDay } from "../datetime";
+import { DAY_MS, formatCnTime, startOfCnDay } from "../datetime";
 import { intervalText } from "./channel-ledger-types";
 import { DOW_LABELS_CN, type CronParsed } from "./schedules";
 
@@ -65,7 +65,7 @@ export function nextCronRuns(parsed: CronParsed, count: number, from: Date = new
   const minuteSlots = parsed.times.map((t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3)));
   for (let i = 0; i < 15 && out.length < count; i += 1) {
     // 15 天覆盖「周一错过后再下一周一」
-    const dayStart = base + i * 86_400_000;
+    const dayStart = base + i * DAY_MS;
     const dow = new Date(dayStart + 8 * 3_600_000).getUTCDay(); // CN 墙钟星期
     if (parsed.days !== null && !parsed.days.includes(dow)) continue;
     // hourly(分钟档 × 通配小时)展开全天 24 档;单时刻档即原时刻
@@ -104,7 +104,7 @@ export function formatNextRuns(runs: Date[], from: Date = new Date()): string {
   return runs
     .map((r) => {
       const day = startOfCnDay(r).getTime();
-      const days = Math.round((day - today) / 86_400_000);
+      const days = Math.round((day - today) / DAY_MS);
       const dow = DOW_LABELS_CN[new Date(r.getTime() + 8 * 3_600_000).getUTCDay()];
       const prefix =
         day === lastDay
@@ -140,7 +140,7 @@ export function formatLastRun(
     when = `${Math.max(1, minutes)} 分钟前`;
   } else {
     const days = Math.round(
-      (startOfCnDay(from).getTime() - startOfCnDay(lastRunAt).getTime()) / 86_400_000,
+      (startOfCnDay(from).getTime() - startOfCnDay(lastRunAt).getTime()) / DAY_MS,
     );
     const time = formatCnTime(lastRunAt);
     when =

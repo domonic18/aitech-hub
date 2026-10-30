@@ -20,6 +20,8 @@ import { prisma } from "../db";
 import { logger } from "../logger";
 import { unionMedia } from "./cluster";
 import {
+  INSIGHT_SENTIMENTS,
+  isInsightSentiment,
   JUDGE_MIN_CONFIDENCE,
   LABEL_MIN_MEMBERS,
   LABEL_SAMPLE_SIZE,
@@ -59,15 +61,10 @@ export function parseInsightLabel(raw: string): ParsedTask<InsightLabelContract>
     return { ok: false, error: "kind 须为 hot 或 pain" };
   }
   const sentiment = (o as Record<string, unknown>).sentiment;
-  if (
-    sentiment !== "positive" &&
-    sentiment !== "neutral" &&
-    sentiment !== "negative" &&
-    sentiment !== "mixed"
-  ) {
+  if (!isInsightSentiment(sentiment)) {
     return {
       ok: false,
-      error: "sentiment 须为 positive/neutral/negative/mixed 之一",
+      error: `sentiment 须为 ${INSIGHT_SENTIMENTS.join("/")} 之一`,
     };
   }
   const keywords = Array.isArray(o.keywords)
@@ -183,10 +180,9 @@ async function judgeByJev(
     const sent = r.answers.sentiment;
     if (
       sent?.type === "choice" &&
-      sent.choice !== undefined &&
       sent.confidence !== null &&
       sent.confidence >= JUDGE_MIN_CONFIDENCE &&
-      ["positive", "neutral", "negative", "mixed"].includes(sent.choice)
+      isInsightSentiment(sent.choice)
     ) {
       if (sent.choice !== out.sentiment) {
         logger.info({

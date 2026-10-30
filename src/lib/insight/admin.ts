@@ -9,7 +9,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { DAY_MS, cnDayKeyRange, statsDay } from "@/lib/datetime";
+import { DAY_MS, cnDayKeyRange, startOfCnDay, statsDay } from "@/lib/datetime";
 
 import { SIGNAL_TAKE_DEFAULT, SIGNAL_TAKE_MAX } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
@@ -21,11 +21,6 @@ export {
   type InsightClusterRow,
   type InsightClusterDetail,
 } from "./cluster-view";
-
-/** 北京时区当日零点(与 statsDay/periodKey 同源口径,勿用 UTC 切日) */
-function todayStart(now: Date = new Date()): Date {
-  return new Date(`${statsDay(now)}T00:00:00+08:00`);
-}
 
 /** 在役源(批③ 渠道转向:站内搜索/agent/反馈退出,读侧全量按白名单过滤;
  * 存量行保留库中不再呈现) */
@@ -59,7 +54,7 @@ export interface InsightSignalRow {
  * domain(M54 批C):领域视图过滤(undefined=全量,页侧把 "all" 解析为 undefined) */
 export async function insightOverview(windowDays = 7, domain?: string): Promise<InsightOverview> {
   const window = Math.min(Math.max(Math.trunc(windowDays), 1), 90);
-  const start = todayStart();
+  const start = startOfCnDay();
   const since = new Date(start.getTime() - (window - 1) * DAY_MS);
   const domainWhere = domain === undefined ? {} : { domain };
   const domainSql = domain === undefined ? Prisma.empty : Prisma.sql` AND domain = ${domain}`;

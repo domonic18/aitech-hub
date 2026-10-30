@@ -5,6 +5,7 @@
  * 的唯一出口,测试直打本件。
  */
 import type { DiscoveryTriggerJob } from "@/lib/discovery/admin";
+import { DAY_MS } from "@/lib/datetime";
 import { CRAWL_MAX_CONSECUTIVE_FAILS } from "./constants";
 
 export type ChannelKind = "rss" | "video" | "hot" | "discovery" | "github" | "pricing";
@@ -98,7 +99,7 @@ function startOfCnDay(at: Date): Date {
 export function lastRunLabel(at: Date | null, count: number | null, unit: string): string {
   if (at === null) return "—";
   const days = Math.round(
-    (startOfCnDay(new Date()).getTime() - startOfCnDay(at).getTime()) / 86_400_000,
+    (startOfCnDay(new Date()).getTime() - startOfCnDay(at).getTime()) / DAY_MS,
   );
   const atText = days <= 0 ? hhmmCn(at) : days === 1 ? `昨天 ${hhmmCn(at)}` : `${days} 天前`;
   return count === null ? atText : `${atText} · ${count} ${unit}`;

@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { MEDIUM_LABELS, SOURCE_LABELS, type InsightMediumVocab } from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
+import { DAY_MS } from "@/lib/datetime";
 
 // 展示名与介质标签下沉 domain constants 单源(hot-source 台账同用),此处转出口
 export { MEDIUM_LABELS, SOURCE_LABELS };
@@ -94,7 +95,7 @@ export function insightHref(
 
 /** 北京日字符串(YYYY-MM-DD)±n 天 */
 export function shiftDay(day: string, delta: number): string {
-  const ms = new Date(`${day}T00:00:00+08:00`).getTime() + delta * 86_400_000;
+  const ms = new Date(`${day}T00:00:00+08:00`).getTime() + delta * DAY_MS;
   return new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
 
@@ -102,6 +103,11 @@ export function shiftDay(day: string, delta: number): string {
 export function todayCn(): string {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
+
+/** 页内 chips(窗口/领域/热榜渠道/信号筛选共用;总览页与信号明细各自手抄过一份) */
+export const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
+export const chipOn = `${chip} bg-accent-dim text-accent`;
+export const chipOff = `${chip} bg-panel-2 text-text-2 hover:text-text-1`;
 
 const badge = "rounded-sm px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap";
 

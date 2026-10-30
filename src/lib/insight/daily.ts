@@ -8,7 +8,7 @@ import { countTodayRoleUsage } from "../ai/usage-queries";
 import { getRoleDailyMax } from "../ai/resolver";
 import { prisma } from "../db";
 import { logger } from "../logger";
-import { statsDay } from "../datetime";
+import { DAY_MS, statsDay } from "../datetime";
 import { topVectorMatches } from "../search/embedding-repo";
 import {
   COVERAGE_MATCH_DISTANCE,
@@ -163,7 +163,7 @@ export async function runInsightDaily(): Promise<InsightDailySummary> {
 
   // 机械段:评分 + 快照 + fading(与打标解耦,LLM 不可用日照常演进)
   const now = new Date();
-  const since = new Date(now.getTime() - SCORE_HEAT_WINDOW_DAYS * 86_400_000);
+  const since = new Date(now.getTime() - SCORE_HEAT_WINDOW_DAYS * DAY_MS);
   const [stats, activeRows] = await Promise.all([
     fetchActiveClusterStats(since),
     prisma.insightCluster.findMany({
@@ -204,7 +204,7 @@ export async function runInsightDaily(): Promise<InsightDailySummary> {
   await upsertSnapshots(scored, statsDay(now));
   summary.snapshots = scored.length;
 
-  const cutoff = new Date(nowMs - FADE_AFTER_DAYS * 86_400_000);
+  const cutoff = new Date(nowMs - FADE_AFTER_DAYS * DAY_MS);
   summary.faded = await prisma.$executeRaw`
     UPDATE insight_cluster SET status = 'fading'
      WHERE status = 'active' AND last_seen_at < ${cutoff}`;

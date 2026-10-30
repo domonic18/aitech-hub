@@ -10,11 +10,14 @@ import type { InsightSignalRow } from "@/lib/insight/admin";
 import { INSIGHT_MEDIA_VOCAB, MEDIUM_LABELS } from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
 
-import { SOURCE_LABELS, formatTime, insightHref, type InsightViewParams } from "./shared";
-
-const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
-const chipOn = `${chip} bg-accent-dim text-accent`;
-const chipOff = `${chip} bg-panel-2 text-text-2 hover:text-text-1`;
+import {
+  SOURCE_LABELS,
+  chipOff,
+  chipOn,
+  formatTime,
+  insightHref,
+  type InsightViewParams,
+} from "./shared";
 
 export default function SignalsSection({
   signals,

@@ -6,11 +6,10 @@
  */
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
+import { DAY_MS } from "@/lib/datetime";
 
 /** 过期提醒阈值(D5):数据 >45 天未核对出琥珀提醒条 */
 export const PRICING_STALE_DAYS = 45;
-const DAY_MS = 86_400_000;
-
 /** 整表过期判定(纯函数,单测锚):max(dataAsOf) 距 now 超 45 天;空表不出提醒 */
 export function isPricingStale(maxDataAsOf: Date | null, now: Date): boolean {
   if (maxDataAsOf === null) return false;

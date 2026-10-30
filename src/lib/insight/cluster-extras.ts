@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { DAY_MS } from "@/lib/datetime";
 
 export interface InsightClusterExtras {
   /** 核心词频次(F25 核心词表):簇成员信号文本命中,近 windowDays 日 vs 前 windowDays 日 */
@@ -27,7 +28,7 @@ export async function getInsightClusterExtras(
   keywords: string[],
   windowDays: number,
 ): Promise<InsightClusterExtras> {
-  const since30 = new Date(Date.now() - 30 * 86_400_000);
+  const since30 = new Date(Date.now() - 30 * DAY_MS);
   /** 核心词频次:簇成员信号文本命中,近 windowDays 日 vs 前 windowDays 日(零命中词保留 0 行) */
   const CORE_WORD_SQL =
     keywords.length === 0

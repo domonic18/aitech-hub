@@ -16,7 +16,7 @@
 import { createHash } from "node:crypto";
 
 import { deleteBatchedWhere, prisma } from "@/lib/db";
-import { statsDay } from "@/lib/datetime";
+import { DAY_MS, statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
@@ -199,7 +199,7 @@ const VISIT_LOG_RETENTION_DAYS = 7;
 
 /** 清理保留窗口外的访问明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeVisitLogs(): Promise<number> {
-  const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * 86_400_000);
+  const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * DAY_MS);
   return deleteBatchedWhere(prisma.statsVisitLog, { createdAt: { lt: cutoff } });
 }
 
@@ -208,7 +208,7 @@ const SEARCH_LOG_RETENTION_DAYS = 180;
 
 /** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeSearchLogs(): Promise<number> {
-  const cutoff = new Date(Date.now() - SEARCH_LOG_RETENTION_DAYS * 86_400_000);
+  const cutoff = new Date(Date.now() - SEARCH_LOG_RETENTION_DAYS * DAY_MS);
   return deleteBatchedWhere(prisma.statsSearchLog, { createdAt: { lt: cutoff } });
 }
 
