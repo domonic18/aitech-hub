@@ -32,7 +32,7 @@
 | 文档 | 说明 | 阅读时机 |
 | --- | --- | --- |
 | [00-overview.md](arch/00-overview.md) | 技术选型、单体拓扑、部署架构、与旧站共存与切换 | 首次进入项目必读 |
-| [01-data-source.md](arch/01-data-source.md) | 数据源定位、已知来源清单、接入待明确项(细化随新渠道接入补) | 规划内容来源时 |
+| [01-data-source.md](arch/01-data-source.md) | 渠道矩阵(一手源/榜单/海外社区/国内需求语料)、地域与翻译口径、事件与榜单落点、接入契约 | 规划内容来源、接入新渠道时 |
 | [02-data-collection.md](arch/02-data-collection.md) | 采集架构、调度、准入与合规 | 改采集管道时 |
 | [03-data-model.md](arch/03-data-model.md) | 表设计、Prisma Migrate 纪律 | 涉及表结构变更时 |
 | [04-ai-agent.md](arch/04-ai-agent.md) | AI Agent 体系、检索与答案卡、会话编排与安全边界 | 涉及智能体能力时 |
@@ -55,6 +55,7 @@
 | [development-plan.md](plan/development-plan.md) | 总纲:当前基线、里程碑表、后置池、专项排期、维护约定 |
 | [discovery-plan.md](plan/discovery-plan.md) | 优质内容发现机制(热词/博主/热点视频)实现方案 |
 | [insight-plan.md](plan/insight-plan.md) | 洞察中心(热点舆情 + 用户痛点)实现方案 |
+| [data-expansion-plan.md](plan/data-expansion-plan.md) | M58 数据面扩展与洞察 v2(多语言/厂商事件/榜单页/社区语料/问句清洗) |
 | [editor-ai-plan.md](plan/editor-ai-plan.md) | 编辑器 AI 化(对话改稿 + diff 评审 + 自动保存)实现方案 |
 | [topic-pipeline-plan.md](plan/topic-pipeline-plan.md) | 专题内容管线实现方案 |
 | [xhs-auto-publish-design.md](plan/xhs-auto-publish-design.md) | 小红书自动发布系统设计 |
