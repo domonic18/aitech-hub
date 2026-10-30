@@ -184,10 +184,11 @@
 3. 入库 `meta.surface` 记录上下文标签(无上下文时不写该字段),便于后续调规则。
 
 接线:登录用户/管理员在 `backfillSessionTitle` 命中首问(标题由空转有)时入池
-(refId=sessionId);游客不落会话行,run 收尾用 Redis `SET NX`
+(refId=sessionId);游客 run 收尾用 Redis `SET NX`
 `search:agent:ask-recorded:<threadId>`(TTL 6h)判首问,refId=`g:<threadId>`,
 **不存 visitorId**(只留线程 id,不做个人关联);Redis 不可用宁可漏记不误记。
 `(source, refId)` 唯一键天然兜住键过期后的重记。
+(游客会话行落档见 §3.5:行只存 `visitor_id='guest'`,与入池口径一致,同样不含访客标识。)
 
 存量清理:本批开工时查库,dev 存量 33 条中 31 条指向 `admin:` 归属会话,
 按 session 归属一次性清理(`scripts/oneoff/internal-agent-admin-purge/`,
@@ -195,6 +196,19 @@
 
 > 相比初版「排除 admin 身份前缀 + 仅保留三类入口」,改为上下文黑名单:
 > 规则等价、对新增公开页自动放行;身份不再是判据,游客问句也不再是盲区。
+
+### 3.5 游客会话留档(M58 批⑤ 后续)
+
+游客会话原先只在 Redis 留归属键(2h),后台「会话管理」看不到内容(仅台账统计)。
+现改为 **run 收尾落匿名会话行**:同一张 `search_agent_session`,id=`g_<uuid>`,
+`visitor_id='guest'`(字面量,不存访客 cookie),标题取首问前 20 码点,tokens 累计、
+`last_message_at` touch;入口 `touchGuestSessionAfterRun`(失败只告警不反噬 run)。
+
+- **归属键与内容解耦**:Redis 归属键仍决定「能否继续追问」(2h 滑动);行与 checkpoint
+  内容按 30 天留档(与成员同口径日清),归属键消失不影响后台可读性;
+- **清退**:会话行 `purgeAgentSessions` 30 天行+checkpoint 同删;按「归属键消失」
+  清扫 checkpoint 的旧规则只作用于**无留档行**的历史线程;
+- **依赖**:无 schema 变更(复用 `search_agent_session` 与 `ai_usage_log.session_id`)。
 
 ## 4. 接入契约
 

@@ -313,9 +313,10 @@ model EntityEvent {
 ### 8.2 接线
 
 - 登录用户:`backfillSessionTitle` 增参(上下文标签),过滤后调 `ingestInsightSignal`。
-- **游客**:当前游客不落 session 行,问句完全没进水——本批补首问采集:
+- **游客**:采集时游客尚不落 session 行,问句完全没进水——本批补首问采集:
   run 收尾对 `g_` 线程用 Redis `SET NX`(`search:agent:ask-recorded:<threadId>`,TTL 6h)
   判首问,refId=`g:<threadId>`,不存 visitorId(只留线程 id,不做个人关联)。
+  (会话内容留档随后另行补齐,见 §8.4;入池口径不变。)
 - 存量:该源此前 `enabled=false`,预期零历史信号;开工时先查库确认,若有则按
   session 归属清理一次(oneoff,执行后删除)。
 
@@ -347,6 +348,20 @@ model EntityEvent {
 TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
 注:`captureAsk` 为 fire-and-forget,探针与断言之间需留一拍(定稿验证脚本即如此;
 生产无影响)。抽样 50 条有效率待真实流量积累后随日批复核。
+
+### 8.4 游客会话留档(2026-10-30 用户裁定,批⑤ 后续)
+
+问题:游客会话只在 Redis 留归属键,后台「会话管理」只见台账统计、看不到内容。
+定稿(用户选「30 天,与成员一致」):
+
+- run 收尾 `touchGuestSessionAfterRun` upsert 匿名行:id=`g_<uuid>`、
+  `visitor_id='guest'`(不存访客 cookie)、标题取首问前 20 码点、tokens 累计;
+  失败只告警不反噬 run。resume(无新消息)只 touch,不覆盖标题。
+- 归属键(Redis,2h)与内容解耦:只决定能否继续追问;行+checkpoint 内容 30 天日清。
+  `purgeExpiredGuestThreads` 的「键消失即清」只作用于**无留档行**的历史线程。
+- 后台:成员视图剔除 `g_` 前缀行;游客视图 = 留档行 ∪ 台账聚合(标题/tokens/时间以
+  行为准,无行线程仍按台账还原);详情读取 checkpoint 不再依赖归属键。
+- 无 schema 变更;单测 8 条 + 真库探针 18 断言(建行/累计/列表/详情/404/清场)全绿。
 
 ## 9. 运行与成本
 
