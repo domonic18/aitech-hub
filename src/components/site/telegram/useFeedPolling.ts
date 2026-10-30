@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 电报流 60s 轮询样板(P2-14c 自 code-review-20261029 收敛:TelegramBand 与
+ * 电报流 60s 轮询样板(P2-14c 自 技术债评审 收敛:TelegramBand 与
  * TelegramTimeline 各持一份 alive 卸载守卫 + setInterval + fetch
  * /api/telegram/public + 条目合流 + setNow 时钟刷新):
  * - alive 守卫语义保留:卸载置 false + clearInterval,迟到响应/时钟全丢弃;

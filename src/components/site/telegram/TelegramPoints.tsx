@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 电报流「关键要点 ×N」折叠块(P2-14a 自 code-review-20261029 收敛:
+ * 电报流「关键要点 ×N」折叠块(P2-14a 自 技术债评审 收敛:
  * TelegramTimeline 文字卡 / TelegramArticle 视频卡的 inline 变体逐字同构;
  * TelegramBandRows 的 BandPoints 为首页带 band 变体——默认展开 + 行网格列对齐 +
  * chevron 富 summary,由 BandPoints 外壳套 ROW_GRID 网格后使用):

@@ -1,5 +1,5 @@
 /**
- * 站点页头样板(P2-16 自 code-review-20261029 收敛:/topics/ 与 /pricing/ 的
+ * 站点页头样板(P2-16 自技术债评审收敛:/topics/ 与 /pricing/ 的
  * eyebrow + h1 + desc 三行页头逐字同构,section 容器一并收编,children 为
  * 页头下正文):
  * - eyebrow 缺省 = 无眉题页头(/archive/ 变体预留;其现结构含 border-b 计数行,

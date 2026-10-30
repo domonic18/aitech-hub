@@ -7,7 +7,7 @@
  * 重排,不打断浏览位置),未读锚 seenTopId(已见列表首行 id)之上条数即未读
  * ——虚线浮条提示,点击平滑回顶并重置锚(与 ai-invest 电报流同款交互语义)。
  * 视频卡形抽至 TelegramArticle(壳文件守 350 行限);文字卡同构展示 AI 轻解读。
- * 60s 轮询样板 / NEW·AI 徽章 / 要点折叠块已收敛至 telegram/(P2-14,code-review-20261029)。
+ * 60s 轮询样板 / NEW·AI 徽章 / 要点折叠块已收敛至 telegram/(P2-14,技术债评审)。
  */
 import { useRef, useState } from "react";
 

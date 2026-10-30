@@ -1,5 +1,5 @@
 /**
- * 展示卡公共 chrome(P2-14d 自 code-review-20261029 收敛:ProjectsView 项目卡
+ * 展示卡公共 chrome(P2-14d 自 技术债评审 收敛:ProjectsView 项目卡
  * 与 /topics/ 专题卡同一骨架——图标+标题+右上徽章 + line-clamp 描述 + 底边线
  * footer 行 + hover 显形箭头):
  * - badge 为完整节点槽(项目=star 计数器,专题=蓝系 tag 章,样式各自独立);

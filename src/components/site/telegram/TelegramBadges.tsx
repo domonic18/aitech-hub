@@ -1,5 +1,5 @@
 /**
- * 电报流卡头徽章对(P2-14b 自 code-review-20261029 收敛:TelegramTimeline 与
+ * 电报流卡头徽章对(P2-14b 自 技术债评审 收敛:TelegramTimeline 与
  * TelegramArticle 的 NEW / 「AI 解读」徽章 JSX 逐字重复):
  * - NewBadge:绿色 NEW 章;亮起条件 isNew(aiRanAt, now) 留在调用侧——
  *   基准口径(变可见时刻,M15 批①)注释随条件走;
