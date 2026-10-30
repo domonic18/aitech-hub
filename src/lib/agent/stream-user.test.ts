@@ -21,6 +21,7 @@ const runMock = vi.hoisted(() => ({
 const sessionsMock = vi.hoisted(() => ({
   backfillSessionTitle: vi.fn(),
   recordGuestFirstAsk: vi.fn(),
+  touchGuestSessionAfterRun: vi.fn(),
 }));
 const quotaMock = vi.hoisted(() => ({
   tryConsumeAgentRunQuota: vi.fn(),
@@ -67,6 +68,7 @@ beforeEach(() => {
     runMock.recordAgentRun,
     sessionsMock.backfillSessionTitle,
     sessionsMock.recordGuestFirstAsk,
+    sessionsMock.touchGuestSessionAfterRun,
     quotaMock.tryConsumeAgentRunQuota,
     quotaMock.tryConsumeGuestAskQuota,
     prismaMock.searchAgentSession.findUnique,
@@ -81,6 +83,7 @@ beforeEach(() => {
   prismaMock.siteConfig.findMany.mockResolvedValue([]); // 额度 kv 无行 → 默认档
   sessionsMock.backfillSessionTitle.mockResolvedValue(undefined);
   sessionsMock.recordGuestFirstAsk.mockResolvedValue(undefined);
+  sessionsMock.touchGuestSessionAfterRun.mockResolvedValue(undefined);
   runMock.recordAgentRun.mockResolvedValue(undefined);
 });
 
@@ -342,10 +345,18 @@ describe("游客首问入池(M58 批⑤)", () => {
     await runOnce({ ...askBody, context: { page: "搜索" } });
     expect(sessionsMock.recordGuestFirstAsk).toHaveBeenCalledWith("g_t1", "hi", "搜索");
     expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
+    // 匿名留档行同轮 touch:tokens=in+out,标题由 sessions 侧派生
+    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", "hi", 2);
   });
 
   it("无页面上下文:page 传 undefined,不伪造入口", async () => {
     await runOnce(askBody);
     expect(sessionsMock.recordGuestFirstAsk).toHaveBeenCalledWith("g_t1", "hi", undefined);
+  });
+
+  it("resume:touch 照常(内容已增量),message=null 不写标题", async () => {
+    await runOnce({ command: { resume: { message: "继续" } } });
+    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", null, 2);
+    expect(sessionsMock.recordGuestFirstAsk).not.toHaveBeenCalled();
   });
 });

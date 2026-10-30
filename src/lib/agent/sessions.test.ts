@@ -2,7 +2,7 @@
  * sessions 单测(prisma/redis/ingest 必 mock):标题派生(首行 20 码点/空回落)、
  * 删除归属校验(checkpoint 删失败不反噬)、touch tokens 累计、标题仅空行回填;
  * M58 批⑤ 问句入池:后台功能页上下文过滤、meta.surface、游客 Redis NX 判首问
- * (OK 才入池;null/异常跳过)。
+ * (OK 才入池;null/异常跳过);游客匿名会话行留档(落行/补标题/失败告警)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +14,7 @@ const prismaMock = vi.hoisted(() => ({
     delete: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
+    upsert: vi.fn(),
   },
 }));
 const deleteThreadMock = vi.hoisted(() => vi.fn());
@@ -33,6 +34,7 @@ import {
   deleteSession,
   deriveTitle,
   recordGuestFirstAsk,
+  touchGuestSessionAfterRun,
   touchSessionAfterRun,
 } from "./sessions";
 
@@ -188,6 +190,49 @@ describe("问句入池(M58 批⑤,arch/01 §3.4)", () => {
     expect(ingestMock).not.toHaveBeenCalled();
     expect(loggerMock.warn).toHaveBeenCalledWith(
       expect.objectContaining({ event: "agent.guest_ask_record_failed", threadId: "g_t1" }),
+    );
+  });
+});
+
+describe("游客匿名会话行留档(M58 批⑤ 后续)", () => {
+  it("首问落匿名行:visitorId=guest(不存访客标识),标题派生,tokens 累计", async () => {
+    prismaMock.searchAgentSession.upsert.mockResolvedValue({});
+    prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 0 });
+    await touchGuestSessionAfterRun("g_t1", "怎么用 RAG 做知识库", 30);
+    expect(prismaMock.searchAgentSession.upsert).toHaveBeenCalledWith({
+      where: { id: "g_t1" },
+      create: {
+        id: "g_t1",
+        visitorId: "guest",
+        title: "怎么用 RAG 做知识库",
+        lastMessageAt: expect.any(Date),
+        tokensTotal: 30,
+      },
+      update: { lastMessageAt: expect.any(Date), tokensTotal: { increment: 30 } },
+    });
+    expect(prismaMock.searchAgentSession.updateMany).toHaveBeenCalledWith({
+      where: { id: "g_t1", title: null },
+      data: { title: "怎么用 RAG 做知识库" },
+    });
+  });
+
+  it("resume(无新消息):只 touch,不写标题(建行标题为 null)", async () => {
+    prismaMock.searchAgentSession.upsert.mockResolvedValue({});
+    await touchGuestSessionAfterRun("g_t1", null, 5);
+    expect(prismaMock.searchAgentSession.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ title: null, tokensTotal: 5 }),
+        update: expect.objectContaining({ tokensTotal: { increment: 5 } }),
+      }),
+    );
+    expect(prismaMock.searchAgentSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("建行失败只告警,不反噬 run", async () => {
+    prismaMock.searchAgentSession.upsert.mockRejectedValue(new Error("db down"));
+    await expect(touchGuestSessionAfterRun("g_t1", "问句", 3)).resolves.toBeUndefined();
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "agent.guest_session_touch_failed", threadId: "g_t1" }),
     );
   });
 });
