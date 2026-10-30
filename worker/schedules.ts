@@ -25,6 +25,8 @@ import {
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_TRANSLATE,
+  INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
@@ -281,6 +283,15 @@ export async function scheduleInsight(): Promise<void> {
       name: INSIGHT_JOB_FETCH,
       data: {},
       opts: schedulerOpts(7),
+    },
+  );
+  await queue.upsertJobScheduler(
+    "insight-translate",
+    { pattern: INSIGHT_TRANSLATE_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_TRANSLATE,
+      data: {},
+      opts: schedulerOpts(50),
     },
   );
 }

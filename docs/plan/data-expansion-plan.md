@@ -4,6 +4,11 @@
 > 采集纪律见 [arch/02](../arch/02-data-collection.md),洞察基线见 [insight-plan](insight-plan.md)。
 > 本文回答「这一轮补哪些数据、怎么接、落在哪、怎么验收」;终态实现细节完成后回写 arch 对应章节。
 > **编号 M58**(M57 之后首个立项);未开工前不建分支,开工时按批建 `feature/m58-*`。
+> **进度(2026-10-30)**:批① 多语言/地域基座已落码(`feature/m58-multilingual-base`,
+> schema+迁移/translate 角色/状态机/地域视图);批② 厂商动态与事件层已落码
+> (`entity_event` 迁移/六厂商注册表/`vendor` 采集类型/`extract-event` 抽取队列/
+> 后台事件页签);批③ 榜单接入与公开页已落码(`leaderboard_snapshot` 迁移/五榜注册表
+> (LMArena 因 CF 403 不做)/`leaderboard` 采集类型/`/leaderboards/` 公开页);④–⑤ 待开。
 
 ## 1. 立项依据与目标
 
@@ -82,7 +87,7 @@ model EntityEvent {
   summary    String?
   url        String
   occurredAt DateTime
-  dedupeKey  String   @unique // sha1(source + canonical url + eventType)
+  dedupeKey  String   @unique // sha1(source | canonical url | eventType | entityKey)
   meta       Json?
   createdAt  DateTime @default(now())
   @@index([vendor, occurredAt])
@@ -126,7 +131,7 @@ model EntityEvent {
 ### 4.4 验收
 
 - 至少 1 组「英文源 + 中文源」同簇实证(人工抽样)。
-- 未绑定 `translate` 时:48h 内降级为 `failed` 并正常聚类,不阻塞采集。
+- 未绑定 `translate` 时:24h 内降级为 `failed` 并正常聚类,不阻塞采集。
 - 状态机单测:非法迁移被拒,`done` 重嵌幂等。
 - 迁移从零重放通过;`make check` 绿。
 
@@ -136,15 +141,19 @@ model EntityEvent {
 
 - 新 `crawl_source.type="vendor"`,复用统一调度/健康度/`CrawlSnapshot`/限频;
   `config.vendorKey` 路由到 `src/lib/insight/vendor/registry.ts`。
-- 首批 6 家(有官方 RSS 的优先):OpenAI、Anthropic、Google DeepMind、DeepSeek、Qwen、Kimi;
-  无 RSS 的走 M56 headless 通道。其余厂商(智谱/MiniMax/字节 Seed/xAI/Mistral/Meta)第二批补。
-- 频率:每日 1–2 次;每源单轮 ≤20 条;去重 `sha1(source + canonical url)`。
+- 首批 6 家(有官方 RSS 的优先):OpenAI、Anthropic、Google DeepMind、DeepSeek、Qwen、Kimi。
+  实测(2026-10-30)未启 headless:DeepMind 无独立可达 RSS → 取 Google 官方 AI 分类 feed;
+  Anthropic / Kimi 服务端渲染列表页可直接静态解析;DeepSeek 走 sitemap。
+  其余厂商(智谱/MiniMax/字节 Seed/xAI/Mistral/Meta)第二批补。
+- 频率:每日 1–2 次(默认 720 分钟);单轮按发布日倒序取最新 ≤20 条;
+  已处理去重 = Redis 标记 `sha1(url)`(30 天)+ 事件级 `dedupeKey` 唯一索引。
 
 ### 5.2 事件抽取
 
-- 抓取条目 → 入 `INSIGHT_JOB_EXTRACT_EVENT`(批量、并发 1)→ `insight` 角色结构化抽取
-  → Zod 校验 → `entity_event` upsert(`dedupeKey` 幂等)。
-- 抽取契约:`{events:[{vendor, entityType, entityKey, eventType, title, summary, occurredAt}]}`;
+- 抓取条目 → 入 `INSIGHT_JOB_EXTRACT_EVENT`(单篇一条,队列并发 1;失败隔离粒度最细)
+  → `insight` 角色结构化抽取 → Zod 校验 → `entity_event` upsert(`dedupeKey` 幂等)。
+- 抽取契约:`{events:[{entityType, entityKey, eventType, title, summary, occurredAt}]}`
+  (vendor 由 `config.vendorKey` 回查注册表,不进 LLM 输出);
   单文最多 3 个事件;无事件则跳过并计数;`occurredAt` 早于 2000 年或晚于今天+1 天视为脏数据丢弃。
 - 抽取出的事件同时作为 `ai-record` 信号进水(`source=vendor-<key>`,refId=dedupeKey),
   保证厂商发布能进热点簇;**同一 URL 只入一次**。
@@ -172,16 +181,41 @@ model EntityEvent {
   arXiv 热门(cs.AI/cs.CL)、GitHub Trending。LMArena/AA 动态页走 headless + 代理,日频。
 - 抓取失败:保留上一日快照,源状态 degraded,不写空数据。
 
+**真机探源结论(2026-10-30,据实修正上文假设)**:
+
+| 源 | 实际取数形态 | 结论 |
+| --- | --- | --- |
+| Artificial Analysis | 静态 HTML 内嵌 Next.js RSC flight 载荷(`initialModels` 数组) | **无需 headless**,直连可达 |
+| Hugging Face | 公开 JSON API(`sort=trendingScore`) | 境内直连不可达,**须经 `system_proxy_config` 出口代理**(M33 单例) |
+| arXiv(cs.AI / cs.CL) | `export.arxiv.org` Atom 查询接口 | 直连可达;entry `id` 为 `http://arxiv.org/abs/<id>v<n>`,落库前升 https |
+| GitHub Trending | 服务端渲染 HTML(`article.Box-row` 卡片) | 直连可达,首日 11 条 |
+| LMArena | Cloudflare 人机校验 **403**(经代理亦然) | **本批不做**,headless 成本与转载授权另评估(§12 开放决策 1) |
+
+**落码注(批③)**:
+
+- 注册表按 key 固定「一源一榜」,`board` 展示名与公开页同源;渠道行由 worker 启动幂等
+  种子(`leaderboard:<key>`,只补缺不改值),URL/启停/周期(默认 1440 分钟)后台可调。
+- 每轮解析后按分值倒序(名次榜无分值保原序)截断 ≤20 条落库;解析 0 条按源失败计
+  (页面改版与空榜同态,原文快照可回溯),不写空数据。
+- 取数原文经 `CrawlSnapshot` 归档(解析之前落盘);渠道类型在后台只读,不允许手工新建
+  (牌价/厂商/榜单三类同口径)。
+
 ### 6.2 落库
 
 - 每日抓取 → 解析为 `{board, rank, entityKey, entityName, entityType, vendor, score, scoreUnit}`
   → 按 `(source, board, entityKey, capturedDate)` upsert;同日重跑覆盖。
 - 名次变动不落库,读侧与上一可用日期比较得出(↑↓/new)。
+- 落码注:`capturedDate` 取北京日界(存 `@db.Date` UTC 零点);同日重跑先 upsert 本轮条目、
+  再删同日已掉榜行(整表覆盖,幂等);`meta.url` 存条目外链供公开页跳转。快照行不做
+  保留期清理(每源每日 ≤20 行,年增 ~3.6 万行,过期无意义的数据量级)。
 
 ### 6.3 公开页 `/leaderboards/`
 
 - ISR `revalidate = 3600`;榜单切换(URL query 或页签),表格列:名次、变动、实体、厂商、
   分数/热度、来源;顶部「数据截至」与来源署名链接;降级时显示「本期数据未更新」。
+  **落码改档**:切换走页内锚点 chips,不读 `searchParams`——App Router 下读 `searchParams`
+  即转动态渲染,ISR 静态产物失效;全量榜单同时 SSR 直出进 HTML,SEO 与首屏一致。
+  陈旧阈值 2 天(北京日界),超阈值出琥珀色降级横幅;空榜不出页签。
 - 移动端:表格转卡片列表;空态说明。
 - SEO:`metadata` + `ItemList` JSON-LD;SSR 直出当页数据(参考 `/pricing/` 模式)。
 - 入口:`SITE_TOPICS` 增一项(名称「模型榜单」,href `/leaderboards/`),Header 下拉与
@@ -192,15 +226,21 @@ model EntityEvent {
 
 - ≥4 个榜单连续 3 天有数(允许 1 个降级)。
 - 页面 e2e:SSR HTML 含榜单项;专题入口存在;两日数据名次 delta 正确。
-- 解析器单测覆盖正常/改版/空数据;失败不污染历史快照。
+- 解析器单测覆盖正常/改版/空数据;失败不污染历史快照先例。
+
+**真机首跑(2026-10-30,dev 库,验收后已清理)**:5 个种子渠道 → 4 源成功
+(AA 20 条 / arXiv cs.AI 20 / cs.CL 20 / GitHub 11),同日重跑行数与名次完全一致
+(71 行不变,幂等成立);HF 因 `system_proxy_config` 出口代理当日不可达计源失败
+(直连本就不可达,代理恢复即通,HF 解析器已用真机 50 条载荷单独验证)。连续 3 天
+稳定性与页面 e2e 仍待观察。
 
 ## 7. 批④ 社区需求语料
 
 | 源 | 方式 | 频率 | refId |
 | --- | --- | --- | --- |
-| Hacker News(含 Show HN) | Algolia API / hnrss | 每小时 | `hn:<objectID>` |
-| V2EX | 公开 JSON API | 每小时 | `v2ex:<topicId>` |
-| 百度下拉 | 公开 suggestion,种子取分类/标签 + 发现热词 | 每日 | `bd:<sha1(seed+word)>` |
+| Hacker News(含 Show HN) | Algolia `search_by_date`(固定单关键词 `query=AI`) | 每小时 | `hn:<objectID>` |
+| V2EX | 节点级 `/api/topics/show.json`(openai/claude/deepseek/gemini) | 每小时 | `v2ex:<topicId>` |
+| 百度下拉 | 公开 suggestion,种子取分类/标签 + 发现热词 | 每日 | `bd:<sha1(seed\0word)>` |
 | 外部 OSS Issues | GitHub API(token 在 `token` 字段,仓库白名单在 `config.repos`) | 每日 | `<repo>#<issue>` |
 
 - 全部走 `crawl_source(type=community, config.communityKey)` + `source-registry` 注册;
@@ -213,7 +253,30 @@ model EntityEvent {
 - **后台可配置**:`ChannelDialog` 增可选「扩展配置(JSON)」字段(服务端 Zod 校验、
   体积上限;凭证仍走 `token` 脱敏通道),`config.repos` 即经此维护;vendor/leaderboard
   的 `vendorKey`/`boardKey` 同口径。
-- Reddit 只做**可达性探针**(经 `system_proxy_config`),通过则按 disabled 注册,不进本批验收。
+- Reddit 只做**可达性探针**(经 `system_proxy_config`):Cloudflare **403**,未注册,不进本批验收。
+
+**落码注(批④)**:
+
+- 渠道行由 worker 启动幂等种子(`community:<key>`),URL/启停/周期(默认 HN/V2EX 60 分钟、
+  百度/OSS 1440 分钟)后台可调;类型在后台只读,与牌价/厂商/榜单同口径。
+- **入池前置去重**:社区源逐轮结果高度重叠(HN 首轮 10 条、次轮 10 条全重复)。逐条撞唯一键
+  会刷 prisma 错误日志并白占日预算,故先按 `refId in (...)` 查一次既有行;日预算随之改为按
+  「本轮新增」计——否则 60 分钟一轮会提前把当日配额耗尽,把后续真正的新信号饿死。
+- 百度下拉响应并非合法 JSON(键未加引号,实测 `cb({q:"…",p:true,s:[…]})`),整体
+  `JSON.parse` 必败:只从 `s:` 起做括号配对扫描,对词条数组本身按 JSON 解析。字符集为 GB18030,
+  取数层 `TextDecoder("gb18030")` 解码。种子缺省 = 站点文章数前 3 的标签 + 48h 内 `hot-baidu`
+  信号 2 条(发现热词回流),两者皆空才用静态兜底。
+- V2EX 全局 `hot.json` 与 AI 无关,改按节点取 `show.json`(每节点最近 10 主题,四节点 40 条/轮)。
+- HN Algolia 多关键词查询(`AI LLM GPT Claude`)会退化为陈旧/跑题结果,固定单关键词 `query=AI`。
+- GitHub Issues 实测约六成未打标,需求判定 = 标签命中(bug/feature/enhancement/feat/
+  feature request)**或**标题前缀(bug/feature/feat/建议/缺陷/功能/优化);PR 按 `pull_request`
+  字段剔除;语言按**标题**判(正文模板英文会把中文诉求误判为 en)。
+
+**真机首跑(2026-10-30,dev 库,验收后已清理)**:HN 10 条 / 百度 20 条(11 条 L0 `too_short`
+拦截——种子为「大模型」类短词,建议词天然短)/ OSS 两仓 15 条(zh 12 / en 3);HN 重跑 10 条
+全部命中既有 refId(existing=10,日预算不增,幂等成立)。V2EX 四节点真机载荷 40 条解析与 L0
+全通,但当日 `system_proxy_config` 出口隧道不可达,`fetchViaEgress` 实链路未跑通(该域直连
+本不可达,隧道恢复即通)。
 
 #### 7.1 知乎探针结论:不做(2026-10-30 实探)
 
@@ -250,9 +313,10 @@ model EntityEvent {
 ### 8.2 接线
 
 - 登录用户:`backfillSessionTitle` 增参(上下文标签),过滤后调 `ingestInsightSignal`。
-- **游客**:当前游客不落 session 行,问句完全没进水——本批补首问采集:
+- **游客**:采集时游客尚不落 session 行,问句完全没进水——本批补首问采集:
   run 收尾对 `g_` 线程用 Redis `SET NX`(`search:agent:ask-recorded:<threadId>`,TTL 6h)
   判首问,refId=`g:<threadId>`,不存 visitorId(只留线程 id,不做个人关联)。
+  (会话内容留档随后另行补齐,见 §8.4;入池口径不变。)
 - 存量:该源此前 `enabled=false`,预期零历史信号;开工时先查库确认,若有则按
   session 归属清理一次(oneoff,执行后删除)。
 
@@ -262,6 +326,42 @@ model EntityEvent {
 - 公开页游客/用户首问能入池,续问不重复;`meta.surface` 正确。
 - 抽样 50 条:有效需求占比 ≥80%;日增量与配额可控。
 - `internal-agent` 在 `INSIGHT_SOURCES_ENABLED` 中启用,回归洞察中心各视图。
+
+**落码注(批⑤)**:
+
+- 过滤单点:`src/lib/agent/run-context.ts#ADMIN_SURFACES` + `isAdminSurface`,与
+  `buildAgentPageContext` 同文件,(单测锁「`/admin` 下所有路由派生名必命中黑名单」,
+  防新增后台页漏网)。入池在 `sessions.ts#captureAsk` 收口,登录/游客共用。
+- 接线:路由把 `context?.page` 传给 `backfillSessionTitle`(登录/管理员,首问判定沿用
+  标题空→有)与 `recordGuestFirstAsk`(游客,Redis `SET NX` + TTL 6h,refId=`g:<threadId>`)。
+  游客路径先抢 NX 再过滤,顺序无关(后台页抢到键也不写信号)。
+- **不设日配额**:该源体量由真实流量自然约束(与爬虫源不同),异常刷量时经后台
+  `crawl_source` 启停关闸。
+- 存量清理:`scripts/oneoff/internal-agent-admin-purge/`,按 session 归属删
+  (`ref_id` 指向 `admin:` 会话)。dev dry-run:admin 会话 77 个 / `internal-agent`
+  存量 33 条 / 命中 31 条(另 2 条为普通用户问句,保留)。**dev `--apply` 未执行**
+  (权限拦截);生产执行前按「生产操作先确认」报批。
+
+**真机验收(2026-10-30,dev 库 + Redis,探针自清场)**:后台(文章编辑)页提问——标题
+照常回填、信号 0 条;搜索页首问入池 1 条(`medium=search` / `lang=zh` / `region=cn` /
+`meta.surface=搜索` / 原文完整),续问不重复;游客首问两次调用只入 1 条(NX 生效,
+TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
+注:`captureAsk` 为 fire-and-forget,探针与断言之间需留一拍(定稿验证脚本即如此;
+生产无影响)。抽样 50 条有效率待真实流量积累后随日批复核。
+
+### 8.4 游客会话留档(2026-10-30 用户裁定,批⑤ 后续)
+
+问题:游客会话只在 Redis 留归属键,后台「会话管理」只见台账统计、看不到内容。
+定稿(用户选「30 天,与成员一致」):
+
+- run 收尾 `touchGuestSessionAfterRun` upsert 匿名行:id=`g_<uuid>`、
+  `visitor_id='guest'`(不存访客 cookie)、标题取首问前 20 码点、tokens 累计;
+  失败只告警不反噬 run。resume(无新消息)只 touch,不覆盖标题。
+- 归属键(Redis,2h)与内容解耦:只决定能否继续追问;行+checkpoint 内容 30 天日清。
+  `purgeExpiredGuestThreads` 的「键消失即清」只作用于**无留档行**的历史线程。
+- 后台:成员视图剔除 `g_` 前缀行;游客视图 = 留档行 ∪ 台账聚合(标题/tokens/时间以
+  行为准,无行线程仍按台账还原);详情读取 checkpoint 不再依赖归属键。
+- 无 schema 变更;单测 8 条 + 真库探针 18 断言(建行/累计/列表/详情/404/清场)全绿。
 
 ## 9. 运行与成本
 

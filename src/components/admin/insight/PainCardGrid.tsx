@@ -7,7 +7,7 @@ import Link from "next/link";
 
 import Sparkline from "@/components/admin/usage/Sparkline";
 import type { InsightClusterRow } from "@/lib/insight/admin";
-import { AnomalyBadge, COVERAGE_LABELS, MediaBadges, clusterHref } from "./shared";
+import { AnomalyBadge, COVERAGE_LABELS, MediaBadges, RegionBadge, clusterHref } from "./shared";
 
 /** 覆盖度徽章(行内紧凑版;blank 标红=选题机会) */
 function CoveragePill({ state }: { state: string | null }): React.ReactElement | null {
@@ -65,6 +65,7 @@ export default function PainCardGrid({
               </span>
               <CoveragePill state={c.coverageState} />
               {c.anomaly && <AnomalyBadge />}
+              <RegionBadge region={c.region} />
               <MediaBadges media={c.media} />
             </span>
             <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-panel-2">

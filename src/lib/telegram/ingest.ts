@@ -12,15 +12,21 @@ import { logger } from "../logger";
 import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { fetchSourceItems, RateLimitedError, type AdapterItem } from "./adapters";
+import { runCommunitySourceCrawl } from "../insight/community/crawl";
+import { runLeaderboardSourceCrawl } from "../leaderboard/crawl";
 import { runPricingSourceCrawl } from "../pricing/source-registry";
+import { runVendorSourceCrawl } from "../insight/vendor/crawl";
 import { TELEGRAM_STATUS_HIDDEN, TELEGRAM_STATUS_VISIBLE, type BlocklistScope } from "./constants";
 import {
   CRAWL_MAX_CONSECUTIVE_FAILS,
   CRAWL_SOURCE_STATUS_DEGRADED,
   CRAWL_SOURCE_STATUS_ERROR,
   CRAWL_SOURCE_STATUS_HEALTHY,
+  CRAWL_SOURCE_TYPE_COMMUNITY,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
   CRAWL_SOURCE_TYPE_PRICING,
   CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPE_VENDOR,
 } from "../collect/constants";
 import { CRAWL_MAX_ITEMS_PER_RUN } from "./constants";
 import {
@@ -157,6 +163,21 @@ export async function crawlSource(sourceId: number): Promise<CrawlOutcome> {
     if (source.type === CRAWL_SOURCE_TYPE_PRICING) {
       const r = await runPricingSourceCrawl(source, now);
       if (!r.ok) throw new Error(r.error ?? "pricing 源失败");
+      outcome.fetched = r.fetched;
+    } else if (source.type === CRAWL_SOURCE_TYPE_VENDOR) {
+      // 厂商动态(M58 批②):取数+快照+逐条入事件抽取队列收敛在
+      // insight/vendor/crawl;抽取失败不回写本表健康度(方案 §5.2 失败隔离)
+      const r = await runVendorSourceCrawl(source, now);
+      outcome.fetched = r.fetched;
+    } else if (source.type === CRAWL_SOURCE_TYPE_LEADERBOARD) {
+      // 榜单(M58 批③):取数+快照+按日 upsert 收敛在 leaderboard/crawl;
+      // 失败不写空数据,读侧据「数据截至」降级(方案 §6.1)
+      const r = await runLeaderboardSourceCrawl(source, now);
+      outcome.fetched = r.fetched;
+    } else if (source.type === CRAWL_SOURCE_TYPE_COMMUNITY) {
+      // 社区需求语料(M58 批④):取数+快照+L0 准入+日预算收敛在
+      // insight/community/crawl,条目入洞察信号池而非电报流
+      const r = await runCommunitySourceCrawl(source, now);
       outcome.fetched = r.fetched;
     } else {
       const items = await fetchSourceItems(source.type, source.url, source.config ?? undefined);

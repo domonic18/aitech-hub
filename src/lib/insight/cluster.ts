@@ -68,6 +68,21 @@ export function unionMedia(medias: (readonly string[] | null | undefined)[]): st
   return [...set];
 }
 
+/** 簇地域(纯函数,M58 批①):成员地域多数派;cn/global 差距 <20% 记 mixed;
+ * 无地域(未知源/存量空值)返回 null。打标时回写,建簇时取首条信号值兜底。 */
+export function majorityRegion(regions: (string | null | undefined)[]): string | null {
+  let cn = 0;
+  let global = 0;
+  for (const r of regions) {
+    if (r === "cn") cn += 1;
+    else if (r === "global") global += 1;
+  }
+  const total = cn + global;
+  if (total === 0) return null;
+  if (cn > 0 && global > 0 && Math.abs(cn - global) / total < 0.2) return "mixed";
+  return cn >= global ? "cn" : "global";
+}
+
 export interface ClusterRunSummary {
   /** 本轮工作集大小 */
   scanned: number;
@@ -133,12 +148,14 @@ export async function runInsightClustering(limit: number): Promise<ClusterRunSum
         summary.joined += 1;
       } else {
         // 建新簇:kind=源映射引导值(LLM 打标日批按语义覆判);label 未打标
-        // null,LLM 日批回填;media=首条信号介质,
+        // null,LLM 日批回填;media=首条信号介质,region=首条信号地域(M58,
+        // 打标时按成员多数派重算),
         // 嵌套 create 同事务落 member(原子,防半建簇)
         await prisma.insightCluster.create({
           data: {
             kind,
             domain: sig.domain,
+            region: sig.region,
             media: [sig.medium],
             members: { create: { signalId: sig.id, weight: 1 } },
           },

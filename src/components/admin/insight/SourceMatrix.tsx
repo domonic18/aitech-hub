@@ -22,6 +22,13 @@ const SOURCE_SHORT: Record<string, { short: string; full: string; internal: bool
   "hot-bilibili": { short: "B站", full: "B站热搜", internal: false },
   "telegram-ai": { short: "电报", full: "电报AI解读", internal: false },
   "internal-comment": { short: "评论", full: "文章评论(站内痛点)", internal: true },
+  // 厂商动态六源(M58 批②;列名取厂商短名)
+  "vendor-openai": { short: "OpenAI", full: "OpenAI 官方动态", internal: false },
+  "vendor-anthropic": { short: "Anthropic", full: "Anthropic 官方动态", internal: false },
+  "vendor-google": { short: "Google", full: "Google AI 官方博客", internal: false },
+  "vendor-deepseek": { short: "DeepSeek", full: "DeepSeek 官方动态", internal: false },
+  "vendor-qwen": { short: "Qwen", full: "Qwen 官方博客", internal: false },
+  "vendor-kimi": { short: "Kimi", full: "Kimi 官方博客", internal: false },
 };
 
 const INTERNAL_SOURCE = "internal-comment";

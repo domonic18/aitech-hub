@@ -20,7 +20,9 @@ import {
   GITHUB_JOB_TICK,
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
+  INSIGHT_JOB_EXTRACT_EVENT,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_TRANSLATE,
   ILLUSTRATION_JOB_EDIT,
   ILLUSTRATION_JOB_GENERATE,
   PAY_JOB_DAILY_AUDIT,
@@ -95,8 +97,11 @@ import { dbBackupJob } from "../src/lib/backup/db-backup";
 import { type EmailJobData, sendMail } from "../src/lib/email/mailer";
 import { reconcileEmbeddings } from "../src/lib/search/embed-reconcile";
 import { runInsightEmbedBatch } from "../src/lib/insight/embed";
+import { runInsightTranslateBatch, translateSignal } from "../src/lib/insight/translate";
 import { runHotlistFetch } from "../src/lib/insight/hotlist/run";
 import { runInsightDaily } from "../src/lib/insight/daily";
+import { runVendorExtractJob } from "../src/lib/insight/vendor/extract";
+import type { VendorExtractJobData } from "../src/lib/insight/vendor/crawl";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 
 export const PROCESSORS: Record<string, Processor> = {
@@ -133,7 +138,8 @@ export const PROCESSORS: Record<string, Processor> = {
       }
       return { removed };
     }
-    // Drawer 会话清退(K2.5 member 30 天 + K2.6 游客 TTL 键消失;checkpoint 残留由下轮再扫)
+    // Drawer 会话清退(成员与游客留档行统一 30 天日清;游客无行的历史线程按
+    // TTL 键消失清扫;checkpoint 残留由下轮再扫)
     if (job.name === STATS_JOB_AGENT_PURGE) {
       const removed = await purgeAgentSessions();
       if (removed > 0) {
@@ -369,6 +375,32 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === INSIGHT_JOB_FETCH) {
       const r = await runHotlistFetch();
       console.log(JSON.stringify({ event: "insight.hotlist_job", ...r }));
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_TRANSLATE) {
+      // 单条(data.signalId,ingest 即时入队)与扫尾批(无参,cron)共用;
+      // 单条 job 失败已落 failed,不再上抛重试
+      const signalId = (job.data as { signalId?: string }).signalId;
+      if (signalId) {
+        const outcome = await translateSignal(BigInt(signalId));
+        if (outcome === "failed") {
+          console.log(JSON.stringify({ event: "insight.translate_job", signalId, outcome }));
+        }
+        return { outcome };
+      }
+      const r = await runInsightTranslateBatch();
+      if (r.done + r.cached + r.failed > 0 || r.unbound) {
+        console.log(JSON.stringify({ event: "insight.translate_job", ...r }));
+      }
+      return r;
+    }
+    if (job.name === INSIGHT_JOB_EXTRACT_EVENT) {
+      // 厂商单篇事件抽取(M58 批②):失败上抛记 job 失败(抽取侧已释 Redis
+      // 标记,下轮重投重试);不回写 crawl_source 健康度
+      const r = await runVendorExtractJob(job.data as VendorExtractJobData);
+      if (r.events > 0 || r.dropped > 0 || r.empty) {
+        console.log(JSON.stringify({ event: "insight.vendor_extract_job", ...r }));
+      }
       return r;
     }
     throw new Error(`未知 insight job:${job.name}`);

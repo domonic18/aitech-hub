@@ -1,8 +1,9 @@
 /**
  * 会话管理页(K2.6 需求5;侧栏精简批② 起为 AI 用量「会话」页签,原型参照
- * admin/users):成员(admin 登录)与游客
- * 会话一屏可见——成员=会话行,游客=台账聚合(不落行,过期仅留统计)。分段
- * + 搜索 + 分页整页服务端渲染;详情走行内弹窗(checkpoint 时间线)。
+ * admin/users):成员(登录账号)与游客会话一屏可见——均以会话行为准;
+ * 游客行匿名(不存访客标识)、归属键 2 小时未活动即不可继续追问,内容随行
+ * 留档 30 天后日清。分段 + 搜索 + 分页整页服务端渲染;详情走行内弹窗
+ * (checkpoint 时间线)。
  */
 import AgentSessionDetailDialog from "@/components/admin/AgentSessionDetailDialog";
 import AdminPagination from "@/components/admin/AdminPagination";
@@ -49,7 +50,7 @@ function KindBadge({ kind }: { kind: AgentSessionKind }) {
   );
 }
 
-/** 游客活跃态:live true=活跃/false=已过期/null=不可判;成员恒「在档」 */
+/** 游客活跃态:live true=可继续追问/false=已结束(内容仍留档)/null=不可判;成员恒「在档」 */
 function LiveBadge({ kind, live }: { kind: AgentSessionKind; live: boolean | null }) {
   if (kind === "member") {
     return (
@@ -71,7 +72,7 @@ function LiveBadge({ kind, live }: { kind: AgentSessionKind; live: boolean | nul
     return (
       <span className="inline-flex items-center gap-1.5 rounded-sm bg-amber/12 px-2 py-0.5 text-xs font-medium text-amber">
         <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden="true" />
-        已过期
+        已结束
       </span>
     );
   }
@@ -95,8 +96,8 @@ export default async function AdminAgentSessionsPage({
       <div>
         <h2 className="text-base font-semibold">会话管理</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          站内搜索 Agent 会话审计:成员(登录账号)落会话行;游客不落行,台账聚合统计, 归属键 2
-          小时未活动自动清退、checkpoint 随日清删除。
+          站内搜索 Agent 会话审计:成员与游客会话均留档(游客行匿名、不关联访客标识);归属键 2
+          小时未活动后不可继续追问,内容与行留存 30 天后自动清退。
         </p>
       </div>
 

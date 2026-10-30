@@ -9,17 +9,158 @@
  */
 export const SOURCE_REGISTRY = {
   /** 站内搜索问句(批③ 渠道转向 2026-10-18 停接入,存量行保留) */
-  "internal-search": { medium: "search", enabled: false, kind: "pain", label: "站内搜索" },
-  /** 助手问句(同上,停接入) */
-  "internal-agent": { medium: "search", enabled: false, kind: "pain", label: "助手问句" },
-  "internal-comment": { medium: "voice", enabled: true, kind: "pain", label: "文章评论" },
+  "internal-search": {
+    medium: "search",
+    enabled: false,
+    kind: "pain",
+    label: "站内搜索",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 助手问句(M58 批⑤ 复活:后台功能页上下文过滤 + 游客首问采集,见
+   * arch/01 §3.4;批③ 曾整体停接) */
+  "internal-agent": {
+    medium: "search",
+    enabled: true,
+    kind: "pain",
+    label: "助手问句",
+    lang: "zh",
+    region: "cn",
+  },
+  "internal-comment": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "文章评论",
+    lang: "zh",
+    region: "cn",
+  },
   /** 站点反馈(同上,停接入) */
-  "internal-feedback": { medium: "voice", enabled: false, kind: "pain", label: "站点反馈" },
-  "telegram-ai": { medium: "ai-record", enabled: true, kind: "hot", label: "电报AI解读" },
+  "internal-feedback": {
+    medium: "voice",
+    enabled: false,
+    kind: "pain",
+    label: "站点反馈",
+    lang: "zh",
+    region: "cn",
+  },
+  "telegram-ai": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "电报AI解读",
+    lang: "zh",
+    region: "cn",
+  },
   /** 热榜三源(批③):百度/B站热搜词=搜索形态,知乎热榜=社区讨论声音(方案 §2) */
-  "hot-baidu": { medium: "search", enabled: true, kind: "hot", label: "百度热搜" },
-  "hot-zhihu": { medium: "voice", enabled: true, kind: "hot", label: "知乎热榜" },
-  "hot-bilibili": { medium: "search", enabled: true, kind: "hot", label: "B站热搜" },
+  "hot-baidu": {
+    medium: "search",
+    enabled: true,
+    kind: "hot",
+    label: "百度热搜",
+    lang: "zh",
+    region: "cn",
+  },
+  "hot-zhihu": {
+    medium: "voice",
+    enabled: true,
+    kind: "hot",
+    label: "知乎热榜",
+    lang: "zh",
+    region: "cn",
+  },
+  "hot-bilibili": {
+    medium: "search",
+    enabled: true,
+    kind: "hot",
+    label: "B站热搜",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 厂商动态六源(M58 批②):官方发布经事件抽取后按 event 信号入池
+   * (refId=dedupeKey,同一事件恒一条);语言/地域随厂商声明,英文源走翻译链 */
+  "vendor-openai": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "OpenAI 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-anthropic": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Anthropic 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-google": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Google AI 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-deepseek": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "DeepSeek 动态",
+    lang: "zh",
+    region: "cn",
+  },
+  "vendor-qwen": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Qwen 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-kimi": {
+    medium: "ai-record",
+    enabled: true,
+    kind: "hot",
+    label: "Kimi 动态",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 社区需求语料四源(M58 批④):社区原话=声音;百度下拉=搜索形态。
+   * kind 只作新簇引导值,语义由 LLM 日批覆判;Reddit 经代理仍 403,未注册 */
+  "community-hn": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "Hacker News",
+    lang: "en",
+    region: "global",
+  },
+  "community-v2ex": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "V2EX",
+    lang: "zh",
+    region: "cn",
+  },
+  "community-baidu": {
+    medium: "search",
+    enabled: true,
+    kind: "pain",
+    label: "百度下拉",
+    lang: "zh",
+    region: "cn",
+  },
+  "community-oss": {
+    medium: "voice",
+    enabled: true,
+    kind: "pain",
+    label: "开源社区 Issues",
+    lang: "zh",
+    region: "cn",
+  },
 } as const;
 
 export type InsightSource = keyof typeof SOURCE_REGISTRY;
@@ -28,14 +169,26 @@ export type InsightMedium = (typeof SOURCE_REGISTRY)[InsightSource]["medium"];
 
 export type InsightSourceKind = (typeof SOURCE_REGISTRY)[InsightSource]["kind"];
 
+/** 语言/地域取值(M58 批①):lang 为 BCP-47 主语言子标签,region 为 cn|global 两档。
+ * 显式联合而非从注册表推断——新增海外源不必先改类型。 */
+export type InsightLang = "zh" | "en" | "ja" | "ko" | "fr" | "de" | "es" | "ru";
+
+export type InsightRegion = "cn" | "global";
+
+/** 需要翻译的语言(非中文)判定;zh 系一律不翻 */
+export function needsTranslation(lang: string | null | undefined): boolean {
+  return !!lang && !lang.toLowerCase().startsWith("zh");
+}
+
 /** 源 → 五介质映射(方案 §2;ingest.ts 写侧消费) */
 export const INSIGHT_SOURCE_MEDIUM: Record<InsightSource, InsightMedium> = Object.fromEntries(
   Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.medium]),
 ) as Record<InsightSource, InsightMedium>;
 
 /**
- * 在役源白名单(停接入闸,ingest.ts 文件头注):站内三源(搜索/agent/反馈)批③
- * 退出,评论与电报 AI 保留;热榜三源为批③ 新渠道。恢复=enabled 翻回 true,
+ * 在役源白名单(停接入闸,ingest.ts 文件头注):站内搜索/反馈两源批③ 退出,
+ * 助手问句批⑤ 清洗后复活(后台功能页上下文过滤);评论与电报 AI 保留;
+ * 热榜三源批③、厂商六源与社区四源为 M58 新渠道。恢复=enabled 翻回 true,
  * 调用点无需动。
  */
 export const INSIGHT_SOURCES_ENABLED: ReadonlySet<InsightSource> = new Set(
@@ -56,3 +209,12 @@ export const INSIGHT_SOURCE_KIND: Record<InsightSource, InsightSourceKind> = Obj
 export const SOURCE_LABELS: Record<InsightSource, string> = Object.fromEntries(
   Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.label]),
 ) as Record<InsightSource, string>;
+
+/** 源级默认语言/地域(M58;混合源在 ingest 入参逐条覆盖) */
+export const INSIGHT_SOURCE_LANG: Record<InsightSource, InsightLang> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.lang]),
+) as Record<InsightSource, InsightLang>;
+
+export const INSIGHT_SOURCE_REGION: Record<InsightSource, InsightRegion> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.region]),
+) as Record<InsightSource, InsightRegion>;

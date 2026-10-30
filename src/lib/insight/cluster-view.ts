@@ -20,6 +20,8 @@ export interface InsightClusterRow {
   summary: string | null;
   keywords: string[];
   media: string[];
+  /** 簇地域(M58 批①:cn | global | mixed) */
+  region: string | null;
   score: number | null;
   coverageScore: number | null;
   coverageState: string | null;
@@ -64,6 +66,7 @@ export async function listInsightClusters(opts: {
       summary: true,
       keywords: true,
       media: true,
+      region: true,
       score: true,
       coverageScore: true,
       coverageState: true,
@@ -126,6 +129,7 @@ export async function listInsightClusters(opts: {
       summary: c.summary,
       keywords,
       media,
+      region: c.region,
       score: c.score,
       coverageScore: c.coverageScore,
       coverageState: c.coverageState,
@@ -175,6 +179,7 @@ export async function getInsightClusterDetail(id: bigint): Promise<InsightCluste
       summary: true,
       keywords: true,
       media: true,
+      region: true,
       score: true,
       coverageScore: true,
       coverageState: true,
@@ -224,6 +229,7 @@ export async function getInsightClusterDetail(id: bigint): Promise<InsightCluste
       summary: cluster.summary,
       keywords,
       media,
+      region: cluster.region,
       score: cluster.score,
       coverageScore: cluster.coverageScore,
       coverageState: cluster.coverageState,

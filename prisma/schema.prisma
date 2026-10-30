@@ -559,6 +559,53 @@ model CrawlSnapshot {
   @@map("crawl_snapshot")
 }
 
+/// 厂商事件(M58 批②):官方发布经 LLM 抽取的结构化事件,dedupeKey 幂等锚
+/// (sha1(source|canonical url|eventType|entityKey);较方案多加 entityKey,
+/// 避免同文同类型两实体(如两个模型齐发布)互相吞并)。vendor 落注册表 key
+/// (openai/anthropic/google/deepseek/qwen/kimi),展示名由界面映射。
+model EntityEvent {
+  id         BigInt   @id @default(autoincrement())
+  source     String   @db.VarChar(30) // 采集来源标识(vendor-<key>,与洞察 source 同口径)
+  vendor     String   @db.VarChar(30) // 厂商 key
+  entityType String   @map("entity_type") @db.VarChar(12) // model | product | org
+  entityKey  String   @map("entity_key") @db.VarChar(120) // 实体规范名(如 deepseek-v4)
+  eventType  String   @map("event_type") @db.VarChar(20) // release | price_change | open_source | funding | deprecation | benchmark_change
+  title      String   @db.VarChar(300)
+  summary    String?  @db.VarChar(1000)
+  url        String   @db.VarChar(500) // 原文链接(后台标题外链)
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6) // 事件发生时间(非采集时间)
+  dedupeKey  String   @unique(map: "uq_entity_event_dedupe") @map("dedupe_key") @db.Char(40)
+  meta       Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([vendor, occurredAt(sort: Desc)], map: "idx_entity_event_vendor_recent")
+  @@index([eventType, occurredAt(sort: Desc)], map: "idx_entity_event_type_recent")
+  @@map("entity_event")
+}
+
+/// 榜单快照(M58 批③):每日一抓,同 (source, board, entityKey, capturedDate)
+/// 幂等覆盖,同日重跑整表覆盖;名次变动不落库,读侧与上一可用日期比较得出
+/// (data-expansion-plan §6.2)。source 落注册表 key,board 为榜单展示名键。
+model LeaderboardSnapshot {
+  id           BigInt   @id @default(autoincrement())
+  source       String   @db.VarChar(30)
+  board        String   @db.VarChar(40)
+  entityKey    String   @map("entity_key") @db.VarChar(200)
+  entityName   String   @map("entity_name") @db.VarChar(300)
+  entityType   String   @map("entity_type") @db.VarChar(12) // model | paper | repo
+  vendor       String?  @db.VarChar(60)
+  rank         Int
+  score        Float?
+  scoreUnit    String?  @map("score_unit") @db.VarChar(20)
+  capturedDate DateTime @map("captured_date") @db.Date
+  meta         Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([source, board, entityKey, capturedDate], map: "uq_leaderboard_snapshot")
+  @@index([source, board, capturedDate(sort: Desc)], map: "idx_leaderboard_snapshot_board")
+  @@map("leaderboard_snapshot")
+}
+
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
 model Telegram {
   id              BigInt    @id @default(autoincrement())
@@ -1273,10 +1320,14 @@ model InsightSignal {
   source         String                       @db.VarChar(30) // internal-search/internal-agent/internal-comment/internal-feedback/telegram-ai(批③起扩 hotboard-* 等)
   domain         String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔;M54 起分类器落库,未分类=unclassified)
   subdomain      String?                      @map("subdomain") @db.VarChar(30) // tech 子域(M54:词表 key,如 ai-learning;域非 tech 时空)
+  lang           String?                      @db.VarChar(10) // zh | en | ja …(M58:源级声明,混合源逐条覆盖)
+  region         String?                      @db.VarChar(10) // cn | global(M58:国内/海外统一视图)
   medium         String                       @db.VarChar(12) // money/time/voice/search/ai-record(五介质)
   refId          String                       @map("ref_id") @db.VarChar(120) // 溯源锚:源行 id 文本/会话 id(幂等键半)
   rawText        String                       @map("raw_text") @db.Text // 原文(截 4000)
   normalizedText String                       @map("normalized_text") @db.Text // 归一后(trim+空白折叠,截 2000;聚类/向量输入)
+  translatedText String?                      @map("translated_text") @db.Text // 中文译文(M58;非中文源,原文恒在 raw_text)
+  translationStatus String                    @default("none") @map("translation_status") @db.VarChar(10) // none | pending | done | failed
   meta           Json? // 源相关:{hitCount,postId,category,title,topic...}
   embedding      Unsupported("vector(1024)")? // 批② 回填;raw SQL 读写
   signalAt       DateTime                     @map("signal_at") @db.Timestamptz(6) // 信号发生时间(非采集时间)
@@ -1287,6 +1338,7 @@ model InsightSignal {
   @@unique([source, refId], map: "uq_insight_signal_source_ref")
   @@index([signalAt(sort: Desc)], map: "idx_insight_signal_recent")
   @@index([source, signalAt(sort: Desc)], map: "idx_insight_signal_source_recent")
+  @@index([region, signalAt(sort: Desc)], map: "idx_insight_signal_region_recent")
   @@map("insight_signal")
 }
 
@@ -1300,6 +1352,7 @@ model InsightCluster {
   kind               String    @db.VarChar(8) // hot | pain
   sentiment          String?   @map("sentiment") @db.VarChar(8) // 舆情倾向(LLM 打标扩展位):positive|neutral|negative|mixed;null=未打标,读侧按中性显示
   domain             String    @default("tech") @db.VarChar(20) // 与 signal 同域聚类(跨域打通前不混簇)
+  region             String?   @db.VarChar(10) // cn | global | mixed(M58:打标时按成员多数派回写)
   label              String?   @db.VarChar(200) // LLM 命名(人话;未打标 null)
   summary            String?   @db.VarChar(1000) // LLM 一句话概括
   keywords           Json? // string[]

@@ -55,6 +55,10 @@ export const INSIGHT_DAILY_CRON = "57 3 * * *";
  * 入池,提频不膨胀;LLM/向量只处理新增,成本增量可忽略) */
 export const INSIGHT_FETCH_CRON = "43 * * * *";
 
+/** 信号翻译扫尾 :05/:15/…/:55(M58 批①;避开 :43 热榜与 3/18/33/48 embed;
+ * ingest 即时入队为主,本 cron 只补入队丢失与超时 pending 降级) */
+export const INSIGHT_TRANSLATE_CRON = "5,15,25,35,45,55 * * * *";
+
 /** 任务域(颜色为设计令牌原值,globals.css 同源;色点/日历 chip 共用) */
 export type ScheduleCategory = "insight" | "discovery" | "process" | "ops";
 
@@ -188,6 +192,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     label: "洞察向量回填",
     desc: "信号高频向量回填 + 增量聚类",
     cron: INSIGHT_EMBED_CRON,
+    category: "insight",
+  },
+  {
+    key: "insight-translate",
+    jobRunKey: "insight/translate",
+    label: "信号翻译扫尾",
+    desc: "补翻在池非中文信号 + 超时 pending 降级",
+    cron: INSIGHT_TRANSLATE_CRON,
     category: "insight",
   },
 ];

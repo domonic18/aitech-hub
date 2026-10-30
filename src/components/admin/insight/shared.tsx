@@ -25,6 +25,18 @@ export const SOURCE_COLORS: Record<InsightSource, string> = {
   "hot-baidu": "bg-blue",
   "hot-zhihu": "bg-green",
   "hot-bilibili": "bg-red",
+  // 厂商动态六源(M58 批②;同图例内复用令牌色,靠标签区分)
+  "vendor-openai": "bg-accent",
+  "vendor-anthropic": "bg-green",
+  "vendor-google": "bg-blue",
+  "vendor-deepseek": "bg-amber",
+  "vendor-qwen": "bg-text-2",
+  "vendor-kimi": "bg-text-3",
+  // 社区需求语料四源(M58 批④;同上复用令牌色)
+  "community-hn": "bg-amber",
+  "community-v2ex": "bg-green",
+  "community-baidu": "bg-blue",
+  "community-oss": "bg-accent",
 };
 
 export const COVERAGE_LABELS: Record<string, string> = {
@@ -59,6 +71,8 @@ export type InsightViewParams = {
   source?: string;
   /** 介质筛选(M52 批D:钱/时间/声音/搜索/AI记录) */
   medium?: string;
+  /** 地域筛选(M58 批①:cn 国内 / global 海外) */
+  region?: string;
   w?: string;
   from?: string;
   to?: string;
@@ -66,6 +80,20 @@ export type InsightViewParams = {
   hs?: string;
   domain?: string;
 };
+
+/** 地域视图合法值(信号明细 chips;簇徽章含 mixed) */
+export const REGIONS = ["cn", "global"] as const;
+
+export const REGION_LABELS: Record<string, string> = {
+  cn: "国内",
+  global: "海外",
+  mixed: "国内外",
+};
+
+/** 地域参数钳制(非法值丢弃,页侧唯一出口) */
+export function resolveRegionParam(raw: string | undefined): string | undefined {
+  return (REGIONS as readonly string[]).includes(raw ?? "") ? raw : undefined;
+}
 
 /** 领域视图「全部」哨兵值(domain=all → 查询层不筛,unclassified 亦可见) */
 export const DOMAIN_ALL = "all";
@@ -154,6 +182,23 @@ export function AnomalyBadge(): React.ReactElement {
   return (
     <span className={`${badge} bg-red/12 text-red`} title="热度异动:近值远超前 3 日均值">
       异动
+    </span>
+  );
+}
+
+/** 地域徽章(M58 批①):cluster.region=cn|global|mixed;signal.region=cn|global。
+ * 无地域(存量/未知源)不渲染。 */
+export function RegionBadge({ region }: { region: string | null }): React.ReactElement | null {
+  if (region === null || region === undefined) return null;
+  const tone =
+    region === "global"
+      ? "bg-blue/12 text-blue"
+      : region === "mixed"
+        ? "bg-accent-dim text-accent"
+        : "bg-panel-2 text-text-2";
+  return (
+    <span className={`${badge} ${tone}`} title="地域:国内/海外">
+      {REGION_LABELS[region] ?? region}
     </span>
   );
 }

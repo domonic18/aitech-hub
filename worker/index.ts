@@ -73,6 +73,42 @@ async function main(): Promise<void> {
     await pq.removeJobScheduler("sync-openrouter").catch(() => undefined);
     await pq.close().catch(() => undefined);
   }
+  // 厂商动态渠道(M58 批②):同牌价——种子幂等入 crawl_source,走 crawler tick
+  {
+    const { syncVendorChannels } = await import("../src/lib/insight/vendor/crawl");
+    await syncVendorChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "insight.vendor_source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+  }
+  // 榜单渠道(M58 批③):种子幂等入 crawl_source(日频),走 crawler tick
+  {
+    const { syncLeaderboardChannels } = await import("../src/lib/leaderboard/crawl");
+    await syncLeaderboardChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "leaderboard.source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+  }
+  // 社区需求语料(M58 批④):种子幂等入 crawl_source(HN/V2EX 时频,其余日频)
+  {
+    const { syncCommunityChannels } = await import("../src/lib/insight/community/crawl");
+    await syncCommunityChannels().catch((e: unknown) =>
+      console.error(
+        JSON.stringify({
+          event: "insight.community_source_sync_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    );
+  }
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
   await scheduleUsageLogPurge();

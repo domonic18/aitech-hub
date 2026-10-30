@@ -11,6 +11,9 @@ import { INSIGHT_MEDIA_VOCAB, MEDIUM_LABELS } from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
 
 import {
+  REGIONS,
+  REGION_LABELS,
+  RegionBadge,
   SOURCE_LABELS,
   chipOff,
   chipOn,
@@ -31,6 +34,7 @@ export default function SignalsSection({
 }): React.ReactElement {
   const source = sources.find((s) => s === params.source);
   const medium = INSIGHT_MEDIA_VOCAB.find((m) => m === params.medium);
+  const region = REGIONS.find((r) => r === params.region);
   const { from, to } = params;
   return (
     <div className="rounded-md border border-line bg-panel">
@@ -51,6 +55,24 @@ export default function SignalsSection({
             className={source === k ? chipOn : chipOff}
           >
             {SOURCE_LABELS[k]}
+          </Link>
+        ))}
+        <span className="ml-1 text-[10px] text-text-3">地域</span>
+        <Link
+          href={insightHref(params, { region: undefined })}
+          scroll={false}
+          className={region === undefined ? chipOn : chipOff}
+        >
+          全部
+        </Link>
+        {REGIONS.map((r) => (
+          <Link
+            key={r}
+            href={insightHref(params, { region: r })}
+            scroll={false}
+            className={region === r ? chipOn : chipOff}
+          >
+            {REGION_LABELS[r]}
           </Link>
         ))}
         <span className="ml-1 text-[10px] text-text-3">介质</span>
@@ -77,6 +99,7 @@ export default function SignalsSection({
           {params.day && <input type="hidden" name="day" value={params.day} />}
           {source && <input type="hidden" name="source" value={source} />}
           {medium && <input type="hidden" name="medium" value={medium} />}
+          {region && <input type="hidden" name="region" value={region} />}
           <input
             type="date"
             name="from"
@@ -119,9 +142,31 @@ export default function SignalsSection({
                 </span>
               </td>
               <td className="px-3 py-2 align-top">
-                <span className="line-clamp-2 text-text-1" title={sig.rawText}>
-                  {sig.rawText}
-                </span>
+                <div className="flex items-start gap-2">
+                  <RegionBadge region={sig.region} />
+                  <div className="min-w-0 flex-1">
+                    <span
+                      className="line-clamp-2 text-text-1"
+                      title={sig.translatedText ?? sig.rawText}
+                    >
+                      {sig.translatedText ?? sig.rawText}
+                    </span>
+                    {sig.translatedText && (
+                      <details className="mt-1 text-[11px] text-text-3">
+                        <summary className="cursor-pointer select-none hover:text-text-2">
+                          原文{sig.lang ? ` · ${sig.lang}` : ""}
+                        </summary>
+                        <p className="mt-1 whitespace-pre-wrap text-text-2">{sig.rawText}</p>
+                      </details>
+                    )}
+                    {sig.translationStatus === "pending" && (
+                      <span className="text-[11px] text-amber-hi"> · 待翻译(译文落定后入向量)</span>
+                    )}
+                    {sig.translationStatus === "failed" && (
+                      <span className="text-[11px] text-text-3"> · 翻译失败,展示原文</span>
+                    )}
+                  </div>
+                </div>
               </td>
               <td className="w-28 px-4 py-2 text-right align-top font-mono text-[11px] text-text-3">
                 {formatTime(sig.signalAt)}

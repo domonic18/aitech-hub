@@ -6,8 +6,10 @@
 import { prisma } from "../db";
 import { ingestInsightSignal } from "../insight/ingest";
 import { logger } from "../logger";
+import { redis } from "../redis";
 
 import { deleteThread } from "./checkpointer";
+import { isAdminSurface } from "./run-context";
 
 /** 单 visitor 列表上限(列表分组的上游;超老会话靠 30 天清退自然收敛) */
 export const AGENT_SESSION_LIST_MAX = 100;
@@ -63,19 +65,107 @@ export async function touchSessionAfterRun(sessionId: string, tokens: number): P
   });
 }
 
+/**
+ * 游客 run 收尾:落/续匿名会话行,供后台会话管理查看标题与内容留档(30 天
+ * 日清,与成员同口径)。归属仍以 Redis 归属键判定,本行只作审计档案;建行
+ * 失败只告警不反噬已完成的 run。
+ */
+export async function touchGuestSessionAfterRun(
+  threadId: string,
+  message: string | null,
+  tokens: number,
+): Promise<void> {
+  try {
+    const now = new Date();
+    await prisma.searchAgentSession.upsert({
+      where: { id: threadId },
+      create: {
+        id: threadId,
+        visitorId: GUEST_SESSION_OWNER,
+        title: message === null ? null : deriveTitle(message),
+        lastMessageAt: now,
+        tokensTotal: Math.max(0, tokens),
+      },
+      update: { lastMessageAt: now, tokensTotal: { increment: Math.max(0, tokens) } },
+    });
+    // 兼容先有行后补标题(upsert 命中既有行且 title 为空)
+    if (message !== null) {
+      await prisma.searchAgentSession.updateMany({
+        where: { id: threadId, title: null },
+        data: { title: deriveTitle(message) },
+      });
+    }
+  } catch (e) {
+    logger.warn({
+      event: "agent.guest_session_touch_failed",
+      threadId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+/** 游客会话行匿名属主(M58 批⑤ 后续):不存访客标识,不做个人关联;归属
+ * 校验仍以 Redis 归属键为界,本行只作后台审计档案。 */
+export const GUEST_SESSION_OWNER = "guest";
+
+/** 站内问句入池(M58 批⑤,arch/01 §3.4):后台功能页上下文一律不入池,
+ * 公开页放行且与身份无关;`meta.surface` 记入口便于调规则。ingest 自吞异常,
+ * fire-and-forget 不反噬响应流。 */
+function captureAsk(refId: string, message: string, page: string | null | undefined): void {
+  if (isAdminSurface(page)) return;
+  void ingestInsightSignal({
+    source: "internal-agent",
+    refId,
+    rawText: message,
+    signalAt: new Date(),
+    meta: page === null || page === undefined ? undefined : { surface: page },
+  });
+}
+
 /** 标题回填(仅首个 run:标题为空的行);回填命中即首问——fire-and-forget 入
- * 洞察信号池(M34 批①,完整首问比 title 20 字截断更利于聚类,ingest 自吞异常) */
-export async function backfillSessionTitle(sessionId: string, message: string): Promise<void> {
+ * 洞察信号池(M34 批①,完整首问比 title 20 字截断更利于聚类,ingest 自吞异常)。
+ * M58 批⑤起按页面上下文过滤后台功能页会话。 */
+export async function backfillSessionTitle(
+  sessionId: string,
+  message: string,
+  page?: string | null,
+): Promise<void> {
   const r = await prisma.searchAgentSession.updateMany({
     where: { id: sessionId, title: null },
     data: { title: deriveTitle(message) },
   });
-  if (r.count > 0) {
-    void ingestInsightSignal({
-      source: "internal-agent",
-      refId: sessionId,
-      rawText: message,
-      signalAt: new Date(),
+  if (r.count > 0) captureAsk(sessionId, message, page);
+}
+
+/** 首问判定键 TTL(游客线程活跃 TTL 2h 的两倍余量;键只存 "1") */
+const ASK_RECORDED_TTL_SECONDS = 6 * 3600;
+const askRecordedKey = (threadId: string): string => `search:agent:ask-recorded:${threadId}`;
+
+/** 游客首问(M58 批⑤):游客不落会话行,run 收尾用 Redis SET NX 判首问。
+ * refId=`g:<threadId>`,**不存 visitorId**(不做个人关联);ingest 侧
+ * `(source, refId)` 唯一键天然兜住键过期后的重记。Redis 不可用 = 宁可漏记
+ * 不误记,直接跳过并留事件。 */
+export async function recordGuestFirstAsk(
+  threadId: string,
+  message: string,
+  page?: string | null,
+): Promise<void> {
+  try {
+    const first = await redis.set(
+      askRecordedKey(threadId),
+      "1",
+      "EX",
+      ASK_RECORDED_TTL_SECONDS,
+      "NX",
+    );
+    if (first !== "OK") return;
+  } catch (e) {
+    logger.warn({
+      event: "agent.guest_ask_record_failed",
+      threadId,
+      error: e instanceof Error ? e.message : String(e),
     });
+    return;
   }
+  captureAsk(`g:${threadId}`, message, page);
 }

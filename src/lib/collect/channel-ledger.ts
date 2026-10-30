@@ -18,7 +18,7 @@ import {
   VIDEO_PLATFORM_LABELS,
 } from "../telegram/constants";
 import { CRAWL_SOURCE_TYPE_PRICING, CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } from "./constants";
-import { listChannelsAdmin } from "../telegram/channels-admin";
+import { listChannelsAdmin, publicConfigJson } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
 import { videoRunningSince } from "./crawler-runs";
 import {
@@ -65,6 +65,7 @@ async function rssRows(): Promise<ChannelLedgerRow[]> {
         remark: c.remark,
         enabled: c.enabled,
         credentialMask: c.maskedConfig?.token ?? "",
+        configJson: c.configJson,
       },
       snapshotsHref: null,
     };
@@ -106,6 +107,7 @@ async function pricingRows(): Promise<ChannelLedgerRow[]> {
         remark: c.remark,
         enabled: c.enabled,
         credentialMask: "",
+        configJson: publicConfigJson(c.config),
       },
       snapshotsHref: `/admin/data/sources/${c.id}/snapshots/`,
     };

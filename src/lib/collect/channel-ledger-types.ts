@@ -50,6 +50,8 @@ export interface ChannelLedgerRow {
     remark: string | null;
     enabled: boolean;
     credentialMask: string;
+    /** 扩展配置 JSON 预填(凭证键已剔除;空串=无) */
+    configJson: string;
   } | null;
   /** 采集快照时间线入口(牌价渠道;其余类型 null) */
   snapshotsHref: string | null;

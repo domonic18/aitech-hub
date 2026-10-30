@@ -1,13 +1,15 @@
 /**
  * run 页面上下文单测(M27 批⑧-b):路由→page 映射(尾斜杠归一/未命中回落)/
  * 宽松解析(坏形状返 null 不抛)/ 身份 sanitize(非 admin 剥 edit 段)/
- * 前缀注入(null 原样、有值 [页面上下文] 单行 JSON + 空行接原消息)。
+ * 前缀注入(null 原样、有值 [页面上下文] 单行 JSON + 空行接原消息);
+ * M58 批⑤ 入池上下文黑名单(后台功能页)。
  */
 import { describe, expect, it } from "vitest";
 
 import {
   AGENT_CONTEXT_PREFIX,
   buildAgentPageContext,
+  isAdminSurface,
   parseAgentRunContext,
   sanitizeAgentRunContext,
   withAgentContext,
@@ -32,6 +34,35 @@ describe("buildAgentPageContext", () => {
   it("尾斜杠归一;未命中路由回落「前台」(page 恒在场)", () => {
     expect(buildAgentPageContext("/search/")).toBe("搜索");
     expect(buildAgentPageContext("/post/123-abc")).toBe("前台");
+  });
+});
+
+describe("isAdminSurface(M58 批⑤ 入池上下文黑名单)", () => {
+  it("后台功能页全黑;公开页/null/空串放行", () => {
+    for (const page of ["后台", "文章新建", "文章编辑", "文章管理", "创作中心"]) {
+      expect(isAdminSurface(page)).toBe(true);
+    }
+    for (const page of ["首页", "搜索", "电报流", "开源项目", "前台"]) {
+      expect(isAdminSurface(page)).toBe(false);
+    }
+    expect(isAdminSurface(null)).toBe(false);
+    expect(isAdminSurface(undefined)).toBe(false);
+    expect(isAdminSurface("")).toBe(false);
+  });
+
+  it("/admin 下所有路由派生名必命中黑名单(防新增后台页漏网)", () => {
+    for (const path of [
+      "/admin",
+      "/admin/posts",
+      "/admin/posts/new",
+      "/admin/posts/9",
+      "/admin/studio",
+      "/admin/studio/12",
+      "/admin/topics",
+      "/admin/feedback",
+    ]) {
+      expect(isAdminSurface(buildAgentPageContext(path))).toBe(true);
+    }
   });
 });
 

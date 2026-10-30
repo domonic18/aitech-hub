@@ -335,8 +335,8 @@ CREATE TABLE legacy_url_map (
 
 **搜索 Drawer 会话表已落地(2026-10-07 K2.5 批①迁移 `20261006190159_search_agent_session`,交互见 [arch/04 §3](04-ai-agent.md))**:
 
-- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(匿名 cookie `ah_av`,归属校验锚——非本人 404 不泄露存在性;K2.6 起仅 admin 会话落行,key=`admin:<sub>`);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
-- `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。**游客不落会话行**:thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库),checkpoint 由日清按「键已消失」清扫;后台游客统计 = 本表按 session_id 聚合
+- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(成员会话=归属键:匿名 cookie `ah_av` 或 `admin:<sub>`,归属校验锚——非本人 404 不泄露存在性;**M58 批⑤ 后续起游客会话也落行,`visitor_id` 写字面量 `guest`**,不存任何访客标识);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
+- `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。游客线程 thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库;**M58 批⑤ 后续起同 id 落匿名会话行**,行与内容按 30 天日清,归属键只决定能否继续追问);无留档行的历史线程 checkpoint 仍按「键已消失」日清扫;后台游客统计 = 本表按 session_id 聚合 ∪ 留档行(标题/tokens 以行为准)
 
 **账号邮箱通道与支付域已落地(2026-10-08 M21 批⓪/批①迁移 `20261008221317_m21_batch0_email_auth` + `20261008143451_m21_batch0_email_config` + `20261008145247_m21_payment_schema`,方案定稿 M21 付费阅读提案 v1.6,批⑦ 落 arch/09)**:
 
@@ -387,6 +387,14 @@ CREATE TABLE legacy_url_map (
 - 关系口径(均 **soft ref,应用层完整性**):长文 1:1 走 `topic.linked_post_id`;**贴图 N:1 走 `content_pin.topic_id`**(不新增关联表,删创作由编辑侧改挂)
 - `content_pin.reference_media_path? varchar(500)`:本次生图采纳的参照图(站内 `/wp-content/uploads/` 路径,soft ref;缺省回落创作样例图/素材封面),让「按素材出图」可追溯可复现
 - 索引 `idx_content_pin_topic_updated (topic_id, updated_at DESC)`:创作台按创作聚合贴图产出
+
+**洞察 v2 数据域已落地(2026-10-30 M58 三批迁移 `20261030100000_m58_signal_lang_region` / `20261030120000_m58_entity_event` / `20261030130000_m58_leaderboard_snapshot`;口径见 [arch/01 §3](01-data-source.md);forward-only,枚举一律 varchar 由应用层 Zod 收口)**:
+
+- `insight_signal` 增列(批①,中文化基座):`lang? varchar(10)`(zh/en/…,源级声明、混合源逐条覆盖)/`region? varchar(10)`(cn/global)/`translated_text? text`(中文译文;原文恒在 `raw_text`)/`translation_status varchar(10) 默认 none`(none|pending|done|failed);`cluster.region? varchar(10)`(按成员多数派回写 cn|global|mixed)
+- `entity_event`(批②,厂商事件层):`source varchar(30)`(`vendor-<key>`,与洞察 source 同口径)/`vendor varchar(30)`(注册表 key)/`entity_type varchar(12)`(model|product|org)+ `entity_key varchar(120)`(实体规范名,如 deepseek-v4)/`event_type varchar(20)` 枚举 `release|price_change|open_source|funding|deprecation|benchmark_change`/`title varchar(300)`/`summary? varchar(1000)`/`url varchar(500)`/`occurred_at`/`dedupe_key char(40)` **唯一**(sha1(source|url|eventType|entityKey),同 URL 多实体不互相吞并)/`meta jsonb?`;索引 `(vendor, occurred_at DESC)` + `(event_type, occurred_at DESC)`。事件同时按 dedupeKey 作 refId 进洞察池(`source=vendor-<key>`),可回溯到事件行
+- `leaderboard_snapshot`(批③,榜单时序):`source varchar(30)`(注册表 key)/`board varchar(40)`(榜单展示名)/`entity_key varchar(200)`(模型 slug·arXiv id·owner/repo)/`entity_name varchar(300)`/`entity_type varchar(12)`(model|paper|repo)/`vendor? varchar(60)`/`rank int`/`score? float8`/`score_unit? varchar(20)`/`captured_date date`(北京日界 UTC 零点)/`meta jsonb?`(`{url, sourceId}`);唯一键 `(source, board, entity_key, captured_date)`(同日重跑整表覆盖),索引 `(source, board, captured_date DESC)`(读侧取最新与上一可用日期)。名次变动**不落库**,读时相减
+- 批④(社区需求语料)**无 schema 变更**:四源统一落 `insight_signal`(`source=community-<key>`,`ref_id` 直接复用唯一键作幂等锚);日预算走 Redis(`insight:community:quota:<key>:<北京日>`,不落库);取数原文复用 `crawl_snapshot`
+- 批⑤(站内问句清洗复活)**无 schema 变更**:`source=internal-agent` 复用 `insight_signal`(refId=sessionId,游客为 `g:<threadId>`);入口标签进 `meta.surface`;游客首问判定键走 Redis(`search:agent:ask-recorded:<threadId>`,TTL 6h,不落库、不存 visitorId)
 
 ## 3. Prisma 模型约定
 

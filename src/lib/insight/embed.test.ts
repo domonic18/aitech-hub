@@ -27,6 +27,11 @@ vi.mock("./embedding-repo", () => ({
   findUnembeddedSignals: (...a: unknown[]) => findUnembeddedSignals(...a),
   saveSignalEmbeddings: (...a: unknown[]) => saveSignalEmbeddings(...a),
 }));
+// 翻译降级(M58 批①新增依赖)顶层引入 ../db,不 mock 会在 CI 无 DB 环境查库
+const degradeStalePendingTranslations = vi.fn();
+vi.mock("./translate", () => ({
+  degradeStalePendingTranslations: (...a: unknown[]) => degradeStalePendingTranslations(...a),
+}));
 
 import { runInsightEmbedBatch } from "./embed";
 
@@ -50,6 +55,7 @@ beforeEach(() => {
   runInsightClassify.mockResolvedValue({ scanned: 0, classified: 0, kept: 0, failed: 0 });
   recordAiUsage.mockResolvedValue(undefined);
   saveSignalEmbeddings.mockResolvedValue(undefined);
+  degradeStalePendingTranslations.mockResolvedValue(0);
 });
 
 describe("runInsightEmbedBatch", () => {
@@ -65,6 +71,7 @@ describe("runInsightEmbedBatch", () => {
     findUnembeddedSignals.mockResolvedValue([signal(1), signal(2), signal(3)]);
     embedTexts.mockResolvedValue({ vectors: [[0.1], [0.2], [0.3]], usage: { tokensIn: 42 } });
     const s = await runInsightEmbedBatch(50);
+    expect(degradeStalePendingTranslations).toHaveBeenCalledTimes(1);
     expect(findUnembeddedSignals).toHaveBeenCalledWith(50);
     expect(embedTexts).toHaveBeenCalledTimes(1);
     const embedArgs = embedTexts.mock.calls[0]![0] as { texts: string[]; modelId: string };
