@@ -27,6 +27,10 @@ export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
  * 33 会话 / 47 任务台账 / 52 用量) */
 export const JOB_RUN_PURGE_CRON = "47 4 * * *";
 
+/** 榜单展示汇率日采 04:43(M63 v2.1:美元→人民币,价格双币切换用;错峰卡在
+ * 04:33 会话清退与 04:47 任务台账之间,单请求任务) */
+export const LEADERBOARD_FX_CRON = "43 4 * * *";
+
 /** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
 export const DB_BACKUP_CRON = "23 3 * * *";
 
@@ -151,6 +155,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     desc: "Drawer 会话 30 天前留档清理",
     cron: AGENT_SESSION_PURGE_CRON,
     category: "ops",
+  },
+  {
+    key: "leaderboard-fx",
+    jobRunKey: "crawler/leaderboard-fx-refresh",
+    label: "榜单汇率",
+    desc: "美元→人民币汇率日采(榜单价格双币切换,M63 v2.1)",
+    cron: LEADERBOARD_FX_CRON,
+    category: "insight",
   },
   {
     key: "job-run-purge",

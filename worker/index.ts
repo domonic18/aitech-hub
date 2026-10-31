@@ -23,6 +23,7 @@ import {
   scheduleGithubTick,
   scheduleInsight,
   scheduleJobRunPurge,
+  scheduleLeaderboardFxRefresh,
   scheduleMediaAudit,
   schedulePayReconcile,
   scheduleStatsFlush,
@@ -119,6 +120,7 @@ async function main(): Promise<void> {
   await scheduleEmbedReconcile();
   await schedulePayReconcile();
   await scheduleCrawlerTick();
+  await scheduleLeaderboardFxRefresh();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
   await scheduleDiscovery();

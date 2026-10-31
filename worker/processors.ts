@@ -26,6 +26,7 @@ import {
   INSIGHT_JOB_TRANSLATE,
   ILLUSTRATION_JOB_EDIT,
   ILLUSTRATION_JOB_GENERATE,
+  LEADERBOARD_JOB_FX_REFRESH,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
@@ -64,6 +65,7 @@ import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
 import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/purge";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
+import { refreshUsdCnyRate } from "../src/lib/leaderboard/fx";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import {
@@ -195,6 +197,14 @@ export const PROCESSORS: Record<string, Processor> = {
       });
       console.log(JSON.stringify({ event: "crawler.video.crawl", ...summary }));
       return summary;
+    }
+    if (job.name === LEADERBOARD_JOB_FX_REFRESH) {
+      // 榜单展示汇率日采(M63 v2.1):失败抛出让任务台账记失败,页面继续用旧汇率
+      const fx = await refreshUsdCnyRate();
+      console.log(
+        JSON.stringify({ event: "leaderboard.fx_refresh", rate: fx.rate, date: fx.date }),
+      );
+      return fx;
     }
     const summary = await crawlSource(Number(job.data.sourceId));
     console.log(JSON.stringify({ event: "crawler.crawl", ...summary }));

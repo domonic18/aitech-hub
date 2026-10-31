@@ -111,6 +111,7 @@ export {
   INSIGHT_LABEL_CRON,
   INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
+  LEADERBOARD_FX_CRON,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
   USAGE_LOG_PURGE_CRON,
@@ -119,11 +120,14 @@ export {
 
 /** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;
  * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。
- * ai-backfill(M12 批③)借 crawler 队列的 tick 生态做 AI 存量补扫调度(纯入队,轻)。 */
+ * ai-backfill(M12 批③)借 crawler 队列的 tick 生态做 AI 存量补扫调度(纯入队,轻)。
+ * leaderboard-fx-refresh(M63 v2.1)= 榜单人民币展示汇率的日频采集,单次一个 HTTP
+ * 请求,同样搭 crawler 队列,不单开队列。 */
 export const CRAWL_JOB_TICK = "tick";
 export const CRAWL_JOB_SOURCE = "crawl";
 export const CRAWL_JOB_VIDEO = "crawl-video";
 export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
+export const LEADERBOARD_JOB_FX_REFRESH = "leaderboard-fx-refresh";
 
 /** cover-gen 队列 job name 契约(M14 批⑥;generate 为缺省路径,agent 两工具面
  * ——编辑页 generate_post_cover 与 topic 域 generate_cover_candidates——入队)。
