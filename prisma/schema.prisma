@@ -1189,6 +1189,31 @@ model AdminFeishuConfig {
   @@map("admin_feishu_config")
 }
 
+/// 短信登录配置单例(M65,plan M65):阿里云号码认证服务(PNVS)「短信认证」通道。
+/// 个人实名可用(无需企业资质/ICP 备案/自申请签名模板);签名「恒创联众」与模板
+/// 由阿里云预置且可能轮换,故签名入数据库而非 env(循 email_config /
+/// pay_gateway_config 规则);accessKeySecret write-only AES-256-GCM(secret-box)。
+/// enabled=通道总开关(登录页「手机号验证码」页签随之显隐);dailyLimit=日发送
+/// 预算,fail-closed 熔断阈值(达到即拒发并告警)。
+model UserSmsConfig {
+  id                  Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  accessKeyId         String    @default("") @map("access_key_id") @db.VarChar(100) // 空=未配置
+  accessKeySecretEnc  String?   @map("access_key_secret_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  accessKeySecretMask String?   @map("access_key_secret_mask") @db.VarChar(20) // 脱敏回显冗余列
+  signName            String    @default("") @map("sign_name") @db.VarChar(50) // 阿里云预置签名(PNVS 签发,可能轮换)
+  templateCode        String    @default("100001") @map("template_code") @db.VarChar(50) // 100001 登录/注册(100002/100004/100005 绑定场景)
+  enabled             Boolean   @default(false) // 短信通道总开关
+  dailyLimit          Int       @default(200) @map("daily_limit") // 日发送预算(条)
+  lastTestedAt        DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus      String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError       String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs   Int?      @map("last_test_latency_ms")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_sms_config")
+}
+
 /// 系统出口代理单例(M33 批B,plan M33):采集网关全部出站走家宽代理
 /// (全局单点,用户定调);proxyUrl write-only AES-256-GCM(secret-box,
 /// 循 admin_feishu_config 同口径),URL 只过境不回显;enabled=代理通道
