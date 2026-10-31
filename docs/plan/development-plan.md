@@ -9,6 +9,8 @@
 - **M1–M57 全部完成**(一期骨架/迁移/前台/后台/上线,二期采集·AI·创作·分发·商业化逐迭代交付)。
 - **M58 进行中**:数据面扩展与洞察 v2([data-expansion-plan](data-expansion-plan.md));批① 多语言/地域基座、批② 厂商动态与事件层、批③ 榜单接入与公开页、批④ 社区需求语料、批⑤ 站内问句清洗复活已落码,批⑤ 后续(游客会话匿名留档 30 天)已落码,待 PR 合 develop。
 - **M59 进行中**:洞察浏览与实体层([data-expansion-plan §14](data-expansion-plan.md));信号独立页(`/admin/insight/signals/`,源/地域/介质/日期筛选 + 分页 + 原文外链)与实体聚合视图(`/admin/insight/entities/`,按 entityKey 聚合厂商事件 + 详情时间线与关联信号)已落码,待 PR 合 develop。
+- **M61 已落码**:洞察体验与准入修复(已登记实体恒出页、站内问句入池无上下文 fail-closed、实体列表窄屏布局),已随 PR #201 合入 develop,待部署。
+- **M62 实现中**:数据库命名规范化与结构收口(`feature/m62-db-naming`);表名归一 + 索引/主键规范 + 15 处外键 + 5 张明细表审计字段,规范沉淀为 [standard/03-db-naming](../standard/03-db-naming.md)。
 - 站点能力面:内容站(文章/专题/贴图三形态)+ SEO 无损迁移 + 多渠道采集(电报流/抖音/B站/热榜/通用网页通道)
   + AI 管线(ASR 解读/打标判定/洞察)+ 创作台(编辑器 AI 化/配图工坊/卡片渲染)+ 分发(公众号/小红书)
   + 商业化(付费阅读/模型牌价页)+ 后台全套(内容/媒体/采集/洞察/统计/会话/用量)。
@@ -83,6 +85,8 @@
 | M58 | 数据面扩展与洞察 v2 | 多语言/地域基座 + 厂商事件 + 榜单公开页 + 社区需求语料 + 问句清洗([data-expansion-plan](data-expansion-plan.md),进行中·批①–⑤ 已落码) |
 | M59 | 洞察浏览与实体层 | 信号独立页 + 实体聚合视图与详情([data-expansion-plan §14](data-expansion-plan.md),进行中·已落码) |
 | M60 | 洞察三项治理 | 实体主表/别名/归并 + 覆盖矩阵渠道族重构 + 未命名打标收敛([data-expansion-plan §15](data-expansion-plan.md),进行中·批A–C 已落码) |
+| M61 | 洞察体验与准入修复 | 实体恒出页 + 问句入池 fail-closed + 实体列表窄屏(已合 develop,待部署) |
+| M62 | 数据库命名规范化与结构收口 | 表名前缀归一 + 索引/主键规范 + 外键补齐 + 明细表审计字段;规范落 [standard/03-db-naming](../standard/03-db-naming.md) |
 
 ## 3. 后置池(满足触发条件再立项)
 

@@ -113,7 +113,7 @@ model TopicItem {
 
   topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
-  @@unique([topicId, itemType, itemId], map: "uq_topic_item_topic_type_item")
+  @@unique([topicId, itemType, itemId], map: "uq_topic_item_identity")
   @@index([topicId, sortOrder], map: "idx_topic_item_topic_sort")
   @@map("topic_item")
 }

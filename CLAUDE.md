@@ -33,6 +33,7 @@
 | 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
 | 后台 UI/IA 设计板(Ardot 定稿) | 文件 739246438907714(F1-F27;创作域已落码,余域待立项) |
 | 测试规范                      | docs/standard/01-testing         |
+| 数据库命名规范(表/列/索引)   | docs/standard/03-db-naming       |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 
 ## 3. 通用编码规范与 AI 指令
@@ -49,6 +50,9 @@
   `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
 - 数据库:schema 只经 prisma/migrations 变更(forward-only);跑 `npx prisma migrate deploy`;
   禁止改已应用迁移;禁止 create_all 式建表。
+- 数据库命名红线:新建/改动表与索引必须遵守 `docs/standard/03-db-naming`(表名带域前缀;
+  `@unique`/`@@unique`/`@@index` 必带 `map`,禁裸写法;FK 列必配索引);存量例外见该文 §7,
+  只登记不回改。
 - 端口:本地 web:3000 / pg:5434 / redis:6380。
 
 ## 4. 任务完成后协议

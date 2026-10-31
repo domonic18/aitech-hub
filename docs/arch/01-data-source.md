@@ -34,7 +34,7 @@
 | TechCrunch / The Verge / VentureBeat / MIT-TR | global | ai-record | rss | ★★★☆☆ | 融资、产品新闻 | 待探 |
 | Import AI / Latent Space / Simon Willison | global | ai-record | rss | ★★★★☆ | 趋势与观点 | 待接入 |
 
-> 厂商动态的落点是**事件层**(`entity_event`),不是资讯流;抽取口径见 §3.3。
+> 厂商动态的落点是**事件层**(`insight_entity_event`),不是资讯流;抽取口径见 §3.3。
 > 模型牌价(M55/M56)维持现状,不再深入跟进。
 
 ### 2.2 榜单与评测
@@ -50,7 +50,7 @@
 | npm / PyPI 下载量 | global | time | api | ★★★★☆ | 工具真实采用度 | 待探 |
 | 百度热搜 / 知乎热榜 / B站热搜 | cn | search/voice | api/web | ★★★☆☆ | 热点 | 现网 |
 
-> 榜单落点是 `leaderboard_snapshot` + 公开页,见 §3.2。转载排名前必须核对来源方 ToS/署名要求。
+> 榜单落点是 `insight_leaderboard_snapshot` + 公开页,见 §3.2。转载排名前必须核对来源方 ToS/署名要求。
 
 ### 2.3 海外社区与媒体
 
@@ -126,7 +126,7 @@
 
 ### 3.2 榜单呈现(公开页)
 
-- **数据模型**:`leaderboard_snapshot`(source、board、rank、entityType、entityName、
+- **数据模型**:`insight_leaderboard_snapshot`(source、board、rank、entityType、entityName、
   vendor、score、scoreUnit、meta、capturedDate),唯一键 `(source, board, entityKey,
   capturedDate)`;`meta.url` 存条目外链,`capturedDate` 为北京日界(存 `@db.Date` UTC 零点)。
 - **采集**:`crawl_source.type=leaderboard`,`config.boardKey` 路由
@@ -149,7 +149,7 @@
 
 ### 3.3 事件层(厂商动态与榜单异动的落点)
 
-- **数据模型**:`entity_event`(source、vendor、entityType、entityKey、eventType、
+- **数据模型**:`insight_entity_event`(source、vendor、entityType、entityKey、eventType、
   title、summary、url、occurredAt、dedupeKey、meta),`eventType ∈ {release,
   price_change, open_source, funding, deprecation, benchmark_change}`。
   幂等锚 `dedupeKey = sha1(source | canonical url | eventType | entityKey)`——
@@ -174,12 +174,12 @@
   `/admin/insight/entities/` 按实体注册表聚合事件,展示 **厂商 → 产品线 → 实体** 三层
   (厂商分区 + 产品线折叠组;厂商/实体类型/时间窗/关键词筛选 + 分页),详情
   `/admin/insight/entities/<key>/` 出事件时间线与经 `insight_signal.meta.entityKey`
-  关联的厂商信号,并列出该实体全部别名与子实体。聚合**只基于 `entity_event`**,
-  不 join `leaderboard_snapshot`(榜单 entityKey 口径不同:HF 保留大小写与 `/`、
+  关联的厂商信号,并列出该实体全部别名与子实体。聚合**只基于 `insight_entity_event`**,
+  不 join `insight_leaderboard_snapshot`(榜单 entityKey 口径不同:HF 保留大小写与 `/`、
   arXiv 保留版本后缀);社区/热榜信号未挂实体,详情页明确说明。
   **已登记实体恒出页**:品牌/产品线的事件常挂在子孙实体上,本体零事件是常态
   (点实体列表分区头不再 404);只有未登记的键且无事件、无信号才 404。
-- **实体解析**(`src/lib/insight/entities/resolve.ts`,抽取后同步落 `entity_event.entity_id`):
+- **实体解析**(`src/lib/insight/entities/resolve.ts`,抽取后同步落 `insight_entity_event.entity_id`):
   1. 规范键 —— LLM 自由生成的 `entityKey` 先 trim/lower/空格转连字符,`/` 分段各自去首尾
      连字符(展示与 URL 用,如 `qwen2.5-vl`);另算**匹配键**把分隔符归一(`.`/`_`/
      重复 `-` 全折叠成单 `-`,`gpt-6.1-terra` 与 `gpt-6-1-terra` 同锚),唯一去重在该键上;
@@ -194,7 +194,7 @@
   `npm run insight:entity-backfill`(`scripts/ops/insight-entity-backfill.ts`,幂等)按
   `occurred_at` 顺序回填。
 - **手工归并**:`POST /api/insight/entities/merge`(admin 会话,PAT 拒绝,Zod
-  `{ fromKey, toKey }`)单事务迁移别名、回写 `entity_event.entity_id`、源实体置
+  `{ fromKey, toKey }`)单事务迁移别名、回写 `insight_entity_event.entity_id`、源实体置
   `status=merged` + `merged_into_id`;旧路径仍可解析到归并目标,不 404。
 - 与牌价跟踪解耦:牌价停更不影响事件层。
 

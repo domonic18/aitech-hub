@@ -129,14 +129,16 @@ aitech-hub/
 
 ## 3. 命名规范速查
 
+> 数据库命名(表/列/约束/索引/删除行为)的**权威源**是
+> [standard/03-db-naming](../standard/03-db-naming.md);本表只作代码语境速查,不与之冲突。
+
 | 对象 | 规范 | 示例 |
 |------|------|------|
-| 表名(Prisma `@@map`)| `<域前缀>_<实体>`,小写单数 | `content_post`、`user_account`、`stats_post_view_daily`、`legacy_url_map` |
-| 域前缀 | content_ / user_ / stats_ / legacy_ / pay_(二期) | |
-| Prisma 模型名 | PascalCase 领域名 | `Post`(`@@map("content_post")`)、`UserAccount`、`LegacyUrlMap` |
+| 表名(Prisma `@@map`)| `<域前缀>_<实体>`,小写单数;前缀清单见 standard/03 §2 | `content_post`、`insight_entity_event` |
+| Prisma 模型名 | PascalCase 领域名,与表名同域 | `Post`(`@@map("content_post")`)、`InsightEntityEvent` |
 | 字段 | 完整单词,同一语义同一词;DB 列 snake_case(`@map`) | `viewsCount → views_count` |
-| 约束/索引 | unique/普通索引 `uq_<table>_<cols>` / `idx_*`(schema `map` 显式落名);PK/FK 保留 Prisma 默认名 `*_pkey`/`*_fkey`(见 arch/03-data-model §3,保 CI introspect 对齐);枚举值不加 DB CHECK,应用层 Zod 管控 | `uq_content_post_slug` |
-| 审计字段 | 业务表统一 `createdAt`/`updatedAt`(timestamptz,aware UTC) | |
+| 约束/索引 | `uq_*` / `idx_*` 必须带 `map`;PK/FK 保留 Prisma 默认名(细则见 standard/03 §4) | `uq_content_post_slug` |
+| 审计字段 | 业务表统一 `createdAt`/`updatedAt`(timestamptz,aware UTC);明细表可只 `createdAt` | |
 | API JSON | camelCase 一致(单体内部无 query 参数历史包袱,统一 camelCase) | `postId`、`pageSize` |
 | 域治理台读侧 | `<域>.admin.ts`(list/CRUD/Zod 契约单点) | `lib/pricing/admin.ts`、`lib/insight/admin.ts` |
 
