@@ -223,18 +223,64 @@ model EntityEvent {
   陈旧阈值 2 天(北京日界),超阈值出琥珀色降级横幅;空榜不出页签。
 - 移动端:表格转卡片列表;空态说明。
 - SEO:`metadata` + `ItemList` JSON-LD;SSR 直出当页数据(参考 `/pricing/` 模式)。
-- 入口:`SITE_TOPICS` 增一项(名称「模型榜单」,href `/leaderboards/`),Header 下拉与
+- 入口:`SITE_TOPICS` 增一项(名称「AI 榜单」,href `/leaderboards/`),Header 下拉与
   `/topics/` 索引自动同步。
 - 转载合规:上线前逐源核对 ToS/署名;不允许公开呈现的源降级为后台可见,不上公开页。
-- **M63 落码注(可视化改版,2026-10-31)**:五榜不再同构平铺,按榜单性质分化成三节——
-  模型榜(Artificial Analysis 智能指数 × 输出价散点 ∥ Hugging Face 趋势横条;C3 定稿合并为
-  CSS `:checked` 零 JS 双子页签,不读 `searchParams`)/ 论文(arXiv cs.AI·cs.CL 摘要卡栅格)/
+- **M63 落码注(可视化改版,2026-10-31;v2 同日按验收反馈重做)**:五榜不再同构平铺,按榜单
+  性质分化成三节——模型能力与价格(AA 能力分 × 输出价散点,左上「又强又便宜」)/ Hugging Face
+  热门模型(下载量 × 点赞数双对数散点:右上「又火又被认可」、左上「小众但好评」、右下「大众工具型」)/
   热门仓库(GitHub Trending 动量卡:今日上升最快 + 新入榜,`hasPrevious=false` 时不标 NEW)。
-  展示字段(价格/上下文/开源/下载/摘要/作者/星分叉)落 `insight_leaderboard_snapshot.meta`
+  v1 曾把 AA 与 HF 合并为一节、CSS `:checked` 零 JS 双子页签,HF 为趋势横条;验收反馈
+  「HF 不要和模型榜揉在一起」「横条仍是榜单不是坐标系」「智能指数/模型趋势不好理解」,
+  v2 拆成独立两节、HF 改二维散点、标题改大白话(能力与价格 / HF 热门模型 / 热门仓库),
+  取消页签。论文榜前台移除(arXiv cs.AI·cs.CL 采集保留、数据留库,以后可恢复)。
+  展示字段(价格/上下文/开源/下载/点赞/摘要/描述/星分叉)落 `insight_leaderboard_snapshot.meta`
   白名单清洗,**无 schema 变更**;`crawl.ts` 的 update 路径同写 `meta`(原实现仅 create 写,
-  同日重采永不刷新——本次修)。AA 入库上限 `def.maxItems` 设 60,其余仍 20。散点价格未采到或
-  样本 <2 自动退化为完整表 + 补采提示;几何纯函数 `src/lib/leaderboard/scatter.ts`(禁图表库,
-  手写内联 SVG,契约同 stats/chart.ts:退化域撑开、全输出无 NaN/Infinity、标签贪心避让)。
+  同日重采永不刷新——本次修)。AA 入库上限 `def.maxItems` 设 60,其余仍 20。散点数据缺失或
+  样本 <2 自动退化为完整表 + 补采提示;几何纯函数 `src/lib/leaderboard/scatter.ts`(两轴各自
+  可配 log/linear,禁图表库,手写内联 SVG,契约同 stats/chart.ts:退化域撑开、全输出无
+  NaN/Infinity、标签贪心避让),两轴配置与行映射 `src/lib/leaderboard/scatter-data.ts`,
+  图表组件 `ScatterChart.tsx` 两节共用。
+- **M63 落码注 v2.1(价格双币切换,2026-10-31 用户验收追加)**:模型榜输出价格支持
+  USD ⇄ 人民币切换,**默认人民币**。口径:AA 原始报价固定 USD / 1M tokens,人民币是
+  **展示折算**(定价模块「货币不做汇率折算」的立场不变),页面上始终标汇率与折算日期,
+  并注明「仅供参考」。
+  - 汇率来源 = 每日自动采集(用户裁定):`site_config` kv 键 `leaderboard.usd_cny_rate`
+    存 `{rate,date,source}` JSON(遥测快照路径,不进设置页、不过 `SiteConfigUpdateSchema`,
+    同 `distribute.xhs_state` 先例,**无 schema 变更**)。取数 `open.er-api.com/v6/latest/USD`
+    (免费无密钥,实测 `result:"success"` / `base_code:"USD"` / `rates.CNY`),经
+    `fetchViaEgress`(代理挂时回落直连);合理区间 3–15 越界或契约不符一律不落库、沿用旧值,
+    库缺行/坏值回落默认 7.2 并标 `isFallback`,页面提示「按默认汇率折算」。
+  - 调度:worker 每日 04:43(`LEADERBOARD_FX_CRON`,卡在会话清退 04:33 与任务台账 04:47
+    之间)经 `QUEUE_CRAWLER` 跑 `leaderboard-fx-refresh`(失败重试 1 次/60s,
+    `job-run` 白名单 + `SCHEDULE_REGISTRY` 同步登记)。
+  - 前端零 JS 切换(本页 ISR 3600s,读 query 即转动态渲染):非受控 radio +
+    `section#models:has(#lb-cur-usd:checked) .cur-cny{display:none}`(globals.css),
+    两币刻度/价格文本同进 HTML 保 SEO;对数轴下乘常数只平移域、点位与域宽不变,几何只算
+    一次(人民币域),美元刻度另算一份**仅为刻度文本**(¥10/¥20/¥50 是本币原生刻度,
+    不是 $5 换算成 ¥33.3);tooltip 两币并列(¥33.3($5)/1M tokens)。
+  - 构建期 `prerenderSafe` 回落默认汇率(CI 无库),首个 ISR 周期后自动换成实采值。
+- **M63 落码注 v2.2(源数据出处可点,2026-10-31 用户验收追加)**:三节一律在标题区
+  (正文之前)前置「数据来源」署名 chip——站名 + 域名 + ↗,`target=_blank` +
+  `rel="nofollow noopener noreferrer"` 直回原站榜单页;节尾的小字署名退役(同一信息披露
+  两遍反而弱化)。页面页脚再汇总一次出处与口径:名次/内容以原站为准、人民币为折算展示。
+  汇率随价款一并署名(「汇率来源 open.er-api.com」外链)。行内实体名与散点每点本就链到
+  原站条目页(AA 模型页 / HF 模型卡 / GitHub 仓库),与署名互为补充。域名派生是纯函数
+  `src/lib/leaderboard/format.ts#hostOf`(去 `www.`,畸形 URL 回空则该段不渲染)。
+- **M63 落码注 v2.3(散点悬停卡 + 厂商可寻,2026-10-31 用户验收追加)**:验收反馈两点
+  「hover 圆点没有提示」「找不到 DeepSeek / Kimi」,根因与处置:
+  - **悬停卡**:原生 `<title>` 退役——系统气泡有 ~1s 延迟、需精准命中小点,且样式不可控。
+    改为**每点自带 SVG 卡**:`<g class="lb-pt">` 包「`<a>`(可见 `.lb-dot` + 透明描边命中区,
+    外扩 2px)+ `.lb-tip` 卡(面板底/描边/首行实体名,其余行次色)」,显隐走 globals.css
+    `.lb-pt:hover, .lb-pt:focus-within .lb-tip`——**零 JS、SSR 直出**,键盘 `<a>` 聚焦
+    同样出卡(无障碍不退)。卡越界自动翻侧并夹回绘图区;标注组前置渲染,卡片永不压在
+    网格/标注之下(同色命中区重叠时归最上层点,散点图通行取舍)。
+  - **厂商可寻**:原方案 14 个标注位被 Anthropic×19 + OpenAI×18 吃满,DeepSeek / Kimi /
+    GLM 等中低位厂商既无标注也无配色(只有前 5 家上色)。改法二件:
+    ① 标注优先级 `labelPriority` = **每厂商最高分代表先占位**,再按分值补足,
+    预算 14 → 18(AA 现有 14 家厂商全数覆盖 + 少量高分冗余);
+    ② 图例改列**全部厂商 + 条数**(`vendorCounts`,前 5 家上色、其余灰点并注「灰 = 其余厂商」),
+    榜上有没有某家一眼可查。工具函数仍全在 `scatter.ts`(纯函数,单测锁「每厂商至少一个代表」)。
 
 ### 6.4 验收
 
