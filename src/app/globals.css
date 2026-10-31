@@ -260,3 +260,39 @@ body {
     transform: scale(0.8);
   }
 }
+
+/* ── 榜单价格币种切换(M63 v2.1:零 JS,radio 驱动;两币文本同进 HTML 保 SEO) ──
+   默认人民币:cur-usd 先全隐;section#models 内选中 #lb-cur-usd 时反转。
+   必须用 :has()——被控文本嵌在散点 SVG、数据表、移动端列表深处,不是 radio
+   的同级节点(开关见 components/site/leaderboard/ModelBoard.tsx)。 */
+.cur-usd {
+  display: none;
+}
+section#models:has(#lb-cur-usd:checked) .cur-cny {
+  display: none;
+}
+section#models:has(#lb-cur-usd:checked) .cur-usd {
+  display: inline;
+}
+
+/* ── 榜单散点悬停卡(M63 v2.3:纯 CSS 显隐,零 JS;见 ScatterChart.tsx) ──
+   .lb-pt 包住「命中区 + 悬停卡」:卡片默认透明,悬停或键盘聚焦(<a> 可聚焦)时浮现。
+   卡片自身 pointer-events:none(SVG 属性给),不吃鼠标——指针移开点即消失。
+   原生 <title> 已退役:系统气泡 ~1s 延迟且需精准命中小点,验收反馈「hover 没提示」。 */
+.lb-pt .lb-tip {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.lb-pt:hover .lb-tip,
+.lb-pt:focus-within .lb-tip {
+  opacity: 1;
+}
+.lb-pt:hover .lb-dot {
+  stroke-width: 2.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lb-pt .lb-tip {
+    transition: none;
+  }
+}

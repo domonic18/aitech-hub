@@ -24,7 +24,7 @@ export const SITE_TOPICS: readonly SiteTopic[] = [
   {
     label: "AI 榜单",
     href: "/leaderboards/",
-    desc: "智能指数与输出价格分布、Hugging Face 模型趋势、arXiv 最新论文与 GitHub 热门仓库,每日采集,名次变动与上一可用日期比较。",
+    desc: "模型能力与价格分布、Hugging Face 热门模型与 GitHub 热门仓库,每日采集,名次变动与上一可用日期比较。",
     tag: "榜单",
   },
 ];
