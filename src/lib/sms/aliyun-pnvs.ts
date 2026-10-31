@@ -58,14 +58,24 @@ export class AliyunPnvsProvider implements SmsProvider {
   }
 
   async sendVerifyCode(input: SendVerifyCodeInput): Promise<SendVerifyCodeResult> {
+    const validTimeSeconds = input.validTimeSeconds ?? 300;
+    // 预置模板(100001-100005)的模板内容含两个变量:${code} 与 ${min}(有效期分钟)。
+    // 只传 code 时阿里云回 isv.INVALID_PARAMETERS「请检查模板内容与模板参数是否匹配」
+    // ——2026-10-31 调试台实证,正确取值 {"code":"##code##","min":"5"}。
+    const templateParam =
+      input.templateParam ??
+      JSON.stringify({
+        code: "##code##",
+        min: String(Math.max(1, Math.round(validTimeSeconds / 60))),
+      });
     try {
       const resp = await this.client.sendSmsVerifyCode(
         new SendSmsVerifyCodeRequest({
           phoneNumber: input.phone,
           signName: input.signName,
           templateCode: input.templateCode,
-          templateParam: input.templateParam ?? JSON.stringify({ code: "##code##" }),
-          validTime: input.validTimeSeconds ?? 300,
+          templateParam,
+          validTime: validTimeSeconds,
           interval: input.intervalSeconds ?? 60,
           codeLength: input.codeLength ?? 6,
           codeType: 1, // 纯数字
