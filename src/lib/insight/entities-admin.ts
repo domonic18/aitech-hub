@@ -2,7 +2,7 @@
  * 实体聚合视图取数(M59 批B → M60 实体层):/admin/insight/entities。
  *
  * 读侧以 **insight_entity 为准**(实体主表 + 别名 + 父子层次),事件按
- * `entity_event.entity_id` 挂到实体;历史未回填(`entity_id IS NULL`)的条数
+ * `insight_entity_event.entity_id` 挂到实体;历史未回填(`entity_id IS NULL`)的条数
  * 单列提示,不混进实体行。列表按「顶层 org 分区 → 产品线 → 实体」折叠:
  * qwen-mt-turbo / qwen3-embedding / qwen-vlo 同挂 Qwen 之下,不再平铺。
  *
@@ -236,14 +236,14 @@ export async function listEntityTree(
   const q = filters.q;
 
   const [stats, unresolved, aliasHits] = await Promise.all([
-    prisma.entityEvent.groupBy({
+    prisma.insightEntityEvent.groupBy({
       by: ["entityId"],
       where: { entityId: { not: null }, ...timeCond },
       _count: { _all: true },
       _max: { occurredAt: true },
       orderBy: [{ _max: { occurredAt: "desc" } }],
     }),
-    prisma.entityEvent.count({ where: { entityId: null, ...timeCond } }),
+    prisma.insightEntityEvent.count({ where: { entityId: null, ...timeCond } }),
     q === undefined
       ? Promise.resolve([])
       : prisma.insightEntityAlias.findMany({
@@ -289,7 +289,7 @@ export async function listEntityTree(
   const [latest, aliasCounts] = await Promise.all([
     pageIds.length === 0
       ? Promise.resolve([])
-      : prisma.entityEvent.findMany({
+      : prisma.insightEntityEvent.findMany({
           where: { entityId: { in: pageIds }, ...timeCond },
           orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
           select: {
@@ -419,7 +419,7 @@ export async function getEntityDetail(key: string): Promise<EntityDetail | null>
           orderBy: { aliasKey: "asc" },
           select: { aliasKey: true },
         }),
-    prisma.entityEvent.findMany({
+    prisma.insightEntityEvent.findMany({
       where: eventWhere,
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       take: ENTITY_EVENT_TAKE,
@@ -434,8 +434,8 @@ export async function getEntityDetail(key: string): Promise<EntityDetail | null>
         occurredAt: true,
       },
     }),
-    prisma.entityEvent.count({ where: eventWhere }),
-    prisma.entityEvent.groupBy({
+    prisma.insightEntityEvent.count({ where: eventWhere }),
+    prisma.insightEntityEvent.groupBy({
       by: ["vendor", "entityType"],
       where: eventWhere,
       _count: { _all: true },
@@ -510,7 +510,7 @@ async function loadRelated(
   const counts =
     ids.length === 0
       ? []
-      : await prisma.entityEvent.groupBy({
+      : await prisma.insightEntityEvent.groupBy({
           by: ["entityId"],
           where: { entityId: { in: ids } },
           _count: { _all: true },

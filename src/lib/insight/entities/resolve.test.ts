@@ -125,7 +125,7 @@ vi.mock("@/lib/db", () => {
           return { count: hit.length };
         },
       },
-      entityEvent: {
+      insightEntityEvent: {
         updateMany: async ({
           where,
           data,

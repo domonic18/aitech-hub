@@ -3,7 +3,7 @@
  *
  * 契约解析/规范名/时间兜底/幂等锚在 ./contract(纯函数单测);本文件只做
  * 模型解析、正文抓取、落库与信号入池:
- * - entity_event upsert 以 dedupeKey 幂等(同事件恒一条);
+ * - insight_entity_event upsert 以 dedupeKey 幂等(同事件恒一条);
  * - 事件同时按 dedupeKey 作 refId 入洞察信号池(source=vendor-<key>),
  *   保证厂商发布能进热点簇;同一 URL 只入一次;
  * - 无可抽事件记空跑不落库;单事件入库失败不连坐同篇其余事件。
@@ -111,7 +111,7 @@ export interface VendorExtractResult {
 }
 
 /**
- * 单篇抽取(BullMQ 入口):LLM 抽事件 → entity_event upsert → 事件入洞察信号池。
+ * 单篇抽取(BullMQ 入口):LLM 抽事件 → insight_entity_event upsert → 事件入洞察信号池。
  * 未绑定模型返回 empty=true 并释放标记(绑定后下轮自然补抽);
  * 终态失败抛错(记 job 失败 + 释标记 + 日志带 URL 供补跑),不影响源健康度。
  */
@@ -165,7 +165,7 @@ export async function runVendorExtractJob(
         url: data.item.url,
       };
       try {
-        await prisma.entityEvent.upsert({
+        await prisma.insightEntityEvent.upsert({
           where: { dedupeKey },
           update: {
             title: draft.title,

@@ -11,6 +11,10 @@
 > (LMArena 因 CF 403 不做)/`leaderboard` 采集类型/`/leaderboards/` 公开页);批④ 社区需求语料、
 > 批⑤ 站内问句清洗复活均已落码;**后续:洞察浏览与实体层(M59)见 §14**。
 
+> **M62 后表名勘误(2026-10-31)**:本文正文中的 `entity_event` / `leaderboard_snapshot` 已分别更名为
+> `insight_entity_event` / `insight_leaderboard_snapshot`(Prisma 模型 `InsightEntityEvent` /
+> `InsightLeaderboardSnapshot`);历史正文保留原名以存证,现行口径以 [standard/03-db-naming](../standard/03-db-naming.md) 为准。
+
 ## 1. 立项依据与目标
 
 现有洞察只覆盖「国内热榜 + 站内评论 + 电报解读」三类信号,三个缺口:

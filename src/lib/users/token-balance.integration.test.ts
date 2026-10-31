@@ -18,6 +18,17 @@ const { TOKEN_MONTHLY_GRANT, adjustTokens, consumeTokens, getTokenWallet } =
 
 const USER_PHONE = "13900000018";
 let userId = BigInt(0);
+/** 本测试创建的 agent 会话 id(ledger.session_id 自 M62 起有 FK,必须先建会话行) */
+const sessionIds: string[] = [];
+
+async function createSession(id?: string): Promise<string> {
+  const sid = id ?? crypto.randomUUID();
+  await prisma.searchAgentSession.create({
+    data: { id: sid, visitorId: crypto.randomUUID() },
+  });
+  sessionIds.push(sid);
+  return sid;
+}
 
 beforeAll(async () => {
   const user = await prisma.userAccount.upsert({
@@ -32,6 +43,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.userAccount.delete({ where: { id: userId } }).catch(() => undefined);
+  await prisma.searchAgentSession
+    .deleteMany({ where: { id: { in: sessionIds } } })
+    .catch(() => undefined);
   await prisma.$disconnect();
 });
 
@@ -61,14 +75,15 @@ describe("token-balance(钱包开户/扣减/重置)", () => {
   });
 
   it("实扣落 consume 流水;amount=0 不落", async () => {
-    const w = await consumeTokens(userId, 500, "thread-abc");
+    const sid = await createSession();
+    const w = await consumeTokens(userId, 500, sid);
     expect(w.balance).toBe(TOKEN_MONTHLY_GRANT - 500);
     const rows = await ledgerRows();
     expect(rows.at(-1)).toMatchObject({
       delta: -500,
       balanceAfter: TOKEN_MONTHLY_GRANT - 500,
       reason: "consume",
-      sessionId: "thread-abc",
+      sessionId: sid,
     });
 
     const before = (await ledgerRows()).length;
@@ -78,7 +93,8 @@ describe("token-balance(钱包开户/扣减/重置)", () => {
 
   it("实扣允许微穿仓(余额可为负,流水记真实下限)", async () => {
     await prisma.userTokenWallet.update({ where: { userId }, data: { balance: 10 } });
-    const w = await consumeTokens(userId, 100, "thread-over");
+    const sid = await createSession();
+    const w = await consumeTokens(userId, 100, sid);
     expect(w.balance).toBe(-90);
     expect((await ledgerRows()).at(-1)).toMatchObject({
       delta: -100,
@@ -119,7 +135,9 @@ describe("token-balance(钱包开户/扣减/重置)", () => {
 
   it("并发实扣无丢失更新:5×1000 恰好扣足", async () => {
     await prisma.userTokenWallet.update({ where: { userId }, data: { balance: 10_000 } });
-    await Promise.all(Array.from({ length: 5 }, (_, i) => consumeTokens(userId, 1000, `cc-${i}`)));
+    const sids = Array.from({ length: 5 }, (_, i) => `cc-${Date.now()}-${i}`);
+    for (const sid of sids) await createSession(sid);
+    await Promise.all(sids.map((sid) => consumeTokens(userId, 1000, sid)));
     const w = await getTokenWallet(userId);
     expect(w.balance).toBe(5_000);
     const consumeRows = (await ledgerRows()).filter((r) => r.reason === "consume");

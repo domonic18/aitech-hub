@@ -1,19 +1,19 @@
 # 数据模型与迁移管理
 
-> schema 唯一真相源是 `prisma/schema.prisma` + `prisma/migrations/`。本文定义表结构设计与迁移纪律;Prisma 模型名与 DB 表名的映射规则见 [arch/06-project-structure §3](06-project-structure.md)。
+> schema 唯一真相源是 `prisma/schema.prisma` + `prisma/migrations/`。本文定义表结构设计与迁移纪律;Prisma 模型名与 DB 表名的映射规则见 [arch/06-project-structure §3](06-project-structure.md),命名细则(表/列/约束/索引/删除行为)的权威源是 [standard/03-db-naming](../standard/03-db-naming.md)。
 
 ## 1. 迁移纪律(Prisma Migrate 承载 SQL 台账制精神)
 
-- `0000_init` 基线迁移(全部一期表)→ 按日期命名增量;`prisma/migrations/` 下 SQL 文件可读、可评审
+- `20260929131543_init` 基线迁移(全部一期表)→ 按日期命名增量;`prisma/migrations/` 下 SQL 文件可读、可评审
 - **forward-only**:已应用的迁移禁止修改;破坏性变更走 expand-contract(先加后删,分两次)
 - **执行**:`npx prisma migrate deploy`(**起库健康后、起应用前必须执行**);`_prisma_migrations` 台账 exactly-once、幂等
 - 开发流程:`prisma migrate dev --create-only` 生成 SQL → 人工评审 → 应用;禁止 `db push` 绕过迁移
 - 种子:`prisma/seed.ts`(幂等 upsert:四分类、站点配置);admin 不预置,首次部署 `npm run admin <phone>` 创建
 - **CI 重放守卫**:起临时 postgres:16 → `migrate deploy` 全量 → 再 deploy 一次验证幂等 → Prisma introspect 断言 schema 一致(standard/01-testing §5)
 
-## 2. 一期表结构(0000_init 的设计依据)
+## 2. 一期表结构(20260929131543_init 的设计依据)
 
-域前缀:`content_` / `user_` / `stats_` / `legacy_`;视频字段按 arch/08-media 决策已内建。站点统计聚合族与 `user_pat` 为 2026-09-29 需求补充(requirement §3.5/§3.6),属一期表,随 `0000_init` 基线建表。
+域前缀:`content_` / `user_` / `stats_` / `legacy_`;视频字段按 arch/08-media 决策已内建。站点统计聚合族与 `user_pat` 为 2026-09-29 需求补充(requirement §3.5/§3.6),属一期表,随 `20260929131543_init` 基线建表。
 
 ### 2.1 content_(内容域)
 
@@ -388,26 +388,36 @@ CREATE TABLE legacy_url_map (
 - `content_pin.reference_media_path? varchar(500)`:本次生图采纳的参照图(站内 `/wp-content/uploads/` 路径,soft ref;缺省回落创作样例图/素材封面),让「按素材出图」可追溯可复现
 - 索引 `idx_content_pin_topic_updated (topic_id, updated_at DESC)`:创作台按创作聚合贴图产出
 
-**洞察 v2 数据域已落地(2026-10-30 M58 三批迁移 `20261030100000_m58_signal_lang_region` / `20261030120000_m58_entity_event` / `20261030130000_m58_leaderboard_snapshot`;口径见 [arch/01 §3](01-data-source.md);forward-only,枚举一律 varchar 由应用层 Zod 收口)**:
+**洞察 v2 数据域已落地(2026-10-30 M58 三批迁移 `20261030100000_m58_signal_lang_region` / `20261030120000_m58_entity_event` / `20261030130000_m58_leaderboard_snapshot`;表名于 M62 归一为域前缀写法 `insight_entity_event` / `insight_leaderboard_snapshot`;口径见 [arch/01 §3](01-data-source.md);forward-only,枚举一律 varchar 由应用层 Zod 收口)**:
 
 - `insight_signal` 增列(批①,中文化基座):`lang? varchar(10)`(zh/en/…,源级声明、混合源逐条覆盖)/`region? varchar(10)`(cn/global)/`translated_text? text`(中文译文;原文恒在 `raw_text`)/`translation_status varchar(10) 默认 none`(none|pending|done|failed);`cluster.region? varchar(10)`(按成员多数派回写 cn|global|mixed)
-- `entity_event`(批②,厂商事件层):`source varchar(30)`(`vendor-<key>`,与洞察 source 同口径)/`vendor varchar(30)`(注册表 key)/`entity_type varchar(12)`(model|product|org)+ `entity_key varchar(120)`(实体规范名,如 deepseek-v4)/`event_type varchar(20)` 枚举 `release|price_change|open_source|funding|deprecation|benchmark_change`/`title varchar(300)`/`summary? varchar(1000)`/`url varchar(500)`/`occurred_at`/`dedupe_key char(40)` **唯一**(sha1(source|url|eventType|entityKey),同 URL 多实体不互相吞并)/`meta jsonb?`;索引 `(vendor, occurred_at DESC)` + `(event_type, occurred_at DESC)` + `idx_entity_event_entity_recent (entity_key, occurred_at DESC)`(M59 增,实体聚合列表与详情时间线共用)。事件同时按 dedupeKey 作 refId 进洞察池(`source=vendor-<key>`),可回溯到事件行
-- `leaderboard_snapshot`(批③,榜单时序):`source varchar(30)`(注册表 key)/`board varchar(40)`(榜单展示名)/`entity_key varchar(200)`(模型 slug·arXiv id·owner/repo)/`entity_name varchar(300)`/`entity_type varchar(12)`(model|paper|repo)/`vendor? varchar(60)`/`rank int`/`score? float8`/`score_unit? varchar(20)`/`captured_date date`(北京日界 UTC 零点)/`meta jsonb?`(`{url, sourceId}`);唯一键 `(source, board, entity_key, captured_date)`(同日重跑整表覆盖),索引 `(source, board, captured_date DESC)`(读侧取最新与上一可用日期)。名次变动**不落库**,读时相减
+- `insight_entity_event`(批②,厂商事件层):`source varchar(30)`(`vendor-<key>`,与洞察 source 同口径)/`vendor varchar(30)`(注册表 key)/`entity_type varchar(12)`(model|product|org)+ `entity_key varchar(120)`(实体规范名,如 deepseek-v4)/`event_type varchar(20)` 枚举 `release|price_change|open_source|funding|deprecation|benchmark_change`/`title varchar(300)`/`summary? varchar(1000)`/`url varchar(500)`/`occurred_at`/`dedupe_key char(40)` **唯一**(sha1(source|url|eventType|entityKey),同 URL 多实体不互相吞并)/`meta jsonb?`;索引 `(vendor, occurred_at DESC)` + `(event_type, occurred_at DESC)` + `idx_insight_entity_event_entity_recent (entity_key, occurred_at DESC)`(M59 增,实体聚合列表与详情时间线共用)。事件同时按 dedupeKey 作 refId 进洞察池(`source=vendor-<key>`),可回溯到事件行
+- `insight_leaderboard_snapshot`(批③,榜单时序):`source varchar(30)`(注册表 key)/`board varchar(40)`(榜单展示名)/`entity_key varchar(200)`(模型 slug·arXiv id·owner/repo)/`entity_name varchar(300)`/`entity_type varchar(12)`(model|paper|repo)/`vendor? varchar(60)`/`rank int`/`score? float8`/`score_unit? varchar(20)`/`captured_date date`(北京日界 UTC 零点)/`meta jsonb?`(`{url, sourceId}`);唯一键 `(source, board, entity_key, captured_date)`(同日重跑整表覆盖),索引 `(source, board, captured_date DESC)`(读侧取最新与上一可用日期)。名次变动**不落库**,读时相减
 - 批④(社区需求语料)**无 schema 变更**:四源统一落 `insight_signal`(`source=community-<key>`,`ref_id` 直接复用唯一键作幂等锚);日预算走 Redis(`insight:community:quota:<key>:<北京日>`,不落库);取数原文复用 `crawl_snapshot`
 - 批⑤(站内问句清洗复活)**无 schema 变更**:`source=internal-agent` 复用 `insight_signal`(refId=sessionId,游客为 `g:<threadId>`);入口标签进 `meta.surface`;游客首问判定键走 Redis(`search:agent:ask-recorded:<threadId>`,TTL 6h,不落库、不存 visitorId)
-- M59(洞察浏览与实体层)**无 schema 变更**,仅一迁移 `20261030160000_m59_entity_key_index` 增上述 `idx_entity_event_entity_recent`:实体聚合视图(`/admin/insight/entities/`)只基于 `entity_event` 分组,**不 join** `leaderboard_snapshot`(后者 entityKey 口径不同);实体↔厂商信号关联走 `insight_signal.meta.entityKey`(JSON 路径等值),社区/热榜信号未挂实体
+- M59(洞察浏览与实体层)**无 schema 变更**,仅一迁移 `20261030160000_m59_entity_key_index` 增上述 `idx_insight_entity_event_entity_recent`:实体聚合视图(`/admin/insight/entities/`)只基于 `insight_entity_event` 分组,**不 join** `insight_leaderboard_snapshot`(后者 entityKey 口径不同);实体↔厂商信号关联走 `insight_signal.meta.entityKey`(JSON 路径等值),社区/热榜信号未挂实体
 - M60(实体分层/覆盖矩阵/未命名治理)迁移 `20261030200000_m60_entity_registry`,实体注册表落地:
   - `insight_entity`(实体主表):`key varchar(120)` **唯一**(规范键,展示/URL 用)/`match_key varchar(120)` **唯一**(分隔符归一的去重锚,`gpt-6.1-terra` 与 `gpt-6-1-terra` 同锚)/`display_name varchar(120)`(保留大小写,如 `Qwen3-Embedding`)/`entity_type varchar(12)`(`org|line|model|product`)/`vendor_key? varchar(30)`(所属厂商;org 自身为 null)/`parent_id? bigint`(自关联,`ON DELETE SET NULL`)/`status varchar(10)` 默认 `active`(`active|merged`)/`merged_into_id? bigint`(归并去向留痕);索引 `(vendor_key)`、`(parent_id)`
   - `insight_entity_alias`(别名表):`alias_key varchar(120)` **唯一**(`normalizeEntityKey` 原样产物)/`entity_id`(Cascade)/`origin varchar(10)`(`seed`=建表回填/`rule`=写入解析/`manual`=人工归并)/`confidence? float8`;索引 `(entity_id)`。归并只改指向、不改历史键
-  - `entity_event` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_entity_event_entity_id`;`entity_key` 原样保留——`dedupe_key` 唯一锚不动,归并不改写历史键
+  - `insight_entity_event` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_insight_entity_event_entity_id`;`entity_key` 原样保留——`dedupe_key` 唯一锚不动,归并不改写历史键
   - 口径见 [arch/01 §3.3](01-data-source.md);存量回填 `scripts/ops/insight-entity-backfill.ts`(`npm run insight:entity-backfill`,幂等)
+- M62(数据库命名规范化与结构收口)迁移 `20261031120000_m62_db_naming`,不新增表,只把既有结构收口到 [standard/03-db-naming](../standard/03-db-naming.md) 规范态:
+  - 表重命名 `entity_event → insight_entity_event`、`leaderboard_snapshot → insight_leaderboard_snapshot`(手写 `ALTER TABLE RENAME`,连带 PK/FK/唯一/索引改名)
+  - 5 处 Prisma 默认名唯一索引改 `uq_*`;3 个 pgvector HNSW 索引补 `idx_` 前缀;`content_post_like` / `content_post_comment_like` 唯一索引改复合主键
+  - 补 15 处真实引用的 FK(3 处已在),并补齐对应 9 个 FK 索引;`ai_cover_candidate.model_id` 放宽为可空
+  - 5 张明细表补 `created_at`(`pay_order_item` / `content_post_tag` / `content_media_ref` / `github_repo_post` / `insight_cluster_member`),按父表时间回填
+  - 刻意不加 FK 的多态/聚合引用与类型例外登记在 standard/03 §7
 
 ## 3. Prisma 模型约定
+
+> 命名细则(表前缀、列名、约束/索引模板、`onDelete` 裁定、反例与新表 checklist)见
+> [standard/03-db-naming](../standard/03-db-naming.md);本节只保留与 schema 写法强相关的约定。
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
 - Prisma client 单例 `lib/db.ts`(dev 环境 globalThis 缓存防热更像);**禁止第二实例**
 - 关系:Post↔Tag 显式多对多表(`content_post_tag` 用 `@@id([postId, tagId])` 复合主键建模),不用 Prisma 隐式 m2m(保 SQL 可控)
 - 约束/索引命名:unique 与普通索引经 schema `map` 直接落 `uq_<table>_<cols>` / `idx_*` 规范(如 `uq_content_post_slug`);**PK/FK 保留 Prisma 默认名**(`content_post_pkey` / `*_fkey`)——Prisma schema 层无法表达 FK 命名,硬改会导致 introspect 断言(CI 重放守卫)永久报差异;一致性校验优先于命名美学(2026-09-29 实施定)
+- 引用完整性:真实引用的 `*_id` 列须建 FK(schema relation + 迁移 `ADD CONSTRAINT`),`onDelete` 按真实删除路径裁定;刻意不加 FK 的多态/聚合引用登记在 standard/03 §7.3
 - 枚举字段(`status`/`role`/`kind`/`storage`/`source_class` 等)统一 VARCHAR + 注释枚举,**不加 DB CHECK 约束**:合法值由应用层 Zod 边界校验管控,演进免改库约束;`chk_` 前缀规范随之废止(2026-09-30 定)
 - 禁止 `prisma db push`、禁止 `interceptDataLayer` 外的裸 SQL(迁移脚本除外)
 

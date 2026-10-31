@@ -4,7 +4,7 @@
  * 后台台账与公开页展示名同源自此,防两处漂移。
  */
 
-/** 实体类型(方案 §3 leaderboard_snapshot.entityType) */
+/** 实体类型(方案 §3 insight_leaderboard_snapshot.entityType) */
 export const LEADERBOARD_ENTITY_MODEL = "model";
 export const LEADERBOARD_ENTITY_PAPER = "paper";
 export const LEADERBOARD_ENTITY_REPO = "repo";

@@ -60,7 +60,9 @@ describe("embedding-repo(集成,dev PG)", () => {
   afterAll(async () => {
     if (!prisma) return;
     await prisma.$executeRawUnsafe(
-      `DELETE FROM search_embedding WHERE entity_id IN (${postId}, ${telegramId}, ${repoId})`,
+      `DELETE FROM search_embedding
+        WHERE (entity_type, entity_id) IN
+          (('post', ${postId}), ('telegram', ${telegramId}), ('repo', ${repoId}))`,
     );
     await prisma.post.deleteMany({ where: { title: { contains: MARK } } });
     await prisma.telegram.deleteMany({ where: { title: { contains: MARK } } });
@@ -91,7 +93,9 @@ describe("embedding-repo(集成,dev PG)", () => {
     await repo.upsertEmbeddings([rows[0]!]); // 幂等重放
     const count = await prisma.$queryRaw<{ n: bigint }[]>`
       SELECT count(*)::bigint AS n FROM search_embedding
-       WHERE entity_id IN (${postId}, ${telegramId}, ${repoId})`;
+       WHERE (entity_type, entity_id) IN (
+         ('post', ${postId}), ('telegram', ${telegramId}), ('repo', ${repoId})
+       )`;
     expect(count[0]?.n).toBe(BigInt(3));
     const staleAgain = await repo.findStaleEmbedSources(500);
     expect(staleAgain.filter((r) => myKeys.includes(`${r.entityType}:${r.entityId}`))).toEqual([]);
@@ -113,7 +117,9 @@ describe("embedding-repo(集成,dev PG)", () => {
     expect(removed).toBeGreaterThanOrEqual(3);
     const left = await prisma.$queryRaw<{ n: bigint }[]>`
       SELECT count(*)::bigint AS n FROM search_embedding
-       WHERE entity_id IN (${postId}, ${telegramId}, ${repoId})`;
+       WHERE (entity_type, entity_id) IN (
+         ('post', ${postId}), ('telegram', ${telegramId}), ('repo', ${repoId})
+       )`;
     expect(left[0]?.n).toBe(BigInt(0));
   });
 });

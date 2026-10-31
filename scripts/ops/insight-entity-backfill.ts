@@ -1,5 +1,5 @@
 /**
- * M60 实体回填:历史 entity_event → 规范实体(insight_entity / insight_entity_alias)。
+ * M60 实体回填:历史 insight_entity_event → 规范实体(insight_entity / insight_entity_alias)。
  * npm run insight:entity-backfill [-- --batch=500]
  * @status ops
  *
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   let lastId = BigInt(0);
 
   for (;;) {
-    const rows = await prisma.entityEvent.findMany({
+    const rows = await prisma.insightEntityEvent.findMany({
       where: { entityId: null, id: { gt: lastId } },
       orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
       take: batch,
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
           failed += 1;
           continue;
         }
-        await prisma.entityEvent.update({
+        await prisma.insightEntityEvent.update({
           where: { id: row.id },
           data: { entityId: entity.id },
         });
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   const [entities, aliases, unlinked] = await Promise.all([
     prisma.insightEntity.count({ where: { status: "active" } }),
     prisma.insightEntityAlias.count(),
-    prisma.entityEvent.count({ where: { entityId: null } }),
+    prisma.insightEntityEvent.count({ where: { entityId: null } }),
   ]);
   console.log(
     `完成:扫描 ${scanned} 条 → 挂载 ${linked},失败 ${failed};` +

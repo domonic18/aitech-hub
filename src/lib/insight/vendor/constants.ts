@@ -52,7 +52,7 @@ export const VENDOR_TEXT_MIN_FOR_FETCH = 200;
 export const VENDOR_TEXT_MAX = 4000;
 
 /** 已处理文章标记 TTL(秒):同文章 30 天内只抽取一次;抽取失败即释放,
- * 下一轮重试(偶发在途重复由 entity_event.dedupeKey 唯一索引兜底) */
+ * 下一轮重试(偶发在途重复由 insight_entity_event.dedupeKey 唯一索引兜底) */
 export const VENDOR_SEEN_TTL_SEC = 30 * 24 * 3600;
 
 export function isEntityType(v: unknown): v is EntityType {

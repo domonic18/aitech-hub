@@ -14,7 +14,7 @@ const findEntity = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    entityEvent: {
+    insightEntityEvent: {
       groupBy: (...a: unknown[]) => eventGroupBy(...a),
       findMany: (...a: unknown[]) => eventFindMany(...a),
       count: (...a: unknown[]) => eventCount(...a),

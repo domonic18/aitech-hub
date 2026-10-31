@@ -3,7 +3,7 @@
  * 产品线 › 实体,同名不同写法的键折叠在同一品牌下(不再 qwen-mt-turbo /
  * qwen3-embedding 各占一行互不相干)。筛选(厂商/类型/时间窗/关键词)chip 走
  * URL,与洞察各页同一套 chip 语法;关键词同时匹配展示名/规范键/别名。
- * 口径:只聚合 entity_event(厂商抽取链);社区/热榜信号暂无实体挂接。
+ * 口径:只聚合 insight_entity_event(厂商抽取链);社区/热榜信号暂无实体挂接。
  */
 import Link from "next/link";
 

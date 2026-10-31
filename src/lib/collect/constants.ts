@@ -14,7 +14,7 @@ export const CRAWL_SOURCE_TYPE_PRICING = "pricing";
  * 官方发布源(rss/html/sitemap 三种取数形态),条目走事件抽取而非电报入库 */
 export const CRAWL_SOURCE_TYPE_VENDOR = "vendor";
 /** 榜单渠道(M58 批③):config.boardKey 路由 leaderboard/registry,条目落
- * leaderboard_snapshot(公开页 /leaderboards/),不进电报流 */
+ * insight_leaderboard_snapshot(公开页 /leaderboards/),不进电报流 */
 export const CRAWL_SOURCE_TYPE_LEADERBOARD = "leaderboard";
 /** 社区需求语料(M58 批④):config.communityKey 路由 insight/community/registry
  * (HN/V2EX/百度下拉/GitHub Issues),条目经 L0 准入后入洞察信号池,不进电报流 */

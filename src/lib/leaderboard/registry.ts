@@ -3,7 +3,7 @@
  * - 取数形态/解析器/默认 URL 按 key 注册在本文件(改解析逻辑才发版);
  * - 渠道行落 crawl_source(type=leaderboard,config.boardKey 路由),URL/启停/
  *   采集周期(默认日频)在 数据中心·源管理·采集渠道 后台可调零发版;
- * - 每源固定一个榜单(board),条目不进电报流,落 leaderboard_snapshot。
+ * - 每源固定一个榜单(board),条目不进电报流,落 insight_leaderboard_snapshot。
  *
  * 真机探报告(2026-10-30):
  * - Artificial Analysis:静态 HTML 内嵌 RSC 载荷,可直取,**无需 headless**;

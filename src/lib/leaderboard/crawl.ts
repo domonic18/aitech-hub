@@ -103,7 +103,7 @@ async function persistSnapshots(
       score: it.score,
       scoreUnit: it.scoreUnit,
     };
-    await prisma.leaderboardSnapshot.upsert({
+    await prisma.insightLeaderboardSnapshot.upsert({
       where: {
         source_board_entityKey_capturedDate: {
           source: def.key,
@@ -125,7 +125,7 @@ async function persistSnapshots(
     });
     persisted += 1;
   }
-  await prisma.leaderboardSnapshot.deleteMany({
+  await prisma.insightLeaderboardSnapshot.deleteMany({
     where: {
       source: def.key,
       board: def.board,
