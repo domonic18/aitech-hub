@@ -38,6 +38,7 @@
     ]
   },
   "dependencies": {
+    "@alicloud/dypnsapi20170525": "^2.0.0",
     "@assistant-ui/react": "^0.15.25",
     "@assistant-ui/react-langgraph": "^0.14.33",
     "@codemirror/lang-markdown": "^6.5.2",

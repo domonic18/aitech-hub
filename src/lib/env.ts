@@ -38,11 +38,9 @@ const serverEnvSchema = z.object({
    *  轮换会使已存密文失效,需重导 Cookie、重录 API Key。 */
   AUTH_SECRET: z.string().min(16, "AUTH_SECRET 至少 16 字符"),
 
-  /** 腾讯云短信(三期用户短信登录;缺省留空不阻塞启动) */
-  TENCENT_SMS_SECRET_ID: z.string().default(""),
-  TENCENT_SMS_SECRET_KEY: z.string().default(""),
-  TENCENT_SMS_SDK_APP_ID: z.string().default(""),
-  TENCENT_SMS_SIGN_NAME: z.string().default(""),
+  /** 短信登录(M65)已入数据库 user_sms_config(阿里云号码认证服务 PNVS):
+   *  个人实名可用,签名由阿里云签发且可能轮换,故签名与凭据统一由后台维护,
+   *  此处不再有短信变量(与 SMTP/支付同规则)。 */
 
   /** 支付域(M21)已全部入数据库 pay_gateway_config(admin「支付配置」页
    *  唯一控制面:模式 off|mock|xunhu + 凭据 + 回调地址 + 关单 TTL;

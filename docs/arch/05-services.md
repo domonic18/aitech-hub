@@ -21,9 +21,10 @@
 
 ## 3. 认证与会话(src/lib/auth/)
 
-### 3.1 admin 密码登录(一期唯一鉴权;短信登录设计保留三期启用)
+### 3.1 admin 密码登录(一期鉴权;短信登录见 §3.4)
 
 > 2026-09-30 收缩:运营商个人签名资质停发,用户短信登录延后三期(requirement §3.3);一期鉴权仅服务后台 admin,前台无登录入口。
+> 2026-10-31 M65 反转:阿里云**号码认证服务(PNVS)短信认证**对个人实名开放(无需企业资质/ICP/自申签名),短信验证码登录/注册合一提早落地,见 §3.4。
 
 ```
 POST /api/auth/login    { phone, password } → bcrypt.compare → 下发会话 Cookie
@@ -35,7 +36,7 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 - **`legacy_phpass` 永不参与校验**(纯审计)
 - **爆破防护**(Redis 计数,阈值进 env):同账号连错 5 次锁 15min;同 IP 日失败上限 50 次;超限 429——失败提示不区分"锁定"与"密码错",不给人枚举面
 - 日志安全:手机号掩码(`138****1234`);密码/哈希永不落日志;登录成功/失败/锁定/登出记 `auth` 事件(pino,后台可视化属 M5+)
-- 三期启用短信登录时恢复原设计(sms-code 频控同号 60s/次日 10 条、腾讯云下发、未注册自动注册);BullMQ 周期任务实现注见 §4(upsertJobScheduler)
+- 三期启用短信登录时恢复原设计(sms-code 频控同号 60s/次日 10 条、腾讯云下发、未注册自动注册);**已被 M65 取代**:通道改阿里云 PNVS(§3.4),频控与自动注册口径随之下沉到该节
 
 **飞书工作台免登(M29,2026-10-14 立项;批①② 已上线;2026-10-16 免登修复:SDK 死链换新、废弃 getAuthCode 签名流换 requestAccess、v1 OIDC 换 v2 兑换,仿 acore-manager 实证)**:
 
@@ -61,7 +62,25 @@ GET  /api/auth/session                → 当前用户(客户端 hydrate 用)
 - CORS:Next 同源架构默认无跨域;若未来开放 API 再显式配置白名单
 - 安全事件记录:登录尝试/爆破锁定/权限拒绝/上传拒绝(pino `auth` 事件)
 
+### 3.4 手机号验证码登录/注册(M65,2026-10-31;替代原三期腾讯云方案)
+
+```
+POST /api/auth/sms-code   { phone }                → 触发下发(恒定应答,不暴露号码是否注册)
+POST /api/auth/sms-login  { phone, code, agreed }  → 校验通过 → 登录(已存在)或自动建号(不存在)
+```
+
+- **通道 = 阿里云号码认证服务 PNVS「短信认证」**(`src/lib/sms/`):个人实名可用,签名与 5 个预置模板(100001 登录/注册、100002 改绑、100003 重置密码、100004 绑新号、100005 验证绑定)由阿里云预置,无企业资质/ICP/自申签名。仅中国大陆 +86、仅验证码场景。
+- **验证码不落库**:PNVS 服务端生成与托管(缺省 300s 有效、60s 重发间隔、新码覆盖旧码、`returnVerifyCode=false`),本站无 OTP 表。
+- **入库配置**:`user_sms_config` 单例(AccessKey + Secret + 签名名 + 模板编码 + 开关 + 日预算),admin「系统设置 → 短信」维护;Secret AES-256-GCM 加密、write-only 回显,不入 env(与邮件/支付/飞书同规则)。关闭或凭据不全时端点 503、登录页页签隐藏。
+- **合一语义**(用户裁定):号码已存在即登录;不存在自动建号(`username` 空、昵称「用户+手机尾号 4 位」、`role=user`)——老站仅手机号账号因此恢复登录能力,53 位 pending_binding 不做特殊处理。
+- **admin 禁短信登录**(安全红线):迁移老账号手机号来自 WP 自助填写、从未验证,且含 admin 主账号。下发端点对 admin 号码静默按成功应答(不发、不计数、不泄漏角色);登录端点验证码通过后仍 403。
+- **频控与熔断**(`src/lib/sms/limit.ts`,阈值常量进代码):同号 60s 冷却 / 5 次每时 / 10 次每日;同 IP 10 次每时 / 30 次每日;全局日预算(admin 可配,缺省 200)先占位后发送、失败归还、80% 预警;校验错 5 次锁 15 分钟。
+- **合规**:请求须 `agreed: true`(邮箱注册同规),登录页与注册页勾选框不预选;隐私政策 §五 增第三方短信服务商条款。
+- **会话**:复用 §3.2 机制,不新造。`/account/*` 页面与写接口改用 `requireAccountPage` / `requireAccountRequest`(JWT 验签 + Redis `jti` 登记双查),封住「已吊销会话在 token 到期前仍可用」的窗口。
+- **账号中心绑定/换绑**(P1,同分支落地):`POST /api/account/phone/code|verify`(服务端状态机 `src/lib/sms/account-phone.ts`,请求契约 `src/lib/sms/scenes.ts` 客户端安全)。未绑定走 `bind`(100004 发新号,验码即落库);已绑定走**两步** `rebind_old`(100005 发当前号——**目标号由服务端从会话取,客户端传号无效**)→ Redis 放行标记 10 分钟 → `rebind_new`(100002 发新号;缺标记 409,不可跳步)。**发送时不预检号码归属**(否则登录态可探测任意号码是否注册),新号占用只在落库时判(409「已绑定其他账号」);admin 与停用账号一律 403;频控/日预算/校验锁定与登录链共用 `sendSmsCodeGuarded`(`send.ts`)+ `limit.ts`。`/account/settings` 第四卡渲染 `PhoneForm`(admin 不显示)。
+
 ## 4. 异步任务(worker/ + BullMQ)
+
 
 ### 4.1 队列与纪律
 
@@ -170,7 +189,9 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 
 | 域 | 端点 | 鉴权 |
 |----|------|------|
-| auth | login / logout / session、`GET /api/auth/feishu/status`(M29:下发 `{enabled, appId}` 供 H5 `tt.requestAccess`;凭证齐即可,enabled 透传不设门——兑换由 exchange 把关;凭证不齐 403)、`POST /api/auth/feishu/exchange`(M29:免登授权码兑换会话;白名单命中 + role/status 复核 + IP 30/h;未启用 403,未绑定模糊 403,upstream 502 不外吐细节) | login/session/exchange/status 公开(exchange 有防滥用,status 零外呼零签名) |
+| auth | login / logout / session、`GET /api/auth/feishu/status`(M29:下发 `{enabled, appId}` 供 H5 `tt.requestAccess`;凭证齐即可,enabled 透传不设门——兑换由 exchange 把关;凭证不齐 403)、`POST /api/auth/feishu/exchange`(M29:免登授权码兑换会话;白名单命中 + role/status 复核 + IP 30/h;未启用 403,未绑定模糊 403,upstream 502 不外吐细节)、`POST /api/auth/sms-code`(M65:触发验证码下发;恒定应答不暴露号码是否注册,admin 号码静默不发)、`POST /api/auth/sms-login`(M65:登录/注册合一,须 `agreed:true`;admin 403;错 5 次锁 15min) | login/session/exchange/status 公开(exchange 有防滥用,status 零外呼零签名);sms-code/sms-login 公开(频控 + Origin 校验) |
+| account(手机号) | `POST /api/account/phone/code`(按场景发码:bind 100004 / rebind_old 100005 / rebind_new 100002)、`POST /api/account/phone/verify`(验码:bind/rebind_new 落库,rebind_old 只置 10 分钟放行标记;M65 P1) | 登录会话(`requireAccountRequest`,admin 403;Origin 校验;频控与日预算同 §3.4) |
+| sms(管理) | `GET/PUT /api/sms-config`(单例脱敏视图/保存,secret 留空=保留;启用须凭据齐)、`POST /api/sms-config/test`(实调下发探针,落 last_test;M65) | admin 仅会话(§3.4) |
 | feishu(管理) | `GET/PUT /api/admin/feishu/config`(脱敏视图/保存,secret 留空=保留)、`POST /api/admin/feishu/test`(探测 app_token 链路,落 lastTest)、`GET /api/admin/feishu/bind`(当前绑定视图)、`POST /api/admin/feishu/bind`(授权码自绑/换绑,跨锚 409)、`DELETE /api/admin/feishu/bind`(自解绑,幂等) | admin 仅会话(mutation Origin 校验,§3.1) |
 | content | `GET /api/posts`(管理列表,草稿含;q 搜索)、`PUT /api/posts`(发布 API upsert:slug 幂等,原始 md 服务端解析 frontmatter,图片随文 base64 复用 M5-b 上传管线,publish=true 直发;legacy 纯 HTML 旧文 409 保真)、`POST/PUT/DELETE /api/posts/[id]`、`publish/unpublish`(POST 建文 slug 缺省由标题派生 ASCII、冲突自动追加 `-2…-9` 后缀、纯中文标题 → NULL;显式指定冲突仍 409;PUT 可改 slug——URL 由 id 锚定不破链)、`POST /api/posts/seo-suggest`(SEO 字段一键 LLM 补全,复用 summarize 绑定同步轻调用,M14 批④)、`POST /api/posts/seo-suggest-batch` + `GET /api/posts/seo-suggest-batch/[jobId]?token=`(文章列表多选批量 SEO 补全:仅补空缺不覆盖已有值,入 `seo-batch` 队列顺序逐篇 + 单篇失败隔离 `failedIds`;summarize 绑定缺失 400 前置拒绝不产生无效 job;ids 上限 50,M16)、`GET /api/posts/cover-candidates/[id]/raw`(agent 封面候选预览:token 走 x-cover-token 头(技术债批④,不落访问日志),hold 临时件按字节回图,已入库行 302 正式路径;会话鉴权,M31;hold/adopt 见 arch/04 封面候选 HITL;hold 孤儿目录(悬空中断/顶替遗留)由 cover-gen 队列 `temp-sweep` job 日频清扫,24h 过期回收) | admin(管理路会话或 PAT 双路,§3.1;seo-suggest* 仅会话) |
 | pats | `GET/POST /api/pats`、`POST /api/pats/[id]/revoke`(仅会话——PAT 不得自我增殖;明文仅签发时返回一次,库存 sha256) | admin |
