@@ -30,6 +30,7 @@ import {
   resolveLeaderboardDef,
   type LeaderboardDef,
 } from "./registry";
+import { revalidateLeaderboardPage } from "./revalidate";
 
 /** 北京日 → @db.Date 存储值(UTC 零点,只存日期语义,勿当真实时刻用) */
 export function leaderboardDay(now: Date): Date {
@@ -68,6 +69,9 @@ export async function runLeaderboardSourceCrawl(
     }
     const persisted = await persistSnapshots(source.id, def, items, leaderboardDay(now));
     await capture.finish("success", items.length);
+    // 采集成功即失效公开页预渲染产物:worker 无 Next 请求上下文,只能反调 web 内部端点。
+    // 失败只 warn(helper 内部吞错),数据已落库,页面最迟由 ISR 窗口兜底。
+    await revalidateLeaderboardPage();
     return { ok: true, fetched: items.length, persisted };
   } catch (e) {
     await capture.finish("failed", null, e instanceof Error ? e.message : String(e));
