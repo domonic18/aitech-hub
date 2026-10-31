@@ -117,6 +117,9 @@ function EntityRowView({ row }: { row: EntityRow }): React.ReactElement {
           {row.aliasCount > 0 ? row.aliasCount : "—"}
         </td>
         <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">{row.eventCount}</td>
+        <td className="hidden px-2 py-2 text-right font-mono text-[11px] text-text-2 sm:table-cell">
+          {row.leaderboardCount > 0 ? row.leaderboardCount : "—"}
+        </td>
         <td className="hidden overflow-hidden px-2 py-2 sm:table-cell">
           <LatestEvent row={row} />
         </td>
@@ -160,6 +163,7 @@ function SectionHeader({ section }: { section: EntitySection }): React.ReactElem
       <td className="hidden px-2 py-1.5 sm:table-cell" />
       <td className="hidden px-2 py-1.5 sm:table-cell" />
       <td className="px-2 py-1.5" />
+      <td className="hidden px-2 py-1.5 sm:table-cell" />
       <td className="hidden px-2 py-1.5 sm:table-cell" />
       <td className="px-2 py-1.5" />
     </tr>
@@ -273,6 +277,7 @@ export default function EntitiesBoard({
               <th className="hidden w-[110px] px-2 py-1.5 font-normal sm:table-cell">产品线</th>
               <th className="hidden w-14 px-2 py-1.5 text-right font-normal sm:table-cell">别名</th>
               <th className="w-12 px-2 py-1.5 text-right font-normal">事件</th>
+              <th className="hidden w-10 px-2 py-1.5 text-right font-normal sm:table-cell">在榜</th>
               <th className="hidden px-2 py-1.5 font-normal sm:table-cell">最近事件</th>
               <th className="w-[92px] px-2 py-1.5 text-right font-normal">最近时间</th>
             </tr>

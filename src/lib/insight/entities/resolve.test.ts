@@ -8,6 +8,7 @@ const store = vi.hoisted(() => ({
   entities: [] as Row[],
   aliases: [] as (Row & { aliasKey: string; entityId: bigint })[],
   events: [] as (Row & { entityId: bigint | null })[],
+  snapshots: [] as (Row & { entityId: bigint | null })[],
   seq: BigInt(0),
 }));
 
@@ -138,6 +139,19 @@ vi.mock("@/lib/db", () => {
           return { count: hit.length };
         },
       },
+      insightLeaderboardSnapshot: {
+        updateMany: async ({
+          where,
+          data,
+        }: {
+          where: { entityId: bigint };
+          data: { entityId: bigint };
+        }) => {
+          const hit = store.snapshots.filter((s) => s.entityId === where.entityId);
+          for (const s of hit) Object.assign(s, data);
+          return { count: hit.length };
+        },
+      },
       $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
     },
   };
@@ -157,6 +171,7 @@ beforeEach(() => {
   store.entities.length = 0;
   store.aliases.length = 0;
   store.events.length = 0;
+  store.snapshots.length = 0;
   store.seq = BigInt(0);
 });
 
@@ -279,7 +294,7 @@ describe("findEntity / mergeEntities", () => {
     expect(byAlias?.id).toBe(byKey?.id);
   });
 
-  it("归并迁移别名/事件/子实体,源实体置 merged", async () => {
+  it("归并迁移别名/事件/子实体/榜单快照,源实体置 merged", async () => {
     const from = await resolveEntity({
       vendorKey: "qwen",
       rawKey: "qwen-vlo",
@@ -287,6 +302,7 @@ describe("findEntity / mergeEntities", () => {
     });
     const to = await resolveEntity({ vendorKey: "qwen", rawKey: "qwen3-vl", entityType: "model" });
     store.events.push({ id: BigInt(1), entityId: from!.id }, { id: BigInt(2), entityId: from!.id });
+    store.snapshots.push({ id: BigInt(1), entityId: from!.id });
     store.entities.push({
       id: BigInt(900),
       key: "qwen-vlo-mini",
@@ -300,8 +316,9 @@ describe("findEntity / mergeEntities", () => {
     });
 
     const out = await mergeEntities("qwen-vlo", "qwen3-vl");
-    expect(out).toEqual({ movedAliases: 1, movedEvents: 2, movedChildren: 1 });
+    expect(out).toEqual({ movedAliases: 1, movedEvents: 2, movedChildren: 1, movedSnapshots: 1 });
     expect(store.events.every((e) => e.entityId === to!.id)).toBe(true);
+    expect(store.snapshots.every((s) => s.entityId === to!.id)).toBe(true);
     expect(store.entities.find((e) => e.key === "qwen-vlo-mini")?.parentId).toBe(to!.id);
     expect(store.entities.find((e) => e.id === from!.id)).toMatchObject({
       status: "merged",

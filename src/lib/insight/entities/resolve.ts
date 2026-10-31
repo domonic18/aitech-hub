@@ -213,6 +213,8 @@ export interface MergeOutcome {
   movedAliases: number;
   movedEvents: number;
   movedChildren: number;
+  /** 迁移的榜单快照行数(M64 榜单挂接) */
+  movedSnapshots: number;
 }
 
 /**
@@ -240,7 +242,7 @@ export async function mergeEntities(
     cursor = row.parentId;
   }
 
-  const [aliases, events, children] = await prisma.$transaction([
+  const [aliases, events, children, snapshots] = await prisma.$transaction([
     prisma.insightEntityAlias.updateMany({
       where: { entityId: from.id },
       data: { entityId: to.id, origin: "manual" },
@@ -253,6 +255,11 @@ export async function mergeEntities(
       where: { parentId: from.id },
       data: { parentId: to.id },
     }),
+    // 榜单挂接同步(M64):归并后榜单表现跟着目标实体走,否则详情页看不到在榜
+    prisma.insightLeaderboardSnapshot.updateMany({
+      where: { entityId: from.id },
+      data: { entityId: to.id },
+    }),
   ]);
   await prisma.insightEntity.update({
     where: { id: from.id },
@@ -262,5 +269,6 @@ export async function mergeEntities(
     movedAliases: aliases.count,
     movedEvents: events.count,
     movedChildren: children.count,
+    movedSnapshots: snapshots.count,
   };
 }

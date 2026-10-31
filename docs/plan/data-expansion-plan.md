@@ -512,12 +512,12 @@ TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
 口径边界:实体聚合只基于 `entity_event`(厂商抽取链);榜单快照 `leaderboard_snapshot.entityKey`
 命名口径不同(HF 保留大小写与 `/`、arXiv 保留版本后缀),本轮不做 join;社区/热榜信号未挂实体。
 
-### 14.2 后续(未立项)
+### 14.2 后续(均已有归属)
 
 - ~~实体别名归并(榜单 key 与 `entity_event.entityKey` 口径统一)与实体主表/别名表~~ →
-  实体主表/别名表已随 M60 落地(§15);**榜单 key 与事件层 key 的口径统一仍未做**;
+  实体主表/别名表已随 M60 落地(§15);榜单 key 与事件层 key 的口径统一已立项 M64(§16);
 - 社区/热榜信号实体挂接(NER 或 LLM 抽取,成本另评估);
-- 实体 ↔ 榜单快照关联(依赖上一项的口径统一)。
+- 实体 ↔ 榜单快照关联(依赖上一项的口径统一)→ 随 M64 落地(§16,AA / HF 两榜);
 
 ## 15. 后续:实体分层 / 覆盖矩阵 / 未命名治理(M60)
 
@@ -566,3 +566,71 @@ TTL 21599s,入池首问原文);游客后台页 0 条。收尾残留 0。
 2. 矩阵 16 源不出横向滚动、行动列不折行,行展开见单源计数;
 3. 打标小批跑一轮后「待打标」数下降;榜单不再出现 1–2 条簇的「待打标」;
 4. 行内 `<details>` 展开与「仅看空白」互不干扰;归并后事件数合并、旧路径仍可解析。
+
+## 16. 后续:榜单口径与实体层打通(M64)
+
+> 触发:2026-10-31 下迭代对齐。§14.2 遗留的「榜单 key 与事件层 key 口径统一」在 M60 实体主表
+> 落地后具备条件。用户三项裁定:**范围只做 Artificial Analysis 与 Hugging Face 两榜**、落地按推荐
+> **写时落 `entity_id` 列**、**展示层要做**。arXiv / GitHub 两榜不参与实体化。
+
+### 16.1 口径现状与解析层
+
+榜单快照 `entityKey` 是各源原始写法(AA slug 如 `gpt-6-1-terra`;HF 模型 id 如
+`Qwen/Qwen3-8B`,保留大小写与 `/`),与事件层经 `resolveEntity` 归一后的键不同源。
+
+- **唯一出口** `src/lib/insight/entities/leaderboard.ts`(批量入口
+  `resolveLeaderboardEntities`,单键包装 `resolveLeaderboardEntity`):
+  `canonicalKey` → 别名表(`alias_key`)→ `insight_entity.match_key`;命中返回实体,
+  **未命中返回 `null`**(语义是「不参与实体化」,不是错误,**不做 get-or-create**——
+  写入路径若顺手建实体,会把上游榜单里的大量非模型条目污染进实体表)。
+- **HF 末段回退**:实体层键不含 org 段,`qwen/qwen3-8b` 在主键与别名均未命中时退到末段
+  `qwen3-8b` 再解析一次(只退一级)。
+- **合并跟随**:命中行 `status = merged` 时沿 `merged_into_id` 逐跳追到 active 目标(限深 8 防环),
+  落库的是目标实体;否则归并后榜单口径会指向幽灵实体。
+- 只对 `boardKey ∈ {artificial-analysis, huggingface}` 调用;单榜 ≤60 条,采集侧
+  **批量预载**(一次 `findMany` 取 matchKey 命中 + 一次别名查询),不做 N+1。
+
+### 16.2 写入侧
+
+- 迁移(forward-only):`insight_leaderboard_snapshot.entity_id` `BigInt?` + FK
+  `insight_entity(id)` `ON DELETE SET NULL` + 索引 `idx_insight_leaderboard_snapshot_entity`
+  (命名按 [standard/03](../standard/03-db-naming.md);可空因两榜未命中与另三榜恒空)。
+- `crawl.ts#persistSnapshots`:create 与 update **同写** `entityId`(同日重采幂等覆盖;
+  与 `meta` 同步写的既有纪律一致);解析失败只记事件不抛,**采集成功与否不受影响**。
+- 未命中诊断:不建台账表,靠快照行 `entity_id IS NULL` + 采集日志
+  `leaderboard.entity_unmatched { source, total, unmatched, samples[] }`(样本限 10 键)。
+- **归并记账同步**:`mergeEntities` 事务追加 `insightLeaderboardSnapshot.updateMany`
+  (`entityId: from` → `to`),与事件回写同事务;否则归并后榜单表现仍挂在源实体。
+
+### 16.3 读侧展示
+
+- 实体详情 `/admin/insight/entities/<entityKey>/` 增「榜单表现」区:按 source 分组取最近
+  采集日快照(榜单名 / 名次 / 与前一采集日的名次变动 / 分数 / 采集日),AA 在前 HF 次之;
+  走 `entity_id` 索引读最近 200 行;无快照时整区不渲染(不出空壳)。
+- 实体列表 `/admin/insight/entities/` 增「在榜」列:各实体在**各源最新采集日**出现的榜数
+  (先按 source 取 `max(captured_date)`,再一次查询计数,不逐行查)。
+
+### 16.4 存量回填
+
+`scripts/oneoff/leaderboard-entity-backfill/run.ts`(一次性,幂等,默认 dry-run、`--apply`
+才写库;应用后删除、git 历史存档;docblock 带 `@status`):扫 `entity_id IS NULL` 的 AA/HF
+快照,按相同解析口径回写,按源输出命中/未命中与解析率。迁移部署后手工执行一次。
+
+### 16.5 验收口径
+
+1. AA 当日 60 条解析率 ≥ 90%(`entity_id` 非空 / 总条数),未命中项在日志样本里可解释;
+2. 抽查 5 个实体(含 1 个被归并过的)详情页「榜单表现」与快照数据一致;
+3. 归并两实体后,榜单表现自动跟随目标实体(含存量快照);
+4. 采集失败 / 解析 0 条 / 未命中三类行为与现状一致(采集不因实体化失败);
+5. 门禁裸跑 + 迁移从零重放通过。
+- **落码注(2026-10-31)**:迁移 `20261031160000_m64_leaderboard_entity` 已在本地库应用
+  (`migrate status` 干净;`migrate diff` 仅余 checkpointer 表,与 M58 起一致);解析层单测
+  覆盖别名优先 / HF 末段 / 多级归并跟随 / 链断降级 / 批量只两次查询,读侧单测覆盖「在榜」
+  计数与详情名次变动;回填脚本本地 dry-run 实测 80 行(AA 60 / HF 20),本地库无实体故命中 0,
+  生产部署后按本节口径复验。
+
+### 16.6 不做
+
+- arXiv / GitHub 两榜实体化(论文与仓库不属厂商实体域);
+- 社区 / 热榜信号挂实体(用户裁定本迭代不执行);
+- 榜单公开页(`/leaderboards/`)接入实体链接(读侧只做后台展示层)。

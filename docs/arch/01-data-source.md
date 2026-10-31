@@ -174,9 +174,11 @@
   `/admin/insight/entities/` 按实体注册表聚合事件,展示 **厂商 → 产品线 → 实体** 三层
   (厂商分区 + 产品线折叠组;厂商/实体类型/时间窗/关键词筛选 + 分页),详情
   `/admin/insight/entities/<key>/` 出事件时间线与经 `insight_signal.meta.entityKey`
-  关联的厂商信号,并列出该实体全部别名与子实体。聚合**只基于 `insight_entity_event`**,
-  不 join `insight_leaderboard_snapshot`(榜单 entityKey 口径不同:HF 保留大小写与 `/`、
-  arXiv 保留版本后缀);社区/热榜信号未挂实体,详情页明确说明。
+  关联的厂商信号,并列出该实体全部别名与子实体。事件聚合**只基于 `insight_entity_event`**;
+  榜单表现另走 `insight_leaderboard_snapshot.entity_id`(M64,仅 Artificial Analysis /
+  Hugging Face 两源)——详情页出「榜单表现」卡(每源最近采集日名次 + 与前一采集日变动),
+  列表页出「在榜」列(各源最新采集日出现的榜数);arXiv / GitHub 不实体化,该列恒空。
+  社区/热榜信号未挂实体,详情页明确说明。
   **已登记实体恒出页**:品牌/产品线的事件常挂在子孙实体上,本体零事件是常态
   (点实体列表分区头不再 404);只有未登记的键且无事件、无信号才 404。
 - **实体解析**(`src/lib/insight/entities/resolve.ts`,抽取后同步落 `insight_entity_event.entity_id`):
@@ -193,8 +195,15 @@
   只记 warn、事件照常入库(降级不阻断)。存量经
   `npm run insight:entity-backfill`(`scripts/ops/insight-entity-backfill.ts`,幂等)按
   `occurred_at` 顺序回填。
+- **榜单挂接**(M64,`src/lib/insight/entities/leaderboard.ts`):采集写入时按同一套
+  匹配键/别名解析 AA 与 HF 两榜的 `entityKey`,落 `insight_leaderboard_snapshot.entity_id`。
+  与事件层解析的差别:**只读**——未命中留 null(不建实体、不补别名),只记
+  `leaderboard.entity_unmatched` 诊断,不阻断采集;HF 的 `org/model` 全键未命中时退到末段
+  (`qwen/qwen3-8b` → `qwen3-8b`);命中已归并实体时跟进到 active 目标(链断则降级 null)。
+  存量回填 `scripts/oneoff/leaderboard-entity-backfill/run.ts`(默认 dry-run,幂等)。
 - **手工归并**:`POST /api/insight/entities/merge`(admin 会话,PAT 拒绝,Zod
-  `{ fromKey, toKey }`)单事务迁移别名、回写 `insight_entity_event.entity_id`、源实体置
+  `{ fromKey, toKey }`)单事务迁移别名、回写 `insight_entity_event.entity_id` 与
+  `insight_leaderboard_snapshot.entity_id`、源实体置
   `status=merged` + `merged_into_id`;旧路径仍可解析到归并目标,不 404。
 - 与牌价跟踪解耦:牌价停更不影响事件层。
 

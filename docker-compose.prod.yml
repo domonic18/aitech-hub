@@ -23,6 +23,9 @@ x-app-env: &app-env
   DOUYIN_GATEWAY_URL: http://douyin-gateway:8010
   # 卡片渲染服务网内地址(M31;.env 里的 127.0.0.1:8011 是 dev 值)
   CARD_RENDERER_URL: http://card-renderer:8011
+  # worker → web 内部失效端点(M63 后续;榜单采集成功后反调,worker 无 Next 请求上下文。
+  # .env 里的 127.0.0.1:3000 是 dev 值;不可达只告警不拦采集,页面最迟由 ISR 窗口兜底)
+  WEB_INTERNAL_URL: http://web:3000
   # environment 优先级高于 env_file(.env):容器内媒体路径钉死为挂载点,不随宿主 .env 漂移
   MEDIA_DIR: /app/media
 
@@ -112,9 +115,6 @@ services:
       # 原判「超卖急症」不成立;本项按角色右移,压绝对峰值
       # (web10+worker4+checkpointer 3×2+备份1=21,余量大)
       DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=4
-      # M63 后续:榜单采集成功后反调 web 内部失效端点(worker 无 Next 请求上下文)。
-      # 容器网内服务名;不可达只告警不拦采集,页面最迟由 ISR 窗口兜底
-      WEB_INTERNAL_URL: http://web:3000
     env_file:
       - .env
     volumes:

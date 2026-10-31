@@ -7,12 +7,13 @@
 ## 1. 当前基线
 
 - **M1–M57 全部完成**(一期骨架/迁移/前台/后台/上线,二期采集·AI·创作·分发·商业化逐迭代交付)。
-- **M58 进行中**:数据面扩展与洞察 v2([data-expansion-plan](data-expansion-plan.md));批① 多语言/地域基座、批② 厂商动态与事件层、批③ 榜单接入与公开页、批④ 社区需求语料、批⑤ 站内问句清洗复活已落码,批⑤ 后续(游客会话匿名留档 30 天)已落码,待 PR 合 develop。
-- **M59 进行中**:洞察浏览与实体层([data-expansion-plan §14](data-expansion-plan.md));信号独立页(`/admin/insight/signals/`,源/地域/介质/日期筛选 + 分页 + 原文外链)与实体聚合视图(`/admin/insight/entities/`,按 entityKey 聚合厂商事件 + 详情时间线与关联信号)已落码,待 PR 合 develop。
+- **M58 进行中**:数据面扩展与洞察 v2([data-expansion-plan](data-expansion-plan.md));批① 多语言/地域基座、批② 厂商动态与事件层、批③ 榜单接入与公开页、批④ 社区需求语料、批⑤ 站内问句清洗复活已落码,批⑤ 后续(游客会话匿名留档 30 天)已落码,已随 PR #196 合 develop。
+- **M59 进行中**:洞察浏览与实体层([data-expansion-plan §14](data-expansion-plan.md));信号独立页(`/admin/insight/signals/`,源/地域/介质/日期筛选 + 分页 + 原文外链)与实体聚合视图(`/admin/insight/entities/`,按 entityKey 聚合厂商事件 + 详情时间线与关联信号)已落码,已随 PR #197 合 develop。
 - **M61 已落码**:洞察体验与准入修复(已登记实体恒出页、站内问句入池无上下文 fail-closed、实体列表窄屏布局),已随 PR #201 合入 develop,待部署。
 - **M62 已落码**:数据库命名规范化与结构收口(PR #206 已合 develop);表名归一 + 索引/主键规范 + 15 处外键 + 5 张明细表审计字段,规范沉淀为 [standard/03-db-naming](../standard/03-db-naming.md)。
 - **M63 已落码**:榜单公开页可视化改版(PR #207 已合 develop;v2 按验收反馈重做:`feature/m63-leaderboard-viz-v2`)——能力与价格 / HF 热门模型两节独立散点 + 仓库动量卡,论文榜前台移除(采集保留),展示字段下沉 `meta`(见 [data-expansion-plan §6.3](data-expansion-plan.md));v2.1 再补输出价 USD ⇄ 人民币切换(默认人民币,汇率每日自动采集,零 JS);v2.2 三节标题区署名数据来源(站名 + 域名 + ↗ 外链原站)并在页脚汇总出处与折算口径;v2.3 散点悬停改零 JS SVG 卡(原生 `<title>` 退役)且标注按厂商保底 + 图例列全厂商条数,DeepSeek / Kimi 等中低位厂商图上可寻。
 - **M63 后续(2026-10-31 验收反馈,四项)**:① 榜单采集/汇率日采成功后由 worker 反调 `POST /api/internal/revalidate` 定向失效 `/leaderboards/`,解决「数据已新、页面还旧」;② 汇率启动补偿 `ensureUsdCnyRate`(worker 引导时缺行/超 24h 陈旧即补采,不再等 04:43);③ `<title>` 模板改「站点名 | 子页标题」(此前反了);④ 专题下拉两项统一四字:价格速查 / 榜单速览。
+- **M64 进行中**:榜单口径与实体层打通([data-expansion-plan §16](data-expansion-plan.md),`feature/m64-leaderboard-entity-link`)——榜单快照 `entityKey` 与事件层实体键口径统一:唯一出口 `resolveLeaderboardEntity` 解析,采集写入时落 `insight_leaderboard_snapshot.entity_id`(仅 AA / HF 两榜),实体详情增「榜单表现」、实体列表增「在榜」;存量快照一次性回填。
 - 站点能力面:内容站(文章/专题/贴图三形态)+ SEO 无损迁移 + 多渠道采集(电报流/抖音/B站/热榜/通用网页通道)
   + AI 管线(ASR 解读/打标判定/洞察)+ 创作台(编辑器 AI 化/配图工坊/卡片渲染)+ 分发(公众号/小红书)
   + 商业化(付费阅读/模型牌价页)+ 后台全套(内容/媒体/采集/洞察/统计/会话/用量)。
@@ -90,6 +91,7 @@
 | M61 | 洞察体验与准入修复 | 实体恒出页 + 问句入池 fail-closed + 实体列表窄屏(已合 develop,待部署) |
 | M62 | 数据库命名规范化与结构收口 | 表名前缀归一 + 索引/主键规范 + 外键补齐 + 明细表审计字段;规范落 [standard/03-db-naming](../standard/03-db-naming.md) |
 | M63 | 榜单公开页可视化改版 | `/leaderboards/` 三节并列:模型能力与价格(能力分 × 输出价散点)/ Hugging Face 热门模型(下载量 × 点赞数双对数散点)/ 热门仓库(动量卡:今日上升最快 + 新入榜;论文榜前台移除、采集保留);展示字段下沉 `meta` 白名单(无 schema 变更),AA 入库扩至 60;v2.1 输出价支持 USD ⇄ 人民币切换(默认人民币,汇率每日 04:43 自动采集落 `site_config`,零 JS 切换);v2.2 三节标题区署名数据来源并可一键回原站([data-expansion-plan §6.3](data-expansion-plan.md));v2.3 散点悬停零 JS SVG 卡 + 标注厂商保底与全厂商图例 |
+| M64 | 榜单口径与实体层打通 | 榜单快照 `entityKey` → 实体解析(唯一出口)+ 采集写入落 `entity_id`(AA / HF 两榜)+ 实体详情「榜单表现」与列表「在榜」+ 存量回填([data-expansion-plan §16](data-expansion-plan.md),进行中) |
 
 ## 3. 后置池(满足触发条件再立项)
 

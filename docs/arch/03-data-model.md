@@ -395,7 +395,7 @@ CREATE TABLE legacy_url_map (
 - `insight_leaderboard_snapshot`(批③,榜单时序):`source varchar(30)`(注册表 key)/`board varchar(40)`(榜单展示名)/`entity_key varchar(200)`(模型 slug·arXiv id·owner/repo)/`entity_name varchar(300)`/`entity_type varchar(12)`(model|paper|repo)/`vendor? varchar(60)`/`rank int`/`score? float8`/`score_unit? varchar(20)`/`captured_date date`(北京日界 UTC 零点)/`meta jsonb?`(`{url, sourceId}`);唯一键 `(source, board, entity_key, captured_date)`(同日重跑整表覆盖),索引 `(source, board, captured_date DESC)`(读侧取最新与上一可用日期)。名次变动**不落库**,读时相减
 - 批④(社区需求语料)**无 schema 变更**:四源统一落 `insight_signal`(`source=community-<key>`,`ref_id` 直接复用唯一键作幂等锚);日预算走 Redis(`insight:community:quota:<key>:<北京日>`,不落库);取数原文复用 `crawl_snapshot`
 - 批⑤(站内问句清洗复活)**无 schema 变更**:`source=internal-agent` 复用 `insight_signal`(refId=sessionId,游客为 `g:<threadId>`);入口标签进 `meta.surface`;游客首问判定键走 Redis(`search:agent:ask-recorded:<threadId>`,TTL 6h,不落库、不存 visitorId)
-- M59(洞察浏览与实体层)**无 schema 变更**,仅一迁移 `20261030160000_m59_entity_key_index` 增上述 `idx_insight_entity_event_entity_recent`:实体聚合视图(`/admin/insight/entities/`)只基于 `insight_entity_event` 分组,**不 join** `insight_leaderboard_snapshot`(后者 entityKey 口径不同);实体↔厂商信号关联走 `insight_signal.meta.entityKey`(JSON 路径等值),社区/热榜信号未挂实体
+- M59(洞察浏览与实体层)**无 schema 变更**,仅一迁移 `20261030160000_m59_entity_key_index` 增上述 `idx_insight_entity_event_entity_recent`:实体聚合视图(`/admin/insight/entities/`)只基于 `insight_entity_event` 分组,**不 join** `insight_leaderboard_snapshot`(后者 entityKey 口径不同);实体↔厂商信号关联走 `insight_signal.meta.entityKey`(JSON 路径等值),社区/热榜信号未挂实体;M64 起 AA / HF 两榜快照另有 `entity_id` 直连实体,其余源仍不关联
 - M60(实体分层/覆盖矩阵/未命名治理)迁移 `20261030200000_m60_entity_registry`,实体注册表落地:
   - `insight_entity`(实体主表):`key varchar(120)` **唯一**(规范键,展示/URL 用)/`match_key varchar(120)` **唯一**(分隔符归一的去重锚,`gpt-6.1-terra` 与 `gpt-6-1-terra` 同锚)/`display_name varchar(120)`(保留大小写,如 `Qwen3-Embedding`)/`entity_type varchar(12)`(`org|line|model|product`)/`vendor_key? varchar(30)`(所属厂商;org 自身为 null)/`parent_id? bigint`(自关联,`ON DELETE SET NULL`)/`status varchar(10)` 默认 `active`(`active|merged`)/`merged_into_id? bigint`(归并去向留痕);索引 `(vendor_key)`、`(parent_id)`
   - `insight_entity_alias`(别名表):`alias_key varchar(120)` **唯一**(`normalizeEntityKey` 原样产物)/`entity_id`(Cascade)/`origin varchar(10)`(`seed`=建表回填/`rule`=写入解析/`manual`=人工归并)/`confidence? float8`;索引 `(entity_id)`。归并只改指向、不改历史键
@@ -407,6 +407,7 @@ CREATE TABLE legacy_url_map (
   - 补 15 处真实引用的 FK(3 处已在),并补齐对应 9 个 FK 索引;`ai_cover_candidate.model_id` 放宽为可空
   - 5 张明细表补 `created_at`(`pay_order_item` / `content_post_tag` / `content_media_ref` / `github_repo_post` / `insight_cluster_member`),按父表时间回填
   - 刻意不加 FK 的多态/聚合引用与类型例外登记在 standard/03 §7
+- M64(榜单口径与实体层打通)迁移 `20261031160000_m64_leaderboard_entity`,`insight_leaderboard_snapshot` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_insight_leaderboard_snapshot_entity`:仅 Artificial Analysis / Hugging Face 两源在采集写入时解析挂接(`src/lib/insight/entities/leaderboard.ts` 为唯一出口,只读、未命中留 null 不阻塞采集),`entity_key` 原样保留;实体归并时同事务把快照改指目标实体。存量回填 `scripts/oneoff/leaderboard-entity-backfill/run.ts`(默认 dry-run,幂等)
 
 ## 3. Prisma 模型约定
 
