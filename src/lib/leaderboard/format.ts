@@ -1,5 +1,5 @@
 /**
- * 榜单展示格式化(M63,纯函数无 React):紧凑计数、价格、作者串。
+ * 榜单展示格式化(M63,纯函数无 React):紧凑计数、价格、分数。
  * 全部对 null/NaN 兜底回空串,由调用侧决定是否渲染(缺字段整项省略)。
  */
 
@@ -19,11 +19,21 @@ export function formatPrice(n: number | null | undefined): string {
   return `$${text}`;
 }
 
-/** 作者串:前 limit 人 + 「等 N 人」 */
-export function formatAuthors(authors: string[] | undefined, limit = 3): string {
-  if (authors === undefined || authors.length === 0) return "";
-  const head = authors.slice(0, limit).join("、");
-  return authors.length > limit ? `${head} 等 ${authors.length} 人` : head;
+/** 人民币输出价(按汇率折算,仅展示):¥36 / ¥0.67;整数价不留尾零 */
+export function formatCnyPrice(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n) || n < 0) return "";
+  if (n === 0) return "免费";
+  const text = n >= 1 ? String(Number(n.toFixed(1))) : String(Number(n.toFixed(2)));
+  return `¥${text}`;
+}
+
+/** 来源域名(署名 chip 展示):https://www.huggingface.co/models?sort=trending → huggingface.co */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 /** 分数(指数/热度):整数原样,小数留两位 */
