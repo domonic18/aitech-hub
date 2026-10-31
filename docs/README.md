@@ -47,6 +47,7 @@
 | --- | --- | --- |
 | [01-testing.md](standard/01-testing.md) | 测试分层、单测红线清单、迁移重放守卫、发布门槛 | 写测试/发布前 |
 | [02-cicd-deployment.md](standard/02-cicd-deployment.md) | 分支模型、CI 流水线、镜像、切换 runbook、备份 | 部署/发版/开新分支时 |
+| [03-db-naming.md](standard/03-db-naming.md) | 数据库命名权威源:表/列/约束/索引/删除行为、反例速查、新表 checklist、历史例外登记 | 建表/改表/加索引前 |
 
 ### plan/(迭代计划 · 状态真相源)
 
