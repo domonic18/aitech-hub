@@ -30,7 +30,9 @@ import { chipOff, chipOn, formatTime } from "./shared";
 
 const WINDOW_OPTIONS = [7, 30, 90] as const;
 
-const COL_COUNT = 7;
+/** 窄屏可见列数:实体/类型/事件/最近时间(其余三列 hidden,与 th/td 的
+ * `hidden sm:table-cell` 一一对应)。colSpan 必须用这个数,见 SectionHeader 注释。 */
+const MOBILE_COL_COUNT = 4;
 
 function Chip({
   on,
@@ -53,70 +55,95 @@ function Chip({
   );
 }
 
-/** 实体行:展示名(链接)+ 规范键;产品线仅在非品牌层出现 */
-function EntityRowView({ row }: { row: EntityRow }): React.ReactElement {
+/** 最近事件(桌面「最近事件」列 + 窄屏行下第二行共用;宽度不足时截断不越界) */
+function LatestEvent({ row }: { row: EntityRow }): React.ReactElement {
   return (
-    <tr className="border-b border-line last:border-b-0 hover:bg-panel-2">
-      <td className="px-3 py-2">
-        <div className="flex flex-col gap-0.5">
-          <Link href={entityHref(row.key)} className="text-[13px] text-text-1 hover:text-accent">
-            {row.displayName}
-          </Link>
-          <span className="truncate font-mono text-[11px] text-text-3" title={row.key}>
-            {row.key}
-          </span>
-        </div>
-      </td>
-      <td className="px-2 py-2">
-        <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-text-2">
-          {row.entityType === ""
-            ? "—"
-            : (ENTITY_TYPE_LABELS[row.entityType as keyof typeof ENTITY_TYPE_LABELS] ??
-              row.entityType)}
+    <div className="flex min-w-0 items-baseline gap-2">
+      {row.latestEventType !== "" && (
+        <span className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-accent">
+          {EVENT_TYPE_LABELS[row.latestEventType as EntityEventType] ?? row.latestEventType}
         </span>
-      </td>
-      <td className="px-2 py-2 font-mono text-[11px] whitespace-nowrap text-text-3">
-        {row.parentKey === null || row.parentKey === row.rootKey ? "—" : row.parentName}
-      </td>
-      <td className="px-2 py-2 text-right font-mono text-[11px] text-text-3">
-        {row.aliasCount > 0 ? row.aliasCount : "—"}
-      </td>
-      <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">{row.eventCount}</td>
-      <td className="px-2 py-2">
-        <div className="flex items-baseline gap-2">
-          {row.latestEventType !== "" && (
-            <span className="shrink-0 rounded-sm bg-accent-dim px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-accent">
-              {EVENT_TYPE_LABELS[row.latestEventType as EntityEventType] ?? row.latestEventType}
-            </span>
-          )}
-          {row.latestUrl === "" ? (
-            <span className="min-w-0 truncate text-text-2">{row.latestTitle}</span>
-          ) : (
-            <a
-              href={row.latestUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="min-w-0 truncate text-text-1 hover:text-accent"
-              title={row.latestTitle}
-            >
-              {row.latestTitle}
-            </a>
-          )}
-        </div>
-      </td>
-      <td className="px-3 py-2 text-right font-mono text-[11px] whitespace-nowrap text-text-3">
-        {formatTime(row.lastAt)}
-      </td>
-    </tr>
+      )}
+      {row.latestUrl === "" ? (
+        <span className="min-w-0 truncate text-text-2">{row.latestTitle}</span>
+      ) : (
+        <a
+          href={row.latestUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 truncate text-text-1 hover:text-accent"
+          title={row.latestTitle}
+        >
+          {row.latestTitle}
+        </a>
+      )}
+    </div>
   );
 }
 
-/** 品牌分区头:品牌名 + 规范键 + 区内事件合计 */
+/** 实体行:展示名(链接)+ 规范键;产品线仅在非品牌层出现。
+ * 窄屏(2026-10-31 移动端验收)隐藏 产品线/别名/最近事件 三列,最近事件降为
+ * 行下第二行——7 列在 390px 下会把表头挤成竖排单字、徽章越界压住相邻列。 */
+function EntityRowView({ row }: { row: EntityRow }): React.ReactElement {
+  return (
+    <>
+      <tr className="border-b border-line hover:bg-panel-2">
+        <td className="px-3 py-2">
+          <div className="flex flex-col gap-0.5">
+            <Link
+              href={entityHref(row.key)}
+              className="block truncate text-[13px] text-text-1 hover:text-accent"
+              title={row.displayName}
+            >
+              {row.displayName}
+            </Link>
+            <span className="truncate font-mono text-[11px] text-text-3" title={row.key}>
+              {row.key}
+            </span>
+          </div>
+        </td>
+        <td className="px-2 py-2">
+          <span className="rounded-sm bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-text-2">
+            {row.entityType === ""
+              ? "—"
+              : (ENTITY_TYPE_LABELS[row.entityType as keyof typeof ENTITY_TYPE_LABELS] ??
+                row.entityType)}
+          </span>
+        </td>
+        <td className="hidden px-2 py-2 font-mono text-[11px] whitespace-nowrap text-text-3 sm:table-cell">
+          {row.parentKey === null || row.parentKey === row.rootKey ? "—" : row.parentName}
+        </td>
+        <td className="hidden px-2 py-2 text-right font-mono text-[11px] text-text-3 sm:table-cell">
+          {row.aliasCount > 0 ? row.aliasCount : "—"}
+        </td>
+        <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">{row.eventCount}</td>
+        <td className="hidden overflow-hidden px-2 py-2 sm:table-cell">
+          <LatestEvent row={row} />
+        </td>
+        <td className="px-2 py-2 text-right font-mono text-[11px] whitespace-nowrap text-text-3">
+          {formatTime(row.lastAt)}
+        </td>
+      </tr>
+      {/* 行下第二行(仅窄屏):最近事件独占整行。colSpan 取窄屏列数——桌面端
+          该行 display:none 不参与列定义,窄屏 colSpan 若写 7 同样会造幽灵列。 */}
+      <tr className="border-b border-line sm:hidden">
+        <td colSpan={MOBILE_COL_COUNT} className="overflow-hidden px-3 pb-2">
+          <LatestEvent row={row} />
+        </td>
+      </tr>
+    </>
+  );
+}
+
+/** 品牌分区头:品牌名 + 规范键 + 区内事件合计。
+ * 不用 `colSpan`:窄屏三列 `display:none` 后,一格里 colSpan=7 会让 table-fixed
+ * 凭空补出 3 个幽灵列参与分宽,实体列被摊到 32px(名称只剩一个字母)。
+ * 改为与数据行同构的空单元格占位,窄屏只剩 4 列。 */
 function SectionHeader({ section }: { section: EntitySection }): React.ReactElement {
   return (
     <tr className="border-b border-line bg-panel-2/60">
-      <td colSpan={COL_COUNT} className="px-3 py-1.5">
-        <span className="flex items-baseline gap-2">
+      <td className="px-3 py-1.5">
+        <span className="flex flex-wrap items-baseline gap-x-2">
           <Link
             href={entityHref(section.rootKey)}
             className="text-[13px] font-medium text-text-1 hover:text-accent"
@@ -129,6 +156,12 @@ function SectionHeader({ section }: { section: EntitySection }): React.ReactElem
           </span>
         </span>
       </td>
+      <td className="px-2 py-1.5" />
+      <td className="hidden px-2 py-1.5 sm:table-cell" />
+      <td className="hidden px-2 py-1.5 sm:table-cell" />
+      <td className="px-2 py-1.5" />
+      <td className="hidden px-2 py-1.5 sm:table-cell" />
+      <td className="px-2 py-1.5" />
     </tr>
   );
 }
@@ -229,16 +262,19 @@ export default function EntitiesBoard({
           暂无实体——厂商官网采集后由 LLM 抽取事件生成;渠道状态见 数据中心·源管理·采集渠道。
         </p>
       ) : (
+        // 窄屏(2026-10-31 移动端验收):7 列在 390px 下把「产品线/最近事件」表头
+        // 挤成竖排单字、徽章越界压住相邻列——小于 sm 隐三列(见 EntityRowView),
+        // 保留 实体/类型/事件/最近时间,桌面端仍为 7 列
         <table className="w-full table-fixed text-left text-[13px]">
           <thead>
-            <tr className="border-b border-line text-[11px] text-text-3">
-              <th className="w-[26%] px-3 py-1.5 font-normal">实体</th>
-              <th className="w-16 px-2 py-1.5 font-normal">类型</th>
-              <th className="w-[15%] px-2 py-1.5 font-normal">产品线</th>
-              <th className="w-12 px-2 py-1.5 text-right font-normal">别名</th>
+            <tr className="border-b border-line text-[11px] whitespace-nowrap text-text-3">
+              <th className="w-auto px-3 py-1.5 font-normal sm:w-[240px]">实体</th>
+              <th className="w-[72px] px-2 py-1.5 font-normal">类型</th>
+              <th className="hidden w-[110px] px-2 py-1.5 font-normal sm:table-cell">产品线</th>
+              <th className="hidden w-14 px-2 py-1.5 text-right font-normal sm:table-cell">别名</th>
               <th className="w-12 px-2 py-1.5 text-right font-normal">事件</th>
-              <th className="px-2 py-1.5 font-normal">最近事件</th>
-              <th className="w-24 px-3 py-1.5 text-right font-normal">最近时间</th>
+              <th className="hidden px-2 py-1.5 font-normal sm:table-cell">最近事件</th>
+              <th className="w-[92px] px-2 py-1.5 text-right font-normal">最近时间</th>
             </tr>
           </thead>
           <tbody>
