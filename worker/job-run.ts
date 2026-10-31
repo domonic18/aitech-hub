@@ -21,6 +21,7 @@ import {
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
   INSIGHT_JOB_LABEL,
+  LEADERBOARD_JOB_FX_REFRESH,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
@@ -56,6 +57,8 @@ const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   // 单渠道抓取(2026-10-30 E2E:手动/定时采集原先只在 worker stdout 留痕,
   // 后台「采集日志」看不到;约 500 行/日,30 天日清内可接受)
   `${QUEUE_CRAWLER}/${CRAWL_JOB_SOURCE}`,
+  // 榜单展示汇率日采(M63 v2.1;日 1 行,失败也要在计划页可见)
+  `${QUEUE_CRAWLER}/${LEADERBOARD_JOB_FX_REFRESH}`,
 ]);
 
 /** 手动触发判别:各触发入口 jobId 统一带 -manual-(insight/discovery 触发路由、

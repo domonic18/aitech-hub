@@ -36,6 +36,7 @@ export const JOB_RUN_LABELS: Record<string, string> = {
   "cover-gen/temp-sweep": "封面·候选清扫",
   "crawler/ai-backfill": "解读·AI 补扫",
   "crawler/crawl": "采集·渠道抓取",
+  "crawler/leaderboard-fx-refresh": "榜单·汇率采集",
 };
 
 export function jobRunLabel(key: string): string {

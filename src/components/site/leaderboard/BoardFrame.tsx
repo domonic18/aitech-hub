@@ -1,13 +1,15 @@
 /**
- * 榜单节壳(M63):锚点 id、标题、数据截至、陈旧降级横幅、多源署名。
- * 模型榜/论文/热门仓库三节共用;单节可挂多个来源(模型榜合并 AA + HF)。
+ * 榜单节壳(M63):锚点 id、标题、数据截至、陈旧降级横幅、来源署名。
+ * 能力与价格 / HF 热门模型 / 热门仓库三节共用。
+ *
+ * 署名位置(M63 v2.1):来源 chip 放标题区、正文之前——站名 + 域名 + ↗ 一眼可辨、
+ * 一键回原站,转载合规与「数据以原站为准」都落在这里;不再塞在节尾小字里。
  */
 import { LEADERBOARD_STALE_DAYS } from "@/lib/leaderboard/public";
 
-export interface BoardSourceRef {
-  label: string;
-  url: string;
-}
+import { SourceLink, type BoardSourceRef } from "./shared";
+
+export type { BoardSourceRef };
 
 export function BoardFrame({
   id,
@@ -39,31 +41,21 @@ export function BoardFrame({
         )}
       </div>
       {hint !== undefined && <p className="mt-1 text-[12px] leading-relaxed text-text-3">{hint}</p>}
+      {sources.length > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11.5px] text-text-3">
+          <span>数据来源</span>
+          {sources.map((s) => (
+            <SourceLink key={s.url} source={s} />
+          ))}
+          <span>每日采集快照,名次与内容以原站为准</span>
+        </p>
+      )}
       {stale && (
         <p className="mt-2 rounded-sm border border-amber/30 bg-amber/10 px-3 py-2 text-[12px] text-amber">
           本期数据未更新,展示的是最近一次可用快照。
         </p>
       )}
       {children}
-      {sources.length > 0 && (
-        <p className="mt-3 text-[11px] text-text-3">
-          来源:
-          {sources.map((s, i) => (
-            <span key={s.url}>
-              {i > 0 && "、"}
-              <a
-                href={s.url}
-                target="_blank"
-                rel="nofollow noopener noreferrer"
-                className="underline decoration-line hover:text-text-1"
-              >
-                {s.label}
-              </a>
-            </span>
-          ))}
-          {" · 每日采集一次,名次变动与上一可用日期比较得出"}
-        </p>
-      )}
     </section>
   );
 }

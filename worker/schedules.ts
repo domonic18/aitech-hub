@@ -30,6 +30,8 @@ import {
   INSIGHT_LABEL_CRON,
   INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
+  LEADERBOARD_FX_CRON,
+  LEADERBOARD_JOB_FX_REFRESH,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
@@ -176,6 +178,22 @@ export async function scheduleXhsStateProbe(): Promise<void> {
       name: DISTRIBUTE_JOB_XHS_STATE_PROBE,
       data: {},
       opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 榜单展示汇率日采:04:43 取一次美元→人民币(M63 v2.1;结果落 site_config kv,
+ * 榜单价格双币切换用)。单请求任务搭 crawler 队列;失败重试 1 次(60s 后)仍失败
+ * 则页面继续用上一个汇率,不阻塞采集。 */
+export async function scheduleLeaderboardFxRefresh(): Promise<void> {
+  const queue = getQueue(QUEUE_CRAWLER);
+  await queue.upsertJobScheduler(
+    "leaderboard-fx-refresh",
+    { pattern: LEADERBOARD_FX_CRON, tz: SITE_TZ },
+    {
+      name: LEADERBOARD_JOB_FX_REFRESH,
+      data: {},
+      opts: { ...schedulerOpts(7), attempts: 2, backoff: { type: "fixed", delay: 60_000 } },
     },
   );
 }

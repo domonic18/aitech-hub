@@ -56,6 +56,14 @@ export interface PublicLeaderboards {
   asOf: string | null;
 }
 
+/** 最新数据日期(各榜 capturedDate 的最大值;空表 null) */
+export function latestCapturedDate(boards: PublicLeaderboard[]): string | null {
+  return boards.reduce<string | null>(
+    (acc, b) => (acc === null || b.capturedDate > acc ? b.capturedDate : acc),
+    null,
+  );
+}
+
 /** 名次差(纯函数,单测锚):上期名次 - 本期名次 = 上升位数;上期无此条 → null */
 export function rankDelta(
   current: Array<{ entityKey: string; rank: number }>,
@@ -178,10 +186,7 @@ export async function listPublicLeaderboards(now: Date = new Date()): Promise<Pu
     }
     return {
       boards,
-      asOf: boards.reduce<string | null>(
-        (acc, b) => (acc === null || b.capturedDate > acc ? b.capturedDate : acc),
-        null,
-      ),
+      asOf: latestCapturedDate(boards),
     };
   });
 }
