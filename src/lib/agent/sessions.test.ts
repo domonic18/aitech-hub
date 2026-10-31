@@ -140,16 +140,15 @@ describe("问句入池(M58 批⑤,arch/01 §3.4)", () => {
     expect(ingestMock).not.toHaveBeenCalled();
   });
 
-  it("非首问(标题已填)与无上下文:不入池/不伪造 surface", async () => {
+  it("非首问(标题已填)与无上下文:都不入池(fail-closed)", async () => {
     prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 0 });
     await backfillSessionTitle("t-1", "第二个问题", "搜索");
     expect(ingestMock).not.toHaveBeenCalled();
 
+    // 无页面上下文无法判定前台/后台(编辑器/创作中心旧客户端),一律不收
     prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 1 });
     await backfillSessionTitle("t-2", "直接站内提问");
-    expect(ingestMock).toHaveBeenCalledWith(
-      expect.objectContaining({ refId: "t-2", meta: undefined }),
-    );
+    expect(ingestMock).not.toHaveBeenCalled();
   });
 
   it("游客首问:NX 抢到才入池,refId 加 g: 前缀且不存 visitorId", async () => {
@@ -181,6 +180,9 @@ describe("问句入池(M58 批⑤,arch/01 §3.4)", () => {
 
     redisMock.set.mockResolvedValue("OK");
     await recordGuestFirstAsk("g_t2", "后台里问一句", "后台");
+    expect(ingestMock).not.toHaveBeenCalled();
+
+    await recordGuestFirstAsk("g_t3", "无上下文提问");
     expect(ingestMock).not.toHaveBeenCalled();
   });
 

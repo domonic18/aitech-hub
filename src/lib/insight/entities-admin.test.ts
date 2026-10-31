@@ -333,4 +333,25 @@ describe("getEntityDetail", () => {
       }),
     );
   });
+
+  it("已登记但本体零事件的品牌根仍出页(事件挂在子孙,不 404)", async () => {
+    findEntity.mockResolvedValue({ id: BigInt(9), key: "kimi" });
+    entityFindUnique.mockResolvedValue({ ...QWEN_ORG, id: BigInt(9), key: "kimi" });
+    aliasFindMany.mockResolvedValue([{ aliasKey: "kimi" }]);
+    eventFindMany.mockResolvedValue([]);
+    eventCount.mockResolvedValue(0);
+    eventGroupBy
+      .mockResolvedValueOnce([]) // facets(本体无事件)
+      .mockResolvedValueOnce([{ entityId: BigInt(10), _count: { _all: 3 } }]); // 子实体计数
+    entityFindMany.mockResolvedValueOnce([
+      { id: BigInt(10), key: "kimi-k3", displayName: "kimi-k3" },
+    ]); // 子(根无父,祖先与兄弟都不查库)
+    signalFindMany.mockResolvedValue([]);
+
+    const detail = await getEntityDetail("kimi");
+    expect(detail).not.toBeNull();
+    expect(detail?.eventCount).toBe(0);
+    expect(detail?.events).toEqual([]);
+    expect(detail?.children).toEqual([{ key: "kimi-k3", displayName: "kimi-k3", eventCount: 3 }]);
+  });
 });

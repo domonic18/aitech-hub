@@ -108,17 +108,19 @@ export async function touchGuestSessionAfterRun(
  * 校验仍以 Redis 归属键为界,本行只作后台审计档案。 */
 export const GUEST_SESSION_OWNER = "guest";
 
-/** 站内问句入池(M58 批⑤,arch/01 §3.4):后台功能页上下文一律不入池,
- * 公开页放行且与身份无关;`meta.surface` 记入口便于调规则。ingest 自吞异常,
- * fire-and-forget 不反噬响应流。 */
+/** 站内问句入池(M58 批⑤,arch/01 §3.4):只收前台公开页——后台功能页与
+ * **无页面上下文**一律不入池(M61:上下文缺失时无法区分前台提问与后台创作,
+ * 编辑器/创作中心的旧客户端正是这样把改稿、生图对话漏进「助手问句」的);
+ * `meta.surface` 记入口便于调规则。ingest 自吞异常,fire-and-forget 不反噬
+ * 响应流。 */
 function captureAsk(refId: string, message: string, page: string | null | undefined): void {
-  if (isAdminSurface(page)) return;
+  if (page === null || page === undefined || isAdminSurface(page)) return;
   void ingestInsightSignal({
     source: "internal-agent",
     refId,
     rawText: message,
     signalAt: new Date(),
-    meta: page === null || page === undefined ? undefined : { surface: page },
+    meta: { surface: page },
   });
 }
 
