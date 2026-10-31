@@ -446,7 +446,10 @@ export async function getEntityDetail(key: string): Promise<EntityDetail | null>
     ...new Set([key, ...(meta ? [meta.key] : []), ...aliases.map((a) => a.aliasKey)]),
   ];
   const signals = await listSignalsByEntityKey(aliasKeys, ENTITY_SIGNAL_TAKE);
-  if (eventCount === 0 && signals.length === 0) return null;
+  // 品牌/产品线实体自身零事件是常态(事件挂在子孙实体上),只要实体已登记就
+  // 出页——只有「未登记的历史键 + 无事件 + 无信号」才 404(M61:点实体列表
+  // 分区头 openai/google/kimi 曾因本体 0 事件直接跳 404)。
+  if (meta === null && eventCount === 0 && signals.length === 0) return null;
 
   const ancestors = meta === null ? new Map<bigint, EntityMeta>() : await loadAncestors([meta]);
   const parentMeta = meta?.parentId == null ? null : (ancestors.get(meta.parentId) ?? null);

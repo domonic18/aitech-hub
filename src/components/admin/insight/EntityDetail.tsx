@@ -145,7 +145,9 @@ export default function EntityDetailView({
       >
         {detail.events.length === 0 ? (
           <p className="px-3 py-8 text-center text-[13px] text-text-3">
-            该实体暂无抽取事件(仅有关联信号)。
+            {detail.children.length > 0
+              ? "该实体本体暂无抽取事件——事件挂在子实体上,点上方「下级」查看。"
+              : "该实体暂无抽取事件(仅有关联信号)。"}
           </p>
         ) : (
           <ul className="divide-y divide-line">
