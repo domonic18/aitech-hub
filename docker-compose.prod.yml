@@ -112,6 +112,9 @@ services:
       # 原判「超卖急症」不成立;本项按角色右移,压绝对峰值
       # (web10+worker4+checkpointer 3×2+备份1=21,余量大)
       DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=4
+      # M63 后续:榜单采集成功后反调 web 内部失效端点(worker 无 Next 请求上下文)。
+      # 容器网内服务名;不可达只告警不拦采集,页面最迟由 ISR 窗口兜底
+      WEB_INTERNAL_URL: http://web:3000
     env_file:
       - .env
     volumes:

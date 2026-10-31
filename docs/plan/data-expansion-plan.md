@@ -260,6 +260,15 @@ model EntityEvent {
     一次(人民币域),美元刻度另算一份**仅为刻度文本**(¥10/¥20/¥50 是本币原生刻度,
     不是 $5 换算成 ¥33.3);tooltip 两币并列(¥33.3($5)/1M tokens)。
   - 构建期 `prerenderSafe` 回落默认汇率(CI 无库),首个 ISR 周期后自动换成实采值。
+  - **启动补偿(2026-10-31 验收补修)**:worker 引导时若库无汇率行或落库日早于「24 小时前
+    的北京日」(容差:接口 00:00 UTC 更新,凌晨采集本就拿到前一北京日值),补采一次
+    (`ensureUsdCnyRate`,fire-and-forget 不挡就绪;补采成功顺带失效榜单页,失败只告警)
+    ——否则换版/首次上线到 04:43 之间页面一直按 7.2 折算(生产实测 `site_config` 该键 0 行即此因)。
+  - **定向缓存失效(2026-10-31 验收补修 P0)**:榜单采集成功与汇率日采成功后,worker 反调
+    web 内部端点 `POST /api/internal/revalidate`(`{paths:["/leaderboards/"]}`,白名单校验),
+    即时失效 ISR 产物。worker 进程没有 Next 请求上下文、调不了 `revalidatePath`;失效失败
+    只告警不拦采集,最迟由 ISR 3600 兜底。web 侧内部地址由 `WEB_INTERNAL_URL` 注入
+    (prod compose 钉 `http://web:3000`,dev 默认 `127.0.0.1:3000`)。
 - **M63 落码注 v2.2(源数据出处可点,2026-10-31 用户验收追加)**:三节一律在标题区
   (正文之前)前置「数据来源」署名 chip——站名 + 域名 + ↗,`target=_blank` +
   `rel="nofollow noopener noreferrer"` 直回原站榜单页;节尾的小字署名退役(同一信息披露

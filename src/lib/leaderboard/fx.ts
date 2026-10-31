@@ -18,6 +18,8 @@ import { logger } from "@/lib/logger";
 import { fetchViaEgress } from "@/lib/net/egress-fetch";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
+import { revalidateLeaderboardPage } from "./revalidate";
+
 /** site_config 键(非设置项:每日遥测快照) */
 export const FX_RATE_KEY = "leaderboard.usd_cny_rate";
 /** 取数端点:免费无密钥、北京时间每日更新;境内直连不稳时由 fetchViaEgress 走系统出口 */
@@ -98,14 +100,49 @@ export function readStoredRate(raw: string | null): UsdCnyRate {
 
 /** 当前展示汇率(请求内 cache 去重;构建期无库 → 默认值) */
 export const getUsdCnyRate = cache((): Promise<UsdCnyRate> =>
-  prerenderSafe("leaderboard.fx_rate", readStoredRate(null), async () => {
-    const row = await prisma.siteConfig.findUnique({
-      where: { key: FX_RATE_KEY },
-      select: { value: true },
-    });
-    return readStoredRate(row?.value ?? null);
-  }),
+  prerenderSafe("leaderboard.fx_rate", readStoredRate(null), readCurrentRate),
 );
+
+/** 读库当前汇率(无 React cache、无 prerenderSafe 兜底;worker/读侧共用) */
+async function readCurrentRate(): Promise<UsdCnyRate> {
+  const row = await prisma.siteConfig.findUnique({
+    where: { key: FX_RATE_KEY },
+    select: { value: true },
+  });
+  return readStoredRate(row?.value ?? null);
+}
+
+/** 陈旧判定:从未采到,或落库日早于「24 小时前」的北京日。
+ * 容差来源:er-api 每日 00:00 UTC(= 北京 08:00)更新,凌晨采集拿到的仍是前一北京日的值,
+ * 若按「不等于今天」判定,每日 04:43 的定时采集永远算陈旧、每次 worker 重启都白跑一次。 */
+export function isStaleRate(stored: UsdCnyRate, now: Date = new Date()): boolean {
+  if (stored.isFallback || stored.date === null) return true;
+  const toleranceDay = formatCnDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  return stored.date < toleranceDay;
+}
+
+/**
+ * 启动补偿(worker 引导阶段调用):定时采集在 04:43,而新部署/首次上线的 worker
+ * 在此之前是没有汇率行的——页面会一直用默认值 7.2 折算到下一个凌晨。此处只在
+ * 「从未采到 / 已陈旧」时补采一次;失败只告警(定时任务仍是兜底,页面读旧值不报错)。
+ */
+export async function ensureUsdCnyRate(now: Date = new Date()): Promise<UsdCnyRate> {
+  const current = await readCurrentRate();
+  if (!isStaleRate(current, now)) return current;
+  try {
+    const refreshed = await refreshUsdCnyRate(now);
+    // 汇率变了,页面上的折算价得跟着换:失效一次榜单页(启动期 web 未就绪只是告警,
+    // 页面最迟由 ISR 窗口 / 下一次采集兜底)
+    await revalidateLeaderboardPage();
+    return refreshed;
+  } catch (e) {
+    logger.warn({
+      event: "leaderboard.fx_ensure_failed",
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return current;
+  }
+}
 
 /** 每日采集(worker 定时任务):失败上抛由 job 台账记账,不吞错;页面读旧值不受影响 */
 export async function refreshUsdCnyRate(now: Date = new Date()): Promise<UsdCnyRate> {

@@ -62,6 +62,12 @@ const serverEnvSchema = z.object({
    *  站内引图 /wp-content/uploads/* 据此改写 file:/// 绝对路径供 chromium 直读 */
   CARD_RENDERER_MEDIA_ROOT: z.string().default("/app/media"),
 
+  /** worker 反向调 web 的内部地址(M63 后续:榜单采集后 on-demand 失效页面缓存;
+   *  worker 无 Next 请求上下文,`revalidatePath` 只能由 web 端点代劳)。
+   *  dev 本地裸跑默认 127.0.0.1:3000;prod 容器网内为 http://web:3000(compose 注入)。
+   *  不可达只告警不拦采集——页面最迟仍由 ISR 窗口兜底 */
+  WEB_INTERNAL_URL: z.string().default("http://127.0.0.1:3000"),
+
   /** GitHub API 令牌(M11 项目展示;可选——空=未认证 60 req/h,白名单 ≤10 仓可用;
    *  配 token 提升至 5000/h。密钥仅 env,不入库不打日志) */
   GITHUB_TOKEN: z.string().default(""),

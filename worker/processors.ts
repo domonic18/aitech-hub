@@ -66,6 +66,7 @@ import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/p
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
 import { refreshUsdCnyRate } from "../src/lib/leaderboard/fx";
+import { revalidateLeaderboardPage } from "../src/lib/leaderboard/revalidate";
 import { crawlDueSources, crawlSource } from "../src/lib/telegram/ingest";
 import { crawlVideoAccount, enqueueDueVideoAccounts } from "../src/lib/telegram/ingest-video";
 import {
@@ -201,6 +202,8 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === LEADERBOARD_JOB_FX_REFRESH) {
       // 榜单展示汇率日采(M63 v2.1):失败抛出让任务台账记失败,页面继续用旧汇率
       const fx = await refreshUsdCnyRate();
+      // 汇率变了就得让榜单页重新渲染,否则页面上的折算价要等到下一次榜单采集才更新
+      await revalidateLeaderboardPage();
       console.log(
         JSON.stringify({ event: "leaderboard.fx_refresh", rate: fx.rate, date: fx.date }),
       );
