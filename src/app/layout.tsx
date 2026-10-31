@@ -12,7 +12,8 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(siteUrl()),
     title: {
       default: `${title} · domonic18 的 AI 工程实战博客`,
-      template: `%s | ${title}`,
+      // 站点名在前、子页标题在后(2026-10-31 验收定调;此前 `%s | 站名` 是反的)
+      template: `${title} | %s`,
     },
     description:
       "一起AI:第一人称、可复现的 AI 工程实战原创博客,Claude Code / MCP / LLM 训练与评测等主题。",
