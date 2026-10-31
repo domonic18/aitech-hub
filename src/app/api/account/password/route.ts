@@ -5,7 +5,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
-import { verifyAccessToken, ACCESS_COOKIE_NAME } from "@/lib/auth/session";
+import { requireAccountRequest } from "@/lib/auth/guard";
 import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
 import { AccountError, changePassword, passwordChangeSchema } from "@/lib/users/account-profile";
@@ -21,7 +21,7 @@ const ERROR_STATUS = {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
-  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
+  const session = await requireAccountRequest(req);
   if (!session) return apiEnvelope(401, "请先登录");
 
   const parsed = passwordChangeSchema.safeParse(await req.json().catch(() => null));

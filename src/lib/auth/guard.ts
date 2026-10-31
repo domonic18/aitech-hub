@@ -42,3 +42,24 @@ export async function requireAdminRequest(
   if (!claims || claims.role !== ADMIN_ROLE) return null;
   return claims;
 }
+
+// ---- 用户中心守卫(M65 安全收口)----
+// 旧实现走 session.ts#verifyAccessToken(只验签),吊销后的会话仍可用到 token
+// 自然过期(最长 7 天)。账号中心读写一律改走完整校验:JWT 验签 + Redis
+// jti 登记双查(issuer.ts),吊销即时生效。
+
+/** 用户中心页面守卫:未登录 / 已吊销 → 308 去登录页并带 next 回跳 */
+export async function requireAccountPage(nextPath: string): Promise<FullClaims> {
+  const store = await cookies();
+  const claims = await readFullSessionUser(store.toString());
+  if (!claims) redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  return claims;
+}
+
+/** 用户中心端点守卫:完整校验;Authorization 头在场一律拒绝(PAT 无会话语义) */
+export async function requireAccountRequest(
+  req: Pick<Request, "headers">,
+): Promise<FullClaims | null> {
+  if (req.headers.get("authorization") !== null) return null;
+  return readFullSessionUser(req.headers.get("cookie"));
+}

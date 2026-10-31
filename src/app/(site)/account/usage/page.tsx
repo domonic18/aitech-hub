@@ -3,12 +3,8 @@
  * 消耗统计(次数/tokens/费用现算,admin 看板 costOfRow 同口径)+ 流水
  * 分页。读页即开户领赠额(额度库设计如此,读时惰性)。
  */
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-
 import AdminPagination from "@/components/admin/AdminPagination";
-import { ACCESS_COOKIE_NAME } from "@/lib/auth/constants";
-import { verifyAccessToken } from "@/lib/auth/session";
+import { requireAccountPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { parsePage } from "@/lib/admin/list";
 import { getTokenWallet } from "@/lib/users/token-balance";
@@ -37,10 +33,8 @@ export default async function AccountUsagePage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }): Promise<React.ReactElement> {
-  const store = await cookies();
-  // 单一契约:裸 token 值 + 框架解析 cookie(禁传完整 Cookie 头)
-  const session = await verifyAccessToken(store.get(ACCESS_COOKIE_NAME)?.value ?? null);
-  if (!session) redirect(`/login?next=${encodeURIComponent("/account/usage/")}`);
+  // M65:完整校验(验签 + Redis jti 吊销判定),未登录 308 去登录页
+  const session = await requireAccountPage("/account/usage/");
   const userId = BigInt(session.sub);
 
   const sp = await searchParams;
