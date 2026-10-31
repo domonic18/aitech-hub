@@ -10,6 +10,8 @@ const entityFindUnique = vi.fn();
 const aliasFindMany = vi.fn();
 const aliasGroupBy = vi.fn();
 const signalFindMany = vi.fn();
+const snapshotGroupBy = vi.fn();
+const snapshotFindMany = vi.fn();
 const findEntity = vi.fn();
 
 vi.mock("@/lib/db", () => ({
@@ -29,6 +31,10 @@ vi.mock("@/lib/db", () => ({
     },
     insightSignal: {
       findMany: (...a: unknown[]) => signalFindMany(...a),
+    },
+    insightLeaderboardSnapshot: {
+      groupBy: (...a: unknown[]) => snapshotGroupBy(...a),
+      findMany: (...a: unknown[]) => snapshotFindMany(...a),
     },
   },
 }));
@@ -51,6 +57,9 @@ import {
 beforeEach(() => {
   // reset 而非 clear:mockResolvedValueOnce 的排队值要一并丢弃(跨用例串扰)
   vi.resetAllMocks();
+  // 榜单快照默认空(M64 读侧在无挂接时不出任何区块/列值)
+  snapshotGroupBy.mockResolvedValue([]);
+  snapshotFindMany.mockResolvedValue([]);
 });
 
 describe("resolveEntityFilters / sanitizeEntityQuery", () => {
@@ -247,6 +256,27 @@ describe("listEntityTree", () => {
       expect.objectContaining({ by: ["entityId"], where: { entityId: { not: null } } }),
     );
   });
+
+  it("「在榜」按各源最新采集日计数(M64)", async () => {
+    primeList();
+    const latest = new Date("2026-10-31T00:00:00Z");
+    snapshotGroupBy.mockResolvedValue([
+      { source: "artificial-analysis", _max: { capturedDate: latest } },
+    ]);
+    snapshotFindMany.mockResolvedValue([{ entityId: BigInt(2), source: "artificial-analysis" }]);
+    const data = await listEntityTree({ page: 1 });
+    const rows = data.sections[0].rows;
+    expect(rows.find((r) => r.key === "qwen3")?.leaderboardCount).toBe(1);
+    expect(rows.find((r) => r.key === "qwen3-embedding")?.leaderboardCount).toBe(0);
+    expect(snapshotFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          entityId: { in: [BigInt(2), BigInt(3)] },
+          OR: [{ source: "artificial-analysis", capturedDate: latest }],
+        },
+      }),
+    );
+  });
 });
 
 describe("getEntityDetail", () => {
@@ -330,6 +360,76 @@ describe("getEntityDetail", () => {
             },
           ],
         },
+      }),
+    );
+  });
+
+  it("榜单表现:每源取最近采集日,变动对比前一采集日(M64)", async () => {
+    findEntity.mockResolvedValue({ id: BigInt(2), key: "qwen3" });
+    entityFindUnique.mockResolvedValue(QWEN3);
+    aliasFindMany.mockResolvedValue([{ aliasKey: "qwen3" }]);
+    eventFindMany.mockResolvedValue([]);
+    eventCount.mockResolvedValue(0);
+    eventGroupBy.mockResolvedValue([]);
+    entityFindMany.mockResolvedValue([]);
+    signalFindMany.mockResolvedValue([]);
+    const latest = new Date("2026-10-31T00:00:00Z");
+    const prev = new Date("2026-10-30T00:00:00Z");
+    // prisma 按 capturedDate desc 返回;同源首行即最新
+    snapshotFindMany.mockResolvedValue([
+      {
+        source: "artificial-analysis",
+        board: "智能指数",
+        rank: 3,
+        score: 72.5,
+        scoreUnit: "AAII",
+        capturedDate: latest,
+      },
+      {
+        source: "artificial-analysis",
+        board: "智能指数",
+        rank: 5,
+        score: 71,
+        scoreUnit: "AAII",
+        capturedDate: prev,
+      },
+      {
+        source: "huggingface",
+        board: "模型趋势",
+        rank: 8,
+        score: null,
+        scoreUnit: "trending",
+        capturedDate: latest,
+      },
+    ]);
+
+    const detail = await getEntityDetail("qwen3");
+    // AA 在前(PRESENCE_ORDER);首名次取最新日,prevRank 取前一采集日
+    expect(detail?.leaderboard).toEqual([
+      {
+        source: "artificial-analysis",
+        board: "智能指数",
+        rank: 3,
+        prevRank: 5,
+        score: 72.5,
+        scoreUnit: "AAII",
+        capturedDate: "2026-10-31",
+      },
+      {
+        source: "huggingface",
+        board: "模型趋势",
+        rank: 8,
+        prevRank: null,
+        score: null,
+        scoreUnit: "trending",
+        capturedDate: "2026-10-31",
+      },
+    ]);
+    expect(snapshotFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { entityId: BigInt(2) },
+        orderBy: [{ capturedDate: "desc" }],
+        take: 200,
       }),
     );
   });

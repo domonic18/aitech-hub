@@ -32,6 +32,9 @@ export const ENTITY_SIGNAL_TAKE = 50;
 /** 详情页同族实体(子/兄弟)展示上限 */
 export const ENTITY_RELATED_TAKE = 12;
 
+/** 详情页榜单快照读取上限(每源每日 1 行,200 行 ≈ 100 天;只需最新两日做名次变动) */
+export const ENTITY_LEADERBOARD_TAKE = 200;
+
 /** 时间窗 chips(近 N 天;不选=全部) */
 export const ENTITY_WINDOWS = [7, 30, 90] as const;
 
@@ -68,6 +71,8 @@ export interface EntityRow {
   latestEventType: string;
   latestTitle: string;
   latestUrl: string;
+  /** 在榜榜数(M64):最新采集日出现在几个榜单(AA / HF 两榜口径) */
+  leaderboardCount: number;
 }
 
 export interface EntitySection {
@@ -109,8 +114,24 @@ export interface EntityDetail {
   signals: InsightSignalRow[];
   children: EntityLink[];
   siblings: EntityLink[];
+  /** 榜单表现(M64):直接挂接的快照,按源取最近采集日 + 前一采集日名次 */
+  leaderboard: LeaderboardPresence[];
   /** 命中已归并实体时的跳转目标(页面据此 redirect) */
   redirectTo: string | null;
+}
+
+/** 榜单在榜行(M64):源最近采集日的名次 + 与前一采集日的变动 */
+export interface LeaderboardPresence {
+  source: string;
+  /** 榜单展示名(快照 board 列,如「智能指数」) */
+  board: string;
+  rank: number;
+  /** 前一采集日名次;首期采集/新入榜为 null */
+  prevRank: number | null;
+  score: number | null;
+  scoreUnit: string | null;
+  /** 北京日 YYYY-MM-DD */
+  capturedDate: string;
 }
 
 /** 详情事件行(与 events 页 EntityEventRow 同形,去掉筛选无关字段) */
@@ -226,6 +247,86 @@ async function loadAncestors(seeds: EntityMeta[]): Promise<Map<bigint, EntityMet
   return found;
 }
 
+/** 各榜单源的最新采集日(在榜口径基准;一次聚合,供列表与详情共用) */
+async function latestCapturedDates(): Promise<Array<{ source: string; capturedDate: Date }>> {
+  const rows = await prisma.insightLeaderboardSnapshot.groupBy({
+    by: ["source"],
+    where: { entityId: { not: null } },
+    _max: { capturedDate: true },
+  });
+  return rows.flatMap((r) =>
+    r._max.capturedDate === null ? [] : [{ source: r.source, capturedDate: r._max.capturedDate }],
+  );
+}
+
+/** 列表「在榜」:每实体在「各源最新采集日」出现的榜数(一次查询,不逐行) */
+async function loadLeaderboardCounts(entityIds: bigint[]): Promise<Map<bigint, number>> {
+  const counts = new Map<bigint, number>();
+  if (entityIds.length === 0) return counts;
+  const latest = await latestCapturedDates();
+  if (latest.length === 0) return counts;
+  const rows = await prisma.insightLeaderboardSnapshot.findMany({
+    where: { entityId: { in: entityIds }, OR: latest },
+    select: { entityId: true, source: true },
+  });
+  const seen = new Map<bigint, Set<string>>();
+  for (const r of rows) {
+    if (r.entityId === null) continue;
+    const set = seen.get(r.entityId) ?? new Set<string>();
+    set.add(r.source);
+    seen.set(r.entityId, set);
+  }
+  for (const [id, set] of seen) counts.set(id, set.size);
+  return counts;
+}
+
+/** 源展示顺序:AA 在前、HF 次之,其余按键排序(榜单注册表口径的前两位) */
+const PRESENCE_ORDER = ["artificial-analysis", "huggingface"] as const;
+
+/** 详情「榜单表现」:按源取最近一行 + 前一采集日名次(直接挂接,不含子孙聚合) */
+async function loadLeaderboardPresence(entityId: bigint): Promise<LeaderboardPresence[]> {
+  const rows = await prisma.insightLeaderboardSnapshot.findMany({
+    where: { entityId },
+    orderBy: [{ capturedDate: "desc" }],
+    take: ENTITY_LEADERBOARD_TAKE,
+    select: {
+      source: true,
+      board: true,
+      rank: true,
+      score: true,
+      scoreUnit: true,
+      capturedDate: true,
+    },
+  });
+  const bySource = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const list = bySource.get(r.source);
+    if (list === undefined) bySource.set(r.source, [r]);
+    else list.push(r);
+  }
+  const out: LeaderboardPresence[] = [];
+  for (const [source, list] of bySource) {
+    const latest = list[0];
+    const prev = list.find((r) => r.capturedDate.getTime() !== latest.capturedDate.getTime());
+    out.push({
+      source,
+      board: latest.board,
+      rank: latest.rank,
+      prevRank: prev?.rank ?? null,
+      score: latest.score,
+      scoreUnit: latest.scoreUnit,
+      capturedDate: latest.capturedDate.toISOString().slice(0, 10),
+    });
+  }
+  const orderOf = (s: string): number => {
+    const i = (PRESENCE_ORDER as readonly string[]).indexOf(s);
+    return i < 0 ? PRESENCE_ORDER.length : i;
+  };
+  return out.sort(
+    (a, b) => orderOf(a.source) - orderOf(b.source) || a.source.localeCompare(b.source),
+  );
+}
+
 /** 实体列表:事件聚合 → 过滤(厂商/类型/关键词含别名)→ 分页 → 顶层品牌分区 */
 export async function listEntityTree(
   filters: EntityFilters,
@@ -286,7 +387,7 @@ export async function listEntityTree(
   const pageIds = pageRows.map((r) => r.meta.id);
 
   const ancestors = await loadAncestors(pageRows.map((r) => r.meta));
-  const [latest, aliasCounts] = await Promise.all([
+  const [latest, aliasCounts, leaderboardCounts] = await Promise.all([
     pageIds.length === 0
       ? Promise.resolve([])
       : prisma.insightEntityEvent.findMany({
@@ -308,6 +409,7 @@ export async function listEntityTree(
           where: { entityId: { in: pageIds } },
           _count: { _all: true },
         }),
+    loadLeaderboardCounts(pageIds),
   ]);
   const latestOf = new Map<bigint, (typeof latest)[number]>();
   for (const e of latest) {
@@ -339,6 +441,7 @@ export async function listEntityTree(
       latestEventType: l?.eventType ?? "",
       latestTitle: l?.title ?? meta.displayName,
       latestUrl: l?.url ?? "",
+      leaderboardCount: leaderboardCounts.get(meta.id) ?? 0,
     };
   });
 
@@ -406,12 +509,13 @@ export async function getEntityDetail(key: string): Promise<EntityDetail | null>
       signals: [],
       children: [],
       siblings: [],
+      leaderboard: [],
       redirectTo: target?.key ?? null,
     };
   }
 
   const eventWhere = entityId === null ? { entityKey: key } : { entityId };
-  const [aliases, events, eventCount, facets] = await Promise.all([
+  const [aliases, events, eventCount, facets, leaderboard] = await Promise.all([
     entityId === null
       ? Promise.resolve([])
       : prisma.insightEntityAlias.findMany({
@@ -440,6 +544,9 @@ export async function getEntityDetail(key: string): Promise<EntityDetail | null>
       where: eventWhere,
       _count: { _all: true },
     }),
+    entityId === null
+      ? Promise.resolve<LeaderboardPresence[]>([])
+      : loadLeaderboardPresence(entityId),
   ]);
 
   const aliasKeys = [
@@ -482,6 +589,7 @@ export async function getEntityDetail(key: string): Promise<EntityDetail | null>
     signals,
     children,
     siblings,
+    leaderboard,
     redirectTo: null,
   };
 }

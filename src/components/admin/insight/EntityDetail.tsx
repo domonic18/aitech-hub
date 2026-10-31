@@ -12,6 +12,7 @@ import {
   entityHref,
   type EntityDetail as EntityDetailData,
   type EntityLink,
+  type LeaderboardPresence,
 } from "@/lib/insight/entities-admin";
 import {
   ENTITY_TYPE_LABELS,
@@ -42,6 +43,66 @@ function RelatedChip({ link }: { link: EntityLink }): React.ReactElement {
         <span className="font-mono text-[10px] text-text-3">{link.eventCount}</span>
       )}
     </Link>
+  );
+}
+
+/** 名次变动:对比前一采集日;首期采集/新入榜标 NEW,持平出破折号 */
+function RankDelta({
+  rank,
+  prevRank,
+}: {
+  rank: number;
+  prevRank: number | null;
+}): React.ReactElement {
+  if (prevRank === null) {
+    return <span className="font-mono text-[11px] text-accent">NEW</span>;
+  }
+  const delta = prevRank - rank;
+  if (delta === 0) return <span className="font-mono text-[11px] text-text-3">—</span>;
+  return (
+    <span className={`font-mono text-[11px] ${delta > 0 ? "text-green" : "text-red"}`}>
+      {delta > 0 ? "▲" : "▼"}
+      {Math.abs(delta)}
+    </span>
+  );
+}
+
+/** 榜单表现表(M64):每源一行,最近采集日名次 + 与前一采集日的变动 */
+function LeaderboardTable({ rows }: { rows: LeaderboardPresence[] }): React.ReactElement {
+  return (
+    <table className="w-full text-left text-[13px]">
+      <thead>
+        <tr className="border-b border-line text-[11px] whitespace-nowrap text-text-3">
+          <th className="px-3 py-1.5 font-normal">榜单</th>
+          <th className="w-14 px-2 py-1.5 text-right font-normal">名次</th>
+          <th className="w-14 px-2 py-1.5 text-right font-normal">变动</th>
+          <th className="w-24 px-2 py-1.5 text-right font-normal">分数</th>
+          <th className="w-[92px] px-2 py-1.5 text-right font-normal">采集日</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((lb) => (
+          <tr key={lb.source} className="border-b border-line last:border-0">
+            <td className="px-3 py-2">
+              <span className="text-text-1">{lb.board}</span>
+              <span className="ml-1.5 font-mono text-[11px] text-text-3">{lb.source}</span>
+            </td>
+            <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">#{lb.rank}</td>
+            <td className="px-2 py-2 text-right">
+              <RankDelta rank={lb.rank} prevRank={lb.prevRank} />
+            </td>
+            <td className="px-2 py-2 text-right font-mono text-[11px] text-text-2">
+              {lb.score === null
+                ? "—"
+                : `${lb.score}${lb.scoreUnit === null ? "" : ` ${lb.scoreUnit}`}`}
+            </td>
+            <td className="px-2 py-2 text-right font-mono text-[11px] whitespace-nowrap text-text-3">
+              {lb.capturedDate}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -130,6 +191,20 @@ export default function EntityDetailView({
             </span>
           )}
         </div>
+      )}
+
+      {detail.leaderboard.length > 0 && (
+        <PanelCard
+          title="榜单表现"
+          hint="Artificial Analysis / Hugging Face 最近采集日的名次;变动对比前一采集日"
+          extra={
+            <span className="font-mono text-[11px] text-text-3">
+              在榜 {detail.leaderboard.length}
+            </span>
+          }
+        >
+          <LeaderboardTable rows={detail.leaderboard} />
+        </PanelCard>
       )}
 
       <PanelCard

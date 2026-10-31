@@ -14,6 +14,7 @@ interface MergeOutcome {
   movedAliases: number;
   movedEvents: number;
   movedChildren: number;
+  movedSnapshots: number;
 }
 
 export default function MergeEntityControl({ fromKey }: { fromKey: string }): React.ReactElement {
