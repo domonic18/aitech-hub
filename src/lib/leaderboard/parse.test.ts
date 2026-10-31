@@ -30,6 +30,11 @@ describe("parseArtificialAnalysis", () => {
       name: "Kimi K2",
       modelCreatorName: "Moonshot AI",
       intelligenceIndex: 42.5,
+      price1mInputTokens: 0.6,
+      price1mOutputTokens: 2.5,
+      contextWindowTokens: 128_000,
+      isOpenWeights: true,
+      isReasoning: null,
     },
     {
       slug: "legacy-1",
@@ -39,7 +44,17 @@ describe("parseArtificialAnalysis", () => {
       deprecated: true,
     },
     // 名称里的引号经两层转义:验证配平器对字符串内的 " 与 \\ 不误判
-    { slug: "gpt-5", name: 'GPT "5"', modelCreatorName: "OpenAI", intelligenceIndex: 68 },
+    {
+      slug: "gpt-5",
+      name: 'GPT "5"',
+      modelCreatorName: "OpenAI",
+      intelligenceIndex: 68,
+      price1mInputTokens: 1.25,
+      price1mOutputTokens: 10,
+      contextWindowTokens: 400_000,
+      isOpenWeights: false,
+      isReasoning: true,
+    },
     { slug: "no-score", name: "No Score", intelligenceIndex: null },
     { slug: "kimi-k2", name: "Kimi K2 (重复)", intelligenceIndex: 42.5 },
   ]);
@@ -64,6 +79,25 @@ describe("parseArtificialAnalysis", () => {
     expect(items[1].vendor).toBe("Moonshot AI");
   });
 
+  it("M63 展示字段:价格/上下文/开源/推理;载荷缺字段折成 undefined 不报错", () => {
+    const html = flight(`7:["$","$L1c",null,{"initialModels":${models}},"other":1}]`);
+    const items = parseArtificialAnalysis(html);
+    expect(items[0]?.extra).toEqual({
+      price1mInputTokens: 1.25,
+      price1mOutputTokens: 10,
+      contextWindowTokens: 400_000,
+      isOpenWeights: false,
+      isReasoning: true,
+    });
+    expect(items[1]?.extra).toEqual({
+      price1mInputTokens: 0.6,
+      price1mOutputTokens: 2.5,
+      contextWindowTokens: 128_000,
+      isOpenWeights: true,
+      isReasoning: undefined,
+    });
+  });
+
   it("无载荷/载荷损坏 → 空数组(契约漂移不静默出假数据)", () => {
     expect(parseArtificialAnalysis("<html><body>普通页面</body></html>")).toEqual([]);
     expect(parseArtificialAnalysis(flight("7:{"))).toEqual([]);
@@ -74,7 +108,13 @@ describe("parseArtificialAnalysis", () => {
 describe("parseHuggingFace", () => {
   it("按 trendingScore 倒序、命名空间作厂商、缺分条目剔除", () => {
     const json = JSON.stringify([
-      { id: "meta-llama/Llama-4", trendingScore: 320.5, downloads: 1000 },
+      {
+        id: "meta-llama/Llama-4",
+        trendingScore: 320.5,
+        downloads: 1000,
+        likes: 42,
+        pipeline_tag: "text-generation",
+      },
       { id: "Qwen/Qwen3", trendingScore: 880 },
       { trendingScore: 10 },
       { id: "no-score-model" },
@@ -93,6 +133,13 @@ describe("parseHuggingFace", () => {
       scoreUnit: "trending",
       url: "https://huggingface.co/Qwen/Qwen3",
     });
+    // M63 展示字段:下载/赞/任务类型(缺则 undefined)
+    expect(items[0]?.extra).toEqual({
+      downloads: undefined,
+      likes: undefined,
+      pipelineTag: undefined,
+    });
+    expect(items[1]?.extra).toEqual({ downloads: 1000, likes: 42, pipelineTag: "text-generation" });
   });
 
   it("畸形 JSON/非数组 → 空数组", () => {
@@ -108,6 +155,14 @@ describe("parseArxivFeed", () => {
   <entry>
     <id>http://arxiv.org/abs/2501.00001v1</id>
     <title>Attention Is All You Need 2</title>
+    <summary>We revisit attention
+      with &lt;new&gt; insights &amp; math.</summary>
+    <author><name>Ada Lovelace</name></author>
+    <author><name>Alan Turing</name></author>
+    <author><name>Ada Lovelace</name></author>
+    <published>2026-10-29T17:59:59Z</published>
+    <category term="cs.CL"/>
+    <category term="cs.AI"/>
   </entry>
   <entry>
     <id>http://export.arxiv.org/abs/2501.00002v2</id>
@@ -133,6 +188,22 @@ describe("parseArxivFeed", () => {
     });
     expect(items[1].entityName).toBe("Scaling Laws for Everything");
   });
+
+  it("M63 展示字段:摘要折行+解实体、作者去重、日期截日、分类去重;缺则 undefined", () => {
+    const items = parseArxivFeed(xml, base);
+    expect(items[0]?.extra).toEqual({
+      summary: "We revisit attention with <new> insights & math.",
+      authors: ["Ada Lovelace", "Alan Turing"],
+      publishedAt: "2026-10-29",
+      categories: ["cs.CL", "cs.AI"],
+    });
+    expect(items[1]?.extra).toEqual({
+      summary: undefined,
+      authors: undefined,
+      publishedAt: undefined,
+      categories: undefined,
+    });
+  });
 });
 
 describe("parseGithubTrending", () => {
@@ -149,6 +220,12 @@ describe("parseGithubTrending", () => {
   <p class="col-9 color-fg-muted">Build resilient LLM apps &amp; agents</p>
   <div class="f6 color-fg-muted mt-2">
     <span class="d-inline-block mr-3"><span itemprop="programmingLanguage">Python</span></span>
+    <span class="d-inline-block mr-3">
+      <a href="/langchain-ai/langgraph/stargazers">32,123</a>
+    </span>
+    <span class="d-inline-block mr-3">
+      <a href="/langchain-ai/langgraph/forks">4,567</a>
+    </span>
     <span class="d-inline-block float-sm-right"><svg class="octicon"></svg> 782 stars today</span>
   </div>
 </article>
@@ -174,6 +251,22 @@ describe("parseGithubTrending", () => {
       url: "https://github.com/langchain-ai/langgraph",
     });
     expect(items[1]).toMatchObject({ score: 1204, vendor: "acme" });
+  });
+
+  it("M63 展示字段:描述解实体、语言、总星/分叉(带千分位);缺则 undefined", () => {
+    const items = parseGithubTrending(html, base);
+    expect(items[0]?.extra).toEqual({
+      description: "Build resilient LLM apps & agents",
+      language: "Python",
+      stars: 32123,
+      forks: 4567,
+    });
+    expect(items[1]?.extra).toEqual({
+      description: undefined,
+      language: undefined,
+      stars: undefined,
+      forks: undefined,
+    });
   });
 
   it("无卡片/无 h2 链接 → 空数组", () => {
