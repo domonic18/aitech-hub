@@ -13,12 +13,13 @@
 - **M62 已落码**:数据库命名规范化与结构收口(PR #206 已合 develop);表名归一 + 索引/主键规范 + 15 处外键 + 5 张明细表审计字段,规范沉淀为 [standard/03-db-naming](../standard/03-db-naming.md)。
 - **M63 已落码**:榜单公开页可视化改版(PR #207 已合 develop;v2 按验收反馈重做:`feature/m63-leaderboard-viz-v2`)——能力与价格 / HF 热门模型两节独立散点 + 仓库动量卡,论文榜前台移除(采集保留),展示字段下沉 `meta`(见 [data-expansion-plan §6.3](data-expansion-plan.md));v2.1 再补输出价 USD ⇄ 人民币切换(默认人民币,汇率每日自动采集,零 JS);v2.2 三节标题区署名数据来源(站名 + 域名 + ↗ 外链原站)并在页脚汇总出处与折算口径;v2.3 散点悬停改零 JS SVG 卡(原生 `<title>` 退役)且标注按厂商保底 + 图例列全厂商条数,DeepSeek / Kimi 等中低位厂商图上可寻。
 - **M63 后续(2026-10-31 验收反馈,四项)**:① 榜单采集/汇率日采成功后由 worker 反调 `POST /api/internal/revalidate` 定向失效 `/leaderboards/`,解决「数据已新、页面还旧」;② 汇率启动补偿 `ensureUsdCnyRate`(worker 引导时缺行/超 24h 陈旧即补采,不再等 04:43);③ `<title>` 模板改「站点名 | 子页标题」(此前反了);④ 专题下拉两项统一四字:价格速查 / 榜单速览。
-- **M64 进行中**:榜单口径与实体层打通([data-expansion-plan §16](data-expansion-plan.md),`feature/m64-leaderboard-entity-link`)——榜单快照 `entityKey` 与事件层实体键口径统一:唯一出口 `resolveLeaderboardEntity` 解析,采集写入时落 `insight_leaderboard_snapshot.entity_id`(仅 AA / HF 两榜),实体详情增「榜单表现」、实体列表增「在榜」;存量快照一次性回填。
+- **M64 已落码**:榜单口径与实体层打通([data-expansion-plan §16](data-expansion-plan.md),PR #210 已合 develop)——榜单快照 `entityKey` 与事件层实体键口径统一:唯一出口 `resolveLeaderboardEntity` 解析,采集写入时落 `insight_leaderboard_snapshot.entity_id`(仅 AA / HF 两榜),实体详情增「榜单表现」、实体列表增「在榜」;存量快照一次性回填。
+- **M65 进行中**:手机号短信登录(`feature/phone-sms-login`,arch/05 §3.4)——阿里云**号码认证服务 PNVS 短信认证**替代原三期腾讯云方案(个人实名可用,无企业资质/自申签名):`user_sms_config` 单例 + admin「系统设置 → 短信」配置页/探针,`/api/auth/sms-code` + `/api/auth/sms-login` 登录注册合一(不存在自动建号、admin 禁短信登录、同号/IP 频控 + 日预算熔断、校验失败 5 次锁 15 分钟),验证码由服务商托管不落库;合规 = 登录/注册同意勾选 + 隐私政策第三方短信服务商条款;安全收口 = `/account/*` 页面与写接口改 JWT + Redis `jti` 双查。P1 已落码:`/account/settings` 绑定/换绑手机(`/api/account/phone/{code,verify}`,未绑定 100004 直达;已绑定 100005 验当前号 → 10 分钟标记 → 100002 换新号,不可跳步,新号占用落库时 409)。
 - 站点能力面:内容站(文章/专题/贴图三形态)+ SEO 无损迁移 + 多渠道采集(电报流/抖音/B站/热榜/通用网页通道)
   + AI 管线(ASR 解读/打标判定/洞察)+ 创作台(编辑器 AI 化/配图工坊/卡片渲染)+ 分发(公众号/小红书)
   + 商业化(付费阅读/模型牌价页)+ 后台全套(内容/媒体/采集/洞察/统计/会话/用量)。
-- 未交付:296 用户短信登录(运营商个人签名资质停发;admin 密码鉴权单向可用,用户中心其余部分已交付);
-  站点内容 MCP(K3,已否决)、RAG 问答(K4,未排期)。
+- 未交付:296 用户短信登录(原因运营商个人签名停发而延后;M65 已用阿里云 PNVS 替代方案落地登录/注册合一,
+  余 pending_binding 绑定与改绑手机号待办);站点内容 MCP(K3,已否决)、RAG 问答(K4,未排期)。
 
 ## 2. 里程碑
 
@@ -91,7 +92,8 @@
 | M61 | 洞察体验与准入修复 | 实体恒出页 + 问句入池 fail-closed + 实体列表窄屏(已合 develop,待部署) |
 | M62 | 数据库命名规范化与结构收口 | 表名前缀归一 + 索引/主键规范 + 外键补齐 + 明细表审计字段;规范落 [standard/03-db-naming](../standard/03-db-naming.md) |
 | M63 | 榜单公开页可视化改版 | `/leaderboards/` 三节并列:模型能力与价格(能力分 × 输出价散点)/ Hugging Face 热门模型(下载量 × 点赞数双对数散点)/ 热门仓库(动量卡:今日上升最快 + 新入榜;论文榜前台移除、采集保留);展示字段下沉 `meta` 白名单(无 schema 变更),AA 入库扩至 60;v2.1 输出价支持 USD ⇄ 人民币切换(默认人民币,汇率每日 04:43 自动采集落 `site_config`,零 JS 切换);v2.2 三节标题区署名数据来源并可一键回原站([data-expansion-plan §6.3](data-expansion-plan.md));v2.3 散点悬停零 JS SVG 卡 + 标注厂商保底与全厂商图例 |
-| M64 | 榜单口径与实体层打通 | 榜单快照 `entityKey` → 实体解析(唯一出口)+ 采集写入落 `entity_id`(AA / HF 两榜)+ 实体详情「榜单表现」与列表「在榜」+ 存量回填([data-expansion-plan §16](data-expansion-plan.md),进行中) |
+| M64 | 榜单口径与实体层打通 | 榜单快照 `entityKey` → 实体解析(唯一出口)+ 采集写入落 `entity_id`(AA / HF 两榜)+ 实体详情「榜单表现」与列表「在榜」+ 存量回填([data-expansion-plan §16](data-expansion-plan.md)) |
+| M65 | 手机号短信登录 | 阿里云 PNVS 短信认证替代原三期腾讯云方案:登录/注册合一(不存在自动建号)、admin 禁短信登录、频控 + 日预算熔断 + 校验锁定、验证码服务商托管不落库;后台「系统设置 → 短信」配置与探针;合规同意勾选 + 隐私政策第三方条款;`/account/*` 会话 Redis 双查收口([arch/05 §3.4](../arch/05-services.md),进行中) |
 
 ## 3. 后置池(满足触发条件再立项)
 
@@ -99,7 +101,7 @@
 | --- | --- | --- |
 | 多租户博主订阅(「我的关注」) | 视频解读效果验证后(三期) | `social_account` 加 user 维度 + 订阅配额模型;轻入口已留 |
 | 长视频切片 + AI 学习笔记 | 拿到长视频合作授权 | 依赖解读管道成熟;无授权不做 |
-| 短信登录通道 | 运营商资质办结,或替代认证方案立项通过 | 原用户中心设计保留;`user_account`/`user_pat` 已就位,启用即增量交付 |
+| ~~短信登录通道~~ | 已由 M65 落地(阿里云 PNVS 短信认证,见 §3.4) | 原保留的用户中心设计已按 M65 增量交付;绑定/改绑手机号随 M65 P1 落地(`/account/settings`) |
 | 视频转码/封面自动化 | 自托管视频更新频繁 | COS 数据万象 snapshot;超规转码再评 VOD |
 | 站内搜索再升级 | 混合检索质量再遇瓶颈 | 见 arch/04 §3 检索锚点 |
 

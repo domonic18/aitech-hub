@@ -50,7 +50,9 @@ aitech-hub/
 │   │   │   ├── distribute/page.tsx # 内容分发:公众号配置卡+同步记录表(筛选/分页;M17)
 │   │   │   └── overview/page.tsx
 │   │   ├── api/                  # Route Handlers(REST 风格,camelCase JSON)
-│   │   │   ├── auth/{sms-code,login,logout,session}/route.ts
+│   │   │   ├── auth/{sms-code,sms-login,login,logout,session}/route.ts # sms-code/sms-login = M65 手机验证码登录/注册合一
+│   │   │   ├── sms-config/{route,test/route}.ts # M65 后台短信配置(单例脱敏视图/保存 + 下发探针)
+│   │   │   ├── account/phone/{code,verify}/route.ts # M65 P1 绑定/换绑手机号(场景化发码 + 验码落库;两步换绑) 
 │   │   │   ├── posts/route.ts、posts/[id]/route.ts、posts/[id]/{publish,unpublish}/route.ts
 │   │   │   ├── media/route.ts、media/[id]/route.ts、media/{orphans,duplicates,stats}/route.ts
 │   │   │   ├── users/route.ts、users/[id]/route.ts
@@ -62,12 +64,13 @@ aitech-hub/
 │   │   │   ├── revalidate/route.ts
 │   │   │   └── health/route.ts
 │   │   └── layout.tsx            # 根布局:字体/主题/providers
-│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer;M27 批⑧ 增 ProposeReviewCard 改稿评审模态/ProposeUnavailableCard 降级卡),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
+│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/ account/(个人中心表单,含 M65 PhoneForm);site/agent/ 为 K2.5 Drawer 自绘件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer;M27 批⑧ 增 ProposeReviewCard 改稿评审模态/ProposeUnavailableCard 降级卡),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
 │   ├── lib/
 │   │   ├── db.ts                 # Prisma client 单例
 │   │   ├── redis.ts              # Redis 单例
 │   │   ├── env.ts                # Zod env schema,启动即校验
-│   │   ├── auth/                 # session(jose cookie)/ sms(腾讯云)/ rate-limit
+│   │   ├── auth/                 # session(jose cookie)/ rate-limit / guard(requireAdmin|requireAccount 双查)
+│   │   ├── sms/                  # M65 短信登录:provider(通道抽象+错误归类)/aliyun-pnvs(PNVS 适配)/config(user_sms_config 读写+通道装配)/limit(频控与日预算熔断)/send(发送守卫单点:配额→占预算→下发→记账,登录与账号中心共用)/scenes(绑定场景与模板契约,客户端安全)/account-phone(绑定/换绑状态机:两步 rebind 标记+落库唯一冲突转 409)
 │   │   ├── media/                # storage(LocalDisk→COS Provider)/ refs(引用解析)/ rules(类型白名单)
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
 │   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)

@@ -11,7 +11,7 @@
 | ORM | **Prisma + Prisma Migrate** | migrations 即 SQL 文件(可读、可评审),`_prisma_migrations` 台账 exactly-once;纪律承袭 ai-invest-assisstant SQL 台账制(§4) |
 | 数据库 | **PostgreSQL 16** | 延续站内近期项目选择 |
 | 缓存/队列 | **Redis 7 + BullMQ** | 验证码、会话吊销、频控、legacy 缓存;BullMQ 承载异步任务(媒体后处理等),独立 worker 进程 |
-| 认证 | 手机验证码 + jose 签名 httpOnly Cookie 会话 | 无密码迁移;Redis 会话登记可吊销(arch/05-services §3) |
+| 认证 | 手机验证码(M65,阿里云 PNVS)+ 邮箱/用户名密码(M21)+ jose 签名 httpOnly Cookie 会话 | 无密码迁移;Redis 会话登记可吊销(arch/05-services §3);admin 禁短信登录 |
 | 校验 | Zod(schema 与 TS 类型同源,前后端一份) | 替代跨服务 OpenAPI codegen——单体后类型天然共享 |
 | 对象存储 | 一期本地磁盘;**视频与二期图片走 COS**,浏览器 STS 直传 | 演进路径与清洗能力见 [08-media.md](08-media.md) |
 | 部署 | Docker Compose + 腾讯云 TCR,**单应用镜像**(web + worker 同镜像不同 cmd)+ Nginx | 与旧 WP 同服务器原位切换(§4) |

@@ -27,7 +27,7 @@
 ## 3. 集成与 API 测试(`*.integration.test.ts`)
 
 - 环境:dev compose 的 PG/Redis;每个用例事务回滚或 `truncate` 隔离;测试前后 `prisma migrate deploy` 确保 schema 最新
-- 覆盖:post service 保存钩子(slug 唯一冲突/引用解析/revalidate 触发——revalidatePath mock 断言调用参数)、媒体上传白名单、auth 全流程(sms-code 频控 → login → session → logout)、view 计数 UPSERT、legacy 路由查表
+- 覆盖:post service 保存钩子(slug 唯一冲突/引用解析/revalidate 触发——revalidatePath mock 断言调用参数)、媒体上传白名单、auth 全流程(sms-code 频控 → login → session → logout;M65 短信登录合一:admin 禁登、自动建号、错码 5 次锁定、下发冷却,服务商通道整体替身;M65 P1 账号中心绑定/换绑:两步换绑不可跳步、第一步目标号服务端取、错码不改库、新号占用只落库时 409)、view 计数 UPSERT、legacy 路由查表
 - Route Handler 测试:构造 `NextRequest` 直调 handler 函数(不起服务器)
 
 ## 4. E2E(Playwright,冒烟级,6 条以内)
