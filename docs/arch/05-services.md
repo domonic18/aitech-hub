@@ -194,6 +194,7 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 | pins(贴图) | `GET/POST /api/pins`(分页列表 status/q/topic 过滤;新建缺省「未命名贴图」)、`GET/PATCH/DELETE /api/pins/[id]`(详情含 images+channels;PATCH 字段组与 status 组独立解析任一命中,同 topics 口径;DELETE 级联删图与渠道行)、`POST/PUT/DELETE /api/pins/[id]/images`(工坊版本挂载 versionIds 或本地上传 mediaPath 快照 / 全量重排 / 移除单张)、`POST /api/pins/[id]/generate`(AI 生成入队,复用 generate_illustration 管线出图直挂序列;M42 增可选 `referencePath` 仅站内 uploads,§4.8)、`POST /api/pins/[id]/sync`(公众号 newspic 入队 202 `{jobId}`,资格前置 400 人话;均 M41,§4.8) | admin **仅会话**(PAT must not manage pins;mutation Origin 校验) |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
+| internal | `POST /api/internal/revalidate`(缓存失效;空 body = `revalidatePath("/","layout")` + SEO 路由,entrypoint 预热用;`{paths:[...]}` = 只失效白名单路径,当前仅 `/leaderboards/`,由 worker 在榜单采集/汇率日采成功后反调。token = `sha256(AUTH_SECRET + ":revalidate")` 走 `x-internal-token`,定长 `timingSafeEqual`;**白名单是红线,端点不得成为任意路径清除器**) | 内部 token(无会话) |
 
 二期预留:`/api/pay/*`(虎皮椒:创建订单 + 异步 notify 回调,回调端点独立鉴权白名单 + 验签)、`/api/github/*`。
 
