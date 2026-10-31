@@ -22,7 +22,7 @@ export interface SendVerifyCodeInput {
   phone: string;
   signName: string;
   templateCode: string;
-  /** 模板变量,PNVS 约定验证码占位符为 ##code## */
+  /** 模板变量;缺省由适配器按预置模板填 {"code":"##code##","min":"<有效期分钟>"} */
   templateParam?: string;
   /** 验证码有效期(秒),缺省 300 */
   validTimeSeconds?: number;

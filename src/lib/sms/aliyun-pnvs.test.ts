@@ -68,8 +68,8 @@ describe("sendVerifyCode", () => {
       duplicatePolicy: 1,
       returnVerifyCode: false,
     });
-    // 明文验证码永不出服务商:模板变量只传占位符
-    expect(req.templateParam).toBe(JSON.stringify({ code: "##code##" }));
+    // 明文验证码永不出服务商:模板变量只传占位符;预置模板同时要 ${min}(有效期分钟)
+    expect(req.templateParam).toBe(JSON.stringify({ code: "##code##", min: "5" }));
   });
 
   it("调用方可收紧有效期/间隔/位数", async () => {
@@ -87,6 +87,10 @@ describe("sendVerifyCode", () => {
       codeLength: 4,
       outId: "out-1",
     });
+    // ${min} 随有效期推导,避免模板文案与实际有效期不一致
+    expect((sdk.send.mock.calls[0][0] as Record<string, unknown>).templateParam).toBe(
+      JSON.stringify({ code: "##code##", min: "3" }),
+    );
   });
 
   it("success=true 但 code 非 OK 仍判失败", async () => {
