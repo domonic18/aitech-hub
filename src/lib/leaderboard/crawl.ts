@@ -13,6 +13,10 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import {
+  isEntityLinkedSource,
+  resolveLeaderboardEntities,
+} from "@/lib/insight/entities/leaderboard";
 import { logger } from "@/lib/logger";
 
 import {
@@ -101,12 +105,44 @@ async function persistSnapshots(
   items: LeaderboardItem[],
   capturedDate: Date,
 ): Promise<number> {
+  // 实体挂接(M64):只对 AA / HF 两榜解析;纯读,未命中不建实体、不阻塞采集。
+  // 解析自身异常同样降级为「本轮不挂实体」——榜单数据比实体挂接重要,下轮重采自愈。
+  let entities = new Map<string, { id: bigint; key: string } | null>();
+  if (isEntityLinkedSource(def.key)) {
+    try {
+      entities = await resolveLeaderboardEntities(
+        def.key,
+        items.map((it) => it.entityKey),
+      );
+    } catch (e) {
+      logger.warn({
+        event: "leaderboard.entity_resolve_failed",
+        source: def.key,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    const unmatched = items
+      .filter((it) => (entities.get(it.entityKey) ?? null) === null)
+      .map((it) => it.entityKey);
+    if (unmatched.length > 0) {
+      logger.info({
+        event: "leaderboard.entity_unmatched",
+        source: def.key,
+        total: items.length,
+        unmatched: unmatched.length,
+        samples: unmatched.slice(0, 10),
+      });
+    }
+  }
+
   let persisted = 0;
   for (const [i, it] of items.entries()) {
     const row = {
       entityName: it.entityName,
       entityType: it.entityType,
       vendor: it.vendor,
+      // create/update 同写:未命中清空旧值(上游改名后不能留着上一轮的挂接)
+      entityId: entities.get(it.entityKey)?.id ?? null,
       rank: i + 1,
       score: it.score,
       scoreUnit: it.scoreUnit,

@@ -630,12 +630,13 @@ model InsightEntity {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  parent     InsightEntity?       @relation("EntityTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children   InsightEntity[]      @relation("EntityTree")
-  mergedInto InsightEntity?       @relation("EntityMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
-  mergedFrom InsightEntity[]      @relation("EntityMerge")
-  aliases    InsightEntityAlias[]
-  events     InsightEntityEvent[]
+  parent               InsightEntity?               @relation("EntityTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children             InsightEntity[]              @relation("EntityTree")
+  mergedInto           InsightEntity?               @relation("EntityMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom           InsightEntity[]              @relation("EntityMerge")
+  aliases              InsightEntityAlias[]
+  events               InsightEntityEvent[]
+  leaderboardSnapshots InsightLeaderboardSnapshot[]
 
   @@index([vendorKey], map: "idx_insight_entity_vendor")
   @@index([parentId], map: "idx_insight_entity_parent")
@@ -670,6 +671,9 @@ model InsightLeaderboardSnapshot {
   entityName   String   @map("entity_name") @db.VarChar(300)
   entityType   String   @map("entity_type") @db.VarChar(12) // model | paper | repo
   vendor       String?  @db.VarChar(60)
+  // 实体层挂接(M64):仅 AA / Hugging Face 两榜在采集写入时解析;null = 未命中或
+  // 不参与实体化(arXiv / GitHub 恒空,另两榜未命中不阻塞采集)
+  entityId     BigInt?  @map("entity_id")
   rank         Int
   score        Float?
   scoreUnit    String?  @map("score_unit") @db.VarChar(20)
@@ -677,8 +681,11 @@ model InsightLeaderboardSnapshot {
   meta         Json?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  entity InsightEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+
   @@unique([source, board, entityKey, capturedDate], map: "uq_insight_leaderboard_snapshot")
   @@index([source, board, capturedDate(sort: Desc)], map: "idx_insight_leaderboard_snapshot_board")
+  @@index([entityId], map: "idx_insight_leaderboard_snapshot_entity")
   @@map("insight_leaderboard_snapshot")
 }
 
