@@ -8,6 +8,7 @@ import { Worker, type Job } from "bullmq";
 import { env } from "../src/lib/env";
 import { bullConnection } from "../src/lib/queue";
 import { ensureAgentCheckpointer } from "../src/lib/agent/checkpointer";
+import { ensureUsdCnyRate } from "../src/lib/leaderboard/fx";
 import { PROCESSORS } from "./processors";
 import { QUEUE_WORKER_OPTS } from "./queue-opts";
 import { withJobRunLog } from "./job-run";
@@ -121,6 +122,10 @@ async function main(): Promise<void> {
   await schedulePayReconcile();
   await scheduleCrawlerTick();
   await scheduleLeaderboardFxRefresh();
+  // 汇率启动补偿(M63 后续 2026-10-31):定时采集在 04:43,首次上线/换版的 worker
+  // 在此之前没有汇率行 —— 页面会拿默认 7.2 折算到下一个凌晨。不 await:外部 HTTP
+  // 最多 15s,不该挡 worker 就绪;ensure 内部吞错只告警,定时任务仍是兜底。
+  void ensureUsdCnyRate();
   await scheduleGithubTick();
   await scheduleAiBackfillTick();
   await scheduleDiscovery();
