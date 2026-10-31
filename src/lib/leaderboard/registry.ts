@@ -39,6 +39,9 @@ export interface LeaderboardDef {
   viaProxy: boolean;
   /** 原文 → 统一入榜条目(纯函数,单测覆盖) */
   parse: (raw: string, baseUrl: string) => LeaderboardItem[];
+  /** 单轮入榜条数上限(缺省 LEADERBOARD_MAX_ITEMS=20)。
+   * 智能指数扩到 60:M63 散点需要足够样本才看得出价格-能力分布 */
+  maxItems?: number;
 }
 
 const ARXIV_API = "https://export.arxiv.org/api/query";
@@ -52,6 +55,7 @@ export const LEADERBOARD_DEFS: LeaderboardDef[] = [
     defaultUrl: "https://artificialanalysis.ai/leaderboards/models",
     viaProxy: false,
     parse: parseArtificialAnalysis,
+    maxItems: 60,
   },
   {
     key: "huggingface",

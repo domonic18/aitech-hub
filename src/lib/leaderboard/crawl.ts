@@ -2,7 +2,7 @@
  * 榜单采集编排(M58 批③,data-expansion-plan §6.2):crawlSource type=leaderboard
  * 分发入口。复用统一调度/健康度/限频/快照——本模块只做四件事:
  * 1. 取原文 → SourceCapture 落档(解析之前落盘,改版当天有证据);
- * 2. def.parse → 统一条目,按分值倒序(名次榜保持原序)截断 ≤20;
+ * 2. def.parse → 统一条目,按分值倒序(名次榜保持原序)截断 ≤def.maxItems(默认 20);
  * 3. 按 (source, board, entityKey, capturedDate) upsert,同日重跑整表覆盖;
  * 4. 清理超过保留期的旧快照行。
  *
@@ -10,6 +10,8 @@
  * 健康度;抛错前不写任何行(保留上一可用日期数据,方案 §6.1「不写空数据」),
  * 公开页据「数据截至」自动降级显示。
  */
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
@@ -20,6 +22,7 @@ import {
 import { SourceCapture } from "../collect/snapshot-capture";
 import { formatCnDate } from "../datetime";
 import { LEADERBOARD_MAX_ITEMS } from "./constants";
+import { snapshotMeta } from "./meta";
 import type { LeaderboardItem } from "./parse";
 import {
   LEADERBOARD_DEFS,
@@ -56,7 +59,8 @@ export async function runLeaderboardSourceCrawl(
       html: raw,
       httpStatus: 200,
     });
-    const items = rankItems(def.parse(raw, source.url)).slice(0, LEADERBOARD_MAX_ITEMS);
+    const limit = def.maxItems ?? LEADERBOARD_MAX_ITEMS;
+    const items = rankItems(def.parse(raw, source.url)).slice(0, limit);
     if (items.length === 0) {
       // 页面改版与真空榜单同态;原文已落档,计源失败让健康度变红等人工介入
       await capture.finish("empty", 0);
@@ -102,6 +106,9 @@ async function persistSnapshots(
       rank: i + 1,
       score: it.score,
       scoreUnit: it.scoreUnit,
+      // meta 必须 create/update 同写:同日重采(幂等常态)若不更新 meta,
+      // 新展示字段(价格/摘要/描述)只在当日首插时落库,永远晚一天
+      meta: snapshotMeta(it.url, sourceId, it.extra) as Prisma.InputJsonValue,
     };
     await prisma.insightLeaderboardSnapshot.upsert({
       where: {
@@ -119,7 +126,6 @@ async function persistSnapshots(
         entityKey: it.entityKey,
         capturedDate,
         ...row,
-        meta: { url: it.url, sourceId },
       },
       select: { id: true },
     });

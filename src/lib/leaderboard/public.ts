@@ -13,6 +13,7 @@ import {
   LEADERBOARD_SOURCE_URLS,
   type LeaderboardEntityType,
 } from "./constants";
+import { readSnapshotMeta, type LeaderboardItemMeta } from "./meta";
 import { LEADERBOARD_DEFS } from "./registry";
 
 /** 数据陈旧阈值(天):超过此天数未更新,公开页出降级提示 */
@@ -27,6 +28,8 @@ export interface PublicLeaderboardRow {
   score: number | null;
   scoreUnit: string | null;
   url: string;
+  /** 展示用附加字段(M63);历史行无该字段时为 {} */
+  extra: LeaderboardItemMeta;
   /** 名次变动:正=上升位数,负=下降,0=持平,null=新入榜(无上一期) */
   delta: number | null;
 }
@@ -36,10 +39,14 @@ export interface PublicLeaderboard {
   board: string;
   label: string;
   sourceUrl: string;
+  /** 榜单实体类型(公开页按此分组:model → 模型榜、paper → 论文、repo → 仓库) */
+  entityType: LeaderboardEntityType;
   /** 数据日期(YYYY-MM-DD) */
   capturedDate: string;
   /** 距今天数(北京日界);0=今日 */
   staleDays: number;
+  /** 是否存在上一可用日期:false 时 delta 恒为 null,展示侧据此不标「新入榜」 */
+  hasPrevious: boolean;
   rows: PublicLeaderboardRow[];
 }
 
@@ -102,13 +109,6 @@ function daysBetween(fromDay: string, now: Date): number {
   return Math.max(0, Math.round((today - from) / 86_400_000));
 }
 
-/** meta.url 安全取用(写入侧保证有值;历史/异常行回空串,展示侧不渲染死链) */
-function metaUrl(meta: unknown): string {
-  if (typeof meta !== "object" || meta === null || !("url" in meta)) return "";
-  const url = (meta as { url?: unknown }).url;
-  return typeof url === "string" ? url : "";
-}
-
 export async function listPublicLeaderboards(now: Date = new Date()): Promise<PublicLeaderboards> {
   return prerenderSafe("leaderboard.public", { boards: [], asOf: null }, async () => {
     const boards: PublicLeaderboard[] = [];
@@ -155,19 +155,25 @@ export async function listPublicLeaderboards(now: Date = new Date()): Promise<Pu
         board: def.board,
         label: LEADERBOARD_SOURCE_LABELS[def.key] ?? def.label,
         sourceUrl: LEADERBOARD_SOURCE_URLS[def.key] ?? def.defaultUrl,
+        entityType: def.entityType,
         capturedDate,
         staleDays: daysBetween(capturedDate, now),
-        rows: rows.map((r) => ({
-          rank: r.rank,
-          entityKey: r.entityKey,
-          entityName: r.entityName,
-          entityType: r.entityType as LeaderboardEntityType,
-          vendor: r.vendor,
-          score: r.score,
-          scoreUnit: r.scoreUnit,
-          url: metaUrl(r.meta),
-          delta: delta.get(r.entityKey) ?? null,
-        })),
+        hasPrevious: previous !== null,
+        rows: rows.map((r) => {
+          const meta = readSnapshotMeta(r.meta);
+          return {
+            rank: r.rank,
+            entityKey: r.entityKey,
+            entityName: r.entityName,
+            entityType: r.entityType as LeaderboardEntityType,
+            vendor: r.vendor,
+            score: r.score,
+            scoreUnit: r.scoreUnit,
+            url: meta.url,
+            extra: meta.extra,
+            delta: delta.get(r.entityKey) ?? null,
+          };
+        }),
       });
     }
     return {

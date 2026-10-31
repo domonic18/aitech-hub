@@ -46,8 +46,10 @@ describe("buildLeaderboardJsonLd", () => {
         board: "智能指数",
         label: "Artificial Analysis",
         sourceUrl: "https://artificialanalysis.ai/leaderboards/models",
+        entityType: "model",
         capturedDate: "2026-10-30",
         staleDays: 0,
+        hasPrevious: true,
         rows: [
           {
             rank: 1,
@@ -58,6 +60,7 @@ describe("buildLeaderboardJsonLd", () => {
             score: 68,
             scoreUnit: "AAII",
             url: "https://artificialanalysis.ai/models/gpt-5",
+            extra: {},
             delta: 2,
           },
           {
@@ -69,6 +72,7 @@ describe("buildLeaderboardJsonLd", () => {
             score: null,
             scoreUnit: null,
             url: "",
+            extra: {},
             delta: null,
           },
         ],
