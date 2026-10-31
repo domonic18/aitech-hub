@@ -1,7 +1,7 @@
 /**
  * 实体详情(M59 批B → M60 实体层):事件时间线 + 经 meta.entityKey 关联的厂商
  * 信号,外加实体层次(品牌 › 产品线)、别名组与同族实体——归并入口在此。
- * 口径:事件来自 entity_event(按 entity_id);相关信号覆盖本实体全部别名写入的
+ * 口径:事件来自 insight_entity_event(按 entity_id);相关信号覆盖本实体全部别名写入的
  * meta.entityKey,社区/热榜信号暂无实体挂接(在空态文案里说明,避免误判丢失)。
  */
 import Link from "next/link";

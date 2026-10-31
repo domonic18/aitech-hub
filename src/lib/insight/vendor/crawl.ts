@@ -7,7 +7,7 @@
  *
  * 失败语义:取数/解析失败抛错 → crawlSource 通用 catch 记 consecutiveFails/
  * 健康度;抽取出错**不**回写源健康度(抓取成功即健康,方案 §5.2 失败隔离)。
- * 随机 job id:去重靠 Redis 标记 + entity_event.dedupeKey 双保险,不用确定性
+ * 随机 job id:去重靠 Redis 标记 + insight_entity_event.dedupeKey 双保险,不用确定性
  * jobId——BullMQ 保留窗口内同 id 会被静默丢弃(已知陷阱)。
  */
 import { createHash } from "node:crypto";

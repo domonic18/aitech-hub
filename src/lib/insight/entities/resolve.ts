@@ -2,7 +2,7 @@
  * 实体解析(M60):LLM 抽取键 → 规范实体(org 品牌 / line 产品线 / model·product)。
  *
  * 对标 Wikidata「实体 + 别名」与 Crunchbase「厂商 → 产品」层级,三条不变量:
- * 1. 别名表保留每个历史写法,`entity_event.entityKey` 永不改写(dedupeKey 稳定);
+ * 1. 别名表保留每个历史写法,`insight_entity_event.entityKey` 永不改写(dedupeKey 稳定);
  * 2. matchKey 折叠 `.`/`_`/重复连字符,`gpt-6.1-terra` 与 `gpt-6-1-terra` 归同一实体;
  * 3. 父级按「同厂商下 `-` 边界最长前缀」挂产品线(`qwen3-embedding` → `qwen3`),
  *    无前缀命中挂厂商 org(`qwen`)——列表即按品牌/产品线折叠。
@@ -245,7 +245,7 @@ export async function mergeEntities(
       where: { entityId: from.id },
       data: { entityId: to.id, origin: "manual" },
     }),
-    prisma.entityEvent.updateMany({
+    prisma.insightEntityEvent.updateMany({
       where: { entityId: from.id },
       data: { entityId: to.id },
     }),

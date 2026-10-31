@@ -114,19 +114,19 @@ export async function listPublicLeaderboards(now: Date = new Date()): Promise<Pu
     const boards: PublicLeaderboard[] = [];
     for (const def of LEADERBOARD_DEFS) {
       const where = { source: def.key, board: def.board };
-      const latest = await prisma.leaderboardSnapshot.findFirst({
+      const latest = await prisma.insightLeaderboardSnapshot.findFirst({
         where,
         orderBy: { capturedDate: "desc" },
         select: { capturedDate: true },
       });
       if (latest === null) continue;
-      const previous = await prisma.leaderboardSnapshot.findFirst({
+      const previous = await prisma.insightLeaderboardSnapshot.findFirst({
         where: { ...where, capturedDate: { lt: latest.capturedDate } },
         orderBy: { capturedDate: "desc" },
         select: { capturedDate: true },
       });
       const [rows, prevRows] = await Promise.all([
-        prisma.leaderboardSnapshot.findMany({
+        prisma.insightLeaderboardSnapshot.findMany({
           where: { ...where, capturedDate: latest.capturedDate },
           orderBy: { rank: "asc" },
           select: {
@@ -142,7 +142,7 @@ export async function listPublicLeaderboards(now: Date = new Date()): Promise<Pu
         }),
         previous === null
           ? Promise.resolve([])
-          : prisma.leaderboardSnapshot.findMany({
+          : prisma.insightLeaderboardSnapshot.findMany({
               where: { ...where, capturedDate: previous.capturedDate },
               select: { entityKey: true, rank: true },
             }),

@@ -1,7 +1,7 @@
 /**
  * 渠道台账「最近运行 · N 条」产出计数(2026-10-30 E2E 修):
  * 原实现只数 telegram 表,registry 渠道(vendor/leaderboard/community)的条目
- * 落在 entity_event / leaderboard_snapshot / insight_signal,于是一律显示
+ * 落在 insight_entity_event / insight_leaderboard_snapshot / insight_signal,于是一律显示
  * 「13:29 · 0 条」——采集成功却像没拉到数据。
  * 本文件按类型把渠道映射到各自产出表,统一口径 = 近 24h 新增行数
  * (与文字渠道的 telegram 计数同语义:本日产出)。
@@ -46,12 +46,12 @@ export async function registryOutputCountByChannel(): Promise<Map<number, number
       where: { type: { in: REGISTRY_TYPES } },
       select: { id: true, type: true, config: true },
     }),
-    prisma.entityEvent.groupBy({
+    prisma.insightEntityEvent.groupBy({
       by: ["source"],
       where: { createdAt: { gte: since } },
       _count: { _all: true },
     }),
-    prisma.leaderboardSnapshot.groupBy({
+    prisma.insightLeaderboardSnapshot.groupBy({
       by: ["source"],
       where: { createdAt: { gte: since } },
       _count: { _all: true },

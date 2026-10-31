@@ -61,7 +61,7 @@ export async function listEntityEvents(filters: EntityEventFilters): Promise<Ent
     next.setUTCDate(next.getUTCDate() + 1);
     occurredAt.lt = next;
   }
-  const rows = await prisma.entityEvent.findMany({
+  const rows = await prisma.insightEntityEvent.findMany({
     where: {
       ...(filters.vendor ? { vendor: filters.vendor } : {}),
       ...(filters.eventType ? { eventType: filters.eventType } : {}),

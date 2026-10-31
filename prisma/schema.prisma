@@ -37,14 +37,17 @@ model Post {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  category    Category             @relation(fields: [categoryId], references: [id])
-  tags        PostTag[]
-  viewDays    StatsPostViewDaily[]
-  mediaRefs   MediaRef[]
-  githubRepos GithubRepoPost[]
-  channels    PublishChannel[]
-  comments    PostComment[]
-  likes       PostLike[]
+  category        Category              @relation(fields: [categoryId], references: [id])
+  tags            PostTag[]
+  viewDays        StatsPostViewDaily[]
+  mediaRefs       MediaRef[]
+  githubRepos     GithubRepoPost[]
+  channels        PublishChannel[]
+  comments        PostComment[]
+  likes           PostLike[]
+  payOrderItems   PayOrderItem[]
+  purchases       ContentPostPurchase[]
+  coverCandidates CoverCandidate[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -81,13 +84,15 @@ model Tag {
 
 /// 显式多对多(arch/03-data-model §3:不用隐式 m2m,保 SQL 可控)
 model PostTag {
-  postId BigInt @map("post_id")
-  tagId  BigInt @map("tag_id")
+  postId    BigInt   @map("post_id")
+  tagId     BigInt   @map("tag_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
   tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([postId, tagId])
+  @@index([tagId], map: "idx_content_post_tag_tag")
   @@map("content_post_tag")
 }
 
@@ -115,8 +120,9 @@ model Media {
 
 /// 媒体引用追踪:文章保存时解析正文/封面写入;孤儿/断链清洗的地基(arch/08-media §3)
 model MediaRef {
-  mediaPath String @map("media_path") @db.VarChar(500)
-  postId    BigInt @map("post_id")
+  mediaPath String   @map("media_path") @db.VarChar(500)
+  postId    BigInt   @map("post_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
@@ -126,8 +132,9 @@ model MediaRef {
 }
 
 /// 文章评论(M23;先发后审:无 pending 态,新发即 visible,治理=隐藏/恢复)。
-/// 仅登录用户可评论;userId 无 FK(账号删除留档,feedback 同纪律),authorName
-/// 为写侧快照(登录=nickname,迁移=WP 原名),渲染零 join。parentId 自引用无 FK,
+/// 仅登录用户可评论;userId FK SetNull(账号不硬删,若删则评论留档成游客态),
+/// authorName 为写侧快照(登录=nickname,迁移=WP 原名),渲染零 join。
+/// parentId 自引用 FK SetNull(删根时父子在同一条 DELETE IN 内,Restrict 会自撞),
 /// 应用层两级封顶(子回复一律挂根 id),删根连带直接子由 service 事务显式收集。
 /// wpCommentId 为旧站 wp_comments 迁移幂等键(legacy-comments oneoff 脚本)。
 model PostComment {
@@ -137,16 +144,20 @@ model PostComment {
   authorName  String   @map("author_name") @db.VarChar(100)
   content     String   @db.VarChar(4000) // 列宽 4000 容旧站迁移实测 max 2143(dry-run 2026-10-10);新提交 zod 限 1..1000
   status      String   @default("visible") @db.VarChar(16) // visible | hidden(应用层 Zod 管控)
-  parentId    BigInt?  @map("parent_id") // 自引用无 FK:两级封顶由应用层校验(仅挂根)
+  parentId    BigInt?  @map("parent_id") // 自引用:两级封顶由应用层校验(仅挂根)
   wpCommentId BigInt?  @unique(map: "uq_content_post_comment_wp_comment_id") @map("wp_comment_id")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  post  Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
-  likes PostCommentLike[]
+  post    Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user    UserAccount?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parent  PostComment?      @relation("CommentThread", fields: [parentId], references: [id], onDelete: SetNull)
+  replies PostComment[]     @relation("CommentThread")
+  likes   PostCommentLike[]
 
   @@index([postId, status, createdAt], map: "idx_content_post_comment_post_visible")
   @@index([status, createdAt(sort: Desc)], map: "idx_content_post_comment_status_recent")
+  @@index([parentId], map: "idx_content_post_comment_parent")
   @@map("content_post_comment")
 }
 
@@ -160,7 +171,7 @@ model PostLike {
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  @@unique([postId, identityKey], map: "uq_content_post_like_post_identity")
+  @@id([postId, identityKey])
   @@map("content_post_like")
 }
 
@@ -172,7 +183,7 @@ model PostCommentLike {
 
   comment PostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
-  @@unique([commentId, identityKey], map: "uq_content_post_comment_like_comment_identity")
+  @@id([commentId, identityKey])
   @@map("content_post_comment_like")
 }
 
@@ -201,6 +212,11 @@ model UserAccount {
   verificationTokens UserVerificationToken[]
   tokenWallet        UserTokenWallet?
   tokenLedger        UserTokenLedger[]
+  comments           PostComment[]
+  orders             PayOrder[]
+  purchases          ContentPostPurchase[]
+  aiUsageLogs        AiUsageLog[]
+  feedbacks          Feedback[]
 
   @@index([status], map: "idx_user_account_status")
   @@map("user_account")
@@ -261,7 +277,7 @@ model EmailConfig {
 
 /// 支付订单(M21):状态机 pending→paid/closed→refunded 显式迁移(提案 §5.2,
 /// 只允许图中迁移);金额全程 Decimal 禁 float;orderNo 下单生成幂等键。
-/// userId 不设 FK(支付域与账号域解耦,应用层归属校验)。
+/// userId FK Restrict:财务单不得随账号消失(账号不硬删;若硬删须先结清订单)。
 model PayOrder {
   id                   BigInt    @id @default(autoincrement())
   orderNo              String    @unique(map: "uq_pay_order_order_no") @map("order_no") @db.VarChar(32)
@@ -280,7 +296,9 @@ model PayOrder {
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  items PayOrderItem[]
+  user      UserAccount           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items     PayOrderItem[]
+  purchases ContentPostPurchase[]
 
   @@index([userId, status], map: "idx_pay_order_user_status")
   @@index([status, expiresAt], map: "idx_pay_order_status_expires") // 对账 job 扫描路径
@@ -289,16 +307,19 @@ model PayOrder {
 
 /// 订单行(M21):一文一单;标题/单价为下单时快照(防文章后续改名改价追溯失真)
 model PayOrderItem {
-  id        BigInt  @id @default(autoincrement())
-  orderId   BigInt  @map("order_id")
-  postId    BigInt  @map("post_id")
-  title     String  @db.VarChar(200) // 下单时文章标题快照
-  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
-  quantity  Int     @default(1)
+  id        BigInt   @id @default(autoincrement())
+  orderId   BigInt   @map("order_id")
+  postId    BigInt   @map("post_id")
+  title     String   @db.VarChar(200) // 下单时文章标题快照
+  unitPrice Decimal  @map("unit_price") @db.Decimal(10, 2)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   order PayOrder @relation(fields: [orderId], references: [id])
+  post  Post     @relation(fields: [postId], references: [id], onDelete: Restrict)
 
   @@index([postId], map: "idx_pay_order_item_post_id")
+  @@index([orderId], map: "idx_pay_order_item_order")
   @@map("pay_order_item")
 }
 
@@ -314,8 +335,13 @@ model ContentPostPurchase {
   revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6) // 软撤销(退款 CD 回调),审计可恢复
   revokedReason String?   @map("revoked_reason") @db.VarChar(200)
 
+  user  UserAccount @relation(fields: [userId], references: [id], onDelete: Restrict)
+  post  Post        @relation(fields: [postId], references: [id], onDelete: Restrict)
+  order PayOrder?   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
   @@unique([userId, postId], map: "uq_content_post_purchase_user_post")
   @@index([postId], map: "idx_content_post_purchase_post_id")
+  @@index([orderId], map: "idx_content_post_purchase_order")
   @@map("content_post_purchase")
 }
 
@@ -488,7 +514,7 @@ model SearchEmbedding {
   embedding  Unsupported("vector(1024)") // 读写走 raw SQL;client 不暴露
   updatedAt  DateTime                    @default(now()) @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([entityType, entityId], map: "search_embedding_entity_type_entity_id_key")
+  @@unique([entityType, entityId], map: "uq_search_embedding_entity_type_entity_id")
   @@map("search_embedding")
 }
 
@@ -563,7 +589,7 @@ model CrawlSnapshot {
 /// (sha1(source|canonical url|eventType|entityKey);较方案多加 entityKey,
 /// 避免同文同类型两实体(如两个模型齐发布)互相吞并)。vendor 落注册表 key
 /// (openai/anthropic/google/deepseek/qwen/kimi),展示名由界面映射。
-model EntityEvent {
+model InsightEntityEvent {
   id         BigInt   @id @default(autoincrement())
   source     String   @db.VarChar(30) // 采集来源标识(vendor-<key>,与洞察 source 同口径)
   vendor     String   @db.VarChar(30) // 厂商 key
@@ -575,26 +601,26 @@ model EntityEvent {
   summary    String?  @db.VarChar(1000)
   url        String   @db.VarChar(500) // 原文链接(后台标题外链)
   occurredAt DateTime @map("occurred_at") @db.Timestamptz(6) // 事件发生时间(非采集时间)
-  dedupeKey  String   @unique(map: "uq_entity_event_dedupe") @map("dedupe_key") @db.Char(40)
+  dedupeKey  String   @unique(map: "uq_insight_entity_event_dedupe") @map("dedupe_key") @db.Char(40)
   meta       Json?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   entity InsightEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
 
-  @@index([vendor, occurredAt(sort: Desc)], map: "idx_entity_event_vendor_recent")
-  @@index([eventType, occurredAt(sort: Desc)], map: "idx_entity_event_type_recent")
-  @@index([entityKey, occurredAt(sort: Desc)], map: "idx_entity_event_entity_recent")
-  @@index([entityId], map: "idx_entity_event_entity_id")
-  @@map("entity_event")
+  @@index([vendor, occurredAt(sort: Desc)], map: "idx_insight_entity_event_vendor_recent")
+  @@index([eventType, occurredAt(sort: Desc)], map: "idx_insight_entity_event_type_recent")
+  @@index([entityKey, occurredAt(sort: Desc)], map: "idx_insight_entity_event_entity_recent")
+  @@index([entityId], map: "idx_insight_entity_event_entity_id")
+  @@map("insight_entity_event")
 }
 
 /// 洞察实体主表(M60 实体解析):规范实体(品牌 org / 产品线 line / 模型 product),
 /// 三级层次是实体列表分组与「同名不同写法」归并的唯一锚;LLM 抽取的原始键一律
-/// 落 insight_entity_alias,不从历史改写 entity_event.entityKey(dedupeKey 不变)。
+/// 落 insight_entity_alias,不从历史改写 insight_entity_event.entityKey(dedupeKey 不变)。
 model InsightEntity {
   id           BigInt   @id @default(autoincrement())
-  key          String   @unique @db.VarChar(120) // 规范键(展示用,保留官方写法如 qwen2.5-vl)
-  matchKey     String   @unique @map("match_key") @db.VarChar(120) // 匹配键(分隔符归一的去重锚,如 qwen2-5-vl)
+  key          String   @unique(map: "uq_insight_entity_key") @db.VarChar(120) // 规范键(展示用,保留官方写法如 qwen2.5-vl)
+  matchKey     String   @unique(map: "uq_insight_entity_match_key") @map("match_key") @db.VarChar(120) // 匹配键(分隔符归一的去重锚,如 qwen2-5-vl)
   displayName  String   @map("display_name") @db.VarChar(120) // 展示名(保留大小写,如 Qwen3-Embedding)
   entityType   String   @map("entity_type") @db.VarChar(12) // org | line | model | product
   vendorKey    String?  @map("vendor_key") @db.VarChar(30) // 所属厂商/品牌(org 自身为 null)
@@ -604,13 +630,16 @@ model InsightEntity {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  parent   InsightEntity?       @relation("EntityTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children InsightEntity[]      @relation("EntityTree")
-  aliases  InsightEntityAlias[]
-  events   EntityEvent[]
+  parent     InsightEntity?       @relation("EntityTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children   InsightEntity[]      @relation("EntityTree")
+  mergedInto InsightEntity?       @relation("EntityMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom InsightEntity[]      @relation("EntityMerge")
+  aliases    InsightEntityAlias[]
+  events     InsightEntityEvent[]
 
   @@index([vendorKey], map: "idx_insight_entity_vendor")
   @@index([parentId], map: "idx_insight_entity_parent")
+  @@index([mergedIntoId], map: "idx_insight_entity_merged_into")
   @@map("insight_entity")
 }
 
@@ -618,7 +647,7 @@ model InsightEntity {
 /// 不改历史键;origin 记录来源(seed=建表回填 / rule=写入解析 / manual=人工归并)
 model InsightEntityAlias {
   id         BigInt   @id @default(autoincrement())
-  aliasKey   String   @unique @map("alias_key") @db.VarChar(120)
+  aliasKey   String   @unique(map: "uq_insight_entity_alias_alias_key") @map("alias_key") @db.VarChar(120)
   entityId   BigInt   @map("entity_id")
   origin     String   @db.VarChar(10)
   confidence Float?
@@ -633,7 +662,7 @@ model InsightEntityAlias {
 /// 榜单快照(M58 批③):每日一抓,同 (source, board, entityKey, capturedDate)
 /// 幂等覆盖,同日重跑整表覆盖;名次变动不落库,读侧与上一可用日期比较得出
 /// (data-expansion-plan §6.2)。source 落注册表 key,board 为榜单展示名键。
-model LeaderboardSnapshot {
+model InsightLeaderboardSnapshot {
   id           BigInt   @id @default(autoincrement())
   source       String   @db.VarChar(30)
   board        String   @db.VarChar(40)
@@ -648,9 +677,9 @@ model LeaderboardSnapshot {
   meta         Json?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  @@unique([source, board, entityKey, capturedDate], map: "uq_leaderboard_snapshot")
-  @@index([source, board, capturedDate(sort: Desc)], map: "idx_leaderboard_snapshot_board")
-  @@map("leaderboard_snapshot")
+  @@unique([source, board, entityKey, capturedDate], map: "uq_insight_leaderboard_snapshot")
+  @@index([source, board, capturedDate(sort: Desc)], map: "idx_insight_leaderboard_snapshot_board")
+  @@map("insight_leaderboard_snapshot")
 }
 
 /// 电报条目(1-3 句摘要 + 原文外链;独立于文章库,/telegram noindex;content_hash 全库去重锚)
@@ -763,8 +792,10 @@ model AiModel {
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  primaryBindings AiTaskBinding[] @relation("AiBindingPrimary")
-  backupBindings  AiTaskBinding[] @relation("AiBindingBackup")
+  primaryBindings AiTaskBinding[]  @relation("AiBindingPrimary")
+  backupBindings  AiTaskBinding[]  @relation("AiBindingBackup")
+  usageLogs       AiUsageLog[]
+  coverCandidates CoverCandidate[]
 
   @@map("ai_model")
 }
@@ -781,6 +812,8 @@ model AiTaskBinding {
   primary AiModel? @relation("AiBindingPrimary", fields: [primaryId], references: [id], onDelete: SetNull)
   backup  AiModel? @relation("AiBindingBackup", fields: [backupId], references: [id], onDelete: SetNull)
 
+  @@index([primaryId], map: "idx_ai_task_binding_primary")
+  @@index([backupId], map: "idx_ai_task_binding_backup")
   @@map("ai_task_binding")
 }
 
@@ -817,11 +850,15 @@ model CoverCandidate {
   postId    BigInt?  @map("post_id") // 编辑态回填;创建态 null
   prompt    String   @db.VarChar(1000)
   mediaPath String   @map("media_path") @db.VarChar(500)
-  modelId   Int      @map("model_id") // ai_model.id(生图模型溯源)
+  modelId   Int?     @map("model_id") // ai_model.id(生图模型溯源);模型可物理删,删后留档
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  post  Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+  model AiModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
 
   @@index([token], map: "idx_ai_cover_candidate_token")
   @@index([postId], map: "idx_ai_cover_candidate_post")
+  @@index([modelId], map: "idx_ai_cover_candidate_model")
   @@map("ai_cover_candidate")
 }
 
@@ -842,11 +879,15 @@ model AiUsageLog {
   durationMs   Int      @default(0) @map("duration_ms")
   status       String   @default("ok") @db.VarChar(10) // ok/degraded/failed
   sessionId    String?  @map("session_id") @db.VarChar(40) // K2.6:会话/线程锚(后台会话管理聚合口径;他类调用缺省)
-  userId       BigInt?  @map("user_id") // M22:登录用户锚(悬浮助手 run 归属/个人消耗页;站点级调用缺省;无 FK,账号删除不回删台账)
+  userId       BigInt?  @map("user_id") // M22:登录用户锚(悬浮助手 run 归属/个人消耗页;站点级调用缺省);FK SetNull —— 台账必须留档,账号删除后归属置空
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user  UserAccount? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  model AiModel?     @relation(fields: [modelId], references: [id], onDelete: SetNull)
 
   @@index([createdAt], map: "idx_ai_usage_log_created")
   @@index([role, modelId], map: "idx_ai_usage_log_role_model")
+  @@index([modelId], map: "idx_ai_usage_log_model")
   @@index([sessionId], map: "idx_ai_usage_log_session")
   @@index([userId, createdAt(sort: Desc)], map: "idx_ai_usage_log_user_created")
   @@map("ai_usage_log")
@@ -945,7 +986,7 @@ model ContentPin {
   id                 BigInt    @id @default(autoincrement())
   title              String    @db.VarChar(64) // ≤32 码点(应用层 Zod;VarChar 留字节数余量)
   content            String    @default("") @map("content") @db.Text // 轻文字纯文本(禁 Markdown/内联 HTML)
-  topicId            BigInt?   @map("topic_id") // 专题软关联(应用层完整性:删专题由编辑侧改挂)
+  topicId            BigInt?   @map("topic_id") // 专题关联:FK SetNull(删专题清关联,贴图保留——UI 明示「已生成长文与贴图保留」)
   status             String    @default("draft") @db.VarChar(20) // draft/pending/synced/published(应用层 Zod)
   readMoreUrl        String?   @map("read_more_url") @db.VarChar(500)
   cropSpec           String    @default("1_1") @map("crop_spec") @db.VarChar(40) // 1_1/16_9/2.35_9
@@ -955,6 +996,7 @@ model ContentPin {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  topic    Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
   images   ContentPinImage[]
   channels ContentPinChannel[]
 
@@ -1083,8 +1125,9 @@ model GithubRepoActivity {
 
 /// 仓库↔文章 显式多对多(admin 手动关联;「配套文章 ×N」与详情页联动;镜像 PostTag)
 model GithubRepoPost {
-  repoId Int    @map("repo_id")
-  postId BigInt @map("post_id")
+  repoId    Int      @map("repo_id")
+  postId    BigInt   @map("post_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   repo GithubRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
   post Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -1235,6 +1278,8 @@ model SearchAgentSession {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   lastMessageAt DateTime @default(now()) @map("last_message_at") @db.Timestamptz(6)
 
+  ledgerRows UserTokenLedger[]
+
   @@index([visitorId, lastMessageAt(sort: Desc)], map: "idx_search_agent_session_visitor_recent")
   @@index([lastMessageAt], map: "idx_search_agent_session_last_message")
   @@map("search_agent_session")
@@ -1264,11 +1309,12 @@ model UserTokenLedger {
   delta        Int // 正=入账 负=扣减
   balanceAfter Int      @map("balance_after")
   reason       String   @db.VarChar(16) // grant | consume | reset | adjust(应用层枚举)
-  sessionId    String?  @map("session_id") @db.VarChar(40) // consume 溯源:agent 线程 id
+  sessionId    String?  @map("session_id") @db.VarChar(36) // consume 溯源:agent 线程 id(FK SetNull——worker 每日硬删会话)
   note         String?  @db.VarChar(200) // adjust 说明等
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    UserAccount         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session SearchAgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt(sort: Desc)], map: "idx_user_token_ledger_user_recent")
   @@map("user_token_ledger")
@@ -1279,7 +1325,8 @@ model UserTokenLedger {
 /// 站点反馈:助手识别联系诉求后 submit_feedback 结构化落库(登录带 userId,
 /// 游客仅 visitorId=ah_av 溯源);contact 用户自愿留(助手对话内询问,可拒)。
 /// status 状态机 open → processing → resolved(应用层 Zod 管控,仿 pay 纪律);
-/// sessionId 溯源 agent 线程;两归属列均无 FK,账号/游客过期不回删反馈。
+/// sessionId 溯源 agent 线程;userId FK SetNull(账号删除不回删反馈,归属置空),
+/// visitorId 无 FK(游客身份非库内实体)。
 model Feedback {
   id        BigInt   @id @default(autoincrement())
   userId    BigInt?  @map("user_id")
@@ -1292,6 +1339,8 @@ model Feedback {
   sessionId String?  @map("session_id") @db.VarChar(40) // agent 线程溯源
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user UserAccount? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt(sort: Desc)], map: "idx_feedback_status_recent")
   @@map("feedback")
@@ -1363,22 +1412,22 @@ model DiscoveryCandidate {
 /// 跨域伏笔(远期 AI invest 财经打通/分布式爬虫多领域,方案 §1),批① 恒 tech。
 /// embedding 批② 回填,读写 raw SQL(SearchEmbedding 同款,client 不暴露)。
 model InsightSignal {
-  id             BigInt                       @id @default(autoincrement())
-  source         String                       @db.VarChar(30) // internal-search/internal-agent/internal-comment/internal-feedback/telegram-ai(批③起扩 hotboard-* 等)
-  domain         String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔;M54 起分类器落库,未分类=unclassified)
-  subdomain      String?                      @map("subdomain") @db.VarChar(30) // tech 子域(M54:词表 key,如 ai-learning;域非 tech 时空)
-  lang           String?                      @db.VarChar(10) // zh | en | ja …(M58:源级声明,混合源逐条覆盖)
-  region         String?                      @db.VarChar(10) // cn | global(M58:国内/海外统一视图)
-  medium         String                       @db.VarChar(12) // money/time/voice/search/ai-record(五介质)
-  refId          String                       @map("ref_id") @db.VarChar(120) // 溯源锚:源行 id 文本/会话 id(幂等键半)
-  rawText        String                       @map("raw_text") @db.Text // 原文(截 4000)
-  normalizedText String                       @map("normalized_text") @db.Text // 归一后(trim+空白折叠,截 2000;聚类/向量输入)
-  translatedText String?                      @map("translated_text") @db.Text // 中文译文(M58;非中文源,原文恒在 raw_text)
-  translationStatus String                    @default("none") @map("translation_status") @db.VarChar(10) // none | pending | done | failed
-  meta           Json? // 源相关:{hitCount,postId,category,title,topic...}
-  embedding      Unsupported("vector(1024)")? // 批② 回填;raw SQL 读写
-  signalAt       DateTime                     @map("signal_at") @db.Timestamptz(6) // 信号发生时间(非采集时间)
-  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                BigInt                       @id @default(autoincrement())
+  source            String                       @db.VarChar(30) // internal-search/internal-agent/internal-comment/internal-feedback/telegram-ai(批③起扩 hotboard-* 等)
+  domain            String                       @default("tech") @db.VarChar(20) // tech | finance | ...(跨域伏笔;M54 起分类器落库,未分类=unclassified)
+  subdomain         String?                      @map("subdomain") @db.VarChar(30) // tech 子域(M54:词表 key,如 ai-learning;域非 tech 时空)
+  lang              String?                      @db.VarChar(10) // zh | en | ja …(M58:源级声明,混合源逐条覆盖)
+  region            String?                      @db.VarChar(10) // cn | global(M58:国内/海外统一视图)
+  medium            String                       @db.VarChar(12) // money/time/voice/search/ai-record(五介质)
+  refId             String                       @map("ref_id") @db.VarChar(120) // 溯源锚:源行 id 文本/会话 id(幂等键半)
+  rawText           String                       @map("raw_text") @db.Text // 原文(截 4000)
+  normalizedText    String                       @map("normalized_text") @db.Text // 归一后(trim+空白折叠,截 2000;聚类/向量输入)
+  translatedText    String?                      @map("translated_text") @db.Text // 中文译文(M58;非中文源,原文恒在 raw_text)
+  translationStatus String                       @default("none") @map("translation_status") @db.VarChar(10) // none | pending | done | failed
+  meta              Json? // 源相关:{hitCount,postId,category,title,topic...}
+  embedding         Unsupported("vector(1024)")? // 批② 回填;raw SQL 读写
+  signalAt          DateTime                     @map("signal_at") @db.Timestamptz(6) // 信号发生时间(非采集时间)
+  createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
 
   members InsightClusterMember[]
 
@@ -1429,6 +1478,7 @@ model InsightClusterMember {
   clusterId BigInt         @map("cluster_id")
   signalId  BigInt         @map("signal_id")
   weight    Float?
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   cluster   InsightCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
   signal    InsightSignal  @relation(fields: [signalId], references: [id], onDelete: Cascade)
 
@@ -1475,7 +1525,7 @@ model InsightHotSource {
 model InsightTaxonomy {
   id        Int      @id @default(autoincrement())
   kind      String   @db.VarChar(12) // domain | subdomain
-  key       String   @unique @map("key") @db.VarChar(30)
+  key       String   @unique(map: "uq_insight_taxonomy_key") @map("key") @db.VarChar(30)
   label     String   @map("label") @db.VarChar(30)
   parent    String?  @map("parent") @db.VarChar(30) // subdomain → 所属 domain key
   enabled   Boolean  @default(true)
@@ -1505,6 +1555,7 @@ model Topic {
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   items TopicItem[]
+  pins  ContentPin[]
 
   @@index([status, updatedAt(sort: Desc)], map: "idx_topic_status_updated")
   @@map("topic")
@@ -1613,29 +1664,28 @@ model ModelPricing {
 /// Coding Plan 订阅套餐(M55):额度口径各家不一,按官方原文呈现不强行归一;
 /// 峰谷倍率原文直出(如「峰 1× · 谷 0.5×」),字段拆存便于页面分列。
 model CodingPlan {
-  id            BigInt   @id @default(autoincrement())
-  vendor        String   @db.VarChar(40)
-  planName      String   @map("plan_name") @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
-  currency      String   @default("CNY") @db.VarChar(8)
-  monthlyFee    Decimal? @map("monthly_fee") @db.Decimal(12, 2) // 连续包月标准价
-  quarterlyFee  Decimal? @map("quarterly_fee") @db.Decimal(12, 2) // 连续包季展示价(M56 验收反馈:折合每月,口径见 billingNote)
-  yearlyFee     Decimal? @map("yearly_fee") @db.Decimal(12, 2) // 连续包年展示价(口径见 billingNote)
-  billingNote   String?  @map("billing_note") @db.VarChar(120) // 周期价格口径原文说明(如「季/年价为折合每月;连续包季9折/包年8折」)
-  benefits      Json?    // 套餐权益详情原文列表(M56 验收反馈;string[],按官方页序)
-  quotaDesc     String   @map("quota_desc") @db.VarChar(200) // 额度口径原文(口径不归一)
-  peakRate      String?  @map("peak_rate") @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
-  offPeakRate   String?  @map("off_peak_rate") @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
-  bestFor       String?  @map("best_for") @db.VarChar(80) // 适合人群
-  note          String?  @db.VarChar(200) // 爬虫待复核标记/策展备注(M56 批C;模型表同名列同纪律)
-  dataAsOf      DateTime @map("data_as_of") @db.Timestamptz(6)
-  sourceUrl     String   @map("source_url") @db.VarChar(300)
-  status        String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
-  sortOrder     Int      @default(0) @map("sort_order")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           BigInt   @id @default(autoincrement())
+  vendor       String   @db.VarChar(40)
+  planName     String   @map("plan_name") @db.VarChar(60) // 套餐名(如 GLM Coding Plan · Lite)
+  currency     String   @default("CNY") @db.VarChar(8)
+  monthlyFee   Decimal? @map("monthly_fee") @db.Decimal(12, 2) // 连续包月标准价
+  quarterlyFee Decimal? @map("quarterly_fee") @db.Decimal(12, 2) // 连续包季展示价(M56 验收反馈:折合每月,口径见 billingNote)
+  yearlyFee    Decimal? @map("yearly_fee") @db.Decimal(12, 2) // 连续包年展示价(口径见 billingNote)
+  billingNote  String?  @map("billing_note") @db.VarChar(120) // 周期价格口径原文说明(如「季/年价为折合每月;连续包季9折/包年8折」)
+  benefits     Json? // 套餐权益详情原文列表(M56 验收反馈;string[],按官方页序)
+  quotaDesc    String   @map("quota_desc") @db.VarChar(200) // 额度口径原文(口径不归一)
+  peakRate     String?  @map("peak_rate") @db.VarChar(60) // 高峰倍率原文(如 峰 1×)
+  offPeakRate  String?  @map("off_peak_rate") @db.VarChar(60) // 闲时倍率原文(如 谷 0.5×)
+  bestFor      String?  @map("best_for") @db.VarChar(80) // 适合人群
+  note         String?  @db.VarChar(200) // 爬虫待复核标记/策展备注(M56 批C;模型表同名列同纪律)
+  dataAsOf     DateTime @map("data_as_of") @db.Timestamptz(6)
+  sourceUrl    String   @map("source_url") @db.VarChar(300)
+  status       String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([vendor, planName], map: "uq_coding_plan_vendor_plan")
   @@index([status, sortOrder], map: "idx_coding_plan_page")
   @@map("coding_plan")
 }
-

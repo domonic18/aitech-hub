@@ -4,7 +4,7 @@
  * - 渠道行落 crawl_source(type=vendor,config.vendorKey 路由),URL/启停/
  *   采集周期(默认半日)在 数据中心·源管理·采集渠道 后台可调零发版,
  *   与文字/牌价渠道同一套调度(tick 扫 due)/健康度/快照台账;
- * - 条目**不进电报流**:抓取后入事件抽取队列,抽取产物落 entity_event 并
+ * - 条目**不进电报流**:抓取后入事件抽取队列,抽取产物落 insight_entity_event 并
  *   按 dedupeKey 作为 refId 入洞察信号池(source=vendor-<key>)。
  *
  * 首批六家(2026-10-30 真机探报告):OpenAI/Google AI/Qwen 有官方 RSS;
@@ -35,7 +35,7 @@ export interface VendorDef {
   /** config.vendorKey 与 crawl_source.name=`vendor:<key>` 的 key */
   key: string;
   label: string;
-  /** entity_event.vendor 落库值(稳定短标识,展示名由界面映射) */
+  /** insight_entity_event.vendor 落库值(稳定短标识,展示名由界面映射) */
   vendorName: string;
   insightSource: InsightSource;
   kind: VendorKind;

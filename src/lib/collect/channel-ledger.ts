@@ -35,7 +35,7 @@ import {
 
 /** 文字类源行(资讯 RSS / 厂商动态 / 榜单 / 社区语料);pricing 走 pricingRows
  * 单独装配(行带快照入口),此处剔除防重复。产出计数按类型分表(registry 渠道
- * 落 entity_event/leaderboard_snapshot/insight_signal,见 channel-ledger-counts) */
+ * 落 insight_entity_event/insight_leaderboard_snapshot/insight_signal,见 channel-ledger-counts) */
 async function sourceRows(): Promise<ChannelLedgerRow[]> {
   const [items, outputCounts] = await Promise.all([
     listChannelsAdmin(),
