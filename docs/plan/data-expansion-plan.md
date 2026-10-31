@@ -226,6 +226,15 @@ model EntityEvent {
 - 入口:`SITE_TOPICS` 增一项(名称「模型榜单」,href `/leaderboards/`),Header 下拉与
   `/topics/` 索引自动同步。
 - 转载合规:上线前逐源核对 ToS/署名;不允许公开呈现的源降级为后台可见,不上公开页。
+- **M63 落码注(可视化改版,2026-10-31)**:五榜不再同构平铺,按榜单性质分化成三节——
+  模型榜(Artificial Analysis 智能指数 × 输出价散点 ∥ Hugging Face 趋势横条;C3 定稿合并为
+  CSS `:checked` 零 JS 双子页签,不读 `searchParams`)/ 论文(arXiv cs.AI·cs.CL 摘要卡栅格)/
+  热门仓库(GitHub Trending 动量卡:今日上升最快 + 新入榜,`hasPrevious=false` 时不标 NEW)。
+  展示字段(价格/上下文/开源/下载/摘要/作者/星分叉)落 `insight_leaderboard_snapshot.meta`
+  白名单清洗,**无 schema 变更**;`crawl.ts` 的 update 路径同写 `meta`(原实现仅 create 写,
+  同日重采永不刷新——本次修)。AA 入库上限 `def.maxItems` 设 60,其余仍 20。散点价格未采到或
+  样本 <2 自动退化为完整表 + 补采提示;几何纯函数 `src/lib/leaderboard/scatter.ts`(禁图表库,
+  手写内联 SVG,契约同 stats/chart.ts:退化域撑开、全输出无 NaN/Infinity、标签贪心避让)。
 
 ### 6.4 验收
 
