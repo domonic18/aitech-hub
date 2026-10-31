@@ -38,12 +38,14 @@ export interface AccountProfileData {
   avatarPath: string | null;
   bio: string | null;
   hasPassword: boolean;
+  /** 已绑定手机号(M65 P1:设置页「手机号」卡据此决定绑定还是换绑流程) */
+  phone: string | null;
 }
 
 export async function getAccountProfile(userId: bigint): Promise<AccountProfileData> {
   const u = await prisma.userAccount.findUnique({
     where: { id: userId },
-    select: { nickname: true, avatarPath: true, bio: true, passwordHash: true },
+    select: { nickname: true, avatarPath: true, bio: true, passwordHash: true, phone: true },
   });
   if (!u) throw new AccountError("not_found", "账号不存在");
   return {
@@ -51,6 +53,7 @@ export async function getAccountProfile(userId: bigint): Promise<AccountProfileD
     avatarPath: u.avatarPath,
     bio: u.bio,
     hasPassword: u.passwordHash !== null,
+    phone: u.phone,
   };
 }
 
@@ -61,7 +64,7 @@ export async function updateProfile(
   const u = await prisma.userAccount.update({
     where: { id: userId },
     data: { nickname: input.nickname, bio: input.bio || null },
-    select: { nickname: true, avatarPath: true, bio: true, passwordHash: true },
+    select: { nickname: true, avatarPath: true, bio: true, passwordHash: true, phone: true },
   });
   logger.info({ event: "account.profile_updated", userId: userId.toString() });
   return {
@@ -69,6 +72,7 @@ export async function updateProfile(
     avatarPath: u.avatarPath,
     bio: u.bio,
     hasPassword: u.passwordHash !== null,
+    phone: u.phone,
   };
 }
 
