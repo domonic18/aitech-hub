@@ -14,6 +14,7 @@ import SearchConsole from "@/components/site/search/SearchConsole";
 import SearchEmpty from "@/components/site/search/SearchEmpty";
 import SearchHitMeta from "@/components/site/SearchHitMeta";
 import SearchHits from "@/components/site/search/SearchHits";
+import { SEARCH_TERM_MAX } from "@/lib/constants";
 import { searchAll } from "@/lib/search/unified-search";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 function parseQ(raw: string | undefined): string {
-  return (raw ?? "").trim().slice(0, 100);
+  return (raw ?? "").trim().slice(0, SEARCH_TERM_MAX);
 }
 
 export default async function SearchPage({
