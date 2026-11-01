@@ -14,8 +14,8 @@ import { listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import { formatCnDate } from "@/lib/datetime";
 import { gateNoticeMd, gateNoticeText, previewMarkdown } from "@/lib/pay/preview";
-import { absoluteUrl } from "@/lib/seo/site";
-import { AUTHOR_NAME, siteHost } from "@/lib/site-meta";
+import { absoluteUrl, siteHost } from "@/lib/seo/site";
+import { AUTHOR_NAME } from "@/lib/site-meta";
 
 const PART_MAX_CHARS = 400_000;
 

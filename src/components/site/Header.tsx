@@ -3,7 +3,7 @@ import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import TopicNavMenu from "@/components/site/TopicNavMenu";
 import { SITE_TOPICS } from "@/lib/content/topics";
-import { siteHost } from "@/lib/site-meta";
+import { siteHost } from "@/lib/seo/site";
 
 import { getSiteTitle } from "@/lib/config/site-config";
 

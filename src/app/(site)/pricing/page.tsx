@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 
 import PricingExplorer from "@/components/site/pricing/PricingExplorer";
 import { absoluteUrl } from "@/lib/seo/site";
-import { buildPricingJsonLd, listPublicPricing } from "@/lib/pricing/public";
+import { buildPricingJsonLd } from "@/lib/pricing/public";
+import { listPublicPricing } from "@/lib/pricing/read";
 
 /**
  * /pricing/ 模型牌价速查(M55 批D,D1 slug 避开 admin/models 语义撞;Ardot P1

@@ -9,6 +9,7 @@
 import { cache } from "react";
 import { z } from "zod";
 
+import { ABOUT_MD_MAX } from "../constants";
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
 import { SITE_NAME } from "../site-meta";
@@ -45,8 +46,7 @@ export const DEFAULT_POST_COUNT = 5;
 
 /** hub 主文案 markdown 上限(前台空值回退内置文案) */
 export const HERO_MD_MAX = 2000;
-/** 关于页内容 markdown 上限(空值回退内置默认文案,与 hero_md 同兜底模式) */
-export const ABOUT_MD_MAX = 8000;
+// ABOUT_MD_MAX 住 lib/constants.ts:admin 表单(客户端组件)要用它,不能从这里引
 const SITE_TITLE_MAX = 50;
 /** ICP 备案号上限(空 = 不展示;页脚链工信部备案系统) */
 export const ICP_MAX = 60;

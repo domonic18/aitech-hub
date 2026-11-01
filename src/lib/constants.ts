@@ -25,3 +25,8 @@ export const DEVICE_TYPE_MAX = 20;
 export const IP_MAX = 45;
 /** 搜索词原文上限(stats_search_log.term) */
 export const SEARCH_TERM_MAX = 100;
+
+/** 关于页内容 markdown 上限(空值回退内置默认文案,与 hero_md 同兜底模式)。
+ *  住这里而非 lib/config/site-config:后者链到 prisma/env,而 admin 表单是客户端组件,
+ *  只有纯常量可以进 client chunk(2026-11-01 站点设置页白屏事故,见 lib/site-meta 头注)。 */
+export const ABOUT_MD_MAX = 8000;
