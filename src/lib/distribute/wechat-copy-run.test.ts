@@ -63,7 +63,10 @@ describe("wechatCopyJob 管线", () => {
       "/wp-content/uploads/c.jpg",
     );
     // 渲染吃的是转存后 md,主题=渠道默认 blue(无行快照/覆盖)
-    expect(mockedRender).toHaveBeenCalledWith("转存后 md", "blue");
+    expect(mockedRender).toHaveBeenCalledWith("转存后 md", "blue", {
+      paraStyle: undefined,
+      tocMeta: undefined,
+    });
   });
 
   it("无码点门:超预算富稿(远超 20000)照常 ok——本通道的存在意义", async () => {
@@ -92,10 +95,16 @@ describe("wechatCopyJob 管线", () => {
     mockedChannel.findUnique.mockResolvedValue({ theme: "green" } as never);
 
     await wechatCopyJob({ token: "t", postId: "156" });
-    expect(mockedRender).toHaveBeenLastCalledWith("md", "green"); // 行快照
+    expect(mockedRender).toHaveBeenLastCalledWith("md", "green", {
+      paraStyle: undefined,
+      tocMeta: undefined,
+    }); // 行快照
 
     await wechatCopyJob({ token: "t", postId: "156", theme: "red" });
-    expect(mockedRender).toHaveBeenLastCalledWith("md", "red"); // 本次覆盖
+    expect(mockedRender).toHaveBeenLastCalledWith("md", "red", {
+      paraStyle: undefined,
+      tocMeta: undefined,
+    }); // 本次覆盖
   });
 
   it("文章不存在/正文空:ok=false + 人话 reason", async () => {

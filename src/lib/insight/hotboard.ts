@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { DAY_MS } from "@/lib/datetime";
 
 import { type InsightSentiment } from "./constants";
 import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "./ingest";
@@ -59,7 +60,7 @@ export async function hotBoardForDay(day?: string): Promise<InsightHotSourceBoar
     day === undefined
       ? Prisma.empty
       : Prisma.sql` AND (meta->>'batch')::bigint >= ${new Date(`${day}T00:00:00+08:00`).getTime()}
-                   AND (meta->>'batch')::bigint < ${new Date(`${day}T00:00:00+08:00`).getTime() + 86_400_000}`;
+                   AND (meta->>'batch')::bigint < ${new Date(`${day}T00:00:00+08:00`).getTime() + DAY_MS}`;
   const [rows, prevRows] = await Promise.all([
     prisma.$queryRaw<BoardRow[]>`
       SELECT s.id, s.source, s.ref_id,
@@ -151,14 +152,15 @@ const CLOUD_CLUSTER_TAKE = 60;
  * 计权。未打标(需「洞察归纳」模型)或零活跃簇时返回空,渲染侧给引导。
  */
 export async function insightKeywordCloud(
-  opts: { windowDays?: number; limit?: number } = {},
+  opts: { windowDays?: number; domain?: string; limit?: number } = {},
 ): Promise<InsightCloudWord[]> {
   const windowDays = opts.windowDays ?? CLOUD_WINDOW_DAYS;
   const clusters = await prisma.insightCluster.findMany({
     where: {
       label: { not: null },
       status: { not: "closed" },
-      lastSeenAt: { gte: new Date(Date.now() - windowDays * 86_400_000) },
+      lastSeenAt: { gte: new Date(Date.now() - windowDays * DAY_MS) },
+      ...(opts.domain === undefined ? {} : { domain: opts.domain }),
     },
     orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],
     take: CLOUD_CLUSTER_TAKE,

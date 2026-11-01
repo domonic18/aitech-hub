@@ -2,7 +2,7 @@ import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 
 import ArticleBody from "@/components/article/ArticleBody";
-import { agreementHtml } from "@/content/agreement";
+import { agreementHtml } from "@/content/legal/agreement";
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteTitle = await getSiteTitle();
@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** 用户协议(requirement §3.1:迁移旧文本,见 src/content/agreement.ts) */
+/** 用户协议(requirement §3.1:迁移旧文本,见 src/content/legal/agreement.ts) */
 export default function AgreementPage(): React.ReactElement {
   return (
     <section className="mx-auto w-full max-w-3xl">

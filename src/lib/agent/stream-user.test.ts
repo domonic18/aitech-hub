@@ -18,7 +18,11 @@ const runMock = vi.hoisted(() => ({
   runAgentTurn: vi.fn(),
   recordAgentRun: vi.fn(),
 }));
-const sessionsMock = vi.hoisted(() => ({ backfillSessionTitle: vi.fn() }));
+const sessionsMock = vi.hoisted(() => ({
+  backfillSessionTitle: vi.fn(),
+  recordGuestFirstAsk: vi.fn(),
+  touchGuestSessionAfterRun: vi.fn(),
+}));
 const quotaMock = vi.hoisted(() => ({
   tryConsumeAgentRunQuota: vi.fn(),
   tryConsumeGuestAskQuota: vi.fn(),
@@ -63,7 +67,10 @@ beforeEach(() => {
     runMock.runAgentTurn,
     runMock.recordAgentRun,
     sessionsMock.backfillSessionTitle,
+    sessionsMock.recordGuestFirstAsk,
+    sessionsMock.touchGuestSessionAfterRun,
     quotaMock.tryConsumeAgentRunQuota,
+    quotaMock.tryConsumeGuestAskQuota,
     prismaMock.searchAgentSession.findUnique,
   ]) {
     m.mockReset();
@@ -75,6 +82,8 @@ beforeEach(() => {
   });
   prismaMock.siteConfig.findMany.mockResolvedValue([]); // 额度 kv 无行 → 默认档
   sessionsMock.backfillSessionTitle.mockResolvedValue(undefined);
+  sessionsMock.recordGuestFirstAsk.mockResolvedValue(undefined);
+  sessionsMock.touchGuestSessionAfterRun.mockResolvedValue(undefined);
   runMock.recordAgentRun.mockResolvedValue(undefined);
 });
 
@@ -110,7 +119,7 @@ describe("user 余额链路(M22 批④)", () => {
       expect.objectContaining({ sessionId: TID, userId: BigInt(42) }),
     );
     expect(balanceMock.consumeTokens).toHaveBeenCalledWith(BigInt(42), 30, TID);
-    expect(sessionsMock.backfillSessionTitle).toHaveBeenCalledWith(TID, "hi");
+    expect(sessionsMock.backfillSessionTitle).toHaveBeenCalledWith(TID, "hi", undefined);
   });
 
   it("admin:不预检不扣余额(免费额度制仅 user)", async () => {
@@ -209,6 +218,7 @@ describe("command.resume 分支(HITL 提问卡回答,2026-10-09 验收反馈)", 
     expect(quotaMock.tryConsumeGuestAskQuota).not.toHaveBeenCalled();
     expect(refreshGuestThread).toHaveBeenCalledWith("g_t1");
     expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
+    expect(sessionsMock.recordGuestFirstAsk).not.toHaveBeenCalled();
   });
 
   it("resume.message 为空:400 不进 run", async () => {
@@ -309,5 +319,44 @@ describe("command.resume propose_edits 评审结果(M27 批⑧-c union 分流)",
     expect(runMock.runAgentTurn).toHaveBeenCalledWith(
       expect.objectContaining({ resume: { kind: "ask_user", message: "好" } }),
     );
+  });
+});
+
+describe("游客首问入池(M58 批⑤)", () => {
+  const askBody = { input: { messages: [{ type: "human", content: "hi" }] } };
+  const runOnce = async (body: unknown): Promise<void> => {
+    const { getGuestThreadOwner } = await import("@/lib/agent/guest-threads");
+    vi.mocked(getGuestThreadOwner).mockResolvedValue("g-uuid");
+    identityMock.resolveAgentIdentity.mockResolvedValue({ kind: "guest", key: "g-uuid" });
+    quotaMock.tryConsumeGuestAskQuota.mockResolvedValue(true);
+    runMock.runAgentTurn.mockResolvedValue({
+      tokensIn: 1,
+      tokensOut: 1,
+      toolCalls: 0,
+      truncatedReason: null,
+      resolved: null,
+    });
+    const res = await POST(req(body), { params: Promise.resolve({ threadId: "g_t1" }) });
+    expect(res.status).toBe(200);
+    await res.text();
+  };
+
+  it("新提问:透传页面上下文(refId 前缀与后台页过滤由 sessions 侧收口)", async () => {
+    await runOnce({ ...askBody, context: { page: "搜索" } });
+    expect(sessionsMock.recordGuestFirstAsk).toHaveBeenCalledWith("g_t1", "hi", "搜索");
+    expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
+    // 匿名留档行同轮 touch:tokens=in+out,标题由 sessions 侧派生
+    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", "hi", 2);
+  });
+
+  it("无页面上下文:page 传 undefined,不伪造入口", async () => {
+    await runOnce(askBody);
+    expect(sessionsMock.recordGuestFirstAsk).toHaveBeenCalledWith("g_t1", "hi", undefined);
+  });
+
+  it("resume:touch 照常(内容已增量),message=null 不写标题", async () => {
+    await runOnce({ command: { resume: { message: "继续" } } });
+    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", null, 2);
+    expect(sessionsMock.recordGuestFirstAsk).not.toHaveBeenCalled();
   });
 });

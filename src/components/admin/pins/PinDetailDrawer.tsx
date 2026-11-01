@@ -208,7 +208,7 @@ export default function PinDetailDrawer({
                 const xhs = detail.channels.find((c) => c.channel === "xiaohongshu");
                 return (
                   <ChannelRow
-                    label="小红书(人工发布)"
+                    label="小红书(自动发布)"
                     ok={xhs?.status === "synced"}
                     note={
                       xhs
@@ -217,7 +217,7 @@ export default function PinDetailDrawer({
                           }${xhs.syncedAt ? ` · ${formatCnDateTime(new Date(xhs.syncedAt))}` : ""}${
                             xhs.publishId ? ` · ${xhs.publishId}` : ""
                           }`
-                        : "未分发 · 验收通过后执行「标记分发到小红书」"
+                        : "未分发 · 验收通过后到组装台「一键发布到小红书」"
                     }
                   />
                 );

@@ -1,16 +1,23 @@
 /**
  * admin 守卫单测(arch/05-services §3.2):钉安全契约——
- * role!=="admin" 一律不放行;页面路径 redirect、端点路径返回 null 由调用方定 401。
- * 边界 mock:issuer(会话校验)、next/headers(cookies)、next/navigation(redirect 抛出)。
+ * role!=="admin" 一律不放行;页面路径 redirect、端点路径返回 null 由调用方定 401;
+ * 深链回跳(P2-23)取 middleware 注入的 x-pathname,形不合法/缺失退回 /admin。
+ * 边界 mock:issuer(会话校验)、next/headers(cookies/headers)、next/navigation(redirect 抛出)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/issuer", () => ({ readFullSessionUser: vi.fn() }));
-vi.mock("next/headers", () => ({ cookies: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string): never => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   },
+}));
+
+const pathnameHeader = vi.fn<() => string | null>();
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(),
+  headers: () =>
+    Promise.resolve({ get: (k: string) => (k === "x-pathname" ? pathnameHeader() : null) }),
 }));
 
 import { cookies } from "next/headers";
@@ -46,12 +53,27 @@ describe("requireAdminPage(admin 页面守卫)", () => {
     expect(cookiesMock).toHaveBeenCalledOnce();
   });
 
-  it("非 admin 角色 → redirect 登录页(带 next 回跳)", async () => {
+  it("非 admin 角色 → redirect 登录页(带 next 深链回跳,middleware 注入的 x-pathname)", async () => {
     mockCookieHeader("ah_at=t");
     readFullSessionUserMock.mockResolvedValue(userClaims);
+    pathnameHeader.mockReturnValue("/admin/insight/discovery/");
+    await expect(requireAdminPage()).rejects.toThrow(
+      `NEXT_REDIRECT:${ADMIN_LOGIN_PATH}?next=/admin/insight/discovery/`,
+    );
+  });
+
+  it("x-pathname 缺失或非本域 admin 形(伪造头/外域/协议相对)→ next 退回 /admin", async () => {
+    mockCookieHeader(null);
+    readFullSessionUserMock.mockResolvedValue(null);
     await expect(requireAdminPage()).rejects.toThrow(
       `NEXT_REDIRECT:${ADMIN_LOGIN_PATH}?next=/admin`,
     );
+    for (const spoof of ["https://evil.example", "//evil.example", "/site/post/1"]) {
+      pathnameHeader.mockReturnValue(spoof);
+      await expect(requireAdminPage()).rejects.toThrow(
+        `NEXT_REDIRECT:${ADMIN_LOGIN_PATH}?next=/admin`,
+      );
+    }
   });
 
   it("无会话 → redirect 登录页", async () => {

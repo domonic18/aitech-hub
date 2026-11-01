@@ -4,7 +4,7 @@
  * 纯 div 零依赖(Sparkline 同取向)。
  */
 import type { InsightSource } from "@/lib/insight/ingest";
-import type { InsightTrendDay } from "@/lib/insight/trends";
+import type { InsightTrendDay } from "@/lib/insight/trend-series";
 
 import { SOURCE_COLORS, SOURCE_LABELS } from "./shared";
 

@@ -7,10 +7,15 @@
  * 回跳意图(2026-10-09 验收反馈):URL 无 next 时从 sessionStorage 便签兜底
  * 恢复(注册→离站点邮件验证链接→回来登录不丢目标);403 未认证也落便签;
  * 登录成功整跳前消费。注册链带 next 续传。
+ *
+ * M65:短信通道开启时增「密码登录 / 手机号验证码」双子页签。零 JS——radio
+ * 配合 `peer-checked`(:checked 兄弟选择器),RSC 直出、无 hydration 依赖;
+ * 两个面板都在 HTML 里(SEO/打印不依赖显隐)。通道关闭时退化为单面板。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import SmsLoginForm from "@/components/auth/SmsLoginForm";
 import {
   clearPostLoginNext,
   readPostLoginNext,
@@ -22,8 +27,22 @@ const FIELD =
   "w-full rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-text-1 placeholder:text-text-3 focus:border-line-hover focus:outline-none";
 const BTN =
   "w-full cursor-pointer rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60";
+const TAB =
+  "cursor-pointer rounded-sm border border-line bg-panel-2 px-3 py-2 text-center text-sm text-text-3 transition-colors";
+const TAB_PWD =
+  `${TAB} peer-checked/pwd:border-accent peer-checked/pwd:bg-panel peer-checked/pwd:text-text-1` +
+  " peer-focus-visible/pwd:ring-2 peer-focus-visible/pwd:ring-accent";
+const TAB_SMS =
+  `${TAB} peer-checked/sms:border-accent peer-checked/sms:bg-panel peer-checked/sms:text-text-1` +
+  " peer-focus-visible/sms:ring-2 peer-focus-visible/sms:ring-accent";
 
-export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
+export default function SiteLoginForm({
+  nextPath,
+  smsEnabled = false,
+}: {
+  nextPath: string;
+  smsEnabled?: boolean;
+}) {
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -95,8 +114,8 @@ export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
     }
   }
 
-  return (
-    <form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-4">
+  const passwordForm = (
+    <form onSubmit={submit} className="flex w-full flex-col gap-4">
       <div>
         <label className="mb-1 block text-xs font-medium text-text-2" htmlFor="login-account">
           账号(手机号 / 用户名 / 邮箱)
@@ -153,5 +172,37 @@ export default function SiteLoginForm({ nextPath }: { nextPath: string }) {
         </Link>
       </p>
     </form>
+  );
+
+  if (!smsEnabled) return <div className="w-full max-w-sm">{passwordForm}</div>;
+
+  return (
+    <div className="grid w-full max-w-sm grid-cols-2 gap-x-2 gap-y-5">
+      {/* 零 JS 页签:两个 radio 在 DOM 中先于 label 与面板,peer-checked 走兄弟选择器 */}
+      <input
+        id="login-tab-pwd"
+        type="radio"
+        name="login-tab"
+        defaultChecked
+        className="peer/pwd sr-only"
+      />
+      <input id="login-tab-sms" type="radio" name="login-tab" className="peer/sms sr-only" />
+      <label htmlFor="login-tab-pwd" className={TAB_PWD}>
+        密码登录
+      </label>
+      <label htmlFor="login-tab-sms" className={TAB_SMS}>
+        手机号验证码
+      </label>
+      <div className="col-span-2 hidden peer-checked/pwd:block" role="region" aria-label="密码登录">
+        {passwordForm}
+      </div>
+      <div
+        className="col-span-2 hidden peer-checked/sms:block"
+        role="region"
+        aria-label="手机号验证码登录"
+      >
+        <SmsLoginForm target={target} />
+      </div>
+    </div>
   );
 }

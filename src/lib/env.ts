@@ -38,11 +38,9 @@ const serverEnvSchema = z.object({
    *  轮换会使已存密文失效,需重导 Cookie、重录 API Key。 */
   AUTH_SECRET: z.string().min(16, "AUTH_SECRET 至少 16 字符"),
 
-  /** 腾讯云短信(三期用户短信登录;缺省留空不阻塞启动) */
-  TENCENT_SMS_SECRET_ID: z.string().default(""),
-  TENCENT_SMS_SECRET_KEY: z.string().default(""),
-  TENCENT_SMS_SDK_APP_ID: z.string().default(""),
-  TENCENT_SMS_SIGN_NAME: z.string().default(""),
+  /** 短信登录(M65)已入数据库 user_sms_config(阿里云号码认证服务 PNVS):
+   *  个人实名可用,签名由阿里云签发且可能轮换,故签名与凭据统一由后台维护,
+   *  此处不再有短信变量(与 SMTP/支付同规则)。 */
 
   /** 支付域(M21)已全部入数据库 pay_gateway_config(admin「支付配置」页
    *  唯一控制面:模式 off|mock|xunhu + 凭据 + 回调地址 + 关单 TTL;
@@ -61,6 +59,12 @@ const serverEnvSchema = z.object({
   /** 卡片渲染服务的媒体卷根(须与服务的 MEDIA_ROOT 及 compose 挂载一致):
    *  站内引图 /wp-content/uploads/* 据此改写 file:/// 绝对路径供 chromium 直读 */
   CARD_RENDERER_MEDIA_ROOT: z.string().default("/app/media"),
+
+  /** worker 反向调 web 的内部地址(M63 后续:榜单采集后 on-demand 失效页面缓存;
+   *  worker 无 Next 请求上下文,`revalidatePath` 只能由 web 端点代劳)。
+   *  dev 本地裸跑默认 127.0.0.1:3000;prod 容器网内为 http://web:3000(compose 注入)。
+   *  不可达只告警不拦采集——页面最迟仍由 ISR 窗口兜底 */
+  WEB_INTERNAL_URL: z.string().default("http://127.0.0.1:3000"),
 
   /** GitHub API 令牌(M11 项目展示;可选——空=未认证 60 req/h,白名单 ≤10 仓可用;
    *  配 token 提升至 5000/h。密钥仅 env,不入库不打日志) */

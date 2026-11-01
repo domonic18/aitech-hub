@@ -9,5 +9,5 @@ export async function GET(): Promise<NextResponse> {
   const body = await buildLlmsIndex();
   return new NextResponse(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
-  }) as NextResponse;
+  });
 }

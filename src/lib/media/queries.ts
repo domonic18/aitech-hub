@@ -7,11 +7,11 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { DAY_MS } from "@/lib/datetime";
 import {
   type MediaKind,
   type MediaRefFilter,
   type MediaStatus,
-  DAY_MS,
   MEDIA_LIMITS,
 } from "@/lib/media/media-schema";
 

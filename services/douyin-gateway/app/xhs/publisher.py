@@ -126,7 +126,12 @@ class XhsPublisher:
         ]
         if not pairs:
             raise XhsStateError("cookie 串解析为空")
-        context = await self._new_context()
+        # 引导自举:首配时 storage_state 尚不存在,不能走 _new_context(其前置
+        # 要求登录态已落盘——鸡生蛋死锁,2026-10-27 生产首配实测);此处裸建
+        # context 只带 viewport,验证登录通过后才落盘 storage_state
+        context = await self._browser.new_context(
+            viewport={"width": self._settings.viewport_width, "height": self._settings.viewport_height}
+        )
         await context.add_cookies(pairs)
         page = await context.new_page()
         try:
@@ -201,12 +206,18 @@ class XhsPublisher:
             logger.info("xhs.publish_done", pin_id=pin_id, ok=True, duration_ms=self._ms(t0))
             return XhsPublishResult(ok=True, note_url=None)
         except (XhsStateError, XhsStepError) as exc:
+            # 现场目录回填给 finally 的视频归置(2026-10-27 实弹:此赋值曾遗漏,
+            # artifact_dir 恒 None → 失败视频全走删除分支,现场只剩截图+DOM)
+            artifact_dir = getattr(exc, "artifact_dir", None)
             logger.warning("xhs.publish_done", pin_id=pin_id, ok=False,
                 kind=KIND_LOGIN if isinstance(exc, XhsStateError) else exc.kind,
                 duration_ms=self._ms(t0), error=str(exc)[:200],
-                artifact=getattr(exc, "artifact_dir", None))
+                artifact=artifact_dir)
             raise
         finally:
             video = page.video
-            await context.close()
+            try:
+                await context.close()  # 关闭后视频才写完,失败不得阻断归置
+            except Exception as exc:
+                logger.warning("xhs.context_close_failed", error=str(exc))
             await settle_video(video, artifact_dir)

@@ -1,6 +1,7 @@
 /**
  * 后台会话详情 API(K2.6 需求5):meta 统计 + checkpoint 消息时间线。
- * 游客过期(归属键消失)只返 meta 且 expired=true,前端标「已过期」。
+ * 游客归属键消失不影响内容(匿名留档行 30 天);expired=true 仅表示正文已被
+ * 清退,此时只返 meta,前端标「已过期」。
  */
 import { type NextRequest, NextResponse } from "next/server";
 

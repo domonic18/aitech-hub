@@ -1815,9 +1815,12 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     expect(await (await request.get("/feed.xml")).text()).toContain(SITE_TITLE);
 
     // ── /articles/:tag 筛选条(全部 + 新 tag 链)→ tag 路由过滤闭环
+    // 2026-11-01 列表页重构:标签默认只出 Top10,其余折进 <details>,先展开再点
     await page.goto("/articles/");
     const bar = page.locator("nav[aria-label='按标签筛选']");
     await expect(bar).toBeVisible();
+    const moreTags = bar.locator("summary", { hasText: "更多标签" });
+    if ((await moreTags.count()) > 0) await moreTags.click();
     const tagLink = bar.getByRole("link", { name: /e2e标签甲/ });
     await expect(tagLink).toHaveAttribute("href", `/tag/${TAG_SLUG}/`);
     await tagLink.click();
@@ -1829,6 +1832,9 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     const cardsBtn = page.getByTitle("卡片视图");
     await expect(cardsBtn).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("article h2").first()).toBeVisible(); // 列表形态:h2 标题卡
+    // 列表视图带缩略图(2026-11-01 重构):一页里至少一条有真封面即可
+    // (无封面行走 CoverPlaceholder,不能用 .first() 绑定首行数据态)
+    expect(await page.locator("article:has(h2) img").count()).toBeGreaterThan(0);
     await expect(page.locator("article div.p-4").first()).toBeHidden(); // 卡片形态藏
     await cardsBtn.click();
     await expect(cardsBtn).toHaveAttribute("aria-pressed", "true");
@@ -2556,24 +2562,27 @@ async function e2eAdminLogin(page: import("@playwright/test").Page): Promise<voi
   await page.waitForURL(/\/admin\/?$/);
 }
 
-test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口禁用+sync 400)", async ({ page }) => {
+test("27. 分发中心页(M17:配置卡渲染/记录空态/渠道未就绪入口禁用+sync 400)", async ({ page }) => {
   const snap = await snapshotWechatConfig();
   // 记录表空态隔离:回灌库带历史同步记录——快照清场,finally 原样回灌
   // (id 不复原,断言不依赖)
   const syncRecords = await prisma.publishChannel.findMany();
   await prisma.publishChannel.deleteMany();
+  // M50 批B:跨载体 union 后贴图渠道行也进记录表,一并清场/回灌
+  const pinChannels = await prisma.contentPinChannel.findMany();
+  await prisma.contentPinChannel.deleteMany();
   try {
     // 未配置确定性环境:清单例行(页面 get-or-create 会落默认禁用行)
     await prisma.wechatConfig.deleteMany({ where: { id: 1 } });
     await e2eAdminLogin(page);
 
-    // 27.1 配置卡(掩码视图)+ 记录表空态
+    // 27.1 配置卡(未启用态)+ 记录表空态
+    // M46 批F11 卡面改版:AppID/默认主题等明细移入配置弹窗(用例 28 覆盖),
+    // 卡面只留 chip + meta;此处断言未配置态卡面与空态
     await page.goto("/admin/distribute");
-    await expect(page.getByRole("heading", { name: "内容分发" })).toBeVisible();
-    await expect(page.getByText("AppID").first()).toBeVisible();
-    await expect(page.getByText("未录入")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "分发中心" })).toBeVisible();
+    await expect(page.getByText("未启用").first()).toBeVisible();
     await expect(page.getByText("暂无同步记录")).toBeVisible();
-    await expect(page.getByText("默认主题")).toBeVisible(); // 配置卡含默认主题(主题扩展批⑧)
 
     // 27.2 未就绪:文章列表批量「同步公众号」禁用 + 指引 tooltip(行内同步钮同款禁用)
     await page.goto("/admin/posts/");
@@ -2594,6 +2603,23 @@ test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口
     expect(((await res.json()) as { message: string }).message).toContain("公众号渠道未就绪");
   } finally {
     await prisma.publishChannel.deleteMany();
+    await prisma.contentPinChannel.deleteMany();
+    if (pinChannels.length > 0) {
+      await prisma.contentPinChannel.createMany({
+        data: pinChannels.map((r) => ({
+          pinId: r.pinId,
+          channel: r.channel,
+          status: r.status,
+          mediaId: r.mediaId,
+          publishId: r.publishId,
+          attempts: r.attempts,
+          lastError: r.lastError,
+          syncedAt: r.syncedAt,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+        })),
+      });
+    }
     if (syncRecords.length > 0) {
       await prisma.publishChannel.createMany({
         // 显式列字段(批X1 起行含 data JSON 列,Json.Value 不可直入 CreateManyInput)
@@ -2615,6 +2641,79 @@ test("27. 内容分发页(M17:配置卡渲染/记录空态/渠道未就绪入口
       });
     }
     await restoreWechatConfig(snap);
+  }
+});
+
+test("27b. 分发记录跨载体汇总(M50 批B/F:载体归因/chips 筛选/探照三态)", async ({ page }) => {
+  const MARK = "e2e-m50-union";
+  // 幂等:上轮失败残留先清(finally 兜底外的极端残留)
+  await prisma.contentPin.deleteMany({ where: { title: { startsWith: MARK } } });
+  // 种子:贴图(xhs synced + wechat failed)+ 文章渠道行 + 探照快照
+  const pin = await prisma.contentPin.create({
+    data: {
+      title: `${MARK} 贴图`,
+      content: "M50 跨载体验收",
+      status: "synced",
+      cropSpec: "1_1",
+      channels: {
+        create: [
+          {
+            channel: "xiaohongshu",
+            status: "synced",
+            publishId: "https://www.xiaohongshu.com/explore/e2e-m50",
+            attempts: 1,
+            syncedAt: new Date(),
+          },
+          { channel: "wechat", status: "failed", attempts: 2, lastError: "e2e 模拟失败" },
+        ],
+      },
+    },
+  });
+  const anyPost = await prisma.post.findFirst({ select: { id: true } });
+  expect(anyPost).not.toBeNull(); // dev 库空库不跑本用例(数据态耦合,见文件头注)
+  const artChannel = await prisma.publishChannel.create({
+    data: { postId: anyPost!.id, channel: "wechat", status: "synced", attempts: 1 },
+  });
+  const probeValue = JSON.stringify({
+    checkedAt: new Date().toISOString(),
+    loggedIn: true,
+    storageReady: true,
+    error: null,
+  });
+  await prisma.siteConfig.upsert({
+    where: { key: "distribute.xhs_state" },
+    update: { value: probeValue },
+    create: { key: "distribute.xhs_state", value: probeValue },
+  });
+  try {
+    await e2eAdminLogin(page);
+
+    // 27b.1 缺省列表:双载体行并存,渠道名带载体小注;chips 含双渠道
+    await page.goto("/admin/distribute");
+    await expect(page.getByRole("heading", { name: "分发中心" })).toBeVisible();
+    await expect(page.getByText("小红书· 贴图").first()).toBeVisible();
+    await expect(page.getByText("微信公众号· 文章").first()).toBeVisible();
+    // 小红书行推送结果=笔记外链;内容列链组装台
+    await expect(page.getByRole("link", { name: "查看笔记 ↗" }).first()).toBeVisible();
+    const studioLink = page.getByRole("link", { name: `${MARK} 贴图` }).first();
+    await expect(studioLink).toHaveAttribute("href", /\/admin\/studio\/\d+/);
+    // 文章行仍链文章编辑
+    await expect(page.getByRole("link", { name: /\S+/ }).first()).toBeVisible();
+
+    // 27b.2 channel=xiaohongshu 筛选:仅贴图行,公众号文章行不出现
+    await page.goto("/admin/distribute?channel=xiaohongshu");
+    await expect(page.getByText("小红书· 贴图").first()).toBeVisible();
+    await expect(page.getByText("微信公众号· 文章")).toHaveCount(0);
+
+    // 27b.3 探照三态:种子 loggedIn=true → 卡面「已连接」chip + 每日探测行
+    await expect(page.getByText("已连接", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/每日探测:/)).toBeVisible();
+    await expect(page.getByText(/每日探测:.* · 有效/)).toBeVisible();
+  } finally {
+    await prisma.contentPinChannel.deleteMany({ where: { pinId: pin.id } });
+    await prisma.contentPin.delete({ where: { id: pin.id } });
+    await prisma.publishChannel.delete({ where: { id: artChannel.id } });
+    await prisma.siteConfig.deleteMany({ where: { key: "distribute.xhs_state" } });
   }
 });
 

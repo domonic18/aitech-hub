@@ -38,7 +38,7 @@ function serveMarkdown(post: {
     : source;
   return new NextResponse(body, {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },
-  }) as NextResponse;
+  });
 }
 
 export async function GET(
@@ -51,7 +51,7 @@ export async function GET(
     const parsed = parsePostSegment(slug[1]);
     const post = parsed ? await getPostById(parsed.id) : null;
     const body = post ? serveMarkdown(post) : null;
-    return (body ?? new NextResponse("Not Found\n", { status: 404 })) as NextResponse;
+    return body ?? new NextResponse("Not Found\n", { status: 404 });
   }
   // 旧单段:/md/<encoded-slug>(rewrite 自 /<slug>.md)→ 映射表命中 /post/** 才 301,其余 404
   if (slug.length === 1) {
@@ -59,8 +59,8 @@ export async function GET(
     const lookup = await lookupLegacyPath(buildLegacyPath([raw]));
     if (lookup !== "miss" && lookup.targetUrl !== null && lookup.targetUrl.startsWith("/post/")) {
       const target = `${lookup.targetUrl.replace(/\/$/, "")}.md`;
-      return NextResponse.redirect(absoluteUrl(target), 301) as NextResponse;
+      return NextResponse.redirect(absoluteUrl(target), 301);
     }
   }
-  return new NextResponse("Not Found\n", { status: 404 }) as NextResponse;
+  return new NextResponse("Not Found\n", { status: 404 });
 }

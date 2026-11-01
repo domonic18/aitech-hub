@@ -13,6 +13,7 @@ import { INSIGHT_SOURCES_ENABLED } from "./ingest";
 import {
   CLUSTER_MATCH_DISTANCE,
   CLUSTER_MIN_TEXT_LEN,
+  CLUSTER_SHORT_MATCH_DISTANCE,
   INSIGHT_MEDIA_VOCAB,
   INSIGHT_SOURCE_KIND,
 } from "./constants";
@@ -29,14 +30,25 @@ export interface AssignDecision {
   clusterId?: bigint;
 }
 
-/** 归簇判定(纯函数):文本过短不入簇;最近簇距离 ≤ 阈值归簇,否则建新簇 */
+/** 归簇判定(纯函数):短文本不建簇、仅严阈值就近归入既有簇(M52 批D,
+ * outlier reduction 思路);正常文本距离 ≤ 阈值归簇,否则建新簇 */
 export function decideAssignment(
   nearest: ClusterNearMatch | undefined,
   textLen: number,
   minTextLen: number,
   matchDistance: number,
+  shortMatchDistance?: number,
 ): AssignDecision {
-  if (textLen < minTextLen) return { action: "short" };
+  if (textLen < minTextLen) {
+    if (
+      shortMatchDistance !== undefined &&
+      nearest !== undefined &&
+      nearest.distance <= shortMatchDistance
+    ) {
+      return { action: "join", clusterId: nearest.clusterId };
+    }
+    return { action: "short" };
+  }
   if (nearest !== undefined && nearest.distance <= matchDistance) {
     return { action: "join", clusterId: nearest.clusterId };
   }
@@ -56,6 +68,21 @@ export function unionMedia(medias: (readonly string[] | null | undefined)[]): st
   return [...set];
 }
 
+/** 簇地域(纯函数,M58 批①):成员地域多数派;cn/global 差距 <20% 记 mixed;
+ * 无地域(未知源/存量空值)返回 null。打标时回写,建簇时取首条信号值兜底。 */
+export function majorityRegion(regions: (string | null | undefined)[]): string | null {
+  let cn = 0;
+  let global = 0;
+  for (const r of regions) {
+    if (r === "cn") cn += 1;
+    else if (r === "global") global += 1;
+  }
+  const total = cn + global;
+  if (total === 0) return null;
+  if (cn > 0 && global > 0 && Math.abs(cn - global) / total < 0.2) return "mixed";
+  return cn >= global ? "cn" : "global";
+}
+
 export interface ClusterRunSummary {
   /** 本轮工作集大小 */
   scanned: number;
@@ -70,9 +97,8 @@ export interface ClusterRunSummary {
 
 /** 聚类主流程(embed job 与手动脚本共用;process 级自愈,不抛) */
 export async function runInsightClustering(limit: number): Promise<ClusterRunSummary> {
-  const workset = await findUnclusteredSignals(limit, CLUSTER_MIN_TEXT_LEN, [
-    ...INSIGHT_SOURCES_ENABLED,
-  ]);
+  // 工作集下限 1(M52 批D):短文本进工作集走严配归簇,不再整段盲区
+  const workset = await findUnclusteredSignals(limit, 1, [...INSIGHT_SOURCES_ENABLED]);
   const summary: ClusterRunSummary = {
     scanned: workset.length,
     joined: 0,
@@ -90,13 +116,14 @@ export async function runInsightClustering(limit: number): Promise<ClusterRunSum
         summary.short += 1;
         continue;
       }
-      // 单池近邻:跨 kind 搜索(痛点扩围,见模块头注)
-      const nearest = await nearestClustersByMembers(sig.vector, "tech", 1);
+      // 单池近邻:按信号自身领域搜索(M54 同域分桶——领域来自分类 sweep)
+      const nearest = await nearestClustersByMembers(sig.vector, sig.domain, 1);
       const decision = decideAssignment(
         nearest[0],
         sig.normalizedText.length,
         CLUSTER_MIN_TEXT_LEN,
         CLUSTER_MATCH_DISTANCE,
+        CLUSTER_SHORT_MATCH_DISTANCE,
       );
       if (decision.action === "short") {
         summary.short += 1;
@@ -121,12 +148,14 @@ export async function runInsightClustering(limit: number): Promise<ClusterRunSum
         summary.joined += 1;
       } else {
         // 建新簇:kind=源映射引导值(LLM 打标日批按语义覆判);label 未打标
-        // null,LLM 日批回填;media=首条信号介质,
+        // null,LLM 日批回填;media=首条信号介质,region=首条信号地域(M58,
+        // 打标时按成员多数派重算),
         // 嵌套 create 同事务落 member(原子,防半建簇)
         await prisma.insightCluster.create({
           data: {
             kind,
-            domain: "tech",
+            domain: sig.domain,
+            region: sig.region,
             media: [sig.medium],
             members: { create: { signalId: sig.id, weight: 1 } },
           },

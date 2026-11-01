@@ -4,7 +4,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
+import { requireAccountRequest } from "@/lib/auth/guard";
 import { assistantVisibleSchema } from "@/lib/users/account-schema";
 import { prisma } from "@/lib/db";
 import { isSameOrigin } from "@/lib/http/origin";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   if (!isSameOrigin(req)) return apiEnvelope(403, "cross-origin forbidden");
-  const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
+  const session = await requireAccountRequest(req);
   if (!session) return apiEnvelope(401, "unauthorized");
 
   const parsed = assistantVisibleSchema.safeParse(await req.json().catch(() => null));

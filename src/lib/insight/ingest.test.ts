@@ -20,12 +20,20 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const queueAdd = vi.fn();
+vi.mock("@/lib/queue", () => ({
+  QUEUE_INSIGHT: "insight",
+  INSIGHT_JOB_TRANSLATE: "translate",
+  getQueue: () => ({ add: (...a: unknown[]) => queueAdd(...a) }),
+}));
+
 import { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM, ingestInsightSignal } from "./ingest";
 
 beforeEach(() => {
   vi.clearAllMocks();
   signalCreate.mockResolvedValue({ id: BigInt(1) });
   signalUpdateMany.mockResolvedValue({ count: 1 });
+  queueAdd.mockResolvedValue({ id: "insight-translate-1" });
 });
 
 describe("ingestInsightSignal", () => {
@@ -42,23 +50,81 @@ describe("ingestInsightSignal", () => {
       data: {
         source: "internal-comment",
         medium: "voice",
+        lang: "zh",
+        region: "cn",
         refId: "42",
         rawText: "怎么用  AI 做\n\tPPT",
         normalizedText: "怎么用 AI 做 PPT",
+        translationStatus: "none",
+        domain: "unclassified",
         meta: { foo: 1 },
         signalAt: new Date("2026-10-17T08:00:00+08:00"),
       },
       select: { id: true },
     });
+    // 中文源零翻译开销:不入翻译队列
+    expect(queueAdd).not.toHaveBeenCalled();
   });
 
-  it("在役源逐一映射介质(评论/电报AI/热榜三源;方案 §2 五介质口径)", async () => {
+  it("非中文源(M58):逐条 lang 覆盖 → pending + 入翻译队列(单条 job)", async () => {
+    const r = await ingestInsightSignal({
+      source: "internal-comment",
+      refId: "en-1",
+      rawText: "How to use Claude Code",
+      signalAt: new Date(0),
+      lang: "en",
+      region: "global",
+    });
+    expect(r).toBe("ingested");
+    expect(signalCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lang: "en",
+          region: "global",
+          translationStatus: "pending",
+        }),
+      }),
+    );
+    expect(queueAdd).toHaveBeenCalledWith(
+      "translate",
+      { signalId: "1" },
+      expect.objectContaining({ jobId: "insight-translate-1", attempts: 1, removeOnFail: true }),
+    );
+  });
+
+  it("翻译入队失败不影响入池(Redis 抖动,扫尾 cron 兜底)", async () => {
+    queueAdd.mockRejectedValueOnce(new Error("redis down"));
+    const r = await ingestInsightSignal({
+      source: "internal-comment",
+      refId: "en-2",
+      rawText: "Hello world",
+      signalAt: new Date(0),
+      lang: "en",
+    });
+    expect(r).toBe("ingested");
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "insight.translate_enqueue_failed" }),
+    );
+  });
+
+  it("在役源逐一映射介质(评论/电报AI/热榜三源/厂商六源/社区四源;方案 §2 五介质口径)", async () => {
     expect([...INSIGHT_SOURCES_ENABLED].sort()).toEqual([
+      "community-baidu",
+      "community-hn",
+      "community-oss",
+      "community-v2ex",
       "hot-baidu",
       "hot-bilibili",
       "hot-zhihu",
+      "internal-agent",
       "internal-comment",
       "telegram-ai",
+      "vendor-anthropic",
+      "vendor-deepseek",
+      "vendor-google",
+      "vendor-kimi",
+      "vendor-openai",
+      "vendor-qwen",
     ]);
     for (const [source, medium] of Object.entries(INSIGHT_SOURCE_MEDIUM)) {
       await ingestInsightSignal({
@@ -75,8 +141,8 @@ describe("ingestInsightSignal", () => {
     }
   });
 
-  it("停接源短路返 disabled,零写入零日志(批③ 渠道转向闸)", async () => {
-    for (const source of ["internal-search", "internal-agent", "internal-feedback"] as const) {
+  it("停接源短路返 disabled,零写入零日志(批③ 渠道转向闸;批⑤ 复活 internal-agent)", async () => {
+    for (const source of ["internal-search", "internal-feedback"] as const) {
       const r = await ingestInsightSignal({
         source,
         refId: "1",

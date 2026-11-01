@@ -17,6 +17,8 @@ import { useState } from "react";
 
 import { FEED_CHIP_TONE_CLASSES, type FeedChipTone } from "@/lib/telegram/feed-view";
 
+import { TelegramPoints } from "./telegram/TelegramPoints";
+
 /** 行网格统一口径——BandPoints 依赖同模板取标题列,改动时两处同改。 */
 export const ROW_GRID = "grid grid-cols-[54px_1fr] gap-x-3 px-5 sm:grid-cols-[74px_164px_1fr_auto]";
 
@@ -104,32 +106,14 @@ export function BandCover({ src, duration }: { src: string | null; duration: str
   );
 }
 
-/** AI 要点折叠块(与电报流页「关键要点 ×N」同款数据):默认展开;复用 ROW_GRID
- * 取标题列(窄屏 col2/sm+ col3)与行标题结构化对齐;summary chevron 旋转 +
- * hover 反馈(-mx-1.5 抵消内边距,使 caret 落在标题列起点)。 */
+/** AI 要点折叠块(P2-14a:details 富 summary/要点列表已收敛 telegram/TelegramPoints
+ * band 变体;本件只保留行网格外壳——复用 ROW_GRID 取标题列(窄屏 col2/sm+ col3)
+ * 与行标题结构化对齐)。 */
 export function BandPoints({ points }: { points: readonly string[] }) {
   if (points.length === 0) return null;
   return (
     <div className={`${ROW_GRID} pb-2.5`}>
-      <details open className="group col-start-2 sm:col-start-3">
-        <summary className="-mx-1.5 flex cursor-pointer list-none items-center gap-1.5 rounded-sm px-1.5 py-1 text-[11px] text-text-3 transition-colors hover:bg-panel hover:text-text-1 [&::-webkit-details-marker]:hidden">
-          <svg
-            className="ic ic-sm flex-none text-text-3 transition-transform duration-200 group-open:rotate-90"
-            aria-hidden="true"
-          >
-            <use href="#i-caret-right-fill" />
-          </svg>
-          <span className="font-medium">关键要点</span>
-          <span className="rounded-full bg-panel-2 px-1.5 font-mono text-[10px] leading-4">
-            ×{points.length}
-          </span>
-        </summary>
-        <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed text-text-2">
-          {points.map((p, i) => (
-            <li key={i}>{p}</li>
-          ))}
-        </ul>
-      </details>
+      <TelegramPoints variant="band" points={points} />
     </div>
   );
 }

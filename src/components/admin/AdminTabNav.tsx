@@ -15,12 +15,23 @@ export default function AdminTabNav({
   items: ReadonlyArray<{ label: string; href: string }>;
 }): React.ReactElement {
   const pathname = usePathname();
+  // 壳根页签(如设置「常规」/admin/settings/)只精确点亮:否则它会前缀命中
+  // 其余所有子页,出现两个页签同时高亮。根 = 所有页签 base 的公共前缀。
+  const bases = items.map((t) => t.href.replace(/\/+$/, ""));
+  const commonBase = bases.reduce((acc, b) => {
+    let i = 0;
+    while (i < acc.length && i < b.length && acc[i] === b[i]) i += 1;
+    return acc.slice(0, i);
+  });
   return (
     <div className="flex flex-wrap overflow-hidden rounded-sm border border-line">
-      {items.map((t) => {
+      {items.map((t, idx) => {
         // 前缀匹配去尾斜杠归一(数据壳:洞察页签需点亮 /admin/insight/clusters/… 详情页)
-        const base = t.href.replace(/\/+$/, "");
-        const active = pathname === t.href || pathname === base || pathname.startsWith(`${base}/`);
+        const base = bases[idx];
+        const isShellRoot = base === commonBase;
+        const active = isShellRoot
+          ? pathname === t.href || pathname === base
+          : pathname === t.href || pathname === base || pathname.startsWith(`${base}/`);
         return (
           <Link
             key={t.href}

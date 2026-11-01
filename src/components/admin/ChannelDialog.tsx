@@ -8,7 +8,13 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { CRAWL_SOURCE_TYPES_IMPLEMENTED } from "@/lib/telegram/constants";
+import {
+  CRAWL_SOURCE_TYPE_COMMUNITY,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
+  CRAWL_SOURCE_TYPE_PRICING,
+  CRAWL_SOURCE_TYPE_VENDOR,
+  CRAWL_SOURCE_TYPES_IMPLEMENTED,
+} from "@/lib/collect/constants";
 import { field } from "@/components/admin/form-fields";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -24,6 +30,8 @@ export interface ChannelDialogData {
   remark: string | null;
   enabled: boolean;
   credentialMask: string;
+  /** 扩展配置 JSON 预填(凭证键已剔除;空串=无) */
+  configJson: string;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -31,7 +39,20 @@ const TYPE_LABELS: Record<string, string> = {
   web: "网页",
   api: "API",
   "social-video": "社交/视频",
+  pricing: "牌价(注册表)",
+  vendor: "厂商动态(注册表)",
+  leaderboard: "榜单(注册表)",
+  community: "社区语料(注册表)",
 };
+
+/** 注册表型渠道由 worker 启动种子登记(config 里的 *Key 是路由锚),不允许手选;
+ * 编辑既有注册表行时只回显原类型(服务端同样拒绝类型变更) */
+const REGISTRY_TYPES: readonly string[] = [
+  CRAWL_SOURCE_TYPE_PRICING,
+  CRAWL_SOURCE_TYPE_VENDOR,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
+  CRAWL_SOURCE_TYPE_COMMUNITY,
+];
 
 export default function ChannelDialog({
   label,
@@ -44,6 +65,11 @@ export default function ChannelDialog({
 }) {
   const router = useRouter();
   const editing = channel !== undefined;
+  // 注册表行的类型锁定为原值;其余场景隐藏注册表类型(不可手选)
+  const typeChoices =
+    channel !== undefined && REGISTRY_TYPES.includes(channel.type)
+      ? [channel.type]
+      : CRAWL_SOURCE_TYPES_IMPLEMENTED.filter((t) => !REGISTRY_TYPES.includes(t));
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +80,7 @@ export default function ChannelDialog({
   const [interval, setIntervalMin] = useState(String(channel?.crawlIntervalMin ?? 30));
   const [dailyMax, setDailyMax] = useState(channel?.dailyMaxRequests?.toString() ?? "");
   const [remark, setRemark] = useState(channel?.remark ?? "");
+  const [configJson, setConfigJson] = useState(channel?.configJson ?? "");
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const [token, setToken] = useState("");
   const [clearToken, setClearToken] = useState(false);
@@ -69,6 +96,21 @@ export default function ChannelDialog({
   const submit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
+    // 扩展配置:空=不改;非空须为 JSON 对象(服务端还会校验体积/凭证键)
+    let configPatch: Record<string, unknown> | undefined;
+    if (configJson.trim() !== "") {
+      try {
+        const parsed: unknown = JSON.parse(configJson);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new Error("not an object");
+        }
+        configPatch = parsed as Record<string, unknown>;
+      } catch {
+        setError('扩展配置须为 JSON 对象(如 {"repos": ["owner/repo"]})');
+        setBusy(false);
+        return;
+      }
+    }
     const payload: Record<string, unknown> = {
       name,
       type,
@@ -78,6 +120,7 @@ export default function ChannelDialog({
       dailyMaxRequests: dailyMax.trim() === "" ? null : Number(dailyMax),
       remark: remark.trim() || null,
       enabled,
+      ...(configPatch === undefined ? {} : { config: configPatch }),
     };
     if (clearToken) payload.token = "";
     else if (token.trim() !== "") payload.token = token.trim();
@@ -136,8 +179,8 @@ export default function ChannelDialog({
                 onChange={(e) => setType(e.target.value)}
                 className={`mt-1 ${field}`}
               >
-                {CRAWL_SOURCE_TYPES_IMPLEMENTED.map((t) => (
-                  <option key={t} value={t}>
+                {typeChoices.map((t) => (
+                  <option key={t} value={t} disabled={REGISTRY_TYPES.includes(t)}>
                     {TYPE_LABELS[t] ?? t}
                   </option>
                 ))}
@@ -200,6 +243,17 @@ export default function ChannelDialog({
                 onChange={(e) => setRemark(e.target.value)}
                 maxLength={200}
                 className={`mt-1 ${field}`}
+              />
+            </label>
+            <label className="sm:col-span-2 text-xs text-text-3">
+              扩展配置(JSON 对象;留空=不改,凭证仍走上一栏)
+              <textarea
+                value={configJson}
+                onChange={(e) => setConfigJson(e.target.value)}
+                rows={4}
+                spellCheck={false}
+                placeholder={'{"repos": ["owner/repo"]}'}
+                className={`mt-1 font-mono ${field}`}
               />
             </label>
           </div>

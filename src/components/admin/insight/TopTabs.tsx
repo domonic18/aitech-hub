@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * 洞察中心顶部双 chip(F11/F10 板 stBar:分析总览 | 发现),真实路由切换。
- * 簇详情页(/admin/insight/clusters/…)板面无 stBar(F25/F26),返回 null 隐藏。
+ * 洞察中心顶部 chips(F11/F10 板 stBar:分析总览 | 发现;M58 批② 增 事件,
+ * M59 增 信号 / 实体),真实路由切换。簇详情页(/admin/insight/clusters/…)板面
+ * 无 stBar(F25/F26),返回 null 隐藏。
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,17 +11,24 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { label: "分析总览", href: "/admin/insight/", base: "/admin/insight" },
   { label: "发现", href: "/admin/insight/discovery/", base: "/admin/insight/discovery" },
+  { label: "信号", href: "/admin/insight/signals/", base: "/admin/insight/signals" },
+  { label: "事件", href: "/admin/insight/events/", base: "/admin/insight/events" },
+  { label: "实体", href: "/admin/insight/entities/", base: "/admin/insight/entities" },
 ] as const;
 
 export default function InsightTopTabs(): React.ReactElement | null {
   const pathname = usePathname();
-  // clusters 详情不点亮任一 chip → 详情页态,整条隐藏
-  const active = ITEMS.find(
+  // 簇详情是独立板面(无 stBar):整条隐藏(总览 base 是其余页面的前缀,
+  // 不显式排除会被误点亮)
+  if (pathname.startsWith("/admin/insight/clusters/")) return null;
+  // 其余页面取最长 base 命中(如 /admin/insight/events 同时命中总览 base)
+  const active = ITEMS.filter(
     (t) => pathname === t.href || pathname === t.base || pathname.startsWith(`${t.base}/`),
-  );
+  ).sort((a, b) => b.base.length - a.base.length)[0];
   if (active === undefined) return null;
+  // 窄屏(≤320)五个 chip 挤成一字一行 → 横向滚动条,单个 chip 不再压缩折行
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 py-0.5">
       {ITEMS.map((t) => {
         const on = t.label === active.label;
         return (
@@ -28,7 +36,7 @@ export default function InsightTopTabs(): React.ReactElement | null {
             key={t.label}
             href={t.href}
             aria-current={on ? "page" : undefined}
-            className={`rounded-sm px-3 py-1.5 text-[12.5px] ${
+            className={`shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1.5 text-[13px] sm:px-3 ${
               on
                 ? "bg-accent-dim font-semibold text-accent"
                 : "bg-panel-2 text-text-2 hover:text-text-1"

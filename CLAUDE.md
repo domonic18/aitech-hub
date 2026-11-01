@@ -7,7 +7,10 @@
 - **架构**:Next.js 15 全栈单体(App Router RSC/ISR + Route Handlers)+ Prisma/PostgreSQL
   + Redis/BullMQ worker;公开品牌与域名沿用 17aitech
 - **关键约束**:文章 URL 终态 `/post/<id>-<slug>`(id 锚定,2026-10 迁移,旧中文链 301/410 承接);
-  296 老用户短信登录继承(三期开启——运营商个人签名资质停发,一期仅 admin 密码鉴权);
+  手机号短信验证码登录已上线(2026-10 M65,阿里云 PNVS 替代原三期方案;296 老用户中 243 个有手机号可直登,
+  admin 账号禁用短信登录);
+  公众号私信问答(2026-11 M66,认证订阅号**无客服消息权限**,只走 5 秒被动回复:关键词直连 /
+  站内检索+LLM ≤4.2s / 超时「继续」回捞,无站内命中不生成;飞书站务通知凭据只入库、不入 env/代码);
   154 篇原创文章及其引用图片全量迁移;3314 篇爬虫资讯弃用(301 承接)
 
 ## 2. 项目结构
@@ -15,7 +18,7 @@
 **⚠️ 执行任何任务前,先读本文件;涉及哪一层,再读 docs/ 对应 arch 文档(按需,勿全量加载)。**
 
 - `src/app/(site|user|admin)/` 页面(用户中心落 `(site)/account` 共享站点壳,不开 `(user)` 组;悬浮 AI 助手挂 `(site)/layout` 全站);`src/app/api/` Route Handlers(admin API 按惯例落顶层域目录如 `/api/users`、`/api/feedback`,无 `/api/admin/` 命名空间);`src/lib/` 业务库(按 domain 分包)
-- `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/` 分 ops/(长期运维,npm 绑定)与 oneoff/(一次性订正/清洗,应用后删除、git 历史存档),脚本 docblock 带 @status;`services/douyin-gateway/` 抖音数据网关(Python sidecar,独立镜像,契约 arch/05 §4.4);`services/card-renderer/` 卡片渲染 sidecar(HTML→PNG,Node+chromium,契约 arch/05 §4.6)
+- `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/` 分 ops/(长期运维,npm 绑定)与 oneoff/(一次性订正/清洗,应用后删除、git 历史存档),脚本 docblock 带 @status;`services/douyin-gateway/` 数据网关(抖音采集+小红书发布,Python sidecar,独立镜像,契约 arch/05 §4.4);`services/card-renderer/` 卡片渲染 sidecar(HTML→PNG,Node+chromium,契约 arch/05 §4.6)
 - `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库
 - 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)plan/development-plan.md(状态真相源)
 
@@ -33,6 +36,7 @@
 | 原型设计规范(令牌/图标/组件) | docs/prototypes/DESIGN-SPEC.md   |
 | 后台 UI/IA 设计板(Ardot 定稿) | 文件 739246438907714(F1-F27;创作域已落码,余域待立项) |
 | 测试规范                      | docs/standard/01-testing         |
+| 数据库命名规范(表/列/索引)   | docs/standard/03-db-naming       |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
 
 ## 3. 通用编码规范与 AI 指令
@@ -49,6 +53,9 @@
   `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
 - 数据库:schema 只经 prisma/migrations 变更(forward-only);跑 `npx prisma migrate deploy`;
   禁止改已应用迁移;禁止 create_all 式建表。
+- 数据库命名红线:新建/改动表与索引必须遵守 `docs/standard/03-db-naming`(表名带域前缀;
+  `@unique`/`@@unique`/`@@index` 必带 `map`,禁裸写法;FK 列必配索引);存量例外见该文 §7,
+  只登记不回改。
 - 端口:本地 web:3000 / pg:5434 / redis:6380。
 
 ## 4. 任务完成后协议

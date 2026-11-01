@@ -9,6 +9,7 @@
 
 /** 媒体体检每日调度(避开整点;arch/08-media §3.2;worker 与媒体库页脚同源,评审 W2) */
 export const MEDIA_AUDIT_CRON = "41 3 * * *";
+// 牌价渠道采集(M55 批C;M56 批B 起并入 crawl_source tick 频率调度,无独立 cron)
 
 /** 访问明细 7 天保留期清理(M10 批⑥;凌晨档避开 media-audit) */
 export const VISIT_LOG_PURGE_CRON = "14 4 * * *";
@@ -25,6 +26,13 @@ export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
 /** 任务运行台账 30 天保留期清理(验收二批③;04 点清理带错峰:14 访问 / 23 封面 /
  * 33 会话 / 47 任务台账 / 52 用量) */
 export const JOB_RUN_PURGE_CRON = "47 4 * * *";
+
+/** 榜单展示汇率日采 04:43(M63 v2.1:美元→人民币,价格双币切换用;错峰卡在
+ * 04:33 会话清退与 04:47 任务台账之间,单请求任务) */
+export const LEADERBOARD_FX_CRON = "43 4 * * *";
+
+/** 公众号消息明细 180 天清洗(M66;04:24 错峰,仅删明细表,渠道用户/线索不动) */
+export const WECHAT_MP_PURGE_CRON = "24 4 * * *";
 
 /** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
 export const DB_BACKUP_CRON = "23 3 * * *";
@@ -49,10 +57,19 @@ export const INSIGHT_EMBED_CRON = "3,18,33,48 * * * *";
  * visit-purge;LLM 调用分钟级,避开 4 点清理带) */
 export const INSIGHT_DAILY_CRON = "57 3 * * *";
 
+/** 洞察打标小批 :12/:42(M60 批C:未命名簇积压治理——打标从「日批一次 24 条」
+ * 改为配额内高频小批,簇养熟即命名;避开 :43 热榜拉取 / :3,18,33,48 向量回填 /
+ * :5,15,25,35,45,55 翻译扫尾;每轮受当日剩余配额钳制,配额 300/日) */
+export const INSIGHT_LABEL_CRON = "12,42 * * * *";
+
 /** 热榜拉取小时批 :43(验收二批② 提频:热榜日内高波动,日频漏采;refId=
  * 词/问题id/关键词内容锚,unique(source,refId) 幂等——在榜词续热刷新,新词
  * 入池,提频不膨胀;LLM/向量只处理新增,成本增量可忽略) */
 export const INSIGHT_FETCH_CRON = "43 * * * *";
+
+/** 信号翻译扫尾 :05/:15/…/:55(M58 批①;避开 :43 热榜与 3/18/33/48 embed;
+ * ingest 即时入队为主,本 cron 只补入队丢失与超时 pending 降级) */
+export const INSIGHT_TRANSLATE_CRON = "5,15,25,35,45,55 * * * *";
 
 /** 任务域(颜色为设计令牌原值,globals.css 同源;色点/日历 chip 共用) */
 export type ScheduleCategory = "insight" | "discovery" | "process" | "ops";
@@ -103,6 +120,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     category: "insight",
   },
   {
+    key: "insight-label",
+    jobRunKey: "insight/label",
+    label: "洞察打标小批",
+    desc: "每 30 分钟配额内小批打标,簇养熟即命名(未命名积压治理)",
+    cron: INSIGHT_LABEL_CRON,
+    category: "insight",
+  },
+  {
     key: "pay-daily-audit",
     jobRunKey: "pay-reconcile/daily-audit",
     label: "支付日对账",
@@ -135,6 +160,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     category: "ops",
   },
   {
+    key: "leaderboard-fx",
+    jobRunKey: "crawler/leaderboard-fx-refresh",
+    label: "榜单汇率",
+    desc: "美元→人民币汇率日采(榜单价格双币切换,M63 v2.1)",
+    cron: LEADERBOARD_FX_CRON,
+    category: "insight",
+  },
+  {
     key: "job-run-purge",
     jobRunKey: "stats/purge-job-run",
     label: "任务台账清理",
@@ -149,6 +182,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     desc: "外站热词日频直拉入发现池",
     cron: DISCOVERY_HOTWORDS_CRON,
     category: "discovery",
+  },
+  {
+    key: "wechat-mp-purge",
+    jobRunKey: "wechat-mp/purge",
+    label: "公众号明细清理",
+    desc: "公众号私信消息 180 天保留期滚动清理(渠道用户/线索不动)",
+    cron: WECHAT_MP_PURGE_CRON,
+    category: "ops",
   },
   {
     key: "usage-purge",
@@ -187,6 +228,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     label: "洞察向量回填",
     desc: "信号高频向量回填 + 增量聚类",
     cron: INSIGHT_EMBED_CRON,
+    category: "insight",
+  },
+  {
+    key: "insight-translate",
+    jobRunKey: "insight/translate",
+    label: "信号翻译扫尾",
+    desc: "补翻在池非中文信号 + 超时 pending 降级",
+    cron: INSIGHT_TRANSLATE_CRON,
     category: "insight",
   },
 ];

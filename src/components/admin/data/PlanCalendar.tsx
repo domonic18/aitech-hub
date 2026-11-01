@@ -15,6 +15,7 @@ import {
   type PlanGroup,
 } from "@/lib/collect/plan-rows-types";
 import { DOW_LABELS_CN } from "@/lib/collect/schedules";
+import { DAY_MS } from "@/lib/datetime";
 
 type Period = "day" | "week" | "month";
 
@@ -197,12 +198,12 @@ function WeekView({ entries }: { entries: PlanCalEntry[] }): React.ReactElement 
 function MonthView({ entries }: { entries: PlanCalEntry[] }): React.ReactElement | null {
   const cells = useMemo(() => {
     const now = new Date();
-    const monday = new Date(now.getTime() - ((cnDow(now) + 6) % 7) * 86_400_000);
+    const monday = new Date(now.getTime() - ((cnDow(now) + 6) % 7) * DAY_MS);
     const mondayCn = new Date(
       `${monday.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" })}T00:00:00+08:00`,
     );
     return Array.from({ length: 35 }, (_, i) => {
-      const day = new Date(mondayCn.getTime() + i * 86_400_000);
+      const day = new Date(mondayCn.getTime() + i * DAY_MS);
       const dow = cnDow(day);
       const hits = entries.filter((e) => e.days === null || e.days.includes(dow));
       const count = hits.reduce((acc, e) => acc + e.firesPerDay, 0);

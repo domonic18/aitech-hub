@@ -6,6 +6,8 @@
  */
 import { createHash } from "node:crypto";
 
+import { PATH_MAX, SEARCH_TERM_MAX, SOURCE_NAME_MAX } from "@/lib/constants";
+
 export type SourceClass = "direct" | "search" | "referral" | "ai";
 
 export interface ClassifiedReferrer {
@@ -69,7 +71,7 @@ export function classifyReferrer(referrer: string | null | undefined): Classifie
   for (const [re, name] of SEARCH_ENGINES) {
     if (re.test(host)) return { sourceClass: "search", sourceName: name };
   }
-  return { sourceClass: "referral", sourceName: host.slice(0, 50) };
+  return { sourceClass: "referral", sourceName: host.slice(0, SOURCE_NAME_MAX) };
 }
 
 export function parseClient(ua: string): ClientEnv {
@@ -108,18 +110,18 @@ export function visitorHash(salt: string, ip: string, ua: string): string {
   return createHash("sha256").update(`${salt}:view:${ip}:${ua}`).digest("hex").slice(0, 32);
 }
 
-/** 页面路径规整:仅留路径、去查询串、限长(表上限 500) */
+/** 页面路径规整:仅留路径、去查询串、限长(表上限见 constants PATH_MAX) */
 export function normalizePagePath(rawPath: string): string {
   const path = rawPath.split(/[?#]/)[0];
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return normalized.slice(0, 500);
+  return normalized.slice(0, PATH_MAX);
 }
 
 /**
- * 搜索词规整(2026-10-06 排行需求):trim + 连续空白折叠为单空格 + 截 100 字
- * (表上限);保留用户输入原样大小写——排行展示「用户真实输入」,不做大小写
+ * 搜索词规整(2026-10-06 排行需求):trim + 连续空白折叠为单空格 + 截
+ * SEARCH_TERM_MAX 字(表上限);保留用户输入原样大小写——排行展示「用户真实输入」,不做大小写
  * 折叠(与答案缓存键的 lower 归一目的不同)。空串表示无可记词。
  */
 export function normalizeSearchTerm(raw: string): string {
-  return raw.trim().replace(/\s+/g, " ").slice(0, 100);
+  return raw.trim().replace(/\s+/g, " ").slice(0, SEARCH_TERM_MAX);
 }

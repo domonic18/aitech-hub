@@ -22,6 +22,7 @@ export const JOB_RUN_HUNG_AFTER_MS = 3_600_000;
 export const JOB_RUN_LABELS: Record<string, string> = {
   "insight/fetch": "洞察·热榜拉取",
   "insight/daily": "洞察·日批分析",
+  "insight/label": "洞察·打标小批",
   "insight/embed": "洞察·向量回填",
   "discovery/discovery-hotwords": "发现·热词采集",
   "discovery/discovery-bili": "发现·B站发现",
@@ -32,8 +33,11 @@ export const JOB_RUN_LABELS: Record<string, string> = {
   "stats/purge-usage-log": "清理·用量台账",
   "stats/purge-agent-session": "清理·会话",
   "stats/purge-job-run": "清理·任务台账",
+  "wechat-mp/purge": "清理·公众号明细",
   "cover-gen/temp-sweep": "封面·候选清扫",
   "crawler/ai-backfill": "解读·AI 补扫",
+  "crawler/crawl": "采集·渠道抓取",
+  "crawler/leaderboard-fx-refresh": "榜单·汇率采集",
 };
 
 export function jobRunLabel(key: string): string {

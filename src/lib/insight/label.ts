@@ -11,18 +11,25 @@
  *   其余,下轮重扫自愈(embed-reconcile 同取向)。
  * 日批编排(配额/评分/快照/覆盖/fading)在 ./daily。
  */
-import { AI_PURPOSE_INSIGHT } from "../ai/constants";
+import { AI_PURPOSE_INSIGHT, AI_PURPOSE_INSIGHT_JUDGE } from "../ai/constants";
+import { decideQuestions } from "../ai/decisions-client";
+import { getRoleDailyMax, type ResolvedAiModel } from "../ai/resolver";
 import { chatJsonTask, type ParsedTask } from "../ai/chat-json-task";
 import { readExtraMaxTokens } from "../ai/extra-params";
-import type { resolveAiModel } from "../ai/resolver";
+import { countTodayRoleUsage } from "../ai/usage-queries";
 import { prisma } from "../db";
-import { unionMedia } from "./cluster";
+import { logger } from "../logger";
+import { majorityRegion, unionMedia } from "./cluster";
 import {
+  INSIGHT_SENTIMENTS,
+  isInsightSentiment,
+  JUDGE_MIN_CONFIDENCE,
   LABEL_MIN_MEMBERS,
   LABEL_SAMPLE_SIZE,
   LABEL_SAMPLE_TEXT_MAX,
   type InsightSentiment,
 } from "./constants";
+import { resolveInsightModel } from "./model";
 
 export interface InsightLabelContract {
   label: string;
@@ -55,15 +62,10 @@ export function parseInsightLabel(raw: string): ParsedTask<InsightLabelContract>
     return { ok: false, error: "kind 须为 hot 或 pain" };
   }
   const sentiment = (o as Record<string, unknown>).sentiment;
-  if (
-    sentiment !== "positive" &&
-    sentiment !== "neutral" &&
-    sentiment !== "negative" &&
-    sentiment !== "mixed"
-  ) {
+  if (!isInsightSentiment(sentiment)) {
     return {
       ok: false,
-      error: "sentiment 须为 positive/neutral/negative/mixed 之一",
+      error: `sentiment 须为 ${INSIGHT_SENTIMENTS.join("/")} 之一`,
     };
   }
   const keywords = Array.isArray(o.keywords)
@@ -131,12 +133,112 @@ async function fetchLabelSamples(clusterId: bigint): Promise<LabelSample[]> {
   }));
 }
 
+/** Jev 判定半场(M53):舆情倾向 + hot·pain 覆判,两问合一次 decisions 请求。
+ * 高置信(≥JUDGE_MIN_CONFIDENCE)逐项覆写 LLM 判定;低置信/不可用保留 LLM 值
+ * (自动回退,打标永不因 Jev 失败失败)。双跑差异留痕=一致性抽查数据源。 */
+async function judgeByJev(
+  clusterId: bigint,
+  samples: LabelSample[],
+  llm: { kind: "hot" | "pain"; sentiment: InsightLabelContract["sentiment"] },
+): Promise<{ kind: "hot" | "pain"; sentiment: InsightLabelContract["sentiment"] }> {
+  const out = { ...llm };
+  // 未绑定/解析失败判定模型 → 全量走归纳模型(零行为变化;P2-25 统一经
+  // resolveInsightModel,吞异常与未绑定同途)
+  const judge = await resolveInsightModel(AI_PURPOSE_INSIGHT_JUDGE);
+  if (!judge) return out;
+  try {
+    const r = await decideQuestions({
+      baseUrl: judge.baseUrl ?? "",
+      apiKey: judge.apiKey,
+      model: judge.modelId,
+      // state 对象形态(systemone wire 契约):单键承载样本全文
+      state: {
+        signals: samples.map((s) => `[${s.source}] ${s.rawText}`).join("\n"),
+      },
+      questions: {
+        sentiment: {
+          type: "choice",
+          criteria: {
+            positive: "整体呈正面情绪",
+            neutral: "中性陈述为主,无明显情绪",
+            negative: "负面情绪为主(抱怨/不满/吐槽)",
+            mixed: "正负情绪混杂",
+          },
+          instructions: "这组用户信号的总体舆情倾向是哪一类?",
+        },
+        kind: {
+          type: "choice",
+          criteria: {
+            hot: "外部热点话题(大家在讨论/关注什么)",
+            pain: "用户痛点或需求(大家希望有什么/遇到什么困难)",
+          },
+          instructions: "这组信号更接近外部热点话题还是用户痛点?",
+        },
+      },
+      timeoutMs: judge.timeoutSec * 1000,
+    });
+    // 判定采信:置信 ≥ 阈值 且 选项合法 → 覆写;低置信/非法 → 保留 LLM 值
+    const sent = r.answers.sentiment;
+    if (
+      sent?.type === "choice" &&
+      sent.confidence !== null &&
+      sent.confidence >= JUDGE_MIN_CONFIDENCE &&
+      isInsightSentiment(sent.choice)
+    ) {
+      if (sent.choice !== out.sentiment) {
+        logger.info({
+          event: "insight.judge.diff",
+          clusterId: clusterId.toString(),
+          field: "sentiment",
+          llm: out.sentiment,
+          jev: sent.choice,
+          confidence: sent.confidence,
+        });
+      }
+      out.sentiment = sent.choice as InsightLabelContract["sentiment"];
+    }
+    const kind = r.answers.kind;
+    if (
+      kind?.type === "choice" &&
+      kind.choice !== undefined &&
+      kind.confidence !== null &&
+      kind.confidence >= JUDGE_MIN_CONFIDENCE &&
+      (kind.choice === "hot" || kind.choice === "pain")
+    ) {
+      if (kind.choice !== out.kind) {
+        logger.info({
+          event: "insight.judge.diff",
+          clusterId: clusterId.toString(),
+          field: "kind",
+          llm: out.kind,
+          jev: kind.choice,
+          confidence: kind.confidence,
+        });
+      }
+      out.kind = kind.choice as "hot" | "pain";
+    }
+    logger.info({
+      event: "insight.judged",
+      clusterId: clusterId.toString(),
+      cost: r.usage.cost,
+    });
+  } catch (e) {
+    // Jev 不可用(网络/配额/协议漂移)→ 保留 LLM 判定(自动回退)
+    logger.warn({
+      event: "insight.judge_failed",
+      clusterId: clusterId.toString(),
+      error: String(e),
+    });
+  }
+  return out;
+}
+
 /** 单簇打标(日批主链路 + 一次性重判脚本复用);永不 throw(失败返回 false
  * 交批次汇总) */
 export async function labelCluster(
   clusterId: bigint,
   memberCount: number,
-  model: Awaited<ReturnType<typeof resolveAiModel>>,
+  model: ResolvedAiModel | null,
 ): Promise<boolean> {
   if (!model) return false;
   const [samples, cluster] = await Promise.all([
@@ -164,21 +266,28 @@ export async function labelCluster(
   const [mediaRows, memberCountNow] = await Promise.all([
     prisma.insightSignal.findMany({
       where: { members: { some: { clusterId } } },
-      select: { medium: true },
+      select: { medium: true, region: true },
     }),
     prisma.insightClusterMember.count({ where: { clusterId } }),
   ]);
+  // 判定半场(M53):Jev 高置信覆写舆情/hot·pain(未绑定判定模型时原值直通)
+  const judged = await judgeByJev(clusterId, samples, {
+    kind: parsed.kind,
+    sentiment: parsed.sentiment,
+  });
   await prisma.insightCluster.update({
     where: { id: clusterId },
     data: {
       label: parsed.label,
       summary: parsed.summary,
       keywords: parsed.keywords,
-      // 簇别语义覆判(痛点扩围):LLM 判定覆盖源映射引导值
-      kind: parsed.kind,
-      // 舆情倾向(M46 验收批):词云四色数据源
-      sentiment: parsed.sentiment,
+      // 簇别语义覆判(痛点扩围):LLM 判定覆盖源映射引导值;M53 起 Jev 高置信覆写
+      kind: judged.kind,
+      // 舆情倾向(M46 验收批):词云四色数据源;M53 起 Jev 高置信覆写
+      sentiment: judged.sentiment,
       media: unionMedia([mediaRows.map((r) => r.medium)]),
+      // 簇地域(M58 批①):成员多数派,cn/global 接近记 mixed
+      region: majorityRegion(mediaRows.map((r) => r.region)),
       labeledAt: new Date(),
       // 基 LLM 调用期间的最新成员数记账,避免把打标间隙的新增误判为「未打标新增」
       labeledMemberCount: Math.max(memberCount, memberCountNow),
@@ -186,4 +295,83 @@ export async function labelCluster(
     select: { id: true },
   });
   return true;
+}
+
+// ── 批量/单簇入口(M60 批C:原 daily.ts 内联打标段提取,供每 30 分钟小批
+// job、日批收尾与后台手动补标共用)────────────────────────────────────────
+
+export interface LabelBatchSummary {
+  labeled: number;
+  failed: number;
+  /** 整批跳过(未绑定 insight 模型 / 当日配额耗尽) */
+  skipped: boolean;
+  reason: "insight_unbound" | "quota_exhausted" | null;
+}
+
+/** 打标一批:模型未绑定/配额耗尽即跳过,limit 再被剩余配额钳制(单簇一次
+ * LLM 调用);批内单簇失败自吞,下一轮重扫自愈。 */
+export async function runLabelBatch(limit: number): Promise<LabelBatchSummary> {
+  const summary: LabelBatchSummary = { labeled: 0, failed: 0, skipped: false, reason: null };
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT);
+  if (!model) {
+    logger.info({ event: "insight.daily_label_skipped", reason: "insight_unbound" });
+    return { ...summary, skipped: true, reason: "insight_unbound" };
+  }
+  const [used, dailyMax] = await Promise.all([
+    countTodayRoleUsage(AI_PURPOSE_INSIGHT),
+    getRoleDailyMax(AI_PURPOSE_INSIGHT),
+  ]);
+  const quota = Math.max(0, dailyMax - used);
+  if (quota === 0) {
+    logger.info({ event: "insight.daily_label_skipped", reason: "quota_exhausted" });
+    return { ...summary, skipped: true, reason: "quota_exhausted" };
+  }
+  const stale = await findStaleClusters(Math.min(quota, Math.max(0, Math.trunc(limit))));
+  for (const c of stale) {
+    try {
+      if (await labelCluster(c.id, Number(c.members), model)) summary.labeled += 1;
+      else summary.failed += 1;
+    } catch (e) {
+      summary.failed += 1;
+      logger.warn({
+        event: "insight.label_cluster_failed",
+        clusterId: c.id.toString(),
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return summary;
+}
+
+export type ClusterLabelOutcome =
+  "labeled" | "failed" | "unbound" | "quota_exhausted" | "too_small" | "not_found";
+
+/** 打标前置检查(零 LLM 调用,单簇一次 DB 轮):阻断原因或已就绪的模型+成员数。
+ * 路由层快速失败(入队前给用户明确原因)与 labelClusterNow 共用,免两处各抄
+ * 一份「未绑定/配额/成员数」判定。 */
+export type LabelReadiness =
+  | { ok: true; model: ResolvedAiModel; memberCount: number }
+  | { ok: false; outcome: Exclude<ClusterLabelOutcome, "labeled" | "failed"> };
+
+export async function labelReadiness(clusterId: bigint): Promise<LabelReadiness> {
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT);
+  if (!model) return { ok: false, outcome: "unbound" };
+  const [used, dailyMax] = await Promise.all([
+    countTodayRoleUsage(AI_PURPOSE_INSIGHT),
+    getRoleDailyMax(AI_PURPOSE_INSIGHT),
+  ]);
+  if (dailyMax - used <= 0) return { ok: false, outcome: "quota_exhausted" };
+  const memberCount = await prisma.insightClusterMember.count({ where: { clusterId } });
+  if (memberCount === 0) return { ok: false, outcome: "not_found" };
+  if (memberCount < LABEL_MIN_MEMBERS) return { ok: false, outcome: "too_small" };
+  return { ok: true, model, memberCount };
+}
+
+/** 单簇即时打标(手动补标:簇详情「立即打标」→ label job 带 clusterId)。
+ * 不经 findStaleClusters(手动意图=立刻打,不要求「未打标/有新增」,重打幂等),
+ * 但仍守最小成员数与配额。 */
+export async function labelClusterNow(clusterId: bigint): Promise<ClusterLabelOutcome> {
+  const ready = await labelReadiness(clusterId);
+  if (!ready.ok) return ready.outcome;
+  return (await labelCluster(clusterId, ready.memberCount, ready.model)) ? "labeled" : "failed";
 }

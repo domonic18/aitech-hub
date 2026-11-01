@@ -26,6 +26,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/articles/",
     "/projects/",
     "/pins/",
+    "/topics/", // 专题聚合(A1):参考工具入口页
+    "/pricing/", // M55 批D:牌价速查(双表 SSR 静态页)
     "/archive/",
     "/about/",
     "/agreement/",

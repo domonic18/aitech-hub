@@ -1,15 +1,23 @@
 /**
  * 统计缓冲落库单测(M48 批G 补盲;prisma/redis 必 mock):RENAME 私有键生命周期、
- * 六类键分发(visit 全零剪除/post 负计数剪除/geo 非法面剔除)、失败还原键不计数。
+ * 六类键分发(visit 全零剪除/post 负计数剪除/geo 非法面剔除)、失败合并回数据键不计数。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const redisMock = vi.hoisted(() => ({
-  scan: vi.fn(),
-  rename: vi.fn(),
-  hgetall: vi.fn(),
-  del: vi.fn(),
-}));
+const redisMock = vi.hoisted(() => {
+  const pipe = { hincrby: vi.fn(), expire: vi.fn(), exec: vi.fn(async () => []) };
+  pipe.hincrby.mockReturnValue(pipe);
+  pipe.expire.mockReturnValue(pipe);
+  return {
+    scan: vi.fn(),
+    rename: vi.fn(),
+    hgetall: vi.fn(),
+    del: vi.fn(),
+    expire: vi.fn(),
+    pipeline: vi.fn(() => pipe),
+    pipe,
+  };
+});
 vi.mock("@/lib/redis", () => ({ redis: redisMock }));
 
 const executeRaw = vi.fn();
@@ -29,6 +37,7 @@ beforeEach(() => {
   redisMock.rename.mockResolvedValue("OK");
   redisMock.hgetall.mockResolvedValue({});
   redisMock.del.mockResolvedValue(1);
+  redisMock.expire.mockResolvedValue(1);
   executeRaw.mockResolvedValue(1);
 });
 
@@ -58,9 +67,18 @@ describe("flushStatsBuffer 生命周期", () => {
     const summary = await flushStatsBuffer();
     expect(summary).toEqual({ keysFlushed: 0, postRows: 0 });
     expect(redisMock.hgetall).not.toHaveBeenCalled();
+    expect(redisMock.expire).not.toHaveBeenCalled();
   });
 
-  it("聚合失败 → 私有键还原回数据键,不计 keysFlushed,下轮可重试", async () => {
+  it("私有键落 5 分钟 TTL:崩溃在 DEL 之前也不会以 48h 级寿命残留(issue #202)", async () => {
+    keysOf("stats:buf:post:2026-10-25");
+    redisMock.hgetall.mockResolvedValue({ "12": "4" });
+    await flushStatsBuffer();
+    const [, tmp] = redisMock.rename.mock.calls[0]!;
+    expect(redisMock.expire).toHaveBeenCalledWith(tmp, 300);
+  });
+
+  it("聚合失败 → 计数字段合并回数据键(RENAME 会覆盖期间新写入),不计 keysFlushed", async () => {
     keysOf("stats:buf:visit:2026-10-25", "stats:buf:ref:2026-10-25");
     redisMock.hgetall.mockImplementation(async (key: string) => {
       if (key.includes("visit")) throw new Error("db down");
@@ -68,11 +86,25 @@ describe("flushStatsBuffer 生命周期", () => {
     });
     const summary = await flushStatsBuffer();
     expect(summary.keysFlushed).toBe(1);
-    // 还原:RENAME 第二次调用方向为 tmp → 原键
-    const restore = redisMock.rename.mock.calls.find((c) =>
-      String(c[0]).startsWith("stats:flushing:"),
-    );
-    expect(restore?.[1]).toBe("stats:buf:visit:2026-10-25");
+    // 还原方向:不再 rename 回原键
+    expect(
+      redisMock.rename.mock.calls.some(
+        (c) => String(c[0]).startsWith("stats:flushing:") && String(c[1]).startsWith("stats:buf:"),
+      ),
+    ).toBe(false);
+    // 数据键重新钉回缓冲兜底 TTL,下轮 SCAN 可重试
+    expect(redisMock.pipe.expire).toHaveBeenCalledWith("stats:buf:visit:2026-10-25", 172800);
+  });
+
+  it("聚合写库失败 → 已读出的计数字段逐项 HINCRBY 合并回原键,不丢本轮事件", async () => {
+    keysOf("stats:buf:visit:2026-10-25");
+    redisMock.hgetall.mockResolvedValue({ pv: "3", uv: "2" });
+    executeRaw.mockRejectedValueOnce(new Error("db down"));
+    await flushStatsBuffer();
+    expect(redisMock.pipe.hincrby).toHaveBeenCalledWith("stats:buf:visit:2026-10-25", "pv", 3);
+    expect(redisMock.pipe.hincrby).toHaveBeenCalledWith("stats:buf:visit:2026-10-25", "uv", 2);
+    // 暂存键仍要清掉,否则等 5 分钟 TTL 才消失
+    expect(redisMock.del).toHaveBeenCalledWith(expect.stringMatching(/^stats:flushing:/));
   });
 });
 
@@ -115,6 +147,25 @@ describe("applyBufferKey 六类分发", () => {
     });
     await flushStatsBuffer();
     expect(executeRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("page:pv / uv 分键各写自己那一列(键形由 keys.ts 解析)", async () => {
+    keysOf("stats:buf:page:2026-10-25:pv", "stats:buf:page:2026-10-25:uv");
+    redisMock.hgetall.mockImplementation(async (key: string) =>
+      key.endsWith(":pv") ? { "/post/1": "5" } : { "/post/1": "2" },
+    );
+    await flushStatsBuffer();
+    const rows = executeRaw.mock.calls.map((c) => c.slice(1, 5)); // 末位是 DO UPDATE 的 Prisma.sql 片段
+    expect(rows).toContainEqual(["2026-10-25", "/post/1", 5, 0]);
+    expect(rows).toContainEqual(["2026-10-25", "/post/1", 0, 2]);
+  });
+
+  it("page 缺 metric(畸形键)→ 不猜成 uv,零落库", async () => {
+    keysOf("stats:buf:page:2026-10-25");
+    redisMock.hgetall.mockResolvedValue({ "/post/1": "5" });
+    const summary = await flushStatsBuffer();
+    expect(summary).toEqual({ keysFlushed: 1, postRows: 0 });
+    expect(executeRaw).not.toHaveBeenCalled();
   });
 
   it("未知 kind → 零处理", async () => {

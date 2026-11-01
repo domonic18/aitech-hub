@@ -5,8 +5,16 @@
  */
 import Link from "next/link";
 
-import { MEDIUM_LABELS, SOURCE_LABELS, type InsightMediumVocab } from "@/lib/insight/constants";
+import {
+  MEDIUM_LABELS,
+  REGION_LABELS,
+  SIGNAL_REGIONS,
+  SOURCE_LABELS,
+  resolveRegionParam,
+  type InsightMediumVocab,
+} from "@/lib/insight/constants";
 import type { InsightSource } from "@/lib/insight/ingest";
+import { DAY_MS } from "@/lib/datetime";
 
 // 展示名与介质标签下沉 domain constants 单源(hot-source 台账同用),此处转出口
 export { MEDIUM_LABELS, SOURCE_LABELS };
@@ -24,6 +32,18 @@ export const SOURCE_COLORS: Record<InsightSource, string> = {
   "hot-baidu": "bg-blue",
   "hot-zhihu": "bg-green",
   "hot-bilibili": "bg-red",
+  // 厂商动态六源(M58 批②;同图例内复用令牌色,靠标签区分)
+  "vendor-openai": "bg-accent",
+  "vendor-anthropic": "bg-green",
+  "vendor-google": "bg-blue",
+  "vendor-deepseek": "bg-amber",
+  "vendor-qwen": "bg-text-2",
+  "vendor-kimi": "bg-text-3",
+  // 社区需求语料四源(M58 批④;同上复用令牌色)
+  "community-hn": "bg-amber",
+  "community-v2ex": "bg-green",
+  "community-baidu": "bg-blue",
+  "community-oss": "bg-accent",
 };
 
 export const COVERAGE_LABELS: Record<string, string> = {
@@ -52,15 +72,39 @@ export function shortSource(source: string): string {
 }
 
 /** 洞察页查询参数全集(跨分区互保:w=总览/云图窗口,day=热榜回看日,
- * hs=热榜源展示切换,source/from/to=信号明细过滤) */
+ * hs=热榜源展示切换,source/from/to=信号明细过滤,domain=领域视图(M54 批C:
+ * 缺省 tech;"all"=全量含未分类;热榜榜面/种子词产出榜不受域过滤)) */
 export type InsightViewParams = {
   source?: string;
+  /** 介质筛选(M52 批D:钱/时间/声音/搜索/AI记录) */
+  medium?: string;
+  /** 地域筛选(M58 批①:cn 国内 / global 海外) */
+  region?: string;
   w?: string;
   from?: string;
   to?: string;
   day?: string;
   hs?: string;
+  domain?: string;
 };
+
+/** 地域视图词表/中文标签/参数钳制下沉 domain constants 单源(信号独立页与总览
+ * 共用同一份白名单),此处仅转出口保持既有调用方不变 */
+export const REGIONS = SIGNAL_REGIONS;
+export { REGION_LABELS, resolveRegionParam };
+
+/** 领域视图「全部」哨兵值(domain=all → 查询层不筛,unclassified 亦可见) */
+export const DOMAIN_ALL = "all";
+
+/** 领域视图解析(页侧唯一出口):合法启用域回原值,缺省/非法回 tech,
+ * "all" 哨兵原样返回;查询层约定 all→undefined(不筛) */
+export function resolveDomainView(
+  raw: string | undefined,
+  enabledDomains: readonly string[],
+): string {
+  if (raw === DOMAIN_ALL) return DOMAIN_ALL;
+  return enabledDomains.includes(raw ?? "") ? raw! : "tech";
+}
 
 /** 洞察页链接构造:未定义值不落串,其余参数原样保留 */
 export function insightHref(
@@ -77,7 +121,7 @@ export function insightHref(
 
 /** 北京日字符串(YYYY-MM-DD)±n 天 */
 export function shiftDay(day: string, delta: number): string {
-  const ms = new Date(`${day}T00:00:00+08:00`).getTime() + delta * 86_400_000;
+  const ms = new Date(`${day}T00:00:00+08:00`).getTime() + delta * DAY_MS;
   return new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
 
@@ -85,6 +129,11 @@ export function shiftDay(day: string, delta: number): string {
 export function todayCn(): string {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 }
+
+/** 页内 chips(窗口/领域/热榜渠道/信号筛选共用;总览页与信号明细各自手抄过一份) */
+export const chip = "rounded-sm px-2 py-0.5 font-mono text-[11px]";
+export const chipOn = `${chip} bg-accent-dim text-accent`;
+export const chipOff = `${chip} bg-panel-2 text-text-2 hover:text-text-1`;
 
 const badge = "rounded-sm px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap";
 
@@ -135,6 +184,23 @@ export function AnomalyBadge(): React.ReactElement {
   );
 }
 
+/** 地域徽章(M58 批①):cluster.region=cn|global|mixed;signal.region=cn|global。
+ * 无地域(存量/未知源)不渲染。 */
+export function RegionBadge({ region }: { region: string | null }): React.ReactElement | null {
+  if (region === null || region === undefined) return null;
+  const tone =
+    region === "global"
+      ? "bg-blue/12 text-blue"
+      : region === "mixed"
+        ? "bg-accent-dim text-accent"
+        : "bg-panel-2 text-text-2";
+  return (
+    <span className={`${badge} ${tone}`} title="地域:国内/海外">
+      {REGION_LABELS[region] ?? region}
+    </span>
+  );
+}
+
 /** 可写角度一行文案(F25/F26 actionCard):覆盖度状态派生,LLM 选题生成未立项
  * 前先给确定性文案;无覆盖度评分(未日批)显观察提示。 */
 export function writeAngleLine(state: string | null): string {
@@ -162,9 +228,9 @@ export function ClusterLabelLink({
     <Link
       href={clusterHref(id)}
       className="text-text-1 hover:text-accent"
-      title={label ?? "未打标簇,详情见信号原话"}
+      title={label ?? "待打标:成员 ≥3 后由每 30 分钟小批命名,详情见信号原话"}
     >
-      {label ?? "待打标簇"}
+      {label ?? "待打标"}
     </Link>
   );
 }

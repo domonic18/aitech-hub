@@ -7,7 +7,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({
-  prisma: { insightCluster: { findUnique: vi.fn() } },
+  prisma: {
+    insightCluster: { findUnique: vi.fn() },
+    // 幂等守卫(M52 验收):同题去重查询,默认无既有题
+    topic: { findFirst: vi.fn().mockResolvedValue(null) },
+  },
 }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 

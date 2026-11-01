@@ -48,8 +48,8 @@ export default function KeywordAddForm() {
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent">
+    <div className="flex w-full flex-col gap-1 sm:w-auto">
+      <div className="flex w-full items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent sm:w-auto">
         <input
           value={word}
           maxLength={WORD_MAX_LEN}
@@ -58,13 +58,13 @@ export default function KeywordAddForm() {
             if (e.key === "Enter") void submit();
           }}
           placeholder={`人工添加热词(≤${WORD_MAX_LEN} 字符,自动转小写,添加即生效)…`}
-          className="w-64 bg-transparent text-[13px] outline-none placeholder:text-text-3"
+          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-text-3 sm:w-64 sm:flex-none"
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={busy || word.trim() === ""}
-          className="rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
+          className="shrink-0 rounded-sm bg-accent px-3 py-1 text-xs font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:opacity-50"
         >
           添加
         </button>

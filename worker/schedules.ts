@@ -25,7 +25,13 @@ import {
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_LABEL,
+  INSIGHT_JOB_TRANSLATE,
+  INSIGHT_LABEL_CRON,
+  INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
+  LEADERBOARD_FX_CRON,
+  LEADERBOARD_JOB_FX_REFRESH,
   QUEUE_INSIGHT,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
@@ -47,8 +53,13 @@ import {
   STATS_JOB_USAGE_PURGE,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
+  WECHAT_MP_PURGE_CRON,
+  QUEUE_WECHAT_MP,
   getQueue,
+  QUEUE_DISTRIBUTE,
+  DISTRIBUTE_JOB_XHS_STATE_PROBE,
 } from "../src/lib/queue";
+import { WECHAT_MP_JOB_PURGE } from "../src/lib/channel/wechat-mp/constants";
 import { SITE_TZ } from "../src/lib/datetime";
 
 const STATS_FLUSH_EVERY_MS = 60_000;
@@ -96,6 +107,20 @@ export async function scheduleCoverTempSweep(): Promise<void> {
     { pattern: COVER_TEMP_SWEEP_CRON, tz: SITE_TZ },
     {
       name: COVER_JOB_TEMP_SWEEP,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 公众号消息明细清理(M66):每日 04:24 删 180 天前明细(渠道用户/线索表不动) */
+export async function scheduleWechatMpPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_WECHAT_MP);
+  await queue.upsertJobScheduler(
+    "wechat-mp-purge",
+    { pattern: WECHAT_MP_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: WECHAT_MP_JOB_PURGE,
       data: {},
       opts: schedulerOpts(7),
     },
@@ -155,6 +180,37 @@ export async function scheduleJobRunPurge(): Promise<void> {
       name: STATS_JOB_RUN_PURGE,
       data: {},
       opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 小红书登录态每日探照:04:37 错峰(M50 批F;结果落 site_config kv,
+ * 分发中心渠道卡直读;探照异常只 warn 不进队列失败计数) */
+export async function scheduleXhsStateProbe(): Promise<void> {
+  const queue = getQueue(QUEUE_DISTRIBUTE);
+  await queue.upsertJobScheduler(
+    "xhs-state-probe",
+    { pattern: "37 4 * * *", tz: SITE_TZ },
+    {
+      name: DISTRIBUTE_JOB_XHS_STATE_PROBE,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 榜单展示汇率日采:04:43 取一次美元→人民币(M63 v2.1;结果落 site_config kv,
+ * 榜单价格双币切换用)。单请求任务搭 crawler 队列;失败重试 1 次(60s 后)仍失败
+ * 则页面继续用上一个汇率,不阻塞采集。 */
+export async function scheduleLeaderboardFxRefresh(): Promise<void> {
+  const queue = getQueue(QUEUE_CRAWLER);
+  await queue.upsertJobScheduler(
+    "leaderboard-fx-refresh",
+    { pattern: LEADERBOARD_FX_CRON, tz: SITE_TZ },
+    {
+      name: LEADERBOARD_JOB_FX_REFRESH,
+      data: {},
+      opts: { ...schedulerOpts(7), attempts: 2, backoff: { type: "fixed", delay: 60_000 } },
     },
   );
 }
@@ -235,8 +291,9 @@ export async function scheduleDiscovery(): Promise<void> {
   );
 }
 
-/** 洞察加工调度(M34 批②→批③):向量回填+聚类 15 分钟错峰 / LLM 打标日批
- * 03:57 / 热榜拉取小时批 :43(验收二批② 提频,外部渠道) */
+/** 洞察加工调度(M34 批②→批③;M60 批C 增 label):向量回填+聚类 15 分钟错峰 /
+ * LLM 打标日批 03:57 + 打标小批 :12/:42 / 热榜拉取小时批 :43(验收二批②
+ * 提频,外部渠道) / 翻译扫尾 */
 export async function scheduleInsight(): Promise<void> {
   const queue = getQueue(QUEUE_INSIGHT);
   await queue.upsertJobScheduler(
@@ -257,6 +314,16 @@ export async function scheduleInsight(): Promise<void> {
       opts: schedulerOpts(7),
     },
   );
+  // 打标小批(M60 批C):每 30 分钟一轮,配额内把养熟的簇命名掉
+  await queue.upsertJobScheduler(
+    "insight-label",
+    { pattern: INSIGHT_LABEL_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_LABEL,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
   await queue.upsertJobScheduler(
     "insight-fetch",
     { pattern: INSIGHT_FETCH_CRON, tz: SITE_TZ },
@@ -264,6 +331,15 @@ export async function scheduleInsight(): Promise<void> {
       name: INSIGHT_JOB_FETCH,
       data: {},
       opts: schedulerOpts(7),
+    },
+  );
+  await queue.upsertJobScheduler(
+    "insight-translate",
+    { pattern: INSIGHT_TRANSLATE_CRON, tz: SITE_TZ },
+    {
+      name: INSIGHT_JOB_TRANSLATE,
+      data: {},
+      opts: schedulerOpts(50),
     },
   );
 }

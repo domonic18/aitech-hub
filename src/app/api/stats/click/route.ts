@@ -40,12 +40,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await verifyAccessToken(req.cookies.get(ACCESS_COOKIE_NAME)?.value);
   if (session?.role === ADMIN_ROLE) {
     // 管理员点击不入行为账(与 PV 统计口径一致)
-    return new NextResponse(null, { status: 204 }) as NextResponse;
+    return new NextResponse(null, { status: 204 });
   }
   if (isBotUa(req.headers.get("user-agent") ?? "")) {
-    return new NextResponse(null, { status: 204 }) as NextResponse;
+    return new NextResponse(null, { status: 204 });
   }
 
   ingestClick(parsed.data);
-  return new NextResponse(null, { status: 204 }) as NextResponse;
+  return new NextResponse(null, { status: 204 });
 }

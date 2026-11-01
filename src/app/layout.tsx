@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import AssistantFab from "@/components/site/assistant/AssistantFab";
 import { getSiteTitle } from "@/lib/config/site-config";
 import { siteUrl } from "@/lib/seo/site";
+import { SITE_DESCRIPTION, SITE_TAGLINE } from "@/lib/site-meta";
 import "./globals.css";
 import "@/styles/prose.css";
 
@@ -11,11 +12,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(siteUrl()),
     title: {
-      default: `${title} · domonic18 的 AI 工程实战博客`,
-      template: `%s | ${title}`,
+      default: `${title} · ${SITE_TAGLINE}`,
+      // 站点名在前、子页标题在后(2026-10-31 验收定调;此前 `%s | 站名` 是反的)
+      template: `${title} | %s`,
     },
-    description:
-      "一起AI:第一人称、可复现的 AI 工程实战原创博客,Claude Code / MCP / LLM 训练与评测等主题。",
+    description: SITE_DESCRIPTION,
   };
 }
 

@@ -7,17 +7,12 @@
  */
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { statsDay } from "@/lib/datetime";
+import { startOfCnDay } from "@/lib/datetime";
 
 import { HOT_FETCHERS } from "./hotlist/registry";
 import type { HotFetcher } from "./hotlist/types";
 import { SOURCE_LABELS } from "./constants";
 import { INSIGHT_SOURCE_MEDIUM, type InsightSource } from "./ingest";
-
-/** 北京时区当日零点(与 insight/admin 同源口径,勿用 UTC 切日) */
-function todayStart(now: Date = new Date()): Date {
-  return new Date(`${statsDay(now)}T00:00:00+08:00`);
-}
 
 export type HotSourceKey = HotFetcher["source"];
 
@@ -82,7 +77,7 @@ export async function listHotSourcesAdmin(): Promise<HotSourceRow[]> {
     prisma.insightHotSource.findMany({ where: { source: { in: keys } } }),
     prisma.insightSignal.groupBy({
       by: ["source"],
-      where: { source: { in: keys }, signalAt: { gte: todayStart() } },
+      where: { source: { in: keys }, signalAt: { gte: startOfCnDay() } },
       _count: { _all: true },
     }),
   ]);

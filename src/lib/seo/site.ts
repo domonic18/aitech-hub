@@ -9,3 +9,9 @@ export function siteUrl(): string {
 export function absoluteUrl(path: string): string {
   return `${siteUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
+
+/** 部署域名(页头品牌 chip 右侧的 tld / llms.txt 标题行);随 NEXT_PUBLIC_SITE_URL,dev 即 localhost。
+ *  住这里而非 lib/site-meta:后者必须零 import(客户端链上),见该文件头注。 */
+export function siteHost(): string {
+  return new URL(siteUrl()).host;
+}

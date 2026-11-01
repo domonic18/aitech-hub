@@ -23,9 +23,14 @@ export interface WechatBudget {
   usagePct: number;
 }
 
-/** 计量(渲染永不抛;themeId 未知/缺省回退默认主题,与管线一致) */
-export function measureWechatBudget(contentMd: string, themeId?: string | null): WechatBudget {
-  const { html } = renderWechatHtml(contentMd, themeId);
+/** 计量(渲染永不抛;themeId 未知/缺省回退默认主题,与管线一致;
+ * opts 与渲染入参同源——TOC 卡计入码点预算) */
+export function measureWechatBudget(
+  contentMd: string,
+  themeId?: string | null,
+  opts?: Parameters<typeof renderWechatHtml>[2],
+): WechatBudget {
+  const { html } = renderWechatHtml(contentMd, themeId, opts);
   const totalChars = [...html].length;
   const plainChars = [...html.replace(/<[^>]+>/g, "")].length;
   const tableChars = [...(html.match(/<table[\s\S]*?<\/table>/gi) ?? []).join("")].length;

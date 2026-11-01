@@ -43,6 +43,21 @@ export function buildAgentPageContext(pathname: string): string {
   return "前台";
 }
 
+/** 后台功能页上下文黑名单(M58 批⑤,arch/01 §3.4 复活规则):这些页的会话
+ * 是「在用后台」而非「有需求」,即便普通用户提问也无信号价值;公开页
+ * (首页/搜索/文章页/Footer 咨询/答案卡追问)一律放行,与身份无关。 */
+export const ADMIN_SURFACES: ReadonlySet<string> = new Set([
+  "后台",
+  "文章新建",
+  "文章编辑",
+  "文章管理",
+  "创作中心",
+]);
+
+export function isAdminSurface(page: string | null | undefined): boolean {
+  return page !== null && page !== undefined && ADMIN_SURFACES.has(page);
+}
+
 /** 宽松解析(客户端传坏上下文不炸 run,弃用即可):形状不符返 null */
 export function parseAgentRunContext(value: unknown): AgentRunContext | null {
   const parsed = agentRunContextSchema.safeParse(value);

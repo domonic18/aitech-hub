@@ -3,7 +3,12 @@
  * 预渲染的取数降级为空数据,产物按需 ISR(首次访问实查并缓存,arch/07-frontend
  * §1"无库降级按需 ISR")。仅在 Next 构建期(NEXT_PHASE)生效——运行时
  * ISR 再生错误照常上抛:命中旧缓存或 5xx,绝不静默吞错返空页。
+ *
+ * NEXT_PHASE 是 Next 构建器注入的临时变量(非部署配置),故不进 env.ts 的
+ * Zod 校验表;其余环境变量一律走 env.ts 单一出口。
  */
+import { logWarn } from "@/lib/logger";
+
 export function isPrerenderPhase(): boolean {
   return process.env.NEXT_PHASE === "phase-production-build";
 }
@@ -17,7 +22,7 @@ export async function prerenderSafe<T>(
   try {
     return await fn();
   } catch (e) {
-    console.warn(JSON.stringify({ event: `${event}.prerender.degraded`, error: String(e) }));
+    logWarn(`${event}.prerender.degraded`, { error: e });
     return fallback;
   }
 }

@@ -153,7 +153,12 @@ describe("邮箱通道(M21 批⓪,dev compose 真实 PG/Redis)", () => {
       new Request("http://localhost:3000/api/auth/register", {
         method: "POST",
         headers: ORIGIN_HEADERS,
-        body: JSON.stringify({ username: USERNAME, email: EMAIL, password: PASSWORD }),
+        body: JSON.stringify({
+          username: USERNAME,
+          email: EMAIL,
+          password: PASSWORD,
+          agreed: true,
+        }),
       }) as never,
     );
     expect(reg.status).toBe(200);

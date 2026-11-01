@@ -2,6 +2,10 @@
  * MCP 工具集(M5-c,requirement §3.6「MCP 为壳」):六工具直调 service 层,
  * 一律以 slug 为文章键(HTTP 核形态见 /api/posts)。每请求新建 server 实例
  * (stateless,配合容器多实例),actor 闭包进审计日志。
+ *
+ * 注册方式(2026-10-29 P3-3):维持逐只显式 server.tool 调用——入参 Zod 形状
+ * 与工具名就地可读,声明式表反而把 schema 与 handler 拉远。触发条件写明:
+ * 工具数破 10 只时改声明式注册(单表登记 name/description/schema/handler)。
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -120,6 +124,14 @@ export function createMcpServer(actor: AdminActor): McpServer {
     { slug: z.string().min(1) },
     async (args) => {
       const post = await getPostBySlugAdmin(args.slug);
+      // 读侧也入审计(2026-10-29 P3-3):同一枚 PAT 既能写也能读,取证时要
+      // 能回答「这枚 token 什么时候把哪篇文章拉走过」;只记键与命中,不记正文
+      logger.info({
+        event: "mcp.get_article",
+        actor,
+        slug: args.slug,
+        found: post !== null,
+      });
       if (!post) return json({ error: "not found", slug: args.slug }, true);
       return json(postView({ ...post, contentMd: post.contentMd }));
     },
@@ -138,6 +150,15 @@ export function createMcpServer(actor: AdminActor): McpServer {
         page: args.page,
         segment: args.status,
         q: args.q,
+      });
+      // 读侧审计(2026-10-29 P3-3):记筛选条件与命中量,不记行内容
+      logger.info({
+        event: "mcp.list_articles",
+        actor,
+        status: args.status,
+        q: args.q ?? null,
+        page: args.page,
+        total,
       });
       return json({
         total,

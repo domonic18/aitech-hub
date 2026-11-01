@@ -53,15 +53,23 @@ jobs:
           uv sync --frozen
           uv run pytest tests/ -q
 
-  # 卡片渲染服务(M31):纯函数单测(node:test,零依赖零安装);仅校验/白名单逻辑
+  # 卡片渲染服务(M31):validate 纯函数单测 + slots 真进程回归(拉起 index.js 打畸形请求)。
+  # 后者要 import playwright 才能起来,故必须装依赖(chromium 二进制不下:用例只断言 4xx,
+  # 浏览器拉不起来时 getBrowser 被 catch 掉,listen 不受影响)。
   card-renderer:
     name: card-renderer(node 单测)
     runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: services/card-renderer/package-lock.json
+      - working-directory: services/card-renderer
+        run: npm ci
       - working-directory: services/card-renderer
         run: npm test
 

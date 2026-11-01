@@ -6,7 +6,8 @@
  * 幂等:全量重算状态,可重复执行;清退先删文件后删记录(失败重跑补删)。
  */
 import { prisma } from "@/lib/db";
-import { type MediaStatus, DAY_MS, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { DAY_MS } from "@/lib/datetime";
+import { type MediaStatus, MEDIA_LIMITS } from "@/lib/media/media-schema";
 import { loadReferencedPathSet } from "@/lib/media/queries";
 import { purgeDeletedMedia } from "@/lib/media/service";
 import { mediaStorage, uploadsUrlToRel } from "@/lib/media/storage";

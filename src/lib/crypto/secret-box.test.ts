@@ -8,7 +8,13 @@ import { describe, expect, it, vi } from "vitest";
 const AUTH = vi.hoisted(() => "unit-test-auth-secret-0123456789");
 vi.mock("../env", () => ({ env: { AUTH_SECRET: AUTH } }));
 
-import { decryptSecret, encryptSecret, maskSecret } from "./secret-box";
+import {
+  decryptSecret,
+  encryptSecret,
+  encryptTagged,
+  maskSecret,
+  readSecretCompat,
+} from "./secret-box";
 
 describe("secret-box 加解密", () => {
   it("roundtrip:同 AUTH_SECRET 派生确定,密文可解回", () => {
@@ -50,5 +56,20 @@ describe("maskSecret 脱敏", () => {
     expect(maskSecret("short")).toBe("****");
     expect(maskSecret("12345678")).toBe("****");
     expect(maskSecret("sk-abcdef-f2a8")).toBe("sk-****f2a8");
+  });
+});
+
+describe("同列密文升级形态(M50 批E')", () => {
+  it("encryptTagged 带 e1: 前缀;readSecretCompat 往返还原", () => {
+    const stored = encryptTagged("s3cret-值");
+    expect(stored.startsWith("e1:")).toBe(true);
+    expect(readSecretCompat(stored)).toBe("s3cret-值");
+  });
+
+  it("旧明文原样透传(legacy 读兼容);空值 → null;坏密文 → null", () => {
+    expect(readSecretCompat("legacy-plain")).toBe("legacy-plain");
+    expect(readSecretCompat(null)).toBeNull();
+    expect(readSecretCompat("")).toBeNull();
+    expect(readSecretCompat("e1:not-valid-base64!!")).toBeNull();
   });
 });

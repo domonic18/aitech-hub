@@ -1,31 +1,8 @@
 /**
- * 电报流/采集域常量(M7,arch/02):合法值单一出处,零依赖。
+ * 电报流域常量(M7,arch/02):媒体/平台/博主侧常量;采集渠道类型/健康度/
+ * 周期常量已上收 collect/constants(M56 批B,渠道域归属 collect)。
  * 库列一律 String(arch/03 枚举演进条款),边界经 zod 引用此处约束。
  */
-
-export const CRAWL_SOURCE_TYPE_RSS = "rss";
-export const CRAWL_SOURCE_TYPE_WEB = "web";
-export const CRAWL_SOURCE_TYPE_API = "api";
-export const CRAWL_SOURCE_TYPE_SOCIAL_VIDEO = "social-video";
-export const CRAWL_SOURCE_TYPES = [
-  CRAWL_SOURCE_TYPE_RSS,
-  CRAWL_SOURCE_TYPE_WEB,
-  CRAWL_SOURCE_TYPE_API,
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
-] as const;
-export type CrawlSourceType = (typeof CRAWL_SOURCE_TYPES)[number];
-
-/** 已实现采集管线的类型(M48 批E:adapters 仅 rss,web/api 建了必「适配器未实现」
- * 每轮报错;social-video 走博主采集管线,真实存在)——渠道创建/编辑 Zod 与 UI
- * 选项一律用本清单,全集 CRAWL_SOURCE_TYPES 仅保留类型语义 */
-export const CRAWL_SOURCE_TYPES_IMPLEMENTED = [
-  CRAWL_SOURCE_TYPE_RSS,
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
-] as const;
-
-export const CRAWL_SOURCE_STATUS_HEALTHY = "healthy";
-export const CRAWL_SOURCE_STATUS_DEGRADED = "degraded";
-export const CRAWL_SOURCE_STATUS_ERROR = "error";
 
 /** 电报媒体类型(M8 混合流,arch/02 §2):视频字段组仅 media_type=video 时有值 */
 export const TELEGRAM_MEDIA_TEXT = "text";
@@ -111,16 +88,15 @@ export const BLOCKLIST_SCOPE_TITLE = "title";
 export const BLOCKLIST_SCOPE_SUMMARY = "summary";
 export const BLOCKLIST_SCOPE_ALL = "all";
 export const BLOCKLIST_SCOPE_COMMENT = "comment"; // M23:文章评论先发后审的自动闸
+export const BLOCKLIST_SCOPE_WECHAT_MP = "wechat-mp"; // M66:公众号私信入站拦截闸
 export const BLOCKLIST_SCOPES = [
   BLOCKLIST_SCOPE_TITLE,
   BLOCKLIST_SCOPE_SUMMARY,
   BLOCKLIST_SCOPE_ALL,
   BLOCKLIST_SCOPE_COMMENT,
+  BLOCKLIST_SCOPE_WECHAT_MP,
 ] as const;
 export type BlocklistScope = (typeof BLOCKLIST_SCOPES)[number];
-
-/** 连续失败阈值(arch/02 §3.1:≥3 → source.status=error) */
-export const CRAWL_MAX_CONSECUTIVE_FAILS = 3;
 
 /** 单来源单轮入库上限(防异常 feed 撑爆单轮;适配器返回再多也截断) */
 export const CRAWL_MAX_ITEMS_PER_RUN = 50;

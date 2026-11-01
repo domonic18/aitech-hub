@@ -8,12 +8,9 @@
 import type { JobRun } from "@prisma/client";
 
 import { prisma } from "../db";
-import { formatCnTime } from "../datetime";
-import {
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
-  SOCIAL_CRAWL_INTERVAL_MIN,
-  VIDEO_PLATFORM_LABELS,
-} from "../telegram/constants";
+import { DAY_MS, formatCnTime } from "../datetime";
+import { SOCIAL_CRAWL_INTERVAL_MIN, VIDEO_PLATFORM_LABELS } from "../telegram/constants";
+import { CRAWL_SOURCE_TYPE_SOCIAL_VIDEO } from "./constants";
 import { listChannelsAdmin } from "../telegram/channels-admin";
 import { listHotSourcesAdmin } from "../insight/hot-source";
 import {
@@ -265,7 +262,7 @@ export function registryIntervalMs(jobKey: string): number | null {
   if (def === undefined || parsed === null || parsed.firesPerDay <= 0) return null;
   // 周任务 firesPerDay 是「触发日当日次数」,按触发天数摊回平均间隔(周档 = 7 天)
   const dayCount = parsed.days?.length ?? 7;
-  return Math.round((86_400_000 * (7 / dayCount)) / parsed.firesPerDay);
+  return Math.round((DAY_MS * (7 / dayCount)) / parsed.firesPerDay);
 }
 
 /** 登记表全部 jobRun 键(F19 脱期判定需覆盖 7 日无运行的任务) */

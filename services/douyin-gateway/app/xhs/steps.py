@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -104,9 +105,16 @@ async def upload_images(ctx: PublishCtx) -> None:
 
     轮询计数到齐再进下一步——上传中平台禁用发布钮,未到齐就点只会白失败;
     到齐后再等 UPLOAD_TAIL_SETTLE_MS(计数到齐≠字节传完)。计数元素缺失
-    (平台改版)退回固定等待。平台拒收 <720P 图片但报错只在发布期出现。
+    (平台改版)退回等编辑区挂载——编辑区只有上传成功才出现,是「上传确有
+    产出」的实证;两者皆无 = 上传根本没发生,必须失败上抛(2026-10-27 实弹:
+    0 字节图片被平台静默忽略,旧兜底固定等待后假通过,故障推迟到填标题步
+    且归因误导)。平台拒收 <720P 图片但报错只在发布期出现。
     """
     page, sel = ctx.page, ctx.sel
+    for p in ctx.images:  # 空文件平台静默忽略,挂载前最后一道闸(网关已有一道)
+        if os.path.getsize(p) <= 0:
+            raise XhsStepError("上传图片", KIND_UPLOAD, (
+                f"图片为空文件({os.path.basename(p)}):物料下发异常"))
     await page.locator(sel["upload_input"]).first.set_input_files(ctx.images)
     counter = page.get_by_text(re.compile(rf"^{len(ctx.images)}/\d+$"))
     deadline = time.monotonic() + cfg.UPLOAD_SETTLE_TIMEOUT_S
@@ -116,7 +124,16 @@ async def upload_images(ctx: PublishCtx) -> None:
             return
         await page.wait_for_timeout(cfg.UPLOAD_POLL_MS)
     if not await page.get_by_text(re.compile(r"\d+/\d+")).count():
-        await page.wait_for_timeout(cfg.UPLOAD_SETTLE_MS)
+        editor = page.locator(sel["title_input"]).first
+        try:
+            await editor.wait_for(
+                state="attached", timeout=cfg.UPLOAD_EDITOR_WAIT_S * 1000
+            )
+        except Exception:
+            raise XhsStepError("上传图片", KIND_UPLOAD, (
+                "上传无反应:计数器与编辑区均未出现(图片被平台静默拒收?"
+                "先看现场截图与视频)"))
+        await page.wait_for_timeout(cfg.UPLOAD_TAIL_SETTLE_MS)
         return
     raise XhsStepError("上传图片", KIND_UPLOAD, (
         f"上传计数未到 {len(ctx.images)}(超时 {cfg.UPLOAD_SETTLE_TIMEOUT_S}s)"))

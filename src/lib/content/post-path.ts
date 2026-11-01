@@ -6,6 +6,8 @@
  * - 旧单段 `/%encoded%/` 由 legacy_url_map 301 承接(103 篇随迁落表,见 20261004 迁移)。
  * 纯函数零 IO,单测 post-path.test.ts 钉死;全站文章链接只许经 postPath 构造。
  */
+import { parseBigIntId } from "@/lib/http/parse-id";
+
 export const POST_PATH_PREFIX = "/post";
 
 /** ASCII slug 形态:小写字母数字 + 单连字符分隔(与 postSlugSchema 归一产物同构) */
@@ -37,11 +39,16 @@ export interface ParsedPostSegment {
 /**
  * 解析 URL 段 → id。只认 `<digits>[-anything]` 形态,其余 → null(调用方 404);
  * 尾巴不校验——非 canonical 形态依赖路由层 canonical 对比归一,解析永远成功于 id。
+ *
+ * 数字段走 parseBigIntId(单源):超 int64 上限的段一律判解析失败 → 404,
+ * 而不是 BigInt 照收、到 Prisma 才炸成 500(/post/<30 位数字>/ 是外部可构造的)。
  */
 export function parsePostSegment(segment: string): ParsedPostSegment | null {
   const m = /^(\d+)(?:-([\s\S]*))?$/.exec(segment);
   if (!m) return null;
-  return { id: BigInt(m[1]), slug: m[2] ? m[2] : null };
+  const id = parseBigIntId(m[1]);
+  if (id === null) return null;
+  return { id, slug: m[2] ? m[2] : null };
 }
 
 /**

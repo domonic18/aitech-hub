@@ -20,19 +20,29 @@ export default function SiteRegisterForm({ nextPath }: { nextPath: string }): Re
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
+    if (!agreed) {
+      setError("请先阅读并同意用户协议与隐私政策");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), email: email.trim(), password }),
+        body: JSON.stringify({
+          username: username.trim(),
+          email: email.trim(),
+          password,
+          agreed: true,
+        }),
       });
       const body = (await res.json()) as { code: number; message?: string };
       if (body.code === 0) {
@@ -106,6 +116,24 @@ export default function SiteRegisterForm({ nextPath }: { nextPath: string }): Re
           className={FIELD}
         />
       </div>
+      <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-text-2">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
+        />
+        <span>
+          我已阅读并同意
+          <Link href="/agreement/" className="mx-0.5 text-accent hover:underline">
+            用户协议
+          </Link>
+          与
+          <Link href="/privacy/" className="mx-0.5 text-accent hover:underline">
+            隐私政策
+          </Link>
+        </span>
+      </label>
       {error && <p className="text-xs text-red">{error}</p>}
       <button type="submit" disabled={busy} className={BTN}>
         {busy ? "注册中…" : "注册"}

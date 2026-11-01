@@ -55,8 +55,9 @@ function clusterRow(overrides: Partial<Record<string, unknown>> = {}): Record<st
   };
 }
 
-/** 两簇成员/快照/动量聚合的标准桩 */
+/** 两簇成员/快照/动量聚合的标准桩;M60 批C 起榜单先按成员门槛取 id 再取行 */
 function mockTwoClusters(): void {
+  rawQuery.mockResolvedValue([{ id: BigInt(11) }, { id: BigInt(22) }]);
   clusterFindMany.mockResolvedValue([
     clusterRow(),
     clusterRow({ id: BigInt(22), label: null, score: null, keywords: [], media: [] }),
@@ -66,38 +67,65 @@ function mockTwoClusters(): void {
     { clusterId: BigInt(11), score: 2 },
     { clusterId: BigInt(11), score: 6 },
   ]);
-  rawQuery.mockResolvedValue([
+  // ② 动量聚合(① 是成员门槛取 id 的 SQL,由各用例自设)
+  rawQuery.mockResolvedValueOnce([{ id: BigInt(11) }, { id: BigInt(22) }]).mockResolvedValue([
     {
       cluster_id: BigInt(11),
       sig_24h: BigInt(5),
       sig_before: BigInt(3),
       recent: new Date("2026-10-24T02:00:00Z"),
     },
-  ]);
+  ] as never);
+}
+
+/** 从 rawQuery 调用里取出嵌套 Sql 片段(Prisma.sql 片段不展开进 strings) */
+type SqlFragment = { strings: string[]; values: unknown[] };
+function fragmentsOf(call: unknown[]): SqlFragment[] {
+  return call
+    .slice(1)
+    .filter(
+      (v): v is SqlFragment =>
+        typeof v === "object" && v !== null && Array.isArray((v as SqlFragment).strings),
+    );
 }
 
 describe("listInsightClusters", () => {
-  it("空簇短路:返回 [] 且不触发二次聚合", async () => {
-    clusterFindMany.mockResolvedValue([]);
+  it("成员门槛取 id 后为空 → 返回 [] 且不触发二次聚合", async () => {
+    rawQuery.mockResolvedValue([]);
     const rows = await listInsightClusters({});
     expect(rows).toEqual([]);
+    expect(rawQuery).toHaveBeenCalledTimes(1);
+    expect(clusterFindMany).not.toHaveBeenCalled();
     expect(memberGroupBy).not.toHaveBeenCalled();
-    expect(rawQuery).not.toHaveBeenCalled();
   });
 
-  it("take 钳制 [1,50] 与 kind 过滤进 where", async () => {
-    clusterFindMany.mockResolvedValue([]);
+  it("成员门槛 SQL:take 钳制 [1,50] 与 kind 过滤进 fragments", async () => {
+    rawQuery.mockResolvedValue([]);
     await listInsightClusters({ kind: "pain", limit: 999 });
-    expect(clusterFindMany).toHaveBeenCalledTimes(1);
-    const args = clusterFindMany.mock.calls[0]![0] as {
-      where: { kind?: string };
-      take: number;
-    };
-    expect(args.take).toBe(50);
-    expect(args.where.kind).toBe("pain");
-    clusterFindMany.mockClear();
+    expect(clusterFindMany).not.toHaveBeenCalled();
+    const call = rawQuery.mock.calls[0] as unknown[];
+    expect(call.slice(1)).toContain(50);
+    const frags = fragmentsOf(call);
+    expect(frags.some((f) => f.strings.join("?").includes("c.kind = ?"))).toBe(true);
+    expect(frags.flatMap((f) => f.values)).toContain("pain");
+    // 成员门是子查询(constant 绑定 LABEL_MIN_MEMBERS=3)
+    expect((call[0] as TemplateStringsArray).join("?")).toContain("insight_cluster_member m");
+    expect(call.slice(1)).toContain(3);
+
     await listInsightClusters({ limit: 0 });
-    expect((clusterFindMany.mock.calls[0]![0] as { take: number }).take).toBe(1);
+    expect((rawQuery.mock.calls[1] as unknown[]).slice(1)).toContain(1);
+  });
+
+  it("领域过滤进 fragments,undefined 不筛(M54 批C)", async () => {
+    rawQuery.mockResolvedValue([]);
+    await listInsightClusters({ domain: "tech" });
+    const withDomain = fragmentsOf(rawQuery.mock.calls[0] as unknown[]);
+    expect(withDomain.flatMap((f) => f.values)).toContain("tech");
+    expect(withDomain.some((f) => f.strings.join("?").includes("c.domain = ?"))).toBe(true);
+
+    await listInsightClusters({});
+    const noDomain = fragmentsOf(rawQuery.mock.calls[1] as unknown[]);
+    expect(noDomain.flatMap((f) => f.values)).not.toContain("tech");
   });
 
   it("映射:成员数/快照升序 history/动量与异动/非串词面滤除/时间 ISO 化", async () => {

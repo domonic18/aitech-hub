@@ -1,6 +1,7 @@
 /**
  * purge 单测(prisma/checkpointer/redis 必 mock):30 天 cutoff、按批循环清空、
- * checkpoint 删失败不反噬、空批即止;游客线程 Redis 键消失清扫。
+ * checkpoint 删失败不反噬、空批即止;游客线程 Redis 键消失清扫,但有留档行
+ * 的线程内容随行 30 天留档(归属键消失不删 checkpoint)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +27,7 @@ vi.mock("../logger", () => ({ logger: loggerMock }));
 import { purgeAgentSessions, purgeExpiredGuestThreads } from "./purge";
 
 beforeEach(() => {
-  prismaMock.searchAgentSession.findMany.mockReset();
+  prismaMock.searchAgentSession.findMany.mockReset().mockResolvedValue([]);
   prismaMock.searchAgentSession.delete.mockReset();
   deleteThreadMock.mockReset();
   deleteThreadMock.mockResolvedValue(undefined);
@@ -93,8 +94,22 @@ describe("purgeExpiredGuestThreads", () => {
     expect(existsMock).toHaveBeenCalledTimes(2);
   });
 
-  it("无 g_ 线程 → 0 不触删", async () => {
+  it("有留档行的线程:归属键消失也不删 checkpoint(内容随行 30 天)", async () => {
+    queryMock.mockResolvedValue({ rows: [{ thread_id: "g_row" }, { thread_id: "g_bare" }] });
+    prismaMock.searchAgentSession.findMany.mockResolvedValue([{ id: "g_row" }]);
+    existsMock.mockResolvedValue(false); // 两个归属键都不在了
+    await expect(purgeExpiredGuestThreads()).resolves.toBe(1);
+    expect(prismaMock.searchAgentSession.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["g_row", "g_bare"] } },
+      select: { id: true },
+    });
+    expect(deleteThreadMock).toHaveBeenCalledTimes(1);
+    expect(deleteThreadMock).toHaveBeenCalledWith("g_bare");
+  });
+
+  it("无 g_ 线程 → 0 不触删,也不查留档行", async () => {
     await expect(purgeExpiredGuestThreads()).resolves.toBe(0);
     expect(deleteThreadMock).not.toHaveBeenCalled();
+    expect(prismaMock.searchAgentSession.findMany).not.toHaveBeenCalled();
   });
 });

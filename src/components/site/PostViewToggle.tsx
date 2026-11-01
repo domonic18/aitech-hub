@@ -7,9 +7,9 @@
  * 零二次请求。行业惯例口径:视图记忆是个人偏好,不进 URL(可分享的筛选走
  * /category、/tag 路由)。
  * 2026-10-05 二次反馈:卡片视图需要更宽版心(多列卡片,两侧留白收窄)——
- * 本组件同时接管「视图区版心」:列表 768(阅读口径)、卡片 1200(--site-max-w,
- * 列数由网格 auto-fill 按分辨率自适);footer(分页)渲染在版心内随视图同宽;
- * 2026-10-06 反馈:topBar(筛选条)同样随视图版心同宽,与内容左右缘对齐。
+ * 本组件曾按视图切换版心(列表 768 / 卡片 1200)。2026-11-01 列表页重构:
+ * 版心统一由 ArticlesListView 掌握(--site-max-w),本组件只管显隐与记忆,
+ * 消除「标签区比标题区宽」的错位(用户反馈问题 4)。
  */
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -53,11 +53,7 @@ export default function PostViewToggle({
     }
   };
   return (
-    <div
-      className={
-        view === "cards" ? "mx-auto w-full max-w-[var(--site-max-w)]" : "mx-auto w-full max-w-3xl"
-      }
-    >
+    <div className="mx-auto w-full">
       {topBar ? <div className="mb-4">{topBar}</div> : null}
       <div className="flex justify-end">
         <div

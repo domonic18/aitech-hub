@@ -8,7 +8,7 @@
  * 表无 PII(无 IP/无访客哈希);ref 无外键,标题查询侧反解,删除兜底占位。
  */
 import { deleteBatchedWhere, prisma } from "@/lib/db";
-import { statsDay } from "@/lib/datetime";
+import { DAY_MS, statsDay } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 
 export const CLICK_SURFACES = ["home", "telegram"] as const;
@@ -54,7 +54,7 @@ const CLICK_LOG_RETENTION_DAYS = 180;
 
 /** 清理保留窗口外的点击明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
 export async function purgeClickLogs(): Promise<number> {
-  const cutoff = new Date(Date.now() - CLICK_LOG_RETENTION_DAYS * 86_400_000);
+  const cutoff = new Date(Date.now() - CLICK_LOG_RETENTION_DAYS * DAY_MS);
   return deleteBatchedWhere(prisma.statsClickLog, { createdAt: { lt: cutoff } });
 }
 
@@ -171,7 +171,7 @@ export async function getClickDomains(
 // ── 窗口工具(queries.ts 同款北京日界;两行小工具就地复制,读写同文件收口)──
 
 function dayStr(offsetDays: number): string {
-  return statsDay(new Date(Date.now() - offsetDays * 86_400_000));
+  return statsDay(new Date(Date.now() - offsetDays * DAY_MS));
 }
 
 function cnDayStart(day: string): Date {

@@ -135,6 +135,12 @@ model insight_snapshot {
 | 痛点榜(核心) | 痛点卡:一句话概括/信号数/典型原话/介质徽章/**内容覆盖度%(空白标红=选题机会)** |
 | 选题工作台 | 热点×痛点交叉矩阵+机会评分卡+一键转 Topic(绑 skillKey 进既有合成管线) |
 
+> 后续增补(M58/M59,详见 [data-expansion-plan §14](data-expansion-plan.md)):顶部页签为
+> 分析总览 / 发现 / **信号** / **事件** / **实体**。信号独立页 `/admin/insight/signals/`
+> 承载源/地域/介质/日期筛选、分页与原文外链(总览只留最近 5 条预览);事件台账
+> `/admin/insight/events/` 按厂商/类型/时间筛选;实体聚合 `/admin/insight/entities/`
+> 按 `entityKey` 聚合厂商事件,详情含事件时间线与关联厂商信号。
+
 ## 7. 触达层
 
 - **Web 看板**:§6(系统内,admin)
@@ -152,7 +158,7 @@ model insight_snapshot {
 
 ### 8.1 批③ 验收反馈(两轮,本地栈验收驱动)
 
-- **第一轮(已验收)**:源筛选页签 `scroll={false}` 修切换滚顶;可视化增强 v1——近 7 日分源堆叠趋势、7 日×24 时段热力、分源占比条+台账、热榜热度条(`src/lib/insight/trends.ts` 北京墙钟口径桶取)。
+- **第一轮(已验收)**:源筛选页签 `scroll={false}` 修切换滚顶;可视化增强 v1——近 7 日分源堆叠趋势、7 日×24 时段热力、分源占比条+台账、热榜热度条(`src/lib/insight/trend-series.ts` 北京墙钟口径桶取)。
 - **第二轮(已交付,5 项)**:① 照搬 ai-invest 采集管理落 `/admin/spider/schedule`(登记表 `src/lib/collect/schedules.ts`,同时是 cron 常量唯一真相源——`@/lib/queue` 仅 re-export,防 client 组件经 queue 拖 bullmq 进浏览器包;列表/日历双视图+分类筛选+常驻清单+crawl_source 间隔台账;管理动作仍在渠道页签);② 洞察中心「信号采集强度」三件套(趋势/时段热力/台账)整体迁入采集总览;③ 词云重写为行业形态——阿基米德螺旋紧密排布+矩形碰撞检测+分层着色+约 1/4 竖排(纯函数 `lib/insight/word-cloud.ts#packWords`,测试锚点);④ 痛点榜改行式机会榜(机会分+分数比例条,整行可点)、热点雷达改双列窄行,两者高度约减半;⑤ 热榜主流化——名次变动(↑n/↓n/「新」,对齐各源上一 `meta.batch` 名次)+ 头部名次着色 + 热度条。
 - **第三轮(已交付)**:热榜三源纳入采集计划管理——新增 `insight_hot_source` 登记表(fetcher 代码注册表的运行态投影):运行时启停闸(`run.ts` 逐轮按表过滤,停用源整源跳过,缺行=启用免迁移兼容新 fetcher)+ 逐源拉取态回写(最近拉取/连败/末次错误,crawl_source 同口径,best-effort 不炸信号主链)+ 采集计划页热榜源台账(行内 StatusSwitch 启停,`PUT /api/insight/hot-sources/<source>/status`,照 channels status 惯例)。启停只挡采集,不动 `INSIGHT_SOURCES_ENABLED` 读侧白名单(存量信号照常展示)。同轮:热点雷达改**动量榜**(评估后方案 A)——快照序列尚薄(全簇仅 1 点,sparkline 成孤点)故撤迷你图,改显式名次(头部三色同热榜语法)+ 动量徽(`label.ts#clusterMomentum` 纯函数:新晋=24h≥3 且此前≤2 / 升温=24h≥3 且占比≥40% / 退潮=24h 零新增;热榜 refreshMeta 续热使占比偏「仍在榜」语义,作方向不作度量)+ 分值热度条 + 相对活跃时间。痛点扩围(批③ 渠道转向后 pain 池唯一进水口=文章评论,量小饥饿):**kind 从按源硬映射改为按簇内容语义判定**——`nearestClustersByMembers` 去 kind 过滤改单池归簇(同主题跨源合流),`INSIGHT_SOURCE_KIND` 降级为新建簇引导值,打标契约加 `kind` 字段(LLM 判定:pain=有明确诉求/求助/抱怨,hot=公众话题,拿不准归 hot)日批回写;存量 ≥3 成员簇一次性重判(37/37 成功,「AI编码落地与审查瓶颈」由 hot 翻入 pain,其余 31 个 hot 簇 LLM 判纯话题维持)。专职痛点语料源(猪八戒/知乎问题/外部评论)记批④候选另立项。
 

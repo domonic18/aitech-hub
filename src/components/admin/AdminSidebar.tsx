@@ -51,6 +51,9 @@ const GROUPS: ReadonlyArray<Group> = [
       // 贴图管理(M41):公众号小绿书图片帖工作台(流水线+组装台)
       { icon: "i-appstore", label: "贴图管理", href: "/admin/pins" },
       { icon: "i-send", label: "电报管理", href: "/admin/telegram" },
+      // 牌价管理(M55 工具钩子,M56 验收 IA 归位 2026-10-29):/pricing/ 公开页
+      // 的牌价策展面(双表终审+渠道管理)——内容策展队列维度,自「数据」组迁入
+      { icon: "i-global", label: "牌价管理", href: "/admin/pricing" },
     ],
   },
   {
@@ -58,6 +61,8 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       // 内容分发→分发中心(IA v2 更名,多渠道枢纽永久位;路由不变)
       { icon: "i-cloudupload", label: "分发中心", href: "/admin/distribute" },
+      // 公众号会话(M66):公众号私信问答的处置面(会话/关键词/接入配置)
+      { icon: "i-comment", label: "公众号会话", href: "/admin/wechat-mp" },
     ],
   },
   {

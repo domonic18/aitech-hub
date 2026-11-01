@@ -1,19 +1,19 @@
 # 数据模型与迁移管理
 
-> schema 唯一真相源是 `prisma/schema.prisma` + `prisma/migrations/`。本文定义表结构设计与迁移纪律;Prisma 模型名与 DB 表名的映射规则见 [arch/06-project-structure §3](06-project-structure.md)。
+> schema 唯一真相源是 `prisma/schema.prisma` + `prisma/migrations/`。本文定义表结构设计与迁移纪律;Prisma 模型名与 DB 表名的映射规则见 [arch/06-project-structure §3](06-project-structure.md),命名细则(表/列/约束/索引/删除行为)的权威源是 [standard/03-db-naming](../standard/03-db-naming.md)。
 
 ## 1. 迁移纪律(Prisma Migrate 承载 SQL 台账制精神)
 
-- `0000_init` 基线迁移(全部一期表)→ 按日期命名增量;`prisma/migrations/` 下 SQL 文件可读、可评审
+- `20260929131543_init` 基线迁移(全部一期表)→ 按日期命名增量;`prisma/migrations/` 下 SQL 文件可读、可评审
 - **forward-only**:已应用的迁移禁止修改;破坏性变更走 expand-contract(先加后删,分两次)
 - **执行**:`npx prisma migrate deploy`(**起库健康后、起应用前必须执行**);`_prisma_migrations` 台账 exactly-once、幂等
 - 开发流程:`prisma migrate dev --create-only` 生成 SQL → 人工评审 → 应用;禁止 `db push` 绕过迁移
 - 种子:`prisma/seed.ts`(幂等 upsert:四分类、站点配置);admin 不预置,首次部署 `npm run admin <phone>` 创建
 - **CI 重放守卫**:起临时 postgres:16 → `migrate deploy` 全量 → 再 deploy 一次验证幂等 → Prisma introspect 断言 schema 一致(standard/01-testing §5)
 
-## 2. 一期表结构(0000_init 的设计依据)
+## 2. 一期表结构(20260929131543_init 的设计依据)
 
-域前缀:`content_` / `user_` / `stats_` / `legacy_`;视频字段按 arch/08-media 决策已内建。站点统计聚合族与 `user_pat` 为 2026-09-29 需求补充(requirement §3.5/§3.6),属一期表,随 `0000_init` 基线建表。
+域前缀:`content_` / `user_` / `stats_` / `legacy_`;视频字段按 arch/08-media 决策已内建。站点统计聚合族与 `user_pat` 为 2026-09-29 需求补充(requirement §3.5/§3.6),属一期表,随 `20260929131543_init` 基线建表。
 
 ### 2.1 content_(内容域)
 
@@ -305,6 +305,7 @@ CREATE TABLE legacy_url_map (
 - `social_account`(视频博主,2026-10-04 M8 新表):`platform+sec_uid` 唯一;**sec_uid 语义 per-platform(M24 起定档)**——douyin=sec_uid(`MS4wLjAB…` 开头),bilibili=纯数字 mid(1-16 位),判等与登记校验按平台分发(见 [arch/05 §4.4](05-services.md));调度字段 `crawl_interval_min(默认 180)/last_post_at(增量地板)/last_run_at/next_run_at/consecutive_fails/last_error`;`platform_row_id` FK→crawl_source(N:1);`enabled` 启停(两步武装删除前置)
 - `telegram`(电报表;M8 扩视频列):`media_type varchar(10) default 'text'` + `video_platform/video_blogger(冗余博主名)/video_cover_url/video_duration/video_engagement jsonb`,索引 `(status, media_type)`;**无 transcript/play_url 列**(版权红线,arch/02 §3.2);AI 解读列组视频/文字共用:`ai_status/ai_topic/ai_summary/ai_points jsonb/ai_keywords jsonb(M12 批⑥ 新列,文字条关键词 tag)/ai_ran_at/last_ai_error`(语义与契约演进见 arch/02 §3.2 落地注记)
 - `blocklist`(屏蔽词)
+- `crawl_snapshot`(采集快照档案,2026-10-29 迁移 `crawl_snapshot`):`source_id` FK→crawl_source **CASCADE**/`captured_at`/`url`/`tab`(monthly·quarterly·yearly·page)/`http_status?`/`size_bytes`/`sha1`/`parse_status`(pending/success/failed/empty——pending 残留=worker 中途死亡)/`row_count?`/`error?`/`storage_key varchar(300)`(私有桶 `crawl-snapshots/<sourceId>/<ts>-<tab>.html.gz`)/`has_png`(同前缀 `.png` 整页截图);索引 `(source_id, captured_at DESC)`。行只存元数据,原文在 COS 私有桶;每源保留最近 20 份(应用层裁剪,超量对象+行一并清)
 
 **AI 服务域三表已落地(2026-10-04 M8 批⑥迁移 `ai_service_admin`,治理后台见 [arch/04 §4](04-ai-agent.md))**:
 
@@ -329,13 +330,13 @@ CREATE TABLE legacy_url_map (
 **内容分发域三表已落地(2026-10-06 M17 批①迁移 `20261006122422_publish_channel_wechat`,多渠道分发首渠道=微信公众号,requirement §4)**:
 
 - `publish_wechat_config`(渠道配置单例 `id=1`,get-or-create,镜像 `asr_config`):`appid/app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`author?`(图文作者,缺省「一起AI」)/`theme 默认 "default"`(渠道默认正文主题 id,wechat-themes 注册表)/`auto_sync_enabled 默认 false`(发布即推,用户定调默认关)/`enabled 默认 false`(渠道总开关)+ `last_test` 四件套
-- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?/theme?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段;theme 快照=上次推送所用主题 id,重推沿用,空=渠道默认)/`attempts/last_error?(截 500)/synced_at?`
+- `publish_channel`(渠道中立分发状态机):`post_id+channel` 唯一(一期 channel 仅 wechat,CSDN/知乎后置);`status`(pending/synced/failed,应用层 Zod)/`media_id?`(公众号草稿锚——有值重推走 draft/update,清空回落 draft/add)/`title?/digest?/thumb_path?/theme?`(按渠道微调快照,组装优先级 overrides > 行快照 > 文章字段;theme 快照=上次推送所用主题 id,重推沿用,空=渠道默认)/`attempts/last_error?(截 500)/synced_at?`;`data jsonb?`(M49 迁移 `20261026100000_publish_channel_data` 预埋的渠道扩展载荷,文章侧未来渠道用,wechat 行为不变)
 - `publish_media_cache`(转存防重推):`channel+source_key` 唯一;`source_key` 前缀分区:`b:<sha1 源字节>`(站内正文图)/`u:<sha1 url>`(外链图)/`m:<sha1 源字节>`(封面,`remote_media_id` 有值);`remote_url`(uploadimg 回传 mmbiz 链,永久有效无 TTL)/`remote_media_id?`(add_material 回传);缓存命中零上传,公众号频控友好
 
 **搜索 Drawer 会话表已落地(2026-10-07 K2.5 批①迁移 `20261006190159_search_agent_session`,交互见 [arch/04 §3](04-ai-agent.md))**:
 
-- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(匿名 cookie `ah_av`,归属校验锚——非本人 404 不泄露存在性;K2.6 起仅 admin 会话落行,key=`admin:<sub>`);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
-- `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。**游客不落会话行**:thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库),checkpoint 由日清按「键已消失」清扫;后台游客统计 = 本表按 session_id 聚合
+- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(成员会话=归属键:匿名 cookie `ah_av` 或 `admin:<sub>`,归属校验锚——非本人 404 不泄露存在性;**M58 批⑤ 后续起游客会话也落行,`visitor_id` 写字面量 `guest`**,不存任何访客标识);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
+- `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。游客线程 thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库;**M58 批⑤ 后续起同 id 落匿名会话行**,行与内容按 30 天日清,归属键只决定能否继续追问);无留档行的历史线程 checkpoint 仍按「键已消失」日清扫;后台游客统计 = 本表按 session_id 聚合 ∪ 留档行(标题/tokens 以行为准)
 
 **账号邮箱通道与支付域已落地(2026-10-08 M21 批⓪/批①迁移 `20261008221317_m21_batch0_email_auth` + `20261008143451_m21_batch0_email_config` + `20261008145247_m21_payment_schema`,方案定稿 M21 付费阅读提案 v1.6,批⑦ 落 arch/09)**:
 
@@ -348,6 +349,10 @@ CREATE TABLE legacy_url_map (
 - `pay_notify_log`(回调留痕):`order_no/gateway_status varchar(8)` 枚举 `OD|WP|CD|RD|UD`/`sign_valid/payload jsonb`(回调原文全量存,可追溯伪造尝试)/`handled 默认 false`(是否触发状态迁移);索引 `order_no`
 - `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
 - `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
+
+**短信认证通道已落地(2026-10-31 M65 迁移 `20261031180000_m65_user_sms_config`,链路见 [arch/05 §3.4](05-services.md))**:
+
+- `user_sms_config`(阿里云 PNVS 短信认证配置单例 `id=1`,get-or-create,镜像 `email_config` / `admin_feishu_config` 形态——2026-10-31 拍板凭据入数据库不入 env):`access_key_id varchar(100)` 默认 `''`(空=未配置)/`access_key_secret_enc?/access_key_secret_mask?`(secret-box AES-256-GCM 同箱,只写不读、留空=保留原值)/`sign_name varchar(50)`(PNVS 签发签名名,可轮换故不入 env)/`template_code varchar(50)` 默认 `100001`(PNVS 预置模板:100001 登录/注册,100002/100004/100005 绑定场景)/`enabled bool 默认 false`(**通道总开关,同时是登录页短信页签的唯一门控**——关闭或凭据不全时端点 503、页签隐藏)/`daily_limit int` 默认 200(日发送预算熔断)/`last_test_*` 四件套(后台下发探针留痕);**验证码由服务商托管,本站不落库、不缓存**
 
 **飞书免登域两表已落地(2026-10-14 M29 批①迁移 `20261014160000_admin_feishu_sso`,交互与兑换链见 [arch/05 §3.1](05-services.md))**:
 
@@ -377,7 +382,7 @@ CREATE TABLE legacy_url_map (
 
 - `content_pin`(贴图主实体,公众号「小绿书」newspic 图片帖):`title varchar(64)`(≤32 码点公众号硬上限,VarChar 留字节数余量)/`content text 默认 ''`(轻文字纯文本,禁 Markdown/内联 HTML,≤2 万码点)/`topic_id?`(专题 soft ref,应用层完整性不设跨域 FK,同 `topic.linked_post_id` 口径)/`status varchar(20) 默认 draft` 枚举 `draft|pending|synced|published`(应用层 Zod,人工迁移表 `PIN_MANUAL_TARGETS` 收敛)/`read_more_url? varchar(500)`(阅读原文,http(s) 白名单)/`crop_spec varchar(40) 默认 1_1`(封面裁剪档 `1_1|16_9|2.35_1`,随 draft/add 透传)/`reference_media_path? varchar(500)`(M42 生图采纳的参照图,见下)/`synced_at?/published_at?`(首进 published 落,回退再上架不覆盖);索引 `(status, updated_at DESC)`(工作台页签)
 - `content_pin_image`(有序图片,首张即封面——公众号 `image_list` 顺序 = sort_order,站点瀑布流封面同源):`pin_id` FK **CASCADE**(删贴图连图)/`version_id?`(引用 `ai_illu_version` soft ref 不拷文件不回写,本地上传为 null)/`media_path varchar(500)`(**挂载时快照**——工坊后续改字产新版本不篡改已挂序列,升版由人工在组装台重挂)/`width?/height?`(本地上传取自然尺寸;工坊引用缺省)/`sort_order`;索引 `(pin_id, sort_order)`
-- `content_pin_channel`(渠道留痕,每贴图×渠道一行,`@@unique([pinId, channel])`,循 `publish_channel` ensure 形态):`channel varchar(20)`(一期仅 `wechat`)/`status varchar(20) 默认 pending` 枚举 `pending|synced|failed`/`media_id?/publish_id?`(公众号草稿/发布锚,重推 update 以 media_id 定位)/`attempts`(含人工重试)/`last_error? varchar(500)`(人话)/`synced_at?`;`pin_id` FK **CASCADE**
+- `content_pin_channel`(渠道留痕,每贴图×渠道一行,`@@unique([pinId, channel])`,循 `publish_channel` ensure 形态):`channel varchar(20)`(wechat\|xiaohongshu——M49 批X1' 放行 xiaohongshu,小红书笔记载体=贴图,发布锚存笔记 URL)/`status varchar(20) 默认 pending` 枚举 `pending|synced|failed`/`media_id?/publish_id?`(公众号草稿/发布锚(小红书=笔记 URL),重推 update 以 media_id 定位)/`attempts`(含人工重试)/`last_error? varchar(500)`(人话)/`synced_at?`;`pin_id` FK **CASCADE**
 
 **创作中心域扩列已落地(2026-10-22 M42 迁移 `20261022180000_m42_studio_output`,概念重构见 [arch/05 §1](05-services.md)、创作台信息架构见 [arch/07 §2](07-frontend.md);forward-only,全部 ADD COLUMN 带缺省不锁表)**:
 
@@ -387,12 +392,48 @@ CREATE TABLE legacy_url_map (
 - `content_pin.reference_media_path? varchar(500)`:本次生图采纳的参照图(站内 `/wp-content/uploads/` 路径,soft ref;缺省回落创作样例图/素材封面),让「按素材出图」可追溯可复现
 - 索引 `idx_content_pin_topic_updated (topic_id, updated_at DESC)`:创作台按创作聚合贴图产出
 
+**洞察 v2 数据域已落地(2026-10-30 M58 三批迁移 `20261030100000_m58_signal_lang_region` / `20261030120000_m58_entity_event` / `20261030130000_m58_leaderboard_snapshot`;表名于 M62 归一为域前缀写法 `insight_entity_event` / `insight_leaderboard_snapshot`;口径见 [arch/01 §3](01-data-source.md);forward-only,枚举一律 varchar 由应用层 Zod 收口)**:
+
+- `insight_signal` 增列(批①,中文化基座):`lang? varchar(10)`(zh/en/…,源级声明、混合源逐条覆盖)/`region? varchar(10)`(cn/global)/`translated_text? text`(中文译文;原文恒在 `raw_text`)/`translation_status varchar(10) 默认 none`(none|pending|done|failed);`cluster.region? varchar(10)`(按成员多数派回写 cn|global|mixed)
+- `insight_entity_event`(批②,厂商事件层):`source varchar(30)`(`vendor-<key>`,与洞察 source 同口径)/`vendor varchar(30)`(注册表 key)/`entity_type varchar(12)`(model|product|org)+ `entity_key varchar(120)`(实体规范名,如 deepseek-v4)/`event_type varchar(20)` 枚举 `release|price_change|open_source|funding|deprecation|benchmark_change`/`title varchar(300)`/`summary? varchar(1000)`/`url varchar(500)`/`occurred_at`/`dedupe_key char(40)` **唯一**(sha1(source|url|eventType|entityKey),同 URL 多实体不互相吞并)/`meta jsonb?`;索引 `(vendor, occurred_at DESC)` + `(event_type, occurred_at DESC)` + `idx_insight_entity_event_entity_recent (entity_key, occurred_at DESC)`(M59 增,实体聚合列表与详情时间线共用)。事件同时按 dedupeKey 作 refId 进洞察池(`source=vendor-<key>`),可回溯到事件行
+- `insight_leaderboard_snapshot`(批③,榜单时序):`source varchar(30)`(注册表 key)/`board varchar(40)`(榜单展示名)/`entity_key varchar(200)`(模型 slug·arXiv id·owner/repo)/`entity_name varchar(300)`/`entity_type varchar(12)`(model|paper|repo)/`vendor? varchar(60)`/`rank int`/`score? float8`/`score_unit? varchar(20)`/`captured_date date`(北京日界 UTC 零点)/`meta jsonb?`(`{url, sourceId}`);唯一键 `(source, board, entity_key, captured_date)`(同日重跑整表覆盖),索引 `(source, board, captured_date DESC)`(读侧取最新与上一可用日期)。名次变动**不落库**,读时相减
+- 批④(社区需求语料)**无 schema 变更**:四源统一落 `insight_signal`(`source=community-<key>`,`ref_id` 直接复用唯一键作幂等锚);日预算走 Redis(`insight:community:quota:<key>:<北京日>`,不落库);取数原文复用 `crawl_snapshot`
+- 批⑤(站内问句清洗复活)**无 schema 变更**:`source=internal-agent` 复用 `insight_signal`(refId=sessionId,游客为 `g:<threadId>`);入口标签进 `meta.surface`;游客首问判定键走 Redis(`search:agent:ask-recorded:<threadId>`,TTL 6h,不落库、不存 visitorId)
+- M59(洞察浏览与实体层)**无 schema 变更**,仅一迁移 `20261030160000_m59_entity_key_index` 增上述 `idx_insight_entity_event_entity_recent`:实体聚合视图(`/admin/insight/entities/`)只基于 `insight_entity_event` 分组,**不 join** `insight_leaderboard_snapshot`(后者 entityKey 口径不同);实体↔厂商信号关联走 `insight_signal.meta.entityKey`(JSON 路径等值),社区/热榜信号未挂实体;M64 起 AA / HF 两榜快照另有 `entity_id` 直连实体,其余源仍不关联
+- M60(实体分层/覆盖矩阵/未命名治理)迁移 `20261030200000_m60_entity_registry`,实体注册表落地:
+  - `insight_entity`(实体主表):`key varchar(120)` **唯一**(规范键,展示/URL 用)/`match_key varchar(120)` **唯一**(分隔符归一的去重锚,`gpt-6.1-terra` 与 `gpt-6-1-terra` 同锚)/`display_name varchar(120)`(保留大小写,如 `Qwen3-Embedding`)/`entity_type varchar(12)`(`org|line|model|product`)/`vendor_key? varchar(30)`(所属厂商;org 自身为 null)/`parent_id? bigint`(自关联,`ON DELETE SET NULL`)/`status varchar(10)` 默认 `active`(`active|merged`)/`merged_into_id? bigint`(归并去向留痕);索引 `(vendor_key)`、`(parent_id)`
+  - `insight_entity_alias`(别名表):`alias_key varchar(120)` **唯一**(`normalizeEntityKey` 原样产物)/`entity_id`(Cascade)/`origin varchar(10)`(`seed`=建表回填/`rule`=写入解析/`manual`=人工归并)/`confidence? float8`;索引 `(entity_id)`。归并只改指向、不改历史键
+  - `insight_entity_event` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_insight_entity_event_entity_id`;`entity_key` 原样保留——`dedupe_key` 唯一锚不动,归并不改写历史键
+  - 口径见 [arch/01 §3.3](01-data-source.md);存量回填 `scripts/ops/insight-entity-backfill.ts`(`npm run insight:entity-backfill`,幂等)
+- M62(数据库命名规范化与结构收口)迁移 `20261031120000_m62_db_naming`,不新增表,只把既有结构收口到 [standard/03-db-naming](../standard/03-db-naming.md) 规范态:
+  - 表重命名 `entity_event → insight_entity_event`、`leaderboard_snapshot → insight_leaderboard_snapshot`(手写 `ALTER TABLE RENAME`,连带 PK/FK/唯一/索引改名)
+  - 5 处 Prisma 默认名唯一索引改 `uq_*`;3 个 pgvector HNSW 索引补 `idx_` 前缀;`content_post_like` / `content_post_comment_like` 唯一索引改复合主键
+  - 补 15 处真实引用的 FK(3 处已在),并补齐对应 9 个 FK 索引;`ai_cover_candidate.model_id` 放宽为可空
+  - 5 张明细表补 `created_at`(`pay_order_item` / `content_post_tag` / `content_media_ref` / `github_repo_post` / `insight_cluster_member`),按父表时间回填
+  - 刻意不加 FK 的多态/聚合引用与类型例外登记在 standard/03 §7
+- M64(榜单口径与实体层打通)迁移 `20261031160000_m64_leaderboard_entity`,`insight_leaderboard_snapshot` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_insight_leaderboard_snapshot_entity`:仅 Artificial Analysis / Hugging Face 两源在采集写入时解析挂接(`src/lib/insight/entities/leaderboard.ts` 为唯一出口,只读、未命中留 null 不阻塞采集),`entity_key` 原样保留;实体归并时同事务把快照改指目标实体。存量回填 `scripts/oneoff/leaderboard-entity-backfill/run.ts`(默认 dry-run,幂等)
+
+**渠道入站会话域六表(2026-11-01 M66 立项,方案见 [plan/wechat-mp-bot-plan](../plan/wechat-mp-bot-plan.md);新前缀 `channel_` 已登记 [standard/03 §2](../standard/03-db-naming.md))**:
+
+- `channel_wechat_mp_config`(公众号入站单例 `id=1`,get-or-create):`token varchar(32)`、`encoding_aes_key_enc? varchar(200)` + `encoding_aes_key_mask? varchar(20)`(secret-box 密文 + 脱敏冗余)、`enabled`、`greeting_text`/`fallback_text`/`handoff_text`、`handoff_keywords text[]`、`daily_answer_limit int 默认 200` + `last_test` 四件套;**`appid`/`appsecret` 不复制**——一律经 `publish_wechat_config` 单源读取(同号同凭据)
+- `channel_wechat_mp_user`(公众号侧用户,openid 锚):`openid varchar(64)` 唯一、`unionid?`、`user_id?` FK→`user_account`(`ON DELETE SET NULL`,一次性绑定码建立)、`nickname?`/`avatar_url?`、`is_subscribed`/`subscribed_at`/`unsubscribed_at?`、`last_message_at?`、`message_count`、`is_manual_pending`;索引 `(user_id)`(FK 必配)、`(last_message_at DESC)`
+- `channel_wechat_mp_message`(问答明细,append-only 仅 `created_at`):`channel_user_id`(Cascade)、`wechat_msg_id varchar(100)` **唯一**(微信 `MsgId`,事件用 `FromUserName+CreateTime` 派生,幂等锚)、`direction`(in/out)、`msg_type`(text/event)、`event?`、`content text`、`reply_kind?`(keyword/rag/timeout/continue/handoff/fallback/welcome/help)、`answer_status?`(ok/no_evidence/error/truncated)、`latency_ms?`、`ai_usage_id?` FK→`ai_usage_log`(SetNull);索引 `(channel_user_id, created_at DESC)`、`(created_at)`(180 天清理)、`(ai_usage_id)`
+- `channel_wechat_mp_lead`(转人工线索):`channel_user_id`(Cascade)、`message_id?`(SetNull)、`reason varchar(200)`、`status`(open/handled)、`note? text`、`handled_at?`;索引 `(status, created_at DESC)`、`(message_id)`、`(channel_user_id)`
+- `channel_wechat_mp_keyword`(关键词直连):`keyword varchar(50)` 唯一、`post_id?` FK→`content_post`(SetNull)、`reply_text?`、`is_enabled`、`hit_count`;索引 `(post_id)`
+- `channel_feishu_alert_config`(站务通知单例 `id=1`):`app_id varchar(64)`、`app_secret_enc?` + `app_secret_mask?`、`chat_id varchar(100)`、`chat_name varchar(100)`、`enabled`、`is_notify_handoff`、`is_notify_daily`、`daily_summary_hour int 默认 9` + `last_test` 四件套。**凭据只入库**(用户裁定:不 hardcode、不入 env);与 M29 免登飞书应用互不相干
+
+表外状态全走 Redis(不落库):绑定码 `channel:wxmp:bind:<code>`(10min)、待继续指针 `channel:wxmp:pending:<openid>`、答案缓存 `channel:wxmp:reply:<msgId>`(30min)、当日答案配额 `channel:wxmp:quota:<北京日>`。
+
 ## 3. Prisma 模型约定
+
+> 命名细则(表前缀、列名、约束/索引模板、`onDelete` 裁定、反例与新表 checklist)见
+> [standard/03-db-naming](../standard/03-db-naming.md);本节只保留与 schema 写法强相关的约定。
 
 - 模型名 PascalCase 领域名 + `@@map` 到 snake 表名;字段 camelCase + `@map` 到 snake 列名——**TS 侧全 camel,DB 侧全 snake,映射只此一处**
 - Prisma client 单例 `lib/db.ts`(dev 环境 globalThis 缓存防热更像);**禁止第二实例**
 - 关系:Post↔Tag 显式多对多表(`content_post_tag` 用 `@@id([postId, tagId])` 复合主键建模),不用 Prisma 隐式 m2m(保 SQL 可控)
 - 约束/索引命名:unique 与普通索引经 schema `map` 直接落 `uq_<table>_<cols>` / `idx_*` 规范(如 `uq_content_post_slug`);**PK/FK 保留 Prisma 默认名**(`content_post_pkey` / `*_fkey`)——Prisma schema 层无法表达 FK 命名,硬改会导致 introspect 断言(CI 重放守卫)永久报差异;一致性校验优先于命名美学(2026-09-29 实施定)
+- 引用完整性:真实引用的 `*_id` 列须建 FK(schema relation + 迁移 `ADD CONSTRAINT`),`onDelete` 按真实删除路径裁定;刻意不加 FK 的多态/聚合引用登记在 standard/03 §7.3
 - 枚举字段(`status`/`role`/`kind`/`storage`/`source_class` 等)统一 VARCHAR + 注释枚举,**不加 DB CHECK 约束**:合法值由应用层 Zod 边界校验管控,演进免改库约束;`chk_` 前缀规范随之废止(2026-09-30 定)
 - 禁止 `prisma db push`、禁止 `interceptDataLayer` 外的裸 SQL(迁移脚本除外)
 

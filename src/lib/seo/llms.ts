@@ -8,12 +8,14 @@ import { getSiteTitle } from "@/lib/config/site-config";
 import { htmlToMarkdown } from "@/lib/content/html-to-md";
 import { excerptOf } from "@/lib/content/format";
 import { listAllPostsForSeo } from "@/lib/content/posts";
+import { listCategories, listTagsWithCount } from "@/lib/content/taxonomy";
 import { postPath } from "@/lib/content/post-path";
 import { listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import { formatCnDate } from "@/lib/datetime";
 import { gateNoticeMd, gateNoticeText, previewMarkdown } from "@/lib/pay/preview";
-import { absoluteUrl } from "@/lib/seo/site";
+import { absoluteUrl, siteHost } from "@/lib/seo/site";
+import { AUTHOR_NAME } from "@/lib/site-meta";
 
 const PART_MAX_CHARS = 400_000;
 
@@ -55,22 +57,24 @@ function postMarkdown(p: SeoPost): string {
 export async function buildLlmsIndex(): Promise<string> {
   const [posts, categories, tags, repos] = await Promise.all([
     listAllPostsForSeo(),
-    import("@/lib/content/taxonomy").then((m) => m.listCategories()),
-    import("@/lib/content/taxonomy").then((m) => m.listTagsWithCount()),
+    listCategories(),
+    listTagsWithCount(),
     listShowcaseRepos(),
   ]);
 
   const siteTitle = await getSiteTitle();
   const lines: string[] = [
-    `# ${siteTitle}(17aitech.com)`,
+    `# ${siteTitle}(${siteHost()})`,
     "",
-    "> domonic18 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文(付费/登录可见文章仅返回预览);全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起,同样不含门禁文全文)。",
+    `> ${AUTHOR_NAME} 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文(付费/登录可见文章仅返回预览);全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起,同样不含门禁文全文)。`,
     "",
     "## 站点",
     "",
     `- [首页](${absoluteUrl("/")})`,
     `- [全部文章](${absoluteUrl("/articles/")})`,
     `- [开源项目](${absoluteUrl("/projects/")})`,
+    `- [专题](${absoluteUrl("/topics/")})(参考工具聚合:模型价格速查等)`,
+    `- [AI 模型价格速查](${absoluteUrl("/pricing/")})(官方一手牌价:API 输入/输出价 + Coding Plan 套餐,USD 原币直出)`,
     `- [归档](${absoluteUrl("/archive/")})`,
     `- [关于](${absoluteUrl("/about/")})`,
     `- [用户协议](${absoluteUrl("/agreement/")})`,

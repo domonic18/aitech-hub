@@ -39,13 +39,13 @@ export async function GET(
   const { path: segments } = await params;
   const joined = segments.join("/");
   if (!joined.startsWith(UPLOADS_PREFIX) || joined.includes("..")) {
-    return new NextResponse(null, { status: 404 }) as NextResponse;
+    return new NextResponse(null, { status: 404 });
   }
   // params 已解码,重编码还原 URL 形态(存储 key 与 URL 段逐字节同构,红线见 storage.ts 文件头)
   const rel = uploadsUrlToRel(`/wp-content/${normalizeUrlPath(joined)}`);
-  if (!rel) return new NextResponse(null, { status: 404 }) as NextResponse;
+  if (!rel) return new NextResponse(null, { status: 404 });
   const file = await mediaStorage.get(rel);
-  if (!file) return new NextResponse(null, { status: 404 }) as NextResponse;
+  if (!file) return new NextResponse(null, { status: 404 });
 
   return new NextResponse(new Uint8Array(file), {
     headers: {
@@ -53,5 +53,5 @@ export async function GET(
       // 生产为 Nginx immutable 长缓存;此处开发级时长即可
       "Cache-Control": "public, max-age=3600",
     },
-  }) as NextResponse;
+  });
 }

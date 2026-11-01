@@ -7,11 +7,10 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { DAY_MS } from "@/lib/datetime";
 
 import { clusterMomentum, isAnomaly, type ClusterMomentum } from "./scoring";
-import { CLUSTER_TAKE_MAX } from "./constants";
-
-const DAY_MS = 86_400_000;
+import { CLUSTER_TAKE_MAX, LABEL_MIN_MEMBERS } from "./constants";
 
 export interface InsightClusterRow {
   id: string;
@@ -21,6 +20,8 @@ export interface InsightClusterRow {
   summary: string | null;
   keywords: string[];
   media: string[];
+  /** 簇地域(M58 批①:cn | global | mixed) */
+  region: string | null;
   score: number | null;
   coverageScore: number | null;
   coverageState: string | null;
@@ -40,16 +41,33 @@ export interface InsightClusterRow {
 const CLUSTER_ROW_TAKE = 20;
 
 /** 簇列表(痛点榜/热点雷达共用;score 降序未计分沉底,再按最近活跃)。
- * 成员数与最近活跃时间二次聚合;7 日快照序列供 sparkline+异动判定 */
+ * 成员数与最近活跃时间二次聚合;7 日快照序列供 sparkline+异动判定。
+ * domain(M54 批C):领域视图过滤(undefined=全量)——簇已同域分桶,簇侧
+ * where 即成员语义域,无需下探 member/signal。
+ * M60 批C:先按成员数 ≥LABEL_MIN_MEMBERS 取 id 再取行(两步查)——1-2 条信号的
+ * 新簇曾挤占 take 名额,榜单满屏「未命名」;现在它们不进榜,由页脚「累计中」计数
+ * 交代去向。两步查保证 take 的语义是「成熟簇的榜位」。 */
 export async function listInsightClusters(opts: {
   kind?: "hot" | "pain";
+  domain?: string;
   limit?: number;
 }): Promise<InsightClusterRow[]> {
   const take = Math.min(Math.max(opts.limit ?? CLUSTER_ROW_TAKE, 1), CLUSTER_TAKE_MAX);
-  const clusters = await prisma.insightCluster.findMany({
-    where: { status: { not: "closed" }, ...(opts.kind === undefined ? {} : { kind: opts.kind }) },
-    orderBy: [{ score: { sort: "desc", nulls: "last" } }, { lastSeenAt: "desc" }],
-    take,
+  const kindSql = opts.kind === undefined ? Prisma.empty : Prisma.sql` AND c.kind = ${opts.kind}`;
+  const domainSql =
+    opts.domain === undefined ? Prisma.empty : Prisma.sql` AND c.domain = ${opts.domain}`;
+  const eligible = await prisma.$queryRaw<{ id: bigint }[]>`
+    SELECT c.id
+      FROM insight_cluster c
+     WHERE c.status <> 'closed'${kindSql}${domainSql}
+       AND (SELECT count(*) FROM insight_cluster_member m WHERE m.cluster_id = c.id)
+             >= ${LABEL_MIN_MEMBERS}
+     ORDER BY c.score DESC NULLS LAST, c.last_seen_at DESC
+     LIMIT ${take}`;
+  const ids = eligible.map((r) => r.id);
+  if (ids.length === 0) return [];
+  const rows = await prisma.insightCluster.findMany({
+    where: { id: { in: ids } },
     select: {
       id: true,
       kind: true,
@@ -58,22 +76,28 @@ export async function listInsightClusters(opts: {
       summary: true,
       keywords: true,
       media: true,
+      region: true,
       score: true,
       coverageScore: true,
       coverageState: true,
     },
   });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  // 保序:findMany 的 in 查询不保序,按 id 名单重排(take 的排序语义在上一步 SQL)
+  const clusters = ids
+    .map((id) => byId.get(id))
+    .filter((c): c is (typeof rows)[number] => c !== undefined);
   if (clusters.length === 0) return [];
-  const ids = clusters.map((c) => c.id);
+  const clusterIds = clusters.map((c) => c.id);
   const since = new Date(Date.now() - 7 * DAY_MS);
   const [memberCounts, snaps, recentRows] = await Promise.all([
     prisma.insightClusterMember.groupBy({
       by: ["clusterId"],
-      where: { clusterId: { in: ids } },
+      where: { clusterId: { in: clusterIds } },
       _count: { _all: true },
     }),
     prisma.insightSnapshot.findMany({
-      where: { clusterId: { in: ids }, date: { gte: since } },
+      where: { clusterId: { in: clusterIds }, date: { gte: since } },
       orderBy: { date: "asc" },
       select: { clusterId: true, score: true },
     }),
@@ -86,7 +110,7 @@ export async function listInsightClusters(opts: {
              max(s.signal_at) AS recent
         FROM insight_cluster_member m
         JOIN insight_signal s ON s.id = m.signal_id
-       WHERE m.cluster_id IN (${Prisma.join(ids)})
+       WHERE m.cluster_id IN (${Prisma.join(clusterIds)})
        GROUP BY m.cluster_id`,
   ]);
 
@@ -120,6 +144,7 @@ export async function listInsightClusters(opts: {
       summary: c.summary,
       keywords,
       media,
+      region: c.region,
       score: c.score,
       coverageScore: c.coverageScore,
       coverageState: c.coverageState,
@@ -132,6 +157,30 @@ export async function listInsightClusters(opts: {
       momentum: clusterMomentum(sig24h, sigBefore),
     };
   });
+}
+
+export interface LabelingCoverage {
+  /** 可打标簇(active 且成员 ≥ LABEL_MIN_MEMBERS) */
+  labelable: number;
+  labeled: number;
+  /** 待打标 = labelable - labeled */
+  pending: number;
+}
+
+/** 打标覆盖指标(M60 批C:总览头部「打标覆盖 已打标/可打标(N 待打标)」;
+ * 口径与榜单/HAVING 一致,数字互相自洽) */
+export async function countLabelingCoverage(domain?: string): Promise<LabelingCoverage> {
+  const domainSql = domain === undefined ? Prisma.empty : Prisma.sql` AND c.domain = ${domain}`;
+  const rows = await prisma.$queryRaw<{ labelable: bigint; labeled: bigint }[]>`
+    SELECT count(*) AS labelable,
+           count(*) FILTER (WHERE c.label IS NOT NULL) AS labeled
+      FROM insight_cluster c
+     WHERE c.status = 'active'${domainSql}
+       AND (SELECT count(*) FROM insight_cluster_member m WHERE m.cluster_id = c.id)
+             >= ${LABEL_MIN_MEMBERS}`;
+  const labelable = Number(rows[0]?.labelable ?? 0);
+  const labeled = Number(rows[0]?.labeled ?? 0);
+  return { labelable, labeled, pending: Math.max(0, labelable - labeled) };
 }
 
 export interface InsightClusterDetail {
@@ -169,6 +218,7 @@ export async function getInsightClusterDetail(id: bigint): Promise<InsightCluste
       summary: true,
       keywords: true,
       media: true,
+      region: true,
       score: true,
       coverageScore: true,
       coverageState: true,
@@ -218,6 +268,7 @@ export async function getInsightClusterDetail(id: bigint): Promise<InsightCluste
       summary: cluster.summary,
       keywords,
       media,
+      region: cluster.region,
       score: cluster.score,
       coverageScore: cluster.coverageScore,
       coverageState: cluster.coverageState,

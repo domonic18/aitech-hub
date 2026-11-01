@@ -1,0 +1,279 @@
+/**
+ * 洞察源注册单表(M56 review P2-24):此前源属性拆两处维护——ingest.ts
+ * (medium/enabled)与 constants.ts(kind/label),新增源要改两三个文件;
+ * 收口为本表逐源一行 {medium, enabled, kind, label}。medium/enabled/kind/label
+ * 均从本表投影导出,ingest.ts/constants.ts 仅转出口(调用方 import 路径零改动)。
+ *
+ * 新增 source type 收口动作:本表登记一行 → 外部热榜渠道另在 hotlist/registry.ts
+ * 挂 fetcher(站内/电报源不需要);电报 AI 产物经 telegram 链入池(telegram/ingest.ts)。
+ */
+export const SOURCE_REGISTRY = {
+  /** 站内搜索问句(批③ 渠道转向 2026-10-18 停接入,存量行保留) */
+  "internal-search": {
+    medium: "search",
+    enabled: false,
+    family: "internal",
+    kind: "pain",
+    label: "站内搜索",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 助手问句(M58 批⑤ 复活:后台功能页上下文过滤 + 游客首问采集,见
+   * arch/01 §3.4;批③ 曾整体停接) */
+  "internal-agent": {
+    medium: "search",
+    enabled: true,
+    family: "internal",
+    kind: "pain",
+    label: "助手问句",
+    lang: "zh",
+    region: "cn",
+  },
+  "internal-comment": {
+    medium: "voice",
+    enabled: true,
+    family: "internal",
+    kind: "pain",
+    label: "文章评论",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 站点反馈(同上,停接入) */
+  "internal-feedback": {
+    medium: "voice",
+    enabled: false,
+    family: "internal",
+    kind: "pain",
+    label: "站点反馈",
+    lang: "zh",
+    region: "cn",
+  },
+  "telegram-ai": {
+    medium: "ai-record",
+    enabled: true,
+    family: "hotlist",
+    kind: "hot",
+    label: "电报AI解读",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 热榜三源(批③):百度/B站热搜词=搜索形态,知乎热榜=社区讨论声音(方案 §2) */
+  "hot-baidu": {
+    medium: "search",
+    enabled: true,
+    family: "hotlist",
+    kind: "hot",
+    label: "百度热搜",
+    lang: "zh",
+    region: "cn",
+  },
+  "hot-zhihu": {
+    medium: "voice",
+    enabled: true,
+    family: "hotlist",
+    kind: "hot",
+    label: "知乎热榜",
+    lang: "zh",
+    region: "cn",
+  },
+  "hot-bilibili": {
+    medium: "search",
+    enabled: true,
+    family: "hotlist",
+    kind: "hot",
+    label: "B站热搜",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 厂商动态六源(M58 批②):官方发布经事件抽取后按 event 信号入池
+   * (refId=dedupeKey,同一事件恒一条);语言/地域随厂商声明,英文源走翻译链 */
+  "vendor-openai": {
+    medium: "ai-record",
+    enabled: true,
+    family: "vendor",
+    kind: "hot",
+    label: "OpenAI 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-anthropic": {
+    medium: "ai-record",
+    enabled: true,
+    family: "vendor",
+    kind: "hot",
+    label: "Anthropic 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-google": {
+    medium: "ai-record",
+    enabled: true,
+    family: "vendor",
+    kind: "hot",
+    label: "Google AI 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-deepseek": {
+    medium: "ai-record",
+    enabled: true,
+    family: "vendor",
+    kind: "hot",
+    label: "DeepSeek 动态",
+    lang: "zh",
+    region: "cn",
+  },
+  "vendor-qwen": {
+    medium: "ai-record",
+    enabled: true,
+    family: "vendor",
+    kind: "hot",
+    label: "Qwen 动态",
+    lang: "en",
+    region: "global",
+  },
+  "vendor-kimi": {
+    medium: "ai-record",
+    enabled: true,
+    family: "vendor",
+    kind: "hot",
+    label: "Kimi 动态",
+    lang: "zh",
+    region: "cn",
+  },
+  /** 社区需求语料四源(M58 批④):社区原话=声音;百度下拉=搜索形态。
+   * kind 只作新簇引导值,语义由 LLM 日批覆判;Reddit 经代理仍 403,未注册 */
+  "community-hn": {
+    medium: "voice",
+    enabled: true,
+    family: "community",
+    kind: "pain",
+    label: "Hacker News",
+    lang: "en",
+    region: "global",
+  },
+  "community-v2ex": {
+    medium: "voice",
+    enabled: true,
+    family: "community",
+    kind: "pain",
+    label: "V2EX",
+    lang: "zh",
+    region: "cn",
+  },
+  "community-baidu": {
+    medium: "search",
+    enabled: true,
+    family: "community",
+    kind: "pain",
+    label: "百度下拉",
+    lang: "zh",
+    region: "cn",
+  },
+  "community-oss": {
+    medium: "voice",
+    enabled: true,
+    family: "community",
+    kind: "pain",
+    label: "开源社区 Issues",
+    lang: "zh",
+    region: "cn",
+  },
+} as const;
+
+export type InsightSource = keyof typeof SOURCE_REGISTRY;
+
+export type InsightMedium = (typeof SOURCE_REGISTRY)[InsightSource]["medium"];
+
+export type InsightSourceKind = (typeof SOURCE_REGISTRY)[InsightSource]["kind"];
+
+/** 语言/地域取值(M58 批①):lang 为 BCP-47 主语言子标签,region 为 cn|global 两档。
+ * 显式联合而非从注册表推断——新增海外源不必先改类型。 */
+export type InsightLang = "zh" | "en" | "ja" | "ko" | "fr" | "de" | "es" | "ru";
+
+export type InsightRegion = "cn" | "global";
+
+/** 需要翻译的语言(非中文)判定;zh 系一律不翻 */
+export function needsTranslation(lang: string | null | undefined): boolean {
+  return !!lang && !lang.toLowerCase().startsWith("zh");
+}
+
+/** 源 → 五介质映射(方案 §2;ingest.ts 写侧消费) */
+export const INSIGHT_SOURCE_MEDIUM: Record<InsightSource, InsightMedium> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.medium]),
+) as Record<InsightSource, InsightMedium>;
+
+/**
+ * 在役源白名单(停接入闸,ingest.ts 文件头注):站内搜索/反馈两源批③ 退出,
+ * 助手问句批⑤ 清洗后复活(后台功能页上下文过滤);评论与电报 AI 保留;
+ * 热榜三源批③、厂商六源与社区四源为 M58 新渠道。恢复=enabled 翻回 true,
+ * 调用点无需动。
+ */
+export const INSIGHT_SOURCES_ENABLED: ReadonlySet<InsightSource> = new Set(
+  Object.entries(SOURCE_REGISTRY)
+    .filter(([, def]) => def.enabled)
+    .map(([key]) => key as InsightSource),
+);
+
+/**
+ * 渠道族(M60 覆盖矩阵口径):族是矩阵的**固定维度**——新增源只增加族内成员,
+ * 列数恒等于族数(≤6),不随渠道扩张横向爆炸。news(新闻媒体)/forum(垂直论坛,
+ * 如军事论坛)为后续新域预留:接入时注册表各行填 family 即可,矩阵无需改版。
+ */
+export type InsightSourceFamily =
+  "internal" | "hotlist" | "vendor" | "community" | "news" | "forum";
+
+/** 族展示顺序(分段条/图例/占比同序;新族追加末尾) */
+export const SOURCE_FAMILY_ORDER: readonly InsightSourceFamily[] = [
+  "internal",
+  "hotlist",
+  "vendor",
+  "community",
+  "news",
+  "forum",
+];
+
+export const FAMILY_LABELS: Record<InsightSourceFamily, string> = {
+  internal: "站内行为",
+  hotlist: "热榜资讯",
+  vendor: "厂商官方",
+  community: "社区语料",
+  news: "新闻媒体",
+  forum: "垂直论坛",
+};
+
+export const INSIGHT_SOURCE_FAMILY: Record<InsightSource, InsightSourceFamily> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.family]),
+) as Record<InsightSource, InsightSourceFamily>;
+
+/** 在役源覆盖到的族(按 SOURCE_FAMILY_ORDER 排序;矩阵列只出这些) */
+export const SOURCE_FAMILIES: readonly InsightSourceFamily[] = SOURCE_FAMILY_ORDER.filter((f) =>
+  [...INSIGHT_SOURCES_ENABLED].some((s) => INSIGHT_SOURCE_FAMILY[s] === f),
+);
+
+/** 族 → 在役源成员(段内单源明细/族级汇总共用) */
+export function sourcesInFamily(family: InsightSourceFamily): InsightSource[] {
+  return [...INSIGHT_SOURCES_ENABLED].filter((s) => INSIGHT_SOURCE_FAMILY[s] === family);
+}
+
+/** 信号源 → 簇别初始引导值(批③ 验收三轮·痛点扩围:kind 不再按源定生死)。
+ * 聚类已单池归簇(近邻跨 kind),此处映射仅作新建簇的引导值,LLM 打标日批
+ * 按簇内容语义覆判 hot|pain(label.ts 契约;constants.ts 转出口,cluster.ts 消费) */
+export const INSIGHT_SOURCE_KIND: Record<InsightSource, InsightSourceKind> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.kind]),
+) as Record<InsightSource, InsightSourceKind>;
+
+/** 洞察源展示名单源(页签/合并榜 chip/热榜台账/蜘蛛源台账共用;曾 shared.tsx
+ * 与 hot-source.ts 两份手抄) */
+export const SOURCE_LABELS: Record<InsightSource, string> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.label]),
+) as Record<InsightSource, string>;
+
+/** 源级默认语言/地域(M58;混合源在 ingest 入参逐条覆盖) */
+export const INSIGHT_SOURCE_LANG: Record<InsightSource, InsightLang> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.lang]),
+) as Record<InsightSource, InsightLang>;
+
+export const INSIGHT_SOURCE_REGION: Record<InsightSource, InsightRegion> = Object.fromEntries(
+  Object.entries(SOURCE_REGISTRY).map(([key, def]) => [key, def.region]),
+) as Record<InsightSource, InsightRegion>;

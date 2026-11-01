@@ -5,6 +5,9 @@
 
 ## 1. 完整目录结构(目标态)
 
+> 标记(2026-11-01,issue #205):`✅` 已落地 / `⏳` 尚未落盘(仍属目标态)。
+> 本轮只给评审点名过的节点补标与补齐文档缺失的目录;未标注不代表一定已存在,以仓库为准。
+
 ```
 aitech-hub/
 ├── CLAUDE.md                     # 根上下文(AI 上下文唯一入口,真相源是文件本身)
@@ -36,10 +39,11 @@ aitech-hub/
 │   │   │   ├── about|agreement|privacy/page.tsx
 │   │   │   ├── sitemap.ts / robots.ts / feed.xml/route.ts
 │   │   │   └── legacy/[...path]/route.ts    # 旧 URL 301 兜底(legacy_url_map)
-│   │   ├── (user)/               # 登录态页(CSR 为主)
+│   │   ├── (auth)/admin/login/page.tsx   # ✅ 后台登录(密码/PAT 入口)
+│   │   ├── (user)/               # ⏳ 未开:登录态页实际落 (site)/login|register|forgot-password|reset-password 与 (site)/account(共享站点壳,不开 (user) 组)
 │   │   │   ├── login/page.tsx
 │   │   │   └── account/{profile,settings}/page.tsx
-│   │   ├── (admin)/admin/        # 后台(AntD 5 + 客户端守卫 + API 双重校验)
+│   │   ├── (admin)/admin/        # ✅ 后台(AntD 5 + 客户端守卫 + API 双重校验)
 │   │   │   ├── layout.tsx
 │   │   │   ├── posts/{page,[id]/edit,new}/page.tsx
 │   │   │   ├── media/page.tsx    # 媒体库:图片/视频/文件 + 孤儿/断链/重复清洗(arch/08-media)
@@ -50,7 +54,9 @@ aitech-hub/
 │   │   │   ├── distribute/page.tsx # 内容分发:公众号配置卡+同步记录表(筛选/分页;M17)
 │   │   │   └── overview/page.tsx
 │   │   ├── api/                  # Route Handlers(REST 风格,camelCase JSON)
-│   │   │   ├── auth/{sms-code,login,logout,session}/route.ts
+│   │   │   ├── auth/{sms-code,sms-login,login,logout,session}/route.ts # sms-code/sms-login = M65 手机验证码登录/注册合一
+│   │   │   ├── sms-config/{route,test/route}.ts # M65 后台短信配置(单例脱敏视图/保存 + 下发探针)
+│   │   │   ├── account/phone/{code,verify}/route.ts # M65 P1 绑定/换绑手机号(场景化发码 + 验码落库;两步换绑) 
 │   │   │   ├── posts/route.ts、posts/[id]/route.ts、posts/[id]/{publish,unpublish}/route.ts
 │   │   │   ├── media/route.ts、media/[id]/route.ts、media/{orphans,duplicates,stats}/route.ts
 │   │   │   ├── users/route.ts、users/[id]/route.ts
@@ -62,12 +68,13 @@ aitech-hub/
 │   │   │   ├── revalidate/route.ts
 │   │   │   └── health/route.ts
 │   │   └── layout.tsx            # 根布局:字体/主题/providers
-│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/;site/agent/ 为 K2.5 Drawer 自绘件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer;M27 批⑧ 增 ProposeReviewCard 改稿评审模态/ProposeUnavailableCard 降级卡),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
+│   ├── components/               # 按 domain 分包:site/ article/ auth/ admin/ media/ account/(个人中心表单,含 M65 PhoneForm);site/agent/ 为 K2.5 Drawer 自绘件(runtime-adapter 防腐层/Drawer 编排/Sidebar/Thread/ToolCallBlock/TodoListBar/Composer;M27 批⑧ 增 ProposeReviewCard 改稿评审模态/ProposeUnavailableCard 降级卡),site/search/ 下 AnswerMarkdown 为答案卡与 Drawer 正文共用渲染
 │   ├── lib/
 │   │   ├── db.ts                 # Prisma client 单例
 │   │   ├── redis.ts              # Redis 单例
 │   │   ├── env.ts                # Zod env schema,启动即校验
-│   │   ├── auth/                 # session(jose cookie)/ sms(腾讯云)/ rate-limit
+│   │   ├── auth/                 # session(jose cookie)/ rate-limit / guard(requireAdmin|requireAccount 双查)
+│   │   ├── sms/                  # M65 短信登录:provider(通道抽象+错误归类)/aliyun-pnvs(PNVS 适配)/config(user_sms_config 读写+通道装配)/limit(频控与日预算熔断)/send(发送守卫单点:配额→占预算→下发→记账,登录与账号中心共用)/scenes(绑定场景与模板契约,客户端安全)/account-phone(绑定/换绑状态机:两步 rebind 标记+落库唯一冲突转 409)
 │   │   ├── media/                # storage(LocalDisk→COS Provider)/ refs(引用解析)/ rules(类型白名单)
 │   │   ├── content/              # post service(保存钩子:slug/引用解析/revalidate 触发)
 │   │   ├── github/               # 展示域(M11):contract/api/sync(队列侧)、repos-admin(写侧)、public(读侧)、project-path(URL 构造唯一出口)+ project-slug(派生冻结)
@@ -76,16 +83,18 @@ aitech-hub/
 │   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队四口+job 数据契约)、wechat-sync-run(草稿执行管线,依赖单向 run→sync)、wechat-copy-run(复制公众号格式执行管线,无码点门不写状态机;M31 批④)、records(读侧+reset)
 │   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口;M27 批⑧ 增 read_draft/propose_edits=EDIT_TOOLS,admin 档装配)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏;批⑧ 起携 context 注入)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合);M27 批⑧ 增 run-context(页面/编辑上下文构建注入)、edit-proposal(提案契约/解析)、admin-thread(admin 会话守卫)、ask-user-guard 泛化 interrupt_guard(中断类单飞)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
-│   │   ├── seo/                  # metadata/jsonld/sitemap 构造
+│   │   ├── seo/                  # metadata/jsonld/sitemap 构造;routes.ts = SEO 出口与启动预热清单单一来源
+│   │   ├── http/                 # ✅ API 公共件:response(apiEnvelope)/ origin(同源校验)/ request(取 IP)/ internal-token(内部失效 token)
 │   │   ├── queue.ts              # BullMQ producer(enqueue 封装)
-│   │   └── api-client.ts         # 前端 fetch 封装(Zod 校验响应)
-│   ├── stores/                   # Zustand:session
-│   ├── styles/                   # globals.css、prose.css(旧 HTML 正文兜底)
-│   └── types/                    # 手写补充类型(领域类型与 Zod schema 同源)
+│   │   └── api-client.ts         # ⏳ 未开:前端 fetch 封装(Zod 校验响应)
+│   ├── content/                  # ✅ 静态法务文案(legal/agreement|privacy;纯字符串不查库,与 lib/content 的 service 层无关)
+│   ├── stores/                   # ⏳ 未开:Zustand session
+│   ├── styles/                   # ✅ globals.css、prose.css(旧 HTML 正文兜底)
+│   └── types/                    # ⏳ 未开:手写补充类型(领域类型与 Zod schema 同源)
 │
 ├── worker/                       # BullMQ worker 进程(独立入口,同镜像 cmd 覆盖)
 │   ├── index.ts                  # 队列注册、优雅退出
-│   └── processors/               # media-process.ts(sharp 缩略图/WebP)、二期: cos-sync、crawler
+│   └── processors/               # ⏳ 未开:media-process.ts(sharp 缩略图/WebP)、二期 cos-sync、crawler(现任务处理器分别落 worker/media.ts、worker/job-run.ts 等平铺文件)
 │
 ├── scripts/                      # 两层纪律:ops/ 长期运维(npm 绑定)/ oneoff/ 一次性(应用后删,git 历史存档)
 │   ├── ops/                      # admin.ts(建号)/ db-backup-trigger.ts / embed-reconcile-trigger.ts /
@@ -111,10 +120,15 @@ aitech-hub/
 └── workspace/                    # 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl、backups;gitignore,不入库)
 ```
 
+> **目录收编暂缓(issue #205)**:`lib/infra/`(`db`/`redis`/`queue`/`prerender-safe`)与
+> `lib/site/`(`datetime`/`slug`/`constants`)的分层重排推迟到 M5(后台 + 媒体库)一并执行,
+> 避免同一批文件搬两次;当前 lib 根平铺不变。
+
 ## 2. 文件组织与代码规则(全仓强制)
 
 - 文件 ≤350 行,单一职责;大文件拆 utils/常量/类型/子组件,不建 `misc`/`common` 垃圾抽屉
 - 页面只留编排(取数 + 组装),拆出的行/筛选/卡片等子组件入 `components/` 对应域目录:admin 通用件平铺 `components/admin/`(如 AdminPagination),域专属件进子目录(`admin/spider/`、`admin/models/`、`admin/stats/`);lib 侧同样按领域分包(`lib/telegram/`、`lib/media/`、`lib/stats/`、`lib/ai/`、`lib/content/`)
+- **`src/content/` ≠ `src/lib/content/`**(issue #205):前者是静态法务文案(`legal/*.ts`,导出 HTML 字符串,纯数据、不查库、不依赖 prisma);后者是文章业务 service(查库/清洗/转 Markdown)。两者不得互相 import;新静态文案放 `src/content/`,新业务逻辑放 `src/lib/content/`
 - 命名:组件 PascalCase,hook `use` 前缀,工具小写连字符,常量 UPPER_SNAKE;导入别名 `@/`
 - 常量分层:env 可调 → `lib/env.ts`(Zod);跨模块领域常量 → `lib/constants.ts`;模块私有 → 模块顶部
 - Server Component 默认,`"use client"` 尽量下沉到叶子;请求内**禁止**秒级以上处理,重任务一律 BullMQ
@@ -124,18 +138,23 @@ aitech-hub/
 - 提交纪律:Conventional Commits;`make check` 过了才提交;husky + lint-staged(eslint/prettier);未经用户批准不 commit
 - 分支纪律:开发主线 `develop`;新功能建 `feature/<topic>` 等类型前缀分支 PR 合回 develop;`main` 只经 develop→main 的 PR 更新,禁直推
 - 文档纪律:不主动建 .md;行为变更同步 CLAUDE.md;arch 文档写终态,过程进提交历史
+- 各域 `admin.ts` = 该域「治理台读侧」(list/CRUD/契约),命名即约定(M56 review P3-1:discovery/insight/pay/pricing 四处一致;新管理域照此落位)
+- 扩展点接入手册见 §5
 
 ## 3. 命名规范速查
 
+> 数据库命名(表/列/约束/索引/删除行为)的**权威源**是
+> [standard/03-db-naming](../standard/03-db-naming.md);本表只作代码语境速查,不与之冲突。
+
 | 对象 | 规范 | 示例 |
 |------|------|------|
-| 表名(Prisma `@@map`)| `<域前缀>_<实体>`,小写单数 | `content_post`、`user_account`、`stats_post_view_daily`、`legacy_url_map` |
-| 域前缀 | content_ / user_ / stats_ / legacy_ / pay_(二期) | |
-| Prisma 模型名 | PascalCase 领域名 | `Post`(`@@map("content_post")`)、`UserAccount`、`LegacyUrlMap` |
+| 表名(Prisma `@@map`)| `<域前缀>_<实体>`,小写单数;前缀清单见 standard/03 §2 | `content_post`、`insight_entity_event` |
+| Prisma 模型名 | PascalCase 领域名,与表名同域 | `Post`(`@@map("content_post")`)、`InsightEntityEvent` |
 | 字段 | 完整单词,同一语义同一词;DB 列 snake_case(`@map`) | `viewsCount → views_count` |
-| 约束/索引 | unique/普通索引 `uq_<table>_<cols>` / `idx_*`(schema `map` 显式落名);PK/FK 保留 Prisma 默认名 `*_pkey`/`*_fkey`(见 arch/03-data-model §3,保 CI introspect 对齐);枚举值不加 DB CHECK,应用层 Zod 管控 | `uq_content_post_slug` |
-| 审计字段 | 业务表统一 `createdAt`/`updatedAt`(timestamptz,aware UTC) | |
+| 约束/索引 | `uq_*` / `idx_*` 必须带 `map`;PK/FK 保留 Prisma 默认名(细则见 standard/03 §4) | `uq_content_post_slug` |
+| 审计字段 | 业务表统一 `createdAt`/`updatedAt`(timestamptz,aware UTC);明细表可只 `createdAt` | |
 | API JSON | camelCase 一致(单体内部无 query 参数历史包袱,统一 camelCase) | `postId`、`pageSize` |
+| 域治理台读侧 | `<域>.admin.ts`(list/CRUD/Zod 契约单点) | `lib/pricing/admin.ts`、`lib/insight/admin.ts` |
 
 ## 4. CLAUDE.md 体系(单根文档)
 
@@ -144,3 +163,32 @@ aitech-hub/
 - **唯一真相源是根目录 `CLAUDE.md` 文件本身**,本文不复刻全文(此前的全文草案已删——副本必漂移,M1 后它与实际文件已出现缺漏),仅记录组织意图
 - 更新纪律:规范/红线/文档索引变更直接改 `CLAUDE.md` 并随行为变更提交;本文仅在目录结构或组织方式调整时更新 §1/§2
 - 二期爬虫/COS 同步进入 `worker/` 后,如规范膨胀再考虑拆 `worker/CLAUDE.md`;当前形态即根文档 + 本 docs 体系
+
+
+## 5. 扩展点接入手册(M56 review P2-12:把隐性清单显性化)
+
+新增一种采集源类型(crawl_source.type)需要改动的位置——缺一即产生旁路缺陷
+(M56 实测:pricing 并入漏台账过滤,渠道双行渲染):
+
+1. `lib/collect/constants.ts`:类型常量 + `CRAWL_SOURCE_TYPES` / `_IMPLEMENTED`
+2. `lib/telegram/adapters/index.ts`(条目型)或 `source-registry.ts`(整源型):取数+解析
+3. `lib/telegram/ingest.ts` `crawlSource`:type 分发分支(条目型走 adapters 自动)
+4. `lib/collect/channel-ledger.ts`:台账行构建器(kind 联合 + TABS 同步
+   `channel-ledger-types.ts`)
+5. 渠道创建/编辑 Zod(经 `CRAWL_SOURCE_TYPES_IMPLEMENTED` 自动)
+6. 健康页归属核对(`channel-health.ts` group 联合,按需)
+
+取数侧另有**快照义务**(2026-10-29 M56 P0 回溯档案落地后):取数函数签一名
+可选 `sink?: SnapshotSink`,并在**解析之前**把原文交出去
+(`await sink?.({ tab, html, httpStatus, png? })`)——解析失败恰恰是最需要
+回溯的样本,故不能等解析成功再存;static 型直 fetch 的源同样落一枪
+(`tab="page"`,走 fetch 无浏览器故只有 HTML,`hasPng=false`、详情页截图 tab
+置灰)。渠道行台账自动出「快照」入口,时间线页
+`/admin/data/sources/[id]/snapshots/`(存储=`src/lib/collect/snapshot-store.ts`
+私有桶 `COS_BACKUP_BUCKET` 的 `crawl-snapshots/` 前缀,元数据=`crawl_snapshot`,
+每源 20 份;桶侧生命周期规则为部署侧运维步骤,见 deploy 清册;未配桶时退
+`workspace/snapshots` 本地盘,web/worker 必须同卷)。
+
+新增一个 admin 管理域:侧栏 `AdminSidebar.tsx` 1 行 + 路由目录 + 页面
+`requireAdminPage`(最长前缀点亮已处理 data/insight 前缀冲突)+ 治理台读侧
+落 `<域>.admin.ts`(§3)。

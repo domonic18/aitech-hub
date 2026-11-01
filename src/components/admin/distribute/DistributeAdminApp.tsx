@@ -8,6 +8,7 @@
  */
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
 import type { DistributeOverview, PublishRecordRow } from "@/lib/distribute/records";
+import type { XhsProbeRecord } from "@/lib/distribute/xhs-probe";
 
 import XhsChannelCard from "./XhsChannelCard";
 
@@ -46,6 +47,7 @@ export default function DistributeAdminApp({
   overview,
   records,
   total,
+  lastProbe,
   filter,
   children,
 }: {
@@ -53,6 +55,8 @@ export default function DistributeAdminApp({
   overview: DistributeOverview;
   records: PublishRecordRow[];
   total: number;
+  /** 小红书登录态每日探照快照(M50 批F;null=未探测) */
+  lastProbe?: XhsProbeRecord | null;
   /** 记录状态筛选条(RSC 渲染的 Link 组,注入表头;hrefFor 函数不能跨界) */
   filter?: React.ReactNode;
   children?: React.ReactNode;
@@ -70,7 +74,7 @@ export default function DistributeAdminApp({
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <WechatConfigCard config={config} overview={overview} />
-        <XhsChannelCard />
+        <XhsChannelCard lastProbe={lastProbe} />
         <ChannelPlaceholder name="掘金" tag="即将接入" desc="技术文章发布" />
         <ChannelPlaceholder name="更多渠道" desc="CSDN · 知乎" note="接入形态规划中" />
       </div>

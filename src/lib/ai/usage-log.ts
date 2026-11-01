@@ -4,6 +4,7 @@
  * 不得阻塞主流程);聚合读侧在 usage-queries,费用读时按牌价现折算(不落库)。
  */
 import { deleteBatchedWhere, prisma } from "../db";
+import { DAY_MS } from "../datetime";
 import { logger } from "../logger";
 
 /** 台账单列 role 值(不属于 AI_MODEL_PURPOSES 四角色,看板单独给标签) */
@@ -34,9 +35,13 @@ export interface AiUsageInput {
   userId?: bigint;
 }
 
-export async function recordAiUsage(input: AiUsageInput): Promise<void> {
+/**
+ * 写一行台账,返回新行 id(关联列如 channel_wechat_mp_message.ai_usage_id 回挂用);
+ * 写失败只 warn 并返回 null——观测数据不得阻塞主流程。
+ */
+export async function recordAiUsage(input: AiUsageInput): Promise<bigint | null> {
   try {
-    await prisma.aiUsageLog.create({
+    const row = await prisma.aiUsageLog.create({
       data: {
         role: input.role,
         modelId: input.modelId,
@@ -49,13 +54,16 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
         sessionId: input.sessionId?.slice(0, 40),
         userId: input.userId,
       },
+      select: { id: true },
     });
+    return row.id;
   } catch (e) {
     logger.warn({
       event: "ai_usage.record_failed",
       role: input.role,
       error: e instanceof Error ? e.message : String(e),
     });
+    return null;
   }
 }
 
@@ -65,6 +73,6 @@ export const AI_USAGE_RETENTION_DAYS = 90;
 /** 清理保留期前行数(手动触发与 worker cron 共用;返回删除行数);分批防超时(M48 批F) */
 export async function purgeAiUsageOlderThan(days = AI_USAGE_RETENTION_DAYS): Promise<number> {
   return deleteBatchedWhere(prisma.aiUsageLog, {
-    createdAt: { lt: new Date(Date.now() - days * 86_400_000) },
+    createdAt: { lt: new Date(Date.now() - days * DAY_MS) },
   });
 }

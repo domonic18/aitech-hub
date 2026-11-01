@@ -9,6 +9,7 @@
  */
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
+import { DAY_MS } from "../datetime";
 import { CRAWL_JOB_VIDEO, getQueue, QUEUE_CRAWLER } from "../queue";
 
 import { jarsFromConfig } from "./cookies";
@@ -220,9 +221,9 @@ export async function crawlVideoAccount(
     const nowMs = now.getTime();
     const firstRun = account.lastPostAt === null;
     const floorMs = outcome.backfill
-      ? nowMs - SOCIAL_MANUAL_BACKFILL_DAYS * 86_400_000
+      ? nowMs - SOCIAL_MANUAL_BACKFILL_DAYS * DAY_MS
       : firstRun
-        ? nowMs - SOCIAL_BACKFILL_DAYS * 86_400_000
+        ? nowMs - SOCIAL_BACKFILL_DAYS * DAY_MS
         : (account.lastPostAt?.getTime() ?? 0);
     const cap = !outcome.backfill && firstRun ? SOCIAL_BACKFILL_MAX_ITEMS : items.length;
     const candidates = items

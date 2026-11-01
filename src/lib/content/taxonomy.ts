@@ -4,12 +4,14 @@ import { prisma } from "@/lib/db";
 import { normalizeSlug } from "@/lib/slug";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
-/** 已发布文章计数:Category→Post 直连;Tag→Post 经 PostTag 关联表(where 口径不同) */
-const publishedPostsCount = {
-  _count: { select: { posts: { where: PUBLISHED } } },
-};
+/** 已发布文章计数:Tag→Post 经 PostTag 关联表(where 口径不同) */
 const publishedPostsCountViaTag = {
   _count: { select: { posts: { where: { post: PUBLISHED } } } },
+};
+
+/** 分类直连文章计数(分类页筛选区用;空分类不展示) */
+const publishedPostsCountViaCategory = {
+  _count: { select: { posts: { where: PUBLISHED } } },
 };
 
 export async function listCategories() {
@@ -18,14 +20,15 @@ export async function listCategories() {
   );
 }
 
-/** 分类 + 已发布文章计数(导航/列表页头用) */
+/** 有已发布文章的分类(公开筛选区;空分类与测试 fixture 不外露) */
 export async function listCategoriesWithCount() {
-  return prerenderSafe("taxonomy.categoriesWithCount", [], () =>
-    prisma.category.findMany({
+  return prerenderSafe("taxonomy.categoriesWithCount", [], async () => {
+    const rows = await prisma.category.findMany({
+      select: { slug: true, name: true, ...publishedPostsCountViaCategory },
       orderBy: { sortOrder: "asc" },
-      select: { slug: true, name: true, ...publishedPostsCount },
-    }),
-  );
+    });
+    return rows.filter((c) => c._count.posts > 0);
+  });
 }
 
 export async function getCategoryBySlug(rawSlug: string) {
@@ -53,11 +56,8 @@ export async function getTagBySlug(rawSlug: string) {
 
 /** tag 页 generateStaticParams:DB 原始编码 slug;无库时降级按需 ISR */
 export async function listTagSlugsForPrerender(): Promise<string[]> {
-  try {
+  return prerenderSafe("tags.slugs", [], async () => {
     const rows = await prisma.tag.findMany({ select: { slug: true } });
     return rows.map((r) => r.slug);
-  } catch (e) {
-    console.warn(JSON.stringify({ event: "tags.prerender.degraded", error: String(e) }));
-    return [];
-  }
+  });
 }

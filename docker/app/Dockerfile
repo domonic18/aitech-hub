@@ -8,6 +8,11 @@ WORKDIR /app
 # npmmirror 镜像源,纯 docker build 需显式 --build-arg;空值回退默认 github,CI 无感
 ARG FFMPEG_BINARIES_URL=""
 ENV FFMPEG_BINARIES_URL=$FFMPEG_BINARIES_URL
+# prisma 引擎二进制:docker VM 到 binaries.prisma.sh 的 TLS 握手常被 reset
+# (2026-10-30 实测:宿主直连 200,容器内 `unexpected eof while reading`,重试必挂)
+# ——与 ffmpeg 同方:compose 默认注入 npmmirror 镜像,空值回退官方源
+ARG PRISMA_ENGINES_MIRROR=""
+ENV PRISMA_ENGINES_MIRROR=$PRISMA_ENGINES_MIRROR
 # npm fetch 容错(2026-10-05 本机 VM 出网抖动实测:长传输间歇 ECONNRESET):
 # 放宽重试次数/超时;npm 缓存挂 BuildKit cache 挂载,构建失败重试时已下载的
 # tarball 跨构建累计,只补缺口(CI 网络稳定,行为无差)
@@ -35,6 +40,10 @@ ARG BUILD_REF=""
 ARG BUILD_TIME=""
 ENV NEXT_PUBLIC_BUILD_REF=$BUILD_REF \
     NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
+# builder 阶段独立 redeclare(deps 层 ARG 不跨 FROM;npx prisma generate 在此拉引擎,
+# 缓存被 invalidate 时会重新下载,同样的镜像源兜底)
+ARG PRISMA_ENGINES_MIRROR=""
+ENV PRISMA_ENGINES_MIRROR=$PRISMA_ENGINES_MIRROR
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate \

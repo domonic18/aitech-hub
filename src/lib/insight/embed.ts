@@ -8,14 +8,20 @@
 import { AI_PURPOSE_EMBEDDING } from "../ai/constants";
 import { embedTexts, EMBED_BATCH_SIZE } from "../ai/embedding-client";
 import { recordAiUsage } from "../ai/usage-log";
-import { resolveAiModel } from "../ai/resolver";
 import { logger } from "../logger";
-import { CLUSTER_BATCH_SIZE } from "./constants";
+import { CLASSIFY_BATCH_SIZE, CLUSTER_BATCH_SIZE } from "./constants";
+import { runInsightClassify } from "./classify";
 import { runInsightClustering } from "./cluster";
 import { findUnembeddedSignals, saveSignalEmbeddings } from "./embedding-repo";
+import { resolveInsightModel } from "./model";
+import { degradeStalePendingTranslations } from "./translate";
 import { EMBEDDING_DIMS } from "../search/embedding";
 
 export interface InsightEmbedSummary {
+  /** 领域分类(M54):本轮落库 domain/subdomain 的信号数 */
+  classified: number;
+  /** 分类未采信(低置信/失败,保留 unclassified 待下轮) */
+  classifyKept: number;
   /** 本轮回填向量数 */
   embedded: number;
   /** 回填失败数(chunk 级) */
@@ -34,6 +40,8 @@ export async function runInsightEmbedBatch(
   limit: number = CLUSTER_BATCH_SIZE,
 ): Promise<InsightEmbedSummary> {
   const empty: InsightEmbedSummary = {
+    classified: 0,
+    classifyKept: 0,
     embedded: 0,
     failed: 0,
     joined: 0,
@@ -42,11 +50,15 @@ export async function runInsightEmbedBatch(
     clusterFailed: 0,
     skipped: false,
   };
-  const model = await resolveAiModel(AI_PURPOSE_EMBEDDING);
+  // 未绑定/解析失败(embedding 模型)→ 功能关闭整轮跳过(P2-25 统一降级口径)
+  const model = await resolveInsightModel(AI_PURPOSE_EMBEDDING);
   if (!model) {
     logger.info({ event: "insight.embed_skipped", reason: "embedding_unbound" });
     return { ...empty, skipped: true };
   }
+
+  // M58 批①:超时 pending 译文降级(翻译扫尾 cron 之外的兜底;先降级再取待嵌集)
+  await degradeStalePendingTranslations();
 
   const signals = await findUnembeddedSignals(limit);
   let failed = 0;
@@ -91,8 +103,14 @@ export async function runInsightEmbedBatch(
     }
   }
 
+  // 分类先于聚类(M54 批B):domain 落定后同域聚类,新信号当轮即入对桶
+  // 分类段用 CLASSIFY_BATCH_SIZE(50,按 tick 节奏设定),不吃嵌入批 limit
+  // (M56 review P1-1:原透传致单轮最多 200 次串行 Jev 调用)
+  const classify = await runInsightClassify(CLASSIFY_BATCH_SIZE);
   const clustering = await runInsightClustering(limit);
   const summary: InsightEmbedSummary = {
+    classified: classify.classified,
+    classifyKept: classify.kept + classify.failed,
     embedded: signals.length - failed,
     failed,
     joined: clustering.joined,

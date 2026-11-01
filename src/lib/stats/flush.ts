@@ -2,20 +2,29 @@
  * 统计缓冲落库(worker 每 60s 调用,批C 从 service 平移):
  * 读取 Redis 日缓冲键(stats:buf:*),RENAME 私有键后落聚合表
  * (stats_visit/referrer/page/client/post_view_daily/geo_daily + views_count 累加)。
- * 键形契约:写入侧见 service.ts ingestView(`stats:buf:<kind>:<day>[:pv|uv]`),
- * 两侧改名需同批;复杂聚合 SQL 集中本文件($executeRaw 仅 service 层内合法,arch/05-services §2)。
+ * 键形契约只在 keys.ts 里定义:本文件经 parseBufferKey 反解,写侧经 bufferKey 构造,
+ * 两侧不再各持一份下标。(复杂聚合 SQL 集中本文件,$executeRaw 仅 service 层内合法,
+ * arch/05-services §2。)
  */
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logError } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { isGeoSurface, type GeoSurface } from "./geo";
+import {
+  BUFFER_SCAN_MATCH,
+  BUFFER_TTL_SECONDS,
+  FLUSHING_TTL_SECONDS,
+  flushingKey,
+  parseBufferKey,
+} from "./keys";
 
 async function scanBufferKeys(): Promise<string[]> {
   const keys: string[] = [];
   let cursor = "0";
   do {
-    const [next, batch] = await redis.scan(cursor, "MATCH", "stats:buf:*", "COUNT", 500);
+    const [next, batch] = await redis.scan(cursor, "MATCH", BUFFER_SCAN_MATCH, "COUNT", 500);
     cursor = next;
     keys.push(...batch);
   } while (cursor !== "0");
@@ -29,63 +38,77 @@ export interface FlushSummary {
 
 /**
  * 缓冲落库:RENAME 到私有键后再读(HGETALL 与 DEL 之间的新增事件留在原键,
- * 下轮再刷),按键形态分发到对应聚合表;失败把数据键还原,下轮重试。
+ * 下轮再刷),按键形态分发到对应聚合表;失败把计数字段合并回数据键,下轮重试。
  */
 export async function flushStatsBuffer(): Promise<FlushSummary> {
   const keys = await scanBufferKeys();
   let keysFlushed = 0;
   let postRows = 0;
   for (const key of keys) {
-    const tmp = `stats:flushing:${Math.random().toString(36).slice(2)}:${key}`;
+    const tmp = flushingKey(Math.random().toString(36).slice(2), key);
     try {
       await redis.rename(key, tmp);
     } catch {
       continue; // 键已被处理或过期
     }
+    // 先钉死私有键的过期再聚合:崩溃在 DEL 之前也不会留下永久键。
+    // RENAME 继承源键 TTL,不能让私有键的寿命寄望于源键(历史上文章 PV 缓冲无 TTL)。
+    // TTL 用 FLUSHING_TTL_SECONDS 而非源键的 48h 兜底值:暂存键只该活过本轮。
+    await redis.expire(tmp, FLUSHING_TTL_SECONDS).catch(() => undefined);
+    let fields: Record<string, string> = {};
     try {
-      const fields = await redis.hgetall(tmp);
+      fields = await redis.hgetall(tmp);
       postRows += await applyBufferKey(key, fields);
       await redis.del(tmp);
       keysFlushed++;
     } catch (e) {
-      console.error(JSON.stringify({ event: "stats.flush.failed", key, error: String(e) }));
-      await redis.rename(tmp, key).catch(() => undefined);
+      logError("stats.flush.failed", { key, error: e });
+      // 还原走「逐字段合并」而非 RENAME:flush 期间新 beacon 可能已重建源键,
+      // 而 RENAME 会覆盖目标键,把这段时间的新增抹掉。缓冲全是计数字段,
+      // HINCRBY 合并与 RENAME 等价且无损。
+      await mergeBack(key, fields);
+      await redis.del(tmp).catch(() => undefined);
     }
   }
   return { keysFlushed, postRows };
 }
 
+/** 把暂存键里已读出的计数合并回数据键,并重新钉回缓冲兜底 TTL */
+async function mergeBack(key: string, fields: Record<string, string>): Promise<void> {
+  const pipe = redis.pipeline();
+  for (const [field, value] of Object.entries(fields)) {
+    const count = Number.parseInt(value, 10);
+    if (Number.isFinite(count) && count !== 0) pipe.hincrby(key, field, count);
+  }
+  pipe.expire(key, BUFFER_TTL_SECONDS);
+  await pipe.exec().catch(() => undefined);
+}
+
 async function applyBufferKey(key: string, fields: Record<string, string>): Promise<number> {
-  const parts = key.split(":"); // stats:buf:<kind>:<day>[:pv|uv]
-  const kind = parts[2];
-  const day = parts[3];
-  if (!day) return 0;
-  switch (kind) {
+  const buf = parseBufferKey(key); // 键形契约见 keys.ts,此处只按判别联合分发
+  if (!buf) return 0;
+  switch (buf.kind) {
     case "visit":
-      await upsertVisit(day, num(fields.pv), num(fields.uv));
+      await upsertVisit(buf.day, num(fields.pv), num(fields.uv));
       return 0;
     case "ref":
-      await upsertReferrers(day, fields);
+      await upsertReferrers(buf.day, fields);
       return 0;
-    case "page": {
-      const isPv = parts[4] === "pv";
-      await upsertPages(day, fields, isPv);
+    case "page":
+      await upsertPages(buf.day, fields, buf.metric === "pv");
       return 0;
-    }
     case "client":
-      await upsertClients(day, fields);
+      await upsertClients(buf.day, fields);
       return 0;
     case "post": {
       const ids = Object.keys(fields);
       for (const id of ids) {
-        await upsertPostView(day, id, num(fields[id]));
+        await upsertPostView(buf.day, id, num(fields[id]));
       }
       return ids.length;
     }
     case "geo":
-      await upsertGeo(day, fields);
-      return 0;
-    default:
+      await upsertGeo(buf.day, fields);
       return 0;
   }
 }

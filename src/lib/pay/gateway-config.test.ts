@@ -6,11 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import {
-  assertModeAllowedInEnv,
-  PayGatewayConfigUpdateSchema,
-  maskSecret,
-} from "@/lib/pay/gateway-config";
+import { assertModeAllowedInEnv, PayGatewayConfigUpdateSchema } from "@/lib/pay/gateway-config";
 
 const XUNHU_BASE = {
   mode: "xunhu",
@@ -64,12 +60,5 @@ describe("assertModeAllowedInEnv(mock 生产拒绝,双护栏之保存侧)", () =
     expect(() => assertModeAllowedInEnv("off", "production")).not.toThrow();
     expect(() => assertModeAllowedInEnv("mock", "development")).not.toThrow();
     expect(() => assertModeAllowedInEnv("mock", "test")).not.toThrow();
-  });
-});
-
-describe("maskSecret(掩码形态)", () => {
-  it("8+ 字符首四尾四打码;过短整体隐藏", () => {
-    expect(maskSecret("9191111122223184")).toBe("9191…3184");
-    expect(maskSecret("short")).toBe("…");
   });
 });

@@ -22,7 +22,8 @@
     "prepare": "husky",
     "backup:run": "tsx scripts/ops/db-backup-trigger.ts",
     "embed:run": "tsx scripts/ops/embed-reconcile-trigger.ts",
-    "insight:run": "tsx scripts/ops/insight-trigger.ts"
+    "insight:run": "tsx scripts/ops/insight-trigger.ts",
+    "insight:entity-backfill": "tsx scripts/ops/insight-entity-backfill.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -37,6 +38,7 @@
     ]
   },
   "dependencies": {
+    "@alicloud/dypnsapi20170525": "^2.0.0",
     "@assistant-ui/react": "^0.15.25",
     "@assistant-ui/react-langgraph": "^0.14.33",
     "@codemirror/lang-markdown": "^6.5.2",
@@ -60,9 +62,11 @@
     "diff-match-patch": "^1.0.5",
     "fast-xml-parser": "^5.11.2",
     "ffmpeg-static": "^5.3.0",
+    "highlight.js": "^11.12.0",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "markdown-it": "^14.3.2",
+    "markdown-it-github-alerts": "^1.0.1",
     "mysql2": "^3.24.4",
     "next": "15.5.26",
     "nodemailer": "^10.0.16",
@@ -79,6 +83,7 @@
     "sharp": "^0.35.5",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
+    "undici": "^7.30.1",
     "vditor": "^4.0.0",
     "zod": "^4.6.5"
   },

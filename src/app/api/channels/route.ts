@@ -4,10 +4,9 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireSessionActor } from "@/lib/http/session-guard";
+import { CHANNELS_PAT_DENY, requireSessionActor, toEnvelope } from "./shared";
 import { apiEnvelope } from "@/lib/http/response";
 import {
-  ChannelAdminError,
   ChannelInputSchema,
   createChannel,
   listChannelsAdmin,
@@ -15,17 +14,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const PAT_DENY = "PAT must not manage channels";
-
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, CHANNELS_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const items = await listChannelsAdmin();
   return apiEnvelope(0, "ok", { items });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const actor = await requireSessionActor(req, PAT_DENY);
+  const actor = await requireSessionActor(req, CHANNELS_PAT_DENY);
   if (actor.kind === "reject") return actor.response;
   const parsed = ChannelInputSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiEnvelope(400, "渠道字段不合法(名称/类型/端点/频率)");
@@ -33,9 +30,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const r = await createChannel(parsed.data);
     return apiEnvelope(0, "created", r);
   } catch (e) {
-    if (e instanceof ChannelAdminError) {
-      return apiEnvelope(e.code === "name_taken" ? 409 : 400, e.message);
-    }
+    const mapped = toEnvelope(e);
+    if (mapped) return mapped;
     throw e;
   }
 }

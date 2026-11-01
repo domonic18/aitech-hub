@@ -16,7 +16,7 @@ import BatchActionBar from "@/components/admin/batch/BatchActionBar";
 import { RowCheckbox, SelectAllTh } from "@/components/admin/batch/SelectionCheckbox";
 import { useBatchAction } from "@/components/admin/batch/useBatchAction";
 import { useBatchSelection } from "@/components/admin/batch/useBatchSelection";
-import { formatCnDate, formatCnTime } from "@/lib/datetime";
+import { DAY_MS, formatCnDate, formatCnTime } from "@/lib/datetime";
 import type { KeywordAdminRow } from "@/lib/discovery/admin";
 import type { KeywordYield } from "@/lib/discovery/word-yield";
 import type { WordRelation } from "@/lib/discovery/word-relations";
@@ -32,7 +32,7 @@ function hitLabel(at: Date | null): string {
   const day = formatCnDate(at);
   const today = formatCnDate(new Date());
   if (day === today) return `今天 ${formatCnTime(at)}`;
-  const yesterday = formatCnDate(new Date(Date.now() - 86_400_000));
+  const yesterday = formatCnDate(new Date(Date.now() - DAY_MS));
   if (day === yesterday) return `昨天 ${formatCnTime(at)}`;
   return day.slice(5);
 }
@@ -93,9 +93,11 @@ export default function KeywordTable({
         />
       </BatchActionBar>
 
-      <table className="w-full text-left text-[13px]">
+      {/* min-w:7 列在 <760px 会被压成「来/源」竖排单字(2026-10-30 移动端
+          验收);定最小宽后由外层 overflow-x-auto 横向滚动,表头不再折字 */}
+      <table className="w-full min-w-[760px] text-left text-[13px]">
         <thead>
-          <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
+          <tr className="border-b border-line bg-panel-2 text-xs whitespace-nowrap text-text-2">
             <SelectAllTh
               allSelected={allSelected}
               disabled={items.length === 0}
@@ -107,7 +109,10 @@ export default function KeywordTable({
             <th className="px-3 py-2.5 font-medium" title="该词挖到的候选数与已产出文章数">
               关联
             </th>
-            <th className="px-3 py-2.5 font-medium" title="该词最近一次命中候选的批次时间">
+            <th
+              className="px-3 py-2.5 font-medium whitespace-nowrap"
+              title="该词最近一次命中候选的批次时间"
+            >
               最近命中
             </th>
             <th className="px-3 py-2.5 font-medium">添加于</th>

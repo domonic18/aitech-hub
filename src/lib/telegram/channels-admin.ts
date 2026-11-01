@@ -9,13 +9,26 @@ import type { Prisma } from "@prisma/client";
 
 import { isP2002, prisma } from "../db";
 import { logger } from "../logger";
-import { getQueue, QUEUE_CRAWLER } from "../queue";
+import { CRAWL_JOB_SOURCE, getQueue, QUEUE_CRAWLER } from "../queue";
+import { sortVendorItems } from "../insight/vendor/parse";
+import { fetchVendorList, resolveVendorDef, type VendorDef } from "../insight/vendor/registry";
+import { previewCommunityItems } from "../insight/community/crawl";
+import { resolveCommunityDef } from "../insight/community/registry";
+import {
+  fetchLeaderboardList,
+  resolveLeaderboardDef,
+  type LeaderboardDef,
+} from "../leaderboard/registry";
 import { fetchSourceItems } from "./adapters";
 import {
   CRAWL_SOURCE_STATUS_HEALTHY,
-  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
-} from "./constants";
+  CRAWL_SOURCE_TYPE_COMMUNITY,
+  CRAWL_SOURCE_TYPE_LEADERBOARD,
+  CRAWL_SOURCE_TYPE_PRICING,
+  CRAWL_SOURCE_TYPE_SOCIAL_VIDEO,
+  CRAWL_SOURCE_TYPE_VENDOR,
+} from "../collect/constants";
 
 /** 视为凭证的 config 键(读侧脱敏 + 写侧空串清除) */
 export const SECRET_CONFIG_KEYS = ["token", "apiKey", "api_key", "secret"] as const;
@@ -37,6 +50,17 @@ export function maskConfig(config: unknown): Record<string, string> | null {
   return out;
 }
 
+/** 编辑弹窗用结构化 JSON 投影:凭证键整体剔除(凭证走 token 通道),
+ * 其余键保持原类型(数组/布尔不被 String() 拍平);无公开键返回空串 */
+export function publicConfigJson(config: unknown): string {
+  if (config == null || typeof config !== "object") return "";
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(config as Record<string, unknown>)) {
+    if (!SECRET_KEY_SET.has(k)) out[k] = v;
+  }
+  return Object.keys(out).length === 0 ? "" : JSON.stringify(out, null, 2);
+}
+
 /** URL 展示防御:query 里凭证键的值替换 ****(防把带 token 的完整 URL 粘进端点字段) */
 export function maskUrlSecrets(raw: string): string {
   let u: URL;
@@ -55,7 +79,8 @@ export function maskUrlSecrets(raw: string): string {
   return changed ? u.toString() : raw;
 }
 
-export type ChannelAdminErrorCode = "not_found" | "name_taken" | "disabled" | "in_use";
+export type ChannelAdminErrorCode =
+  "not_found" | "name_taken" | "disabled" | "in_use" | "not_supported"; // 牌价渠道试拉语义断裂(M56 review P2-11)
 
 /** 业务错误 → 路由按码映射 HTTP 状态(同 UserAdminError 模式) */
 export class ChannelAdminError extends Error {
@@ -67,17 +92,39 @@ export class ChannelAdminError extends Error {
   }
 }
 
-/** 渠道表单(创建/编辑共用;token 为凭证写侧,不入库明文日志) */
+/** 扩展配置体积上限(字符;正常 repos/seeds 数组远小于此) */
+export const CHANNEL_CONFIG_MAX_CHARS = 4000;
+
+/** 渠道表单(创建/编辑共用;token 为凭证写侧,不入库明文日志)。
+ * config = 扩展配置(非凭证键;M58 批④ 社区源 repos/seeds、注册表 *Key 经此维护) */
 export const ChannelInputSchema = z.object({
   name: z.string().trim().min(1).max(100),
   type: z.enum(CRAWL_SOURCE_TYPES_IMPLEMENTED),
   platform: z.string().trim().max(20).nullable().optional(),
   url: z.url().max(500),
-  crawlIntervalMin: z.number().int().min(5).max(1440),
+  // 上限 43200(30 天):牌价等低频渠道周级采集(M56 批B;原 1440 只够日频)
+  crawlIntervalMin: z.number().int().min(5).max(43200),
   dailyMaxRequests: z.number().int().min(1).max(10000).nullable().optional(),
   remark: z.string().trim().max(200).nullable().optional(),
   enabled: z.boolean().optional(),
   token: z.string().max(200).optional(),
+  config: z
+    .record(z.string(), z.unknown())
+    .superRefine((cfg, ctx) => {
+      const size = JSON.stringify(cfg).length;
+      if (size > CHANNEL_CONFIG_MAX_CHARS) {
+        ctx.addIssue({
+          code: "custom",
+          message: `扩展配置超过 ${CHANNEL_CONFIG_MAX_CHARS} 字符上限`,
+        });
+      }
+      for (const key of Object.keys(cfg)) {
+        if (SECRET_KEY_SET.has(key)) {
+          ctx.addIssue({ code: "custom", message: `凭证键 ${key} 请走「凭证」字段` });
+        }
+      }
+    })
+    .optional(),
 });
 export type ChannelInput = z.infer<typeof ChannelInputSchema>;
 
@@ -112,29 +159,62 @@ export async function listChannelsAdmin() {
     status: c.status,
     remark: c.remark,
     maskedConfig: maskConfig(c.config),
+    // 编辑弹窗「扩展配置」预填(凭证键剔除;空串=无公开配置)
+    configJson: publicConfigJson(c.config),
     count24h: count24h.get(c.id) ?? 0,
     createdAt: c.createdAt,
   }));
 }
 export type ChannelRow = Awaited<ReturnType<typeof listChannelsAdmin>>[number];
 
-/** config 写侧合并:undefined 沿用;空串仅清凭证键保留其它;非空覆盖 */
-function mergeConfig(existing: unknown, token: string | undefined): Record<string, unknown> | null {
-  if (token === undefined) return null;
+/** config 写侧合并:凭证三态(token undefined 沿用/空串清除/非空覆盖);
+ * 扩展配置 patch 给定时整体替换非凭证键(表单 textarea 即全量视图),
+ * 凭证键始终保留既有值,不经扩展配置通道覆盖 */
+function mergeConfig(
+  existing: unknown,
+  token: string | undefined,
+  patch?: Record<string, unknown>,
+): Record<string, unknown> | null {
+  if (token === undefined && patch === undefined) return null;
   const base =
     typeof existing === "object" && existing !== null
       ? { ...(existing as Record<string, unknown>) }
       : {};
+  if (patch !== undefined) {
+    for (const k of Object.keys(base)) {
+      if (!SECRET_KEY_SET.has(k)) delete base[k];
+    }
+    Object.assign(base, patch);
+  }
   if (token === "") {
     for (const k of SECRET_CONFIG_KEYS) delete base[k];
-    return base;
+  } else if (token !== undefined) {
+    base.token = token;
   }
-  return { ...base, token };
+  return base;
+}
+
+/** 注册表渠道(牌价/厂商/榜单/社区)由 worker 启动种子登记,config 里的 *Key
+ * 是路由锚:手工新建或改类型出来的行每轮必抛「key 未注册」,台账永久刷红。
+ * 只拦类型变更动作——已有行的 URL/周期/启停/扩展配置仍可编辑。 */
+function assertNotRegistryType(type: string): void {
+  if (
+    type === CRAWL_SOURCE_TYPE_PRICING ||
+    type === CRAWL_SOURCE_TYPE_VENDOR ||
+    type === CRAWL_SOURCE_TYPE_LEADERBOARD ||
+    type === CRAWL_SOURCE_TYPE_COMMUNITY
+  ) {
+    throw new ChannelAdminError(
+      "not_supported",
+      "牌价/厂商/榜单/社区渠道由系统注册表登记(worker 启动同步),不支持手工新建或改类型",
+    );
+  }
 }
 
 export async function createChannel(input: ChannelInput): Promise<{ id: number }> {
-  const { token, ...data } = input;
-  const config = mergeConfig(null, token);
+  assertNotRegistryType(input.type);
+  const { token, config: configPatch, ...data } = input;
+  const config = mergeConfig(null, token, configPatch);
   try {
     const created = await prisma.crawlSource.create({
       data: {
@@ -166,10 +246,16 @@ export async function createChannel(input: ChannelInput): Promise<{ id: number }
 export async function updateChannel(id: number, input: ChannelInput): Promise<{ id: number }> {
   const existing = await prisma.crawlSource.findUnique({ where: { id } });
   if (!existing) throw new ChannelAdminError("not_found", "渠道不存在");
-  const { token, ...data } = input;
+  // 类型变更双闸:不能改成注册表类型;注册表类型行也不能改走(改走会脱离
+  // vendorKey 路由,且 worker 种子下轮会重建同名行)。沿用原类型编辑不受限
+  if (input.type !== existing.type) {
+    assertNotRegistryType(input.type);
+    assertNotRegistryType(existing.type);
+  }
+  const { token, config: configPatch, ...data } = input;
   // 换端点/换类型不继承旧失败计数(新目标从健康起步)
   const targetChanged = data.url !== existing.url || data.type !== existing.type;
-  const config = mergeConfig(existing.config, token);
+  const config = mergeConfig(existing.config, token, configPatch);
   const updated = await prisma.crawlSource.update({
     where: { id },
     data: {
@@ -222,7 +308,7 @@ export async function triggerChannelCrawl(id: number): Promise<{ enqueued: true 
   if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
   if (!src.enabled) throw new ChannelAdminError("disabled", "渠道已停用,启用后再采集");
   await getQueue(QUEUE_CRAWLER).add(
-    "crawl",
+    CRAWL_JOB_SOURCE,
     { sourceId: src.id, sourceName: src.name },
     {
       // 手动 job id 与调度 job(id 锚定 next_run_at)不冲突;入队即返回,结果看台账
@@ -242,15 +328,53 @@ export interface ChannelDebugResult {
   error?: string;
 }
 
+/** 试拉取数:注册表渠道(厂商/榜单)走各自注册表,其余走适配器 */
+async function fetchDebugItems(
+  src: { type: string; url: string; config: unknown },
+  vendorDef: VendorDef | null,
+  boardDef: LeaderboardDef | null,
+): Promise<Array<{ title: string; url: string; publishedAt: Date | null }>> {
+  if (vendorDef !== null) {
+    return sortVendorItems(vendorDef.parse(await fetchVendorList(vendorDef, src.url), src.url));
+  }
+  if (boardDef !== null) {
+    const raw = await fetchLeaderboardList(boardDef, src.url);
+    return boardDef
+      .parse(raw, src.url)
+      .map((r) => ({ title: r.entityName, url: r.url, publishedAt: null }));
+  }
+  if (src.type === CRAWL_SOURCE_TYPE_COMMUNITY) {
+    return previewCommunityItems(src);
+  }
+  return fetchSourceItems(src.type, src.url, src.config);
+}
+
 /** 渠道调试(原型「调试」:拉取最新 3 条 + 耗时;2026-10-06 验收反馈问题3):
  * 直接走采集适配器取数,不入库、不动健康度与调度状态;凭证照常从 config 注入。
  * web/api 类型适配器未实现(fetchSourceItems 显式抛错),如实返回错误不假装成功。 */
 export async function debugChannel(id: number): Promise<ChannelDebugResult> {
   const src = await prisma.crawlSource.findUnique({ where: { id } });
   if (!src) throw new ChannelAdminError("not_found", "渠道不存在");
+  // 牌价渠道无条目适配器(M56 review P2-11):试拉语义断裂,明示改走「立即采集」
+  if (src.type === CRAWL_SOURCE_TYPE_PRICING) {
+    throw new ChannelAdminError("not_supported", "牌价渠道不支持试拉:请使用「立即采集」查看结果");
+  }
+  // 厂商/榜单渠道(M58 批②③)走注册表取数+解析只读试拉(不入队、不落库)
+  const vendorDef = src.type === CRAWL_SOURCE_TYPE_VENDOR ? resolveVendorDef(src.config) : null;
+  if (src.type === CRAWL_SOURCE_TYPE_VENDOR && vendorDef === null) {
+    throw new ChannelAdminError("not_supported", "厂商渠道 config.vendorKey 未注册");
+  }
+  const boardDef =
+    src.type === CRAWL_SOURCE_TYPE_LEADERBOARD ? resolveLeaderboardDef(src.config) : null;
+  if (src.type === CRAWL_SOURCE_TYPE_LEADERBOARD && boardDef === null) {
+    throw new ChannelAdminError("not_supported", "榜单渠道 config.boardKey 未注册");
+  }
+  if (src.type === CRAWL_SOURCE_TYPE_COMMUNITY && resolveCommunityDef(src.config) === null) {
+    throw new ChannelAdminError("not_supported", "社区渠道 config.communityKey 未注册");
+  }
   const started = Date.now();
   try {
-    const items = await fetchSourceItems(src.type, src.url, src.config);
+    const items = await fetchDebugItems(src, vendorDef, boardDef);
     logger.info({ event: "channel.debugged", channelId: src.id, name: src.name, ok: true });
     return {
       ok: true,

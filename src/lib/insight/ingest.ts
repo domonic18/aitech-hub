@@ -8,8 +8,8 @@
  * 位次/热度)与 signal_at(持续在榜=持续热度),返回 refreshed。
  * 停接入闸(批③ 渠道转向,2026-10-18 用户定调:站内搜索/agent 问句/站点反馈
  * 三源退出洞察中心,外部渠道为主):不在 INSIGHT_SOURCES_ENABLED 的源直接短路
- * 返 disabled——存量行保留不删,读侧与聚类工作集同步按白名单过滤;恢复=集合
- * 加回,调用点无需动。
+ * 返 disabled——存量行保留不删,读侧与聚类工作集同步按白名单过滤;恢复=
+ * source-registry 该源 enabled 翻回 true,调用点无需动。
  * 归一=trim+连续空白折叠(与 normalizeSearchTerm 同构,上限不同各源自截);
  * raw 截 4000、归一截 2000(聚类/向量输入批② 消费)。
  */
@@ -17,36 +17,24 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { INSIGHT_JOB_TRANSLATE, QUEUE_INSIGHT, getQueue } from "@/lib/queue";
 
-/** 源 → 五介质映射(方案 §2):内部搜索问句=search,评论反馈=voice,
- * 电报 AI 产物=ai-record;热榜(批③)=百度/B站热搜词=搜索形态,
- * 知乎热榜=社区讨论声音 */
-export const INSIGHT_SOURCE_MEDIUM = {
-  "internal-search": "search",
-  "internal-agent": "search",
-  "internal-comment": "voice",
-  "internal-feedback": "voice",
-  "telegram-ai": "ai-record",
-  "hot-baidu": "search",
-  "hot-zhihu": "voice",
-  "hot-bilibili": "search",
-} as const;
+// 源→介质映射 / 在役源白名单 / InsightSource·InsightMedium 类型(M56 review P2-24
+// 起单表收口):真相源在 ./source-registry,此处仅转出口保持既有 import 路径
+// M58 批① 增语言/地域默认值投影(非中文源 ingest 即 pending 翻译)
+import {
+  INSIGHT_SOURCES_ENABLED,
+  INSIGHT_SOURCE_LANG,
+  INSIGHT_SOURCE_MEDIUM,
+  INSIGHT_SOURCE_REGION,
+  needsTranslation,
+  type InsightLang,
+  type InsightRegion,
+  type InsightSource,
+} from "./source-registry";
 
-export type InsightSource = keyof typeof INSIGHT_SOURCE_MEDIUM;
-
-export type InsightMedium = (typeof INSIGHT_SOURCE_MEDIUM)[InsightSource];
-
-/**
- * 在役源白名单(停接入闸,见文件头注):站内三源(搜索/agent/反馈)批③ 退出,
- * 评论与电报 AI 保留;热榜三源为批③ 新渠道。
- */
-export const INSIGHT_SOURCES_ENABLED: ReadonlySet<InsightSource> = new Set([
-  "internal-comment",
-  "telegram-ai",
-  "hot-baidu",
-  "hot-zhihu",
-  "hot-bilibili",
-]);
+export { INSIGHT_SOURCES_ENABLED, INSIGHT_SOURCE_MEDIUM } from "./source-registry";
+export type { InsightMedium, InsightSource } from "./source-registry";
 
 export type IngestOutcome = "ingested" | "duplicate" | "refreshed" | "disabled" | "error";
 
@@ -59,6 +47,9 @@ export interface InsightSignalInput {
   refId: string;
   rawText: string;
   signalAt: Date;
+  /** 语言/地域逐条覆盖(M58;混合源用,缺省取注册表源级声明) */
+  lang?: InsightLang | null;
+  region?: InsightRegion | null;
   meta?: Record<string, unknown>;
 }
 
@@ -70,6 +61,30 @@ export interface IngestOptions {
 /** 归一口径:trim + 连续空白折叠为单空格(不动大小写;截断由调用侧上限统一收口) */
 function normalizeText(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
+}
+
+/** 非中文信号入翻译队列(单条 job;Redis 抖动不入池失败——扫尾 cron 兜底) */
+async function enqueueTranslation(signalId: bigint): Promise<void> {
+  try {
+    await getQueue(QUEUE_INSIGHT).add(
+      INSIGHT_JOB_TRANSLATE,
+      { signalId: signalId.toString() },
+      {
+        jobId: `insight-translate-${signalId}`,
+        attempts: 1,
+        removeOnComplete: 200,
+        // 失败即删:确定性 jobId 在保留窗口内会静默去重(BullMQ 已知陷阱),
+        // 删掉后扫尾/重投可复用同 id
+        removeOnFail: true,
+      },
+    );
+  } catch (e) {
+    logger.warn({
+      event: "insight.translate_enqueue_failed",
+      signalId: signalId.toString(),
+      error: String(e),
+    });
+  }
 }
 
 /**
@@ -85,19 +100,31 @@ export async function ingestInsightSignal(
   if (raw === "") return "error";
   const normalized = normalizeText(raw).slice(0, NORMALIZED_MAX);
   const refId = input.refId.trim().slice(0, REF_ID_MAX);
+  const lang = input.lang ?? INSIGHT_SOURCE_LANG[input.source];
+  const region = input.region ?? INSIGHT_SOURCE_REGION[input.source];
+  // M58 批①:非中文源先待译——translationStatus=pending 期间不进 embedding
+  // (embedding-repo 过滤),译文落库后顶替 normalizedText 再重嵌
+  const translationStatus = needsTranslation(lang) ? "pending" : "none";
   try {
-    await prisma.insightSignal.create({
+    const created = await prisma.insightSignal.create({
       data: {
         source: input.source,
         medium: INSIGHT_SOURCE_MEDIUM[input.source],
+        lang,
+        region,
         refId,
         rawText: raw,
         normalizedText: normalized,
+        translationStatus,
+        // M54:落库为未分类,分类 sweep(Jev)落 domain/subdomain——
+        // 分类先于同域聚类,新信号当轮即入对桶
+        domain: "unclassified",
         meta: input.meta === undefined ? undefined : (input.meta as Prisma.InputJsonValue),
         signalAt: input.signalAt,
       },
       select: { id: true },
     });
+    if (translationStatus === "pending") await enqueueTranslation(created.id);
     return "ingested";
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

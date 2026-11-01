@@ -22,6 +22,7 @@ import { countValidPurchases } from "@/lib/pay/entitlement";
 import { previewMarkdown } from "@/lib/pay/preview";
 import { prerenderSafe } from "@/lib/prerender-safe";
 import { absoluteUrl } from "@/lib/seo/site";
+import { AUTHOR_JSONLD } from "@/lib/site-meta";
 
 /**
  * 文章详情(2026-10 URL 终态:/post/<id>-<slug>/ 混合形态,id 是唯一解析锚):
@@ -80,8 +81,8 @@ export default async function ArticlePage({ params }: PageProps): Promise<React.
     headline: post.title,
     datePublished: post.publishedAt?.toISOString(),
     dateModified: post.updatedAt.toISOString(),
-    author: { "@type": "Person", name: "domonic18", url: "https://github.com/domonic18" },
-    publisher: { "@type": "Person", name: "domonic18" },
+    author: AUTHOR_JSONLD,
+    publisher: { "@type": "Person", name: AUTHOR_JSONLD.name },
     mainEntityOfPage: absoluteUrl(postPath(post.id, post.slug)),
     image: post.coverPath ? absoluteUrl(post.coverPath) : undefined,
     // 门禁文章如实声明(M21):对爬虫与用户下发同一份截断预览,无 cloaking

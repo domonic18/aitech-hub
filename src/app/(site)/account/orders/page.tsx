@@ -4,13 +4,10 @@
  * settings(verifyAccessToken 裸值单一契约)。列表公共工具复用 admin/list
  * 纯函数与 AdminPagination(hrefFor 注入,无 admin 耦合)。
  */
-import { cookies } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import AdminPagination from "@/components/admin/AdminPagination";
-import { ACCESS_COOKIE_NAME } from "@/lib/auth/constants";
-import { verifyAccessToken } from "@/lib/auth/session";
+import { requireAccountPage } from "@/lib/auth/guard";
 import { formatCnDateTime } from "@/lib/datetime";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 import { listOrdersForUser, USER_ORDERS_PAGE_SIZE } from "@/lib/pay/user-orders";
@@ -50,10 +47,8 @@ export default async function AccountOrdersPage({
 }: {
   searchParams: Promise<{ page?: string; status?: string }>;
 }): Promise<React.ReactElement> {
-  const store = await cookies();
-  // 单一契约:裸 token 值 + 框架解析 cookie(禁传完整 Cookie 头)
-  const session = await verifyAccessToken(store.get(ACCESS_COOKIE_NAME)?.value ?? null);
-  if (!session) redirect(`/login?next=${encodeURIComponent("/account/orders/")}`);
+  // M65:完整校验(验签 + Redis jti 吊销判定),未登录 308 去登录页
+  const session = await requireAccountPage("/account/orders/");
 
   const sp = await searchParams;
   const page = parsePage(sp.page);

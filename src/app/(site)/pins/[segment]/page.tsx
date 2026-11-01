@@ -18,6 +18,7 @@ import {
 } from "@/lib/content/pin-path";
 import { formatCnDate } from "@/lib/datetime";
 import { getPublishedPin, listPinSegmentsForPrerender } from "@/lib/pins/repo";
+import { SITE_NAME } from "@/lib/site-meta";
 import { absoluteUrl } from "@/lib/seo/site";
 
 export const revalidate = 600;
@@ -36,7 +37,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const pin = parsed ? await getPublishedPin(parsed.id) : null;
   if (!pin) return {};
   const title = pin.title;
-  const description = pin.content.slice(0, 120) || `${title} — 一起AI 贴图`;
+  const description = pin.content.slice(0, 120) || `${title} — ${SITE_NAME} 贴图`;
   return {
     title,
     description,

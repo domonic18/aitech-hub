@@ -9,8 +9,12 @@ transport/service/slots。容器入口 ``app.gateway:app``(uvicorn 单 worker—
 
 from __future__ import annotations
 
+import base64
 import logging
+import os
 import re
+import shutil
+import tempfile
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -36,9 +40,9 @@ from app.log import get_logger
 from app.signer.backend import BrowserUnavailableError, SignPageError
 from app.signer.models import HealthResponse, SignRequest, SignResponse
 from app.signer.settings import SignerSettings
-from app.xhs.publisher import XhsPublisher
+from app.xhs.publish_guard import PublishGuard, PublishInFlight
+from app.xhs.publisher import XhsPublisher, XhsStateError
 from app.xhs.settings import XhsSettings
-from app.xhs.publisher import XhsStateError
 from app.signer.validation import (
     SignRequestError,
     parse_cookie_header,
@@ -248,6 +252,32 @@ def extract_sec_uid(text: str) -> str | None:
     return match.group(0) if match else None
 
 
+def decode_publish_images(raw_images: list[Any], tmp_root: str) -> list[str]:
+    """base64 图片物料落临时文件(序号前缀保序,原名保留扩展名)。
+
+    字段契约 = {name,dataB64}(data 为兼容别名)。空字节即刻拒绝,禁止把
+    0 字节文件交给 set_input_files——平台对空文件静默忽略(无计数器无编辑
+    区),2026-10-27 生产实弹:worker 发 dataB64 网关读 data,全部落成空
+    文件,上传步假通过把故障推迟到填标题步且归因误导(kind=unknown)。
+    """
+    paths: list[str] = []
+    for i, item in enumerate(raw_images):
+        name = (
+            re.sub(r"[^A-Za-z0-9._-]", "_", str(item.get("name") or ""))
+            or f"image-{i}.jpg"
+        )
+        raw = base64.b64decode(str(item.get("dataB64") or item.get("data") or ""))
+        if not raw:
+            raise ValueError(
+                f"第 {i + 1} 张图片解码为空字节({name}):物料字段缺失或不匹配"
+            )
+        path = os.path.join(tmp_root, f"{i:02d}-{name}")
+        with open(path, "wb") as f:
+            f.write(raw)
+        paths.append(path)
+    return paths
+
+
 def create_app(
     signer_settings: SignerSettings | None = None,
     xhs_settings: XhsSettings | None = None,
@@ -255,7 +285,10 @@ def create_app(
     """构建网关应用;runtime 可注入(测试用)。"""
     runtime = GatewayRuntime(signer_settings)
     runtime_holder: dict[str, GatewayRuntime] = {"runtime": runtime}
-    xhs_publisher = XhsPublisher(xhs_settings or XhsSettings())
+    xhs_settings_resolved = xhs_settings or XhsSettings()
+    xhs_publisher = XhsPublisher(xhs_settings_resolved)
+    # 发布幂等闸:与登录态同目录(持久卷),一个 pin 只发一次(见 publish_guard 头注)
+    xhs_guard = PublishGuard(os.path.dirname(xhs_settings_resolved.storage_state_path))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -362,16 +395,57 @@ def create_app(
 
     @app.post("/xhs/publish")
     async def xhs_publish(payload: dict) -> dict:
-        """发布图文笔记:贴图物料(标题/轻文字/图片容器内绝对路径)→ 创作平台。"""
+        """发布图文笔记:贴图物料(标题/轻文字/图片 base64)→ 创作平台。
+
+        图片走 base64 字节下发:生产 MEDIA_STORAGE=cos 后新图只在桶里,本地
+        路径跨容器必不存在(2026-10-27 实收 No such file);字节落临时文件
+        供 Playwright set_input_files,发布后清理。gateway 保持零密钥。
+        """
         title = str(payload.get("title", ""))
         content = str(payload.get("content", ""))
-        images = [str(p) for p in payload.get("images", [])]
+        raw_images = payload.get("images", [])
         pin_id = payload.get("pin_id") or payload.get("pinId")
+        pid = str(pin_id) if pin_id else None
+        # 幂等闸第一道:已发成功过的 pin 直接回成功,不再点发布按钮。
+        # worker 侧 attempts=3 + 客户端超时都不会取消服务端协程,没有这道闸
+        # 就是同一贴图发成多篇笔记(平台侧不可回收)。
+        if pid and xhs_guard.published(pid):
+            logger.info("xhs.publish.skip_already_published", pin_id=pid)
+            return {"ok": True, "note_url": None, "already_published": True}
+        tmp_root: str | None = None
         try:
-            result = await xhs_publisher.publish(
-                title, content, images, pin_id=str(pin_id) if pin_id else None
-            )
-            return {"ok": result.ok, "note_url": result.note_url}
+            images: list[str] = []
+            if raw_images and isinstance(raw_images[0], dict):
+                tmp_root = tempfile.mkdtemp(prefix="xhs-upload-")
+                try:
+                    images = decode_publish_images(raw_images, tmp_root)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            else:  # 兼容旧路径形态(本地盘存储场景)
+                images = [str(p) for p in raw_images]
+            if pid is None:
+                # 无 pin 锚无从去重(worker 恒带);保留可调用但明确告警
+                logger.warning("xhs.publish.no_pin_id", title=title[:40])
+                result = await xhs_publisher.publish(title, content, images)
+                return {"ok": result.ok, "note_url": result.note_url}
+            async with xhs_guard.claim(pid):
+                # 等锁期间上一个请求可能已经发完:二次确认,避免连点发出第二篇
+                if xhs_guard.published(pid):
+                    return {"ok": True, "note_url": None, "already_published": True}
+                result = await xhs_publisher.publish(
+                    title, content, images, pin_id=pid
+                )
+                if result.ok:
+                    xhs_guard.record(pid, result.note_url)
+                return {"ok": result.ok, "note_url": result.note_url}
+        except PublishInFlight as exc:
+            # 并发请求一律 fail-fast:排队会把 gateway 并发槽一起占住几分钟
+            logger.warning("xhs.publish.in_flight", pin_id=pid)
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except HTTPException:
+            # 已归因错误(400 物料解码失败等)原样透出;此前会被下面的兜底
+            # 改写成 500,worker 侧按状态码分流就失效了
+            raise
         except XhsStateError as exc:
             logger.error("xhs.publish.state_error", error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -379,6 +453,9 @@ def create_app(
             # 全捕获:人话进 detail 供 worker 解析落 lastError,不丢具体原因
             logger.error("xhs.publish.failed", error=str(exc))
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        finally:
+            if tmp_root:
+                shutil.rmtree(tmp_root, ignore_errors=True)
 
     @app.get("/xhs/state")
     async def xhs_state() -> dict:

@@ -38,6 +38,8 @@ const bodySchema = z.object({
     .transform((v) => v.trim().toLowerCase())
     .refine((v) => validateEmail(v) === null, { message: "邮箱格式不正确" }),
   password: z.string().min(1, "密码不能为空").max(PASSWORD_MAX_LENGTH),
+  /** M65 合规:注册须显式同意用户协议与隐私政策(含第三方短信服务商条款) */
+  agreed: z.boolean().refine((v) => v === true, { message: "请先阅读并同意用户协议与隐私政策" }),
 });
 
 /** 注册端点配额:IP 日 10 次 / 同邮箱时窗 5 次(成功也计数,注册是重写操作) */
@@ -57,6 +59,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    if (issue?.path[0] === "agreed") return apiEnvelope(400, "请先阅读并同意用户协议与隐私政策");
     return apiEnvelope(400, `invalid body: ${parsed.error.issues.map((i) => i.message).join(";")}`);
   }
   const { username, email, password } = parsed.data;

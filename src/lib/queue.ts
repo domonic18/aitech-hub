@@ -46,6 +46,8 @@ export function distributeQueueFor(channel: string): string {
 /** 小红书自动发布(M49 批X3):贴图渠道行的发布 job(worker 调 xhs-gateway) */
 export const DISTRIBUTE_JOB_XHS_AUTO = "xhs-auto-publish";
 export const QUEUE_DISTRIBUTE_XHS = distributeQueueFor(CHANNEL_XHS);
+/** 小红书登录态每日探照(M50 批F;挂 distribute 队列,04 段错峰) */
+export const DISTRIBUTE_JOB_XHS_STATE_PROBE = "xhs-state-probe";
 
 /** 数据库每日备份(M19 批②,M6 异机存放):pg_dump -Fc → 备份桶,本地留 3 份;
  * 并发 1 + 锁 600s(dump+上传分钟级),失败进 failed 队列可见 */
@@ -65,6 +67,9 @@ export const QUEUE_DISCOVERY = "discovery";
 /** 洞察加工(M34 批②,insight-plan §5):embed 高频向量回填+增量聚类 /
  * daily 日频 LLM 打标+覆盖度+快照;并发 1(同批自愈重扫语义,防双拍交错归簇)*/
 export const QUEUE_INSIGHT = "insight";
+/** 公众号私信问答生成(M66):请求线程只轮询结果键,检索+LLM 生成在此队列;
+ * 并发 1 与站内问答争同一 `summarize` 角色,串行防打爆绑定模型 */
+export const QUEUE_WECHAT_MP = "wechat-mp";
 /** 配图工坊拆层(M40 批 B,arch/05 §4.7):手动触发 Seedream layer_decomposition,
  * 官方 URL 24h 过期前 worker 转存站内媒体;拆层 ~75s 不占请求(请求内禁秒级任务)。
  * 并发 1:拆层是单绑定模型重调用,串行防打爆速率 */
@@ -89,6 +94,7 @@ export const QUEUE_NAMES = [
   QUEUE_DISCOVERY,
   QUEUE_INSIGHT,
   QUEUE_ILLUSTRATION_STUDIO,
+  QUEUE_WECHAT_MP,
   QUEUE_DISTRIBUTE_XHS,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -106,20 +112,27 @@ export {
   INSIGHT_DAILY_CRON,
   INSIGHT_EMBED_CRON,
   INSIGHT_FETCH_CRON,
+  INSIGHT_LABEL_CRON,
+  INSIGHT_TRANSLATE_CRON,
   JOB_RUN_PURGE_CRON,
+  LEADERBOARD_FX_CRON,
   MEDIA_AUDIT_CRON,
   PAY_DAILY_AUDIT_CRON,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
+  WECHAT_MP_PURGE_CRON,
 } from "./collect/schedules";
 
 /** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;
  * 消费:worker 按 job.name 分流,crawl 为缺省路径)。改名需与 worker 同批。
- * ai-backfill(M12 批③)借 crawler 队列的 tick 生态做 AI 存量补扫调度(纯入队,轻)。 */
+ * ai-backfill(M12 批③)借 crawler 队列的 tick 生态做 AI 存量补扫调度(纯入队,轻)。
+ * leaderboard-fx-refresh(M63 v2.1)= 榜单人民币展示汇率的日频采集,单次一个 HTTP
+ * 请求,同样搭 crawler 队列,不单开队列。 */
 export const CRAWL_JOB_TICK = "tick";
 export const CRAWL_JOB_SOURCE = "crawl";
 export const CRAWL_JOB_VIDEO = "crawl-video";
 export const CRAWL_JOB_AI_BACKFILL = "ai-backfill";
+export const LEADERBOARD_JOB_FX_REFRESH = "leaderboard-fx-refresh";
 
 /** cover-gen 队列 job name 契约(M14 批⑥;generate 为缺省路径,agent 两工具面
  * ——编辑页 generate_post_cover 与 topic 域 generate_cover_candidates——入队)。
@@ -176,10 +189,16 @@ export const DISCOVERY_JOB_HOTWORDS = "discovery-hotwords";
 export const DISCOVERY_JOB_BILI = "discovery-bili";
 
 /** insight 队列 job name 契约(M34 批②;embed 为缺省路径——手动触发
- * scripts/ops 同名一次性 job 可复用;daily=日频打标批。改名需与 worker 同批) */
+ * scripts/ops 同名一次性 job 可复用;daily=日频打标批;translate=M58
+ * 批① 单条翻译(data.signalId)与扫尾批共用;extract-event=M58 批②
+ * 厂商单篇事件抽取(crawl 侧逐条入队)。改名需与 worker 同批) */
 export const INSIGHT_JOB_EMBED = "embed";
 export const INSIGHT_JOB_DAILY = "daily";
 export const INSIGHT_JOB_FETCH = "fetch";
+export const INSIGHT_JOB_TRANSLATE = "translate";
+export const INSIGHT_JOB_EXTRACT_EVENT = "extract-event";
+/** 高频小批打标(M60 批C):每 30 分钟一轮,带 data.clusterId 时只打该簇(手动补标) */
+export const INSIGHT_JOB_LABEL = "label";
 
 /** illustration-studio 队列 job name 契约(M40 批 B;decompose 为缺省路径——
  * 拆层运行首次触发与改字后手动重拆同一入口,jobId 锚 groupId 天然唯一)。

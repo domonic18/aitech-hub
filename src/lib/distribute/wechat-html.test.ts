@@ -45,6 +45,88 @@ describe("renderWechatHtml 全局节与差异声明", () => {
     expect(html).not.toContain("<script>");
   });
 
+  it("代码语法高亮(M51 P1):token 内联色 + 跨行 token 拆行 span 配平", () => {
+    const { html } = renderWechatHtml(
+      "```ts\n// 注释\nexport function hi(n: string): string {\n  return n;\n}\n```",
+    );
+    expect(html).toContain('<span style="color:#8b949e">//&nbsp;注释</span>'); // comment 灰
+    expect(html).toContain('<span style="color:#ff7b72">export</span>'); // keyword 红
+    expect(html).toContain('<span style="color:#d2a8ff">hi</span>'); // 函数名紫
+    expect(html).not.toContain('class="hljs'); // class 全部内联化(微信滤 class)
+    // span 开闭配平(跨行 token 拆行重开)
+    const codeSeg =
+      html.match(/<section style="margin:0;[\s\S]*?<\/section><\/section>/)?.[0] ?? "";
+    expect((codeSeg.match(/<span/g) ?? []).length).toBe((codeSeg.match(/<\/span>/g) ?? []).length);
+    expect(codeSeg).toContain("<br>");
+  });
+
+  it("未知语言回退转义纯文本(高亮永不抛)", () => {
+    const { html } = renderWechatHtml("```notalang\nx < y\n```");
+    expect(html).toContain("x&nbsp;&lt;&nbsp;y");
+    expect(html).not.toContain('class="hljs');
+  });
+
+  it("任务列表(M51 P1):勾选框字形取代 marker", () => {
+    const { html } = renderWechatHtml("- [x] 已完成\n- [ ] 待办");
+    expect(html).toContain('<span style="color:#1a7f37;">☑</span> 已完成');
+    expect(html).toContain('<span style="color:#8b949e;">☐</span> 待办');
+    expect(html).not.toContain("[x]");
+    expect(html).not.toContain("[ ]");
+  });
+
+  it("脚注(M51 P1):角标内联样式 + 文末「脚注」卡,回跳链接剥除", () => {
+    const { html } = renderWechatHtml("正文[^1]续。\n\n[^1]: 注文 **加粗**。");
+    expect(html).toContain('<sup style="color:#576b95;font-size:11px;">[1]</sup>');
+    expect(html).toContain("脚注</p>");
+    expect(html).toContain("[1] 注文 <strong");
+    expect(html).not.toContain("footnote-backref");
+    expect(html).not.toContain('class="footnote');
+  });
+
+  it("GFM 提示块(M51 P2):class div 转五色内联卡,标题中文化", () => {
+    const { html } = renderWechatHtml("> [!WARNING]\n> 谨慎操作。");
+    expect(html).toContain("border-left:3px solid #9a6700");
+    expect(html).toContain("background-color:#fff8c5");
+    expect(html).toContain("⚠️ 警告");
+    expect(html).toContain("谨慎操作。");
+    expect(html).not.toContain("markdown-alert");
+    expect(html).not.toContain("</div>");
+    // 未知类型:插件不转换,落回普通引用块(GFM 行为)
+    const { html: h2 } = renderWechatHtml("> [!CUSTOM]\n> x");
+    expect(h2).toContain("<blockquote");
+    expect(h2).toContain("[!CUSTOM]");
+  });
+
+  it("段落排版选项(M51 P2):indent/justify 写入 p 内联样式", () => {
+    const base = renderWechatHtml("段落。");
+    expect(base.html).toContain('<p style="margin:12px 0;">段落。</p>');
+    const ind = renderWechatHtml("段落。", null, { paraStyle: "indent" });
+    expect(ind.html).toContain('<p style="margin:12px 0;text-indent:2em;">段落。</p>');
+    const both = renderWechatHtml("段落。", null, { paraStyle: "indent_justify" });
+    expect(both.html).toContain("text-indent:2em;text-align:justify;");
+  });
+
+  it("文首目录卡(M51 P2):阅读时间 + h2 目录,缺省关闭", () => {
+    const md = "## 甲\n\n正文\n\n## 乙\n\n正文";
+    const off = renderWechatHtml(md);
+    expect(off.html).not.toContain("预计阅读");
+    const on = renderWechatHtml(md, null, { tocMeta: true });
+    expect(on.html).toContain("预计阅读 1 分钟");
+    expect(on.html).toContain("目录:1. 甲 · 2. 乙");
+    // 目录卡位于正文之前(文首,首个 h2 标题之前)
+    expect(on.html.indexOf("预计阅读")).toBeLessThan(on.html.indexOf("<h2"));
+  });
+
+  it("代码块行间 <br>+缩进 &nbsp;(M50 修复:微信粘贴管线折叠裸换行)", () => {
+    const { html } = renderWechatHtml("```yaml\n目标:\n  1、缩进行\n\n下一段\n```");
+    expect(html).toContain("<br>");
+    expect(html).not.toContain("white-space:pre-wrap");
+    // M51 起叠加语法高亮:行内 token 拆 span,缩进 &nbsp; 仍锚定行首
+    expect(html).toContain("<br>&nbsp;&nbsp;<span");
+    // 空行 = 相邻 <br>(块元素空行仍占行高)
+    expect(html).toContain("<br><br>");
+  });
+
   it("表格全内联(th 底色+td 边框);hr 转边框 section", () => {
     const { html } = renderWechatHtml("| a | b |\n| - | - |\n| 1 | 2 |\n\n---");
     expect(html).toContain("<table");
@@ -62,18 +144,19 @@ describe("renderWechatHtml 全局节与差异声明", () => {
     expect(html).toContain('src="https://mmbiz.qpic.cn/x.png"');
   });
 
-  it("列表 ul/ol/li 内联样式(li 不再重复可继承声明)", () => {
+  it("列表一律展平为 section+行内标记(M50 修复:微信对 li 内带样式行内元素断行)", () => {
     const { html } = renderWechatHtml("- 甲\n- 乙\n\n1. 丙");
-    expect(html).toContain('<ul style="margin:12px 0;padding-left:24px;">');
-    expect(html).toContain('<li style="margin:4px 0;">');
-    expect(html).toContain('<ol style="margin:12px 0;padding-left:24px;">');
+    expect(html).not.toMatch(/<(ul|ol|li)\b/);
+    expect(html).toContain('<section style="margin-left:1em;">• 甲</section>');
+    expect(html).toContain('<section style="margin-left:1em;">• 乙</section>');
+    expect(html).toContain('<section style="margin-left:1em;">1. 丙</section>');
   });
 });
 
 describe("嵌套列表展平(微信兼容)", () => {
-  it("ul 嵌 ul:内层转 section+• 标记,仅剩外层一个 <ul>", () => {
+  it("ul 嵌 ul:内外全展平,零 list 标签残留(M50 修复后顶层同样展平)", () => {
     const { html } = renderWechatHtml("- 甲\n  - 甲一\n  - 甲二\n- 乙");
-    expect(html.match(/<ul\b/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<(ul|ol|li)\b/);
     expect(html).toContain('<section style="margin-left:1em;">• 甲一</section>');
     expect(html).toContain('<section style="margin-left:1em;">• 甲二</section>');
     expect(html).toContain("乙");
@@ -88,10 +171,13 @@ describe("嵌套列表展平(微信兼容)", () => {
     expect(html2).toContain('<section style="margin-left:1em;">4. 子乙</section>');
   });
 
-  it("顶层列表不展平(微信对顶层 ul/ol 渲染正常)", () => {
-    const { html } = renderWechatHtml("- 甲\n- 乙");
-    expect(html).toContain('<li style="margin:4px 0;">甲</li>');
-    expect(html).not.toContain('style="margin-left:1em;"');
+  it("顶层列表同样展平(2026-10-27 生产实收:微信在 li 内带样式行内元素处断行)", () => {
+    const { html } = renderWechatHtml("1. **加粗项**。后续正文接排不换行。");
+    expect(html).not.toMatch(/<(ul|ol|li)\b/);
+    expect(html).toContain(
+      '<section style="margin-left:1em;">1. <strong style="font-weight:600;color:',
+    );
+    expect(html).toContain("</strong>。后续正文接排不换行。</section>");
   });
 
   it("引用块内嵌套列表同样展平", () => {

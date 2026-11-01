@@ -8,6 +8,7 @@
 import type { Job } from "bullmq";
 
 import { prisma } from "../src/lib/db";
+import { logWarn } from "../src/lib/logger";
 import { fetchExternalImage } from "../src/lib/media/fetch-external";
 import { type MediaStatus, type TransferResult, MEDIA_LIMITS } from "../src/lib/media/media-schema";
 import { uploadMedia } from "../src/lib/media/service";
@@ -103,9 +104,7 @@ export async function transferMediaJob(job: Job): Promise<TransferResult> {
     } catch (err) {
       mapping[url] = null; // 失败保留原链,导入弹窗提示(arch/05 §4.2)
       failed += 1;
-      console.warn(
-        JSON.stringify({ event: "media.transfer.failed", jobId: job.id, url, error: String(err) }),
-      );
+      logWarn("media.transfer.failed", { jobId: job.id, url, error: String(err) });
     }
     await job.updateProgress(Math.round(((i + 1) / urls.length) * 100));
   }

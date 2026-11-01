@@ -66,11 +66,15 @@ describe("登记表不变式", () => {
   it("视图分流:低频进日历,>8 次/日进常驻;常驻另有纯 tick 清单", () => {
     const { calendar, resident } = buildScheduleEntries();
     expect(calendar.every((e) => e.parsed.firesPerDay <= 8)).toBe(true);
-    // 热榜小时批(24/日,验收二批② 提频)+ 每 15 分钟 ×2(96/日)分流常驻,其余留日历
+    // 热榜小时批(24/日,验收二批② 提频)+ 每 15 分钟 ×2(96/日)+ 翻译扫尾
+    // 每 10 分钟 ×1(144/日,M58 批①)+ 打标小批每 30 分钟(48/日,M60 批C)分流常驻,
+    // 其余留日历
     expect(resident.map((e) => e.key)).toEqual([
+      "insight-label",
       "insight-fetch",
       "embed-reconcile",
       "insight-embed",
+      "insight-translate",
     ]);
     expect(calendar.map((e) => e.key)).toContain("insight-daily");
     expect(calendar.map((e) => e.key)).toContain("discovery-bili");

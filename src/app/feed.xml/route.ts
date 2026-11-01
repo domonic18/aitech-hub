@@ -6,6 +6,7 @@ import { postPath } from "@/lib/content/post-path";
 import { getSiteTitle } from "@/lib/config/site-config";
 import { excerptOf } from "@/lib/content/format";
 import { absoluteUrl, siteUrl } from "@/lib/seo/site";
+import { SITE_DESCRIPTION } from "@/lib/site-meta";
 
 /** RSS 2.0(arch/07-frontend §3:最新 20 篇;旧 /feed/ 由 Nginx 301 接入) */
 export const revalidate = 3600;
@@ -43,7 +44,7 @@ export async function GET(): Promise<NextResponse> {
   <channel>
     <title>${escapeXml(siteTitle)}</title>
     <link>${escapeXml(siteUrl())}</link>
-    <description>domonic18 的 AI 工程实战原创博客</description>
+    <description>${escapeXml(SITE_DESCRIPTION)}</description>
     <language>zh-CN</language>
 ${items}
   </channel>
@@ -52,5 +53,5 @@ ${items}
 
   return new NextResponse(xml, {
     headers: { "Content-Type": "application/rss+xml; charset=utf-8" },
-  }) as NextResponse;
+  });
 }

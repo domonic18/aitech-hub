@@ -7,9 +7,11 @@
 import Link from "next/link";
 
 import type { InsightClusterRow } from "@/lib/insight/admin";
+import { LABEL_MIN_MEMBERS } from "@/lib/insight/constants";
 import type { ClusterMomentum } from "@/lib/insight/scoring";
+import { TREND_TIER_LABELS, type ClusterTrendRow, type TrendTier } from "@/lib/insight/trend";
 
-import { AnomalyBadge, clusterHref } from "./shared";
+import { AnomalyBadge, RegionBadge, clusterHref } from "./shared";
 
 /** 名次头部三色(与 HotBoard 同一套视觉语言) */
 function rankClass(rank: number): string {
@@ -26,11 +28,33 @@ const MOMENTUM_META: Record<ClusterMomentum, { text: string; cls: string; title:
   cooling: { text: "↓退潮", cls: "bg-panel-2 text-text-3", title: "近 24h 零新增,逐步冷却" },
 };
 
+/** 增长分五态徽章(M52 批B:近 7 天 vs 前 7 天,取代 24h 单点方向;无趋势行
+ * 的簇回退 24h 形态) */
+const TREND_CLS: Record<TrendTier, string> = {
+  new: "bg-red/12 text-red",
+  breakout: "bg-red/12 text-red",
+  rising: "bg-green/12 text-green",
+  flat: "bg-panel-2 text-text-3",
+  declining: "bg-panel-2 text-text-3",
+};
+
+function TrendBadge({ tier, growth }: { tier: TrendTier; growth: number }): React.ReactElement {
+  const pct = `${growth >= 0 ? "+" : ""}${Math.round(growth * 100)}%`;
+  return (
+    <span
+      className={`shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] leading-4 ${TREND_CLS[tier]}`}
+      title={`近 7 天 vs 前 7 天在役源信号增长 ${pct}`}
+    >
+      {TREND_TIER_LABELS[tier]}
+    </span>
+  );
+}
+
 function MomentumBadge({ m }: { m: ClusterMomentum }): React.ReactElement {
   const meta = MOMENTUM_META[m];
   return (
     <span
-      className={`shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[10px] leading-4 ${meta.cls}`}
+      className={`shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] leading-4 ${meta.cls}`}
       title={meta.title}
     >
       {meta.text}
@@ -52,30 +76,47 @@ function RadarRow({
   c,
   rank,
   maxScore,
+  trends,
 }: {
   c: InsightClusterRow;
   rank: number;
   maxScore: number;
+  trends?: ReadonlyMap<string, ClusterTrendRow>;
 }): React.ReactElement {
+  const trend = trends?.get(String(c.id));
   const kws = c.keywords
     .slice(0, 3)
     .map((k) => `#${k}`)
     .join(" ");
   return (
+    // min-w-0:行是 grid 隐式轨道的 item,默认 min-width:auto 取 min-content
+    // (簇名 nowrap 不折行)→ 整行 371px 顶爆 390px 视口,成员列越出卡右框
+    // (2026-10-30 移动端验收);打断 min-content 传播让 flex-1 截断真生效
     <Link
       href={clusterHref(c.id)}
-      className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-panel-2"
+      className="flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-panel-2"
     >
       <span className={`w-5 shrink-0 text-right font-mono text-[12px] ${rankClass(rank)}`}>
         {rank}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] text-text-1" title={c.label ?? undefined}>
-            {c.label ?? "待打标簇"}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`min-w-0 flex-1 truncate text-[13px] ${c.label ? "text-text-1" : "text-text-3 italic"}`}
+            title={
+              c.label ??
+              `待打标 · 信号样本:${trend?.sample ?? "—"}(成员 ≥${LABEL_MIN_MEMBERS} 后进入打标队列,每 30 分钟小批命名)`
+            }
+          >
+            {c.label ?? "待打标"}
           </span>
-          <MomentumBadge m={c.momentum} />
+          {trend ? (
+            <TrendBadge tier={trend.tier} growth={trend.growth} />
+          ) : (
+            <MomentumBadge m={c.momentum} />
+          )}
           {c.anomaly && <AnomalyBadge />}
+          <RegionBadge region={c.region} />
         </span>
         {kws !== "" && (
           <span className="block truncate text-[11px] text-text-3" title={kws}>
@@ -95,7 +136,7 @@ function RadarRow({
         {c.score !== null ? Math.round(c.score) : "—"}
       </span>
       <span
-        className="w-14 shrink-0 text-right font-mono text-[10px] leading-4 text-text-3"
+        className="shrink-0 whitespace-nowrap text-right font-mono text-[10px] leading-4 tabular-nums text-text-3"
         title={`${c.members} 条信号 · 最近活跃 ${relTime(c.recentAt)}`}
       >
         {c.members}·{relTime(c.recentAt)}
@@ -106,8 +147,14 @@ function RadarRow({
 
 export default function RadarTable({
   clusters,
+  trends,
+  pendingClusters,
 }: {
   clusters: InsightClusterRow[];
+  /** 簇增长分级(M52 批B;键=簇 id 字符串;缺省回退 24h 动量徽) */
+  trends?: ReadonlyMap<string, ClusterTrendRow>;
+  /** 累计中的新簇数(M60 批C:成员 1-2 条,未进榜;页脚交代去向) */
+  pendingClusters?: number;
 }): React.ReactElement {
   if (clusters.length === 0) {
     return (
@@ -116,17 +163,36 @@ export default function RadarTable({
         <Link href="/admin/data/sources/?t=channels" className="mx-0.5 text-accent hover:underline">
           源管理·热榜源
         </Link>
-        启停,或用 CLI <code className="font-mono">insight:run -- cluster</code> 手动跑一轮
+        启停,或用 CLI <code className="font-mono">npm run insight:run -- label</code> 手动跑一轮
       </div>
     );
   }
   const maxScore = Math.max(...clusters.map((c) => c.score ?? 0), 0);
   // 自 F11 起宿主于页侧 Card 壳(F11 板),自身不再画面板框
   return (
-    <div className="grid gap-x-4 lg:grid-cols-2">
-      {clusters.map((c, i) => (
-        <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} />
-      ))}
+    <div className="flex flex-col gap-1.5">
+      {/* 单列:lg 两列时每行仅 ~283px,名次/徽章/分数/成员四段挤完后簇名宽度
+          归零(M60 批C 加趋势+地域徽章后必现);单列下各宽度都放得下完整簇名 */}
+      <div className="grid grid-cols-1 gap-x-4">
+        {clusters.map((c, i) => (
+          <RadarRow key={c.id} c={c} rank={i + 1} maxScore={maxScore} trends={trends} />
+        ))}
+      </div>
+      {pendingClusters !== undefined && pendingClusters > 0 && (
+        <p className="px-2 text-[11px] text-text-3">
+          另有 {pendingClusters} 个新簇累计中(成员 1-{LABEL_MIN_MEMBERS - 1} 条,满{" "}
+          {LABEL_MIN_MEMBERS} 条进榜并进入打标队列)
+        </p>
+      )}
+      {/* 读法(M60 补充):分数构成与「和覆盖矩阵什么关系」是最高频的两个疑问,
+          常驻卡底比藏 tooltip 好;口径与 lib/insight/scoring.ts 保持一致 */}
+      <p className="px-2 text-[11px] leading-relaxed text-text-3">
+        机会分 = 介质数 <b className="text-text-2">40%</b>(≤5 个渠道封顶)+ 近 7 天新增热度{" "}
+        <b className="text-text-2">30%</b>(≤10 条封顶)+ 覆盖缺口 <b className="text-text-2">30%</b>
+        (与站内已发文章越像分越低;热簇暂无此计算,按满额)。 「成员·时间」= 簇内累计信号数 ·
+        最近一条活跃时间。榜单只收已打标且成员 ≥{LABEL_MIN_MEMBERS}{" "}
+        的成熟簇;同一批簇的信号落在哪些渠道族、站内有没有缺口,见下方「源×簇覆盖矩阵」。
+      </p>
     </div>
   );
 }

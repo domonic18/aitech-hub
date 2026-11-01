@@ -79,7 +79,7 @@
 **K2.6 实施注记(2026-10-07,第三迭代批①~④,游客模式 + 后台会话管理 + 工具面收紧)**:
 
 - **身份分流**(`src/lib/agent/identity.ts`):`ah_at` JWT role=admin → `{kind:"admin", key:"admin:<sub>"}`(走会话行路径,20 会话/日照旧);其余一律游客(`ah_av` cookie)。一期「登录账号」即 admin(三期才有普通用户)
-- **游客线程生命周期**(零新表,`guest-threads.ts`):thread_id=`g_<uuid>`(前缀即 kind 标记);归属 Redis `search:agent:gthread:{id}`=visitorId,2h 滑动 TTL(run 成功后 EXPIRE 续期);**不落会话行**(多轮上下文由 checkpoint 承载);归属校验 fail-closed(Redis 挂 → 404 自愈开新会话),配额 fail-open(护栏非计费)
+- **游客线程生命周期**(零新表,`guest-threads.ts`):thread_id=`g_<uuid>`(前缀即 kind 标记);归属 Redis `search:agent:gthread:{id}`=visitorId,2h 滑动 TTL(run 成功后 EXPIRE 续期);**M58 批⑤ 后续起 run 收尾落匿名会话行**(`visitor_id='guest'`,不存访客标识),后台「会话管理」可读内容,行与 checkpoint 按 30 天日清;归属键只决定能否继续追问(多轮上下文由 checkpoint 承载);归属校验 fail-closed(Redis 挂 → 404 自愈开新会话),配额 fail-open(护栏非计费)
 - **游客双闸配额**(`quota.ts`):3 问/日/visitor + 30 问/日/IP(防清 cookie 刷,NAT 多游客互不挤占);模型终败也计数;超限 429「今日游客提问次数已用完」
 - **过期自愈**:worker 日清扫 `checkpoints` 表 `g_%` 线程,Redis 键已消失 → deleteThread(并入 04:33 job);前端 adapter 识别 404「会话已过期/不存在」→ 复位新会话 + 横幅指引重发
 - **审计锚**:迁移 `20261007045121_ai_usage_log_session_id` 增 `session_id varchar(40)` + 索引——`recordAgentRun` 带 threadId,游客不触碰会话行但台账照落;后台会话管理以此聚合游客统计(见 §4 会话管理)
@@ -232,7 +232,7 @@
 
 所有 LLM/ASR 生产任务(电报解读 / 文字摘要 / Agent 搜索 / 封面生图)共用的治理后台;原型 [admin-models](../prototypes/admin-models.html) / [admin-usage](../prototypes/admin-usage.html) / [admin-sessions](../prototypes/admin-sessions.html):
 
-- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图/向量嵌入/文章写作/洞察归纳/文生图图文八角色槽的主力与备用——M8 四角色起步,M20 增嵌入、M26 增专题合成(该槽已随 M27 批⑤ 退役,合成走 Agent 搜索绑定)、2026-10-17 增 writing(专题文章起草单任务 write_article 专用,与编排 search 绑定解耦)、2026-10-18 增 insight(洞察归纳,M34 批②)、2026-10-21 增 illustrate(文生图图文,M39;image-client `images/generations` 兼容形态);测试连通性入口
+- **模型配置(admin-models)**:模型条目台账(供应商/协议/模型 ID/Base URL/API Key 加密落库仅回显尾 4 位/用途与能力/默认与备用定位/启停/最后测试)+ ASR 渠道配置(转写即删,arch/02 §3.2)+ 任务绑定(电报解读/文字摘要/Agent 搜索/封面生图/向量嵌入/文章写作/洞察归纳/文生图图文/信号翻译九角色槽的主力与备用——M8 四角色起步,M20 增嵌入、M26 增专题合成(该槽已随 M27 批⑤ 退役,合成走 Agent 搜索绑定)、2026-10-17 增 writing(专题文章起草单任务 write_article 专用,与编排 search 绑定解耦)、2026-10-18 增 insight(洞察归纳,M34 批②)、2026-10-21 增 illustrate(文生图图文,M39;image-client `images/generations` 兼容形态)、2026-10-30 增 translate(海外信号中文化,M58 批①,绑低成本模型、未绑定即 pending 保持);测试连通性入口
 - **用量统计(admin-usage)**:近 7/30/90 天 tokens 与估算费用 / ASR 时长 / 降级次数 KPI,日消耗趋势、按任务与按模型分布、按任务明细(含 CSS sparkline)——数据源为调用日志聚合,与成本护栏(arch/02 §3.2)共用口径
 - **会话管理(admin-sessions)**:按任务类型/状态/触发/日期筛选调用记录;详情抽屉展示入参出参 JSON 与垂直执行时间线(listing→下载→抽轨→ASR→LLM 解读→入库→转写即删,节点带耗时),失败记录可重跑
 

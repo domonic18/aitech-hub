@@ -3,6 +3,7 @@ import Link from "next/link";
 import packageInfo from "../../../package.json";
 import ContactLauncher from "@/components/site/ContactLauncher";
 import { getSiteIcp, getSiteTitle } from "@/lib/config/site-config";
+import { AUTHOR_URL, SITE_TAGLINE } from "@/lib/site-meta";
 
 export default async function Footer(): Promise<React.ReactElement> {
   const [siteTitle, icp] = await Promise.all([getSiteTitle(), getSiteIcp()]);
@@ -24,6 +25,9 @@ export default async function Footer(): Promise<React.ReactElement> {
             隐私政策
           </Link>
           <ContactLauncher />
+          <Link href="/topics/" className="hover:text-text-1">
+            专题
+          </Link>
           <Link href="/archive/" className="hover:text-text-1">
             归档
           </Link>
@@ -31,7 +35,7 @@ export default async function Footer(): Promise<React.ReactElement> {
             RSS
           </a>
           <a
-            href="https://github.com/domonic18"
+            href={AUTHOR_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-text-1"
@@ -40,7 +44,7 @@ export default async function Footer(): Promise<React.ReactElement> {
           </a>
         </div>
         <p className="mt-4 text-text-3">
-          © {new Date().getFullYear()} {siteTitle} · domonic18 的 AI 工程实战博客
+          © {new Date().getFullYear()} {siteTitle} · {SITE_TAGLINE}
         </p>
         {icp ? (
           <p className="mt-1 text-text-3">

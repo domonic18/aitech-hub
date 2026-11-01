@@ -15,6 +15,8 @@ import {
   AI_PURPOSE_COVER,
   AI_PURPOSE_EMBEDDING,
   AI_PURPOSE_ILLUSTRATE,
+  AI_PROTOCOL_SYSTEMONE,
+  AI_PURPOSE_INSIGHT_JUDGE,
   AI_PURPOSE_INTERPRET,
   AI_PURPOSE_SEARCH,
   AI_PURPOSE_SUMMARIZE,
@@ -35,9 +37,11 @@ import type { ProbeInput, ProbeResult } from "./probe-shared";
 
 /** 用途→探针种类:文本类(interpret/summarize/search/writing)共享 chat;
  * cover/illustrate→images;embedding→embeddings;未绑用途回退 chat(M8 旧语义) */
-function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "embeddings"> {
+function probeKinds(
+  purposes: string[] | undefined,
+): Array<"chat" | "images" | "embeddings" | "decisions"> {
   const has = (p: string): boolean => purposes?.includes(p) ?? false;
-  const kinds: Array<"chat" | "images" | "embeddings"> = [];
+  const kinds: Array<"chat" | "images" | "embeddings" | "decisions"> = [];
   if (
     !purposes ||
     purposes.length === 0 ||
@@ -50,18 +54,23 @@ function probeKinds(purposes: string[] | undefined): Array<"chat" | "images" | "
   }
   if (has(AI_PURPOSE_COVER) || has(AI_PURPOSE_ILLUSTRATE)) kinds.push("images");
   if (has(AI_PURPOSE_EMBEDDING)) kinds.push("embeddings");
+  if (has(AI_PURPOSE_INSIGHT_JUDGE)) kinds.push("decisions");
   return kinds;
 }
 
 /** 用途感知模型探针(2026-10-16 反馈问题3):按绑定用途逐个打真实端点,
  * 全部通过才算 ok;detail 分种类汇总(chat 首选人话,失败带种类前缀可归因) */
 export async function probeModel(input: ProbeInput): Promise<ProbeResult> {
-  if (input.protocol !== AI_PROTOCOL_OPENAI && input.protocol !== AI_PROTOCOL_ANTHROPIC) {
+  if (
+    input.protocol !== AI_PROTOCOL_OPENAI &&
+    input.protocol !== AI_PROTOCOL_ANTHROPIC &&
+    input.protocol !== AI_PROTOCOL_SYSTEMONE
+  ) {
     logger.info({ event: "ai_probe.skipped", kind: "model", protocol: input.protocol });
     return {
       ok: false,
       latencyMs: 0,
-      detail: "该协议暂不支持连通性测试(仅 openai/anthropic)",
+      detail: "该协议暂不支持连通性测试(仅 openai/anthropic/systemone)",
       skipped: true,
     };
   }
@@ -72,7 +81,7 @@ export async function probeModel(input: ProbeInput): Promise<ProbeResult> {
   let latencyMs = 0;
   for (const kind of probeKinds(input.purposes)) {
     const r =
-      kind === "chat"
+      kind === "chat" || kind === "decisions"
         ? await probeLlm(input)
         : kind === "images"
           ? await probeImages(input, baseUrl)

@@ -7,16 +7,19 @@
  * 3 次,终态 failed 后界面「重新发布」重新入队。
  */
 import path from "node:path";
+import { douyinGatewayBase } from "@/lib/config/gateways";
 
 import { prisma } from "../db";
-import { env } from "../env";
-import { logger } from "../logger";
+import { logInfo, logger } from "../logger";
+import { mediaStorage } from "../media/storage";
 import { DistributeError } from "../distribute/errors";
-import { ensureChannelRowUnique } from "../distribute/channel-row";
-import { PUBLISH_STATUS_PENDING, PUBLISH_STATUS_SYNCED } from "../distribute/channels";
+import {
+  ensurePinChannelRow,
+  markPinChannelPending,
+  markPinChannelSynced,
+} from "../distribute/pin-channel-state";
+import { CHANNEL_XHS, PUBLISH_STATUS_FAILED, PUBLISH_STATUS_SYNCED } from "../distribute/channels";
 import { DISTRIBUTE_JOB_XHS_AUTO, QUEUE_DISTRIBUTE_XHS, getQueue } from "../queue";
-// 贴图渠道枚举独立于文章侧 PUBLISH_CHANNELS(贴图载体:xiaohongshu 不入文章分发枚举)
-const CHANNEL_XHS = "xiaohongshu";
 
 /** 创建/复用渠道行(pending;验收门槛:草稿拒)。幂等,仅供本模块入队使用。 */
 async function distributePinToXhs(pinId: bigint) {
@@ -28,28 +31,32 @@ async function distributePinToXhs(pinId: bigint) {
   if (pin.status === "draft") {
     throw new DistributeError("invalid", "草稿尚未验收:先提交验收再分发小红书");
   }
-  return ensureChannelRowUnique(
-    () =>
-      prisma.contentPinChannel.findUnique({
-        where: { pinId_channel: { pinId, channel: CHANNEL_XHS } },
-      }),
-    () => prisma.contentPinChannel.create({ data: { pinId, channel: CHANNEL_XHS } }),
-  );
+  return ensurePinChannelRow(pinId, CHANNEL_XHS);
 }
 
 /** 全自动入队:创建渠道行 + 发布 job 入子队列(worker 调 xhs-gateway)。
- * 重试:attempts 3 + 指数退避 30s→60s→120s;终态 failed 重新发起时复位
- * pending(UI 立即转「重试中」)。 */
+ * jobId 确定(每 pin 一个),先查态再投——同 jobId 旧 job 还在保留窗口时
+ * BullMQ 会**静默丢弃**新 job;双击「发布」此前靠 Date.now() 拼 id 等于每次
+ * 都是新 job,直接产生两篇笔记。在途即幂等返回,终态先 remove 再投。
+ * 重试:attempts 3 + 指数退避 30s→60s→120s(gateway 侧有按 pin 的幂等闸,
+ * 重试不会再发第二篇);终态 failed 重新发起时复位 pending(UI 立即转「重试中」)。 */
 export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: string }> {
   const row = await distributePinToXhs(pinId);
-  if (row.status === "failed") {
-    await prisma.contentPinChannel.update({
-      where: { id: row.id },
-      data: { status: PUBLISH_STATUS_PENDING, lastError: null },
-    });
+  if (row.status === PUBLISH_STATUS_FAILED) {
+    await markPinChannelPending(row.id);
   }
-  const jobId = `xhs-auto-${pinId.toString()}-${Date.now().toString(36)}`;
-  await getQueue(QUEUE_DISTRIBUTE_XHS).add(
+  const jobId = `xhs-auto-${pinId.toString()}`;
+  const queue = getQueue(QUEUE_DISTRIBUTE_XHS);
+  const stale = await queue.getJob(jobId);
+  if (stale) {
+    const state = await stale.getState();
+    if (state === "waiting" || state === "delayed" || state === "active") {
+      logInfo("pins.xhs.already_queued", { jobId, pinId: pinId.toString(), state });
+      return { jobId };
+    }
+    await stale.remove();
+  }
+  await queue.add(
     DISTRIBUTE_JOB_XHS_AUTO,
     { pinId: pinId.toString() },
     {
@@ -67,7 +74,7 @@ export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: str
 /** 登录态录入(抖音同款手动 Cookie 心智,M49 批X3):F12 复制的 cookie 串
  * 转发 xhs-gateway 验证登录并落 storage_state(卷持久化,后续发布免登) */
 export async function ingestXhsCookies(cookieHeader: string): Promise<void> {
-  const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
+  const base = douyinGatewayBase();
   const res = await fetch(`${base}/xhs/cookies`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -80,14 +87,25 @@ export async function ingestXhsCookies(cookieHeader: string): Promise<void> {
   }
 }
 
-/** 发布物料(标题/轻文字/图片容器内绝对路径)——worker 消费侧组装用 */
+/** 发布物料(标题/轻文字/图片字节 base64)——worker 消费侧组装用 */
+export interface PinXhsImage {
+  name: string;
+  dataB64: string;
+}
+
 export interface PinXhsMaterial {
   title: string;
   content: string;
-  images: string[];
+  images: PinXhsImage[];
 }
 
-/** 收集贴图发布物料:图片站内 URL → 容器内绝对路径(worker MEDIA_DIR 挂载点) */
+/** 收集贴图发布物料:图片经存储抽象读字节(base64 下发)。
+ *
+ * 生产 MEDIA_STORAGE=cos 后新图只在桶里(本地卷 M19 后不增新图),容器间
+ * 传本地绝对路径在新图场景必不存在(2026-10-27 生产实收:No such file);
+ * mediaStorage.get 双后端同源,字节过内网、gateway 保持零密钥。任一图缺失
+ * 视为物料不完整直接失败——静默跳过会复刻「只发单图」类缺陷。
+ */
 export async function gatherPinXhsMaterial(pinId: bigint): Promise<PinXhsMaterial> {
   const pin = await prisma.contentPin.findUnique({
     where: { id: pinId },
@@ -98,14 +116,24 @@ export async function gatherPinXhsMaterial(pinId: bigint): Promise<PinXhsMateria
     },
   });
   if (!pin) throw new Error("贴图不存在");
-  const images = pin.images.map((img) => {
-    // 站内 URL /wp-content/uploads/<key> ↔ $MEDIA_DIR/<key>(storage.ts 路径约定)
-    const marker = "/wp-content/uploads/";
+  const marker = "/wp-content/uploads/";
+  const images: PinXhsImage[] = [];
+  const missing: string[] = [];
+  for (const img of pin.images) {
     const idx = img.mediaPath.indexOf(marker);
-    const key =
-      idx >= 0 ? img.mediaPath.slice(idx + marker.length) : img.mediaPath.replace(/^\//, "");
-    return path.resolve(env.MEDIA_DIR, decodeURIComponent(key));
-  });
+    const key = decodeURIComponent(
+      idx >= 0 ? img.mediaPath.slice(idx + marker.length) : img.mediaPath.replace(/^\//, ""),
+    );
+    const buf = await mediaStorage.get(key);
+    if (!buf) {
+      missing.push(key);
+      continue;
+    }
+    images.push({ name: path.basename(key), dataB64: buf.toString("base64") });
+  }
+  if (missing.length > 0) {
+    throw new Error(`图片不在存储(共 ${missing.length} 张):${missing.join(", ")}`);
+  }
   return { title: pin.title, content: pin.content, images };
 }
 
@@ -117,9 +145,15 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
     where: { pinId_channel: { pinId, channel: CHANNEL_XHS } },
   });
   if (!row) throw new Error("渠道行不存在(先标记分发)");
+  // 已发成功不再进浏览器:重试/重投/人工再点一次都必须在此止步,
+  // 否则就是第二篇笔记(gateway 侧另有一道按 pin 的幂等闸兜底)
+  if (row.status === PUBLISH_STATUS_SYNCED) {
+    logInfo("pins.xhs.skip_already_synced", { pinId: pinId.toString() });
+    return;
+  }
   {
     const material = await gatherPinXhsMaterial(pinId);
-    const base = process.env.DOUYIN_GATEWAY_URL ?? "http://douyin-gateway:8010";
+    const base = douyinGatewayBase();
     const res = await fetch(`${base}/xhs/publish`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -129,7 +163,10 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
         content: material.content,
         images: material.images,
       }),
-      signal: AbortSignal.timeout(180_000),
+      // 客户端超时只是「我不等了」,服务端协程不会被取消,笔记仍会发出去。
+      // gateway 侧发布预算 XHS_PUBLISH_TIMEOUT_SECONDS=180,这里留足余量;
+      // 两边等长会稳定制造「客户端先放弃、服务端后成功」的假失败。
+      signal: AbortSignal.timeout(300_000),
     });
     if (!res.ok) {
       // gateway 错误体形如 {"detail":"人话"}——解析出人话进 lastError
@@ -146,16 +183,7 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
       note_url?: string | null;
     };
     if (payload.ok !== true) throw new Error(payload.error ?? "发布失败");
-    await prisma.contentPinChannel.update({
-      where: { id: row.id },
-      data: {
-        status: PUBLISH_STATUS_SYNCED,
-        publishId: payload.note_url ?? "",
-        syncedAt: new Date(),
-        lastError: null,
-        attempts: { increment: 1 },
-      },
-    });
-    console.log(JSON.stringify({ event: "pins.xhs.auto_published", pinId: pinId.toString() }));
+    await markPinChannelSynced(row.id, { publishId: payload.note_url ?? "" });
+    logInfo("pins.xhs.auto_published", { pinId: pinId.toString() });
   }
 }

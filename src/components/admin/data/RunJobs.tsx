@@ -16,7 +16,7 @@ import {
   listJobRuns,
 } from "@/lib/jobs/runlog-admin";
 
-import { fmtDuration, fmtTime, summaryInserted } from "./run-format";
+import { crawlCount, crawlSummaryLine, fmtDuration, fmtTime, summaryInserted } from "./run-format";
 
 const KEY_RE = /^[a-z0-9-]+\/[a-z0-9-]+$/;
 const STATUSES = ["running", "success", "failed"] as const;
@@ -152,7 +152,10 @@ export default async function RunJobs({
           </thead>
           <tbody>
             {rows.map((r) => {
-              const inserted = summaryInserted(r.summary);
+              const count =
+                r.jobKey === "crawler/crawl" ? crawlCount(r.summary) : summaryInserted(r.summary);
+              const crawlLine = crawlSummaryLine(r.summary);
+              const detail = crawlLine ?? summaryLine(r.summary);
               return (
                 <tr key={r.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
                   <td className="px-4 py-2 align-top">
@@ -178,8 +181,17 @@ export default async function RunJobs({
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right align-top font-mono text-[11px] text-text-2">
-                    {inserted !== null && (
-                      <b className="mr-1 font-medium text-text-1">{inserted}</b>
+                    {count !== null && (
+                      <b
+                        className="mr-1 font-medium text-text-1"
+                        title={
+                          r.jobKey === "crawler/crawl"
+                            ? "抓取条目数(registry 渠道产出落信号池/榜单表,不进电报流)"
+                            : "入库条数"
+                        }
+                      >
+                        {count}
+                      </b>
                     )}
                     {fmtDuration(r.durationMs)}
                   </td>
@@ -193,10 +205,10 @@ export default async function RunJobs({
                       </span>
                     ) : (
                       <span
-                        className="line-clamp-1 font-mono text-[11px] text-text-3"
-                        title={summaryLine(r.summary) ?? undefined}
+                        className={`line-clamp-1 text-[11px] text-text-3 ${crawlLine === null ? "font-mono" : ""}`}
+                        title={detail ?? undefined}
                       >
-                        {summaryLine(r.summary)}
+                        {detail}
                       </span>
                     )}
                   </td>

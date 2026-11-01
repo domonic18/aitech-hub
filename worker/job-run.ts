@@ -10,15 +10,19 @@
 import type { Job, Processor } from "bullmq";
 
 import { createJobRun, finishJobRun } from "../src/lib/jobs/runlog";
+import { logError } from "../src/lib/logger";
 import {
   COVER_JOB_TEMP_SWEEP,
   CRAWL_JOB_AI_BACKFILL,
+  CRAWL_JOB_SOURCE,
   DB_BACKUP_JOB_RUN,
   DISCOVERY_JOB_BILI,
   DISCOVERY_JOB_HOTWORDS,
   INSIGHT_JOB_DAILY,
   INSIGHT_JOB_EMBED,
   INSIGHT_JOB_FETCH,
+  INSIGHT_JOB_LABEL,
+  LEADERBOARD_JOB_FX_REFRESH,
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
@@ -32,12 +36,15 @@ import {
   STATS_JOB_PURGE,
   STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
+  QUEUE_WECHAT_MP,
 } from "../src/lib/queue";
+import { WECHAT_MP_JOB_PURGE } from "../src/lib/channel/wechat-mp/constants";
 
-/** 落账白名单(queue/jobName,约 400 行/日;读侧标签映射 src/lib/jobs/runlog-admin 同批维护) */
+/** 落账白名单(queue/jobName,约 900 行/日;读侧标签映射 src/lib/jobs/runlog-admin 同批维护) */
 const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_INSIGHT}/${INSIGHT_JOB_FETCH}`,
   `${QUEUE_INSIGHT}/${INSIGHT_JOB_DAILY}`,
+  `${QUEUE_INSIGHT}/${INSIGHT_JOB_LABEL}`,
   `${QUEUE_INSIGHT}/${INSIGHT_JOB_EMBED}`,
   `${QUEUE_DISCOVERY}/${DISCOVERY_JOB_HOTWORDS}`,
   `${QUEUE_DISCOVERY}/${DISCOVERY_JOB_BILI}`,
@@ -50,6 +57,13 @@ const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_STATS}/${STATS_JOB_RUN_PURGE}`,
   `${QUEUE_COVER_GEN}/${COVER_JOB_TEMP_SWEEP}`,
   `${QUEUE_CRAWLER}/${CRAWL_JOB_AI_BACKFILL}`,
+  // 单渠道抓取(2026-10-30 E2E:手动/定时采集原先只在 worker stdout 留痕,
+  // 后台「采集日志」看不到;约 500 行/日,30 天日清内可接受)
+  `${QUEUE_CRAWLER}/${CRAWL_JOB_SOURCE}`,
+  // 榜单展示汇率日采(M63 v2.1;日 1 行,失败也要在计划页可见)
+  `${QUEUE_CRAWLER}/${LEADERBOARD_JOB_FX_REFRESH}`,
+  // 公众号明细清理(M66;日 1 行,清理失败要在计划页可见)
+  `${QUEUE_WECHAT_MP}/${WECHAT_MP_JOB_PURGE}`,
 ]);
 
 /** 手动触发判别:各触发入口 jobId 统一带 -manual-(insight/discovery 触发路由、
@@ -72,9 +86,7 @@ async function safeFinish(
   try {
     await finishJobRun(runId, status, meta);
   } catch (e) {
-    console.error(
-      JSON.stringify({ event: "jobrun.finish_failed", runId: String(runId), error: errMsg(e) }),
-    );
+    logError("jobrun.finish_failed", { runId: String(runId), error: errMsg(e) });
   }
 }
 
@@ -86,9 +98,7 @@ export function withJobRunLog(queue: string, processor: Processor): Processor {
     try {
       runId = await createJobRun({ queue, jobName: job.name, trigger: jobRunTrigger(job) });
     } catch (e) {
-      console.error(
-        JSON.stringify({ event: "jobrun.create_failed", queue, job: job.name, error: errMsg(e) }),
-      );
+      logError("jobrun.create_failed", { queue, job: job.name, error: errMsg(e) });
     }
     let result: unknown;
     try {

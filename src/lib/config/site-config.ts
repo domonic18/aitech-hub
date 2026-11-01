@@ -9,8 +9,10 @@
 import { cache } from "react";
 import { z } from "zod";
 
+import { ABOUT_MD_MAX } from "../constants";
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
+import { SITE_NAME } from "../site-meta";
 import {
   BAND_ITEM_COUNT_MAX,
   BAND_ITEM_COUNT_MIN,
@@ -27,10 +29,14 @@ export const SITE_CONFIG_KEYS = {
   heroMd: "home.hero_md",
   aboutMd: "about.content",
   icp: "site.icp",
+  /** 小红书登录态每日探照快照(M50 批F;非配置是遥测——落 kv 免单行新表,
+   * 读写仅经 distribute/xhs-probe.ts,不走 settings 页 Zod 解析器) */
+  distributeXhsState: "distribute.xhs_state",
 } as const;
 
-/** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退) */
-export const DEFAULT_SITE_TITLE = "一起AI";
+/** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退)。
+ * 品牌名的唯一字面量在 lib/site-meta.ts,这里只做别名。 */
+export const DEFAULT_SITE_TITLE = SITE_NAME;
 
 /** 首页 rail 卡条数合法域(开源项目卡/博主文章卡同钳) */
 export const RAIL_COUNT_MIN = 1;
@@ -40,8 +46,7 @@ export const DEFAULT_POST_COUNT = 5;
 
 /** hub 主文案 markdown 上限(前台空值回退内置文案) */
 export const HERO_MD_MAX = 2000;
-/** 关于页内容 markdown 上限(空值回退内置默认文案,与 hero_md 同兜底模式) */
-export const ABOUT_MD_MAX = 8000;
+// ABOUT_MD_MAX 住 lib/constants.ts:admin 表单(客户端组件)要用它,不能从这里引
 const SITE_TITLE_MAX = 50;
 /** ICP 备案号上限(空 = 不展示;页脚链工信部备案系统) */
 export const ICP_MAX = 60;

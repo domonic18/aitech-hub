@@ -1,15 +1,12 @@
 /** 洞察日批编排单测(prisma + AI 依赖全 mock,评分纯函数真跑;M47 批C 补盲):
- * 打标段三分支(未绑定/配额尽/批内成败混计)与机械段解耦、快照 rank 同 kind
- * 独立名次、峰值锚点新高才动、fading 兜底、覆盖度计数。 */
+ * 打标段委托 runLabelBatch(M60 批C 起批内编排收口 label.ts,三个分支的断言
+ * 迁至 label-batch.test.ts)与机械段解耦、快照 rank 同 kind 独立名次、峰值锚点
+ * 新高才动、fading 兜底、覆盖度计数。 */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/datetime", () => ({ statsDay: () => "2026-10-24" }));
+vi.mock("@/lib/datetime", () => ({ DAY_MS: 86_400_000, statsDay: () => "2026-10-24" }));
 
-const resolveAiModel = vi.fn();
-const countTodayRoleUsage = vi.fn();
-const getRoleDailyMax = vi.fn();
-const findStaleClusters = vi.fn();
-const labelCluster = vi.fn();
+const runLabelBatch = vi.fn();
 const topVectorMatches = vi.fn();
 const getClusterCentroid = vi.fn();
 const queryRaw = vi.fn();
@@ -17,16 +14,8 @@ const executeRaw = vi.fn();
 const clusterUpdate = vi.fn();
 const clusterFindMany = vi.fn();
 
-vi.mock("../ai/resolver", () => ({
-  resolveAiModel: (...a: unknown[]) => resolveAiModel(...a),
-  getRoleDailyMax: (...a: unknown[]) => getRoleDailyMax(...a),
-}));
-vi.mock("../ai/usage-queries", () => ({
-  countTodayRoleUsage: (...a: unknown[]) => countTodayRoleUsage(...a),
-}));
 vi.mock("./label", () => ({
-  findStaleClusters: (...a: unknown[]) => findStaleClusters(...a),
-  labelCluster: (...a: unknown[]) => labelCluster(...a),
+  runLabelBatch: (...a: unknown[]) => runLabelBatch(...a),
 }));
 vi.mock("../search/embedding-repo", () => ({
   topVectorMatches: (...a: unknown[]) => topVectorMatches(...a),
@@ -49,15 +38,9 @@ vi.mock("@/lib/db", () => ({
 
 import { runInsightDaily } from "./daily";
 
-const MODEL = { id: 1, modelId: "k2.5" } as never;
-
 beforeEach(() => {
   vi.clearAllMocks();
-  resolveAiModel.mockResolvedValue(MODEL);
-  countTodayRoleUsage.mockResolvedValue(2);
-  getRoleDailyMax.mockResolvedValue(10);
-  findStaleClusters.mockResolvedValue([]);
-  labelCluster.mockResolvedValue(true);
+  runLabelBatch.mockResolvedValue({ labeled: 0, failed: 0, skipped: false, reason: null });
   getClusterCentroid.mockResolvedValue(null);
   topVectorMatches.mockResolvedValue([]);
   clusterUpdate.mockResolvedValue({ id: BigInt(1) });
@@ -92,37 +75,26 @@ beforeEach(() => {
 });
 
 describe("runInsightDaily 打标段", () => {
-  it("未绑定 insight 模型 → 跳过打标,机械段照常演进", async () => {
-    resolveAiModel.mockResolvedValue(null);
+  it("委托 runLabelBatch(批大小=LABEL_BATCH_SIZE=24),结果直落 summary", async () => {
+    runLabelBatch.mockResolvedValue({ labeled: 3, failed: 1, skipped: false, reason: null });
+    const s = await runInsightDaily();
+    expect(runLabelBatch).toHaveBeenCalledWith(24);
+    expect(s.labeled).toBe(3);
+    expect(s.labelFailed).toBe(1);
+    expect(s.labelSkipped).toBe(false);
+  });
+
+  it("打标跳过(未绑定/配额尽)→ summary 标记 skipped,机械段照常演进", async () => {
+    runLabelBatch.mockResolvedValue({
+      labeled: 0,
+      failed: 0,
+      skipped: true,
+      reason: "quota_exhausted",
+    });
     const s = await runInsightDaily();
     expect(s.labelSkipped).toBe(true);
-    expect(findStaleClusters).not.toHaveBeenCalled();
     expect(s.scored).toBe(1);
     expect(s.snapshots).toBe(1);
-  });
-
-  it("当日配额耗尽 → 跳过打标", async () => {
-    countTodayRoleUsage.mockResolvedValue(10);
-    const s = await runInsightDaily();
-    expect(s.labelSkipped).toBe(true);
-    expect(findStaleClusters).not.toHaveBeenCalled();
-  });
-
-  it("配额内批量:成功/失败/抛错三分支混计,batch=min(quota,24)", async () => {
-    findStaleClusters.mockResolvedValue([
-      { id: BigInt(1), members: BigInt(3) },
-      { id: BigInt(2), members: BigInt(5) },
-      { id: BigInt(3), members: BigInt(7) },
-    ]);
-    labelCluster
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false)
-      .mockRejectedValueOnce(new Error("llm 5xx"));
-    const s = await runInsightDaily();
-    expect(findStaleClusters).toHaveBeenCalledWith(8); // quota=10-2
-    expect(s.labeled).toBe(1);
-    expect(s.labelFailed).toBe(2);
-    expect(s.labelSkipped).toBe(false);
   });
 });
 

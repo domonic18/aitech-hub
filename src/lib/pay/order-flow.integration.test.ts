@@ -156,8 +156,9 @@ afterAll(async () => {
   await prisma.payOrderItem.deleteMany({
     where: { order: { userId: { in: userIds.map((u) => u.id) } } },
   });
-  await prisma.payOrder.deleteMany({ where: { userId: { in: userIds.map((u) => u.id) } } });
+  // M62:content_post_purchase.order_id 起有 FK Restrict,须先于 pay_order 清理
   await prisma.contentPostPurchase.deleteMany({ where: { postId: BigInt(paidPostId) } });
+  await prisma.payOrder.deleteMany({ where: { userId: { in: userIds.map((u) => u.id) } } });
   await prisma.post.deleteMany({ where: { slug: { in: [PAID_SLUG, FREE_SLUG] } } });
   await prisma.category.deleteMany({ where: { slug: CAT_SLUG } });
   await prisma.userAccount.deleteMany({ where: { phone: { in: PHONES } } });
