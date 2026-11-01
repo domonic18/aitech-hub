@@ -34,22 +34,43 @@ function freePort() {
   });
 }
 
-/** 等到端口可连(不依赖 /health:它会拉浏览器,冷启慢且与本次断言无关) */
-async function waitForPort(port, timeoutMs = 10_000) {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const ok = await new Promise((resolve) => {
-      const sock = net.connect(port, "127.0.0.1");
-      sock.once("connect", () => {
-        sock.destroy();
-        resolve(true);
-      });
-      sock.once("error", () => resolve(false));
-    });
-    if (ok) return;
-    if (Date.now() > deadline) throw new Error(`端口 ${port} 未在 ${timeoutMs}ms 内就绪`);
-    await new Promise((r) => setTimeout(r, 50));
-  }
+/** 等到端口可连(不依赖 /health:它会拉浏览器,冷启慢且与本次断言无关)。
+ *  子进程提前退出(典型:CI 没装依赖,import playwright 直接失败)时立刻带 stderr 报错,
+ *  否则要干等满超时只看到一句「端口未就绪」,无从定位。 */
+function waitForPort(port, { child: proc, getStderr = () => "", timeoutMs = 10_000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    let settled = false;
+    const failWith = (msg) => {
+      if (settled) return;
+      settled = true;
+      proc?.off("exit", onExit);
+      reject(new Error(`${msg};stderr=${getStderr().trim() || "(空)"}`));
+    };
+    const onExit = (code, signal) => failWith(`渲染进程启动即退出(code=${code} signal=${signal})`);
+    proc?.once("exit", onExit);
+
+    void (async () => {
+      while (!settled) {
+        const ok = await new Promise((done) => {
+          const sock = net.connect(port, "127.0.0.1");
+          sock.once("connect", () => {
+            sock.destroy();
+            done(true);
+          });
+          sock.once("error", () => done(false));
+        });
+        if (settled) return;
+        if (ok) {
+          settled = true;
+          proc?.off("exit", onExit);
+          return resolve();
+        }
+        if (Date.now() > deadline) return failWith(`端口 ${port} 未在 ${timeoutMs}ms 内就绪`);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    })();
+  });
 }
 
 test("校验失败的请求必须归还并发槽位(不得把服务打成 429)", async () => {
@@ -62,7 +83,7 @@ test("校验失败的请求必须归还并发槽位(不得把服务打成 429)",
   let stderr = "";
   child.stderr.on("data", (c) => (stderr += String(c)));
 
-  await waitForPort(port);
+  await waitForPort(port, { child, getStderr: () => stderr });
 
   const post = (body) =>
     fetch(`http://127.0.0.1:${port}/render`, {
