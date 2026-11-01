@@ -100,6 +100,7 @@
 | ~~短信登录通道~~ | 已由 M65 落地(阿里云 PNVS 短信认证,见 §3.4) | 原保留的用户中心设计已按 M65 增量交付;绑定/改绑手机号随 M65 P1 落地(`/account/settings`) |
 | 视频转码/封面自动化 | 自托管视频更新频繁 | COS 数据万象 snapshot;超规转码再评 VOD |
 | 站内搜索再升级 | 混合检索质量再遇瓶颈 | 见 arch/04 §3 检索锚点 |
+| `/articles/page/[page]` 非法段返回 200 + 404 正文 | 下次前台 SEO/分页迭代 | 根因:`(site)/articles/loading.tsx` 的 Suspense 边界先冲刷响应头,`notFound()` 落在其后,只能改状态码语义而改不了已发出的 200(分类/标签无 loading 边界,同判据返回 404)。预案:①`/articles/page/1/` 用 `next.config` redirects 或 middleware 做 308 归一(canonical 更有利);②非法段(`abc`/`0`/负数)在 middleware 直接短路 404,不进 RSC 流式;③保留 skeleton 就不依赖 `notFound()` 的状态码 |
 
 ## 4. 专项:知识库 + Agent + MCP(独立排期)
 
