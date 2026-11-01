@@ -246,6 +246,9 @@ async function countPostView(path: string, vhash: string, day: string): Promise<
       "NX",
     )) === "OK";
   if (!fresh) return false;
-  await redis.hincrby(`stats:buf:post:${day}`, postId, 1);
+  // 与其余五类缓冲同口径补兜底过期:此前只有本键裸增不设 TTL,worker 长停时
+  // 该键永不过期,且 flush 的私有暂存键会继承到这个「无 TTL」态(2026-11-01 修复)。
+  const bufKey = `stats:buf:post:${day}`;
+  await redis.pipeline().hincrby(bufKey, postId, 1).expire(bufKey, BUFFER_TTL_SECONDS).exec();
   return true;
 }

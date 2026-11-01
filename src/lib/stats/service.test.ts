@@ -145,11 +145,15 @@ describe("ingestView 三闸与缓冲键形", () => {
     expect(prismaMock.post.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: expect.anything() } }),
     );
-    // 文章 PV 走顶层 redis.hincrby 直写(不经 pipeline)
-    const postCall = redisMock.hincrby.mock.calls.find((c) =>
+    // 文章 PV 走 pipeline 写 post 缓冲(与其余五类同口径,含兜底 TTL)
+    const postCall = redisMock.pipe.hincrby.mock.calls.find((c) =>
       String(c[0]).startsWith("stats:buf:post:"),
     );
     expect(postCall?.[1]).toBe("12");
+    expect(redisMock.pipe.expire).toHaveBeenCalledWith(
+      expect.stringMatching(/^stats:buf:post:\d{4}-\d{2}-\d{2}$/),
+      172800,
+    );
   });
 
   it("1h 窗内重复读:pvp NX=null → 不计", async () => {
@@ -160,7 +164,7 @@ describe("ingestView 三闸与缓冲键形", () => {
     expect(r.postCounted).toBe(false);
     // 1h 窗内重复:post 缓冲零写入(发布态 postmap 本测独立,解析照走查库)
     expect(
-      redisMock.hincrby.mock.calls.some((c) => String(c[0]).startsWith("stats:buf:post:")),
+      redisMock.pipe.hincrby.mock.calls.some((c) => String(c[0]).startsWith("stats:buf:post:")),
     ).toBe(false);
   });
 

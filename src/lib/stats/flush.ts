@@ -11,6 +11,11 @@ import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis";
 import { isGeoSurface, type GeoSurface } from "./geo";
 
+/** 私有暂存键兜底过期,与 service.ts 的 BUFFER_TTL_SECONDS 同值(改名/调值需同批)。
+ *  RENAME 继承源键 TTL,但文章 PV 缓冲历史上无 TTL —— 不显式补这一刀,进程若崩在
+ *  RENAME 与 DEL 之间,`stats:flushing:*` 私有键会永久残留(2026-11-01 修复)。 */
+const FLUSHING_TTL_SECONDS = 172800;
+
 async function scanBufferKeys(): Promise<string[]> {
   const keys: string[] = [];
   let cursor = "0";
@@ -42,6 +47,9 @@ export async function flushStatsBuffer(): Promise<FlushSummary> {
     } catch {
       continue; // 键已被处理或过期
     }
+    // 先钉死私有键的过期再聚合:崩溃在 DEL 之前也不会留下永久键。
+    // 失败不拦本轮(聚合失败会 RENAME 还原,TTL 一并带回原键,与旧行为等价)。
+    await redis.expire(tmp, FLUSHING_TTL_SECONDS).catch(() => undefined);
     try {
       const fields = await redis.hgetall(tmp);
       postRows += await applyBufferKey(key, fields);

@@ -9,6 +9,7 @@ const redisMock = vi.hoisted(() => ({
   rename: vi.fn(),
   hgetall: vi.fn(),
   del: vi.fn(),
+  expire: vi.fn(),
 }));
 vi.mock("@/lib/redis", () => ({ redis: redisMock }));
 
@@ -29,6 +30,7 @@ beforeEach(() => {
   redisMock.rename.mockResolvedValue("OK");
   redisMock.hgetall.mockResolvedValue({});
   redisMock.del.mockResolvedValue(1);
+  redisMock.expire.mockResolvedValue(1);
   executeRaw.mockResolvedValue(1);
 });
 
@@ -58,6 +60,15 @@ describe("flushStatsBuffer 生命周期", () => {
     const summary = await flushStatsBuffer();
     expect(summary).toEqual({ keysFlushed: 0, postRows: 0 });
     expect(redisMock.hgetall).not.toHaveBeenCalled();
+    expect(redisMock.expire).not.toHaveBeenCalled();
+  });
+
+  it("私有键落 TTL:崩溃在 DEL 之前也不会永久残留", async () => {
+    keysOf("stats:buf:post:2026-10-25");
+    redisMock.hgetall.mockResolvedValue({ "12": "4" });
+    await flushStatsBuffer();
+    const [, tmp] = redisMock.rename.mock.calls[0]!;
+    expect(redisMock.expire).toHaveBeenCalledWith(tmp, 172800);
   });
 
   it("聚合失败 → 私有键还原回数据键,不计 keysFlushed,下轮可重试", async () => {
