@@ -210,8 +210,10 @@ export async function getWechatMpRuntimeConfig(): Promise<WechatMpRuntimeConfig 
     texts: {
       greeting: textOrDefault(row.greetingText, WECHAT_MP_DEFAULT_TEXTS.greeting),
       fallback: textOrDefault(row.fallbackText, WECHAT_MP_DEFAULT_TEXTS.fallback),
+      error: WECHAT_MP_DEFAULT_TEXTS.error,
       timeout: WECHAT_MP_DEFAULT_TEXTS.timeout,
       continueEmpty: WECHAT_MP_DEFAULT_TEXTS.continueEmpty,
+      continuePending: WECHAT_MP_DEFAULT_TEXTS.continuePending,
       handoff: textOrDefault(row.handoffText, WECHAT_MP_DEFAULT_TEXTS.handoff),
       blocked: WECHAT_MP_DEFAULT_TEXTS.blocked,
       help: WECHAT_MP_DEFAULT_TEXTS.help,

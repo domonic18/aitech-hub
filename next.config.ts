@@ -168,6 +168,18 @@ const nextConfig: NextConfig = {
       },
       { source: "/admin/discovery", destination: "/admin/insight/discovery/", statusCode: 308 },
       { source: "/admin/discovery/", destination: "/admin/insight/discovery/", statusCode: 308 },
+      // M66(2026-11-01):公众号接入配置收口到系统设置壳,旧书签 308 承接
+      // (两种斜杠形态都列,防双跳)
+      {
+        source: "/admin/wechat-mp/config",
+        destination: "/admin/settings/wechat-mp/",
+        statusCode: 308,
+      },
+      {
+        source: "/admin/wechat-mp/config/",
+        destination: "/admin/settings/wechat-mp/",
+        statusCode: 308,
+      },
     ];
   },
   async headers() {

@@ -189,11 +189,12 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 
 被动回复 **5 秒硬约束**下的双段式生成链路:Route Handler 只做验签/幂等/轮询,生成在 worker(方案见 [plan/wechat-mp-bot-plan](../plan/wechat-mp-bot-plan.md))。
 
-- **`wechat-mp.answer`**:入站文本 → `searchAll(q)` → `chatJson`(`{canAnswer,answer,citeIds}`,summarize 角色)→ 引用越界丢弃 → ≤1800 字节截断 → 写 Redis `channel:wxmp:reply:<msgId>`(TTL 30min)+ 落 `channel_wechat_mp_message`。jobId `wxmp-<msgId>`(连字符形态,禁冒号)。**检索 0 命中或 `canAnswer=false` 不调模型**,直接落固定话术
+- **`wechat-mp.answer`**:入站文本 → `searchAll(q)` → `chatJson`(`{canAnswer,answer,citeIds}`,summarize 角色)→ 引用越界丢弃 → ≤1800 字节截断 → 写 Redis `channel:wxmp:reply:<msgId>`(TTL 30min)+ 落 `channel_wechat_mp_message`。jobId `wxmp-<messageId>`(落库消息 id 纯数字;**BullMQ 自定义 jobId 禁冒号**,入站 `dedupeKey` 形如 `msg:<MsgId>` 不可直接拼接,否则 `add` 抛错、L1 链路整条降级成错误话术)。**检索 0 命中或 `canAnswer=false` 不调模型**,直接落固定话术;系统错误(队列/模型/检索)另用 `texts.error` 话术,不与「没找到」混用
 - **`wechat-mp.purge`**:每日 04:24(`upsertJobScheduler`),清 180 天前 `channel_wechat_mp_message`(口径同 `stats` 明细清理,用户/线索行保留)
-- **请求内等待的例外**:`/api/wechat/mp` 在请求内轮询 Redis 结果键 ≤4.2s(100ms 间隔)——不承担生成,只为贴合平台 5 秒窗口;超时回 `【正在整理,请回复「继续」获取完整答复】`,worker 算完仍落缓存供回捞
+- **请求内等待的例外**:`/api/wechat/mp` 在请求内轮询 Redis 结果键 ≤4.2s(100ms 间隔)——不承担生成,只为贴合平台 5 秒窗口;超时回 `【答案正在生成,请稍等几秒后回复「继续」获取】`,worker 算完仍落缓存供回捞
+- **「继续」短轮询**:入队即写在途指针 `channel:wxmp:active:<openid>`;用户发「继续」时若答案尚未生成,请求内再轮询结果键 ≤3.4s(生成实测 3–8s,用户多在超时回执后数秒内就发「继续」),取到即回答案并清指针,仍未好才回「答案还在生成中」
 - 关注欢迎语、关键词直连、「继续」回捞、转人工回执均为**同步毫秒级**,不入队
-- 队列 opts:`concurrency 1`、`lockDuration 120s`(与站内问答争 summarize 角色,串行保口碑);后台处置面=`/admin/wechat-mp/`(会话 `/ 关键词 / 接入配置` 页签,侧栏「分发 → 公众号会话」),站务通知凭据在「系统设置 → 站务通知」
+- 队列 opts:`concurrency 1`、`lockDuration 120s`(与站内问答争 summarize 角色,串行保口碑);后台处置面=`/admin/wechat-mp/`(会话 / 关键词 页签,侧栏「分发 → 公众号会话」),接入配置在「系统设置 → 公众号」(`/admin/settings/wechat-mp/`,2026-11-01 由 `/admin/wechat-mp/config/` 迁入,旧路径 308),站务通知凭据在「系统设置 → 站务通知」
 
 ## 5. 一期接口清单(Route Handlers)
 

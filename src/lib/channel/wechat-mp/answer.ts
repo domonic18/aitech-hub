@@ -146,6 +146,9 @@ export async function runWechatMpAnswer(
   }
   const fallback = (status: WechatMpAnswerStatus = "no_evidence"): Promise<WechatMpReplyPayload> =>
     setReply(data, { text: cfg.texts.fallback, kind: "fallback", status });
+  /** 系统错误话术:与「没找到」区分,免得用户以为是问法问题 */
+  const errorReply = (): Promise<WechatMpReplyPayload> =>
+    setReply(data, { text: cfg.texts.error, kind: "fallback", status: "error" });
 
   const result = await searchAll(data.query);
   const picks = pickCitations(result.groups);
@@ -156,14 +159,14 @@ export async function runWechatMpAnswer(
 
   if (await quotaExceeded(cfg.dailyAnswerLimit)) {
     logger.warn({ event: "wechat_mp.quota_exceeded", limit: cfg.dailyAnswerLimit });
-    const p = await fallback();
+    const p = await errorReply();
     return { status: p.status, citations: 0, bytes: Buffer.byteLength(p.text, "utf8") };
   }
 
   const model = await resolveAiModel(AI_PURPOSE_SUMMARIZE);
   if (!model) {
     logger.warn({ event: "wechat_mp.no_model", role: AI_PURPOSE_SUMMARIZE });
-    const p = await fallback("error");
+    const p = await errorReply();
     return { status: p.status, citations: 0, bytes: Buffer.byteLength(p.text, "utf8") };
   }
 

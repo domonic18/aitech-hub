@@ -11,6 +11,9 @@
 export const WECHAT_MP_WAIT_BUDGET_MS = 4_200;
 /** 结果键轮询间隔 */
 export const WECHAT_MP_POLL_INTERVAL_MS = 100;
+/** 「继续」取结果的短轮询预算(用户往往在超时回执后立刻发「继续」,
+ *  此时答案常仍在生成;继续请求同样吃 5s 平台窗口,留 1.6s 余量) */
+export const WECHAT_MP_CONTINUE_POLL_BUDGET_MS = 3_400;
 /** 出站文本字节上限(2048 打满会静默失败,留余量) */
 export const WECHAT_MP_REPLY_MAX_BYTES = 1_800;
 /** 答案缓存 TTL(用户回「继续」的回捞窗口) */
@@ -48,8 +51,11 @@ export const WECHAT_MP_DEFAULT_TEXTS = {
     "你好,我是一起AI(17aitech.com)的助手。直接问 AI 相关问题即可,答案优先取自站内文章并附出处。回复「人工」可转站长。",
   fallback:
     "站内暂时没有找到能直接回答这个问题的内容。可以换个说法再问,或到站内搜索:https://17aitech.com/search 。需要人工协助请回复「人工」。",
-  timeout: "【正在整理,请回复「继续」获取完整答复】",
+  /** 系统错误(检索/模型/队列任何一环失败)——与「没找到」区分,避免误导用户改问法 */
+  error: "这个问题暂时没处理成功(服务繁忙),请稍后重发一次。需要人工协助请回复「人工」。",
+  timeout: "【答案正在生成,请稍等几秒后回复「继续」获取】",
   continueEmpty: "暂时没有待继续的答复,直接发送你的问题即可。",
+  continuePending: "答案还在生成中,请再过几秒回复「继续」。",
   handoff: "已记录你的问题,站长会尽快处理;可以继续补充细节。",
   blocked: "这个问题我无法回答,可以换个话题。",
   help: "发送问题即可。回复「继续」取上一条未完成的答复;回复「人工」转站长。",
@@ -85,6 +91,9 @@ export const WECHAT_MP_JOB_PURGE = "purge";
 export const wechatMpKeys = {
   /** 待继续指针:`channel:wxmp:pending:<openid>` → msgId */
   pending: (openid: string): string => `channel:wxmp:pending:${openid}`,
+  /** 在途答案指针:`channel:wxmp:active:<openid>` → msgId(入队即写,
+   *  让「继续」在答案尚未生成完时知道该等哪一条而不是回「没有待继续」) */
+  active: (openid: string): string => `channel:wxmp:active:${openid}`,
   /** 答案缓存:`channel:wxmp:reply:<msgId>` → JSON{text,kind,status} */
   reply: (msgId: string): string => `channel:wxmp:reply:${msgId}`,
   /** 一次性绑定码:`channel:wxmp:bind:<code>` → userId */
@@ -93,7 +102,13 @@ export const wechatMpKeys = {
   quota: (day: string): string => `channel:wxmp:quota:${day}`,
 } as const;
 
-/** BullMQ jobId(幂等:同一 MsgId 只算一次) */
-export function wechatMpAnswerJobId(wechatMsgId: string): string {
-  return `wxmp-${wechatMsgId}`;
+/**
+ * BullMQ jobId(幂等:一条入站消息只算一次)。
+ *
+ * 用落库消息 id(纯数字)而非入站的 `dedupeKey`——后者形如 `msg:<MsgId>`,
+ * 而 BullMQ 自定义 jobId **禁止冒号**(实测抛 `Custom Id cannot contain :`,
+ * 入队即失败,整条 L1 链路被静默降级成系统错误话术)。
+ */
+export function wechatMpAnswerJobId(messageId: bigint | string): string {
+  return `wxmp-${messageId.toString()}`;
 }
