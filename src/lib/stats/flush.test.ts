@@ -128,6 +128,25 @@ describe("applyBufferKey 六类分发", () => {
     expect(executeRaw).toHaveBeenCalledTimes(2);
   });
 
+  it("page:pv / uv 分键各写自己那一列(键形由 keys.ts 解析)", async () => {
+    keysOf("stats:buf:page:2026-10-25:pv", "stats:buf:page:2026-10-25:uv");
+    redisMock.hgetall.mockImplementation(async (key: string) =>
+      key.endsWith(":pv") ? { "/post/1": "5" } : { "/post/1": "2" },
+    );
+    await flushStatsBuffer();
+    const rows = executeRaw.mock.calls.map((c) => c.slice(1, 5)); // 末位是 DO UPDATE 的 Prisma.sql 片段
+    expect(rows).toContainEqual(["2026-10-25", "/post/1", 5, 0]);
+    expect(rows).toContainEqual(["2026-10-25", "/post/1", 0, 2]);
+  });
+
+  it("page 缺 metric(畸形键)→ 不猜成 uv,零落库", async () => {
+    keysOf("stats:buf:page:2026-10-25");
+    redisMock.hgetall.mockResolvedValue({ "/post/1": "5" });
+    const summary = await flushStatsBuffer();
+    expect(summary).toEqual({ keysFlushed: 1, postRows: 0 });
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
   it("未知 kind → 零处理", async () => {
     keysOf("stats:buf:mystery:2026-10-25");
     redisMock.hgetall.mockResolvedValue({ x: "1" });

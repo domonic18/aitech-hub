@@ -22,6 +22,17 @@ import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { ingestInsightSignal } from "@/lib/insight/ingest";
 import { geoPostIdOf, type GeoSurface } from "./geo";
+import {
+  BUFFER_TTL_SECONDS,
+  POST_DEDUP_TTL_SECONDS,
+  POSTMAP_TTL_SECONDS,
+  UV_DEDUP_TTL_SECONDS,
+  bufferKey,
+  pageVisitorDedupKey,
+  postLiveKey,
+  postViewDedupKey,
+  visitorDedupKey,
+} from "./keys";
 import { touchPresence } from "./online";
 import {
   classifyReferrer,
@@ -31,11 +42,6 @@ import {
   parseClient,
   visitorHash,
 } from "./classify";
-
-const DAY_TTL_SECONDS = 86400; // UV 日去重窗口(当日有效)
-const POST_DEDUP_TTL_SECONDS = 3600; // 文章阅读去重窗口(arch/05-services:IP+UA 去重窗口 1h)
-const BUFFER_TTL_SECONDS = 172800; // 缓冲键兜底过期(worker 长期不可用时防堆积)
-const POSTMAP_TTL_SECONDS = 3600; // id→发布态解析缓存(含负缓存 "0";id 锚定,解析仅验发布态)
 
 export interface IngestInput {
   path: string;
@@ -71,8 +77,8 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
 
   // 日级访客去重(站点 UV)与页级访客去重(页面 UV)分别判定
   const [uvNew, pageUvNew] = await Promise.all([
-    redis.set(`stats:uv:${day}:${vhash}`, "1", "EX", DAY_TTL_SECONDS, "NX"),
-    redis.set(`stats:uvp:${day}:${vhash}:${hash16(path)}`, "1", "EX", DAY_TTL_SECONDS, "NX"),
+    redis.set(visitorDedupKey(day, vhash), "1", "EX", UV_DEDUP_TTL_SECONDS, "NX"),
+    redis.set(pageVisitorDedupKey(day, vhash, hash16(path)), "1", "EX", UV_DEDUP_TTL_SECONDS, "NX"),
   ]);
   const isUvNew = uvNew === "OK";
   const isPageUvNew = pageUvNew === "OK";
@@ -80,19 +86,25 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
   const ref = classifyReferrer(input.referrer);
   const client = parseClient(input.ua);
 
+  // 键先取到局部:同一键既要写又要挂过期,分头拼字符串漏挂一个就是
+  // 批次A 那类「某类缓冲恒无 TTL」缺陷(2026-11-01 批C 顺手收口)
+  const bufVisit = bufferKey("visit", day);
+  const bufRef = bufferKey("ref", day);
+  const bufPagePv = bufferKey("page", day, "pv");
+  const bufPageUv = bufferKey("page", day, "uv");
+  const bufClient = bufferKey("client", day);
+
   const pipe = redis.pipeline();
-  pipe.hincrby(`stats:buf:visit:${day}`, "pv", 1);
-  if (isUvNew) pipe.hincrby(`stats:buf:visit:${day}`, "uv", 1);
-  pipe.hincrby(`stats:buf:ref:${day}`, `${ref.sourceClass}|${ref.sourceName}|pv`, 1);
-  if (isUvNew) pipe.hincrby(`stats:buf:ref:${day}`, `${ref.sourceClass}|${ref.sourceName}|uv`, 1);
-  pipe.hincrby(`stats:buf:page:${day}:pv`, path, 1);
-  if (isPageUvNew) pipe.hincrby(`stats:buf:page:${day}:uv`, path, 1);
-  pipe.hincrby(`stats:buf:client:${day}`, `${client.browser}|${client.os}|${client.deviceType}`, 1);
-  pipe.expire(`stats:buf:visit:${day}`, BUFFER_TTL_SECONDS);
-  pipe.expire(`stats:buf:ref:${day}`, BUFFER_TTL_SECONDS);
-  pipe.expire(`stats:buf:page:${day}:pv`, BUFFER_TTL_SECONDS);
-  pipe.expire(`stats:buf:page:${day}:uv`, BUFFER_TTL_SECONDS);
-  pipe.expire(`stats:buf:client:${day}`, BUFFER_TTL_SECONDS);
+  pipe.hincrby(bufVisit, "pv", 1);
+  if (isUvNew) pipe.hincrby(bufVisit, "uv", 1);
+  pipe.hincrby(bufRef, `${ref.sourceClass}|${ref.sourceName}|pv`, 1);
+  if (isUvNew) pipe.hincrby(bufRef, `${ref.sourceClass}|${ref.sourceName}|uv`, 1);
+  pipe.hincrby(bufPagePv, path, 1);
+  if (isPageUvNew) pipe.hincrby(bufPageUv, path, 1);
+  pipe.hincrby(bufClient, `${client.browser}|${client.os}|${client.deviceType}`, 1);
+  for (const k of [bufVisit, bufRef, bufPagePv, bufPageUv, bufClient]) {
+    pipe.expire(k, BUFFER_TTL_SECONDS);
+  }
   await pipe.exec();
 
   // 访问明细行(M10 批⑥):不 await 不阻断 beacon,失败仅告警(明细缺失可接受,
@@ -161,7 +173,7 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
  */
 export async function ingestBotFetch(botName: string): Promise<void> {
   const day = statsDay();
-  const key = `stats:buf:ref:${day}`;
+  const key = bufferKey("ref", day);
   await redis
     .pipeline()
     .hincrby(key, `bot|${botName}|pv`, 1)
@@ -183,7 +195,7 @@ export async function ingestGeoFetch(
   rawPath: string,
 ): Promise<void> {
   const day = statsDay();
-  const key = `stats:buf:geo:${day}`;
+  const key = bufferKey("geo", day);
   const postId = geoPostIdOf(surface, rawPath) ?? "";
   await redis
     .pipeline()
@@ -225,7 +237,7 @@ async function countPostView(path: string, vhash: string, day: string): Promise<
   if (!parsed) return false;
   const postId = parsed.id.toString();
 
-  const mapKey = `stats:postmap:${postId}`;
+  const mapKey = postLiveKey(postId);
   let live = await redis.get(mapKey);
   if (live === null) {
     const row = await prisma.post.findUnique({
@@ -239,7 +251,7 @@ async function countPostView(path: string, vhash: string, day: string): Promise<
 
   const fresh =
     (await redis.set(
-      `stats:pvp:${day}:${vhash}:${postId}`,
+      postViewDedupKey(day, vhash, postId),
       "1",
       "EX",
       POST_DEDUP_TTL_SECONDS,
@@ -248,7 +260,7 @@ async function countPostView(path: string, vhash: string, day: string): Promise<
   if (!fresh) return false;
   // 与其余五类缓冲同口径补兜底过期:此前只有本键裸增不设 TTL,worker 长停时
   // 该键永不过期,且 flush 的私有暂存键会继承到这个「无 TTL」态(2026-11-01 修复)。
-  const bufKey = `stats:buf:post:${day}`;
+  const bufKey = bufferKey("post", day);
   await redis.pipeline().hincrby(bufKey, postId, 1).expire(bufKey, BUFFER_TTL_SECONDS).exec();
   return true;
 }
