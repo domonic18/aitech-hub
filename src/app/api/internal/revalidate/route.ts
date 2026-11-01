@@ -5,6 +5,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { env } from "@/lib/env";
+import { SEO_ROUTES } from "@/lib/seo/routes";
 
 /**
  * 内部缓存失效(镜像构建期降级产物预热用,docker/app/entrypoint.sh 调用;
@@ -18,8 +19,6 @@ import { env } from "@/lib/env";
  * 白名单是红线:内部端点绝不能变成任意路径的缓存清除器。
  */
 export const dynamic = "force-dynamic";
-
-const SEO_ROUTES = ["/sitemap.xml", "/feed.xml", "/llms.txt", "/llms-full.txt", "/robots.txt"];
 
 /** 定向失效允许的路径(新增时同步加这里,勿用动态拼接) */
 const PATH_ALLOWLIST = new Set<string>(["/leaderboards/"]);
