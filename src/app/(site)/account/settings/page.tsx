@@ -1,6 +1,7 @@
 /**
  * 个人设置页(M22 批②,需求2/3/10):资料 + 头像 + 密码三卡,M65 P1 增手机号
- * 绑定/换绑卡(admin 不显示——管理员账号禁短信登录)。RSC 守卫走
+ * 绑定/换绑卡(admin 不显示——管理员账号禁短信登录),M66 增公众号绑定卡
+ * (一次性绑定码)。RSC 守卫走
  * requireAccountPage(M65:JWT 验签 + Redis jti 登记双查,吊销即时生效),
  * 未登录 308 去登录页带 next 回跳。账号中心无 SEO 价值,force-dynamic。
  */
@@ -10,8 +11,10 @@ import AvatarUpload from "@/components/account/AvatarUpload";
 import PasswordForm from "@/components/account/PasswordForm";
 import PhoneForm from "@/components/account/PhoneForm";
 import ProfileForm from "@/components/account/ProfileForm";
+import WechatMpBinding from "@/components/account/WechatMpBinding";
 import { maskPhone } from "@/lib/auth/mask";
 import { requireAccountPage } from "@/lib/auth/guard";
+import { getUserBinding } from "@/lib/channel/wechat-mp/bind";
 import { getAccountProfile } from "@/lib/users/account-profile";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +26,7 @@ export default async function AccountSettingsPage(): Promise<React.ReactElement>
   const isAdmin = session.role === "admin";
 
   const profile = await getAccountProfile(BigInt(session.sub));
+  const wechatBinding = await getUserBinding(BigInt(session.sub));
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
@@ -50,6 +54,14 @@ export default async function AccountSettingsPage(): Promise<React.ReactElement>
           <PhoneForm maskedPhone={profile.phone ? maskPhone(profile.phone) : null} />
         </section>
       )}
+
+      <section className="mt-4 rounded-md border border-line bg-panel p-5">
+        <h2 className="mb-1 text-sm font-semibold">公众号</h2>
+        <p className="mb-4 text-xs text-text-3">
+          绑定后,在公众号里提问会关联你的站内账号;绑定码在公众号对话框里发送即可。
+        </p>
+        <WechatMpBinding initial={wechatBinding} />
+      </section>
 
       <section className="mt-4 rounded-md border border-line bg-panel p-5">
         <h2 className="mb-1 text-sm font-semibold">登录密码</h2>
