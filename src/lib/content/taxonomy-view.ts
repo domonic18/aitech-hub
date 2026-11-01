@@ -1,14 +1,16 @@
+/**
+ * 分类/标签列表页的取数与 metadata(路由 /category/[slug]、/tag/[slug] 及其
+ * /page/[page] 变体共用)。与渲染组件分居:页面组件不得从组件目录导出查库函数
+ * (2026-11-01 结构收口,组件侧见 components/site/TaxonomyListView.tsx)。
+ */
 import { cache } from "react";
 
 import { getSiteTitle } from "@/lib/config/site-config";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 import { legacyRedirectOrNotFound } from "@/lib/content/legacy";
 import { listPostsPage } from "@/lib/content/posts";
-import { getCategoryBySlug, getTagBySlug } from "@/lib/content/taxonomy";
-import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 import { normalizeSlug } from "@/lib/slug";
-import PostListView from "./PostListView";
-
-/** 分类/标签列表页共用逻辑(路由 /category/[slug]、/tag/[slug] 及其 /page/[page] 变体) */
+import { getCategoryBySlug, getTagBySlug } from "./taxonomy";
 
 export type TaxonomyKind = "category" | "tag";
 
@@ -47,27 +49,4 @@ export async function taxonomyMetadata(kind: TaxonomyKind, info: TaxonomyInfo, p
     description: `${title}——${siteTitle}原创内容。`,
     alternates: { canonical: page > 1 ? `${base}page/${page}/` : base },
   };
-}
-
-/** 列表正文(异步 server component,数据自取) */
-export default async function TaxonomyListView({
-  kind,
-  info,
-  page,
-}: {
-  kind: TaxonomyKind;
-  info: TaxonomyInfo;
-  page: number;
-}): Promise<React.ReactElement> {
-  const { items, total, pageSize } = await taxonomyPosts(kind, info.slug, page);
-  return (
-    <PostListView
-      heading={kind === "category" ? `分类:${info.name}` : `标签:${info.name}`}
-      items={items}
-      total={total}
-      page={page}
-      pageSize={pageSize}
-      basePath={`/${kind}/${info.slug}`}
-    />
-  );
 }
