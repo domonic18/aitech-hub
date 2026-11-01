@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { decideQuestions, JevError } from "./decisions-client";
+import { decideQuestions } from "./decisions-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -59,7 +59,7 @@ const BASE_INPUT = {
 
 describe("decideQuestions wire(systemone)", () => {
   it("POST /v1/systemone + Bearer 认证 + model/state/questions 结构;应答映射", async () => {
-    const fetchMock = vi.fn(async (url: string | URL | globalThis.Request, init?: RequestInit) =>
+    const fetchMock = vi.fn(async (_url: string | URL | globalThis.Request, _init?: RequestInit) =>
       okResponse(),
     );
     vi.stubGlobal("fetch", fetchMock);

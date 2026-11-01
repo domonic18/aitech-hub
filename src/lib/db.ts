@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
+import { env } from "./env";
+
 /**
  * Prisma client 单例(arch/03-data-model §3):全仓唯一实例,禁止 new PrismaClient。
  * dev 环境 globalThis 缓存,防 next dev 热更时每次重载新建连接池。
@@ -9,10 +11,10 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    log: env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 /** Prisma 唯一约束冲突判定(P2002;发布 API slug 并发、采集去重并发共用) */
 export function isP2002(e: unknown): boolean {

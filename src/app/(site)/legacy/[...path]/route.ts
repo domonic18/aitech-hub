@@ -25,7 +25,7 @@ export async function GET(
   }
   if (lookup !== "miss") {
     // 弃用内容:410 Gone(弃用内容承接:资讯类 301 列表页,其余 410)
-    return new NextResponse(null, { status: 410 }) as NextResponse;
+    return new NextResponse(null, { status: 410 });
   }
-  return new NextResponse("Not Found", { status: 404 }) as NextResponse;
+  return new NextResponse("Not Found", { status: 404 });
 }

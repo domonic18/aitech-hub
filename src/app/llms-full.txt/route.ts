@@ -7,8 +7,8 @@ export const revalidate = 3600;
 
 export async function GET(): Promise<NextResponse> {
   const parts = await buildLlmsFullParts();
-  if (parts.length === 0) return new NextResponse("暂无内容\n", { status: 404 }) as NextResponse;
+  if (parts.length === 0) return new NextResponse("暂无内容\n", { status: 404 });
   return new NextResponse(parts[0], {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
-  }) as NextResponse;
+  });
 }
