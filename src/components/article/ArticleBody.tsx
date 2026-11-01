@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 
 /**
@@ -27,6 +28,10 @@ const htmlNoteSchema = {
  *    (顺序敏感:raw 解析 → 高亮 → 白名单清洗收尾);
  *  - content_html(154 篇迁移旧文):入库前已经白名单清洗(清洗规则见 src/lib/content/clean-html.ts),
  *    前端不二次清洗,dangerouslySetInnerHTML + prose.css 兜底排版。
+ *
+ * 2026-11-01 文章页加左侧目录:md 分支末尾挂 rehype-slug 生成 heading id。
+ * **必须排在 sanitize 之后**——hast-util-sanitize 的 clobber(id)+ clobberPrefix
+ * 会把 id 改写成 `user-content-<slug>`,与 src/lib/content/toc.ts 产出的锚点对不上。
  */
 export default function ArticleBody({
   contentMd,
@@ -40,7 +45,7 @@ export default function ArticleBody({
       <div className="prose">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, htmlNoteSchema]]}
+          rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, htmlNoteSchema], rehypeSlug]}
           components={{
             // 图文混排(M27 批⑥):正文图惰性加载,首屏 LCP 不被文中小图拖累;
             // 圆角/最大宽度由 prose.css .prose img 既有规则覆盖

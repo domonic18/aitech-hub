@@ -16,12 +16,14 @@ vi.mock("../db", () => ({ prisma: prismaMock }));
 
 import { DEFAULT_BAND_ITEM_COUNT } from "../telegram/constants";
 import {
+  DEFAULT_POST_COPYRIGHT_MD,
   DEFAULT_POST_COUNT,
   DEFAULT_REPO_COUNT,
   DEFAULT_SITE_TITLE,
   SITE_CONFIG_KEYS,
   getBandItemCount,
   getHeroMd,
+  getPostCopyrightMd,
   getPostCount,
   getRepoCount,
   getSiteSettings,
@@ -91,6 +93,15 @@ describe("站点标题与 hub 文案(M12 键族)", () => {
     prismaMock.siteConfig.findUnique.mockResolvedValueOnce({ value: " # **Hub** 与 `AI`" });
     expect(await getHeroMd()).toBe("# **Hub** 与 `AI`");
   });
+
+  it("getPostCopyrightMd:缺行 → 内置默认;显式空串 → 空(关闭区块);配置值 trim", async () => {
+    prismaMock.siteConfig.findUnique.mockResolvedValueOnce(null);
+    expect(await getPostCopyrightMd()).toBe(DEFAULT_POST_COPYRIGHT_MD);
+    prismaMock.siteConfig.findUnique.mockResolvedValueOnce({ value: "" });
+    expect(await getPostCopyrightMd()).toBe("");
+    prismaMock.siteConfig.findUnique.mockResolvedValueOnce({ value: "  第一行\n第二行  " });
+    expect(await getPostCopyrightMd()).toBe("第一行\n第二行");
+  });
 });
 
 describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
@@ -103,6 +114,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       { key: SITE_CONFIG_KEYS.heroMd, value: "# 配置文案" },
       { key: SITE_CONFIG_KEYS.aboutMd, value: "# 自定义关于" },
       { key: SITE_CONFIG_KEYS.icp, value: " 京ICP备2022035466号-2 " },
+      { key: SITE_CONFIG_KEYS.postCopyrightMd, value: " 版权所有 © 2026 " },
     ]);
     expect(await getSiteSettings()).toEqual({
       bandItemCount: 20,
@@ -112,6 +124,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       heroMd: "# 配置文案",
       aboutMd: "# 自定义关于",
       icp: "京ICP备2022035466号-2",
+      postCopyrightMd: "版权所有 © 2026",
     });
     prismaMock.siteConfig.findMany.mockResolvedValueOnce([]);
     expect(await getSiteSettings()).toEqual({
@@ -122,6 +135,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       heroMd: "",
       aboutMd: "",
       icp: "",
+      postCopyrightMd: DEFAULT_POST_COPYRIGHT_MD,
     });
   });
 });
@@ -135,6 +149,7 @@ describe("setSiteConfig(M12 多键 partial)", () => {
       heroMd: "# hi",
       aboutMd: "# 关于",
       icp: " 京ICP备2022035466号-2 ",
+      postCopyrightMd: " 第一行\n第二行 ",
     });
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     const ops = prismaMock.siteConfig.upsert.mock.calls.map(
@@ -146,7 +161,8 @@ describe("setSiteConfig(M12 多键 partial)", () => {
     expect(byKey.get(SITE_CONFIG_KEYS.heroMd)).toBe("# hi");
     expect(byKey.get(SITE_CONFIG_KEYS.aboutMd)).toBe("# 关于");
     expect(byKey.get(SITE_CONFIG_KEYS.icp)).toBe("京ICP备2022035466号-2");
-    expect(ops).toHaveLength(5);
+    expect(byKey.get(SITE_CONFIG_KEYS.postCopyrightMd)).toBe("第一行\n第二行");
+    expect(ops).toHaveLength(6);
   });
 
   it("越界/空标题/超长文案 → Zod 拒绝且不落库;空对象 → 零写入", async () => {
@@ -157,6 +173,7 @@ describe("setSiteConfig(M12 多键 partial)", () => {
     await expect(setSiteConfig({ heroMd: "x".repeat(2001) })).rejects.toThrow();
     await expect(setSiteConfig({ aboutMd: "x".repeat(8001) })).rejects.toThrow();
     await expect(setSiteConfig({ icp: "x".repeat(61) })).rejects.toThrow();
+    await expect(setSiteConfig({ postCopyrightMd: "x".repeat(1001) })).rejects.toThrow();
     await setSiteConfig({});
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });

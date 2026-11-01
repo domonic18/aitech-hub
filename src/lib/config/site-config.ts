@@ -9,7 +9,7 @@
 import { cache } from "react";
 import { z } from "zod";
 
-import { ABOUT_MD_MAX } from "../constants";
+import { ABOUT_MD_MAX, COPYRIGHT_MD_MAX } from "../constants";
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
 import { SITE_NAME } from "../site-meta";
@@ -29,6 +29,9 @@ export const SITE_CONFIG_KEYS = {
   heroMd: "home.hero_md",
   aboutMd: "about.content",
   icp: "site.icp",
+  /** 文章页文末版权声明(2026-11-01 阅读页优化;纯文本,空 = 不展示)。
+   * 缺行(从未配置)→ 内置默认文案;显式存空串 → 整块隐藏 */
+  postCopyrightMd: "post.copyright_md",
   /** 小红书登录态每日探照快照(M50 批F;非配置是遥测——落 kv 免单行新表,
    * 读写仅经 distribute/xhs-probe.ts,不走 settings 页 Zod 解析器) */
   distributeXhsState: "distribute.xhs_state",
@@ -50,6 +53,13 @@ export const HERO_MD_MAX = 2000;
 const SITE_TITLE_MAX = 50;
 /** ICP 备案号上限(空 = 不展示;页脚链工信部备案系统) */
 export const ICP_MAX = 60;
+
+/**
+ * 文章页版权声明缺省文案(2026-11-01):旧站全站声明未随迁移入库(迁移只搬
+ * post_content),站内唯一可考的同类原文是 154 篇中的一篇(id=124)正文里
+ * 自带的一段。用户裁定以此作为缺省,后台可随时在「站点设置 · 文章页」覆盖。
+ */
+export const DEFAULT_POST_COPYRIGHT_MD = "本项目仅供学习交流使用,原创内容不易,转载请注明出处。";
 
 // ── 读侧 ──────────────────────────────────────────────────────
 
@@ -112,6 +122,16 @@ export async function getHeroMd(): Promise<string> {
   return ((await readConfigValue(SITE_CONFIG_KEYS.heroMd)) ?? "").trim();
 }
 
+/**
+ * 文章页版权声明(2026-11-01):缺行(从未配置)→ 内置默认;显式存空串 → 空,
+ * 前台整块不渲染(「关掉」与「没配过」必须可区分,否则后台没法关闭该区块)。
+ */
+export async function getPostCopyrightMd(): Promise<string> {
+  const raw = await readConfigValue(SITE_CONFIG_KEYS.postCopyrightMd);
+  if (raw === null) return DEFAULT_POST_COPYRIGHT_MD;
+  return raw.trim();
+}
+
 /** 全量设置(admin 页与 GET API 共用;单次 findMany,构建期 → 全默认) */
 export interface SiteSettings {
   bandItemCount: number;
@@ -121,6 +141,8 @@ export interface SiteSettings {
   heroMd: string;
   aboutMd: string;
   icp: string;
+  /** 文章页版权声明(从未配置时回显内置默认,便于站长在其上改) */
+  postCopyrightMd: string;
 }
 
 export async function getSiteSettings(): Promise<SiteSettings> {
@@ -134,6 +156,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       heroMd: "",
       aboutMd: "",
       icp: "",
+      postCopyrightMd: DEFAULT_POST_COPYRIGHT_MD,
     },
     async () => {
       const rows = await prisma.siteConfig.findMany({
@@ -161,6 +184,9 @@ export async function getSiteSettings(): Promise<SiteSettings> {
         heroMd: (byKey.get(SITE_CONFIG_KEYS.heroMd) ?? "").trim(),
         aboutMd: (byKey.get(SITE_CONFIG_KEYS.aboutMd) ?? "").trim(),
         icp: (byKey.get(SITE_CONFIG_KEYS.icp) ?? "").trim(),
+        postCopyrightMd: byKey.has(SITE_CONFIG_KEYS.postCopyrightMd)
+          ? (byKey.get(SITE_CONFIG_KEYS.postCopyrightMd) ?? "").trim()
+          : DEFAULT_POST_COPYRIGHT_MD,
       };
     },
   );
@@ -177,6 +203,8 @@ export const SiteConfigUpdateSchema = z.object({
   heroMd: z.string().max(HERO_MD_MAX).optional(),
   aboutMd: z.string().max(ABOUT_MD_MAX).optional(),
   icp: z.string().trim().max(ICP_MAX).optional(),
+  /** 纯文本(可含换行);空串 = 关闭文章页版权声明块 */
+  postCopyrightMd: z.string().trim().max(COPYRIGHT_MD_MAX).optional(),
 });
 
 export type SiteConfigUpdateInput = z.infer<typeof SiteConfigUpdateSchema>;
@@ -205,6 +233,9 @@ export async function setSiteConfig(input: SiteConfigUpdateInput): Promise<void>
   }
   if (data.icp !== undefined) {
     rows.push({ key: SITE_CONFIG_KEYS.icp, value: data.icp });
+  }
+  if (data.postCopyrightMd !== undefined) {
+    rows.push({ key: SITE_CONFIG_KEYS.postCopyrightMd, value: data.postCopyrightMd });
   }
   if (rows.length === 0) return;
   await prisma.$transaction(
