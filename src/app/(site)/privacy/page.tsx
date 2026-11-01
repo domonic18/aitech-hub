@@ -2,7 +2,7 @@ import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 
 import ArticleBody from "@/components/article/ArticleBody";
-import { privacyHtml } from "@/content/privacy";
+import { privacyHtml } from "@/content/legal/privacy";
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteTitle = await getSiteTitle();
