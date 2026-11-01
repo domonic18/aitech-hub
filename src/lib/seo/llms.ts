@@ -15,6 +15,7 @@ import { projectPath } from "@/lib/github/project-path";
 import { formatCnDate } from "@/lib/datetime";
 import { gateNoticeMd, gateNoticeText, previewMarkdown } from "@/lib/pay/preview";
 import { absoluteUrl } from "@/lib/seo/site";
+import { AUTHOR_NAME, siteHost } from "@/lib/site-meta";
 
 const PART_MAX_CHARS = 400_000;
 
@@ -63,9 +64,9 @@ export async function buildLlmsIndex(): Promise<string> {
 
   const siteTitle = await getSiteTitle();
   const lines: string[] = [
-    `# ${siteTitle}(17aitech.com)`,
+    `# ${siteTitle}(${siteHost()})`,
     "",
-    "> domonic18 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文(付费/登录可见文章仅返回预览);全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起,同样不含门禁文全文)。",
+    `> ${AUTHOR_NAME} 的 AI 工程实战原创博客:第一人称、可复现(含失败案例)的人机协同实战记录,主题覆盖 Claude Code / MCP / LLM 训练与评测。文章同时为人与智能体而写:每篇均可在 URL 后加 .md 获取 Markdown 原文(付费/登录可见文章仅返回预览);全量内容见 /llms-full.txt(超长分页 llms-full-2.txt 起,同样不含门禁文全文)。`,
     "",
     "## 站点",
     "",

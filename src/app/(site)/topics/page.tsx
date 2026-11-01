@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { PageHeader } from "@/components/site/PageHeader";
 import { absoluteUrl } from "@/lib/seo/site";
+import { SITE_NAME } from "@/lib/site-meta";
 import { SITE_TOPICS } from "@/lib/content/topics";
 
 /**
@@ -19,7 +20,7 @@ const PAGE_PATH = "/topics/";
 export function generateMetadata(): Metadata {
   return {
     title: "专题",
-    description: "一起AI 专题聚合:AI 模型价格速查等参考工具页入口,官方一手数据持续更新。",
+    description: `${SITE_NAME} 专题聚合:AI 模型价格速查等参考工具页入口,官方一手数据持续更新。`,
     alternates: { canonical: PAGE_PATH },
   };
 }

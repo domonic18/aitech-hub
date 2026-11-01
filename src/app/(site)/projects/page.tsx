@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import ProjectsView from "@/components/site/ProjectsView";
 import { listShowcaseRepos } from "@/lib/github/public";
+import { AUTHOR_NAME } from "@/lib/site-meta";
 
 /**
  * /projects/ 开源项目列表(M11 批③,arch/07-frontend §1:ISR 600s):
@@ -15,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const siteTitle = await getSiteTitle();
   return {
     title: "开源项目",
-    description: `${siteTitle} 开源项目展示:domonic18 的 GitHub 仓库白名单,README 直读、进展动态与配套实战教程。`,
+    description: `${siteTitle} 开源项目展示:${AUTHOR_NAME} 的 GitHub 仓库白名单,README 直读、进展动态与配套实战教程。`,
     alternates: { canonical: "/projects/" },
   };
 }
