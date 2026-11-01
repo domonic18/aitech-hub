@@ -15,6 +15,7 @@ const SCOPE_LABELS: Record<string, string> = {
   summary: "摘要",
   all: "全部",
   comment: "评论",
+  "wechat-mp": "公众号私信",
 };
 
 export default function BlocklistManager({
