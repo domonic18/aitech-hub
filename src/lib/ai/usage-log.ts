@@ -35,9 +35,13 @@ export interface AiUsageInput {
   userId?: bigint;
 }
 
-export async function recordAiUsage(input: AiUsageInput): Promise<void> {
+/**
+ * 写一行台账,返回新行 id(关联列如 channel_wechat_mp_message.ai_usage_id 回挂用);
+ * 写失败只 warn 并返回 null——观测数据不得阻塞主流程。
+ */
+export async function recordAiUsage(input: AiUsageInput): Promise<bigint | null> {
   try {
-    await prisma.aiUsageLog.create({
+    const row = await prisma.aiUsageLog.create({
       data: {
         role: input.role,
         modelId: input.modelId,
@@ -50,13 +54,16 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
         sessionId: input.sessionId?.slice(0, 40),
         userId: input.userId,
       },
+      select: { id: true },
     });
+    return row.id;
   } catch (e) {
     logger.warn({
       event: "ai_usage.record_failed",
       role: input.role,
       error: e instanceof Error ? e.message : String(e),
     });
+    return null;
   }
 }
 

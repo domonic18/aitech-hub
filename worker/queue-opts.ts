@@ -18,6 +18,7 @@ import {
   QUEUE_PAY_RECONCILE,
   QUEUE_SEO_BATCH,
   QUEUE_SUMMARIZER,
+  QUEUE_WECHAT_MP,
 } from "../src/lib/queue";
 
 export interface QueueWorkerOpts {
@@ -49,4 +50,7 @@ export const QUEUE_WORKER_OPTS: Record<string, QueueWorkerOpts> = {
   [QUEUE_INSIGHT]: { concurrency: 1, lockDuration: 600_000 },
   // 拆层 ~75s + 逐层转存;并发 1 防打爆单绑定模型
   [QUEUE_ILLUSTRATION_STUDIO]: { concurrency: 1, lockDuration: 600_000 },
+  // 公众号单条问答:一次检索 + 一次 LLM(秒级);并发 1 与站内 summarize 角色
+  // 争同一配额,串行防打爆绑定模型,锁 120s 覆盖模型慢响应
+  [QUEUE_WECHAT_MP]: { concurrency: 1, lockDuration: 120_000 },
 };

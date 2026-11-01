@@ -31,6 +31,9 @@ export const JOB_RUN_PURGE_CRON = "47 4 * * *";
  * 04:33 会话清退与 04:47 任务台账之间,单请求任务) */
 export const LEADERBOARD_FX_CRON = "43 4 * * *";
 
+/** 公众号消息明细 180 天清洗(M66;04:24 错峰,仅删明细表,渠道用户/线索不动) */
+export const WECHAT_MP_PURGE_CRON = "24 4 * * *";
+
 /** 数据库每日备份 03:23(standard/02 §6 03:30 槽位就近错峰;M19 批②) */
 export const DB_BACKUP_CRON = "23 3 * * *";
 
@@ -179,6 +182,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     desc: "外站热词日频直拉入发现池",
     cron: DISCOVERY_HOTWORDS_CRON,
     category: "discovery",
+  },
+  {
+    key: "wechat-mp-purge",
+    jobRunKey: "wechat-mp/purge",
+    label: "公众号明细清理",
+    desc: "公众号私信消息 180 天保留期滚动清理(渠道用户/线索不动)",
+    cron: WECHAT_MP_PURGE_CRON,
+    category: "ops",
   },
   {
     key: "usage-purge",

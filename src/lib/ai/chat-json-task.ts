@@ -27,8 +27,13 @@ export async function chatJsonTask<T>(
   /** 输出预算覆盖(缺省 2000:interpret/summarize 概括规格富余;笔记类长文任务
    * 按需放大——截断即废 JSON,预算不足会在契约层表现为解析失败)+ 供应商扩展
    * (仅 anthropic 下发 output_config,如 MiniMax effort;两者缺省均不下发,
-   * 由调用方从 ai_model.extra_params 读入) */
-  opts?: { maxTokens?: number; outputConfig?: Record<string, unknown> },
+   * 由调用方从 ai_model.extra_params 读入)+ 台账行 id 回挂(渠道入站把
+   * ai_usage_log.id 挂到消息行,M66) */
+  opts?: {
+    maxTokens?: number;
+    outputConfig?: Record<string, unknown>;
+    onUsageId?: (usageId: bigint) => void;
+  },
 ): Promise<T> {
   let lastParseError = "";
   let lastUsage: ChatUsage = { tokensIn: 0, tokensOut: 0 };
@@ -61,7 +66,7 @@ export async function chatJsonTask<T>(
     const parsed = parse(raw);
     if (parsed.ok) {
       if (usageRole) {
-        await recordAiUsage({
+        const usageId = await recordAiUsage({
           role: usageRole,
           modelId: model.id,
           modelKey: model.modelId,
@@ -70,6 +75,7 @@ export async function chatJsonTask<T>(
           durationMs: Date.now() - startedAt,
           status: model.source === "backup" ? "degraded" : "ok",
         });
+        if (usageId !== null) opts?.onUsageId?.(usageId);
       }
       return parsed.data;
     }

@@ -46,6 +46,7 @@ import {
   QUEUE_SEO_BATCH,
   QUEUE_STATS,
   QUEUE_SUMMARIZER,
+  QUEUE_WECHAT_MP,
   STATS_JOB_AGENT_PURGE,
   STATS_JOB_PURGE,
   STATS_JOB_RUN_PURGE,
@@ -109,6 +110,9 @@ import { labelClusterNow, runLabelBatch } from "../src/lib/insight/label";
 import { runVendorExtractJob } from "../src/lib/insight/vendor/extract";
 import type { VendorExtractJobData } from "../src/lib/insight/vendor/crawl";
 import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
+import { runWechatMpAnswer, type WechatMpAnswerJobData } from "../src/lib/channel/wechat-mp/answer";
+import { WECHAT_MP_JOB_ANSWER, WECHAT_MP_JOB_PURGE } from "../src/lib/channel/wechat-mp/constants";
+import { purgeWechatMpMessages } from "../src/lib/channel/wechat-mp/purge";
 
 export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_MEDIA_PROCESS]: (job) => processMediaJob(job),
@@ -446,5 +450,17 @@ export const PROCESSORS: Record<string, Processor> = {
       return editIllustration(job.data as EditIllustrationInput);
     }
     return illustrationDecomposeJob(job.data as DecomposeJobData);
+  },
+  // 公众号私信(M66):answer = 请求侧已入队的单条生成(检索+LLM,结果写 Redis
+  // 由请求线程轮询);purge = 每日明细滚动清理。两条都不重试到无限:
+  // answer 失败已由请求侧按超时话术兜底,重试只补一次
+  [QUEUE_WECHAT_MP]: (job) => {
+    if (job.name === WECHAT_MP_JOB_ANSWER) {
+      return runWechatMpAnswer(job.data as WechatMpAnswerJobData);
+    }
+    if (job.name === WECHAT_MP_JOB_PURGE) {
+      return purgeWechatMpMessages();
+    }
+    throw new Error(`未知 wechat-mp job:${job.name}`);
   },
 };
