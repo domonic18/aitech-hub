@@ -6,8 +6,20 @@
  */
 import { revalidatePath } from "next/cache";
 
+import { SEO_ROUTES } from "@/lib/seo/routes";
+
 import { asciiSlugFromTitle, pinPath } from "./pin-path";
 import { postPath } from "./post-path";
+
+/**
+ * 文章发布还会改变「不在 (site) 页面树下」的出口:feed.xml 与 llms 系列最长
+ * 滞后一个 ISR 窗口(3600s)才见新文(issue #203)。robots 与内容无关,不进清单;
+ * sitemap 同为 Route Handler/Metadata Route,单独在下方处理(带 layout 型注释)。
+ * 清单本体取自 SEO_ROUTES,新增 SEO 出口不必回来改这里。
+ */
+const PUBLISH_SEO_ROUTES = SEO_ROUTES.filter(
+  (path) => path !== "/robots.txt" && path !== "/sitemap.xml",
+);
 
 /** 需失效的文章引用(id 锚定;slug 为变更前/后形态) */
 export interface RevalidatePostRef {
@@ -15,7 +27,7 @@ export interface RevalidatePostRef {
   slug: string | null;
 }
 
-/** 单篇文章涉及的全部缓存面:详情 + .md 直出 + 首页 + 列表族 + 归档 + sitemap */
+/** 单篇文章涉及的全部缓存面:详情 + .md 直出 + 首页 + 列表族 + 归档 + feed/llms + sitemap */
 export function revalidatePostPaths(post: RevalidatePostRef): void {
   const detail = postPath(post.id, post.slug);
   revalidatePath(detail);
@@ -24,6 +36,7 @@ export function revalidatePostPaths(post: RevalidatePostRef): void {
   revalidatePath("/articles/");
   revalidatePath("/articles/page/[page]", "page");
   revalidatePath("/archive/");
+  for (const path of PUBLISH_SEO_ROUTES) revalidatePath(path, "layout");
   // sitemap 是 Metadata Route(ISR):默认 "page" 型打不中其内部 route tag,
   // "layout" 型命中的 `_N_T_/sitemap.xml/layout` 在其 tag 列表内(2026-10-05 e2e 实证)
   revalidatePath("/sitemap.xml", "layout");

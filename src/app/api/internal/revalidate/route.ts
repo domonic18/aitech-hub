@@ -1,10 +1,12 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { env } from "@/lib/env";
+import { internalRevalidateToken } from "@/lib/http/internal-token";
+import { apiEnvelope } from "@/lib/http/response";
 import { SEO_ROUTES } from "@/lib/seo/routes";
 
 /**
@@ -25,10 +27,6 @@ const PATH_ALLOWLIST = new Set<string>(["/leaderboards/"]);
 
 const bodySchema = z.object({ paths: z.array(z.string().min(1).max(200)).min(1).max(10) });
 
-function expectedToken(): string {
-  return createHash("sha256").update(`${env.AUTH_SECRET}:revalidate`).digest("hex");
-}
-
 /** 空 body(entrypoint 老调用)/非法 JSON 一律按「全站失效」处理,保持向后兼容 */
 async function readPaths(req: NextRequest): Promise<string[] | null> {
   const text = await req.text();
@@ -45,25 +43,20 @@ async function readPaths(req: NextRequest): Promise<string[] | null> {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const given = Buffer.from(req.headers.get("x-internal-token") ?? "");
-  const expected = Buffer.from(expectedToken());
+  const expected = Buffer.from(internalRevalidateToken(env.AUTH_SECRET));
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
-    return new NextResponse(null, { status: 403 }) as NextResponse;
+    return apiEnvelope(403, "forbidden");
   }
   const paths = await readPaths(req);
   if (paths !== null) {
     const blocked = paths.filter((p) => !PATH_ALLOWLIST.has(p));
-    if (blocked.length > 0) return apiEnvelopeError(blocked);
+    if (blocked.length > 0) {
+      return apiEnvelope(400, `path not in allowlist: ${blocked.join(",")}`);
+    }
     for (const path of paths) revalidatePath(path);
-    return NextResponse.json({ revalidated: true, paths }) as NextResponse;
+    return apiEnvelope(0, "ok", { revalidated: true, paths });
   }
   revalidatePath("/", "layout"); // (site) 树全部页面
   for (const path of SEO_ROUTES) revalidatePath(path);
-  return NextResponse.json({ revalidated: true }) as NextResponse;
-}
-
-function apiEnvelopeError(blocked: string[]): NextResponse {
-  return NextResponse.json(
-    { code: 400, message: `path not in allowlist: ${blocked.join(",")}` },
-    { status: 400 },
-  ) as NextResponse;
+  return apiEnvelope(0, "ok", { revalidated: true });
 }

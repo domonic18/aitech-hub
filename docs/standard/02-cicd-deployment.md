@@ -64,7 +64,8 @@ make migrate   # npx prisma migrate deploy
 ### 3.1 构建期无 DB 降级与启动预热(2026-09-30 实测定型)
 
 - builder 无 env/DB:`ENV` 占位三件套(DATABASE_URL/REDIS_URL/AUTH_SECRET)过 Zod 校验;预渲染取数经 `lib/prerenderSafe`(仅 `NEXT_PHASE=phase-production-build` 生效)降级为空数据,**运行时 ISR 错误照常上抛不吞**
-- 降级产物在 revalidate 窗口内不会自动再生 → entrypoint 轮询 `/api/health/` 就绪后:先 `POST /api/internal/revalidate/`(AUTH_SECRET 派生 token,`revalidatePath("/", "layout")` + SEO 路由全量失效)再逐路径双 fetch(首触发再生、次取新鲜产物入缓存);失效端点勿删,预热失败不阻塞启动
+- 降级产物在 revalidate 窗口内不会自动再生 → entrypoint 起服后后台跑 `scripts/warm-isr.mjs`(`node ./scripts/warm-isr.mjs &`):轮询 `/api/health/` 就绪 → `POST /api/internal/revalidate/`(AUTH_SECRET 派生 token,`revalidatePath("/", "layout")` + SEO 路由全量失效)→ 逐路径双 fetch(首触发再生、次取新鲜产物入缓存);失效端点勿删,预热失败不阻塞启动
+- **预热路由清单单一来源**(2026-11-01):`src/lib/seo/warm-routes.json` 同时被 `src/lib/seo/routes.ts`(`WARM_ROUTES`,服务端)与 `scripts/warm-isr.mjs`(容器内 node,无 tsconfig 故用 JSON 而非 TS)读取;`routes.test.ts` 断言 SEO 出口全在清单内、页面路由带尾斜杠。新增可预热路由只改 JSON,不必再动 entrypoint
 - 实测踩坑(均已修,勿回退):
   - runner 的 node_modules 必须取 **builder 层**(含 `prisma generate` 产物;取 deps 层会覆盖 standalone 内 traced 生成物,运行时报 `client did not initialize`)
   - `HOSTNAME=0.0.0.0` 必须显式设——容器 HOSTNAME 是容器 ID,Next standalone 会当绑定地址,回环拒连(预热 ECONNREFUSED)
