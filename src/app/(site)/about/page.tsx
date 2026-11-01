@@ -2,6 +2,7 @@ import { getSiteSettings, getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 
 import ArticleBody from "@/components/article/ArticleBody";
+import { AUTHOR_NAME, SITE_NAME } from "@/lib/site-meta";
 
 export const revalidate = 600;
 
@@ -32,13 +33,13 @@ export default async function AboutPage(): Promise<React.ReactElement> {
         {/* eslint-disable-next-line @next/next/no-img-element -- 本地静态资产,不走 next/image 优化域 */}
         <img
           src="/wechat-qrcode.jpg"
-          alt="微信公众号「一起AI」二维码"
+          alt={`微信公众号「${SITE_NAME}」二维码`}
           width={168}
           height={168}
           loading="lazy"
           className="rounded-sm"
         />
-        <figcaption className="text-xs text-text-3">微信扫码关注公众号「一起AI」</figcaption>
+        <figcaption className="text-xs text-text-3">微信扫码关注公众号「{SITE_NAME}」</figcaption>
       </figure>
     </section>
   );
@@ -47,7 +48,7 @@ export default async function AboutPage(): Promise<React.ReactElement> {
 /** 内置默认文案(2026-10-05 润色稿,站长逐字确认;后台配置为空时回退) */
 const DEFAULT_ABOUT_MD = `这里是 **一起AI(17aitech.com)**——一个专注于 AI 领域的信息 Hub:追踪快速变化的 AI 资讯,沉淀可复现的教程与开源项目示例,连接人与工具。
 
-站长 domonic18 以第一人称记录 AI 工程的真实实践,原创文章是本站的核心内容之一;电报流实时汇集全网 AI 动态,GitHub 项目与文章互相联动——文章教用法,仓库给武器。
+站长 ${AUTHOR_NAME} 以第一人称记录 AI 工程的真实实践,原创文章是本站的核心内容之一;电报流实时汇集全网 AI 动态,GitHub 项目与文章互相联动——文章教用法,仓库给武器。
 
 本站同时为智能体而写:全站提供 [llms.txt](/llms.txt) 结构化目录,每篇文章均可在地址后加 \`.md\` 获取 Markdown 原文,欢迎 AI 助手与爬虫引用。
 
