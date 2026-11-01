@@ -48,6 +48,7 @@ model Post {
   payOrderItems   PayOrderItem[]
   purchases       ContentPostPurchase[]
   coverCandidates CoverCandidate[]
+  channelMpKeywords ChannelWechatMpKeyword[]
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
@@ -217,6 +218,7 @@ model UserAccount {
   purchases          ContentPostPurchase[]
   aiUsageLogs        AiUsageLog[]
   feedbacks          Feedback[]
+  channelWechatMpUsers ChannelWechatMpUser[]
 
   @@index([status], map: "idx_user_account_status")
   @@map("user_account")
@@ -891,6 +893,7 @@ model AiUsageLog {
 
   user  UserAccount? @relation(fields: [userId], references: [id], onDelete: SetNull)
   model AiModel?     @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  channelMpMessages ChannelWechatMpMessage[]
 
   @@index([createdAt], map: "idx_ai_usage_log_created")
   @@index([role, modelId], map: "idx_ai_usage_log_role_model")
@@ -1720,4 +1723,146 @@ model CodingPlan {
   @@unique([vendor, planName], map: "uq_coding_plan_vendor_plan")
   @@index([status, sortOrder], map: "idx_coding_plan_page")
   @@map("coding_plan")
+}
+
+// ── channel_(外部渠道入站会话,M66,arch/03 §2.4 + plan/wechat-mp-bot-plan)──
+// 公众号私信问答:5 秒被动回复窗口 + 站内检索答案 + 转人工线索。
+// 与 publish_ 域(内容出站分发)分界:appid/appsecret 不在此重复存,
+// 一律经 publish_wechat_config 单源读取。
+
+/// 公众号入站配置单例(id=1,get-or-create):Token 与 EncodingAESKey 由
+/// 公众号后台「服务器配置」下发,与出站推草稿的 WechatConfig 是两套开关。
+model ChannelWechatMpConfig {
+  id                 Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  token              String    @default("") @db.VarChar(32) // 服务器配置 Token(3-32 位);空=未配置
+  encodingAesKeyEnc  String?   @map("encoding_aes_key_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录(明文/兼容模式仍可用)
+  encodingAesKeyMask String?   @map("encoding_aes_key_mask") @db.VarChar(20) // 脱敏回显冗余列
+  enabled            Boolean   @default(false) // 入站通道总开关
+  greetingText       String    @default("") @map("greeting_text") @db.VarChar(500) // 关注欢迎语;空=用代码默认话术
+  fallbackText       String    @default("") @map("fallback_text") @db.VarChar(500) // 站内无命中话术;空=默认
+  handoffText        String    @default("") @map("handoff_text") @db.VarChar(500) // 转人工回执话术;空=默认
+  handoffKeywords    String[]  @default([]) @map("handoff_keywords") // 触发转人工的关键词
+  dailyAnswerLimit   Int       @default(200) @map("daily_answer_limit") // 每日 LLM 答案上限(条);超限退固定话术
+  lastTestedAt       DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus     String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError      String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs  Int?      @map("last_test_latency_ms")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("channel_wechat_mp_config")
+}
+
+/// 公众号侧用户(openid 锚):与站内账号经「一次性绑定码」打通,不依赖
+/// 网页授权(认证订阅号无此权限)。取关只置状态,不删行。
+model ChannelWechatMpUser {
+  id              BigInt    @id @default(autoincrement())
+  openid          String    @unique(map: "uq_channel_wechat_mp_user_openid") @db.VarChar(64)
+  unionid         String?   @db.VarChar(64)
+  userId          BigInt?   @map("user_id") // 站内账号;未绑定为 null
+  nickname        String?   @db.VarChar(100)
+  avatarUrl       String?   @map("avatar_url") @db.VarChar(500)
+  isSubscribed    Boolean   @default(true) @map("is_subscribed")
+  subscribedAt    DateTime? @map("subscribed_at") @db.Timestamptz(6)
+  unsubscribedAt  DateTime? @map("unsubscribed_at") @db.Timestamptz(6)
+  lastMessageAt   DateTime? @map("last_message_at") @db.Timestamptz(6)
+  messageCount    Int       @default(0) @map("message_count")
+  isManualPending Boolean   @default(false) @map("is_manual_pending") // 有未处理的转人工线索
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user     UserAccount?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages ChannelWechatMpMessage[]
+  leads    ChannelWechatMpLead[]
+
+  @@index([userId], map: "idx_channel_wechat_mp_user_user_id")
+  @@index([lastMessageAt(sort: Desc)], map: "idx_channel_wechat_mp_user_last_message")
+  @@map("channel_wechat_mp_user")
+}
+
+/// 问答明细(append-only):入站与出站各一行,wechat_msg_id 唯一是微信重试的
+/// 幂等锚(普通消息用 MsgId,事件用 FromUserName+CreateTime 派生)。
+model ChannelWechatMpMessage {
+  id            BigInt   @id @default(autoincrement())
+  channelUserId BigInt   @map("channel_user_id")
+  wechatMsgId   String   @map("wechat_msg_id") @db.VarChar(100) // 入站=微信 MsgId/事件派生键;出站=out:<msgId>:<n>
+  direction     String   @db.VarChar(10) // in | out
+  msgType       String   @map("msg_type") @db.VarChar(20) // text | event
+  event         String?  @db.VarChar(20) // subscribe/unsubscribe/CLICK/…
+  content       String   @db.Text // 入站=用户原文;出站=实际发送文本(截断后)
+  replyKind     String?  @map("reply_kind") @db.VarChar(20) // 出站:keyword/rag/timeout/continue/handoff/fallback/welcome/help
+  answerStatus  String?  @map("answer_status") @db.VarChar(20) // 出站:ok/no_evidence/error/truncated
+  latencyMs     Int?     @map("latency_ms") // 出站:从入站到出站的总耗时
+  aiUsageId     BigInt?  @map("ai_usage_id") // 出站:关联 ai_usage_log(用量台账)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  channelUser ChannelWechatMpUser @relation(fields: [channelUserId], references: [id], onDelete: Cascade)
+  aiUsage     AiUsageLog?         @relation(fields: [aiUsageId], references: [id], onDelete: SetNull)
+  lead        ChannelWechatMpLead?
+
+  @@unique([wechatMsgId], map: "uq_channel_wechat_mp_message_wechat_msg_id")
+  @@index([channelUserId, createdAt(sort: Desc)], map: "idx_channel_wechat_mp_message_user_created")
+  @@index([createdAt], map: "idx_channel_wechat_mp_message_created")
+  @@index([aiUsageId], map: "idx_channel_wechat_mp_message_ai_usage")
+  @@map("channel_wechat_mp_message")
+}
+
+/// 转人工线索(体量小、业务价值高:商务合作/转载洽谈都落这里)
+model ChannelWechatMpLead {
+  id            BigInt    @id @default(autoincrement())
+  channelUserId BigInt    @map("channel_user_id")
+  messageId     BigInt?   @unique(map: "uq_channel_wechat_mp_lead_message_id") @map("message_id") // 触发线索的入站消息
+  reason        String    @db.VarChar(200) // 触发词或问题摘要
+  status        String    @default("open") @db.VarChar(20) // open | handled
+  note          String?   @db.Text // 站长处置备注/人工答复
+  handledAt     DateTime? @map("handled_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  channelUser ChannelWechatMpUser      @relation(fields: [channelUserId], references: [id], onDelete: Cascade)
+  message     ChannelWechatMpMessage?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_channel_wechat_mp_lead_status_created")
+  @@index([channelUserId], map: "idx_channel_wechat_mp_lead_user")
+  @@map("channel_wechat_mp_lead")
+}
+
+/// 关键词直连(旧服务 75% 流量集中在单一关键词,秒回是主路径不是优化项)
+model ChannelWechatMpKeyword {
+  id        BigInt   @id @default(autoincrement())
+  keyword   String   @unique(map: "uq_channel_wechat_mp_keyword_keyword") @db.VarChar(50) // 命中判定用包含匹配(应用层归一)
+  postId    BigInt?  @map("post_id") // 直出文章摘要;与本行 replyText 二选一
+  replyText String?  @map("reply_text") @db.Text // 无文章时的固定话术
+  isEnabled Boolean  @default(true) @map("is_enabled")
+  hitCount  Int      @default(0) @map("hit_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  post Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([postId], map: "idx_channel_wechat_mp_keyword_post")
+  @@map("channel_wechat_mp_keyword")
+}
+
+/// 站务通知单例(id=1):飞书自建应用凭据 + 目标群。凭据只入库
+/// (用户裁定:不 hardcode、不入 env);与 M29 免登用的 AdminFeishuConfig 无关。
+model ChannelFeishuAlertConfig {
+  id               Int       @id @default(1) // 单例锚点,应用层只允许 id=1
+  appId            String    @default("") @map("app_id") @db.VarChar(64) // cli_ 开头;空=未配置
+  appSecretEnc     String?   @map("app_secret_enc") @db.VarChar(500) // base64(iv|tag|ct);null=未录
+  appSecretMask    String?   @map("app_secret_mask") @db.VarChar(20) // 脱敏回显冗余列
+  chatId           String    @default("") @map("chat_id") @db.VarChar(100) // oc_ 开头:目标群
+  chatName         String    @default("") @map("chat_name") @db.VarChar(100) // 群名(展示用)
+  enabled          Boolean   @default(false) // 通知通道总开关
+  isNotifyHandoff  Boolean   @default(true) @map("is_notify_handoff") // 转人工即时推送
+  isNotifyDaily    Boolean   @default(false) @map("is_notify_daily") // 每日汇总卡
+  dailySummaryHour Int       @default(9) @map("daily_summary_hour") // 汇总发送时刻(北京时,0-23)
+  lastTestedAt     DateTime? @map("last_tested_at") @db.Timestamptz(6)
+  lastTestStatus   String?   @map("last_test_status") @db.VarChar(10) // ok/fail
+  lastTestError    String?   @map("last_test_error") @db.VarChar(500)
+  lastTestLatencyMs Int?     @map("last_test_latency_ms")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("channel_feishu_alert_config")
 }
