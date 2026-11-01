@@ -1815,9 +1815,12 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     expect(await (await request.get("/feed.xml")).text()).toContain(SITE_TITLE);
 
     // ── /articles/:tag 筛选条(全部 + 新 tag 链)→ tag 路由过滤闭环
+    // 2026-11-01 列表页重构:标签默认只出 Top10,其余折进 <details>,先展开再点
     await page.goto("/articles/");
     const bar = page.locator("nav[aria-label='按标签筛选']");
     await expect(bar).toBeVisible();
+    const moreTags = bar.locator("summary", { hasText: "更多标签" });
+    if ((await moreTags.count()) > 0) await moreTags.click();
     const tagLink = bar.getByRole("link", { name: /e2e标签甲/ });
     await expect(tagLink).toHaveAttribute("href", `/tag/${TAG_SLUG}/`);
     await tagLink.click();
@@ -1829,6 +1832,9 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     const cardsBtn = page.getByTitle("卡片视图");
     await expect(cardsBtn).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("article h2").first()).toBeVisible(); // 列表形态:h2 标题卡
+    // 列表视图带缩略图(2026-11-01 重构):一页里至少一条有真封面即可
+    // (无封面行走 CoverPlaceholder,不能用 .first() 绑定首行数据态)
+    expect(await page.locator("article:has(h2) img").count()).toBeGreaterThan(0);
     await expect(page.locator("article div.p-4").first()).toBeHidden(); // 卡片形态藏
     await cardsBtn.click();
     await expect(cardsBtn).toHaveAttribute("aria-pressed", "true");

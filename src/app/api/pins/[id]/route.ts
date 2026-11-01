@@ -8,6 +8,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { parseBigIntId } from "@/lib/http/parse-id";
+import { revalidatePinPaths } from "@/lib/content/revalidate";
 import { toPinChannelDto, toPinDto, toPinImageDto } from "@/lib/pins/dto";
 import { mapPinError } from "@/lib/pins/http";
 import { deletePin, getPinDetail, setPinStatus, updatePin } from "@/lib/pins/repo";
@@ -57,6 +58,8 @@ export async function PATCH(
     if (statusParsed.success) await setPinStatus(bigId, statusParsed.data.status);
     const pin = await getPinDetail(bigId);
     if (!pin) return apiEnvelope(404, "贴图不存在");
+    // 贴图混入 /articles 时间流:上下架/改标题都要即时失效(以前只等 ISR 600s)
+    revalidatePinPaths({ id: pin.id, title: pin.title });
     return apiEnvelope(0, "updated", {
       ...toPinDto(pin, pin.images.length),
       images: pin.images.map(toPinImageDto),
@@ -79,7 +82,11 @@ export async function DELETE(
   const bigId = parseBigIntId(id);
   if (bigId === null) return apiEnvelope(400, "invalid id");
   try {
+    // 先取标题:删除后 slug 无从派生,详情/列表失效要靠它
+    const pin = await getPinDetail(bigId);
+    if (!pin) return apiEnvelope(404, "贴图不存在");
     await deletePin(bigId);
+    revalidatePinPaths({ id: pin.id, title: pin.title });
     return apiEnvelope(0, "deleted");
   } catch (e) {
     const mapped = mapPinError(e);

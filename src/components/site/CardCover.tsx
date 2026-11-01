@@ -8,7 +8,14 @@
 import Image from "next/image";
 import { useState } from "react";
 
-export default function CardCover({ src }: { src: string }): React.ReactElement {
+export default function CardCover({
+  src,
+  sizes = "(max-width: 640px) 100vw, 368px",
+}: {
+  src: string;
+  /** 响应式宽度提示(列表行缩略图比卡片窄,传更小值避免取大图) */
+  sizes?: string;
+}): React.ReactElement {
   const [failed, setFailed] = useState(false);
   if (failed) return <CoverPlaceholder />;
   return (
@@ -21,7 +28,7 @@ export default function CardCover({ src }: { src: string }): React.ReactElement 
         loading="lazy"
         onError={() => setFailed(true)}
         className="object-cover"
-        sizes="(max-width: 640px) 100vw, 368px"
+        sizes={sizes}
       />
     </div>
   );

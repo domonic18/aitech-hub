@@ -13,7 +13,7 @@ export default function SiteLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      {/* 版心由各页自管:内容页 768px(PostListView/静态页),首页 Hub 全宽 --site-max-w */}
+      {/* 版心由各页自管:详情/静态页 768 阅读口径,列表族与首页 Hub 全宽 --site-max-w */}
       <main className="w-full flex-1 px-4 py-8 sm:px-6">{children}</main>
       <Footer />
       {/* 悬浮 AI 助手已上移根 layout(M35 宿主唯一化),此处不再挂载 */}

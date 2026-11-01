@@ -121,6 +121,20 @@ export interface ListPageParams {
   originalOnly?: boolean;
 }
 
+/** 列表 where 单点构造(分页/head/计数共用同一口径,防三处漂移) */
+function buildListWhere({
+  categorySlug,
+  tagSlug,
+  originalOnly,
+}: Omit<ListPageParams, "page" | "pageSize">) {
+  return {
+    ...PUBLISHED,
+    ...(categorySlug ? { category: { slug: categorySlug } } : {}),
+    ...(tagSlug ? { tags: { some: { tag: { slug: tagSlug } } } } : {}),
+    ...(originalOnly ? { category: { isOriginal: true } } : {}),
+  };
+}
+
 /** 分页列表(全部/分类/标签共用;tagSlug/categorySlug 由调用方先 normalizeSlug) */
 export async function listPostsPage({
   page,
@@ -129,12 +143,7 @@ export async function listPostsPage({
   tagSlug,
   originalOnly,
 }: ListPageParams) {
-  const where = {
-    ...PUBLISHED,
-    ...(categorySlug ? { category: { slug: categorySlug } } : {}),
-    ...(tagSlug ? { tags: { some: { tag: { slug: tagSlug } } } } : {}),
-    ...(originalOnly ? { category: { isOriginal: true } } : {}),
-  };
+  const where = buildListWhere({ categorySlug, tagSlug, originalOnly });
   return prerenderSafe("posts.page", { items: [], total: 0, page, pageSize }, async () => {
     const [items, total] = await prisma.$transaction([
       prisma.post.findMany({
@@ -148,6 +157,35 @@ export async function listPostsPage({
     ]);
     return { items: await attachInteractionCounts(items), total, page, pageSize };
   });
+}
+
+/**
+ * 合并流用:取时间序前 limit 条(不分页)。与 listPostsPage 同 where 口径;
+ * 调用方先用 countPostsForList 定上限,再按需取头部,避免深页一次拉全表。
+ */
+export async function listPostsHead({
+  limit,
+  originalOnly,
+}: {
+  limit: number;
+  originalOnly?: boolean;
+}) {
+  return prerenderSafe("posts.head", [], async () => {
+    const items = await prisma.post.findMany({
+      where: buildListWhere({ originalOnly }),
+      select: LIST_SELECT,
+      orderBy: [...ORDER],
+      take: limit,
+    });
+    return attachInteractionCounts(items);
+  });
+}
+
+/** 合并流用:已发布文章总数(与列表 where 同口径) */
+export async function countPostsForList({ originalOnly }: { originalOnly?: boolean } = {}) {
+  return prerenderSafe("posts.countForList", 0, () =>
+    prisma.post.count({ where: buildListWhere({ originalOnly }) }),
+  );
 }
 
 export interface ArchivePost {
