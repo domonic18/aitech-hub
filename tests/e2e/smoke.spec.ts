@@ -1871,6 +1871,10 @@ test("19. M12 收口:站点设置扩展/文章视图切换与 tag 筛选/菜单�
     await expect(page.locator("header nav a", { hasText: "关于" })).toHaveCount(0);
     await expect(page.locator("h1 strong", { hasText: "hub文案" })).toBeVisible();
 
+    // M70 搜索建议词 chips:服务端装配,默认 3 个(洞察热词补齐,云空则内置兜底)
+    // 注:trailingSlash 开 → Link 输出 /search/?q=
+    await expect(page.locator("a[href^='/search/?q=']")).toHaveCount(3);
+
     // rail 计数受配置钳制:项目卡仅现 sortOrder 最小的 A;文章 2 条
     await expect(page.locator("a[href^='/projects/']:not([href='/projects/'])")).toHaveCount(1);
     await expect(page.getByText(`e2e-rail/${SLUG_A}`)).toBeVisible();
