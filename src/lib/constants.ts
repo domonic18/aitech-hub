@@ -1,7 +1,9 @@
 /** 跨模块领域常量(arch/00-overview 与 arch/06-project-structure:env 可调进 env.ts,领域常量在此,模块私有留模块顶部) */
 
-/** 列表分页默认值(arch/07-frontend §4:page/pageSize 默认值) */
-export const DEFAULT_PAGE_SIZE = 10;
+/** 列表分页默认值(arch/07-frontend §4):12 = 卡片视图 1200 版心 4 列 × 3 行
+ *  (minmax(280px,1fr) + gap-5),每页刚好排满;此前的 10 会让末行空两格、
+ *  看着像「没有更多文章了」(2026-11-01 验收反馈) */
+export const DEFAULT_PAGE_SIZE = 12;
 export const MAX_PAGE_SIZE = 50;
 
 /** RSS 输出篇数(arch/07-frontend §3:最新 20 篇) */
