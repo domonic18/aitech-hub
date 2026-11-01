@@ -29,8 +29,9 @@ import {
   TOOL_CALLS_MIN,
   type AgentLimitKind,
   type AgentLimitsConfig,
-} from "@/lib/config/agent-limits";
-import { ABOUT_MD_MAX, type SiteSettings } from "@/lib/config/site-config";
+} from "@/lib/config/agent-limits-constants";
+import type { SiteSettings } from "@/lib/config/site-config";
+import { ABOUT_MD_MAX } from "@/lib/constants";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 /** 三档额度展示名与默认值(默认值仅作 hint 文案) */

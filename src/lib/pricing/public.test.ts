@@ -22,7 +22,6 @@ import {
   formatPrice,
   inPriceBand,
   isPricingStale,
-  listPublicPricing,
   PRICE_BANDS,
   PRICING_STALE_DAYS,
   sortPublicModels,
@@ -30,6 +29,7 @@ import {
   type PriceBandId,
   type PublicModelRow,
 } from "./public";
+import { listPublicPricing } from "./read";
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -9,8 +9,14 @@
  *
  * 消费面:根 layout metadata、feed.xml、文章/项目 JSON-LD、页脚版权行、
  * 页头域名后缀、各页 description 的品牌兜底。
+ *
+ * ⚠️ 本模块必须保持**零 import**:它是纯字面量叶子,
+ * `lib/config/site-config.ts` 会反向引用它,而后台表单(SiteSettingsForm,客户端组件)
+ * 又从 site-config 取值 —— 这里一旦引入 `lib/seo/site` 这类链到 `lib/env` 的模块,
+ * env 校验就会顺着客户端链被打进 bundle(2026-11-01 站点设置页白屏即此类事故:
+ * 实际触发点是 `lib/db.ts` 改读 `env.NODE_ENV`,同一条纪律——客户端可达的模块
+ * 不得触达 env)。需要 derive 站点的函数(如 siteHost)请放 `lib/seo/site.ts`,别放这里。
  */
-import { siteUrl } from "@/lib/seo/site";
 
 /** 品牌名(后台未配置 site.title 时的站点标题,见 site-config#DEFAULT_SITE_TITLE) */
 export const SITE_NAME = "一起AI";
@@ -37,8 +43,3 @@ export const AUTHOR_JSONLD = {
 
 /** 品牌短名(终端风界面里的 user@host 提示行,如 `domonic18@17aitech`) */
 export const SITE_BRAND_SHORT = "17aitech";
-
-/** 部署域名(页头品牌 chip 右侧的 tld);随 NEXT_PUBLIC_SITE_URL,dev 即 localhost */
-export function siteHost(): string {
-  return new URL(siteUrl()).host;
-}

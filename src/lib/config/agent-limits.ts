@@ -6,48 +6,27 @@
  * 递归兜底必须同步放大(run.ts docblock),派生消掉「配小 recursion 中途
  * 断流」的脚枪。读侧:run 路由每请求一次 findMany(热路径随即开 LLM 流,
  * 单键索引查询开销可忽略)。
+ *
+ * 档位/默认值/合法域等**纯**常量住 `agent-limits-constants.ts`(客户端组件直接取,
+ * 见该文件头注),本模块只留读写侧并原样再导出,服务端消费面不变。
  */
 import { z } from "zod";
 
 import { prisma } from "../db";
+import {
+  AGENT_LIMIT_KEYS,
+  AGENT_LIMIT_KINDS,
+  DEFAULT_AGENT_LIMITS,
+  deriveRecursionLimit,
+  TOKENS_MAX,
+  TOKENS_MIN,
+  TOOL_CALLS_MAX,
+  TOOL_CALLS_MIN,
+  type AgentLimitKind,
+  type AgentLimitsConfig,
+} from "./agent-limits-constants";
 
-/** 身份档(与 AgentIdentity["kind"] 同域;字面量防 config→agent 反向依赖) */
-export const AGENT_LIMIT_KINDS = ["guest", "user", "admin"] as const;
-export type AgentLimitKind = (typeof AGENT_LIMIT_KINDS)[number];
-
-/** 单档额度(次/tokens;recursion 派生不入库) */
-export interface AgentLimitsConfig {
-  toolCalls: number;
-  tokens: number;
-}
-
-/** 默认档(= 硬编码时代 2026-10-17 放宽值;缺行/构建期回落);
- * 2026-10-20 富 HTML 改造:一篇文章 = 素材/指南 + 写作 + 1~2 轮自审 + 3~5 张卡
- * (含重试) + 两段封面 HITL,80 次无重试余量;tokens 同调 600k(大 HTML 卡
- * 单次 8~12k token,多轮累积) */
-export const DEFAULT_AGENT_LIMITS: Record<AgentLimitKind, AgentLimitsConfig> = {
-  guest: { toolCalls: 12, tokens: 50_000 },
-  user: { toolCalls: 12, tokens: 50_000 },
-  admin: { toolCalls: 120, tokens: 600_000 },
-};
-
-/** 合法域(三档同域;admin 长编排实测 80/400k→120/600k,上限留足余量) */
-export const TOOL_CALLS_MIN = 1;
-export const TOOL_CALLS_MAX = 200;
-export const TOKENS_MIN = 1_000;
-export const TOKENS_MAX = 2_000_000;
-
-/** KV 键登记(agent.<kind>.<field>;site_config 表,消费方经常量取键) */
-export const AGENT_LIMIT_KEYS: Record<AgentLimitKind, { toolCalls: string; tokens: string }> = {
-  guest: { toolCalls: "agent.guest.tool_calls", tokens: "agent.guest.tokens" },
-  user: { toolCalls: "agent.user.tool_calls", tokens: "agent.user.tokens" },
-  admin: { toolCalls: "agent.admin.tool_calls", tokens: "agent.admin.tokens" },
-};
-
-/** recursionLimit 派生:2.5×toolCalls 四舍五入,硬夹 16..500(防极小/极大档) */
-export function deriveRecursionLimit(toolCalls: number): number {
-  return Math.max(16, Math.min(500, Math.round(toolCalls * 2.5)));
-}
+export * from "./agent-limits-constants";
 
 function clampInt(n: number, fallback: number, min: number, max: number): number {
   if (!Number.isInteger(n) || n < min) return fallback;

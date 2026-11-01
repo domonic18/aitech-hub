@@ -3,7 +3,7 @@ import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import TopicNavMenu from "@/components/site/TopicNavMenu";
 import { SITE_TOPICS } from "@/lib/content/topics";
-import { siteHost } from "@/lib/site-meta";
+import { siteHost } from "@/lib/seo/site";
 
 import { getSiteTitle } from "@/lib/config/site-config";
 
@@ -22,7 +22,8 @@ const NAV: ReadonlyArray<NavItem> = [
   { href: "/telegram/", label: "电报流" },
   { href: "/articles/", label: "文章" },
   { href: "/projects/", label: "项目" },
-  { href: "/pins/", label: "贴图" },
+  // 贴图入口随 M67 内容流合并下线(2026-11-01):贴图已混入 /articles/ 总流;
+  // /pins/ 瀑布流页保留(直链可达、仍在 sitemap),只是不再占主菜单
   // 专题聚合(A1 2026-10-29):价格速查等参考工具页归入专题;lg 悬停二级
   // 菜单直达各专题(注册表与 /topics/ 同源防漂移),点击「专题」本体进索引页
   {

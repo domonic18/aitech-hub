@@ -4,9 +4,12 @@
  * 数据按源整批核对,不做行级混合龄;JSON-LD 清单同源构造(中立目录:
  * ItemList+Product 携双价描述,不用 Offer——本站不卖 API,冒充卖方有作弊信号)。
  */
-import { prisma } from "@/lib/db";
-import { prerenderSafe } from "@/lib/prerender-safe";
 import { DAY_MS } from "@/lib/datetime";
+
+/** ⚠️ 本模块必须保持**零库依赖**(无 db / prerender-safe / env):客户端组件
+ *  (PricingExplorer 一族)直接引这里的纯函数与类型,读库那半边住 `./read.ts`。
+ *  两者曾同居,导致 env 校验被打进 /pricing/ 的 client chunk、浏览器白屏
+ *  (2026-11-01 生产事故,见 read.ts 头注)。 */
 
 /** 过期提醒阈值(D5):数据 >45 天未核对出琥珀提醒条 */
 export const PRICING_STALE_DAYS = 45;
@@ -54,73 +57,6 @@ export interface PublicPricing {
   /** 整表 max(dataAsOf)(YYYY-MM-DD),驱动截稿横幅与 45 天提醒;空表 null */
   modelsAsOf: string | null;
   plansAsOf: string | null;
-}
-
-/** 行级 dataAsOf 展示口径按北京日界取 YYYY-MM-DD(与 formatCnDate 对齐) */
-function cnAsOfDay(d: Date): string {
-  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
-}
-
-export async function listPublicPricing(): Promise<PublicPricing> {
-  // 构建期无库降级(prerenderSafe 纪律,docker/CI 构建暴露过):ISR 页产物
-  // 空数据,首次访问实查缓存;运行时错误照常上抛不静默
-  return prerenderSafe(
-    "pricing.public",
-    { models: [], plans: [], modelsAsOf: null, plansAsOf: null },
-    async () => {
-      const [models, plans] = await Promise.all([
-        prisma.modelPricing.findMany({
-          where: { status: "enabled" },
-          orderBy: [{ region: "asc" }, { sortOrder: "asc" }, { vendor: "asc" }],
-        }),
-        prisma.codingPlan.findMany({
-          where: { status: "enabled" },
-          orderBy: [{ sortOrder: "asc" }, { vendor: "asc" }],
-        }),
-      ]);
-
-      const modelRows: PublicModelRow[] = models.map((r) => ({
-        vendor: r.vendor,
-        modelKey: r.modelKey,
-        currency: r.currency,
-        inputPrice: r.inputPrice === null ? null : Number(r.inputPrice),
-        outputPrice: r.outputPrice === null ? null : Number(r.outputPrice),
-        freeTier: r.freeTier,
-        contextWindow: r.contextWindow,
-        note: r.note,
-        dataAsOf: cnAsOfDay(r.dataAsOf),
-        sourceUrl: r.sourceUrl,
-        region: r.region,
-      }));
-      const planRows: PublicPlanRow[] = plans.map((r) => ({
-        vendor: r.vendor,
-        planName: r.planName,
-        currency: r.currency,
-        monthlyFee: r.monthlyFee === null ? null : Number(r.monthlyFee),
-        quarterlyFee: r.quarterlyFee === null ? null : Number(r.quarterlyFee),
-        yearlyFee: r.yearlyFee === null ? null : Number(r.yearlyFee),
-        billingNote: r.billingNote,
-        benefits: Array.isArray(r.benefits) ? (r.benefits as string[]) : null,
-        quotaDesc: r.quotaDesc,
-        peakRate: r.peakRate,
-        offPeakRate: r.offPeakRate,
-        bestFor: r.bestFor,
-        note: r.note,
-        dataAsOf: cnAsOfDay(r.dataAsOf),
-        sourceUrl: r.sourceUrl,
-      }));
-
-      const maxAsOf = (rows: Array<{ dataAsOf: string }>): string | null =>
-        rows.length === 0 ? null : rows.map((r) => r.dataAsOf).reduce((a, b) => (a > b ? a : b));
-
-      return {
-        models: modelRows,
-        plans: planRows,
-        modelsAsOf: maxAsOf(modelRows),
-        plansAsOf: maxAsOf(planRows),
-      };
-    },
-  );
 }
 
 /** 价格格(纯函数,单测锚):null=未公布(禁臆测);USD 原币直出不折算(D4);
