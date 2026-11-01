@@ -33,6 +33,11 @@
 .prose h6 {
   font-size: 1.05em;
 }
+/* 目录锚点跳转(2026-11-01 文章页 TOC):吸顶 Header 高 64px(--site-header-h),
+   留 16px 呼吸;此前该 token 只定义未消费,这里正式启用 */
+.prose :where(h1, h2, h3, h4, h5, h6)[id] {
+  scroll-margin-top: calc(var(--site-header-h) + 16px);
+}
 
 .prose a {
   color: oklch(0.55 0.15 240);

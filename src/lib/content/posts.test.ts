@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(),
-  post: { findMany: vi.fn(), count: vi.fn() },
+  post: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
   postComment: { groupBy: vi.fn() },
   postLike: { groupBy: vi.fn() },
 }));
@@ -16,11 +16,12 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { listPostsPage } from "./posts";
+import { getAdjacentPosts, listPostsPage } from "./posts";
 
 beforeEach(() => {
   for (const m of [
     prismaMock.post.findMany,
+    prismaMock.post.findFirst,
     prismaMock.post.count,
     prismaMock.postComment.groupBy,
     prismaMock.postLike.groupBy,
@@ -79,5 +80,39 @@ describe("listPostsPage 交互计数挂载(M23)", () => {
     expect(items).toEqual([]);
     expect(prismaMock.postComment.groupBy).not.toHaveBeenCalled();
     expect(prismaMock.postLike.groupBy).not.toHaveBeenCalled();
+  });
+});
+
+describe("getAdjacentPosts 上一篇/下一篇(2026-11-01)", () => {
+  it("按 (publishedAt, id) 逐位比较:prev 更早、next 更新,均限已发布", async () => {
+    const at = new Date("2026-10-01T00:00:00Z");
+    const prev = { id: BigInt(9), slug: "old", title: "旧文", publishedAt: at };
+    const next = { id: BigInt(11), slug: null, title: "新文", publishedAt: at };
+    prismaMock.post.findFirst.mockResolvedValueOnce(prev).mockResolvedValueOnce(next);
+
+    const result = await getAdjacentPosts({ id: BigInt(10), publishedAt: at });
+    expect(result).toEqual({ prev, next });
+
+    const [[prevArg], [nextArg]] = prismaMock.post.findFirst.mock.calls as Array<[unknown]>;
+    expect(prevArg).toMatchObject({
+      where: {
+        status: "published",
+        OR: [{ publishedAt: { lt: at } }, { publishedAt: at, id: { lt: BigInt(10) } }],
+      },
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+    });
+    expect(nextArg).toMatchObject({
+      where: {
+        status: "published",
+        OR: [{ publishedAt: { gt: at } }, { publishedAt: at, id: { gt: BigInt(10) } }],
+      },
+      orderBy: [{ publishedAt: "asc" }, { id: "asc" }],
+    });
+  });
+
+  it("无发布时间(未发布文不会走到这里)→ 不查库,双空", async () => {
+    const result = await getAdjacentPosts({ id: BigInt(10), publishedAt: null });
+    expect(result).toEqual({ prev: null, next: null });
+    expect(prismaMock.post.findFirst).not.toHaveBeenCalled();
   });
 });

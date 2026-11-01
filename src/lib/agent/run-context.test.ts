@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_CONTEXT_PREFIX,
   buildAgentPageContext,
+  buildAgentRunContext,
   isAdminSurface,
   parseAgentRunContext,
   sanitizeAgentRunContext,
@@ -33,7 +34,35 @@ describe("buildAgentPageContext", () => {
 
   it("尾斜杠归一;未命中路由回落「前台」(page 恒在场)", () => {
     expect(buildAgentPageContext("/search/")).toBe("搜索");
-    expect(buildAgentPageContext("/post/123-abc")).toBe("前台");
+    expect(buildAgentPageContext("/post/123-abc")).toBe("文章详情");
+    expect(buildAgentPageContext("/nope")).toBe("前台");
+  });
+});
+
+describe("buildAgentRunContext(M69 文章页上下文)", () => {
+  it("/post/<id>-<slug> 带 article.postId(尾斜杠归一)", () => {
+    expect(buildAgentRunContext("/post/123-abc")).toEqual({
+      page: "文章详情",
+      article: { postId: "123" },
+    });
+    expect(buildAgentRunContext("/post/123-abc/")).toEqual({
+      page: "文章详情",
+      article: { postId: "123" },
+    });
+  });
+
+  it("裸 id 段同样解析;坏 id 只留 page(不注入不存在的文章)", () => {
+    expect(buildAgentRunContext("/post/456")).toEqual({
+      page: "文章详情",
+      article: { postId: "456" },
+    });
+    expect(buildAgentRunContext("/post/abc-def")).toEqual({ page: "文章详情" });
+    expect(buildAgentRunContext("/post/123-abc/comments")).toEqual({ page: "文章详情" });
+  });
+
+  it("非文章路由无 article 段", () => {
+    expect(buildAgentRunContext("/telegram")).toEqual({ page: "电报流" });
+    expect(buildAgentRunContext("/")).toEqual({ page: "首页" });
   });
 });
 
@@ -42,7 +71,7 @@ describe("isAdminSurface(M58 批⑤ 入池上下文黑名单)", () => {
     for (const page of ["后台", "文章新建", "文章编辑", "文章管理", "创作中心"]) {
       expect(isAdminSurface(page)).toBe(true);
     }
-    for (const page of ["首页", "搜索", "电报流", "开源项目", "前台"]) {
+    for (const page of ["首页", "搜索", "电报流", "开源项目", "文章详情", "前台"]) {
       expect(isAdminSurface(page)).toBe(false);
     }
     expect(isAdminSurface(null)).toBe(false);
@@ -86,6 +115,27 @@ describe("parseAgentRunContext", () => {
       parseAgentRunContext({ page: "x", edit: { postId: "1", title: "t".repeat(301) } }),
     ).toBeNull();
   });
+
+  it("article 段(M69):合法透传,坏 id 整体判非法", () => {
+    expect(parseAgentRunContext({ page: "文章详情", article: { postId: "123" } })).toEqual({
+      page: "文章详情",
+      article: { postId: "123" },
+    });
+    expect(parseAgentRunContext({ page: "文章详情", article: { postId: "" } })).toBeNull();
+    expect(parseAgentRunContext({ page: "文章详情", article: { postId: "12a" } })).toBeNull();
+    expect(
+      parseAgentRunContext({ page: "文章详情", article: { postId: "1".repeat(21) } }),
+    ).toBeNull();
+  });
+
+  it("article 的 title/slug/gated 客户端伪造被丢弃(只认 postId)", () => {
+    expect(
+      parseAgentRunContext({
+        page: "文章详情",
+        article: { postId: "123", title: "伪造标题", slug: "fake", gated: false },
+      }),
+    ).toEqual({ page: "文章详情", article: { postId: "123" } });
+  });
 });
 
 describe("sanitizeAgentRunContext", () => {
@@ -100,6 +150,23 @@ describe("sanitizeAgentRunContext", () => {
   it("null 进 null 出;无 edit 段各身份原样", () => {
     expect(sanitizeAgentRunContext(null, "admin")).toBeNull();
     expect(sanitizeAgentRunContext({ page: "搜索" }, "guest")).toEqual({ page: "搜索" });
+  });
+
+  it("article 段(M69)各身份保留,只剥 edit", () => {
+    const articleCtx = {
+      page: "文章详情",
+      edit: { postId: "123", title: "标题" },
+      article: { postId: "123" },
+    };
+    expect(sanitizeAgentRunContext(articleCtx, "admin")).toEqual(articleCtx);
+    expect(sanitizeAgentRunContext(articleCtx, "user")).toEqual({
+      page: "文章详情",
+      article: { postId: "123" },
+    });
+    expect(sanitizeAgentRunContext(articleCtx, "guest")).toEqual({
+      page: "文章详情",
+      article: { postId: "123" },
+    });
   });
 });
 

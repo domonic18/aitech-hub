@@ -1,15 +1,14 @@
 import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
-import { postPath } from "@/lib/content/post-path";
 import { getSiteSettings } from "@/lib/config/site-config";
-import { formatCnDate } from "@/lib/datetime";
 import { formatStars, listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import { countTodayVisible, listBandFeed, listPublicChannels } from "@/lib/telegram/public-feed";
 
 import HeroConsole from "@/components/site/HeroConsole";
 import HeroBrandLine from "@/components/site/HeroBrandLine";
+import PostRail from "@/components/site/PostRail";
 import SiteSprite from "@/components/site/SiteSprite";
 import TelegramBand from "@/components/site/TelegramBand";
 import TrackedLink from "@/components/site/TrackedLink";
@@ -28,68 +27,6 @@ import TrackedLink from "@/components/site/TrackedLink";
  * (空则整卡不渲染,同开源项目卡降级口径)。
  */
 export const revalidate = 600;
-
-/** 右栏文章紧凑卡(博主文章/推荐视频共用布局;footerLink 省略即不渲染底栏) */
-function PostRail({
-  icon,
-  title,
-  tag,
-  posts,
-  footerLink,
-}: {
-  icon: string;
-  title: string;
-  tag: string;
-  posts: Awaited<ReturnType<typeof listLatestPosts>>;
-  footerLink?: { href: string; label: string };
-}) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
-      <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
-        <svg className="ic text-text-2" aria-hidden="true">
-          <use href={icon} />
-        </svg>
-        {title}
-        <span className="ml-auto font-mono text-[11px] font-normal tracking-wider text-text-3">
-          [{tag}]
-        </span>
-      </div>
-      {posts.map((post) => (
-        <TrackedLink
-          key={post.id}
-          href={postPath(post.id, post.slug)}
-          surface="home"
-          kind="post"
-          entryKey={post.id.toString()}
-          className="block border-b border-line/55 px-4 py-2.5 last:border-b-0 hover:bg-panel-2"
-        >
-          <span className="block truncate text-[13px] font-semibold leading-normal text-text-1 hover:text-accent-hover">
-            {post.title}
-          </span>
-          <span className="mt-1 flex items-center gap-2.5 font-mono text-[11.5px] text-text-3">
-            <span className="rounded border border-green/30 bg-green/10 px-1.5 text-green-hi">
-              {post.category.name}
-            </span>
-            {post.publishedAt ? <span>{formatCnDate(post.publishedAt).slice(5)}</span> : null}
-            <span className="ml-auto inline-flex items-center gap-1">
-              <svg className="ic ic-sm" aria-hidden="true">
-                <use href="#i-eye" />
-              </svg>
-              {post.viewsCount.toLocaleString("zh-CN")}
-            </span>
-          </span>
-        </TrackedLink>
-      ))}
-      {footerLink && (
-        <div className="border-t border-line bg-panel-2 px-4 py-2 text-center">
-          <Link href={footerLink.href} className="text-[13px] text-text-2 hover:text-accent-hover">
-            {footerLink.label}
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default async function HomePage(): Promise<React.ReactElement> {
   // 配置段先行(rail/band 条数是后续取数的入参):getSiteSettings 单查询读全键,
@@ -191,12 +128,19 @@ export default async function HomePage(): Promise<React.ReactElement> {
             tag="BLOG"
             posts={latest}
             footerLink={{ href: "/articles/", label: "全部文章 →" }}
+            track={{ surface: "home", kind: "post" }}
           />
           {/* 推荐视频 rail:非原创分类(推荐视频等);空则整卡不渲染。
               不设底栏「更多」链接——非原创集合≠单一分类,硬编码 slug 会随分类
               漂移,后续确有聚合页诉求再立 */}
           {videos.length > 0 && (
-            <PostRail icon="#i-caret-right-fill" title="推荐视频" tag="VIDEO" posts={videos} />
+            <PostRail
+              icon="#i-caret-right-fill"
+              title="推荐视频"
+              tag="VIDEO"
+              posts={videos}
+              track={{ surface: "home", kind: "post" }}
+            />
           )}
           <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
             <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">

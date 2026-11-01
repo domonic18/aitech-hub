@@ -13,8 +13,11 @@ import { interrupt } from "@langchain/langgraph";
 import { z } from "zod";
 
 import { PUBLISHED } from "../content/posts";
+import { htmlToMarkdown } from "../content/html-to-md";
 import { submitFeedbackSchema } from "../feedback/feedback-schema";
 import { prisma } from "../db";
+import { parseBigIntId } from "../http/parse-id";
+import { gateNoticeText, previewMarkdown } from "../pay/preview";
 import { ingestInsightSignal } from "../insight/ingest";
 import { AGENT_ASK_USER_TOOL, type AgentAskUserResume } from "./hitl";
 import { logger } from "../logger";
@@ -48,25 +51,72 @@ export const searchSiteTool = tool(async ({ q }) => summarizeSearchGroups(await 
   }),
 });
 
-export const readPostTool = tool(
-  async ({ id }) => {
-    const post = await prisma.post.findFirst({
-      where: { id: BigInt(id), ...PUBLISHED },
-      select: { title: true, contentMd: true },
-    });
-    if (!post) return JSON.stringify({ error: "文章不存在或未发布" });
-    const body = (post.contentMd ?? "").slice(0, TOOL_BODY_MAX);
-    return JSON.stringify({ id, title: post.title, content: body });
-  },
-  {
-    name: "read_post",
-    description:
-      "读站内文章正文(教程)。输入 search_site 返回的 post id;返回标题与 Markdown 正文(超长截断)。",
-    schema: z.object({
-      id: z.string().regex(/^\d+$/).describe("文章 id(纯数字字符串)"),
-    }),
-  },
-);
+/**
+ * read_post 门禁档(M69):工具在构图时按身份创建(图按身份缓存),不依赖
+ * 运行时 config。gated-preview=游客/默认(fail-closed,任一 gated 只给预览);
+ * login-unlocked=登录用户(仅 login 门禁可读全文,付费仍预览);full=admin。
+ */
+type ReadPostMode = "full" | "login-unlocked" | "gated-preview";
+
+function makeReadPostTool(mode: ReadPostMode) {
+  return tool(
+    async ({ id }) => {
+      const bigId = parseBigIntId(id);
+      if (bigId === null) return JSON.stringify({ error: "文章不存在或未发布" });
+      const post = await prisma.post.findFirst({
+        where: { id: bigId, ...PUBLISHED },
+        select: {
+          title: true,
+          contentMd: true,
+          contentHtml: true,
+          isPurchasable: true,
+          isLoginRequired: true,
+        },
+      });
+      if (!post) return JSON.stringify({ error: "文章不存在或未发布" });
+      // 旧迁移文 contentMd 为空、正文在 contentHtml:先转 md 再截断/预览
+      const source = post.contentMd ?? (post.contentHtml ? htmlToMarkdown(post.contentHtml) : "");
+      const gate: "paid" | "login" | null = post.isPurchasable
+        ? "paid"
+        : post.isLoginRequired
+          ? "login"
+          : null;
+      const preview =
+        gate !== null &&
+        (mode === "gated-preview" || (mode === "login-unlocked" && gate === "paid"));
+      if (preview && gate !== null) {
+        return JSON.stringify({
+          id,
+          title: post.title,
+          content: previewMarkdown(source),
+          gated: true,
+          notice: gateNoticeText(gate),
+        });
+      }
+      return JSON.stringify({ id, title: post.title, content: source.slice(0, TOOL_BODY_MAX) });
+    },
+    {
+      name: "read_post",
+      description:
+        "读站内文章正文(教程)。输入 search_site 返回的 post id;返回标题与 Markdown 正文(超长截断)。付费/登录可见文章仅返回预览(gated=true)。",
+      schema: z.object({
+        id: z.string().regex(/^\d+$/).describe("文章 id(纯数字字符串)"),
+      }),
+    },
+  );
+}
+
+/** 默认档=fail-closed(游客/未识别身份):门禁文只给预览 */
+export const readPostTool = makeReadPostTool("gated-preview");
+
+/** 按身份取 read_post(agentToolsFor 构图时调用) */
+export function readPostToolFor(kind: "admin" | "user" | "guest") {
+  return kind === "admin"
+    ? makeReadPostTool("full")
+    : kind === "user"
+      ? makeReadPostTool("login-unlocked")
+      : readPostTool;
+}
 
 export const readRepoTool = tool(
   async ({ id }) => {

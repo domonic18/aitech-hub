@@ -96,6 +96,52 @@ export async function listLatestPosts(limit: number, opts: { original?: boolean 
   });
 }
 
+/** 上一篇/下一篇轻投影(不带正文/分类/计数) */
+const ADJACENT_SELECT = { id: true, slug: true, title: true, publishedAt: true } as const;
+
+export type AdjacentPost = {
+  id: bigint;
+  slug: string | null;
+  title: string;
+  publishedAt: Date | null;
+};
+
+/**
+ * 上一篇/下一篇(2026-11-01 文章阅读页):沿用列表同一排序键
+ * (published_at desc, id desc) 逐位比较,因此与「最近文章」顺序严丝合缝。
+ * getPostById 只取已发布文,这里的 current 必然已发布;两跳都限定 PUBLISHED,
+ * 草稿/下架文不会出现在翻页链上。
+ * 语义同 WP previous_post_link / next_post_link:prev = 更早发布,next = 更新发布。
+ */
+export async function getAdjacentPosts(current: {
+  id: bigint;
+  publishedAt: Date | null;
+}): Promise<{ prev: AdjacentPost | null; next: AdjacentPost | null }> {
+  return prerenderSafe("posts.adjacent", { prev: null, next: null }, async () => {
+    const at = current.publishedAt;
+    if (!at) return { prev: null, next: null };
+    const [prev, next] = await Promise.all([
+      prisma.post.findFirst({
+        where: {
+          ...PUBLISHED,
+          OR: [{ publishedAt: { lt: at } }, { publishedAt: at, id: { lt: current.id } }],
+        },
+        select: ADJACENT_SELECT,
+        orderBy: [...ORDER],
+      }),
+      prisma.post.findFirst({
+        where: {
+          ...PUBLISHED,
+          OR: [{ publishedAt: { gt: at } }, { publishedAt: at, id: { gt: current.id } }],
+        },
+        select: ADJACENT_SELECT,
+        orderBy: [{ publishedAt: "asc" }, { id: "asc" }],
+      }),
+    ]);
+    return { prev, next };
+  });
+}
+
 export async function listPinnedPosts(limit: number) {
   return prerenderSafe("posts.pinned", [], async () => {
     const items = await prisma.post.findMany({

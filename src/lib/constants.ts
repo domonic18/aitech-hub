@@ -32,3 +32,7 @@ export const SEARCH_TERM_MAX = 100;
  *  住这里而非 lib/config/site-config:后者链到 prisma/env,而 admin 表单是客户端组件,
  *  只有纯常量可以进 client chunk(2026-11-01 站点设置页白屏事故,见 lib/site-meta 头注)。 */
 export const ABOUT_MD_MAX = 8000;
+
+/** 文章页文末版权声明上限(纯文本,保留换行;空 = 不展示整块)。
+ *  同样住这里:admin 表单 import,不能经 lib/config/site-config 链到 prisma/env。 */
+export const COPYRIGHT_MD_MAX = 1000;

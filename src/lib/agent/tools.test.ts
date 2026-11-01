@@ -26,6 +26,8 @@ import {
   getTimeTool,
   proposeEditsTool,
   readDraftTool,
+  readPostTool,
+  readPostToolFor,
 } from "./tools";
 import { resetReadDraftSeenForTest } from "./edit-tools";
 
@@ -48,6 +50,75 @@ describe("AGENT_TOOLS", () => {
       "ask_user",
       "submit_feedback",
     ]);
+  });
+});
+
+describe("read_post 门禁(M69):按身份取正文档,默认 fail-closed", () => {
+  const LONG = "段".repeat(7000);
+  const row = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    title: "标题",
+    contentMd: LONG,
+    contentHtml: null,
+    isPurchasable: false,
+    isLoginRequired: false,
+    ...over,
+  });
+  const read = async (t: typeof readPostTool, id = "123"): Promise<Record<string, unknown>> =>
+    JSON.parse((await t.invoke({ id } as never)) as string) as Record<string, unknown>;
+
+  it("未门禁文各身份全文(超长截断到 TOOL_BODY_MAX,无 gated 标记)", async () => {
+    prismaMock.post.findFirst.mockResolvedValue(row());
+    for (const t of [
+      readPostTool,
+      readPostToolFor("guest"),
+      readPostToolFor("user"),
+      readPostToolFor("admin"),
+    ]) {
+      const out = await read(t);
+      expect(out.gated).toBeUndefined();
+      expect(String(out.content)).toHaveLength(6000);
+    }
+  });
+
+  it("付费文:游客/登录用户只给预览(≤800 + gated + notice);admin 全文", async () => {
+    prismaMock.post.findFirst.mockResolvedValue(row({ isPurchasable: true }));
+    for (const t of [readPostTool, readPostToolFor("guest"), readPostToolFor("user")]) {
+      const out = await read(t);
+      expect(out.gated).toBe(true);
+      expect(out.notice).toBe("[付费文章,仅预览]");
+      expect((out.content as string).length).toBeLessThanOrEqual(800);
+    }
+    const admin = await read(readPostToolFor("admin"));
+    expect(admin.gated).toBeUndefined();
+    expect(String(admin.content)).toHaveLength(6000);
+  });
+
+  it("仅登录可见文:游客预览,登录用户/admin 全文", async () => {
+    prismaMock.post.findFirst.mockResolvedValue(row({ isLoginRequired: true }));
+    const guest = await read(readPostToolFor("guest"));
+    expect(guest.gated).toBe(true);
+    expect(guest.notice).toBe("[登录可见,仅预览]");
+    expect((await read(readPostToolFor("user"))).gated).toBeUndefined();
+    expect((await read(readPostToolFor("admin"))).gated).toBeUndefined();
+  });
+
+  it("旧迁移文 contentMd 为空 → contentHtml 转 Markdown 兜底(不再是空正文)", async () => {
+    prismaMock.post.findFirst.mockResolvedValue(
+      row({ contentMd: null, contentHtml: "<p>正文段落甲</p><p>乙</p>" }),
+    );
+    const out = await read(readPostTool);
+    expect(String(out.content)).toContain("正文段落甲");
+    expect(String(out.content)).not.toContain("<p>");
+  });
+
+  it("文章不存在/未发布 → 业务降级;非法 id 不触库", async () => {
+    prismaMock.post.findFirst.mockResolvedValue(null);
+    expect(await read(readPostTool)).toEqual({ error: "文章不存在或未发布" });
+    prismaMock.post.findFirst.mockReset();
+    expect(await read(readPostTool, "99999999999999999999999999")).toEqual({
+      error: "文章不存在或未发布",
+    });
+    expect(prismaMock.post.findFirst).not.toHaveBeenCalled();
   });
 });
 

@@ -31,7 +31,7 @@ import {
   type AgentLimitsConfig,
 } from "@/lib/config/agent-limits-constants";
 import type { SiteSettings } from "@/lib/config/site-config";
-import { ABOUT_MD_MAX } from "@/lib/constants";
+import { ABOUT_MD_MAX, COPYRIGHT_MD_MAX } from "@/lib/constants";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 /** 三档额度展示名与默认值(默认值仅作 hint 文案) */
@@ -67,6 +67,7 @@ export default function SiteSettingsForm({
   const [heroMd, setHeroMd] = useState(initial.heroMd);
   const [aboutMd, setAboutMd] = useState(initial.aboutMd);
   const [icp, setIcp] = useState(initial.icp);
+  const [copyrightMd, setCopyrightMd] = useState(initial.postCopyrightMd);
   const [agent, setAgent] = useState<AgentFormState>(toAgentFormState(agentLimits));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export default function SiteSettingsForm({
           heroMd,
           aboutMd,
           icp,
+          postCopyrightMd: copyrightMd,
           guestToolCalls: Number(agent.guest.toolCalls),
           guestTokens: Number(agent.guest.tokens),
           userToolCalls: Number(agent.user.toolCalls),
@@ -244,6 +246,29 @@ export default function SiteSettingsForm({
             maxLength={ABOUT_MD_MAX}
             placeholder="留空回退内置默认文案;支持完整 Markdown。"
             className={`font-mono ${INPUT} resize-y`}
+          />
+        </SettingsField>
+      </SettingsSection>
+
+      <SettingsSection
+        icon="i-filetext"
+        title="文章页"
+        description="展示于前台文章详情页文末;保存后文章页在 ISR 周期(≤10 分钟)内更新。"
+      >
+        <SettingsField
+          label="文末版权声明"
+          htmlFor="cfg-copyright"
+          hint={`纯文本,保留换行,最多 ${COPYRIGHT_MD_MAX} 字;留空则不展示该区块。`}
+        >
+          <textarea
+            id="cfg-copyright"
+            value={copyrightMd}
+            onChange={(e) => setCopyrightMd(e.target.value)}
+            aria-label="文末版权声明"
+            rows={4}
+            maxLength={COPYRIGHT_MD_MAX}
+            placeholder="留空则不展示版权声明区块。"
+            className={`${INPUT} resize-y`}
           />
         </SettingsField>
       </SettingsSection>
