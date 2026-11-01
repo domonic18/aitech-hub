@@ -31,7 +31,14 @@ import {
   type AgentLimitsConfig,
 } from "@/lib/config/agent-limits-constants";
 import type { SiteSettings } from "@/lib/config/site-config";
-import { ABOUT_MD_MAX, COPYRIGHT_MD_MAX } from "@/lib/constants";
+import {
+  ABOUT_MD_MAX,
+  COPYRIGHT_MD_MAX,
+  DEFAULT_SEARCH_TERMS_COUNT,
+  SEARCH_TERMS_MAX_COUNT,
+  SEARCH_TERMS_MAX_WORDS,
+  SEARCH_TERMS_MIN_COUNT,
+} from "@/lib/constants";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 /** 三档额度展示名与默认值(默认值仅作 hint 文案) */
@@ -55,9 +62,12 @@ function toAgentFormState(v: Record<AgentLimitKind, AgentLimitsConfig>): AgentFo
 export default function SiteSettingsForm({
   initial,
   agentLimits,
+  searchTermCandidates,
 }: {
   initial: SiteSettings;
   agentLimits: Record<AgentLimitKind, AgentLimitsConfig>;
+  /** 洞察中心关键词云候选词(服务端 30 天窗口现算;空 = 尚无已打标热词) */
+  searchTermCandidates: string[];
 }) {
   const router = useRouter();
   const [bandCount, setBandCount] = useState(String(initial.bandItemCount));
@@ -68,6 +78,8 @@ export default function SiteSettingsForm({
   const [aboutMd, setAboutMd] = useState(initial.aboutMd);
   const [icp, setIcp] = useState(initial.icp);
   const [copyrightMd, setCopyrightMd] = useState(initial.postCopyrightMd);
+  const [searchWords, setSearchWords] = useState<string[]>(initial.homeSearchTerms.words);
+  const [searchCount, setSearchCount] = useState(String(initial.homeSearchTerms.count));
   const [agent, setAgent] = useState<AgentFormState>(toAgentFormState(agentLimits));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +87,20 @@ export default function SiteSettingsForm({
 
   const setAgentField = (kind: AgentLimitKind, field: "toolCalls" | "tokens", v: string): void => {
     setAgent((prev) => ({ ...prev, [kind]: { ...prev[kind], [field]: v } }));
+  };
+
+  /** 建议词勾选(上限 4;已选但已滚出候选的词仍保留在选项里,可随时取消) */
+  const searchWordOptions = [
+    ...new Set([...initial.homeSearchTerms.words, ...searchTermCandidates]),
+  ];
+  const toggleSearchWord = (word: string): void => {
+    setSearchWords((prev) =>
+      prev.includes(word)
+        ? prev.filter((w) => w !== word)
+        : prev.length >= SEARCH_TERMS_MAX_WORDS
+          ? prev
+          : [...prev, word],
+    );
   };
 
   const save = async (): Promise<void> => {
@@ -94,6 +120,7 @@ export default function SiteSettingsForm({
           aboutMd,
           icp,
           postCopyrightMd: copyrightMd,
+          homeSearchTerms: { words: searchWords, count: Number(searchCount) },
           guestToolCalls: Number(agent.guest.toolCalls),
           guestTokens: Number(agent.guest.tokens),
           userToolCalls: Number(agent.user.toolCalls),
@@ -129,7 +156,7 @@ export default function SiteSettingsForm({
       <SettingsSection
         icon="i-eye"
         title="首页展示"
-        description="控制首页 LIVE 带、项目卡与博主文章 rail 的展示条数;非法或越界值按默认兜底。"
+        description="控制首页 LIVE 带、项目卡与博主文章 rail 的展示条数,以及搜索框下的快捷搜索建议词;非法或越界值按默认兜底。"
       >
         <SettingsGrid cols={3}>
           <SettingsField label="电报流条数" htmlFor="cfg-band" hint="1-50,默认 12">
@@ -172,6 +199,63 @@ export default function SiteSettingsForm({
             />
           </SettingsField>
         </SettingsGrid>
+        <div className="mt-4 flex flex-col gap-4">
+          <SettingsGrid cols={2}>
+            <SettingsField
+              label="搜索建议词个数"
+              htmlFor="cfg-search-count"
+              hint={`${SEARCH_TERMS_MIN_COUNT}-${SEARCH_TERMS_MAX_COUNT},默认 ${DEFAULT_SEARCH_TERMS_COUNT};固定词不足或未勾选时,用洞察热词补足到该个数。`}
+            >
+              <input
+                id="cfg-search-count"
+                type="number"
+                min={SEARCH_TERMS_MIN_COUNT}
+                max={SEARCH_TERMS_MAX_COUNT}
+                step={1}
+                value={searchCount}
+                onChange={(e) => setSearchCount(e.target.value)}
+                aria-label="首页搜索建议词个数"
+                className={INPUT}
+              />
+            </SettingsField>
+          </SettingsGrid>
+          <SettingsField
+            label={`固定建议词(已选 ${searchWords.length}/${SEARCH_TERMS_MAX_WORDS})`}
+            hint="勾选 = 按勾选顺序固定展示;全部不选 = 自动取洞察中心关键词云最新热词。词云无数据时首页回退内置示例词。"
+          >
+            {searchWordOptions.length === 0 ? (
+              <p className="text-[11px] leading-relaxed text-text-3">
+                洞察中心近 30 天暂无已打标热词(需先完成洞察归纳打标);首页将回退内置示例词。
+              </p>
+            ) : (
+              <div className="max-h-52 overflow-y-auto rounded-sm border border-line bg-panel-2 p-2">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {searchWordOptions.map((word) => {
+                    const checked = searchWords.includes(word);
+                    return (
+                      <label
+                        key={word}
+                        className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-text-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!checked && searchWords.length >= SEARCH_TERMS_MAX_WORDS}
+                          onChange={() => toggleSearchWord(word)}
+                          aria-label={word}
+                          className="accent-accent"
+                        />
+                        <span className="truncate" title={word}>
+                          {word}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </SettingsField>
+        </div>
       </SettingsSection>
 
       <SettingsSection

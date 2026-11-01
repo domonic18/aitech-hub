@@ -5,11 +5,20 @@
  * 此登记(同枚举字段应用层管控纪律)。value 为 Text(20261004232937 扩列,
  * 容纳 hero_md markdown)。站点标题消费面:metadata/Header/Footer/RSS/
  * llms.txt;admin 控制台内部 UI 不随配置(保持「一起AI 控制台」)。
+ * M70:home.search_terms 存 JSON(首页搜索建议词固定词 + 自动取词个数)。
  */
 import { cache } from "react";
 import { z } from "zod";
 
-import { ABOUT_MD_MAX, COPYRIGHT_MD_MAX } from "../constants";
+import {
+  ABOUT_MD_MAX,
+  COPYRIGHT_MD_MAX,
+  DEFAULT_SEARCH_TERMS_COUNT,
+  SEARCH_TERM_WORD_MAX,
+  SEARCH_TERMS_MAX_COUNT,
+  SEARCH_TERMS_MAX_WORDS,
+  SEARCH_TERMS_MIN_COUNT,
+} from "../constants";
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
 import { SITE_NAME } from "../site-meta";
@@ -32,6 +41,9 @@ export const SITE_CONFIG_KEYS = {
   /** 文章页文末版权声明(2026-11-01 阅读页优化;纯文本,空 = 不展示)。
    * 缺行(从未配置)→ 内置默认文案;显式存空串 → 整块隐藏 */
   postCopyrightMd: "post.copyright_md",
+  /** 首页搜索建议词(M70;JSON:`{words: string[], count: number}`)。
+   * words 非空 = 固定词打头,不足 count 用自动热词补齐;words 空 = 全自动取洞察关键词云 */
+  homeSearchTerms: "home.search_terms",
   /** 小红书登录态每日探照快照(M50 批F;非配置是遥测——落 kv 免单行新表,
    * 读写仅经 distribute/xhs-probe.ts,不走 settings 页 Zod 解析器) */
   distributeXhsState: "distribute.xhs_state",
@@ -60,6 +72,74 @@ export const ICP_MAX = 60;
  * 自带的一段。用户裁定以此作为缺省,后台可随时在「站点设置 · 文章页」覆盖。
  */
 export const DEFAULT_POST_COPYRIGHT_MD = "本项目仅供学习交流使用,原创内容不易,转载请注明出处。";
+
+// ── 首页搜索建议词(M70)─────────────────────────────────────────
+
+/** 首页搜索建议词配置(存 home.search_terms,JSON 文本) */
+export interface HomeSearchTermsConfig {
+  /** 固定的热词(0-4;空 = 全自动) */
+  words: string[];
+  /** 自动取词个数(3-4;固定词不足时也以此为补齐目标) */
+  count: number;
+}
+
+export const DEFAULT_HOME_SEARCH_TERMS_CONFIG: HomeSearchTermsConfig = {
+  words: [],
+  count: DEFAULT_SEARCH_TERMS_COUNT,
+};
+
+/** 词表归一:trim、丢弃空/单字/超长、大小写不敏感去重(保留首次出现的拼写与顺序)、截 4 个 */
+export function normalizeSearchTermsWords(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const word = item.trim();
+    if (word.length < 2 || word.length > SEARCH_TERM_WORD_MAX) continue;
+    const key = word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(word);
+    if (out.length >= SEARCH_TERMS_MAX_WORDS) break;
+  }
+  return out;
+}
+
+/** 个数归一:非整数/低于下限 → 默认 3;超上限 → clamp 4 */
+export function clampSearchTermsCount(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(n) || n < SEARCH_TERMS_MIN_COUNT) return DEFAULT_SEARCH_TERMS_COUNT;
+  return Math.min(SEARCH_TERMS_MAX_COUNT, n);
+}
+
+/** 存储值(JSON 文本)解析:缺行/坏 JSON/类型不符一律回默认,永不上抛
+ *  (kv 可被手改,首页渲染不能坏在这) */
+export function parseHomeSearchTerms(raw: string | null): HomeSearchTermsConfig {
+  if (raw === null) return DEFAULT_HOME_SEARCH_TERMS_CONFIG;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return DEFAULT_HOME_SEARCH_TERMS_CONFIG;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return DEFAULT_HOME_SEARCH_TERMS_CONFIG;
+  }
+  const obj = parsed as { words?: unknown; count?: unknown };
+  return {
+    words: normalizeSearchTermsWords(obj.words),
+    count: clampSearchTermsCount(obj.count),
+  };
+}
+
+/** 落库前归一(去重/截断/钳个数),保证 GET 回显与库内一致 */
+export function serializeHomeSearchTerms(cfg: HomeSearchTermsConfig): string {
+  return JSON.stringify({
+    words: normalizeSearchTermsWords(cfg.words),
+    count: clampSearchTermsCount(cfg.count),
+  });
+}
 
 // ── 读侧 ──────────────────────────────────────────────────────
 
@@ -143,6 +223,8 @@ export interface SiteSettings {
   icp: string;
   /** 文章页版权声明(从未配置时回显内置默认,便于站长在其上改) */
   postCopyrightMd: string;
+  /** 首页搜索建议词(固定词 + 自动取词个数) */
+  homeSearchTerms: HomeSearchTermsConfig;
 }
 
 export async function getSiteSettings(): Promise<SiteSettings> {
@@ -157,6 +239,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       aboutMd: "",
       icp: "",
       postCopyrightMd: DEFAULT_POST_COPYRIGHT_MD,
+      homeSearchTerms: DEFAULT_HOME_SEARCH_TERMS_CONFIG,
     },
     async () => {
       const rows = await prisma.siteConfig.findMany({
@@ -187,6 +270,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
         postCopyrightMd: byKey.has(SITE_CONFIG_KEYS.postCopyrightMd)
           ? (byKey.get(SITE_CONFIG_KEYS.postCopyrightMd) ?? "").trim()
           : DEFAULT_POST_COPYRIGHT_MD,
+        homeSearchTerms: parseHomeSearchTerms(byKey.get(SITE_CONFIG_KEYS.homeSearchTerms) ?? null),
       };
     },
   );
@@ -205,6 +289,22 @@ export const SiteConfigUpdateSchema = z.object({
   icp: z.string().trim().max(ICP_MAX).optional(),
   /** 纯文本(可含换行);空串 = 关闭文章页版权声明块 */
   postCopyrightMd: z.string().trim().max(COPYRIGHT_MD_MAX).optional(),
+  /** 首页搜索建议词:words 最多 4 个且各 ≤24 字;count 3-4(strict 防字段拼错被静默丢弃) */
+  homeSearchTerms: z
+    .object({
+      words: z
+        .array(z.string().trim().min(2).max(SEARCH_TERM_WORD_MAX))
+        .max(SEARCH_TERMS_MAX_WORDS)
+        .default([]),
+      count: z
+        .number()
+        .int()
+        .min(SEARCH_TERMS_MIN_COUNT)
+        .max(SEARCH_TERMS_MAX_COUNT)
+        .default(DEFAULT_SEARCH_TERMS_COUNT),
+    })
+    .strict()
+    .optional(),
 });
 
 export type SiteConfigUpdateInput = z.infer<typeof SiteConfigUpdateSchema>;
@@ -236,6 +336,12 @@ export async function setSiteConfig(input: SiteConfigUpdateInput): Promise<void>
   }
   if (data.postCopyrightMd !== undefined) {
     rows.push({ key: SITE_CONFIG_KEYS.postCopyrightMd, value: data.postCopyrightMd });
+  }
+  if (data.homeSearchTerms !== undefined) {
+    rows.push({
+      key: SITE_CONFIG_KEYS.homeSearchTerms,
+      value: serializeHomeSearchTerms(data.homeSearchTerms),
+    });
   }
   if (rows.length === 0) return;
   await prisma.$transaction(

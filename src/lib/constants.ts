@@ -36,3 +36,12 @@ export const ABOUT_MD_MAX = 8000;
 /** 文章页文末版权声明上限(纯文本,保留换行;空 = 不展示整块)。
  *  同样住这里:admin 表单 import,不能经 lib/config/site-config 链到 prisma/env。 */
 export const COPYRIGHT_MD_MAX = 1000;
+
+/** 首页搜索建议词(M70):后台可勾选固定词 + 自动取洞察关键词云。
+ *  同样住这里:admin 表单(客户端组件)要用,不能经 lib/config/site-config。 */
+export const SEARCH_TERMS_MAX_WORDS = 4;
+export const SEARCH_TERMS_MIN_COUNT = 3;
+export const SEARCH_TERMS_MAX_COUNT = 4;
+export const DEFAULT_SEARCH_TERMS_COUNT = 3;
+/** 单个建议词上限(chip 宽度;多于此的中文热词不入选) */
+export const SEARCH_TERM_WORD_MAX = 24;
