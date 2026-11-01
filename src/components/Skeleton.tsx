@@ -16,7 +16,7 @@ export function Skeleton({ className }: { className: string }): ReactElement {
   return <div aria-hidden="true" className={`animate-pulse rounded bg-panel-2 ${className}`} />;
 }
 
-/** 列表页头:标题条 + 计数行(PostListView/归档同形态) */
+/** 列表页头:标题条 + 计数行(ArticlesListView/归档同形态) */
 export function ListHeadSkeleton(): ReactElement {
   return (
     <header className="border-b border-line/60 pb-4">
@@ -26,32 +26,38 @@ export function ListHeadSkeleton(): ReactElement {
   );
 }
 
-/** 文章列表行族:PostCard 形态(标题/两行摘要/元信息 chips) */
+/** 文章列表行族:ArticleRow 形态(左文 + 右缩略图,2026-11-01 重构) */
 export function ArticleRowsSkeleton({ count = 6 }: { count?: number }): ReactElement {
   return (
     <div>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="border-b border-line/60 py-5 last:border-b-0">
-          <Skeleton className={`h-5 ${i % 3 === 2 ? "w-3/5" : "w-[80%]"}`} />
-          <Skeleton className="mt-2 h-4 w-full" />
-          <Skeleton className="mt-1.5 h-4 w-5/6" />
-          <div className="mt-3 flex items-center gap-3">
-            <Skeleton className="h-3.5 w-24" />
-            <Skeleton className="h-3.5 w-16 rounded-sm" />
-            <Skeleton className="h-3.5 w-14" />
+        <div key={i} className="flex gap-4 border-b border-line py-5 last:border-b-0 sm:gap-6">
+          <div className="min-w-0 flex-1">
+            <Skeleton className={`h-5 ${i % 3 === 2 ? "w-3/5" : "w-[80%]"}`} />
+            <Skeleton className="mt-2 h-4 w-full" />
+            <Skeleton className="mt-1.5 h-4 w-5/6" />
+            <div className="mt-3 flex items-center gap-3">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-3.5 w-16 rounded-sm" />
+              <Skeleton className="h-3.5 w-14" />
+            </div>
           </div>
+          <Skeleton className="aspect-[16/9] w-24 shrink-0 rounded-md sm:w-44" />
         </div>
       ))}
     </div>
   );
 }
 
-/** 文章列表(全部文章:PostListView 形态) */
+/** 文章列表(全部文章:ArticlesListView 形态,统一 --site-max-w 版心) */
 export function ArticleListSkeleton(): ReactElement {
   return (
-    <section className="mx-auto w-full max-w-3xl">
+    <section className="mx-auto w-full max-w-[var(--site-max-w)]">
       <ListHeadSkeleton />
-      <ArticleRowsSkeleton />
+      <Skeleton className="mt-4 h-24 w-full rounded-lg" />
+      <div className="mt-4">
+        <ArticleRowsSkeleton />
+      </div>
     </section>
   );
 }
