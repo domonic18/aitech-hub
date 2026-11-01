@@ -132,9 +132,9 @@ Redis `channel:wxmp:bind:<code>` TTL 10 分钟 → `userId`;用户在公众号�
 | 表 | 关键字段 | 约束/索引 |
 | --- | --- | --- |
 | `channel_wechat_mp_config` | 单例 `id=1`:`token varchar(32)`、`encoding_aes_key_enc varchar(200)?` + `encoding_aes_key_mask varchar(20)?`、`enabled`、`greeting_text`、`fallback_text`、`handoff_text`、`handoff_keywords text[]`、`daily_answer_limit int default 200`、`last_test` 四件套 | 主键 + 单例语义(get-or-create) |
-| `channel_wechat_mp_user` | `openid varchar(64)`、`unionid? varchar(64)`、`user_id? bigint`(FK→`user_account`,SetNull)、`nickname?`、`avatar_url?`、`is_subscribed`、`subscribed_at`、`unsubscribed_at?`、`last_message_at?`、`message_count int`、`is_manual_pending` | `uq_channel_wechat_mp_user_openid`;`idx_…_user_id`(FK 必配);`idx_…_last_message_at` |
-| `channel_wechat_mp_message` | `channel_user_id`(FK, Cascade)、`wechat_msg_id varchar(100)`、`direction varchar(10)`(in/out)、`msg_type`(text/event)、`event?`(subscribe/unsubscribe)、`content text`、`reply_kind?`(keyword/rag/timeout/continue/handoff/fallback/welcome/help)、`answer_status?`(ok/no_evidence/error/truncated)、`latency_ms?`、`ai_usage_id?`(FK→`ai_usage_log`,SetNull);append-only 只留 `created_at` | `uq_channel_wechat_mp_message_wechat_msg_id`;`idx_…_user_created (channel_user_id, created_at DESC)`;`idx_…_created_at`(清理用);`idx_…_ai_usage_id` |
-| `channel_wechat_mp_lead` | `channel_user_id`(Cascade)、`message_id?`(SetNull)、`reason varchar(200)`(触发词/摘要)、`status varchar(20)`(open/handled)、`note? text`、`handled_at?` | `idx_…_status_created (status, created_at DESC)`;`idx_…_message_id`;`idx_…_channel_user_id` |
+| `channel_wechat_mp_user` | `openid varchar(64)`、`unionid? varchar(64)`、`user_id? bigint`(FK→`user_account`,SetNull)、`nickname?`、`avatar_url?`、`is_subscribed`、`subscribed_at`、`unsubscribed_at?`、`last_message_at?`、`message_count int`、`is_manual_pending`、`manual_reply? text` + `manual_reply_at?`(待投递人工答复,一次性) | `uq_channel_wechat_mp_user_openid`;`idx_…_user_id`(FK 必配);`idx_…_last_message_at` |
+| `channel_wechat_mp_message` | `channel_user_id`(FK, Cascade)、`wechat_msg_id varchar(100)`、`direction varchar(10)`(in/out)、`msg_type`(text/event)、`event?`(subscribe/unsubscribe)、`content text`、`reply_kind?`(keyword/rag/timeout/continue/handoff/manual/fallback/welcome/help)、`answer_status?`(ok/no_evidence/error/truncated)、`latency_ms?`、`ai_usage_id?`(FK→`ai_usage_log`,SetNull);append-only 只留 `created_at` | `uq_channel_wechat_mp_message_wechat_msg_id`;`idx_…_user_created (channel_user_id, created_at DESC)`;`idx_…_created_at`(清理用);`idx_…_ai_usage_id` |
+| `channel_wechat_mp_lead` | `channel_user_id`(Cascade)、`message_id?`(SetNull)、`reason varchar(200)`(触发词/摘要)、`status varchar(20)`(open/replied/handled)、`note? text`、`handled_at?` | `idx_…_status_created (status, created_at DESC)`;`idx_…_message_id`;`idx_…_channel_user_id` |
 | `channel_wechat_mp_keyword` | `keyword varchar(50)`、`post_id? bigint`(FK→`content_post`,SetNull)、`reply_text? text`(无文章时直出话术)、`is_enabled`、`hit_count int` | `uq_channel_wechat_mp_keyword_keyword`;`idx_…_post_id` |
 | `channel_feishu_alert_config` | 单例 `id=1`:`app_id varchar(64)`、`app_secret_enc` + `app_secret_mask`、`chat_id varchar(100)`、`chat_name varchar(100)`、`enabled`、`is_notify_handoff`、`is_notify_daily`、`daily_summary_hour int default 9`、`last_test` 四件套 | 主键 + 单例语义 |
 
@@ -150,7 +150,7 @@ admin 读侧只回 `*Set` 布尔 + 掩码;枚举列一律 varchar + 应用层 Zo
 | --- | --- | --- |
 | 公众号回调 | `GET/POST /api/wechat/mp`(GET 验签回显 echostr;POST 验签+解密+分派;无会话、无 Origin 要求——微信服务器调用,靠签名) | 公开(签名校验) |
 | 渠道配置 | `GET/PUT /api/wechat-mp-config`(单例脱敏视图/保存,AESKey 留空=保留)、`POST /api/wechat-mp-config/test`(校验 token/aesKey 形态并试签一次) | admin 仅会话 |
-| 会话 | `GET /api/wechat-mp/sessions?page&q&status`、`GET /api/wechat-mp/sessions/[id]`(用户 + 消息时间线 + 线索)、`POST /api/wechat-mp/sessions/[id]/handoff`(标记已处理/附答复备注) | admin 仅会话 |
+| 会话 | `GET /api/wechat-mp/sessions?page&q&status`、`GET /api/wechat-mp/sessions/[id]`(用户 + 消息时间线 + 线索)、`POST /api/wechat-mp/sessions/[id]/handoff`(标记已处理/附处置备注)、`POST/DELETE /api/wechat-mp/sessions/[id]/reply`(人工答复入队/撤销) | admin 仅会话 |
 | 关键词 | `GET/POST /api/wechat-mp/keywords`、`PUT/DELETE /api/wechat-mp/keywords/[id]` | admin 仅会话 |
 | 站务通知 | `GET/PUT /api/feishu-alert-config`(脱敏视图/保存)、`POST /api/feishu-alert-config/test`(发测试卡片,落 `last_test`) | admin 仅会话(Origin 校验) |
 | 用户绑定 | `POST /api/account/wechat-mp/bind-code`(生成 8 位码)、`DELETE /api/account/wechat-mp/bind`(解绑) | 登录会话 |
@@ -162,6 +162,26 @@ admin 读侧只回 `*Set` 布尔 + 掩码;枚举列一律 varchar + 应用层 Zo
 - 系统设置新增页签「站务通知」→ `/admin/settings/feishu-alert/`(飞书 app_id/secret/chat_id/enabled/
   两个开关/「发送测试卡片」)。与 M29 免登的「飞书」页签**应用不同、互不影响**。
 - 飞书卡片:标题「公众号转人工」,正文 = 用户标识 + 问题摘要 + 时间,动作按钮跳后台详情页。
+  链接一律经 `toFeishuInAppUrl()` 包成 **AppLink**(`applink.feishu.cn/client/web_url/open?mode=appCenter&url=…`)——
+  卡片里的裸 URL 会被系统浏览器接管,出飞书后没有会话、又要登录一次;端内打开则 UA 含 `Lark/Feishu`,
+  登录页走 M29 飞书免登静默取码,一次点击直达会话详情(2026-11-01 线上反馈修复)。
+
+## 6.1 转人工闭环(2026-11-01 补全)
+
+认证订阅号**没有客服消息权限**(`48001`,公众号后台已实证),不存在「主动推送答复」的可能,也没有
+48 小时主动消息。行业内要真·实时客服只有两条路:微信客服 API(需企业/组织主体,本号不适用)、
+或把用户导流到企微/电话。故本号的转人工按**留言式**实现:
+
+1. 用户发「人工」→ 落 `channel_wechat_mp_lead`(`open`)+ `is_manual_pending=true` + 飞书站务卡;
+   回执明确告知「回复任意消息即可查看站长答复」(不这么写用户会以为石沉大海)。
+2. 站长在后台会话详情写答复 → 存 `manual_reply/manual_reply_at`(一次一条,覆盖式;可撤销)。
+3. 用户**下次任意发言** → 请求最前置分支取走答复,带 `【站长答复】` 前缀发出、`reply_kind='manual'`,
+   线索 `open → replied`;同一答复只投递一次(条件更新)。
+4. 超过 7 天未发言则静默作废——用户此时发的是新问题,陈年答复比不答更糟。
+5. 线索全部 `handled` 才清 `is_manual_pending`(待办角标)。
+
+**AI 全程不暂停**:待处理线索只影响后台角标,不拦回复链路(早期文案声称的「清空后 AI 回复自动恢复」
+从未实现,已随本次修复改写)。
 
 ## 7. 话术(可后台覆盖,以下为默认值)
 
