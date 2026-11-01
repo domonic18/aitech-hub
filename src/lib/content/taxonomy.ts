@@ -9,10 +9,26 @@ const publishedPostsCountViaTag = {
   _count: { select: { posts: { where: { post: PUBLISHED } } } },
 };
 
+/** 分类直连文章计数(分类页筛选区用;空分类不展示) */
+const publishedPostsCountViaCategory = {
+  _count: { select: { posts: { where: PUBLISHED } } },
+};
+
 export async function listCategories() {
   return prerenderSafe("taxonomy.categories", [], () =>
     prisma.category.findMany({ orderBy: { sortOrder: "asc" } }),
   );
+}
+
+/** 有已发布文章的分类(公开筛选区;空分类与测试 fixture 不外露) */
+export async function listCategoriesWithCount() {
+  return prerenderSafe("taxonomy.categoriesWithCount", [], async () => {
+    const rows = await prisma.category.findMany({
+      select: { slug: true, name: true, ...publishedPostsCountViaCategory },
+      orderBy: { sortOrder: "asc" },
+    });
+    return rows.filter((c) => c._count.posts > 0);
+  });
 }
 
 export async function getCategoryBySlug(rawSlug: string) {
