@@ -18,6 +18,8 @@ export const WECHAT_MP_CONTINUE_POLL_BUDGET_MS = 3_400;
 export const WECHAT_MP_REPLY_MAX_BYTES = 1_800;
 /** 答案缓存 TTL(用户回「继续」的回捞窗口) */
 export const WECHAT_MP_REPLY_TTL_SECONDS = 30 * 60;
+/** 人工答复待投递有效期:过期即作废(用户长期不发言时,陈年答复比不答更糟) */
+export const WECHAT_MP_MANUAL_REPLY_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** 一次性绑定码 TTL(站点生成 → 公众号发出) */
 export const WECHAT_MP_BIND_TTL_SECONDS = 10 * 60;
 /** 消息明细保留天数(worker 日清) */
@@ -56,7 +58,11 @@ export const WECHAT_MP_DEFAULT_TEXTS = {
   timeout: "【答案正在生成,请稍等几秒后回复「继续」获取】",
   continueEmpty: "暂时没有待继续的答复,直接发送你的问题即可。",
   continuePending: "答案还在生成中,请再过几秒回复「继续」。",
-  handoff: "已记录你的问题,站长会尽快处理;可以继续补充细节。",
+  /** 转人工回执:认证订阅号无客服消息权限,答复只能等你再发一条时带出——
+   *  必须把这条规则讲明白,否则用户会以为石沉大海 */
+  handoff: "已记录你的问题,站长会尽快回复。回复任意消息即可查看站长答复;也可以继续补充细节。",
+  /** 人工答复前缀(投递时拼在站长正文前,与 AI 答案区分开) */
+  manualHeader: "【站长答复】",
   blocked: "这个问题我无法回答,可以换个话题。",
   help: "发送问题即可。回复「继续」取上一条未完成的答复;回复「人工」转站长。",
   bindOk: "绑定成功。之后你在站内的账号会与这个公众号关联。",
@@ -72,6 +78,7 @@ export type WechatMpReplyKind =
   | "timeout"
   | "continue"
   | "handoff"
+  | "manual"
   | "fallback"
   | "help"
   | "blocked"

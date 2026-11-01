@@ -3,7 +3,7 @@
 /**
  * 转人工线索处置(M66 会话详情页):标记已处理 + 备注,成功后整页刷新
  * (RSC 重取 isManualPending / 线索列表)。同一会话多条线索时逐条处置,
- * 全清后服务端自动放行 AI 回复。
+ * 全清后待办角标解除;AI 回复全程不受影响。
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";

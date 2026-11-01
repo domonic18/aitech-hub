@@ -225,7 +225,7 @@ export default function WechatMpConfigForm({
           <SettingsField
             label="转人工关键词"
             htmlFor="mp-handoff-kw"
-            hint="逗号或换行分隔,最多 20 个;命中后暂停该会话的 AI 回复并推送飞书"
+            hint="逗号或换行分隔,最多 20 个;命中后落转人工线索并推送飞书站务群"
           >
             <textarea
               id="mp-handoff-kw"

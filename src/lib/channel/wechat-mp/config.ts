@@ -215,6 +215,7 @@ export async function getWechatMpRuntimeConfig(): Promise<WechatMpRuntimeConfig 
       continueEmpty: WECHAT_MP_DEFAULT_TEXTS.continueEmpty,
       continuePending: WECHAT_MP_DEFAULT_TEXTS.continuePending,
       handoff: textOrDefault(row.handoffText, WECHAT_MP_DEFAULT_TEXTS.handoff),
+      manualHeader: WECHAT_MP_DEFAULT_TEXTS.manualHeader,
       blocked: WECHAT_MP_DEFAULT_TEXTS.blocked,
       help: WECHAT_MP_DEFAULT_TEXTS.help,
       bindOk: WECHAT_MP_DEFAULT_TEXTS.bindOk,

@@ -1,14 +1,19 @@
 /**
  * 公众号单会话详情(M66):用户档案 + 时间轴(最近 200 条)+ 转人工线索处置。
- * 时间轴按「新→旧」呈现(运营先看最后一条);线索未清空时该会话的 AI 回复
- * 处于暂停态,全部标记已处理后自动恢复。
+ * 时间轴按「新→旧」呈现(运营先看最后一条)。
+ *
+ * 转人工闭环:认证订阅号无客服消息权限,站长答复只能排队等用户下次发言时带出
+ * (见 ManualReplyControl / lib/channel/wechat-mp/manual.ts)。AI 全程不作暂停——
+ * 待处理线索只影响待办角标,不影响回复链路。
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import LeadResolveControl from "@/components/admin/wechat-mp/LeadResolveControl";
+import ManualReplyControl from "@/components/admin/wechat-mp/ManualReplyControl";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { getSessionAdmin } from "@/lib/channel/wechat-mp/admin";
+import { WECHAT_MP_MANUAL_REPLY_TTL_SECONDS } from "@/lib/channel/wechat-mp/constants";
 import { formatCnDateTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +25,22 @@ const REPLY_KIND_LABELS: Record<string, string> = {
   timeout: "超时回执",
   continue: "续读",
   handoff: "转人工",
+  manual: "人工答复",
   fallback: "无命中",
   help: "帮助",
   blocked: "已拦截",
   bind: "绑定",
   unsupported: "不支持类型",
 };
+
+/** 线索状态:open 待回复 → replied 答复已送达待处置 → handled 已归档 */
+const LEAD_STATUS_LABELS: Record<string, string> = {
+  open: "待回复",
+  replied: "已回复待处置",
+  handled: "已处理",
+};
+
+const MANUAL_REPLY_TTL_DAYS = Math.round(WECHAT_MP_MANUAL_REPLY_TTL_SECONDS / (24 * 60 * 60));
 
 const ANSWER_STATUS_LABELS: Record<string, string> = {
   ok: "已作答",
@@ -68,6 +83,10 @@ export default async function AdminWechatMpSessionPage({
 
   const { user, messages, leads } = detail;
   const openLeads = leads.filter((l) => l.status !== "handled");
+  const manualExpired =
+    user.manualReplyAt !== null &&
+    Date.now() - new Date(user.manualReplyAt).getTime() > WECHAT_MP_MANUAL_REPLY_TTL_SECONDS * 1000;
+  const showReplyBox = openLeads.length > 0 || user.manualReply !== null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -119,16 +138,31 @@ export default async function AdminWechatMpSessionPage({
         </div>
       </div>
 
+      {showReplyBox ? (
+        <ManualReplyControl
+          sessionId={user.id}
+          pending={user.manualReply}
+          pendingAt={fmtIso(user.manualReplyAt)}
+          expired={manualExpired}
+          ttlDays={MANUAL_REPLY_TTL_DAYS}
+        />
+      ) : null}
+
       {openLeads.length > 0 ? (
         <section className="rounded-md border border-amber/30 bg-amber/5">
           <header className="border-b border-amber/20 px-4 py-2.5 text-xs font-semibold text-amber-hi">
-            转人工线索 · 待处理 {openLeads.length} 条
-            <span className="ml-2 font-normal text-text-3">清空后 AI 回复自动恢复</span>
+            转人工线索 · 未处置 {openLeads.length} 条
+            <span className="ml-2 font-normal text-text-3">
+              答复送达后转「已回复待处置」,全部标记已处理后待办角标清除
+            </span>
           </header>
           <ul className="divide-y divide-amber/15">
             {openLeads.map((l) => (
               <li key={l.id} className="flex flex-col gap-2 px-4 py-3">
                 <div className="flex flex-wrap items-baseline gap-2 text-xs">
+                  <span className="rounded-sm bg-amber/12 px-1.5 py-0.5 text-[11px] text-text-3">
+                    {LEAD_STATUS_LABELS[l.status] ?? l.status}
+                  </span>
                   <span className="rounded-sm bg-amber/12 px-1.5 py-0.5 text-[11px] text-amber-hi">
                     {l.reason}
                   </span>
