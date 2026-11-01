@@ -5,6 +5,9 @@
 
 ## 1. 完整目录结构(目标态)
 
+> 标记(2026-11-01,issue #205):`✅` 已落地 / `⏳` 尚未落盘(仍属目标态)。
+> 本轮只给评审点名过的节点补标与补齐文档缺失的目录;未标注不代表一定已存在,以仓库为准。
+
 ```
 aitech-hub/
 ├── CLAUDE.md                     # 根上下文(AI 上下文唯一入口,真相源是文件本身)
@@ -36,10 +39,11 @@ aitech-hub/
 │   │   │   ├── about|agreement|privacy/page.tsx
 │   │   │   ├── sitemap.ts / robots.ts / feed.xml/route.ts
 │   │   │   └── legacy/[...path]/route.ts    # 旧 URL 301 兜底(legacy_url_map)
-│   │   ├── (user)/               # 登录态页(CSR 为主)
+│   │   ├── (auth)/admin/login/page.tsx   # ✅ 后台登录(密码/PAT 入口)
+│   │   ├── (user)/               # ⏳ 未开:登录态页实际落 (site)/login|register|forgot-password|reset-password 与 (site)/account(共享站点壳,不开 (user) 组)
 │   │   │   ├── login/page.tsx
 │   │   │   └── account/{profile,settings}/page.tsx
-│   │   ├── (admin)/admin/        # 后台(AntD 5 + 客户端守卫 + API 双重校验)
+│   │   ├── (admin)/admin/        # ✅ 后台(AntD 5 + 客户端守卫 + API 双重校验)
 │   │   │   ├── layout.tsx
 │   │   │   ├── posts/{page,[id]/edit,new}/page.tsx
 │   │   │   ├── media/page.tsx    # 媒体库:图片/视频/文件 + 孤儿/断链/重复清洗(arch/08-media)
@@ -79,16 +83,18 @@ aitech-hub/
 │   │   ├── distribute/           # 分发域(M17):channels(常量纯工具,客户端安全)、wechat-config-admin(配置单例)、wechat-client(微信 API+token 缓存,不 import prisma)、wechat-html(md→全内联样式纯函数,主题经 env 注入)、wechat-themes(六款主题注册表,客户端安全)、wechat-media(嗅探/WebP 转 jpeg/sha1 缓存)、wechat-sync(入队四口+job 数据契约)、wechat-sync-run(草稿执行管线,依赖单向 run→sync)、wechat-copy-run(复制公众号格式执行管线,无码点门不写状态机;M31 批④)、records(读侧+reset)
 │   │   ├── agent/                # K2.5 Drawer 会话 Agent(arch/04 §3):checkpointer(PostgresSaver 单例+setup 守卫)、model-factory(search 绑定→ChatOpenAI/ChatAnthropic)、tools(站内三只读工具+get_time,K2.6 收口;M27 批⑧ 增 read_draft/propose_edits=EDIT_TOOLS,admin 档装配)、agent(deepagents 图缓存)、wire(langgraph 协议 SSE 编码单点)、run(流编排+护栏;批⑧ 起携 context 注入)、sessions(会话行 CRUD)、quota(日配额/频控+K2.6 游客双闸)、todos(零依赖提取,前端共用)、purge(30 天日清+K2.6 游客 checkpoint 清扫)、visitor(匿名 cookie);K2.6 增 identity(身份分流)、guest-threads(游客线程 Redis 生命周期)、admin-sessions(后台会话两源聚合);M27 批⑧ 增 run-context(页面/编辑上下文构建注入)、edit-proposal(提案契约/解析)、admin-thread(admin 会话守卫)、ask-user-guard 泛化 interrupt_guard(中断类单飞)
 │   │   ├── slug.ts               # normalizeSlug 唯一入口(arch/07-frontend §2 红线)
-│   │   ├── seo/                  # metadata/jsonld/sitemap 构造
+│   │   ├── seo/                  # metadata/jsonld/sitemap 构造;routes.ts = SEO 出口与启动预热清单单一来源
+│   │   ├── http/                 # ✅ API 公共件:response(apiEnvelope)/ origin(同源校验)/ request(取 IP)/ internal-token(内部失效 token)
 │   │   ├── queue.ts              # BullMQ producer(enqueue 封装)
-│   │   └── api-client.ts         # 前端 fetch 封装(Zod 校验响应)
-│   ├── stores/                   # Zustand:session
-│   ├── styles/                   # globals.css、prose.css(旧 HTML 正文兜底)
-│   └── types/                    # 手写补充类型(领域类型与 Zod schema 同源)
+│   │   └── api-client.ts         # ⏳ 未开:前端 fetch 封装(Zod 校验响应)
+│   ├── content/                  # ✅ 静态法务文案(legal/agreement|privacy;纯字符串不查库,与 lib/content 的 service 层无关)
+│   ├── stores/                   # ⏳ 未开:Zustand session
+│   ├── styles/                   # ✅ globals.css、prose.css(旧 HTML 正文兜底)
+│   └── types/                    # ⏳ 未开:手写补充类型(领域类型与 Zod schema 同源)
 │
 ├── worker/                       # BullMQ worker 进程(独立入口,同镜像 cmd 覆盖)
 │   ├── index.ts                  # 队列注册、优雅退出
-│   └── processors/               # media-process.ts(sharp 缩略图/WebP)、二期: cos-sync、crawler
+│   └── processors/               # ⏳ 未开:media-process.ts(sharp 缩略图/WebP)、二期 cos-sync、crawler(现任务处理器分别落 worker/media.ts、worker/job-run.ts 等平铺文件)
 │
 ├── scripts/                      # 两层纪律:ops/ 长期运维(npm 绑定)/ oneoff/ 一次性(应用后删,git 历史存档)
 │   ├── ops/                      # admin.ts(建号)/ db-backup-trigger.ts / embed-reconcile-trigger.ts /
@@ -114,10 +120,15 @@ aitech-hub/
 └── workspace/                    # 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl、backups;gitignore,不入库)
 ```
 
+> **目录收编暂缓(issue #205)**:`lib/infra/`(`db`/`redis`/`queue`/`prerender-safe`)与
+> `lib/site/`(`datetime`/`slug`/`constants`)的分层重排推迟到 M5(后台 + 媒体库)一并执行,
+> 避免同一批文件搬两次;当前 lib 根平铺不变。
+
 ## 2. 文件组织与代码规则(全仓强制)
 
 - 文件 ≤350 行,单一职责;大文件拆 utils/常量/类型/子组件,不建 `misc`/`common` 垃圾抽屉
 - 页面只留编排(取数 + 组装),拆出的行/筛选/卡片等子组件入 `components/` 对应域目录:admin 通用件平铺 `components/admin/`(如 AdminPagination),域专属件进子目录(`admin/spider/`、`admin/models/`、`admin/stats/`);lib 侧同样按领域分包(`lib/telegram/`、`lib/media/`、`lib/stats/`、`lib/ai/`、`lib/content/`)
+- **`src/content/` ≠ `src/lib/content/`**(issue #205):前者是静态法务文案(`legal/*.ts`,导出 HTML 字符串,纯数据、不查库、不依赖 prisma);后者是文章业务 service(查库/清洗/转 Markdown)。两者不得互相 import;新静态文案放 `src/content/`,新业务逻辑放 `src/lib/content/`
 - 命名:组件 PascalCase,hook `use` 前缀,工具小写连字符,常量 UPPER_SNAKE;导入别名 `@/`
 - 常量分层:env 可调 → `lib/env.ts`(Zod);跨模块领域常量 → `lib/constants.ts`;模块私有 → 模块顶部
 - Server Component 默认,`"use client"` 尽量下沉到叶子;请求内**禁止**秒级以上处理,重任务一律 BullMQ
