@@ -10,7 +10,7 @@
  * 页面 javaScriptEnabled=false,<script> 天然不执行。渲染期 SSRF/外联面归零。
  *
  * 契约:
- *   GET  /health  → 200 {ok:true,browser:"up"|"relaunching"}(compose healthcheck)
+ *   GET  /health  → 200 {ok:true,browser:"up"}(compose healthcheck)
  *   POST /render  {html, width?, scale?, maxHeight?, timeoutMs?}
  *              → 200 image/png(X-Card-Width/X-Card-Height = 逻辑像素)
  *              → 400 校验失败 / 413 高度超限 / 429 忙 / 504 超时 / 500 渲染失败
@@ -103,22 +103,33 @@ function tryAcquire() {
   active += 1;
   return true;
 }
-function release() {
+
+/**
+ * 请求收尾:归还并发槽位。
+ *
+ * 槽位归还**必须**与「是否真的进过浏览器」解耦:body 读失败/JSON 非法/校验
+ * 不通过都还没碰过浏览器,不该计轮次;但它们绝对要归还槽位——此前 release()
+ * 只挂在渲染主体的 finally 上,校验失败走内层 catch 的 return 就永久漏掉一个槽位,
+ * 两个畸形请求即可让 MAX_CONCURRENT=2 的服务全程 429 直到重启。
+ *
+ * 浏览器回收同样只在这里判定,且要求 `active === 0`:close() 会连带打断别的
+ * 在途请求正在用的 context(MAX_CONCURRENT 可 >1),等无人使用再弃置。
+ */
+function endRequest(rendered) {
   active -= 1;
-  browserRuns += 1;
-  if (browserRuns >= MAX_RUNS_PER_BROWSER && browser) {
-    console.log(
-      JSON.stringify({
-        event: "renderer.browser_recycle",
-        runs: browserRuns,
-        max: MAX_RUNS_PER_BROWSER,
-      }),
-    );
-    const stale = browser;
-    browser = null;
-    browserRuns = 0;
-    void stale.close().catch(() => undefined); // 惰性重启:下次 getBrowser 拉新实例
-  }
+  if (rendered) browserRuns += 1;
+  if (!browser || active > 0 || browserRuns < MAX_RUNS_PER_BROWSER) return;
+  console.log(
+    JSON.stringify({
+      event: "renderer.browser_recycle",
+      runs: browserRuns,
+      max: MAX_RUNS_PER_BROWSER,
+    }),
+  );
+  const stale = browser;
+  browser = null;
+  browserRuns = 0;
+  void stale.close().catch(() => undefined); // 惰性重启:下次 getBrowser 拉新实例
 }
 
 /**
@@ -280,8 +291,10 @@ function readJsonBody(req) {
 
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/health") {
+    // getBrowser 解析成功即已连上(现役实例复用,否则新拉一个),"up" 是唯一真值;
+    // 先前的三元 up/up 是死分支,文档里的 relaunching 从未实现过。
     void getBrowser()
-      .then((b) => sendJson(res, 200, { ok: true, browser: b.isConnected() ? "up" : "up" }))
+      .then(() => sendJson(res, 200, { ok: true, browser: "up" }))
       .catch(() => sendJson(res, 503, { ok: false, browser: "down" }));
     return;
   }
@@ -291,7 +304,8 @@ const server = http.createServer((req, res) => {
       return;
     }
     void (async () => {
-      let params;
+      // 校验通过才计浏览器轮次;但无论哪一步失败,槽位都必须在 finally 归还
+      let rendered = false;
       try {
         const raw = await readJsonBody(req);
         const parsed = parseSnapshotBody(raw, RENDER_ALLOWED_HOSTS);
@@ -299,19 +313,14 @@ const server = http.createServer((req, res) => {
           sendJson(res, parsed.status, { error: parsed.error });
           return;
         }
-        params = parsed.value;
-      } catch (e) {
-        sendJson(res, e.statusCode ?? 400, { error: e.message });
-        return;
-      }
-      try {
-        const out = await snapshotPage(params);
+        rendered = true;
+        const out = await snapshotPage(parsed.value);
         sendJson(res, 200, out);
       } catch (e) {
         const status = e.statusCode ?? (e.name === "TimeoutError" ? 504 : 500);
         sendJson(res, status, { error: e.message || "快照失败" });
       } finally {
-        release();
+        endRequest(rendered);
       }
     })();
     return;
@@ -325,7 +334,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   void (async () => {
-    let params;
+    let rendered = false;
     try {
       const raw = await readJsonBody(req);
       const parsed = parseRenderBody(raw);
@@ -333,13 +342,8 @@ const server = http.createServer((req, res) => {
         sendJson(res, parsed.status, { error: parsed.error });
         return;
       }
-      params = parsed.value;
-    } catch (e) {
-      sendJson(res, e.statusCode ?? 400, { error: e.message });
-      return;
-    }
-    try {
-      const { png, width, height } = await renderCard(params);
+      rendered = true;
+      const { png, width, height } = await renderCard(parsed.value);
       res.writeHead(200, {
         "content-type": "image/png",
         "x-card-width": String(width),
@@ -350,7 +354,7 @@ const server = http.createServer((req, res) => {
       const status = e.statusCode ?? (e.name === "TimeoutError" ? 504 : 500);
       sendJson(res, status, { error: e.message || "渲染失败" });
     } finally {
-      release();
+      endRequest(rendered);
     }
   })();
 });
