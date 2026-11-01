@@ -199,6 +199,13 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 
 ## 5. 一期接口清单(Route Handlers)
 
+**响应包络**:一律经 `apiEnvelope`(`src/lib/http/response.ts`)返回 `{code,message,data}`,code=0 → 200,其余 code 兼作 HTTP 状态。**豁免**(非业务协议,不得套包络;2026-11-01 批D 登记,此前散落无记录):
+- `/api/health`(compose healthcheck 只要 2xx,返回值仅人读)、`/api/mcp`(MCP JSON-RPC 协议体)、`/api/view`·`/api/stats/bot`·`/api/stats/click`(beacon 恒 204 无响应体,客户端不消费)
+- 二进制/文本直出:媒体、`.md`/`.txt`/`.xml` RSS 与 llms、`/wp-content/*`、`/legacy/*`
+- SSE 端点(`/api/search/answer`、`.../runs/stream`)业务降级走事件帧而非状态码(arch/04 §3.4)
+
+`/api/internal/revalidate` 不属豁免:内部运维协议同样走包络(2026-11-01 收口,此前成功分支裸 `{revalidated}`、失败分支手搓 `{code,message}` 无 data)。
+
 | 域 | 端点 | 鉴权 |
 |----|------|------|
 | auth | login / logout / session、`GET /api/auth/feishu/status`(M29:下发 `{enabled, appId}` 供 H5 `tt.requestAccess`;凭证齐即可,enabled 透传不设门——兑换由 exchange 把关;凭证不齐 403)、`POST /api/auth/feishu/exchange`(M29:免登授权码兑换会话;白名单命中 + role/status 复核 + IP 30/h;未启用 403,未绑定模糊 403,upstream 502 不外吐细节)、`POST /api/auth/sms-code`(M65:触发验证码下发;恒定应答不暴露号码是否注册,admin 号码静默不发)、`POST /api/auth/sms-login`(M65:登录/注册合一,须 `agreed:true`;admin 403;错 5 次锁 15min) | login/session/exchange/status 公开(exchange 有防滥用,status 零外呼零签名);sms-code/sms-login 公开(频控 + Origin 校验) |
@@ -230,7 +237,7 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 | pins(贴图) | `GET/POST /api/pins`(分页列表 status/q/topic 过滤;新建缺省「未命名贴图」)、`GET/PATCH/DELETE /api/pins/[id]`(详情含 images+channels;PATCH 字段组与 status 组独立解析任一命中,同 topics 口径;DELETE 级联删图与渠道行)、`POST/PUT/DELETE /api/pins/[id]/images`(工坊版本挂载 versionIds 或本地上传 mediaPath 快照 / 全量重排 / 移除单张)、`POST /api/pins/[id]/generate`(AI 生成入队,复用 generate_illustration 管线出图直挂序列;M42 增可选 `referencePath` 仅站内 uploads,§4.8)、`POST /api/pins/[id]/sync`(公众号 newspic 入队 202 `{jobId}`,资格前置 400 人话;均 M41,§4.8) | admin **仅会话**(PAT must not manage pins;mutation Origin 校验) |
 | legacy | `GET /legacy/[...path]`(web 内部路由,非 REST) | - |
 | system | `GET /api/health` | compose healthcheck |
-| internal | `POST /api/internal/revalidate`(缓存失效;空 body = `revalidatePath("/","layout")` + SEO 路由,entrypoint 预热用;`{paths:[...]}` = 只失效白名单路径,当前仅 `/leaderboards/`,由 worker 在榜单采集/汇率日采成功后反调。token = `sha256(AUTH_SECRET + ":revalidate")` 走 `x-internal-token`,定长 `timingSafeEqual`;**白名单是红线,端点不得成为任意路径清除器**) | 内部 token(无会话) |
+| internal | `POST /api/internal/revalidate`(缓存失效;空 body = `revalidatePath("/","layout")` + SEO 路由,`scripts/warm-isr.mjs` 启动预热用;`{paths:[...]}` = 只失效白名单路径,当前仅 `/leaderboards/`,由 worker 在榜单采集/汇率日采成功后反调。token = `sha256(AUTH_SECRET + ":revalidate")` 走 `x-internal-token`,定长 `timingSafeEqual`;响应走 `apiEnvelope`;**白名单是红线,端点不得成为任意路径清除器**) | 内部 token(无会话) |
 
 二期预留:`/api/pay/*`(虎皮椒:创建订单 + 异步 notify 回调,回调端点独立鉴权白名单 + 验签)、`/api/github/*`。
 

@@ -23,6 +23,7 @@ vi.mock("@/lib/pay/preview", () => ({
 }));
 vi.mock("@/lib/seo/site", () => ({
   absoluteUrl: (p: string) => new URL(p, "https://example.com").toString(),
+  siteUrl: () => "https://example.com",
 }));
 
 import { buildLlmsIndex } from "./llms";

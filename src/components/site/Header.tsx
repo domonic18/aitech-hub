@@ -3,6 +3,7 @@ import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import TopicNavMenu from "@/components/site/TopicNavMenu";
 import { SITE_TOPICS } from "@/lib/content/topics";
+import { siteHost } from "@/lib/site-meta";
 
 import { getSiteTitle } from "@/lib/config/site-config";
 
@@ -61,7 +62,7 @@ export default async function Header(): Promise<React.ReactElement> {
             </span>
             {siteTitle}
             <span className="hidden font-mono text-[13px] font-normal text-text-3 sm:inline">
-              17aitech.com
+              {siteHost()}
             </span>
           </Link>
           <nav className="flex flex-nowrap items-center gap-1 text-sm">

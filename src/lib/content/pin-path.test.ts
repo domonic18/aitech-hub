@@ -47,6 +47,11 @@ describe("parsePinSegment", () => {
   it("超大 id 不丢精度(BigInt 解析)", () => {
     expect(parsePinSegment("9007199254740993")?.id).toBe(BigInt("9007199254740993"));
   });
+
+  it("超 int64 上限 → null(与 parsePostSegment 同源,不许漏到 Prisma 变 500)", () => {
+    expect(parsePinSegment("9223372036854775808")).toBeNull();
+    expect(parsePinSegment("9999999999999999999-x")).toBeNull();
+  });
 });
 
 describe("asciiSlugFromTitle(复用 post-path 实现)", () => {

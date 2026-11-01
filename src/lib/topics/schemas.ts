@@ -5,9 +5,12 @@
 import { z } from "zod";
 
 import { AGENT_SKILL_KEY_RE } from "../ai/agent-skills-admin";
+import { isBigIntId } from "../http/parse-id";
 import { TOPIC_ITEM_TYPE, TOPIC_OUTPUT_TYPES, TOPIC_STATUS } from "./constants";
 
-const BIGINT_ID = z.string().regex(/^\d+$/, "id 须为纯数字字符串");
+/** id 校验与路径解析同源(parse-id 单源):纯数字串且不超 int64 上限。
+ * 无界 /^\d+$/ 会让 30 位 id 一路走到落库才报错(500)。 */
+const BIGINT_ID = z.string().refine(isBigIntId, "id 须为纯数字字符串(不超 int64 上限)");
 
 export const topicCreateSchema = z.object({
   title: z.string().trim().min(1, "标题必填").max(200),

@@ -6,6 +6,8 @@
  * - slug 是纯装饰(ASCII,可空):空 → canonical 为 `/pins/<id>/`。
  * 纯函数零 IO,单测 pin-path.test.ts 钉死;全站贴图链接只许经 pinPath 构造。
  */
+import { parseBigIntId } from "@/lib/http/parse-id";
+
 import { asciiSlugFromTitle } from "./post-path";
 
 export const PIN_PATH_PREFIX = "/pins";
@@ -29,11 +31,16 @@ export interface ParsedPinSegment {
 /**
  * 解析 URL 段 → id。只认 `<digits>[-anything]` 形态,其余 → null(调用方 404);
  * 尾巴不校验——非 canonical 形态依赖路由层 canonical 对比归一,解析永远成功于 id。
+ *
+ * 与 parsePostSegment 同源:数字段经 parseBigIntId 校 int64 上限,超界 → null(404),
+ * 不让 BigInt 照收到 Prisma 才 500。
  */
 export function parsePinSegment(segment: string): ParsedPinSegment | null {
   const m = /^(\d+)(?:-([\s\S]*))?$/.exec(segment);
   if (!m) return null;
-  return { id: BigInt(m[1]), slug: m[2] ? m[2] : null };
+  const id = parseBigIntId(m[1]);
+  if (id === null) return null;
+  return { id, slug: m[2] ? m[2] : null };
 }
 
 /** 标题 → ASCII slug 派生(与文章同款实现,直接复用 post-path 唯一实现) */

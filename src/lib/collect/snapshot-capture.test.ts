@@ -11,6 +11,9 @@ const snapCreate = vi.fn();
 const snapFindMany = vi.fn();
 const snapUpdateMany = vi.fn();
 const snapDelete = vi.fn();
+const logErrorMock = vi.fn();
+
+vi.mock("@/lib/logger", () => ({ logError: (...a: unknown[]) => logErrorMock(...a) }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -110,7 +113,6 @@ describe("capture", () => {
   });
 
   it("存储故障:不抛错不建行(档案可缺,牌价不可断),留结构化事件", async () => {
-    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const store = memStore({
       put: async () => {
         throw new Error("cos down");
@@ -120,8 +122,10 @@ describe("capture", () => {
       new SourceCapture(7, "u", store).capture({ tab: "page", html: "x" }),
     ).resolves.toBeUndefined();
     expect(snapCreate).not.toHaveBeenCalled();
-    expect(String(err.mock.calls[0]![0])).toContain("crawl.snapshot.capture_failed");
-    err.mockRestore();
+    expect(logErrorMock).toHaveBeenCalledWith(
+      "crawl.snapshot.capture_failed",
+      expect.objectContaining({ sourceId: 7, tab: "page" }),
+    );
   });
 });
 

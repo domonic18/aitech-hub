@@ -57,7 +57,8 @@ vi.mock("@/lib/insight/ingest", () => insightMock);
 const onlineMock = vi.hoisted(() => ({ touchPresence: vi.fn(async () => undefined) }));
 vi.mock("./online", () => onlineMock);
 
-import { ingestBotFetch, ingestGeoFetch, ingestView, purgeVisitLogs } from "./service";
+import { ingestBotFetch, ingestGeoFetch, ingestView } from "./ingest";
+import { purgeVisitLogs } from "./purge";
 
 const SALT = "test-salt";
 const UA = "Mozilla/5.0 (Macintosh) Chrome/120";

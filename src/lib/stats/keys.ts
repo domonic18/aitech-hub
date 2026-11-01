@@ -7,12 +7,19 @@
  *
  * 本文件把「构造」与「解析」并排放,两侧共用同一份段序:
  *  - bufferKey / parseBufferKey:解析返回判别联合,而不是让调用方数下标;
- *  - 各键的存活时长与键形写在一起(flush 的私有暂存键复用 BUFFER_TTL_SECONDS),
+ *  - 各键的存活时长与键形写在一起(BUFFER_TTL_SECONDS 兜底 / FLUSHING_TTL_SECONDS 暂存),
  *    不再出现「这个键该活多久」在两个文件里各说一遍。
  */
 
-/** 日缓冲键兜底过期:worker 长期不可用时防无限堆积;私有暂存键同值 */
+/** 日缓冲键兜底过期:worker 长期不可用时防无限堆积 */
 export const BUFFER_TTL_SECONDS = 172800;
+
+/**
+ * flush 私有暂存键存活时长(issue #202):暂存键只在本轮 flush 内存在,
+ * 崩溃后 5 分钟自清即可——沿用 48h 兜底值会让「未落库的计数」以暂存形态潜伏两天,
+ * 而 SCAN 只认 `stats:buf:*`,这些键既不会被重试也不会被清理。
+ */
+export const FLUSHING_TTL_SECONDS = 300;
 
 const BUF_PREFIX = "stats:buf:";
 

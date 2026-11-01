@@ -12,12 +12,12 @@ export async function GET(
   const { part } = await params;
   const n = Number.parseInt(part, 10);
   if (!Number.isInteger(n) || n < 2) {
-    return new NextResponse("Not Found\n", { status: 404 }) as NextResponse;
+    return new NextResponse("Not Found\n", { status: 404 });
   }
   const parts = await buildLlmsFullParts();
   const body = parts[n - 1];
-  if (!body) return new NextResponse("Not Found\n", { status: 404 }) as NextResponse;
+  if (!body) return new NextResponse("Not Found\n", { status: 404 });
   return new NextResponse(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
-  }) as NextResponse;
+  });
 }

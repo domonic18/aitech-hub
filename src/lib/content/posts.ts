@@ -7,6 +7,7 @@ import { cache } from "react";
 
 import { prisma } from "@/lib/db";
 import { postPathSegment } from "@/lib/content/post-path";
+import { logWarn } from "@/lib/logger";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
 /** 列表条目统一投影(卡片/sitemap/llms 共用;避免每处 select 漂移) */
@@ -216,7 +217,7 @@ export async function listPostSegmentsForPrerender(): Promise<string[]> {
     const rows = await prisma.post.findMany({ where: PUBLISHED, select: { id: true, slug: true } });
     return rows.map((r) => postPathSegment(r.id, r.slug));
   } catch (e) {
-    console.warn(JSON.stringify({ event: "posts.prerender.degraded", error: String(e) }));
+    logWarn("posts.prerender.degraded", { error: e });
     return [];
   }
 }

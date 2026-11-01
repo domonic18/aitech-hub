@@ -14,6 +14,7 @@ import {
 } from "@/lib/github/public";
 import { isProjectSlug, PROJECTS_BASE, projectPath } from "@/lib/github/project-path";
 import { absoluteUrl } from "@/lib/seo/site";
+import { AUTHOR_JSONLD } from "@/lib/site-meta";
 
 /**
  * 项目详情(M11 批④):slug 是唯一解析键(登记时派生此后冻结,**无 id 锚点,
@@ -67,7 +68,7 @@ export default async function ProjectPage({ params }: PageProps): Promise<React.
     description: repo.description ?? undefined,
     url: absoluteUrl(projectPath(repo.slug)),
     codeRepository: repo.htmlUrl,
-    author: { "@type": "Person", name: "domonic18", url: "https://github.com/domonic18" },
+    author: AUTHOR_JSONLD,
     programmingLanguage: repo.language ?? undefined,
   };
 

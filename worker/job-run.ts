@@ -10,6 +10,7 @@
 import type { Job, Processor } from "bullmq";
 
 import { createJobRun, finishJobRun } from "../src/lib/jobs/runlog";
+import { logError } from "../src/lib/logger";
 import {
   COVER_JOB_TEMP_SWEEP,
   CRAWL_JOB_AI_BACKFILL,
@@ -85,9 +86,7 @@ async function safeFinish(
   try {
     await finishJobRun(runId, status, meta);
   } catch (e) {
-    console.error(
-      JSON.stringify({ event: "jobrun.finish_failed", runId: String(runId), error: errMsg(e) }),
-    );
+    logError("jobrun.finish_failed", { runId: String(runId), error: errMsg(e) });
   }
 }
 
@@ -99,9 +98,7 @@ export function withJobRunLog(queue: string, processor: Processor): Processor {
     try {
       runId = await createJobRun({ queue, jobName: job.name, trigger: jobRunTrigger(job) });
     } catch (e) {
-      console.error(
-        JSON.stringify({ event: "jobrun.create_failed", queue, job: job.name, error: errMsg(e) }),
-      );
+      logError("jobrun.create_failed", { queue, job: job.name, error: errMsg(e) });
     }
     let result: unknown;
     try {

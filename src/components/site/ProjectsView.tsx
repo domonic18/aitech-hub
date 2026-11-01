@@ -8,6 +8,7 @@ import { ShowcaseCard } from "@/components/site/ShowcaseCard";
 import { formatStars } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
 import type { ShowcaseRepo } from "@/lib/github/public";
+import { AUTHOR_NAME, SITE_BRAND_SHORT } from "@/lib/site-meta";
 
 export default function ProjectsView({ repos }: { repos: ShowcaseRepo[] }): React.ReactElement {
   return (
@@ -17,7 +18,9 @@ export default function ProjectsView({ repos }: { repos: ShowcaseRepo[] }): Reac
           <i className="h-2.5 w-2.5 rounded-full bg-red/70" />
           <i className="h-2.5 w-2.5 rounded-full bg-amber/70" />
           <i className="h-2.5 w-2.5 rounded-full bg-green/70" />
-          <span className="ml-2 text-[11.5px] text-text-3">domonic18@17aitech — zsh</span>
+          <span className="ml-2 text-[11.5px] text-text-3">
+            {AUTHOR_NAME}@{SITE_BRAND_SHORT} — zsh
+          </span>
         </div>
         <div className="px-4 py-3 text-text-2">
           <p>

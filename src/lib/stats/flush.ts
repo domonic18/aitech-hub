@@ -9,9 +9,16 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logError } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { isGeoSurface, type GeoSurface } from "./geo";
-import { BUFFER_SCAN_MATCH, BUFFER_TTL_SECONDS, flushingKey, parseBufferKey } from "./keys";
+import {
+  BUFFER_SCAN_MATCH,
+  BUFFER_TTL_SECONDS,
+  FLUSHING_TTL_SECONDS,
+  flushingKey,
+  parseBufferKey,
+} from "./keys";
 
 async function scanBufferKeys(): Promise<string[]> {
   const keys: string[] = [];
@@ -31,7 +38,7 @@ export interface FlushSummary {
 
 /**
  * 缓冲落库:RENAME 到私有键后再读(HGETALL 与 DEL 之间的新增事件留在原键,
- * 下轮再刷),按键形态分发到对应聚合表;失败把数据键还原,下轮重试。
+ * 下轮再刷),按键形态分发到对应聚合表;失败把计数字段合并回数据键,下轮重试。
  */
 export async function flushStatsBuffer(): Promise<FlushSummary> {
   const keys = await scanBufferKeys();
@@ -46,19 +53,35 @@ export async function flushStatsBuffer(): Promise<FlushSummary> {
     }
     // 先钉死私有键的过期再聚合:崩溃在 DEL 之前也不会留下永久键。
     // RENAME 继承源键 TTL,不能让私有键的寿命寄望于源键(历史上文章 PV 缓冲无 TTL)。
-    // 失败不拦本轮(聚合失败会 RENAME 还原,TTL 一并带回原键,与旧行为等价)。
-    await redis.expire(tmp, BUFFER_TTL_SECONDS).catch(() => undefined);
+    // TTL 用 FLUSHING_TTL_SECONDS 而非源键的 48h 兜底值:暂存键只该活过本轮。
+    await redis.expire(tmp, FLUSHING_TTL_SECONDS).catch(() => undefined);
+    let fields: Record<string, string> = {};
     try {
-      const fields = await redis.hgetall(tmp);
+      fields = await redis.hgetall(tmp);
       postRows += await applyBufferKey(key, fields);
       await redis.del(tmp);
       keysFlushed++;
     } catch (e) {
-      console.error(JSON.stringify({ event: "stats.flush.failed", key, error: String(e) }));
-      await redis.rename(tmp, key).catch(() => undefined);
+      logError("stats.flush.failed", { key, error: e });
+      // 还原走「逐字段合并」而非 RENAME:flush 期间新 beacon 可能已重建源键,
+      // 而 RENAME 会覆盖目标键,把这段时间的新增抹掉。缓冲全是计数字段,
+      // HINCRBY 合并与 RENAME 等价且无损。
+      await mergeBack(key, fields);
+      await redis.del(tmp).catch(() => undefined);
     }
   }
   return { keysFlushed, postRows };
+}
+
+/** 把暂存键里已读出的计数合并回数据键,并重新钉回缓冲兜底 TTL */
+async function mergeBack(key: string, fields: Record<string, string>): Promise<void> {
+  const pipe = redis.pipeline();
+  for (const [field, value] of Object.entries(fields)) {
+    const count = Number.parseInt(value, 10);
+    if (Number.isFinite(count) && count !== 0) pipe.hincrby(key, field, count);
+  }
+  pipe.expire(key, BUFFER_TTL_SECONDS);
+  await pipe.exec().catch(() => undefined);
 }
 
 async function applyBufferKey(key: string, fields: Record<string, string>): Promise<number> {

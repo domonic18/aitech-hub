@@ -53,6 +53,7 @@ import {
   STATS_JOB_USAGE_PURGE,
 } from "../src/lib/queue";
 import { purgeJobRuns } from "../src/lib/jobs/runlog";
+import { logInfo } from "../src/lib/logger";
 import { markPinChannelFailed } from "../src/lib/distribute/pin-channel-state";
 import { runXhsStateProbe } from "../src/lib/distribute/xhs-probe";
 import { CHANNEL_XHS } from "../src/lib/distribute/channels";
@@ -61,7 +62,7 @@ import { runBiliDiscovery } from "../src/lib/discovery/discover";
 import { runHotwordsDiscovery } from "../src/lib/discovery/hotwords";
 import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeClickLogs } from "../src/lib/stats/clicks";
-import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/service";
+import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/purge";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
 import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/purge";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
@@ -119,7 +120,7 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_MEDIA_TRANSFER]: (job) => transferMediaJob(job),
   [QUEUE_MEDIA_AUDIT]: async () => {
     const summary = await runAudit();
-    console.log(JSON.stringify({ event: "media.audit", ...summary }));
+    logInfo("media.audit", { ...summary });
     return summary;
   },
   [QUEUE_STATS]: async (job) => {
@@ -128,15 +129,15 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === STATS_JOB_PURGE) {
       const visitRemoved = await purgeVisitLogs();
       if (visitRemoved > 0) {
-        console.log(JSON.stringify({ event: "stats.visit_log.purge", removed: visitRemoved }));
+        logInfo("stats.visit_log.purge", { removed: visitRemoved });
       }
       const searchRemoved = await purgeSearchLogs();
       if (searchRemoved > 0) {
-        console.log(JSON.stringify({ event: "stats.search_log.purge", removed: searchRemoved }));
+        logInfo("stats.search_log.purge", { removed: searchRemoved });
       }
       const clickRemoved = await purgeClickLogs();
       if (clickRemoved > 0) {
-        console.log(JSON.stringify({ event: "stats.click_log.purge", removed: clickRemoved }));
+        logInfo("stats.click_log.purge", { removed: clickRemoved });
       }
       return { removed: visitRemoved + searchRemoved + clickRemoved };
     }
@@ -144,7 +145,7 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === STATS_JOB_USAGE_PURGE) {
       const removed = await purgeAiUsageOlderThan();
       if (removed > 0) {
-        console.log(JSON.stringify({ event: "ai_usage.purge", removed }));
+        logInfo("ai_usage.purge", { removed });
       }
       return { removed };
     }
@@ -153,11 +154,11 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === STATS_JOB_AGENT_PURGE) {
       const removed = await purgeAgentSessions();
       if (removed > 0) {
-        console.log(JSON.stringify({ event: "agent.session.purge", removed }));
+        logInfo("agent.session.purge", { removed });
       }
       const guestRemoved = await purgeExpiredGuestThreads();
       if (guestRemoved > 0) {
-        console.log(JSON.stringify({ event: "agent.guest_thread.purge", removed: guestRemoved }));
+        logInfo("agent.guest_thread.purge", { removed: guestRemoved });
       }
       return { removed, guestRemoved };
     }
@@ -165,13 +166,13 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === STATS_JOB_RUN_PURGE) {
       const summary = await purgeJobRuns();
       if (summary.purged > 0 || summary.crashed > 0) {
-        console.log(JSON.stringify({ event: "jobrun.purge", ...summary }));
+        logInfo("jobrun.purge", { ...summary });
       }
       return summary;
     }
     const summary = await flushStatsBuffer();
     if (summary.keysFlushed > 0) {
-      console.log(JSON.stringify({ event: "stats.flush", ...summary }));
+      logInfo("stats.flush", { ...summary });
     }
     return summary;
   },
@@ -183,7 +184,7 @@ export const PROCESSORS: Record<string, Processor> = {
       const video = await enqueueDueVideoAccounts();
       const due = summary.due + video.due;
       if (due > 0) {
-        console.log(JSON.stringify({ event: "crawler.tick", ...summary, videoDue: video.due }));
+        logInfo("crawler.tick", { ...summary, videoDue: video.due });
       }
       return { ...summary, videoDue: video.due };
     }
@@ -191,7 +192,7 @@ export const PROCESSORS: Record<string, Processor> = {
       // AI 存量补扫(M12 批③):未解读条目分流入 interpret/summarize 队列
       const summary = await backfillAiPending();
       if (summary.video > 0 || summary.text > 0) {
-        console.log(JSON.stringify({ event: "ai.backfill", ...summary }));
+        logInfo("ai.backfill", { ...summary });
       }
       return summary;
     }
@@ -200,7 +201,7 @@ export const PROCESSORS: Record<string, Processor> = {
       const summary = await crawlVideoAccount(Number(job.data.accountId), {
         backfill: job.data.backfill === true,
       });
-      console.log(JSON.stringify({ event: "crawler.video.crawl", ...summary }));
+      logInfo("crawler.video.crawl", { ...summary });
       return summary;
     }
     if (job.name === LEADERBOARD_JOB_FX_REFRESH) {
@@ -208,13 +209,11 @@ export const PROCESSORS: Record<string, Processor> = {
       const fx = await refreshUsdCnyRate();
       // 汇率变了就得让榜单页重新渲染,否则页面上的折算价要等到下一次榜单采集才更新
       await revalidateLeaderboardPage();
-      console.log(
-        JSON.stringify({ event: "leaderboard.fx_refresh", rate: fx.rate, date: fx.date }),
-      );
+      logInfo("leaderboard.fx_refresh", { rate: fx.rate, date: fx.date });
       return fx;
     }
     const summary = await crawlSource(Number(job.data.sourceId));
-    console.log(JSON.stringify({ event: "crawler.crawl", ...summary }));
+    logInfo("crawler.crawl", { ...summary });
     return summary;
   },
   // 视频解读(M9):下载→抽轨→ASR→LLM;分支语义在 interpretVideoJob 内收敛
@@ -226,7 +225,7 @@ export const PROCESSORS: Record<string, Processor> = {
     // temp-sweep:hold 候选孤儿目录日频清扫(技术债批①);generate 为缺省路径
     if (job.name === COVER_JOB_TEMP_SWEEP) {
       const r = await sweepStaleCoverTemp();
-      console.log(JSON.stringify({ event: "cover.temp_sweep_job", ...r }));
+      logInfo("cover.temp_sweep_job", { ...r });
       return r;
     }
     return coverGenJob(job.data as CoverGenJobData);
@@ -239,32 +238,25 @@ export const PROCESSORS: Record<string, Processor> = {
     if (job.name === GITHUB_JOB_TICK) {
       const summary = await syncDueRepos();
       if (summary.due > 0) {
-        console.log(JSON.stringify({ event: "github.tick", ...summary }));
+        logInfo("github.tick", { ...summary });
       }
       return summary;
     }
     const summary = await syncGithubRepo(Number(job.data.repoId));
-    console.log(JSON.stringify({ event: "github.sync", ...summary }));
+    logInfo("github.sync", { ...summary });
     return summary;
   },
   // 数据库每日备份(M19 批②):pg_dump -Fc → 备份桶;结果事件在 job 内落日志
   [QUEUE_DB_BACKUP]: async () => {
     const r = await dbBackupJob();
-    console.log(
-      JSON.stringify({
-        event: "db.backup_job_done",
-        key: r.key,
-        sizeBytes: r.sizeBytes,
-        ms: r.durationMs,
-      }),
-    );
+    logInfo("db.backup_job_done", { key: r.key, sizeBytes: r.sizeBytes, ms: r.durationMs });
     return r;
   },
   // embedding 对账(M20 批②):扫 stale 三域 → 批 embed → upsert;汇总事件在 reconcile 内落日志
   [QUEUE_EMBED]: async () => {
     const r = await reconcileEmbeddings();
     if (r.embedded > 0 || r.failed > 0 || r.cleaned > 0 || r.skipped) {
-      console.log(JSON.stringify({ event: "embed.reconcile_job", ...r }));
+      logInfo("embed.reconcile_job", { ...r });
     }
     return r;
   },
@@ -273,9 +265,7 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_EMAIL]: async (job) => {
     const data = job.data as EmailJobData;
     const { skipped } = await sendMail(data);
-    console.log(
-      JSON.stringify({ event: skipped ? "email.skipped" : "email.sent", subject: data.subject }),
-    );
+    logInfo(skipped ? "email.skipped" : "email.sent", { subject: data.subject });
     return { skipped };
   },
   // 公众号草稿同步(M17):wechat-sync 单篇为缺省路径(一键/发布自动共用);wechat-batch 批量;
@@ -290,36 +280,22 @@ export const PROCESSORS: Record<string, Processor> = {
       const progress = await wechatBatchJob(job.data as WechatBatchJobData, (p) =>
         job.updateProgress(p),
       );
-      console.log(JSON.stringify({ event: "wechat.batch_result", ...progress }));
+      logInfo("wechat.batch_result", { ...progress });
       return progress;
     }
     if (job.name === DISTRIBUTE_JOB_WECHAT_COPY) {
       const r = await wechatCopyJob(job.data as WechatCopyJobData);
-      console.log(JSON.stringify({ event: "wechat.copy_result", postId: r.postId, ok: r.ok }));
+      logInfo("wechat.copy_result", { postId: r.postId, ok: r.ok });
       return r;
     }
     if (job.name === DISTRIBUTE_JOB_PIN_WECHAT) {
       // 贴图公众号同步(M41 渠道三 newspic):结果已落行,失败上抛兜底重试
       const r = await pinWechatSyncJob(job.data as PinWechatSyncJobData);
-      console.log(
-        JSON.stringify({
-          event: "pin.sync_result",
-          pinId: r.pinId,
-          ok: r.ok,
-          mediaId: r.mediaId ?? null,
-        }),
-      );
+      logInfo("pin.sync_result", { pinId: r.pinId, ok: r.ok, mediaId: r.mediaId ?? null });
       return r;
     }
     const r = await wechatSyncJob(job.data as WechatSyncJobData);
-    console.log(
-      JSON.stringify({
-        event: "wechat.sync_result",
-        postId: r.postId,
-        ok: r.ok,
-        mediaId: r.mediaId ?? null,
-      }),
-    );
+    logInfo("wechat.sync_result", { postId: r.postId, ok: r.ok, mediaId: r.mediaId ?? null });
     return r;
   },
   // 小红书自动发布(M49 批X3):贴图物料 → xhs-gateway(Playwright 创作平台自动
@@ -339,12 +315,7 @@ export const PROCESSORS: Record<string, Processor> = {
       ).catch(() => undefined);
       throw e;
     }
-    console.log(
-      JSON.stringify({
-        event: "pins.xhs.auto_published",
-        pinId: raw,
-      }),
-    );
+    logInfo("pins.xhs.auto_published", { pinId: raw });
   },
   // 支付对账(M21 批④,§5.2):sweep 5min 收敛近过期 pending(先查单:已付
   // 补发/确认未付过 TTL 才关单);daily-audit 每日 04:13 paid 单流水锚比对。
@@ -352,12 +323,12 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_PAY_RECONCILE]: async (job) => {
     if (job.name === PAY_JOB_DAILY_AUDIT) {
       const r = await dailyAuditOrders();
-      console.log(JSON.stringify({ event: "pay.reconcile_daily_audit", ...r }));
+      logInfo("pay.reconcile_daily_audit", { ...r });
       return r;
     }
     const r = await sweepExpiredOrders();
     if (r.scanned > 0 || r.errors > 0) {
-      console.log(JSON.stringify({ event: "pay.reconcile_sweep", ...r }));
+      logInfo("pay.reconcile_sweep", { ...r });
     }
     return r;
   },
@@ -366,12 +337,12 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_DISCOVERY]: async (job) => {
     if (job.name === DISCOVERY_JOB_BILI) {
       const r = await runBiliDiscovery(DISCOVERY_MAX_WORDS_PER_ROUND);
-      console.log(JSON.stringify({ event: "discovery.bili_job", ...r }));
+      logInfo("discovery.bili_job", { ...r });
       return r;
     }
     if (job.name === DISCOVERY_JOB_HOTWORDS) {
       const r = await runHotwordsDiscovery(DISCOVERY_MAX_WORDS_PER_ROUND);
-      console.log(JSON.stringify({ event: "discovery.hotwords_job", ...r }));
+      logInfo("discovery.hotwords_job", { ...r });
       return r;
     }
     throw new Error(`未知 discovery job:${job.name}`);
@@ -382,7 +353,7 @@ export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_INSIGHT]: async (job) => {
     if (job.name === INSIGHT_JOB_DAILY) {
       const r = await runInsightDaily();
-      console.log(JSON.stringify({ event: "insight.daily_job", ...r }));
+      logInfo("insight.daily_job", { ...r });
       return r;
     }
     if (job.name === INSIGHT_JOB_LABEL) {
@@ -390,25 +361,25 @@ export const PROCESSORS: Record<string, Processor> = {
       const clusterId = (job.data as { clusterId?: string }).clusterId;
       if (clusterId !== undefined) {
         const outcome = await labelClusterNow(BigInt(clusterId));
-        console.log(JSON.stringify({ event: "insight.label_job", clusterId, outcome }));
+        logInfo("insight.label_job", { clusterId, outcome });
         return { outcome };
       }
       const r = await runLabelBatch(LABEL_JOB_BATCH_SIZE);
       if (!r.skipped || r.labeled + r.failed > 0) {
-        console.log(JSON.stringify({ event: "insight.label_job", ...r }));
+        logInfo("insight.label_job", { ...r });
       }
       return r;
     }
     if (job.name === INSIGHT_JOB_EMBED) {
       const r = await runInsightEmbedBatch();
       if (r.embedded > 0 || r.joined > 0 || r.created > 0 || r.failed > 0) {
-        console.log(JSON.stringify({ event: "insight.embed_job", ...r }));
+        logInfo("insight.embed_job", { ...r });
       }
       return r;
     }
     if (job.name === INSIGHT_JOB_FETCH) {
       const r = await runHotlistFetch();
-      console.log(JSON.stringify({ event: "insight.hotlist_job", ...r }));
+      logInfo("insight.hotlist_job", { ...r });
       return r;
     }
     if (job.name === INSIGHT_JOB_TRANSLATE) {
@@ -418,13 +389,13 @@ export const PROCESSORS: Record<string, Processor> = {
       if (signalId) {
         const outcome = await translateSignal(BigInt(signalId));
         if (outcome === "failed") {
-          console.log(JSON.stringify({ event: "insight.translate_job", signalId, outcome }));
+          logInfo("insight.translate_job", { signalId, outcome });
         }
         return { outcome };
       }
       const r = await runInsightTranslateBatch();
       if (r.done + r.cached + r.failed > 0 || r.unbound) {
-        console.log(JSON.stringify({ event: "insight.translate_job", ...r }));
+        logInfo("insight.translate_job", { ...r });
       }
       return r;
     }
@@ -433,7 +404,7 @@ export const PROCESSORS: Record<string, Processor> = {
       // 标记,下轮重投重试);不回写 crawl_source 健康度
       const r = await runVendorExtractJob(job.data as VendorExtractJobData);
       if (r.events > 0 || r.dropped > 0 || r.empty) {
-        console.log(JSON.stringify({ event: "insight.vendor_extract_job", ...r }));
+        logInfo("insight.vendor_extract_job", { ...r });
       }
       return r;
     }

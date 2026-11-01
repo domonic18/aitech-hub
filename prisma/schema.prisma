@@ -385,6 +385,11 @@ model PayGatewayConfig {
 }
 
 // ── stats_(统计域)──────────────────────────────────────────────
+//
+// 列长与采集侧截断常量对齐(issue #203):path @db.VarChar(500) ↔ PATH_MAX、
+// sourceName/browser/os @db.VarChar(50) ↔ SOURCE_NAME_MAX/CLIENT_FIELD_MAX、
+// deviceType @db.VarChar(20) ↔ DEVICE_TYPE_MAX(均见 src/lib/constants.ts)。
+// schema 是物理上限、常量是应用层截断,两处都改才能放宽;只改一边会静默截断或写入报错。
 
 /// 文章阅读数日明细(迁移自 wp_post_views;新浏览 UPSERT 日行 + 累加 views_count)
 model StatsPostViewDaily {

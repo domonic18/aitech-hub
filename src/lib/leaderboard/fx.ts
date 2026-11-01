@@ -127,9 +127,12 @@ export function isStaleRate(stored: UsdCnyRate, now: Date = new Date()): boolean
  * 「从未采到 / 已陈旧」时补采一次;失败只告警(定时任务仍是兜底,页面读旧值不报错)。
  */
 export async function ensureUsdCnyRate(now: Date = new Date()): Promise<UsdCnyRate> {
-  const current = await readCurrentRate();
-  if (!isStaleRate(current, now)) return current;
+  // current 先落内置默认:读库本身失败时也要能返回一个可展示的值(且必须吞掉),
+  // 否则引导阶段一个 DB 抖动就是未捕获拒绝——调用方是不 await 的 void。
+  let current = readStoredRate(null);
   try {
+    current = await readCurrentRate();
+    if (!isStaleRate(current, now)) return current;
     const refreshed = await refreshUsdCnyRate(now);
     // 汇率变了,页面上的折算价得跟着换:失效一次榜单页(启动期 web 未就绪只是告警,
     // 页面最迟由 ISR 窗口 / 下一次采集兜底)

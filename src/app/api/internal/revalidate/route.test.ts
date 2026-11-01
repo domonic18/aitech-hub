@@ -31,7 +31,9 @@ describe("POST /api/internal/revalidate", () => {
   });
 
   it("token 缺失/长度不符/值错 → 403,不动缓存", async () => {
-    expect((await POST(req("", null))).status).toBe(403);
+    const denied = await POST(req("", null));
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: 403 });
     expect((await POST(req("", "deadbeef"))).status).toBe(403); // 长度不同
     expect((await POST(req("", "0".repeat(TOKEN.length)))).status).toBe(403); // 同长错值
     expect(revalidatePath).not.toHaveBeenCalled();
@@ -47,7 +49,11 @@ describe("POST /api/internal/revalidate", () => {
   it("合法 paths → 只失效白名单内的路径", async () => {
     const res = await POST(req(JSON.stringify({ paths: ["/leaderboards/"] })));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ revalidated: true, paths: ["/leaderboards/"] });
+    expect(await res.json()).toEqual({
+      code: 0,
+      message: "ok",
+      data: { revalidated: true, paths: ["/leaderboards/"] },
+    });
     expect(revalidatePath).toHaveBeenCalledTimes(1);
     expect(revalidatePath).toHaveBeenCalledWith("/leaderboards/");
   });

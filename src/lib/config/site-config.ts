@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { prerenderSafe } from "../prerender-safe";
+import { SITE_NAME } from "../site-meta";
 import {
   BAND_ITEM_COUNT_MAX,
   BAND_ITEM_COUNT_MIN,
@@ -32,8 +33,9 @@ export const SITE_CONFIG_KEYS = {
   distributeXhsState: "distribute.xhs_state",
 } as const;
 
-/** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退) */
-export const DEFAULT_SITE_TITLE = "一起AI";
+/** 站点标题缺省(品牌 2026-10-02 定稿;配置缺省/空值时全站回退)。
+ * 品牌名的唯一字面量在 lib/site-meta.ts,这里只做别名。 */
+export const DEFAULT_SITE_TITLE = SITE_NAME;
 
 /** 首页 rail 卡条数合法域(开源项目卡/博主文章卡同钳) */
 export const RAIL_COUNT_MIN = 1;

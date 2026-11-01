@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** 用户协议(requirement §3.1:迁移旧文本,见 src/content/agreement.ts) */
+/** 用户协议(requirement §3.1:迁移旧文本,见 src/content/legal/agreement.ts) */
 export default function AgreementPage(): React.ReactElement {
   return (
     <section className="mx-auto w-full max-w-3xl">
