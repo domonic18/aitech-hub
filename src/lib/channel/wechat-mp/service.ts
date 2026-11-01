@@ -30,9 +30,11 @@ import {
 } from "./crypto";
 import { readWechatMpReply, type WechatMpReplyPayload } from "./answer";
 import {
+  WECHAT_MP_CONTINUE_POLL_BUDGET_MS,
   WECHAT_MP_JOB_ANSWER,
   WECHAT_MP_POLL_INTERVAL_MS,
   WECHAT_MP_REPLY_MAX_BYTES,
+  WECHAT_MP_REPLY_TTL_SECONDS,
   WECHAT_MP_WAIT_BUDGET_MS,
   wechatMpAnswerJobId,
   wechatMpKeys,
@@ -234,7 +236,7 @@ async function requestAnswer(
   },
   cfg: WechatMpRuntimeConfig,
 ): Promise<InboundDispatch> {
-  const jobId = wechatMpAnswerJobId(input.wechatMsgId);
+  const jobId = wechatMpAnswerJobId(input.messageId);
   const queue = getQueue(QUEUE_WECHAT_MP);
   // BullMQ 确定性 jobId 陷阱:同 jobId 旧 job 仍在保留窗口内时 add 会被静默丢弃,
   // 故先查态——在途直接复用;终态先 remove 再入队。
@@ -255,6 +257,11 @@ async function requestAnswer(
       { jobId, attempts: 2, backoff: { type: "exponential", delay: 2_000 }, removeOnComplete: 200 },
     );
   }
+  // 在途指针:答案大概率赶不上 4.2s 窗口(生成常 3–8s),用户随后发的「继续」
+  // 靠它知道等哪一条,而不是误回「暂时没有待继续的答复」。
+  await redis
+    .set(wechatMpKeys.active(input.openid), input.wechatMsgId, "EX", WECHAT_MP_REPLY_TTL_SECONDS)
+    .catch(() => undefined);
 
   const deadline = Date.now() + WECHAT_MP_WAIT_BUDGET_MS;
   for (;;) {
@@ -266,13 +273,30 @@ async function requestAnswer(
   return { text: cfg.texts.timeout, kind: "timeout", status: null };
 }
 
-/** 「继续」:回捞 Redis 缓存;无待办回空提示 */
+/** 「继续」:回捞 Redis 缓存;答案仍在生成则短轮询,彻底没有才回空提示 */
 async function continueReply(openid: string, cfg: WechatMpRuntimeConfig): Promise<InboundDispatch> {
-  const pending = await redis.get(wechatMpKeys.pending(openid));
-  if (!pending) return { text: cfg.texts.continueEmpty, kind: "continue", status: null };
-  const cached: WechatMpReplyPayload | null = await readWechatMpReply(pending);
-  if (!cached) return { text: cfg.texts.continueEmpty, kind: "continue", status: null };
-  await redis.del(wechatMpKeys.pending(openid)).catch(() => undefined);
+  const [pending, active] = await Promise.all([
+    redis.get(wechatMpKeys.pending(openid)),
+    redis.get(wechatMpKeys.active(openid)),
+  ]);
+  const target = pending ?? active;
+  if (!target) return { text: cfg.texts.continueEmpty, kind: "continue", status: null };
+
+  let cached: WechatMpReplyPayload | null = await readWechatMpReply(target);
+  // 在途答案(target 只有 active 指针):用户常在超时回执后几秒内就发「继续」,
+  // 此刻多半还没算完——短轮询把「再发一次」变成「直接拿到答案」。
+  if (!cached && target === active) {
+    const deadline = Date.now() + WECHAT_MP_CONTINUE_POLL_BUDGET_MS;
+    while (!cached && Date.now() + WECHAT_MP_POLL_INTERVAL_MS <= deadline) {
+      await sleep(WECHAT_MP_POLL_INTERVAL_MS);
+      cached = await readWechatMpReply(target);
+    }
+  }
+  if (!cached) return { text: cfg.texts.continuePending, kind: "continue", status: null };
+  await Promise.all([
+    redis.del(wechatMpKeys.pending(openid)).catch(() => undefined),
+    redis.del(wechatMpKeys.active(openid)).catch(() => undefined),
+  ]);
   return { text: cached.text, kind: "continue", status: cached.status };
 }
 
@@ -467,7 +491,7 @@ export async function handleWechatMpPost(
       event: "wechat_mp.dispatch_failed",
       error: e instanceof Error ? e.message : String(e),
     });
-    result = { text: cfg.texts.fallback, kind: "fallback", status: "error" };
+    result = { text: cfg.texts.error, kind: "fallback", status: "error" };
   }
 
   if (!result) return xml("success");
