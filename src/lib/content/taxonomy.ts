@@ -4,10 +4,7 @@ import { prisma } from "@/lib/db";
 import { normalizeSlug } from "@/lib/slug";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
-/** 已发布文章计数:Category→Post 直连;Tag→Post 经 PostTag 关联表(where 口径不同) */
-const publishedPostsCount = {
-  _count: { select: { posts: { where: PUBLISHED } } },
-};
+/** 已发布文章计数:Tag→Post 经 PostTag 关联表(where 口径不同) */
 const publishedPostsCountViaTag = {
   _count: { select: { posts: { where: { post: PUBLISHED } } } },
 };
@@ -15,16 +12,6 @@ const publishedPostsCountViaTag = {
 export async function listCategories() {
   return prerenderSafe("taxonomy.categories", [], () =>
     prisma.category.findMany({ orderBy: { sortOrder: "asc" } }),
-  );
-}
-
-/** 分类 + 已发布文章计数(导航/列表页头用) */
-export async function listCategoriesWithCount() {
-  return prerenderSafe("taxonomy.categoriesWithCount", [], () =>
-    prisma.category.findMany({
-      orderBy: { sortOrder: "asc" },
-      select: { slug: true, name: true, ...publishedPostsCount },
-    }),
   );
 }
 

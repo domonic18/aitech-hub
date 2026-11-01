@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import TaxonomyListView, {
-  resolveTaxonomy,
-  taxonomyMetadata,
-} from "@/components/site/TaxonomyList";
+import TaxonomyListView from "@/components/site/TaxonomyListView";
 import { listCategories } from "@/lib/content/taxonomy";
+import { resolveTaxonomy, taxonomyMetadata } from "@/lib/content/taxonomy-view";
 
 export const revalidate = 600;
 

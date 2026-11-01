@@ -12,11 +12,10 @@
  */
 import { redis } from "@/lib/redis";
 
+import { ONLINE_KEY, ONLINE_KEY_TTL_SECONDS } from "./keys";
+
 /** 在线判定窗口:最后活跃 5 分钟内视为在线 */
 const ONLINE_WINDOW_SECONDS = 300;
-/** 键兜底 TTL(窗口清理常态生效;长期无流量时靠它自清) */
-const ONLINE_KEY_TTL_SECONDS = 86_400;
-const KEY = "stats:online";
 
 /** 标识上限(路由侧已截,此处防御性再截;防超长 label 撑大 ZSET member) */
 const IDENT_MAX = 100;
@@ -39,9 +38,9 @@ export async function touchPresence(
   const member = `${vhash}|${ident.kind === "user" ? "u" : "g"}:${label}|${path}`;
   await redis
     .pipeline()
-    .zadd(KEY, now, member)
-    .zremrangebyscore(KEY, "-inf", cutoff)
-    .expire(KEY, ONLINE_KEY_TTL_SECONDS)
+    .zadd(ONLINE_KEY, now, member)
+    .zremrangebyscore(ONLINE_KEY, "-inf", cutoff)
+    .expire(ONLINE_KEY, ONLINE_KEY_TTL_SECONDS)
     .exec();
 }
 
@@ -67,7 +66,7 @@ export interface OnlinePresence {
 export async function getOnlinePresence(): Promise<OnlinePresence> {
   const now = Date.now();
   const flat = await redis.zrangebyscore(
-    KEY,
+    ONLINE_KEY,
     now - ONLINE_WINDOW_SECONDS * 1000,
     "+inf",
     "WITHSCORES",

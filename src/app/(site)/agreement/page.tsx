@@ -2,7 +2,7 @@ import { getSiteTitle } from "@/lib/config/site-config";
 import type { Metadata } from "next";
 
 import ArticleBody from "@/components/article/ArticleBody";
-import { agreementHtml } from "@/content/agreement";
+import { agreementHtml } from "@/content/legal/agreement";
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteTitle = await getSiteTitle();
