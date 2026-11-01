@@ -4,11 +4,8 @@
  * 搜索走 ?q=;media 页的 kind/ref 组合参数各页自持。
  */
 
-/** 页码解析:非法回落 1 */
-export function parsePage(raw: string | undefined): number {
-  const n = Number.parseInt(raw ?? "1", 10);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
+/** 页码解析:非法回落 1(实现与站内分页同处 lib/pagination.ts,单源不复制) */
+export { parsePage } from "@/lib/pagination";
 
 /** 分段解析:不在白名单回落默认(各页传入自己的分段常量) */
 export function parseListSegment<T extends string>(

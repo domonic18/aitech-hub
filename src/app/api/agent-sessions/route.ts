@@ -5,6 +5,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
+import { parsePage } from "@/lib/admin/list";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import {
@@ -16,11 +17,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const PAT_DENY = "PAT must not manage agent sessions";
-
-function parsePage(raw: string | null): number {
-  const n = Number.parseInt(raw ?? "1", 10);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const actor = await requireSessionActor(req, PAT_DENY);
