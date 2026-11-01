@@ -32,6 +32,7 @@ export function ArticleRowsSkeleton({ count = 6 }: { count?: number }): ReactEle
     <div>
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="flex gap-4 border-b border-line py-5 last:border-b-0 sm:gap-6">
+          <Skeleton className="aspect-[16/9] w-24 shrink-0 rounded-md sm:w-44" />
           <div className="min-w-0 flex-1">
             <Skeleton className={`h-5 ${i % 3 === 2 ? "w-3/5" : "w-[80%]"}`} />
             <Skeleton className="mt-2 h-4 w-full" />
@@ -42,7 +43,6 @@ export function ArticleRowsSkeleton({ count = 6 }: { count?: number }): ReactEle
               <Skeleton className="h-3.5 w-14" />
             </div>
           </div>
-          <Skeleton className="aspect-[16/9] w-24 shrink-0 rounded-md sm:w-44" />
         </div>
       ))}
     </div>

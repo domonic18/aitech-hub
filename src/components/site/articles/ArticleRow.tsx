@@ -13,7 +13,7 @@ const MAX_TAGS = 3;
 const EXCERPT_MAX = 160;
 
 /**
- * 列表视图条目(2026-11-01 列表页重构):左文右缩略图的横向行,文章与贴图
+ * 列表视图条目(2026-11-01 列表页重构):左缩略图右文的横向行,文章与贴图
  * 共用同一骨架。缩略图链接 aria-hidden/tabIndex=-1——可访问名由标题链接承担,
  * 否则读屏会把同一条内容念两遍。
  */
@@ -31,6 +31,18 @@ export default function ArticleRow({ item }: { item: FeedItem }): React.ReactEle
 
   return (
     <article className="flex gap-4 border-b border-line py-5 last:border-b-0 sm:gap-6">
+      <Link
+        href={href}
+        aria-hidden="true"
+        tabIndex={-1}
+        className="w-24 shrink-0 self-start overflow-hidden rounded-md sm:w-44"
+      >
+        {cover ? (
+          <CardCover src={cover} sizes="(max-width: 640px) 96px, 176px" />
+        ) : (
+          <CoverPlaceholder />
+        )}
+      </Link>
       <div className="min-w-0 flex-1">
         <h2 className="text-lg font-semibold leading-snug">
           <Link href={href} className="hover:text-accent-hover">
@@ -68,18 +80,6 @@ export default function ArticleRow({ item }: { item: FeedItem }): React.ReactEle
           )}
         </div>
       </div>
-      <Link
-        href={href}
-        aria-hidden="true"
-        tabIndex={-1}
-        className="w-24 shrink-0 self-start overflow-hidden rounded-md sm:w-44"
-      >
-        {cover ? (
-          <CardCover src={cover} sizes="(max-width: 640px) 96px, 176px" />
-        ) : (
-          <CoverPlaceholder />
-        )}
-      </Link>
     </article>
   );
 }
