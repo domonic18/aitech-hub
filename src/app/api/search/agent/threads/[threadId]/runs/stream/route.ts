@@ -32,6 +32,7 @@ import {
   refreshGuestThread,
 } from "@/lib/agent/guest-threads";
 import { resolveAgentIdentity } from "@/lib/agent/identity";
+import { enrichArticleContext } from "@/lib/agent/article-context";
 import { parseAgentRunContext, sanitizeAgentRunContext } from "@/lib/agent/run-context";
 import { hasTokenBalance, consumeTokens } from "@/lib/users/token-balance";
 import { prisma } from "@/lib/db";
@@ -153,12 +154,15 @@ export async function POST(
   }
 
   // 页面上下文(M27 批⑧-b,body.context,宽松解析):坏形状弃用不 400——聊天
-  // 不因附带上下文挂掉;edit 段非 admin 身份剥除(fail-safe,sanitize 收口)
+  // 不因附带上下文挂掉;edit 段非 admin 身份剥除(fail-safe,sanitize 收口)。
+  // 文章段(M69)只信客户端 postId,标题/门禁由已发布行补全,伪造 id 直接丢弃。
   const rawContext =
     typeof rawBody === "object" && rawBody !== null
       ? (rawBody as { context?: unknown }).context
       : undefined;
-  const context = sanitizeAgentRunContext(parseAgentRunContext(rawContext), identity.kind);
+  const context = await enrichArticleContext(
+    sanitizeAgentRunContext(parseAgentRunContext(rawContext), identity.kind),
+  );
 
   // 护栏额度(2026-10-17 起后台「站点设置」可调):每请求一次 kv 读档,
   // 会话累计前置闸与单轮三闸同源,recursionLimit 按 2.5×toolCalls 派生

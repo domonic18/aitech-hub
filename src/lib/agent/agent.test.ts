@@ -17,6 +17,7 @@ vi.mock("./tools", () => ({
     { name: "submit_feedback" },
   ],
   EDIT_TOOLS: [{ name: "read_draft" }, { name: "propose_edits" }],
+  readPostToolFor: (kind: string) => ({ name: "read_post", mode: kind }),
 }));
 vi.mock("./topic-tools", () => ({
   TOPIC_TOOLS: [
@@ -70,6 +71,13 @@ describe("agentToolsFor(工具面按身份分发)", () => {
         "ask_user",
         "submit_feedback",
       ]);
+    }
+  });
+
+  it("read_post 按身份换档(M69):guest/user/admin 各取对应门禁实例", () => {
+    for (const kind of ["guest", "user", "admin"] as const) {
+      const t = agentToolsFor(kind).find((x) => x.name === "read_post");
+      expect((t as unknown as { mode: string }).mode).toBe(kind);
     }
   });
 
