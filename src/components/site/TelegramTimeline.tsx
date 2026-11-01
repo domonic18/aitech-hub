@@ -15,13 +15,16 @@ import VideoArticle from "@/components/site/TelegramArticle";
 import {
   countUnseen,
   feedChipTone,
+  feedHasMore,
   groupByDay,
   hhmm,
   hostOf,
   isNew,
   mergeFeedItems,
+  nextFeedCursor,
   timeAgo,
   FEED_CHIP_TONE_CLASSES,
+  FEED_PAGE_SIZE,
   type FeedMediaFilter,
   type PublicTelegramItem,
 } from "@/lib/telegram/feed-view";
@@ -66,9 +69,16 @@ export default function TelegramTimeline({
     ),
   );
 
+  // 「加载更多」(M69):offset 游标只由服务端 nextOffset 推进,与 60s after
+  // 轮询互不干扰;重复项仍由 mergeFeedItems 按 id 去重。
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(initialItems.length >= FEED_PAGE_SIZE);
+  const [loadError, setLoadError] = useState(false);
+  const nextOffsetRef = useRef(initialItems.length);
+
   // 60s 轮询增量(P2-14c 收敛至 useFeedPolling):after 增量锚在 afterRef 内
   // 自推进,合流走 mergeFeedItems 同构重排,今日计数经 onData 透出
-  const { items, now } = useFeedPolling({
+  const { items, now, append } = useFeedPolling({
     initialItems,
     initialNow,
     buildQuery: () => {
@@ -90,6 +100,36 @@ export default function TelegramTimeline({
     },
     onData: (d) => setToday(d.today),
   });
+
+  // 加载更早一页(M69):游标取服务端 nextOffset,短页即到底;失败保留旧列表可重试
+  const loadMore = async (): Promise<void> => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    setLoadError(false);
+    try {
+      const sp = new URLSearchParams({
+        limit: String(FEED_PAGE_SIZE),
+        offset: String(nextOffsetRef.current),
+      });
+      if (sourceId !== undefined) sp.set("source", String(sourceId));
+      if (media !== "all") sp.set("media", media);
+      const res = await fetch(`/api/telegram/public?${sp.toString()}`, { cache: "no-store" });
+      const body = (await res.json()) as {
+        code: number;
+        data?: { items: PublicTelegramItem[]; nextOffset?: number };
+      };
+      if (body.code !== 0 || !body.data) throw new Error("load more failed");
+      append(body.data.items);
+      const next =
+        body.data.nextOffset ?? nextFeedCursor(nextOffsetRef.current, body.data.items.length);
+      nextOffsetRef.current = next;
+      setHasMore(feedHasMore(body.data.items.length, next));
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // 浮条点击:重置未读锚到当前首行 + 平滑回顶(ai-invest 同款;即刷即渲染下
   // 内容已在列表,「载入」即回到顶部阅读)
@@ -216,6 +256,22 @@ export default function TelegramTimeline({
           </div>
         </section>
       ))}
+      {items.length > 0 && hasMore && (
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="cursor-pointer rounded-sm border border-line px-4 py-2 text-sm text-text-2 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loadingMore ? "加载中…" : "加载更多"}
+          </button>
+          {loadError && <p className="mt-1.5 font-mono text-[11px] text-red">加载失败,点击重试</p>}
+        </div>
+      )}
+      {items.length > 0 && !hasMore && (
+        <p className="mt-4 text-center font-mono text-[11px] text-text-3">已加载全部电报</p>
+      )}
       {items.length === 0 && (
         <div className="rounded-lg border border-line bg-panel px-4 py-12 text-center text-xs text-text-3">
           {today > 0
