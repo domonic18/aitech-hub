@@ -5,7 +5,7 @@ import { isSameOrigin } from "@/lib/http/origin";
 import { apiEnvelope } from "@/lib/http/response";
 import { classifyBotUa } from "@/lib/stats/bots";
 import { classifyGeoSurface, GEO_UNKNOWN_AGENT } from "@/lib/stats/geo";
-import { ingestBotFetch, ingestGeoFetch } from "@/lib/stats/service";
+import { ingestBotFetch, ingestGeoFetch } from "@/lib/stats/ingest";
 
 /**
  * 爬虫/GEO 抓取入账端点(2026-10-07 方案B;2026-10-09 方案A扩展,arch/05-services §5):
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   const rawPath = parsed.success ? (parsed.data.path ?? "") : "";
   const geo = rawPath === "" ? null : classifyGeoSurface(rawPath);
-  if (!bot && !geo) return new NextResponse(null, { status: 204 }) as NextResponse;
+  if (!bot && !geo) return new NextResponse(null, { status: 204 });
   try {
     // 总账:命名爬虫的页面与 GEO 抓取都进 ref 日账(source_class='bot',方案B口径不变)
     if (bot) await ingestBotFetch(bot.name);
@@ -35,5 +35,5 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch {
     // 统计尽力而为:redis 抖动时不重试不告警降噪(middleware 侧本就不等结果)
   }
-  return new NextResponse(null, { status: 204 }) as NextResponse;
+  return new NextResponse(null, { status: 204 });
 }

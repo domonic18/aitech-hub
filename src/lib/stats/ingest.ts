@@ -1,23 +1,24 @@
 /**
- * 站点统计 service(requirement §3.5;arch/05-services §1 分层):
+ * 站点统计接收入口(requirement §3.5;arch/05-services §1 分层;2026-11-01 批D
+ * 自 service.ts 拆出——本文件只管「收」,落库在 flush.ts,明细保留在 purge.ts):
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
  *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5);
  *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥);
  *    /search 页带 q 时行级直插 stats_search_log(搜索词排行,180 天,2026-10-06);
  *    在线用户 presence 心跳(5 分钟滑窗 Redis ZSET,M28 批②,online.ts)。
- *  - purgeVisitLogs / purgeSearchLogs:worker 日调度清理保留窗口外明细行。
  *  - ingestBotFetch:爬虫抓取入账(2026-10-07 方案B,middleware→内部端点→
  *    同一 ref 日缓冲 source_class='bot';识别名单见同目录 bots.ts)。
  *  - ingestGeoFetch:GEO 机器面抓取入账(2026-10-09 方案A,面别分类见 geo.ts,
  *    独立 geo 日缓冲 → stats_geo_daily)。
- * 缓冲落库(flushStatsBuffer)在同级 flush.ts(worker 每 60s;
- * 缓冲键形 stats:buf:<kind>:<day> 由本文件写入、flush.ts 消费,改名需同批)。
+ * 缓冲落库(flushStatsBuffer)在同级 flush.ts(worker 每 60s);缓冲键形由 keys.ts
+ * 单源构造与解析。
  */
 import { createHash } from "node:crypto";
 
-import { deleteBatchedWhere, prisma } from "@/lib/db";
-import { DAY_MS, statsDay } from "@/lib/datetime";
-import { logger } from "@/lib/logger";
+import { CLIENT_FIELD_MAX, DEVICE_TYPE_MAX, IP_MAX, SOURCE_NAME_MAX } from "@/lib/constants";
+import { prisma } from "@/lib/db";
+import { statsDay } from "@/lib/datetime";
+import { logWarn } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { ingestInsightSignal } from "@/lib/insight/ingest";
@@ -113,16 +114,16 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
     .create({
       data: {
         path,
-        ip: input.ip.slice(0, 45),
-        browser: client.browser.slice(0, 50),
-        os: client.os.slice(0, 50),
-        deviceType: client.deviceType.slice(0, 20),
+        ip: input.ip.slice(0, IP_MAX),
+        browser: client.browser.slice(0, CLIENT_FIELD_MAX),
+        os: client.os.slice(0, CLIENT_FIELD_MAX),
+        deviceType: client.deviceType.slice(0, DEVICE_TYPE_MAX),
         sourceClass: ref.sourceClass,
-        sourceName: ref.sourceName.slice(0, 50),
+        sourceName: ref.sourceName.slice(0, SOURCE_NAME_MAX),
         visitorHash: vhash,
       },
     })
-    .catch((e: unknown) => logger.warn({ event: "stats.visit_log.failed", error: String(e) }));
+    .catch((e: unknown) => logWarn("stats.visit_log.failed", { error: e }));
 
   // 搜索词排行(2026-10-06 需求):仅 /search 页 counted PV 记词;行级直插不经缓冲,
   // 同样不 await 不阻断 beacon,失败仅告警(排行少计一次可接受,不阻塞主口径)。
@@ -143,7 +144,7 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
             meta: hitCount === undefined ? undefined : { hitCount },
           }),
         )
-        .catch((e: unknown) => logger.warn({ event: "stats.search_log.failed", error: String(e) }));
+        .catch((e: unknown) => logWarn("stats.search_log.failed", { error: e }));
     }
   }
 
@@ -158,7 +159,7 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
     input.presenceLabel
       ? { kind: "user", label: input.presenceLabel }
       : { kind: "guest", label: input.ip },
-  ).catch((e: unknown) => logger.warn({ event: "stats.presence.failed", error: String(e) }));
+  ).catch((e: unknown) => logWarn("stats.presence.failed", { error: e }));
 
   return { counted: true, reason: "ok", postCounted };
 }
@@ -204,25 +205,7 @@ export async function ingestGeoFetch(
     .exec();
 }
 
-// ── 明细保留(worker 日调度,M10 批⑥)────────────────────────────────
-
-/** 明细保留天数(2026-10-04 用户定调:全量 IP + 7 天短留存) */
-const VISIT_LOG_RETENTION_DAYS = 7;
-
-/** 清理保留窗口外的访问明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
-export async function purgeVisitLogs(): Promise<number> {
-  const cutoff = new Date(Date.now() - VISIT_LOG_RETENTION_DAYS * DAY_MS);
-  return deleteBatchedWhere(prisma.statsVisitLog, { createdAt: { lt: cutoff } });
-}
-
-/** 搜索词明细保留天数(无 PII,比访问明细长;排行「全部」窗口的实际上界) */
-const SEARCH_LOG_RETENTION_DAYS = 180;
-
-/** 清理保留窗口外的搜索词明细;返回删除行数(0 不打日志);分批防超时(M48 批F) */
-export async function purgeSearchLogs(): Promise<number> {
-  const cutoff = new Date(Date.now() - SEARCH_LOG_RETENTION_DAYS * DAY_MS);
-  return deleteBatchedWhere(prisma.statsSearchLog, { createdAt: { lt: cutoff } });
-}
+// ── 内部工具 ────────────────────────────────────────────────────
 
 function hash16(s: string): string {
   return createHash("sha1").update(s).digest("hex").slice(0, 16);

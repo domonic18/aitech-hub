@@ -3,12 +3,13 @@ import { z } from "zod";
 
 import { ADMIN_ROLE } from "@/lib/auth/constants";
 import { ACCESS_COOKIE_NAME, verifyAccessToken } from "@/lib/auth/session";
+import { PATH_MAX, REFERRER_MAX, SEARCH_TERM_MAX } from "@/lib/constants";
 import { env } from "@/lib/env";
 import { isSameOrigin } from "@/lib/http/origin";
 import { clientIp } from "@/lib/http/request";
 import { apiEnvelope } from "@/lib/http/response";
 import { prisma } from "@/lib/db";
-import { ingestView } from "@/lib/stats/service";
+import { ingestView } from "@/lib/stats/ingest";
 
 /**
  * 全站 beacon 上报(arch/05-services §5 stats:POST /api/view;requirement §3.5)。
@@ -17,9 +18,9 @@ import { ingestView } from "@/lib/stats/service";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
-  path: z.string().min(1, "path 不能为空").max(500),
-  referrer: z.string().max(2000).optional(),
-  q: z.string().max(200).optional(), // /search 页搜索词原文;归一与截断在 ingestView 侧
+  path: z.string().min(1, "path 不能为空").max(PATH_MAX),
+  referrer: z.string().max(REFERRER_MAX).optional(),
+  q: z.string().max(SEARCH_TERM_MAX).optional(), // /search 页搜索词原文;归一与截断在 ingestView 侧
   hitCount: z.number().int().min(0).max(10_000).optional(), // /search 命中数(M34 批①,SearchHitMeta 透传)
 });
 
@@ -70,5 +71,5 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     presenceLabel: presenceLabel || undefined,
   });
   // 204 无包络:beacon 场景客户端不消费响应体
-  return new NextResponse(null, { status: 204 }) as NextResponse;
+  return new NextResponse(null, { status: 204 });
 }
