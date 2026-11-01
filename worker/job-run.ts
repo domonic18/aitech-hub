@@ -35,7 +35,9 @@ import {
   STATS_JOB_PURGE,
   STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
+  QUEUE_WECHAT_MP,
 } from "../src/lib/queue";
+import { WECHAT_MP_JOB_PURGE } from "../src/lib/channel/wechat-mp/constants";
 
 /** 落账白名单(queue/jobName,约 900 行/日;读侧标签映射 src/lib/jobs/runlog-admin 同批维护) */
 const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
@@ -59,6 +61,8 @@ const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_CRAWLER}/${CRAWL_JOB_SOURCE}`,
   // 榜单展示汇率日采(M63 v2.1;日 1 行,失败也要在计划页可见)
   `${QUEUE_CRAWLER}/${LEADERBOARD_JOB_FX_REFRESH}`,
+  // 公众号明细清理(M66;日 1 行,清理失败要在计划页可见)
+  `${QUEUE_WECHAT_MP}/${WECHAT_MP_JOB_PURGE}`,
 ]);
 
 /** 手动触发判别:各触发入口 jobId 统一带 -manual-(insight/discovery 触发路由、

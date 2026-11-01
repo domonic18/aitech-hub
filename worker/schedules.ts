@@ -53,10 +53,13 @@ import {
   STATS_JOB_USAGE_PURGE,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
+  WECHAT_MP_PURGE_CRON,
+  QUEUE_WECHAT_MP,
   getQueue,
   QUEUE_DISTRIBUTE,
   DISTRIBUTE_JOB_XHS_STATE_PROBE,
 } from "../src/lib/queue";
+import { WECHAT_MP_JOB_PURGE } from "../src/lib/channel/wechat-mp/constants";
 import { SITE_TZ } from "../src/lib/datetime";
 
 const STATS_FLUSH_EVERY_MS = 60_000;
@@ -104,6 +107,20 @@ export async function scheduleCoverTempSweep(): Promise<void> {
     { pattern: COVER_TEMP_SWEEP_CRON, tz: SITE_TZ },
     {
       name: COVER_JOB_TEMP_SWEEP,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 公众号消息明细清理(M66):每日 04:24 删 180 天前明细(渠道用户/线索表不动) */
+export async function scheduleWechatMpPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_WECHAT_MP);
+  await queue.upsertJobScheduler(
+    "wechat-mp-purge",
+    { pattern: WECHAT_MP_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: WECHAT_MP_JOB_PURGE,
       data: {},
       opts: schedulerOpts(7),
     },

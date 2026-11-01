@@ -67,6 +67,9 @@ export const QUEUE_DISCOVERY = "discovery";
 /** 洞察加工(M34 批②,insight-plan §5):embed 高频向量回填+增量聚类 /
  * daily 日频 LLM 打标+覆盖度+快照;并发 1(同批自愈重扫语义,防双拍交错归簇)*/
 export const QUEUE_INSIGHT = "insight";
+/** 公众号私信问答生成(M66):请求线程只轮询结果键,检索+LLM 生成在此队列;
+ * 并发 1 与站内问答争同一 `summarize` 角色,串行防打爆绑定模型 */
+export const QUEUE_WECHAT_MP = "wechat-mp";
 /** 配图工坊拆层(M40 批 B,arch/05 §4.7):手动触发 Seedream layer_decomposition,
  * 官方 URL 24h 过期前 worker 转存站内媒体;拆层 ~75s 不占请求(请求内禁秒级任务)。
  * 并发 1:拆层是单绑定模型重调用,串行防打爆速率 */
@@ -91,6 +94,7 @@ export const QUEUE_NAMES = [
   QUEUE_DISCOVERY,
   QUEUE_INSIGHT,
   QUEUE_ILLUSTRATION_STUDIO,
+  QUEUE_WECHAT_MP,
   QUEUE_DISTRIBUTE_XHS,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -116,6 +120,7 @@ export {
   PAY_DAILY_AUDIT_CRON,
   USAGE_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
+  WECHAT_MP_PURGE_CRON,
 } from "./collect/schedules";
 
 /** crawler 队列 job name 契约(生产:tick 调度/ingest.ts/ingest-video.ts/bloggers-admin.ts;

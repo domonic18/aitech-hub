@@ -350,6 +350,10 @@ CREATE TABLE legacy_url_map (
 - `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
 - `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
 
+**短信认证通道已落地(2026-10-31 M65 迁移 `20261031180000_m65_user_sms_config`,链路见 [arch/05 §3.4](05-services.md))**:
+
+- `user_sms_config`(阿里云 PNVS 短信认证配置单例 `id=1`,get-or-create,镜像 `email_config` / `admin_feishu_config` 形态——2026-10-31 拍板凭据入数据库不入 env):`access_key_id varchar(100)` 默认 `''`(空=未配置)/`access_key_secret_enc?/access_key_secret_mask?`(secret-box AES-256-GCM 同箱,只写不读、留空=保留原值)/`sign_name varchar(50)`(PNVS 签发签名名,可轮换故不入 env)/`template_code varchar(50)` 默认 `100001`(PNVS 预置模板:100001 登录/注册,100002/100004/100005 绑定场景)/`enabled bool 默认 false`(**通道总开关,同时是登录页短信页签的唯一门控**——关闭或凭据不全时端点 503、页签隐藏)/`daily_limit int` 默认 200(日发送预算熔断)/`last_test_*` 四件套(后台下发探针留痕);**验证码由服务商托管,本站不落库、不缓存**
+
 **飞书免登域两表已落地(2026-10-14 M29 批①迁移 `20261014160000_admin_feishu_sso`,交互与兑换链见 [arch/05 §3.1](05-services.md))**:
 
 - `admin_feishu_config`(应用凭证单例 `id=1`,get-or-create,镜像 `email_config`/`publish_wechat_config` 形态;2026-10-14 拍板凭证入数据库不入 env):`app_id varchar(50) 默认 ''`/`app_secret_enc?/app_secret_mask?`(secret-box AES-256-GCM 同箱,AUTH_SECRET 轮换失效重录)/`enabled 默认 false`(免登兑换总开关——绑定/appId 下发只要求凭证齐,enabled 可后开)/`last_test` 四件套(探测 app_token+jsapi_ticket 双链路)
@@ -408,6 +412,17 @@ CREATE TABLE legacy_url_map (
   - 5 张明细表补 `created_at`(`pay_order_item` / `content_post_tag` / `content_media_ref` / `github_repo_post` / `insight_cluster_member`),按父表时间回填
   - 刻意不加 FK 的多态/聚合引用与类型例外登记在 standard/03 §7
 - M64(榜单口径与实体层打通)迁移 `20261031160000_m64_leaderboard_entity`,`insight_leaderboard_snapshot` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_insight_leaderboard_snapshot_entity`:仅 Artificial Analysis / Hugging Face 两源在采集写入时解析挂接(`src/lib/insight/entities/leaderboard.ts` 为唯一出口,只读、未命中留 null 不阻塞采集),`entity_key` 原样保留;实体归并时同事务把快照改指目标实体。存量回填 `scripts/oneoff/leaderboard-entity-backfill/run.ts`(默认 dry-run,幂等)
+
+**渠道入站会话域六表(2026-11-01 M66 立项,方案见 [plan/wechat-mp-bot-plan](../plan/wechat-mp-bot-plan.md);新前缀 `channel_` 已登记 [standard/03 §2](../standard/03-db-naming.md))**:
+
+- `channel_wechat_mp_config`(公众号入站单例 `id=1`,get-or-create):`token varchar(32)`、`encoding_aes_key_enc? varchar(200)` + `encoding_aes_key_mask? varchar(20)`(secret-box 密文 + 脱敏冗余)、`enabled`、`greeting_text`/`fallback_text`/`handoff_text`、`handoff_keywords text[]`、`daily_answer_limit int 默认 200` + `last_test` 四件套;**`appid`/`appsecret` 不复制**——一律经 `publish_wechat_config` 单源读取(同号同凭据)
+- `channel_wechat_mp_user`(公众号侧用户,openid 锚):`openid varchar(64)` 唯一、`unionid?`、`user_id?` FK→`user_account`(`ON DELETE SET NULL`,一次性绑定码建立)、`nickname?`/`avatar_url?`、`is_subscribed`/`subscribed_at`/`unsubscribed_at?`、`last_message_at?`、`message_count`、`is_manual_pending`;索引 `(user_id)`(FK 必配)、`(last_message_at DESC)`
+- `channel_wechat_mp_message`(问答明细,append-only 仅 `created_at`):`channel_user_id`(Cascade)、`wechat_msg_id varchar(100)` **唯一**(微信 `MsgId`,事件用 `FromUserName+CreateTime` 派生,幂等锚)、`direction`(in/out)、`msg_type`(text/event)、`event?`、`content text`、`reply_kind?`(keyword/rag/timeout/continue/handoff/fallback/welcome/help)、`answer_status?`(ok/no_evidence/error/truncated)、`latency_ms?`、`ai_usage_id?` FK→`ai_usage_log`(SetNull);索引 `(channel_user_id, created_at DESC)`、`(created_at)`(180 天清理)、`(ai_usage_id)`
+- `channel_wechat_mp_lead`(转人工线索):`channel_user_id`(Cascade)、`message_id?`(SetNull)、`reason varchar(200)`、`status`(open/handled)、`note? text`、`handled_at?`;索引 `(status, created_at DESC)`、`(message_id)`、`(channel_user_id)`
+- `channel_wechat_mp_keyword`(关键词直连):`keyword varchar(50)` 唯一、`post_id?` FK→`content_post`(SetNull)、`reply_text?`、`is_enabled`、`hit_count`;索引 `(post_id)`
+- `channel_feishu_alert_config`(站务通知单例 `id=1`):`app_id varchar(64)`、`app_secret_enc?` + `app_secret_mask?`、`chat_id varchar(100)`、`chat_name varchar(100)`、`enabled`、`is_notify_handoff`、`is_notify_daily`、`daily_summary_hour int 默认 9` + `last_test` 四件套。**凭据只入库**(用户裁定:不 hardcode、不入 env);与 M29 免登飞书应用互不相干
+
+表外状态全走 Redis(不落库):绑定码 `channel:wxmp:bind:<code>`(10min)、待继续指针 `channel:wxmp:pending:<openid>`、答案缓存 `channel:wxmp:reply:<msgId>`(30min)、当日答案配额 `channel:wxmp:quota:<北京日>`。
 
 ## 3. Prisma 模型约定
 

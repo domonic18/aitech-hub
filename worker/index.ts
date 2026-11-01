@@ -30,6 +30,7 @@ import {
   scheduleStatsFlush,
   scheduleUsageLogPurge,
   scheduleVisitLogPurge,
+  scheduleWechatMpPurge,
 } from "./schedules";
 
 function logFailed(queue: string): (job: Job | undefined, err: Error) => void {
@@ -113,6 +114,7 @@ async function main(): Promise<void> {
   }
   await scheduleCoverTempSweep();
   await scheduleVisitLogPurge();
+  await scheduleWechatMpPurge();
   await scheduleUsageLogPurge();
   await scheduleAgentSessionPurge();
   await scheduleJobRunPurge();

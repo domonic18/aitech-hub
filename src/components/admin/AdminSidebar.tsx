@@ -61,6 +61,8 @@ const GROUPS: ReadonlyArray<Group> = [
     items: [
       // 内容分发→分发中心(IA v2 更名,多渠道枢纽永久位;路由不变)
       { icon: "i-cloudupload", label: "分发中心", href: "/admin/distribute" },
+      // 公众号会话(M66):公众号私信问答的处置面(会话/关键词/接入配置)
+      { icon: "i-comment", label: "公众号会话", href: "/admin/wechat-mp" },
     ],
   },
   {
