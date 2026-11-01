@@ -34,7 +34,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
   if (!parsed.success || !parsedAgent.success) {
     return apiEnvelope(
       400,
-      "配置不合法:条数须为整数(电报流 1-50、项目/文章 1-12)、标题 1-50 字、文案 ≤2000 字、关于页 ≤8000 字、版权声明 ≤1000 字;Agent 额度工具调用 1-200、tokens 1000-2000000",
+      "配置不合法:条数须为整数(电报流 1-50、项目/文章 1-12)、标题 1-50 字、文案 ≤2000 字、关于页 ≤8000 字、版权声明 ≤1000 字、搜索建议词最多 4 个(各 ≤24 字)且个数 3-4;Agent 额度工具调用 1-200、tokens 1000-2000000",
     );
   }
   const siteEmpty = Object.values(parsed.data).every((v) => v === undefined);

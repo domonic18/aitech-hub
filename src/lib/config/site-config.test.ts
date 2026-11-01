@@ -16,11 +16,13 @@ vi.mock("../db", () => ({ prisma: prismaMock }));
 
 import { DEFAULT_BAND_ITEM_COUNT } from "../telegram/constants";
 import {
+  DEFAULT_HOME_SEARCH_TERMS_CONFIG,
   DEFAULT_POST_COPYRIGHT_MD,
   DEFAULT_POST_COUNT,
   DEFAULT_REPO_COUNT,
   DEFAULT_SITE_TITLE,
   SITE_CONFIG_KEYS,
+  clampSearchTermsCount,
   getBandItemCount,
   getHeroMd,
   getPostCopyrightMd,
@@ -28,6 +30,8 @@ import {
   getRepoCount,
   getSiteSettings,
   getSiteTitle,
+  normalizeSearchTermsWords,
+  parseHomeSearchTerms,
   setSiteConfig,
 } from "./site-config";
 
@@ -115,6 +119,10 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       { key: SITE_CONFIG_KEYS.aboutMd, value: "# 自定义关于" },
       { key: SITE_CONFIG_KEYS.icp, value: " 京ICP备2022035466号-2 " },
       { key: SITE_CONFIG_KEYS.postCopyrightMd, value: " 版权所有 © 2026 " },
+      {
+        key: SITE_CONFIG_KEYS.homeSearchTerms,
+        value: JSON.stringify({ words: ["Claude Code", "MCP"], count: 4 }),
+      },
     ]);
     expect(await getSiteSettings()).toEqual({
       bandItemCount: 20,
@@ -125,6 +133,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       aboutMd: "# 自定义关于",
       icp: "京ICP备2022035466号-2",
       postCopyrightMd: "版权所有 © 2026",
+      homeSearchTerms: { words: ["Claude Code", "MCP"], count: 4 },
     });
     prismaMock.siteConfig.findMany.mockResolvedValueOnce([]);
     expect(await getSiteSettings()).toEqual({
@@ -136,6 +145,7 @@ describe("getSiteSettings(admin 页与 GET API 全量读)", () => {
       aboutMd: "",
       icp: "",
       postCopyrightMd: DEFAULT_POST_COPYRIGHT_MD,
+      homeSearchTerms: DEFAULT_HOME_SEARCH_TERMS_CONFIG,
     });
   });
 });
@@ -150,6 +160,7 @@ describe("setSiteConfig(M12 多键 partial)", () => {
       aboutMd: "# 关于",
       icp: " 京ICP备2022035466号-2 ",
       postCopyrightMd: " 第一行\n第二行 ",
+      homeSearchTerms: { words: [" 甲组 ", "甲组", "乙组"], count: 4 },
     });
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     const ops = prismaMock.siteConfig.upsert.mock.calls.map(
@@ -162,7 +173,9 @@ describe("setSiteConfig(M12 多键 partial)", () => {
     expect(byKey.get(SITE_CONFIG_KEYS.aboutMd)).toBe("# 关于");
     expect(byKey.get(SITE_CONFIG_KEYS.icp)).toBe("京ICP备2022035466号-2");
     expect(byKey.get(SITE_CONFIG_KEYS.postCopyrightMd)).toBe("第一行\n第二行");
-    expect(ops).toHaveLength(6);
+    // Zod 先 trim,serialize 再去重/钳个数 → 落库为归一后的 JSON
+    expect(byKey.get(SITE_CONFIG_KEYS.homeSearchTerms)).toBe('{"words":["甲组","乙组"],"count":4}');
+    expect(ops).toHaveLength(7);
   });
 
   it("越界/空标题/超长文案 → Zod 拒绝且不落库;空对象 → 零写入", async () => {
@@ -174,7 +187,56 @@ describe("setSiteConfig(M12 多键 partial)", () => {
     await expect(setSiteConfig({ aboutMd: "x".repeat(8001) })).rejects.toThrow();
     await expect(setSiteConfig({ icp: "x".repeat(61) })).rejects.toThrow();
     await expect(setSiteConfig({ postCopyrightMd: "x".repeat(1001) })).rejects.toThrow();
+    // 建议词:超 4 个 / 空词 / 超长词 / 个数越界 / 未知字段(strict)一律拒绝
+    await expect(
+      setSiteConfig({ homeSearchTerms: { words: ["aa", "bb", "cc", "dd", "ee"], count: 3 } }),
+    ).rejects.toThrow();
+    await expect(setSiteConfig({ homeSearchTerms: { words: ["  "], count: 3 } })).rejects.toThrow();
+    await expect(setSiteConfig({ homeSearchTerms: { words: ["x"], count: 3 } })).rejects.toThrow();
+    await expect(
+      setSiteConfig({ homeSearchTerms: { words: ["x".repeat(25)], count: 3 } }),
+    ).rejects.toThrow();
+    await expect(setSiteConfig({ homeSearchTerms: { words: [], count: 2 } })).rejects.toThrow();
+    await expect(setSiteConfig({ homeSearchTerms: { words: [], count: 5 } })).rejects.toThrow();
+    await expect(
+      setSiteConfig({
+        homeSearchTerms: { words: [], count: 3, typo: 1 } as unknown as {
+          words: string[];
+          count: number;
+        },
+      }),
+    ).rejects.toThrow();
     await setSiteConfig({});
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("首页搜索建议词存储解析(M70)", () => {
+  it("parseHomeSearchTerms:缺行/坏 JSON/非对象 → 默认;合法 JSON 归一", () => {
+    expect(parseHomeSearchTerms(null)).toEqual(DEFAULT_HOME_SEARCH_TERMS_CONFIG);
+    expect(parseHomeSearchTerms("{")).toEqual(DEFAULT_HOME_SEARCH_TERMS_CONFIG);
+    expect(parseHomeSearchTerms("[]")).toEqual(DEFAULT_HOME_SEARCH_TERMS_CONFIG);
+    expect(parseHomeSearchTerms('"x"')).toEqual(DEFAULT_HOME_SEARCH_TERMS_CONFIG);
+    // words 类型不符 → [];count 越界 → clamp 4(与其它整数键同口径)
+    expect(parseHomeSearchTerms('{"words":"x","count":9}')).toEqual({ words: [], count: 4 });
+    expect(parseHomeSearchTerms('{"words":[" 甲组 ","甲组", 3, ""],"count":4}')).toEqual({
+      words: ["甲组"],
+      count: 4,
+    });
+  });
+
+  it("normalizeSearchTermsWords:trim/去空/去超长/大小写不敏感去重/截 4 个", () => {
+    expect(
+      normalizeSearchTermsWords([" MCP ", "mcp", "", "x".repeat(25), "甲组", "乙组", "丙组"]),
+    ).toEqual(["MCP", "甲组", "乙组", "丙组"]);
+    expect(normalizeSearchTermsWords("not-array")).toEqual([]);
+  });
+
+  it("clampSearchTermsCount:整数 3-4 直取;越界/非法钳回默认/上限", () => {
+    expect(clampSearchTermsCount(3)).toBe(3);
+    expect(clampSearchTermsCount(4)).toBe(4);
+    expect(clampSearchTermsCount(9)).toBe(4);
+    expect(clampSearchTermsCount(2)).toBe(DEFAULT_HOME_SEARCH_TERMS_CONFIG.count);
+    expect(clampSearchTermsCount("abc")).toBe(DEFAULT_HOME_SEARCH_TERMS_CONFIG.count);
   });
 });

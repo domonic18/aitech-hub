@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
+import { resolveHomeSearchTerms } from "@/lib/config/home-search-terms";
 import { getSiteSettings } from "@/lib/config/site-config";
 import { formatStars, listShowcaseRepos } from "@/lib/github/public";
 import { projectPath } from "@/lib/github/project-path";
@@ -36,19 +37,21 @@ export default async function HomePage(): Promise<React.ReactElement> {
     countTodayVisible(),
     listPublicChannels(),
   ]);
-  // rails 与电报带并行(band 仅依赖 cfg.bandItemCount);文章 rail 按原创标记分流
-  const [latest, videos, postCount, repos, band] = await Promise.all([
+  // rails 与电报带并行(band 仅依赖 cfg.bandItemCount);文章 rail 按原创标记分流;
+  // 搜索建议词 chips 同段装配(固定词 + 洞察关键词云自动补齐,M70)
+  const [latest, videos, postCount, repos, band, suggestions] = await Promise.all([
     listLatestPosts(cfg.postCount, { original: true }),
     listLatestPosts(cfg.postCount, { original: false }),
     countPublishedPosts(),
     listShowcaseRepos(cfg.repoCount),
     listBandFeed({ limit: cfg.bandItemCount }),
+    resolveHomeSearchTerms(cfg.homeSearchTerms),
   ]);
 
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
       <SiteSprite />
-      <HeroConsole postCount={postCount}>
+      <HeroConsole postCount={postCount} suggestions={suggestions}>
         <HeroBrandLine heroMd={cfg.heroMd || undefined} />
       </HeroConsole>
 
