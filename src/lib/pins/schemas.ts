@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 
+import { isBigIntId } from "../http/parse-id";
 import { isUploadsPath } from "../media/refs";
 
 import {
@@ -15,7 +16,7 @@ import {
   PIN_TITLE_MAX,
 } from "./constants";
 
-const BIGINT_ID = z.string().regex(/^\d+$/, "id 须为纯数字字符串");
+const BIGINT_ID = z.string().refine(isBigIntId, "id 须为纯数字字符串(不超 int64 上限)");
 
 /** 阅读原文白名单(http/https;z.string().url 放行 javascript: 等任意 scheme,渲染进 href 即存储型 XSS) */
 function httpUrl(label: string) {

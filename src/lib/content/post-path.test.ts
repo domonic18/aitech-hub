@@ -42,6 +42,17 @@ describe("parsePostSegment(只认 id,尾巴宽容)", () => {
     expect(parsePostSegment("-156")).toBeNull();
     expect(parsePostSegment("15 6")).toBeNull();
   });
+
+  it("超 int64 上限 → null(否则 BigInt 照收、到 Prisma 才 500)", () => {
+    // 边界:9223372036854775807 是 int64 最大值,可解析
+    expect(parsePostSegment("9223372036854775807")).toEqual({
+      id: BigInt("9223372036854775807"),
+      slug: null,
+    });
+    expect(parsePostSegment("9223372036854775808")).toBeNull();
+    expect(parsePostSegment("9999999999999999999")).toBeNull();
+    expect(parsePostSegment("123456789012345678901234567890-x")).toBeNull();
+  });
 });
 
 describe("asciiSlugFromTitle(标题派生,新建/迁移共用)", () => {
