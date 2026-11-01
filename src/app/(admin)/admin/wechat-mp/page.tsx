@@ -33,6 +33,7 @@ const REPLY_KIND_LABELS: Record<string, string> = {
   timeout: "超时回执",
   continue: "续读",
   handoff: "转人工",
+  manual: "人工答复",
   fallback: "无命中",
   help: "帮助",
   blocked: "已拦截",

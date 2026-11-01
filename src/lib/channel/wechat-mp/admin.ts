@@ -167,6 +167,9 @@ export interface SessionDetail {
     lastMessageAt: string | null;
     boundUserId: string | null;
     boundUserName: string | null;
+    /** 待投递人工答复(用户下次发言时自动发出);null=队列空 */
+    manualReply: string | null;
+    manualReplyAt: string | null;
   };
   messages: SessionMessageRow[];
   leads: SessionLeadRow[];
@@ -187,6 +190,8 @@ export async function getSessionAdmin(id: bigint): Promise<SessionDetail | null>
       unsubscribedAt: true,
       lastMessageAt: true,
       userId: true,
+      manualReply: true,
+      manualReplyAt: true,
       user: { select: { nickname: true, username: true, email: true } },
     },
   });
@@ -239,6 +244,8 @@ export async function getSessionAdmin(id: bigint): Promise<SessionDetail | null>
       lastMessageAt: user.lastMessageAt?.toISOString() ?? null,
       boundUserId: user.userId?.toString() ?? null,
       boundUserName: boundName(user.user),
+      manualReply: user.manualReply,
+      manualReplyAt: user.manualReplyAt?.toISOString() ?? null,
     },
     messages: messages.map((m) => ({
       id: m.id.toString(),
@@ -265,8 +272,9 @@ export async function getSessionAdmin(id: bigint): Promise<SessionDetail | null>
 }
 
 /**
- * 处置线索:标记 handled + 备注;该用户没有其他 open 线索时同时解除
- * `is_manual_pending`(列表页的待办角标才不会挂死)。
+ * 处置线索:标记 handled + 备注;该用户没有其他未处置线索(open=待回复 /
+ * replied=人工答复已送达待处置)时同时解除 `is_manual_pending`
+ * ——列表页的待办角标才不会挂死。
  */
 export async function resolveLead(
   leadId: bigint,
@@ -284,7 +292,7 @@ export async function resolveLead(
       data: { status: "handled", note: note.trim() || null, handledAt: new Date() },
     });
     const open = await tx.channelWechatMpLead.count({
-      where: { channelUserId: lead.channelUserId, status: "open" },
+      where: { channelUserId: lead.channelUserId, status: { in: ["open", "replied"] } },
     });
     if (open === 0) {
       await tx.channelWechatMpUser.update({

@@ -22,6 +22,21 @@ function adminSessionUrl(sessionId: string): string {
   return new URL(`/admin/wechat-mp/${sessionId}/`, env.NEXT_PUBLIC_SITE_URL).toString();
 }
 
+/**
+ * 卡片链接转飞书端内 AppLink。
+ *
+ * 卡片里的裸 URL 一律由系统浏览器打开(飞书 FAQ 明说:只有 AppLink 能在客户端内
+ * 打开),结果就是「点一下跳出飞书 → 浏览器里没会话 → 又要登录一次」。
+ * 端内打开后页面 UA 含 Lark/Feishu,登录页的 FeishuSilentLogin(M29)会静默取码
+ * 免登,一次点击直达会话详情。
+ *
+ * mode=appCenter 是「飞书导航栏标签页」(客户端 ≥7.5),最贴近「新开一个标签页」;
+ * 移动端忽略 mode,按内置 webview 打开。
+ */
+export function toFeishuInAppUrl(url: string): string {
+  return `https://applink.feishu.cn/client/web_url/open?mode=appCenter&url=${encodeURIComponent(url)}`;
+}
+
 /** 卡片 JSON(飞书 interactive;action 按钮跳后台会话详情) */
 function buildCard(card: {
   title: string;
@@ -73,7 +88,7 @@ export async function notifyHandoffLead(params: {
       `**问题**:${params.content.slice(0, 200)}`,
       `**时间**:${formatCnDateTime(new Date())}`,
     ],
-    url: adminSessionUrl(params.sessionId),
+    url: toFeishuInAppUrl(adminSessionUrl(params.sessionId)),
   });
   const r = await sendFeishuChatMessage(cfg, "interactive", card);
   if (!r.ok) {
@@ -101,7 +116,7 @@ export async function sendAlertTestCard(): Promise<FeishuSendResult> {
       `**发送时间**:${formatCnDateTime(new Date())}`,
       "收到即代表公众号转人工通知通道可用。",
     ],
-    url: new URL("/admin/wechat-mp/", env.NEXT_PUBLIC_SITE_URL).toString(),
+    url: toFeishuInAppUrl(new URL("/admin/wechat-mp/", env.NEXT_PUBLIC_SITE_URL).toString()),
     buttonText: "打开公众号会话",
   });
   return sendFeishuChatMessage(cfg, "interactive", card);

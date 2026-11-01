@@ -1768,6 +1768,8 @@ model ChannelWechatMpUser {
   lastMessageAt   DateTime? @map("last_message_at") @db.Timestamptz(6)
   messageCount    Int       @default(0) @map("message_count")
   isManualPending Boolean   @default(false) @map("is_manual_pending") // 有未处理的转人工线索
+  manualReply     String?   @map("manual_reply") @db.Text // 站长的待投递人工答复(用户下次发言时优先发出并清空)
+  manualReplyAt   DateTime? @map("manual_reply_at") @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1813,7 +1815,7 @@ model ChannelWechatMpLead {
   channelUserId BigInt    @map("channel_user_id")
   messageId     BigInt?   @unique(map: "uq_channel_wechat_mp_lead_message_id") @map("message_id") // 触发线索的入站消息
   reason        String    @db.VarChar(200) // 触发词或问题摘要
-  status        String    @default("open") @db.VarChar(20) // open | handled
+  status        String    @default("open") @db.VarChar(20) // open(待回复) | replied(已回复待处置) | handled
   note          String?   @db.Text // 站长处置备注/人工答复
   handledAt     DateTime? @map("handled_at") @db.Timestamptz(6)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

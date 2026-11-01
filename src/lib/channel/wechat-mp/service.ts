@@ -2,7 +2,7 @@
  * 公众号入站编排(M66):验签 → 解密 → 解析 → 幂等 → 三档回复。
  *
  * 这是整条链路唯一跑在**请求线程**里的部分,必须在 5s 平台窗口内返回 XML:
- * - L0(关注/关键词/继续/人工/绑定码/帮助)同步毫秒级,直接出文本;
+ * - L0(关注/关键词/继续/人工/人工答复/绑定码/帮助)同步毫秒级,直接出文本;
  * - L1 只 enqueue 生成 job(worker 干活),请求侧轮询 Redis 结果键 ≤4.2s;
  * - 超时回固定话术,worker 算完仍会写缓存,用户回「继续」即可秒取。
  *
@@ -60,6 +60,7 @@ import {
   matchKeyword,
   normalizeInput,
 } from "./reply";
+import { takeManualReply } from "./manual";
 
 export interface WechatMpHttpResult {
   status: number;
@@ -339,6 +340,13 @@ async function dispatch(
 
   const text = normalizeInput(inbound.content ?? "");
   if (text === "") return { text: cfg.texts.help, kind: "help", status: "ok" };
+
+  // 转人工闭环:站长答复优先带出——认证订阅号无客服消息权限,用户的这条发言
+  // 是拿到答复的唯一时机,故排在帮助/继续/再转人工之前(过期答复已在此静默作废)。
+  const manual = await takeManualReply(ctx.channelUserId);
+  if (manual) {
+    return { text: `${cfg.texts.manualHeader}\n${manual}`, kind: "manual", status: "ok" };
+  }
 
   if (isHelpWord(text)) return { text: cfg.texts.help, kind: "help", status: "ok" };
   if (isContinueWord(text)) return continueReply(ctx.openid, cfg);
