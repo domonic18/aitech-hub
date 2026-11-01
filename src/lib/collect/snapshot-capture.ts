@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 
 import { prisma } from "@/lib/db";
+import { logError } from "@/lib/logger";
 
 import { SNAPSHOT_KEEP_PER_SOURCE, type SnapshotParseStatus } from "./constants";
 import { snapshotStore, type SnapshotStore } from "./snapshot-store";
@@ -79,14 +80,11 @@ export class SourceCapture {
       this.ids.push(row.id);
       await this.prune();
     } catch (e) {
-      console.error(
-        JSON.stringify({
-          event: "crawl.snapshot.capture_failed",
-          sourceId: this.sourceId,
-          tab: draft.tab,
-          error: String(e),
-        }),
-      );
+      logError("crawl.snapshot.capture_failed", {
+        sourceId: this.sourceId,
+        tab: draft.tab,
+        error: e,
+      });
     }
   }
 
@@ -104,14 +102,11 @@ export class SourceCapture {
         data: { parseStatus, rowCount, error: error?.slice(0, 4000) ?? null },
       });
     } catch (e) {
-      console.error(
-        JSON.stringify({
-          event: "crawl.snapshot.finish_failed",
-          sourceId: this.sourceId,
-          parseStatus,
-          error: String(e),
-        }),
-      );
+      logError("crawl.snapshot.finish_failed", {
+        sourceId: this.sourceId,
+        parseStatus,
+        error: e,
+      });
     }
   }
 

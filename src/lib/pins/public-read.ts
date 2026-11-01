@@ -9,6 +9,7 @@
  */
 import { asciiSlugFromTitle, pinPathSegment } from "../content/pin-path";
 import { prisma } from "../db";
+import { logWarn } from "../logger";
 import { prerenderSafe } from "../prerender-safe";
 
 export const PIN_PUBLISHED_WHERE = { status: "published", publishedAt: { not: null } } as const;
@@ -122,7 +123,7 @@ export async function listPinSegmentsForPrerender(): Promise<string[]> {
     });
     return rows.map((r) => pinPathSegment(r.id, asciiSlugFromTitle(r.title)));
   } catch (e) {
-    console.warn(JSON.stringify({ event: "pins.prerender.degraded", error: String(e) }));
+    logWarn("pins.prerender.degraded", { error: e });
     return [];
   }
 }

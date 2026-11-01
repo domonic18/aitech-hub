@@ -15,6 +15,36 @@ export const logger = pino({
   },
 });
 
+/**
+ * 统一日志出口(2026-11-01 批D):业务代码只经这三个函数打日志,不再手搓
+ * `console.*(JSON.stringify({ event, ... }))` —— 此前字段名不统一(error 有时是
+ * String(e)、有时是 e.message),降到文件日志时无法按字段检索。
+ * 约定:第一个参数是稳定事件名(点分命名),其余进字段;Error 实例自动取 message。
+ * 脚本目录(scripts/)沿用 console,不在此列。
+ */
+type LogFields = Record<string, unknown>;
+
+function normalizeFields(fields: LogFields): LogFields {
+  const out: LogFields = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) continue;
+    out[key] = value instanceof Error ? value.message : value;
+  }
+  return out;
+}
+
+export function logInfo(event: string, fields: LogFields = {}): void {
+  logger.info({ ...normalizeFields(fields), event });
+}
+
+export function logWarn(event: string, fields: LogFields = {}): void {
+  logger.warn({ ...normalizeFields(fields), event });
+}
+
+export function logError(event: string, fields: LogFields = {}): void {
+  logger.error({ ...normalizeFields(fields), event });
+}
+
 /** IP 短哈希(sha256 前 16 位,salt 用 AUTH_SECRET);日志与统计同口径不落明文 IP */
 export async function ipHash(ip: string): Promise<string> {
   const digest = await crypto.subtle.digest(

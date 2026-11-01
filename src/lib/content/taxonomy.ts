@@ -56,11 +56,8 @@ export async function getTagBySlug(rawSlug: string) {
 
 /** tag 页 generateStaticParams:DB 原始编码 slug;无库时降级按需 ISR */
 export async function listTagSlugsForPrerender(): Promise<string[]> {
-  try {
+  return prerenderSafe("tags.slugs", [], async () => {
     const rows = await prisma.tag.findMany({ select: { slug: true } });
     return rows.map((r) => r.slug);
-  } catch (e) {
-    console.warn(JSON.stringify({ event: "tags.prerender.degraded", error: String(e) }));
-    return [];
-  }
+  });
 }
