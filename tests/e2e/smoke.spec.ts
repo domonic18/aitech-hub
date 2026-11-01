@@ -141,6 +141,61 @@ test("2. /post/<id>-<slug> 直开文章:200、标题、图片无 broken;非 cano
   await context.close();
 });
 
+test("2b. 文章阅读页增强:目录锚点、上一篇/下一篇、版权声明、回到顶部", async ({
+  request,
+  browser,
+}) => {
+  const posts = await sitemapPostUrls(request);
+  expect(posts.length).toBeGreaterThan(0);
+  // 找一篇正文带 ≥2 个 H2/H3 的长文(短文无目录,见 arch/07 §1)
+  let target: string | null = null;
+  for (const path of posts.slice(0, 20)) {
+    const html = await (await request.get(path)).text();
+    if ((html.match(/<h[23] id="/g) ?? []).length >= 2) {
+      target = path;
+      break;
+    }
+  }
+  expect(target).toBeTruthy();
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(target!, { waitUntil: "load" });
+
+  // 目录:nav 常驻 DOM(xl 起为吸顶侧栏,窄屏为折叠块),每个锚点都能命中正文标题
+  const tocLinks = page.locator('nav[aria-label="文章目录"] a');
+  const tocCount = await tocLinks.count();
+  expect(tocCount).toBeGreaterThanOrEqual(2);
+  const hrefs = await tocLinks.evaluateAll((els) =>
+    els.map((el) => decodeURIComponent((el as HTMLAnchorElement).getAttribute("href") ?? "")),
+  );
+  for (const href of hrefs.slice(0, 5)) {
+    expect(href.startsWith("#")).toBe(true);
+    expect(await page.locator(`[id="${href.slice(1).replace(/"/g, '\\"')}"]`).count()).toBe(1);
+  }
+
+  // 上一篇 / 下一篇:至少一侧存在,链接为 /post/<id>[-slug]/ 终态形态
+  const pagerLinks = page.locator('nav[aria-label="上一篇与下一篇"] a');
+  expect(await pagerLinks.count()).toBeGreaterThan(0);
+  for (const href of await pagerLinks.evaluateAll((els) =>
+    els.map((el) => el.getAttribute("href")),
+  )) {
+    expect(href).toMatch(/^\/post\/\d+(-[a-z0-9-]+)?\/$/);
+  }
+
+  // 文末版权声明(后台可配;缺省文案时区块存在)
+  expect(await page.locator('section[aria-label="版权声明"]').count()).toBe(1);
+
+  // 回到顶部:滚过一屏后浮现,点击回到页首
+  await page.evaluate(() => window.scrollTo(0, 2000));
+  const backToTop = page.locator('button[aria-label="回到顶部"]');
+  await expect(backToTop).toBeVisible();
+  await backToTop.click();
+  await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeLessThan(200);
+
+  await context.close();
+});
+
 test("3. 弃用 slug:route 精确 301;单段直开永久重定向;URL 迁移行单跳 /post/", async ({
   request,
 }) => {
@@ -672,6 +727,7 @@ test("11. /api/mcp:无 Bearer 401;initialize + tools/list 六工具齐备(M5c)",
 
 test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 带/不入 sitemap)", async ({
   request,
+  page,
 }) => {
   const MARK = "e2e-telegram-mark";
   const MARK_PENDING = "e2e-telegram-pending";
@@ -689,9 +745,7 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       remark: "e2e 专用,采集关闭",
     },
   });
-  await prisma.telegram.deleteMany({
-    where: { sourceId: source.id, title: { in: [MARK, MARK_PENDING] } },
-  });
+  await prisma.telegram.deleteMany({ where: { sourceId: source.id } });
   await prisma.telegram.create({
     data: {
       sourceId: source.id,
@@ -740,6 +794,24 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
       aiStatus: "pending",
     },
   });
+  // M69「加载更多」:同源另播 31 条可见行(比 MARK 旧,顺序稳定)→ 首屏 30 条 +
+  // 第二页 2 条;短页即到底(finally 按 sourceId 全删,无需单列清理)
+  const LOAD_MORE_TITLE = "e2e-load-more-31";
+  for (let i = 1; i <= 31; i += 1) {
+    await prisma.telegram.create({
+      data: {
+        sourceId: source.id,
+        title: `e2e-load-more-${i}`,
+        summary: "e2e 分页冒烟摘要",
+        url: `https://e2e.invalid/load-more/${i}`,
+        publishedAt: new Date(Date.now() - i * 60_000),
+        contentHash: createHash("sha1").update(randomBytes(16)).digest("hex"),
+        aiStatus: "done",
+        aiSummary: "e2e 分页 AI 摘要",
+        aiRanAt: new Date(Date.now() - i * 60_000),
+      },
+    });
+  }
 
   try {
     // noindex 双保险:X-Robots-Tag 响应头 + 页内 robots meta;LIVE 头标与播种条目在;
@@ -777,6 +849,32 @@ test("12. 电报流前台(M7:/telegram noindex 双保险/公共 API/首页 LIVE 
     const pendHtml = await (await request.get(`/telegram/?source=${pendSource.id}`)).text();
     expect(pendHtml).toContain("AI 解读处理中");
     expect(pendHtml).toContain("今日已入库");
+
+    // M69 右栏「采集计划」+ 回顶:SSR 里计划卡两节与回顶按钮都在;
+    // 运维/对账/清理任务不得露出(内容白名单口径)
+    expect(html).toContain("采集计划");
+    expect(html).toContain("即将运行 · 未来 12 小时");
+    expect(html).toContain("最近运行");
+    for (const opsLabel of ["数据库备份", "访问明细", "支付·日对账", "媒体·体检"]) {
+      expect(html).not.toContain(opsLabel);
+    }
+    expect(html).toContain('aria-label="回到顶部"');
+
+    // M69 offset 分页契约:nextOffset = offset + 本页实收(游标由服务端给出)
+    const page2 = (await (await request.get("/api/telegram/public/?offset=30")).json()) as {
+      code: number;
+      data: { items: unknown[]; nextOffset: number };
+    };
+    expect(page2.code).toBe(0);
+    expect(page2.data.nextOffset).toBe(30 + page2.data.items.length);
+
+    // M69「加载更多」:首屏 30 条 + 按钮 → 点击后第二页上屏,短页即到底
+    await page.goto(`/telegram/?source=${source.id}`);
+    await expect(page.getByRole("button", { name: "加载更多" })).toBeVisible();
+    await expect(page.getByText(LOAD_MORE_TITLE)).toHaveCount(0);
+    await page.getByRole("button", { name: "加载更多" }).click();
+    await expect(page.getByText(LOAD_MORE_TITLE)).toBeVisible();
+    await expect(page.getByText("已加载全部电报")).toBeVisible();
 
     // 首页 LIVE 带壳在(SSR;条目轮询由 /telegram 页与 API 覆盖,首页 ISR 缓存不断言 MARK)
     const home = await (await request.get("/")).text();
