@@ -10,7 +10,7 @@ import path from "node:path";
 import { douyinGatewayBase } from "@/lib/config/gateways";
 
 import { prisma } from "../db";
-import { logger } from "../logger";
+import { logInfo, logger } from "../logger";
 import { mediaStorage } from "../media/storage";
 import { DistributeError } from "../distribute/errors";
 import {
@@ -18,7 +18,7 @@ import {
   markPinChannelPending,
   markPinChannelSynced,
 } from "../distribute/pin-channel-state";
-import { CHANNEL_XHS, PUBLISH_STATUS_FAILED } from "../distribute/channels";
+import { CHANNEL_XHS, PUBLISH_STATUS_FAILED, PUBLISH_STATUS_SYNCED } from "../distribute/channels";
 import { DISTRIBUTE_JOB_XHS_AUTO, QUEUE_DISTRIBUTE_XHS, getQueue } from "../queue";
 
 /** 创建/复用渠道行(pending;验收门槛:草稿拒)。幂等,仅供本模块入队使用。 */
@@ -35,15 +35,28 @@ async function distributePinToXhs(pinId: bigint) {
 }
 
 /** 全自动入队:创建渠道行 + 发布 job 入子队列(worker 调 xhs-gateway)。
- * 重试:attempts 3 + 指数退避 30s→60s→120s;终态 failed 重新发起时复位
- * pending(UI 立即转「重试中」)。 */
+ * jobId 确定(每 pin 一个),先查态再投——同 jobId 旧 job 还在保留窗口时
+ * BullMQ 会**静默丢弃**新 job;双击「发布」此前靠 Date.now() 拼 id 等于每次
+ * 都是新 job,直接产生两篇笔记。在途即幂等返回,终态先 remove 再投。
+ * 重试:attempts 3 + 指数退避 30s→60s→120s(gateway 侧有按 pin 的幂等闸,
+ * 重试不会再发第二篇);终态 failed 重新发起时复位 pending(UI 立即转「重试中」)。 */
 export async function enqueueXhsAutoPublish(pinId: bigint): Promise<{ jobId: string }> {
   const row = await distributePinToXhs(pinId);
   if (row.status === PUBLISH_STATUS_FAILED) {
     await markPinChannelPending(row.id);
   }
-  const jobId = `xhs-auto-${pinId.toString()}-${Date.now().toString(36)}`;
-  await getQueue(QUEUE_DISTRIBUTE_XHS).add(
+  const jobId = `xhs-auto-${pinId.toString()}`;
+  const queue = getQueue(QUEUE_DISTRIBUTE_XHS);
+  const stale = await queue.getJob(jobId);
+  if (stale) {
+    const state = await stale.getState();
+    if (state === "waiting" || state === "delayed" || state === "active") {
+      logInfo("pins.xhs.already_queued", { jobId, pinId: pinId.toString(), state });
+      return { jobId };
+    }
+    await stale.remove();
+  }
+  await queue.add(
     DISTRIBUTE_JOB_XHS_AUTO,
     { pinId: pinId.toString() },
     {
@@ -132,6 +145,12 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
     where: { pinId_channel: { pinId, channel: CHANNEL_XHS } },
   });
   if (!row) throw new Error("渠道行不存在(先标记分发)");
+  // 已发成功不再进浏览器:重试/重投/人工再点一次都必须在此止步,
+  // 否则就是第二篇笔记(gateway 侧另有一道按 pin 的幂等闸兜底)
+  if (row.status === PUBLISH_STATUS_SYNCED) {
+    logInfo("pins.xhs.skip_already_synced", { pinId: pinId.toString() });
+    return;
+  }
   {
     const material = await gatherPinXhsMaterial(pinId);
     const base = douyinGatewayBase();
@@ -144,7 +163,10 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
         content: material.content,
         images: material.images,
       }),
-      signal: AbortSignal.timeout(180_000),
+      // 客户端超时只是「我不等了」,服务端协程不会被取消,笔记仍会发出去。
+      // gateway 侧发布预算 XHS_PUBLISH_TIMEOUT_SECONDS=180,这里留足余量;
+      // 两边等长会稳定制造「客户端先放弃、服务端后成功」的假失败。
+      signal: AbortSignal.timeout(300_000),
     });
     if (!res.ok) {
       // gateway 错误体形如 {"detail":"人话"}——解析出人话进 lastError
@@ -162,6 +184,6 @@ export async function autoPublishPinToXhs(pinId: bigint): Promise<void> {
     };
     if (payload.ok !== true) throw new Error(payload.error ?? "发布失败");
     await markPinChannelSynced(row.id, { publishId: payload.note_url ?? "" });
-    console.log(JSON.stringify({ event: "pins.xhs.auto_published", pinId: pinId.toString() }));
+    logInfo("pins.xhs.auto_published", { pinId: pinId.toString() });
   }
 }

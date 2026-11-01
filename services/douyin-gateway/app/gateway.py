@@ -40,9 +40,9 @@ from app.log import get_logger
 from app.signer.backend import BrowserUnavailableError, SignPageError
 from app.signer.models import HealthResponse, SignRequest, SignResponse
 from app.signer.settings import SignerSettings
-from app.xhs.publisher import XhsPublisher
+from app.xhs.publish_guard import PublishGuard, PublishInFlight
+from app.xhs.publisher import XhsPublisher, XhsStateError
 from app.xhs.settings import XhsSettings
-from app.xhs.publisher import XhsStateError
 from app.signer.validation import (
     SignRequestError,
     parse_cookie_header,
@@ -285,7 +285,10 @@ def create_app(
     """构建网关应用;runtime 可注入(测试用)。"""
     runtime = GatewayRuntime(signer_settings)
     runtime_holder: dict[str, GatewayRuntime] = {"runtime": runtime}
-    xhs_publisher = XhsPublisher(xhs_settings or XhsSettings())
+    xhs_settings_resolved = xhs_settings or XhsSettings()
+    xhs_publisher = XhsPublisher(xhs_settings_resolved)
+    # 发布幂等闸:与登录态同目录(持久卷),一个 pin 只发一次(见 publish_guard 头注)
+    xhs_guard = PublishGuard(os.path.dirname(xhs_settings_resolved.storage_state_path))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -402,6 +405,13 @@ def create_app(
         content = str(payload.get("content", ""))
         raw_images = payload.get("images", [])
         pin_id = payload.get("pin_id") or payload.get("pinId")
+        pid = str(pin_id) if pin_id else None
+        # 幂等闸第一道:已发成功过的 pin 直接回成功,不再点发布按钮。
+        # worker 侧 attempts=3 + 客户端超时都不会取消服务端协程,没有这道闸
+        # 就是同一贴图发成多篇笔记(平台侧不可回收)。
+        if pid and xhs_guard.published(pid):
+            logger.info("xhs.publish.skip_already_published", pin_id=pid)
+            return {"ok": True, "note_url": None, "already_published": True}
         tmp_root: str | None = None
         try:
             images: list[str] = []
@@ -413,10 +423,29 @@ def create_app(
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
             else:  # 兼容旧路径形态(本地盘存储场景)
                 images = [str(p) for p in raw_images]
-            result = await xhs_publisher.publish(
-                title, content, images, pin_id=str(pin_id) if pin_id else None
-            )
-            return {"ok": result.ok, "note_url": result.note_url}
+            if pid is None:
+                # 无 pin 锚无从去重(worker 恒带);保留可调用但明确告警
+                logger.warning("xhs.publish.no_pin_id", title=title[:40])
+                result = await xhs_publisher.publish(title, content, images)
+                return {"ok": result.ok, "note_url": result.note_url}
+            async with xhs_guard.claim(pid):
+                # 等锁期间上一个请求可能已经发完:二次确认,避免连点发出第二篇
+                if xhs_guard.published(pid):
+                    return {"ok": True, "note_url": None, "already_published": True}
+                result = await xhs_publisher.publish(
+                    title, content, images, pin_id=pid
+                )
+                if result.ok:
+                    xhs_guard.record(pid, result.note_url)
+                return {"ok": result.ok, "note_url": result.note_url}
+        except PublishInFlight as exc:
+            # 并发请求一律 fail-fast:排队会把 gateway 并发槽一起占住几分钟
+            logger.warning("xhs.publish.in_flight", pin_id=pid)
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except HTTPException:
+            # 已归因错误(400 物料解码失败等)原样透出;此前会被下面的兜底
+            # 改写成 500,worker 侧按状态码分流就失效了
+            raise
         except XhsStateError as exc:
             logger.error("xhs.publish.state_error", error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
