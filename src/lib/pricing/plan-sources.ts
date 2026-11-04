@@ -597,6 +597,173 @@ export async function fetchBailianPage(url: string, sink?: SnapshotSink): Promis
   return html;
 }
 
+// ---------- 腾讯云大模型 Token Plan(Hy / 通用双系列) ----------
+// 2026-11-04 接入:活动页为 Next.js Pages Router SSR(gssp),两系列个人版套餐卡
+// (Hy 4 档 + 通用 4 档)全量随 __NEXT_DATA__ 下发,故走 static 取数、不依赖
+// card-renderer。卡对象位于 pageData.initialState.sections[*].components[*]
+// .layout.body.cardList[*],按**形状**(goodsInfo.title + ftConfig)递归识别,
+// 不依赖固定路径(层级会调)。
+// 收录口径(用户裁定 2026-11-04)：只收标题形如「[Hy ]个人版–xx（Tier）」的
+// 8 张卡;企业版 2 张(按统一单价/企业积分池计价,100/1000 元/月)口径不可比,
+// 标题不符自然出界。vendor 统一「腾讯云」,系列差异留在 planName。
+// 角标(discountTag 6.5折 / normal1Tag 个人专享 / normalTag 限1台)**不解析**:
+// 十张卡(含企业版)角标文案完全相同,且 ftConfig 的 tag*Visible 全为 false——
+// 是模板遗留未渲染字段,入库会变成假折扣。
+
+export const TENCENT_TOKENPLAN_URL = "https://cloud.tencent.com/act/pro/tokenplan";
+
+export async function fetchTencentTokenPlan(url: string, sink?: SnapshotSink): Promise<string> {
+  const res = await fetch(url, { cache: "no-store" });
+  const html = await res.text();
+  // 失败也留证:错误页/风控页本身就是排查材料(先落快照再抛)
+  await sink?.({ tab: "page", html, httpStatus: res.status });
+  if (!res.ok) throw new Error(`tencent tokenplan http ${res.status}`);
+  return html;
+}
+
+type TencentJson = Record<string, unknown>;
+
+function asRecord(value: unknown): TencentJson | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as TencentJson)
+    : null;
+}
+
+/** Uno 富文本段数组({type,text}[])→ 纯文本:段间不补分隔符(原文自带标点/空格) */
+function richTextOf(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return value
+    .map((part) => {
+      const rec = asRecord(part);
+      return rec !== null && typeof rec.text === "string" ? rec.text : "";
+    })
+    .join("")
+    .trim();
+}
+
+const TENCENT_CARD_TITLE_RE = /^(Hy )?个人版–(.+?)（(Lite|Standard|Pro|Max)）$/;
+
+export interface TencentCard {
+  series: "Hy Token Plan" | "通用 Token Plan";
+  /** 中文档名,如「体验套餐」 */
+  tierName: string;
+  /** 英文档位,如「Lite」 */
+  tier: string;
+  /** 卡面现价(「日常价」;有活动价时为活动价) */
+  fee: number;
+  /** 划线价(无活动时与 fee 相同) */
+  original: number | null;
+  benefits: string[];
+}
+
+/** 卡对象 → 档位卡(纯函数):标题不符/无价返回 null(企业版卡在此出界) */
+function tencentCardOf(card: TencentJson): TencentCard | null {
+  const goods = asRecord(card.goodsInfo);
+  const title = goods !== null && typeof goods.title === "string" ? goods.title.trim() : "";
+  const m = TENCENT_CARD_TITLE_RE.exec(title);
+  if (m === null) return null;
+  const ft = asRecord(card.ftConfig);
+  if (ft === null) return null;
+  const integer = richTextOf(ft.priceInteger).replace(/,/g, "");
+  const decimal = richTextOf(ft.priceDecimal);
+  const fee = integer === "" ? null : toNumber(`${integer}${decimal}`);
+  if (fee === null) return null; // 无价不臆测
+  const unit = richTextOf(ft.priceUnit);
+  if (!unit.includes("元/月")) {
+    // 活动页若改成周期计价,月度比价口径失效:抛错让人看见,不静默折算
+    throw new Error(`tencent tokenplan 计价单位异常「${unit}」(${m[2]} ${m[3]})`);
+  }
+  const benefits = Array.isArray(card.introList)
+    ? card.introList.map(richTextOf).filter((b) => b !== "")
+    : [];
+  return {
+    series: m[1] === "Hy " ? "Hy Token Plan" : "通用 Token Plan",
+    tierName: m[2] ?? "",
+    tier: m[3] ?? "",
+    fee,
+    original: toNumber(richTextOf(ft.originalPriceValue).replace(/,/g, "")),
+    benefits,
+  };
+}
+
+/** 递归收集套餐卡(纯函数):活动页 pageData 层级深且会调整,按对象形状
+ * (goodsInfo.title + ftConfig)识别,不依赖固定路径。 */
+function collectTencentCards(node: unknown, out: TencentCard[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectTencentCards(item, out);
+    return;
+  }
+  const rec = asRecord(node);
+  if (rec === null) return;
+  const card = tencentCardOf(rec);
+  if (card !== null) out.push(card);
+  for (const value of Object.values(rec)) collectTencentCards(value, out);
+}
+
+/** Token Plan 活动页解析(纯函数,fixture 单测锚):
+ * 只收个人版双系列各 4 档(企业版/用量包不入库);月费=日常价,活动价与原文
+ * 注记进 billingNote;额度口径=「每订阅月 N 积分」;适合人群取「适合/适用于」
+ * 起头的权益行。任一序列数量不齐即抛错(改版可见,不静默错配)。 */
+export function parseTencentTokenPlan(
+  html: string,
+  sourceUrl: string,
+  now: Date,
+): PlanPrefillRow[] {
+  const raw = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  if (raw === undefined) throw new Error("tencent tokenplan __NEXT_DATA__ 未找到(页面改版)");
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error("tencent tokenplan __NEXT_DATA__ 不可解析(页面改版)");
+  }
+  const cards: TencentCard[] = [];
+  collectTencentCards(data, cards);
+  const hy = cards.filter((c) => c.series === "Hy Token Plan");
+  const common = cards.filter((c) => c.series === "通用 Token Plan");
+  if (hy.length !== 4 || common.length !== 4) {
+    throw new Error(`tencent tokenplan 套餐结构未匹配(Hy ${hy.length}/通用 ${common.length})`);
+  }
+
+  // 官方页当前活动文案(下架后自然消失,不写死日期):原文为富文本节点,
+  // 形如「Hy4 正式版上线，积分抵扣限时2.5折」(通用系列同一句),故在折叠
+  // 文本上取而非原始 HTML(标签会把句子切开,喂正则必失配)。
+  const promoRate = htmlToText(html).match(/积分抵扣限时\s*([\d.]+)\s*折/)?.[1] ?? null;
+
+  return [...hy, ...common].map((card) => {
+    const parts: string[] = [];
+    if (card.original !== null && card.original > card.fee) {
+      parts.push(`活动价 ¥${card.fee}/月(日常价 ¥${card.original}/月)`);
+    }
+    if (promoRate !== null) parts.push(`官方活动:Hy4 正式版积分抵扣限时${promoRate}折`);
+    let credits: string | null = null;
+    for (const b of card.benefits) {
+      const m = /每订阅月\s*([\d,]+)\s*积分/.exec(b);
+      if (m !== null) {
+        credits = m[1] ?? null;
+        break;
+      }
+    }
+    return {
+      vendor: "腾讯云", // 两系列同一厂商;系列差异留在 planName(2026-11-04 裁定)
+      planName: `${card.series} · ${card.tierName}(${card.tier})`,
+      currency: "CNY" as const,
+      monthlyFee: card.original ?? card.fee,
+      quarterlyFee: null,
+      yearlyFee: null, // 活动页仅月付口径
+      billingNote: parts.length === 0 ? null : parts.join(";"),
+      benefits: card.benefits.length === 0 ? null : card.benefits,
+      quotaDesc: credits === null ? "权益口径以官方页为准" : `${credits} 积分/月`,
+      peakRate: null,
+      offPeakRate: null,
+      bestFor: card.benefits.find((b) => /^(适合|适用于)/.test(b)) ?? null,
+      note: null,
+      dataAsOf: now,
+      sourceUrl,
+    };
+  });
+}
+
 /** Token Plan 概述页解析(纯函数,fixture 单测锚)。
  * 只收**个人版四档**(Lite/Essential/Standard/Pro):与其余渠道同为「个人订阅
  * 元/月」可比口径;团队版按座席计价、用量包为加购项(元/个/月),口径不同不入库。

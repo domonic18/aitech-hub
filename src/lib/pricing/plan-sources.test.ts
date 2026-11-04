@@ -26,6 +26,7 @@ import {
   parseKimiCoding,
   parseKimiCards,
   parseMiniMaxCoding,
+  parseTencentTokenPlan,
   parseXiaomiToken,
   markPlanSourceStale,
   persistPlanRows,
@@ -529,6 +530,173 @@ describe("新三源解析(M56 三渠道扩容)", () => {
   it("百炼 Token Plan 结构错位(改版)抛错,不静默错配价格", () => {
     expect(() => parseBailianToken("<p>Lite 套餐</p>", "https://x/", NOW)).toThrow(
       "bailian token 结构未匹配",
+    );
+  });
+});
+
+// ---------- 腾讯云大模型 Token Plan(2026-11-04 新接入) ----------
+
+/** Uno 富文本段(活动页所有文案都是 {type,text}[] 数组) */
+function txRich(text: string): Array<{ type: string; text: string }> {
+  return [{ type: "text", text }];
+}
+
+/** 单卡(按 2026-11-04 真实 pageData 形状:cardList[*] 同时带 goodsInfo/ftConfig)。
+ * 角标 discountTag/normalTag 十张卡同文案(6.5折/个人专享/限1台)且 tag*Visible
+ * 全 false——模板遗留,fixture 保留以锚定「不解析角标」。 */
+function txCard(
+  title: string,
+  price: string,
+  intro: string[],
+  opts: { unit?: string; original?: string; priceDesc?: string } = {},
+): Record<string, unknown> {
+  const [int = price, dec = "00"] = price.split(".");
+  return {
+    isSubTitleVisible: true,
+    desc: txRich(" "),
+    introList: intro.map(txRich),
+    ftConfig: {
+      tagDiscountVisible: false, // ← 角标未渲染:入库会变假折扣
+      tagNormal1Visible: false,
+      discountTag: txRich("6.5折"),
+      normal1Tag: txRich("个人专享"),
+      priceDesc: txRich(opts.priceDesc ?? "日常价："),
+      priceInteger: txRich(int),
+      priceDecimal: txRich(`.${dec}`),
+      priceUnit: txRich(opts.unit ?? "元/月"),
+      originalPriceValue: txRich(opts.original ?? price),
+    },
+    goodsInfo: { formConfig: {}, title },
+  };
+}
+
+const TX_HY_TIERS: Array<[string, string, string, string]> = [
+  ["体验套餐", "Lite", "28.00", "560"],
+  ["基础套餐", "Standard", "78.00", "1560"],
+  ["进阶套餐", "Pro", "238.00", "4760"],
+  ["专业套餐", "Max", "468.00", "9360"],
+];
+const TX_COMMON_TIERS: Array<[string, string, string, string]> = [
+  ["体验套餐", "Lite", "39.00", "780"],
+  ["基础套餐", "Standard", "99.00", "1980"],
+  ["进阶套餐", "Pro", "299.00", "5980"],
+  ["专业套餐", "Max", "599.00", "11980"],
+];
+
+function txTierCard(hy: boolean, [cn, tier, price, credits]: [string, string, string, string]) {
+  const suit =
+    tier === "Pro"
+      ? "适合每天高频使用 AI 的开发者和效率达人"
+      : tier === "Max"
+        ? "适合把 AI 当核心生产力工具的重度用户"
+        : tier === "Standard"
+          ? "适用于首次体验龙虾，可执行约 200 轮问答"
+          : "适用于首次体验龙虾，可执行约 70 轮问答";
+  const model = hy
+    ? "集成Hy4、Hy4 preview，适合多步工具调用"
+    : "集成主流国产模型，兼容主流龙虾和编程工具";
+  return txCard(`${hy ? "Hy " : ""}个人版–${cn}（${tier}）`, price, [
+    `每订阅月 ${credits} 积分`,
+    suit,
+    model,
+  ]);
+}
+
+/** 活动页(个人版双系列 8 档 + 企业版 2 档;卡埋在深层 cardList,正文带活动句) */
+function txPage(cards: unknown[], promo = "Hy4 正式版上线，积分抵扣限时2.5折"): string {
+  const payload = {
+    props: {
+      pageProps: {
+        pageData: {
+          initialState: { sections: [{ components: [{ layout: { body: { cardList: cards } } }] }] },
+        },
+      },
+    },
+  };
+  return `<html><body><div class="uno3-buy-card__bd">${promo}</div><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(
+    payload,
+  )}</script></body></html>`;
+}
+
+const TX_CARDS = [
+  ...TX_HY_TIERS.map((t) => txTierCard(true, t)),
+  ...TX_COMMON_TIERS.map((t) => txTierCard(false, t)),
+  txCard("企业版轻享套餐", "100.00", [
+    "支持 Auto 智能路由模型",
+    "多 API Key 管控，兼顾协作效率与权限管理",
+  ]),
+  txCard("企业版专业套餐", "1000.00", [
+    "覆盖 GLM、Kimi、MiniMax 等主流国产模型",
+    "多 API Key 用量管控，兼顾团队协作与管理",
+  ]),
+];
+
+const TX_URL = "https://cloud.tencent.com/act/pro/tokenplan";
+
+describe("parseTencentTokenPlan", () => {
+  it("个人版双系列 8 档入库:月付日常价+积分额度+活动注记;企业版与角标出界", () => {
+    const rows = parseTencentTokenPlan(txPage(TX_CARDS), TX_URL, NOW);
+    expect(rows.map((r) => r.planName)).toEqual([
+      "Hy Token Plan · 体验套餐(Lite)",
+      "Hy Token Plan · 基础套餐(Standard)",
+      "Hy Token Plan · 进阶套餐(Pro)",
+      "Hy Token Plan · 专业套餐(Max)",
+      "通用 Token Plan · 体验套餐(Lite)",
+      "通用 Token Plan · 基础套餐(Standard)",
+      "通用 Token Plan · 进阶套餐(Pro)",
+      "通用 Token Plan · 专业套餐(Max)",
+    ]);
+    // 两系列同一厂商(2026-11-04 裁定),系列差异只在 planName
+    expect(rows.every((r) => r.vendor === "腾讯云")).toBe(true);
+    expect(rows.map((r) => r.monthlyFee)).toEqual([28, 78, 238, 468, 39, 99, 299, 599]);
+    expect(rows.every((r) => r.currency === "CNY" && r.quarterlyFee === null)).toBe(true);
+    expect(rows[0]).toMatchObject({
+      yearlyFee: null, // 活动页仅月付口径
+      quotaDesc: "560 积分/月",
+      bestFor: "适用于首次体验龙虾，可执行约 70 轮问答",
+    });
+    expect(rows[0]!.benefits).toEqual([
+      "每订阅月 560 积分",
+      "适用于首次体验龙虾，可执行约 70 轮问答",
+      "集成Hy4、Hy4 preview，适合多步工具调用",
+    ]);
+    // 活动文案取折叠文本(富文本节点把句子切开,喂原始 HTML 必失配)
+    expect(rows[0]!.billingNote).toBe("官方活动:Hy4 正式版积分抵扣限时2.5折");
+    // 企业版(统一单价/积分池口径)不入库;角标 6.5折 不是真折扣,不进注记
+    expect(rows.some((r) => r.planName.includes("企业版"))).toBe(false);
+    expect(rows.some((r) => r.monthlyFee === 100 || r.monthlyFee === 1000)).toBe(false);
+    expect(rows[0]!.billingNote).not.toContain("6.5折");
+  });
+
+  it("活动价态(划线价>日常展示价):标准价入 fee,活动价入注记", () => {
+    const cards = [...TX_CARDS]; // 两系列齐 8 档,改首档为活动价态
+    cards[0] = txCard("Hy 个人版–体验套餐（Lite）", "18.00", ["每订阅月 560 积分"], {
+      original: "28.00",
+      priceDesc: "活动价：",
+    });
+    const rows = parseTencentTokenPlan(txPage(cards), TX_URL, NOW);
+    expect(rows[0]!.monthlyFee).toBe(28); // 与其余渠道同一纪律:标准价入 fee
+    expect(rows[0]!.billingNote).toBe(
+      "活动价 ¥18/月(日常价 ¥28/月);官方活动:Hy4 正式版积分抵扣限时2.5折",
+    );
+  });
+
+  it("计价单位非「元/月」(改周期)抛错——月度比价口径失效不静默折算", () => {
+    const cards = TX_HY_TIERS.map((t) => txTierCard(true, t));
+    cards[0] = txCard("Hy 个人版–体验套餐（Lite）", "280.00", ["每订阅月 560 积分"], {
+      unit: "元/年",
+    });
+    expect(() => parseTencentTokenPlan(txPage(cards), TX_URL, NOW)).toThrow("计价单位异常");
+  });
+
+  it("系列缺档 / __NEXT_DATA__ 丢失(前端改版)抛错,不静默错配", () => {
+    const three = TX_HY_TIERS.slice(0, 3).map((t) => txTierCard(true, t));
+    const full = TX_COMMON_TIERS.map((t) => txTierCard(false, t));
+    expect(() => parseTencentTokenPlan(txPage([...three, ...full]), TX_URL, NOW)).toThrow(
+      "tencent tokenplan 套餐结构未匹配(Hy 3/通用 4)",
+    );
+    expect(() => parseTencentTokenPlan("<html><body>改版</body></html>", TX_URL, NOW)).toThrow(
+      "__NEXT_DATA__ 未找到",
     );
   });
 });
