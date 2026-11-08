@@ -6,6 +6,25 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
+    # 手动触发时的跳过开关(仿 ai-invest-assisstant):紧急发版可跳过 lint/测试,
+    # 类型检查与迁移守卫不跳过(它们防的是「发出去才发现坏」,不是代码风格)。
+    inputs:
+      skip_lint:
+        description: "跳过代码检查阶段(prettier/eslint)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      skip_test:
+        description: "跳过测试阶段(vitest/pytest)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 env:
   # 强制 GitHub Actions 使用 Node.js 24 runtime(checkout/setup-node 等,消弃用警告;同范例仓)
@@ -13,8 +32,54 @@ env:
   REGISTRY: ccr.ccs.tencentyun.com
 
 jobs:
+  # Docker 镜像静态检查(仿 ai-invest-assisstant 的 hadolint 步骤):四镜像目录册
+  # (app / 网关 / 卡片渲染 / pgvector)逐个过。hadolint 无 darwin-arm64 原生版,
+  # 故放 GitHub 托管 runner。failure-threshold: error——warning 级不拦发布
+  # (钉版本一类 warning 与本仓既有写法冲突,逐条改会污染镜像定义)。
+  dockerfile-lint:
+    name: Dockerfile 检查(hadolint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: app 镜像
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/app/Dockerfile
+          failure-threshold: error
+      - name: 网关镜像
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/gateway/Dockerfile
+          failure-threshold: error
+      - name: 卡片渲染镜像
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/card-renderer/Dockerfile
+          failure-threshold: error
+      - name: pgvector 镜像
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/pgvector/Dockerfile
+          failure-threshold: error
+      # 迁移载体一致性断言:生产迁移由应用镜像内的 prisma CLI 执行(入口脚本),
+      # 镜像里的 prisma/ 必须与仓库一致——否则线上「迁移先行」跑的是旧迁移集。
+      # 静态断言(不镜像内实测):镜像 2.4GB,每次加载占构建机磁盘,而漂移的现实来源
+      # 只有两处——.dockerignore 排除 prisma/、或 Dockerfile 漏 COPY prisma/。
+      - name: 断言镜像携带仓库迁移集
+        run: |
+          set -eu
+          if grep -qE '(^|/)prisma(/|$)' .dockerignore; then
+            echo "ERROR: .dockerignore 排除了 prisma/,镜像将不带迁移集" >&2
+            exit 1
+          fi
+          if ! grep -q '/app/prisma' docker/app/Dockerfile; then
+            echo "ERROR: app Dockerfile 未把 prisma/ COPY 进 runner 阶段" >&2
+            exit 1
+          fi
+          echo "迁移载体断言通过：镜像将携带仓库 $(ls prisma/migrations | wc -l | tr -d ' ') 个迁移"
+
   app:
-    name: app(格式/lint/类型/单测)
+    name: app(格式/lint/类型/构建/单测)
     runs-on: ubuntu-latest
     env:
       # 单测导入链(src/lib/ai/* → logger → env.ts)加载即做 zod 形校验;
@@ -29,10 +94,26 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx prettier --check .
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test:unit
+      - name: 格式检查
+        if: github.event.inputs.skip_lint != 'true'
+        run: npx prettier --check .
+      - name: lint
+        if: github.event.inputs.skip_lint != 'true'
+        run: npm run lint
+      - name: 类型检查
+        run: npm run typecheck
+      # 构建门禁(仿 ai-invest 的 web job 的 Build 步骤):Next 产物只在镜像里构建,
+      # 此前 CI 完全不构建——路由段/服务端组件写错只有到发版才暴露。构建期无 DB:
+      # env 模块 import 即 Zod 校验,占位三件套过形态校验,预渲染取数经 prerenderSafe
+      # 降级为空数据(与 docker/app/Dockerfile builder 阶段同法)。
+      - name: 构建(next build + worker build)
+        run: |
+          npx prisma generate
+          npm run build
+          npm run worker:build
+      - name: 单测
+        if: github.event.inputs.skip_test != 'true'
+        run: npm run test:unit
 
   # 抖音网关(M8):pytest 黄金样本对拍(a_bogus 冻结时间逐字节)+ 归因矩阵;仅网关目录变更时跑
   gateway:
@@ -51,7 +132,10 @@ jobs:
       - working-directory: services/douyin-gateway
         run: |
           uv sync --frozen
-          uv run pytest tests/ -q
+      - name: 单测
+        if: github.event.inputs.skip_test != 'true'
+        working-directory: services/douyin-gateway
+        run: uv run pytest tests/ -q
 
   # 卡片渲染服务(M31):validate 纯函数单测 + slots 真进程回归(拉起 index.js 打畸形请求)。
   # 后者要 import playwright 才能起来,故必须装依赖(chromium 二进制不下:用例只断言 4xx,
@@ -70,11 +154,13 @@ jobs:
           cache-dependency-path: services/card-renderer/package-lock.json
       - working-directory: services/card-renderer
         run: npm ci
-      - working-directory: services/card-renderer
+      - name: 单测
+        if: github.event.inputs.skip_test != 'true'
+        working-directory: services/card-renderer
         run: npm test
 
   migrate-replay:
-    name: 迁移重放守卫
+    name: 迁移重放守卫(从零全量)
     runs-on: ubuntu-latest
     # 无条件执行(承袭范例 db-migration-guard):hashFiles 不支持 job 级 if,
     # 曾致 workflow 加载即失败;守卫本身仅 ~1 分钟,换取任何变更都能兜住 schema 漂移
@@ -109,7 +195,97 @@ jobs:
       # introspect 断言:实际 schema 与 schema.prisma 一致(有差异则非零退出)
       - run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
-  # 镜像发布线:三检查 job 全绿后,app 与网关镜像各自独立 job 并行构建推送
+  # 迁移增量守卫(仿 ai-invest 的 db-incremental-guard):从「线上 schema」出发验证
+  # 增量路径,并断言增量结果与从零重放一致(无 schema 漂移)。
+  # 上面的重放守卫只覆盖空库从零;真实的「线上 schema → 新 schema」增量路径此前
+  # 从未被自动验证过——生产迁移事故正是从这条路径漏出来的。
+  # 基准 = origin/main 的迁移集(main 是发布线,生产当前跑的 schema 即由此重放而来;
+  # main ⊆ develop,故 develop 上新增的迁移落在增量侧)。
+  db-incremental-guard:
+    name: 迁移增量守卫(线上 schema → 新 schema 无漂移)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PGPASSWORD: postgres
+      PGHOST: localhost
+      PGUSER: postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 需要 origin/main 的完整迁移集作基准,浅克隆取不到
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 抽出主干迁移基准
+        run: |
+          set -eu
+          git fetch --no-tags origin main
+          mkdir -p base
+          git archive origin/main prisma | tar -x -C base
+          echo "base migrations: $(ls base/prisma/migrations | wc -l | tr -d ' ')"
+          echo "current migrations: $(ls prisma/migrations | wc -l | tr -d ' ')"
+      - name: 主干迁移落 prod_schema(线上 schema 基准)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/prod_schema?schema=public
+        run: |
+          set -eu
+          psql -d postgres -c "CREATE DATABASE prod_schema"
+          npx prisma migrate deploy --schema base/prisma/schema.prisma
+      - name: 增量迁移落 prod_schema(本次分支的新迁移)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/prod_schema?schema=public
+        run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - name: 从零重放全部迁移落 fresh_schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fresh_schema?schema=public
+        run: |
+          set -eu
+          psql -d postgres -c "CREATE DATABASE fresh_schema"
+          npx prisma migrate deploy --schema prisma/schema.prisma
+      - name: 断言增量与从零无漂移
+        run: |
+          set -eu
+          # 比对对象:列、索引、约束清单(不比数据、不比 pg_dump 文本,避免格式噪声误报);
+          # _prisma_migrations 是迁移台账本身,两边结构同、数据不同,排除
+          for db in prod_schema fresh_schema; do
+            psql -d "$db" -qAt -c "
+              SELECT table_name||'.'||column_name||':'||data_type||':'||is_nullable
+              FROM information_schema.columns
+              WHERE table_schema='public' AND table_name <> '_prisma_migrations' ORDER BY 1" > "/tmp/cols.$db"
+            psql -d "$db" -qAt -c "
+              SELECT tablename||'.'||indexname FROM pg_indexes
+              WHERE schemaname='public' AND tablename <> '_prisma_migrations' ORDER BY 1" > "/tmp/idx.$db"
+            psql -d "$db" -qAt -c "
+              SELECT conrelid::regclass::text||'.'||conname||':'||contype::text
+              FROM pg_constraint WHERE connamespace='public'::regnamespace ORDER BY 1" > "/tmp/con.$db"
+          done
+          failed=0
+          for kind in cols idx con; do
+            if ! diff -u "/tmp/$kind.prod_schema" "/tmp/$kind.fresh_schema"; then
+              echo "ERROR: $kind 漂移:增量路径与从零路径结果不一致" >&2
+              failed=1
+            fi
+          done
+          [ "$failed" -eq 0 ] || exit 1
+          echo "schema 一致:列/索引/约束三清单在增量与从零路径下完全相同"
+
+  # 镜像发布线:检查线全绿后,app 与网关镜像各自独立 job 并行构建推送
   # (2026-10-04 拆分,仿 ai-invest-assisstant 每镜像一 job:互不拖累,失败可
   #  re-run failed jobs 单镜像重试;standard/02-cicd-deployment §1)
   # develop 出 develop-<sha> 供演练;latest 只从 main 出,保证 compose pull 默认拉到发布版
@@ -119,212 +295,160 @@ jobs:
   #  [self-hosted] runner + 预建持久 builder `ci-builder`(buildkitd.toml 配国内
   #  docker.io 镜像源,本地缓存跨 job 复用,弃 gha cache)。Apple Silicon 出 175 所需
   #  amd64:显式 platforms: linux/amd64(Rosetta/QEMU 模拟,首跑冷缓存偏慢属预期)
+  # 三镜像共用 .github/workflows/release-image.yml(可复用工作流):构建推送语义只有
+  # 一份,改一处漏两处的风险随之消失
   docker-release:
     name: release(app 镜像构建推送 TCR)
-    runs-on: [self-hosted]
-    needs: [app, gateway, migrate-replay]
+    needs: [dockerfile-lint, app, gateway, card-renderer, migrate-replay, db-incremental-guard]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - id: vars
-        run: |
-          {
-            echo "sha_short=$(git rev-parse --short HEAD)"
-            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
-            echo "build_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          } >> "$GITHUB_OUTPUT"
-      # 预建持久 builder(见 job 注释);不用 setup-buildx-action——它会另建临时 builder 顶掉选择
-      - name: Select builder / 选择构建器
-        run: docker buildx use ci-builder
-      # id + 重试条件:登录失败属配置错误,不进重试(避免白建镜像且盖住真错;2026-10-02 首跑实测教训)
-      - id: login
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.TCR_USERNAME }}
-          password: ${{ secrets.TCR_PASSWORD }}
-      # provenance: false——TCR 不认 OCI attestation 附加清单
-      # continue-on-error:首推失败不染红 job,成败由 gate 步骤裁定(重试条件须用
-      # outcome 而非 failure(),continue-on-error 会把 failure() 归 false)
-      - name: Build and Push / 构建并推送(第 1 次尝试)
-        id: build1
-        continue-on-error: true
-        uses: docker/build-push-action@v6
-        timeout-minutes: 25
-        with:
-          context: .
-          file: docker/app/Dockerfile
-          push: true
-          provenance: false
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-          build-args: |
-            BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            BUILD_TIME=${{ steps.vars.outputs.build_time }}
-      - name: Build and Push / 构建并推送(重试)
-        if: steps.build1.outcome == 'failure' && steps.login.conclusion == 'success'
-        id: build-retry
-        uses: docker/build-push-action@v6
-        timeout-minutes: 30
-        with:
-          context: .
-          file: docker/app/Dockerfile
-          push: true
-          provenance: false
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-          build-args: |
-            BUILD_REF=${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            BUILD_TIME=${{ steps.vars.outputs.build_time }}
-      - name: Conclude push outcome / 推送结论裁定
-        if: always()
-        # 任一次尝试成功即 job 成功;两次皆败才判红(run 37106851119 教训:
-        # 首推超时→重试成功,job 仍红,误导发布判断)
-        run: |
-          if [ "${{ steps.build1.outcome }}" = "success" ] || [ "${{ steps.build-retry.outcome }}" = "success" ]; then
-            echo "[OK] image push succeeded"
-          else
-            echo "[FAIL] image push failed in both attempts" >&2
-            exit 1
-          fi
-      - name: Output image info / 输出镜像信息
-        run: |
-          echo "Image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
+    uses: ./.github/workflows/release-image.yml
+    with:
+      image: aitech-hub
+      dockerfile: docker/app/Dockerfile
+      build-meta: true
+    secrets: inherit
 
-  # 网关镜像(M8,独立 Dockerfile):与 app 镜像同语义的独立 job。
-  # self-hosted runner / ci-builder / platforms / gate 裁定等语义与 docker-release 同款
-  # (逐条教训注释见上,勿只改一处)
+  # 网关镜像(M8,独立 Dockerfile):与 app 镜像同语义的独立 job
   docker-release-gateway:
     name: release(网关镜像构建推送 TCR)
-    runs-on: [self-hosted]
-    needs: [app, gateway, migrate-replay]
+    needs: [dockerfile-lint, app, gateway, card-renderer, migrate-replay, db-incremental-guard]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - id: vars
-        run: |
-          {
-            echo "sha_short=$(git rev-parse --short HEAD)"
-            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
-          } >> "$GITHUB_OUTPUT"
-      - name: Select builder / 选择构建器
-        run: docker buildx use ci-builder
-      - id: login
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.TCR_USERNAME }}
-          password: ${{ secrets.TCR_PASSWORD }}
-      - name: Build and Push gateway / 网关镜像(第 1 次尝试)
-        id: gbuild1
-        continue-on-error: true
-        uses: docker/build-push-action@v6
-        timeout-minutes: 25
-        with:
-          context: .
-          file: docker/gateway/Dockerfile
-          push: true
-          provenance: false
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-gateway:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-      - name: Build and Push gateway / 网关镜像(重试)
-        if: steps.gbuild1.outcome == 'failure' && steps.login.conclusion == 'success'
-        id: gbuild-retry
-        uses: docker/build-push-action@v6
-        timeout-minutes: 30
-        with:
-          context: .
-          file: docker/gateway/Dockerfile
-          push: true
-          provenance: false
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-gateway:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-      - name: Conclude push outcome / 推送结论裁定
-        if: always()
-        # 任一次尝试成功即 job 成功;两次皆败才判红(教训同 docker-release)
-        run: |
-          if [ "${{ steps.gbuild1.outcome }}" = "success" ] || [ "${{ steps.gbuild-retry.outcome }}" = "success" ]; then
-            echo "[OK] gateway image push succeeded"
-          else
-            echo "[FAIL] gateway image push failed in both attempts" >&2
-            exit 1
-          fi
-      - name: Output image info / 输出镜像信息
-        run: |
-          echo "Gateway image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-gateway:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
+    uses: ./.github/workflows/release-image.yml
+    with:
+      image: aitech-hub-gateway
+      dockerfile: docker/gateway/Dockerfile
+    secrets: inherit
 
-  # 卡片渲染镜像(M31,独立 Dockerfile):与网关镜像同语义的独立 job(self-hosted /
-  # ci-builder / platforms / gate 裁定等逐条教训注释见 docker-release,勿只改一处)
+  # 卡片渲染镜像(M31,独立 Dockerfile):与网关镜像同语义的独立 job
   docker-release-card-renderer:
     name: release(卡片渲染镜像构建推送 TCR)
-    runs-on: [self-hosted]
-    needs: [app, card-renderer, migrate-replay]
+    needs: [dockerfile-lint, app, gateway, card-renderer, migrate-replay, db-incremental-guard]
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
+    uses: ./.github/workflows/release-image.yml
+    with:
+      image: aitech-hub-card-renderer
+      dockerfile: docker/card-renderer/Dockerfile
+    secrets: inherit
+
+  # 本机测试环境自动更新(合并 develop 即生效)。
+  # 部署根目录 DEPLOY_ROOT 就是本仓工作副本(测试环境与开发环境同目录,不再另开
+  # 一份部署目录):镜像来自 CI 构建(同 commit),compose 与部署脚本取工作副本里的
+  # 版本。CI 不往工作副本写文件——那会覆盖本地未提交改动。隔离靠三处:
+  # COMPOSE_PROJECT_NAME、独立 env 文件(.env.staging)、独立数据目录(workspace-staging/)。
+  deploy-staging:
+    name: deploy(本机测试环境更新)
+    runs-on: [self-hosted]
+    needs: [docker-release, docker-release-gateway, docker-release-card-renderer]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    env:
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
+      DEPLOY_NAMESPACE: ${{ secrets.TCR_NAMESPACE }}
     steps:
       - uses: actions/checkout@v4
       - id: vars
-        run: |
-          {
-            echo "sha_short=$(git rev-parse --short HEAD)"
-            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
-          } >> "$GITHUB_OUTPUT"
-      - name: Select builder / 选择构建器
-        run: docker buildx use ci-builder
-      - id: login
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      # 测试环境拉镜像走 TCR,登录凭证与发布线同一套(repo secrets)
+      - name: 登录 TCR
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.TCR_USERNAME }}
           password: ${{ secrets.TCR_PASSWORD }}
-      - name: Build and Push card-renderer / 卡片渲染镜像(第 1 次尝试)
-        id: cbuild1
-        continue-on-error: true
-        uses: docker/build-push-action@v6
-        timeout-minutes: 25
-        with:
-          context: .
-          file: docker/card-renderer/Dockerfile
-          push: true
-          provenance: false
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-card-renderer:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-      - name: Build and Push card-renderer / 卡片渲染镜像(重试)
-        if: steps.cbuild1.outcome == 'failure' && steps.login.conclusion == 'success'
-        id: cbuild-retry
-        uses: docker/build-push-action@v6
-        timeout-minutes: 30
-        with:
-          context: .
-          file: docker/card-renderer/Dockerfile
-          push: true
-          provenance: false
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/aitech-hub-card-renderer:latest', env.REGISTRY, secrets.TCR_NAMESPACE) || '' }}
-      - name: Conclude push outcome / 推送结论裁定
-        if: always()
-        # 任一次尝试成功即 job 成功;两次皆败才判红(教训同 docker-release)
+      - name: 前置校验
         run: |
-          if [ "${{ steps.cbuild1.outcome }}" = "success" ] || [ "${{ steps.cbuild-retry.outcome }}" = "success" ]; then
-            echo "[OK] card-renderer image push succeeded"
-          else
-            echo "[FAIL] card-renderer image push failed in both attempts" >&2
-            exit 1
+          set -eu
+          [ -n "$DEPLOY_ROOT" ] || { echo "ERROR: 未配置仓库变量 DEPLOY_ROOT" >&2; exit 1; }
+          [ -d "$DEPLOY_ROOT" ] || { echo "ERROR: 部署根目录不存在:$DEPLOY_ROOT" >&2; exit 1; }
+          [ -f "$DEPLOY_ROOT/scripts/deploy.sh" ] || { echo "ERROR: $DEPLOY_ROOT/scripts/deploy.sh 不存在" >&2; exit 1; }
+          [ -f "$DEPLOY_ROOT/docker-compose.prod.yml" ] || { echo "ERROR: $DEPLOY_ROOT/docker-compose.prod.yml 不存在" >&2; exit 1; }
+          [ -f "$DEPLOY_ROOT/.env.staging" ] || { echo "ERROR: $DEPLOY_ROOT/.env.staging 不存在,先准备测试环境配置" >&2; exit 1; }
+      - name: 部署(迁移先行 → 换容器 → 健康检查 → 失败自动回滚)
+        run: |
+          set -eu
+          # 工作副本就地部署:只落 .deploy-commit(发布溯源),不复制任何源码文件,
+          # 免得覆盖本地未提交改动。compose/deploy.sh 取工作副本版本,应用代码取 CI 镜像。
+          local_head="$(git -C "$DEPLOY_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+          echo "工作副本 HEAD=$local_head,本次发布 commit=$GITHUB_SHA"
+          if [ "$local_head" != "$GITHUB_SHA" ]; then
+            echo "::warning::工作副本 HEAD 与本次发布 commit 不一致(compose/部署脚本取本地版本,应用代码取 CI 镜像)"
           fi
-      - name: Output image info / 输出镜像信息
+          printf '%s\n' "$GITHUB_SHA" > "$DEPLOY_ROOT/.deploy-commit"
+          bash "$DEPLOY_ROOT/scripts/deploy.sh" --env staging --tag "develop-${{ steps.vars.outputs.sha_short }}"
+
+  # 生产环境发布(Environment 人工审批后方可执行)。
+  # 仓库为 public,生产机地址与部署路径一律走仓库变量(不入库);SSH 密钥与主机指纹
+  # 走仓库 secret。资产由 CI 侧打包直传(生产机到 GitHub 的链路实测 100% 超时,
+  # 不能让服务器侧拉取)——与 git checkout 等价(同一 commit)。
+  deploy-production:
+    name: deploy(生产环境发布)
+    runs-on: ubuntu-latest
+    needs: [docker-release, docker-release-gateway, docker-release-card-renderer]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    timeout-minutes: 60
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 前置校验(未配密钥/主机则明确失败,不半途发布)
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
-          echo "Card-renderer image pushed: ${{ env.REGISTRY }}/${{ secrets.TCR_NAMESPACE }}/aitech-hub-card-renderer:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"
+          set -eu
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_SSH_KEY" >&2; exit 1; }
+          [ -n "$DEPLOY_KNOWN_HOSTS" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_KNOWN_HOSTS" >&2; exit 1; }
+          [ -n "$DEPLOY_HOST" ] || { echo "ERROR: 未配置仓库变量 DEPLOY_HOST" >&2; exit 1; }
+          [ -n "$DEPLOY_PATH" ] || { echo "ERROR: 未配置仓库变量 DEPLOY_PATH" >&2; exit 1; }
+      - name: 配置免密密钥与主机指纹
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: 记录发布前现场
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && echo '--- 当前状态文件 ---' && cat .deploy-state 2>/dev/null; echo '--- 当前镜像钉 ---' && grep -E '^APP_IMAGE=' .env 2>/dev/null; echo '--- 当前运行镜像 ---' && sudo docker compose -f docker-compose.prod.yml ps --format '{{.Service}} {{.Image}} {{.State}}' 2>/dev/null"
+      - name: 同步部署资产到服务器
+        run: |
+          set -eu
+          # COPYFILE_DISABLE:macOS 上打包不夹带 AppleDouble(._*)垃圾文件
+          COPYFILE_DISABLE=1 tar -czf /tmp/deploy-assets.tar.gz \
+            scripts/deploy.sh \
+            docker-compose.prod.yml \
+            docker
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            /tmp/deploy-assets.tar.gz "$DEPLOY_HOST:/tmp/deploy-assets.tar.gz"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            sudo bash -s -- "$DEPLOY_PATH" "$GITHUB_SHA" <<'REMOTE'
+          set -eu
+          cd "$1"
+          # --no-same-owner:不让归档里的 uid/gid 覆盖服务器属主,
+          # 否则文件会挂上构建机 uid(服务器上不存在该用户)
+          tar --no-same-owner -xzf /tmp/deploy-assets.tar.gz
+          rm -f /tmp/deploy-assets.tar.gz
+          chmod 755 scripts/deploy.sh
+          printf '%s\n' "$2" > .deploy-commit
+          # 资产落地完整性校验:缺任何一项都中止,不带着半套资产继续发布
+          for f in scripts/deploy.sh docker-compose.prod.yml docker/app/Dockerfile docker/nginx/nginx.conf; do
+              [ -f "$f" ] || { echo "ERROR: 资产缺失:$f" >&2; exit 1; }
+          done
+          echo "--- 已同步:发布资产齐全 ---"
+          REMOTE
+      - name: 发布(迁移先行 → 换容器 → 健康检查 → 失败自动回滚)
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && sudo bash scripts/deploy.sh --env prod --tag 'main-${{ steps.vars.outputs.sha_short }}'"
