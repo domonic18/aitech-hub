@@ -30,6 +30,10 @@ env:
   # 强制 GitHub Actions 使用 Node.js 24 runtime(checkout/setup-node 等,消弃用警告;同范例仓)
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   REGISTRY: ccr.ccs.tencentyun.com
+  # ffmpeg-static 的 postinstall 默认从 GitHub Release CDN 拉二进制,托管 runner 上
+  # 偶发 504(2026-11-08 三道守卫同时栽在 npm ci:app / 迁移重放 / 迁移增量)。
+  # 与镜像构建侧同一套国内二进制镜像(compose 已按 FFMPEG_BINARIES_URL 注入 npmmirror)。
+  FFMPEG_BINARIES_URL: https://registry.npmmirror.com/-/binary/ffmpeg-static
 
 jobs:
   # Docker 镜像静态检查(仿 ai-invest-assisstant 的 hadolint 步骤):四镜像目录册

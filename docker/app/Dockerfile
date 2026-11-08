@@ -4,9 +4,11 @@
 FROM node:22-slim AS deps
 WORKDIR /app
 # ffmpeg-static postinstall 从 github release 拉 Linux 二进制;docker VM 直连
-# github 常 reset(2026-10-05 实测)——本机构建经 docker-compose.prod.yml 默认注入
-# npmmirror 镜像源,纯 docker build 需显式 --build-arg;空值回退默认 github,CI 无感
-ARG FFMPEG_BINARIES_URL=""
+# github 常 reset(2026-10-05 实测)——与 apt 源同方:默认直接给国内镜像,
+# 置空回退默认 github。默认值写在 ARG 而非 compose:CI 的 docker buildx
+# 不带这些 build-args,compose 的注入只覆盖本机构建路径(2026-11-08 实测:
+# CI 构建即栽在 ffmpeg-static 拉 GitHub CDN 报 504)
+ARG FFMPEG_BINARIES_URL="https://registry.npmmirror.com/-/binary/ffmpeg-static"
 ENV FFMPEG_BINARIES_URL=$FFMPEG_BINARIES_URL
 # prisma 引擎二进制:docker VM 到 binaries.prisma.sh 的 TLS 握手常被 reset
 # (2026-10-30 实测:宿主直连 200,容器内 `unexpected eof while reading`,重试必挂)

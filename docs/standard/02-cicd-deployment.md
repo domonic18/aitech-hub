@@ -208,6 +208,10 @@ sudo bash scripts/deploy.sh --env prod --tag main-<sha>
 
 **生产发布成功记录(2026-11-08,PR #230 合并 main 后的第四次尝试)**:检查线六道守卫全绿 → 三镜像构建推送 TCR(`main-b8c6263`)全绿 → `environment: production` 人工审批通过 → 服务器侧 `deploy.sh` 依次完成:预检 → 钉三个 tag(`main-b8c6263`,记上一版本 `develop-0c3eed9` 作回滚目标)→ 拉镜像 → 迁移先行(日志 `No pending migrations to apply`,main 与 develop 无迁移差异,幂等无操作)→ 换容器 → 健康检查 → 落 `.deploy-state`(`status=OK`)→ 镜像清理,自审批到部署完成约 4 分钟。现场核对:web / worker / douyin-gateway / card-renderer 四个应用容器全跑 `main-b8c6263`,web 日志 `✓ Ready`、worker 二十余条队列全部启动、crawler 正常抓取;站点首页 / `feed.xml` / `llms.txt` 返回 200,子页面 308→200。
 
+**镜像清理从未生效(2026-11-08 核查发现)**:`cleanup_images` 用「命名空间/仓库名」当 `docker images` 的过滤参数,但 `docker images` 按**完整仓库名**匹配——真实仓库名含 registry(`ccr.ccs.tencentyun.com/domonic18/aitech-hub`),短前缀匹配不上 → `tags` 恒为空 → 命中的是一句无声的 `|| continue` → 脚本照样打印「镜像清理完成」,而旧镜像一个没删。生产机实测:镜像共 13.73GB,其中 **9.25GB(67%)可回收**;本机 Mac mini 镜像可回收 27.65GB。已修:新增 `image_repo_path()` 统一拼 `registry/namespace`,`image_ref` 与 `cleanup_images` 共用,过滤改用全路径;**过滤落空改为显式警告**(不再无声跳过),避免「清理从未生效却报完成」这种静默失败重演。修后本机实测:三仓库各回收至 keep=3(当前版本与回滚目标双保护),镜像可回收量 27.65GB → 17.14GB。
+
+> 判据:`docker images <过滤参数>` 的过滤参数必须是**完整仓库名**,给短前缀只会匹配不到(静默返回空)。凡是用它做保留/清理决策的地方,过滤落空都必须报警——空结果不是「无需清理」的证据。
+
 **仓外一次性配置**(命名与 ai-invest-assisstant 逐字一致;仓库为 public,主机地址与部署路径一律走仓库变量,不入库):
 
 | 名称 | 类型 | 用途 |

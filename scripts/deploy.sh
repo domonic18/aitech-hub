@@ -183,9 +183,16 @@ namespace() {
     printf '%s' "$ns"
 }
 
+# 镜像仓库全路径(registry/namespace):docker images 的过滤参数必须是全路径——
+# 只给命名空间过滤不到(短前缀匹配不上含 registry 的完整仓库名),
+# 过滤落空 → 清理步骤静默空转,旧镜像无限堆积。
+image_repo_path() {
+    printf '%s/%s' "$REGISTRY" "$(namespace)"
+}
+
 image_ref() {
     # image_ref <repo 名> → registry/namespace/repo
-    printf '%s/%s/%s' "$REGISTRY" "$(namespace)" "$1"
+    printf '%s/%s' "$(image_repo_path)" "$1"
 }
 
 # 坐标必须是 registry/namespace/repo 三段式,且 registry 不得重复出现
@@ -383,21 +390,24 @@ pull_images() {
 }
 
 cleanup_images() {
-    local current_tag="$1" protect_tag="$2" prefix repo tags i
-    prefix="$(namespace)"
-    [ -n "$prefix" ] || { warn "无法推导镜像命名空间,跳过镜像清理"; return 0; }
+    local current_tag="$1" protect_tag="$2" repo_path repo tags i
+    repo_path="$(image_repo_path)"
+    [ -n "$repo_path" ] || { warn "无法推导镜像仓库路径,跳过镜像清理"; return 0; }
     for repo in aitech-hub aitech-hub-gateway aitech-hub-card-renderer; do
-        tags="$(docker images --format '{{.Tag}}\t{{.CreatedAt}}' "$prefix/$repo" 2>/dev/null \
+        # 过滤参数必须是 registry/namespace/repo 全路径:只给命名空间匹配不到
+        # (docker images 按完整仓库名匹配),过滤落空会让整个清理静默空转。
+        tags="$(docker images --format '{{.Tag}}\t{{.CreatedAt}}' "$repo_path/$repo" 2>/dev/null \
             | awk -F'\t' '$1 ~ /^(main|develop)-[0-9a-f]{7,40}$/' \
             | sort -k2 -r | cut -f1)"
-        [ -n "$tags" ] || continue
+        # 落空即报警:此前这里是无声 continue,清理从未生效却照样打印「清理完成」。
+        [ -n "$tags" ] || { warn "镜像清理过滤未命中:$repo_path/$repo(仓库路径不对,旧镜像不会被清理)"; continue; }
         i=0
         for t in $tags; do
             i=$((i + 1))
             # 当前版本与上一个版本(回滚目标)永不删除
             if [ "$i" -gt "$KEEP_IMAGES" ] && [ "$t" != "$current_tag" ] && [ "$t" != "$protect_tag" ]; then
-                docker image rm "$prefix/$repo:$t" >/dev/null 2>&1 \
-                    || warn "镜像删除失败(可能被容器引用)：$prefix/$repo:$t"
+                docker image rm "$repo_path/$repo:$t" >/dev/null 2>&1 \
+                    || warn "镜像删除失败(可能被容器引用)：$repo_path/$repo:$t"
             fi
         done
     done
