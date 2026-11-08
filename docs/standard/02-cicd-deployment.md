@@ -212,6 +212,8 @@ sudo bash scripts/deploy.sh --env prod --tag main-<sha>
 
 > 判据:`docker images <过滤参数>` 的过滤参数必须是**完整仓库名**,给短前缀只会匹配不到(静默返回空)。凡是用它做保留/清理决策的地方,过滤落空都必须报警——空结果不是「无需清理」的证据。
 
+**修复后的生产实测(2026-11-08,PR #232 合并 main 后发布 `main-2a41e16`)**:发布链路全绿(检查线六道守卫 → 三镜像构建推送 → 人工审批 → 服务器侧部署),`.deploy-state` `status=OK`,七个容器全跑 `main-2a41e16`,首页 / `feed.xml` / `llms.txt` 均 200。清理本次真正生效:生产机镜像从 **13.73GB 降到 9.27GB**,两个 `develop-*` 陈旧 tag(`develop-0c3eed9` / `develop-5981bde`)与卡渲染的 `develop-e353048` 全部消失,只剩三个 `main-*` tag(当前 + 回滚目标 + keep=3)。此前这些 tag 一次都没被删过。
+
 **仓外一次性配置**(命名与 ai-invest-assisstant 逐字一致;仓库为 public,主机地址与部署路径一律走仓库变量,不入库):
 
 | 名称 | 类型 | 用途 |
