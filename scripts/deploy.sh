@@ -162,12 +162,17 @@ restore_prev_env() {
 # config --images 的输出顺序是散列序,不能取第一行——第一行可能是 nginx:1.28-alpine
 # 这类两段式三方镜像。只认「registry/namespace/repo」三段式,本项目自有镜像才符合。
 image_namespace() {
-    local img
+    local img rest
     img="$(compose config --images 2>/dev/null \
         | grep -E '^[^/]+/[^/]+/[^/]+:' | head -n 1 || true)"
     [ -n "$img" ] || return 0
-    # registry/namespace/repo:tag → registry/namespace
-    printf '%s' "$img" | sed -E 's|/[^/]+/[^/]+:[^/:]+$||'
+    # registry/namespace/repo:tag → 去掉末段 repo:tag,再剥掉与 REGISTRY 相同的首段,
+    # 剩下的才是命名空间(此前误剥两段,只剥到 registry,拼出 registry/registry/repo)
+    rest="$(printf '%s' "$img" | sed -E 's|/[^/:]+:[^/:]+$||')"
+    case "$rest" in
+        "$REGISTRY"/*) printf '%s' "${rest#"$REGISTRY"/}" ;;
+        *) printf '%s' "${rest##*/}" ;;
+    esac
 }
 
 namespace() {
@@ -181,6 +186,18 @@ namespace() {
 image_ref() {
     # image_ref <repo 名> → registry/namespace/repo
     printf '%s/%s/%s' "$REGISTRY" "$(namespace)" "$1"
+}
+
+# 坐标必须是 registry/namespace/repo 三段式,且 registry 不得重复出现
+# (剥路径段数写错时会拼成 registry/registry/repo,仍是三段,靠段数查不出)。
+# 校验放在调用点(主 shell)而非 image_ref 内部——命令替换里的 exit 只退子 shell,
+# 报错会被吞掉,护栏形同虚设。
+assert_image_ref() {
+    local ref="$1" segs hits
+    segs="$(printf '%s' "$ref" | tr -cd '/' | wc -c | tr -d ' ')"
+    [ "$segs" = "2" ] || fail "镜像坐标非法(应为 registry/namespace/repo 三段):$ref"
+    hits="$(printf '%s' "$ref" | grep -oF "$REGISTRY" | wc -l | tr -d ' ' || true)"
+    [ "$hits" -le 1 ] || fail "镜像坐标非法(registry 重复出现):$ref"
 }
 
 # ---------------------------------------------------------------- 预检
@@ -408,9 +425,16 @@ main() {
     commit="$(resolve_commit "$IMAGE_TAG")"
 
     rotate_env_backup
-    set_env_var APP_IMAGE "$(image_ref aitech-hub):$IMAGE_TAG"
-    set_env_var GATEWAY_IMAGE "$(image_ref aitech-hub-gateway):$IMAGE_TAG"
-    set_env_var CARD_RENDERER_IMAGE "$(image_ref aitech-hub-card-renderer):$IMAGE_TAG"
+    local app_ref gw_ref card_ref
+    app_ref="$(image_ref aitech-hub):$IMAGE_TAG"
+    gw_ref="$(image_ref aitech-hub-gateway):$IMAGE_TAG"
+    card_ref="$(image_ref aitech-hub-card-renderer):$IMAGE_TAG"
+    assert_image_ref "$app_ref"
+    assert_image_ref "$gw_ref"
+    assert_image_ref "$card_ref"
+    set_env_var APP_IMAGE "$app_ref"
+    set_env_var GATEWAY_IMAGE "$gw_ref"
+    set_env_var CARD_RENDERER_IMAGE "$card_ref"
     restore_owner "$owner"
     log "镜像钉为 ${IMAGE_TAG}(上一个版本：${previous:-无})"
 

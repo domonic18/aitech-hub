@@ -396,6 +396,9 @@ jobs:
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      # 命名空间显式传给服务器侧部署脚本(与 staging 同款):脚本虽能从 compose
+      # 推导,但推导依赖服务器上 compose 的插值结果,出错时报错难定位
+      DEPLOY_NAMESPACE: ${{ secrets.TCR_NAMESPACE }}
     steps:
       - uses: actions/checkout@v4
       - name: 前置校验(未配密钥/主机则明确失败,不半途发布)
@@ -418,6 +421,14 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
       - id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: 预检生产机(部署目录与 compose 插件)
+        run: |
+          set -eu
+          # 生产机必须有 compose v2 CLI 插件:此前只装了独立二进制 docker-compose,
+          # `docker compose` 不可用,现场记录步会以 exit 125 崩掉,报错还指向"拉取失败"。
+          # 这里先一步拦下,报错直指缺插件。
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' || { echo 'ERROR: 部署目录不存在:$DEPLOY_PATH' >&2; exit 1; }; sudo docker compose version >/dev/null 2>&1 || { echo 'ERROR: 生产机缺少 compose v2 CLI 插件(docker compose 不可用)' >&2; exit 1; }; echo '生产机预检通过'"
       - name: 记录发布前现场
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
@@ -450,5 +461,6 @@ jobs:
           REMOTE
       - name: 发布(迁移先行 → 换容器 → 健康检查 → 失败自动回滚)
         run: |
+          # 命名空间随命令传到服务器侧脚本(ssh 不继承 runner 的 env,须显式带)
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && sudo bash scripts/deploy.sh --env prod --tag 'main-${{ steps.vars.outputs.sha_short }}'"
+            "cd '$DEPLOY_PATH' && sudo DEPLOY_NAMESPACE='$DEPLOY_NAMESPACE' bash scripts/deploy.sh --env prod --tag 'main-${{ steps.vars.outputs.sha_short }}'"
