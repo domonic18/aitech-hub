@@ -33,6 +33,7 @@ import {
   fetchGlmCoding,
   fetchKimiMember,
   fetchMiniMaxMember,
+  fetchTencentTokenPlan,
   fetchXiaomiToken,
   GLM_CODING_URL,
   KIMI_MEMBER_URL,
@@ -42,9 +43,11 @@ import {
   parseGlmCoding,
   parseKimiCoding,
   parseMiniMaxCoding,
+  parseTencentTokenPlan,
   parseXiaomiToken,
   persistPlanRows,
   type PlanPrefillRow,
+  TENCENT_TOKENPLAN_URL,
   XIAOMI_TOKEN_URL,
 } from "./plan-sources";
 
@@ -130,6 +133,17 @@ export const SOURCE_DEFS: SourceDef[] = [
     sortOrder: 5,
     run: async (url, { now, sink }) =>
       parseMiniMaxCoding(await fetchMiniMaxMember(url, sink), url, now),
+  },
+  {
+    key: "tencent-tokenplan",
+    target: "plan",
+    kind: "static",
+    label: "腾讯云 Token Plan 套餐",
+    vendor: "腾讯云",
+    defaultUrl: TENCENT_TOKENPLAN_URL,
+    sortOrder: 7,
+    run: async (url, { now, sink }) =>
+      parseTencentTokenPlan(await fetchTencentTokenPlan(url, sink), url, now),
   },
   {
     key: "xiaomi-mimo",

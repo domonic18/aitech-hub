@@ -132,19 +132,23 @@ export default function AnswerCard({ q }: { q: string }): React.ReactElement | n
       </div>
 
       {cites.length > 0 ? (
-        <div className="mt-3.5 border-t border-dashed border-line pt-3 font-mono text-xs leading-[2] text-text-3">
-          引用来源:
-          {cites.map((c) => (
-            <a
-              key={c.n}
-              id={`cite-${c.n}`}
-              href={c.href}
-              {...(isExternal(c.kind) ? { target: "_blank", rel: "noopener nofollow" } : {})}
-              className="mr-3.5 border-b border-dashed border-line text-text-2 hover:border-accent-hover hover:text-accent-hover"
-            >
-              [{c.n}] {KIND_LABEL[c.kind]} · {c.title}
-            </a>
-          ))}
+        <div className="mt-3.5 border-t border-dashed border-line pt-3 font-mono text-xs text-text-3">
+          <p>引用来源:</p>
+          {/* 逐条成行(M70):条目多时纵向扫读;id 留在 <a> 上,正文 [n] 锚点跳转依赖它 */}
+          <ol className="mt-1 list-none space-y-1 pl-0 leading-[1.8]">
+            {cites.map((c) => (
+              <li key={c.n} className="min-w-0">
+                <a
+                  id={`cite-${c.n}`}
+                  href={c.href}
+                  {...(isExternal(c.kind) ? { target: "_blank", rel: "noopener nofollow" } : {})}
+                  className="break-words border-b border-dashed border-line text-text-2 hover:border-accent-hover hover:text-accent-hover"
+                >
+                  [{c.n}] {KIND_LABEL[c.kind]} · {c.title}
+                </a>
+              </li>
+            ))}
+          </ol>
         </div>
       ) : null}
 

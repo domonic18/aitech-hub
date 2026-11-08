@@ -3,9 +3,19 @@
 # 构建上下文 = 仓库根(COPY 前缀即源码出处)
 FROM node:20-slim
 
+# apt 源:基座镜像的 deb822 源指向 deb.debian.org(明文 80),国内构建机常连不通
+# (2026-11-04 实测:CI 构建卡渲染镜像时 fonts-noto-cjk 拉取被拒,两次重试皆败→
+#  镜像没进 TCR、develop 发布线全红)。默认换国内镜像;置空回退官方源。
+# 换源写在装包之前,后续 playwright install --with-deps 内部那次 apt 同样走镜像。
+ARG APT_MIRROR_HOST="mirrors.aliyun.com"
+
 # Noto CJK:中文渲染不豆腐;Noto Color Emoji:emoji 彩色呈现;
 # chromium 运行时系统库由 playwright install --with-deps 自装(与 douyin-gateway 同法)
-RUN apt-get update \
+RUN if [ -n "$APT_MIRROR_HOST" ]; then \
+      sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-color-emoji ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 

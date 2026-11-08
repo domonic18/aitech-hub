@@ -25,8 +25,16 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM node:22-slim AS builder
 WORKDIR /app
+# apt 源:基座镜像的 deb822 源指向 deb.debian.org(明文 80),国内构建机常连不通
+# (2026-11-04 实测:CI 构建卡渲染镜像时 fonts-noto-cjk 拉取被拒,两次重试皆败→
+#  镜像没进 TCR、develop 发布线全红)。默认换国内镜像;置空回退官方源。
+ARG APT_MIRROR_HOST="mirrors.aliyun.com"
 # prisma 引擎探测依赖 openssl(slim 缺省无,缺了仅告警但按错误路径运行)
-RUN apt-get update -y \
+RUN if [ -n "$APT_MIRROR_HOST" ]; then \
+      sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+  && apt-get update -y \
   && apt-get install -y --no-install-recommends openssl \
   && rm -rf /var/lib/apt/lists/*
 # 构建占位 env:env 模块 import 即 Zod 校验;预渲染取数经 prerenderSafe
@@ -60,14 +68,22 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 WORKDIR /app
 
-RUN apt-get update -y \
+# apt 源换国内镜像(同 builder 阶段:基座镜像默认源在境外,国内构建机常连不通);
+# 置空回退官方源。pgdg 源路径与 debian 不同构,单独一个参数
+ARG APT_MIRROR_HOST="mirrors.aliyun.com"
+ARG PGDG_MIRROR="https://mirrors.aliyun.com/postgresql/repos/apt"
+RUN if [ -n "$APT_MIRROR_HOST" ]; then \
+      sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+  && apt-get update -y \
   && apt-get install -y --no-install-recommends openssl curl ca-certificates gnupg \
   # pgdg 源装 postgresql-client-16(db-backup 每日 pg_dump;bookworm 缺省 client 15 < 服务端 16,
-  # 版本不齐 pg_dump 拒跑);M19 批②
+  # 版本不齐 pg_dump 拒跑);M19 批②。源同样在境外,走国内镜像(签名 key 不变,同一仓库)
   && install -d /usr/share/postgresql-common/pgdg \
   && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
       -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] ${PGDG_MIRROR} bookworm-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list \
   && apt-get update -y \
   && apt-get install -y --no-install-recommends postgresql-client-16 \

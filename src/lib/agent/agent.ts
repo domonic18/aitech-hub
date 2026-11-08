@@ -28,7 +28,7 @@ import { contextTrimMiddleware } from "./context-trim";
 import { toolCallRepairMiddleware } from "./tool-call-repair";
 import { toolArgsFeedbackMiddleware } from "./tool-args-feedback";
 import { COVER_TOOLS } from "./cover-tools";
-import { AGENT_TOOLS, EDIT_TOOLS } from "./tools";
+import { AGENT_TOOLS, EDIT_TOOLS, readPostToolFor } from "./tools";
 import { WRITE_ARTICLE_TOOLS } from "./write-article-tool";
 
 export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜索助手,帮助用户深挖 AI 资讯、教程与开源项目。
@@ -43,6 +43,10 @@ export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜�
 - 涉及站内内容的事实性问题,先用 search_site 检索,再按需 read_post / read_repo 展开正文
 - 涉及「今天/最近/最新」等相对时间,先用 get_time 锚定当前日期
 - 站内没有相关内容时,直接用你自己的知识回答,并说明「站内暂无相关内容」
+
+页面上下文(文章页):
+- 上下文含 article 段(article.postId)时,用户说「这篇文章/本文/当前文章」指的就是该 id;需要正文时对该 id 调 read_post,不要猜其他 id
+- read_post 返回 "gated": true 表示这是付费/登录可见文章,只给了预览:如实告知解锁条件,严禁编造全文或声称已读全文
 
 向用户提问:
 - 关键信息缺失且无法靠检索补足时(如确认诉求、确认意图、联系方式场景),必须调用 ask_user 工具提问;一次只问一个问题,可附 2-4 个候选选项
@@ -129,11 +133,13 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 按清单 scenario 对号本次任务场景,命中即 get_skill 取指南全文;起草、自评审、改稿全程以指南为准——结构/口吻/字数/配图/码点预算等指南要求优先于本提示的通用写法;指南中引用的工具按其说明调用(码点预算自查用 measure_wechat_budget,超预算必精简后复核再交稿)
 - 清单为空或无命中时按素材常识写作(具体、反模板腔、简体中文),并在汇报中说明「未命中适用技能」`;
 
-/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产、写作单任务、封面 HITL、技能与预算工具) */
+/** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产、写作单任务、封面 HITL、技能与预算工具)。
+ *  read_post 按身份换档(M69):门禁文 guest 预览、user 仅登录门禁可读全文、admin 全文。 */
 export function agentToolsFor(kind: AgentIdentity["kind"]) {
+  const base = AGENT_TOOLS.map((t) => (t.name === "read_post" ? readPostToolFor(kind) : t));
   return kind === "admin"
     ? [
-        ...AGENT_TOOLS,
+        ...base,
         ...EDIT_TOOLS,
         ...TOPIC_TOOLS,
         ...MATERIAL_TOOLS,
@@ -146,7 +152,7 @@ export function agentToolsFor(kind: AgentIdentity["kind"]) {
         ...WECHAT_BUDGET_TOOLS,
         ...CARD_TOOLS,
       ]
-    : [...AGENT_TOOLS];
+    : base;
 }
 
 /** 系统提示按身份分发(admin 追加合成工作流段) */

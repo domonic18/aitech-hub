@@ -10,8 +10,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import BackToTop from "@/components/article/BackToTop";
 import SiteSprite from "@/components/site/SiteSprite";
+import TelegramPlanCard from "@/components/site/TelegramPlanCard";
 import TelegramTimeline from "@/components/site/TelegramTimeline";
+import { getContentPlanSnapshot } from "@/lib/collect/content-plan";
 import {
   countTodayVisible,
   listPublicChannels,
@@ -56,10 +59,11 @@ export default async function TelegramPage({
     ? (sp.media as FeedMediaFilter)
     : "all";
 
-  const [items, today, channels] = await Promise.all([
+  const [items, today, channels, plan] = await Promise.all([
     listPublicTelegram({ limit: PUBLIC_FEED_PAGE_SIZE, sourceId, media }),
     countTodayVisible(),
     listPublicChannels(),
+    getContentPlanSnapshot(),
   ]);
 
   return (
@@ -148,6 +152,7 @@ export default async function TelegramPage({
         </main>
 
         <aside className="flex min-w-0 flex-col gap-4">
+          <TelegramPlanCard plan={plan} />
           <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
             <div className="border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
               关于电报流
@@ -176,6 +181,7 @@ export default async function TelegramPage({
           </div>
         </aside>
       </div>
+      <BackToTop />
     </div>
   );
 }

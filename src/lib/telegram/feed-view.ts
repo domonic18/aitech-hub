@@ -7,6 +7,21 @@ import { DAY_MS, formatCnTime } from "../datetime";
 
 import { VIDEO_PLATFORM_LABELS } from "./constants";
 
+/** 公开流分页(M10 带滚动 / M69 时间轴「加载更多」):单页条数与 offset 上限。
+ *  定义放零依赖模块,客户端可直接引用;服务端 public-feed 以别名再导出。 */
+export const FEED_PAGE_SIZE = 30;
+export const FEED_MAX_OFFSET = 500;
+
+/** 翻页游标:服务端 nextOffset 缺省时的兜底推进(只认本页实收条数) */
+export function nextFeedCursor(offset: number, received: number): number {
+  return Math.min(offset + received, FEED_MAX_OFFSET);
+}
+
+/** 是否还有下一页:满页且未触上限;短页(含 0 条)即到底 */
+export function feedHasMore(received: number, nextOffset: number): boolean {
+  return received === FEED_PAGE_SIZE && nextOffset < FEED_MAX_OFFSET;
+}
+
 /** AI 解读结论(M9;仅持久化分析结论——topic/summary/points,无转写文本) */
 export interface PublicVideoAi {
   topic: string;

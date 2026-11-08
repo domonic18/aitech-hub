@@ -27,19 +27,22 @@ function aesKeyOf(seed = 0): string {
   return buf.toString("base64").replace(/=+$/, "");
 }
 
-const APP_ID = "wx6dbe5f70adb517ac";
+/** 测试夹具:appId/token 一律用假值——真实 AppID/Token 属部署配置,
+ *  不进仓库(否则会被 GitHub secret scanning 判为泄露)。协议层对取值无格式要求 */
+const APP_ID = "wx-e2e-fixture-appid";
+const TOKEN = "e2e-token-fixture";
 
 describe("签名", () => {
   it("服务器校验签名 = sha1(sort(token, timestamp, nonce).join(''))", () => {
-    // 期望值由 shasum 独立计算:1700000000 | 17aitech | abc123 字典序拼串
-    expect(computeSignature("17aitech", "1700000000", "abc123")).toBe(
-      "dc532c5358891301991452662ab3c60a1e8f3646",
+    // 期望值由 sha1 独立计算:1700000000 | abc123 | e2e-token-fixture 字典序拼串
+    expect(computeSignature(TOKEN, "1700000000", "abc123")).toBe(
+      "55494aff453b705fedf39311a56ae33d1b9dbf84",
     );
   });
 
   it("安全模式签名把 encrypt 一起排序", () => {
-    expect(computeMsgSignature("17aitech", "1700000000", "abc123", "encryptedpayload")).toBe(
-      "07dc5d81ea1d40a9a5eaf5729d545b1eca1c6d8c",
+    expect(computeMsgSignature(TOKEN, "1700000000", "abc123", "encryptedpayload")).toBe(
+      "1f6ef474da3e3beee701bb94c149e7c7727a3f86",
     );
   });
 
@@ -164,7 +167,7 @@ describe("安全模式信封", () => {
       toUser: "oUser_123",
       fromUser: "gh_abc",
       content: "加密回复",
-      token: "17aitech",
+      token: TOKEN,
       encodingAESKey: key,
       appId: APP_ID,
       createTime: 1735689600,
@@ -180,7 +183,7 @@ describe("安全模式信封", () => {
       appId: APP_ID,
     });
     expect(extractTag(plain, "Content")).toBe("加密回复");
-    expect(computeMsgSignature("17aitech", "1735689600", "n0nce", envelope!.encrypt)).toBe(
+    expect(computeMsgSignature(TOKEN, "1735689600", "n0nce", envelope!.encrypt)).toBe(
       extractTag(envelopeXml, "MsgSignature"),
     );
   });

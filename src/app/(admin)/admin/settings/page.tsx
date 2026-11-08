@@ -8,13 +8,18 @@
 import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { getAgentLimitsAll } from "@/lib/config/agent-limits";
+import { listHomeSearchTermCandidates } from "@/lib/config/home-search-terms";
 import { getSiteSettings } from "@/lib/config/site-config";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [initial, agentLimits] = await Promise.all([getSiteSettings(), getAgentLimitsAll()]);
+  const [initial, agentLimits, searchTermCandidates] = await Promise.all([
+    getSiteSettings(),
+    getAgentLimitsAll(),
+    listHomeSearchTermCandidates(),
+  ]);
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -23,7 +28,11 @@ export default async function AdminSettingsPage(): Promise<React.ReactElement> {
           站点级运行参数与站点标识;保存即时生效(前台页面按需再生,免等 ISR 周期)。
         </p>
       </div>
-      <SiteSettingsForm initial={initial} agentLimits={agentLimits} />
+      <SiteSettingsForm
+        initial={initial}
+        agentLimits={agentLimits}
+        searchTermCandidates={searchTermCandidates}
+      />
     </div>
   );
 }

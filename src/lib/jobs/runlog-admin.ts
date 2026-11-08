@@ -76,6 +76,20 @@ export async function listJobRuns(filter: JobRunListFilter): Promise<{
   return { rows, total, page, pages: Math.max(1, Math.ceil(total / JOB_RUN_PAGE_SIZE)) };
 }
 
+/** 轻量最近运行(M69 公开右栏):只取白名单键的少量行,不做 count;
+ *  走 job_run(job_key, started_at desc) 索引。 */
+export async function listRecentJobRuns(
+  keys: readonly string[],
+  take = 3,
+): Promise<Array<Pick<JobRun, "id" | "jobKey" | "status" | "startedAt">>> {
+  return prisma.jobRun.findMany({
+    where: { jobKey: { in: [...keys] } },
+    orderBy: { startedAt: "desc" },
+    take: Math.min(Math.max(take, 1), 20),
+    select: { id: true, jobKey: true, status: true, startedAt: true },
+  });
+}
+
 /** F18 状态计数 chips(随 key/today 过滤,不随 status——chips 本身就是状态入口) */
 export async function jobRunStatusCounts(
   filter: Pick<JobRunListFilter, "key" | "today">,

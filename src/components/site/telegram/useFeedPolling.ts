@@ -11,7 +11,7 @@
  *   SSR 级稳定),每次 tick 读最新渲染闭包,不因引用变化重建定时器;
  * - 轮询失败静默保留旧值;成功且 alive 才合流,并在 tick 末刷新 now 时钟。
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PublicTelegramItem } from "@/lib/telegram/feed-view";
 
@@ -40,12 +40,22 @@ export function useFeedPolling({
   merge: (prev: PublicTelegramItem[], fresh: PublicTelegramItem[]) => PublicTelegramItem[];
   /** items 外字段透出(时间轴 today 计数);code===0 且 data 存在时调用 */
   onData?: (data: FeedPollPayload) => void;
-}): { items: PublicTelegramItem[]; now: number } {
+}): {
+  items: PublicTelegramItem[];
+  now: number;
+  /** 追加一页(M69「加载更多」):走与轮询相同的 merge/id 去重路径 */
+  append: (fresh: PublicTelegramItem[]) => void;
+} {
   const [items, setItems] = useState(initialItems);
   const [now, setNow] = useState(initialNow);
   // 回调 ref 透传:定时器只建一次,tick 恒读最新渲染的闭包
   const cbsRef = useRef({ buildQuery, merge, onData });
   cbsRef.current = { buildQuery, merge, onData };
+
+  const append = useCallback((fresh: PublicTelegramItem[]): void => {
+    if (fresh.length === 0) return;
+    setItems((prev) => cbsRef.current.merge(prev, fresh));
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -72,5 +82,5 @@ export function useFeedPolling({
     };
   }, [intervalMs]);
 
-  return { items, now };
+  return { items, now, append };
 }

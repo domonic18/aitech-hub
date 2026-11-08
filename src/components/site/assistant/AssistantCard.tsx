@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { buildAgentPageContext } from "@/lib/agent/run-context";
+import { buildAgentRunContext } from "@/lib/agent/run-context";
 import type { AgentTodo } from "@/lib/agent/todos";
 
 import AgentRuntimeProvider from "@/components/site/agent/AgentRuntimeProvider";
@@ -145,16 +145,16 @@ export default function AssistantCard({
   }, [onHide]);
 
   // 页面上下文 getter(M27 批⑧-b,发送瞬间读取,零订阅——runtime-adapter
-  // 同纪律):page 取自当前路由;edit 段来自编辑页 props(单一真相源,postId
-  // 不走 URL 推导)。上行只带 postId/title——getContent/onApplyContent 是
-  // 函数型客户端 props,不过 wire。引用稳定,Provider adapter useMemo 不因
-  // 渲染重建。
+  // 同纪律):page/article 取自当前路由(文章页带 postId,M69);edit 段来自
+  // 编辑页 props(单一真相源,postId 不走 URL 推导)。上行只带
+  // postId/title——getContent/onApplyContent 是函数型客户端 props,不过 wire。
+  // 引用稳定,Provider adapter useMemo 不因渲染重建。
   const editContextRef = useRef(editContext);
   editContextRef.current = editContext;
   const getContext = useCallback((): unknown => {
-    const page = buildAgentPageContext(window.location.pathname);
+    const base = buildAgentRunContext(window.location.pathname);
     const edit = editContextRef.current;
-    return edit ? { page, edit: { postId: edit.postId, title: edit.title } } : { page };
+    return edit ? { ...base, edit: { postId: edit.postId, title: edit.title } } : base;
   }, []);
 
   const handleNewThread = useCallback((): void => {

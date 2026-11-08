@@ -1,0 +1,102 @@
+name: release-image
+
+# 每镜像一 job 的可复用发布流水线(standard/02-cicd-deployment §1)。
+# 三个镜像(app / 网关 / 卡片渲染)共用同一套构建推送语义:此前三份近乎逐字复制的
+# job 里各自记着同一批踩坑注释,改一处漏两处的风险实在——收敛成这一个文件后,
+# 语义只有一份。调用方(ci.yml)用 needs: 挂检查线的闸门。
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 镜像仓库名(TCR 命名空间下,如 aitech-hub)
+        required: true
+        type: string
+      dockerfile:
+        description: Dockerfile 路径(相对仓库根)
+        required: true
+        type: string
+      build-meta:
+        description: 是否注入 BUILD_REF/BUILD_TIME 构建信息(仅 app 镜像需要,页面页脚版本追踪用)
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-push:
+    name: 构建并推送 ${{ inputs.image }} 镜像
+    runs-on: [self-hosted]
+    timeout-minutes: 60
+    env:
+      REGISTRY: ccr.ccs.tencentyun.com
+      TCR_NAMESPACE: ${{ secrets.TCR_NAMESPACE }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "branch=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')"
+            echo "build_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
+      # 预建持久 builder(见 standard/02-cicd-deployment §1);不用 setup-buildx-action
+      # ——它会另建临时 builder 顶掉选择
+      - name: Select builder / 选择构建器
+        run: docker buildx use ci-builder
+      # id + 重试条件:登录失败属配置错误,不进重试(避免白建镜像且盖住真错;2026-10-02 首跑实测教训)
+      - id: login
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+      # provenance: false——TCR 不认 OCI attestation 附加清单
+      # continue-on-error:首推失败不染红 job,成败由 gate 步骤裁定(重试条件须用
+      # outcome 而非 failure(),continue-on-error 会把 failure() 归 false)
+      - name: Build and Push / 构建并推送(第 1 次尝试)
+        id: build1
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        timeout-minutes: 25
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ inputs.image }}:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/{2}:latest', env.REGISTRY, env.TCR_NAMESPACE, inputs.image) || '' }}
+          build-args: |
+            ${{ inputs.build-meta && format('BUILD_REF={0}-{1}', steps.vars.outputs.branch, steps.vars.outputs.sha_short) || '' }}
+            ${{ inputs.build-meta && format('BUILD_TIME={0}', steps.vars.outputs.build_time) || '' }}
+      - name: Build and Push / 构建并推送(重试)
+        if: steps.build1.outcome == 'failure' && steps.login.conclusion == 'success'
+        id: build-retry
+        uses: docker/build-push-action@v6
+        timeout-minutes: 30
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ inputs.image }}:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}/{2}:latest', env.REGISTRY, env.TCR_NAMESPACE, inputs.image) || '' }}
+          build-args: |
+            ${{ inputs.build-meta && format('BUILD_REF={0}-{1}', steps.vars.outputs.branch, steps.vars.outputs.sha_short) || '' }}
+            ${{ inputs.build-meta && format('BUILD_TIME={0}', steps.vars.outputs.build_time) || '' }}
+      - name: Conclude push outcome / 推送结论裁定
+        if: always()
+        # 任一次尝试成功即 job 成功;两次皆败才判红(run 37106851119 教训:
+        # 首推超时→重试成功,job 仍红,误导发布判断)
+        run: |
+          if [ "${{ steps.build1.outcome }}" = "success" ] || [ "${{ steps.build-retry.outcome }}" = "success" ]; then
+            echo "[OK] image push succeeded"
+          else
+            echo "[FAIL] image push failed in both attempts" >&2
+            exit 1
+          fi
+      - name: Output image info / 输出镜像信息
+        run: |
+          echo "Image pushed: ${{ env.REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ inputs.image }}:${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.sha_short }}"

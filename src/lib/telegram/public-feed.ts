@@ -11,6 +11,8 @@ import { prerenderSafe } from "../prerender-safe";
 import { clampBandItemCount, DEFAULT_BAND_ITEM_COUNT, TELEGRAM_AI_TERMINAL } from "./constants";
 
 import {
+  FEED_MAX_OFFSET,
+  FEED_PAGE_SIZE,
   toEngagement,
   toTextAi,
   toVideoAi,
@@ -20,9 +22,10 @@ import {
 
 export type { PublicTelegramItem } from "./feed-view";
 
-export const PUBLIC_FEED_PAGE_SIZE = 30;
-/** offset 分页上限(M10 带滚动加载;防御性封顶,正常滚动触不到) */
-export const PUBLIC_FEED_MAX_OFFSET = 500;
+/** 单页条数/offset 上限的唯一真相源在零依赖的 feed-view(M69 客户端「加载更多」
+ *  也要引用);此处保留旧名别名,页面/路由 import 不变。 */
+export const PUBLIC_FEED_PAGE_SIZE = FEED_PAGE_SIZE;
+export const PUBLIC_FEED_MAX_OFFSET = FEED_MAX_OFFSET;
 
 /** 带合并(批⑧保底槽位):最新视频不在混排前 N 则替换末位;在则原样返回。
  * 保序不变量:视频不在 top-N 时其 publishedAt 必 ≤ 第 N 条,置末位不破坏倒序。 */

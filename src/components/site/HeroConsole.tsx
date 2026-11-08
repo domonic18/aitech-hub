@@ -12,18 +12,21 @@
 import Link from "next/link";
 import { useRef } from "react";
 
-/** 建议词(与站内内容强相关;点击进基础搜索) */
-const SUGGESTIONS = [
-  { icon: "i-fire", label: "Claude Code 实战", q: "Claude Code" },
-  { icon: "i-book", label: "MCP 入门到实战", q: "MCP" },
-  { icon: "i-tool", label: "本地部署 LLM", q: "本地部署" },
-] as const;
+/** 建议词(服务端装配:后台固定词 + 洞察关键词云自动补齐,M70;本组件只收 props) */
+export interface HeroSuggestion {
+  icon: string;
+  label: string;
+  q: string;
+}
 
 export default function HeroConsole({
   postCount,
+  suggestions,
   children,
 }: {
   postCount: number;
+  /** 快捷搜索 chips(服务端 resolveHomeSearchTerms 产出;空数组则不渲染) */
+  suggestions: ReadonlyArray<HeroSuggestion>;
   /** 品牌语行(服务端 HeroBrandLine 渲染产物;h1 承载,SEO 落点不变) */
   children: React.ReactNode;
 }): React.ReactElement {
@@ -109,20 +112,22 @@ export default function HeroConsole({
           </form>
         </div>
       </div>
-      <div className="mt-3.5 flex flex-wrap gap-2.5">
-        {SUGGESTIONS.map((s) => (
-          <Link
-            key={s.q}
-            href={`/search?q=${encodeURIComponent(s.q)}`}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1.5 font-mono text-[12.5px] text-text-2 hover:border-line-hover hover:text-text-1"
-          >
-            <svg className="ic ic-sm" aria-hidden="true">
-              <use href={`#${s.icon}`} />
-            </svg>
-            {s.label}
-          </Link>
-        ))}
-      </div>
+      {suggestions.length > 0 ? (
+        <div className="mt-3.5 flex flex-wrap gap-2.5">
+          {suggestions.map((s, i) => (
+            <Link
+              key={`${s.q}-${i}`}
+              href={`/search?q=${encodeURIComponent(s.q)}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1.5 font-mono text-[12.5px] text-text-2 hover:border-line-hover hover:text-text-1"
+            >
+              <svg className="ic ic-sm" aria-hidden="true">
+                <use href={`#${s.icon}`} />
+              </svg>
+              {s.label}
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -20,6 +20,7 @@ import {
   SCHEDULE_REGISTRY,
 } from "./schedules";
 import { intervalText } from "./channel-ledger-types";
+import { isContentScheduleKey } from "./content-scope";
 import { videoRunningSince } from "./crawler-runs";
 import {
   cadenceLabel,
@@ -271,10 +272,12 @@ export function registryJobRunKeys(): string[] {
 }
 
 /** F20 引擎卡「即将运行 · 未来 N 小时」:渠道/热榜/登记表的下一次触发,
- *  结构化时刻服务端预格式化(防水合漂移),按时刻升序。 */
+ *  结构化时刻服务端预格式化(防水合漂移),按时刻升序。
+ *  opts.contentOnly(M69):只保留内容链路登记表项(/telegram 公开右栏用)。 */
 export async function upcomingRuns(
   hours = 12,
   limit = 4,
+  opts: { contentOnly?: boolean } = {},
 ): Promise<Array<{ key: string; label: string; atText: string }>> {
   const from = new Date();
   const horizon = from.getTime() + hours * 3_600_000;
@@ -306,6 +309,7 @@ export async function upcomingRuns(
     // 热榜拉取已在上面以「热榜拉取(N 源)」聚合;常驻高频(>8 次/日,F21 同口径)
     // 不进「即将运行」(embed-reconcile 类 tick)
     if (d.key === "insight-fetch") continue;
+    if (opts.contentOnly === true && !isContentScheduleKey(d.key)) continue;
     const p = parseCron(d.cron);
     if (p === null || p.firesPerDay > CALENDAR_MAX_FIRES_PER_DAY) continue;
     push(`reg-${d.key}`, d.label, nextCronRuns(p, 1, from)[0]);
@@ -318,4 +322,12 @@ export async function upcomingRuns(
       label,
       atText: formatCnTime(at),
     }));
+}
+
+/** 公开右栏「采集计划」:只取内容链路(M69) */
+export async function upcomingContentRuns(
+  hours = 12,
+  limit = 5,
+): Promise<Array<{ key: string; label: string; atText: string }>> {
+  return upcomingRuns(hours, limit, { contentOnly: true });
 }
