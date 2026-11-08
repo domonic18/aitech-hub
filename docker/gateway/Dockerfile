@@ -11,10 +11,19 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /srv
 
+# apt 源:基座镜像的 deb822 源指向 deb.debian.org(明文 80),国内构建机常连不通
+# (2026-11-04 实测:同批 CI 的卡渲染镜像即栽在这里)。默认换国内镜像;置空回退官方源。
+# 换源写在 playwright install --with-deps 之前——它内部那次 apt 同样走镜像。
+ARG APT_MIRROR_HOST="mirrors.aliyun.com"
+
 # 依赖层:uv 按 uv.lock 精确安装(--frozen 禁重解析;网关为虚拟项目,--no-install-project
 # 只装依赖);uv 经 pip 引导(仿 ai-invest);playwright CLI 取自 venv 装 chromium
 COPY services/douyin-gateway/pyproject.toml services/douyin-gateway/uv.lock ./
-RUN pip install --no-cache-dir uv \
+RUN if [ -n "$APT_MIRROR_HOST" ]; then \
+      sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+  && pip install --no-cache-dir uv \
     && uv sync --frozen --no-dev --no-install-project \
     && playwright install --with-deps chromium
 

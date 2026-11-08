@@ -19,7 +19,9 @@
 
 - `src/app/(site|user|admin)/` 页面(用户中心落 `(site)/account` 共享站点壳,不开 `(user)` 组;悬浮 AI 助手挂 `(site)/layout` 全站);`src/app/api/` Route Handlers(admin API 按惯例落顶层域目录如 `/api/users`、`/api/feedback`,无 `/api/admin/` 命名空间);`src/lib/` 业务库(按 domain 分包)
 - `prisma/` schema 唯一真相源;`worker/` BullMQ 异步任务;`scripts/` 分 ops/(长期运维,npm 绑定)与 oneoff/(一次性订正/清洗,应用后删除、git 历史存档),脚本 docblock 带 @status;`services/douyin-gateway/` 数据网关(抖音采集+小红书发布,Python sidecar,独立镜像,契约 arch/05 §4.4);`services/card-renderer/` 卡片渲染 sidecar(HTML→PNG,Node+chromium,契约 arch/05 §4.6)
-- `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库
+- `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库;
+  测试环境(CI deploy-staging)与本目录同处一个仓库工作副本,靠独立 compose project
+  (`aitech-hub-staging`)+ 独立 env 文件(`.env.staging`)+ 独立数据目录(`workspace-staging/`)与开发态隔离
 - 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)plan/development-plan.md(状态真相源)
 
 | 主题                          | 文档                             |
@@ -53,10 +55,16 @@
   `src/lib/slug.ts#normalizeSlug`,禁止直接用 params 查库。
 - 数据库:schema 只经 prisma/migrations 变更(forward-only);跑 `npx prisma migrate deploy`;
   禁止改已应用迁移;禁止 create_all 式建表。
+- 发布:部署唯一入口 `scripts/deploy.sh --env <staging|prod> --tag <branch>-<sha>`(CI 与人工同一条
+  路径:迁移先行 → 换容器 → 健康检查 → 失败自动回滚);镜像 tag 钉在对应环境的 env 文件
+  (staging `.env.staging` / prod `.env`)的 `APP_IMAGE`/`GATEWAY_IMAGE`/`CARD_RENDERER_IMAGE`;
+  生产发布须走 `environment: production` 人工审批;CI 不往工作副本写文件(只落 `.deploy-commit`),
+  compose 与脚本取工作副本版本、应用代码取 CI 镜像。CI 流水线与迁移守卫口径见
+  docs/standard/02-cicd-deployment §1。
 - 数据库命名红线:新建/改动表与索引必须遵守 `docs/standard/03-db-naming`(表名带域前缀;
   `@unique`/`@@unique`/`@@index` 必带 `map`,禁裸写法;FK 列必配索引);存量例外见该文 §7,
   只登记不回改。
-- 端口:本地 web:3000 / pg:5434 / redis:6380。
+- 端口:本地 web:3000 / pg:5434 / redis:6380;测试环境栈 web:3001(容器内同一套 compose)。
 
 ## 4. 任务完成后协议
 
