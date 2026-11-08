@@ -200,6 +200,16 @@ assert_image_ref() {
     [ "$hits" -le 1 ] || fail "镜像坐标非法(registry 重复出现):$ref"
 }
 
+# compose 各版本旗标面不同(run 的 --pull 是较新版本才有):按实际能力决定传不传。
+# 生产机 compose v2.29.6 的 run 子命令无此旗标,直接带会报 unknown flag: --pull。
+compose_run_pull_opt() {
+    local help
+    help="$(compose run --help 2>&1 || true)"
+    case "$help" in
+        *--pull*) printf -- '--pull never' ;;
+    esac
+}
+
 # ---------------------------------------------------------------- 预检
 
 preflight() {
@@ -252,7 +262,11 @@ run_migrations() {
     # --no-deps:postgres 已在跑(预检已确认健康),不让 compose 再动它;
     # --pull never:镜像已在拉取阶段到位,现场绝不联网拉取;-T:非交互不分配 TTY。
     log "执行数据库迁移(应用镜像内 prisma migrate deploy,先行,失败即中止)"
-    compose run --rm --no-deps --pull never -T --entrypoint npx web prisma migrate deploy
+    # compose run 的 --pull 旗标是较新版本才有的:生产机 compose v2.29.6 无此旗标,
+    # 直接带会报 unknown flag: --pull,卡在迁移先行这一步。探测后按需带上。
+    local run_pull_opt
+    run_pull_opt="$(compose_run_pull_opt)"
+    compose run --rm --no-deps ${run_pull_opt:+$run_pull_opt} -T --entrypoint npx web prisma migrate deploy
 }
 
 # ---------------------------------------------------------------- 健康检查
