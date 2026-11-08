@@ -194,6 +194,8 @@ sudo bash scripts/deploy.sh --env prod --tag main-<sha>
 - **基础设施由脚本自己拉起**:预检要求 postgres 在线(迁移要连库),故 postgres 容器不存在时预检就地 `compose up -d --wait postgres` 起它——部署入口只有脚本一个,人不必先手工铺一遍基础设施。换容器用 `--pull never`,故 postgres / redis 镜像在拉镜像阶段一并拉取(它们的 tag 与本次发布无关:pgvector 自编译镜像固定 `pg16`、redis 固定 `7-alpine`)。
 - 生产机不执行仓库代码:CI 只以受限参数(环境名 + tag)调用服务器上那份已评审的 `scripts/deploy.sh`;两次 SSH 调用顺序不可颠倒——先把新资产送到服务器,再执行部署。
 
+**实测记录(2026-11-08,PR #227 合并 develop 后首次由 CI 驱动的测试环境更新)**:检查线六道守卫全绿(含新增的 hadolint 与迁移增量守卫)→ 三镜像构建推送 TCR 全绿(**卡渲染镜像此前正是卡在 apt 源,换国内镜像后首次通过**)→ `deploy-staging` 依次完成预检(磁盘余量)→ 钉 tag(`develop-1387dfd`,记上一版本 `develop-0c3eed9` 作回滚目标)→ 拉镜像 → 迁移先行(`prisma migrate deploy` 先行且幂等,web 启动时复核 `No pending migrations to apply`)→ 换容器 → 健康检查 → 落 `.deploy-state`(`status=OK`)→ 镜像清理(每仓库保留最新 3 个),全程约 70 秒;三个应用容器跑 CI 刚构建的同一 tag,页脚构建信息显示 `develop-1387dfd`(build-meta 经可复用工作流注入未丢),开发态 `.env` 未被污染。生产发布路径(production 人工审批)本次未触发,生产机仍跑旧 tag。
+
 **仓外一次性配置**(命名与 ai-invest-assisstant 逐字一致;仓库为 public,主机地址与部署路径一律走仓库变量,不入库):
 
 | 名称 | 类型 | 用途 |
