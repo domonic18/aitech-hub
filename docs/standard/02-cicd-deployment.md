@@ -196,12 +196,17 @@ sudo bash scripts/deploy.sh --env prod --tag main-<sha>
 
 **实测记录(2026-11-08,PR #227 合并 develop 后首次由 CI 驱动的测试环境更新)**:检查线六道守卫全绿(含新增的 hadolint 与迁移增量守卫)→ 三镜像构建推送 TCR 全绿(**卡渲染镜像此前正是卡在 apt 源,换国内镜像后首次通过**)→ `deploy-staging` 依次完成预检(磁盘余量)→ 钉 tag(`develop-1387dfd`,记上一版本 `develop-0c3eed9` 作回滚目标)→ 拉镜像 → 迁移先行(`prisma migrate deploy` 先行且幂等,web 启动时复核 `No pending migrations to apply`)→ 换容器 → 健康检查 → 落 `.deploy-state`(`status=OK`)→ 镜像清理(每仓库保留最新 3 个),全程约 70 秒;三个应用容器跑 CI 刚构建的同一 tag,页脚构建信息显示 `develop-1387dfd`(build-meta 经可复用工作流注入未丢),开发态 `.env` 未被污染。
 
-**生产发布路径实测(2026-11-08,PR #228 合并 main 后的首次生产发布)**:托管 runner → 生产机 SSH 链路**成立**(此前未实证);但连续两次失败,暴露两处真实缺口,均已修:
+**生产发布路径实测(2026-11-08,PR #228 与 PR #230 合并 main 后的生产发布)**:托管 runner → 生产机 SSH 链路**成立**(此前未实证);但连续三次失败,暴露三处真实缺口,均已修:
 
 1. **生产机缺 compose v2 CLI 插件**:该机只装了独立二进制 `/usr/local/bin/docker-compose`,`docker compose` 不可用 → 现场记录步以 `exit 125`(unknown shorthand flag: 'f')崩掉,报错指向"拉取失败"实为环境缺失。已补装插件(`/usr/libexec/docker/cli-plugins/docker-compose` 软链,系统级、root 与普通用户均可),并在 CI 加**生产机预检步**(部署目录存在 + `sudo docker compose version` 可用),缺插件时明确报错、不半途发布。脚本自身的预检本就查 `docker compose version`,只是 CI 的现场记录步跑在脚本之前,先炸在那里。
 2. **镜像坐标推导剥错了段数**:`image_namespace()` 误把 `/namespace/repo:tag` 两段一起剥掉,返回的是 registry 而非命名空间,拼出 `registry/registry/repo`(三段齐全,段数校验查不出)。staging 因 CI 传了 `DEPLOY_NAMESPACE` 而幸免,生产 job 没传 → 拉镜像全数 `pull access denied`。已改为只剥末段 `repo:tag` 再剥 registry 前缀;同时 CI 显式把 `DEPLOY_NAMESPACE` 随 ssh 命令传到服务器侧脚本(ssh 不继承 runner 的 env),并在主 shell 的调用点加三段式 + registry 不重复的坐标校验(校验不能放在命令替换里——那里的 `exit` 只退子 shell,报错会被吞掉)。
+3. **`compose run` 无 `--pull` 旗标**:迁移先行那步要给容器带 `--pull never`(镜像已在拉取阶段到位,现场绝不联网拉取),但该旗标只有较新 compose 才有,生产机 v2.29.6 直接报 `unknown flag: --pull` 而卡死。已改为先探测 `compose run --help` 的能力面再决定传不传(生产机 v2.29.6 探测结果为空即不带,本机 compose 5.4.0 探测到 `--pull` 即带上)。
 
-**两次失败均未伤及生产**:第一次炸在现场记录步(未触及任何生产变更),第二次炸在拉镜像(钉 tag 后即失败,脚本自动退回上一份 `.env`,三个 tag 一并回退);全程生产仍跑旧 tag、容器无重启、`APP_IMAGE` 与实际运行镜像一致——**回滚通道与"失败即中止、旧容器继续服务"的语义经实测成立**。
+**三次失败均未伤及生产**:第一次炸在现场记录步(未触及任何生产变更),第二、三次炸在拉镜像与迁移先行(均未换容器,脚本自动退回上一份 `.env`,三个 tag 一并回退);全程生产仍跑旧 tag、容器无重启、`APP_IMAGE` 与实际运行镜像一致——**回滚通道与"失败即中止、旧容器继续服务"的语义经三次实测成立**。
+
+> compose 各版本的旗标面不同,版本相关的旗标一律不能写死:生产机 v2.29.6 有 `up --pull` / `up --wait` / `ps --all` / `config --images` / `pull`,但 `run` 没有 `--pull`。脚本对旗标做能力探测而非假定。
+
+**生产发布成功记录(2026-11-08,PR #230 合并 main 后的第四次尝试)**:检查线六道守卫全绿 → 三镜像构建推送 TCR(`main-b8c6263`)全绿 → `environment: production` 人工审批通过 → 服务器侧 `deploy.sh` 依次完成:预检 → 钉三个 tag(`main-b8c6263`,记上一版本 `develop-0c3eed9` 作回滚目标)→ 拉镜像 → 迁移先行(日志 `No pending migrations to apply`,main 与 develop 无迁移差异,幂等无操作)→ 换容器 → 健康检查 → 落 `.deploy-state`(`status=OK`)→ 镜像清理,自审批到部署完成约 4 分钟。现场核对:web / worker / douyin-gateway / card-renderer 四个应用容器全跑 `main-b8c6263`,web 日志 `✓ Ready`、worker 二十余条队列全部启动、crawler 正常抓取;站点首页 / `feed.xml` / `llms.txt` 返回 200,子页面 308→200。
 
 **仓外一次性配置**(命名与 ai-invest-assisstant 逐字一致;仓库为 public,主机地址与部署路径一律走仓库变量,不入库):
 
@@ -213,6 +218,7 @@ sudo bash scripts/deploy.sh --env prod --tag main-<sha>
 | `DEPLOY_ROOT` | repo variable | 测试环境部署根目录(= 本仓工作副本;该目录须先备好 `.env.staging`) |
 
 - **与参考仓的一处刻意分歧**:ai-invest 把 `DEPLOY_HOST` / `DEPLOY_PATH` / `DEPLOY_ROOT` 直接硬编码在 workflow YAML 里——它同样是 public 仓,等于公开主机 IP 与用户名路径。本仓 CLAUDE.md 明令公开仓不写真实 IP 与 SSH 路径,故**名字照抄、值改走 repo variables**(值在 GitHub 设置里,不入库)。secret 侧两边完全相同。
+- **生产机自身的前置(仓外,不在上表)**:须安装 Docker Compose **v2 CLI 插件**(与 `docker compose` 命令是一回事——独立二进制 `docker-compose` 不算)。缺插件时 CI 预检步会明确报错。
 - `environment: production` 的审批规则在仓库 Settings → Environments 配(required reviewer);**未配 secret / 变量时 deploy job 在前置校验步明确失败**,不会半途发布。
 
 ## 6. 备份与恢复(M19 起落 COS 异机存放)
