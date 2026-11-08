@@ -3,6 +3,9 @@
 # 本地验证:APP_IMAGE=aitech-hub:m3 docker compose -f docker-compose.prod.yml up -d
 #   (需 .env 配 POSTGRES_PASSWORD;workspace/ssl 放 fullchain.pem/privkey.pem;
 #   workspace/media 为迁移媒体——宿主机持久化数据统一收敛在 ./workspace/)
+# 两处可参数化(部署脚本按环境注入,缺省即上面的本地/生产值):
+#   APP_ENV_FILE  —— 容器 env_file(测试环境 .env.staging,生产 .env)
+#   WORKSPACE_ROOT —— 宿主持久化数据根(测试环境另开目录,避免与开发态 workspace/ 同挂)
 name: aitech-hub-prod
 
 x-restart: &restart
@@ -38,16 +41,18 @@ services:
     # M19 批④:COS_MEDIA_HOST(媒体桶公网域名 <bucket>.cos.<region>.myqcloud.com)
     # 经官方镜像 templates 机制 envsubst 注入站点模板,生成容器内 conf.d/aitech-hub.conf
     environment:
-      COS_MEDIA_HOST: ${COS_MEDIA_HOST:?请在 .env 配置 COS_MEDIA_HOST(媒体桶公网域名,不含 https://)}
+      # compose 对整个文件做插值(不起 nginx 的 staging 也一样),故此变量在两个环境
+      # 的 env 文件里都必须有值——staging 填占位串即可(它不起 nginx)
+      COS_MEDIA_HOST: ${COS_MEDIA_HOST:?请在 env 文件(.env / .env.staging)配置 COS_MEDIA_HOST(媒体桶公网域名,不含 https://)}
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/templates:/etc/nginx/templates:ro # 启动时 envsubst → 容器内 /etc/nginx/conf.d/
       - ./docker/nginx/conf.d/default.conf.mask:/etc/nginx/conf.d/default.conf:ro # 遮盖镜像自带 default.conf
-      - ./workspace/ssl:/etc/nginx/ssl:ro
+      - ${WORKSPACE_ROOT:-./workspace}/ssl:/etc/nginx/ssl:ro
       # 回滚通道:反代观察期保留本地媒体卷只读挂载,conf 换回 alias + up -d nginx 即回
-      - ./workspace/media:/var/www/media:ro
+      - ${WORKSPACE_ROOT:-./workspace}/media:/var/www/media:ro
       # M19 批④ 反代缓存;宿主目录属主须 101:101(nginx worker),否则仅缓存不可写、不拒服务
-      - ./workspace/nginx-cache:/var/cache/nginx
+      - ${WORKSPACE_ROOT:-./workspace}/nginx-cache:/var/cache/nginx
     depends_on:
       web:
         condition: service_healthy
@@ -75,15 +80,19 @@ services:
       SERVICE_ROLE: web
       <<: *app-env
     env_file:
-      - .env
+      # APP_ENV_FILE 由部署脚本按环境指定:测试环境 .env.staging,生产 .env。
+      # compose 插值与容器 env 同源(同一个文件),不会出现两套值半套半套
+      - ${APP_ENV_FILE:-.env}
     volumes:
       # 读写:M14 起媒体库/编辑器上传经 web 路由同步写盘(曾 ro 挂载致 EROFS 500,M16 修复)
-      - ./workspace/media:/app/media
+      - ${WORKSPACE_ROOT:-./workspace}/media:/app/media
       # 采集快照本地兜底(2026-10-29):未配 COS_BACKUP_BUCKET 时 worker 写、web 读,
       # 两容器必须同卷;配了 COS 时此卷仅留空目录,不影响
-      - ./workspace/snapshots:/app/workspace/snapshots
+      - ${WORKSPACE_ROOT:-./workspace}/snapshots:/app/workspace/snapshots
     ports:
-      - "127.0.0.1:3000:3000" # 宿主回环发布:切换日 runbook curl 127.0.0.1:3000 验证用
+      # 宿主回环发布:切换日 runbook curl 127.0.0.1:3000 验证用。
+      # 端口可参数化:本机测试环境(staging)与开发态 next dev 同机,须换口避开
+      - "127.0.0.1:${WEB_HOST_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,15 +125,15 @@ services:
       # (web10+worker4+checkpointer 3×2+备份1=21,余量大)
       DATABASE_URL: postgresql://aitech:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@postgres:5432/aitech_hub?connection_limit=4
     env_file:
-      - .env
+      - ${APP_ENV_FILE:-.env}
     volumes:
-      - ./workspace/media:/app/media # 媒体异步任务(M4)读写
+      - ${WORKSPACE_ROOT:-./workspace}/media:/app/media # 媒体异步任务(M4)读写
       # M19 批② db-backup:备份落盘 + ssl 证书档;挂回 /app/workspace/* 与
       # cwd 相对路径约定(workspace/backups、workspace/ssl)对齐,零 env 覆盖
-      - ./workspace/backups:/app/workspace/backups
-      - ./workspace/ssl:/app/workspace/ssl:ro
+      - ${WORKSPACE_ROOT:-./workspace}/backups:/app/workspace/backups
+      - ${WORKSPACE_ROOT:-./workspace}/ssl:/app/workspace/ssl:ro
       # 采集快照本地兜底(与 web 同卷:写入在 worker,读取在 web)
-      - ./workspace/snapshots:/app/workspace/snapshots
+      - ${WORKSPACE_ROOT:-./workspace}/snapshots:/app/workspace/snapshots
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,8 +162,8 @@ services:
       - /tmp/playwright-profiles # chromium Profile 写 tmpfs,避免容器层写放大
     # M49 批X3:小红书自动发布——登录态(storage_state)与贴图图片(发布上传)
     volumes:
-      - ./workspace/xhs-state:/app/xhs-state
-      - ./workspace/media:/app/media:ro
+      - ${WORKSPACE_ROOT:-./workspace}/xhs-state:/app/xhs-state
+      - ${WORKSPACE_ROOT:-./workspace}/media:/app/media:ro
     healthcheck:
       test:
         [
@@ -187,7 +196,7 @@ services:
     tmpfs:
       - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
     volumes:
-      - ./workspace/media:/app/media:ro # 站内引图直读;MEDIA_ROOT 钉在镜像 ENV=/app/media
+      - ${WORKSPACE_ROOT:-./workspace}/media:/app/media:ro # 站内引图直读;MEDIA_ROOT 钉在镜像 ENV=/app/media
     healthcheck:
       test:
         [
@@ -213,7 +222,7 @@ services:
       POSTGRES_DB: aitech_hub
       TZ: Asia/Shanghai # 每日 03:30 pg_dump 备份 cron 依本地时区(standard/02-cicd-deployment §6)
     volumes:
-      - ./workspace/postgres:/var/lib/postgresql/data
+      - ${WORKSPACE_ROOT:-./workspace}/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aitech -d aitech_hub"]
       interval: 3s
@@ -239,7 +248,7 @@ services:
         "noeviction",
       ]
     volumes:
-      - ./workspace/redis:/data
+      - ${WORKSPACE_ROOT:-./workspace}/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
