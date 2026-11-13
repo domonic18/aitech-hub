@@ -3,56 +3,22 @@
  * 一律以 slug 为文章键(HTTP 核形态见 /api/posts)。每请求新建 server 实例
  * (stateless,配合容器多实例),actor 闭包进审计日志。
  *
- * 注册方式(2026-10-29 P3-3):维持逐只显式 server.tool 调用——入参 Zod 形状
- * 与工具名就地可读,声明式表反而把 schema 与 handler 拉远。触发条件写明:
- * 工具数破 10 只时改声明式注册(单表登记 name/description/schema/handler)。
+ * 注册方式(M72,2026-11-13):改为声明式工具表(registry.ts 的 defineTool +
+ * 三张分域表),不再逐只 server.tool 调用——工具数从 8 只扩到 21 只后,
+ * 逐只显式注册会让「工具名/入参/handler」散落多处、难维护。
+ * 同时换用 SDK 1.32 官方的 registerTool(server.tool 已标 @deprecated)。
  *
- * M71(K3 复活):只读面在 read-tools.ts 单独注册(同端点同 PAT);创作面
- * 收紧——publish/unpublish 工具退役、upsert_article 恒落草稿(发布/下架
+ * M71(K3 复活):只读面与创作面同一端点同一 PAT;创作面收紧——
+ * publish/unpublish 工具退役、upsert_article 恒落草稿(发布/下架
  * 只走后台人工通道)。
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
 import type { AdminActor } from "@/lib/http/mutation-guard";
-import { upsertArticle } from "@/lib/content/publish-api";
-import { publishUpsertShape } from "@/lib/content/publish-schema";
-import { ADMIN_LIST_SEGMENTS } from "@/lib/content/post-schema";
-import {
-  getPostBySlugAdmin,
-  listPostsAdmin,
-  ADMIN_ORIGIN_FILTERS,
-} from "@/lib/content/posts-admin";
-import { uploadMedia } from "@/lib/media/service";
-import { logger } from "@/lib/logger";
 
-import { fail, json } from "./json";
-import { registerReadTools } from "./read-tools";
-
-/** BigInt→toString 的文章投影(MCP 出参不含 BigInt) */
-function postView(p: {
-  id: bigint;
-  slug: string | null;
-  title: string;
-  status: string;
-  publishedAt: Date | null;
-  updatedAt: Date;
-  category: { slug: string; name: string } | null;
-  tags: Array<{ tag: { name: string; slug?: string } }>;
-  contentMd?: string | null;
-}) {
-  return {
-    id: p.id.toString(),
-    slug: p.slug,
-    title: p.title,
-    status: p.status,
-    category: p.category?.slug ?? null,
-    tags: p.tags.map((t) => t.tag.name),
-    publishedAt: p.publishedAt?.toISOString() ?? null,
-    updatedAt: p.updatedAt.toISOString(),
-    ...(p.contentMd !== undefined ? { contentMd: p.contentMd } : {}),
-  };
-}
+import { registerTools } from "./registry";
+import { contentTools } from "./tools.content";
+import { feedTools } from "./tools.feed";
 
 /**
  * 发文工作流自解释(随 initialize 下发,MCP 标准字段):二进制图片字节永不进
@@ -91,110 +57,9 @@ export function createMcpServer(actor: AdminActor): McpServer {
     { instructions: SERVER_INSTRUCTIONS },
   );
 
-  // 只读面(M71):同端点同 PAT,读写工具集一
-  registerReadTools(server, actor);
-
-  server.tool(
-    "upsert_article",
-    "按 slug 幂等写入文章(markdown 可含 frontmatter)。**产出恒落草稿**,由站长在后台审核后发布" +
-      "(无直发通道)。正文图片引用已上传的 /wp-content/uploads/ 站内路径或外链,勿随文传 base64" +
-      "(images 参数仅为小图场景保留,总体积受代理层限制)。产出默认带 ai_assisted 合规标识。",
-    // 入参约束与 HTTP PUT /api/posts 同源(publish-schema 单一事实源)
-    publishUpsertShape,
-    async (args) => {
-      try {
-        const result = await upsertArticle({ ...args, actor });
-        return json(result);
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
-
-  server.tool(
-    "upload_media",
-    "上传单张小图入库(base64 入参会经模型上下文,仅限 <100KB),返回站内路径;大图/批量用 curl 直传 POST /api/media/(字段 file,Bearer 用同一枚 PAT,≤10MB/张)取 data.path",
-    {
-      name: z.string().min(1).max(255),
-      mime: z.string().regex(/^image\//),
-      dataBase64: z.string().min(1),
-    },
-    async (args) => {
-      try {
-        const data = new Uint8Array(Buffer.from(args.dataBase64, "base64"));
-        const saved = await uploadMedia({ data, mime: args.mime, filename: args.name });
-        logger.info({ event: "mcp.upload_media", actor, id: saved.id, reused: saved.reused });
-        return json(saved);
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
-
-  server.tool(
-    "get_article",
-    "按 slug 取文章(含正文 markdown;软删视为不存在)",
-    { slug: z.string().min(1) },
-    async (args) => {
-      const post = await getPostBySlugAdmin(args.slug);
-      // 读侧也入审计(2026-10-29 P3-3):同一枚 PAT 既能写也能读,取证时要
-      // 能回答「这枚 token 什么时候把哪篇文章拉走过」;只记键与命中,不记正文
-      logger.info({
-        event: "mcp.get_article",
-        actor,
-        slug: args.slug,
-        found: post !== null,
-      });
-      if (!post) return json({ error: "not found", slug: args.slug }, true);
-      return json(postView({ ...post, contentMd: post.contentMd }));
-    },
-  );
-
-  server.tool(
-    "list_articles",
-    "列文章(不含正文;status: all|published|draft|unpublished,q 模糊匹配标题/slug," +
-      "origin: all|human|ai_assisted|ai_generated 按创作方式筛——AI 稿恒落草稿,查自己的产出用 origin=ai_assisted)",
-    {
-      status: z.enum(ADMIN_LIST_SEGMENTS).default("all"),
-      q: z.string().max(100).optional(),
-      origin: z.enum(ADMIN_ORIGIN_FILTERS).default("all"),
-      page: z.number().int().min(1).default(1),
-    },
-    async (args) => {
-      const { items, total } = await listPostsAdmin({
-        page: args.page,
-        segment: args.status,
-        q: args.q,
-        origin: args.origin,
-      });
-      // 读侧审计(2026-10-29 P3-3):记筛选条件与命中量,不记行内容
-      logger.info({
-        event: "mcp.list_articles",
-        actor,
-        status: args.status,
-        q: args.q ?? null,
-        origin: args.origin,
-        page: args.page,
-        total,
-      });
-      return json({
-        total,
-        page: args.page,
-        list: items.map((p) =>
-          postView({
-            id: p.id,
-            slug: p.slug,
-            title: p.title,
-            status: p.status,
-            publishedAt: p.publishedAt,
-            updatedAt: p.updatedAt,
-            category: p.category,
-            tags: p.tags,
-          }),
-        ),
-      });
-    },
-  );
+  // 只读面与创作面同一端点同一 PAT,读写工具集一
+  registerTools(server, actor, feedTools);
+  registerTools(server, actor, contentTools);
 
   return server;
 }
