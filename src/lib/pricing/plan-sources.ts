@@ -585,16 +585,22 @@ export function parseXiaomiToken(html: string, sourceUrl: string, now: Date): Pl
 // 官方原文虽把两者列为独立订阅产品,但同时收录会让同一厂商在页面上出现两套
 // 不可比的额度口径(Coding=次请求/Credits 混排),对「比价」动线是噪音。
 
-export const BAILIAN_TOKEN_URL = "https://help.aliyun.com/zh/model-studio/token-plan-overview";
+/**
+ * 个人版订阅与权益页(2026-11-13 改版后定位):概览页 token-plan-overview 已
+ * 改版为文档中枢(只余导航),价格表挪到本页;且表在客户端渲染后才进 DOM。
+ */
+export const BAILIAN_TOKEN_URL =
+  "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview";
 
-/** 帮助中心静态页取数(直 fetch 无浏览器,故快照只有 HTML) */
+/**
+ * 取数走 card-renderer 渲染通道(同小米/GLM 口径):百炼页是 SPA,静态 fetch
+ * 只能拿到导航壳——2026-11-05/12 两次连败即此(证据:crawl_snapshot 里
+ * parse failed,留存的原文只有导航文案、无任何档位价格)。
+ */
 export async function fetchBailianPage(url: string, sink?: SnapshotSink): Promise<string> {
-  const res = await fetch(url, { cache: "no-store" });
-  // 失败也留证:错误页/风控页本身就是排查材料(先落快照再抛)
-  const html = await res.text();
-  await sink?.({ tab: "page", html, httpStatus: res.status });
-  if (!res.ok) throw new Error(`bailian http ${res.status}`);
-  return html;
+  const page = await snapshotHtml(url, undefined, { screenshot: sink !== undefined });
+  await sink?.({ tab: "page", ...page });
+  return page.html;
 }
 
 // ---------- 腾讯云大模型 Token Plan(Hy / 通用双系列) ----------
@@ -775,13 +781,31 @@ export function parseBailianToken(html: string, sourceUrl: string, now: Date): P
   // 档名取**连续表头串**(Lite 套餐 Essential 套餐 …):页内正文另有「Standard 与
   // Pro 套餐附赠…」之类散落提及,不做连续串限定会多算出档位、错配价格
   const headerRun = text.match(/(?:(?:Lite|Essential|Standard|Pro) 套餐 ?)+/)?.[0] ?? "";
-  const tiers = [...headerRun.matchAll(/(Lite|Essential|Standard|Pro) 套餐/g)].map(
+  const tierHits = [...headerRun.matchAll(/(Lite|Essential|Standard|Pro) 套餐/g)].map(
     (m) => m[1] ?? "",
   );
-  // 团队版为「原价 198 元/座席/月」,单价单位不同自然不入此列
-  const prices = [...text.matchAll(/原价 ?([\d,.]+) ?元\/月(?: ?限时 ?([\d,.]+) ?元\/月)?/g)].map(
-    (m) => ({ standard: Number(m[1]?.replace(/,/g, "")), promo: m[2] ?? null }),
-  );
+  // 表头串在正文会重复出现(表头行 + 表体行各一遍),只取第一段:同名档第二次
+  // 出现即止(单段页则原样保留)
+  const secondRun = tierHits.indexOf(tierHits[0] ?? "", 1);
+  const tiers = secondRun > 0 ? tierHits.slice(0, secondRun) : tierHits;
+  // 价格只取「套餐档位与定价」表内:站点导航促销(万小智 15 元/月等)同在页里,
+  // 不圈定会多出两档价格错配
+  const tableStart = text.indexOf("套餐档位与定价");
+  const tableEnd = tableStart < 0 ? -1 : text.indexOf("每月限额", tableStart);
+  const priceBlock =
+    tableStart >= 0 && tableEnd > tableStart ? text.slice(tableStart, tableEnd) : text;
+  // 价格口径随页面改版变过两版:旧版「原价 N 元/月 限时 M 元/月」,现版
+  // 「N 元/月 新用户限时价 M 元/月」(无原价字样)。两版都吃,标准价入列、
+  // 限时价只进 billingNote(口径不因改版漂)。
+  const prices = [
+    ...priceBlock.matchAll(
+      /(?:原价 ?)?([\d,.]+) ?元\/月(?: ?(新用户限时价|限时) ?([\d,.]+) ?元\/月)?/g,
+    ),
+  ].map((m) => ({
+    standard: Number(m[1]?.replace(/,/g, "")),
+    promo: m[3] === undefined ? null : Number(m[3].replace(/,/g, "")),
+    promoLabel: m[2] ?? null,
+  }));
   const quotaBlock = text.match(/每月限额 ?((?:[\d,]+ ?Credits ?){1,6})/)?.[1] ?? "";
   // 千分位原样保留(展示字段,不转数值)
   const quotas = [...quotaBlock.matchAll(/([\d,]+) ?Credits/g)].map((m) => m[1] ?? "");
@@ -795,6 +819,17 @@ export function parseBailianToken(html: string, sourceUrl: string, now: Date): P
   }
 
   const shared = "文本/图像/视频/语音模型与模型内置工具统一按 Credits 抵扣";
+  // 附赠口径随页面改版换过名(AgentStudio 工具额度 → Harness 权益),按页取,
+  // 不硬编码任一版(页面没提就不加,免得凭空多一条权益)
+  const giftNote = text.includes("赠送 Harness 权益")
+    ? "赠送 Harness 权益"
+    : text.includes("AgentStudio")
+      ? "附赠 AgentStudio 工具额度与折扣"
+      : null;
+  // 限时价有效期(新页有,旧页无):跟价进注记,免得按过期价比价
+  // (截到全角括号前——原文有效期后还跟着时区说明)
+  const promoDeadline = text.match(/新用户限时价有效期至 ([^,，()（）]{4,40})/)?.[1] ?? null;
+
   return tiers.map((tier, i) => {
     const p = prices[i]!;
     const quota = quotas[i]!;
@@ -802,8 +837,8 @@ export function parseBailianToken(html: string, sourceUrl: string, now: Date): P
     const benefits = [`每月限额 ${quota} Credits`];
     if (conc !== null) benefits.push(`并发 Agent ${conc} 个`);
     benefits.push(shared);
-    // 官方原文:Standard 与 Pro 套餐附赠 AgentStudio 工具免费额度与折扣,不占 Credits
-    if (tier === "Standard" || tier === "Pro") benefits.push("附赠 AgentStudio 工具额度与折扣");
+    // 官方原文:Standard 与 Pro 套餐附赠 Harness 权益(旧版文案为 AgentStudio)
+    if ((tier === "Standard" || tier === "Pro") && giftNote !== null) benefits.push(giftNote);
     return {
       vendor: "阿里云百炼",
       planName: `百炼 Token Plan · ${tier}`,
@@ -811,7 +846,13 @@ export function parseBailianToken(html: string, sourceUrl: string, now: Date): P
       monthlyFee: p.standard,
       quarterlyFee: null,
       yearlyFee: null, // 官方页仅月付/用量包口径
-      billingNote: p.promo === null ? null : `限时优惠 ¥${p.promo}/月(原价 ¥${p.standard}/月)`,
+      billingNote:
+        p.promo === null
+          ? null
+          : p.promoLabel === "新用户限时价"
+            ? `新用户限时价 ¥${p.promo}/月(标准 ¥${p.standard}/月` +
+              (promoDeadline === null ? ")" : `,有效期至 ${promoDeadline})`)
+            : `限时优惠 ¥${p.promo}/月(原价 ¥${p.standard}/月)`,
       benefits,
       quotaDesc: `${quota} Credits/月`,
       peakRate: null,

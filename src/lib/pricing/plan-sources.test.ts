@@ -418,6 +418,15 @@ const XIAOMI_HTML = `<div>个人版 团队版 NEW 连续包月 首购优惠 连�
 const BAILIAN_TOKEN_HTML =
   "<div>个人版 Lite 套餐 Essential 套餐 Standard 套餐 Pro 套餐 用量包 定价 原价 60 元/月 限时 39 元/月 原价 120 元/月 限时 79 元/月 原价 180 元/月 限时 139 元/月 原价 600 元/月 限时 499 元/月 100 元/个/月 20,000 Credits/个 最多同时持有 5 个 每月限额 11,500 Credits 25,500 Credits 45,000 Credits 180,000 Credits 不计入套餐月限额 并发 Agent 1-2 个 2-3 个 3-4 个 6-8 个 - Harness 权益 Standard 与 Pro 套餐附赠 AgentStudio 工具免费额度与折扣,不占 Credits 团队版 标准座席 Standard 高级座席 Pro 尊享座席 Max 共享用量包 Extra Bundle 定价 原价 198 元/座席/月 限时 150 元/座席/月 原价 698 元/座席/月 限时 550 元/座席/月</div>";
 
+/**
+ * 新版页面 fixture(2026-11-13 实测:概览页改版为文档中枢,价格表挪到
+ * token-plan-personal-overview 子页,且渲染后才进 DOM)。三处改版要点:
+ * ① 档名串在表头行与表体行各出现一遍(取第一段,否则算成 8 档);
+ * ② 价格口径变「N 元/月 + 新用户限时价 M 元/月」(无「原价」字样);
+ * ③ 站点导航促销(15 元/月、59 元/月)与表同页,不得被圈进表内价格。 */
+const BAILIAN_TOKEN_HTML_V2 =
+  "<div>万小智 AI 建站低至 15元/月 送.CN域名 万镜一刻,视频创作低至59元/月 复制 MD 格式 Token Plan 个人版的套餐权益、账号权限、升级续费、退订和使用规则。 套餐档位与定价 Lite 套餐 Essential 套餐 Standard 套餐 Pro 套餐 Lite 套餐 Essential 套餐 Standard 套餐 Pro 套餐 定价 39 元/月 新用户限时价 19.5 元/月 79 元/月 新用户限时价 39.5 元/月 139 元/月 312 元/月 每月限额 20,000 Credits 45,000 Credits 80,000 Credits 200,000 Credits 并发 Agent 1-2 个 2-3 个 3-4 个 6-8 个 权益 文本、视觉等模型 Lite 全部权益 赠送 Harness 权益 Standard 全部权益 更高的并发上限 赠送 Harness 权益 说明 新用户限时价有效期至 2026 年 11 月 30 日 23:59:59（UTC+8），仅限从未购买过 Token Plan 个人版的账号。 每月限额 ：额度按订阅月计算。</div>";
+
 describe("新三源解析(M56 三渠道扩容)", () => {
   it("MiniMax 双态:年付标准/促销分离,月付价并入;权益整段直出", () => {
     const rows = parseMiniMaxCoding(
@@ -531,6 +540,47 @@ describe("新三源解析(M56 三渠道扩容)", () => {
     expect(() => parseBailianToken("<p>Lite 套餐</p>", "https://x/", NOW)).toThrow(
       "bailian token 结构未匹配",
     );
+  });
+
+  it("百炼 Token Plan 新版页面(2026-11 改版):重复档名串只取一段,导航促销不入表,限时价带有效期", () => {
+    const rows = parseBailianToken(
+      BAILIAN_TOKEN_HTML_V2,
+      "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+      NOW,
+    );
+    // 档名串出现两遍(表头+表体),只取第一段 → 仍是四档
+    expect(rows.map((r) => r.planName)).toEqual([
+      "百炼 Token Plan · Lite",
+      "百炼 Token Plan · Essential",
+      "百炼 Token Plan · Standard",
+      "百炼 Token Plan · Pro",
+    ]);
+    expect(rows.map((r) => r.monthlyFee)).toEqual([39, 79, 139, 312]);
+    expect(rows.map((r) => r.quotaDesc)).toEqual([
+      "20,000 Credits/月",
+      "45,000 Credits/月",
+      "80,000 Credits/月",
+      "200,000 Credits/月",
+    ]);
+    // 新口径:无「原价」,标准价直接列,限时价只进注记并带有效期
+    expect(rows[0]!.billingNote).toBe(
+      "新用户限时价 ¥19.5/月(标准 ¥39/月,有效期至 2026 年 11 月 30 日 23:59:59)",
+    );
+    expect(rows[1]!.billingNote).toBe(
+      "新用户限时价 ¥39.5/月(标准 ¥79/月,有效期至 2026 年 11 月 30 日 23:59:59)",
+    );
+    // 无促销的档位不编注记
+    expect(rows[2]!.billingNote).toBeNull();
+    expect(rows[3]!.billingNote).toBeNull();
+    // 站点导航促销(15 元/月、59 元/月)不得混进档位价格
+    expect(rows.every((r) => r.monthlyFee !== 15 && r.monthlyFee !== 59)).toBe(true);
+    // 附赠口径随页改为 Harness(旧版是 AgentStudio)
+    expect(rows[0]!.benefits).toEqual([
+      "每月限额 20,000 Credits",
+      "并发 Agent 1-2 个",
+      "文本/图像/视频/语音模型与模型内置工具统一按 Credits 抵扣",
+    ]);
+    expect(rows[2]!.benefits![3]).toBe("赠送 Harness 权益");
   });
 });
 
