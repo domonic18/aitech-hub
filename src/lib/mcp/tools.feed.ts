@@ -1,5 +1,5 @@
 /**
- * MCP 只读工具面(M71,K3 复活,arch/04 §3.6):外部智能体取站点内容。
+ * MCP 只读工具表·检索与热点侧(M72):外部智能体取站点内容。
  *
  * 与创作工具同一端点、同一 PAT(不按鉴权切工具集),读侧同样记审计
  * (记键与命中,不记正文——同 get_article 先例)。
@@ -8,24 +8,34 @@
  * 电报条目走公开投影(可见性口径与前台列表同源,不另开口子);热点走
  * insight 簇趋势分级(阈值与 admin 榜共用,不另起一套)。
  */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { AdminActor } from "@/lib/http/mutation-guard";
+import { listCategories } from "@/lib/content/taxonomy";
+import { prisma } from "@/lib/db";
+import { WECHAT_CONFIG_ID } from "@/lib/distribute/wechat-config-admin";
 import { parseBigIntId } from "@/lib/http/parse-id";
 import { listHotTopics } from "@/lib/insight/hot-topics";
+import { listInsightSignalsSince } from "@/lib/insight/signals-feed";
+import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/source-registry";
 import { logger } from "@/lib/logger";
 import { searchAll } from "@/lib/search/unified-search";
 import { getPublicTelegramDetail } from "@/lib/telegram/public-feed";
 import { getVideoPlayUrl } from "@/lib/telegram/video-play-url";
 
 import { fail, json } from "./json";
+import { defineTool, type McpToolDef } from "./registry";
 
 /** 趋势档(与 insight trend.ts 的 TrendTier 同名同值) */
 const TREND_TIERS = ["new", "breakout", "rising", "flat", "declining"] as const;
 
 /** 检索的域过滤(缺省三域全出) */
 const SEARCH_DOMAINS = ["telegram", "post", "repo"] as const;
+
+/** 在役信号源(读侧恒限在役源;停接入源存量行不再呈现) */
+const ENABLED_SOURCES = [...INSIGHT_SOURCES_ENABLED] as [InsightSource, ...InsightSource[]];
+
+/** 信号正文预览截断长度(默认只给开头,全文用 full=true 另取) */
+const SIGNAL_TEXT_PREVIEW = 300;
 
 /**
  * 检索命中 → agent 友好投影:比 K2.5 的 summarizeSearchGroups 多带
@@ -87,9 +97,9 @@ function searchHitView(hit: {
   };
 }
 
-/** 注册只读工具面到 MCP server */
-export function registerReadTools(server: McpServer, actor: AdminActor): void {
-  server.tool(
+/** 检索与热点侧工具表(只读 4 只) */
+export const feedTools: McpToolDef[] = [
+  defineTool(
     "list_hot_topics",
     "取当前热点话题:按领域(domain)与趋势档(新晋/爆发/上升/平稳/退潮)聚合," +
       "每个话题带簇标签、机会分、增长分,以及簇内的主要新闻条目(标题/原文链/摘要/所属电报条目 id)。" +
@@ -105,7 +115,7 @@ export function registerReadTools(server: McpServer, actor: AdminActor): void {
       limit: z.number().int().min(1).max(30).default(10).describe("话题条数上限"),
       itemsPerTopic: z.number().int().min(1).max(8).default(5).describe("每话题带出的新闻条目数"),
     },
-    async (args) => {
+    async (args, actor) => {
       try {
         const topics = await listHotTopics({
           ...(args.domain !== undefined ? { domain: args.domain } : {}),
@@ -126,15 +136,15 @@ export function registerReadTools(server: McpServer, actor: AdminActor): void {
         return fail(e);
       }
     },
-  );
+  ),
 
-  server.tool(
+  defineTool(
     "get_telegram_item",
     "取单条电报(资讯/短视频解读)的完整元数据:标题、原文链接、摘要、AI 解读" +
       "(主题/摘要/要点/关键词)、解读笔记全文、来源渠道、发布时间、互动数;" +
       "视频条另带平台/博主/时长/封面。输入 search_site 或 list_hot_topics 返回的条目 id。",
     { id: z.string().regex(/^\d+$/, "条目 id 为纯数字字符串") },
-    async (args) => {
+    async (args, actor) => {
       const id = parseBigIntId(args.id);
       if (id === null) return json({ error: "条目 id 非法" }, true);
       const item = await getPublicTelegramDetail(id);
@@ -147,9 +157,9 @@ export function registerReadTools(server: McpServer, actor: AdminActor): void {
       if (!item) return json({ error: "not found", id: args.id }, true);
       return json(item);
     },
-  );
+  ),
 
-  server.tool(
+  defineTool(
     "search_site",
     "站内三域检索(资讯/教程/项目):按关键词或自然语言检索,返回分组命中与元数据。" +
       "资讯域可按形态过滤(文字/视频)。命中条目 id 可继续调 get_telegram_item 取全文元数据," +
@@ -163,7 +173,7 @@ export function registerReadTools(server: McpServer, actor: AdminActor): void {
         .optional()
         .describe("要返回的域;缺省三域全出"),
     },
-    async (args) => {
+    async (args, actor) => {
       try {
         const result = await searchAll(args.q, {
           ...(args.mediaType !== undefined ? { mediaType: args.mediaType } : {}),
@@ -188,15 +198,15 @@ export function registerReadTools(server: McpServer, actor: AdminActor): void {
         return fail(e);
       }
     },
-  );
+  ),
 
-  server.tool(
+  defineTool(
     "get_video_play_url",
     "取视频条目的播放直链(现查,平台签名 URL,数小时内有效)。输入电报条目 id。" +
       "查不得时返回 ok=false 与原因(作品过旧、Cookie 池空、平台风控等)——" +
       "直链不可得属常态,拿不到就用条目原文链接。",
     { id: z.string().regex(/^\d+$/, "条目 id 为纯数字字符串") },
-    async (args) => {
+    async (args, actor) => {
       const id = parseBigIntId(args.id);
       if (id === null) return json({ error: "条目 id 非法" }, true);
       const result = await getVideoPlayUrl(id);
@@ -209,5 +219,111 @@ export function registerReadTools(server: McpServer, actor: AdminActor): void {
       });
       return json(result);
     },
-  );
-}
+  ),
+
+  defineTool(
+    "list_signals",
+    "按时间游标增量取信号流(最新在前)。与 list_hot_topics 的区别:热点是簇级聚合投影," +
+      "会漏掉两轮之间爆发又回落、或中途掉榜的话题;信号是事件级,两轮轮询不漏。" +
+      "首次调用给 since(ISO 时间),后续带 nextCursor 续页,直到 nextCursor 为 null。" +
+      "正文默认只给开头 300 字,需要全文加 full=true。",
+    {
+      since: z
+        .string()
+        .max(40)
+        .optional()
+        .describe("起点时间(ISO 8601,如 2026-11-13T00:00:00Z);只取该时刻之后的信号"),
+      cursor: z.string().max(200).optional().describe("续页游标(取上次返回的 nextCursor)"),
+      limit: z.number().int().min(1).max(100).default(20).describe("本次取数条数"),
+      domain: z.string().max(20).optional().describe("领域 key(如 tech / finance)"),
+      source: z.enum(ENABLED_SOURCES).optional().describe("信号源;缺省全部在役源"),
+      region: z.enum(["cn", "global"]).optional().describe("地域:cn 国内 / global 海外"),
+      full: z.boolean().default(false).describe("是否返回信号正文全文(默认只给开头 300 字)"),
+    },
+    async (args, actor) => {
+      let since: Date | undefined;
+      if (args.since !== undefined) {
+        since = new Date(args.since);
+        if (Number.isNaN(since.getTime())) {
+          return json({ error: "since 不是合法时间(用 ISO 8601,如 2026-11-13T00:00:00Z)" }, true);
+        }
+      }
+      try {
+        const page = await listInsightSignalsSince({
+          ...(since !== undefined ? { since } : {}),
+          ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+          limit: args.limit,
+          ...(args.domain !== undefined ? { domain: args.domain } : {}),
+          ...(args.source !== undefined ? { source: args.source } : {}),
+          ...(args.region !== undefined ? { region: args.region } : {}),
+        });
+        logger.info({
+          event: "mcp.list_signals",
+          actor,
+          domain: args.domain ?? null,
+          source: args.source ?? null,
+          count: page.items.length,
+        });
+        return json({
+          count: page.items.length,
+          nextCursor: page.nextCursor,
+          items: page.items.map((s) => {
+            const text = s.translatedText ?? s.rawText;
+            const clipped = !args.full && text.length > SIGNAL_TEXT_PREVIEW;
+            return {
+              id: s.id,
+              source: s.source,
+              medium: s.medium,
+              region: s.region,
+              lang: s.lang,
+              signalAt: s.signalAt,
+              url: s.url,
+              text: clipped ? text.slice(0, SIGNAL_TEXT_PREVIEW) : text,
+              truncated: clipped,
+            };
+          }),
+        });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  ),
+
+  defineTool(
+    "list_categories",
+    "取栏目清单(slug + 名称)。upsert_article 落稿要 categorySlug,只能从这里取全量栏目" +
+      "(list_articles 只能反推已用过的,不完整)。",
+    {},
+    async (_args, actor) => {
+      const rows = await listCategories();
+      logger.info({ event: "mcp.list_categories", actor, count: rows.length });
+      return json({
+        count: rows.length,
+        categories: rows.map((c) => ({ slug: c.slug, name: c.name })),
+      });
+    },
+  ),
+
+  defineTool(
+    "get_wechat_config",
+    "读公众号配置元信息(是否已配置、总开关、当前默认主题、段落排版、目录卡、自动同步开关)," +
+      "让 agent 知道能不能推草稿、推出来长什么样。**不含 AppID 与密钥**;配置未录入时" +
+      "configured=false。",
+    {},
+    async (_args, actor) => {
+      const row = await prisma.wechatConfig.findUnique({ where: { id: WECHAT_CONFIG_ID } });
+      logger.info({ event: "mcp.get_wechat_config", actor, configured: row !== null });
+      return json({
+        configured: row !== null && row.appid !== "" && row.appSecretEnc !== null,
+        enabled: row?.enabled ?? false,
+        autoSyncEnabled: row?.autoSyncEnabled ?? false,
+        theme: row?.theme ?? "default",
+        paraStyle: row?.paraStyle ?? "default",
+        enableTocMeta: row?.enableTocMeta ?? false,
+        author: row?.author ?? null,
+        lastTestStatus: row?.lastTestStatus ?? null,
+        lastTestedAt: row?.lastTestedAt?.toISOString() ?? null,
+      });
+    },
+  ),
+];

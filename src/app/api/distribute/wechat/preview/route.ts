@@ -3,18 +3,17 @@
  * 按文章当前 Markdown 以指定主题渲染内联样式 HTML(与推送管线同一 renderWechatHtml
  * 纯函数;图片仍为站内地址,推送时才转存微信)。不触碰微信 API、不写库;
  * 生效主题 = 请求指定 > 行快照 > 渠道默认,随响应回传供弹窗回显。
+ *
+ * M72:渲染组合抽到 lib/distribute/wechat-preview.ts(与 MCP 工具同源,
+ * 保证「预览 = 草稿」),本路由只做鉴权与入参校验。
  */
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { prisma } from "@/lib/db";
 import { parsePostId } from "@/lib/content/posts-admin";
-import { CHANNEL_WECHAT } from "@/lib/distribute/channels";
 import { DistributeError, distributeErrorStatus } from "@/lib/distribute/errors";
-import { renderWechatHtml, type WechatParaStyle } from "@/lib/distribute/wechat-html";
-import { wechatTail } from "@/lib/distribute/channel-tails";
-import { getWechatTheme, WECHAT_THEME_IDS } from "@/lib/distribute/wechat-themes";
-import { WECHAT_CONFIG_ID } from "@/lib/distribute/wechat-config-admin";
+import { renderWechatPreview } from "@/lib/distribute/wechat-preview";
+import { WECHAT_THEME_IDS } from "@/lib/distribute/wechat-themes";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 
@@ -43,29 +42,7 @@ export async function POST(req: NextRequest) {
   if (id === null) return apiEnvelope(400, "postId 不合法");
 
   try {
-    const [post, channel, cfg] = await Promise.all([
-      prisma.post.findUnique({ where: { id }, select: { contentMd: true } }),
-      prisma.publishChannel.findUnique({
-        where: { postId_channel: { postId: id, channel: CHANNEL_WECHAT } },
-        select: { theme: true },
-      }),
-      prisma.wechatConfig.findUnique({
-        where: { id: WECHAT_CONFIG_ID },
-        select: { theme: true, paraStyle: true, enableTocMeta: true },
-      }),
-    ]);
-    if (!post) throw new DistributeError("not_found", "文章不存在");
-    if (!(post.contentMd ?? "").trim()) {
-      throw new DistributeError("invalid", "旧文(HTML 保真正文)暂不支持预览:请先转写为 Markdown");
-    }
-    const theme = getWechatTheme(parsed.data.theme ?? channel?.theme ?? cfg?.theme).id;
-    // 预览=推送同源(M51 码点口径对齐):同样追加渠道尾注(阅读原文导流段),
-    // 弹窗所见即草稿所得,码点计数不再缺尾注
-    const finalMd = `${post.contentMd ?? ""}\n\n${wechatTail()}`;
-    const { html } = renderWechatHtml(finalMd, theme, {
-      paraStyle: (cfg?.paraStyle ?? "default") as WechatParaStyle,
-      tocMeta: cfg?.enableTocMeta ?? false,
-    });
+    const { html, theme } = await renderWechatPreview(id, parsed.data.theme);
     return apiEnvelope(0, "ok", { html, theme });
   } catch (err) {
     if (err instanceof DistributeError) {
