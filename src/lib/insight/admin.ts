@@ -113,7 +113,7 @@ export async function insightOverview(windowDays = 7, domain?: string): Promise<
   return { total, today, daily, bySource };
 }
 
-const SIGNAL_SELECT = {
+export const SIGNAL_SELECT = {
   id: true,
   source: true,
   medium: true,
@@ -139,7 +139,7 @@ export interface SignalQuery {
 }
 
 /** 信号 where 唯一出口(在役源白名单 + 各维筛选;列表/分页/计数/分组三查共用) */
-function buildSignalWhere(opts: SignalQuery): Prisma.InsightSignalWhereInput {
+export function buildSignalWhere(opts: SignalQuery): Prisma.InsightSignalWhereInput {
   return {
     AND: [
       { source: { in: ENABLED } },
@@ -169,7 +169,7 @@ export function pickSignalUrl(meta: Prisma.JsonValue | null): string | null {
   return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
 }
 
-function mapSignalRow(r: {
+export function mapSignalRow(r: {
   id: bigint;
   source: string;
   medium: string;
