@@ -24,8 +24,8 @@ import { postErrorResponse } from "../shared";
 export const dynamic = "force-dynamic";
 
 /** multipart 字段名:md 文件 / 图片文件(可重复) */
-export const BUNDLE_MD_FIELD = "md";
-export const BUNDLE_FILES_FIELD = "files";
+const BUNDLE_MD_FIELD = "md";
+const BUNDLE_FILES_FIELD = "files";
 
 export async function POST(req: NextRequest) {
   const actorGuard = await requireAdminActor(req);
