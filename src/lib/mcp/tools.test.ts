@@ -166,4 +166,26 @@ describe("MCP server 装配", () => {
     await client.close();
     await server.close();
   });
+
+  it("tools/call 的入参由注册的 schema 把关(越界不进 handler)", async () => {
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ kind: "pat", sub: "test", patId: "1" });
+    await server.connect(serverT);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(clientT);
+    // 标题 33 码点(超公众号 32 上限)——SDK 层就该拒,不该拖到执行面
+    let rejected = false;
+    try {
+      const res = await client.callTool({
+        name: "create_pin",
+        arguments: { title: "标".repeat(33), images: ["/wp-content/uploads/2026/11/a.png"] },
+      });
+      rejected = res.isError === true;
+    } catch {
+      rejected = true;
+    }
+    expect(rejected).toBe(true);
+    await client.close();
+    await server.close();
+  });
 });
