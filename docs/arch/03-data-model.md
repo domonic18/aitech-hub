@@ -29,6 +29,9 @@ CREATE TABLE content_post (
     content_md      TEXT,                            -- 新文正文(Markdown;二选一非空)
     cover_path      VARCHAR(500),                    -- 媒体 URL 路径 /wp-content/uploads/...
     category_id     BIGINT NOT NULL REFERENCES content_category(id),
+    author_id       BIGINT REFERENCES user_account(id) ON DELETE SET NULL,
+                                                     -- 归属作者(M71):可空(154 篇迁移旧文与存量稿无归属);
+                                                     -- 外部 agent 产出归其 PAT 持有人;父行删除后留档
     status          VARCHAR(20) NOT NULL DEFAULT 'draft',   -- draft/published
     content_origin  VARCHAR(20) NOT NULL DEFAULT 'human',   -- 创作方式 human/ai_assisted/ai_generated
                                                      -- (AI 生成合成内容标识办法 2025-09-01 施行;应用层枚举)
@@ -44,6 +47,7 @@ CREATE TABLE content_post (
 CREATE UNIQUE INDEX uq_content_post_slug ON content_post (slug);  -- PG unique 允许多行 NULL(bare-id 文)
 CREATE INDEX idx_content_post_status_published ON content_post (status, published_at DESC);
 CREATE INDEX idx_content_post_category ON content_post (category_id);
+CREATE INDEX idx_content_post_author ON content_post (author_id);
 
 CREATE TABLE content_category (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -349,6 +353,7 @@ CREATE TABLE legacy_url_map (
 - `pay_notify_log`(回调留痕):`order_no/gateway_status varchar(8)` 枚举 `OD|WP|CD|RD|UD`/`sign_valid/payload jsonb`(回调原文全量存,可追溯伪造尝试)/`handled 默认 false`(是否触发状态迁移);索引 `order_no`
 - `pay_gateway_config`(网关凭据,2026-10-08 拍板入数据库):`gateway varchar(24)` 唯一(枚举 `xunhu|mock`)/`app_id/app_secret`(明文列,admin 专属页唯一写入口——批⑤,读取一律脱敏,明文不进日志/API 响应/git;日后可升级应用层加密)/`api_base`(主用 `https://api.dpweixin.com`,2026-10-08 线上实证)/`api_base_backup?`(备用域)/`enabled 默认 false`(收银台总开关)
 - `content_post` 增列(批①):`is_purchasable bool 默认 false`(付费解锁开关)/`purchase_price? decimal(10,2)`(解锁价 CNY,仅开关开启时有意义)
+- `content_post` 增列(M71,迁移 `20261113120000_m71_post_author`):`author_id? bigint` FK→`user_account(id)` ON DELETE SET NULL(归属可空、父行删除后文章留档;FK 列自建索引 `idx_content_post_author`);**只在建稿时落一次**——作者=首创者,后续人工/agent 改稿不改作者(审稿人另由审核流记录);154 篇迁移旧文与存量稿保持 NULL
 
 **短信认证通道已落地(2026-10-31 M65 迁移 `20261031180000_m65_user_sms_config`,链路见 [arch/05 §3.4](05-services.md))**:
 

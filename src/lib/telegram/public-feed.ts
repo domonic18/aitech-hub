@@ -82,49 +82,53 @@ export async function listPublicTelegram(opts: {
   );
 }
 
-async function queryPublicTelegram(
-  limit: number,
-  validAfter: Date | null,
-  sourceId: number | undefined,
-  media: FeedMediaFilter,
-  offset: number,
-): Promise<PublicTelegramItem[]> {
-  const rows = await prisma.telegram.findMany({
-    where: {
-      status: "visible",
-      // M15 批①:仅 AI 解读终态(done/missing_transcript)可见;pending/failed 不上屏
-      aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
-      ...(sourceId !== undefined ? { sourceId } : {}),
-      ...(media !== "all" ? { mediaType: media } : {}),
-      // 增量锚=aiRanAt(变可见时刻;与 publishedAt 解耦——旧解读行补扫上屏时
-      // publishedAt 可能早于客户端已见锚,按发布时间过滤会系统性漏条)
-      ...(validAfter ? { aiRanAt: { gt: validAfter } } : {}),
-    },
-    select: {
-      id: true,
-      title: true,
-      summary: true,
-      url: true,
-      publishedAt: true,
-      createdAt: true,
-      aiRanAt: true,
-      mediaType: true,
-      videoPlatform: true,
-      videoBlogger: true,
-      videoCoverUrl: true,
-      videoDuration: true,
-      videoEngagement: true,
-      aiTopic: true,
-      aiSummary: true,
-      aiPoints: true,
-      aiKeywords: true,
-      source: { select: { id: true, name: true, type: true } },
-    },
-    orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
-    take: limit,
-    skip: offset,
-  });
-  return rows.map((t) => ({
+/** 公开投影取数列(列表与单条详情共用,免两处漂) */
+const PUBLIC_FEED_SELECT = {
+  id: true,
+  title: true,
+  summary: true,
+  url: true,
+  publishedAt: true,
+  createdAt: true,
+  aiRanAt: true,
+  mediaType: true,
+  videoPlatform: true,
+  videoBlogger: true,
+  videoCoverUrl: true,
+  videoDuration: true,
+  videoEngagement: true,
+  aiTopic: true,
+  aiSummary: true,
+  aiPoints: true,
+  aiKeywords: true,
+  aiNote: true,
+  source: { select: { id: true, name: true, type: true } },
+} as const;
+
+type PublicFeedRow = {
+  id: bigint;
+  title: string | null;
+  summary: string;
+  url: string;
+  publishedAt: Date | null;
+  createdAt: Date;
+  aiRanAt: Date | null;
+  mediaType: string;
+  videoPlatform: string | null;
+  videoBlogger: string | null;
+  videoCoverUrl: string | null;
+  videoDuration: number | null;
+  videoEngagement: unknown;
+  aiTopic: string | null;
+  aiSummary: string | null;
+  aiPoints: unknown;
+  aiKeywords: unknown;
+  aiNote: string | null;
+  source: { id: number; name: string; type: string };
+};
+
+function toPublicTelegramItem(t: PublicFeedRow): PublicTelegramItem {
+  return {
     id: t.id.toString(),
     title: t.title ?? "",
     summary: t.summary,
@@ -149,7 +153,49 @@ async function queryPublicTelegram(
         }
       : // 文字条轻解读(M12 批③;批⑥ 起 要点+关键词双列,含旧契约存量对调)
         { ai: toTextAi(t.aiTopic, t.aiSummary, t.aiPoints, t.aiKeywords) }),
-  }));
+  };
+}
+
+async function queryPublicTelegram(
+  limit: number,
+  validAfter: Date | null,
+  sourceId: number | undefined,
+  media: FeedMediaFilter,
+  offset: number,
+): Promise<PublicTelegramItem[]> {
+  const rows = await prisma.telegram.findMany({
+    where: {
+      status: "visible",
+      // M15 批①:仅 AI 解读终态(done/missing_transcript)可见;pending/failed 不上屏
+      aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
+      ...(sourceId !== undefined ? { sourceId } : {}),
+      ...(media !== "all" ? { mediaType: media } : {}),
+      // 增量锚=aiRanAt(变可见时刻;与 publishedAt 解耦——旧解读行补扫上屏时
+      // publishedAt 可能早于客户端已见锚,按发布时间过滤会系统性漏条)
+      ...(validAfter ? { aiRanAt: { gt: validAfter } } : {}),
+    },
+    select: PUBLIC_FEED_SELECT,
+    orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+    take: limit,
+    skip: offset,
+  });
+  return rows.map(toPublicTelegramItem);
+}
+
+/** 单条详情(M71 外部 agent 用):公开投影 + 解读笔记全文。
+ * 可见性口径与列表同源(status=visible 且 AI 解读终态),不另开口子。 */
+export interface PublicTelegramDetail extends PublicTelegramItem {
+  /** 解读笔记 markdown(M26;视频条的核心解读正文) */
+  aiNote: string | null;
+}
+
+export async function getPublicTelegramDetail(id: bigint): Promise<PublicTelegramDetail | null> {
+  const row = await prisma.telegram.findFirst({
+    where: { id, status: "visible", aiStatus: { in: [...TELEGRAM_AI_TERMINAL] } },
+    select: PUBLIC_FEED_SELECT,
+  });
+  if (!row) return null;
+  return { ...toPublicTelegramItem(row), aiNote: row.aiNote ?? null };
 }
 
 /** 今日已入库 visible 条数(页头 LIVE 统计) */

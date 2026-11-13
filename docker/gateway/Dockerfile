@@ -14,7 +14,10 @@ WORKDIR /srv
 # apt 源:基座镜像的 deb822 源指向 deb.debian.org(明文 80),国内构建机常连不通
 # (2026-11-04 实测:同批 CI 的卡渲染镜像即栽在这里)。默认换国内镜像;置空回退官方源。
 # 换源写在 playwright install --with-deps 之前——它内部那次 apt 同样走镜像。
+# 主源偶发 502(2026-11-13 实测:阿里云源拉 deb 包时连续两次 502/连接失败,
+# 致同批镜像构建红)——deb822 的 URIs 可列多个源,apt 逐个回退,故加备用源。
 ARG APT_MIRROR_HOST="mirrors.aliyun.com"
+ARG APT_MIRROR_FALLBACK_HOST="mirrors.tuna.tsinghua.edu.cn"
 
 # 依赖层:uv 按 uv.lock 精确安装(--frozen 禁重解析;网关为虚拟项目,--no-install-project
 # 只装依赖);uv 经 pip 引导(仿 ai-invest);playwright CLI 取自 venv 装 chromium
@@ -22,6 +25,10 @@ COPY services/douyin-gateway/pyproject.toml services/douyin-gateway/uv.lock ./
 RUN if [ -n "$APT_MIRROR_HOST" ]; then \
       sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
         /etc/apt/sources.list.d/debian.sources; \
+      if [ -n "$APT_MIRROR_FALLBACK_HOST" ]; then \
+        sed -i -E "s|^URIs: (http://${APT_MIRROR_HOST}(/[^[:space:]]+))$|URIs: \1 http://${APT_MIRROR_FALLBACK_HOST}\2|" \
+          /etc/apt/sources.list.d/debian.sources; \
+      fi; \
     fi \
   && pip install --no-cache-dir uv \
     && uv sync --frozen --no-dev --no-install-project \

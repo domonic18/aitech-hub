@@ -38,6 +38,8 @@ export interface TelegramSearchHit extends SearchHitBase {
   };
   /** AI 解读结论(ai_summary;空行 null → 摘要回落 summary) */
   aiSummary: string | null;
+  /** 解读笔记 markdown(M26;视频条的核心解读正文,原文随命中带出) */
+  aiNote: string | null;
 }
 
 export interface PostSearchHit extends SearchHitBase {
@@ -193,6 +195,7 @@ export type TelegramRow = {
   aiTopic: string | null;
   aiSummary: string | null;
   aiKeywords: unknown;
+  aiNote: string | null;
   source: { name: string; type: string };
 };
 
@@ -222,17 +225,18 @@ export function toTelegramHit(row: TelegramRow & { hitPct: number }): TelegramSe
         }
       : {}),
     aiSummary: row.aiSummary?.trim() ? row.aiSummary : null,
+    aiNote: row.aiNote ?? null,
   };
 }
 
-/** telegram 行的 JS 计分字段(topic/keywords 并入摘要桶;SQL where 同域) */
+/** telegram 行的 JS 计分字段(topic/keywords/note 并入摘要桶;SQL where 同域) */
 export function telegramScoreFields(row: TelegramRow): ScoreFields {
   const keywordStr = Array.isArray(row.aiKeywords)
     ? row.aiKeywords.filter((k): k is string => typeof k === "string").join(" ")
     : "";
   return {
     title: row.title ?? "",
-    summary: [row.summary, row.aiSummary ?? "", row.aiTopic ?? "", keywordStr]
+    summary: [row.summary, row.aiSummary ?? "", row.aiTopic ?? "", row.aiNote ?? "", keywordStr]
       .filter(Boolean)
       .join(" "),
   };

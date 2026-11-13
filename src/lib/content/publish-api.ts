@@ -1,6 +1,7 @@
 /**
  * 发布 API service(M5-c,requirement §3.6「API 为核,MCP 为壳」):
- * upsertArticle 以 slug 幂等——同 slug 重发即更新,默认落草稿。
+ * upsertArticle 以 slug 幂等——同 slug 重发即更新,**恒落草稿**(M71 收紧:
+ * 外部通道不持直发后门,发布/下架只走后台人工通道)。
  * 字段优先级:显式入参 > frontmatter > 缺省(title 缺失 400;分类缺省
  * blog;slug 缺省由标题派生 ASCII,纯中文标题 → bare-id,该篇无幂等键)。
  * 图片随文复用 M5-b 一键发文同一管线:extractImageRefs → refBasename
@@ -20,9 +21,14 @@ import { logger } from "@/lib/logger";
 
 import { fmString, fmStringArray, parseFrontmatter } from "./frontmatter";
 import { postPath } from "./post-path";
-import { POST_LIMITS, asContentOrigin, normalizeAsciiSlug } from "./post-schema";
+import {
+  POST_LIMITS,
+  asContentOrigin,
+  normalizeAsciiSlug,
+  type ContentOrigin,
+} from "./post-schema";
 import { PostAdminError } from "./posts-admin";
-import { createPost, publishPost, updatePost } from "./posts-admin";
+import { createPost, updatePost } from "./posts-admin";
 
 export const DEFAULT_CATEGORY_SLUG = "blog";
 
@@ -37,12 +43,17 @@ export interface UpsertArticleInput {
   markdown: string;
   images?: PublishApiImage[];
   categorySlug?: string;
-  /** true → 落草稿后立即发布(requirement §3.6 默认草稿) */
-  publish?: boolean;
   title?: string;
   slug?: string;
+  /** 封面站内路径(缺省取 frontmatter cover;仅认站内路径) */
+  coverPath?: string;
   /** 显式入参 > frontmatter tags;超 5 个截断 */
   tags?: string[];
+  /**
+   * 创作方式合规标识(M71):缺省 ai_assisted(外部通道产出进草稿池待审,
+   * 标 human 会把 AI 稿记成人工创作);显式声明时按声明取值。
+   */
+  contentOrigin?: ContentOrigin;
   actor: AdminActor;
 }
 
@@ -97,6 +108,19 @@ export function resolveUpsertAction(
   return { action: "update", id: existing.id };
 }
 
+/**
+ * actor.sub 是 user_account.id 的字符串形态(会话与 PAT 两路同义):作者归属列
+ * 取该 id;非法值落 null(不写归属,不阻断发文)。
+ */
+function actorAuthorId(actor: AdminActor): bigint | null {
+  try {
+    const v = BigInt(actor.sub);
+    return v > BigInt(0) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertArticleResult> {
   const { fm, body } = parseFrontmatter(input.markdown);
 
@@ -107,7 +131,9 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
   const tags = (input.tags ?? fmStringArray(fm, "tags") ?? []).slice(0, POST_LIMITS.tagsMax);
   const excerpt = fmString(fm, "excerpt");
   const coverRaw = fmString(fm, "cover");
-  const coverPath = coverRaw !== undefined && coverRaw.startsWith("/") ? coverRaw : undefined;
+  // 显式入参优先(整包上传:封面图随包入库后回填站内路径)
+  const coverPath =
+    input.coverPath ?? (coverRaw !== undefined && coverRaw.startsWith("/") ? coverRaw : undefined);
   const seoTitle = fmString(fm, "seoTitle");
   const seoDescription = fmString(fm, "seoDescription");
 
@@ -117,6 +143,8 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
   const uploads: UpsertUpload[] = [];
   const mapping: ImportMapping = {};
   for (const ref of refs.filter((r) => !r.external)) {
+    // 已是站内路径(整包上传先传后写的图):无需再传,也不进 uploads 清单
+    if (ref.src.startsWith("/")) continue;
     const file = (input.images ?? []).find((img) => img.name === refBasename(ref.src));
     if (!file) {
       mapping[ref.src] = null;
@@ -153,20 +181,25 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
   let finalSlug: string | null;
   if (verdict.action === "create") {
     try {
-      const created = await createPost({
-        title,
-        slug,
-        categorySlug,
-        tags,
-        contentMd,
-        excerpt,
-        coverPath,
-        seoTitle,
-        seoDescription,
-        contentOrigin: "human", // 外部发布通道缺省人工;AI 系标识在后台编辑器补记
-        isPurchasable: false, // 付费/登录可见字段只在后台编辑器开放(M21 批⑤/补齐批)
-        isLoginRequired: false,
-      });
+      const created = await createPost(
+        {
+          title,
+          slug,
+          categorySlug,
+          tags,
+          contentMd,
+          excerpt,
+          coverPath,
+          seoTitle,
+          seoDescription,
+          // 外部通道产出缺省 ai_assisted(M71 合规修正:原硬编码 human,靠后台
+          // 补标——草稿池一深就漏标,AI 稿被记成人工创作)
+          contentOrigin: input.contentOrigin ?? "ai_assisted",
+          isPurchasable: false, // 付费/登录可见字段只在后台编辑器开放(M21 批⑤/补齐批)
+          isLoginRequired: false,
+        },
+        actorAuthorId(input.actor),
+      );
       id = created.id;
       finalSlug = created.slug;
     } catch (e) {
@@ -184,21 +217,17 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
       coverPath,
       seoTitle,
       seoDescription,
-      contentOrigin: asContentOrigin(existing?.contentOrigin ?? "human"), // 更新不携带标识,保留后台改标不被冲掉
+      // 未显式声明标识时保留既有值(后台改标不被冲掉)
+      contentOrigin:
+        input.contentOrigin ?? asContentOrigin(existing?.contentOrigin ?? "ai_assisted"),
       // 付费两列省略 = 不动(M21 批⑤:外部通道不触付费面,已配付费文更新不丢配置)
     });
     id = verdict.id;
     finalSlug = r.slug;
   }
 
-  let status = "draft";
-  if (input.publish) {
-    await publishPost(id);
-    status = "published";
-  } else {
-    const row = await prisma.post.findUnique({ where: { id }, select: { status: true } });
-    status = row?.status ?? "draft";
-  }
+  // M71:外部通道恒落草稿——发布/下架只走后台人工通道
+  const status = "draft";
 
   logger.info({
     event: "article.upsert",
@@ -206,7 +235,7 @@ export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertAr
     action: verdict.action,
     id: id.toString(),
     slug: finalSlug,
-    publish: input.publish === true,
+    contentOrigin: input.contentOrigin ?? "ai_assisted",
     uploads: uploads.length,
   });
 

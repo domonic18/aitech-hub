@@ -91,6 +91,7 @@ make migrate   # npx prisma migrate deploy
 - `.dockerignore` 排除 `.env`/`docs`/`tests`/`media`/`workspace`/`CLAUDE.md`/`Makefile`/`docker-compose*.yml`(仓库与运维文件不进构建上下文)
 - **媒体目录不打进镜像**:compose 卷挂载,独立于发版
 - **apt 源换国内镜像(2026-11-08,三镜像统一)**:三个镜像的基座(node:20/22-slim、python:3.11-slim)的 deb822 源指向 `deb.debian.org`(明文 80),国内构建机常连不通——2026-11-04 实测卡渲染镜像 `fonts-noto-cjk` 拉取被拒(`exit 100`),两次重试皆败 → 镜像没进 TCR、develop 发布线全红。app 镜像另有一条境外源 `apt.postgresql.org`(装 postgresql-client-16,bookworm 缺省 client 15 < 服务端 16)。处置:`docker/<image>/Dockerfile` 统一加 `ARG APT_MIRROR_HOST`(默认 `mirrors.aliyun.com`,sed 改写 `/etc/apt/sources.list.d/debian.sources` 的 debian 与 debian-security 两条 URI)+ app 的 `ARG PGDG_MIRROR`(默认 `https://mirrors.aliyun.com/postgresql/repos/apt`,签名 key 不变——同一仓库);**置空即回退官方源**(境外构建机显式覆盖)。换源写在装包之前,`playwright install --with-deps` 内部那次 apt 同样走镜像。手法与既有的 `FFMPEG_BINARIES_URL` / `PRISMA_ENGINES_MIRROR` 同一路子(境外二进制/源统一走国内镜像),但本次是**默认值直接给国内镜像**,故 compose 不必再传 build-args。
+- **apt 源加备用源(2026-11-13)**:换源只是把「境外源连不通」换成「国内源会挂」——实测阿里云源拉 deb 包时偶发 `502 Bad Gateway` / `Connection failed`,卡渲染镜像连续两次构建红(`playwright install --with-deps` 内部那次 apt 失败,重试整条构建仍不稳),develop 与 main 发布线同批被卡。处置:`deb822` 的 `URIs:` 字段可列**多个源,apt 逐个回退**(实测:主源域名不可解析时自动改走备用源,索引与包都能下载),故三镜像统一加 `ARG APT_MIRROR_FALLBACK_HOST`(默认 `mirrors.tuna.tsinghua.edu.cn`,路径布局与主源同构),在改写源后按 `^URIs: http://<主源>(/[^[:space:]]+)$` 把备用源以同路径追加为第二 URI;置空则单源裸奔。本机按 CI 同路径构建卡渲染镜像验证:apt 在两源间自动分流(主源取 InRelease、备用源取 Packages),镜像构建通过、产物内两源俱在。**判据:国内源不是"换个域名就稳",单源必须配回退**——与镜像清理那条同源:过滤/取源落空必须显式可判,不能靠运气。
 
 ### 3.1 构建期无 DB 降级与启动预热(2026-09-30 实测定型)
 
@@ -211,6 +212,8 @@ sudo bash scripts/deploy.sh --env prod --tag main-<sha>
 **镜像清理从未生效(2026-11-08 核查发现)**:`cleanup_images` 用「命名空间/仓库名」当 `docker images` 的过滤参数,但 `docker images` 按**完整仓库名**匹配——真实仓库名含 registry(`ccr.ccs.tencentyun.com/domonic18/aitech-hub`),短前缀匹配不上 → `tags` 恒为空 → 命中的是一句无声的 `|| continue` → 脚本照样打印「镜像清理完成」,而旧镜像一个没删。生产机实测:镜像共 13.73GB,其中 **9.25GB(67%)可回收**;本机 Mac mini 镜像可回收 27.65GB。已修:新增 `image_repo_path()` 统一拼 `registry/namespace`,`image_ref` 与 `cleanup_images` 共用,过滤改用全路径;**过滤落空改为显式警告**(不再无声跳过),避免「清理从未生效却报完成」这种静默失败重演。修后本机实测:三仓库各回收至 keep=3(当前版本与回滚目标双保护),镜像可回收量 27.65GB → 17.14GB。
 
 > 判据:`docker images <过滤参数>` 的过滤参数必须是**完整仓库名**,给短前缀只会匹配不到(静默返回空)。凡是用它做保留/清理决策的地方,过滤落空都必须报警——空结果不是「无需清理」的证据。
+
+**修复后的生产实测(2026-11-08,PR #232 合并 main 后发布 `main-2a41e16`)**:发布链路全绿(检查线六道守卫 → 三镜像构建推送 → 人工审批 → 服务器侧部署),`.deploy-state` `status=OK`,七个容器全跑 `main-2a41e16`,首页 / `feed.xml` / `llms.txt` 均 200。清理本次真正生效:生产机镜像从 **13.73GB 降到 9.27GB**,两个 `develop-*` 陈旧 tag(`develop-0c3eed9` / `develop-5981bde`)与卡渲染的 `develop-e353048` 全部消失,只剩三个 `main-*` tag(当前 + 回滚目标 + keep=3)。此前这些 tag 一次都没被删过。
 
 **仓外一次性配置**(命名与 ai-invest-assisstant 逐字一致;仓库为 public,主机地址与部署路径一律走仓库变量,不入库):
 

@@ -23,6 +23,7 @@ model Post {
   contentMd       String?   @map("content_md") @db.Text // 新文正文(Markdown;与 html 二选一非空)
   coverPath       String?   @map("cover_path") @db.VarChar(500)
   categoryId      BigInt    @map("category_id")
+  authorId        BigInt?   @map("author_id") // 归属作者(可空:154 篇迁移旧文与存量稿无归属;外部 agent 产出归其 PAT 持有人)
   status          String    @default("draft") @db.VarChar(20) // draft/published/deleted(软删;下架=回 draft 保留 published_at;合法值应用层 Zod 管控,arch/03 枚举演进条款)
   contentOrigin   String    @default("human") @map("content_origin") @db.VarChar(20) // 创作方式:human/ai_assisted/ai_generated(AI 生成内容显式标识,2026-10-05 合规;合法值应用层枚举,见 content/post-schema)
   isPinned        Boolean   @default(false) @map("is_pinned")
@@ -38,6 +39,7 @@ model Post {
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   category        Category              @relation(fields: [categoryId], references: [id])
+  author          UserAccount?          @relation(fields: [authorId], references: [id])
   tags            PostTag[]
   viewDays        StatsPostViewDaily[]
   mediaRefs       MediaRef[]
@@ -52,6 +54,7 @@ model Post {
 
   @@index([status, publishedAt(sort: Desc)], map: "idx_content_post_status_published")
   @@index([categoryId], map: "idx_content_post_category")
+  @@index([authorId], map: "idx_content_post_author")
   @@map("content_post")
 }
 
@@ -218,6 +221,7 @@ model UserAccount {
   purchases          ContentPostPurchase[]
   aiUsageLogs        AiUsageLog[]
   feedbacks          Feedback[]
+  posts              Post[]
   channelWechatMpUsers ChannelWechatMpUser[]
 
   @@index([status], map: "idx_user_account_status")

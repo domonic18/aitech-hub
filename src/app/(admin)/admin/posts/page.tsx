@@ -14,11 +14,17 @@ import CategoriesSection from "@/components/admin/categories/CategoriesSection";
 import SubTabs from "@/components/admin/SubTabs";
 import {
   ADMIN_LIST_SEGMENTS,
-  POST_DISPLAY_STATE_LABEL,
+  asContentOrigin,
   postDisplayState,
+  POST_DISPLAY_STATE_LABEL,
   type AdminListSegment,
 } from "@/lib/content/post-schema";
-import { ADMIN_PAGE_SIZE, listPostsAdmin } from "@/lib/content/posts-admin";
+import {
+  ADMIN_ORIGIN_FILTERS,
+  ADMIN_PAGE_SIZE,
+  listPostsAdmin,
+  type AdminOriginFilter,
+} from "@/lib/content/posts-admin";
 import { postPath, postPathSegment } from "@/lib/content/post-path";
 import { isWechatReady } from "@/lib/distribute/wechat-config-admin";
 import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
@@ -31,6 +37,14 @@ const SEG_LABELS: Record<AdminListSegment, string> = {
   ...POST_DISPLAY_STATE_LABEL,
 };
 
+/** 创作方式筛选(M71):外部 agent 产出恒带 AI 标识,草稿池按「AI 稿」筛待审 */
+const ORIGIN_LABELS: Record<AdminOriginFilter, string> = {
+  all: "全部来源",
+  human: "人工",
+  ai_assisted: "AI 辅助",
+  ai_generated: "AI 生成",
+};
+
 /** 文章/分类双视图(?t= 切换;分类原为侧栏一级项,验收二批①降级并入) */
 const VIEW_TABS = [
   ["posts", "文章"],
@@ -38,14 +52,26 @@ const VIEW_TABS = [
 ] as const;
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; page?: string; q?: string; t?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    page?: string;
+    q?: string;
+    t?: string;
+    origin?: string;
+  }>;
 }
 
-function listHref(segment: AdminListSegment, page: number, q?: string): string {
+function listHref(
+  segment: AdminListSegment,
+  page: number,
+  q?: string,
+  origin: AdminOriginFilter = "all",
+): string {
   return adminListHref("/admin/posts/", {
     status: segment === "all" ? undefined : segment,
     page,
     q,
+    origin: origin === "all" ? undefined : origin,
   });
 }
 
@@ -66,11 +92,12 @@ export default async function AdminPostsPage({
   }
 
   const segment = parseListSegment(ADMIN_LIST_SEGMENTS, sp.status, "all");
+  const origin = parseListSegment(ADMIN_ORIGIN_FILTERS, sp.origin, "all");
   const page = parsePage(sp.page);
   const q = sp.q?.trim() || undefined;
 
   const [{ items, total, counts }, wechatReady] = await Promise.all([
-    listPostsAdmin({ page, segment, q }),
+    listPostsAdmin({ page, segment, q, origin }),
     isWechatReady(),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / ADMIN_PAGE_SIZE));
@@ -94,6 +121,9 @@ export default async function AdminPostsPage({
     excerpt: row.excerpt,
     seoDescription: row.seoDescription,
     syncable: row.contentMd !== null,
+    contentOrigin: asContentOrigin(row.contentOrigin),
+    // 作者(M71 归属列):昵称优先,回落用户名;旧文无归属为空
+    authorLabel: row.author?.nickname ?? row.author?.username ?? null,
     // M49 批X1 渠道化:行形状改 channels 数组下发(UI 按 channel 自取;新增渠道
     // 不再加链)
     channels: row.channels.map((c) => ({ channel: c.channel, status: c.status })),
@@ -117,7 +147,7 @@ export default async function AdminPostsPage({
           {ADMIN_LIST_SEGMENTS.map((seg) => (
             <Link
               key={seg}
-              href={listHref(seg, 1, q)}
+              href={listHref(seg, 1, q, origin)}
               className={`border-r border-line px-4 py-2 text-[13px] last:border-r-0 ${
                 seg === segment
                   ? "bg-accent-dim font-semibold text-accent"
@@ -128,12 +158,29 @@ export default async function AdminPostsPage({
             </Link>
           ))}
         </div>
+        {/* 创作方式筛选(M71):外部 agent 产出恒落草稿且带 AI 标识,按「AI 稿」筛待审 */}
+        <div className="flex overflow-hidden rounded-sm border border-line">
+          {ADMIN_ORIGIN_FILTERS.map((o) => (
+            <Link
+              key={o}
+              href={listHref(segment, 1, q, o)}
+              className={`border-r border-line px-3 py-2 text-[13px] last:border-r-0 ${
+                o === origin
+                  ? "bg-accent-dim font-semibold text-accent"
+                  : "bg-panel text-text-2 hover:bg-panel-2"
+              }`}
+            >
+              {ORIGIN_LABELS[o]}
+            </Link>
+          ))}
+        </div>
         <form
           method="GET"
           action="/admin/posts/"
           className="ml-auto flex w-full items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-1.5 focus-within:border-accent sm:w-auto"
         >
           <input type="hidden" name="status" value={segment} />
+          {origin !== "all" && <input type="hidden" name="origin" value={origin} />}
           <svg className="ic ic-sm text-text-3" aria-hidden="true">
             <use href="#i-search" />
           </svg>
@@ -164,14 +211,15 @@ export default async function AdminPostsPage({
           page={page}
           totalPages={totalPages}
           total={total}
-          hrefFor={(p) => listHref(segment, p, q)}
+          hrefFor={(p) => listHref(segment, p, q, origin)}
           unit="篇"
         />
       </PostsTable>
 
       <div className="font-mono text-[11px] text-text-3">
         GET /api/posts?status=&amp;page=(M5-c) · POST /api/posts · PUT /api/posts/[id] · POST
-        /api/posts/[id]/publish|unpublish · DELETE 软删 · POST /api/posts/seo-suggest-batch(M16)
+        /api/posts/bundle(M71 .md 整包) · POST /api/posts/[id]/publish|unpublish · DELETE 软删 ·
+        POST /api/posts/seo-suggest-batch(M16)
       </div>
     </div>
   );

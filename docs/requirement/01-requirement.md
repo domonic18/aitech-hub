@@ -93,10 +93,13 @@
   - 个人访问令牌(Personal Access Token):`Authorization: Bearer`,库中只存哈希,可吊销、记 `last_used_at`;与后台 Cookie 会话并列为 admin 鉴权的第二种方式,复用同一批 handler
   - `upsert_article`:md 正文 + frontmatter(title/slug/excerpt/category/tags/cover/seo),**按 slug 幂等 UPSERT**——本地 md 是文章唯一真相源,改后重发即更新,不产生重复文章;slug 缺省由标题生成(策略见 arch 文档)
   - **图片随文自动处理**(与 §3.4 一键发文同一管线实现):正文中的本地图片引用随文上传媒体库(sha1 去重)并自动替换为站内 URL;外链图片可选转存
-  - 其余工具:`upload_media`(截图先传后引文)、`get_article` / `list_articles`(按状态/时间)、`publish` / `unpublish`;tags 按名自动建立,category 按 slug 挂载
-  - 默认落**草稿**,`publish=true` 直发;草稿可在后台预览后人工发布
+  - 其余工具:`upload_media`(截图先传后引文)、`get_article` / `list_articles`(按状态/时间);tags 按名自动建立,category 按 slug 挂载。**2026-11-13 收紧**:`publish` / `unpublish` 两工具从 agent 工具面**退役**(发布/下架只走后台人工通道,不再给 agent 后门)
+  - **默认落草稿,人工审核后发布**(2026-11-13 收紧):agent 侧**不提供直发通道**,`publish=true` 参数退役——草稿在后台按「AI 稿」筛选待审,审核人过目后发布
+  - **AI 产出标识**(2026-11-13 修正):外部发布通道的 `content_origin` 缺省为 `ai_assisted`(此前硬编码 `human`,靠后台补标——草稿池一深就漏标,AI 稿被记成人工创作);`human` / `ai_generated` 由入参显式声明
+  - **`.md` 整包上传**(2026-11-13 新增):multipart 一次交「一篇 .md + 若干配图」,服务端按文件名匹配图片、上传入库并替换正文引用后落草稿——**图片字节不过模型上下文**(大图走这条路;`upload_media` 的 base64 只留给 <100KB 小图);frontmatter `cover:` 指本地附件时一并入库作封面
+  - **作者归属**(2026-11-13 新增):建稿时落 `author_id`(= 令牌持有人/会话用户),后台列表可见「谁写的」;只在建稿时落一次,后续改稿不改作者
   - `content_md` 存 md 原文并服务端渲染 `content_html`,与迁移文章的双模式渲染(arch/07-frontend)一致
-- **创作 MCP server(一期交付)**:由同一 Next.js 应用托管 Streamable HTTP 端点(如 `/api/mcp`),Bearer PAT 鉴权,暴露上述工具;Claude Code `claude mcp add` 即接。二期对外只读的「站点内容 MCP」与创作 MCP 共用端点、按鉴权区分工具集(见 §4)
+- **创作 MCP server(一期交付)**:由同一 Next.js 应用托管 Streamable HTTP 端点(如 `/api/mcp`),Bearer PAT 鉴权,暴露上述工具;Claude Code `claude mcp add` 即接。站点内容 MCP(对外只读)**2026-11-13 复活立项**:与创作 MCP **共用同一端点、同一套 PAT 鉴权**——不按鉴权区分工具集,admin PAT 一枚通吃读写(见 §4)
 - **约束**:全部变更走管理审计日志(以 token 身份记录);令牌仅存站长本地;上传类型/大小白名单与 §6 安全要求一致
 
 ## 4. 二期与专项范围(一期稳定后)
@@ -118,7 +121,7 @@
 | 评论(**2026-10-10 M23 已上线**,推翻一期「giscus 不自建」口径) | 自建评论系统:文章评论 + 评论回复(两级封顶,子回复一律挂根;旧站深层嵌套迁移时提升挂根),纯文字(React 转义,不渲染 markdown/链接——防评论区变外链农场);**仅登录用户可评论**,先发后审(提交即 visible,治理 = 后台隐藏/恢复/物理删除,删根连带直接子);防滥用 = 限流(用户 10 条/时 + IP 30 条/时)+ 屏蔽词(blocklist scope=comment 命中即拒);评论区为 client island 不进 ISR(治理动作对访客即时可见,不触发文章缓存失效) | 原 giscus(GitHub Discussions)方案退役:其 GitHub 账号门槛挡住国内主流访客,先发后审 + 自建治理链路更贴合内容站定位;**点赞同批上线**:游客可赞(文章/评论,identityKey 单列去重,同一目标一次,再点取消),不做通知、不加冗余计数列 |
 | 对象存储 | 媒体迁 COS(S3 协议),存储层已抽象 | 可与旧站下线同步做 |
 | 搜索词与曝光数据(2026-09-29 需求补充) | Google Search Console API(旧站已验证 GSC)+ 百度站长平台,拉取搜索词/曝光/点击,补齐 referrer 看不到的 query 维度;与站点统计页(§3.5)整合展示 | 只读 API 定时拉取;旧站实际来源以 Google/Bing 为主,优先 GSC |
-| 站点内容 MCP(对外只读;专项,独立排期;2026-09-29 需求补充) | 在一期创作 MCP(§3.6)的同一 `/api/mcp` 端点上增加对外只读工具集(搜索文章/读文章,公开或轻鉴权),供外部智能体引用站点内容——"被 AI 引用即流量入口";远期 RAG 问答入口 | 依赖 llms.txt/md 直出(一期)已落地;智能体引用形成一定规模后上线 |
+| **站点内容 MCP(对外只读;专项;2026-09-29 需求补充 → 2026-11-13 复活立项,落 development-plan §4 K3)** | 在一期创作 MCP(§3.6)的同一 `/api/mcp` 端点上增加只读工具集,供外部智能体(Claude Code / workbuddy)取用站点内容——"被 AI 引用即流量入口":① `list_hot_topics`——按领域(domain/subdomain)× 趋势分级(🆕新晋/🚀爆发/📈上升)取当前热点簇;② `get_telegram_item`——电报条目元数据(原文链接/摘要/AI 解读/互动数/视频元信息);③ `search_site`——三域统一检索,支持**文字/视频**形态过滤;④ `get_video_play_url`——视频播放直链**现取**(play_url 不落库,版权红线 arch/02 §3.2)。远期 RAG 问答入口 | **2026-11-13 三项裁定**:① **逐字稿不做**——arch/02 §3.2 红线完整保留,只给摘要(`ai_summary`/要点)与解读笔记(`ai_note`);② **鉴权复用 admin PAT**——不新增角色、不开匿名通道,读侧同样记审计;③ 热点读侧复用 insight 簇趋势分级与分类词表,**不改 schema**;同端点同 PAT,读写工具集合一 |
 | 短信登录与用户中心(三期;2026-09-30 调整;**M22 部分落地注记**:个人中心/订单/Token 消耗/悬浮助手已上线;**M65 注记**:短信验证码登录/注册合一已由阿里云 PNVS 替代方案落地,余项待办,均见 §3.3) | 用户短信验证码登录/注册合一、53 位 pending_binding 绑定、个人中心;原一期 §3.3 设计整体顺延 | 触发:企业主体短信资质办结,或替代认证方案(如本机号码认证)立项评审通过;数据结构(`user_account`/`user_pat`)一期已迁就位,启用即增量交付;**短信登录已由 M65 落地;绑定/改绑手机号随 M65 P1 落地(§3.3)** |
 
 ## 5. 明确不做

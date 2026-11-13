@@ -54,10 +54,11 @@ describe("resolveUpsertAction(slug 幂等裁定)", () => {
 describe("publishUpsertSchema(HTTP 路由与 MCP 工具共用,契约钉点)", () => {
   const base = { markdown: "# 正文" };
 
-  it("缺省填默认值:images=[]、publish=false(两边界解析产物一致)", () => {
+  it("缺省填默认值:images=[]、无 publish 直发参数(M71 恒落草稿)", () => {
     const r = publishUpsertSchema.parse(base);
     expect(r.images).toEqual([]);
-    expect(r.publish).toBe(false);
+    expect("publish" in r).toBe(false);
+    expect(r.contentOrigin).toBeUndefined();
   });
 
   it(`images 超 ${PUBLISH_API_IMAGES_MAX} 张 → 拒绝(上限常量单一事实源)`, () => {
