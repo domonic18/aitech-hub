@@ -30,11 +30,18 @@ WORKDIR /app
 # apt 源:基座镜像的 deb822 源指向 deb.debian.org(明文 80),国内构建机常连不通
 # (2026-11-04 实测:CI 构建卡渲染镜像时 fonts-noto-cjk 拉取被拒,两次重试皆败→
 #  镜像没进 TCR、develop 发布线全红)。默认换国内镜像;置空回退官方源。
+# 主源偶发 502(2026-11-13 实测:阿里云源拉 deb 包时连续两次 502/连接失败,
+# 致同批镜像构建红)——deb822 的 URIs 可列多个源,apt 逐个回退,故加备用源。
 ARG APT_MIRROR_HOST="mirrors.aliyun.com"
+ARG APT_MIRROR_FALLBACK_HOST="mirrors.tuna.tsinghua.edu.cn"
 # prisma 引擎探测依赖 openssl(slim 缺省无,缺了仅告警但按错误路径运行)
 RUN if [ -n "$APT_MIRROR_HOST" ]; then \
       sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
         /etc/apt/sources.list.d/debian.sources; \
+      if [ -n "$APT_MIRROR_FALLBACK_HOST" ]; then \
+        sed -i -E "s|^URIs: (http://${APT_MIRROR_HOST}(/[^[:space:]]+))$|URIs: \1 http://${APT_MIRROR_FALLBACK_HOST}\2|" \
+          /etc/apt/sources.list.d/debian.sources; \
+      fi; \
     fi \
   && apt-get update -y \
   && apt-get install -y --no-install-recommends openssl \
@@ -73,10 +80,15 @@ WORKDIR /app
 # apt 源换国内镜像(同 builder 阶段:基座镜像默认源在境外,国内构建机常连不通);
 # 置空回退官方源。pgdg 源路径与 debian 不同构,单独一个参数
 ARG APT_MIRROR_HOST="mirrors.aliyun.com"
+ARG APT_MIRROR_FALLBACK_HOST="mirrors.tuna.tsinghua.edu.cn"
 ARG PGDG_MIRROR="https://mirrors.aliyun.com/postgresql/repos/apt"
 RUN if [ -n "$APT_MIRROR_HOST" ]; then \
       sed -i "s|https\?://deb\.debian\.org|http://${APT_MIRROR_HOST}|g; s|https\?://security\.debian\.org|http://${APT_MIRROR_HOST}|g" \
         /etc/apt/sources.list.d/debian.sources; \
+      if [ -n "$APT_MIRROR_FALLBACK_HOST" ]; then \
+        sed -i -E "s|^URIs: (http://${APT_MIRROR_HOST}(/[^[:space:]]+))$|URIs: \1 http://${APT_MIRROR_FALLBACK_HOST}\2|" \
+          /etc/apt/sources.list.d/debian.sources; \
+      fi; \
     fi \
   && apt-get update -y \
   && apt-get install -y --no-install-recommends openssl curl ca-certificates gnupg \
