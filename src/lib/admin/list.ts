@@ -34,12 +34,13 @@ export function pageWindow(cur: number, total: number): Array<number | null> {
 /** status/page/q/channel 形态的列表链接(posts/users 通用;channel=分发中心渠道维度,M49 批X1) */
 export function adminListHref(
   base: string,
-  params: { status?: string; page?: number; q?: string; channel?: string },
+  params: { status?: string; page?: number; q?: string; channel?: string; origin?: string },
 ): string {
   const sp = new URLSearchParams();
   if (params.status) sp.set("status", params.status);
   if (params.q) sp.set("q", params.q);
   if (params.channel) sp.set("channel", params.channel);
+  if (params.origin) sp.set("origin", params.origin);
   if (params.page !== undefined && params.page > 1) sp.set("page", String(params.page));
   const qs = sp.toString();
   return qs ? `${base}?${qs}` : base;

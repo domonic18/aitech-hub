@@ -14,6 +14,7 @@
 import { prisma } from "../db";
 import { PUBLISHED } from "../content/posts";
 import { TELEGRAM_AI_TERMINAL } from "../telegram/constants";
+import { FEED_MEDIA_FILTERS, type FeedMediaFilter } from "../telegram/feed-view";
 import { topVectorMatches } from "./embedding-repo";
 import { embedQueryForSearch } from "./query-embedding";
 import { tokenizeQuery } from "./tokenize";
@@ -92,15 +93,26 @@ function emptyResult(q: string, terms: string[]): UnifiedSearchResult {
 }
 
 /**
- * 三域并发检索:terms 为空直接返回空结果(不查库);词项层每域 findMany(候选)+
+ * 三域统一检索:terms 为空直接返回空结果(不查库);词项层每域 findMany(候选)+
  * count(库内命中数)同事务快照,语义层查询向量化后三域向量榜并发同取。
  * snippet 优先 AI 解读(aiSummary),正文大列(contentMd/readmeMd)只作检索条件
  * 不取——K2 引用正文经 loadCitationBodies 单点补取。组头 total = 库内词项命中数
  * + 语义补召可见数。
+ *
+ * mediaType(M71):电报组形态过滤(all|text|video),下推到 telegram where——
+ * 后置过滤会因分页截断漏召回。口径与电报流 feed 的 FEED_MEDIA_FILTERS 同源
+ * (feed-view 是 text|video 的唯一真相源)。非法值回落 all。
  */
-export async function searchAll(q: string): Promise<UnifiedSearchResult> {
+export async function searchAll(
+  q: string,
+  opts: { mediaType?: FeedMediaFilter } = {},
+): Promise<UnifiedSearchResult> {
   const terms = tokenizeQuery(q);
   if (terms.length === 0) return emptyResult(q, terms);
+
+  const media: FeedMediaFilter = FEED_MEDIA_FILTERS.includes(opts.mediaType as FeedMediaFilter)
+    ? (opts.mediaType as FeedMediaFilter)
+    : "all";
 
   // 语义层先决:查询向量化(未绑定/失败 → null,双榜退化单榜,行为不回归)
   // M48 批B:向量化外呼不 await,与词项三域并发起跑——embed RTT 不再阻塞词项检索
@@ -112,9 +124,16 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
     // 与公开读侧同口径:仅 AI 解读终态行可见(pending/failed 不上屏)
     aiStatus: { in: [...TELEGRAM_AI_TERMINAL] },
   };
-  const telegramWhere = {
+  // 形态过滤下推到可见性口径:词项榜与语义补取共用,否则语义召回会绕过
+  // mediaType 把视频条混进「仅文字」结果
+  const telegramScope = {
     ...telegramVisible,
-    OR: buildTermOr(terms, ["title", "summary", "aiSummary", "aiTopic"]),
+    ...(media !== "all" ? { mediaType: media } : {}),
+  };
+  const telegramWhere = {
+    ...telegramScope,
+    // aiNote 解读笔记(M26)入检索域:视频条的核心解读正文在此列,不入则搜不到
+    OR: buildTermOr(terms, ["title", "summary", "aiSummary", "aiTopic", "aiNote"]),
   };
   const postWhere = { ...PUBLISHED, OR: buildTermOr(terms, ["title", "excerpt", "contentMd"]) };
   const repoWhere = {
@@ -138,6 +157,7 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
     aiTopic: true,
     aiSummary: true,
     aiKeywords: true,
+    aiNote: true,
     source: { select: { name: true, type: true } },
   } as const;
   const postSelect = {
@@ -213,7 +233,7 @@ export async function searchAll(q: string): Promise<UnifiedSearchResult> {
       toHit: toTelegramHit,
       fetchSemanticRows: (ids) =>
         prisma.telegram.findMany({
-          where: { ...telegramVisible, id: { in: ids } },
+          where: { ...telegramScope, id: { in: ids } },
           select: tgSelect,
         }),
     }),

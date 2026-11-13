@@ -3,7 +3,7 @@
  *  - POST 新建草稿(编辑器,M5-a)。
  *  - GET 列表(双路鉴权:Bearer PAT 允许只读;GET 无 CSRF 面免 Origin 关)。
  *  - PUT upsert(requirement §3.6:markdown+images 随文,以 slug 幂等,
- *    默认草稿,publish=true 直发;Bearer PAT / 会话双路自动生效)。
+ *    恒落草稿,发布/下架只走后台人工通道;Bearer PAT / 会话双路自动生效)。
  */
 import { type NextRequest } from "next/server";
 
@@ -13,7 +13,12 @@ import { logger } from "@/lib/logger";
 import { upsertArticle } from "@/lib/content/publish-api";
 import { publishUpsertSchema } from "@/lib/content/publish-schema";
 import { postCreateSchema, ADMIN_LIST_SEGMENTS } from "@/lib/content/post-schema";
-import { createPost, listPostsAdmin, type AdminListQuery } from "@/lib/content/posts-admin";
+import {
+  ADMIN_ORIGIN_FILTERS,
+  createPost,
+  listPostsAdmin,
+  type AdminListQuery,
+} from "@/lib/content/posts-admin";
 
 import { postErrorResponse, requireAdminForMutation } from "./shared";
 
@@ -47,14 +52,19 @@ export async function POST(req: NextRequest) {
 function parseListQuery(url: URL): {
   page: number;
   segment: AdminListQuery["segment"];
+  origin: AdminListQuery["origin"];
   q?: string;
 } {
   const pageRaw = Number.parseInt(url.searchParams.get("page") ?? "1", 10);
   const segRaw = url.searchParams.get("status") ?? "all";
+  const originRaw = url.searchParams.get("origin") ?? "all";
   return {
     page: Number.isInteger(pageRaw) && pageRaw >= 1 && pageRaw <= 10_000 ? pageRaw : 1,
     segment: (ADMIN_LIST_SEGMENTS as readonly string[]).includes(segRaw)
       ? (segRaw as AdminListQuery["segment"])
+      : "all",
+    origin: (ADMIN_ORIGIN_FILTERS as readonly string[]).includes(originRaw)
+      ? (originRaw as AdminListQuery["origin"])
       : "all",
     q: url.searchParams.get("q")?.trim() || undefined,
   };
@@ -64,8 +74,8 @@ export async function GET(req: NextRequest) {
   const guard = await requireAdminActor(req);
   if (!guard.ok) return guard.response;
 
-  const { page, segment, q } = parseListQuery(new URL(req.url));
-  const { items, total, counts } = await listPostsAdmin({ page, segment, q });
+  const { page, segment, origin, q } = parseListQuery(new URL(req.url));
+  const { items, total, counts } = await listPostsAdmin({ page, segment, q, origin });
   return apiEnvelope(0, "ok", {
     total,
     page,

@@ -149,6 +149,7 @@ describe("三域行 → 命中视图映射", () => {
       aiTopic: "MCP",
       aiSummary: "AI 解读文本",
       aiKeywords: ["mcp", 1],
+      aiNote: "## 解读笔记\n要点一",
       source: { name: "机器之心", type: "rss" },
       hitPct: 88,
     };
@@ -157,6 +158,7 @@ describe("三域行 → 命中视图映射", () => {
     expect(hit.mediaType).toBe("video");
     expect(hit.snippet).toBe("AI 解读文本");
     expect(hit.aiSummary).toBe("AI 解读文本");
+    expect(hit.aiNote).toBe("## 解读笔记\n要点一");
     expect(hit.video).toEqual({
       platform: "douyin",
       blogger: "老李",
@@ -218,6 +220,7 @@ describe("三域行 → 命中视图映射", () => {
         aiTopic: "主题",
         aiSummary: "解读",
         aiKeywords: ["k1", "k2"],
+        aiNote: "解读笔记",
         source: { name: "n", type: "rss" },
       }).summary,
     ).toContain("k1");

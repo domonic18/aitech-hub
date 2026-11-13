@@ -4,9 +4,19 @@
  */
 import { prisma } from "@/lib/db";
 
-import { POST_STATUS_DELETED, type AdminListSegment } from "./post-schema";
+import {
+  CONTENT_ORIGINS,
+  POST_STATUS_DELETED,
+  type AdminListSegment,
+  type ContentOrigin,
+} from "./post-schema";
 
 export const ADMIN_PAGE_SIZE = 15;
+
+/** 创作方式筛选值(all = 不限);M71 后台草稿池按「AI 稿」筛待审 */
+export type AdminOriginFilter = ContentOrigin | "all";
+
+export const ADMIN_ORIGIN_FILTERS = ["all", ...CONTENT_ORIGINS] as const;
 
 /** 管理列表行投影(id 走 BigInt,页面直传 RSC;出 Handler/客户端前 toString)。
  * M17 批④:同步弹窗默认值需 coverPath/seoTitle/seoDescription/excerpt,
@@ -25,7 +35,9 @@ const ADMIN_LIST_SELECT = {
   seoTitle: true,
   seoDescription: true,
   excerpt: true,
+  contentOrigin: true,
   category: { select: { slug: true, name: true } },
+  author: { select: { id: true, nickname: true, username: true } },
   tags: { select: { tag: { select: { name: true } } } },
   channels: { select: { channel: true, status: true } },
 } as const;
@@ -36,16 +48,19 @@ export interface AdminListQuery {
   page: number;
   segment: AdminListSegment;
   q?: string;
+  /** 创作方式过滤(M71:草稿池筛 AI 稿待审);缺省不限 */
+  origin?: AdminOriginFilter;
 }
 
-function segmentWhere(segment: AdminListQuery["segment"], q?: string) {
+function segmentWhere(segment: AdminListQuery["segment"], q?: string, origin?: AdminOriginFilter) {
   const text = q
     ? {
         OR: [{ title: { contains: q } }, { slug: { contains: q } }],
       }
     : {};
+  const originFilter = origin && origin !== "all" ? { contentOrigin: origin } : {};
   // 软删(deleted)任何分段都不可见;下架 = draft 且 publishedAt 非空
-  const base = { status: { not: POST_STATUS_DELETED }, ...text };
+  const base = { status: { not: POST_STATUS_DELETED }, ...text, ...originFilter };
   if (segment === "published") return { ...base, status: "published" };
   if (segment === "draft") return { ...base, status: "draft", publishedAt: null };
   if (segment === "unpublished") return { ...base, status: "draft", publishedAt: { not: null } };
@@ -53,9 +68,9 @@ function segmentWhere(segment: AdminListQuery["segment"], q?: string) {
 }
 
 /** 管理列表(草稿含)+ 四分段计数;updatedAt 倒序(最近改动优先) */
-export async function listPostsAdmin({ page, segment, q }: AdminListQuery) {
-  const where = segmentWhere(segment, q);
-  const countWhere = (seg: AdminListQuery["segment"]) => segmentWhere(seg, q);
+export async function listPostsAdmin({ page, segment, q, origin }: AdminListQuery) {
+  const where = segmentWhere(segment, q, origin);
+  const countWhere = (seg: AdminListQuery["segment"]) => segmentWhere(seg, q, origin);
   const [items, all, published, draft, unpublished] = await prisma.$transaction([
     prisma.post.findMany({
       where,

@@ -12,9 +12,10 @@
 - 站点能力面:内容站(文章/专题/贴图三形态)+ SEO 无损迁移 + 多渠道采集(电报流/抖音/B站/热榜/通用网页通道)
   + AI 管线(ASR 解读/打标判定/洞察)+ 创作台(编辑器 AI 化/配图工坊/卡片渲染)+ 分发(公众号/小红书)
   + 商业化(付费阅读/模型牌价页)+ 后台全套(内容/媒体/采集/洞察/统计/会话/用量)。
-- 未交付:站点内容 MCP(K3,已否决)、RAG 问答(K4,未排期)。原「296 用户短信登录」阻塞已由 M65 解除:
+- 未交付:RAG 问答(K4,未排期)。原「296 用户短信登录」阻塞已由 M65 解除:
   243 个有手机号的老用户可直接短信登录;56 个无手机也无邮箱的账号(多为 53 个 pending_binding 老用户)
   按既定裁定不做特殊处理,回访时走「不存在即自动建号」。
+- 站点内容 MCP(K3)**2026-11-13 复活立项**(原「已否决」口径作废)——落 M71。
 
 ## 2. 里程碑
 
@@ -94,6 +95,7 @@
 | M68 | 文章阅读页增强 | **实现中(2026-11-01,`feature/article-reading-enhancements`)**。回应阅读体验四点:左侧 TOC(H2+H3;md 走与正文同款 slug pipeline、旧 `content_html` 就地注入 id 不重序列化,`src/lib/content/toc.ts`)、xl 三栏 / lg 两栏 / 窄屏单栏折叠目录;右下角「回到顶部」(避让 `AssistantFab`);右栏「最近文章」+「最近电报」(复用抽出的 `PostRail`,新增 `TelegramRail`)与文末「上一篇/下一篇」(`(published_at,id)` 逐位比较);文末版权声明后台可配(`site_config.post.copyright_md`,缺行取内置默认、显式空串不渲染)。详情页仍 ISR 600s、无 `loading.tsx`,新增取数只读不碰 cookies/headers;不改 schema([arch/07 §1、§8](../arch/07-frontend.md)) |
 | M69 | 文章页助手上下文 + 电报流右栏/回顶/加载更多 | **实现中(2026-11-01,`feature/article-reading-enhancements`)**。回应使用反馈四点:①文章页助手注入 `{page:"文章详情",article:{postId}}`(wire 只信 postId,服务端 `enrichArticleContext` 补 title/gated;`read_post` 按身份换档,门禁文只给 ≤800 字预览,缺省 fail-closed);②`/telegram` 右栏「采集计划」卡(未来 12h 内容任务 + 最近内容运行,显式白名单排除运维/对账/清理/健康,台账异常降级空列表);③复用 `BackToTop`;④底部「加载更多」(30 条/页,服务端 `nextOffset` 游标、上限 500,与 60s `after` 轮询 id 去重互不干扰)。不改 schema([arch/04](../arch/04-ai-agent.md)、[arch/07 §1](../arch/07-frontend.md)) |
 | M70 | 答案卡引用分行 + 首页快捷搜索词动态化 | **实现中(2026-11-01)**。回应使用反馈两点:①`/search` AI 答案卡「引用来源」由一段连排改为 `ol/li` 逐条成行,`cite-N` 锚点保留在 `<a>`(正文 `[n]` 跳转仍可用);②首页搜索框下快捷建议词去硬编码——`site_config.home.search_terms`(JSON `{words, count}`)保存后台勾选的固定词(按序打头,≤4)与展示个数(3-4),未勾满时由洞察关键词云(7 天窗口,不足 20 词并 30 天)自动补齐,词云全空回退内置三条;装配在 `lib/config/home-search-terms.ts`(prerenderSafe,`HeroConsole` 仅收 props,客户端图守卫绿)。不改 schema([arch/07 §1](../arch/07-frontend.md)、[arch/03](../arch/03-data-model.md)) |
+| M71 | 外部 Agent 能力面(K3 复活) | **已实现待验收(2026-11-13,`feature/agent-read-tools`)**。外部智能体(Claude Code / workbuddy)经同端点 `/api/mcp/` + admin PAT 接入:只读 4 工具(热点簇/电报条目/三域检索/播放直链现取)+ 写通道恒落草稿(`publish` 直发与上下架退役、`content_origin` 缺省 `ai_assisted`、后台可按来源筛)+ `.md` 整包上传(图字节不过模型)+ 作者归属列。逐字稿按 arch/02 §3.2 版权红线不做([arch/04 §3.6](../arch/04-ai-agent.md)、[requirement §4](../requirement/01-requirement.md)) |
 
 ## 3. 后置池(满足触发条件再立项)
 
@@ -114,7 +116,7 @@
 | K2 | Agent 搜索(答案卡 + 引用溯源 + 配额与缓存护栏) | 已完成 |
 | K2.5 | 搜索 Drawer 会话 Agent(LangGraph + assistant-ui,SSE) | 已完成 |
 | K2.6 | 游客模式 + 后台会话管理 + 工具面收紧 | 已完成 |
-| ~~K3~~ | ~~站点内容 MCP(对外只读工具集)~~ | 不做(需求移除) |
+| ~~K3~~ | ~~站点内容 MCP(对外只读工具集)~~ | **复活立项(2026-11-13)**,落 M71;口径见 arch/04 §3.6 |
 | K4 | RAG 问答入口 | 未排期 |
 
 ## 5. 维护约定
