@@ -22,7 +22,13 @@ import {
   type PostUpdateInput,
 } from "./post-schema";
 
-export { ADMIN_PAGE_SIZE, listPostsAdmin, type AdminListQuery } from "./posts-admin-list";
+export {
+  ADMIN_ORIGIN_FILTERS,
+  ADMIN_PAGE_SIZE,
+  listPostsAdmin,
+  type AdminListQuery,
+  type AdminOriginFilter,
+} from "./posts-admin-list";
 
 /**
  * 路径/字符串 id → BigInt(管理 API 与编辑页共用,评审 W4 收口双轨):
@@ -103,8 +109,13 @@ function deriveSlug(input: PostCreateInput): string | null {
   return input.slug ?? asciiSlugFromTitle(input.title);
 }
 
+/**
+ * 建稿(authorId:M71 归属列——外部 agent 产出归其 PAT 持有人;缺省不写=无归属)。
+ * 归属只在创建时落一次:后续人工/agent 改稿不改作者(作者=首创者,审稿人另由审核流记录)。
+ */
 export async function createPost(
   input: PostCreateInput,
+  authorId?: bigint | null,
 ): Promise<{ id: bigint; slug: string | null }> {
   const base = deriveSlug(input);
   const category = await prisma.category.findUnique({ where: { slug: input.categorySlug } });
@@ -141,6 +152,7 @@ export async function createPost(
         seoDescription: input.seoDescription ?? null,
         contentOrigin: input.contentOrigin,
         categoryId: category.id,
+        ...(authorId !== undefined && authorId !== null ? { authorId } : {}),
         status: "draft",
         // 付费两列(M21 批⑤):关闭即清价(开关与价格原子一致)
         isPurchasable: input.isPurchasable,

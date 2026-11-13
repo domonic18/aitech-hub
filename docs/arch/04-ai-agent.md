@@ -227,7 +227,36 @@
 - **第二迭代:K2.5 Drawer 会话 Agent**——**已交付(2026-10-07,批①~⑤)**:deepagents + assistant-ui + checkpoint(落点 `src/lib/agent/*` + `/api/search/agent/*` + `src/components/site/agent/`;实施注记见上)
 - **第三迭代:K2.6 游客模式 + 后台会话管理 + 工具面收紧**——**已交付开发(2026-10-07,分支 feature/agent-guest-mode 批①~④,用户六项需求;实施注记见上)**
 - **M22 迭代:K2.7 全站悬浮助手 + 用户 Token 额度 + 反馈系统**——**已交付开发(2026-10-09,批①~⑤;账号中心/订单/消耗页为 user 域,见 arch/03 §2.2;实施注记见上)**
-- K3 站点内容 MCP 随 K1 就绪解锁(同检索层,对外只读工具面)
+- K3 站点内容 MCP 随 K1 就绪解锁(同检索层,对外只读工具面)——**2026-11-13 复活立项,见 §3.6**
+
+### 3.6 外部 Agent 能力面(M71;K3 复活,2026-11-13 立项)
+
+外部智能体(Claude Code / workbuddy)接入本系统的能力面。与一期创作 MCP **同端点(`/api/mcp`)、同鉴权(admin PAT)、同一 service 层**——不另起端点、不按鉴权切工具集。
+
+**工具面(只读 4 只 + 创作 4 只)**:
+
+| 工具 | 职责 | 落点 |
+| --- | --- | --- |
+| `list_hot_topics` | 热点簇:按领域(domain/subdomain)× 趋势分级(new/breakout/rising/flat/declining)聚合,出簇标签 + 机会分 + 代表样本 + 增长分 | `src/lib/insight/trend.ts#listClusterTrends` 上叠只读聚合 |
+| `get_telegram_item` | 电报条目元数据:原文链接、摘要、AI 解读(topic/summary/points/keywords/note)、互动数、视频元信息(平台/博主/时长/封面) | 复用 `PublicTelegramItem` 投影(`src/lib/telegram/feed-view.ts`) |
+| `search_site` | 三域统一检索(资讯/教程/项目),支持**文字/视频**形态过滤 | `src/lib/search/unified-search.ts#searchAll` 扩 `mediaType` 参数 |
+| `get_video_play_url` | 视频播放直链**现取** | 封装 `src/lib/telegram/interpret-transcript.ts#fetchFreshPlayUrl` |
+| `upsert_article` / `upload_media` / `get_article` / `list_articles` | 一期创作面(§3.6 发布通道收紧后) | `src/lib/mcp/tools.ts` |
+
+**写能力补齐(M71)**:
+
+| 能力 | 口径 | 落点 |
+| --- | --- | --- |
+| `.md` 整包上传 | multipart 交「一篇 .md + 若干配图」;服务端按文件名匹配图片 → 上传入库(sha1 去重)→ 替换正文引用 → 落草稿;frontmatter `cover:` 指本地附件时一并入库作封面。**图片字节不过模型上下文**——大图走这条路,`upload_media` 的 base64 只留给 <100KB 小图 | `POST /api/posts/bundle`(`src/app/api/posts/bundle/route.ts`)· `src/lib/content/bundle-import.ts` |
+| 作者归属 | 建稿时落 `content_post.author_id`(= PAT 持有人/会话用户);**只在建稿时落一次**,作者=首创者,后续改稿不改作者 | `src/lib/content/posts-admin.ts#createPost` · [arch/03 §3](03-data-model.md) |
+
+**三项裁定(2026-11-13,需求方拍板)**:
+
+1. **逐字稿不做** —— arch/02 §3.2「转写文本是输入不是资产、判读即删」红线完整保留。对外只给 `ai_summary` / `ai_points` / `ai_note`(解读笔记),**不给 ASR 逐字稿**。
+2. **鉴权复用 admin PAT** —— PAT 持有人须 `role=admin` 且 `status=active`(`src/lib/auth/pat.ts`);读侧与写侧同一枚 token,读也记审计(`mcp.get_article` 先例)。不开匿名/公开读通道。
+3. **agent 产出默认落草稿 + 人工审核后发布** —— `upsert_article` 的 `publish=true` 直发参数与 `publish` / `unpublish` 两工具**退役**(发布/下架只走后台人工通道);外部通道写入的 `content_origin` 缺省 `ai_assisted`(原硬编码 `human`,草稿池一深即漏标,AI 稿被记成人工创作),后台草稿列表按该列筛「待审 AI 稿」。
+
+**视频直链的可靠性边界**:`play_url` 按版权红线**不落库**(arch/02 §3.2),`get_video_play_url` 走适配器现查(douyin 重拉 listing 匹配 / B站 网关 `/play-url`)。直链是**签名 URL,数小时有效**,平台风控下可能查不得——工具返回 `null` + 降级原因,不重试不兜底。读侧一律记审计(记键与命中,不记正文)。
 
 ## 4. AI 服务治理后台(2026-09-30 原型锚点;模型配置 M8 批⑥ 已提前落地,余项二期)
 

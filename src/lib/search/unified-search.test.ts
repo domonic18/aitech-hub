@@ -99,12 +99,27 @@ describe("searchAll", () => {
       publishedAt: { not: null },
     });
     expect(hoisted.repoFindMany.mock.calls[0]![0]!.where).toMatchObject({ display: true });
-    // 逐词 × 4 字段 = 8 个 OR 分支
-    expect(hoisted.tgFindMany.mock.calls[0]![0]!.where.OR).toHaveLength(8);
+    // 逐词 × 5 字段(title/summary/aiSummary/aiTopic/aiNote)= 10 个 OR 分支
+    expect(hoisted.tgFindMany.mock.calls[0]![0]!.where.OR).toHaveLength(10);
     expect(r.total).toBe(6);
     // 查询向量化 null(未绑定/失败)→ 向量榜与语义补取零调用
     expect(hoisted.embedQuery).toHaveBeenCalledWith("MCP 实战");
     expect(hoisted.topVec).not.toHaveBeenCalled();
+  });
+
+  it("mediaType 形态过滤下推到 telegram where(缺省不过滤;语义补取同口径)", async () => {
+    reset({ totals: [1, 0, 0] });
+    hoisted.tgFindMany.mockClear();
+    await searchAll("MCP", { mediaType: "video" });
+    expect(hoisted.tgFindMany.mock.calls[0]![0]!.where).toMatchObject({
+      status: "visible",
+      mediaType: "video",
+    });
+    // 缺省 all → 不下推形态
+    reset({ totals: [1, 0, 0] });
+    hoisted.tgFindMany.mockClear();
+    await searchAll("MCP");
+    expect(hoisted.tgFindMany.mock.calls[0]![0]!.where.mediaType).toBeUndefined();
   });
 
   it("候选 take 上限与组展示限量(telegram 6 / post 4 / repo 4)", async () => {

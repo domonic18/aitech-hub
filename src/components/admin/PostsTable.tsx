@@ -16,7 +16,8 @@ import { useBatchSelection } from "./batch/useBatchSelection";
 import { usePostsBatchJobs } from "./posts-batch";
 import PostRowOps from "./PostRowOps";
 import PostStatusBadge from "./PostStatusBadge";
-import type { PostDisplayState } from "@/lib/content/post-schema";
+import type { ContentOrigin, PostDisplayState } from "@/lib/content/post-schema";
+import { CONTENT_ORIGIN_BADGES } from "@/lib/content/post-schema";
 import { DISTRIBUTE_BATCH_MAX } from "@/lib/distribute/channels";
 import { formatCnDateTime } from "@/lib/datetime";
 
@@ -36,6 +37,10 @@ export interface PostsTableRowView {
   excerpt: string | null;
   seoDescription: string | null;
   syncable: boolean;
+  /** 创作方式(M71:外部 agent 产出带 AI 标识,列表徽章直读) */
+  contentOrigin: ContentOrigin;
+  /** 作者昵称(M71 归属列;旧文无归属为 null) */
+  authorLabel: string | null;
   channels: Array<{ channel: string; status: string }>;
 }
 
@@ -148,12 +153,18 @@ export default function PostsTable({
                       旧文保真
                     </span>
                   )}
+                  {CONTENT_ORIGIN_BADGES[row.contentOrigin] && (
+                    <span className="ml-2 rounded-sm border border-amber/40 bg-amber/10 px-1 py-px align-middle text-[10px] text-amber">
+                      {CONTENT_ORIGIN_BADGES[row.contentOrigin]}
+                    </span>
+                  )}
                 </Link>
                 <div
                   className="mt-0.5 truncate font-mono text-[11px] text-text-3"
                   title={row.sitePath}
                 >
                   /post/{row.pathSegment} · {row.legacy ? "WP 迁移(HTML)" : "新建(Markdown)"}
+                  {row.authorLabel && <span className="ml-2">· 作者 {row.authorLabel}</span>}
                   {/* 前台仅 published 可见:草稿/下架不渲染入口,避免视口预取打出 404 RSC 噪音;
                       published 也关预取(新窗口偶发访问,不值得预取流量) */}
                   {row.state === "published" && (

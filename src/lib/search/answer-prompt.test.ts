@@ -31,6 +31,7 @@ function hit(domain: SearchHit["domain"], i: number): SearchHit {
       sourceType: "rss",
       mediaType: "text",
       aiSummary: null,
+      aiNote: null,
     };
   }
   if (domain === "post") return { ...base, domain, viewsCount: 0, tags: [] };
