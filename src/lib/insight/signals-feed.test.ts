@@ -104,7 +104,7 @@ describe("信号增量流(keyset 游标)", () => {
     expect(keyset.OR).toHaveLength(2);
     // 严格早于游标时刻;同刻则按 id 兜底
     expect(keyset.OR[0].signalAt?.lt?.toISOString()).toBe("2026-11-13T11:00:00.000Z");
-    expect(keyset.OR[1].id?.lt).toBe(2n);
+    expect(keyset.OR[1].id?.lt).toBe(BigInt(2));
   });
 
   it("limit 钳制在上限内", async () => {

@@ -10,8 +10,13 @@
  */
 import { z } from "zod";
 
+import { listCategories } from "@/lib/content/taxonomy";
+import { prisma } from "@/lib/db";
+import { WECHAT_CONFIG_ID } from "@/lib/distribute/wechat-config-admin";
 import { parseBigIntId } from "@/lib/http/parse-id";
 import { listHotTopics } from "@/lib/insight/hot-topics";
+import { listInsightSignalsSince } from "@/lib/insight/signals-feed";
+import { INSIGHT_SOURCES_ENABLED, type InsightSource } from "@/lib/insight/source-registry";
 import { logger } from "@/lib/logger";
 import { searchAll } from "@/lib/search/unified-search";
 import { getPublicTelegramDetail } from "@/lib/telegram/public-feed";
@@ -25,6 +30,12 @@ const TREND_TIERS = ["new", "breakout", "rising", "flat", "declining"] as const;
 
 /** 检索的域过滤(缺省三域全出) */
 const SEARCH_DOMAINS = ["telegram", "post", "repo"] as const;
+
+/** 在役信号源(读侧恒限在役源;停接入源存量行不再呈现) */
+const ENABLED_SOURCES = [...INSIGHT_SOURCES_ENABLED] as [InsightSource, ...InsightSource[]];
+
+/** 信号正文预览截断长度(默认只给开头,全文用 full=true 另取) */
+const SIGNAL_TEXT_PREVIEW = 300;
 
 /**
  * 检索命中 → agent 友好投影:比 K2.5 的 summarizeSearchGroups 多带
@@ -207,6 +218,112 @@ export const feedTools: McpToolDef[] = [
         platform: result.platform,
       });
       return json(result);
+    },
+  ),
+
+  defineTool(
+    "list_signals",
+    "按时间游标增量取信号流(最新在前)。与 list_hot_topics 的区别:热点是簇级聚合投影," +
+      "会漏掉两轮之间爆发又回落、或中途掉榜的话题;信号是事件级,两轮轮询不漏。" +
+      "首次调用给 since(ISO 时间),后续带 nextCursor 续页,直到 nextCursor 为 null。" +
+      "正文默认只给开头 300 字,需要全文加 full=true。",
+    {
+      since: z
+        .string()
+        .max(40)
+        .optional()
+        .describe("起点时间(ISO 8601,如 2026-11-13T00:00:00Z);只取该时刻之后的信号"),
+      cursor: z.string().max(200).optional().describe("续页游标(取上次返回的 nextCursor)"),
+      limit: z.number().int().min(1).max(100).default(20).describe("本次取数条数"),
+      domain: z.string().max(20).optional().describe("领域 key(如 tech / finance)"),
+      source: z.enum(ENABLED_SOURCES).optional().describe("信号源;缺省全部在役源"),
+      region: z.enum(["cn", "global"]).optional().describe("地域:cn 国内 / global 海外"),
+      full: z.boolean().default(false).describe("是否返回信号正文全文(默认只给开头 300 字)"),
+    },
+    async (args, actor) => {
+      let since: Date | undefined;
+      if (args.since !== undefined) {
+        since = new Date(args.since);
+        if (Number.isNaN(since.getTime())) {
+          return json({ error: "since 不是合法时间(用 ISO 8601,如 2026-11-13T00:00:00Z)" }, true);
+        }
+      }
+      try {
+        const page = await listInsightSignalsSince({
+          ...(since !== undefined ? { since } : {}),
+          ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+          limit: args.limit,
+          ...(args.domain !== undefined ? { domain: args.domain } : {}),
+          ...(args.source !== undefined ? { source: args.source } : {}),
+          ...(args.region !== undefined ? { region: args.region } : {}),
+        });
+        logger.info({
+          event: "mcp.list_signals",
+          actor,
+          domain: args.domain ?? null,
+          source: args.source ?? null,
+          count: page.items.length,
+        });
+        return json({
+          count: page.items.length,
+          nextCursor: page.nextCursor,
+          items: page.items.map((s) => {
+            const text = s.translatedText ?? s.rawText;
+            const clipped = !args.full && text.length > SIGNAL_TEXT_PREVIEW;
+            return {
+              id: s.id,
+              source: s.source,
+              medium: s.medium,
+              region: s.region,
+              lang: s.lang,
+              signalAt: s.signalAt,
+              url: s.url,
+              text: clipped ? text.slice(0, SIGNAL_TEXT_PREVIEW) : text,
+              truncated: clipped,
+            };
+          }),
+        });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  ),
+
+  defineTool(
+    "list_categories",
+    "取栏目清单(slug + 名称)。upsert_article 落稿要 categorySlug,只能从这里取全量栏目" +
+      "(list_articles 只能反推已用过的,不完整)。",
+    {},
+    async (_args, actor) => {
+      const rows = await listCategories();
+      logger.info({ event: "mcp.list_categories", actor, count: rows.length });
+      return json({
+        count: rows.length,
+        categories: rows.map((c) => ({ slug: c.slug, name: c.name })),
+      });
+    },
+  ),
+
+  defineTool(
+    "get_wechat_config",
+    "读公众号配置元信息(是否已配置、总开关、当前默认主题、段落排版、目录卡、自动同步开关)," +
+      "让 agent 知道能不能推草稿、推出来长什么样。**不含 AppID 与密钥**;配置未录入时" +
+      "configured=false。",
+    {},
+    async (_args, actor) => {
+      const row = await prisma.wechatConfig.findUnique({ where: { id: WECHAT_CONFIG_ID } });
+      logger.info({ event: "mcp.get_wechat_config", actor, configured: row !== null });
+      return json({
+        configured: row !== null && row.appid !== "" && row.appSecretEnc !== null,
+        enabled: row?.enabled ?? false,
+        autoSyncEnabled: row?.autoSyncEnabled ?? false,
+        theme: row?.theme ?? "default",
+        paraStyle: row?.paraStyle ?? "default",
+        enableTocMeta: row?.enableTocMeta ?? false,
+        author: row?.author ?? null,
+        lastTestStatus: row?.lastTestStatus ?? null,
+        lastTestedAt: row?.lastTestedAt?.toISOString() ?? null,
+      });
     },
   ),
 ];

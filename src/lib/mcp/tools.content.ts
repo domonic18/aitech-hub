@@ -14,13 +14,28 @@ import { ADMIN_LIST_SEGMENTS } from "@/lib/content/post-schema";
 import {
   getPostBySlugAdmin,
   listPostsAdmin,
+  parsePostId,
   ADMIN_ORIGIN_FILTERS,
 } from "@/lib/content/posts-admin";
+import {
+  distributeJobResult,
+  DISTRIBUTE_JOB_ID_RE,
+  DISTRIBUTE_TOKEN_RE,
+  mapDistributeJobState,
+} from "@/lib/distribute/job-query";
+import { enqueueWechatCopy, enqueueWechatSync } from "@/lib/distribute/wechat-sync";
+import { renderWechatPreview } from "@/lib/distribute/wechat-preview";
+import { WECHAT_THEME_IDS } from "@/lib/distribute/wechat-themes";
 import { logger } from "@/lib/logger";
 import { uploadMedia } from "@/lib/media/service";
+import { getQueue, QUEUE_DISTRIBUTE } from "@/lib/queue";
+import { isBigIntId } from "@/lib/http/parse-id";
 
 import { fail, json } from "./json";
 import { defineTool, type McpToolDef } from "./registry";
+
+/** BigInt 主键入参(纯数字字符串;service 层转 BigInt) */
+const POST_ID = z.string().refine(isBigIntId, "id 须为纯数字字符串(不超 int64 上限)");
 
 /** BigInt→toString 的文章投影(MCP 出参不含 BigInt) */
 function postView(p: {
@@ -148,6 +163,125 @@ export const contentTools: McpToolDef[] = [
           }),
         ),
       });
+    },
+  ),
+
+  defineTool(
+    "sync_article_to_wechat",
+    "把文章推成公众号图文草稿(进草稿箱,不直接发布)。前置:正文是 Markdown(旧文 HTML 保真" +
+      "的须先转写)、有封面。title/digest/coverPath/theme 可覆盖本次推送(单篇覆盖,不落库)。" +
+      "返回 jobId + token,用 get_distribute_job 轮询。已在同步队列中的文章会被拒(勿重试风暴)。",
+    {
+      postId: POST_ID,
+      title: z.string().max(200).optional().describe("本次推送的标题(缺省用文章标题)"),
+      digest: z.string().max(500).optional().describe("本次推送的摘要(缺省不填)"),
+      coverPath: z.string().max(500).optional().describe("封面站内路径;缺省用文章封面"),
+      theme: z.enum(WECHAT_THEME_IDS).optional().describe("正文主题;缺省用渠道默认"),
+    },
+    async (args, actor) => {
+      const id = parsePostId(args.postId);
+      if (id === null) return json({ error: "文章 id 非法" }, true);
+      try {
+        const { jobId, token } = await enqueueWechatSync(id, {
+          ...(args.title !== undefined ? { title: args.title } : {}),
+          ...(args.digest !== undefined ? { digest: args.digest } : {}),
+          ...(args.coverPath !== undefined ? { coverPath: args.coverPath } : {}),
+          ...(args.theme !== undefined ? { theme: args.theme } : {}),
+        });
+        logger.info({ event: "mcp.sync_article_to_wechat", actor, postId: args.postId, jobId });
+        return json({ jobId, token });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  ),
+
+  defineTool(
+    "copy_article_wechat_format",
+    "把文章的正文复制成公众号草稿(只取格式不发布:不动草稿状态机、不置 pending,与" +
+      "sync_article_to_wechat 是两条独立通道)。前置:正文是 Markdown。与同步通道共享素材库" +
+      "去重(同一张图不重复上传)。返回 jobId + token,用 get_distribute_job 轮询。",
+    {
+      postId: POST_ID,
+      coverPath: z.string().max(500).optional().describe("封面站内路径;缺省不带封面"),
+      theme: z.enum(WECHAT_THEME_IDS).optional().describe("正文主题;缺省用渠道默认"),
+    },
+    async (args, actor) => {
+      const id = parsePostId(args.postId);
+      if (id === null) return json({ error: "文章 id 非法" }, true);
+      try {
+        const { jobId, token } = await enqueueWechatCopy(id, {
+          ...(args.coverPath !== undefined ? { coverPath: args.coverPath } : {}),
+          ...(args.theme !== undefined ? { theme: args.theme } : {}),
+        });
+        logger.info({ event: "mcp.copy_article_wechat_format", actor, postId: args.postId, jobId });
+        return json({ jobId, token });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  ),
+
+  defineTool(
+    "get_distribute_job",
+    "轮询分发任务进度(sync_article_to_wechat / copy_article_wechat_format / " +
+      "sync_pin_to_wechat 返回的 jobId + token)。token 必须与任务匹配,否则查不到。" +
+      "state: waiting|active|completed|failed;completed 时带 ok 与 mediaId(公众号草稿媒体 id)," +
+      "失败时带人话 reason。",
+    {
+      jobId: z.string().regex(DISTRIBUTE_JOB_ID_RE, "jobId 格式不合法"),
+      token: z.string().regex(DISTRIBUTE_TOKEN_RE, "token 缺失或不合法"),
+    },
+    async (args, actor) => {
+      const job = await getQueue(QUEUE_DISTRIBUTE).getJob(args.jobId);
+      if (!job || (job.data as { token?: string } | null)?.token !== args.token) {
+        logger.info({ event: "mcp.get_distribute_job", actor, jobId: args.jobId, found: false });
+        return json({ error: "任务不存在或已清理" }, true);
+      }
+      const state = mapDistributeJobState(await job.getState());
+      if (state === "completed") {
+        const r = distributeJobResult(job);
+        logger.info({ event: "mcp.get_distribute_job", actor, jobId: args.jobId, state });
+        return json({ state, ...r });
+      }
+      if (state === "failed") {
+        logger.info({ event: "mcp.get_distribute_job", actor, jobId: args.jobId, state });
+        return json({
+          state,
+          ok: false,
+          mediaId: null,
+          reason: (job.failedReason ?? "").slice(0, 300),
+        });
+      }
+      logger.info({ event: "mcp.get_distribute_job", actor, jobId: args.jobId, state });
+      return json({ state, ok: null, mediaId: null, reason: null });
+    },
+  ),
+
+  defineTool(
+    "render_wechat_preview",
+    "渲染文章在公众号的正文 HTML(与最终草稿同源:同一主题、同一段落排版、同一尾注)," +
+      "可用于发给主人预览。主题优先级:入参指定 > 该文章渠道行快照 > 渠道默认。旧文" +
+      "(HTML 保真正文)不支持,须先转写为 Markdown。",
+    {
+      postId: POST_ID,
+      theme: z.enum(WECHAT_THEME_IDS).optional().describe("正文主题;缺省按渠道行快照 → 渠道默认"),
+    },
+    async (args, actor) => {
+      const id = parsePostId(args.postId);
+      if (id === null) return json({ error: "文章 id 非法" }, true);
+      try {
+        const result = await renderWechatPreview(id, args.theme);
+        logger.info({
+          event: "mcp.render_wechat_preview",
+          actor,
+          postId: args.postId,
+          theme: result.theme,
+        });
+        return json(result);
+      } catch (e) {
+        return fail(e);
+      }
     },
   ),
 ];

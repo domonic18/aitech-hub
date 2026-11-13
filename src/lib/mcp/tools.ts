@@ -19,6 +19,7 @@ import type { AdminActor } from "@/lib/http/mutation-guard";
 import { registerTools } from "./registry";
 import { contentTools } from "./tools.content";
 import { feedTools } from "./tools.feed";
+import { pinTools } from "./tools.pins";
 
 /**
  * 发文工作流自解释(随 initialize 下发,MCP 标准字段):二进制图片字节永不进
@@ -49,6 +50,17 @@ const SERVER_INSTRUCTIONS = [
   "仅 <100KB 小图可走 upload_media(base64 会占模型上下文,大图禁用)。",
   "取内容:list_hot_topics(当前热点) / search_site(按关键词检索) /",
   "get_telegram_item(单条资讯元数据) / get_video_play_url(视频直链)。",
+  "取增量信号:list_signals(since 或 nextCursor 续页,直到 nextCursor 为 null)——",
+  "热点榜是簇级聚合,会漏掉两轮之间爆发又回落的话题,轮询取增量用信号流。",
+  "贴图(小绿书)流程,图在本地生成后上传,不在线生图:",
+  '1. 本地生成图 → curl -H "Authorization: Bearer <PAT>" -F "file=@<图.png>" <base>/api/media/',
+  "   取 data.path(站内路径 /wp-content/uploads/…);",
+  "2. create_pin(title, images:[path...]) —— 标题 ≤32 字,图片 1..20 张,首图即封面;",
+  '3. set_pin_status(pinId, "pending") 提交验收(draft 态不许同步);',
+  "4. sync_pin_to_wechat(pinId) → {jobId, token};",
+  "5. get_distribute_job(jobId, token) 轮询到 completed。",
+  "文章 → 公众号草稿:sync_article_to_wechat(postId) → get_distribute_job 轮询;",
+  "推的是草稿箱不是发布,发布由站长在后台人工点;render_wechat_preview(postId) 可预览所见即所得。",
 ].join("\n");
 
 export function createMcpServer(actor: AdminActor): McpServer {
@@ -60,6 +72,7 @@ export function createMcpServer(actor: AdminActor): McpServer {
   // 只读面与创作面同一端点同一 PAT,读写工具集一
   registerTools(server, actor, feedTools);
   registerTools(server, actor, contentTools);
+  registerTools(server, actor, pinTools);
 
   return server;
 }
