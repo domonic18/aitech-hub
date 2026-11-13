@@ -159,7 +159,7 @@ export const SOURCE_DEFS: SourceDef[] = [
   {
     key: "bailian-token",
     target: "plan",
-    kind: "static",
+    kind: "rendered",
     label: "阿里云百炼 Token Plan",
     vendor: "阿里云百炼",
     defaultUrl: BAILIAN_TOKEN_URL,
@@ -224,6 +224,9 @@ export async function runPricingSourceCrawl(
  * 故可随 worker 启动幂等重放。 */
 const RETIRED_DEFAULT_URLS: Record<string, string> = {
   "https://www.minimax.io/m-plan": MINIMAX_MPLAN_URL,
+  // 百炼 Token Plan:2026-11 概览页改版为文档中枢,价格表挪到个人版子页
+  // (存量行按旧 URL 迁移,零发版)
+  "https://help.aliyun.com/zh/model-studio/token-plan-overview": BAILIAN_TOKEN_URL,
 };
 
 /** 渠道种子幂等(crawl_source 只补缺不改值):url/启停/周期归后台所有

@@ -100,6 +100,14 @@ describe("syncPricingChannels", () => {
         data: { url: "https://www.minimax.cn/m-plan" },
       },
       {
+        // 百炼 Token Plan 概览页 2026-11 改版,存量行迁到个人版子页
+        where: {
+          type: "pricing",
+          url: "https://help.aliyun.com/zh/model-studio/token-plan-overview",
+        },
+        data: { url: "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview" },
+      },
+      {
         where: {
           type: "pricing",
           enabled: true,
