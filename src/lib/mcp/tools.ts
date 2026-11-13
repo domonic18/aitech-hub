@@ -16,7 +16,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { AdminActor } from "@/lib/http/mutation-guard";
 
-import { registerTools } from "./registry";
+import { registerTools, type McpToolDef } from "./registry";
 import { contentTools } from "./tools.content";
 import { feedTools } from "./tools.feed";
 import { pinTools } from "./tools.pins";
@@ -70,9 +70,12 @@ export function createMcpServer(actor: AdminActor): McpServer {
   );
 
   // 只读面与创作面同一端点同一 PAT,读写工具集一
-  registerTools(server, actor, feedTools);
-  registerTools(server, actor, contentTools);
-  registerTools(server, actor, pinTools);
+  registerTools(server, actor, allTools());
 
   return server;
+}
+
+/** 全量工具表(装配口径:只读面 → 文章面 → 贴图面) */
+export function allTools(): McpToolDef[] {
+  return [...feedTools, ...contentTools, ...pinTools];
 }

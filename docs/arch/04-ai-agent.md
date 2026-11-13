@@ -241,7 +241,26 @@
 | `get_telegram_item` | 电报条目元数据:原文链接、摘要、AI 解读(topic/summary/points/keywords/note)、互动数、视频元信息(平台/博主/时长/封面) | 复用 `PublicTelegramItem` 投影(`src/lib/telegram/feed-view.ts`) |
 | `search_site` | 三域统一检索(资讯/教程/项目),支持**文字/视频**形态过滤 | `src/lib/search/unified-search.ts#searchAll` 扩 `mediaType` 参数 |
 | `get_video_play_url` | 视频播放直链**现取** | 封装 `src/lib/telegram/interpret-transcript.ts#fetchFreshPlayUrl` |
-| `upsert_article` / `upload_media` / `get_article` / `list_articles` | 一期创作面(§3.6 发布通道收紧后) | `src/lib/mcp/tools.ts` |
+| `upsert_article` / `upload_media` / `get_article` / `list_articles` | 一期创作面(§3.6 发布通道收紧后) | `src/lib/mcp/tools.content.ts` |
+
+**M72 工具面扩展(2026-11-13,8 → 21 只)**:贴图/公众号分发/选题三域接线 PAT——能力本就在 service 层,HTTP 路由的「PAT 拒」是刻意的安全策略不动,MCP 直调 service。注册改**声明式表**(`src/lib/mcp/registry.ts` 的 `defineTool` + 三张分域表),换 SDK 1.32 官方 `registerTool`(`server.tool` 已 deprecated)。
+
+| 域 | 工具 | 落点 |
+| --- | --- | --- |
+| 贴图(小绿书) | `create_pin` `add_pin_images` `set_pin_status` `sync_pin_to_wechat` `get_pin` `list_pins` | `src/lib/mcp/tools.pins.ts` → `pins/assemble.ts#createPinWithImages` · `pins/repo.ts` · `distribute/pin-wechat-sync.ts` |
+| 文章分发 | `sync_article_to_wechat` `copy_article_wechat_format` `get_distribute_job` `render_wechat_preview` | `src/lib/mcp/tools.content.ts` → `distribute/wechat-sync.ts` · `distribute/job-query.ts` · `distribute/wechat-preview.ts` |
+| 选题 | `list_signals` `list_categories` `get_wechat_config` | `src/lib/mcp/tools.feed.ts` → `insight/signals-feed.ts` · `content/taxonomy.ts#listCategories` · `publish_wechat_config` 纯读 |
+
+**M72 三条边界裁定(2026-11-13,需求方拍板)**:
+
+1. **文生图不上线** —— 图由**本地 agent** 生成后经 `POST /api/media/` 上传拿站内路径,再走 `create_pin(images:[...])`;线上不暴露文生图工具(图字节不过模型上下文,省一次计费与队列往返)。
+2. **`create_pin` 不带 `topicId`** —— Topic 是站内 agent 的创作项目(positioning / skillKey / sampleImageId / 状态机 collecting→drafted→published),站内已明确「PAT 不得操纵创作」(arch/05 PAT_DENY 口径);外部产出的贴图停在「贴图 + 公众号草稿箱」,不进站内创作状态机。
+3. **不开放 `sync_article_batch_to_wechat`** —— 批量一次最多 30 篇无人审内容进公众号草稿箱,人工审阅成本被放大 30 倍;单篇工具已覆盖同一能力。
+
+**增量取数补缺**:`list_hot_topics` 是簇级聚合投影(丢事件粒度),定时轮询会漏掉两轮之间爆发又回落、或中途掉榜的话题;`list_signals` 走 `(signal_at, id)` **keyset 游标**(`insight/signals-feed.ts`),事件级、不漏。信号正文可达 4000 字,默认只给开头 300 字(`full=true` 才给全文),免得整批进模型上下文。
+
+**同源纪律**(两处各写一份必然漂移):预览与草稿同源——`render_wechat_preview` 与 HTTP 预览接口共用 `distribute/wechat-preview.ts`;任务轮询与前端同源——MCP `get_distribute_job` 与 HTTP 轮询路由共用 `distribute/job-query.ts` 的 jobId/token 校验与状态映射。
+
 
 **写能力补齐(M71)**:
 
