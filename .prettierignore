@@ -2,6 +2,11 @@
 docs/
 # AI 上下文文件逐字加载,防格式化扰动
 CLAUDE.md
+
+# 写作指南(markdown 真相源):内容逐字受控(条款与站内原版一致),格式化会重排
+# 中文段落与列表标记,扰动条款语义 —— 与 docs/ 同款豁免
+skills/
+.claude/skills/
 .secret/
 node_modules/
 .next/
