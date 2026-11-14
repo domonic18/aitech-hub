@@ -4,7 +4,7 @@
  * 三周期态。渠道编排(DB 驱动、失败合并上抛)在 source-registry.ts。
  * 周期价格按 tab 逐态快照(clickText 点击切换,月/季/年各拍一次由解析器合并);
  * Kimi 年付=周期总价(¥468/年),GLM 季/年=折合每月——口径不归一随原文(D3)。
- * 初稿三规则:建 pending/刷 pending/enabled·disabled 终审行不动;失败源旧数据
+ * 落库规则(M73 起):建 pending/可刷新行刷新/人工定稿行(is_pinned)不覆盖;失败源旧数据
  * 按 sourceUrl 标待复核(note 列),整 job 上抛连败可见,不静默腐烂。
  */
 import { Prisma } from "@prisma/client";
@@ -268,7 +268,7 @@ export async function markPlanSourceStale(sourceUrl: string, now: Date): Promise
   );
 }
 
-/** 套餐行初稿三规则落库(建 pending/刷 pending/终审行不动) */
+/** 套餐行落库(建 pending/可刷新行刷新/人工定稿行不动) */
 export async function persistPlanRows(rows: PlanPrefillRow[]): Promise<{
   created: number;
   refreshed: number;
@@ -280,9 +280,15 @@ export async function persistPlanRows(rows: PlanPrefillRow[]): Promise<{
     listExisting: async (vendors, keys) => {
       const rows = await prisma.codingPlan.findMany({
         where: { vendor: { in: vendors }, planName: { in: keys } },
-        select: { id: true, vendor: true, planName: true, status: true },
+        select: { id: true, vendor: true, planName: true, status: true, isPinned: true },
       });
-      return rows.map((r) => ({ id: r.id, vendor: r.vendor, key: r.planName, status: r.status }));
+      return rows.map((r) => ({
+        id: r.id,
+        vendor: r.vendor,
+        key: r.planName,
+        status: r.status,
+        isPinned: r.isPinned,
+      }));
     },
     create: (r) =>
       prisma.codingPlan.create({

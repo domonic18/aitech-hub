@@ -43,6 +43,8 @@ export const modelPricingCreateSchema = z.object({
   sourceUrl: source,
   region: z.enum(["cn", "intl"]).default("cn"),
   status: z.enum(PRICING_STATUSES).default("pending"),
+  // 人工定稿:采集不覆盖本行(M73;展示态与能否刷新解耦)
+  isPinned: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   confirmInverted: z.boolean().default(false),
 });
@@ -68,6 +70,8 @@ export const codingPlanCreateSchema = z.object({
   dataAsOf: asOf,
   sourceUrl: source,
   status: z.enum(PRICING_STATUSES).default("pending"),
+  // 人工定稿:采集不覆盖本行(M73;展示态与能否刷新解耦)
+  isPinned: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   confirmInverted: z.boolean().default(false),
 });
@@ -111,6 +115,7 @@ function serializeModelRow(row: {
   sourceUrl: string;
   region: string;
   status: string;
+  isPinned: boolean;
   sortOrder: number;
 }) {
   return {
@@ -127,6 +132,7 @@ function serializeModelRow(row: {
     sourceUrl: row.sourceUrl,
     region: row.region,
     status: row.status,
+    isPinned: row.isPinned,
     sortOrder: row.sortOrder,
   };
 }
@@ -149,6 +155,7 @@ function serializePlanRow(row: {
   dataAsOf: Date;
   sourceUrl: string;
   status: string;
+  isPinned: boolean;
   sortOrder: number;
 }) {
   return {
@@ -169,6 +176,7 @@ function serializePlanRow(row: {
     dataAsOf: row.dataAsOf.toISOString().slice(0, 10),
     sourceUrl: row.sourceUrl,
     status: row.status,
+    isPinned: row.isPinned,
     sortOrder: row.sortOrder,
   };
 }
