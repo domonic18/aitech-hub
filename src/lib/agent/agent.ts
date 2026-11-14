@@ -15,6 +15,7 @@ import type { ResolvedAiModel } from "../ai/resolver";
 import { CARD_TOOLS } from "./card-tools";
 import { interruptGuardMiddleware } from "./ask-user-guard";
 import { ensureAgentCheckpointer, getAgentCheckpointer } from "./checkpointer";
+import { isCreationAgentEnabled } from "../config/creation-flags";
 import type { AgentIdentity } from "./identity";
 import { logger } from "../logger";
 import { resolveAgentModel } from "./model-factory";
@@ -134,30 +135,32 @@ const ADMIN_PROMPT_ADDENDUM = `
 - 清单为空或无命中时按素材常识写作(具体、反模板腔、简体中文),并在汇报中说明「未命中适用技能」`;
 
 /** 工具面按身份分发(guest/user 只读六件;admin 追加编辑域、专题生产、写作单任务、封面 HITL、技能与预算工具)。
- *  read_post 按身份换档(M69):门禁文 guest 预览、user 仅登录门禁可读全文、admin 全文。 */
-export function agentToolsFor(kind: AgentIdentity["kind"]) {
+ *  read_post 按身份换档(M69):门禁文 guest 预览、user 仅登录门禁可读全文、admin 全文。
+ *  creationEnabled=false(创作侧总闸关,M72 瘦身 B0):admin 降级为只读六件,
+ *  与 guest/user 同面 —— 创作入口的 UI 按钮要到 B3 才下线,这里先断能力。 */
+export function agentToolsFor(kind: AgentIdentity["kind"], creationEnabled = true) {
   const base = AGENT_TOOLS.map((t) => (t.name === "read_post" ? readPostToolFor(kind) : t));
-  return kind === "admin"
-    ? [
-        ...base,
-        ...EDIT_TOOLS,
-        ...TOPIC_TOOLS,
-        ...MATERIAL_TOOLS,
-        saveTopicPinTool,
-        updateTopicPinTool,
-        ...POST_SOURCES_TOOLS,
-        ...WRITE_ARTICLE_TOOLS,
-        ...COVER_TOOLS,
-        ...SKILL_TOOLS,
-        ...WECHAT_BUDGET_TOOLS,
-        ...CARD_TOOLS,
-      ]
-    : base;
+  if (kind !== "admin" || !creationEnabled) return base;
+  return [
+    ...base,
+    ...EDIT_TOOLS,
+    ...TOPIC_TOOLS,
+    ...MATERIAL_TOOLS,
+    saveTopicPinTool,
+    updateTopicPinTool,
+    ...POST_SOURCES_TOOLS,
+    ...WRITE_ARTICLE_TOOLS,
+    ...COVER_TOOLS,
+    ...SKILL_TOOLS,
+    ...WECHAT_BUDGET_TOOLS,
+    ...CARD_TOOLS,
+  ];
 }
 
-/** 系统提示按身份分发(admin 追加合成工作流段) */
-export function agentSystemPrompt(kind: AgentIdentity["kind"]): string {
-  return kind === "admin" ? `${AGENT_SYSTEM_PROMPT}${ADMIN_PROMPT_ADDENDUM}` : AGENT_SYSTEM_PROMPT;
+/** 系统提示按身份分发(admin 追加合成工作流段;创作总闸关时 admin 同 guest) */
+export function agentSystemPrompt(kind: AgentIdentity["kind"], creationEnabled = true): string {
+  if (kind !== "admin" || !creationEnabled) return AGENT_SYSTEM_PROMPT;
+  return `${AGENT_SYSTEM_PROMPT}${ADMIN_PROMPT_ADDENDUM}`;
 }
 
 /** 图缓存上限(模型 key × 身份档组合空间小;FIFO 淘汰防模型轮换时无限增长) */
@@ -170,7 +173,8 @@ const globalForAgent = globalThis as unknown as {
 /**
  * 构造/取用 agent 图(checkpointer 挂 PostgresSaver,线程状态跨请求持久)。
  * 首次调用触发 checkpoint setup(幂等);缓存键 = 绑定(id:source)+ 身份档
- * (M27 批④:admin 图带合成工具,双档分别缓存)——任一变化即重建,未变化
+ * (M27 批④:admin 图带合成工具,双档分别缓存)+ 创作总闸态(M72 瘦身 B0:
+ * 翻闸即换工具面,必须进键否则沿用旧图)——任一变化即重建,未变化
  * 复用;admin 侧主备切换/启停最迟下一次 run 生效。
  */
 export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promise<{
@@ -179,15 +183,16 @@ export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promis
 }> {
   await ensureAgentCheckpointer();
   const { model, resolved } = await resolveAgentModel();
-  const key = `${resolved.id}:${resolved.source}:${identityKind}`;
+  const creationEnabled = await isCreationAgentEnabled();
+  const key = `${resolved.id}:${resolved.source}:${identityKind}:${creationEnabled ? "c1" : "c0"}`;
   const cache = (globalForAgent.agentGraphs ??= new Map());
   const cached = cache.get(key);
   if (cached) return { graph: cached.graph, resolved: cached.resolved };
   logger.info({ event: "agent.graph_built", key });
   const graph = createDeepAgent({
     model,
-    tools: agentToolsFor(identityKind),
-    systemPrompt: agentSystemPrompt(identityKind),
+    tools: agentToolsFor(identityKind, creationEnabled),
+    systemPrompt: agentSystemPrompt(identityKind, creationEnabled),
     checkpointer: getAgentCheckpointer(),
     // interrupt 类工具(ask_user/propose_edits)可靠性三守卫(SasanAgent 范式):
     // - tool_call_repair:模型调用前剔悬空 tool_calls/孤儿 ToolMessage(abort
