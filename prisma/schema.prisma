@@ -1696,6 +1696,7 @@ model ModelPricing {
   sourceUrl     String   @map("source_url") @db.VarChar(300) // 来源(官方牌价页)
   region        String   @default("cn") @db.VarChar(8) // cn | intl(页面分组)
   status        String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
+  isPinned      Boolean  @default(false) @map("is_pinned") // 人工定稿:采集不覆盖本行(true=定稿);false=可被采集刷新(展示态与能否刷新解耦)
   sortOrder     Int      @default(0) @map("sort_order")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1725,6 +1726,7 @@ model CodingPlan {
   dataAsOf     DateTime @map("data_as_of") @db.Timestamptz(6)
   sourceUrl    String   @map("source_url") @db.VarChar(300)
   status       String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
+  isPinned     Boolean  @default(false) @map("is_pinned") // 人工定稿:采集不覆盖本行(true=定稿);false=可被采集刷新(展示态与能否刷新解耦)
   sortOrder    Int      @default(0) @map("sort_order")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

@@ -14,6 +14,7 @@
  * 可回溯(页面改版当天,失败的原文恰恰是唯一证据)。
  */
 import { prisma } from "@/lib/db";
+import { logInfo } from "@/lib/logger";
 
 import { PRICING_CRAWL_INTERVAL_MIN } from "../collect/constants";
 import { SourceCapture, type SnapshotSink } from "../collect/snapshot-capture";
@@ -206,8 +207,15 @@ export async function runPricingSourceCrawl(
     const rows = await def.run(source.url, { now, sink: (draft) => capture.capture(draft) });
     const modelRows = rows.filter((r): r is ModelPrefillRow => "modelKey" in r);
     const planRows = rows.filter((r): r is PlanPrefillRow => "planName" in r);
-    await persistModelRows(modelRows);
-    await persistPlanRows(planRows);
+    const modelTally = await persistModelRows(modelRows);
+    const planTally = await persistPlanRows(planRows);
+    // 落库台账入日志:untouched=因人工定稿(is_pinned)未覆盖的行数——
+    // 此前 tally 被丢弃,「采集成功但价格没变」在日志里看不出来(M73)
+    logInfo("pricing.curated_persisted", {
+      source: source.url,
+      model: modelTally,
+      plan: planTally,
+    });
     await capture.finish(rows.length === 0 ? "empty" : "success", rows.length);
     return { ok: true, fetched: rows.length };
   } catch (e) {

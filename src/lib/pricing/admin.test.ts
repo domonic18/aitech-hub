@@ -23,6 +23,7 @@ vi.mock("@/lib/db", () => ({
 
 import {
   codingPlanCreateSchema,
+  codingPlanUpdateSchema,
   createModelPricing,
   isInvertedPricing,
   listCodingPlans,
@@ -179,5 +180,27 @@ describe("codingPlanCreateSchema", () => {
     expect(codingPlanCreateSchema.parse(base).monthlyFee).toBe(29);
     expect(codingPlanCreateSchema.safeParse({ ...base, quotaDesc: "" }).success).toBe(false);
     expect(codingPlanCreateSchema.parse({ ...base, monthlyFee: null }).monthlyFee).toBeNull();
+  });
+});
+
+describe("人工定稿闸 isPinned(M73)", () => {
+  it("新建缺省未定稿(可被采集刷新);更新体可显式置位/清位", () => {
+    const base = {
+      vendor: "阿里云百炼",
+      planName: "百炼 Token Plan · Lite",
+      monthlyFee: 39,
+      quotaDesc: "20,000 Credits/月",
+      peakRate: null,
+      offPeakRate: null,
+      bestFor: null,
+      note: null,
+      dataAsOf: "2026-11-14",
+      sourceUrl: "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+    };
+    expect(codingPlanCreateSchema.parse(base).isPinned).toBe(false);
+    // 更新体只带 isPinned 也合法(行操作区只发这一个字段)
+    expect(codingPlanUpdateSchema.safeParse({ isPinned: true }).success).toBe(true);
+    expect(codingPlanUpdateSchema.parse({ isPinned: true }).isPinned).toBe(true);
+    expect(codingPlanUpdateSchema.parse({ isPinned: false }).isPinned).toBe(false);
   });
 });
