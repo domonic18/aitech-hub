@@ -13,9 +13,10 @@
 | **D1** 前台 FAB / Drawer | **留** | 工具面塌缩为**全员只读 6 只**；`agentToolsFor` 分档删除、`ADMIN_PROMPT_ADDENDUM` 删除、B4 的删除范围据此确定（19 只写工具全删） |
 | **D3** 站内 AI 封面 | **留**（改为 HTTP 触发） | **必须新增 `POST /api/posts/cover-candidates`** —— 否则编辑器的「生成封面候选」按钮（100% agent 驱动、全站无 HTTP 触发路由）会失去后端。该路由归 **B1（P0）**；B3 再把 `PostEditor.tsx` 的按钮从 agent 切到该路由。`QUEUE_COVER_GEN` / `cover-generate.ts` / `cover-candidate-store.ts` **保留**（B8 不删） |
 | **D5** 创作中心 | **降级保留** | studio 保留为「素材台账 + 写作配置 + 导出给线下」；新增 `GET /api/topics/[id]/export`（B3）；`Topic` 表与 `src/lib/topics/**` 不删 |
+| **D4** 卡片渲染（render_card） | **线下渲染**，sidecar 留作调试台、**不对 MCP 暴露**；站内零新增（不新增 `/api/cards/render`，不新增 MCP `render_card`） | 渲染是纯计算，不调模型不花钱；线下自担四件事（深空基线壳照 skill 抄 / accent 取组算法 / 站内引图 inline / 字体 emoji 环境），换来站内零新增 + **card-renderer sidecar 有望在 B8 整个退役**（它现在只有两个消费方：agent 工具 B4 删、11 种卡型调试台预览） |
 | **D7** `agent_skill` 表 | **删除**，站内不留副本 | 真相源 = `skills/writing/*.md`；B7 删表 + 删后台页 + 删 API。**前置**：逐行 diff DB `guideMd` ↔ `writing-guides.ts`（DB 独有内容并入 md）+ `pg_dump` 备份 |
 
-**其余决策按推荐默认执行**（如需改请提出）：D2 deepagents 先留（B6 依据量测再定）、D4 卡片走 `POST /api/cards/render` + MCP `render_card`（B1 P0）、D6 不向 PAT 开放 Topic 只读（导出走会话 HTTP）、D8 skill 真相源 = 仓库 md（本地直读 + MCP 只读兜底）、D9 开批量入库 `/api/posts/bundles`（只落草稿）、D10 不开批量同步公众号、D11 admin 档配额随 B3 降到 user 档、D12 `identity.ts` 不迁出。
+**其余决策按推荐默认执行**（如需改请提出）：D2 deepagents 先留（B6 依据量测再定）、D6 不向 PAT 开放 Topic 只读（导出走会话 HTTP）、D8 skill 真相源 = 仓库 md（本地直读 + MCP 只读兜底）、D9 开批量入库 `/api/posts/bundles`（只落草稿）、D10 不开批量同步公众号、D11 admin 档配额随 B3 降到 user 档、D12 `identity.ts` 不迁出。
 
 **由此确定的两条实施原则**：
 
@@ -32,7 +33,7 @@
 | 1 | **前台 FAB / Drawer 保留**，但工具面从「按身份分档」塌缩为「全员只读」 | `AGENT_SYSTEM_PROMPT`（`agent.ts:34`）明写「站内搜索助手…除 submit_feedback 外不能写入」——它属**读侧能力**，与创作无关。创作入口只是**复用同一张卡**（`StudioActions.tsx:75/:89` 调 `openAgentAssistant`），删创作 ≠ 删卡 |
 | 2 | 真正要拆的是 **admin 的 19 只写工具 + 创作中心 UI**，不是 deepagents 运行时 | 问题 1 的「重迭代」来自写侧工具链（write_article → render_card → 生图 → 落库，7~8 步 × 多轮自审），不是只读检索问答 |
 | 3 | **写作 skill 是「搬」不是「删」**：真相源从 `writing-guides.ts`（TS 常量）迁到仓库内 `skills/writing/*.md` | 这正是问题 2 的根因：调 skill 要发版。改成 markdown 后，改指南 = 改 git 文件 = 本地立即生效 |
-| 4 | MCP 面要补的**第一号缺口是 `render_card`**（HTML→PNG 卡片） | 站内强能力（`src/lib/card/render.ts` → card-renderer sidecar）**只挂在 agent 工具上，无 HTTP 出口**；写作指南「数据密集内容必出卡」的要求，线下目前无法满足 |
+| 4 | ~~MCP 面要补的**第一号缺口是 `render_card`**~~ → **2026-11-14 改判：卡片渲染也走线下，站内零新增** | 站内卡片渲染（`src/lib/card/render.ts` → card-renderer sidecar）原只挂 agent 工具、无 HTTP 出口；但渲染是**纯计算**（HTML→PNG，不涉站内数据/状态/计费），线下 Claude Code 本地 chromium 就能出。sidecar 只留调试台自用，不对 MCP 暴露（见 §0.1 D4） |
 | 5 | 拆除按 **9 批 / 8~9 个 PR** 推进，核心是**先加后拆** | B0 先埋 kv 总开关（改配置即回滚），B1 补 MCP → B2 验本地闭环 → B3 关站内生成入口 → B4~B8 分层删 |
 
 **总量口径（粗估）**：删 ≈ 3400 行非测试 agent 代码 + 39 个测试文件；保留 ≈ 2200 行只读运行时；新增 ≈ 900 行 MCP 工具 + 导出/卡片 HTTP 路由。**净减 ≈ 2500 行。**
@@ -49,8 +50,8 @@
            │ MCP（/api/mcp，21 只 + 新增 ~10 只）  │ HTTP（PAT 双通道）
            │ upsert_article / create_pin          │ /api/posts/bundle
            │ upload_media / sync_*_to_wechat      │ /api/media
-           │ render_card(新) / list_skills(新)     │ /api/cards/render(新)
-           │ update_pin(新) / list_materials(新)   │ /api/topics/[id]/export(新)
+           │ list_skills(新) / update_pin(新)        │（卡片渲染线下自做，站内不设出口）
+           │ list_materials(新) / list_drafts(新)    │ /api/topics/[id]/export(新)
            ▼                                      ▼
 ┌──────────────── 站内（aitech-hub，瘦身目标）────────────────┐
 │ 【保留·管理面】文章管理 /admin/posts · 贴图管理 /admin/pins + 组装台        │
@@ -220,8 +221,8 @@
 
 | 指南 | 今天写的工具 | 线下对应 | 改法 |
 |---|---|---|---|
-| `blogger-video` | `render_card` / `generate_illustration` / `save_topic_draft` | 本地渲染卡片 → 上传 → `upsert_article` | 工具名全替换为「本地动作 + MCP 工具名」 |
-| `card-rendering` | `render_card`（自由 HTML） | `POST /api/cards/render` 或本地出图 | 保留版式语汇（最有价值的部分），改工具指向 |
+| `blogger-video` | `render_card` / `generate_illustration` / `save_topic_draft` | 本地渲染卡片/配图 → `/api/media/` 上传 → `upsert_article` | 工具名全替换为「本地动作 + MCP 工具名」；卡片渲染按 D4 改本地 |
+| `card-rendering` | `render_card`（自由 HTML） | **本地 chromium 渲染**（D4 改判，站内不设出口） | 保留版式语汇（最有价值的部分），改工具指向；补字体与站内引图 inline 两个坑 |
 | `open-source-intro` / `paper-interpret` / `tutorial-refine` / `weekly-news` / `model-pricing` | 纯文本纪律 | `upsert_article` | 基本可直迁，去掉工具名即可 |
 | `CRAFT_ILLUSTRATION_PLAN`（公共条款） | 被 6 个指南插值 | 同 | 改为 `skills/writing/_common.md` + 引用，或直接内联到各文件 |
 
@@ -237,8 +238,7 @@
 
 | 优先级 | 缺口 | 现状 | 建议 |
 |---|---|---|---|
-| **P0** | **卡片渲染 `render_card`** | 站内强能力只挂在 agent 工具（`card-tools.ts` → `src/lib/card/render.ts` → card-renderer sidecar），**无 HTTP 出口**；MCP 无对应工具 | 新增 `POST /api/cards/render`（multipart: html + 宽高 → 返回 `/wp-content/uploads/...png`）+ MCP `render_card`。**否则指南里「数据密集内容必出卡」的要求线下无法执行** |
-| **P0** | **写作 skill 供给 `list_skills` / `get_skill`** | agent 独占（`skill-tools.ts`） | 从 `skills/writing/*.md` 读；线下以本地文件为主，MCP 为兜底 |
+| **P0** | **写作 skill 供给 `list_skills` / `get_skill`**（卡片渲染改线下后，本项升为第一号） | agent 独占（`skill-tools.ts`） | 从 `skills/writing/*.md` 读；线下以本地文件为主，MCP 为兜底 |
 | **P0** | **贴图改稿 `update_pin`** | agent 有 `update_topic_pin`（`pin-tool.ts:113`），MCP **没有** | MCP 补 `update_pin`（标题/轻文字/阅读原文/裁剪档），口径复用 `pins/repo.ts#updatePin` 的 synced/published 拒直编 |
 | **P1** | **素材接地 `list_materials` / `get_material` / `search_materials`** | MCP 只有 `get_telegram_item`（单条元数据）与 `search_site`；agent 独占 `search_materials` | MCP 补只读三只（telegram 已解读 + 历史文章 + 视频笔记全文）。**这是「素材纪律」能否迁到线下的关键** |
 | **P1** | **批量整包入库** | `/api/posts/bundle` 只收**一篇** .md（`bundle-import.ts`） | 扩 `POST /api/posts/bundles`（多篇 md + 图池 → 逐篇落草稿 → 返回每篇 postId + 入库状态）。**批量同步公众号仍不开**（守 arch §3.6 红线） |
@@ -259,6 +259,7 @@
 - ❌ 批量同步公众号（arch §3.6 M72 裁定 3：一次 30 篇无人审内容进草稿箱，人工审阅成本放大 30 倍）
 - ❌ `create_pin` 带 `topicId`（红线 2：PAT 不得操纵创作域）
 - ❌ 在线文生图工具（红线 1：图字节不过模型上下文；且与「线下本地生成」目标一致）
+- ❌ **卡片渲染工具**（D4 改判：渲染是纯计算，线下本地 chromium 出卡后经 `/api/media/` 上传；站内不新增出口，sidecar 只留调试台）
 
 ---
 
@@ -269,7 +270,7 @@
 | 批次 | 内容 | 风险 | 回滚方式 | 依赖前置 | 验收 |
 |---|---|---|---|---|---|
 | **B0** | **埋总开关**：`site_config` 新增 kv `creation.agent_enabled`（默认 `true`）；`agent.ts` 在开关关时只装配只读工具面 | **低** | 改 kv 即回滚（无需发版） | 无 | 开关关：admin 在 FAB 能问答、任何写工具不可用；开关开：行为零变化 |
-| **B1** | **MCP 补缺**：P0 三项（`render_card` + `/api/cards/render`、`list_skills`/`get_skill`、`update_pin`）+ P1 三项（素材三只、`/api/posts/bundles`、`list_drafts`）+ 统一错误形状 | **低**（纯新增） | revert PR | 无 | 21→约 30 只工具；每只工具单测 + `tools/list` 快照更新 |
+| **B1** | **MCP 补缺**：P0 两项（`list_skills`/`get_skill`、`update_pin`）+ P1 三项（素材三只、`/api/posts/bundles`、`list_drafts`）+ 统一错误形状 | **低**（纯新增） | revert PR | 无 | 21→约 30 只工具；每只工具单测 + `tools/list` 快照更新 |
 | **B2** | **写作 skill 迁移**：`skills/writing/*.md`（7 个，**内容重写**）+ `INDEX.md` + `.claude/skills/writing-assistant/SKILL.md`；key 覆盖守卫单测 | **低**（纯新增，站内不动） | revert PR（站内容认未变） | 无 | 本地 Claude Code 读 skill → 产出 1 篇合规稿 → bundle 入库 → 后台草稿池可见 |
 | **B3** | **关站内生成入口**：① 线上 kv `creation.agent_enabled=false`；② `StudioActions.tsx` 生成按钮 → 「导出素材包」；③ `EditorAssistant.tsx` 下线；④ `PostEditor.tsx` 封面按钮改走 HTTP（或临时下线）；⑤ 新增 `GET /api/topics/[id]/export` | **中** | kv 置回 `true` 恢复原按钮（页面需保留旧分支代码） | B1 + B2 | 站内无任何 AI 生成入口；线下闭环端到端跑通 1 次文章 + 1 组贴图；`ai_usage_log` role=search_agent 的 admin 档归零 |
 | **B4** | **删写工具集**：2.1 表中 17 个文件 + 19 只工具 + `ADMIN_PROMPT_ADDENDUM` + 相关测试（~20 个 test 文件）+ `agent.ts` 工具分档简化 | **中**（纯删除，但触及 prompt parity 单测） | revert PR | B3 | `agentToolsFor` 只剩只读 6 只；门禁全绿；`grep -rn "deepagents" src/` 只剩 `agent.ts:11` |
@@ -371,7 +372,7 @@ B5 之后 agent 只读，护栏三闸（arch §3.4）继续生效；`agent.admin
 | R3 | **发帖节奏变化**：线下创作是「人触发」，站内是「点按钮」，节奏可能显著变慢 | **高** | 中 | 把线下流程做成**半自动**：Claude Code + MCP + 定时触发（如每周固定跑一次选题→成稿→落草稿），人工只做审阅；`list_signals` 增量信号已支持轮询 |
 | R4 | **既有草稿/topic 数据安置** | 中 | 中 | 草稿是 `content_post`，**完全不受影响**（MCP/后台照常读写）；`Topic` 表**保留降级**不删（见 D5），确需归档时先导 CSV |
 | R5 | **`agent_skill` 表数据归属**：DB 里的 `guideMd` 可能被后台手改，与 `writing-guides.ts` 漂移，删表即丢内容 | **高**（漂移几乎必然发生） | 高 | **删表前逐行 diff DB `guideMd` ↔ `writing-guides.ts`**，DB 独有内容并入 `skills/writing/*.md`；`pg_dump` 备份到 `workspace/backups/agent_skill_<date>.sql` |
-| R6 | **卡片能力断链**：MCP 无 `render_card`，线下无法出「信息卡」，文章视觉质量断崖 | **高**（必现） | 高 | B1 的 P0 头号项；或退而求其次：线下本地出图 → `/api/media` 上传（B4 后 `/api/cards/render` 未上线时的兜底） |
+| R6 | **卡片能力断链**：线下自行渲染需自担四件事（深空壳 / accent 取组 / 引图 inline / 字体），任一处漏了卡片观感就与站内不符 | 中 | 中 | D4 改判后**站内零新增**（不再有「路由没上线」的断链）；导出的 `card-rendering.md` 把四个坑写进步骤；`card-renderer` 保留作调试台对照 |
 | R7 | **封面能力断链**（同 6.3） | 中 | 中 | D3 决策；兜底：bundle 的 `cover:` frontmatter |
 | R8 | **指南重写引入语义漂移**：7 个指南从「agent 工具语境」改到「本地工具语境」，改错一条纪律 → 文章质量下滑 | 中 | 中 | B2 逐条重写 + 与旧文本做**条款级 diff 复核**；B3 后首月 A/B：同题材对比「站内产出 vs 线下产出」 |
 | R9 | **双写/双入库混乱**：agent 与 MCP 同时可写 `content_post`，产生两条来源的稿 | 低 | 中 | B3 关站内生成后只剩一条路；B3 前用 `origin` 字段（`ai_assisted` / `ai_generated`）区分追溯 |
@@ -438,7 +439,7 @@ B5 之后 agent 只读，护栏三闸（arch §3.4）继续生效；`agent.admin
 | 8 | **外部创作入口（MCP + PAT）** | `src/lib/mcp/**` + `/api/mcp` + `/api/pats` |
 | 9 | **读侧检索与访客问答** | `src/lib/search/**` + `/api/search/answer` + `/api/search/agent/**`（只读）+ Drawer |
 
-**明确「不留在站内」的（对照）**：正文生成（write_article）、信息卡渲染（render_card，**但渲染能力留在站内供线下调用**）、文生图（generate_illustration，**但生图管线与队列留在站内**）、站内封面候选 HITL（若 D3=b）、技能后台管理（agent_skill 表 + 页面）、专题文章自动合成流程。
+**明确「不留在站内」的（对照）**：正文生成（write_article）、信息卡渲染（render_card → **线下本地渲染**，站内只留 card-renderer 作调试台自用）、文生图（generate_illustration，**但生图管线与队列留在站内**）、站内封面候选 HITL（若 D3=b）、技能后台管理（agent_skill 表 + 页面）、专题文章自动合成流程。
 
 > 一句话区分：**「生成内容的动作」移到线下；「承载内容的容器、管道与闸门」全部留在站内。**
 
@@ -451,7 +452,7 @@ B5 之后 agent 只读，护栏三闸（arch §3.4）继续生效；`agent.admin
 | **D1** | **前台 FAB/Drawer 留否？** | **【已定】留**（降级为全员只读问答） | 它是读侧访客能力（`AGENT_SYSTEM_PROMPT` 明确定位），与创作无关；公众号私信问答不依赖 agent | 删 → 访客失去站内问答入口、检索转化路径断裂；需另做搜索 UI，工作量 +3~5 人日且体验降级 |
 | **D2** | **deepagents 运行时留否？** | **先留**（B5 后量测再定 B6，不预设） | 只读问答用 deepagents 偏重但稳定；B6 风险最高且收益依赖真实负载数据 | 现在就删 → 可能误伤访客问答且无法回退；拖太久 → 依赖与 PG checkpoint 长期滞留 |
 | **D3** | **站内 AI 封面生成留否？** | **【已定】留，但改为 HTTP 触发**（`POST /api/posts/cover-candidates`），不经 agent | 编辑器的「生成封面候选」按钮 100% agent 驱动（全站无 HTTP 触发路由）；封面是站点自有能力，不是「重迭代创作」 | 选「删」 → 编辑器封面按钮消失、封面纯靠线下生成上传，站内生图能力与 `QUEUE_COVER_GEN` 一并退役（B8 多 2~3 人日）；选「照旧留 agent」 → 与瘦身目标冲突 |
-| **D4** | **卡片渲染（render_card）如何供给线下？** | **新增 `POST /api/cards/render` + MCP `render_card`**（B1 P0 首项） | 站内强能力目前只挂在 agent 工具上；写作指南「数据密集内容必出卡」是质量底线 | 不补 → 线下文章视觉质量断崖（信息卡是本站标志性呈现），`card-rendering` skill 变成废纸 |
+| **D4** | **卡片渲染（render_card）如何供给线下？** | **【已定】线下本地渲染**，sidecar 留调试台不暴露；站内零新增 | 渲染是纯计算（HTML→PNG，不调模型、不花钱、不涉站内状态）；「数据密集内容必出卡」的质量底线靠 skill 里的深空规范达成，不必靠站内出口。线下须自担：accent 取组算法、站内引图 inline、字体/emoji 环境 | 若仍留站内出口 → 站内多一个面，且 card-renderer 永远退不掉（放弃瘦身最大的一块） |
 | **D5** | **Topic / 创作中心留否？** | **【已定】降级保留**为「素材台账 + 写作配置 + 导出给线下」，**不删表**；新增 `GET /api/topics/[id]/export` | Topic 承载「素材接地」这一独特资产（已解读视频笔记、批注、参照图库），线下无法替代；且 arch 红线是 PAT 不得**操纵**创作域，读/导出不违规 | 删 → 素材接地能力彻底丢失，线下只能从零找素材（内容断档）；且 `/api/topics/**` 5 个路由 + `src/lib/topics/**` + studio 组件全废，收益不抵风险 |
 | **D6** | **MCP 是否开放 Topic 只读（`list_topics` / `get_topic_brief`）？** | **不开放**（导出走 admin session 的 HTTP） | 严守 arch §3.6「PAT 不得操纵创作域」这条已拍板的红线，避免为便利破例 | 开放 → 破红线先例，线上 PAT 一旦泄漏即暴露创作域读权限 |
 | **D7** | **`agent_skill` 表删否 / 站内留副本？** | **【已定】删表 + 删后台页 + 不留副本**；真相源 = `skills/writing/*.md` | 表内容与 `writing-guides.ts` 是双副本，必然漂移（后台可手改不回写）；这就是「改 skill 要发版」的机制来源 | 留表 → 漂移继续，问题 2 未解决；留副本 → 两处真相源，永远对不齐 |

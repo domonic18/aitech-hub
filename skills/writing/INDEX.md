@@ -36,7 +36,7 @@
 
    | 站内原工具 | 线下口径 |
    | --- | --- |
-   | `render_card` | 站内 `POST /api/cards/render`（**尚未上线**）；暂以本地出图 + `POST /api/media/` 上传替代 |
+   | `render_card` | **本地渲染**（D4 改判：线上不提供卡片渲染出口）——本地 chromium 截图 → `POST /api/media/` 上传；四个坑（字体 / 引图 inline / 画布 / accent 取组）写在 `card-rendering.md` 第 1 条 |
    | `generate_illustration` | 本地生成配图 → `POST /api/media/` 上传（线上不生图，图字节不过模型上下文） |
    | `save_topic_draft` | MCP `upsert_article`（恒落草稿） |
    | `measure_wechat_budget` | 按指南给定的码点口径自行自查（纯文本 ≤2500 码点、全文 ≤4000 码点） |

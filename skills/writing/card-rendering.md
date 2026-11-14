@@ -8,7 +8,7 @@ exported_from: agent_skill(2026-11-14 导出)
 
 > **面向线下 Claude Code 写作助手**：站内创作面已按 M72 瘦身方案下线，本指南不再注入站内 agent 的 system prompt。
 > 工具指向已改写为线下口径——配图在**本地生成**后经 `POST /api/media/` 上传拿站内路径；落稿用 MCP `upsert_article`（恒落草稿）；
-> 信息卡渲染走站内 `POST /api/cards/render`（**尚未上线**，暂以本地出图 + `/api/media/` 上传替代）；封面走站内 `POST /api/posts/cover-candidates`。
+> 信息卡渲染**在本地做**（线上不提供卡片渲染出口）：本地 chromium 截图 → 经 `/api/media/` 上传；封面走站内 `POST /api/posts/cover-candidates`。
 > **纪律条款与站内原版逐字一致**，只有工具指向做了改写。
 # 图文卡片使用指南
 
@@ -33,7 +33,11 @@ exported_from: agent_skill(2026-11-14 导出)
 
 ## 调用纪律
 
-1. 工具:站内 POST /api/cards/render(PAT 或会话;该路由尚未上线时,改为本地出图后经 POST /api/media/ 上传)。返回 {ok,url,width,height,accent,markdown_line},url 已入库。
+1. **本地渲染**(线上不提供卡片渲染出口):按下面「深空可视化系统」规范写完整 HTML → 本地 chromium 截图成 PNG → 经 POST /api/media/ 上传拿站内路径 → 正文按返回的 markdown 行嵌入。四个必做的坑:
+   - **字体**:容器/系统须有中文字体(Noto CJK 或等价),否则中文全是方块;emoji 另需 Noto Color Emoji(缺了会渲成黑白或缺字)
+   - **引图 inline**:正文里的站内图(/wp-content/uploads/…)在本地不可读,须先下载再转 data URI 内联进 HTML,否则图片位置空白
+   - **画布**:宽度默认 900,多栏宽卡 1000~1200(上限 1600);高度默认 4000,内容多时 4000~6000,超 8000 拆卡
+   - **accent 取组**:强调色三组{main,soft,text}按**文章锚**确定性取组(同篇所有卡恒同组、跨篇轮换);站内取组逻辑见 src/lib/card/presets.ts(accentSeed 段),线下须复刻或自行固定一组
 2. **卡片只有自由 HTML 一种用法**:根据文章内容自己设计完整 HTML
    (≤30000 字符)一次交付;内置模板(preset/data)已在工具面移除,不要尝试
    这两个参数,传了会被 schema 拒绝。宽度默认 900,多栏宽卡 1000~1200(上限
@@ -43,7 +47,7 @@ exported_from: agent_skill(2026-11-14 导出)
    出卡后按自检清单把关:
    - 深空系统(全站卡片统一视觉语言):body 底 #0b1220(可叠 135deg 渐变至
      #161233);文字三级 #f1f5f9(主)/#cbd5e1(次)/#94a3b8(辅);强调色直接取
-     工具返回的 accent({main,soft,text} 三色,同篇所有卡恒同组)——main 做形状/
+     accent 三组({main,soft,text},同篇所有卡恒同组,取组规则见上面第 1 条)——main 做形状/
      线条,soft 做色块底,text 做强调字;数字用 font-variant-numeric:tabular-nums;
      装饰至多一种(顶部 accent 短线或一枚弱圆环);禁渐变文字/发光/大面积低对比灰字
    - 样式组织:单个 <style> 块 + class 复用,禁止逐元素重复 inline style;禁
