@@ -27,8 +27,9 @@ import {
   getPinDetail,
   listPins,
   setPinStatus,
+  updatePin,
 } from "@/lib/pins/repo";
-import { pinCreateSchema, pinStatusSchema } from "@/lib/pins/schemas";
+import { pinCreateSchema, pinStatusSchema, pinUpdateSchema } from "@/lib/pins/schemas";
 
 import { fail, json } from "./json";
 import { defineTool, type McpToolDef } from "./registry";
@@ -111,6 +112,35 @@ export const pinTools: McpToolDef[] = [
         const added = await addPinImages(id, { mediaPath: args.mediaPath });
         logger.info({ event: "mcp.add_pin_images", actor, pinId: args.pinId, added });
         return json({ added });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  ),
+
+  defineTool(
+    "update_pin",
+    "改贴图(标题/轻文字/阅读原文/裁剪档)。**已同步或已发布的贴图禁止直编**——" +
+      '须先 set_pin_status(pinId, "pending") 撤回再改。改标题仍受 32 码点上限约束。',
+    {
+      pinId: PIN_ID,
+      title: pinUpdateSchema.shape.title,
+      content: pinUpdateSchema.shape.content,
+      readMoreUrl: pinUpdateSchema.shape.readMoreUrl,
+      cropSpec: pinUpdateSchema.shape.cropSpec,
+    },
+    async (args, actor) => {
+      const id = parseBigIntId(args.pinId);
+      if (id === null) return fail(new Error("贴图 id 非法"), { code: "invalid_input" });
+      try {
+        const pin = await updatePin(id, {
+          ...(args.title !== undefined ? { title: args.title } : {}),
+          ...(args.content !== undefined ? { content: args.content } : {}),
+          ...(args.readMoreUrl !== undefined ? { readMoreUrl: args.readMoreUrl } : {}),
+          ...(args.cropSpec !== undefined ? { cropSpec: args.cropSpec } : {}),
+        });
+        logger.info({ event: "mcp.update_pin", actor, pinId: args.pinId });
+        return json({ pinId: pin.id.toString(), status: pin.status, title: pin.title });
       } catch (e) {
         return fail(e);
       }

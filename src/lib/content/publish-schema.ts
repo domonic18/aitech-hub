@@ -39,6 +39,13 @@ export const publishUpsertShape = {
    * 不受影响)。显式声明 human/ai_generated 时按声明取值。
    */
   contentOrigin: z.enum(CONTENT_ORIGINS).optional(),
+  /**
+   * 信息卡清单(M72 B1):本次落稿里的**卡片图**站内路径(正文配图不入清单)。
+   * 非空时按内容域 card-embeds 同款闸校验「清单里每张卡都已嵌入正文」
+   * ——渲了卡却漏嵌正文会让卡片在站内退化成普通配图。
+   * 与站内 agent 通道(save_topic_draft 的 card_urls)同源同闸。
+   */
+  cardUrls: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
 };
 
 export const publishUpsertSchema = z.object(publishUpsertShape);

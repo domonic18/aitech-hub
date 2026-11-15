@@ -13,10 +13,16 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { fail, json } from "./json";
+
+/** 取第一个文本块的内容(CallToolResult.content 是联合类型) */
+function textOf(result: { content: Array<{ type: string }> }): string {
+  const first = result.content[0] as { type: string; text?: string } | undefined;
+  return first?.text ?? "";
+}
 import type { McpToolDef } from "./registry";
 import { allTools, createMcpServer } from "./tools";
 
-/** 期望的工具面(21 只):加工具/删工具都要改这里,改动即需复核 */
+/** 期望的工具面(25 只):加工具/删工具都要改这里,改动即需复核 */
 const EXPECTED_TOOLS = [
   // 只读面
   "list_hot_topics",
@@ -26,11 +32,14 @@ const EXPECTED_TOOLS = [
   "list_signals",
   "list_categories",
   "get_wechat_config",
+  "list_skills",
+  "get_skill",
   // 文章面
   "upsert_article",
   "upload_media",
   "get_article",
   "list_articles",
+  "list_drafts",
   "sync_article_to_wechat",
   "copy_article_wechat_format",
   "get_distribute_job",
@@ -38,6 +47,7 @@ const EXPECTED_TOOLS = [
   // 贴图面
   "create_pin",
   "add_pin_images",
+  "update_pin",
   "set_pin_status",
   "sync_pin_to_wechat",
   "get_pin",
@@ -65,7 +75,7 @@ function schemaOf(name: string) {
 }
 
 describe("MCP 工具表完整性", () => {
-  it("工具名单与期望一致(21 只)", () => {
+  it("工具名单与期望一致(25 只)", () => {
     expect(
       allTools()
         .map((t) => t.name)
@@ -150,7 +160,24 @@ describe("MCP 出参封装", () => {
   it("fail 把异常转成人话错误(isError)", () => {
     const r = fail(new Error("草稿尚未验收:请先提交验收再同步公众号"));
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain("草稿尚未验收");
+    const body = JSON.parse(textOf(r)) as {
+      ok: boolean;
+      code: string;
+      message: string;
+      retryable: boolean;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.message).toContain("草稿尚未验收");
+    expect(body.code).toBe("INTERNAL");
+    expect(body.retryable).toBe(true);
+  });
+
+  it("fail 带业务码时给可分流信息(线下 agent 据此改输入/稍后重试)", () => {
+    const r = fail(Object.assign(new Error("该贴图已在同步队列中"), { code: "pending" }));
+    const body = JSON.parse(textOf(r)) as { code: string; retryable: boolean; hint?: string };
+    expect(body.code).toBe("pending");
+    expect(body.retryable).toBe(false);
+    expect(body.hint).toContain("正在同步中");
   });
 });
 

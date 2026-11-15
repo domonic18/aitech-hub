@@ -11,6 +11,7 @@
 import { z } from "zod";
 
 import { listCategories } from "@/lib/content/taxonomy";
+import { listWritingSkills, readWritingSkill } from "@/lib/skills/writing-skills";
 import { prisma } from "@/lib/db";
 import { WECHAT_CONFIG_ID } from "@/lib/distribute/wechat-config-admin";
 import { parseBigIntId } from "@/lib/http/parse-id";
@@ -301,6 +302,42 @@ export const feedTools: McpToolDef[] = [
         count: rows.length,
         categories: rows.map((c) => ({ slug: c.slug, name: c.name })),
       });
+    },
+  ),
+
+  defineTool(
+    "list_skills",
+    "列站内写作指南(skill)清单:key / 名称 / 适用场景 / 版本 / 正文字数。" +
+      "出稿前先看清单、按场景取用(工具名与场景见各条 scenario)。" +
+      "注意:这里是**镜像内副本**,可能滞后于写作助手本地的工作副本——以本地为准。",
+    {},
+    async (_args, actor) => {
+      const skills = listWritingSkills();
+      logger.info({ event: "mcp.list_skills", actor, count: skills.length });
+      return json({ count: skills.length, skills });
+    },
+  ),
+
+  defineTool(
+    "get_skill",
+    "取一份写作指南全文(按 key)。动笔前**必读**对应那份:结构、口吻、字数、配图、码点预算等" +
+      "要求以指南为准,指南优先于通用写法。同样是镜像内副本,可能滞后于本地工作副本。",
+    {
+      key: z
+        .string()
+        .regex(/^[a-z0-9-]+$/, "key 仅限小写字母/数字/连字符")
+        .describe("指南 key(如 blogger-video / card-rendering / weekly-news)"),
+    },
+    async (args, actor) => {
+      const skill = readWritingSkill(args.key);
+      logger.info({ event: "mcp.get_skill", actor, key: args.key, found: skill !== null });
+      if (skill === null) {
+        return fail(new Error(`没有这份指南:${args.key}`), {
+          code: "not_found",
+          hint: "先调 list_skills 看可用清单",
+        });
+      }
+      return json(skill);
     },
   ),
 

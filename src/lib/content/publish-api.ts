@@ -19,6 +19,7 @@ import {
 import { uploadMedia } from "@/lib/media/service";
 import { logger } from "@/lib/logger";
 
+import { checkCardEmbeds } from "./card-embeds";
 import { fmString, fmStringArray, parseFrontmatter } from "./frontmatter";
 import { postPath } from "./post-path";
 import {
@@ -54,6 +55,8 @@ export interface UpsertArticleInput {
    * 标 human 会把 AI 稿记成人工创作);显式声明时按声明取值。
    */
   contentOrigin?: ContentOrigin;
+  /** 信息卡清单(非空时校验「每张卡都已嵌入正文」;见 publish-schema 同名字段) */
+  cardUrls?: string[];
   actor: AdminActor;
 }
 
@@ -123,6 +126,14 @@ function actorAuthorId(actor: AdminActor): bigint | null {
 
 export async function upsertArticle(input: UpsertArticleInput): Promise<UpsertArticleResult> {
   const { fm, body } = parseFrontmatter(input.markdown);
+
+  // 卡图清单自洽(声明了才校):渲了卡却漏嵌正文 → 站内退化成普通配图,落稿即拒
+  // (与站内 agent 通道 topic-draft-tool 的 checkCardEmbeds 同一道闸)
+  const cardUrls = input.cardUrls ?? [];
+  if (cardUrls.length > 0) {
+    const cards = checkCardEmbeds(body, cardUrls);
+    if (!cards.ok) throw new PostAdminError("invalid_body", cards.error);
+  }
 
   const title = input.title ?? fmString(fm, "title");
   if (!title) throw new PostAdminError("invalid_body", "title 缺失(显式入参或 frontmatter)");

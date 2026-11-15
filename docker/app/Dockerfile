@@ -116,6 +116,9 @@ COPY --from=builder --chown=next:nodejs /app/public ./public
 COPY --from=builder --chown=next:nodejs /app/dist ./dist
 COPY --from=builder --chown=next:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=next:nodejs /app/scripts ./scripts
+# 写作指南(M72 B1):MCP list_skills/get_skill 运行时读取(.dockerignore 已为其
+# 开口子 —— 全局 **/*.md 会把它们排除)
+COPY --from=builder --chown=next:nodejs /app/skills ./skills
 COPY --from=builder --chown=next:nodejs /app/src ./src
 # worker 依赖与 @prisma/client 生成物必须取 builder(node_modules 含
 # prisma generate 产物;取 deps 层会覆盖 standalone 内 traced 生成物,
