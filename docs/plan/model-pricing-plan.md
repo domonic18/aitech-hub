@@ -587,6 +587,22 @@ worker 启动后按各源周期跑(模型面**日级**、套餐面周级)→ 新
 `/pricing/` 列表(六维筛选 + 免费角标 + 源页面外链)→ 切「比价」视图
 (同模型跨提供商并排 + 最低价标记 + 对数轴散点)→ `/admin/pricing` 源健康度卡。
 
+**查生产库现状**(在生产机):
+```bash
+docker compose --env-file .env -f docker-compose.prod.yml exec -T postgres \
+  psql -U aitech -d aitech_hub -c "select status, count(*) from model_pricing group by status;"
+```
+
+> **注意**:前台只显示 `enabled` 行。采集落的是 `pending`,**不批量终审前台就看不到模型区**
+> (页面会只剩 Coding Plan 套餐区——这在 2026-11-16 首次发布后就是那个状态)。
+>
+> 另:「已发布」页 SSR 必须输出**未筛选的全量**(2026-11-16 修过一次——
+> `useSearchParams` 把整块交互组件包进 `<Suspense fallback={null}>`,
+> 静态预渲染时 fallback 吞掉全部内容,爬虫看到的是空页;改成客户端
+> `window.location` + `history.replaceState` 驱动筛选态)。改动这块时
+> **必须用生产构建(`next build` + `next start`)验证 SSR HTML**——
+> dev 是动态渲染,看不出这个问题。
+
 ## 11. 引用
 
 - 现状实现:`src/lib/pricing/`(注册表 `source-registry.ts` / 模型面 `crawlers.ts` / 套餐面 `plan-sources.ts` /
