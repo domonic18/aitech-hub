@@ -31,7 +31,7 @@
 | B1 MCP 补缺 | ✅ 已合 develop（PR #244） | 工具面 21 → **25 只**（只读 9 + 文章面 9 + 贴图面 7）；统一错误形状 `{ok:false,code,message,retryable,hint}`；`POST /api/posts/bundles` 批量入库；`cardUrls` 卡图清单闸 |
 | B1.1 封面 HTTP 触发面 | ✅ 已合 develop | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
 | B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 只读镜像内副本 |
-| B3 关站内生成入口 | ⏸ 待启动 | 前置：线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条）；含 `GET /api/topics/[id]/export` 与三处 UI 改造 |
+| B3 关站内生成入口 | ✅ 代码已合 develop（PR #246）；**线上切换待用户** | `GET /api/topics/[id]/export` 素材包导出；创作条总闸关时改「导出素材包」；编辑页 `EditorAssistant` 下线、封面走 HTTP；编辑页 FAB 改显钮。剩两件用户侧：① 线上 kv `creation.agent_enabled=false`；② 线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条的前置门槛） |
 | B4~B8 | ⏸ 未启动 | 逐批删除 / 收窄 / 收尾 |
 
 **两处与原方案不同的落地决定**：
