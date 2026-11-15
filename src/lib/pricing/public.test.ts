@@ -20,12 +20,16 @@ vi.mock("@/lib/db", () => ({
 
 import {
   buildPricingJsonLd,
+  filterModelRows,
   filterPricingRows,
   formatPrice,
+  inContextBand,
   inPriceBand,
   isPricingStale,
+  parseContextTokens,
   PRICE_BANDS,
   PRICING_STALE_DAYS,
+  sortModelRows,
   sortPublicModels,
   vendorOptions,
   type PriceBandId,
@@ -76,6 +80,7 @@ describe("sortPublicModels", () => {
     region,
     providerKey: null,
     providerName: "V",
+    providerKind: null,
     modelDictKey: null,
     modality: null,
     tiers: [],
@@ -240,6 +245,7 @@ describe("buildPricingJsonLd", () => {
             region: "cn",
             providerKey: "deepseek",
             providerName: "DeepSeek 深度求索",
+            providerKind: "official",
             modelDictKey: "deepseek-flash",
             modality: "text",
             tiers: [],
@@ -259,5 +265,101 @@ describe("buildPricingJsonLd", () => {
     expect(
       buildPricingJsonLd({ models: [], plans: [], modelsAsOf: null, plansAsOf: null }, "u"),
     ).toMatchObject({ numberOfItems: 0, itemListElement: [] });
+  });
+});
+
+describe("M74 批C:上下文长度解析与分档", () => {
+  it("K/M 记法 → token 数;认不出 → null", () => {
+    expect(parseContextTokens("128K")).toBe(131072);
+    expect(parseContextTokens("1M")).toBe(1048576);
+    expect(parseContextTokens("200000")).toBe(200000);
+    expect(parseContextTokens(null)).toBeNull();
+    expect(parseContextTokens("—")).toBeNull();
+  });
+
+  it("分档:未知档只收未标注;下界档按 token 数", () => {
+    expect(inContextBand(null, "unknown")).toBe(true);
+    expect(inContextBand(131072, "unknown")).toBe(false);
+    expect(inContextBand(1048576, "ge1m")).toBe(true);
+    expect(inContextBand(131072, "ge1m")).toBe(false);
+    expect(inContextBand(65536, "lt128k")).toBe(true);
+    expect(inContextBand(null, "lt128k")).toBe(false);
+    expect(inContextBand(null, "all")).toBe(true);
+  });
+});
+
+describe("M74 批C:模型行筛选与排序", () => {
+  const row = (over: Partial<PublicModelRow>): PublicModelRow => ({
+    vendor: "V",
+    modelKey: "m",
+    currency: "CNY",
+    inputPrice: 1,
+    outputPrice: 2,
+    freeTier: null,
+    isFree: false,
+    contextWindow: null,
+    note: null,
+    dataAsOf: "2026-11-15",
+    sourceUrl: "https://x",
+    region: "cn",
+    providerKey: null,
+    providerName: "V",
+    providerKind: null,
+    modelDictKey: null,
+    modality: null,
+    tiers: [],
+    ...over,
+  });
+  const base = {
+    vendors: [] as string[],
+    band: "all" as PriceBandId,
+    freeOnly: false,
+    modality: "",
+    contextBand: "all" as const,
+    sourceKind: "",
+  };
+
+  it("只看免费只认完全免费标记(有免费额度不等于免费)", () => {
+    const rows = [
+      row({ modelKey: "free-one", isFree: true }),
+      row({ modelKey: "quota", isFree: false, freeTier: "每日 200 万 tokens 免费" }),
+    ];
+    const out = filterModelRows(rows, { ...base, freeOnly: true });
+    expect(out.map((r) => r.modelKey)).toEqual(["free-one"]);
+  });
+
+  it("模态 / 来源类型 / 上下文 三维可组合", () => {
+    const rows = [
+      row({ modelKey: "a", modality: "text", providerKind: "official", contextWindow: "1M" }),
+      row({ modelKey: "b", modality: "image", providerKind: "aggregator", contextWindow: "32K" }),
+    ];
+    expect(filterModelRows(rows, { ...base, modality: "image" }).map((r) => r.modelKey)).toEqual([
+      "b",
+    ]);
+    expect(
+      filterModelRows(rows, { ...base, sourceKind: "official" }).map((r) => r.modelKey),
+    ).toEqual(["a"]);
+    expect(filterModelRows(rows, { ...base, contextBand: "ge1m" }).map((r) => r.modelKey)).toEqual([
+      "a",
+    ]);
+  });
+
+  it("排序:null 价恒排最后(未公布价不是最便宜)", () => {
+    const rows = [
+      row({ modelKey: "no-price", inputPrice: null }),
+      row({ modelKey: "mid", inputPrice: 5 }),
+      row({ modelKey: "cheap", inputPrice: 1 }),
+    ];
+    expect(sortModelRows(rows, "input").map((r) => r.modelKey)).toEqual([
+      "cheap",
+      "mid",
+      "no-price",
+    ]);
+    expect(sortModelRows(rows, "default")).toBe(rows);
+  });
+
+  it("同价按模型名定序(结果稳定)", () => {
+    const rows = [row({ modelKey: "b", inputPrice: 1 }), row({ modelKey: "a", inputPrice: 1 })];
+    expect(sortModelRows(rows, "input").map((r) => r.modelKey)).toEqual(["a", "b"]);
   });
 });

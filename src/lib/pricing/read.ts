@@ -67,6 +67,7 @@ export async function listPublicPricing(): Promise<PublicPricing> {
           region: r.region,
           providerKey: r.provider?.key ?? null,
           providerName: r.provider?.name ?? r.vendor,
+          providerKind: r.provider?.sourceKind ?? null,
           modelDictKey: r.model?.modelKey ?? null,
           modality: r.model?.modality ?? null,
           tiers,

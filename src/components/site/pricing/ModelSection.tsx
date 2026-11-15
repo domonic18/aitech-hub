@@ -1,21 +1,38 @@
 "use client";
 
 /**
- * 模型牌价面板(验收问题一:厂商 × 输入价区间筛选):按 国内/国际 分组
- * (组头币种口径+计数徽章,USD 原币直出 D4);移动端表格降维卡片(P2 口径,
- * 纯 CSS)。筛选在客户端做,全量行仍随 SSR 进 HTML(SEO 生命线不破)。
+ * 模型牌价面板(验收问题一:厂商 × 输入价区间筛选;M74 批C:免费标识 + 多维筛选
+ * + 排序):按 国内/国际 分组(组头币种口径+计数徽章,USD 原币直出 D4);移动端表格
+ * 降维卡片(P2 口径,纯 CSS)。筛选在客户端做,全量行仍随 SSR 进 HTML(SEO 生命线不破)。
+ *
+ * 免费有两个语义,展示上必须分开:
+ * - **完全免费**(is_free):调用不花钱 → 行级绿色「免费」角标
+ * - **有免费额度**(free_tier):如「每日 200 万 tokens 免费」→ 橙色额度原文(不叫免费)
  */
 import {
-  filterPricingRows,
+  filterModelRows,
   formatPrice,
   sortPublicModels,
+  sortModelRows,
   vendorOptions,
+  type ContextBandId,
+  type ModelSortId,
   type PriceBandId,
   type PublicModelRow,
 } from "@/lib/pricing/public";
 
 import { FilterBar } from "./FilterBar";
+import { ModelFilters } from "./ModelFilters";
 import { OfficialLink, groupKey, groupTitle } from "./shared";
+
+/** 完全免费角标 */
+function FreeBadge(): React.ReactElement {
+  return (
+    <span className="ml-1.5 rounded border border-green/40 bg-green/10 px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-green-hi">
+      免费
+    </span>
+  );
+}
 
 function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
   return (
@@ -36,8 +53,16 @@ function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
           {rows.map((r) => (
             <tr key={`${r.vendor}|${r.modelKey}`} className="border-b border-line/50 last:border-0">
               <td className="px-4 py-3.5">
-                <div className="font-mono text-[13px] font-semibold text-text-1">{r.modelKey}</div>
-                <div className="mt-0.5 text-[11px] text-text-3">{r.vendor}</div>
+                <div className="font-mono text-[13px] font-semibold text-text-1">
+                  {r.modelKey}
+                  {r.isFree && <FreeBadge />}
+                </div>
+                <div className="mt-0.5 text-[11px] text-text-3">
+                  {r.providerName ?? r.vendor}
+                  {r.providerKind === "aggregator" && (
+                    <span className="ml-1 text-amber">聚合挂牌</span>
+                  )}
+                </div>
               </td>
               <td className="px-3 py-3.5 font-mono text-text-1">
                 {formatPrice(r.inputPrice, r.currency)}
@@ -78,10 +103,16 @@ function ModelCards({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
           className="rounded-lg border border-line/70 px-4 py-3"
         >
           <div className="flex items-baseline justify-between gap-2">
-            <span className="font-mono text-[13px] font-semibold text-text-1">{r.modelKey}</span>
+            <span className="font-mono text-[13px] font-semibold text-text-1">
+              {r.modelKey}
+              {r.isFree && <FreeBadge />}
+            </span>
             <OfficialLink url={r.sourceUrl} />
           </div>
-          <div className="mt-0.5 text-[11px] text-text-3">{r.vendor}</div>
+          <div className="mt-0.5 text-[11px] text-text-3">
+            {r.providerName ?? r.vendor}
+            {r.providerKind === "aggregator" && <span className="ml-1 text-amber">聚合挂牌</span>}
+          </div>
           <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
             <span>
               <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
@@ -109,6 +140,16 @@ export interface ModelSectionProps {
   onVendorsChange: (v: string[]) => void;
   band: PriceBandId;
   onBandChange: (b: PriceBandId) => void;
+  freeOnly: boolean;
+  onToggleFree: () => void;
+  modality: string;
+  onModalityChange: (v: string) => void;
+  contextBand: ContextBandId;
+  onContextBandChange: (v: ContextBandId) => void;
+  sourceKind: string;
+  onSourceKindChange: (v: string) => void;
+  sort: ModelSortId;
+  onSortChange: (v: ModelSortId) => void;
 }
 
 export function ModelSection({
@@ -117,14 +158,30 @@ export function ModelSection({
   onVendorsChange,
   band,
   onBandChange,
+  freeOnly,
+  onToggleFree,
+  modality,
+  onModalityChange,
+  contextBand,
+  onContextBandChange,
+  sourceKind,
+  onSourceKindChange,
+  sort,
+  onSortChange,
 }: ModelSectionProps): React.ReactElement {
-  const rows = filterPricingRows(sortPublicModels(models), {
-    vendors: selectedVendors,
-    band,
-    vendorOf: (r) => r.vendor,
-    priceOf: (r) => r.inputPrice,
-  });
+  const rows = sortModelRows(
+    filterModelRows(sortPublicModels(models), {
+      vendors: selectedVendors,
+      band,
+      freeOnly,
+      modality,
+      contextBand,
+      sourceKind,
+    }),
+    sort,
+  );
   const groups = [...new Set(rows.map(groupKey))];
+  const freeCount = models.filter((m) => m.isFree).length;
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       <FilterBar
@@ -136,6 +193,19 @@ export function ModelSection({
         priceLabel="输入价 · 每百万 tokens(原币)"
         total={models.length}
         shown={rows.length}
+        freeOnly={{ on: freeOnly, onToggle: onToggleFree, freeCount }}
+        extra={
+          <ModelFilters
+            modality={modality}
+            onModalityChange={onModalityChange}
+            contextBand={contextBand}
+            onContextBandChange={onContextBandChange}
+            sourceKind={sourceKind}
+            onSourceKindChange={onSourceKindChange}
+            sort={sort}
+            onSortChange={onSortChange}
+          />
+        }
       />
       {groups.map((key) => {
         const groupRows = rows.filter((m) => groupKey(m) === key);

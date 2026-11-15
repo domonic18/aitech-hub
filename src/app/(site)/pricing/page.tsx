@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import PricingExplorer from "@/components/site/pricing/PricingExplorer";
 import { absoluteUrl } from "@/lib/seo/site";
@@ -33,7 +34,13 @@ export default async function PricingPage(): Promise<React.ReactElement> {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PricingExplorer data={data} />
+      {/* PricingExplorer 用 useSearchParams 读筛选态(M74 批C):静态页面上
+          useSearchParams 必须包在 Suspense 边界内,否则构建期报
+          "useSearchParams should be wrapped in a suspense boundary";
+          边界只包客户端交互部分,页本身仍是 ISR 静态(SEO 不受影响) */}
+      <Suspense fallback={null}>
+        <PricingExplorer data={data} />
+      </Suspense>
     </>
   );
 }
