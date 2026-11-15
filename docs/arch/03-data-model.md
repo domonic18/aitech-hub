@@ -439,6 +439,40 @@ CREATE TABLE legacy_url_map (
 - `coding_plan`(Coding Plan 订阅套餐):`vendor + plan_name` 唯一;`monthly_fee`/`quarterly_fee`/`yearly_fee` decimal(12,2)(周期展示价,口径不归一随原文)/`billing_note?`(周期价格口径原文)/`benefits` jsonb(string[],官方页序)/`quota_desc`(额度口径原文)/`peak_rate?`/`off_peak_rate?`/`best_for?`/`note`/`data_as_of`/`source_url`/`status`/`sort_order`;索引 `(status, sort_order)`
 - **两表共有 `is_pinned boolean default false`**(M73,迁移 `20261114112350_pricing_is_pinned`):人工定稿闸 —— 采集能否覆盖**只看此列**,与 `status`(展示态)解耦。此前「终审行(enabled/disabled)采集不覆盖」这条规则借 `status` 表达,把「是否展示」与「是否人工定稿」挤进一列,于是「停用展示但希望价格跟随官方价」无法表达、过期价格只能人工改库(2026-11-14 用户纠正:这类问题该由后台界面提供入口,不该直改库)。落库规则(M73):行不存在→建 pending;`is_pinned=false`→刷新(**不论展示态**);`is_pinned=true`→不覆盖(人工定稿)。存量回填:`status='enabled'` 的行置 `is_pinned=true`(保持「采集不覆盖已展示价格」的现状语义),其余行 false。采集台账入日志 `pricing.curated_persisted`(`untouched`=因人工定稿未覆盖的行数,此前 tally 被丢弃、「采集成功但价格没变」在日志里看不出来)
 
+**牌价归一层三表已落地(2026-11-15 M74 批A,迁移 `20261115114118_m74_pricing_schema`)**:
+
+牌价行的 `vendor` 是各采集器写死的自由文本(同一厂商多种写法,如「月之暗面 Moonshot」与
+「月之暗面 Kimi」),既无法按厂商聚合,也无法区分「一手厂商价」与「聚合平台挂牌价」——
+后者正是「找全网最便宜提供方」的关键维度。批A 落三张字典/档位表,不动既有采集行为:
+
+- `model_pricing_provider`(厂商字典):`key` 唯一(规范键,`aliyun-bailian`/`baidu-ciyuansuo` …)/
+  `name`(展示名)/`display_order`/`region`(cn|intl)/`source_kind`(official 一手厂商 | aggregator
+  聚合交易平台)/`homepage_url?`/`status`;索引 `(status, display_order)`。
+  种子 10 家在 `src/lib/pricing/provider-registry.ts`,worker 启动幂等种入
+  (`syncPricingProviders`,**只补缺不改值**——名称/排序/官网归人工维护)。
+  `VENDOR_KEY_ALIASES` 是采集器 vendor 字符串 → 规范键的桥,**采集侧改写 vendor 字符串时必须同步**
+- `model_pricing_model`(模型字典):`model_key` 唯一(规范键,跨源可比对)/
+  `match_key` 唯一(归一锚,摘日期快照与别名后缀:`gpt-4o-2024-08-06` → `gpt-4o`)/
+  `display_name`/`family?`(产品线,`deepseek-flash` → `deepseek`)/`modality`(text|text+vision|image|
+  audio|video|embedding|rerank)/`status`;索引 `(family)`。
+  归一**唯一出口** `src/lib/pricing/model-registry.ts#getOrCreateModel`(model_key/match_key 任一命中即复用);
+  归一规则(`normalizeModelKey`/`normalizeMatchKey`/`deriveFamily`)在 `src/lib/pricing/normalize.ts`,
+  纯函数零库依赖,与洞察域 `normalizeEntityKey` 同一套口径
+- `model_pricing_tier`(价格档位):一行两价承载不了真实定价——阶梯价(按上下文分档)、缓存价
+  (命中/未命中)、峰谷价(时段)、模态计价(按张/秒/分钟)压成两个 decimal 就是在说谎。
+  `model_pricing_id` + `tier_label` 唯一;`input_price?`/`output_price?`/`cache_price?` decimal(12,4)/
+  `min_tokens?`/`max_tokens?`(阶梯边界)/`unit`(per_1m_tokens|per_1k_tokens|per_image|per_second|
+  per_minute)/`currency`/`data_as_of`/`source_url`/`note?`;索引 `(model_pricing_id)`;
+  `onDelete: Cascade`(档位随牌价行消亡)
+- `model_pricing` 增列(M74):`provider_id?` FK→`model_pricing_provider`(`SetNull`,索引)/
+  `model_id?` FK→`model_pricing_model`(`SetNull`,索引)——**同一模型在不同提供商的牌价行不去重**,
+  靠 `model_id` 归一后并排比价;`is_free boolean default false`(索引)=**完全免费**
+  (所有档位价均为 0;与 `free_tier`「有免费额度」语义分离,缺价 null 不当免费)
+- 存量归一回填:`scripts/oneoff/m74-pricing-backfill/run.ts`(一次性,dry-run 默认,幂等)。
+  **认不出的厂商不动**(`provider_id` 留 null)并在报告里点名——猜错厂商比不归一更糟
+- 上下文长度不落字典表:各家截断不同(同一模型在官方与聚合平台给的上下文不一样),
+  按行给在 `model_pricing.context_window`,筛选时解析
+
 ## 3. Prisma 模型约定
 
 > 命名细则(表前缀、列名、约束/索引模板、`onDelete` 裁定、反例与新表 checklist)见
