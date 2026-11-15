@@ -276,7 +276,9 @@
 | 创作中心创作条 | 创作总闸 `creation.agent_enabled=false` 时,「生成长文 / 生成贴图」两钮换成「导出素材包」钮(导出 `GET /api/topics/[id]/export`:定位 + 写作配置 + 素材全集 + 绑定指南全文 + 指南清单 + 近期已发标题);**总闸开着时旧两钮保留**,改 kv 即回滚 |
 | 封面候选 | agent 工具与 HTTP 触发面共用一份编排 `src/lib/ai/cover-candidates.ts`;事件名 `COVER_ADOPTED_EVENT` 移到叶子模块 `src/lib/ai/cover-events.ts`(客户端安全,编辑面板也要用) |
 
-**熔断闸仍兜底**:`creation.agent_enabled` 是 B0 埋的总闸(缺省开,只有显式存关值才关),B3~B5 期间任何异常,改 kv 即恢复站内生成(旧按钮分支代码在页面里保留着)。
+**写侧整体退役(B4/B5,2026-11-15)**:19 只写工具(`read_draft`/`propose_edits`/`save_topic_draft`/`save_topic_pin`/`update_topic_pin`/`write_article`/`render_card`/`generate_illustration`/`generate_post_cover`/`get_topic_brief`/`transfer_video_cover`/`generate_cover_candidates`/`search_materials`/`mount_material`/`unmount_material`/`get_post_sources`/`list_skills`/`get_skill`/`measure_wechat_budget`)与 admin 专属提示段(`ADMIN_PROMPT_ADDENDUM`)整体删除,**工具面塌缩为全员只读六件**(admin 与 guest/user 同面);编辑面能力注册协议(`useAgentEditSurface`)、`propose_edits` 评审面、封面候选 HITL 卡一并退役。创作职责由线下 Claude Code 承担(MCP 25 只工具 + 仓库 `skills/writing/*.md`),站内只保留**站内 AI 封面**(D3,HTTP 触发面)与只读问答。
+
+**熔断闸随之退场**:`creation.agent_enabled`(B0 埋的总闸)随写工具删除而失去对象 —— 站内已无写能力可恢复,总闸不再有语义,故一并移除;B3 期间的回滚路径由 revert PR 承担。
 
 **M72 三条边界裁定(2026-11-13,需求方拍板)**:
 

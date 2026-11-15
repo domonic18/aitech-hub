@@ -20,17 +20,22 @@ export interface AgentLimitsConfig {
   tokens: number;
 }
 
-/** 默认档(= 硬编码时代 2026-10-17 放宽值;缺行/构建期回落);
- * 2026-10-20 富 HTML 改造:一篇文章 = 素材/指南 + 写作 + 1~2 轮自审 + 3~5 张卡
- * (含重试) + 两段封面 HITL,80 次无重试余量;tokens 同调 600k(大 HTML 卡
- * 单次 8~12k token,多轮累积) */
+/**
+ * 默认档(缺行/构建期回落)。
+ *
+ * M72 瘦身 B5/D11(2026-11-15):agent 写侧整体下线后,工具面塌缩为全员只读
+ * 六件 —— 一次问答是「检索 + 读几篇正文」的短链路,admin 档原先为「一篇文章
+ * = 素材/指南 + 写作 + 1~2 轮自审 + 3~5 张卡 + 两段封面 HITL」留的 120/600k
+ * 长编排预算不再有消费方,故 admin 降到与 user 同档(12/50k)——既回到真实的
+ * 用量口径,也直接压低单次 run 的服务端负担(用户瘦身的原始动机之一)。
+ */
 export const DEFAULT_AGENT_LIMITS: Record<AgentLimitKind, AgentLimitsConfig> = {
   guest: { toolCalls: 12, tokens: 50_000 },
   user: { toolCalls: 12, tokens: 50_000 },
-  admin: { toolCalls: 120, tokens: 600_000 },
+  admin: { toolCalls: 12, tokens: 50_000 },
 };
 
-/** 合法域(三档同域;admin 长编排实测 80/400k→120/600k,上限留足余量) */
+/** 合法域(三档同域;上限留足余量,后台可调) */
 export const TOOL_CALLS_MIN = 1;
 export const TOOL_CALLS_MAX = 200;
 export const TOKENS_MIN = 1_000;
