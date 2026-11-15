@@ -10,24 +10,16 @@
  * 确认/自动入库),工具名错开防注册冲突。方向对齐:手动档靠两段 ask_user(系统
  * 提示 + 工具描述双重引导);auto 档由 agent 自拟高质量 prompt,免确认不降质。
  */
-import { randomUUID } from "node:crypto";
-
 import { tool } from "@langchain/core/tools";
 import { interrupt } from "@langchain/langgraph";
 import { z } from "zod";
 
 import {
-  adoptCoverCandidate,
-  deleteCoverTemp,
-  enqueueCoverGen,
-  listHeldCandidatesForPost,
-  loadCoverPostContext,
-  probeCoverGen,
-  type CoverGenProbeHit,
-} from "../ai/cover-generate";
-import { AiAdminError } from "../ai/errors";
+  adoptCoverForPost,
+  discardCoverCandidates,
+  requestCoverCandidates,
+} from "../ai/cover-candidates";
 import { logger } from "../logger";
-import { updatePostCover } from "../content/posts-admin";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
 import {
@@ -36,123 +28,56 @@ import {
   parseAgentCoverResume,
   type AgentCoverCandidate,
 } from "./cover-tool";
-import { pollUntil } from "./poll";
-
-/**
- * adopt 入库并设封面(resume 与 auto 两路共用):候选 uploadMedia 进媒体库,
- * 成功即设为文章封面;设封面失败不回滚入库,降级汇报由管理员在封面设置处
- * 手动选用(与既有口径一致)。
- */
-async function adoptAndSetCover(
-  candidateId: string,
-  postId: string,
-): Promise<
-  | { ok: true; path: string; coverSet: true }
-  | { ok: true; path: string; coverSet: false; coverError: string }
-  | { ok: false; error: string }
-> {
-  let path: string;
-  try {
-    path = await adoptCoverCandidate(candidateId);
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "入库失败" };
-  }
-  try {
-    await updatePostCover(BigInt(postId), path);
-    return { ok: true, path, coverSet: true };
-  } catch (e) {
-    return {
-      ok: true,
-      path,
-      coverSet: false,
-      coverError: e instanceof Error ? e.message : "未知错误",
-    };
-  }
-}
 
 export const generatePostCoverTool = tool(
   async ({ id, prompt, auto_adopt }, config) => {
     if (!(await assertAdminThread(config?.configurable?.thread_id))) {
       return adminThreadDeny(config?.configurable?.thread_id, "edit");
     }
-    const ctx = await loadCoverPostContext(id);
-    if (!ctx) return JSON.stringify({ ok: false, error: "文章不存在或已删除" });
 
-    // resume 重放防重(2026-10-16 反馈问题一):LangGraph interrupt 恢复时工具体
-    // 从顶部整体重跑,无守卫会把「入队生图 + 轮询等图」整条流水线再执行一遍
-    // (重复计费 2 张 + 再干等 10-30s,用户侧表现为点「入库」后久转)。该文已有
-    // 存活 hold 候选 = 上轮已生成过,直接复用进 interrupt,不再入队/轮询。
-    let candidates: AgentCoverCandidate[];
-    let token: string;
-    const held = await listHeldCandidatesForPost(id);
-    if (held.length > 0) {
-      token = held[0].token;
-      candidates = held.map((r) => ({
-        id: r.id,
-        url: `/api/posts/cover-candidates/${r.id}/raw`,
-      }));
-      logger.info({ event: "agent.post_cover_replay_skip", postId: id, count: held.length });
-    } else {
-      token = randomUUID();
-      let jobId: string;
-      try {
-        ({ jobId } = await enqueueCoverGen({
-          token,
-          postId: id,
-          title: ctx.title,
-          excerpt: ctx.excerpt,
-          tags: ctx.tags,
-          contentMd: ctx.contentMd,
-          prompt: prompt ?? "",
-          hold: true, // 不进媒体库;adopt 确认后才 uploadMedia
-        }));
-      } catch (e) {
-        if (e instanceof AiAdminError) return JSON.stringify({ ok: false, error: e.message });
-        throw e;
+    // 生图编排与 HTTP 触发面共用一份(D3):入队(hold,不进媒体库)→ 轮询等候选;
+    // 该文已有存活 hold 候选时直接复用(resume 重放防重:LangGraph interrupt 恢复
+    // 时工具体整体重跑,无守卫会把整条流水线再走一遍——重复计费 + 白等)。
+    const outcome = await requestCoverCandidates({ postId: id, prompt });
+    if (!outcome.ok) {
+      if (outcome.reason === "not_found") {
+        return JSON.stringify({ ok: false, error: "文章不存在或已删除" });
       }
-      logger.info({ event: "agent.post_cover_started", token, postId: id });
-
-      // 单拍探测:候选出图即收工;job 失败立刻断路(不傻等满预算,问题二)
-      const outcome = await pollUntil<CoverGenProbeHit>(() => probeCoverGen(token, jobId));
-      if (outcome === null) {
-        return JSON.stringify({
-          ok: false,
-          timeout: true,
-          error: "封面生成超时(云厂商生图通常 10-30 秒),可重试",
-        });
+      if (outcome.reason === "timeout") {
+        return JSON.stringify({ ok: false, timeout: true, error: outcome.message });
       }
-      if ("failure" in outcome) {
-        await deleteCoverTemp(token); // 清可能的半成品临时件
-        return JSON.stringify({
-          ok: false,
-          error: `生图失败:${outcome.failure}(可重试,或在 AI 配置调大生图模型超时)`,
-        });
-      }
-      // token 不进 URL(会落访问/代理日志,批④加固):载荷单独携带,卡片经
-      // x-cover-token 头取图;url 只留候选 id。
-      candidates = outcome.rows.map((r) => ({
-        id: r.id,
-        url: `/api/posts/cover-candidates/${r.id}/raw`,
-      }));
+      return JSON.stringify({ ok: false, error: outcome.message });
     }
+    const token = outcome.token;
+    const candidates: AgentCoverCandidate[] = outcome.candidates.map((c) => ({
+      id: c.id,
+      url: c.url,
+    }));
     // auto 档(2026-10-20 专题合成免确认):候选就绪直接采纳第一张并设为文章
     // 封面,不产生 interrupt——一键合成全程零打断;adopt 失败照实报错(held
     // 候选仍在,重试走复用路),设封面失败降级 ok:true。
     if (auto_adopt) {
       const first = candidates[0];
-      const r = await adoptAndSetCover(first.id, id);
-      logger.info({ event: "agent.post_cover_auto_adopt", postId: id, ok: r.ok });
-      if (!r.ok) {
-        return JSON.stringify({ ok: false, decision: "adopt", auto: true, error: r.error });
+      let adopted: { path: string; coverSet: boolean; coverError?: string };
+      try {
+        adopted = await adoptCoverForPost({ candidateId: first.id, postId: id });
+      } catch (e) {
+        return JSON.stringify({
+          ok: false,
+          decision: "adopt",
+          auto: true,
+          error: e instanceof Error ? e.message : "入库失败",
+        });
       }
+      logger.info({ event: "agent.post_cover_auto_adopt", postId: id, ok: true });
       return JSON.stringify({
         ok: true,
         decision: "adopt",
         auto: true,
-        path: r.path,
-        summary: r.coverSet
-          ? `已自动生成并采用文章封面:${r.path}`
-          : `封面已入媒体库:${r.path};设为文章封面失败(${r.coverError}),可在封面设置处手动选用`,
+        path: adopted.path,
+        summary: adopted.coverSet
+          ? `已自动生成并采用文章封面:${adopted.path}`
+          : `封面已入媒体库:${adopted.path};设为文章封面失败(${adopted.coverError}),可在封面设置处手动选用`,
       });
     }
 
@@ -168,21 +93,27 @@ export const generatePostCoverTool = tool(
     const resume = parseAgentCoverResume(answer);
 
     if (resume?.decision === "adopt") {
-      const r = await adoptAndSetCover(resume.candidateId, id);
-      if (!r.ok) {
-        return JSON.stringify({ ok: false, decision: "adopt", error: r.error });
+      let adopted: { path: string; coverSet: boolean; coverError?: string };
+      try {
+        adopted = await adoptCoverForPost({ candidateId: resume.candidateId, postId: id });
+      } catch (e) {
+        return JSON.stringify({
+          ok: false,
+          decision: "adopt",
+          error: e instanceof Error ? e.message : "入库失败",
+        });
       }
       return JSON.stringify({
         ok: true,
         decision: "adopt",
-        path: r.path,
-        summary: r.coverSet
-          ? `已入媒体库并设为文章封面:${r.path}`
-          : `已入媒体库:${r.path};设为文章封面失败(${r.coverError}),可在封面设置处从媒体库手动选用`,
+        path: adopted.path,
+        summary: adopted.coverSet
+          ? `已入媒体库并设为文章封面:${adopted.path}`
+          : `已入媒体库:${adopted.path};设为文章封面失败(${adopted.coverError}),可在封面设置处从媒体库手动选用`,
       });
     }
     // 放弃(或 resume 形状异常同路):清临时件,不入库
-    await deleteCoverTemp(token);
+    await discardCoverCandidates(token);
     return JSON.stringify({ ok: true, decision: "discard", summary: "已放弃,候选未入库" });
   },
   {
