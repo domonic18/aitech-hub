@@ -429,6 +429,12 @@ CREATE TABLE legacy_url_map (
 
 表外状态全走 Redis(不落库):绑定码 `channel:wxmp:bind:<code>`(10min)、待继续指针 `channel:wxmp:pending:<openid>`、答案缓存 `channel:wxmp:reply:<msgId>`(30min)、当日答案配额 `channel:wxmp:quota:<北京日>`。
 
+**牌价策展域两表已落地(2026-10 M55 批C 起;2026-11-14 M73 补 `is_pinned`)**:
+
+- `model_pricing`(模型牌价):`vendor + model_key` 唯一;`currency`(CNY|USD,**随价格走**,防「¥ 数字配 $ 符号」的跨通道脏态)/`input_price`/`output_price` decimal(12,4)(每百万 tokens;null=未公布不臆测)/`free_tier?`/`context_window?`/`note`(溯源注记与「待复核」打标共用列)/`data_as_of`/`source_url`/`region`(cn|intl)/`status`(pending|enabled|disabled)/`sort_order`;索引 `(status, region, sort_order)`
+- `coding_plan`(Coding Plan 订阅套餐):`vendor + plan_name` 唯一;`monthly_fee`/`quarterly_fee`/`yearly_fee` decimal(12,2)(周期展示价,口径不归一随原文)/`billing_note?`(周期价格口径原文)/`benefits` jsonb(string[],官方页序)/`quota_desc`(额度口径原文)/`peak_rate?`/`off_peak_rate?`/`best_for?`/`note`/`data_as_of`/`source_url`/`status`/`sort_order`;索引 `(status, sort_order)`
+- **两表共有 `is_pinned boolean default false`**(M73,迁移 `20261114112350_pricing_is_pinned`):人工定稿闸 —— 采集能否覆盖**只看此列**,与 `status`(展示态)解耦。此前「终审行(enabled/disabled)采集不覆盖」这条规则借 `status` 表达,把「是否展示」与「是否人工定稿」挤进一列,于是「停用展示但希望价格跟随官方价」无法表达、过期价格只能人工改库(2026-11-14 用户纠正:这类问题该由后台界面提供入口,不该直改库)。落库规则(M73):行不存在→建 pending;`is_pinned=false`→刷新(**不论展示态**);`is_pinned=true`→不覆盖(人工定稿)。存量回填:`status='enabled'` 的行置 `is_pinned=true`(保持「采集不覆盖已展示价格」的现状语义),其余行 false。采集台账入日志 `pricing.curated_persisted`(`untouched`=因人工定稿未覆盖的行数,此前 tally 被丢弃、「采集成功但价格没变」在日志里看不出来)
+
 ## 3. Prisma 模型约定
 
 > 命名细则(表前缀、列名、约束/索引模板、`onDelete` 裁定、反例与新表 checklist)见

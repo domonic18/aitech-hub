@@ -10,6 +10,7 @@ import { notFound } from "next/navigation";
 
 import { parsePage } from "@/lib/admin/list";
 import { requireAdminPage } from "@/lib/auth/guard";
+import { isCreationAgentEnabled } from "@/lib/config/creation-flags";
 import { listPinsByTopic } from "@/lib/pins/repo";
 import { needsRecomposeConfirm } from "@/lib/topics/compose";
 import { TOPIC_OUTPUT_LABEL, type TopicOutputType } from "@/lib/topics/constants";
@@ -69,6 +70,9 @@ export default async function AdminStudioDetailPage({ params, searchParams }: Pa
     // 详情页渲染不发起外链转存(视频封面层留给生成期 agent 转存后进入候选)
     resolveTopicReferences(topic),
   ]);
+
+  // 创作总闸(M72 瘦身 B0):关 → 创作条退化为「导出素材包」(B3)
+  const creationEnabled = await isCreationAgentEnabled();
 
   // 内容形式/体裁词:服务端从落库写作要求单点派生(生成话术同源,无双入口)
   const purpose = resolvePurpose(topic.positioning);
@@ -231,6 +235,7 @@ export default async function AdminStudioDetailPage({ params, searchParams }: Pa
                 pinHint={pinHint}
                 outputType={topic.outputType}
                 baseline={baseline}
+                creationEnabled={creationEnabled}
               />
             </div>
           }

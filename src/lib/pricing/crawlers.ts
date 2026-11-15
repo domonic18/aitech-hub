@@ -3,7 +3,7 @@
  * DeepSeek=峰谷×缓存命中矩阵(标准牌价=高峰·缓存未命中,矩阵全貌按模型入
  * note),Moonshot=SSR 序列化行直取。渠道编排(DB 驱动、失败合并上抛)在
  * source-registry.ts;本文件不含渠道定义。
- * 初稿三规则:建 pending/刷 pending/enabled·disabled 终审行不覆盖;currency
+ * 落库规则(M73 起):建 pending/可刷新行刷新/人工定稿行(is_pinned)不覆盖;currency
  * 随价格走(跨通道防 ¥ 数字配 $ 符号)。
  * 失败语义:爬取单源失败自吞(编排层收尾),失败源旧数据按 sourceUrl 圈定
  * note 打「待复核」标,整 job 上抛 job_run 记 failed 连败可见,不静默腐烂。
@@ -180,7 +180,7 @@ export async function markModelSourceStale(sourceUrl: string, now: Date): Promis
   );
 }
 
-/** 模型行初稿三规则落库(建 pending/刷 pending/终审行不动;currency 随价格走) */
+/** 模型行落库(建 pending/可刷新行刷新/人工定稿行不动;currency 随价格走) */
 export async function persistModelRows(rows: ModelPrefillRow[]): Promise<{
   created: number;
   refreshed: number;
@@ -192,9 +192,15 @@ export async function persistModelRows(rows: ModelPrefillRow[]): Promise<{
     listExisting: async (vendors, keys) => {
       const rows = await prisma.modelPricing.findMany({
         where: { vendor: { in: vendors }, modelKey: { in: keys } },
-        select: { id: true, vendor: true, modelKey: true, status: true },
+        select: { id: true, vendor: true, modelKey: true, status: true, isPinned: true },
       });
-      return rows.map((r) => ({ id: r.id, vendor: r.vendor, key: r.modelKey, status: r.status }));
+      return rows.map((r) => ({
+        id: r.id,
+        vendor: r.vendor,
+        key: r.modelKey,
+        status: r.status,
+        isPinned: r.isPinned,
+      }));
     },
     create: (r) =>
       prisma.modelPricing.create({

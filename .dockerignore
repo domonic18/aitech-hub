@@ -41,3 +41,8 @@ tests/
 **/*.md
 *.log
 .DS_Store
+
+# 例外:写作指南(skills/writing/*.md)是 MCP list_skills/get_skill 的运行时
+# 读取源(M72 B1),必须进镜像 —— 上面的 **/*.md 把它们排除了
+!skills/writing/
+!skills/writing/*.md

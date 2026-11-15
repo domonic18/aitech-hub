@@ -1,7 +1,7 @@
 /**
  * 模型面爬虫单测(M55 批C;M56 批B 分层,fixture 无真网 prisma mock 无真库):
  * DeepSeek 峰谷矩阵解析(sourceUrl 参数化)/ Kimi SSR 行直取 / 结构造版抛错 /
- * persistModelRows 初稿三规则(currency 随价格走)/ 待复核打标 / crawlModelSource。
+ * persistModelRows 落库规则(currency 随价格走)/ 待复核打标 / crawlModelSource。
  * 渠道编排(runPricingCrawl)在 source-registry.test。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -131,21 +131,28 @@ describe("withRecheckMark", () => {
   });
 });
 
-describe("persistModelRows 初稿三规则", () => {
+describe("persistModelRows 落库规则", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   const rows = parseDeepseek(DEEPSEEK_HTML, DS_URL, NOW);
 
-  it("不存在→建 pending;pending→刷新(currency 随价格走);enabled→不动", async () => {
+  it("不存在→建 pending;可刷新行→刷新(currency 随价格走);人工定稿行→不动", async () => {
     findMany.mockResolvedValue([
-      { id: BigInt(7), vendor: "DeepSeek 深度求索", modelKey: "deepseek-flash", status: "pending" },
+      {
+        id: BigInt(7),
+        vendor: "DeepSeek 深度求索",
+        modelKey: "deepseek-flash",
+        status: "pending",
+        isPinned: false,
+      },
       {
         id: BigInt(8),
         vendor: "DeepSeek 深度求索",
         modelKey: "deepseek-v4-pro",
         status: "enabled",
+        isPinned: true,
       },
     ]);
     update.mockResolvedValue({ id: BigInt(7) });
@@ -158,6 +165,48 @@ describe("persistModelRows 初稿三规则", () => {
     expect(upd.where.id).toBe(BigInt(7));
     expect(upd.data.status).toBeUndefined(); // 刷新不触状态机
     expect(upd.data.currency).toBe("CNY"); // currency 随价格走(跨通道脏态防线)
+  });
+
+  it("人工定稿闸只看 is_pinned:展示态不再决定覆盖与否(M73)", async () => {
+    // enabled 但未定稿 → 刷新(「跟随官方价」:停用/展示与能否刷新解耦)
+    findMany.mockResolvedValue([
+      {
+        id: BigInt(8),
+        vendor: "DeepSeek 深度求索",
+        modelKey: "deepseek-v4-pro",
+        status: "enabled",
+        isPinned: false,
+      },
+    ]);
+    update.mockResolvedValue({ id: BigInt(8) });
+    const t1 = await persistModelRows(rows);
+    expect(t1).toMatchObject({ refreshed: 1, untouched: 0 });
+
+    // disabled 但未定稿 → 同样刷新(停用展示的行也要保持数据新鲜)
+    findMany.mockResolvedValue([
+      {
+        id: BigInt(8),
+        vendor: "DeepSeek 深度求索",
+        modelKey: "deepseek-v4-pro",
+        status: "disabled",
+        isPinned: false,
+      },
+    ]);
+    const t2 = await persistModelRows(rows);
+    expect(t2).toMatchObject({ refreshed: 1, untouched: 0 });
+
+    // 人工定稿 → 不碰(即便仍是 pending)
+    findMany.mockResolvedValue([
+      {
+        id: BigInt(7),
+        vendor: "DeepSeek 深度求索",
+        modelKey: "deepseek-flash",
+        status: "pending",
+        isPinned: true,
+      },
+    ]);
+    const t3 = await persistModelRows(rows);
+    expect(t3).toMatchObject({ refreshed: 0, untouched: 1 });
   });
 
   it("陌生模型→create 落 pending;单行落库失败自吞计数", async () => {

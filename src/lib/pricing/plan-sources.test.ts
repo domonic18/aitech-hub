@@ -225,7 +225,7 @@ describe("parseGlmCoding", () => {
   });
 });
 
-describe("persistPlanRows 初稿三规则", () => {
+describe("persistPlanRows 落库规则", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

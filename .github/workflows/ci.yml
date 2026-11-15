@@ -91,6 +91,10 @@ jobs:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/aitech_hub_ci?schema=public
       REDIS_URL: redis://localhost:6379/0
       AUTH_SECRET: ci-placeholder-secret-0123456789
+      # Prisma 引擎二进制走国内镜像(同 docker-compose.prod.yml):官方 CDN 抖动时
+      # npm ci 的 postinstall 生成会静默失败,类型检查随后整仓报 implicit any
+      # (Prisma 模型类型全丢)——2026-11-14 实测踩到过一次
+      PRISMA_ENGINES_MIRROR: https://registry.npmmirror.com/-/binary/prisma
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -98,6 +102,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # 显式生成 Prisma client(必须在类型检查之前):npm ci 的 postinstall 也会
+      # 生成,但它失败时 npm 不报错,类型检查会因缺 client 报一堆无关的
+      # implicit any,故障现场被淹没——显式一步让失败可归因
+      - name: 生成 Prisma client
+        run: npx prisma generate
       - name: 格式检查
         if: github.event.inputs.skip_lint != 'true'
         run: npx prettier --check .

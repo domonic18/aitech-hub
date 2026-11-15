@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * 创作条(M44 状态化重排,自 M42 批④ StudioActions 演进)——barLeft 状态
- * 标题态机(先准备素材/下一步:生成初稿/创作动作 · 生成中/本轮已完成 ✓/
- * 创作动作,长文已发布带 ✓),barRight 两按钮统一规格(长文实底/贴图描边,
- * 生成中禁用)。「补充要求」收进 details 折叠(保留仅本次语义,maxLength 200)。
- * 两者均经唤起协议注入任务到全局宿主卡(根 layout 常驻,跨页存活;页面禁止
- * 自持卡,M31 教训),dispatch 后调 start(kind, baseline) 进入生成态轮询。
- * 保留既有纪律:
- * - 体裁词由服务端 resolvePurpose 从长文配置派生后传入(无双入口漂移);
- * - 长文任务尾部固定追加封面免确认锚点;
- * - 空素材按钮侧就地拦截(零真网防线,文案/按钮名 e2e 依赖不漂移)。
+ * 创作条(2026-11-15 瘦身 B3 改造):站内生成入口下线后,创作条退化为
+ * 「素材台账 + 导出给线下」的出口——
+ * - 创作总闸开(`creation.agent_enabled`):保留原「生成长文 / 生成贴图」两钮
+ *   (唤起侧边栏 agent),作为回滚路径(B3 前该能力在用,关闭后随时可恢复);
+ * - 创作总闸关:只留「导出素材包」钮——把本创作的定位、写作配置、素材全集、
+ *   指南清单导出成 JSON,交给线下 Claude Code 写作助手起稿(真相源在仓库
+ *   `skills/writing/*.md`,线上与线下读同一份)。
+ *
+ * 两条分支的纪律不变:体裁词由服务端 resolvePurpose 派生后传入(无双入口
+ * 漂移);空素材就地拦截(零真网防线)。
  */
 import { useState } from "react";
 
@@ -35,6 +35,7 @@ export default function StudioActions({
   pinHint,
   outputType,
   baseline,
+  creationEnabled,
 }: {
   topicId: string;
   topicTitle: string;
@@ -55,10 +56,13 @@ export default function StudioActions({
   outputType: string;
   /** 点击生成时的落库基线(生成态轮询比对用,服务端下发) */
   baseline: GenerationBaseline;
+  /** 站内 AI 生成总闸(关 = 创作已外移线下,只留导出素材包) */
+  creationEnabled: boolean;
 }) {
   const { generating, completed, start } = useStudioGeneration();
   const [extra, setExtra] = useState("");
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
   const blocked = materialsCount === 0;
 
   function guard(): boolean {
@@ -96,8 +100,43 @@ export default function StudioActions({
     start("pin", baseline);
   }
 
+  /** 导出素材包:定位 + 写作配置 + 素材全集 + 指南清单 → JSON 文件 */
+  async function exportBundle(): Promise<void> {
+    if (exporting) return;
+    setExporting(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/topics/${topicId}/export`);
+      const body = (await res.json()) as { code: number; message: string; data?: unknown };
+      if (!res.ok || body.code !== 0) {
+        setMsg({ tone: "err", text: body.message || "导出失败" });
+        return;
+      }
+      const blob = new Blob([JSON.stringify(body.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `topic-${topicId}-materials.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg({ tone: "ok", text: "素材包已导出——交给线下写作助手起稿,出稿后上传落草稿" });
+    } catch {
+      setMsg({ tone: "err", text: "导出失败(网络异常)" });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   /** 标题态机(M44 决策④):优先级 生成中 > 刚完成 > 无素材 > 无产出 > 稳态 */
   function headline(): { title: string; hint: string } {
+    if (!creationEnabled) {
+      return {
+        title: "创作 · 导出给线下",
+        hint: "站内生成已下线:把本创作的定位、素材与指南导出成素材包,交给线下写作助手起稿",
+      };
+    }
     if (generating) {
       return {
         title: "创作动作 · 生成中",
@@ -148,50 +187,68 @@ export default function StudioActions({
           <span className="text-[13px] font-semibold text-text-1">{head.title}</span>
           <span className="text-[11px] text-text-3">{head.hint}</span>
         </div>
-        {/* barRight:统一 px-4 py-2 text-[13px];长文实底/贴图描边 */}
+        {/* barRight:导出素材包(总闸关)或原两钮(总闸开,回滚路径) */}
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={composeArticle}
-            disabled={generating !== null}
-            className="rounded-sm bg-accent px-4 py-2 text-[13px] font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            title={
-              editedSinceCompose
-                ? linkedPostStatus === "published"
-                  ? "文档已发布且初稿后被编辑过,重新生成将覆盖线上内容"
-                  : "文档在初稿生成后被人工编辑过,重新生成将确认后覆盖"
-                : undefined
-            }
-          >
-            {generating === "post" ? "生成中…" : hasDoc ? "重新生成长文" : "生成长文"}
-          </button>
-          <button
-            type="button"
-            onClick={composePin}
-            disabled={generating !== null}
-            className="rounded-sm border border-accent px-4 py-2 text-[13px] font-medium text-accent hover:bg-accent/12 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {generating === "pin" ? "生成中…" : hasPins ? "再生成一组贴图" : "生成贴图"}
-          </button>
+          {!creationEnabled ? (
+            <button
+              type="button"
+              onClick={() => void exportBundle()}
+              disabled={exporting}
+              className="rounded-sm bg-accent px-4 py-2 text-[13px] font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              title="导出本创作的定位、素材与指南清单(给线下写作助手)"
+            >
+              {exporting ? "导出中…" : "导出素材包"}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={composeArticle}
+                disabled={generating !== null}
+                className="rounded-sm bg-accent px-4 py-2 text-[13px] font-medium text-[color:var(--accent-contrast)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  editedSinceCompose
+                    ? linkedPostStatus === "published"
+                      ? "文档已发布且初稿后被编辑过,重新生成将覆盖线上内容"
+                      : "文档在初稿生成后被人工编辑过,重新生成将确认后覆盖"
+                    : undefined
+                }
+              >
+                {generating === "post" ? "生成中…" : hasDoc ? "重新生成长文" : "生成长文"}
+              </button>
+              <button
+                type="button"
+                onClick={composePin}
+                disabled={generating !== null}
+                className="rounded-sm border border-accent px-4 py-2 text-[13px] font-medium text-accent hover:bg-accent/12 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {generating === "pin" ? "生成中…" : hasPins ? "再生成一组贴图" : "生成贴图"}
+              </button>
+            </>
+          )}
         </div>
       </div>
-      {/* 补充要求:折叠收纳(仅本次,不落库,拼进任务话术) */}
-      <details className="min-w-0">
-        <summary className="cursor-pointer select-none text-[11px] text-text-3 hover:text-text-2">
-          补充要求(仅本次,不落库){extra.trim() ? ` · 已填 ${extra.trim().length} 字` : ""}
-        </summary>
-        <input
-          value={extra}
-          maxLength={200}
-          onChange={(e) => setExtra(e.target.value)}
-          placeholder="本次补充要求(如:重点展开需求清单那一节)"
-          className="mt-1.5 w-full rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent placeholder:text-text-3"
-          aria-label="本次补充要求"
-        />
-      </details>
+      {/* 补充要求:折叠收纳(仅本次,不落库,拼进任务话术)——仅总闸开时有意义 */}
+      {creationEnabled && (
+        <details className="min-w-0">
+          <summary className="cursor-pointer select-none text-[11px] text-text-3 hover:text-text-2">
+            补充要求(仅本次,不落库){extra.trim() ? ` · 已填 ${extra.trim().length} 字` : ""}
+          </summary>
+          <input
+            value={extra}
+            maxLength={200}
+            onChange={(e) => setExtra(e.target.value)}
+            placeholder="本次补充要求(如:重点展开需求清单那一节)"
+            className="mt-1.5 w-full rounded-sm border border-line bg-panel px-2 py-1 text-[12px] outline-none focus:border-accent placeholder:text-text-3"
+            aria-label="本次补充要求"
+          />
+        </details>
+      )}
       <span className="text-[11px] text-text-3">
-        在右侧 AI 对话框执行:agent 自主编排(读素材→选角度→创作→落库),素材不足会先搜索并说明;
-        贴图配置:{pinHint}
+        {creationEnabled
+          ? "在右侧 AI 对话框执行:agent 自主编排(读素材→选角度→创作→落库),素材不足会先搜索并说明;贴图配置:"
+          : "素材包含:创作定位与写作配置、素材全集(解读/文章/视频)、绑定指南全文与指南清单;线下起稿后按整包上传落草稿("}
+        {creationEnabled ? pinHint : "发布仍由站长在后台人工执行)"}
       </span>
       {msg && (
         <span className={`text-[11px] ${msg.tone === "ok" ? "text-green" : "text-red"}`}>

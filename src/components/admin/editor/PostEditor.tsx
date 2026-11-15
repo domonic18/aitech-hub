@@ -12,9 +12,9 @@
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { COVER_ADOPTED_EVENT } from "@/lib/agent/cover-tool";
+import { COVER_ADOPTED_EVENT } from "@/lib/ai/cover-events";
 
 import PostMetaPanel, {
   type EditorCategory,
@@ -23,7 +23,7 @@ import PostMetaPanel, {
 } from "@/components/admin/editor/PostMetaPanel";
 import EditorBanners from "@/components/admin/editor/EditorBanners";
 import EditorBodyCard from "@/components/admin/editor/EditorBodyCard";
-import EditorAssistant, { type AssistantLaunch } from "@/components/admin/editor/EditorAssistant";
+import CoverCandidatesPanel from "@/components/admin/editor/CoverCandidatesPanel";
 import { readPostShadow, type PostShadow } from "@/components/admin/editor/usePostAutosave";
 import usePostAutosave from "@/components/admin/editor/usePostAutosave";
 import {
@@ -115,18 +115,7 @@ export default function PostEditor({
   const [shadowOffer, setShadowOffer] = useState<PostShadow | null>(null);
   // 右栏收起(沉浸编辑,M16):mount 后读 localStorage 防 hydration 分歧;收起=右栏不渲染
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // 封面 agent 唤起(M31 验收反馈):弹窗「生成候选」→ 开侧边栏助手直发生成指令
-  const [assistantLaunch, setAssistantLaunch] = useState<AssistantLaunch | null>(null);
-  const launchCoverAgent = useCallback((): void => {
-    setAssistantLaunch({
-      question:
-        "为本文生成封面候选。请先读文章内容,推理 2-4 个差异化的封面方向(风格/主体/配色/" +
-        "拟融入画面的主题文字),用 ask_user 让我选择;我选定后把该方向写成完整生图提示词" +
-        "(要求画面融入文章主题的简短中文文字),用 ask_user 的 detail 字段附提示词全文让我确认;" +
-        "确认后再生成 2 张候选,等我挑一张入库。",
-      nonce: Date.now(),
-    });
-  }, []);
+  // 封面候选(D3,2026-11-15):走 HTTP 触发面(面板自持按钮),不再唤起侧边栏助手
   useEffect(() => {
     try {
       setSidebarCollapsed(localStorage.getItem("ah:editor:sidebar-collapsed") === "1");
@@ -146,14 +135,6 @@ export default function PostEditor({
       return next;
     });
   }
-
-  // Agent 评审面接线(M27 批⑧-d):getter 走 ref 快照(评审挂载瞬间读,引用
-  // 稳定不触发子树重渲染);应用 = 整段 setContentMd(与影子恢复同路径,
-  // Vditor 受控 setValue → dirty → 自动保存落库;undo 口径批⑨ 真机验证)
-  const contentMdRef = useRef(contentMd);
-  contentMdRef.current = contentMd;
-  const getAssistantContent = useCallback(() => contentMdRef.current, []);
-  const applyAssistantContent = useCallback((md: string) => setContentMd(md), []);
 
   // 派生预览(创建/编辑同规则):显式输入优先,否则标题 ASCII token;纯中文标题 → bare-id
   const slugPreview = useMemo(() => {
@@ -273,28 +254,7 @@ export default function PostEditor({
             :AI 协作 | 渠道分发 | 生命周期(下架红色次级、发布主按钮),
             组分隔线切开;侧栏开关恒最右 */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {mode === "edit" && post && (
-            <EditorAssistant
-              postId={post.id}
-              title={title}
-              getContent={getAssistantContent}
-              onApplyContent={applyAssistantContent}
-              launch={assistantLaunch}
-            />
-          )}
-          {mode === "edit" && post && (
-            <button
-              type="button"
-              className={BTN_SECONDARY}
-              onClick={launchCoverAgent}
-              title="唤起侧边栏 Agent 生成封面候选(方向对齐 → 出图入库)"
-            >
-              <svg className="ic" aria-hidden="true">
-                <use href="#i-picture" />
-              </svg>
-              封面 AI
-            </button>
-          )}
+          {mode === "edit" && post && <CoverCandidatesPanel postId={post.id} />}
           {wechat && post && (
             <>
               {mode === "edit" && <span aria-hidden="true" className={BAR_DIVIDER_CLS} />}
@@ -381,14 +341,6 @@ export default function PostEditor({
             slug={slugField}
             onSeoSuggest={() => void seoSuggest()}
             seoSuggesting={seoBusy}
-            coverContext={{
-              postId: post?.id,
-              title,
-              excerpt: meta.excerpt,
-              tags: splitTags(meta.tagsText),
-              contentMd: contentMd.slice(0, 4000),
-            }}
-            onAgentCoverGen={launchCoverAgent}
           />
         )}
       </div>

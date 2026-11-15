@@ -333,6 +333,33 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
                     <button
                       type="button"
                       disabled={busy}
+                      title={
+                        r.isPinned
+                          ? "已人工定稿:采集不覆盖此行。点击改为「跟随官方价」(采集将刷新本行)"
+                          : "跟随官方价:采集会刷新本行价格。点击改为「人工定稿」(采集不再覆盖)"
+                      }
+                      onClick={() =>
+                        void run(async () => {
+                          const env = await send(`/api/pricing/plans/${r.id}`, "PUT", {
+                            isPinned: !r.isPinned,
+                          });
+                          return {
+                            ok: (env?.code ?? 1) === 0,
+                            message: env?.message ?? "操作失败",
+                          };
+                        })
+                      }
+                      className={`cursor-pointer rounded-sm px-2 py-1 disabled:opacity-50 ${
+                        r.isPinned
+                          ? "bg-panel-2 text-text-2"
+                          : "text-text-3 hover:bg-panel-2 hover:text-text-1"
+                      }`}
+                    >
+                      {r.isPinned ? "人工定稿" : "跟随官方"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
                       onClick={() => startEdit(r)}
                       className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
                     >
