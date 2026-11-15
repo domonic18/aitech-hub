@@ -29,6 +29,7 @@ import {
   listCodingPlans,
   listModelPricing,
   modelPricingCreateSchema,
+  modelPricingUpdateSchema,
 } from "./admin";
 
 const VALID_MODEL = {
@@ -146,11 +147,14 @@ describe("list 过滤", () => {
     expect(modelFindMany).toHaveBeenCalledWith({
       where: { status: "enabled", region: "cn" },
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+      // M74 批C:带厂商字典关联(后台展示归一后的厂商名)
+      include: { provider: { select: { name: true } } },
     });
     await listModelPricing({});
     expect(modelFindMany).toHaveBeenLastCalledWith({
       where: {},
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+      include: { provider: { select: { name: true } } },
     });
   });
 
@@ -202,5 +206,42 @@ describe("人工定稿闸 isPinned(M73)", () => {
     expect(codingPlanUpdateSchema.safeParse({ isPinned: true }).success).toBe(true);
     expect(codingPlanUpdateSchema.parse({ isPinned: true }).isPinned).toBe(true);
     expect(codingPlanUpdateSchema.parse({ isPinned: false }).isPinned).toBe(false);
+  });
+});
+
+describe("M74 批C:更新契约不得泄漏 create 默认值", () => {
+  it("只传价格 → 不带 status/currency/region/isPinned(行内改价不得把已上架行打回 pending)", () => {
+    const parsed = modelPricingUpdateSchema.parse({ inputPrice: 1, outputPrice: 2 });
+    expect(parsed).toEqual({ inputPrice: 1, outputPrice: 2 });
+    expect("status" in parsed).toBe(false);
+    expect("currency" in parsed).toBe(false);
+    expect("isPinned" in parsed).toBe(false);
+  });
+
+  it("显式传的字段照旧生效", () => {
+    expect(modelPricingUpdateSchema.parse({ status: "enabled" })).toEqual({ status: "enabled" });
+    expect(modelPricingUpdateSchema.parse({ isFree: true })).toEqual({ isFree: true });
+  });
+
+  it("create 契约的默认值不受影响", () => {
+    const parsed = modelPricingCreateSchema.parse({
+      vendor: "v",
+      modelKey: "model-x",
+      inputPrice: null,
+      outputPrice: null,
+      freeTier: null,
+      contextWindow: null,
+      dataAsOf: "2026-11-15",
+      sourceUrl: "https://example.com",
+    });
+    expect(parsed.status).toBe("pending");
+    expect(parsed.currency).toBe("CNY");
+    expect(parsed.isPinned).toBe(false);
+    expect(parsed.isFree).toBe(false);
+  });
+
+  it("套餐更新契约同样不带默认(status 不得被重置)", () => {
+    const parsed = codingPlanUpdateSchema.parse({ monthlyFee: 5 });
+    expect(parsed).toEqual({ monthlyFee: 5 });
   });
 });
