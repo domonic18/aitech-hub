@@ -247,7 +247,8 @@ M63 已有每日汇率(`site_config`)可复用。
 | **B2** | 采集扩容·二(百炼) | B1 | 百炼按量牌价接入(ICE 载荷 + 异构表对齐闸) | `feature/m74-pricing-sources-2` |
 | **B3** | 采集扩容·三(火山引擎) | B2 | 渲染型源接入 + headless 白名单 | `feature/m74-pricing-sources-3` |
 | **B4** | 采集扩容·四(百度词元所) | B3 + 裁定 3 | 聚合平台挂牌价(来源页与供应方口径待定) | `feature/m74-pricing-sources-4` |
-| **C** | 免费标识与筛选维度 | A(B 产数据) | 免费角标 + 多维筛选 + 源页面外链 | `feature/m74-pricing-free-filter` |
+| **C** | 免费标识与筛选维度 | A(B 产数据) | 免费角标 + 六维筛选 + URL 同步 + 后台批量终审 | `feature/m74-pricing-free-filter` |
+| **C2** | 策展台增强(余项) | C | 源健康度卡 + 档位编辑 | `feature/m74-pricing-console` |
 | **D** | 比价矩阵与可视化 | B + C | 比价视图 + 散点 + 排序 | `feature/m74-pricing-compare` |
 | **E** | 词元所聚合报价 | A + B(词元所源) + §6 第 3 条 | 二级供应方建模 + 聚合视图 | `feature/m74-pricing-aggregator` |
 | **F** | 价格变更史(可选) | A | `model_pricing_change` + 降价视图 | `feature/m74-pricing-history` |
@@ -334,7 +335,29 @@ A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
 | B2-4 | 免费额度原文入 `free_tier` | 同上 | ✅ |
 | B2-5 | 注册源 + golden 样本(4 张表:带范围/带免费额度/简单表/多模态排除用例) | `source-registry.ts` + `__fixtures__/bailian-billing.html` | ✅ |
 
-**B3(本轮,已实现)**——火山引擎方舟(渲染源):
+**C(批C:免费与筛选,已实现)——前台可见的那一批**:
+
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| C1 | 行级「免费」角标(完全免费,与「有免费额度」分开标) | `ModelSection.tsx` | ✅ |
+| C2 | 「只看免费」快捷 chip(带免费行计数) | `FilterBar.tsx` | ✅ |
+| C3 | 六维筛选:厂商 × 价格区间 × 免费 × 模态 × 上下文长度 × 来源类型 | `public.ts` 纯函数 + `ModelFilters.tsx`(折叠在 `<details>` 里,首屏不被撑满) | ✅ |
+| C4 | 排序(输入价/输出价/模型名;null 价恒排最后) | `public.ts#sortModelRows` | ✅ |
+| C5 | 每行「官方价格页 ↗」外链 | 既有 `OfficialLink` | ✅(原已具备) |
+| C6 | 筛选态同步 URL(v/b/free/mod/ctx/src/sort;可分享/可后退) | `lib/pricing/query.ts` + `PricingExplorer.tsx`;静态页 `useSearchParams` 须包 Suspense 边界 | ✅ |
+| C7 | 后台:批量终审(采集落 pending,不批量通过就永远不上架)+ 免费标记覆写 | `POST /api/pricing/models/bulk` + `ModelsBoard.tsx` | ✅ |
+| C8 | 后台:源健康度卡 | — | ⬜ 批C2 |
+
+**批C 顺带修掉一个既有 bug**(M74 批C 实测发现,非本批引入):zod v4 的 `.partial()` **挡不住
+`.default()`**——`modelPricingUpdateSchema = create.partial()` 会给缺省键补上默认值,
+于是「只改价格」的 PUT 把 `status` 打回 pending(已上架的行从前台消失)、`currency` 重置 CNY、
+`is_pinned` 定稿闸被清掉(采集随即覆盖该行)。修法:create 与 update **各写一份契约**,
+update 全部 optional 且**无 default**(回归测试锁在 `admin.test.ts`)。
+
+**C2(下一轮)**——策展台余项:源健康度卡(各源最近成功/失败/待复核行数)、档位编辑
+(阶梯/缓存/峰谷的手工订正入口)。
+
+**B3(已实现)**——火山引擎方舟(渲染源):
 
 | # | 任务 | 文件 | 状态 |
 |---|---|---|---|

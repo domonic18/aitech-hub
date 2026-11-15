@@ -37,6 +37,8 @@ export interface PublicModelRow {
   providerKey: string | null;
   /** 厂商展示名(字典表);未归一时回落到 vendor */
   providerName: string | null;
+  /** 厂商来源类型(字典表 source_kind):official 一手厂商 | aggregator 聚合平台挂牌价 */
+  providerKind: string | null;
   /** 模型字典键(M74 跨厂商归一);未归一为 null */
   modelDictKey: string | null;
   /** 模型模态(字典表);未归一为 null */
@@ -55,6 +57,123 @@ export interface PublicTierRow {
   maxTokens: number | null;
   unit: string;
   currency: string;
+}
+
+// ---------- M74 批C:筛选维度与排序(纯函数,单测锚) ----------
+
+/** 上下文长度解析:"128K"→131072 / "1M"→1048576 / "200000"→200000;认不出 null */
+export function parseContextTokens(raw: string | null): number | null {
+  if (raw === null) return null;
+  const t = raw.trim().toUpperCase();
+  if (t === "") return null;
+  const m = /^([\d.]+)\s*([KM])?$/.exec(t);
+  if (m === null) return null;
+  const v = Number(m[1]);
+  if (Number.isNaN(v)) return null;
+  const unit = m[2] ?? "";
+  if (unit === "K") return v * 1024;
+  if (unit === "M") return v * 1024 * 1024;
+  return v;
+}
+
+/** 上下文区间档(筛选用):按「至少多少」分档,未知单列 */
+export const CONTEXT_BANDS = [
+  { id: "all", label: "全部", min: null },
+  { id: "ge1m", label: "≥ 1M", min: 1024 * 1024 },
+  { id: "ge256k", label: "≥ 256K", min: 256 * 1024 },
+  { id: "ge128k", label: "≥ 128K", min: 128 * 1024 },
+  { id: "lt128k", label: "< 128K", min: null },
+  { id: "unknown", label: "未标注", min: null },
+] as const;
+
+export type ContextBandId = (typeof CONTEXT_BANDS)[number]["id"];
+
+/** 上下文档命中判定(未知档只收未标注的行;其它档按 token 数下界) */
+export function inContextBand(tokens: number | null, id: ContextBandId): boolean {
+  if (id === "all") return true;
+  if (id === "unknown") return tokens === null;
+  if (id === "lt128k") return tokens !== null && tokens < 128 * 1024;
+  const band = CONTEXT_BANDS.find((b) => b.id === id);
+  if (band === undefined || band.min === null) return true;
+  return tokens !== null && tokens >= band.min;
+}
+
+/** 模态筛选项(字典表的 modality 值;空 = 未标注) */
+export const MODALITY_OPTIONS = [
+  { id: "", label: "全部" },
+  { id: "text", label: "文本" },
+  { id: "text+vision", label: "图文" },
+  { id: "image", label: "图像" },
+  { id: "audio", label: "音频" },
+  { id: "video", label: "视频" },
+  { id: "embedding", label: "向量" },
+  { id: "rerank", label: "重排" },
+] as const;
+
+/** 来源类型筛选项(厂商字典的 source_kind;空 = 未标注) */
+export const SOURCE_KIND_OPTIONS = [
+  { id: "", label: "全部" },
+  { id: "official", label: "官方一手价" },
+  { id: "aggregator", label: "聚合平台挂牌价" },
+] as const;
+
+/** 模型行排序方式 */
+export type ModelSortId = "default" | "input" | "output" | "name";
+
+export const MODEL_SORT_OPTIONS: ReadonlyArray<{ id: ModelSortId; label: string }> = [
+  { id: "default", label: "默认(分组序)" },
+  { id: "input", label: "输入价低→高" },
+  { id: "output", label: "输出价低→高" },
+  { id: "name", label: "模型名" },
+];
+
+/** 模型行筛选选项 */
+export interface ModelFilterOptions {
+  vendors: string[];
+  band: PriceBandId;
+  freeOnly: boolean;
+  modality: string;
+  contextBand: ContextBandId;
+  sourceKind: string;
+}
+
+/**
+ * 模型行筛选(厂商 × 价格区间 × 免费 × 模态 × 上下文 × 来源类型)。
+ * null 价不进具体价格区间档(不臆测);免费只看 is_free 标记(完全免费),
+ * 「有免费额度」是另一回事(free_tier 原文),不在此过滤。
+ */
+export function filterModelRows(
+  rows: PublicModelRow[],
+  opts: ModelFilterOptions,
+): PublicModelRow[] {
+  return rows.filter((r) => {
+    if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
+    if (!inPriceBand(r.inputPrice, opts.band)) return false;
+    if (opts.freeOnly && !r.isFree) return false;
+    if (opts.modality !== "" && (r.modality ?? "") !== opts.modality) return false;
+    if (!inContextBand(parseContextTokens(r.contextWindow), opts.contextBand)) return false;
+    if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;
+    return true;
+  });
+}
+
+/**
+ * 模型行排序:null 价恒排最后(未公布价不是「最便宜」),
+ * 同价按模型名定序,保证结果稳定。
+ */
+export function sortModelRows(rows: PublicModelRow[], sort: ModelSortId): PublicModelRow[] {
+  if (sort === "default") return rows;
+  const priceOf = (r: PublicModelRow): number | null =>
+    sort === "input" ? r.inputPrice : r.outputPrice;
+  return [...rows].sort((a, b) => {
+    const pa = priceOf(a);
+    const pb = priceOf(b);
+    if (pa === null && pb === null) return a.modelKey.localeCompare(b.modelKey);
+    if (pa === null) return 1;
+    if (pb === null) return -1;
+    if (pa !== pb) return pa - pb;
+    return a.modelKey.localeCompare(b.modelKey);
+  });
 }
 
 export interface PublicPlanRow {
