@@ -59,6 +59,7 @@
 | [data-expansion-plan.md](plan/data-expansion-plan.md) | M58 数据面扩展与洞察 v2(多语言/厂商事件/榜单页/社区语料/问句清洗) |
 | [editor-ai-plan.md](plan/editor-ai-plan.md) | 编辑器 AI 化(对话改稿 + diff 评审 + 自动保存)实现方案 |
 | [topic-pipeline-plan.md](plan/topic-pipeline-plan.md) | 专题内容管线实现方案 |
+| [model-pricing-plan.md](plan/model-pricing-plan.md) | 模型牌价 · 按量比价(国内主流厂商按量牌价采集 + 跨厂商比价可视化 + 免费模型标识)开发计划 |
 | [xhs-auto-publish-design.md](plan/xhs-auto-publish-design.md) | 小红书自动发布系统设计 |
 
 ### research/ · prototypes/
