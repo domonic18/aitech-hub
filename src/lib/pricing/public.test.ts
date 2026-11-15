@@ -8,11 +8,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const findManyModels = vi.fn();
 const findManyPlans = vi.fn();
+const findManyTiers = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     modelPricing: { findMany: (...a: unknown[]) => findManyModels(...a) },
     codingPlan: { findMany: (...a: unknown[]) => findManyPlans(...a) },
+    modelPricingTier: { findMany: (...a: unknown[]) => findManyTiers(...a) },
   },
 }));
 
@@ -33,6 +35,7 @@ import { listPublicPricing } from "./read";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  findManyTiers.mockResolvedValue([]);
 });
 
 describe("isPricingStale", () => {
@@ -65,11 +68,17 @@ describe("sortPublicModels", () => {
     inputPrice: null,
     outputPrice: null,
     freeTier: null,
+    isFree: false,
     contextWindow: null,
     note: null,
     dataAsOf: "2026-10-28",
     sourceUrl: "https://x",
     region,
+    providerKey: null,
+    providerName: "V",
+    modelDictKey: null,
+    modality: null,
+    tiers: [],
   });
   it("混合组排序:国内¥→国际$→其余按键字典序;同组内保持入参原序", () => {
     const sorted = sortPublicModels([
@@ -100,30 +109,38 @@ describe("listPublicPricing", () => {
   it("仅 enabled 行;Decimal/BigInt 展平;整表 max(dataAsOf)", async () => {
     findManyModels.mockResolvedValue([
       {
+        id: BigInt(1),
         vendor: "DeepSeek 深度求索",
         modelKey: "deepseek-flash",
         currency: "CNY",
         inputPrice: { toString: () => "2" },
         outputPrice: { toString: () => "8" },
         freeTier: null,
+        isFree: false,
         contextWindow: "1M",
         note: "[官方页爬虫 2026-10-28] 矩阵",
         dataAsOf: new Date("2026-10-28T00:00:00+08:00"),
         sourceUrl: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
         region: "cn",
+        provider: { key: "deepseek", name: "DeepSeek 深度求索" },
+        model: { modelKey: "deepseek-flash", modality: "text" },
       },
       {
+        id: BigInt(2),
         vendor: "OpenAI",
         modelKey: "gpt-5",
         currency: "USD",
         inputPrice: null,
         outputPrice: { toString: () => "10" },
         freeTier: null,
+        isFree: false,
         contextWindow: null,
         note: null,
         dataAsOf: new Date("2026-10-20T00:00:00+08:00"),
         sourceUrl: "https://openrouter.ai/openai/gpt-5",
         region: "intl",
+        provider: null,
+        model: null,
       },
     ]);
     findManyPlans.mockResolvedValue([]);
@@ -215,11 +232,17 @@ describe("buildPricingJsonLd", () => {
             inputPrice: 2,
             outputPrice: 8,
             freeTier: null,
+            isFree: false,
             contextWindow: "1M",
             note: null,
             dataAsOf: "2026-10-28",
             sourceUrl: "https://x",
             region: "cn",
+            providerKey: "deepseek",
+            providerName: "DeepSeek 深度求索",
+            modelDictKey: "deepseek-flash",
+            modality: "text",
+            tiers: [],
           },
         ],
         plans: [],
