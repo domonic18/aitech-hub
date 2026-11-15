@@ -50,6 +50,12 @@ describe("encodePricingQuery", () => {
     expect(isDefaultPricingQuery(DEFAULT_PRICING_QUERY)).toBe(true);
   });
 
+  it("view 参数编解码(比价视图可分享)", () => {
+    expect(decodePricingQuery("view=compare").view).toBe("compare");
+    expect(decodePricingQuery("view=xxx").view).toBe("list");
+    expect(encodePricingQuery({ ...DEFAULT_PRICING_QUERY, view: "compare" })).toBe("view=compare");
+  });
+
   it("往返一致", () => {
     const state = {
       vendors: ["硅基流动 SiliconFlow"],
@@ -59,6 +65,7 @@ describe("encodePricingQuery", () => {
       contextBand: "ge128k" as const,
       sourceKind: "aggregator",
       sort: "output" as const,
+      view: "compare" as const,
     };
     expect(decodePricingQuery(encodePricingQuery(state))).toEqual(state);
   });

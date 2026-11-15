@@ -20,10 +20,14 @@ import {
   type PriceBandId,
   type PublicModelRow,
 } from "@/lib/pricing/public";
+import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
+import type { PricingViewId } from "@/lib/pricing/query";
 
+import { CompareMatrix } from "./CompareMatrix";
 import { FilterBar } from "./FilterBar";
 import { ModelFilters } from "./ModelFilters";
 import { OfficialLink, groupKey, groupTitle } from "./shared";
+import { PriceScatter } from "./PriceScatter";
 
 /** 完全免费角标 */
 function FreeBadge(): React.ReactElement {
@@ -150,6 +154,9 @@ export interface ModelSectionProps {
   onSourceKindChange: (v: string) => void;
   sort: ModelSortId;
   onSortChange: (v: ModelSortId) => void;
+  /** 模型区视图:列表 | 比价(M74 批D) */
+  view: PricingViewId;
+  onViewChange: (v: PricingViewId) => void;
 }
 
 export function ModelSection({
@@ -168,6 +175,8 @@ export function ModelSection({
   onSourceKindChange,
   sort,
   onSortChange,
+  view,
+  onViewChange,
 }: ModelSectionProps): React.ReactElement {
   const rows = sortModelRows(
     filterModelRows(sortPublicModels(models), {
@@ -184,6 +193,34 @@ export function ModelSection({
   const freeCount = models.filter((m) => m.isFree).length;
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+      {/* 视图切换(M74 批D):列表 / 比价 */}
+      <div className="flex items-center gap-2 border-b border-line bg-panel-2/30 px-4 py-2">
+        {(
+          [
+            { id: "list" as const, label: "列表" },
+            { id: "compare" as const, label: "比价" },
+          ] satisfies Array<{ id: PricingViewId; label: string }>
+        ).map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            aria-pressed={view === v.id}
+            onClick={() => onViewChange(v.id)}
+            className={`rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none ${
+              view === v.id
+                ? "border-accent bg-accent text-white"
+                : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
+        {view === "compare" && (
+          <span className="ml-2 text-[11px] text-text-3">
+            {countComparableModels(rows)} 个模型有 ≥2 家报价可并排比
+          </span>
+        )}
+      </div>
       <FilterBar
         vendors={vendorOptions(models, (r) => r.vendor)}
         selectedVendors={selectedVendors}
@@ -207,21 +244,43 @@ export function ModelSection({
           />
         }
       />
-      {groups.map((key) => {
-        const groupRows = rows.filter((m) => groupKey(m) === key);
-        return (
-          <div key={key} className="border-b border-line last:border-b-0">
-            <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
-              <h2 className="text-[13px] font-semibold text-text-1">
-                {groupTitle(key, groupRows)}
-              </h2>
-              <span className="ml-auto font-mono text-[11px] text-blue">{groupRows.length}</span>
-            </div>
-            <ModelTable rows={groupRows} />
-            <ModelCards rows={groupRows} />
+      {view === "compare" ? (
+        <>
+          <div className="border-b border-line px-4 py-3">
+            <h2 className="text-[13px] font-semibold text-text-1">同模型跨提供商比价</h2>
+            <p className="mt-1 text-[11.5px] text-text-3">
+              按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家;
+              原币直出不折算,故按币种分区、只在区内比价。
+            </p>
           </div>
-        );
-      })}
+          <CompareMatrix groups={buildCompareGroups(rows)} />
+          <div className="border-t border-line">
+            <div className="border-b border-line px-4 py-3">
+              <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
+              <p className="mt-1 text-[11.5px] text-text-3">
+                每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度。
+              </p>
+            </div>
+            <PriceScatter rows={rows} />
+          </div>
+        </>
+      ) : (
+        groups.map((key) => {
+          const groupRows = rows.filter((m) => groupKey(m) === key);
+          return (
+            <div key={key} className="border-b border-line last:border-b-0">
+              <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
+                <h2 className="text-[13px] font-semibold text-text-1">
+                  {groupTitle(key, groupRows)}
+                </h2>
+                <span className="ml-auto font-mono text-[11px] text-blue">{groupRows.length}</span>
+              </div>
+              <ModelTable rows={groupRows} />
+              <ModelCards rows={groupRows} />
+            </div>
+          );
+        })
+      )}
       {rows.length > 0 && (
         <p className="border-t border-line px-4 py-3 text-[11.5px] text-text-3">
           共 {rows.length} 个模型 · v1 覆盖 {new Set(rows.map((m) => m.vendor)).size} 家官方厂牌 ·
