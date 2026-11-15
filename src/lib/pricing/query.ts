@@ -9,6 +9,9 @@
  */
 import type { ContextBandId, ModelSortId, PriceBandId } from "./public";
 
+/** 模型区视图:列表(逐行列价)| 比价(同模型跨提供商并排 + 散点) */
+export type PricingViewId = "list" | "compare";
+
 /** 筛选态 */
 export interface PricingQueryState {
   /** 厂商多选(空 = 全部) */
@@ -25,6 +28,8 @@ export interface PricingQueryState {
   sourceKind: string;
   /** 排序 */
   sort: ModelSortId;
+  /** 模型区视图 */
+  view: PricingViewId;
 }
 
 export const DEFAULT_PRICING_QUERY: PricingQueryState = {
@@ -35,6 +40,7 @@ export const DEFAULT_PRICING_QUERY: PricingQueryState = {
   contextBand: "all",
   sourceKind: "",
   sort: "default",
+  view: "list",
 };
 
 const BANDS: ReadonlySet<string> = new Set(["all", "lt10", "10-50", "50-100", "100-300", "gte300"]);
@@ -47,6 +53,7 @@ const CONTEXT_BANDS: ReadonlySet<string> = new Set([
   "unknown",
 ]);
 const SORTS: ReadonlySet<string> = new Set(["default", "input", "output", "name"]);
+const VIEWS: ReadonlySet<string> = new Set(["list", "compare"]);
 
 /** 查询串 → 筛选态(非法值一律回落默认,不抛错——URL 是用户可手改的) */
 export function decodePricingQuery(input: URLSearchParams | string): PricingQueryState {
@@ -58,6 +65,7 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
   const band = params.get("b") ?? "";
   const contextBand = params.get("ctx") ?? "";
   const sort = params.get("sort") ?? "";
+  const view = params.get("view") ?? "";
   return {
     vendors: [...new Set(vendors)],
     band: (BANDS.has(band) ? band : "all") as PriceBandId,
@@ -66,6 +74,7 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
     contextBand: (CONTEXT_BANDS.has(contextBand) ? contextBand : "all") as ContextBandId,
     sourceKind: params.get("src") ?? "",
     sort: (SORTS.has(sort) ? sort : "default") as ModelSortId,
+    view: (VIEWS.has(view) ? view : "list") as PricingViewId,
   };
 }
 
@@ -79,6 +88,7 @@ export function encodePricingQuery(state: PricingQueryState): string {
   if (state.contextBand !== DEFAULT_PRICING_QUERY.contextBand) params.set("ctx", state.contextBand);
   if (state.sourceKind !== "") params.set("src", state.sourceKind);
   if (state.sort !== DEFAULT_PRICING_QUERY.sort) params.set("sort", state.sort);
+  if (state.view !== DEFAULT_PRICING_QUERY.view) params.set("view", state.view);
   return params.toString();
 }
 
@@ -96,6 +106,7 @@ export function samePricingQuery(a: PricingQueryState, b: PricingQueryState): bo
     a.contextBand === b.contextBand &&
     a.sourceKind === b.sourceKind &&
     a.sort === b.sort &&
+    a.view === b.view &&
     a.vendors.length === b.vendors.length &&
     a.vendors.every((v, i) => v === b.vendors[i])
   );

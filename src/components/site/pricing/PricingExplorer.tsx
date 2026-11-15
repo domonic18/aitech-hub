@@ -114,6 +114,8 @@ export default function PricingExplorer({ data }: { data: PublicPricing }): Reac
               onSourceKindChange={(v) => updateModelQuery({ sourceKind: v })}
               sort={modelQuery.sort}
               onSortChange={(v) => updateModelQuery({ sort: v })}
+              view={modelQuery.view}
+              onViewChange={(v) => updateModelQuery({ view: v })}
             />
           )}
           {data.plans.length > 0 && (
