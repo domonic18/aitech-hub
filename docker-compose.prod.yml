@@ -192,8 +192,10 @@ services:
       # M56 三新源:www.minimax.cn(M Plan 国内版)/platform.xiaomimimo.com(Token Plan)
       # 渲染型;help.aliyun.com(百炼)2026-11 起改渲染型(页面改版为 SPA,静态
       # fetch 只能拿到导航壳)故入白名单。
+      # M74 批B3:www.volcengine.com(火山引擎方舟牌价文档)——静态 HTML 1.8MB 里
+      # 0 处价格(表是客户端渲染),必须走渲染通道。
       # www.minimax.io 为旧默认(海外版),渠道 URL 切 .cn 后下一轮删
-      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn,www.minimax.cn,www.minimax.io,platform.xiaomimimo.com,help.aliyun.com
+      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn,www.minimax.cn,www.minimax.io,platform.xiaomimimo.com,help.aliyun.com,www.volcengine.com
     tmpfs:
       - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
     volumes:
