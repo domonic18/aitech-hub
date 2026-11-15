@@ -1,6 +1,6 @@
 # 模型牌价 · 按量比价(开发计划)
 
-> **状态:批 A 已完成(2026-11-15),批 B 起未实现**。立项 2026-11-15(站长新增需求 6 条),里程碑 [M74](development-plan.md#2-里程碑)。
+> **状态:批 A 已完成并合入 develop(PR #257);批 B1(落库改造 + 硅基流动/腾讯云两源 + DeepSeek 档位)实现中**。立项 2026-11-15(站长新增需求 6 条),里程碑 [M74](development-plan.md#2-里程碑)。
 > 需求基准:[requirement/01-requirement.md §4](../requirement/01-requirement.md)。
 > 本文是**过程文档**(方案 + 批次计划 + 待裁定),不是终态方案——实现落码后按批回写
 > [arch/03](../arch/03-data-model.md) §2.4 / [arch/01](../arch/01-data-source.md) §4 / [arch/05](../arch/05-services.md) §4 / [arch/07](../arch/07-frontend.md),本文压缩为一行基线后删除。
@@ -152,15 +152,22 @@
 沿用 [arch/01](../arch/01-data-source.md) §5 待探清单纪律与 §4 接入契约
 (`crawl_source` type=pricing 由系统注册表登记,后台不可手工新建)。
 
-| key | 厂商 | 页面形态 | 采集源类型 | 备注 |
-|---|---|---|---|---|
-| `bailian-model` | 阿里云百炼 | 文档页 | 静态/渲染待探 | 已有 `bailian-token` 套餐源;按量面独立接入 |
-| `tencent-hunyuan` | 腾讯云 | 文档页 | 待探 | 已有 `tencent-tokenplan` 套餐源 |
-| `volcengine-ark` | 火山引擎方舟 | 文档页(模型价格) | 待探 | 豆包系列;阶梯/模态计价典型,需 tier 结构承接 |
-| `siliconflow-model` | 硅基流动 | 动态页(模型价格总览) | 待探,可能需 headless | 聚合多模型;headless 白名单需与 compose 同步 |
-| `baidu-ciyuansuo` | 百度词元所 | 动态交易平台 | 待探,可能需 headless | **见 §4.5** |
-| `deepseek`(改造) | DeepSeek | 静态 | 现有 | 解析升级:缓存命中价、峰谷价 |
-| `moonshot`(改造) | 月之暗面 | SSR | 现有 | 解析升级:上下文缓存价、档位结构 |
+**实探结论(2026-11-15,逐源实测)**——「静态」= 直接 fetch 拿到 HTML 即可解析,
+**渲染**= 必须走 card-renderer(headless):
+
+| key | 厂商 | 页面形态 | 取数通道 | 实探结论 | 状态 |
+|---|---|---|---|---|---|
+| `siliconflow-model` | 硅基流动 | `/pricing` div 网格(非 <table>) | **静态** | 820KB HTML 价直接落 DOM;行容器 class 含 `min-h-[48px]`+`grid`,模型 id 在 `a[title]`;**有时段定价**(格内「费用发生时段: 0点～2点/8点～24点」,2点～8点 是优惠窗)+ 输入/输出/缓存三列 | ✅ 批B1 已落 |
+| `tencent-hunyuan` | 腾讯云混元 | 定价文档两张表 | **静态** | 「产品名\|免费额度」+「产品名\|刊例价(每 百万 tokens)」;刊例价格形如「输入:0.5元输出:2元」 | ✅ 批B1 已落 |
+| `bailian-model` | 阿里云百炼 | `/zh/model-studio/billing` | **静态**(ICE 载荷) | 价在 `window.__ICE_PAGE_PROPS__` 的 `content` HTML 里;**159 张价格表、列语义随表而变**(模式/地区/阶梯区间混列,73 个模型多行)——需逐表识别表头 + rowspan 承接,单独一轮 | ⬜ 批B2 |
+| `volcengine-ark` | 火山引擎方舟 | 文档页(Next RSC) | **渲染** | 静态 HTML 1.8MB 里 0 处价格(表是客户端渲染);RSC flight 载荷;headless 实测渲染后有 8 处「元/百万」 | ⬜ 批B2 |
+| `baidu-ciyuansuo` | 百度词元所 | SPA 首页 | **渲染** | 静态 53KB 只有 21 处价格线索,`/models` `/pricing` `/api/*` 全 404,业务接口在 chunk 里动态拼;headless 实测渲染后有 8 处「元/百万」 | ⬜ 批B2(见 §4.5) |
+| `deepseek`(改造) | DeepSeek | 静态 | 静态 | 峰谷×缓存矩阵**已升级为档位**(6 档:缓存命中×谷/峰 + 输入×谷/峰 + 输出×谷/峰);行价仍是「高峰·未命中」基准 | ✅ 批B1 已落 |
+| `moonshot`(改造) | 月之暗面 | SSR | 静态 | SSR 行只有输入/输出两价,无档位维度;行价口径不变,仅补归一/免费字段 | ✅ 批B1 已落 |
+
+**渲染通道白名单**:批B1 落的两源都是静态取数,**不需要 headless**;批B2 的火山/词元所需把
+`www.volcengine.com` / `cysuo.com` 加进 compose 的 `RENDER_ALLOWED_HOSTS`
+(与 `src/lib/pricing/render-fetch.ts` 文件头注的两处同步关系同源)。
 
 **词元所的特殊性**(需求点名的「百度最新上线的词元所」):2026-11-12 百度世界大会发布的
 大模型交易平台(`cysuo.com`),定位是**模型交易与比价市场**——发布首日申请入驻供应商超 100 家、
@@ -232,7 +239,8 @@ M63 已有每日汇率(`site_config`)可复用。
 | 批 | 主题 | 依赖 | 产出 | 分支 |
 |---|---|---|---|---|
 | **A** | 数据底座(归一层 + 档位表 + 免费标识列) | §6 第 4/5/7 条裁定 | 3 表 + 3 列 + 迁移 + 存量回填 | `feature/m74-pricing-schema` |
-| **B** | 采集扩容(5 新源 + 2 旧源解析升级) | A | 7 个源接入 + golden 单测 | `feature/m74-pricing-sources` |
+| **B1** | 采集扩容·一(落库改造 + 2 静态新源 + DeepSeek 档位升级) | A | 硅基流动/腾讯云接入 + 归一/档位/免费/墓碑落库 | `feature/m74-pricing-sources` |
+| **B2** | 采集扩容·二(百炼/火山/词元所) | B1 | 3 源接入(百炼异构表 + 2 渲染源) | `feature/m74-pricing-sources-2` |
 | **C** | 免费标识与筛选维度 | A(B 产数据) | 免费角标 + 多维筛选 + 源页面外链 | `feature/m74-pricing-free-filter` |
 | **D** | 比价矩阵与可视化 | B + C | 比价视图 + 散点 + 排序 | `feature/m74-pricing-compare` |
 | **E** | 词元所聚合报价 | A + B(词元所源) + §6 第 3 条 | 二级供应方建模 + 聚合视图 | `feature/m74-pricing-aggregator` |
@@ -291,36 +299,43 @@ A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
 | 现有 8 源采集行为不变 | ✅ 批 A 未触碰采集侧(collect/crawlers/source-registry 零改动) |
 | 门禁 | ✅ typecheck / lint / test:unit(2265 passed,1 个与本次无关的 WP fixture 超时用例放宽后绿)/ build 绿 |
 
-### 5.2 批 B · 采集扩容
+### 5.2 批 B · 采集扩容(拆 B1 / B2)
 
 **目标**:把按量模型牌价面从 2 家扩到 7 家,并让解析结果承载阶梯/缓存/峰谷/模态。
 
 **前置**:批 A 落库。
 
-**任务清单**
+**B1(本轮,已实现)**——落库改造 + 两个结构干净的静态源 + DeepSeek 档位升级:
 
-| # | 任务 | 文件 |
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| B1-1 | 逐源**实探**(静态 / headless / 需登录态)并记录结论 | 实探结论入 §4.1;robots 与 UA 规范一并核对 | ✅ |
+| B1-2 | 落库改造:档位写入 + `is_free` 判定 + 归一关联 + 免费额度原文 | 新建 `src/lib/pricing/model-persist.ts`(从 crawlers.ts 拆出,避开 350 行上限) | ✅ |
+| B1-3 | 旧源解析升级到档位结构 | `src/lib/pricing/crawlers.ts`(`parseDeepseek` 出 6 档;`parseMoonshot` 无档位维度) | ✅ |
+| B1-4 | 硅基流动解析器 | `src/lib/pricing/model-sources/siliconflow.ts` + golden 样本 | ✅ |
+| B1-5 | 腾讯云混元解析器 | `src/lib/pricing/model-sources/tencent.ts` + golden 样本 | ✅ |
+| B1-6 | 注册新源 + 采集周期分档(模型面日级 / 套餐面周级) | `source-registry.ts` + `src/lib/collect/constants.ts` | ✅ |
+| B1-7 | 墓碑机制(多轮未见 → disabled + 「源已下线」注记) | `model-persist.ts#markMissingModelsStale`;3 天未刷新即墓碑(人工定稿行不参与) | ✅ |
+| B1-8 | 免费额度原文入 `free_tier` | 行类型加 `freeTier`,落库写入(与 `is_free`「完全免费」两种语义) | ✅ |
+
+**B2(下一轮)**——百炼(异构表)+ 火山/词元所(渲染源):
+
+| # | 任务 | 说明 |
 |---|---|---|
-| B1 | 逐源**实探**(静态 / headless / 需登录态)并记录结论 | 实探结论入本文 §4.1 表;robots 与 UA 规范一并核对 |
-| B2 | 新增解析器(每源一个 golden 样本) | `src/lib/pricing/model-sources.ts`(新文件,与现 `plan-sources.ts` 同构;文件 ≤350 行,拆 `model-sources/` 子目录按源分文件) |
-| B3 | 注册新源 | `src/lib/pricing/source-registry.ts` 的 `SOURCE_DEFS` 增 5 条 `target: "model"` |
-| B4 | 旧源解析升级到档位结构 | `src/lib/pricing/crawlers.ts`(`parseDeepseek` / `parseMoonshot`) |
-| B5 | 落库改造(tier 写入 + `is_free` 判定 + 归一关联) | `src/lib/pricing/curated-persist.ts`、`crawlers.ts` 的 `persistModelRows` |
-| B6 | 墓碑机制(连续 N 轮未见 → disabled) | `src/lib/pricing/curated-persist.ts` 新增 `markMissingModelsStale` |
-| B7 | 采集周期分档(模型面日级 / 套餐面周级) | `src/lib/collect/constants.ts`(`PRICING_CRAWL_INTERVAL_MIN` → 按 target 分两常量) |
-| B8 | headless 白名单同步 | `src/lib/pricing/render-fetch.ts` + compose 层 `RENDER_ALLOWED_HOSTS`(两处必须同步,注册表文件头注已写明) |
-| B9 | 失败语义复核 | 单源失败 → 旧数据标「待复核」→ 抛错 → `crawl_source` 记 `consecutiveFails`;不阻塞其他源(现语义已对,新增源需验证) |
+| B2-1 | 百炼计费页解析 | `__ICE_PAGE_PROPS__` → content HTML → **159 张价格表、列语义随表而变**:需按表头识别「模式/地区/阶梯区间/输入单价/输出单价/免费额度」各列 + rowspan 承接;同模型多行(73 个模型)须归一为一行 + 多档 |
+| B2-2 | 火山引擎方舟(渲染) | headless 白名单加 `www.volcengine.com`;RSC 页渲染后取价 |
+| B2-3 | 百度词元所(渲染) | headless 白名单加 `cysuo.com`;**二级供应方建模**(见 §4.5)须先有裁定 |
+| B2-4 | golden 样本与单测 | 每源一份裁剪样本(真实页面结构,脱敏后存 `__fixtures__/`) |
 
 **测试**
 
-- `src/lib/pricing/model-sources.test.ts`——每源一份**离线 golden HTML/JSON 样本**;
-  样本落 `src/lib/pricing/__fixtures__/`(真实取数原文脱敏后存);
-- 落库单测:`is_free` 判定(全档位为 0 → true;有免费额度文本 → `free_tier` 记原文、`is_free=false`);
-- 墓碑单测:连续 N 轮缺失 → disabled;人工 `is_pinned=true` 的行**不得**被墓碑。
+- `src/lib/pricing/model-persist.test.ts`——落库三规则 + 归一 id + 免费标识 + 档位写入 + 墓碑;
+- `src/lib/pricing/model-sources/{siliconflow,tencent}.test.ts`——各源一份离线 golden 样本
+  (样本落 `src/lib/pricing/__fixtures__/`,自真实页面裁剪);
+- `src/lib/pricing/source-registry.test.ts`——周期分档断言(模型面 1440 / 套餐面 10080)。
 
-**完成标准**:7 个源各 ≥1 次成功采集;抽样 20 行与官方页面口径人工核对一致;
-单源故障演练(改坏一个源的 URL)不影响其余源;`crawl_source` 台账与
-`channel-ledger.ts` 牌价组正确呈现新源。
+**完成标准(B1)**:两个新源各 ≥1 次成功采集并抽样人工核对;DeepSeek 档位 6 条落库;
+归一 id 写到位;墓碑演练(把某行 dataAsOf 改旧 → 下轮被停用);门禁全绿。
 
 ### 5.3 批 C · 免费标识与筛选维度
 
