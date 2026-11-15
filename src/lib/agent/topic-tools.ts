@@ -30,9 +30,9 @@ import { getTopic, TopicError } from "../topics/repo";
 import { skipCoverGeneration } from "../topics/writing-config";
 import { logger } from "../logger";
 
+import { pollUntil } from "../ai/poll";
 import { assertAdminThread } from "./admin-thread";
 import { generateIllustrationTool } from "./illustrate-tool";
-import { pollUntil } from "./poll";
 import { getTopicBriefTool } from "./topic-brief-tool";
 import { saveTopicDraftTool } from "./topic-draft-tool";
 import { denyPayload, humanizeTopicError } from "./topic-tool-common";

@@ -36,7 +36,7 @@ const adminThreadDeny = vi.hoisted(() =>
 vi.mock("./admin-thread", () => ({ adminThreadDeny, assertAdminThread }));
 
 const pollUntil = vi.hoisted(() => vi.fn());
-vi.mock("./poll", () => ({ pollUntil }));
+vi.mock("../ai/poll", () => ({ pollUntil }));
 
 import { generatePostCoverTool } from "./cover-tools";
 

@@ -43,6 +43,7 @@
 | 测试规范                      | docs/standard/01-testing         |
 | 数据库命名规范(表/列/索引)   | docs/standard/03-db-naming       |
 | CICD/分支模型/部署            | docs/standard/02-cicd-deployment |
+| 创作闭环验收剧本(瘦身每批必跑)| docs/standard/04-creative-loop-acceptance |
 
 ## 3. 通用编码规范与 AI 指令
 

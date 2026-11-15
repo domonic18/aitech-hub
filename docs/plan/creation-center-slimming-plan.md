@@ -23,6 +23,24 @@
 1. **B3 关站内生成入口时，封面能力不能断** —— 依赖 D3 的 HTTP 触发路由在 B1 已就位，故 B3 的顺序是「B1 补路由 → B3 切按钮 → B4 删 agent 工具」，封面这条链不出现空窗。
 2. **B7 删表前必须先 diff 后备份**（D7 落地为流程硬闸，R5 缓解）。
 
+## 0.2 批次进展（2026-11-15）
+
+| 批次 | 状态 | 落点 |
+| --- | --- | --- |
+| B0 创作总闸 | ✅ 已合 develop | `creation.agent_enabled` kv 熔断闸 |
+| B1 MCP 补缺 | ✅ 已合 develop（PR #244） | 工具面 21 → **25 只**（只读 9 + 文章面 9 + 贴图面 7）；统一错误形状 `{ok:false,code,message,retryable,hint}`；`POST /api/posts/bundles` 批量入库；`cardUrls` 卡图清单闸 |
+| B1.1 封面 HTTP 触发面 | ✅ 已合 develop | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
+| B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 只读镜像内副本 |
+| B3 关站内生成入口 | ⏸ 待启动 | 前置：线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条）；含 `GET /api/topics/[id]/export` 与三处 UI 改造 |
+| B4~B8 | ⏸ 未启动 | 逐批删除 / 收窄 / 收尾 |
+
+**两处与原方案不同的落地决定**：
+
+1. **B1 的「素材接地三只」(`list_materials`/`get_material`/`search_materials`)划掉** —— MCP 侧 `search_site`（三域检索）与 `get_telegram_item`（单条完整元数据）已覆盖外部 agent 的素材面;agent 的 `search_materials` 是 **topic 作用域**(站内创作项目的素材集),而 PAT 不碰创作域(D6 裁定),两者本就不是同一件事。工具面因此是 25 只而非原估的 30 只。
+2. **B1.1 单独成批** —— D3 的封面 HTTP 触发路由原挂在 B1,实际实现时发现它需要动 agent 工具的封面流程(与 HTTP 触发面共用一份编排),独立成批以免把 B1 的「纯新增」性质打破。
+
+**闭环验收剧本**见 `docs/standard/04-creative-loop-acceptance.md`(方案 §5.1 第 2 条要求的离线回归剧本,B3 起每批必跑)。
+
 ---
 
 
