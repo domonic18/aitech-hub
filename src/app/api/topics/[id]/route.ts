@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import { parseBigIntId } from "@/lib/http/parse-id";
+import { readWritingSkill } from "@/lib/skills/writing-skills";
 import { toItemDto, toTopicDto } from "@/lib/topics/dto";
 import { mapTopicError } from "@/lib/topics/http";
 import { hydrateItems } from "@/lib/topics/materials";
@@ -66,13 +67,13 @@ export async function PATCH(
       "字段不合法(标题 1-200 / 定位与贴图配置 ≤1000 / 文章 id 与样例图 id 纯数字 / status 枚举 / outputType article|pin)",
     );
   }
-  // skillKey 存在性核(soft ref 可解绑,但指向必须落在启用的 agent_skill 上)
+  // skillKey 存在性核(soft ref 可解绑,但指向必须落在已发布的指南上)
+  // —— M72 B7:`agent_skill` 表退役,指南真相源=仓库 `skills/writing/*.md`
+  // (MCP list_skills/get_skill 与素材包导出读同一份)
   if (parsed.success && parsed.data.skillKey) {
-    const skill = await prisma.agentSkill.findUnique({
-      where: { key: parsed.data.skillKey },
-      select: { enabled: true },
-    });
-    if (!skill || !skill.enabled) return apiEnvelope(400, "skillKey 不存在或已停用");
+    if (readWritingSkill(parsed.data.skillKey) === null) {
+      return apiEnvelope(400, "skillKey 不存在或未发布");
+    }
   }
   // 样例参照图存在性核(M39 批③,同 skillKey soft ref 口径:可解绑,指向必须存在)
   if (parsed.success && parsed.data.sampleImageId) {

@@ -28,7 +28,7 @@ vi.mock("../db", () => ({
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const getEnabledSkillByKey = vi.hoisted(() => vi.fn());
-vi.mock("../ai/agent-skills-admin", () => ({ getEnabledSkillByKey }));
+vi.mock("../ai/skill-registry", () => ({ getEnabledSkillByKey }));
 
 const resolveAiModel = vi.hoisted(() => vi.fn());
 vi.mock("../ai/resolver", () => ({ resolveAiModel }));

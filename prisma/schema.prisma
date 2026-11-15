@@ -1641,19 +1641,6 @@ model WritingSampleImage {
 /// key 为 agent 侧/topic.skillKey 的稳定引用名;scenario 为适用场景(一行,
 /// 供 agent 选 skill 对号);guideMd 为指南正文(markdown,可引用既有工具名);
 /// 种子收编「博主×视频」指南 + 码点预算段(幂等 seed,不覆盖后台后续编辑)。
-model AgentSkill {
-  id        BigInt   @id @default(autoincrement())
-  key       String   @unique(map: "uq_agent_skill_key") @db.VarChar(50)
-  name      String   @db.VarChar(100)
-  scenario  String   @db.VarChar(200) // 适用场景(供 agent/管理员选 skill 时对号)
-  guideMd   String   @map("guide_md") @db.Text // 指南正文(markdown,流程纪律;机械执行归工具/管线)
-  enabled   Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@map("agent_skill")
-}
-
 /// 任务运行台账(验收二批③,学习 ai-invest collector_log):系统全部周期批任务
 /// (cron 调度 + 手动触发,含 LLM/向量调用类)的持久运行记录——BullMQ
 /// removeOnComplete 只留近几次,挂死/失败/耗时无处可查。单一写入口=worker
