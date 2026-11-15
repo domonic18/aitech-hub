@@ -67,14 +67,13 @@ export function openAgentAssistant(ask?: AgentOpenAsk): void {
 
 /**
  * FAB 按钮显隐路由策略(卡本身永驻——按钮藏 ≠ 卡卸载,在跑 run 不中断):
- * - 编辑页 /admin/posts/<id>:顶栏 EditorAssistant 入口在场,FAB 藏钮防双入口
- *   (M27 UX 决策保留,退役令从「整卡 return null」改为「仅藏按钮」);
  * - 登录页 /admin/login:登录流程聚焦,不设助手入口。
+ * 2026-11-15(B3):编辑页原本藏钮——顶栏 EditorAssistant 入口在场,防双入口;
+ * 该入口下线后编辑页只剩 FAB 一处入口,藏钮等于「编辑页没有助手」,改为照常显钮。
  * prod 端 usePathname 带尾斜杠,统一归一化处理(与 buildAgentPageContext 同式)。
  */
 export function agentFabButtonVisible(pathname: string): boolean {
   const route = pathname.replace(/\/+$/, "") || "/";
-  if (/^\/admin\/posts\/\d+$/.test(route)) return false;
   if (/^\/admin\/login$/.test(route)) return false;
   return true;
 }

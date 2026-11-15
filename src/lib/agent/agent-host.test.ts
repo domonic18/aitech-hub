@@ -13,9 +13,9 @@ import {
 } from "./agent-host";
 
 describe("agentFabButtonVisible(路由策略:FAB 按钮显隐,卡永驻)", () => {
-  it("编辑页 /admin/posts/<id> 藏按钮(顶栏 EditorAssistant 入口在场)", () => {
-    expect(agentFabButtonVisible("/admin/posts/317")).toBe(false);
-    expect(agentFabButtonVisible("/admin/posts/317/")).toBe(false); // prod 尾斜杠容忍
+  it("编辑页照常显钮(B3 起顶栏助手入口下线,编辑页只剩 FAB 一处入口)", () => {
+    expect(agentFabButtonVisible("/admin/posts/317")).toBe(true);
+    expect(agentFabButtonVisible("/admin/posts/317/")).toBe(true); // prod 尾斜杠容忍
   });
 
   it("编辑页变体不误伤:新建页/列表页/非数字段照常显钮", () => {

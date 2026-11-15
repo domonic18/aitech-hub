@@ -153,7 +153,7 @@
 - **根因**:专题合成/编辑页均页面自持 AssistantCard,路由切换 → 页面组件树卸载 → SDK 断 SSE 流 → stream route `cancel()` → `abort.abort()` 服务端 run 终止(usage 照记,不可恢复)。生产实证:合成 run 止步 write_todos(4h 唯一一条 search_agent 用量),关联文档无新稿
 - **红线(ESLint `no-restricted-imports` 机器守)**:`AssistantCard` 全站仅宿主 `AssistantFab` 一处实例化——宿主挂**根 layout**(跨路由持久,admin↔site 同理),首开才挂(零前置开销),此后关闭/隐藏/切页仅 display:none,在跑 run 不中断
 - **页面接入三协议**(`src/lib/agent/agent-host.ts`,window CustomEvent 机制,零组件树耦合):① **唤起** `openAgentAssistant(ask?)`→ `agent:open` 开卡+可选预置问句直发/预填(ContactLauncher/TopicDraftActions/EditorAssistant 同款);② **能力注册** `useAgentEditSurface(surface)`→ `agent:surface` 挂载注册/卸载自动注销编辑面 getContent/onApplyContent 写回接线(注册句经 getter 透传最新引用,宿主 state 仅在场性变更)——能力不在场时 propose_edits 评审自动降级 ProposeUnavailableCard(既有语义,run 存活),切回编辑页且中断未 resume 则评审面恢复;③ **run 收尾广播**(M44)`AGENT_RUN_INACTIVE_EVENT`→ `agent:run-inactive`(runtime-adapter stream finally 派发,正常收尾/中断/异常全路径;无载荷全局广播,消费方以自身在途态为前提,无生成态零动作)——创作中心生成态据此即时比对落库结果免等下一跳轮询,5s 轮询仍为兜底(run 与页面不同窗/广播先于监听的竞态由轮询覆盖)
-- **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由
+- **路由策略**(纯函数 `agentFabButtonVisible`,单测覆盖):编辑页 `/admin/posts/<id>` 与登录页 `/admin/login` **藏按钮不卸卡**(M27「编辑页顶栏入口」UX 保留,退役令收窄);卡永驻全路由。**2026-11-15(B3)编辑页改为显钮**:顶栏 EditorAssistant 入口下线后编辑页只剩 FAB 一处,藏钮等于「编辑页没有助手」(见 §3.6「站内生成入口下线」)
 - **诚实边界**:刷新/关标签页仍断 run(SSE 流式架构固有,跨刷新存活需后台化=BullMQ+流重连,量级另立);/search AgentDrawer 独立会话面不收编(页面即场景)
 
 **K2.8 补注八(2026-10-17,M38,卡片视觉系统——11 卡型双主题 + 信息设计纪律;美观问题立项:preset 版面素、自由模天花板低)**:
@@ -264,6 +264,17 @@
 **两道落稿闸**:① `upsert_article` 传 `cardUrls`(信息卡清单,非空才校)时校验「每张卡都已嵌入正文」,漏嵌直接拒稿——渲了卡却漏嵌,卡片在站内退化成普通配图;闸的实现 `src/lib/content/card-embeds.ts#checkCardEmbeds` 与站内 agent 通道共用一份(原在 `agent/topic-draft-tool.ts`,为跨域复用移到内容域)。② `POST /api/posts/bundles` 批量整包上传(「一批 md + 一池图」,单批 ≤20 篇):multipart 重复字段 `mds` + 共享 `files`,图片按**文件名**匹配,逐篇回报成败(一篇失败不拖累其余),用于线下助手一周多篇不必逐篇往返。
 
 **错误形状统一**:MCP 工具的错误出参统一为 `{ok:false, code, message, retryable, hint?}`(`src/lib/mcp/json.ts#fail`),`code` 取业务错误自带码(如 `PinError` / `DistributeError` 的业务码,无则 `INTERNAL`),`hint` 按码给下一步人话(缺图/重复/待验收/非法入参等)——不再各工具各写一份形状。
+
+**站内生成入口下线(B3,2026-11-15)**:创作职责外移线下后,站内保留「管理 + 分发 + 导出」,写侧入口逐批关闭。
+
+| 位置 | 变化 |
+| --- | --- |
+| 编辑页顶栏 | `EditorAssistant`(唤起侧边栏助手改稿)下线;「封面 AI」改为编辑器自持的 HTTP 触发面板(`CoverCandidatesPanel`:触发 → 候选预览 → 入库/放弃),封面弹窗内的「AI 生成(Agent)」第三源随之撤下 |
+| 编辑页 FAB | 原藏钮(顶栏有助手入口防双入口),助手入口下线后**照常显钮**——编辑页只剩 FAB 一处入口,藏钮等于「编辑页没有助手」(`agentFabButtonVisible` 策略随之改) |
+| 创作中心创作条 | 创作总闸 `creation.agent_enabled=false` 时,「生成长文 / 生成贴图」两钮换成「导出素材包」钮(导出 `GET /api/topics/[id]/export`:定位 + 写作配置 + 素材全集 + 绑定指南全文 + 指南清单 + 近期已发标题);**总闸开着时旧两钮保留**,改 kv 即回滚 |
+| 封面候选 | agent 工具与 HTTP 触发面共用一份编排 `src/lib/ai/cover-candidates.ts`;事件名 `COVER_ADOPTED_EVENT` 移到叶子模块 `src/lib/ai/cover-events.ts`(客户端安全,编辑面板也要用) |
+
+**熔断闸仍兜底**:`creation.agent_enabled` 是 B0 埋的总闸(缺省开,只有显式存关值才关),B3~B5 期间任何异常,改 kv 即恢复站内生成(旧按钮分支代码在页面里保留着)。
 
 **M72 三条边界裁定(2026-11-13,需求方拍板)**:
 

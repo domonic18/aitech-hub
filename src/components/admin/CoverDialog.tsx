@@ -14,7 +14,6 @@ import { useEffect, useRef, useState } from "react";
 import type { Area } from "react-easy-crop";
 
 import CropStage from "./cover/CropStage";
-import CoverAgentEntry from "./cover/CoverAgentEntry";
 import CoverExportQueue, { type QueueState } from "./cover/CoverExportQueue";
 import CoverSourcePicker from "./cover/CoverSourcePicker";
 import CoverTemplateGrid from "./cover/CoverTemplateGrid";
@@ -25,7 +24,6 @@ import {
   cropToCanvas,
   COVER_TEMPLATES,
   drawCover,
-  type CoverGenContext,
   OG_KEY,
   rotateToCanvas,
 } from "./cover/templates";
@@ -53,15 +51,9 @@ async function fetchMediaAsSource(item: PickItem): Promise<SourceImage> {
 export default function CoverDialog({
   onClose,
   onSet,
-  coverContext,
-  onAgentCoverGen,
 }: {
   onClose: () => void;
   onSet: (path: string) => void;
-  /** AI 生成上下文(编辑器透传;缺省不出 AI 生成入口) */
-  coverContext?: CoverGenContext;
-  /** M31:唤起编辑页侧边栏 Agent 走封面生成流程(缺省不出 AI 生成入口) */
-  onAgentCoverGen?: () => void;
 }): React.ReactElement {
   const fileRef = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<SourceImage | null>(null);
@@ -204,12 +196,6 @@ export default function CoverDialog({
     }
   }
 
-  /** AI 生成入口(唤起侧边栏 Agent 走 ask_user 对齐方向 → 候选确认入库) */
-  const launchAgent = (): void => {
-    onAgentCoverGen?.();
-    onClose();
-  };
-
   return (
     <div
       className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
@@ -252,10 +238,8 @@ export default function CoverDialog({
 
         {!source ? (
           <CoverSourcePicker
-            hasAgent={!!coverContext}
             onLocal={() => fileRef.current?.click()}
             onMedia={() => setPickerOpen(true)}
-            onAgent={launchAgent}
           />
         ) : (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_300px]">
@@ -314,12 +298,6 @@ export default function CoverDialog({
                   onToggleCheck={toggleCheck}
                   busy={busy}
                 />
-                {/* AI 生成入口(agent 唤起) */}
-                {coverContext && (
-                  <div className="mt-3 border-t border-line pt-3">
-                    <CoverAgentEntry onLaunch={launchAgent} />
-                  </div>
-                )}
               </div>
 
               <div className="rounded-md border border-line bg-panel p-3">
