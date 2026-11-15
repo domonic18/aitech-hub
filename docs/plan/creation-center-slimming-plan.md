@@ -12,7 +12,7 @@
 |---|---|---|
 | **D1** 前台 FAB / Drawer | **留** | 工具面塌缩为**全员只读 6 只**；`agentToolsFor` 分档删除、`ADMIN_PROMPT_ADDENDUM` 删除、B4 的删除范围据此确定（19 只写工具全删） |
 | **D3** 站内 AI 封面 | **留**（改为 HTTP 触发） | **必须新增 `POST /api/posts/cover-candidates`** —— 否则编辑器的「生成封面候选」按钮（100% agent 驱动、全站无 HTTP 触发路由）会失去后端。该路由归 **B1（P0）**；B3 再把 `PostEditor.tsx` 的按钮从 agent 切到该路由。`QUEUE_COVER_GEN` / `cover-generate.ts` / `cover-candidate-store.ts` **保留**（B8 不删） |
-| **D5** 创作中心 | **降级保留** | studio 保留为「素材台账 + 写作配置 + 导出给线下」；新增 `GET /api/topics/[id]/export`（B3）；`Topic` 表与 `src/lib/topics/**` 不删 |
+| **D5** 创作中心 | **~~降级保留~~ → **彻底删**(2026-11-15 用户改判)** | 原裁定保留 studio 作「素材台账 + 导出给线下」;改判后创作台账整层退役(`/admin/studio/**`、`/api/topics/**`、`topic`/`topic_item`/`writing_sample_image` 三表、洞察「生成选题」按钮),线下取料改走 MCP `list_signals`/`search_site`/`get_telegram_item` |
 | **D4** 卡片渲染（render_card） | **线下渲染**，sidecar 留作调试台、**不对 MCP 暴露**；站内零新增（不新增 `/api/cards/render`，不新增 MCP `render_card`） | 渲染是纯计算，不调模型不花钱；线下自担四件事（深空基线壳照 skill 抄 / accent 取组算法 / 站内引图 inline / 字体 emoji 环境），换来站内零新增 + **card-renderer sidecar 有望在 B8 整个退役**（它现在只有两个消费方：agent 工具 B4 删、11 种卡型调试台预览） |
 | **D7** `agent_skill` 表 | **删除**，站内不留副本 | 真相源 = `skills/writing/*.md`；B7 删表 + 删后台页 + 删 API。**前置**：逐行 diff DB `guideMd` ↔ `writing-guides.ts`（DB 独有内容并入 md）+ `pg_dump` 备份 |
 
@@ -35,7 +35,8 @@
 | B7 删 skill 层 | ✅ 代码已合 develop（PR 待开） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**` + `agent-skills-admin.ts`；真相源 = 仓库 `skills/writing/*.md`；`topic.skill_key` 软引用保留，PATCH 存在性核改判仓库 md。站内 agent 侧渐进披露暂读站内版常量（`ai/skill-registry.ts`），随 B4 退役 |
 | **B4/B5(agent 写侧退役)** | 🔄 进行中（PR 待开） | 19 只写工具 + admin 提示段整体删除,工具面塌缩为**全员只读六件**;编辑面协议(能力注册/propose_edits 评审/封面 HITL)一并退役 |
 | **B9(专题台账彻底删)** | 🔄 进行中（与 B4 同批） | 用户 2026-11-15 拍板「彻底删 Topic 体系」:页面 `/admin/studio/**`、路由 `/api/topics/**`、洞察「生成选题」、`topic`/`topic_item`/`writing_sample_image` 三表 + `content_pin.topic_id` 列全删;价格稿公众号互链规则改由文章标签 `slug=model-pricing` 承载(迁移按 topic 关联回填) |
-| B6、B8 | ⏸ 未启动 | B6 深度库/框架评估;B8 队列与文档收尾 |
+| **B8 收尾** | 🔄 进行中（PR 待开） | admin 档配额降到 user 档(D11,12/50k);`ai_task_binding` 的 writing 档退役(站内已无写作模型绑定消费方);队列无孤儿(cover-gen 仍服务站内 AI 封面,illustration-studio 仍服务配图工坊,card-renderer 仍服务牌价页渲染 —— **不退役**);文档口径复核(arch/03-05 + development-plan M72 行) |
+| B6 | ⏸ 可选 | 是否移除 deepagents:先量测 `ai_usage_log` 的 search_agent 近 30 天 run 数/耗时/token 再定 |
 
 **两处与原方案不同的落地决定**：
 
