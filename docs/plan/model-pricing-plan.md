@@ -422,19 +422,25 @@ seed-evolving 6/30 —— 与页面原值一致。
 
 **任务清单**
 
-| # | 任务 | 文件 |
-|---|---|---|
-| D1 | 比价矩阵组件(行=归一模型,列=提供商,最低价高亮) | 新建 `src/components/site/pricing/CompareMatrix.tsx` |
-| D2 | 档位明细展开(点击单元格看阶梯/缓存/峰谷) | `CompareMatrix.tsx` + `shared.tsx` |
-| D3 | 散点图(输入价 × 输出价,零 JS SVG) | 新建 `src/components/site/pricing/PriceScatter.tsx`;范式抄 `/leaderboards/` 的 `ModelBoard.tsx` 零 JS 悬停卡 |
-| D4 | 厂商价格分布条 | `PriceScatter.tsx` 内或独立组件 |
-| D5 | 比价视图与现有「套餐对比托盘」的关系(共用/并存) | `CompareTray.tsx` 调整 |
-| D6 | 币种折算(若 §6 第 2 条裁定折算) | `public.ts` 折算纯函数 + 复用 `site_config` 汇率 |
-| D7 | SEO:比价视图的 JSON-LD 扩充 | `public.ts` 的 `buildPricingJsonLd` |
-| D8 | 大列表性能(行数上限 / 虚拟化评估) | `PricingExplorer.tsx` |
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| D1 | 比价视图(行=归一模型,组内各家报价按价升序,最低价标「最低」) | `src/components/site/pricing/CompareMatrix.tsx` + `src/lib/pricing/compare.ts` | ✅ |
+| D2 | 档位明细展开(`<details>` 零 JS,列阶梯/缓存/峰谷 + token 边界) | `CompareMatrix.tsx` | ✅ |
+| D3 | 散点图(输入价 × 输出价,**对数轴**,零 JS SVG + CSS 悬停卡) | `src/components/site/pricing/PriceScatter.tsx` + `src/lib/pricing/scatter.ts` + `globals.css` 的 `.pc-pt` | ✅ |
+| D4 | 提供商配色 + 图例 + 0 价/多币种提示 | `PriceScatter.tsx` | ✅ |
+| D5 | 视图切换(列表 / 比价)与套餐对比托盘并存(不动托盘) | `ModelSection.tsx` + `query.ts` 的 `view` 参数 | ✅ |
+| D6 | 币种折算(若 §6 第 2 条裁定折算) | — | ⬜ **未裁定,不做**(维持原币直出;比价按币种分区) |
+| D7 | SEO:比价视图的 JSON-LD 扩充 | — | ⬜ 下一轮(比价视图是客户端视图,SEO 仍由列表视图承载) |
+| D8 | 大列表性能(行数上限 / 虚拟化评估) | — | ⬜ 下一轮(实测数据量下无压力) |
 
-**测试**:散点/矩阵的纯计算函数(分桶、坐标映射、最低价判定)补单测;
-`public.ts` 的折算函数补测(汇率缺失 → 不折算,保持原币,不得静默按 1:1)。
+**形态取舍**:比价做「分组行」而非固定列矩阵——各模型被哪些提供商供价并不相同
+(有的 3 家、有的 5 家),固定列矩阵会满屏空格;分组行里组内按价升序,**第一家就是最低价**。
+
+**币种口径**:现口径是原币直出不折算(D4),跨币种比大小是假的。故比价**按单元格币种分区**
+(同一模型的 CNY 报价进 CNY 区、USD 进 USD 区),「≥2 家报价」的闸也落在**币种桶内**
+(CNY 一家 + USD 一家 = 谁也不可比价,不产出区)。散点图则给「图中含多币种」提示。
+
+**测试**:散点/矩阵的纯计算函数(分桶、坐标映射、最低价判定、币种分区)补单测 —— `compare.test.ts`。
 
 **完成标准**:同一模型跨 ≥2 提供商并排比价、最低价高亮正确;散点图在窄屏可读;
 零 JS 悬停卡可用;页面 ISR 与首屏体积无明显劣化(`npm run build` 产物对比)。
