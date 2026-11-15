@@ -1,7 +1,8 @@
 /**
- * 贴图落库组装(M42 批③,agent save_topic_pin 的执行面):一次事务建
+ * 贴图落库组装(M42 批③建,agent save_topic_pin 的执行面;M72 瘦身 B4 后
+ * 站内 agent 写工具下线,本模块成为 MCP `create_pin` 的唯一执行面):一次事务建
  * content_pin + content_pin_image(按入参顺序落 sortOrder,首图即封面)+ 采纳
- * 参照 reference_media_path + 创作状态推进(collecting→drafted)。
+ * 参照 reference_media_path。
  * 硬闸在 schema 之外再卡一层(工具入参经模型,不能只信 Zod):标题/轻文字
  * 按码点计数([...s].length,公众号契约),图片 1..PIN_IMAGES_MAX、只收 uploads
  * 站内路径、重复路径拒(同图重复挂无意义且会顶掉封面位)。
@@ -22,8 +23,6 @@ import { PinError } from "./repo";
 export interface CreatePinWithImagesInput {
   title: string;
   content?: string;
-  /** 所属创作(soft ref;传入则校验存在并推进 collecting→drafted) */
-  topicId?: bigint | null;
   /** 有序图片(站内 uploads 路径,首图为封面,1..20 张) */
   images: string[];
   /** 本次出图采纳的风格参照(站内 uploads,读侧缺行降级为无参照) */
@@ -64,26 +63,17 @@ export function assertPinAssembleInput(input: CreatePinWithImagesInput): void {
 }
 
 /**
- * 单事务落贴图;topic 不存在 → not_found(不建悬空 soft ref)。
- * 返回含 id 的 pin 行(id 用于组装台/前台链接)。
+ * 单事务落贴图。返回含 id 的 pin 行(id 用于组装台/前台链接)。
  */
 export async function createPinWithImages(input: CreatePinWithImagesInput): Promise<ContentPin> {
   assertPinAssembleInput(input);
   const title = input.title.trim();
   const images = input.images;
   return prisma.$transaction(async (tx) => {
-    if (input.topicId != null) {
-      const topic = await tx.topic.findUnique({
-        where: { id: input.topicId },
-        select: { id: true },
-      });
-      if (!topic) throw new PinError("not_found", "创作项目不存在");
-    }
     const pin = await tx.contentPin.create({
       data: {
         title,
         content: input.content ?? "",
-        topicId: input.topicId ?? null,
         readMoreUrl: input.readMoreUrl ?? null,
         cropSpec: input.cropSpec ?? "1_1",
         referenceMediaPath: input.referenceMediaPath ?? null,
@@ -106,13 +96,6 @@ export async function createPinWithImages(input: CreatePinWithImagesInput): Prom
         sortOrder: i,
       })),
     });
-    // 状态推进只对「收集中」生效(已出稿/已发布的创作不因新增贴图回退)
-    if (input.topicId != null) {
-      await tx.topic.updateMany({
-        where: { id: input.topicId, status: "collecting" },
-        data: { status: "drafted" },
-      });
-    }
     return result;
   });
 }

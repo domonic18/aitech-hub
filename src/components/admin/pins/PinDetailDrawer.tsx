@@ -174,10 +174,6 @@ export default function PinDetailDrawer({
                 <dd className="font-mono text-xs text-text-1">
                   {images.length} 张 · {detail.cropSpec} · 首张即封面
                 </dd>
-                <dt className="text-text-3">专题</dt>
-                <dd className="font-mono text-xs text-text-1">
-                  {detail.topicId ? `#${detail.topicId}` : "未绑定"}
-                </dd>
                 <dt className="text-text-3">更新时间</dt>
                 <dd className="font-mono text-xs text-text-1">
                   {formatCnDateTime(new Date(detail.updatedAt))}

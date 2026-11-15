@@ -80,13 +80,6 @@ export default function PinsWorkbench({
                   </p>
                 )}
                 <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10.5px] text-text-3">
-                  {p.topicTitle ? (
-                    <span className="rounded-sm bg-accent-dim px-1.5 text-accent">
-                      {p.topicTitle}
-                    </span>
-                  ) : (
-                    <span className="rounded-sm bg-panel-2 px-1.5">未绑定</span>
-                  )}
                   <span>{[...p.content].length} 字</span>
                   <span className="ml-auto">{formatCnDateTime(new Date(p.updatedAt))}</span>
                 </div>

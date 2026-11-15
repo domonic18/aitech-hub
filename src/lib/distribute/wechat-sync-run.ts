@@ -79,21 +79,19 @@ export async function syncOnePost(
       seoDescription: true,
       coverPath: true,
       contentMd: true,
+      tags: { select: { tag: { select: { slug: true } } } },
     },
   });
   if (!post) return { ok: false, postId: id, reason: "文章不存在" };
   // 站内互链落点(M55 批E):价格表稿的「阅读原文」锚到 /pricing/ 速查页而非
   // 文章快照——稿是截稿快照,速查页持续更新(周批爬取+人工终审),读者落点
-  // 应是活数据。经 topic.skillKey 判别(创作体裁服务端单点回写),无 topic 或
-  // 其他体裁维持文章 URL;URL 被微信域名校验拒时 submit 层已有降级,此处不重复
-  const topic = await prisma.topic.findFirst({
-    where: { linkedPostId: postId },
-    select: { skillKey: true },
-  });
-  const sourceUrl =
-    topic?.skillKey === "model-pricing"
-      ? absoluteUrl("/pricing/")
-      : absoluteUrl(postPath(post.id, post.slug));
+  // 应是活数据。M72 瘦身(创作台账下线):判别载体由 topic.skillKey 改为文章
+  // 标签 slug=model-pricing(删表迁移时按 topic 关联回填,存量价格稿不丢规则);
+  // 非价格稿维持文章 URL;URL 被微信域名校验拒时 submit 层已有降级,此处不重复
+  const isPricingDigest = post.tags.some((t) => t.tag.slug === "model-pricing");
+  const sourceUrl = isPricingDigest
+    ? absoluteUrl("/pricing/")
+    : absoluteUrl(postPath(post.id, post.slug));
   const row = await ensureChannelRow(postId);
   try {
     const contentMd = post.contentMd ?? "";

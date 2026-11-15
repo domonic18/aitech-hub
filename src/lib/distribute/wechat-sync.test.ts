@@ -11,7 +11,6 @@ vi.mock("../db", () => ({
     typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002",
   prisma: {
     post: { findUnique: vi.fn(), findMany: vi.fn() },
-    topic: { findFirst: vi.fn() }, // M55 批E:互链落点判别(价格表稿阅读原文→速查页)
     publishChannel: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -73,7 +72,6 @@ import {
 import { syncOnePost, wechatBatchJob } from "./wechat-sync-run";
 
 const mockedPost = vi.mocked(prisma.post);
-const mockedTopic = vi.mocked(prisma.topic);
 const mockedChannel = vi.mocked(prisma.publishChannel);
 const mockedCache = vi.mocked(prisma.publishMediaCache);
 const mockedStorageGet = vi.mocked(mediaStorage.get);
@@ -128,6 +126,7 @@ function mdPost(over: Partial<Record<string, unknown>> = {}): Record<string, unk
     seoDescription: null,
     coverPath: "/wp-content/uploads/2026/01/cover.png",
     contentMd: "正文一段![图](/wp-content/uploads/2026/01/img.png)",
+    tags: [{ tag: { slug: "ai" } }],
     ...over,
   };
 }
@@ -324,9 +323,10 @@ describe("syncOnePost 管线", () => {
     });
   });
 
-  it("价格表稿互链(M55 批E):topic.skillKey=model-pricing → 阅读原文锚速查页", async () => {
-    mockedPost.findUnique.mockResolvedValue(mdPost() as never);
-    mockedTopic.findFirst.mockResolvedValue({ skillKey: "model-pricing" } as never);
+  it("价格表稿互链(M55 批E;M72 瘦身后判别载体改为文章标签 slug=model-pricing):阅读原文锚速查页", async () => {
+    mockedPost.findUnique.mockResolvedValue(
+      mdPost({ tags: [{ tag: { slug: "model-pricing" } }] }) as never,
+    );
     const r = await syncOnePost(BigInt(101));
     expect(r.ok).toBe(true);
     const article = mockedDraftAdd.mock.calls[0][1] as WechatDraftArticle;
@@ -334,14 +334,15 @@ describe("syncOnePost 管线", () => {
     expect(article.content_source_url).not.toContain("/post/");
   });
 
-  it("非价格表稿(其他 skillKey / 无 topic)维持文章 URL", async () => {
+  it("非价格稿(无 model-pricing 标签)维持文章 URL", async () => {
     mockedPost.findUnique.mockResolvedValue(mdPost() as never);
-    mockedTopic.findFirst.mockResolvedValue({ skillKey: "weekly-news" } as never);
     await syncOnePost(BigInt(101));
     expect((mockedDraftAdd.mock.calls[0][1] as WechatDraftArticle).content_source_url).toContain(
       "/post/101-hello",
     );
-    mockedTopic.findFirst.mockResolvedValueOnce(null);
+    mockedPost.findUnique.mockResolvedValue(
+      mdPost({ tags: [{ tag: { slug: "weekly-news" } }] }) as never,
+    );
     await syncOnePost(BigInt(101));
     expect((mockedDraftAdd.mock.calls[1][1] as WechatDraftArticle).content_source_url).toContain(
       "/post/101-hello",
