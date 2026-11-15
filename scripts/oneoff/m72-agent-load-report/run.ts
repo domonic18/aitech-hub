@@ -28,7 +28,11 @@ interface Window {
   tokensOut: number;
   totalTokens: number;
   avgTokensPerRun: number;
+  p50TokensPerRun: number;
+  p90TokensPerRun: number;
   avgDurationMs: number;
+  p50DurationMs: number;
+  p90DurationMs: number;
   p95DurationMs: number;
   failed: number;
   degraded: number;
@@ -37,10 +41,21 @@ interface Window {
   guestRuns: number;
 }
 
+/** 分位数(近邻法,样本量小时更贴近实际取值) */
+function quantile(values: number[], q: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * q));
+  return sorted[idx];
+}
+
 async function main(): Promise<void> {
   const { prisma } = await import("../../../src/lib/db");
   try {
     const since = new Date(Date.now() - DAYS * 24 * 3600 * 1000);
+    // admin/游客归属走 search_agent_session.visitor_id(admin 身份为
+    // `admin:<userId>` 前缀)——ai_usage_log.session_id 存的是会话 id 本身,
+    // 不能拿它的前缀判身份(首版脚本踩过这个坑,恒为 0)。
     const rows = await prisma.aiUsageLog.findMany({
       where: { role: "search_agent", createdAt: { gte: since } },
       select: {
@@ -53,6 +68,10 @@ async function main(): Promise<void> {
       },
       orderBy: { createdAt: "asc" },
     });
+    const sessions = await prisma.searchAgentSession.findMany({
+      select: { id: true, visitorId: true },
+    });
+    const visitorBySession = new Map(sessions.map((s) => [s.id, s.visitorId]));
 
     const summarize = (list: typeof rows, days: number): Window => {
       const durations = list.map((r) => r.durationMs).sort((a, b) => a - b);
@@ -61,7 +80,9 @@ async function main(): Promise<void> {
       const total = tokensIn + tokensOut;
       const failed = list.filter((r) => r.status === "failed").length;
       const degraded = list.filter((r) => r.status === "degraded").length;
-      const adminRuns = list.filter((r) => r.sessionId?.startsWith("admin:")).length;
+      const adminRuns = list.filter((r) =>
+        (r.sessionId ? visitorBySession.get(r.sessionId) : undefined)?.startsWith("admin:"),
+      ).length;
       const p95 = durations.length
         ? durations[Math.min(durations.length - 1, Math.floor(durations.length * 0.95))]
         : 0;
@@ -72,9 +93,25 @@ async function main(): Promise<void> {
         tokensOut,
         totalTokens: total,
         avgTokensPerRun: list.length ? Math.round(total / list.length) : 0,
+        p50TokensPerRun: quantile(
+          list.map((r) => r.tokensIn + r.tokensOut),
+          0.5,
+        ),
+        p90TokensPerRun: quantile(
+          list.map((r) => r.tokensIn + r.tokensOut),
+          0.9,
+        ),
         avgDurationMs: list.length
           ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
           : 0,
+        p50DurationMs: quantile(
+          list.map((r) => r.durationMs),
+          0.5,
+        ),
+        p90DurationMs: quantile(
+          list.map((r) => r.durationMs),
+          0.9,
+        ),
         p95DurationMs: p95,
         failed,
         degraded,

@@ -1,15 +1,15 @@
 /**
  * deepagents 会话 agent 构造(K2.5,arch/04 §3.3):createDeepAgent 按绑定
  * 身份缓存(id:source 变了就重建——主备切换/key 轮换即时生效,构造含提示词
- * 组装不值得每次 run 重复)。系统提示定调:计划先行(write_todos)、三域工具
- * 规范、引用作答;内置文件系统工具默认 StateBackend 无磁盘访问,明示禁用防跑偏。
- * M27 批⑥:todoListMiddleware 显式挂载——deepagents 仅给 Codex harness 档
- * 自动接 write_todos,自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带,系统提示
- * 里的「计划先行」此前是无工具可调的空话(侧边栏计划条恒空);load 侧恢复见
- * runtime-adapter。
+ * 组装不值得每次 run 重复)。系统提示定调:三域工具规范、引用作答;内置文件
+ * 系统工具默认 StateBackend 无磁盘访问,明示禁用防跑偏。
+ * M72 瘦身 B6(2026-11-15):写侧下线后工具面只剩只读六件,**计划工具
+ * (write_todos / todoListMiddleware)随之摘除**——只读问答没有多步编排可言,
+ * 留着只会让模型为一个无意义工具花掉 schema 与一次往返(生产实测:访客问答
+ * 中位 432 token / 10 秒,轻得像薄循环,不值得为框架去换)。前端计划条
+ * (TodoListBar)随之恒空,保留组件与提取逻辑不动(B6 结论:deepagents 保留)。
  */
 import { createDeepAgent, type DeepAgent } from "deepagents";
-import { todoListMiddleware } from "langchain";
 
 import type { ResolvedAiModel } from "../ai/resolver";
 import { interruptGuardMiddleware } from "./ask-user-guard";
@@ -29,7 +29,6 @@ export const AGENT_SYSTEM_PROMPT = `你是「一起AI」(17aitech.com)站内搜�
 - 用户要求超出能力范围时,直说做不到,并引导回站内内容的检索与阅读
 
 工作方式:
-- 开始处理多步任务前,先用 write_todos 列出简短计划(2-5 项),随进展更新状态
 - 涉及站内内容的事实性问题,先用 search_site 检索,再按需 read_post / read_repo 展开正文
 - 涉及「今天/最近/最新」等相对时间,先用 get_time 锚定当前日期
 - 站内没有相关内容时,直接用你自己的知识回答,并说明「站内暂无相关内容」
@@ -116,12 +115,7 @@ export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promis
     // - tool_args_feedback:参数漂移归一(ask_user options 对象数组/JSON 串等
     //   弱模型漂移形态执行前收敛)+ 全工具面 zod 失败中文修正反馈与落日志
     //   (M31 验收:MiniMax options 三连败弃问实证,报错自纠对弱模型不可靠)。
-    middleware: [
-      toolCallRepairMiddleware,
-      interruptGuardMiddleware,
-      toolArgsFeedbackMiddleware,
-      todoListMiddleware(),
-    ],
+    middleware: [toolCallRepairMiddleware, interruptGuardMiddleware, toolArgsFeedbackMiddleware],
   });
   if (cache.size >= GRAPH_CACHE_MAX) {
     const oldest = cache.keys().next().value;
