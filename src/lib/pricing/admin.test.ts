@@ -7,15 +7,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modelFindMany = vi.fn();
 const modelCreate = vi.fn();
+const modelFindUnique = vi.fn();
 const planFindMany = vi.fn();
+const replaceTiers = vi.fn();
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
+vi.mock("./tiers", () => ({
+  replaceTiers: (...a: unknown[]) => replaceTiers(...a),
+}));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     modelPricing: {
       findMany: (...a: unknown[]) => modelFindMany(...a),
       create: (...a: unknown[]) => modelCreate(...a),
+      findUnique: (...a: unknown[]) => modelFindUnique(...a),
     },
     codingPlan: { findMany: (...a: unknown[]) => planFindMany(...a) },
   },
@@ -29,7 +36,9 @@ import {
   listCodingPlans,
   listModelPricing,
   modelPricingCreateSchema,
+  modelPricingTiersUpdateSchema,
   modelPricingUpdateSchema,
+  updateModelPricingTiers,
 } from "./admin";
 
 const VALID_MODEL = {
@@ -147,14 +156,20 @@ describe("list 过滤", () => {
     expect(modelFindMany).toHaveBeenCalledWith({
       where: { status: "enabled", region: "cn" },
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-      // M74 批C:带厂商字典关联(后台展示归一后的厂商名)
-      include: { provider: { select: { name: true } } },
+      // M74 批C:带厂商字典关联(后台展示归一后的厂商名);批C2:带档位(人工订正入口)
+      include: {
+        provider: { select: { name: true } },
+        tiers: { orderBy: { tierLabel: "asc" } },
+      },
     });
     await listModelPricing({});
     expect(modelFindMany).toHaveBeenLastCalledWith({
       where: {},
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-      include: { provider: { select: { name: true } } },
+      include: {
+        provider: { select: { name: true } },
+        tiers: { orderBy: { tierLabel: "asc" } },
+      },
     });
   });
 
@@ -243,5 +258,92 @@ describe("M74 批C:更新契约不得泄漏 create 默认值", () => {
   it("套餐更新契约同样不带默认(status 不得被重置)", () => {
     const parsed = codingPlanUpdateSchema.parse({ monthlyFee: 5 });
     expect(parsed).toEqual({ monthlyFee: 5 });
+  });
+});
+
+describe("M74 批C2:档位订正", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modelFindUnique.mockResolvedValue({
+      id: BigInt(7),
+      currency: "CNY",
+      sourceUrl: "https://example.com",
+    });
+    replaceTiers.mockResolvedValue(2);
+  });
+
+  it("整行档位替换:按行币种与源页落档位", async () => {
+    const n = await updateModelPricingTiers(BigInt(7), [
+      {
+        tierLabel: "在线推理（常规）·[0, 1024]K",
+        inputPrice: 0.8,
+        outputPrice: 2.7,
+        cachePrice: null,
+        minTokens: 0,
+        maxTokens: 1048576,
+        unit: "per_1m_tokens",
+      },
+    ]);
+    expect(n).toBe(1);
+    expect(replaceTiers).toHaveBeenCalledTimes(1);
+    const [id, tiers] = replaceTiers.mock.calls[0] as [bigint, Array<Record<string, unknown>>];
+    expect(id).toBe(BigInt(7));
+    expect(tiers[0]).toMatchObject({
+      tierLabel: "在线推理（常规）·[0, 1024]K",
+      currency: "CNY",
+      sourceUrl: "https://example.com",
+      minTokens: 0,
+      maxTokens: 1048576,
+    });
+  });
+
+  it("档位名重复 → 报错(档位唯一键是 行+名)", async () => {
+    await expect(
+      updateModelPricingTiers(BigInt(7), [
+        {
+          tierLabel: "默认",
+          inputPrice: 1,
+          outputPrice: 2,
+          cachePrice: null,
+          minTokens: null,
+          maxTokens: null,
+          unit: "per_1m_tokens",
+        },
+        {
+          tierLabel: "默认",
+          inputPrice: 2,
+          outputPrice: 4,
+          cachePrice: null,
+          minTokens: null,
+          maxTokens: null,
+          unit: "per_1m_tokens",
+        },
+      ]),
+    ).rejects.toThrow(/档位名重复/);
+    expect(replaceTiers).not.toHaveBeenCalled();
+  });
+
+  it("行不存在 → 返回 null(路由映射 404)", async () => {
+    modelFindUnique.mockResolvedValue(null);
+    expect(await updateModelPricingTiers(BigInt(9), [])).toBeNull();
+  });
+
+  it("契约:档位名必填、单价非负、单位枚举", () => {
+    expect(modelPricingTiersUpdateSchema.safeParse({ tiers: [{ tierLabel: "" }] }).success).toBe(
+      false,
+    );
+    expect(
+      modelPricingTiersUpdateSchema.safeParse({
+        tiers: [{ tierLabel: "t", inputPrice: -1 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      modelPricingTiersUpdateSchema.safeParse({
+        tiers: [{ tierLabel: "t", unit: "per_zzz" }],
+      }).success,
+    ).toBe(false);
+    expect(modelPricingTiersUpdateSchema.safeParse({ tiers: [{ tierLabel: "t" }] }).success).toBe(
+      true,
+    );
   });
 });
