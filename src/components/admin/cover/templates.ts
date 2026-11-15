@@ -51,17 +51,6 @@ export const COVER_TEMPLATES: ReadonlyArray<CoverTemplate & { defaultOn?: boolea
 
 export const OG_KEY = "og";
 
-/** AI 生图上下文(编辑器表单快照;PostEditor→PostMetaPanel→CoverUploader→CoverDialog 透传) */
-export interface CoverGenContext {
-  /** 编辑态文章 id(字符串化 BigInt;创建态缺省):生成时服务端直读库内上下文 */
-  postId?: string;
-  title: string;
-  excerpt: string;
-  tags: string[];
-  /** 正文 markdown(可选,M16 问题2:LLM 生成提示词时取样;不传则按标题/摘要生成) */
-  contentMd?: string;
-}
-
 export function aspectOf(t: CoverTemplate): number {
   return t.w / t.h;
 }

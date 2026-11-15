@@ -17,8 +17,10 @@ export const AGENT_COVER_CANDIDATES_TOOL = "generate_cover_candidates";
  */
 export const GENERATE_POST_COVER_TOOL = "generate_post_cover";
 
-/** 入库完成广播事件名(卡片 → PostEditor,同页面解耦同步;2026-10-16 反馈问题一) */
-export const COVER_ADOPTED_EVENT = "ah:cover-adopted";
+/** 入库完成广播事件名(卡片 → PostEditor,同页面解耦同步;2026-10-16 反馈问题一)
+ *  —— 唯一定义在 lib/ai/cover-events(客户端安全的叶子模块,编辑器的 HTTP
+ *  触发面板也要用;本文件保持零依赖契约文件的性质) */
+export { COVER_ADOPTED_EVENT } from "../ai/cover-events";
 
 /** 候选预览项(id 供入库回传;url 为预览接口路径,取图另带 payload.token) */
 export interface AgentCoverCandidate {
