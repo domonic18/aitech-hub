@@ -19,23 +19,17 @@ import { ToolMessage, createMiddleware } from "langchain";
 
 import { logger } from "../logger";
 
-import { GENERATE_POST_COVER_TOOL } from "./cover-tool";
-import { AGENT_PROPOSE_EDITS_TOOL } from "./edit-proposal";
 import { AGENT_ASK_USER_TOOL } from "./hitl";
 
 import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentMiddleware } from "langchain";
 
 /**
- * interrupt 类工具面(并行触发会 resume 错位,单飞放行按序第一个)。封面收
- * 真工具名 generate_post_cover——此前误收候选工具 generate_cover_candidates
- * (topic 域非 interrupt 工具),真封面工具反而不受单飞保护(2026-10-20 修正)
+ * interrupt 类工具面(并行触发会 resume 错位,单飞放行按序第一个)。
+ * M72 瘦身 B4 后只剩 ask_user 一只 interrupt 工具(propose_edits 与封面
+ * HITL 随写工具整体下线)。
  */
-const INTERRUPT_TOOLS = new Set<string>([
-  AGENT_ASK_USER_TOOL,
-  AGENT_PROPOSE_EDITS_TOOL,
-  GENERATE_POST_COVER_TOOL,
-]);
+const INTERRUPT_TOOLS = new Set<string>([AGENT_ASK_USER_TOOL]);
 
 /** 并行第二个 interrupt 调用的拦截文案(模型能据此合并重试)。 */
 const MERGE_HINT =
@@ -48,16 +42,6 @@ const GUARD_DEGRADED = "系统状态异常,本次调用未能发起。请稍后�
 const GUARD_NO_ID = "__no_tool_call_id__";
 
 type FlightVerdict = "pass" | "merge" | "degraded";
-
-/** 封面 auto 档调用判定(args.auto_adopt === true,2026-10-20):工具体不进
- * interrupt、候选直接采纳返回——无挂起即无 resume 重执行错位,不占单飞名额 */
-function isAutoAdoptCall(args: unknown): boolean {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    (args as { auto_adopt?: unknown }).auto_adopt === true
-  );
-}
 
 /** 触发消息的 tool_calls 最小读取形状(防御式窄化,异常形状按无处理)。 */
 function toolCallsOf(msg: unknown): Array<{ id?: string; name?: string }> {
@@ -89,13 +73,6 @@ export const interruptGuardMiddleware: AgentMiddleware = createMiddleware({
   name: "interrupt_guard",
   wrapToolCall: async (request, handler) => {
     if (!INTERRUPT_TOOLS.has(request.toolCall.name)) return handler(request);
-    // 封面 auto 档短路(仅 generate_post_cover 的 schema 接受 auto_adopt)
-    if (
-      request.toolCall.name === GENERATE_POST_COVER_TOOL &&
-      isAutoAdoptCall(request.toolCall.args)
-    ) {
-      return handler(request);
-    }
     // 无 id 无法锚定触发消息:同 fail-closed(放行会在 resume 重执行时进 interrupt)
     const verdict = judgeInterruptFlight(
       request.state.messages,

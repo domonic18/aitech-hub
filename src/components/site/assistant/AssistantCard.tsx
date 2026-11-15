@@ -16,10 +16,7 @@ import type { AgentTodo } from "@/lib/agent/todos";
 
 import AgentRuntimeProvider from "@/components/site/agent/AgentRuntimeProvider";
 import AgentSidebar, { type AgentSessionItem } from "@/components/site/agent/AgentSidebar";
-import AgentThread, {
-  type EditSurfaceContext,
-  type PendingAsk,
-} from "@/components/site/agent/AgentThread";
+import AgentThread, { type PendingAsk } from "@/components/site/agent/AgentThread";
 import TodoListBar from "@/components/site/agent/TodoListBar";
 
 const SESSIONS_URL = "/api/search/agent/threads";
@@ -38,7 +35,6 @@ interface AssistantCardProps {
   /** 嵌入形态(M27 批① 编辑页):无全站 FAB,不渲染「隐藏助手」钮 */
   embedded?: boolean;
   /** 编辑上下文(M27 批① chip;批⑧-d 扩评审面接线,函数仅客户端在用) */
-  editContext?: EditSurfaceContext | null;
 }
 
 export default function AssistantCard({
@@ -46,7 +42,6 @@ export default function AssistantCard({
   onHide,
   injectAsk,
   embedded = false,
-  editContext = null,
 }: AssistantCardProps): React.ReactElement {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<PendingAsk | null>(null);
@@ -145,17 +140,10 @@ export default function AssistantCard({
   }, [onHide]);
 
   // 页面上下文 getter(M27 批⑧-b,发送瞬间读取,零订阅——runtime-adapter
-  // 同纪律):page/article 取自当前路由(文章页带 postId,M69);edit 段来自
-  // 编辑页 props(单一真相源,postId 不走 URL 推导)。上行只带
-  // postId/title——getContent/onApplyContent 是函数型客户端 props,不过 wire。
-  // 引用稳定,Provider adapter useMemo 不因渲染重建。
-  const editContextRef = useRef(editContext);
-  editContextRef.current = editContext;
-  const getContext = useCallback((): unknown => {
-    const base = buildAgentRunContext(window.location.pathname);
-    const edit = editContextRef.current;
-    return edit ? { ...base, edit: { postId: edit.postId, title: edit.title } } : base;
-  }, []);
+  // 同纪律):page/article 取自当前路由(文章页带 postId,M69)。
+  // M72 瘦身 B4:编辑上下文段下线(编辑器已无助手入口,提案评审面随写工具
+  // 退役),上行只带路由上下文。引用稳定,Provider adapter useMemo 不因渲染重建。
+  const getContext = useCallback((): unknown => buildAgentRunContext(window.location.pathname), []);
 
   const handleNewThread = useCallback((): void => {
     reportedThreadIdRef.current = undefined;
@@ -302,7 +290,6 @@ export default function AssistantCard({
                 pending={pending}
                 onPendingConsumed={() => setPending(null)}
                 guestMode={auth === "guest"}
-                editContext={editContext}
               />
             </AgentRuntimeProvider>
           </div>

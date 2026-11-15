@@ -33,7 +33,9 @@
 | B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 只读镜像内副本 |
 | B3 关站内生成入口 | ✅ 代码已合 develop（PR #246）；**线上切换待用户** | `GET /api/topics/[id]/export` 素材包导出；创作条总闸关时改「导出素材包」；编辑页 `EditorAssistant` 下线、封面走 HTTP；编辑页 FAB 改显钮。剩两件用户侧：① 线上 kv `creation.agent_enabled=false`；② 线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条的前置门槛） |
 | B7 删 skill 层 | ✅ 代码已合 develop（PR 待开） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**` + `agent-skills-admin.ts`；真相源 = 仓库 `skills/writing/*.md`；`topic.skill_key` 软引用保留，PATCH 存在性核改判仓库 md。站内 agent 侧渐进披露暂读站内版常量（`ai/skill-registry.ts`），随 B4 退役 |
-| B4~B6、B8 | ⏸ 未启动 | 逐批删除 / 收窄 / 收尾 |
+| **B4/B5(agent 写侧退役)** | 🔄 进行中（PR 待开） | 19 只写工具 + admin 提示段整体删除,工具面塌缩为**全员只读六件**;编辑面协议(能力注册/propose_edits 评审/封面 HITL)一并退役 |
+| **B9(专题台账彻底删)** | 🔄 进行中（与 B4 同批） | 用户 2026-11-15 拍板「彻底删 Topic 体系」:页面 `/admin/studio/**`、路由 `/api/topics/**`、洞察「生成选题」、`topic`/`topic_item`/`writing_sample_image` 三表 + `content_pin.topic_id` 列全删;价格稿公众号互链规则改由文章标签 `slug=model-pricing` 承载(迁移按 topic 关联回填) |
+| B6、B8 | ⏸ 未启动 | B6 深度库/框架评估;B8 队列与文档收尾 |
 
 **两处与原方案不同的落地决定**：
 

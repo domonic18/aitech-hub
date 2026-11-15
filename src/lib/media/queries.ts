@@ -29,7 +29,7 @@ export async function loadRefIndex(): Promise<{
   softRefSet: Set<string>;
 }> {
   // 只读聚合,Promise.all 并行即可($transaction 数组形态会劣化 groupBy 的重载推导)
-  const [refs, covers, pinImages, pinRefs, sampleImages, illuVersions, layerBases, illuLayers] =
+  const [refs, covers, pinImages, pinRefs, illuVersions, layerBases, illuLayers] =
     await Promise.all([
       prisma.mediaRef.groupBy({
         by: ["mediaPath"],
@@ -42,7 +42,6 @@ export async function loadRefIndex(): Promise<{
         where: { referenceMediaPath: { not: null } },
         select: { referenceMediaPath: true },
       }),
-      prisma.writingSampleImage.findMany({ select: { mediaPath: true } }),
       prisma.illustrationVersion.findMany({ select: { mediaPath: true } }),
       prisma.illustrationLayerGroup.findMany({
         where: { baseMediaPath: { not: null } },
@@ -53,7 +52,6 @@ export async function loadRefIndex(): Promise<{
   const softRefSet = new Set<string>();
   for (const r of pinImages) softRefSet.add(r.mediaPath);
   for (const r of pinRefs) if (r.referenceMediaPath) softRefSet.add(r.referenceMediaPath);
-  for (const r of sampleImages) softRefSet.add(r.mediaPath);
   for (const r of illuVersions) softRefSet.add(r.mediaPath);
   for (const r of layerBases) if (r.baseMediaPath) softRefSet.add(r.baseMediaPath);
   for (const r of illuLayers) softRefSet.add(r.mediaPath);

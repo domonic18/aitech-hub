@@ -1,8 +1,8 @@
 /**
  * 贴图仓储(M41):content_pin CRUD、状态机流转、有序图片序列管理。
  * 公开读(M47 批D 切出至 ./public-read,拆文件守 350 行线)留兼容出口。
- * 完整性口径:topicId / versionId 均 soft ref
- * 应用层校验,不设跨域 FK(同 topic.linked_post_id 口径);工坊版本挂载时
+ * 完整性口径:versionId 为 soft ref
+ * 应用层校验,不设跨域 FK;工坊版本挂载时
  * 快照 media_path,升版由人工重挂。
  */
 import { Prisma, type ContentPin } from "@prisma/client";
@@ -61,7 +61,6 @@ export async function createPin(input: PinCreateInput): Promise<ContentPin> {
     data: {
       title: input.title,
       content: input.content ?? "",
-      topicId: input.topicId == null ? null : BigInt(input.topicId),
       readMoreUrl: input.readMoreUrl ?? null,
       cropSpec: input.cropSpec ?? "1_1",
     },
@@ -86,12 +85,6 @@ export async function updatePin(id: bigint, patch: PinUpdateInput): Promise<Cont
     data: {
       title: patch.title,
       content: patch.content,
-      topicId:
-        patch.topicId === undefined
-          ? undefined
-          : patch.topicId == null
-            ? null
-            : BigInt(patch.topicId),
       readMoreUrl: patch.readMoreUrl,
       cropSpec: patch.cropSpec,
     },
@@ -203,10 +196,9 @@ export interface PinListQuery {
 export type PinWithMeta = ContentPin & {
   _count: { images: number };
   coverPath: string | null;
-  topicTitle: string | null;
 };
 
-/** admin 列表(状态分段 + 标题搜索 + 分页):附首图封面与专题名(soft ref 二次解析) */
+/** admin 列表(状态分段 + 标题搜索 + 分页):附首图封面 */
 export async function listPins(
   q: PinListQuery = {},
 ): Promise<{ items: PinWithMeta[]; total: number }> {
@@ -229,57 +221,13 @@ export async function listPins(
     }),
     prisma.contentPin.count({ where }),
   ]);
-  const topicIds = [...new Set(rows.map((r) => r.topicId).filter((v): v is bigint => v !== null))];
-  const topics = topicIds.length
-    ? await prisma.topic.findMany({
-        where: { id: { in: topicIds } },
-        select: { id: true, title: true },
-      })
-    : [];
-  const topicTitle = new Map(topics.map((t) => [t.id, t.title]));
   return {
     items: rows.map((r) => ({
       ...r,
       coverPath: r.images[0]?.mediaPath ?? null,
-      topicTitle: r.topicId ? (topicTitle.get(r.topicId) ?? null) : null,
     })),
     total,
   };
-}
-
-/** 某创作项目的贴图产出(M42 创作中心产出区):首图封面 + 张数,更新时间倒序 */
-export async function listPinsByTopic(topicId: bigint): Promise<
-  {
-    id: bigint;
-    title: string;
-    status: string;
-    imageCount: number;
-    coverPath: string | null;
-    updatedAt: Date;
-  }[]
-> {
-  const rows = await prisma.contentPin.findMany({
-    where: { topicId },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      _count: { select: { images: true } },
-      images: { orderBy: { sortOrder: "asc" }, take: 1, select: { mediaPath: true } },
-    },
-  });
-  return rows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    status: r.status,
-    imageCount: r._count.images,
-    coverPath: r.images[0]?.mediaPath ?? null,
-    updatedAt: r.updatedAt,
-  }));
-}
-
-/** 某创作的贴图 id 集(M44 生成态轮询比对:轻查询不取内容) */
-export async function listPinIdsByTopic(topicId: bigint): Promise<string[]> {
-  const rows = await prisma.contentPin.findMany({ where: { topicId }, select: { id: true } });
-  return rows.map((r) => r.id.toString());
 }
 
 /** 状态分段计数(工作台页签角标) */

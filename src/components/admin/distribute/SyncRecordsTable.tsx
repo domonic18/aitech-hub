@@ -230,7 +230,7 @@ export default function SyncRecordsTable({
                       <Link
                         href={
                           r.carrier === "pin"
-                            ? `/admin/studio/${r.targetId}`
+                            ? `/admin/pins/${r.targetId}`
                             : `/admin/posts/${r.targetId}`
                         }
                         className="block truncate text-accent hover:underline"

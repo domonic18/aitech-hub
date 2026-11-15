@@ -36,8 +36,8 @@ const GROUPS: ReadonlyArray<Group> = [
   {
     label: "创作",
     items: [
-      { icon: "i-folder", label: "创作中心", href: "/admin/studio" },
-      // 配图工坊(M40):agent 配图产物的加工台固定入口,列表页落地
+      // 创作中心已随 M72 瘦身(创作职责外移线下)下线;本组只留素材与加工面
+      // 配图工坊(M40):配图产物的加工台固定入口,列表页落地
       { icon: "i-picture", label: "配图工坊", href: "/admin/illustration" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
     ],

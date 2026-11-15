@@ -16,8 +16,6 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { AGENT_COVER_CANDIDATES_TOOL } from "@/lib/agent/cover-tool";
-import { AGENT_PROPOSE_EDITS_TOOL } from "@/lib/agent/edit-proposal";
 import { recordAgentRun, runAgentTurn } from "@/lib/agent/run";
 import { getAgentLimitsAll, toRunLimits } from "@/lib/config/agent-limits";
 import {
@@ -62,30 +60,14 @@ const inputSchema = z.object({
     .max(1),
 });
 
-/** HITL 恢复(M27 批⑧-c 起 discriminated union,契约形状 zod 把关):
- * ask_user 提问卡回答(kind 缺省兼容存量客户端)与 propose_edits 评审结果 */
+/** HITL 恢复(ask_user 提问卡回答;kind 缺省兼容存量客户端)。
+ * M72 瘦身 B4:propose_edits 评审与封面候选 HITL 随写工具下线,只剩 ask_user。 */
 const resumeSchema = z.object({
   resume: z.union([
     z.object({
       kind: z.literal("ask_user").optional(),
       message: z.string().min(1).max(2000),
       option: z.string().min(1).max(100).optional(),
-    }),
-    z.object({
-      // kind 容忍缺省(构造器统一注入,判别靠 decision;缺省兼容早版客户端)
-      kind: z.literal(AGENT_PROPOSE_EDITS_TOOL).optional(),
-      decision: z.enum(["applied", "partial", "rejected", "unavailable"]),
-      applied: z.number().int().min(0).max(20).optional(),
-      comment: z.string().min(1).max(2000).optional(),
-    }),
-    z.object({
-      // 封面候选 HITL(M31):adopt 必带 candidateId;discard 整批弃
-      kind: z.literal(AGENT_COVER_CANDIDATES_TOOL).optional(),
-      decision: z.enum(["adopt", "discard"]),
-      candidateId: z
-        .string()
-        .regex(/^\d{1,19}$/)
-        .optional(),
     }),
   ]),
 });

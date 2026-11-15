@@ -14,13 +14,7 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  AGENT_OPEN_EVENT,
-  AGENT_SURFACE_ANNOUNCE_EVENT,
-  AGENT_SURFACE_EVENT,
-  agentFabButtonVisible,
-} from "@/lib/agent/agent-host";
-import type { EditSurfaceContext } from "@/components/site/agent/AgentThread";
+import { AGENT_OPEN_EVENT, agentFabButtonVisible } from "@/lib/agent/agent-host";
 
 import AssistantCard from "./AssistantCard";
 
@@ -45,7 +39,6 @@ export default function AssistantFab(): React.ReactElement | null {
   /** agent:open 携带的预置问题(空 detail 不注入) */
   const [injectAsk, setInjectAsk] = useState<InjectAsk | null>(null);
   /** 能力注册协议(②):编辑面接线对象,编辑页在场才有(注销即 null) */
-  const [editSurface, setEditSurface] = useState<EditSurfaceContext | null>(null);
 
   // 挂载判身份与显隐初值(登录=服务端字段;游客=localStorage 默认显)
   useEffect(() => {
@@ -100,17 +93,6 @@ export default function AssistantFab(): React.ReactElement | null {
     return () => window.removeEventListener(AGENT_OPEN_EVENT, onOpen);
   }, []);
 
-  // 能力注册协议:编辑页挂载注册/卸载注销(句柄身份稳定,setter 同值 bail-out);
-  // 监听挂载后广播重报,补偿页面编辑面注册先于本监听的时序竞态(见协议模块)
-  useEffect(() => {
-    const onSurface = (e: Event): void => {
-      setEditSurface((e as CustomEvent<EditSurfaceContext | null>).detail ?? null);
-    };
-    window.addEventListener(AGENT_SURFACE_EVENT, onSurface);
-    window.dispatchEvent(new CustomEvent(AGENT_SURFACE_ANNOUNCE_EVENT));
-    return () => window.removeEventListener(AGENT_SURFACE_EVENT, onSurface);
-  }, []);
-
   // 隐藏操作来自卡片内(登录身份持久化到账号)
   const persistHide = useCallback((): void => {
     void fetch(ASSISTANT_VISIBLE_URL, {
@@ -133,12 +115,7 @@ export default function AssistantFab(): React.ReactElement | null {
   if (!buttonVisible) {
     return everOpened ? (
       <div className={open ? "contents" : "hidden"}>
-        <AssistantCard
-          onClose={() => setOpen(false)}
-          onHide={onHide}
-          injectAsk={injectAsk}
-          editContext={editSurface}
-        />
+        <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
       </div>
     ) : null;
   }
@@ -150,12 +127,7 @@ export default function AssistantFab(): React.ReactElement | null {
       <>
         {everOpened && (
           <div className={open ? "contents" : "hidden"}>
-            <AssistantCard
-              onClose={() => setOpen(false)}
-              onHide={onHide}
-              injectAsk={injectAsk}
-              editContext={editSurface}
-            />
+            <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
           </div>
         )}
         <button
@@ -179,12 +151,7 @@ export default function AssistantFab(): React.ReactElement | null {
     <>
       {everOpened && (
         <div className={open ? "contents" : "hidden"}>
-          <AssistantCard
-            onClose={() => setOpen(false)}
-            onHide={onHide}
-            injectAsk={injectAsk}
-            editContext={editSurface}
-          />
+          <AssistantCard onClose={() => setOpen(false)} onHide={onHide} injectAsk={injectAsk} />
         </div>
       )}
       <button
