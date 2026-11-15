@@ -27,16 +27,36 @@
 
 | 批次 | 状态 | 落点 |
 | --- | --- | --- |
-| B0 创作总闸 | ✅ 已合 develop | `creation.agent_enabled` kv 熔断闸 |
+| B0 创作总闸 | ✅ 已合 develop（PR #241） | `creation.agent_enabled` kv 熔断闸（B4 后随写侧退役而退场） |
 | B1 MCP 补缺 | ✅ 已合 develop（PR #244） | 工具面 21 → **25 只**（只读 9 + 文章面 9 + 贴图面 7）；统一错误形状 `{ok:false,code,message,retryable,hint}`；`POST /api/posts/bundles` 批量入库；`cardUrls` 卡图清单闸 |
-| B1.1 封面 HTTP 触发面 | ✅ 已合 develop | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
-| B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 只读镜像内副本 |
-| B3 关站内生成入口 | ✅ 代码已合 develop（PR #246）；**线上切换待用户** | `GET /api/topics/[id]/export` 素材包导出；创作条总闸关时改「导出素材包」；编辑页 `EditorAssistant` 下线、封面走 HTTP；编辑页 FAB 改显钮。剩两件用户侧：① 线上 kv `creation.agent_enabled=false`；② 线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条的前置门槛） |
-| B7 删 skill 层 | ✅ 代码已合 develop（PR 待开） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**` + `agent-skills-admin.ts`；真相源 = 仓库 `skills/writing/*.md`；`topic.skill_key` 软引用保留，PATCH 存在性核改判仓库 md。站内 agent 侧渐进披露暂读站内版常量（`ai/skill-registry.ts`），随 B4 退役 |
-| **B4/B5(agent 写侧退役)** | 🔄 进行中（PR 待开） | 19 只写工具 + admin 提示段整体删除,工具面塌缩为**全员只读六件**;编辑面协议(能力注册/propose_edits 评审/封面 HITL)一并退役 |
-| **B9(专题台账彻底删)** | 🔄 进行中（与 B4 同批） | 用户 2026-11-15 拍板「彻底删 Topic 体系」:页面 `/admin/studio/**`、路由 `/api/topics/**`、洞察「生成选题」、`topic`/`topic_item`/`writing_sample_image` 三表 + `content_pin.topic_id` 列全删;价格稿公众号互链规则改由文章标签 `slug=model-pricing` 承载(迁移按 topic 关联回填) |
-| **B8 收尾** | 🔄 进行中（PR 待开） | admin 档配额降到 user 档(D11,12/50k);`ai_task_binding` 的 writing 档退役(站内已无写作模型绑定消费方);队列无孤儿(cover-gen 仍服务站内 AI 封面,illustration-studio 仍服务配图工坊,card-renderer 仍服务牌价页渲染 —— **不退役**);文档口径复核(arch/03-05 + development-plan M72 行) |
-| B6 | ⏸ 可选 | 是否移除 deepagents:先量测 `ai_usage_log` 的 search_agent 近 30 天 run 数/耗时/token 再定 |
+| B1.1 封面 HTTP 触发面 | ✅ 已合 develop（PR #245） | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
+| B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 读仓库副本 |
+| B3 关站内生成入口 | ✅ 已合 develop（PR #246、#251） | 素材包导出路由 + 创作条改导出 + 编辑页助手下线 + 封面走 HTTP；旧 `/admin/topics` 308 承接撤下 |
+| B4/B5 agent 写侧退役 | ✅ 已合 develop（PR #249） | 19 只写工具 + admin 提示段整体删除，工具面塌缩为**全员只读六件**；编辑面协议（能力注册 / propose_edits 评审 / 封面 HITL）一并退役 |
+| B7 删 skill 层 | ✅ 已合 develop（PR #248） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**`；真相源 = 仓库 `skills/writing/*.md` |
+| B9 专题台账彻底删 | ✅ 已合 develop（PR #249） | 用户 2026-11-15 拍板「彻底删」：`/admin/studio/**`、`/api/topics/**`、洞察「生成选题」、`topic`/`topic_item`/`writing_sample_image` 三表 + `content_pin.topic_id` 列（迁移 `20261115103000_remove_topic_system`）；价格稿公众号互链规则改由文章标签 `slug=model-pricing` 承载 |
+| B8 收尾 | ✅ 已合 develop（PR #252） | admin 档配额降到 user 档（D11，12/50k）；`ai_task_binding` 的 writing 档退役；队列无孤儿（cover-gen 仍服务站内 AI 封面，illustration-studio 仍服务配图工坊，card-renderer 仍服务牌价页渲染 —— **不退役**）；文档口径复核 |
+| B6 deepagents 存废 | ✅ **已定：保留 deepagents 只读**（2026-11-15，生产实测；PR 待开） | 见下方 §0.3 |
+
+## 0.3 B6 结论:保留 deepagents 只读(2026-11-15 生产实测)
+
+**量测**(`ai_usage_log` role=search_agent,近 30 天,生产库实测):
+
+| 身份 | runs | avg tok | p50 tok | max tok | avg ms | p50 ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| 访客/其他 | 108 | 3,587 | **432** | 122,898 | 43s | **10s** |
+| admin | 21 | 86,577 | 7,503 | 614,845 | 73s | 48.5s |
+
+对照:答案卡(`role=search`)近 30 天 256 次、3.4s/次、约 380 输入 token —— 站内检索问答的**主力**是答案卡,Drawer(agent)是补充(多轮追问/引用溯源)。全站 LLM token 分布:insight 日批 4.6M + summarize 2.1M + interpret 1.7M + embedding 1.0M ≈ 9.4M,agent 全量 2.2M。
+
+**结论:选 A(保留 deepagents 只读),不换薄 tool-calling 循环、不退到答案卡**:
+
+1. **访客问答本来就轻** —— 中位 432 token / 10 秒,deepagents 在这条链路上没有显著额外开销。换薄循环(方案估 6~10 人日)能省的 token 不到全站 0.1%,投入产出极差。
+2. **真正的重负载是写侧,已经没了** —— admin 那 21 次(avg 86k token,最大 614k token / 424 秒)是「一篇文章 = 素材/指南 + 写作 + 自审 + 出卡 + 封面」的长编排,随 B4 退役后归零。瘦身后 agent 在全站 token 里占比降到 ~2%。
+3. **不退到答案卡** —— 答案卡是单轮问答,替代不了访客的多轮追问(Drawer 是站点对外服务门面,D1 明确留)。实测访客 agent 用量 108 次且集中在若干天(峰值 72 次/天),不是死代码。
+
+**顺带的反向优化**(本批做):只读问答用不上「计划工具」——`write_todos` / `todoListMiddleware` 随之摘除(提示里的「计划先行」条款同步删)。只读六件没有多步编排可言,留着只会让模型为一个无意义工具花掉 schema 与一次往返;前端计划条组件保留(无数据时本就返回 null)。
+
 
 **两处与原方案不同的落地决定**：
 
