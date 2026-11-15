@@ -24,6 +24,12 @@ export const AI_PURPOSE_COVER = "cover";
 export const AI_PURPOSE_EMBEDDING = "embedding";
 /** 文章写作(2026-10-17 验收反馈:撰写文章捆绑为独立单任务 write_article,
  * 与编排模型解耦——起草可绑长输出模型,编排照旧走 search 绑定) */
+/**
+ * 「文章写作」用途(M72 瘦身 B8 退役):write_article 单任务随站内 agent 写侧
+ * 整体下线,已无绑定消费方——故它不在 AI_MODEL_PURPOSES(任务绑定档位)里,
+ * 后台不再要求为它绑模型。常量保留:存量模型行的 purposes 仍可能带该值,
+ * 探针据此识别 chat 型模型。
+ */
 export const AI_PURPOSE_WRITING = "writing";
 /** 洞察归纳(M34 批②,insight-plan §5.4):簇命名/一句话概括/关键词日批 LLM,
  * 走 AiTaskBinding 治理(ai_usage_log 落 role=insight) */
@@ -50,7 +56,6 @@ export const AI_MODEL_PURPOSES = [
   AI_PURPOSE_COVER,
   AI_PURPOSE_ILLUSTRATE,
   AI_PURPOSE_EMBEDDING,
-  AI_PURPOSE_WRITING,
   AI_PURPOSE_INSIGHT,
   AI_PURPOSE_INSIGHT_JUDGE,
   AI_PURPOSE_TRANSLATE,
@@ -89,11 +94,6 @@ export const AI_ROLE_META: Record<AiTaskRole, { label: string; icon: string; sub
     label: "语义向量",
     icon: "i-aim",
     sub: "混合检索:三域内容 embedding + 查询向量化(pgvector 余弦召回)",
-  },
-  [AI_PURPOSE_WRITING]: {
-    label: "文章写作",
-    icon: "i-edit",
-    sub: "专题文章正文起草(write_article 单任务;与编排模型解耦,可绑长输出模型)",
   },
   [AI_PURPOSE_INSIGHT]: {
     label: "洞察归纳",

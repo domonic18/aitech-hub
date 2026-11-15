@@ -70,10 +70,9 @@ const nextConfig: NextConfig = {
         destination: "/admin/data/plan/",
         statusCode: 308,
       },
-      // M42 创作中心(2026-10-22):专题管理 → 创作中心,旧书签/外链 308 承接
-      { source: "/admin/topics", destination: "/admin/studio/", statusCode: 308 },
-      { source: "/admin/topics/", destination: "/admin/studio/", statusCode: 308 },
-      { source: "/admin/topics/:path*", destination: "/admin/studio/:path*", statusCode: 308 },
+      // M42 创作中心的旧路径承接已随创作台账退役撤下(2026-11-15,M72 瘦身):
+      // /admin/topics 与 /admin/studio 均已 404,再 308 承接只会把旧书签甩到
+      // 另一个 404;老书签请直接到站内文章列表。
       // WP 时代订阅地址承接(standard/02 §5 验收清单):/feed 与 /feed/ → /feed.xml
       // trailingSlash 规范化先于 redirects 执行,canonical 形态 /feed/ 必须显式列出
       { source: "/feed", destination: "/feed.xml", statusCode: 301 },

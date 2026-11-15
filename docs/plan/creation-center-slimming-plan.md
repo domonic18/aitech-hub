@@ -12,7 +12,7 @@
 |---|---|---|
 | **D1** 前台 FAB / Drawer | **留** | 工具面塌缩为**全员只读 6 只**；`agentToolsFor` 分档删除、`ADMIN_PROMPT_ADDENDUM` 删除、B4 的删除范围据此确定（19 只写工具全删） |
 | **D3** 站内 AI 封面 | **留**（改为 HTTP 触发） | **必须新增 `POST /api/posts/cover-candidates`** —— 否则编辑器的「生成封面候选」按钮（100% agent 驱动、全站无 HTTP 触发路由）会失去后端。该路由归 **B1（P0）**；B3 再把 `PostEditor.tsx` 的按钮从 agent 切到该路由。`QUEUE_COVER_GEN` / `cover-generate.ts` / `cover-candidate-store.ts` **保留**（B8 不删） |
-| **D5** 创作中心 | **降级保留** | studio 保留为「素材台账 + 写作配置 + 导出给线下」；新增 `GET /api/topics/[id]/export`（B3）；`Topic` 表与 `src/lib/topics/**` 不删 |
+| **D5** 创作中心 | **~~降级保留~~ → **彻底删**(2026-11-15 用户改判)** | 原裁定保留 studio 作「素材台账 + 导出给线下」;改判后创作台账整层退役(`/admin/studio/**`、`/api/topics/**`、`topic`/`topic_item`/`writing_sample_image` 三表、洞察「生成选题」按钮),线下取料改走 MCP `list_signals`/`search_site`/`get_telegram_item` |
 | **D4** 卡片渲染（render_card） | **线下渲染**，sidecar 留作调试台、**不对 MCP 暴露**；站内零新增（不新增 `/api/cards/render`，不新增 MCP `render_card`） | 渲染是纯计算，不调模型不花钱；线下自担四件事（深空基线壳照 skill 抄 / accent 取组算法 / 站内引图 inline / 字体 emoji 环境），换来站内零新增 + **card-renderer sidecar 有望在 B8 整个退役**（它现在只有两个消费方：agent 工具 B4 删、11 种卡型调试台预览） |
 | **D7** `agent_skill` 表 | **删除**，站内不留副本 | 真相源 = `skills/writing/*.md`；B7 删表 + 删后台页 + 删 API。**前置**：逐行 diff DB `guideMd` ↔ `writing-guides.ts`（DB 独有内容并入 md）+ `pg_dump` 备份 |
 
@@ -27,15 +27,38 @@
 
 | 批次 | 状态 | 落点 |
 | --- | --- | --- |
-| B0 创作总闸 | ✅ 已合 develop | `creation.agent_enabled` kv 熔断闸 |
+| B0 创作总闸 | ✅ 已合 develop（PR #241） | `creation.agent_enabled` kv 熔断闸（B4 后随写侧退役而退场） |
 | B1 MCP 补缺 | ✅ 已合 develop（PR #244） | 工具面 21 → **25 只**（只读 9 + 文章面 9 + 贴图面 7）；统一错误形状 `{ok:false,code,message,retryable,hint}`；`POST /api/posts/bundles` 批量入库；`cardUrls` 卡图清单闸 |
-| B1.1 封面 HTTP 触发面 | ✅ 已合 develop | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
-| B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 只读镜像内副本 |
-| B3 关站内生成入口 | ✅ 代码已合 develop（PR #246）；**线上切换待用户** | `GET /api/topics/[id]/export` 素材包导出；创作条总闸关时改「导出素材包」；编辑页 `EditorAssistant` 下线、封面走 HTTP；编辑页 FAB 改显钮。剩两件用户侧：① 线上 kv `creation.agent_enabled=false`；② 线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条的前置门槛） |
-| B7 删 skill 层 | ✅ 代码已合 develop（PR 待开） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**` + `agent-skills-admin.ts`；真相源 = 仓库 `skills/writing/*.md`；`topic.skill_key` 软引用保留，PATCH 存在性核改判仓库 md。站内 agent 侧渐进披露暂读站内版常量（`ai/skill-registry.ts`），随 B4 退役 |
-| **B4/B5(agent 写侧退役)** | 🔄 进行中（PR 待开） | 19 只写工具 + admin 提示段整体删除,工具面塌缩为**全员只读六件**;编辑面协议(能力注册/propose_edits 评审/封面 HITL)一并退役 |
-| **B9(专题台账彻底删)** | 🔄 进行中（与 B4 同批） | 用户 2026-11-15 拍板「彻底删 Topic 体系」:页面 `/admin/studio/**`、路由 `/api/topics/**`、洞察「生成选题」、`topic`/`topic_item`/`writing_sample_image` 三表 + `content_pin.topic_id` 列全删;价格稿公众号互链规则改由文章标签 `slug=model-pricing` 承载(迁移按 topic 关联回填) |
-| B6、B8 | ⏸ 未启动 | B6 深度库/框架评估;B8 队列与文档收尾 |
+| B1.1 封面 HTTP 触发面 | ✅ 已合 develop（PR #245） | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
+| B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 读仓库副本 |
+| B3 关站内生成入口 | ✅ 已合 develop（PR #246、#251） | 素材包导出路由 + 创作条改导出 + 编辑页助手下线 + 封面走 HTTP；旧 `/admin/topics` 308 承接撤下 |
+| B4/B5 agent 写侧退役 | ✅ 已合 develop（PR #249） | 19 只写工具 + admin 提示段整体删除，工具面塌缩为**全员只读六件**；编辑面协议（能力注册 / propose_edits 评审 / 封面 HITL）一并退役 |
+| B7 删 skill 层 | ✅ 已合 develop（PR #248） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**`；真相源 = 仓库 `skills/writing/*.md` |
+| B9 专题台账彻底删 | ✅ 已合 develop（PR #249） | 用户 2026-11-15 拍板「彻底删」：`/admin/studio/**`、`/api/topics/**`、洞察「生成选题」、`topic`/`topic_item`/`writing_sample_image` 三表 + `content_pin.topic_id` 列（迁移 `20261115103000_remove_topic_system`）；价格稿公众号互链规则改由文章标签 `slug=model-pricing` 承载 |
+| B8 收尾 | ✅ 已合 develop（PR #252） | admin 档配额降到 user 档（D11，12/50k）；`ai_task_binding` 的 writing 档退役；队列无孤儿（cover-gen 仍服务站内 AI 封面，illustration-studio 仍服务配图工坊，card-renderer 仍服务牌价页渲染 —— **不退役**）；文档口径复核 |
+| B6 deepagents 存废 | ✅ **已定：保留 deepagents 只读**（2026-11-15，生产实测；PR 待开） | 见下方 §0.3 |
+
+## 0.3 B6 结论:保留 deepagents 只读(2026-11-15 生产实测)
+
+**量测**(`ai_usage_log` role=search_agent,近 30 天,生产库实测):
+
+| 身份 | runs | avg tok | p50 tok | max tok | avg ms | p50 ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| 访客/其他 | 108 | 3,587 | **432** | 122,898 | 43s | **10s** |
+| admin | 21 | 86,577 | 7,503 | 614,845 | 73s | 48.5s |
+
+对照:答案卡(`role=search`)近 30 天 256 次、3.4s/次、约 380 输入 token —— 站内检索问答的**主力**是答案卡,Drawer(agent)是补充(多轮追问/引用溯源)。全站 LLM token 分布:insight 日批 4.6M + summarize 2.1M + interpret 1.7M + embedding 1.0M ≈ 9.4M,agent 全量 2.2M。
+
+**结论:选 A(保留 deepagents 只读),不换薄 tool-calling 循环、不退到答案卡**:
+
+1. **访客问答本来就轻** —— 中位 432 token / 10 秒,deepagents 在这条链路上没有显著额外开销。换薄循环(方案估 6~10 人日)能省的 token 不到全站 0.1%,投入产出极差。
+2. **真正的重负载是写侧,已经没了** —— admin 那 21 次(avg 86k token,最大 614k token / 424 秒)是「一篇文章 = 素材/指南 + 写作 + 自审 + 出卡 + 封面」的长编排,随 B4 退役后归零。瘦身后 agent 在全站 token 里占比降到 ~2%。
+3. **不退到答案卡** —— 答案卡是单轮问答,替代不了访客的多轮追问(Drawer 是站点对外服务门面,D1 明确留)。实测访客 agent 用量 108 次且集中在若干天(峰值 72 次/天),不是死代码。
+
+**保留的能力**:`write_todos` / `todoListMiddleware`(计划条)**一律保留** —— 它是 agent 的基础能力(多步编排、巡检、批量作业后续都要用),不因「当前只读问答用不上」而摘除。
+
+> **教训(2026-11-15,站长明确)**:B6 结论定「保留 deepagents」后,我顺手把计划工具也摘了(理由是「只读问答用不上」)—— 这是越界:**agent 面的任何改动(工具面、中间件、提示词、协议)动手前先与站长确认**。写工具退役(B4)有明确拍板,计划工具没有,不该顺手带上。已恢复原状。
+
 
 **两处与原方案不同的落地决定**：
 

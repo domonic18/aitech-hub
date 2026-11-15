@@ -1,12 +1,17 @@
 /**
  * deepagents 会话 agent 构造(K2.5,arch/04 §3.3):createDeepAgent 按绑定
  * 身份缓存(id:source 变了就重建——主备切换/key 轮换即时生效,构造含提示词
- * 组装不值得每次 run 重复)。系统提示定调:计划先行(write_todos)、三域工具
- * 规范、引用作答;内置文件系统工具默认 StateBackend 无磁盘访问,明示禁用防跑偏。
+ * 组装不值得每次 run 重复)。系统提示定调:三域工具规范、引用作答;内置文件
+ * 系统工具默认 StateBackend 无磁盘访问,明示禁用防跑偏。
  * M27 批⑥:todoListMiddleware 显式挂载——deepagents 仅给 Codex harness 档
  * 自动接 write_todos,自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带,系统提示
  * 里的「计划先行」此前是无工具可调的空话(侧边栏计划条恒空);load 侧恢复见
  * runtime-adapter。
+ *
+ * **纪律(2026-11-15 站长明确)**:write_todos / 计划条是 agent 的**基础能力**
+ * (多步编排、巡检、批量作业后续都要用),不因「当前用不上」而摘除。agent 面的
+ * 任何改动(工具面、中间件、提示词、协议)动手前先与站长确认——写工具退役(B4)
+ * 有明确拍板,计划工具没有。
  */
 import { createDeepAgent, type DeepAgent } from "deepagents";
 import { todoListMiddleware } from "langchain";
@@ -120,6 +125,11 @@ export async function getAgentGraph(identityKind: AgentIdentity["kind"]): Promis
       toolCallRepairMiddleware,
       interruptGuardMiddleware,
       toolArgsFeedbackMiddleware,
+      // 计划条(M27 批⑥):deepagents 仅给 Codex harness 档自动接 write_todos,
+      // 自定义 ChatOpenAI(EMPTY_HARNESS_PROFILE)不带 —— 显式挂载,系统提示
+      // 里的「计划先行」才有工具可调(否则侧边栏计划条恒空)。
+      // 纪律(2026-11-15 站长明确):计划能力是 agent 基础能力,不因「当前用不上」
+      // 而摘除;agent 面改动动手前先确认。
       todoListMiddleware(),
     ],
   });
