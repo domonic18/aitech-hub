@@ -11,6 +11,9 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 
+import { TIER_UNITS } from "./constants";
+import { replaceTiers } from "./tiers";
+
 export const PRICING_STATUSES = ["pending", "enabled", "disabled"] as const;
 export type PricingStatus = (typeof PRICING_STATUSES)[number];
 
@@ -130,6 +133,26 @@ export const codingPlanUpdateSchema = z.object({
   confirmInverted: z.boolean().optional(),
 });
 
+/** 档位计价单位(纯常量模块;客户端组件也从那里引,避免把 prisma 打进 bundle) */
+export { TIER_UNITS, TIER_UNIT_LABELS, type TierUnit } from "./constants";
+
+/** 单档位契约(人工订正阶梯/缓存/峰谷价) */
+export const modelPricingTierSchema = z.object({
+  tierLabel: z.string().trim().min(1).max(60),
+  inputPrice: money.nullish(),
+  outputPrice: money.nullish(),
+  cachePrice: money.nullish(),
+  minTokens: z.number().int().nonnegative().nullish(),
+  maxTokens: z.number().int().nonnegative().nullish(),
+  unit: z.enum(TIER_UNITS).default("per_1m_tokens"),
+});
+
+export const modelPricingTiersUpdateSchema = z.object({
+  tiers: z.array(modelPricingTierSchema).max(50),
+});
+
+export type ModelPricingTierInput = z.infer<typeof modelPricingTierSchema>;
+
 export type ModelPricingCreateInput = z.infer<typeof modelPricingCreateSchema>;
 export type ModelPricingUpdateInput = z.infer<typeof modelPricingUpdateSchema>;
 export type CodingPlanCreateInput = z.infer<typeof codingPlanCreateSchema>;
@@ -169,6 +192,19 @@ function serializeModelRow(row: {
   isFree: boolean;
   sortOrder: number;
   provider?: { name: string } | null;
+  tiers?: Array<{
+    tierLabel: string;
+    inputPrice: Prisma.Decimal | null;
+    outputPrice: Prisma.Decimal | null;
+    cachePrice: Prisma.Decimal | null;
+    minTokens: number | null;
+    maxTokens: number | null;
+    unit: string;
+    currency: string;
+    dataAsOf: Date;
+    sourceUrl: string;
+    note: string | null;
+  }>;
 }) {
   return {
     id: row.id.toString(),
@@ -188,6 +224,19 @@ function serializeModelRow(row: {
     isPinned: row.isPinned,
     isFree: row.isFree,
     sortOrder: row.sortOrder,
+    tiers: (row.tiers ?? []).map((t) => ({
+      tierLabel: t.tierLabel,
+      inputPrice: t.inputPrice === null ? null : Number(t.inputPrice),
+      outputPrice: t.outputPrice === null ? null : Number(t.outputPrice),
+      cachePrice: t.cachePrice === null ? null : Number(t.cachePrice),
+      minTokens: t.minTokens,
+      maxTokens: t.maxTokens,
+      unit: t.unit,
+      currency: t.currency,
+      dataAsOf: t.dataAsOf,
+      sourceUrl: t.sourceUrl,
+      note: t.note,
+    })),
   };
 }
 
@@ -265,7 +314,10 @@ export async function listModelPricing(
       ...(opts.region === undefined ? {} : { region: opts.region }),
     },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-    include: { provider: { select: { name: true } } },
+    include: {
+      provider: { select: { name: true } },
+      tiers: { orderBy: { tierLabel: "asc" } },
+    },
   });
   return rows.map(serializeModelRow);
 }
@@ -325,6 +377,45 @@ export async function bulkReviewModelPricing(
   });
   revalidatePublicPricing();
   return result.count;
+}
+
+/**
+ * 档位订正(M74 批C2):阶梯/缓存/峰谷价的人工订正入口。
+ * 整行档位替换(与采集侧 replaceTiers 同口径:档位集按源整批刷新,不增量合并)。
+ */
+export async function updateModelPricingTiers(
+  id: bigint,
+  tiers: ModelPricingTierInput[],
+): Promise<number | null> {
+  const row = await prisma.modelPricing.findUnique({
+    where: { id },
+    select: { id: true, currency: true, sourceUrl: true },
+  });
+  if (row === null) return null;
+  const labels = new Set<string>();
+  for (const t of tiers) {
+    if (labels.has(t.tierLabel)) {
+      throw new Error(`档位名重复:${t.tierLabel}`);
+    }
+    labels.add(t.tierLabel);
+  }
+  await replaceTiers(
+    id,
+    tiers.map((t) => ({
+      tierLabel: t.tierLabel,
+      inputPrice: t.inputPrice ?? null,
+      outputPrice: t.outputPrice ?? null,
+      cachePrice: t.cachePrice ?? null,
+      minTokens: t.minTokens ?? null,
+      maxTokens: t.maxTokens ?? null,
+      unit: t.unit,
+      currency: row.currency,
+      dataAsOf: new Date(),
+      sourceUrl: row.sourceUrl,
+    })),
+  );
+  revalidatePublicPricing();
+  return tiers.length;
 }
 
 export async function deleteModelPricing(id: bigint): Promise<void> {

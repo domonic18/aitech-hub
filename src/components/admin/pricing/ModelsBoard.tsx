@@ -11,6 +11,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ModelPricingRow } from "@/lib/pricing/admin";
+
+import { TierEditor } from "./TierEditor";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -68,6 +70,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM, confirmInverted: false });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [tierRowId, setTierRowId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState({ inputPrice: "", outputPrice: "" });
 
   const counts = useMemo(
@@ -453,6 +456,17 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                           </button>
                           <button
                             type="button"
+                            title="订正价格档位(阶梯/缓存/峰谷)"
+                            onClick={() => setTierRowId(tierRowId === r.id ? null : r.id)}
+                            className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2"
+                          >
+                            档位
+                            <span className="ml-0.5 font-mono text-[10.5px] text-text-3">
+                              {r.tiers?.length ?? 0}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
                             disabled={busy}
                             onClick={() => {
                               if (!window.confirm(`删除 ${r.modelKey}?`)) return;
@@ -475,6 +489,23 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                 </tr>
               );
             })}
+            {tierRowId !== null &&
+              filtered
+                .filter((r) => r.id === tierRowId)
+                .map((r) => (
+                  <tr key={`tiers-${r.id}`} className="border-b border-line/60 last:border-b-0">
+                    <td colSpan={9} className="px-4 py-3">
+                      <TierEditor
+                        rowId={r.id}
+                        tiers={r.tiers ?? []}
+                        onDone={() => {
+                          setTierRowId(null);
+                          router.refresh();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-xs text-text-3">

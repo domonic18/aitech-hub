@@ -346,7 +346,7 @@ A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
 | C5 | 每行「官方价格页 ↗」外链 | 既有 `OfficialLink` | ✅(原已具备) |
 | C6 | 筛选态同步 URL(v/b/free/mod/ctx/src/sort;可分享/可后退) | `lib/pricing/query.ts` + `PricingExplorer.tsx`;静态页 `useSearchParams` 须包 Suspense 边界 | ✅ |
 | C7 | 后台:批量终审(采集落 pending,不批量通过就永远不上架)+ 免费标记覆写 | `POST /api/pricing/models/bulk` + `ModelsBoard.tsx` | ✅ |
-| C8 | 后台:源健康度卡 | — | ⬜ 批C2 |
+| C8 | 后台:源健康度卡 | `src/lib/pricing/health.ts` + `SourceHealth.tsx` | ✅(批C2) |
 
 **批C 顺带修掉一个既有 bug**(M74 批C 实测发现,非本批引入):zod v4 的 `.partial()` **挡不住
 `.default()`**——`modelPricingUpdateSchema = create.partial()` 会给缺省键补上默认值,
@@ -354,8 +354,17 @@ A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
 `is_pinned` 定稿闸被清掉(采集随即覆盖该行)。修法:create 与 update **各写一份契约**,
 update 全部 optional 且**无 default**(回归测试锁在 `admin.test.ts`)。
 
-**C2(下一轮)**——策展台余项:源健康度卡(各源最近成功/失败/待复核行数)、档位编辑
-(阶梯/缓存/峰谷的手工订正入口)。
+**C2(已完成)**——策展台余项:
+
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| C2-1 | 源健康度卡(健康状态与连败 / 最近与下次采集 / 产出分布 / 最近一次采集结论) | `src/lib/pricing/health.ts` + `components/admin/pricing/SourceHealth.tsx` | ✅ |
+| C2-2 | 档位订正(阶梯/缓存/峰谷的人工订正入口,整行替换) | `PUT /api/pricing/models/[id]/tiers` + `components/admin/pricing/TierEditor.tsx` | ✅ |
+| C2-3 | 纯常量拆出(客户端组件不得链 prisma) | `src/lib/pricing/constants.ts` | ✅ |
+
+口径:**源与行按 vendor 对应**(不靠 URL——渠道 URL 会被后台改,历史默认 URL 迁移过);
+「待复核」(采集失败整源打标)与「待终审」(pending)分列;档位唯一键是 (行, 档位名),
+同名拒绝;**采集下一轮会按源覆盖档位**,人工改的值要长期生效需在行上打开人工定稿闸。
 
 **B3(已实现)**——火山引擎方舟(渲染源):
 
