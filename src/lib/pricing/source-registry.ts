@@ -32,6 +32,7 @@ import {
   persistModelRows,
   PRICING_TOMBSTONE_STALE_MS,
 } from "./model-persist";
+import { BAILIAN_MODEL_PRICING_URL, parseBailianModels } from "./model-sources/bailian";
 import { parseSiliconflow, SILICONFLOW_PRICING_URL } from "./model-sources/siliconflow";
 import { parseTencentHunyuan, TENCENT_HUNYUAN_URL } from "./model-sources/tencent";
 import {
@@ -157,6 +158,26 @@ export const SOURCE_DEFS: SourceDef[] = [
         sink,
       );
       if (!r.ok) throw new Error(r.error ?? "tencent hunyuan 源失败");
+      return r.rows;
+    },
+  },
+  {
+    key: "bailian-model",
+    target: "model",
+    kind: "static",
+    label: "阿里云百炼 模型牌价",
+    vendor: "阿里云百炼",
+    defaultUrl: BAILIAN_MODEL_PRICING_URL,
+    sortOrder: 5,
+    run: async (url, { now, sink }) => {
+      const r = await crawlModelSource(
+        "static",
+        url,
+        (h, u, n) => parseBailianModels(h, u, n),
+        now,
+        sink,
+      );
+      if (!r.ok) throw new Error(r.error ?? "bailian 源失败");
       return r.rows;
     },
   },
