@@ -4,7 +4,7 @@
  * (stateless,配合容器多实例),actor 闭包进审计日志。
  *
  * 注册方式(M72,2026-11-13):改为声明式工具表(registry.ts 的 defineTool +
- * 三张分域表),不再逐只 server.tool 调用——工具数从 8 只扩到 21 只后,
+ * 三张分域表),不再逐只 server.tool 调用——工具数从 8 只扩到 25 只后,
  * 逐只显式注册会让「工具名/入参/handler」散落多处、难维护。
  * 同时换用 SDK 1.32 官方的 registerTool(server.tool 已标 @deprecated)。
  *
@@ -50,6 +50,15 @@ const SERVER_INSTRUCTIONS = [
   "仅 <100KB 小图可走 upload_media(base64 会占模型上下文,大图禁用)。",
   "取内容:list_hot_topics(当前热点) / search_site(按关键词检索) /",
   "get_telegram_item(单条资讯元数据) / get_video_play_url(视频直链)。",
+  "写作指南:list_skills(清单) / get_skill(key 取全文)——动笔前先读对应指南,",
+  "指南的结构/口吻/字数/配图/码点预算要求优先于通用写法。",
+  "落稿后核对:list_drafts(只列草稿,看「我的稿落库了吗」)。",
+  "批量落稿(一周多篇不必逐篇往返):",
+  '   curl -H "Authorization: Bearer <PAT>" -F "mds=@<a.md>" -F "mds=@<b.md>"',
+  '        -F "files=@<图1.png>" <base>/api/posts/bundles/ —— 逐篇回报成败;',
+  "   图片按**文件名**匹配引用,文件名宜带篇名前缀(如 a-cover.png)。",
+  "信息卡:渲好后把卡片图路径列进 upsert_article 的 cardUrls(正文配图不入清单);",
+  "声明了 cardUrls 就会校验「每张卡都已嵌入正文」,漏嵌直接拒稿。",
   "取增量信号:list_signals(since 或 nextCursor 续页,直到 nextCursor 为 null)——",
   "热点榜是簇级聚合,会漏掉两轮之间爆发又回落的话题,轮询取增量用信号流。",
   "贴图(小绿书)流程,图在本地生成后上传,不在线生图:",

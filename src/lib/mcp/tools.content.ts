@@ -167,6 +167,50 @@ export const contentTools: McpToolDef[] = [
   ),
 
   defineTool(
+    "list_drafts",
+    "列站内草稿(只列未发布/未下架的草稿态稿件):slug / 标题 / 分类 / 创作方式 / 更新时间。" +
+      "用来核对「我的稿落库了吗」——upsert_article 落草稿后调它确认。",
+    {
+      page: z.number().int().min(1).default(1),
+      q: z.string().max(100).optional().describe("标题/slug 模糊匹配"),
+      origin: z.enum(ADMIN_ORIGIN_FILTERS).default("all").describe("创作方式筛选"),
+    },
+    async (args, actor) => {
+      const { items, total, counts } = await listPostsAdmin({
+        page: args.page,
+        segment: "draft",
+        ...(args.q !== undefined ? { q: args.q } : {}),
+        origin: args.origin,
+      });
+      logger.info({
+        event: "mcp.list_drafts",
+        actor,
+        q: args.q ?? null,
+        origin: args.origin,
+        page: args.page,
+        total,
+      });
+      return json({
+        total,
+        page: args.page,
+        counts,
+        items: items.map((p) =>
+          postView({
+            id: p.id,
+            slug: p.slug,
+            title: p.title,
+            status: p.status,
+            publishedAt: p.publishedAt,
+            updatedAt: p.updatedAt,
+            category: p.category,
+            tags: p.tags,
+          }),
+        ),
+      });
+    },
+  ),
+
+  defineTool(
     "sync_article_to_wechat",
     "把文章推成公众号图文草稿(进草稿箱,不直接发布)。前置:正文是 Markdown(旧文 HTML 保真" +
       "的须先转写)、有封面。title/digest/coverPath/theme 可覆盖本次推送(单篇覆盖,不落库)。" +
