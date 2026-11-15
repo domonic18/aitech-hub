@@ -121,7 +121,9 @@ export const SOURCE_KIND_OPTIONS = [
 export type ModelSortId = "default" | "input" | "output" | "name";
 
 export const MODEL_SORT_OPTIONS: ReadonlyArray<{ id: ModelSortId; label: string }> = [
-  { id: "default", label: "默认(分组序)" },
+  // 默认即「输入价低→高」:这页的诉求就是找便宜的,默认按库序(updatedAt)
+  // 排出来对用户是乱的——最便宜的模型不在最前面等于没做
+  { id: "default", label: "默认(输入价低→高)" },
   { id: "input", label: "输入价低→高" },
   { id: "output", label: "输出价低→高" },
   { id: "name", label: "模型名" },
@@ -158,13 +160,12 @@ export function filterModelRows(
 }
 
 /**
- * 模型行排序:null 价恒排最后(未公布价不是「最便宜」),
- * 同价按模型名定序,保证结果稳定。
+ * 模型行排序:默认与「输入价」同序(按价升序——这页是来找便宜的),
+ * null 价恒排最后(未公布价不是「最便宜」),同价按模型名定序,保证结果稳定。
  */
 export function sortModelRows(rows: PublicModelRow[], sort: ModelSortId): PublicModelRow[] {
-  if (sort === "default") return rows;
   const priceOf = (r: PublicModelRow): number | null =>
-    sort === "input" ? r.inputPrice : r.outputPrice;
+    sort === "output" ? r.outputPrice : r.inputPrice;
   return [...rows].sort((a, b) => {
     const pa = priceOf(a);
     const pb = priceOf(b);

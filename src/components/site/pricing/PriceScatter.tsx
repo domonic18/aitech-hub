@@ -62,7 +62,7 @@ export function PriceScatter({ rows }: { rows: PublicModelRow[] }): React.ReactE
                 x2={plot.right}
                 y1={t.pos}
                 y2={t.pos}
-                stroke="var(--line)"
+                stroke="var(--border)"
                 strokeDasharray="2 4"
               />
               <text
@@ -83,7 +83,7 @@ export function PriceScatter({ rows }: { rows: PublicModelRow[] }): React.ReactE
                 x2={t.pos}
                 y1={plot.top}
                 y2={plot.bottom}
-                stroke="var(--line)"
+                stroke="var(--border)"
                 strokeDasharray="2 4"
               />
               <text
@@ -120,7 +120,7 @@ export function PriceScatter({ rows }: { rows: PublicModelRow[] }): React.ReactE
                 r="4"
                 fill={colorOf(p.providerKey)}
                 fillOpacity="0.85"
-                stroke="var(--panel)"
+                stroke="var(--panel-2)"
                 strokeWidth="0.8"
                 className="pc-dot"
               />
@@ -131,8 +131,8 @@ export function PriceScatter({ rows }: { rows: PublicModelRow[] }): React.ReactE
                   width="184"
                   height="38"
                   rx="4"
-                  fill="var(--panel-strong)"
-                  stroke="var(--line-strong)"
+                  fill="var(--panel-2)"
+                  stroke="var(--border)"
                 />
                 <text
                   x={Math.min(p.x + 16, plot.right - 182)}
