@@ -551,7 +551,43 @@ changed_at / source)+ 落库时对比现值写变更行 + 前台「降价了」�
 | F | `arch/03` §2.4;`arch/07`(降价视图) | 待 |
 | 全部 | `development-plan.md` M74 状态行;本文压缩为一行基线后删除(README 纪律 #4) | M74 行已更新;本文在 M74 全部批次落完后压缩 |
 
-## 10. 引用
+## 10. 上线清单(生产发布步骤)
+
+> M74 的采集/前台/策展台已全部落地,发布后按下面四步走一遍,前台才有真数据。
+
+**① 发布(develop → main PR)**
+CI 构建镜像 → 生产机 `scripts/deploy.sh --env prod --tag main-<sha>`:
+**迁移先行**(用新镜像的容器跑 `prisma migrate deploy`)自动带上 M74 迁移
+(三张新表 + `model_pricing` 增列),失败即中止发布并回滚。
+
+**② 回填存量行(发布后跑,schema 列未上线前跑必失败)**
+生产库只有 CI 的 SSH key 可达,一次性脚本按仓库纪律**由人在生产机执行**,不挂进
+deploy.sh(避免每次发布都跑)。同 deploy.sh 的 compose 调用形式:
+
+```bash
+cd <生产机工作副本>
+# 先 dry-run 看影响面(认不出的厂商会点名,保持 provider_id=null)
+docker compose --env-file .env -f docker-compose.prod.yml run --rm --no-deps -T \
+  --entrypoint npx web tsx scripts/oneoff/m74-pricing-backfill/run.ts
+# 确认无误再写库(幂等,可重跑)
+docker compose --env-file .env -f docker-compose.prod.yml run --rm --no-deps -T \
+  --entrypoint npx web tsx scripts/oneoff/m74-pricing-backfill/run.ts --apply
+```
+
+**③ 采集首批**
+worker 启动后按各源周期跑(模型面**日级**、套餐面周级)→ 新行落 `pending`。
+渲染型源(火山引擎)走 card-renderer,compose 的 `RENDER_ALLOWED_HOSTS` 已含
+`www.volcengine.com`(批B3),换容器后生效;缺这条会 403。
+
+**④ 人工终审**
+`/admin/pricing` → 「批量通过 N 行」(pending → enabled)。前台只显示 enabled 行,
+**不批量通过就永远看不到新采的数据**。同页可看源健康度卡(某源挂了会显示连败与错误原文)。
+
+**⑤ 校验**
+`/pricing/` 列表(六维筛选 + 免费角标 + 源页面外链)→ 切「比价」视图
+(同模型跨提供商并排 + 最低价标记 + 对数轴散点)→ `/admin/pricing` 源健康度卡。
+
+## 11. 引用
 
 - 现状实现:`src/lib/pricing/`(注册表 `source-registry.ts` / 模型面 `crawlers.ts` / 套餐面 `plan-sources.ts` /
   落库 `curated-persist.ts` / 渲染 `render-fetch.ts` / 读侧 `read.ts` `public.ts` `admin.ts`),
