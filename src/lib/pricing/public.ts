@@ -26,11 +26,35 @@ export interface PublicModelRow {
   inputPrice: number | null;
   outputPrice: number | null;
   freeTier: string | null;
+  /** 完全免费(M74):所有档位价均为 0;与 freeTier「有免费额度」语义分离 */
+  isFree: boolean;
   contextWindow: string | null;
   note: string | null;
   dataAsOf: string; // YYYY-MM-DD(北京时区口径由写入侧保证)
   sourceUrl: string;
   region: string;
+  /** 厂商规范键(M74 归一层);未归一的行(过渡期)为 null */
+  providerKey: string | null;
+  /** 厂商展示名(字典表);未归一时回落到 vendor */
+  providerName: string | null;
+  /** 模型字典键(M74 跨厂商归一);未归一为 null */
+  modelDictKey: string | null;
+  /** 模型模态(字典表);未归一为 null */
+  modality: string | null;
+  /** 价格档位(阶梯/缓存/峰谷/模态计价);无档位则空数组 */
+  tiers: PublicTierRow[];
+}
+
+/** 档位公开形状(阶梯价/缓存价/峰谷价;每百万 tokens 或其它计价单位) */
+export interface PublicTierRow {
+  tierLabel: string;
+  inputPrice: number | null;
+  outputPrice: number | null;
+  cachePrice: number | null;
+  minTokens: number | null;
+  maxTokens: number | null;
+  unit: string;
+  currency: string;
 }
 
 export interface PublicPlanRow {
