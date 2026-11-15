@@ -17,6 +17,13 @@ const updatePlan = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> =>
+      fn({
+        modelPricingTier: {
+          deleteMany: vi.fn(),
+          createMany: vi.fn(async () => ({ count: 0 })),
+        },
+      }),
     crawlSource: {
       upsert: (...a: unknown[]) => csUpsert(...a),
       updateMany: (...a: unknown[]) => csUpdateMany(...a),
@@ -27,6 +34,18 @@ vi.mock("@/lib/db", () => ({
       findMany: (...a: unknown[]) => findModels(...a),
       create: (...a: unknown[]) => createModel(...a),
       update: (...a: unknown[]) => updateModel(...a),
+    },
+    // M74 归一层:厂商/模型 get-or-create(单测固定命中既有行)
+    modelPricingProvider: {
+      findUnique: vi.fn(async () => ({ id: BigInt(1), key: "deepseek", name: "x" })),
+      create: vi.fn(),
+    },
+    modelPricingModel: {
+      findFirst: vi.fn(async () => ({ id: BigInt(2), modelKey: "m", matchKey: "m" })),
+      create: vi.fn(),
+    },
+    modelPricingTier: {
+      findMany: vi.fn(async () => []),
     },
     codingPlan: {
       findMany: (...a: unknown[]) => findPlans(...a),
@@ -90,7 +109,15 @@ describe("syncPricingChannels", () => {
     expect(first.where.name).toBe(`pricing:${SOURCE_DEFS[0]!.key}`);
     expect(Object.keys(first.update)).toHaveLength(0); // url/启停/周期归后台
     expect(first.create.type).toBe("pricing");
-    expect(first.create.crawlIntervalMin).toBe(10_080); // 周级,不天天采集
+    // M74 批B:模型面日级(按量价常调价)/ 套餐面周级(套餐价稳定)
+    const intervalOf = (key: string): number => {
+      const call = csUpsert.mock.calls.find(
+        (c) => (c[0] as { where: { name: string } }).where.name === `pricing:${key}`,
+      )!;
+      return (call[0] as { create: { crawlIntervalMin: number } }).create.crawlIntervalMin;
+    };
+    expect(intervalOf("deepseek")).toBe(1_440);
+    expect(intervalOf("kimi-membership")).toBe(10_080);
     expect(first.create.config).toEqual({ pricingKey: SOURCE_DEFS[0]!.key });
     // 退役默认 URL 迁移:只改仍是旧默认值的行(后台改过的不动),故按 url 等值圈定
     // 第二枪=撤除渠道收尾:注册表无此 key 的 pricing 行停用(否则每次调度必抛无解析器)

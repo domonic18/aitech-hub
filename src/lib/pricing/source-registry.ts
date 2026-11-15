@@ -16,18 +16,24 @@
 import { prisma } from "@/lib/db";
 import { logInfo } from "@/lib/logger";
 
-import { PRICING_CRAWL_INTERVAL_MIN } from "../collect/constants";
+import { PRICING_CRAWL_INTERVAL_MIN, PRICING_MODEL_CRAWL_INTERVAL_MIN } from "../collect/constants";
 import { SourceCapture, type SnapshotSink } from "../collect/snapshot-capture";
 import {
   DEEPSEEK_PRICING_URL,
   MOONSHOT_PRICING_URL,
   crawlModelSource,
-  markModelSourceStale,
   parseDeepseek,
   parseMoonshot,
-  persistModelRows,
   type ModelPrefillRow,
 } from "./crawlers";
+import {
+  markMissingModelsStale,
+  markModelSourceStale,
+  persistModelRows,
+  PRICING_TOMBSTONE_STALE_MS,
+} from "./model-persist";
+import { parseSiliconflow, SILICONFLOW_PRICING_URL } from "./model-sources/siliconflow";
+import { parseTencentHunyuan, TENCENT_HUNYUAN_URL } from "./model-sources/tencent";
 import {
   BAILIAN_TOKEN_URL,
   fetchBailianPage,
@@ -111,6 +117,46 @@ export const SOURCE_DEFS: SourceDef[] = [
         sink,
       );
       if (!r.ok) throw new Error(r.error ?? "moonshot 源失败");
+      return r.rows;
+    },
+  },
+  {
+    key: "siliconflow-model",
+    target: "model",
+    kind: "static",
+    label: "硅基流动 模型牌价",
+    vendor: "硅基流动 SiliconFlow",
+    defaultUrl: SILICONFLOW_PRICING_URL,
+    sortOrder: 3,
+    run: async (url, { now, sink }) => {
+      const r = await crawlModelSource(
+        "static",
+        url,
+        (h, u, n) => parseSiliconflow(h, u, n),
+        now,
+        sink,
+      );
+      if (!r.ok) throw new Error(r.error ?? "siliconflow 源失败");
+      return r.rows;
+    },
+  },
+  {
+    key: "tencent-hunyuan",
+    target: "model",
+    kind: "static",
+    label: "腾讯云混元 模型牌价",
+    vendor: "腾讯云",
+    defaultUrl: TENCENT_HUNYUAN_URL,
+    sortOrder: 4,
+    run: async (url, { now, sink }) => {
+      const r = await crawlModelSource(
+        "static",
+        url,
+        (h, u, n) => parseTencentHunyuan(h, u, n),
+        now,
+        sink,
+      );
+      if (!r.ok) throw new Error(r.error ?? "tencent hunyuan 源失败");
       return r.rows;
     },
   },
@@ -209,12 +255,19 @@ export async function runPricingSourceCrawl(
     const planRows = rows.filter((r): r is PlanPrefillRow => "planName" in r);
     const modelTally = await persistModelRows(modelRows);
     const planTally = await persistPlanRows(planRows);
+    // 墓碑(M74 批B):模型面采集成功且本次有行 → 本源多轮未出现的行停用
+    // (源失败/解析空不跑,否则整源会被误杀;失败路径另有「待复核」打标)
+    let tombstoned = 0;
+    if (modelRows.length > 0) {
+      tombstoned = await markMissingModelsStale(source.url, now, PRICING_TOMBSTONE_STALE_MS);
+    }
     // 落库台账入日志:untouched=因人工定稿(is_pinned)未覆盖的行数——
     // 此前 tally 被丢弃,「采集成功但价格没变」在日志里看不出来(M73)
     logInfo("pricing.curated_persisted", {
       source: source.url,
       model: modelTally,
       plan: planTally,
+      tombstoned,
     });
     await capture.finish(rows.length === 0 ? "empty" : "success", rows.length);
     return { ok: true, fetched: rows.length };
@@ -250,7 +303,9 @@ export async function syncPricingChannels(): Promise<number> {
         name,
         type: "pricing",
         url: def.defaultUrl,
-        crawlIntervalMin: PRICING_CRAWL_INTERVAL_MIN, // 周级(官方牌价页礼貌采集;源管理可调)
+        // 模型面日级(按量价常调价)/ 套餐面周级(官方牌价页礼貌采集;源管理可调)
+        crawlIntervalMin:
+          def.target === "model" ? PRICING_MODEL_CRAWL_INTERVAL_MIN : PRICING_CRAWL_INTERVAL_MIN,
         enabled: true,
         config: { pricingKey: def.key },
         remark: def.label,
