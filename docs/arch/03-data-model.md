@@ -468,6 +468,14 @@ CREATE TABLE legacy_url_map (
   `model_id?` FK→`model_pricing_model`(`SetNull`,索引)——**同一模型在不同提供商的牌价行不去重**,
   靠 `model_id` 归一后并排比价;`is_free boolean default false`(索引)=**完全免费**
   (所有档位价均为 0;与 `free_tier`「有免费额度」语义分离,缺价 null 不当免费)
+- **M74 批B1 落库口径**(2026-11-15,`src/lib/pricing/model-persist.ts`):采集写入时一并完成
+  ①**归一关联**(`provider_id`/`model_id`;厂商认不出 → `provider_id` 留 null,不猜);
+  ②**档位写入**(源解析出阶梯/缓存/峰谷/模态时,整行档位替换落 `model_pricing_tier`;
+  行上两价仍是「基准价」——多时段价取**最高**价,不把优惠窗当常态价);
+  ③**免费双标识**(`is_free` 完全免费 = 行价与全部档位价均为 0,缺价 null 不当免费;
+  `free_tier` 免费额度原文,采集侧起采,与「完全免费」是两种语义);
+  ④**下线墓碑**(成功采集且本次有行时:本源超 3 天未被刷新 = 采集没再解析到它 →
+  `status=disabled` + note 打「源已下线」;人工定稿行 `is_pinned=true` 不参与)
 - 存量归一回填:`scripts/oneoff/m74-pricing-backfill/run.ts`(一次性,dry-run 默认,幂等)。
   **认不出的厂商不动**(`provider_id` 留 null)并在报告里点名——猜错厂商比不归一更糟
 - 上下文长度不落字典表:各家截断不同(同一模型在官方与聚合平台给的上下文不一样),

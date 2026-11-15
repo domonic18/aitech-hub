@@ -55,6 +55,10 @@ export const CRAWL_MAX_CONSECUTIVE_FAILS = 3;
 /** 牌价渠道默认采集周期(周级:官方牌价页礼貌采集;源管理可调,M56 批B) */
 export const PRICING_CRAWL_INTERVAL_MIN = 10_080;
 
+/** 按量模型牌价采集周期(M74 批B):日级——国内厂商常调价/促销,周级太慢;
+ * 套餐面仍走周级(PRICING_CRAWL_INTERVAL_MIN),套餐价稳定 */
+export const PRICING_MODEL_CRAWL_INTERVAL_MIN = 1_440;
+
 /** 厂商动态默认采集周期(半日一次,每日 2 轮;官方博客发布频率低,礼貌采集,
  * 源管理可调,M58 批②) */
 export const VENDOR_CRAWL_INTERVAL_MIN = 720;

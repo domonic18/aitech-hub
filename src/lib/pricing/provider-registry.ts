@@ -126,6 +126,7 @@ export const VENDOR_KEY_ALIASES: Readonly<Record<string, string>> = {
   "小米 MiMo": "xiaomi-mimo",
   "MiniMax 稀宇科技": "minimax",
   "智谱 AI · BigModel": "zhipu-bigmodel",
+  "硅基流动 SiliconFlow": "siliconflow",
 };
 
 /** 松散比较用:去空白与标点、小写(「智谱 AI · BigModel」→ 「智谱aibigmodel」) */
