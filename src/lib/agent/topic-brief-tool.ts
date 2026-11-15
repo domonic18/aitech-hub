@@ -8,7 +8,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { AI_PURPOSE_ILLUSTRATE } from "../ai/constants";
-import { getEnabledSkillByKey } from "../ai/agent-skills-admin";
+import { getEnabledSkillByKey } from "../ai/skill-registry";
 import { resolveAiModel } from "../ai/resolver";
 import { prisma } from "../db";
 import {

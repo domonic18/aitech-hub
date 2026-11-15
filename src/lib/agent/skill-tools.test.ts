@@ -13,7 +13,7 @@ vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 
 const listEnabledSkillMetas = vi.hoisted(() => vi.fn());
 const getEnabledSkillByKey = vi.hoisted(() => vi.fn());
-vi.mock("../ai/agent-skills-admin", () => ({ listEnabledSkillMetas, getEnabledSkillByKey }));
+vi.mock("../ai/skill-registry", () => ({ listEnabledSkillMetas, getEnabledSkillByKey }));
 
 import { getSkillTool, listSkillsTool } from "./skill-tools";
 

@@ -133,6 +133,8 @@
 
 **K2.8 补注五(2026-10-14,M30 批①~④,Agent 技能化——流程纪律为后台可管理资产;skill 扩展性三层定调)**:用户定调未来 agent 写作等功能持续扩展(「公众号文章必须提炼要点渲染 HTML 以配图加入」类业务过程会越来越多),扩展性做系统考量以支撑更多 skill、MCP 与工具调用。落成三层:**知识层** = `agent_skill` 表(流程纪律 markdown,后台「模型配置→Agent 技能」页签建改即时生效零发版);**能力层** = 代码工具(agentToolsFor 单点装配,机械执行不进 skill);**接入层** = MCP(未来在同一点挂 adapter,不预建)。分工纪律:skill 教 agent **决策与纪律**(markdown 引用工具名),工具/管线做机械执行。
 
+> **2026-11-15(M72 瘦身 B7 / D7)知识层退役**:`agent_skill` 表 + 后台「Agent 技能」页 + `/api/agent-skills/**` 全部下线,写作指南真相源 = 仓库 `skills/writing/*.md`(MCP `list_skills`/`get_skill` 读它;`topic.skill_key` 软引用改判该目录的 key)。站内 agent 侧的渐进披露(`list_skills`/`get_skill`)暂读**站内版**指南常量(`ai/skill-registry.ts` → `writing-guides.ts`,保留站内工具名),随 B4 删 agent 写工具时整体退役——站内版与仓库 md 同源不同语境(仓库版按线下语境改写工具指向)。以下为历史落库记录。
+
 - **`agent_skill` 通用技能表(批①,迁移 `20261014200000_agent_skill`)**:`key varchar(50)` 唯一(agent 稳定引用,建后不可改)/`name/scenario(一行,agent 对号场景)/guide_md text(指南正文)/enabled`(停用后 agent 侧即时不可见)。**通用表定位**:写作指南、分发流程等知识型纪律均落此表,不预建 kind/结构化匹配(YAGNI);种子(upsert `update:{}` 不覆盖后台编辑)收编原 ADMIN_PROMPT_ADDENDUM 硬编码「博主×视频」指南并增**码点预算段**(markdown ≤4500 码点/表格每张 ~2200/超限删除优先级);soft ref 语义:skill 删/停后专题绑定降级为按场景自动匹配,不阻塞
 - **渐进披露工具(批②,`skill-tools.ts`)**:`list_skills`(元数据清单 key/name/scenario,写前对号)/`get_skill`(按 key 取全文)——与 deepagents 1.14.2 `createSkillsMiddleware`(SKILL.md frontmatter → 元数据缓存 → wrapModelCall 注入 → read_file 按需)同范式,差异:真相源为 DB 行非静态文件(后台建改即时生效),每次 list 恒新(无线程级缓存陈旧风险);prompt 注入换显式中文时序条款(系统提示只留「技能调度」段:动笔前必先 list_skills → 按 scenario 对号 → 命中 get_skill 全文,**指南优先于提示通用写法**;topic.skill_key 已指定直取不自行匹配;清单为空按常识写并汇报「未命中适用技能」)
 - **专题定向绑定(批②,`topic.skill_key` 可空列,迁移 `20261014210000_topic_skill_key`)**:专题面板 select 绑定(仅列启用技能,PATCH 存在性核验 400);get_topic_brief 载荷携 skill_key,合成写稿定向取指南

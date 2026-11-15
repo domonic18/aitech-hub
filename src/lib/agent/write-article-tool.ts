@@ -13,7 +13,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { getEnabledSkillByKey } from "../ai/agent-skills-admin";
+import { getEnabledSkillByKey } from "../ai/skill-registry";
 import { AI_PURPOSE_WRITING } from "../ai/constants";
 import { AiAdminError, AiClientError } from "../ai/errors";
 import { readExtraMaxTokens, readExtraOutputConfig } from "../ai/extra-params";

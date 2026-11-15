@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 
-import { AGENT_SKILL_KEY_RE } from "../ai/agent-skills-admin";
+import { AGENT_SKILL_KEY_RE } from "../ai/skill-registry";
 import { isBigIntId } from "../http/parse-id";
 import { TOPIC_ITEM_TYPE, TOPIC_OUTPUT_TYPES, TOPIC_STATUS } from "./constants";
 

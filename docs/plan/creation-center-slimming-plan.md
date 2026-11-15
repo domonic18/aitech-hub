@@ -32,7 +32,8 @@
 | B1.1 封面 HTTP 触发面 | ✅ 已合 develop | D3 的 P0 缺口：`POST /api/posts/cover-candidates`（触发）+ `POST .../[id]/adopt`（入库设封面）+ `DELETE`（放弃）；编排与 agent 工具共用 `lib/ai/cover-candidates.ts` |
 | B2 写作 skill 迁移 | ✅ 已合 develop（PR #242） | `skills/writing/*.md` 7 份 + `INDEX.md`；MCP `list_skills`/`get_skill` 只读镜像内副本 |
 | B3 关站内生成入口 | ✅ 代码已合 develop（PR #246）；**线上切换待用户** | `GET /api/topics/[id]/export` 素材包导出；创作条总闸关时改「导出素材包」；编辑页 `EditorAssistant` 下线、封面走 HTTP；编辑页 FAB 改显钮。剩两件用户侧：① 线上 kv `creation.agent_enabled=false`；② 线下闭环真实产出 3~5 篇并人工发布（§5.1 第 3 条的前置门槛） |
-| B4~B8 | ⏸ 未启动 | 逐批删除 / 收窄 / 收尾 |
+| B7 删 skill 层 | ✅ 代码已合 develop（PR 待开） | `agent_skill` 表 drop（迁移 `20261115094500_b7_drop_agent_skill`）+ 后台「写作技能」页 + `/api/agent-skills/**` + `agent-skills-admin.ts`；真相源 = 仓库 `skills/writing/*.md`；`topic.skill_key` 软引用保留，PATCH 存在性核改判仓库 md。站内 agent 侧渐进披露暂读站内版常量（`ai/skill-registry.ts`），随 B4 退役 |
+| B4~B6、B8 | ⏸ 未启动 | 逐批删除 / 收窄 / 收尾 |
 
 **两处与原方案不同的落地决定**：
 

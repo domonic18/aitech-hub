@@ -37,7 +37,7 @@ vi.mock("../topics/compose", () => ({
 }));
 
 const getEnabledSkillByKey = vi.hoisted(() => vi.fn());
-vi.mock("../ai/agent-skills-admin", () => ({ getEnabledSkillByKey }));
+vi.mock("../ai/skill-registry", () => ({ getEnabledSkillByKey }));
 
 const resolveAiModel = vi.hoisted(() => vi.fn());
 vi.mock("../ai/resolver", () => ({ resolveAiModel }));

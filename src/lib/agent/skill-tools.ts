@@ -2,14 +2,15 @@
  * Agent skill 渐进披露·admin 工具面(M30 批②):list_skills 元数据先行
  * (key/名称/适用场景,零正文开销知全貌)→ get_skill 按需取指南全文——
  * 两段式取用,系统提示只载调度条款不载指南正文,skill 增删改零改提示词。
- * 技能增删改即时生效(每次调用实查 agent_skill 表,后台建改零发版);
- * 写作指南、分发流程等知识型扩展共用此通道。纵深防御同 topic-tools:
+ * 指南来源(M72 B7):`agent_skill` 表退役,改读站内版指南常量
+ * (`ai/skill-registry.ts`);线下另有仓库 md 一份给 MCP/线下助手(同源不同语境)。
+ * 纵深防御同 topic-tools:
  * admin 图独占 + 工具体内验会话归属(fail-closed)。
  */
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { getEnabledSkillByKey, listEnabledSkillMetas } from "../ai/agent-skills-admin";
+import { getEnabledSkillByKey, listEnabledSkillMetas } from "../ai/skill-registry";
 
 import { adminThreadDeny, assertAdminThread } from "./admin-thread";
 

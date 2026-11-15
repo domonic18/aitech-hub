@@ -4108,83 +4108,45 @@ test("37. 飞书免登底座(M29 批①②:登录页非飞书零回归/exchange 
   }
 });
 
-test("38. Agent 技能(M30 批④:技能页 CRUD 冒烟/key 建后不可改/启停落库/技能路由派生与软引用防线/非法 skillKey 400,零真网)", async ({
+test("38. 写作技能层退役(M72 瘦身 B7:技能页与 API 下线/侧栏无入口/skillKey 软引用改判仓库 md,零真网)", async ({
   page,
 }) => {
-  const KEY = "e2e-skill-m30";
-  const NAME = "e2e 技能·冒烟";
-  const SCENARIO = "e2e 冒烟场景:验证技能调度取用面";
-  const GUIDE = "- e2e 指南条目:开头直给结论,不写「随着…的发展」式套话\n- 结构:两段递进";
   const TOPIC_TITLE = "e2e 专题-技能绑定";
-  // 自清理:重跑幂等(agent_skill.key 唯一;topic 按标题)
-  await prisma.agentSkill.deleteMany({ where: { key: KEY } });
-  await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
-  const topic = await prisma.topic.create({ data: { title: TOPIC_TITLE } });
-  page.once("dialog", (d) => d.accept()); // 行删除 confirm 自动接受
 
   try {
     await e2eAdminLogin(page);
 
-    // 38.1 「写作技能」独立页(M39 批① 自模型页第 4 页签提升):UI 新增技能
-    //      (全字段)→ 台账行落位,库内 enabled=true
+    // 38.1 「写作技能」页已下线:登录态访问直落 404;侧栏不再有该入口
     await page.goto("/admin/skills/");
-    await expect(page.getByRole("heading", { name: "写作技能" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "+ 新增技能" })).toBeVisible();
-    await page.getByRole("button", { name: "+ 新增技能" }).click();
-    await page.getByPlaceholder("如 blogger-video").fill(KEY);
-    await page.getByPlaceholder("如:博主×视频推荐短文").fill(NAME);
-    await page.getByPlaceholder("如:公众号「博主×视频」推荐短文(专题合成默认场景)").fill(SCENARIO);
-    await page.getByPlaceholder(/开头钩子不超过 80 字/).fill(GUIDE);
-    await page.getByRole("button", { name: "保存", exact: true }).click();
-    const row = page.getByRole("row", { name: new RegExp(KEY) });
-    await expect(row).toBeVisible({ timeout: 10_000 });
-    await expect(row).toContainText(NAME);
-    const created = await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } });
-    expect(created.enabled).toBe(true);
-    expect(created.guideMd).toBe(GUIDE);
-    expect(created.scenario).toBe(SCENARIO);
-
-    // 38.2 编辑弹窗:key 输入 disabled(建后不可改,agent 稳定引用);改名落库
-    await row.getByRole("button", { name: "编辑" }).click();
-    await expect(page.getByPlaceholder("如 blogger-video")).toBeDisabled();
-    await expect(page.getByPlaceholder("如 blogger-video")).toHaveValue(KEY);
-    await page.getByPlaceholder("如:博主×视频推荐短文").fill(`${NAME}·改`);
-    await page.getByRole("button", { name: "保存", exact: true }).click();
-    await expect(page.getByRole("row", { name: new RegExp(KEY) })).toContainText("·改", {
-      timeout: 10_000,
-    });
-    const renamed = await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } });
-    expect(renamed.name).toBe(`${NAME}·改`);
-
-    // 38.3 启停 switch:关 → enabled=false 落库;再开 → 恢复(绑定 select 只列启用技能)
-    await row.getByRole("switch", { name: /启用 e2e 技能/ }).click();
-    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", "false", {
-      timeout: 10_000,
-    });
-    expect((await prisma.agentSkill.findUniqueOrThrow({ where: { key: KEY } })).enabled).toBe(
-      false,
+    await expect(page).toHaveURL(/404|not-found/i);
+    await page.goto("/admin");
+    await expect(page.getByRole("navigation").getByRole("link", { name: "写作技能" })).toHaveCount(
+      0,
     );
-    // 停用态软引用防线:显式绑定指向停用技能 → 400(不落库)
-    const bindOff = await page.request.patch(`/api/topics/${topic.id}/`, {
-      headers: jsonOrigin(page),
-      data: { skillKey: KEY },
-    });
-    expect(bindOff.status()).toBe(400);
-    expect(((await bindOff.json()) as { message: string }).message).toContain("skillKey");
-    await row.getByRole("switch", { name: /启用 e2e 技能/ }).click();
-    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", "true", {
-      timeout: 10_000,
-    });
 
-    // 38.4 技能路由(M39 批② 派生制;详情页「绑定写作技能」select 随 §13.8
-    //      退役):显式 skillKey 软引用落位;定位命中预置形式 → 派生覆盖;
-    //      显式解绑 → null
-    const bindPut = await page.request.patch(`/api/topics/${topic.id}/`, {
+    // 38.2 skillKey 软引用改判仓库 md(真相源=skills/writing/*.md):
+    //      已发布指南的 key 可绑,未发布的 key → 400 人话(不落库)
+    await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
+    const topic = await prisma.topic.create({ data: { title: TOPIC_TITLE } });
+    const bindOk = await page.request.patch(`/api/topics/${topic.id}/`, {
       headers: jsonOrigin(page),
-      data: { skillKey: KEY },
+      data: { skillKey: "blogger-video" },
     });
-    expect(bindPut.status()).toBe(200);
-    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBe(KEY);
+    expect(bindOk.status()).toBe(200);
+    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBe(
+      "blogger-video",
+    );
+    const bad = await page.request.patch(`/api/topics/${topic.id}/`, {
+      headers: jsonOrigin(page),
+      data: { skillKey: "e2e-no-such-skill" },
+    });
+    expect(bad.status()).toBe(400);
+    expect(((await bad.json()) as { message: string }).message).toContain("skillKey");
+    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBe(
+      "blogger-video",
+    );
+
+    // 38.3 定位命中预置形式 → 派生覆盖;显式解绑 → null
     const derived = await page.request.patch(`/api/topics/${topic.id}/`, {
       headers: jsonOrigin(page),
       data: {
@@ -4207,18 +4169,8 @@ test("38. Agent 技能(M30 批④:技能页 CRUD 冒烟/key 建后不可改/启�
     });
     expect(unbind.status()).toBe(200);
     expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBeNull();
-
-    // 38.5 服务端防线:PATCH 不存在的 skillKey → 400 人话包络(不落库)
-    const bad = await page.request.patch(`/api/topics/${topic.id}/`, {
-      headers: jsonOrigin(page),
-      data: { skillKey: "e2e-no-such-skill" },
-    });
-    expect(bad.status()).toBe(400);
-    expect(((await bad.json()) as { message: string }).message).toContain("skillKey");
-    expect((await prisma.topic.findUniqueOrThrow({ where: { id: topic.id } })).skillKey).toBeNull();
   } finally {
     await prisma.topic.deleteMany({ where: { title: TOPIC_TITLE } });
-    await prisma.agentSkill.deleteMany({ where: { key: KEY } });
   }
 });
 
@@ -4265,18 +4217,16 @@ test("39. Agent 宿主唯一化(M35:协议唤起开卡/跨页常驻 run 不断�
     );
     await expect(dialog.getByPlaceholder(/继续深挖/)).toHaveValue("e2e 宿主唤起预填");
 
-    // ④ 编辑页藏钮不卸卡(FAB 整页 reload 后懒挂载重置,顶栏入口开的是宿主卡):
-    //    FAB 钮 count 0(路由策略),顶栏「AI 助手」开卡 → chip 在场(能力注册)
+    // ④ 编辑页(M72 B3:顶栏「AI 助手」入口已下线,FAB 改为照常显钮):
+    //    FAB 钮在场 → 点开宿主卡;编辑面能力不再注册(无「正在编辑」上下文 chip)
     await page.goto(`/admin/posts/${draft.id}`);
-    await expect(page.getByRole("button", { name: "打开 AI 助手" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "打开 AI 助手" })).toHaveCount(1);
     await expect(page.getByRole("dialog", { name: "AI 助手" })).toHaveCount(0);
-    await page.getByRole("button", { name: "AI 助手" }).click();
+    await page.getByRole("button", { name: "打开 AI 助手" }).click();
     await expect(page.getByRole("dialog", { name: "AI 助手" })).toBeVisible();
-    await expect(page.getByText(/正在编辑:/)).toBeVisible();
-    await expect(page.getByText(/《e2e 宿主唯一化草稿》/)).toBeVisible();
+    await expect(page.getByText(/正在编辑:/)).toHaveCount(0);
 
-    // ⑤ 编辑页顶栏入口开的也是宿主卡:客户端切页(侧栏 → 站点统计)卡不卸载,
-    //    能力注销 → chip 消失(run 语义:编辑面接线不在场,评审降级既有语义)
+    // ⑤ 客户端切页(编辑页 → 站点统计)卡不卸载(宿主卡跨路由常驻)
     await page.getByRole("navigation").getByRole("link", { name: "站点统计" }).click();
     await expect(page).toHaveURL(/\/admin\/?$/);
     await expect(page.getByRole("dialog", { name: "AI 助手" })).toBeVisible();

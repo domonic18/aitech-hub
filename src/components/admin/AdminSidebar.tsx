@@ -79,8 +79,6 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "AI 服务",
     items: [
       { icon: "i-robot", label: "模型配置", href: "/admin/models" },
-      // 写作技能自「模型配置」第 4 页签提升为独立页(2026-10-16 验收反馈问题二)
-      { icon: "i-filetext", label: "写作技能", href: "/admin/skills" },
       // 会话管理已并入 AI 用量壳「会话」页签(/admin/usage/sessions,侧栏精简批②)
       { icon: "i-piechart", label: "AI 用量", href: "/admin/usage" },
     ],
