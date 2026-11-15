@@ -81,6 +81,13 @@ async function main(): Promise<void> {
     await syncPricingChannels().catch((e: unknown) =>
       logError("pricing.source_sync_failed", { error: e instanceof Error ? e.message : String(e) }),
     );
+    // 牌价厂商字典(M74 批A):种子幂等入 model_pricing_provider,只补缺不改值
+    const { syncPricingProviders } = await import("../src/lib/pricing/model-registry");
+    await syncPricingProviders().catch((e: unknown) =>
+      logError("pricing.provider_sync_failed", {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
     const { getQueue } = await import("../src/lib/queue");
     const pq = getQueue("pricing");
     await pq.removeJobScheduler("crawl-official").catch(() => undefined);
