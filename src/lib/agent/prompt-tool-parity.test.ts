@@ -16,6 +16,7 @@ import { agentSystemPrompt, agentToolsFor } from "./agent";
 /** 反向检查豁免词表:提示中的非工具 snake_case 词元(参数名/字段名/harness 能力) */
 const NON_TOOL_TOKENS = new Set([
   "post_id", // read_post 参数
+  "write_todos", // deepagents harness 计划工具(todoListMiddleware 挂载)
 ]);
 
 describe("只读工具面与系统提示一致性", () => {
