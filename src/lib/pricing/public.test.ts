@@ -355,7 +355,12 @@ describe("M74 批C:模型行筛选与排序", () => {
       "mid",
       "no-price",
     ]);
-    expect(sortModelRows(rows, "default")).toBe(rows);
+    // 默认即按输入价升序(这页是来找便宜的,默认按库序对用户是乱的)
+    expect(sortModelRows(rows, "default").map((r) => r.modelKey)).toEqual([
+      "cheap",
+      "mid",
+      "no-price",
+    ]);
   });
 
   it("同价按模型名定序(结果稳定)", () => {
