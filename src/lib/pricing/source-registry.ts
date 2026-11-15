@@ -34,6 +34,11 @@ import {
 } from "./model-persist";
 import { BAILIAN_MODEL_PRICING_URL, parseBailianModels } from "./model-sources/bailian";
 import { parseSiliconflow, SILICONFLOW_PRICING_URL } from "./model-sources/siliconflow";
+import {
+  fetchVolcengineArk,
+  parseVolcengineArk,
+  VOLCENGINE_ARK_PRICING_URL,
+} from "./model-sources/volcengine";
 import { parseTencentHunyuan, TENCENT_HUNYUAN_URL } from "./model-sources/tencent";
 import {
   BAILIAN_TOKEN_URL,
@@ -180,6 +185,17 @@ export const SOURCE_DEFS: SourceDef[] = [
       if (!r.ok) throw new Error(r.error ?? "bailian 源失败");
       return r.rows;
     },
+  },
+  {
+    key: "volcengine-ark",
+    target: "model",
+    kind: "rendered",
+    label: "火山引擎方舟 模型牌价",
+    vendor: "火山引擎方舟",
+    defaultUrl: VOLCENGINE_ARK_PRICING_URL,
+    sortOrder: 6,
+    run: async (url, { now, sink }) =>
+      parseVolcengineArk(await fetchVolcengineArk(url, sink), url, now),
   },
   {
     key: "kimi-membership",
