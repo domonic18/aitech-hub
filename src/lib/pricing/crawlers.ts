@@ -1,16 +1,23 @@
 /**
- * 官方页爬虫·模型面(M55 批C;M56 批B 分层):纯解析/取数/落库库——
- * DeepSeek=峰谷×缓存命中矩阵(标准牌价=高峰·缓存未命中,矩阵全貌按模型入
- * note),Moonshot=SSR 序列化行直取。渠道编排(DB 驱动、失败合并上抛)在
- * source-registry.ts;本文件不含渠道定义。
- * 落库规则(M73 起):建 pending/可刷新行刷新/人工定稿行(is_pinned)不覆盖;currency
- * 随价格走(跨通道防 ¥ 数字配 $ 符号)。
+ * 官方页爬虫·模型面(M55 批C;M56 批B 分层;M74 批B 拆出落库):
+ * 纯解析/取数。渠道编排(DB 驱动、失败合并上抛)在 source-registry.ts;
+ * 落库(归一/档位/免费/墓碑)在 model-persist.ts;本文件不含渠道定义。
  * 失败语义:爬取单源失败自吞(编排层收尾),失败源旧数据按 sourceUrl 圈定
  * note 打「待复核」标,整 job 上抛 job_run 记 failed 连败可见,不静默腐烂。
  */
-import { prisma } from "@/lib/db";
 import type { SnapshotSink } from "../collect/snapshot-capture";
-import { markCuratedSourceStale, persistCuratedRows } from "./curated-persist";
+
+/** 价格档位(阶梯/缓存/峰谷/模态);null = 该档不适用(如缓存档无输出价) */
+export interface ModelTierPrefill {
+  tierLabel: string;
+  inputPrice: number | null;
+  outputPrice: number | null;
+  cachePrice: number | null;
+  minTokens: number | null;
+  maxTokens: number | null;
+  /** 计价单位:per_1m_tokens / per_1k_tokens / per_image / per_second / per_minute */
+  unit: string;
+}
 
 export interface ModelPrefillRow {
   vendor: string;
@@ -23,6 +30,12 @@ export interface ModelPrefillRow {
   dataAsOf: Date;
   sourceUrl: string;
   region: "cn" | "intl";
+  /** 价格档位;缺省=只有行上两价(不写档位行) */
+  tiers?: ModelTierPrefill[];
+  /** 厂商规范键(M74 归一层);缺省按 vendor 映射 */
+  providerKey?: string;
+  /** 免费额度口径原文(M74 批B 起采集侧采;与 is_free「完全免费」是两种语义) */
+  freeTier?: string | null;
 }
 
 /** 默认官方页(种子初始值;运行期 URL 归 pricing_source 表后台可调) */
@@ -97,6 +110,64 @@ export function parseDeepseek(html: string, sourceUrl: string, now: Date): Model
     dataAsOf: now,
     sourceUrl,
     region: "cn" as const,
+    providerKey: "deepseek",
+    // M74 批B:峰谷×缓存矩阵落档位表(行上两价仍是「高峰·未命中」基准价)
+    tiers: [
+      {
+        tierLabel: "缓存命中·空闲",
+        inputPrice: null,
+        outputPrice: null,
+        cachePrice: Number(c.hitIdle),
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_1m_tokens",
+      },
+      {
+        tierLabel: "缓存命中·高峰",
+        inputPrice: null,
+        outputPrice: null,
+        cachePrice: Number(c.hitPeak),
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_1m_tokens",
+      },
+      {
+        tierLabel: "输入·未命中·空闲",
+        inputPrice: Number(c.missIdle),
+        outputPrice: null,
+        cachePrice: null,
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_1m_tokens",
+      },
+      {
+        tierLabel: "输入·未命中·高峰",
+        inputPrice: Number(c.missPeak),
+        outputPrice: null,
+        cachePrice: null,
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_1m_tokens",
+      },
+      {
+        tierLabel: "输出·空闲",
+        inputPrice: null,
+        outputPrice: Number(c.outIdle),
+        cachePrice: null,
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_1m_tokens",
+      },
+      {
+        tierLabel: "输出·高峰",
+        inputPrice: null,
+        outputPrice: Number(c.outPeak),
+        cachePrice: null,
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_1m_tokens",
+      },
+    ],
   }));
 }
 
@@ -121,6 +192,7 @@ export function parseMoonshot(html: string, sourceUrl: string, now: Date): Model
       dataAsOf: now,
       sourceUrl,
       region: "cn" as const,
+      providerKey: "moonshot",
     });
   }
   if (rows.length === 0) throw new Error("moonshot 行结构未匹配(页面可能改版)");
@@ -166,74 +238,4 @@ const NOTE_MAX = 200; // schema note @db.VarChar(200)
 export function withRecheckMark(note: string | null, now: Date): string {
   const base = (note ?? "").replace(RECHECK_MARKER_RE, "").trim();
   return `【待复核 ${now.toISOString().slice(0, 10)} 爬取失败】${base}`.slice(0, NOTE_MAX);
-}
-
-/** 失败源旧数据整源打标(通用编排薄壳;圈定/写入口径见 curated-persist) */
-export async function markModelSourceStale(sourceUrl: string, now: Date): Promise<number> {
-  return markCuratedSourceStale(
-    sourceUrl,
-    now,
-    (url) =>
-      prisma.modelPricing.findMany({ where: { sourceUrl: url }, select: { id: true, note: true } }),
-    (id, note) =>
-      prisma.modelPricing.update({ where: { id }, data: { note }, select: { id: true } }),
-  );
-}
-
-/** 模型行落库(建 pending/可刷新行刷新/人工定稿行不动;currency 随价格走) */
-export async function persistModelRows(rows: ModelPrefillRow[]): Promise<{
-  created: number;
-  refreshed: number;
-  untouched: number;
-  failed: number;
-}> {
-  return persistCuratedRows(rows, {
-    keyOf: (r) => ({ vendor: r.vendor, key: r.modelKey }),
-    listExisting: async (vendors, keys) => {
-      const rows = await prisma.modelPricing.findMany({
-        where: { vendor: { in: vendors }, modelKey: { in: keys } },
-        select: { id: true, vendor: true, modelKey: true, status: true, isPinned: true },
-      });
-      return rows.map((r) => ({
-        id: r.id,
-        vendor: r.vendor,
-        key: r.modelKey,
-        status: r.status,
-        isPinned: r.isPinned,
-      }));
-    },
-    create: (r) =>
-      prisma.modelPricing.create({
-        data: {
-          vendor: r.vendor,
-          modelKey: r.modelKey,
-          currency: r.currency,
-          inputPrice: r.inputPrice,
-          outputPrice: r.outputPrice,
-          contextWindow: r.contextWindow,
-          note: r.note,
-          dataAsOf: r.dataAsOf,
-          sourceUrl: r.sourceUrl,
-          region: r.region,
-          status: "pending",
-        },
-        select: { id: true },
-      }),
-    update: (id, r) =>
-      prisma.modelPricing.update({
-        where: { id },
-        data: {
-          // currency 必须随价格走:行若由 USD 通道先建,官方 CNY 价刷新时
-          // 币种同步矫正,杜绝「¥ 数字配 $ 符号」的跨通道脏态
-          currency: r.currency,
-          inputPrice: r.inputPrice,
-          outputPrice: r.outputPrice,
-          contextWindow: r.contextWindow,
-          note: r.note,
-          dataAsOf: r.dataAsOf,
-          sourceUrl: r.sourceUrl,
-        },
-        select: { id: true },
-      }),
-  });
 }

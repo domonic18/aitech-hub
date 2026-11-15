@@ -32,6 +32,13 @@ export function planKey(r: { vendor: string; planName: string }): string {
   return `${r.vendor}|${r.planName}`;
 }
 
+/** chip 样式(筛选条与更多筛选共用,保证两处观感一致) */
+export const CHIP_BASE =
+  "rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none";
+export const CHIP_ON = "border-accent bg-accent text-white";
+export const CHIP_OFF =
+  "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1";
+
 export function OfficialLink({ url }: { url: string }): React.ReactElement {
   return (
     <a

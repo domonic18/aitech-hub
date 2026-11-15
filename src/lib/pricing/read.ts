@@ -11,7 +11,8 @@
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
-import type { PublicModelRow, PublicPlanRow, PublicPricing } from "./public";
+import type { PublicModelRow, PublicPlanRow, PublicPricing, PublicTierRow } from "./public";
+import { readTiers } from "./tiers";
 
 /** 行级 dataAsOf 展示口径按北京日界取 YYYY-MM-DD(与 formatCnDate 对齐) */
 function cnAsOfDay(d: Date): string {
@@ -29,6 +30,7 @@ export async function listPublicPricing(): Promise<PublicPricing> {
         prisma.modelPricing.findMany({
           where: { status: "enabled" },
           orderBy: [{ region: "asc" }, { sortOrder: "asc" }, { vendor: "asc" }],
+          include: { provider: true, model: true },
         }),
         prisma.codingPlan.findMany({
           where: { status: "enabled" },
@@ -36,19 +38,41 @@ export async function listPublicPricing(): Promise<PublicPricing> {
         }),
       ]);
 
-      const modelRows: PublicModelRow[] = models.map((r) => ({
-        vendor: r.vendor,
-        modelKey: r.modelKey,
-        currency: r.currency,
-        inputPrice: r.inputPrice === null ? null : Number(r.inputPrice),
-        outputPrice: r.outputPrice === null ? null : Number(r.outputPrice),
-        freeTier: r.freeTier,
-        contextWindow: r.contextWindow,
-        note: r.note,
-        dataAsOf: cnAsOfDay(r.dataAsOf),
-        sourceUrl: r.sourceUrl,
-        region: r.region,
-      }));
+      // 档位一次性取回(避免 N+1);无档位的行给空数组
+      const tierMap = await readTiers(models.map((m) => m.id));
+
+      const modelRows: PublicModelRow[] = models.map((r) => {
+        const tiers: PublicTierRow[] = (tierMap.get(r.id.toString()) ?? []).map((t) => ({
+          tierLabel: t.tierLabel,
+          inputPrice: t.inputPrice,
+          outputPrice: t.outputPrice,
+          cachePrice: t.cachePrice,
+          minTokens: t.minTokens,
+          maxTokens: t.maxTokens,
+          unit: t.unit,
+          currency: t.currency,
+        }));
+        return {
+          vendor: r.vendor,
+          modelKey: r.modelKey,
+          currency: r.currency,
+          inputPrice: r.inputPrice === null ? null : Number(r.inputPrice),
+          outputPrice: r.outputPrice === null ? null : Number(r.outputPrice),
+          freeTier: r.freeTier,
+          isFree: r.isFree,
+          contextWindow: r.contextWindow,
+          note: r.note,
+          dataAsOf: cnAsOfDay(r.dataAsOf),
+          sourceUrl: r.sourceUrl,
+          region: r.region,
+          providerKey: r.provider?.key ?? null,
+          providerName: r.provider?.name ?? r.vendor,
+          providerKind: r.provider?.sourceKind ?? null,
+          modelDictKey: r.model?.modelKey ?? null,
+          modality: r.model?.modality ?? null,
+          tiers,
+        };
+      });
       const planRows: PublicPlanRow[] = plans.map((r) => ({
         vendor: r.vendor,
         planName: r.planName,

@@ -1,10 +1,10 @@
 /**
  * 模型面爬虫单测(M55 批C;M56 批B 分层,fixture 无真网 prisma mock 无真库):
- * DeepSeek 峰谷矩阵解析(sourceUrl 参数化)/ Kimi SSR 行直取 / 结构造版抛错 /
- * persistModelRows 落库规则(currency 随价格走)/ 待复核打标 / crawlModelSource。
- * 渠道编排(runPricingCrawl)在 source-registry.test。
+ * DeepSeek 峰谷矩阵解析(sourceUrl 参数化,M74 批B 起矩阵另落档位)/
+ * Kimi SSR 行直取 / 结构改版抛错 / 待复核打标 / crawlModelSource。
+ * 落库规则(M74 批B 起)在 model-persist.test;渠道编排在 source-registry.test。
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const findMany = vi.fn();
 const create = vi.fn();
@@ -20,13 +20,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import {
-  crawlModelSource,
-  parseDeepseek,
-  parseMoonshot,
-  persistModelRows,
-  withRecheckMark,
-} from "./crawlers";
+import { crawlModelSource, parseDeepseek, parseMoonshot, withRecheckMark } from "./crawlers";
 
 const NOW = new Date("2026-10-28T00:00:00Z");
 const DS_URL = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing";
@@ -128,94 +122,5 @@ describe("withRecheckMark", () => {
     expect(remarked).toBe("【待复核 2026-10-28 爬取失败】旧 note");
     expect(remarked).not.toContain("2026-10-21");
     expect(withRecheckMark("长".repeat(300), NOW)).toHaveLength(200);
-  });
-});
-
-describe("persistModelRows 落库规则", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  const rows = parseDeepseek(DEEPSEEK_HTML, DS_URL, NOW);
-
-  it("不存在→建 pending;可刷新行→刷新(currency 随价格走);人工定稿行→不动", async () => {
-    findMany.mockResolvedValue([
-      {
-        id: BigInt(7),
-        vendor: "DeepSeek 深度求索",
-        modelKey: "deepseek-flash",
-        status: "pending",
-        isPinned: false,
-      },
-      {
-        id: BigInt(8),
-        vendor: "DeepSeek 深度求索",
-        modelKey: "deepseek-v4-pro",
-        status: "enabled",
-        isPinned: true,
-      },
-    ]);
-    update.mockResolvedValue({ id: BigInt(7) });
-    const t = await persistModelRows(rows);
-    expect(t).toMatchObject({ created: 0, refreshed: 1, untouched: 1, failed: 0 });
-    const upd = update.mock.calls[0]![0] as {
-      where: { id: bigint };
-      data: { status?: string; currency?: string };
-    };
-    expect(upd.where.id).toBe(BigInt(7));
-    expect(upd.data.status).toBeUndefined(); // 刷新不触状态机
-    expect(upd.data.currency).toBe("CNY"); // currency 随价格走(跨通道脏态防线)
-  });
-
-  it("人工定稿闸只看 is_pinned:展示态不再决定覆盖与否(M73)", async () => {
-    // enabled 但未定稿 → 刷新(「跟随官方价」:停用/展示与能否刷新解耦)
-    findMany.mockResolvedValue([
-      {
-        id: BigInt(8),
-        vendor: "DeepSeek 深度求索",
-        modelKey: "deepseek-v4-pro",
-        status: "enabled",
-        isPinned: false,
-      },
-    ]);
-    update.mockResolvedValue({ id: BigInt(8) });
-    const t1 = await persistModelRows(rows);
-    expect(t1).toMatchObject({ refreshed: 1, untouched: 0 });
-
-    // disabled 但未定稿 → 同样刷新(停用展示的行也要保持数据新鲜)
-    findMany.mockResolvedValue([
-      {
-        id: BigInt(8),
-        vendor: "DeepSeek 深度求索",
-        modelKey: "deepseek-v4-pro",
-        status: "disabled",
-        isPinned: false,
-      },
-    ]);
-    const t2 = await persistModelRows(rows);
-    expect(t2).toMatchObject({ refreshed: 1, untouched: 0 });
-
-    // 人工定稿 → 不碰(即便仍是 pending)
-    findMany.mockResolvedValue([
-      {
-        id: BigInt(7),
-        vendor: "DeepSeek 深度求索",
-        modelKey: "deepseek-flash",
-        status: "pending",
-        isPinned: true,
-      },
-    ]);
-    const t3 = await persistModelRows(rows);
-    expect(t3).toMatchObject({ refreshed: 0, untouched: 1 });
-  });
-
-  it("陌生模型→create 落 pending;单行落库失败自吞计数", async () => {
-    findMany.mockResolvedValue([]);
-    create.mockRejectedValueOnce(new Error("db boom")).mockResolvedValue({ id: BigInt(2) });
-    const t = await persistModelRows(rows);
-    expect(t).toMatchObject({ created: 1, failed: 1 });
-    const arg = create.mock.calls[1]![0] as { data: { status: string; currency: string } };
-    expect(arg.data.status).toBe("pending");
-    expect(arg.data.currency).toBe("CNY");
   });
 });

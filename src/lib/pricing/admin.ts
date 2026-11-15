@@ -11,6 +11,9 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 
+import { TIER_UNITS } from "./constants";
+import { replaceTiers } from "./tiers";
+
 export const PRICING_STATUSES = ["pending", "enabled", "disabled"] as const;
 export type PricingStatus = (typeof PRICING_STATUSES)[number];
 
@@ -25,6 +28,13 @@ const asOf = z
 
 const source = z.string().trim().min(1).max(300).startsWith("http");
 
+/**
+ * ⚠️ create 与 update **必须各写一份**(不能 update = create.partial()):
+ * zod v4 的 `.partial()` 挡不住 `.default()`——缺省的键仍会拿到默认值,
+ * 于是「只改价格」的 PUT 会把 status 打回 pending(已上架的行从前台消失)、
+ * currency 重置 CNY、isPinned 定稿闸被清掉(采集随即覆盖该行)。
+ * 更新语义是「只写传入的字段」,故 update 全部 optional 且**无 default**。
+ */
 export const modelPricingCreateSchema = z.object({
   vendor: z.string().trim().min(1).max(40),
   modelKey: z
@@ -45,13 +55,37 @@ export const modelPricingCreateSchema = z.object({
   status: z.enum(PRICING_STATUSES).default("pending"),
   // 人工定稿:采集不覆盖本行(M73;展示态与能否刷新解耦)
   isPinned: z.boolean().default(false),
+  // 完全免费标记(M74 批C):采集侧按档位全零判定,人工可覆写
+  // (与 freeTier「有免费额度」是两种语义)
+  isFree: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   confirmInverted: z.boolean().default(false),
 });
 
-export const modelPricingUpdateSchema = modelPricingCreateSchema
-  .extend({ confirmInverted: z.boolean().optional() })
-  .partial();
+export const modelPricingUpdateSchema = z.object({
+  vendor: z.string().trim().min(1).max(40).optional(),
+  modelKey: z
+    .string()
+    .trim()
+    .min(2)
+    .max(60)
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/, "modelKey 仅限字母/数字/点/连字符/下划线")
+    .optional(),
+  currency: z.enum(CURRENCIES).optional(),
+  inputPrice: money.optional(),
+  outputPrice: money.optional(),
+  freeTier: z.string().trim().max(60).nullable().optional(),
+  contextWindow: z.string().trim().max(20).nullable().optional(),
+  note: z.string().trim().max(200).nullish().optional(),
+  dataAsOf: asOf.optional(),
+  sourceUrl: source.optional(),
+  region: z.enum(["cn", "intl"]).optional(),
+  status: z.enum(PRICING_STATUSES).optional(),
+  isPinned: z.boolean().optional(),
+  isFree: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  confirmInverted: z.boolean().optional(),
+});
 
 export const codingPlanCreateSchema = z.object({
   vendor: z.string().trim().min(1).max(40),
@@ -76,9 +110,48 @@ export const codingPlanCreateSchema = z.object({
   confirmInverted: z.boolean().default(false),
 });
 
-export const codingPlanUpdateSchema = codingPlanCreateSchema
-  .extend({ confirmInverted: z.boolean().optional() })
-  .partial();
+/** 同 modelPricingUpdateSchema:更新只写传入的字段,不带 default */
+export const codingPlanUpdateSchema = z.object({
+  vendor: z.string().trim().min(1).max(40).optional(),
+  planName: z.string().trim().min(1).max(60).optional(),
+  currency: z.enum(CURRENCIES).optional(),
+  monthlyFee: money.optional(),
+  quarterlyFee: money.nullish().optional(),
+  yearlyFee: money.nullish().optional(),
+  billingNote: z.string().trim().max(120).nullish().optional(),
+  benefits: z.array(z.string().trim().min(1).max(200)).max(20).nullish().optional(),
+  quotaDesc: z.string().trim().min(1).max(200).optional(),
+  peakRate: z.string().trim().max(60).nullable().optional(),
+  offPeakRate: z.string().trim().max(60).nullable().optional(),
+  bestFor: z.string().trim().max(80).nullable().optional(),
+  note: z.string().trim().max(200).nullish().optional(),
+  dataAsOf: asOf.optional(),
+  sourceUrl: source.optional(),
+  status: z.enum(PRICING_STATUSES).optional(),
+  isPinned: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  confirmInverted: z.boolean().optional(),
+});
+
+/** 档位计价单位(纯常量模块;客户端组件也从那里引,避免把 prisma 打进 bundle) */
+export { TIER_UNITS, TIER_UNIT_LABELS, type TierUnit } from "./constants";
+
+/** 单档位契约(人工订正阶梯/缓存/峰谷价) */
+export const modelPricingTierSchema = z.object({
+  tierLabel: z.string().trim().min(1).max(60),
+  inputPrice: money.nullish(),
+  outputPrice: money.nullish(),
+  cachePrice: money.nullish(),
+  minTokens: z.number().int().nonnegative().nullish(),
+  maxTokens: z.number().int().nonnegative().nullish(),
+  unit: z.enum(TIER_UNITS).default("per_1m_tokens"),
+});
+
+export const modelPricingTiersUpdateSchema = z.object({
+  tiers: z.array(modelPricingTierSchema).max(50),
+});
+
+export type ModelPricingTierInput = z.infer<typeof modelPricingTierSchema>;
 
 export type ModelPricingCreateInput = z.infer<typeof modelPricingCreateSchema>;
 export type ModelPricingUpdateInput = z.infer<typeof modelPricingUpdateSchema>;
@@ -116,11 +189,27 @@ function serializeModelRow(row: {
   region: string;
   status: string;
   isPinned: boolean;
+  isFree: boolean;
   sortOrder: number;
+  provider?: { name: string } | null;
+  tiers?: Array<{
+    tierLabel: string;
+    inputPrice: Prisma.Decimal | null;
+    outputPrice: Prisma.Decimal | null;
+    cachePrice: Prisma.Decimal | null;
+    minTokens: number | null;
+    maxTokens: number | null;
+    unit: string;
+    currency: string;
+    dataAsOf: Date;
+    sourceUrl: string;
+    note: string | null;
+  }>;
 }) {
   return {
     id: row.id.toString(),
     vendor: row.vendor,
+    providerName: row.provider?.name ?? null,
     modelKey: row.modelKey,
     currency: row.currency,
     inputPrice: row.inputPrice === null ? null : Number(row.inputPrice),
@@ -133,7 +222,21 @@ function serializeModelRow(row: {
     region: row.region,
     status: row.status,
     isPinned: row.isPinned,
+    isFree: row.isFree,
     sortOrder: row.sortOrder,
+    tiers: (row.tiers ?? []).map((t) => ({
+      tierLabel: t.tierLabel,
+      inputPrice: t.inputPrice === null ? null : Number(t.inputPrice),
+      outputPrice: t.outputPrice === null ? null : Number(t.outputPrice),
+      cachePrice: t.cachePrice === null ? null : Number(t.cachePrice),
+      minTokens: t.minTokens,
+      maxTokens: t.maxTokens,
+      unit: t.unit,
+      currency: t.currency,
+      dataAsOf: t.dataAsOf,
+      sourceUrl: t.sourceUrl,
+      note: t.note,
+    })),
   };
 }
 
@@ -211,6 +314,10 @@ export async function listModelPricing(
       ...(opts.region === undefined ? {} : { region: opts.region }),
     },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+    include: {
+      provider: { select: { name: true } },
+      tiers: { orderBy: { tierLabel: "asc" } },
+    },
   });
   return rows.map(serializeModelRow);
 }
@@ -245,6 +352,70 @@ export async function updateModelPricing(
   const row = await prisma.modelPricing.update({ where: { id }, data });
   revalidatePublicPricing();
   return serializeModelRow(row);
+}
+
+/**
+ * 批量终审(M74 批C):采集落 pending,批量「通过」才能上架——否则爬虫产出的行
+ * 永远停在待审,前台一条都看不到。返回实际改动行数。
+ */
+export async function bulkReviewModelPricing(
+  ids: string[],
+  status: PricingStatus,
+): Promise<number> {
+  const parsed = ids.map((id) => {
+    try {
+      return BigInt(id);
+    } catch {
+      return null;
+    }
+  });
+  const valid = parsed.filter((v): v is bigint => v !== null);
+  if (valid.length === 0) return 0;
+  const result = await prisma.modelPricing.updateMany({
+    where: { id: { in: valid } },
+    data: { status },
+  });
+  revalidatePublicPricing();
+  return result.count;
+}
+
+/**
+ * 档位订正(M74 批C2):阶梯/缓存/峰谷价的人工订正入口。
+ * 整行档位替换(与采集侧 replaceTiers 同口径:档位集按源整批刷新,不增量合并)。
+ */
+export async function updateModelPricingTiers(
+  id: bigint,
+  tiers: ModelPricingTierInput[],
+): Promise<number | null> {
+  const row = await prisma.modelPricing.findUnique({
+    where: { id },
+    select: { id: true, currency: true, sourceUrl: true },
+  });
+  if (row === null) return null;
+  const labels = new Set<string>();
+  for (const t of tiers) {
+    if (labels.has(t.tierLabel)) {
+      throw new Error(`档位名重复:${t.tierLabel}`);
+    }
+    labels.add(t.tierLabel);
+  }
+  await replaceTiers(
+    id,
+    tiers.map((t) => ({
+      tierLabel: t.tierLabel,
+      inputPrice: t.inputPrice ?? null,
+      outputPrice: t.outputPrice ?? null,
+      cachePrice: t.cachePrice ?? null,
+      minTokens: t.minTokens ?? null,
+      maxTokens: t.maxTokens ?? null,
+      unit: t.unit,
+      currency: row.currency,
+      dataAsOf: new Date(),
+      sourceUrl: row.sourceUrl,
+    })),
+  );
+  revalidatePublicPricing();
+  return tiers.length;
 }
 
 export async function deleteModelPricing(id: bigint): Promise<void> {

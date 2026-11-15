@@ -11,6 +11,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ModelPricingRow } from "@/lib/pricing/admin";
+
+import { TierEditor } from "./TierEditor";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -68,6 +70,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM, confirmInverted: false });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [tierRowId, setTierRowId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState({ inputPrice: "", outputPrice: "" });
 
   const counts = useMemo(
@@ -92,6 +95,12 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
       );
     });
   }, [rows, filter, query]);
+
+  /** 当前筛选结果里的 pending 行(批量终审的对象) */
+  const pendingIds = useMemo(
+    () => filtered.filter((r) => r.status === "pending").map((r) => r.id),
+    [filtered],
+  );
 
   async function send(
     url: string,
@@ -197,6 +206,28 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
           placeholder="搜索厂商 / 模型 / 备注"
           className="w-48 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent"
         />
+        {/* 批量终审(M74 批C):采集落 pending,批量「通过」才能上架 */}
+        <button
+          type="button"
+          disabled={busy || pendingIds.length === 0}
+          onClick={() =>
+            void run(async () => {
+              const env = await send("/api/pricing/models/bulk", "POST", {
+                ids: pendingIds,
+                status: "enabled",
+              });
+              const count = (env?.data as { count?: number } | null)?.count ?? 0;
+              if (env?.code === 0) {
+                router.refresh();
+                return { ok: true, message: `已上架 ${count} 行` };
+              }
+              return { ok: false, message: env?.message ?? "批量通过失败" };
+            })
+          }
+          className="rounded-sm border border-line px-3 py-1 text-xs text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-40"
+        >
+          批量通过 {pendingIds.length} 行
+        </button>
         <button
           type="button"
           onClick={() => setDialogOpen(true)}
@@ -220,6 +251,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
               <th className="px-2 py-2 font-medium">输入价</th>
               <th className="px-2 py-2 font-medium">输出价</th>
               <th className="px-2 py-2 font-medium">免费额度</th>
+              <th className="px-2 py-2 font-medium">完全免费</th>
               <th className="px-2 py-2 font-medium">上下文</th>
               <th className="px-2 py-2 font-medium">截至</th>
               <th className="px-2 py-2 font-medium">来源</th>
@@ -283,6 +315,40 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                     )}
                   </td>
                   <td className="px-2 py-2 text-xs text-text-2">{r.freeTier ?? "—"}</td>
+                  <td className="px-2 py-2">
+                    {/* 完全免费(M74 批C):与「免费额度」是两种语义,分开标 */}
+                    <button
+                      type="button"
+                      disabled={busy || editing}
+                      title={
+                        r.isFree
+                          ? "完全免费:所有档位价均为 0(点击取消)"
+                          : "非完全免费(点击标记为完全免费)"
+                      }
+                      onClick={() =>
+                        void run(async () => {
+                          const env = await send(`/api/pricing/models/${r.id}`, "PUT", {
+                            isFree: !r.isFree,
+                          });
+                          if (env?.code === 0) {
+                            router.refresh();
+                            return {
+                              ok: true,
+                              message: r.isFree ? "已取消完全免费" : "已标记完全免费",
+                            };
+                          }
+                          return { ok: false, message: env?.message ?? "保存失败" };
+                        })
+                      }
+                      className={`rounded-sm border px-1.5 py-0.5 text-[10.5px] leading-none ${
+                        r.isFree
+                          ? "border-green/50 bg-green/10 text-green-hi"
+                          : "border-line text-text-3 hover:text-text-2"
+                      }`}
+                    >
+                      {r.isFree ? "免费" : "—"}
+                    </button>
+                  </td>
                   <td className="px-2 py-2 font-mono text-xs text-text-2">
                     {r.contextWindow ?? "—"}
                   </td>
@@ -390,6 +456,17 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                           </button>
                           <button
                             type="button"
+                            title="订正价格档位(阶梯/缓存/峰谷)"
+                            onClick={() => setTierRowId(tierRowId === r.id ? null : r.id)}
+                            className="cursor-pointer rounded-sm px-2 py-1 text-text-2 hover:bg-panel-2"
+                          >
+                            档位
+                            <span className="ml-0.5 font-mono text-[10.5px] text-text-3">
+                              {r.tiers?.length ?? 0}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
                             disabled={busy}
                             onClick={() => {
                               if (!window.confirm(`删除 ${r.modelKey}?`)) return;
@@ -412,6 +489,23 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                 </tr>
               );
             })}
+            {tierRowId !== null &&
+              filtered
+                .filter((r) => r.id === tierRowId)
+                .map((r) => (
+                  <tr key={`tiers-${r.id}`} className="border-b border-line/60 last:border-b-0">
+                    <td colSpan={9} className="px-4 py-3">
+                      <TierEditor
+                        rowId={r.id}
+                        tiers={r.tiers ?? []}
+                        onDone={() => {
+                          setTierRowId(null);
+                          router.refresh();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-xs text-text-3">

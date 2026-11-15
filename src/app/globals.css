@@ -279,6 +279,26 @@ section#models:has(#lb-cur-usd:checked) .cur-usd {
    .lb-pt 包住「命中区 + 悬停卡」:卡片默认透明,悬停或键盘聚焦(<a> 可聚焦)时浮现。
    卡片自身 pointer-events:none(SVG 属性给),不吃鼠标——指针移开点即消失。
    原生 <title> 已退役:系统气泡 ~1s 延迟且需精准命中小点,验收反馈「hover 没提示」。 */
+/* 牌价散点(M74 批D):.pc-pt 包住「点 + 悬停卡」,卡默认透明、悬停浮现;
+   卡片 pointer-events:none,不吃鼠标;原生 <title> 同样退役(系统气泡 ~1s 延迟)。 */
+.pc-pt .pc-tip {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.pc-pt:hover .pc-tip,
+.pc-pt:focus-within .pc-tip {
+  opacity: 1;
+}
+.pc-pt:hover .pc-dot {
+  stroke-width: 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-pt .pc-tip {
+    transition: none;
+  }
+}
+
 .lb-pt .lb-tip {
   opacity: 0;
   transition: opacity 0.12s ease;

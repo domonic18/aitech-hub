@@ -19,7 +19,6 @@ const SEG_LABEL: Record<string, string> = {
   media: "媒体库",
   comments: "评论管理",
   distribute: "分发中心", // IA v2 更名(原「内容分发」),路由不变
-  studio: "创作中心",
   illustration: "配图工坊",
   pins: "贴图管理",
   data: "数据中心",
@@ -49,7 +48,6 @@ const SEG_LABEL: Record<string, string> = {
   bloggers: "博主",
   github: "项目",
   models: "模型配置",
-  skills: "写作技能",
   usage: "AI 用量",
   sessions: "会话",
 };
@@ -62,7 +60,6 @@ const VIRTUAL_SEG_HREF: Record<string, string> = {
 /** 数字段 = 详情/编辑页 id,文案随上一段域变化;其余未知段解码展示 */
 function segLabel(seg: string, prev?: string): string {
   if (/^\d+$/.test(seg)) {
-    if (prev === "studio") return "创作详情";
     if (prev === "illustration") return "编辑器"; // F14 板 crumb「配图工坊 › 编辑器」
     if (prev === "pins") return "贴图详情";
     if (prev === "clusters") return "簇详情"; // F25/F26 机会/痛点详情

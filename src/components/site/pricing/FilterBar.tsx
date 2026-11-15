@@ -8,10 +8,11 @@
  */
 import { PRICE_BANDS, type PriceBandId } from "@/lib/pricing/public";
 
-const chipBase =
-  "rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none";
-const chipOn = "border-accent bg-accent text-white";
-const chipOff = "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1";
+import { CHIP_BASE, CHIP_OFF, CHIP_ON } from "./shared";
+
+const chipBase = CHIP_BASE;
+const chipOn = CHIP_ON;
+const chipOff = CHIP_OFF;
 
 export interface FilterBarProps {
   vendors: string[];
@@ -25,6 +26,10 @@ export interface FilterBarProps {
   shown: number;
   /** 可选的「按价格排序」开关(套餐面板:让同价位相邻,便于比价) */
   sortByPrice?: { on: boolean; onToggle: () => void };
+  /** 可选的「只看免费」开关(M74 批C;模型面) */
+  freeOnly?: { on: boolean; onToggle: () => void; freeCount: number };
+  /** 可选的扩展筛选区(更多筛选:模态/上下文/来源/排序) */
+  extra?: React.ReactNode;
 }
 
 export function FilterBar({
@@ -37,9 +42,11 @@ export function FilterBar({
   total,
   shown,
   sortByPrice,
+  freeOnly,
+  extra,
 }: FilterBarProps): React.ReactElement {
   const allVendors = selectedVendors.length === 0;
-  const active = band !== "all" || !allVendors;
+  const active = band !== "all" || !allVendors || freeOnly?.on === true;
   const reset = (): void => {
     onVendorsChange([]);
     onBandChange("all");
@@ -92,10 +99,22 @@ export function FilterBar({
         ))}
       </div>
 
+      {extra !== undefined && extra}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-text-3">
         <span>
           显示 <span className="font-mono text-text-2">{shown}</span> / {total}
         </span>
+        {freeOnly !== undefined && (
+          <button
+            type="button"
+            aria-pressed={freeOnly.on}
+            className={`${chipBase} ${freeOnly.on ? chipOn : chipOff}`}
+            onClick={freeOnly.onToggle}
+          >
+            只看免费
+            <span className="ml-1 font-mono text-[10px] opacity-80">{freeOnly.freeCount}</span>
+          </button>
+        )}
         {sortByPrice !== undefined && (
           <label className="flex cursor-pointer items-center gap-1 select-none">
             <input

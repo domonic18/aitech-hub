@@ -21,6 +21,10 @@ playwright-report/
 # WP 真实导出切片,属测试数据:字节内容参与断言,不参与格式门禁
 src/lib/content/__fixtures__/
 
+# 牌价页真实样本(硅基流动/腾讯云混元,自官方页面裁剪):字节内容参与解析断言,
+# 格式化会重排 DOM 结构、与真实页面不再一致 —— 与上行同款豁免
+src/lib/pricing/__fixtures__/
+
 # vditor 第三方运行时资源(随包拷贝,不参与格式门禁)
 public/vditor/
 

@@ -1611,6 +1611,9 @@ model JobRun {
 /// 手工两通道落 pending,enabled=终审可见。价格统一「货币 / 百万 tokens」
 /// 口径;时段折扣与缓存价 v1 不收(note 提及)。
 /// (批B OpenRouter 预填通道 2026-10-29 砍除——非刚需;其产出行已清)
+/// M74 牌价策展域归一层:provider_id/model_id 指向两张字典表(厂商归一 +
+/// 跨厂商模型归一,比价的前提);is_free=完全免费(与 free_tier「有免费额度」
+/// 语义分离);阶梯/缓存/峰谷/模态计价落 model_pricing_tier 档位表。
 model ModelPricing {
   id            BigInt   @id @default(autoincrement())
   vendor        String   @db.VarChar(40) // 厂商(如 DeepSeek)
@@ -1627,12 +1630,95 @@ model ModelPricing {
   status        String   @default("pending") @db.VarChar(10) // pending | enabled | disabled
   isPinned      Boolean  @default(false) @map("is_pinned") // 人工定稿:采集不覆盖本行(true=定稿);false=可被采集刷新(展示态与能否刷新解耦)
   sortOrder     Int      @default(0) @map("sort_order")
+  providerId    BigInt?  @map("provider_id") // 厂商字典(M74);null=未归一(过渡期)
+  modelId       BigInt?  @map("model_id") // 模型字典(M74);跨厂商同一模型归一到它
+  isFree        Boolean  @default(false) @map("is_free") // 完全免费(所有档位价均为 0);free_tier 非空≠完全免费
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  provider ModelPricingProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  model    ModelPricingModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  tiers    ModelPricingTier[]
+
   @@unique([vendor, modelKey], map: "uq_model_pricing_vendor_model")
   @@index([status, region, sortOrder], map: "idx_model_pricing_page")
+  @@index([providerId], map: "idx_model_pricing_provider_id")
+  @@index([modelId], map: "idx_model_pricing_model_id")
+  @@index([isFree], map: "idx_model_pricing_free")
   @@map("model_pricing")
+}
+
+/// 牌价厂商字典(M74):厂商元信息与来源类型的单一出处。
+/// 牌价行的 vendor 是各采集器写死的自由文本,同一厂商有多种写法
+/// (「月之暗面 Moonshot」与「月之暗面 Kimi」),无法按厂商聚合/筛选;
+/// 本表给出规范 key,model_pricing.provider_id 指向它。
+model ModelPricingProvider {
+  id           BigInt   @id @default(autoincrement())
+  key          String   @db.VarChar(30) // 规范键(aliyun-bailian / tencent-cloud / baidu-ciyuansuo)
+  name         String   @db.VarChar(60) // 展示名
+  displayOrder Int      @default(0) @map("display_order")
+  region       String   @default("cn") @db.VarChar(10) // cn | intl
+  sourceKind   String   @default("official") @map("source_kind") @db.VarChar(20) // official 一手厂商 | aggregator 聚合/交易平台
+  homepageUrl  String?  @map("homepage_url") @db.VarChar(300)
+  status       String   @default("enabled") @db.VarChar(10) // enabled | disabled
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pricings ModelPricing[]
+
+  @@unique([key], map: "uq_model_pricing_provider_key")
+  @@index([status, displayOrder], map: "idx_model_pricing_provider_page")
+  @@map("model_pricing_provider")
+}
+
+/// 牌价模型字典(M74):同一模型在不同提供商的牌价行靠它归一——跨厂商比价的前提。
+/// model_key=规范键(展示与跨源比对),match_key=归一锚(去重锚:大小写/分隔符/
+/// 厂商前缀归一后),与 insight 域 normalizeEntityKey 同一套口径。
+/// modality 记模型固有模态;上下文长度按厂商行给(各家截断不同),不落本表。
+model ModelPricingModel {
+  id          BigInt   @id @default(autoincrement())
+  modelKey    String   @map("model_key") @db.VarChar(120) // 规范键(qwen3-235b-a22b)
+  matchKey    String   @map("match_key") @db.VarChar(120) // 归一锚(去重锚)
+  displayName String   @map("display_name") @db.VarChar(120)
+  family      String?  @db.VarChar(60) // 产品线(qwen3 / deepseek-v3 / doubao-seed)
+  modality    String   @default("text") @db.VarChar(30) // text | text+vision | image | audio | video | embedding | rerank
+  status      String   @default("enabled") @db.VarChar(10) // enabled | disabled
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pricings ModelPricing[]
+
+  @@unique([modelKey], map: "uq_model_pricing_model_key")
+  @@unique([matchKey], map: "uq_model_pricing_model_match_key")
+  @@index([family], map: "idx_model_pricing_model_family")
+  @@map("model_pricing_model")
+}
+
+/// 牌价价格档位(M74):一行两价承载不了真实定价——阶梯价(按上下文分档)、
+/// 缓存价(命中/未命中)、峰谷价(时段)、模态计价(按张/秒/分钟)。
+/// 粒度=一条牌价行内的某个档位,随行消亡(Cascade)。
+model ModelPricingTier {
+  id             BigInt   @id @default(autoincrement())
+  modelPricingId BigInt   @map("model_pricing_id")
+  tierLabel      String   @map("tier_label") @db.VarChar(60) // 档位名(默认 / 缓存命中 / ≤32k / 峰段)
+  inputPrice     Decimal? @map("input_price") @db.Decimal(12, 4) // 每百万 tokens;null=该档不适用
+  outputPrice    Decimal? @map("output_price") @db.Decimal(12, 4)
+  cachePrice     Decimal? @map("cache_price") @db.Decimal(12, 4) // 缓存命中价
+  minTokens      Int?     @map("min_tokens") // 阶梯下界(含)
+  maxTokens      Int?     @map("max_tokens") // 阶梯上界(不含)
+  unit           String   @default("per_1m_tokens") @db.VarChar(20) // per_1m_tokens | per_1k_tokens | per_image | per_second | per_minute
+  currency       String   @default("CNY") @db.VarChar(8) // CNY | USD(随价格走)
+  dataAsOf       DateTime @map("data_as_of") @db.Timestamptz(6)
+  sourceUrl      String   @map("source_url") @db.VarChar(300)
+  note           String?  @db.VarChar(200)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pricing ModelPricing @relation(fields: [modelPricingId], references: [id], onDelete: Cascade)
+
+  @@unique([modelPricingId, tierLabel], map: "uq_model_pricing_tier_pricing_label")
+  @@index([modelPricingId], map: "idx_model_pricing_tier_pricing")
+  @@map("model_pricing_tier")
 }
 
 /// Coding Plan 订阅套餐(M55):额度口径各家不一,按官方原文呈现不强行归一;
