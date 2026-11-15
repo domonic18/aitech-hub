@@ -36,8 +36,8 @@ const GROUPS: ReadonlyArray<Group> = [
   {
     label: "创作",
     items: [
-      { icon: "i-folder", label: "创作中心", href: "/admin/studio" },
-      // 配图工坊(M40):agent 配图产物的加工台固定入口,列表页落地
+      // 创作中心已随 M72 瘦身(创作职责外移线下)下线;本组只留素材与加工面
+      // 配图工坊(M40):配图产物的加工台固定入口,列表页落地
       { icon: "i-picture", label: "配图工坊", href: "/admin/illustration" },
       { icon: "i-picture", label: "媒体库", href: "/admin/media" },
     ],
@@ -79,8 +79,6 @@ const GROUPS: ReadonlyArray<Group> = [
     label: "AI 服务",
     items: [
       { icon: "i-robot", label: "模型配置", href: "/admin/models" },
-      // 写作技能自「模型配置」第 4 页签提升为独立页(2026-10-16 验收反馈问题二)
-      { icon: "i-filetext", label: "写作技能", href: "/admin/skills" },
       // 会话管理已并入 AI 用量壳「会话」页签(/admin/usage/sessions,侧栏精简批②)
       { icon: "i-piechart", label: "AI 用量", href: "/admin/usage" },
     ],

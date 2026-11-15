@@ -80,7 +80,6 @@ export const pinTools: McpToolDef[] = [
           referenceMediaPath: args.referenceMediaPath ?? null,
           cropSpec: args.cropSpec,
           readMoreUrl: args.readMoreUrl ?? null,
-          topicId: null,
         });
         const pinId = pin.id.toString();
         logger.info({

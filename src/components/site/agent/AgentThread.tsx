@@ -11,32 +11,16 @@ import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 import { useLangGraphInterruptState } from "@assistant-ui/react-langgraph";
 import { useCallback, useEffect } from "react";
 
-import { parseProposeEditsInterrupt } from "@/lib/agent/edit-proposal";
-import { parseAgentCoverInterrupt } from "@/lib/agent/cover-tool";
-
 import AnswerMarkdown from "@/components/site/search/AnswerMarkdown";
 
 import AgentComposer, { GUEST_COMPOSER_HINT } from "./AgentComposer";
 import AgentInterruptCard from "./AgentInterruptCard";
-import CoverCandidatesCard from "./CoverCandidatesCard";
-import ProposeReviewCard from "./ProposeReviewCard";
-import ProposeUnavailableCard from "./ProposeUnavailableCard";
 import ToolCallBlock from "./ToolCallBlock";
 
 export interface PendingAsk {
   question: string;
   /** true=直发(答案卡追问 chips);false=仅预填输入框(「继续深挖」按钮) */
   send: boolean;
-}
-
-/** 编辑上下文(M27 批① chip;批⑧-d 扩评审面接线):getContent/onApplyContent
- * 仅 embedded 形态在场(纯客户端 props,不过 wire——上行 context.edit 只含
- * postId/title),FAB 形态恒缺 → propose_edits 走降级卡 */
-export interface EditSurfaceContext {
-  postId: string;
-  title: string;
-  getContent?: () => string;
-  onApplyContent?: (md: string) => void;
 }
 
 function MessageText({ text }: { text: string }): React.ReactElement {
@@ -174,28 +158,19 @@ interface AgentThreadProps {
   onPendingConsumed: () => void;
   /** K2.6:游客身份显限额/清退口径 hint */
   guestMode?: boolean;
-  /** 编辑上下文注入(M27 批① chip;批⑧-d 扩评审面接线) */
-  editContext?: EditSurfaceContext | null;
 }
 
 export default function AgentThread({
   pending,
   onPendingConsumed,
   guestMode = false,
-  editContext = null,
 }: AgentThreadProps): React.ReactElement {
   const isLoading = useAuiState((s) => s.thread.isLoading);
   // HITL 中断卡替换输入区:中断期间禁言,防新消息打到悬空 tool_call 上;
-  // 回答经卡片 resume,首个 updates 帧即清位、输入区回归。M27 批⑧-c 起按
-  // interrupt value.kind 分发:propose_edits → 有评审接线(embedded+函数型
-  // props)走评审模态,否则降级卡(自动 resume unavailable);ask_user/未知
-  // → 提问卡兜底。
+  // 回答经卡片 resume,首个 updates 帧即清位、输入区回归。M72 瘦身 B4 后
+  // 只剩 ask_user 一类中断(提案评审与封面候选 HITL 随写工具下线)。
   const interrupt = useLangGraphInterruptState();
   const interrupted = interrupt !== undefined;
-  const proposeEdits = parseProposeEditsInterrupt(interrupt?.value);
-  const coverCandidates = parseAgentCoverInterrupt(interrupt?.value);
-  const getContent = editContext?.getContent;
-  const onApplyContent = editContext?.onApplyContent;
   // 计划条由 Drawer 承载(横贯侧栏+主区),此处仅消息流编排
   const onConsumed = useCallback(() => onPendingConsumed(), [onPendingConsumed]);
 
@@ -215,37 +190,9 @@ export default function AgentThread({
         )}
       </ThreadPrimitive.Viewport>
       {interrupted ? (
-        proposeEdits ? (
-          typeof getContent === "function" && typeof onApplyContent === "function" ? (
-            <ProposeReviewCard
-              payload={proposeEdits}
-              getContent={getContent}
-              onApplyContent={onApplyContent}
-            />
-          ) : (
-            <ProposeUnavailableCard payload={proposeEdits} />
-          )
-        ) : coverCandidates ? (
-          <CoverCandidatesCard />
-        ) : (
-          <AgentInterruptCard />
-        )
+        <AgentInterruptCard />
       ) : (
-        <>
-          {editContext && (
-            <div className="flex shrink-0 items-center gap-1.5 border-t border-line bg-panel-2/60 px-4 py-1.5 text-[11px] text-text-3">
-              <svg className="ic ic-sm text-accent-hover" aria-hidden="true">
-                <use href="#i-edit" />
-              </svg>
-              正在编辑:
-              <span className="truncate text-text-2">
-                《{editContext.title.trim() === "" ? "(未命名草稿)" : editContext.title}》
-              </span>
-              <span className="ml-auto shrink-0">改动自动保存</span>
-            </div>
-          )}
-          <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
-        </>
+        <AgentComposer hint={guestMode ? GUEST_COMPOSER_HINT : undefined} />
       )}
       <PendingAskSender pending={pending} onConsumed={onConsumed} />
     </ThreadPrimitive.Root>

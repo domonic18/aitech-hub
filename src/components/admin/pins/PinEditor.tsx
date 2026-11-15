@@ -38,11 +38,9 @@ const POLL_TIMEOUT_MS = 4 * 60_000;
 
 export default function PinEditor({
   initial,
-  topics,
   workshopRoots,
 }: {
   initial: PinDetailDto;
-  topics: TopicOption[];
   workshopRoots: WorkshopRootOption[];
 }): React.ReactElement {
   const router = useRouter();
@@ -284,7 +282,6 @@ export default function PinEditor({
         />
         <MetaPanel
           detail={detail}
-          topics={topics}
           editable={editable}
           busy={busy}
           resetSignal={resetSignal}

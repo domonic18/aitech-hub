@@ -1,7 +1,7 @@
 /**
  * 贴图域出参投影(M41):BigInt→字符串、Date→ISO 的 API 序列化唯一出口
  * (apiEnvelope 直 JSON.stringify 不容 BigInt)。页面(服务端组件)直用 repo
- * 行 + formatCnDateTime,不经此层(同 topics/dto 口径)。
+ * 行 + formatCnDateTime,不经此层。
  */
 import type { ContentPin, ContentPinChannel, ContentPinImage } from "@prisma/client";
 
@@ -59,7 +59,6 @@ export interface PinDto {
   id: string;
   title: string;
   content: string;
-  topicId: string | null;
   status: string;
   readMoreUrl: string | null;
   cropSpec: string;
@@ -78,7 +77,6 @@ export function toPinDto(
     id: p.id.toString(),
     title: p.title,
     content: p.content,
-    topicId: p.topicId === null ? null : p.topicId.toString(),
     status: p.status,
     readMoreUrl: p.readMoreUrl,
     cropSpec: p.cropSpec,
@@ -99,13 +97,11 @@ export interface PinDetailDto extends PinDto {
 /** 工作台列表行(pin 基础字段 + 首图封面与专题名,soft ref 二次解析产物) */
 export interface PinListItemDto extends PinDto {
   coverPath: string | null;
-  topicTitle: string | null;
 }
 
 export function toPinListItemDto(p: PinWithMeta): PinListItemDto {
   return {
     ...toPinDto(p),
     coverPath: p.coverPath,
-    topicTitle: p.topicTitle,
   };
 }

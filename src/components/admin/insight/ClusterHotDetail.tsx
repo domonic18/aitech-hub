@@ -8,7 +8,6 @@ import Link from "next/link";
 
 import AddWordsButton from "@/components/admin/insight/AddWordsButton";
 import LabelNowButton from "@/components/admin/insight/LabelNowButton";
-import TopicGenButton from "@/components/admin/insight/TopicGenButton";
 import {
   CoverageBadge,
   MediaBadges,
@@ -269,10 +268,7 @@ export default function ClusterHotDetail({
               簇概括:{c.summary}
             </p>
           )}
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-[11px] text-text-3">一键转创作选题并挂素材</span>
-            <TopicGenButton clusterId={c.id} />
-          </div>
+          <div className="mt-3 flex items-center justify-between"></div>
         </div>
       </div>
     </div>

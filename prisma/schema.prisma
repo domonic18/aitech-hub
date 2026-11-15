@@ -1005,7 +1005,6 @@ model ContentPin {
   id                 BigInt    @id @default(autoincrement())
   title              String    @db.VarChar(64) // ≤32 码点(应用层 Zod;VarChar 留字节数余量)
   content            String    @default("") @map("content") @db.Text // 轻文字纯文本(禁 Markdown/内联 HTML)
-  topicId            BigInt?   @map("topic_id") // 专题关联:FK SetNull(删专题清关联,贴图保留——UI 明示「已生成长文与贴图保留」)
   status             String    @default("draft") @db.VarChar(20) // draft/pending/synced/published(应用层 Zod)
   readMoreUrl        String?   @map("read_more_url") @db.VarChar(500)
   cropSpec           String    @default("1_1") @map("crop_spec") @db.VarChar(40) // 1_1/16_9/2.35_9
@@ -1015,12 +1014,10 @@ model ContentPin {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  topic    Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
   images   ContentPinImage[]
   channels ContentPinChannel[]
 
   @@index([status, updatedAt(sort: Desc)], map: "idx_content_pin_status_updated")
-  @@index([topicId, updatedAt(sort: Desc)], map: "idx_content_pin_topic_updated")
   @@map("content_pin")
 }
 
@@ -1580,80 +1577,12 @@ model InsightTaxonomy {
   @@map("insight_taxonomy")
 }
 
-// 专题内容管线(M26,docs/plan/topic-pipeline-plan.md §7):专题实体为内容
-// 真相源(零飞书耦合),compose 初稿锚 content_post;itemId 应用层完整性
-// (同 discovery 两表口径,无 FK)
-model Topic {
-  id             BigInt    @id @default(autoincrement())
-  title          String    @db.VarChar(200)
-  positioning    String?   @db.VarChar(1000) // 长文创作配置(四维条款文本,compose prompt 主输入)
-  pinPositioning String?   @map("pin_positioning") @db.VarChar(1000) // 贴图创作配置(张数/比例/裁剪/风格条款文本;与 positioning 独立,互不派生)
-  outputType     String    @default("article") @map("output_type") @db.VarChar(20) // article | pin:主意图(决定新建默认与 agent 分支,不限制另一种产出;应用层 Zod)
-  status         String    @default("collecting") @db.VarChar(20) // collecting | drafted | published(合法值应用层 Zod,arch/03 枚举演进条款)
-  skillKey       String?   @map("skill_key") @db.VarChar(50) // 绑定 agent_skill 的稳定引用(M30 批②;合成写稿按它取指南,soft ref 随 skill 删降级)
-  linkedPostId   BigInt?   @map("linked_post_id") // 创作长文 content_post 锚(落稿时写,应用层完整性;一创作至多一篇)
-  sampleImageId  BigInt?   @map("sample_image_id") // 样例参照图(writing_sample_image,soft ref 应用层完整性;M39 批③ 生图风格参照)
-  composedAt     DateTime? @map("composed_at") @db.Timestamptz(6)
-  publishedAt    DateTime? @map("published_at") @db.Timestamptz(6) // 发布钩子回写
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  items TopicItem[]
-  pins  ContentPin[]
-
-  @@index([status, updatedAt(sort: Desc)], map: "idx_topic_status_updated")
-  @@map("topic")
-}
-
-model TopicItem {
-  id        BigInt   @id @default(autoincrement())
-  topicId   BigInt   @map("topic_id")
-  itemType  String   @map("item_type") @db.VarChar(20) // telegram | post(合法值应用层 Zod)
-  itemId    BigInt   @map("item_id") // 应用层完整性:telegram.id / content_post.id
-  note      String?  @db.VarChar(500) // 人工批注(compose 取舍指令)
-  sortOrder Int      @default(0) @map("sort_order") // 合成时的叙事顺序
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
-
-  @@unique([topicId, itemType, itemId], map: "uq_topic_item_identity")
-  @@index([topicId, sortOrder], map: "idx_topic_item_topic_sort")
-  @@map("topic_item")
-}
-
-/// 样例参照图库(M39 批③):管理员上传的风格参照图,绑到 topic.sample_image_id,
-/// 合成生图(generate_illustration reference_path)时以 data URL 传 Seedream
-/// `image` 参数,出图向参照风格靠拢。media_path 为媒体库站内路径
-/// (/wp-content/uploads/…);文件归媒体库治理(sha1 去重、可能被正文引用),
-/// 本表删行不删媒体;topic 引用为 soft ref(删行事务置空,应用层完整性)。
-model WritingSampleImage {
-  id        BigInt   @id @default(autoincrement())
-  name      String   @db.VarChar(100) // 展示名(可重命名,默认取上传文件名去扩展)
-  mediaPath String   @map("media_path") @db.VarChar(500) // 媒体库站内路径(uploadsUrlToRel 可逆)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  @@map("writing_sample_image")
-}
-
 /// Agent skill(M30 批①):业务流程纪律从 agent 系统提示提取为可管理资产——
 /// 写作指南、分发流程等「知识型」扩展均落此表,后台建改即时生效零发版;
 /// agent 经统一两工具渐进披露取用(批② 接线:list 元数据先行、get 按需全文)。
 /// key 为 agent 侧/topic.skillKey 的稳定引用名;scenario 为适用场景(一行,
 /// 供 agent 选 skill 对号);guideMd 为指南正文(markdown,可引用既有工具名);
 /// 种子收编「博主×视频」指南 + 码点预算段(幂等 seed,不覆盖后台后续编辑)。
-model AgentSkill {
-  id        BigInt   @id @default(autoincrement())
-  key       String   @unique(map: "uq_agent_skill_key") @db.VarChar(50)
-  name      String   @db.VarChar(100)
-  scenario  String   @db.VarChar(200) // 适用场景(供 agent/管理员选 skill 时对号)
-  guideMd   String   @map("guide_md") @db.Text // 指南正文(markdown,流程纪律;机械执行归工具/管线)
-  enabled   Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@map("agent_skill")
-}
-
 /// 任务运行台账(验收二批③,学习 ai-invest collector_log):系统全部周期批任务
 /// (cron 调度 + 手动触发,含 LLM/向量调用类)的持久运行记录——BullMQ
 /// removeOnComplete 只留近几次,挂死/失败/耗时无处可查。单一写入口=worker

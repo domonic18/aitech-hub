@@ -1,6 +1,6 @@
 /**
  * 贴图域 Zod 契约(M41):外部入参边界校验(安全惯例);BigInt id 一律纯数字
- * 字符串入参、repo 层转 BigInt(全仓既有口径,同 topics/schemas)。标题/轻文字
+ * 字符串入参、repo 层转 BigInt(全仓既有口径)。标题/轻文字
  * 按码点计数([...s].length,公众号 newspic 契约口径)。
  */
 import { z } from "zod";
@@ -39,7 +39,6 @@ export const pinCreateSchema = z.object({
     .min(1, "标题必填")
     .refine((s) => [...s].length <= PIN_TITLE_MAX, `标题最长 ${PIN_TITLE_MAX} 字(公众号上限)`),
   content: codePointMax(PIN_CONTENT_MAX, "轻文字").optional(),
-  topicId: BIGINT_ID.nullable().optional(),
   readMoreUrl: httpUrl("阅读原文").nullable().optional(),
   cropSpec: z.enum(PIN_CROP_SPECS).optional(),
 });
@@ -54,7 +53,6 @@ export const pinUpdateSchema = z
       .refine((s) => [...s].length <= PIN_TITLE_MAX, `标题最长 ${PIN_TITLE_MAX} 字(公众号上限)`)
       .optional(),
     content: codePointMax(PIN_CONTENT_MAX, "轻文字").optional(),
-    topicId: BIGINT_ID.nullable().optional(),
     readMoreUrl: httpUrl("阅读原文").nullable().optional(),
     cropSpec: z.enum(PIN_CROP_SPECS).optional(),
   })

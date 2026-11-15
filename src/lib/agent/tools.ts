@@ -5,8 +5,8 @@
  * K1 unified-search#searchAll(给人搜索 = 给智能体检索,同源不漂移);除反馈
  * 外维持只读红线:无站外网络/文件/代码执行能力(系统提示明示边界)。返回串
  * 直接进模型上下文,一律 JSON.stringify 且正文截断(50k tokens 会话护栏的
- * 口径基础)。编辑域(read_draft/propose_edits)已拆 edit-tools(技术债批⑤),
- * 此处 re-export 维持工具面同入口。
+ * 口径基础)。M72 瘦身 B4:编辑域(read_draft/propose_edits)随写工具整体下线,
+ * 本文件即完整的只读工具面(六件)。
  */
 import { tool } from "@langchain/core/tools";
 import { interrupt } from "@langchain/langgraph";
@@ -23,9 +23,8 @@ import { AGENT_ASK_USER_TOOL, type AgentAskUserResume } from "./hitl";
 import { logger } from "../logger";
 import { searchAll } from "../search/unified-search";
 
-import { TOOL_BODY_MAX } from "./edit-tools";
-
-export { EDIT_TOOLS, proposeEditsTool, readDraftTool, TOOL_BODY_MAX } from "./edit-tools";
+/** 正文截断上限(原在 edit-tools,随其下线迁回本文件) */
+export const TOOL_BODY_MAX = 6000;
 
 /** 三域检索结果 → 模型友好摘要(items 每域限量已在 searchAll 内收口) */
 export function summarizeSearchGroups(result: Awaited<ReturnType<typeof searchAll>>): string {

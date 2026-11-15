@@ -1,14 +1,12 @@
 /**
- * interrupt 类工具单飞守卫单测(纯函数 judgeInterruptFlight,M27 批⑧-c 白名单
- * 扩 propose_edits;2026-10-20 白名单修正收 generate_post_cover 真名 + auto 档
- * 短路):并行首调用放行、次调用拦「合并」、跨工具互斥、非 interrupt 工具无关、
- * 反向遍历取最新触发消息、找不到触发 fail-closed、中间件 auto 档短路放行。
+ * interrupt 类工具单飞守卫单测(纯函数 judgeInterruptFlight):并行首调用放行、
+ * 次调用拦「合并」、非 interrupt 工具无关、反向遍历取最新触发消息、
+ * 找不到触发 fail-closed。M72 瘦身 B4 后只剩 ask_user 一只 interrupt 工具。
  */
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { describe, expect, it, vi } from "vitest";
 
 import { interruptGuardMiddleware, judgeInterruptFlight } from "./ask-user-guard";
-import { GENERATE_POST_COVER_TOOL } from "./cover-tool";
 
 function aiWithCalls(calls: Array<{ id: string; name: string }>): AIMessage {
   return new AIMessage({
@@ -33,30 +31,6 @@ describe("judgeInterruptFlight", () => {
     ];
     expect(judgeInterruptFlight(msgs, "a1")).toBe("pass");
     expect(judgeInterruptFlight(msgs, "a2")).toBe("merge");
-  });
-
-  it("propose_edits 同口径:首个放行、次个合并拦截", () => {
-    const msgs = [
-      new HumanMessage("q"),
-      aiWithCalls([
-        { id: "p1", name: "propose_edits" },
-        { id: "p2", name: "propose_edits" },
-      ]),
-    ];
-    expect(judgeInterruptFlight(msgs, "p1")).toBe("pass");
-    expect(judgeInterruptFlight(msgs, "p2")).toBe("merge");
-  });
-
-  it("ask_user 与 propose_edits 混批:仅按序第一个 interrupt 类放行(跨工具互斥)", () => {
-    const msgs = [
-      new HumanMessage("q"),
-      aiWithCalls([
-        { id: "a1", name: "ask_user" },
-        { id: "p1", name: "propose_edits" },
-      ]),
-    ];
-    expect(judgeInterruptFlight(msgs, "a1")).toBe("pass");
-    expect(judgeInterruptFlight(msgs, "p1")).toBe("merge");
   });
 
   it("与其他工具混排:首个(唯一)interrupt 放行(非 interrupt 工具在中间件层短路,不进判定)", () => {
@@ -89,18 +63,6 @@ describe("judgeInterruptFlight", () => {
     expect(judgeInterruptFlight([], "x")).toBe("degraded");
   });
 
-  it("generate_post_cover 同口径:首个放行、次个合并拦截(2026-10-20 入白名单)", () => {
-    const msgs = [
-      new HumanMessage("q"),
-      aiWithCalls([
-        { id: "g1", name: GENERATE_POST_COVER_TOOL },
-        { id: "g2", name: GENERATE_POST_COVER_TOOL },
-      ]),
-    ];
-    expect(judgeInterruptFlight(msgs, "g1")).toBe("pass");
-    expect(judgeInterruptFlight(msgs, "g2")).toBe("merge");
-  });
-
   it("回归锚(白名单修正):候选工具 generate_cover_candidates 不吃单飞名额——混批 ask_user 判 pass", () => {
     // 旧白名单误收候选工具名(非 interrupt)时,此场景会把 ask_user 误拦合并
     const msgs = [
@@ -114,7 +76,7 @@ describe("judgeInterruptFlight", () => {
   });
 });
 
-describe("interruptGuardMiddleware(auto 档短路,2026-10-20)", () => {
+describe("interruptGuardMiddleware", () => {
   const wrap = interruptGuardMiddleware.wrapToolCall!;
   type Req = Parameters<NonNullable<typeof wrap>>[0];
   type Handler = Parameters<NonNullable<typeof wrap>>[1];
@@ -127,26 +89,21 @@ describe("interruptGuardMiddleware(auto 档短路,2026-10-20)", () => {
         args: toolCall.args,
         type: "tool_call",
       },
-      state: { messages: [] }, // 空消息态:auto 短路在判定前,不查 state 即放行
+      state: { messages: [] },
     } as unknown as Req;
   }
 
-  it("auto_adopt:true → 判定前短路放行(空 state 也不 fail-closed)", async () => {
-    const handler = vi.fn(async () => ({ stub: true }) as unknown as Awaited<ReturnType<Handler>>);
-    await wrap(
-      makeRequest({ name: GENERATE_POST_COVER_TOOL, args: { id: "9", auto_adopt: true } }),
-      handler as Handler,
-    );
-    expect(handler).toHaveBeenCalledTimes(1);
-  });
-
-  it("手动档(未传 auto_adopt)照常进单飞判定:空 state fail-closed 拦截", async () => {
+  it("ask_user 空 state → fail-closed 拦截(非 interrupt 工具不受影响)", async () => {
     const handler = vi.fn();
     const out = await wrap(
-      makeRequest({ name: GENERATE_POST_COVER_TOOL, args: { id: "9" } }),
+      makeRequest({ name: "ask_user", args: { question: "q" } }),
       handler as Handler,
     );
     expect(handler).not.toHaveBeenCalled();
     expect((out as { content?: string }).content).toContain("系统状态异常");
+
+    const handler2 = vi.fn();
+    await wrap(makeRequest({ name: "search_site", args: { q: "x" } }), handler2 as Handler);
+    expect(handler2).toHaveBeenCalledTimes(1);
   });
 });

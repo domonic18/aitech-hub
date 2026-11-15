@@ -366,6 +366,10 @@ CREATE TABLE legacy_url_map (
 
 **Agent 技能表已落地(2026-10-14 M30 批①迁移 `20261014200000_agent_skill`,机制与工具面见 [arch/04 §3 K2.8 补注五](04-ai-agent.md))**:
 
+> **退役(2026-11-15,M72 瘦身 B7 / D7)**:`agent_skill` 表已随迁移 `20261115094500_b7_drop_agent_skill` 删除,后台「写作技能」页与 `/api/agent-skills/**` 一并下线——真相源改为仓库 `skills/writing/*.md`(MCP `list_skills`/`get_skill` 与素材包导出读同一份)。`topic.skill_key` 列保留(soft ref),PATCH 存在性核改判仓库 md 是否有该 key。下文为历史落库记录。
+
+> **专题(创作台账)域整体退役(2026-11-15,M72 瘦身,用户拍板「彻底删」)**:迁移 `20261115103000_remove_topic_system` 删除 `topic` / `topic_item` / `writing_sample_image` 三表,并去掉 `content_pin.topic_id` 列与 `idx_content_pin_topic_updated` 索引 —— 创作职责已整体外移线下 Claude Code(MCP 25 只工具 + 仓库 `skills/writing/*.md`),站内的「素材攒集 + 写作配置 + 关联稿」台账不再是取料必需(线下走 `list_signals` / `search_site` / `get_telegram_item` 直接取料)。存量规则不丢:价格表稿的公众号「阅读原文」落点原由 `topic.skill_key` 判别(M55 批E),迁移里按 topic 关联回填为文章标签 `slug=model-pricing`,判别载体随之换标签。下文为历史落库记录。
+
 - `agent_skill`(通用技能表——写作指南/分发流程等知识型流程纪律,后台「模型配置→Agent 技能」页签建改即时生效零发版):`key varchar(50)` 唯一(`uq_agent_skill_key`,agent 稳定引用,**建后不可改**)/`name varchar(100)`/`scenario varchar(200)`(一行,agent 选 skill 时对号场景)/`guide_md text`(指南正文 markdown,可引用既有工具名)/`enabled bool 默认 true`(停用后 agent 侧 list/get 即时不可见);key 格式 `^[a-z0-9]([a-z0-9-]{0,48}[a-z0-9])?$` 应用层 Zod 管控
 - `topic.skill_key`(批②迁移 `20261014210000_topic_skill_key` 增列):`varchar(50)?` 绑定技能稳定引用——**soft ref 无 FK**(skill 删/停后合成写稿降级为按场景自动匹配,不阻塞);PATCH 存在性+启用核验 400
 

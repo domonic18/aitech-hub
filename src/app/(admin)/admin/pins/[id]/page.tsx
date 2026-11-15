@@ -21,20 +21,13 @@ export default async function AdminPinEditorPage({ params }: { params: Promise<{
   if (!ID_RE.test(id)) notFound();
   const pin = await getPinDetail(BigInt(id));
   if (!pin) notFound();
-  const [topics, workshopRoots] = await Promise.all([
-    prisma.topic.findMany({
-      orderBy: { updatedAt: "desc" },
-      take: 50,
-      select: { id: true, title: true },
-    }),
-    // 工坊根版本候选(首图加工的原图,非编辑产物;新候选刷新页面可见)
-    prisma.illustrationVersion.findMany({
-      where: { parentVersionId: null },
-      orderBy: { createdAt: "desc" },
-      take: 24,
-      select: { id: true, mediaPath: true, origin: true },
-    }),
-  ]);
+  // 工坊根版本候选(首图加工的原图,非编辑产物;新候选刷新页面可见)
+  const workshopRoots = await prisma.illustrationVersion.findMany({
+    where: { parentVersionId: null },
+    orderBy: { createdAt: "desc" },
+    take: 24,
+    select: { id: true, mediaPath: true, origin: true },
+  });
   const detail: PinDetailDto = {
     ...toPinDto(pin, pin.images.length),
     images: pin.images.map(toPinImageDto),
@@ -43,7 +36,6 @@ export default async function AdminPinEditorPage({ params }: { params: Promise<{
   return (
     <PinEditor
       initial={detail}
-      topics={topics.map((t) => ({ id: t.id.toString(), title: t.title }))}
       workshopRoots={workshopRoots.map((v) => ({
         id: v.id.toString(),
         mediaPath: v.mediaPath,

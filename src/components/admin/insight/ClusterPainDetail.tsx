@@ -8,7 +8,6 @@
 import Link from "next/link";
 
 import LabelNowButton from "@/components/admin/insight/LabelNowButton";
-import TopicGenButton from "@/components/admin/insight/TopicGenButton";
 import {
   SOURCE_LABELS,
   clusterHref,
@@ -171,10 +170,7 @@ export default function ClusterPainDetail({
               {writeAngleLine(c.coverageState)}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <span className="text-[11px] text-text-3">一键转创作选题并挂素材</span>
-            <TopicGenButton clusterId={c.id} />
-          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1.5"></div>
         </div>
       </div>
     </div>

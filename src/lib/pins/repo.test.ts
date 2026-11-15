@@ -59,7 +59,6 @@ function pin(over: Record<string, unknown> = {}) {
     id: BigInt(1),
     title: "标题",
     content: "",
-    topicId: null,
     status: "draft",
     readMoreUrl: null,
     cropSpec: "1_1",
@@ -215,7 +214,7 @@ describe("reorderPinImages / removePinImage", () => {
 });
 
 describe("createPin 缺省", () => {
-  it("缺省 cropSpec=1_1、content 空串、topicId 可空;阅读原文回填本贴自链", async () => {
+  it("缺省 cropSpec=1_1、content 空串;阅读原文回填本贴自链", async () => {
     // 行内含 Date,跨毫秒深比较会偶红——直接断言 update 返回值同引用
     const updated = pin({ readMoreUrl: "http://localhost:3000/pins/1/" });
     mocked.updatePinMock.mockResolvedValue(updated);
@@ -224,7 +223,6 @@ describe("createPin 缺省", () => {
       data: {
         title: "未命名贴图",
         content: "",
-        topicId: null,
         readMoreUrl: null,
         cropSpec: "1_1",
       },

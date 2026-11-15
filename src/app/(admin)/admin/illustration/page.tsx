@@ -11,7 +11,6 @@
 import Link from "next/link";
 
 import IllustrationCreateButton from "@/components/admin/illustration/IllustrationCreateButton";
-import SampleLibraryButton from "@/components/admin/illustration/SampleLibraryButton";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { formatCnDate } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
@@ -144,9 +143,7 @@ export default async function AdminIllustrationListPage({
             className="w-44 rounded-sm border border-line bg-panel-2 px-2.5 py-1.5 text-xs text-text-1 outline-none placeholder:text-text-3 focus:border-accent"
           />
         </form>
-        <span className="ml-auto">
-          <SampleLibraryButton />
-        </span>
+        <span className="ml-auto"></span>
       </div>
 
       {cards.length === 0 ? (

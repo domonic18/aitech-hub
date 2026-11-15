@@ -11,14 +11,11 @@ import { formatCnDateTime } from "@/lib/datetime";
 import { PIN_CONTENT_MAX, PIN_CONTENT_SOFT_MAX, PIN_TITLE_MAX } from "@/lib/pins/constants";
 import type { PinDetailDto } from "@/lib/pins/dto";
 
-import type { TopicOption } from "./PinEditor";
-
 const FIELD =
   "w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-[13px] text-text-1 outline-none focus:border-accent disabled:opacity-60";
 
 export default function MetaPanel({
   detail,
-  topics,
   editable,
   busy,
   resetSignal,
@@ -27,7 +24,6 @@ export default function MetaPanel({
   onAutoPublishXhs,
 }: {
   detail: PinDetailDto;
-  topics: TopicOption[];
   editable: boolean;
   busy: boolean;
   resetSignal: number;
@@ -37,12 +33,10 @@ export default function MetaPanel({
 }): React.ReactElement {
   const [title, setTitle] = useState(detail.title);
   const [content, setContent] = useState(detail.content);
-  const [topicId, setTopicId] = useState<string>(detail.topicId ?? "");
   const [readMoreUrl, setReadMoreUrl] = useState(detail.readMoreUrl ?? "");
   useEffect(() => {
     setTitle(detail.title);
     setContent(detail.content);
-    setTopicId(detail.topicId ?? "");
     setReadMoreUrl(detail.readMoreUrl ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅保存成功信号到达时灌回
   }, [resetSignal]);
@@ -53,7 +47,6 @@ export default function MetaPanel({
   const dirty =
     title.trim() !== detail.title ||
     content !== detail.content ||
-    (topicId || null) !== detail.topicId ||
     readMoreUrl.trim() !== (detail.readMoreUrl ?? "");
   const canSave =
     editable &&
@@ -121,25 +114,6 @@ export default function MetaPanel({
 
       <div className="mb-3 grid grid-cols-1 gap-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-1" htmlFor="pin-topic">
-            绑定专题
-          </label>
-          <select
-            id="pin-topic"
-            value={topicId}
-            disabled={!editable}
-            onChange={(e) => setTopicId(e.target.value)}
-            className={`${FIELD} cursor-pointer`}
-          >
-            <option value="">未绑定</option>
-            {topics.map((t) => (
-              <option key={t.id} value={t.id}>
-                #{t.id} {t.title}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
           <label className="mb-1 block text-xs font-medium text-text-1" htmlFor="pin-url">
             阅读原文链接(可空)
           </label>
@@ -162,7 +136,6 @@ export default function MetaPanel({
           onSave({
             title: title.trim(),
             content,
-            topicId: topicId === "" ? null : topicId,
             readMoreUrl: readMoreUrl.trim() === "" ? null : readMoreUrl.trim(),
           })
         }

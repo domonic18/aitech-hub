@@ -12,7 +12,6 @@
  * 占列。判定口径见 `lib/insight/coverage.ts`(停滞族不参与判定)。
  */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
@@ -58,11 +57,6 @@ interface Row {
 }
 
 export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): React.ReactElement {
-  const router = useRouter();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  /** 已转题簇(客户端防重;服务端另有同题去重兜底) */
-  const [converted, setConverted] = useState<Set<string>>(new Set());
-  const [msg, setMsg] = useState<string | null>(null);
   const [blankOnly, setBlankOnly] = useState(false);
 
   const { clusters, sources, cells } = matrix;
@@ -87,30 +81,6 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
     total: rows.reduce((a, r) => a + (r.families.find((f) => f.family === family)?.total ?? 0), 0),
     stale: sourcesInFamily(family).every((s) => staleOf.has(s)),
   }));
-
-  async function toTopic(id: bigint, label: string | null): Promise<void> {
-    setBusyId(String(id));
-    setMsg(null);
-    try {
-      const res = await fetch(`/api/insight/clusters/${id}/topic`, { method: "POST" });
-      const json = (await res.json().catch(() => null)) as {
-        code?: number;
-        message?: string;
-        data?: { topic_id?: string };
-      } | null;
-      if (res.ok && json?.code === 0) {
-        setConverted((prev) => new Set(prev).add(String(id)));
-        setMsg(`「${label ?? "未命名簇"}」已转选题,创作中心可见`);
-        router.refresh();
-      } else {
-        setMsg(json?.message ?? `转选题失败(HTTP ${res.status})`);
-      }
-    } catch {
-      setMsg("网络错误,请重试");
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -151,8 +121,6 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
 
       <div className="flex flex-col">
         {shown.map(({ cluster: c, families, verdict, shares }) => {
-          const isConverted = converted.has(String(c.clusterId));
-          const blank = verdict === "blank";
           return (
             <div key={String(c.clusterId)} className="border-b border-line/50 py-1.5 last:border-0">
               {/* 移动端两行(名/分 · 条+结论+行动):五列定宽在 390px 下只给
@@ -226,32 +194,6 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
                   >
                     {VERDICT_LABELS[verdict]}
                   </span>
-                  <span className="text-right">
-                    {/* 每行恒有转选题钮(M53 验收反馈:要防抖防呆,不是移除);
-                        定宽 + nowrap 保证行动列永不折行(M60 反馈) */}
-                    {isConverted ? (
-                      <span className="text-[11px] text-green">已转题</span>
-                    ) : busyId === String(c.clusterId) ? (
-                      <span className="text-[11px] text-text-3">转题中…</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void toTopic(c.clusterId, c.label)}
-                        className={`w-[72px] cursor-pointer whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-[11px] ${
-                          blank
-                            ? "border-dashed border-red text-red hover:bg-red/10"
-                            : "border-line text-text-2 hover:border-line-hover hover:text-text-1"
-                        }`}
-                        title={
-                          blank
-                            ? "热源有需求 × 站内无痛点信号 = 内容空白,一键转选题补覆盖"
-                            : "在创作中心创建对应主题"
-                        }
-                      >
-                        {blank ? "补空白" : "转选题"}
-                      </button>
-                    )}
-                  </span>
                 </span>
               </div>
               <details className="mt-1 pl-1">
@@ -292,7 +234,6 @@ export default function CoverageBoard({ matrix }: { matrix: SourceMatrix }): Rea
         )}
       </div>
 
-      {msg && <p className="text-[11px] text-green">{msg}</p>}
       {/* 读法(M60 补充):① 与上方机会分榜同源,只是换维度——榜单答「先写哪个」,
           本表答「哪里还缺」;② 族口径写清,否则「站内族」「热榜族」都要猜 */}
       <p className="text-[11px] leading-relaxed text-text-3">
