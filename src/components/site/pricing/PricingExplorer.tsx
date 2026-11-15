@@ -9,13 +9,14 @@
  * 筛选态同步到 URL(query 参数):可分享/可收藏/可后退,且**不改页面渲染方式**
  * ——URL 只驱动客户端筛选,页仍是 ISR 静态(SEO 生命线)。
  */
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/site/PageHeader";
 import type { PriceBandId, PublicPricing } from "@/lib/pricing/public";
 import {
   decodePricingQuery,
+  DEFAULT_PRICING_QUERY,
   encodePricingQuery,
   samePricingQuery,
   type PricingQueryState,
@@ -32,38 +33,46 @@ import { planKey } from "./shared";
 const COMPARE_LIMIT = 4;
 
 export default function PricingExplorer({ data }: { data: PublicPricing }): React.ReactElement {
-  const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
-  const [modelQuery, setModelQuery] = useState<PricingQueryState>(() =>
-    decodePricingQuery(searchParams),
-  );
+  /**
+   * 筛选态**不从 useSearchParams 读**:那会让整块交互组件必须包在
+   * `<Suspense fallback={null}>` 里——静态预渲染时 fallback 吞掉全部内容,
+   * SSR HTML 变成空壳(只有客户端水合后才有内容),SEO 生命线断。
+   * 这里改成:SSR 照旧输出**未筛选的全量**,挂载后从 window.location 读 URL
+   * 覆盖筛选态,写回用 history.replaceState(不触发 Next 路由变更)。
+   */
+  const [modelQuery, setModelQuery] = useState<PricingQueryState>(DEFAULT_PRICING_QUERY);
   const [planVendors, setPlanVendors] = useState<string[]>([]);
   const [planBand, setPlanBand] = useState<PriceBandId>("all");
   const [sortByPrice, setSortByPrice] = useState(false);
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
 
-  // 只有用户改动才写回 URL(避免挂载时抹掉 utm 等无关参数)
-  const dirty = useRef(false);
-  const updateModelQuery = useCallback((patch: Partial<PricingQueryState>): void => {
-    dirty.current = true;
-    setModelQuery((prev) => ({ ...prev, ...patch }));
+  // 挂载后从 URL 取初始筛选(SSR 已输出未筛选全量,这里只是覆盖成 URL 指定的状态)
+  useEffect(() => {
+    const fromUrl = decodePricingQuery(window.location.search);
+    setModelQuery((prev) => (samePricingQuery(prev, fromUrl) ? prev : fromUrl));
+    const onPop = (): void => {
+      const next = decodePricingQuery(window.location.search);
+      setModelQuery((prev) => (samePricingQuery(prev, next) ? prev : next));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  // 筛选态 → URL(replaceState:不触发 Next 路由变更,也不新增历史条目)
   useEffect(() => {
-    if (!dirty.current) return;
-    dirty.current = false;
     const qs = encodePricingQuery(modelQuery);
-    router.replace(qs === "" ? pathname : `${pathname}?${qs}`, { scroll: false });
-  }, [modelQuery, pathname, router]);
+    const target = qs === "" ? pathname : `${pathname}?${qs}`;
+    if (target !== window.location.pathname + window.location.search) {
+      window.history.replaceState(null, "", target);
+    }
+  }, [modelQuery, pathname]);
 
-  // 浏览器前进/后退:URL 变了就把状态拉回来
-  useEffect(() => {
-    const next = decodePricingQuery(searchParams);
-    setModelQuery((prev) => (samePricingQuery(prev, next) ? prev : next));
-  }, [searchParams]);
+  const updateModelQuery = useCallback((patch: Partial<PricingQueryState>): void => {
+    setModelQuery((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   // 选集按 data.plans 原序解析:筛选变化不影响已选(跨筛选也能凑齐对比)
   const selectedPlans = useMemo(
