@@ -1,6 +1,6 @@
 # 模型牌价 · 按量比价(开发计划)
 
-> **状态:批 A 已完成并合入 develop(PR #257);批 B1(落库改造 + 硅基流动/腾讯云两源 + DeepSeek 档位)实现中**。立项 2026-11-15(站长新增需求 6 条),里程碑 [M74](development-plan.md#2-里程碑)。
+> **状态:批 A 已合入 develop(PR #257);批 B1(PR #258 已合)与批 B2(百炼)已实现;批 B3(火山/词元所)未开始**。立项 2026-11-15(站长新增需求 6 条),里程碑 [M74](development-plan.md#2-里程碑)。
 > 需求基准:[requirement/01-requirement.md §4](../requirement/01-requirement.md)。
 > 本文是**过程文档**(方案 + 批次计划 + 待裁定),不是终态方案——实现落码后按批回写
 > [arch/03](../arch/03-data-model.md) §2.4 / [arch/01](../arch/01-data-source.md) §4 / [arch/05](../arch/05-services.md) §4 / [arch/07](../arch/07-frontend.md),本文压缩为一行基线后删除。
@@ -159,15 +159,19 @@
 |---|---|---|---|---|---|
 | `siliconflow-model` | 硅基流动 | `/pricing` div 网格(非 <table>) | **静态** | 820KB HTML 价直接落 DOM;行容器 class 含 `min-h-[48px]`+`grid`,模型 id 在 `a[title]`;**有时段定价**(格内「费用发生时段: 0点～2点/8点～24点」,2点～8点 是优惠窗)+ 输入/输出/缓存三列 | ✅ 批B1 已落 |
 | `tencent-hunyuan` | 腾讯云混元 | 定价文档两张表 | **静态** | 「产品名\|免费额度」+「产品名\|刊例价(每 百万 tokens)」;刊例价格形如「输入:0.5元输出:2元」 | ✅ 批B1 已落 |
-| `bailian-model` | 阿里云百炼 | `/zh/model-studio/billing` | **静态**(ICE 载荷) | 价在 `window.__ICE_PAGE_PROPS__` 的 `content` HTML 里;**159 张价格表、列语义随表而变**(模式/地区/阶梯区间混列,73 个模型多行)——需逐表识别表头 + rowspan 承接,单独一轮 | ⬜ 批B2 |
-| `volcengine-ark` | 火山引擎方舟 | 文档页(Next RSC) | **渲染** | 静态 HTML 1.8MB 里 0 处价格(表是客户端渲染);RSC flight 载荷;headless 实测渲染后有 8 处「元/百万」 | ⬜ 批B2 |
-| `baidu-ciyuansuo` | 百度词元所 | SPA 首页 | **渲染** | 静态 53KB 只有 21 处价格线索,`/models` `/pricing` `/api/*` 全 404,业务接口在 chunk 里动态拼;headless 实测渲染后有 8 处「元/百万」 | ⬜ 批B2(见 §4.5) |
+| `bailian-model` | 阿里云百炼 | `/zh/model-studio/billing` | **静态**(ICE 载荷) | 价在 `window.__ICE_PAGE_PROPS__` 的 `content` HTML 里;**80 种表头、159 张价格表**——列语义随表而变(模型 ID / 服务部署范围 / 模式 / Token 阶梯 / 输入·缓存·输出单价 / 免费额度)。**多模态表是「多级表头 + 模态子维度」(4 列表头 6 格数据行),按列序映射会错位取价(把「音频输入价」当输出价)** → 设「整表行列对齐闸」:数据行格数与表头列数不一致的表**整体不收**(宁可少收不可错收)。对齐表 70 张/207 行/72 个模型 | ✅ 批B2 已落 |
+| `volcengine-ark` | 火山引擎方舟 | 文档页(Next RSC) | **渲染** | 静态 HTML 1.8MB 里 0 处价格(表是客户端渲染);RSC flight 载荷;headless 实测渲染后有 8 处「元/百万」 | ⬜ 批B3 |
+| `baidu-ciyuansuo` | 百度词元所 | SPA 首页 | **渲染** | 静态 53KB 只有 21 处价格线索,`/models` `/pricing` `/api/*` 全 404,业务接口在 chunk 里动态拼;headless 实测渲染后有 8 处「元/百万」 | ⬜ 批B3(见 §4.5;**另需裁定 3**「挂牌价与一手价的关系」) |
 | `deepseek`(改造) | DeepSeek | 静态 | 静态 | 峰谷×缓存矩阵**已升级为档位**(6 档:缓存命中×谷/峰 + 输入×谷/峰 + 输出×谷/峰);行价仍是「高峰·未命中」基准 | ✅ 批B1 已落 |
 | `moonshot`(改造) | 月之暗面 | SSR | 静态 | SSR 行只有输入/输出两价,无档位维度;行价口径不变,仅补归一/免费字段 | ✅ 批B1 已落 |
 
-**渲染通道白名单**:批B1 落的两源都是静态取数,**不需要 headless**;批B2 的火山/词元所需把
+**渲染通道白名单**:批B1/B2 落的三源都是静态取数,**不需要 headless**;批B3 的火山/词元所需把
 `www.volcengine.com` / `cysuo.com` 加进 compose 的 `RENDER_ALLOWED_HOSTS`
 (与 `src/lib/pricing/render-fetch.ts` 文件头注的两处同步关系同源)。
+
+**百炼的「部署范围」维度**:同一模型按部署地(全球 / 中国内地 / 美国 / 国际)有不同价,
+这是**价格维度不是不同模型** → 落档位(档位标签 = 部署范围·模式·Token 区间);
+行价取「全球」档作基准价(与「多时段价取最高」同一原则:行价是基准价,不是最便宜那档)。
 
 **词元所的特殊性**(需求点名的「百度最新上线的词元所」):2026-11-12 百度世界大会发布的
 大模型交易平台(`cysuo.com`),定位是**模型交易与比价市场**——发布首日申请入驻供应商超 100 家、
@@ -240,7 +244,8 @@ M63 已有每日汇率(`site_config`)可复用。
 |---|---|---|---|---|
 | **A** | 数据底座(归一层 + 档位表 + 免费标识列) | §6 第 4/5/7 条裁定 | 3 表 + 3 列 + 迁移 + 存量回填 | `feature/m74-pricing-schema` |
 | **B1** | 采集扩容·一(落库改造 + 2 静态新源 + DeepSeek 档位升级) | A | 硅基流动/腾讯云接入 + 归一/档位/免费/墓碑落库 | `feature/m74-pricing-sources` |
-| **B2** | 采集扩容·二(百炼/火山/词元所) | B1 | 3 源接入(百炼异构表 + 2 渲染源) | `feature/m74-pricing-sources-2` |
+| **B2** | 采集扩容·二(百炼) | B1 | 百炼按量牌价接入(ICE 载荷 + 异构表对齐闸) | `feature/m74-pricing-sources-2` |
+| **B3** | 采集扩容·三(火山/词元所) | B2 | 2 渲染源接入(需加 headless 白名单;词元所需裁定 3) | `feature/m74-pricing-sources-3` |
 | **C** | 免费标识与筛选维度 | A(B 产数据) | 免费角标 + 多维筛选 + 源页面外链 | `feature/m74-pricing-free-filter` |
 | **D** | 比价矩阵与可视化 | B + C | 比价视图 + 散点 + 排序 | `feature/m74-pricing-compare` |
 | **E** | 词元所聚合报价 | A + B(词元所源) + §6 第 3 条 | 二级供应方建模 + 聚合视图 | `feature/m74-pricing-aggregator` |
@@ -318,14 +323,24 @@ A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
 | B1-7 | 墓碑机制(多轮未见 → disabled + 「源已下线」注记) | `model-persist.ts#markMissingModelsStale`;3 天未刷新即墓碑(人工定稿行不参与) | ✅ |
 | B1-8 | 免费额度原文入 `free_tier` | 行类型加 `freeTier`,落库写入(与 `is_free`「完全免费」两种语义) | ✅ |
 
-**B2(下一轮)**——百炼(异构表)+ 火山/词元所(渲染源):
+**B2(本轮,已实现)**——百炼(异构表):
+
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| B2-1 | ICE 载荷取 content + 表头关键词映射列语义 | `src/lib/pricing/model-sources/bailian.ts` | ✅ |
+| B2-2 | **整表行列对齐闸**(多模态多级表头整表排除,不错位取价) | 同上 | ✅ |
+| B2-3 | 三维度落档位(部署范围 · 模式 · Token 阶梯)+ 行价取「全球」基准价 | 同上 | ✅ |
+| B2-4 | 免费额度原文入 `free_tier` | 同上 | ✅ |
+| B2-5 | 注册源 + golden 样本(4 张表:带范围/带免费额度/简单表/多模态排除用例) | `source-registry.ts` + `__fixtures__/bailian-billing.html` | ✅ |
+
+**B3(下一轮)**——火山引擎方舟 / 百度词元所(渲染源):
 
 | # | 任务 | 说明 |
 |---|---|---|
-| B2-1 | 百炼计费页解析 | `__ICE_PAGE_PROPS__` → content HTML → **159 张价格表、列语义随表而变**:需按表头识别「模式/地区/阶梯区间/输入单价/输出单价/免费额度」各列 + rowspan 承接;同模型多行(73 个模型)须归一为一行 + 多档 |
-| B2-2 | 火山引擎方舟(渲染) | headless 白名单加 `www.volcengine.com`;RSC 页渲染后取价 |
-| B2-3 | 百度词元所(渲染) | headless 白名单加 `cysuo.com`;**二级供应方建模**(见 §4.5)须先有裁定 |
-| B2-4 | golden 样本与单测 | 每源一份裁剪样本(真实页面结构,脱敏后存 `__fixtures__/`) |
+| B3-1 | headless 白名单加 `www.volcengine.com` / `cysuo.com` | compose `RENDER_ALLOWED_HOSTS` + `render-fetch.ts` 两处同步 |
+| B3-2 | 火山引擎方舟(RSC 页渲染后取价) | 渲染后需再探表结构(豆包系列阶梯/模态计价典型) |
+| B3-3 | 百度词元所 | **须先有裁定 3**(挂牌价与一手价的关系)与二级供应方建模(见 §4.5) |
+| B3-4 | golden 样本与单测 | 每源一份裁剪样本 |
 
 **测试**
 
