@@ -9,14 +9,20 @@
 import Link from "next/link";
 
 import PricingConsole from "@/components/admin/pricing/PricingConsole";
+import { SourceHealth } from "@/components/admin/pricing/SourceHealth";
 import { requireAdminPage } from "@/lib/auth/guard";
 import { listCodingPlans, listModelPricing } from "@/lib/pricing/admin";
+import { listPricingSourceHealth } from "@/lib/pricing/health";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPricingPage(): Promise<React.ReactElement> {
   await requireAdminPage();
-  const [models, plans] = await Promise.all([listModelPricing(), listCodingPlans()]);
+  const [models, plans, sources] = await Promise.all([
+    listModelPricing(),
+    listCodingPlans(),
+    listPricingSourceHealth(),
+  ]);
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -29,6 +35,11 @@ export default async function AdminPricingPage(): Promise<React.ReactElement> {
           </Link>
           维护(URL/启停/采集周期)
         </p>
+      </div>
+      {/* 采集源健康度(M74 批C2):源挂了只表现为「价格不更新」,这里给出可见性 */}
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">采集源健康度</h3>
+        <SourceHealth sources={sources} />
       </div>
       <PricingConsole models={models} plans={plans} />
     </div>
