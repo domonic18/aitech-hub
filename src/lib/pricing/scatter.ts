@@ -12,6 +12,7 @@
  * - **0 价不入图**:完全免费模型价格为 0,取不了对数;计入 `skipped` 并在图下说明
  */
 import type { PublicModelRow } from "./public";
+import { isTokenPriced } from "./public";
 import { buildCompareGroups } from "./compare";
 
 export const PRICE_SCATTER_W = 960;
@@ -125,8 +126,11 @@ function cheapestPerModel(rows: PublicModelRow[]): Array<{
  * @param rows 已按前台筛选过滤后的模型行
  */
 export function buildPriceScatter(rows: PublicModelRow[]): PriceScatterGeometry {
+  // 散点只对 token 计价成立(批G):非 token 行(按张/按秒)两价不是
+  // 「输入×输出」语义,进对数轴就是说谎——它们走单价条形图(bars.ts)
+  const tokenRows = rows.filter((r) => isTokenPriced(r) && r.priceUnit === "per_1m_tokens");
   const plot = PRICE_SCATTER_PLOT;
-  const cheapest = cheapestPerModel(rows);
+  const cheapest = cheapestPerModel(tokenRows);
   const usable = cheapest.filter(
     (c) => c.input !== null && c.input > 0 && c.output !== null && c.output > 0,
   );

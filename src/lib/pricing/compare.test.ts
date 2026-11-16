@@ -27,6 +27,7 @@ function row(over: Partial<PublicModelRow>): PublicModelRow {
     providerKind: null,
     modelDictKey: null,
     modality: null,
+    priceUnit: "per_1m_tokens",
     tiers: [],
     ...over,
   };
@@ -73,6 +74,41 @@ describe("buildCompareGroups", () => {
     ];
     const model = buildCompareGroups(rows)[0]!.models[0]!;
     expect(model.cheapestProviderKey).toBe("b");
+  });
+
+  it("批G:跨计价单位不比——token 价与按张价各归各区,各自区内才比", () => {
+    const rows = [
+      row({
+        modelDictKey: "img",
+        providerKey: "a",
+        priceUnit: "per_image",
+        inputPrice: null,
+        outputPrice: 0.25,
+      }),
+      row({
+        modelDictKey: "img",
+        providerKey: "b",
+        priceUnit: "per_image",
+        inputPrice: null,
+        outputPrice: 0.18,
+      }),
+      row({ modelDictKey: "m", providerKey: "a", priceUnit: "per_1m_tokens", inputPrice: 5 }),
+      row({
+        modelDictKey: "m",
+        providerKey: "b",
+        priceUnit: "per_image",
+        inputPrice: null,
+        outputPrice: 0.2,
+      }),
+    ];
+    const groups = buildCompareGroups(rows);
+    // img 两家按张价同区可比;token/按张混报价的 m 不可比(各单家)
+    expect(groups).toHaveLength(1);
+    const g = groups[0]!;
+    expect(g.priceUnit).toBe("per_image");
+    const img = g.models[0]!;
+    expect(img.cheapestProviderKey).toBe("b"); // 生成价 0.18 < 0.25
+    expect(countComparableModels(rows)).toBe(1);
   });
 
   it("按**单元格**币种分区:同一模型的 CNY/USD 报价各归各区,区内才比价", () => {

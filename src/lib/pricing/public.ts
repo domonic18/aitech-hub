@@ -43,6 +43,9 @@ export interface PublicModelRow {
   modelDictKey: string | null;
   /** 模型模态(字典表);未归一为 null */
   modality: string | null;
+  /** 行级计价单位(批G):per_1m_tokens | per_image | per_second | …;
+   *  非 token 行 outputPrice=生成价、inputPrice 多为 null */
+  priceUnit: string;
   /** 价格档位(阶梯/缓存/峰谷/模态计价);无档位则空数组 */
   tiers: PublicTierRow[];
 }
@@ -60,6 +63,57 @@ export interface PublicTierRow {
 }
 
 // ---------- M74 批C:筛选维度与排序(纯函数,单测锚) ----------
+// 批G:模态细筛升级为「用途分组」页签(cat),MODALITY_OPTIONS 退役
+
+/** 用途分组(批G):模态 → 用户视角的用途大组;all = 不过滤 */
+export type ModelCatId = "text" | "image" | "video" | "audio" | "vector" | "all";
+
+export const MODEL_CAT_OPTIONS: ReadonlyArray<{
+  id: ModelCatId;
+  label: string;
+  /** 命中的模态值;null = 不过滤(all) */
+  modalities: readonly string[] | null;
+}> = [
+  { id: "text", label: "文本", modalities: ["text", "text+vision"] },
+  { id: "image", label: "文生图", modalities: ["image"] },
+  { id: "video", label: "文生视频", modalities: ["video"] },
+  { id: "audio", label: "音频", modalities: ["audio"] },
+  { id: "vector", label: "向量·重排", modalities: ["embedding", "rerank"] },
+  { id: "all", label: "全部", modalities: null },
+];
+
+/** 用途分组 → 模态集合(null = 全部);未归一行的模态按 text 处理 */
+export function catToModalities(cat: ModelCatId): readonly string[] | null {
+  return MODEL_CAT_OPTIONS.find((c) => c.id === cat)?.modalities ?? null;
+}
+
+/** 行的生效模态(未归一/空按 text——现网存量行主体是文本模型) */
+export function effectiveModality(row: Pick<PublicModelRow, "modality">): string {
+  const m = (row.modality ?? "").trim();
+  return m === "" ? "text" : m;
+}
+
+/** token 系计价单位(双价语义);其余为单价格(生成价)语义 */
+export function isTokenPriced(row: Pick<PublicModelRow, "priceUnit">): boolean {
+  return row.priceUnit === "per_1m_tokens" || row.priceUnit === "per_1k_tokens";
+}
+
+/**
+ * 代表价(批G):排序/区间/比价/条形图共用的「这行多少钱」——
+ * token 行=输入价(与既有口径一致),非 token 行=生成价(outputPrice)。
+ */
+export function representativePrice(
+  row: Pick<PublicModelRow, "priceUnit" | "inputPrice" | "outputPrice">,
+): number | null {
+  return isTokenPriced(row) ? row.inputPrice : row.outputPrice;
+}
+
+/** 非计价单位的中文后缀(价格格展示;token 系为空——列头已注明百万 tokens) */
+export const UNIT_SUFFIXES: Record<string, string> = {
+  per_image: "/张",
+  per_second: "/秒",
+  per_minute: "/分钟",
+};
 
 /** 上下文长度解析:"128K"→131072 / "1M"→1048576 / "200000"→200000;认不出 null */
 export function parseContextTokens(raw: string | null): number | null {
@@ -98,18 +152,6 @@ export function inContextBand(tokens: number | null, id: ContextBandId): boolean
   return tokens !== null && tokens >= band.min;
 }
 
-/** 模态筛选项(字典表的 modality 值;空 = 未标注) */
-export const MODALITY_OPTIONS = [
-  { id: "", label: "全部" },
-  { id: "text", label: "文本" },
-  { id: "text+vision", label: "图文" },
-  { id: "image", label: "图像" },
-  { id: "audio", label: "音频" },
-  { id: "video", label: "视频" },
-  { id: "embedding", label: "向量" },
-  { id: "rerank", label: "重排" },
-] as const;
-
 /** 来源类型筛选项(厂商字典的 source_kind;空 = 未标注) */
 export const SOURCE_KIND_OPTIONS = [
   { id: "", label: "全部" },
@@ -134,13 +176,15 @@ export interface ModelFilterOptions {
   vendors: string[];
   band: PriceBandId;
   freeOnly: boolean;
-  modality: string;
+  /** 用途分组(批G;all = 不过滤模态) */
+  cat: ModelCatId;
   contextBand: ContextBandId;
   sourceKind: string;
 }
 
 /**
- * 模型行筛选(厂商 × 价格区间 × 免费 × 模态 × 上下文 × 来源类型)。
+ * 模型行筛选(厂商 × 价格区间 × 免费 × 用途分组 × 上下文 × 来源类型)。
+ * 价格区间按**代表价**(token 行输入价 / 非行生成价)判——排序同口径;
  * null 价不进具体价格区间档(不臆测);免费只看 is_free 标记(完全免费),
  * 「有免费额度」是另一回事(free_tier 原文),不在此过滤。
  */
@@ -148,11 +192,12 @@ export function filterModelRows(
   rows: PublicModelRow[],
   opts: ModelFilterOptions,
 ): PublicModelRow[] {
+  const catMods = catToModalities(opts.cat);
   return rows.filter((r) => {
     if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
-    if (!inPriceBand(r.inputPrice, opts.band)) return false;
+    if (!inPriceBand(representativePrice(r), opts.band)) return false;
     if (opts.freeOnly && !r.isFree) return false;
-    if (opts.modality !== "" && (r.modality ?? "") !== opts.modality) return false;
+    if (catMods !== null && !catMods.includes(effectiveModality(r))) return false;
     if (!inContextBand(parseContextTokens(r.contextWindow), opts.contextBand)) return false;
     if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;
     return true;
@@ -160,12 +205,13 @@ export function filterModelRows(
 }
 
 /**
- * 模型行排序:默认与「输入价」同序(按价升序——这页是来找便宜的),
- * null 价恒排最后(未公布价不是「最便宜」),同价按模型名定序,保证结果稳定。
+ * 模型行排序:默认与「价格低→高」同序(**代表价**:token 行输入价、
+ * 非 token 行生成价——这页是来找便宜的),null 价恒排最后
+ * (未公布价不是「最便宜」),同价按模型名定序,保证结果稳定。
  */
 export function sortModelRows(rows: PublicModelRow[], sort: ModelSortId): PublicModelRow[] {
   const priceOf = (r: PublicModelRow): number | null =>
-    sort === "output" ? r.outputPrice : r.inputPrice;
+    sort === "output" ? r.outputPrice : representativePrice(r);
   return [...rows].sort((a, b) => {
     const pa = priceOf(a);
     const pb = priceOf(b);
@@ -204,10 +250,16 @@ export interface PublicPricing {
 }
 
 /** 价格格(纯函数,单测锚):null=未公布(禁臆测);USD 原币直出不折算(D4);
- * 币符与数值间空格(Ardot P1 定稿版式) */
-export function formatPrice(price: number | null, currency: string): string {
+ * 币符与数值间空格(Ardot P1 定稿版式);非 token 计价单位带中文后缀(批G) */
+export function formatPrice(price: number | null, currency: string, unit?: string): string {
   if (price === null) return "未公布";
-  return `${currency === "USD" ? "$" : "¥"} ${price}`;
+  const suffix = unit === undefined ? "" : (UNIT_SUFFIXES[unit] ?? "");
+  return `${currency === "USD" ? "$" : "¥"} ${price}${suffix}`;
+}
+
+/** 计价单位的展示口径(列头/图注用):token 系为空串(由列头统一注明) */
+export function unitLabel(unit: string): string {
+  return UNIT_SUFFIXES[unit] ?? "";
 }
 
 /** 模型分组排序(P2-15 纯函数,单测锚;自 PricingView 下沉):国内¥ → 国际$ →
@@ -265,6 +317,14 @@ export function filterPricingRows<T>(
   );
 }
 
+/** 价格口径文案(批G):token 行沿用「每百万 tokens」;非 token 行按单位(元/张等) */
+function priceUnitDesc(unit: string): string {
+  if (unit === "per_image") return "元/张";
+  if (unit === "per_second") return "元/秒";
+  if (unit === "per_minute") return "元/分钟";
+  return "每百万 tokens";
+}
+
 /** JSON-LD 清单(纯函数,单测锚):ItemList+Product 携双价描述;无价格页退化为
  * 空清单(页骨架仍 SSR,SEO 面不空)。截稿日期入 description 溯源。 */
 export function buildPricingJsonLd(data: PublicPricing, pageUrl: string): Record<string, unknown> {
@@ -284,7 +344,7 @@ export function buildPricingJsonLd(data: PublicPricing, pageUrl: string): Record
           description: `输入 ${formatPrice(m.inputPrice, m.currency)} / 输出 ${formatPrice(
             m.outputPrice,
             m.currency,
-          )}(每百万 tokens,${m.currency} 原币),数据截至 ${m.dataAsOf}`,
+          )}(${priceUnitDesc(m.priceUnit)},${m.currency} 原币),数据截至 ${m.dataAsOf}`,
           url: pageUrl,
         },
       })),
