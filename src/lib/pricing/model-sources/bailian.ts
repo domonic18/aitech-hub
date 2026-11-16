@@ -14,13 +14,15 @@
  * - 输入单价 / 缓存命中输入单价 / 输出单价(口径「每百万Token」)
  * - 免费额度(原文)
  *
- * 只收**每百万 Token 口径**的表;视频分辨率表、按秒/按张计价的表一律排除
- * (口径不可比,混进比价表就是污染)。
+ * 只收**单位可识别**的表:每百万 Token 口径照旧双价;批G 起按张(元/张)/
+ * 按秒(元/秒)的单级表头表一并纳入(生成价口径,行级 priceUnit 区分);
+ * 单位不明的表(元/次等)与多级表头表仍整表排除——宁可少收,不可错收。
  *
- * 归一口径:一个模型 = 一行 model_pricing,**(部署范围 × 模式 × Token 区间)**
- * 各组合落一条档位(部署范围/模式/区间都是价格维度,不是不同模型);
- * 行价取「全球」档(站点面向国内用户;没有全球档时取第一条)——
- * 与「多时段价取最高」同一原则:行价是**基准价**,不是最便宜的那一档。
+ * 归一口径:一个模型 = 一行 model_pricing,**(部署范围 × 模式 × Token 区间
+ * / 分辨率 × 视频类型)**各组合落一条档位(部署范围/模式/区间/分辨率都是
+ * 价格维度,不是不同模型);行价取「全球」档(站点面向国内用户;没有全球
+ * 档时取第一条)——与「多时段价取最高」同一原则:行价是**基准价**,
+ * 不是最便宜的那一档。
  */
 import * as cheerio from "cheerio";
 
@@ -29,11 +31,21 @@ import type { ModelPrefillRow, ModelTierPrefill } from "../crawlers";
 /** 官方计费页(种子初始值;运行期 URL 归 crawl_source 后台可调) */
 export const BAILIAN_MODEL_PRICING_URL = "https://help.aliyun.com/zh/model-studio/billing";
 
-/** 列语义槽位 */
+/** 列语义槽位(cond=分辨率/视频类型等档位维度;combined=输入和输出同价) */
 type ColRole =
-  "model" | "scope" | "mode" | "tokenRange" | "input" | "cache" | "output" | "free" | null;
+  | "model"
+  | "scope"
+  | "mode"
+  | "tokenRange"
+  | "cond"
+  | "combined"
+  | "input"
+  | "cache"
+  | "output"
+  | "free"
+  | null;
 
-/** 表头 → 列语义(按关键词;顺序即列序) */
+/** 表头 → 列语义(按关键词;顺序即列序;combined 须在输入/输出前判) */
 function colRoleOf(header: string): ColRole {
   const h = header.replace(/\s+/g, "");
   if (h.includes("模型ID")) return "model";
@@ -41,15 +53,35 @@ function colRoleOf(header: string): ColRole {
   if (h === "模式" || h.startsWith("模式")) return "mode";
   if (h.includes("Token数") || h.includes("Token范围")) return "tokenRange";
   if (h.includes("免费额度")) return "free";
+  if (h.includes("分辨率")) return "cond";
+  if (h.includes("视频类型") || h.includes("参考类型")) return "cond";
+  if (h.includes("输入和输出")) return "combined";
   if (h.includes("缓存命中")) return "cache";
   if (h.includes("输入单价")) return "input";
   if (h.includes("输出单价")) return "output";
   return null;
 }
 
-/** 表头含这些词 → 整表排除(口径不可比:视频分辨率表 / 输入输出同价 / 非 token 计价) */
-// 注:排除词要精确——「次」会误伤「单次请求的输入Token数」(主流表的阶梯列)
-const EXCLUDE_HEADER_HINTS = ["分辨率", "输入和输出单价", "每秒", "每张", "每分钟", "元/次"];
+/** 表级单位(批G):表头(元/张、(每秒)等)或首行数据格(0.02元/张)里识别;
+ *  认不出 → null,整表跳过(单位不明的价不落库) */
+function unitOfTable(headers: string[], firstRowCells: string[]): string | null {
+  const headCompact = headers.join("").replace(/\s+/g, "");
+  if (headCompact.includes("元/张") || headCompact.includes("每张")) return "per_image";
+  if (headCompact.includes("元/秒") || headCompact.includes("每秒")) return "per_second";
+  const cellCompact = firstRowCells.join("").replace(/\s+/g, "");
+  if (cellCompact.includes("元/张")) return "per_image";
+  if (cellCompact.includes("元/秒")) return "per_second";
+  if (headCompact.includes("每百万Token")) return "per_1m_tokens";
+  return null;
+}
+
+/** 行级计价单位 → 表的显式模态(每秒表只有表头带「视频」才标 video——
+ *  音乐按秒表(fun-music)不标,留给关键词推断成 audio) */
+function tableModalityOf(unit: string, headers: string[]): string | undefined {
+  if (unit === "per_image") return "image";
+  if (unit === "per_second" && headers.some((h) => h.includes("视频"))) return "video";
+  return undefined;
+}
 
 /** 「12元」/「14.988元」/「原价2元（限时8折）」→ 数值(null = 无法解析) */
 function priceOf(text: string): number | null {
@@ -73,9 +105,9 @@ function tokenRangeOf(text: string): { min: number | null; max: number | null } 
   return { min: toNum(m[1] ?? ""), max: toNum(m[2] ?? "") };
 }
 
-/** 模型 id:格内首段(官方附注在后面,用空格分隔) */
+/** 模型 id:格内首段(官方附注在后面;id 可含厂商前缀斜杠,如 kling/kling-v3) */
 function modelIdOf(cellText: string): string {
-  const m = /^([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(cellText.trim());
+  const m = /^([A-Za-z0-9][A-Za-z0-9._/-]*)/.exec(cellText.trim());
   return m === null ? "" : (m[1] ?? "");
 }
 
@@ -104,15 +136,21 @@ interface BailianRow {
   scope: string | null;
   mode: string | null;
   tokenRange: string | null;
+  /** 档位维度原文(分辨率/视频类型/参考类型;与 tokenRange 互斥出现) */
+  cond: string | null;
   input: number | null;
   cache: number | null;
   output: number | null;
   free: string | null;
+  /** 行级计价单位(批G;随表) */
+  unit: string;
 }
 
-/** 档位标签:部署范围 · 模式 · Token 区间(缺省项不拼) */
+/** 档位标签:部署范围 · 模式 · 档位维度(Token 区间或分辨率/类型;缺省项不拼) */
 function tierLabelOf(row: BailianRow): string {
-  const parts = [row.scope, row.mode, row.tokenRange].filter((v) => v !== null && v !== "");
+  const parts = [row.scope, row.mode, row.tokenRange ?? row.cond].filter(
+    (v) => v !== null && v !== "",
+  );
   return parts.length === 0 ? "默认" : parts.join("·");
 }
 
@@ -121,6 +159,8 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
   const content = bailianContentOf(html);
   const $ = cheerio.load(content);
   const records: BailianRow[] = [];
+  /** 模型 → 表级显式模态(按张表→image;按秒表带「视频」表头→video) */
+  const tableModalityByModel = new Map<string, string>();
 
   $("table").each((_, t) => {
     const trs = $(t).find("tr");
@@ -131,44 +171,88 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
       .get();
     const joined = headers.join(" ");
     if (headers.length < 2) return;
-    // 非每百万 Token 口径的表(视频分辨率/按秒按张/输入输出同价)一律排除
-    if (EXCLUDE_HEADER_HINTS.some((hint) => joined.includes(hint))) return;
-    if (!joined.includes("每百万Token") && !joined.includes("每百万 Token")) return;
+    // 元/次等不支持单位的表仍整表排除
+    if (joined.includes("元/次")) return;
 
-    const roles = headers.map(colRoleOf);
-    if (!roles.includes("model")) return;
-    if (!roles.includes("input") && !roles.includes("output")) return;
-
-    // **整表行列对齐闸**:百炼多模态/音视频表是「多级表头 + 模态子维度」
-    // (表头 4 列、数据行 6 格:文本/图片/视频、音频、文本多模态、仅音频计费),
-    // 按列序映射会**错位取价**(把「音频输入价」当输出价)。这类表整体不收——
-    // 宁可少收,不可错收(错价比缺价危害大得多)。
+    // **整表行列对齐闸(批G 升级为 rowspan 感知)**:按 rowspan 占位把每个格
+    // 映射到列,续行(分辨率/价格格)继承上一行的模型/范围/模式/免费额度;
+    // 格数超出表头列数(多级表头 + 模态子维度的表:表头 4 列、数据行 6 格)
+    // → 整表排除——宁可少收,不可错收(错价比缺价危害大得多)。
     const dataRows = trs
       .slice(1)
       .toArray()
       .filter((r) => r.children && r.children.length > 0);
     if (dataRows.length === 0) return;
-    if (!dataRows.every((r) => r.children.length === headers.length)) return;
 
-    dataRows.forEach((r) => {
-      const cells = r.children.map((c) => $(c).text().trim().replace(/\s+/g, " "));
-      if (cells.length === 0) return;
+    // 表级单位(批G):表头或首行数据格里认 元/张、元/秒、每百万Token
+    const firstCells = (dataRows[0]!.children ?? []).map((c) => $(c).text().trim());
+    const unit = unitOfTable(headers, firstCells);
+    if (unit === null) return;
+
+    const roles = headers.map(colRoleOf);
+    if (!roles.includes("model")) return;
+    if (!roles.includes("input") && !roles.includes("output") && !roles.includes("combined")) {
+      return;
+    }
+    const tableModality = tableModalityOf(unit, headers);
+
+    /** 列占用剩余行数(rowspan);续行的格映射到未占用列 */
+    let occupied = new Map<number, number>();
+    /** 续行继承源(模型/范围/模式/免费额度) */
+    let inherit: Pick<BailianRow, "modelId" | "note" | "scope" | "mode" | "free"> | null = null;
+    let misaligned = false;
+
+    for (const r of dataRows) {
+      const cells = (r.children ?? []).filter((c) => c.type === "tag");
+      if (cells.length === 0) continue;
+      const placed: Array<{ col: number; role: ColRole; text: string; rowspan: number }> = [];
+      let ci = 0;
+      for (const cell of cells) {
+        while (occupied.has(ci)) ci += 1;
+        if (ci >= headers.length) {
+          misaligned = true; // 列溢出:多级表头表
+          break;
+        }
+        placed.push({
+          col: ci,
+          role: roles[ci] ?? null,
+          text: $(cell).text().trim().replace(/\s+/g, " "),
+          rowspan:
+            Number((cell as { attribs?: { rowspan?: string } }).attribs?.rowspan ?? "1") || 1,
+        });
+        ci += 1;
+      }
+      if (misaligned) break;
+      // 行末结算:旧占位过期一级,本行 rowspan 的新占位生效
+      const next = new Map<number, number>();
+      for (const [k, v] of occupied) {
+        if (v - 1 > 0) next.set(k, v - 1);
+      }
+      for (const p of placed) {
+        if (p.rowspan > 1) next.set(p.col, p.rowspan - 1);
+      }
+      occupied = next;
+
       const rec: BailianRow = {
-        modelId: "",
-        note: "",
-        scope: null,
-        mode: null,
+        modelId: inherit?.modelId ?? "",
+        note: inherit?.note ?? "",
+        scope: inherit?.scope ?? null,
+        mode: inherit?.mode ?? null,
         tokenRange: null,
+        cond: null,
         input: null,
         cache: null,
         output: null,
-        free: null,
+        free: inherit?.free ?? null,
+        unit,
       };
-      cells.forEach((text, i) => {
-        switch (roles[i]) {
+      let hasModelCell = false;
+      for (const { role, text } of placed) {
+        switch (role) {
           case "model":
             rec.modelId = modelIdOf(text);
             rec.note = text.trim();
+            hasModelCell = true;
             break;
           case "scope":
             rec.scope = text === "" ? null : text;
@@ -179,6 +263,9 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
           case "tokenRange":
             rec.tokenRange = text === "" ? null : text;
             break;
+          case "cond":
+            rec.cond = text === "" ? null : text;
+            break;
           case "input":
             rec.input = priceOf(text);
             break;
@@ -188,15 +275,32 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
           case "output":
             rec.output = priceOf(text);
             break;
+          case "combined":
+            // 输入和输出同价(按秒视频表):作为生成价落 output
+            rec.output = priceOf(text);
+            break;
           case "free":
             rec.free = text === "" || text === "无" ? null : text;
             break;
           default:
             break;
         }
-      });
+      }
+      if (hasModelCell && rec.modelId !== "") {
+        inherit = {
+          modelId: rec.modelId,
+          note: rec.note,
+          scope: rec.scope,
+          mode: rec.mode,
+          free: rec.free,
+        };
+      }
       if (rec.modelId !== "") records.push(rec);
-    });
+      if (tableModality !== undefined && rec.modelId !== "") {
+        tableModalityByModel.set(rec.modelId, tableModality);
+      }
+    }
+    if (misaligned) return;
   });
 
   if (records.length === 0) throw new Error("bailuan 价格表未匹配(页面可能改版)");
@@ -210,7 +314,20 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
   }
 
   const out: ModelPrefillRow[] = [];
-  for (const [modelId, rows] of byModel) {
+  for (const [modelId, allRows] of byModel) {
+    // 同一模型若跨单位表出现(罕见),保 token 系记录,不混单位落档
+    const units = new Set(allRows.map((r) => r.unit));
+    let rows = allRows;
+    if (units.size > 1) {
+      const keep = units.has("per_1m_tokens")
+        ? "per_1m_tokens"
+        : units.has("per_1k_tokens")
+          ? "per_1k_tokens"
+          : allRows[0]!.unit;
+      rows = allRows.filter((r) => r.unit === keep);
+    }
+    const unit = rows[0]!.unit;
+
     const tiers: ModelTierPrefill[] = [];
     for (const rec of rows) {
       const range = tokenRangeOf(rec.tokenRange ?? "");
@@ -222,7 +339,7 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
         cachePrice: rec.cache,
         minTokens: range.min,
         maxTokens: range.max,
-        unit: "per_1m_tokens",
+        unit,
       };
       // 档位唯一键是 (牌价行, 标签):同名同价是同一事实(两张表重复列)→ 去重;
       // 同名不同价 → 加序号区分(否则落库撞唯一键)
@@ -271,6 +388,8 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
       region: "cn",
       providerKey: "aliyun-bailian",
       freeTier: rows.find((r) => r.free !== null)?.free ?? null,
+      modality: tableModalityByModel.get(modelId),
+      priceUnit: unit,
       tiers,
     });
   }

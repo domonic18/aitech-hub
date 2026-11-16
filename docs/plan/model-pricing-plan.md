@@ -252,6 +252,8 @@ M63 已有每日汇率(`site_config`)可复用。
 | **D** | 比价矩阵与可视化 | B + C | 比价视图 + 散点 + 排序 | `feature/m74-pricing-compare` |
 | **E** | 词元所聚合报价 | A + B(词元所源) + §6 第 3 条 | 二级供应方建模 + 聚合视图 | `feature/m74-pricing-aggregator` |
 | **F** | 价格变更史(可选) | A | `model_pricing_change` + 降价视图 | `feature/m74-pricing-history` |
+| **G1** | 按用途归类·数据面(站长反馈 2026-11-17) | A/B | `price_unit` 列 + 模态判定 + 三源按张/按秒正确采集 + 后台模态/单位列 | `feature/m74-pricing-modality` |
+| **G2** | 按用途归类·前台 | G1 | 用途页签(默认文本)+ 单位感知筛选/排序/比价/散点 + 单价条形图 | `feature/m74-pricing-cat-views` |
 
 **每批通用收尾(§5.7)**与**每批文档同步清单(§9)**同样适用。
 A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
@@ -492,6 +494,35 @@ changed_at / source)+ 落库时对比现值写变更行 + 前台「降价了」�
    客户端组件只引纯函数那半(2026-11-01 曾因 env 打进 client chunk 致浏览器白屏)。
 
 ---
+
+### 5.8 批 G · 按用途归类与按张/按秒计价(站长反馈 2026-11-17)
+
+**背景**:`doubao-seedream-4-0` 等图片生成模型与文本模型混排,无法按用途对比。
+根因:模态列(`model_pricing_model.modality`)与前台模态筛选一直存在,但采集链路
+自 `ModelPrefillRow` 起无模态信息、`getOrCreateModel` 缺省全落 text;单位只在档位表,
+主行两价被隐式当 token 价——volcengine/siliconflow 把按张/按秒价误收成百万 token 价,
+bailian 整表排除图片/视频表。
+
+**批 G1(数据面)拆解**:
+
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| G1-1 | `model_pricing.price_unit` 列(迁移 `20261116230844`)+ 非 token 行落形约定(生成价→outputPrice,百炼按张双价时 inputPrice=按张输入价) | `prisma/schema.prisma` + `model-persist.ts` | ✅ |
+| G1-2 | 模态判定:`inferModality` 保守关键词表(长词优先)+ `resolveModality`(源显式 > 关键词 > 现值 > text;**仅 text→非text 单向升级**) | `src/lib/pricing/modality.ts` | ✅ |
+| G1-3 | `getOrCreateModel` 升级更新 + `ModelPrefillRow` 增 `modality?`/`priceUnit?` + persist 写单位 | `model-registry.ts` / `crawlers.ts` / `model-persist.ts` | ✅ |
+| G1-4 | volcengine 表级单位闸(表头 元/张、元/秒;认不出整表跳过;跨单位表保 token 系) | `model-sources/volcengine.ts` | ✅ |
+| G1-5 | siliconflow:行 id 分区(`pricing-row-image|audio|video-`)→ 显式模态;单价格行(计费项+单位标签+一个价,免费=0);文本行标签继承式分组 + **输入长度阶梯**(`输入 [0, 128k)` 落档位边界,行价取最小阶梯档;页面 2026-11-17 起新形态,fixture 已重抓) | `model-sources/siliconflow.ts` | ✅ |
+| G1-6 | bailian:解除按张/按秒表整表排除(表级单位识别表头+首行);**rowspan 感知对齐闸**(续行继承模型/范围/免费额度;列溢出的多级表头表仍排除);模型 id 支持斜杠前缀(kling/…);音乐按秒表不标显式模态(关键词 music→audio) | `model-sources/bailian.ts` | ✅ |
+| G1-7 | 后台模态/单位列(终审时识别文生图/视频行) | `admin.ts` / `ModelsBoard.tsx` | ✅ |
+
+**自愈路径**:已误收的 volc/siliconflow 行由下轮日采整行刷新矫正(非 pinned);
+bailian 新纳入行落 pending 待站长终审;字典模态随采集刷新升级——**不需要订正脚本**。
+
+**批 G2(前台)拆解**:用途页签(cat 参数,默认「文本」;文本=text+text+vision、
+向量·重排=embedding+rerank)+ 单位感知(代表价:token→inputPrice、非 token→
+outputPrice;价格区间/上下文筛选仅 token 组;比价同币种**同单位**才比;
+散点仅 token 行)+ 非文本组单价横向条形图(零 JS SVG)+ `mod` 参数废弃。
+SSR 红线:cat 走纯客户端筛选,不引 useSearchParams/Suspense(2026-11-16 空壳事故)。
 
 ## 6. 待裁定项(需站长拍板,影响 schema 与范围)
 

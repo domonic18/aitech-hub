@@ -8,6 +8,7 @@ const providerFindUnique = vi.fn();
 const providerCreate = vi.fn();
 const modelFindFirst = vi.fn();
 const modelCreate = vi.fn();
+const modelUpdate = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -18,6 +19,7 @@ vi.mock("@/lib/db", () => ({
     modelPricingModel: {
       findFirst: (...a: unknown[]) => modelFindFirst(...a),
       create: (...a: unknown[]) => modelCreate(...a),
+      update: (...a: unknown[]) => modelUpdate(...a),
     },
   },
   isP2002: (e: unknown): boolean =>
@@ -120,6 +122,53 @@ describe("getOrCreateModel", () => {
     });
     const r = await getOrCreateModel({ rawKey: "qwen3-max" });
     expect(r.id).toBe(BigInt(11));
+  });
+
+  it("批G:新建行按关键词推断模态(seedream→image);认不出落 text", async () => {
+    await getOrCreateModel({ rawKey: "doubao-seedream-4-0" });
+    const created1 = (modelCreate.mock.calls[0]![0] as { data: { modality: string } }).data;
+    expect(created1.modality).toBe("image");
+
+    await getOrCreateModel({ rawKey: "deepseek-v3.2" });
+    const created2 = (modelCreate.mock.calls[1]![0] as { data: { modality: string } }).data;
+    expect(created2.modality).toBe("text");
+  });
+
+  it("批G:既有行 text→非text 单向升级;非 text 不降级不改判", async () => {
+    modelFindFirst.mockResolvedValue({
+      id: BigInt(21),
+      modelKey: "doubao-seedream-4-0",
+      matchKey: "doubao-seedream-4-0",
+      displayName: "doubao-seedream-4-0",
+      family: null,
+      modality: "text",
+    });
+    modelUpdate.mockImplementation(async (args: { data: { modality: string } }) => ({
+      id: BigInt(21),
+      modelKey: "doubao-seedream-4-0",
+      matchKey: "doubao-seedream-4-0",
+      displayName: "doubao-seedream-4-0",
+      family: null,
+      modality: args.data.modality,
+    }));
+    await getOrCreateModel({ rawKey: "doubao-seedream-4-0" });
+    expect(modelUpdate).toHaveBeenCalledTimes(1);
+    expect((modelUpdate.mock.calls[0]![0] as { data: { modality: string } }).data.modality).toBe(
+      "image",
+    );
+
+    // 现值非 text:显式标注与关键词都不改判
+    modelFindFirst.mockResolvedValue({
+      id: BigInt(22),
+      modelKey: "doubao-seedream-4-0",
+      matchKey: "doubao-seedream-4-0",
+      displayName: "doubao-seedream-4-0",
+      family: null,
+      modality: "image",
+    });
+    const r = await getOrCreateModel({ rawKey: "doubao-seedream-4-0", modality: "video" });
+    expect(r.modality).toBe("image");
+    expect(modelUpdate).toHaveBeenCalledTimes(1);
   });
 });
 
