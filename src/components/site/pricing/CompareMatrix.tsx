@@ -11,11 +11,12 @@
  * 区内才比;某模型跨币种报价则不标「最低」并注明。
  */
 import type { CompareCell, CompareGroup } from "@/lib/pricing/compare";
+import { MODALITY_LABELS } from "@/lib/pricing/modality";
+import { formatPrice, UNIT_SUFFIXES } from "@/lib/pricing/public";
 
-/** 价格格(原币直出) */
-function priceText(v: number | null, currency: string): string {
-  if (v === null) return "—";
-  return `${currency === "USD" ? "$" : "¥"} ${v}`;
+/** 价格格(原币直出;非 token 单位带中文后缀) */
+function priceText(v: number | null, currency: string, unit: string): string {
+  return formatPrice(v, currency, unit);
 }
 
 /** 档位明细(阶梯/缓存/峰谷/模态) */
@@ -72,10 +73,10 @@ function Cell({
         )}
       </div>
       <div className="mt-1 font-mono text-[12px] text-text-1">
-        输入 {priceText(cell.inputPrice, cell.currency)}
+        输入 {priceText(cell.inputPrice, cell.currency, cell.priceUnit)}
       </div>
       <div className="font-mono text-[12px] text-text-1">
-        输出 {priceText(cell.outputPrice, cell.currency)}
+        输出 {priceText(cell.outputPrice, cell.currency, cell.priceUnit)}
       </div>
       <div className="mt-1 flex items-center gap-2 text-[10.5px] text-text-3">
         <a
@@ -108,9 +109,9 @@ function ModelCompareRow({ model }: { model: CompareGroup["models"][number] }): 
     <div className="border-b border-line/60 px-4 py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-mono text-[13px] font-semibold text-text-1">{model.displayName}</span>
-        {model.modality !== null && (
+        {model.modality !== null && model.modality !== "text" && (
           <span className="rounded border border-line px-1.5 text-[10px] leading-none text-text-3">
-            {model.modality}
+            {(MODALITY_LABELS as Record<string, string>)[model.modality] ?? model.modality}
           </span>
         )}
         <span className="text-[11px] text-text-3">{model.providerCount} 家报价</span>
@@ -143,10 +144,16 @@ export function CompareMatrix({ groups }: CompareMatrixProps): React.ReactElemen
   return (
     <div>
       {groups.map((group) => (
-        <div key={group.currency} className="border-b border-line last:border-b-0">
+        <div
+          key={`${group.currency}|${group.priceUnit}`}
+          className="border-b border-line last:border-b-0"
+        >
           <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-2.5">
             <h3 className="text-[12px] font-semibold text-text-1">
-              {group.currency === "USD" ? "美元 $" : "人民币 ¥"} · 每百万 tokens
+              {group.currency === "USD" ? "美元 $" : "人民币 ¥"} ·{" "}
+              {group.priceUnit === "per_1m_tokens"
+                ? "每百万 tokens"
+                : (UNIT_SUFFIXES[group.priceUnit] ?? group.priceUnit)}
             </h3>
             <span className="ml-auto font-mono text-[11px] text-blue">
               {group.models.length} 个模型

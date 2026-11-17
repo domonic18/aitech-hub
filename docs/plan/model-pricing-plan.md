@@ -518,11 +518,19 @@ bailian 整表排除图片/视频表。
 **自愈路径**:已误收的 volc/siliconflow 行由下轮日采整行刷新矫正(非 pinned);
 bailian 新纳入行落 pending 待站长终审;字典模态随采集刷新升级——**不需要订正脚本**。
 
-**批 G2(前台)拆解**:用途页签(cat 参数,默认「文本」;文本=text+text+vision、
-向量·重排=embedding+rerank)+ 单位感知(代表价:token→inputPrice、非 token→
-outputPrice;价格区间/上下文筛选仅 token 组;比价同币种**同单位**才比;
-散点仅 token 行)+ 非文本组单价横向条形图(零 JS SVG)+ `mod` 参数废弃。
-SSR 红线:cat 走纯客户端筛选,不引 useSearchParams/Suspense(2026-11-16 空壳事故)。
+**批 G2(前台)拆解**(已落,2026-11-17):
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| G2-1 | PublicModelRow.priceUnit / cat 映射(catToModalities,文本=text+text+vision、向量·重排=embedding+rerank)/ 代表价 representativePrice / 单位后缀 | `public.ts` + `read.ts` | ✅ |
+| G2-2 | query.ts cat 参数(默认 text,cat=all 才显式编码;旧 mod 映射后丢弃) | `query.ts` | ✅ |
+| G2-3 | 比价分区 币种×单位 + cheaper/排序走代表价;countComparable 同口径 | `compare.ts` | ✅ |
+| G2-4 | 散点仅收 per_1m_tokens 行 | `scatter.ts` | ✅ |
+| G2-5 | 单价横向条形图(每条=一个模型最便宜一家,币种×单位分块,线性归一,每块 ≤24 条) | `bars.ts` + `UnitPriceBars.tsx` | ✅ |
+| G2-6 | 用途页签 UI(默认文本)+ 价格口径标签随组切换 + 非文本组隐藏上下文档 + 价格格单位后缀 + 生成价列说明 | `ModelSection.tsx` / `ModelFilters.tsx` / `CompareMatrix.tsx` / `PricingExplorer.tsx` | ✅ |
+
+**SSR 红线落实**:cat 走纯客户端筛选(不引 useSearchParams/Suspense);且**列表视图
+渲染全量行、被筛掉的行用 `hidden` 属性藏住**——默认页签「文本」时首屏 HTML 仍含
+未筛选全量(已用 next build + next start 实测验证,含文生图/视频行)。
 
 ## 6. 待裁定项(需站长拍板,影响 schema 与范围)
 
@@ -623,6 +631,14 @@ worker 启动后按各源周期跑(模型面**日级**、套餐面周级)→ 新
 docker compose --env-file .env -f docker-compose.prod.yml exec -T postgres \
   psql -U aitech -d aitech_hub -c "select status, count(*) from model_pricing group by status;"
 ```
+
+**批G 后追加(2026-11-17)**:
+- **⑥ 等下轮日采自愈**:volcengine/siliconflow 已误收的按张/按秒行(此前被当
+  token 价)由下轮日采整行刷新矫正(`price_unit` + 价格归位);生产库抽查:
+  `select model_key, price_unit, input_price, output_price from model_pricing where price_unit <> 'per_1m_tokens';`
+- **⑦ bailian 新行终审**:百炼按张/按秒表首次入库(qwen-image / wan / kling /
+  vidu / pixverse / happyhorse…),全部落 pending——去 `/admin/pricing` 批量通过;
+  抽查 seedream / Kolors / Qwen-Image / seedance / bge 的模态角标与单位标注是否正确。
 
 > **注意**:前台只显示 `enabled` 行。采集落的是 `pending`,**不批量终审前台就看不到模型区**
 > (页面会只剩 Coding Plan 套餐区——这在 2026-11-16 首次发布后就是那个状态)。

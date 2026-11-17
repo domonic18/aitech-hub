@@ -70,6 +70,7 @@ export async function listPublicPricing(): Promise<PublicPricing> {
           providerKind: r.provider?.sourceKind ?? null,
           modelDictKey: r.model?.modelKey ?? null,
           modality: r.model?.modality ?? null,
+          priceUnit: r.priceUnit,
           tiers,
         };
       });

@@ -17,17 +17,25 @@ describe("decodePricingQuery", () => {
     expect(decodePricingQuery("")).toEqual(DEFAULT_PRICING_QUERY);
   });
 
-  it("逐项解析", () => {
+  it("逐项解析(批G:cat 取代 mod,默认 text)", () => {
     const q = decodePricingQuery(
-      "v=阿里云百炼,腾讯云&b=lt10&free=1&mod=text&ctx=ge1m&src=official&sort=input",
+      "v=阿里云百炼,腾讯云&b=lt10&free=1&cat=image&ctx=ge1m&src=official&sort=input",
     );
     expect(q.vendors).toEqual(["阿里云百炼", "腾讯云"]);
     expect(q.band).toBe("lt10");
     expect(q.freeOnly).toBe(true);
-    expect(q.modality).toBe("text");
+    expect(q.cat).toBe("image");
     expect(q.contextBand).toBe("ge1m");
     expect(q.sourceKind).toBe("official");
     expect(q.sort).toBe("input");
+  });
+
+  it("旧 mod 参数映射到 cat 后丢弃(批C 外链兼容)", () => {
+    expect(decodePricingQuery("mod=image").cat).toBe("image");
+    expect(decodePricingQuery("mod=embedding").cat).toBe("vector");
+    expect(decodePricingQuery("mod=text+vision").cat).toBe("text");
+    // cat 显式给定时 mod 不覆盖
+    expect(decodePricingQuery("cat=video&mod=image").cat).toBe("video");
   });
 
   it("非法值一律回落默认(URL 是用户可手改的,不能崩)", () => {
@@ -61,7 +69,7 @@ describe("encodePricingQuery", () => {
       vendors: ["硅基流动 SiliconFlow"],
       band: "lt10" as const,
       freeOnly: true,
-      modality: "text",
+      cat: "image" as const,
       contextBand: "ge128k" as const,
       sourceKind: "aggregator",
       sort: "output" as const,
