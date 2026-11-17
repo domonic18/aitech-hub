@@ -156,7 +156,7 @@
 | 列 | 现状 | 说明 |
 |----|------|------|
 | `ai_model.id` | `integer` | 全库主键几乎都是 `bigint`;改类型要连带四处引用表,收益不足 |
-| `search_agent_session.id` | `varchar(36)` | 会话 id 即 LangGraph thread_id(UUID),非自增;所有指向它的 `session_id` 必须同为 `varchar(36)` |
+| `search_agent_session.id` | `varchar(40)` | 会话 id 即 LangGraph thread_id,非自增;**两种形态**:成员 = uuid(36),游客 = `g_<uuid>`(38,kind 标记前缀)——列宽按最长形态定,勿按 uuid 的 36 定(2026-11-17 由 36 放宽:按 36 定时游客行 upsert 必然超长失败、从未落库);所有指向它的 `session_id` 必须同为 `varchar(40)`(`user_token_ledger.session_id` 是 FK,两侧 native type 必须一致) |
 
 ### 7.5 存量布尔裸名
 
