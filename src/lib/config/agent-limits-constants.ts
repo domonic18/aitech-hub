@@ -28,12 +28,28 @@ export interface AgentLimitsConfig {
  * = 素材/指南 + 写作 + 1~2 轮自审 + 3~5 张卡 + 两段封面 HITL」留的 120/600k
  * 长编排预算不再有消费方,故 admin 降到与 user 同档(12/50k)——既回到真实的
  * 用量口径,也直接压低单次 run 的服务端负担(用户瘦身的原始动机之一)。
+ *
+ * **2026-11-17 上调 50k → 500k(站长裁定)**:50k 是**写侧时代**的数(一次 run
+ * 写一篇长文)。只读六件上线后实测:一次追问 = 4 次模型调用,每轮把「历史 +
+ * 工具结果」全量重发,真实消耗 4.8 万 tokens —— **一轮就吃掉会话预算的
+ * 96%**,run 被护栏腰斩、计划条任务一个都没跑完(生产复现,逐帧计数
+ * 7 212 → 10 501 → 14 023 → 15 917,累加 48 487)。护栏口径已同期拆成
+ * 「单次调用闸 / 单轮闸 / 会话累计闸」三道(见 lib/agent/guard.ts),预算上调
+ * 后一轮问答只占会话预算约 10%,追问多轮不再被腰斩。
  */
 export const DEFAULT_AGENT_LIMITS: Record<AgentLimitKind, AgentLimitsConfig> = {
-  guest: { toolCalls: 12, tokens: 50_000 },
-  user: { toolCalls: 12, tokens: 50_000 },
-  admin: { toolCalls: 12, tokens: 50_000 },
+  guest: { toolCalls: 12, tokens: 500_000 },
+  user: { toolCalls: 12, tokens: 500_000 },
+  admin: { toolCalls: 12, tokens: 500_000 },
 };
+
+/**
+ * 单次模型调用闸(内部门槛,不入后台配置):任一次模型调用的 prompt+completion
+ * 上限。防「长会话的 prompt 一路涨到不可用」——读侧暂不做上下文瘦身,长会话
+ * 的 prompt 会随历史线性增长,需要一道上限把「单次过大」与「用量超预算」
+ * 两种收束分开报,便于用户判断是「开新会话」还是「等一会儿」。
+ */
+export const AGENT_CALL_TOKENS_LIMIT = 96_000;
 
 /** 合法域(三档同域;上限留足余量,后台可调) */
 export const TOOL_CALLS_MIN = 1;

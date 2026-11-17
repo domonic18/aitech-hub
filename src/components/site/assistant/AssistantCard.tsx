@@ -46,6 +46,8 @@ export default function AssistantCard({
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<PendingAsk | null>(null);
   const [todos, setTodos] = useState<AgentTodo[]>([]);
+  /** 本轮是否被腰斩(护栏撞线/死端/异常):计划条据此把未完成项标「已中断」 */
+  const [interrupted, setInterrupted] = useState(false);
   const [sessions, setSessions] = useState<AgentSessionItem[]>([]);
   const [sessionPhase, setSessionPhase] = useState<"idle" | "loading" | "ready">("idle");
   const [listOpen, setListOpen] = useState(false);
@@ -110,11 +112,17 @@ export default function AssistantCard({
   /** run 收尾对账:追平运行期间暂缓的受控 thread id(SDK 已收敛,回写即 no-op) */
   const onRunActiveChange = useCallback((active: boolean) => {
     runActiveRef.current = active;
-    if (active) return;
+    if (active) {
+      setInterrupted(false); // 新一轮开始:清掉上一轮的中断标记
+      return;
+    }
     if (reportedThreadIdRef.current !== threadIdRef.current) {
       setThreadId(reportedThreadIdRef.current);
     }
   }, []);
+
+  /** run 被腰斩:置中断标记(计划条把未完成项标「已中断」);原因由末条消息直显 */
+  const onInterrupted = useCallback((): void => setInterrupted(true), []);
 
   useEffect(() => {
     if (auth === "member") void refreshSessions();
@@ -275,13 +283,14 @@ export default function AssistantCard({
           </aside>
         )}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <TodoListBar todos={todos} />
+          <TodoListBar todos={todos} interrupted={interrupted} />
           <div className="min-h-0 flex-1">
             <AgentRuntimeProvider
               threadId={threadId}
               onThreadIdChange={onThreadIdChange}
               onTodos={setTodos}
               onError={setBanner}
+              onInterrupted={onInterrupted}
               onRunActiveChange={onRunActiveChange}
               onSessionExpired={onSessionExpired}
               getContext={getContext}

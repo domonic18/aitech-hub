@@ -21,6 +21,15 @@ import type { ResolvedAiModel } from "../ai/resolver";
 
 import { getAgentGraph } from "./agent";
 import { GUEST_THREAD_PREFIX } from "./guest-threads";
+import {
+  absorbUsage,
+  createUsageAccumulator,
+  evaluateGuard,
+  guardMessage,
+  markCallEnd,
+  runTokensOf,
+  type GuardTrip,
+} from "./guard";
 import type { AgentIdentity } from "./identity";
 import type { AgentRunContext } from "./run-context";
 import { withAgentContext } from "./run-context";
@@ -34,6 +43,8 @@ export { extractTodos, type AgentTodo } from "./todos";
 export interface AgentRunLimits {
   toolCalls: number;
   tokens: number;
+  /** 单次模型调用闸:单次 prompt+completion 上限(防单次超大上下文) */
+  callTokens: number;
   recursion: number;
 }
 
@@ -77,16 +88,6 @@ function chunkStopReason(chunk: unknown): string | null {
   return null;
 }
 
-/** 护栏判定(纯函数,单测锚点):tokens / tool_calls 双闸,返回命中的闸名 */
-function overLimit(
-  outcome: { tokensIn: number; tokensOut: number; toolCalls: number },
-  limits: { tokens: number; toolCalls: number },
-): "tokens" | "tool_calls" | null {
-  if (outcome.tokensIn + outcome.tokensOut > limits.tokens) return "tokens";
-  if (outcome.toolCalls > limits.toolCalls) return "tool_calls";
-  return null;
-}
-
 export interface AgentRunParams {
   threadId: string;
   /** 新提问文本(resume 分支为 null,两者必居其一,路由层把关) */
@@ -110,6 +111,8 @@ export interface AgentRunOutcome {
   tokensIn: number;
   tokensOut: number;
   toolCalls: number;
+  /** 单次模型调用最大用量(prompt+completion)——单次调用闸的判据 */
+  maxCallTokens: number;
   /** 超限收束时的人话说明(正常为 null) */
   truncatedReason: string | null;
   /** 死端说明(2026-10-17:模型轮被 max_tokens 截断且零产出——LangGraph 静默
@@ -138,11 +141,15 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
     tokensIn: 0,
     tokensOut: 0,
     toolCalls: 0,
+    maxCallTokens: 0,
     truncatedReason: null,
     deadEndReason: null,
     resolved,
   };
   const seenToolCallIds = new Set<string>();
+  // usage 归属累加器(口径分离,见 guard.ts):runTokens=本轮真实消耗,
+  // maxCallTokens=单次模型调用最大用量(单次调用闸的判据)
+  const usage = createUsageAccumulator();
   // 死端检测的「当前模型轮」累加器:stop 到达即结算一次(每轮恰一个收尾 stop)
   let turnHasText = false;
   let turnHasToolCall = false;
@@ -168,10 +175,9 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
     const [mode, payload] = entry as [string, unknown];
     if (mode === "messages") {
       const [chunk] = (payload ?? []) as [unknown, unknown];
-      const usage = (chunk as { usage_metadata?: UsageMeta } | null)?.usage_metadata;
-      if (usage) {
-        outcome.tokensIn += usage.input_tokens ?? 0;
-        outcome.tokensOut += usage.output_tokens ?? 0;
+      const usageMeta = (chunk as { usage_metadata?: UsageMeta } | null)?.usage_metadata;
+      if (usageMeta) {
+        absorbUsage(usage, usageMeta.input_tokens ?? 0, usageMeta.output_tokens ?? 0);
       }
       for (const tc of (chunk as { tool_call_chunks?: { id?: string }[] } | null)
         ?.tool_call_chunks ?? []) {
@@ -194,23 +200,32 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
         }
         turnHasText = false;
         turnHasToolCall = false;
+        markCallEnd(usage); // 调用边界:下一帧 usage 属新调用
       }
-      // 超身份档 tokens / 工具调用上限:主动收束(护栏非计费)。收束帧纪律:
-      // 工具调用帧永不外泄(它不会再执行,渲染出去界面恒「运行中」);纯文本
-      // 帧放行——2026-10-21 验收实证:模型收尾总结恰在撞线帧,吞掉它用户只
-      // 看到「已中断」,而落稿/配图/封面其实已全部完成
-      const guard = overLimit(outcome, limits);
+      // 护栏三闸(口径分离,见 guard.ts):单次模型调用上限 / 单轮工具调用上限 /
+      // 本轮真实消耗上限。收束帧纪律:工具调用帧永不外泄(它不会再执行,渲染
+      // 出去界面恒「运行中」);纯文本帧放行——2026-10-21 验收实证:模型收尾总结
+      // 恰在撞线帧,吞掉它用户只看到「已中断」,而落稿/配图/封面其实已全部完成
+      outcome.tokensIn = usage.tokensIn;
+      outcome.tokensOut = usage.tokensOut;
+      outcome.maxCallTokens = usage.maxCallTokens;
+      const guard: GuardTrip | null = evaluateGuard(
+        {
+          runTokens: runTokensOf(usage),
+          maxCallTokens: usage.maxCallTokens,
+          toolCalls: outcome.toolCalls,
+        },
+        limits,
+      );
       if (guard) {
-        outcome.truncatedReason =
-          guard === "tokens"
-            ? "本会话用量已达上限,请新建会话继续"
-            : "本条回复的工具调用已达上限,已主动收束";
+        outcome.truncatedReason = guardMessage(guard);
         logger.warn({
           event: "agent.run_guard_tripped",
           guard,
           threadId,
           tokensIn: outcome.tokensIn,
           tokensOut: outcome.tokensOut,
+          maxCallTokens: outcome.maxCallTokens,
           toolCalls: outcome.toolCalls,
           limits,
         });
@@ -236,6 +251,7 @@ export async function runAgentTurn(params: AgentRunParams): Promise<AgentRunOutc
     durationMs: Date.now() - startedAt,
     tokensIn: outcome.tokensIn,
     tokensOut: outcome.tokensOut,
+    maxCallTokens: outcome.maxCallTokens,
     toolCalls: outcome.toolCalls,
     truncated: outcome.truncatedReason !== null,
     deadEnd: outcome.deadEndReason !== null,

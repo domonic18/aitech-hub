@@ -12,6 +12,7 @@ import { useLangGraphInterruptState } from "@assistant-ui/react-langgraph";
 import { useCallback, useEffect } from "react";
 
 import AnswerMarkdown from "@/components/site/search/AnswerMarkdown";
+import { extractStreamErrorText } from "@/lib/agent/error-text";
 
 import AgentComposer, { GUEST_COMPOSER_HINT } from "./AgentComposer";
 import AgentInterruptCard from "./AgentInterruptCard";
@@ -47,6 +48,9 @@ function UserMessage(): React.ReactElement {
 }
 
 function AssistantMessage(): React.ReactElement {
+  // 流式中断态:服务端 error 帧的精确原因挂在 status.error 上(护栏撞线/死端/
+  // 异常各有各的话术)——此前只渲染一句通用「已中断」,用户分不清撞的是哪道闸
+  const status = useAuiState((s) => s.message.status);
   return (
     <MessagePrimitive.Root className="group mb-4">
       <div className="min-w-0 space-y-1">
@@ -61,11 +65,11 @@ function AssistantMessage(): React.ReactElement {
           <span className="ml-0.5 inline-block h-4 w-[7px] translate-y-[3px] animate-pulse rounded-sm bg-green-hi/80" />
         </AuiIf>
         {/* wire error 帧 → 末条 AI 消息 incomplete/error:人话提示 */}
-        <AuiIf condition={(s) => s.message.status?.type === "incomplete"}>
+        {status?.type === "incomplete" ? (
           <div className="mt-1 font-mono text-[11px] text-amber-hi">
-            ⚠ 响应已中断(护栏收束或服务异常),可重试或换问法
+            {extractStreamErrorText(status) ?? "⚠ 响应已中断(护栏收束或服务异常),可重试或换问法"}
           </div>
-        </AuiIf>
+        ) : null}
       </div>
     </MessagePrimitive.Root>
   );
