@@ -166,89 +166,96 @@ export default function TelegramTimeline({
               ) : (
                 <article
                   key={t.id}
-                  className="rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2"
+                  className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2 sm:grid-cols-[88px_1fr]"
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-sm border px-1.5 py-px font-mono text-[11px] ${
-                        FEED_CHIP_TONE_CLASSES[feedChipTone(t.sourceType)]
-                      }`}
-                    >
-                      {t.sourceName}
-                    </span>
-                    <span className="font-mono text-[11px] text-text-3">
-                      {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
-                    </span>
-                    {/* NEW 基准=aiRanAt(变可见时刻,M15 批①) */}
-                    {isNew(t.aiRanAt, now) && <NewBadge />}
-                  </div>
-                  <h3 className="mt-2 text-[15px] font-semibold leading-relaxed">
-                    <a
-                      href={t.url}
-                      target="_blank"
-                      rel="noopener nofollow"
-                      onClick={() =>
-                        trackEntryClick({
-                          surface: "telegram",
-                          kind: "telegram",
-                          ref: t.id,
-                          target: t.url,
-                        })
-                      }
-                      className="text-text-1 hover:text-accent-hover"
-                    >
-                      {t.title}
-                      <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
-                        <use href="#i-export" />
-                      </svg>
-                    </a>
-                  </h3>
-                  {/* 轻解读替代原始 summary(M12 批③;批⑥:要点折叠列表 + 蓝系关键词
-                      chips——与 accent 色 AI 徽章在形状/色彩上双重区分) */}
-                  {t.ai ? (
-                    <>
-                      <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">
-                        <AiBadge />
-                        {t.ai.summary}
-                      </p>
-                      <TelegramPoints points={t.ai.points} />
-                      {t.ai.keywords && t.ai.keywords.length > 0 && (
-                        <p className="mt-1.5 flex flex-wrap gap-1.5">
-                          {t.ai.keywords.map((k) => (
-                            <span
-                              key={k}
-                              className="rounded-sm border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[11px] text-blue"
-                            >
-                              #{k}
-                            </span>
-                          ))}
+                  {/* 左侧媒体轨道(2026-11-17 站长反馈):文字卡留空位,与视频卡
+                      共用 72/88px 封面列——两类卡的 chips/标题/摘要左缘全列对齐 */}
+                  <div aria-hidden="true" />
+                  <div className="flex min-w-0 flex-col">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-sm border px-1.5 py-px font-mono text-[11px] ${
+                          FEED_CHIP_TONE_CLASSES[feedChipTone(t.sourceType)]
+                        }`}
+                      >
+                        {t.sourceName}
+                      </span>
+                      <span className="font-mono text-[11px] text-text-3">
+                        {hhmm(t.publishedAt)} · {timeAgo(t.publishedAt, now)}
+                      </span>
+                      {/* NEW 基准=aiRanAt(变可见时刻,M15 批①) */}
+                      {isNew(t.aiRanAt, now) && <NewBadge />}
+                    </div>
+                    <h3 className="mt-2 text-[15px] font-semibold leading-relaxed">
+                      <a
+                        href={t.url}
+                        target="_blank"
+                        rel="noopener nofollow"
+                        onClick={() =>
+                          trackEntryClick({
+                            surface: "telegram",
+                            kind: "telegram",
+                            ref: t.id,
+                            target: t.url,
+                          })
+                        }
+                        className="text-text-1 hover:text-accent-hover"
+                      >
+                        {t.title}
+                        <svg className="ic ic-sm ml-1 inline text-text-3" aria-hidden="true">
+                          <use href="#i-export" />
+                        </svg>
+                      </a>
+                    </h3>
+                    {/* 轻解读替代原始 summary(M12 批③;批⑥:要点折叠列表 + 蓝系关键词
+                        chips——与 accent 色 AI 徽章在形状/色彩上双重区分) */}
+                    {t.ai ? (
+                      <>
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">
+                          <AiBadge />
+                          {t.ai.summary}
                         </p>
-                      )}
-                    </>
-                  ) : (
-                    t.summary && (
-                      <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">{t.summary}</p>
-                    )
-                  )}
-                  <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[11px] text-text-3">
-                    {hostOf(t.url) && <span>{hostOf(t.url)}</span>}
-                    <a
-                      href={t.url}
-                      target="_blank"
-                      rel="noopener nofollow"
-                      onClick={() =>
-                        trackEntryClick({
-                          surface: "telegram",
-                          kind: "telegram",
-                          ref: t.id,
-                          target: t.url,
-                        })
-                      }
-                      className="text-text-2 hover:text-accent-hover"
-                    >
-                      原文 →
-                    </a>
-                    {t.ai && <span>AI 生成 · 中心思想、要点与关键词,内容版权归原作者</span>}
+                        <TelegramPoints points={t.ai.points} />
+                        {t.ai.keywords && t.ai.keywords.length > 0 && (
+                          <p className="mt-1.5 flex flex-wrap gap-1.5">
+                            {t.ai.keywords.map((k) => (
+                              <span
+                                key={k}
+                                className="rounded-sm border border-blue/25 bg-blue/10 px-1.5 py-px font-mono text-[11px] text-blue"
+                              >
+                                #{k}
+                              </span>
+                            ))}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      t.summary && (
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">
+                          {t.summary}
+                        </p>
+                      )
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[11px] text-text-3">
+                      {hostOf(t.url) && <span>{hostOf(t.url)}</span>}
+                      <a
+                        href={t.url}
+                        target="_blank"
+                        rel="noopener nofollow"
+                        onClick={() =>
+                          trackEntryClick({
+                            surface: "telegram",
+                            kind: "telegram",
+                            ref: t.id,
+                            target: t.url,
+                          })
+                        }
+                        className="text-text-2 hover:text-accent-hover"
+                      >
+                        原文 →
+                      </a>
+                      {t.ai && <span>AI 生成 · 中心思想、要点与关键词,内容版权归原作者</span>}
+                    </div>
                   </div>
                 </article>
               ),
