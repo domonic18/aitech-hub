@@ -3,17 +3,56 @@
  * 无客户端 JS(animate-pulse);令牌与真实内容同源(bg-panel-2 底、圆角同阶、
  * 版心同宽),骨架→内容不跳版。组合件按「页面形态」划分,勿在业务页内复用。
  *
- * ⚠️ loading.tsx 只放无状态码语义的路由(e2e 实证):段落级 loading 会使
- * 首屏 shell 先行 200 冲刷,页内 permanentRedirect/notFound 退化为软跳转/
- * 软 404(post 308 归一是 SEO 红线,category/tag 同理),admin 段 loading
- * 与 router.refresh 互卡致变更后内容不出——故 post/category/tag/admin
- * 不挂 loading(前三者为 ISR 缓存热读,生产近秒开,收益本就趋零)。
+ * ⚠️ loading.tsx 只放无状态码语义的路由:段落级 loading 会使首屏 shell
+ * 先行 200 冲刷,页内 permanentRedirect/notFound 退化为软跳转/软 404
+ * (post 308 归一是 SEO 红线,category/tag 同理;ISR 缓存热读近秒开,收益趋零)。
+ * admin 段:2026-10-04 M10 批④曾实证「loading 与 router.refresh 互卡」而不挂;
+ * 2026-11-17 后台导航反馈(点击 2-3s 无响应)后重验——同版本 15.5.26 生产构建
+ * e2e(tests/e2e/admin-loading.spec.ts)证实页级 loading + refresh 不互卡,
+ * admin 全组段级骨架已挂(AdminBoardSkeleton),M10 那条约束作废。
  */
 import type { ReactElement } from "react";
 
 /** 基元:一块脉冲占位(尺寸/圆角随调用方给;装饰性,aria-hidden) */
 export function Skeleton({ className }: { className: string }): ReactElement {
   return <div aria-hidden="true" className={`animate-pulse rounded bg-panel-2 ${className}`} />;
+}
+
+/**
+ * admin 看板/台账骨架(2026-11-17 后台导航反馈):页头 + KPI 行 + 主内容块 +
+ * 表行族——覆盖 admin 页主流形态(看板/列表),挂路由段 loading.tsx 用。
+ * `data-testid` 是 e2e 锚(骨架必须「点击后即时可见」,见 tests/e2e/admin-loading)。
+ */
+export function AdminBoardSkeleton({ kpis = 4 }: { kpis?: number }): ReactElement {
+  return (
+    <div data-testid="admin-page-skeleton" className="flex flex-col gap-4" aria-busy="true">
+      <header className="flex items-center justify-between">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-7 w-24 rounded-sm" />
+      </header>
+      <div className={`grid grid-cols-2 gap-4 ${kpis >= 4 ? "lg:grid-cols-4" : ""}`}>
+        {Array.from({ length: kpis }, (_, i) => (
+          <div key={i} className="rounded-lg border border-line px-4 py-3">
+            <Skeleton className="h-3.5 w-16" />
+            <Skeleton className="mt-2.5 h-7 w-24" />
+          </div>
+        ))}
+      </div>
+      <Skeleton className="h-48 w-full rounded-lg" />
+      <div className="rounded-lg border border-line">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-4 border-b border-line/60 px-4 py-3 last:border-b-0"
+          >
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="ml-auto h-4 w-14" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** 列表页头:标题条 + 计数行(ArticlesListView/归档同形态) */
