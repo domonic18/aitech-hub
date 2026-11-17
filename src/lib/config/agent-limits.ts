@@ -14,6 +14,7 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import {
+  AGENT_CALL_TOKENS_LIMIT,
   AGENT_LIMIT_KEYS,
   AGENT_LIMIT_KINDS,
   DEFAULT_AGENT_LIMITS,
@@ -63,13 +64,18 @@ export async function getAgentLimitsAll(): Promise<Record<AgentLimitKind, AgentL
   return out;
 }
 
-/** 单档 run 闸(额度 + 派生 recursion;runAgentTurn 入参形状) */
+/** 单档 run 闸(额度 + 派生 recursion + 单次调用闸;runAgentTurn 入参形状) */
 export function toRunLimits(cfg: AgentLimitsConfig): {
   toolCalls: number;
   tokens: number;
+  callTokens: number;
   recursion: number;
 } {
-  return { ...cfg, recursion: deriveRecursionLimit(cfg.toolCalls) };
+  return {
+    ...cfg,
+    callTokens: AGENT_CALL_TOKENS_LIMIT,
+    recursion: deriveRecursionLimit(cfg.toolCalls),
+  };
 }
 
 // ── 写侧 ──────────────────────────────────────────────────────

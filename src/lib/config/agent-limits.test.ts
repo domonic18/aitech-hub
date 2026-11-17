@@ -15,6 +15,7 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("../db", () => ({ prisma: prismaMock }));
 
 import {
+  AGENT_CALL_TOKENS_LIMIT,
   AGENT_LIMIT_KEYS,
   AgentLimitsUpdateSchema,
   DEFAULT_AGENT_LIMITS,
@@ -59,10 +60,11 @@ describe("deriveRecursionLimit(2.5× 派生,硬夹 16..500)", () => {
 });
 
 describe("toRunLimits", () => {
-  it("额度展开 + recursion 派生", () => {
+  it("额度展开 + 单次调用闸 + recursion 派生", () => {
     expect(toRunLimits({ toolCalls: 80, tokens: 400_000 })).toEqual({
       toolCalls: 80,
       tokens: 400_000,
+      callTokens: AGENT_CALL_TOKENS_LIMIT,
       recursion: 200,
     });
   });
