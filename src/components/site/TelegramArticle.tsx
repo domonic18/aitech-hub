@@ -7,6 +7,9 @@
  * 88×157(≤sm 72×128,防盗链 no-referrer,失败降级占位)+ 播放浮层 +
  * 平台角标左上/时长左下 + 标题进卡 + AI 摘要 line-clamp-3 +
  * 互动 播/赞/评(空值整项隐藏)+ 原视频外链。
+ * 2026-11-17 站长反馈排版修正:① 网格模板列补 sm:88px(封面 sm 起 88px,
+ *    模板写死 72px 会让封面溢出列宽吃掉 16px 间距——前台「封面贴文字」根因);
+ *    ② 文字卡同款轨道(见 TelegramTimeline),两类卡标题列对齐。
  */
 import { useState } from "react";
 
@@ -62,7 +65,7 @@ export default function VideoArticle({ t, now }: { t: PublicTelegramItem; now: n
     { icon: "i-comment", label: "评论", value: compactCount(v.engagement.comment) },
   ].filter((e) => e.value !== null);
   return (
-    <article className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2">
+    <article className="grid grid-cols-[72px_1fr] gap-4 rounded-lg border border-line bg-panel p-4 shadow-sm transition-colors hover:border-line-hover hover:bg-panel-2 sm:grid-cols-[88px_1fr]">
       <a
         href={t.url}
         target="_blank"
