@@ -7,6 +7,7 @@
  */
 import { type NextRequest } from "next/server";
 
+import { readVisitorId } from "@/lib/agent/visitor";
 import { apiEnvelope } from "@/lib/http/response";
 import { clientIp } from "@/lib/http/request";
 import { tryConsumeAnswerQuota } from "@/lib/search/rate-limit";
@@ -22,7 +23,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (!(await tryConsumeAnswerQuota(clientIp(req)))) {
     return apiEnvelope(429, "请求过于频繁,请稍后再试");
   }
-  const stream = await createAnswerStream(q);
+  // 留档访客标识(批A):ah_av cookie uuid;fresh 游客无 cookie 为 null
+  // (本端点返回裸 SSE 流,不做 Set-Cookie 补发)
+  const stream = await createAnswerStream(q, readVisitorId(req));
   return new Response(stream, {
     headers: {
       "content-type": "text/event-stream; charset=utf-8",

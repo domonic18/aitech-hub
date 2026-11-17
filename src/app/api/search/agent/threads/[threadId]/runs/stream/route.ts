@@ -223,7 +223,13 @@ export async function POST(
         if (identity.kind === "guest") {
           await refreshGuestThread(threadId); // 活跃滑动 TTL
           // 游客匿名会话行留档(后台会话管理可见,30 天日清)
-          await touchGuestSessionAfterRun(threadId, message, outcome.tokensIn + outcome.tokensOut);
+          // visitorId=ah_av uuid(2026-11-17 裁定:游客行存访客标识)
+          await touchGuestSessionAfterRun(
+            threadId,
+            message,
+            outcome.tokensIn + outcome.tokensOut,
+            identity.key,
+          );
           // 游客首问入池(M58 批⑤;Redis NX 判首问,resume 无新消息不记)
           if (message !== null) await recordGuestFirstAsk(threadId, message, context?.page);
         } else if (message !== null) {

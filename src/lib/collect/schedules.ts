@@ -20,6 +20,9 @@ export const COVER_TEMP_SWEEP_CRON = "23 4 * * *";
 /** AI 用量台账 90 天保留期清理(凌晨档,与 visit-log/media-audit 错峰) */
 export const USAGE_LOG_PURGE_CRON = "52 4 * * *";
 
+/** 答案卡问答留档 90 天清理(批A;凌晨档错峰:14 访问 / 23 封面 / 33 会话 / 41 答案卡 / 47 任务台账 / 52 用量) */
+export const ANSWER_LOG_PURGE_CRON = "41 4 * * *";
+
 /** Drawer 会话 30 天自动清退(凌晨档错峰:audit 03:41 / visit 04:14 / agent 04:33 / usage 04:52) */
 export const AGENT_SESSION_PURGE_CRON = "33 4 * * *";
 
@@ -197,6 +200,14 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     label: "用量台账清理",
     desc: "AI 用量台账 90 天保留期清理",
     cron: USAGE_LOG_PURGE_CRON,
+    category: "ops",
+  },
+  {
+    key: "answer-purge",
+    jobRunKey: "stats/purge-answer-log",
+    label: "答案卡留档清理",
+    desc: "搜索 AI 答案卡问答留档 90 天保留期清理",
+    cron: ANSWER_LOG_PURGE_CRON,
     category: "ops",
   },
   {

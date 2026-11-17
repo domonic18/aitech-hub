@@ -15,11 +15,13 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 
+import type { AnswerCite } from "@/lib/search/answer-protocol";
+
 import { getThreadMessages } from "./checkpointer";
 import { getGuestThreadOwner, guestThreadKey, isGuestThreadId } from "./guest-threads";
 import { serializeWireMessage, type WireMessage } from "./wire";
 
-export const AGENT_SESSION_KINDS = ["all", "member", "guest"] as const;
+export const AGENT_SESSION_KINDS = ["all", "member", "guest", "answer"] as const;
 export type AgentSessionKindFilter = (typeof AGENT_SESSION_KINDS)[number];
 
 export type AgentSessionKind = "member" | "guest";
@@ -120,6 +122,7 @@ export async function listAgentSessionsAdmin({ page, kind, q }: AgentSessionList
           where: { id: { startsWith: "g_" }, ...qWhere },
           select: {
             id: true,
+            visitorId: true,
             title: true,
             tokensTotal: true,
             createdAt: true,
@@ -162,7 +165,7 @@ export async function listAgentSessionsAdmin({ page, kind, q }: AgentSessionList
       threadId,
       kind: "guest",
       title: row?.title ?? null,
-      owner: "游客",
+      owner: displayVisitor(row?.visitorId),
       runs: agg?.runs ?? 0,
       tokensTotal: row?.tokensTotal ?? (agg?.tokensIn ?? 0) + (agg?.tokensOut ?? 0),
       firstAt: row?.createdAt ?? agg?.firstAt ?? agg?.lastAt ?? new Date(0),
@@ -235,6 +238,7 @@ export async function getAgentSessionDetail(threadId: string): Promise<AgentSess
       prisma.searchAgentSession.findUnique({
         where: { id: threadId },
         select: {
+          visitorId: true,
           title: true,
           tokensTotal: true,
           createdAt: true,
@@ -253,7 +257,7 @@ export async function getAgentSessionDetail(threadId: string): Promise<AgentSess
         threadId,
         kind: "guest",
         title: row?.title ?? null,
-        owner: owner ?? "游客",
+        owner: row?.visitorId ? displayVisitor(row.visitorId) : (owner ?? "游客"),
         runs: usage?.runs ?? 0,
         tokensTotal: row?.tokensTotal ?? (usage?.tokensIn ?? 0) + (usage?.tokensOut ?? 0),
         firstAt: row?.createdAt ?? usage?.firstAt ?? usage?.lastAt ?? new Date(0),
@@ -300,5 +304,74 @@ export async function getAgentSessionDetail(threadId: string): Promise<AgentSess
     meta,
     expired: false,
     messages: messages.map((m) => serializeWireMessage(m as BaseMessage)),
+  };
+}
+
+/** 访客标识展示(批A 后):'guest'/空 →「游客」;uuid 取前 8 位区分不同访客
+ *  (uuid 非个人身份信息,同 Redis 计数键口径) */
+export function displayVisitor(v: string | null | undefined): string {
+  if (v === null || v === undefined || v === "" || v === "guest") return "游客";
+  return v.slice(0, 8);
+}
+
+// ---------- 答案卡留档读侧(批B,search_answer_log)----------
+
+export const ANSWER_LOG_STATUSES = ["all", "ok", "degraded", "failed"] as const;
+export type AnswerLogStatusFilter = (typeof ANSWER_LOG_STATUSES)[number];
+
+export const ANSWER_LOGS_PAGE_SIZE = 15;
+
+export interface AdminAnswerLogRow {
+  id: string;
+  visitorId: string | null;
+  question: string;
+  answer: string | null;
+  cites: { items: AnswerCite[]; followUps: string[] } | null;
+  modelKey: string;
+  durationMs: number;
+  status: string;
+  createdAt: Date;
+}
+
+export interface AnswerLogListQuery {
+  page: number;
+  q?: string;
+  status: AnswerLogStatusFilter;
+}
+
+/** 答案卡留档列表(倒排,问题关键词 + 状态筛选;answer 全文随行下发,
+ *  详情由前端 <details> 零 JS 展开,不另设 API) */
+export async function listAnswerLogsAdmin({ page, q, status }: AnswerLogListQuery): Promise<{
+  items: AdminAnswerLogRow[];
+  total: number;
+  page: number;
+}> {
+  const where = {
+    ...(q ? { question: { contains: q } } : {}),
+    ...(status !== "all" ? { status } : {}),
+  };
+  const [rows, total] = await Promise.all([
+    prisma.searchAnswerLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * ANSWER_LOGS_PAGE_SIZE,
+      take: ANSWER_LOGS_PAGE_SIZE,
+    }),
+    prisma.searchAnswerLog.count({ where }),
+  ]);
+  return {
+    items: rows.map((r) => ({
+      id: r.id.toString(),
+      visitorId: r.visitorId,
+      question: r.question,
+      answer: r.answer,
+      cites: r.cites as { items: AnswerCite[]; followUps: string[] } | null,
+      modelKey: r.modelKey,
+      durationMs: r.durationMs,
+      status: r.status,
+      createdAt: r.createdAt,
+    })),
+    total,
+    page,
   };
 }

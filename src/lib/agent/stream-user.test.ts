@@ -256,7 +256,7 @@ describe("游客首问入池(M58 批⑤)", () => {
     expect(sessionsMock.recordGuestFirstAsk).toHaveBeenCalledWith("g_t1", "hi", "搜索");
     expect(sessionsMock.backfillSessionTitle).not.toHaveBeenCalled();
     // 匿名留档行同轮 touch:tokens=in+out,标题由 sessions 侧派生
-    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", "hi", 2);
+    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", "hi", 2, "g-uuid");
   });
 
   it("无页面上下文:page 传 undefined,不伪造入口", async () => {
@@ -266,7 +266,7 @@ describe("游客首问入池(M58 批⑤)", () => {
 
   it("resume:touch 照常(内容已增量),message=null 不写标题", async () => {
     await runOnce({ command: { resume: { message: "继续" } } });
-    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", null, 2);
+    expect(sessionsMock.touchGuestSessionAfterRun).toHaveBeenCalledWith("g_t1", null, 2, "g-uuid");
     expect(sessionsMock.recordGuestFirstAsk).not.toHaveBeenCalled();
   });
 });

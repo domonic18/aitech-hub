@@ -51,7 +51,9 @@ import {
   STATS_JOB_PURGE,
   STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
+  STATS_JOB_ANSWER_PURGE,
   USAGE_LOG_PURGE_CRON,
+  ANSWER_LOG_PURGE_CRON,
   VISIT_LOG_PURGE_CRON,
   WECHAT_MP_PURGE_CRON,
   QUEUE_WECHAT_MP,
@@ -149,6 +151,20 @@ export async function scheduleUsageLogPurge(): Promise<void> {
     { pattern: USAGE_LOG_PURGE_CRON, tz: SITE_TZ },
     {
       name: STATS_JOB_USAGE_PURGE,
+      data: {},
+      opts: schedulerOpts(7),
+    },
+  );
+}
+
+/** 答案卡留档清理:每日 04:41 清 90 天前问答行(批A) */
+export async function scheduleAnswerLogPurge(): Promise<void> {
+  const queue = getQueue(QUEUE_STATS);
+  await queue.upsertJobScheduler(
+    "answer-log-purge",
+    { pattern: ANSWER_LOG_PURGE_CRON, tz: SITE_TZ },
+    {
+      name: STATS_JOB_ANSWER_PURGE,
       data: {},
       opts: schedulerOpts(7),
     },

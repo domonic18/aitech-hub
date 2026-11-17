@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
 
 import { encodeAnswerEvent, type AnswerCite, type AnswerEvent } from "./answer-protocol";
 import { readAnswerCache, writeAnswerCache, type CachedAnswer } from "./answer-cache";
+import { recordAnswerLog } from "./answer-log";
 import { splitSentinel, visiblePrefix } from "./answer-parse";
 import {
   ANSWER_MAX_TOKENS,
@@ -41,7 +42,10 @@ function unavailableStream(
   });
 }
 
-export async function createAnswerStream(q: string): Promise<ReadableStream<Uint8Array>> {
+export async function createAnswerStream(
+  q: string,
+  visitorId: string | null = null,
+): Promise<ReadableStream<Uint8Array>> {
   const startedAt = Date.now();
   const model = await resolveAiModel(AI_PURPOSE_SEARCH);
   if (!model) return unavailableStream("no_binding");
@@ -152,6 +156,17 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
         const { answer, followUps } = splitSentinel(raw);
         if (answer === "") {
           // 无可展示内容:已发增量 → done 收尾(半截答案总比空白好);零增量 → error
+          // 留档(批A):半截落可见前缀(degraded),零增量落问题+null 答案(failed)
+          const endLogId = await recordAnswerLog({
+            visitorId,
+            question: q,
+            answer: sent > 0 ? visiblePrefix(raw).slice(0, 2000) : null,
+            cites,
+            followUps,
+            modelKey: model.modelId,
+            durationMs: Date.now() - startedAt,
+            status: sent > 0 ? "degraded" : "failed",
+          });
           if (sent > 0) {
             push({ type: "done", durationMs: Date.now() - startedAt, followUps: [] });
             await recordAiUsage({
@@ -160,6 +175,7 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
               modelKey: model.modelId,
               durationMs: Date.now() - startedAt,
               status: "degraded",
+              sessionId: endLogId ?? undefined,
             });
           } else {
             push({ type: "unavailable", reason: "error" });
@@ -169,6 +185,7 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
               modelKey: model.modelId,
               durationMs: Date.now() - startedAt,
               status: "failed",
+              sessionId: endLogId ?? undefined,
             });
           }
           closed = true;
@@ -179,6 +196,17 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
         const durationMs = Date.now() - startedAt;
         const degraded = model.source === "backup" || broken;
         push({ type: "done", durationMs, followUps });
+        // 留档(批A):成功/降级落全文;id 回链台账作 sessionId 锚
+        const logId = await recordAnswerLog({
+          visitorId,
+          question: q,
+          answer,
+          cites,
+          followUps,
+          modelKey: model.modelId,
+          durationMs,
+          status: degraded ? "degraded" : "ok",
+        });
         await recordAiUsage({
           role: AI_PURPOSE_SEARCH,
           modelId: model.id,
@@ -187,6 +215,7 @@ export async function createAnswerStream(q: string): Promise<ReadableStream<Uint
           tokensOut,
           durationMs,
           status: degraded ? "degraded" : "ok",
+          sessionId: logId ?? undefined,
         });
         // 只缓存成功生成(答案非空);断流半截答案不写,避免 24h 复用残缺内容
         if (!broken) {

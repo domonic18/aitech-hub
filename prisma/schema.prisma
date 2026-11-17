@@ -1326,6 +1326,27 @@ model SearchAgentSession {
   @@map("search_agent_session")
 }
 
+/// 搜索 AI 答案卡问答留档(2026-11-17 站长裁定,90 天滚动):答案卡是单轮问答
+/// 无线程语义,此前只有 ai_usage_log 计量、内容仅 Redis 缓存 1 天——「用户在
+/// 问什么」的反馈闭环缺失。ok/degraded 落答案全文,failed 落问题(null 答案);
+/// visitor_id 为 ah_av cookie uuid(站长裁定推翻 2026-10-30「不存访客标识」,
+/// uuid 非个人身份信息);量级被配额钉死(站级 100 次/日,顶格 ≈73MB/年)。
+model SearchAnswerLog {
+  id               BigInt   @id @default(autoincrement())
+  visitorId        String?  @map("visitor_id") @db.VarChar(36) // ah_av uuid;fresh 游客无 cookie 为 null
+  question         String   @db.VarChar(120) // 上游 route 已 slice(100),落库防御 slice(120)
+  answer           String? // ok/degraded=全文(防御 slice 20000);failed=null
+  cites            Json? // { items: AnswerCite[], followUps: string[] }
+  modelKey         String   @map("model_key") @db.VarChar(60)
+  durationMs       Int      @map("duration_ms")
+  status           String   @db.VarChar(12) // ok | degraded | failed
+  aiUsageSessionId String?  @map("ai_usage_session_id") @db.VarChar(40) // 回链台账(recordAiUsage sessionId 锚)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt], map: "idx_search_answer_log_created_at")
+  @@map("search_answer_log")
+}
+
 /// 用户 Token 钱包(M22 批①,免费额度制,用户拍板 2026-10-09):每账号一行,
 /// userId 即主键;开户与月度重置均走读时惰性判定(periodKey≠当月则重置回
 /// 月赠额并落 ledger,免 cron)。余额变更一律经 src/lib/users/token-balance.ts

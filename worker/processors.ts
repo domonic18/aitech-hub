@@ -51,6 +51,7 @@ import {
   STATS_JOB_PURGE,
   STATS_JOB_RUN_PURGE,
   STATS_JOB_USAGE_PURGE,
+  STATS_JOB_ANSWER_PURGE,
 } from "../src/lib/queue";
 import { purgeJobRuns } from "../src/lib/jobs/runlog";
 import { logInfo } from "../src/lib/logger";
@@ -64,6 +65,7 @@ import { flushStatsBuffer } from "../src/lib/stats/flush";
 import { purgeClickLogs } from "../src/lib/stats/clicks";
 import { purgeSearchLogs, purgeVisitLogs } from "../src/lib/stats/purge";
 import { purgeAiUsageOlderThan } from "../src/lib/ai/usage-log";
+import { purgeSearchAnswerOlderThan } from "../src/lib/search/answer-log";
 import { purgeAgentSessions, purgeExpiredGuestThreads } from "../src/lib/agent/purge";
 import { syncDueRepos, syncGithubRepo } from "../src/lib/github/sync";
 import { backfillAiPending } from "../src/lib/telegram/ai-backfill";
@@ -146,6 +148,14 @@ export const PROCESSORS: Record<string, Processor> = {
       const removed = await purgeAiUsageOlderThan();
       if (removed > 0) {
         logInfo("ai_usage.purge", { removed });
+      }
+      return { removed };
+    }
+    // 答案卡问答留档 90 天清理(批A;与用量台账同口径 answer-log.ts)
+    if (job.name === STATS_JOB_ANSWER_PURGE) {
+      const removed = await purgeSearchAnswerOlderThan();
+      if (removed > 0) {
+        logInfo("search_answer.purge", { removed });
       }
       return { removed };
     }
