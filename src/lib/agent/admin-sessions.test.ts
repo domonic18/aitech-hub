@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const prismaMock = vi.hoisted(() => ({
   searchAgentSession: { findMany: vi.fn(), findUnique: vi.fn() },
   aiUsageLog: { groupBy: vi.fn() },
+  searchAnswerLog: { findMany: vi.fn(), count: vi.fn() },
 }));
 const existsMock = vi.hoisted(() => vi.fn());
 const getThreadMessagesMock = vi.hoisted(() => vi.fn());
@@ -25,7 +26,12 @@ vi.mock("./guest-threads", () => ({
 }));
 vi.mock("../logger", () => ({ logger: loggerMock }));
 
-import { getAgentSessionDetail, listAgentSessionsAdmin } from "./admin-sessions";
+import {
+  displayVisitor,
+  getAgentSessionDetail,
+  listAgentSessionsAdmin,
+  listAnswerLogsAdmin,
+} from "./admin-sessions";
 
 const MEMBER_ROW = {
   id: "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
@@ -333,5 +339,40 @@ describe("getAgentSessionDetail", () => {
     expect(loggerMock.warn).toHaveBeenCalledWith(
       expect.objectContaining({ event: "agent.admin_session_checkpoint_missing" }),
     );
+  });
+});
+
+describe("答案卡留档读侧(批B)与访客标识展示", () => {
+  it("listAnswerLogsAdmin:倒排 + 问题关键词 + 状态筛选下推,where 口径正确", async () => {
+    prismaMock.searchAnswerLog.findMany.mockResolvedValue([
+      {
+        id: BigInt(9),
+        visitorId: "11111111-2222-3333-4444-555555555555",
+        question: "MCP 是什么",
+        answer: "答案全文",
+        cites: {
+          items: [{ n: 1, kind: "post", title: "t", href: "/post/1-x/", snippet: "s" }],
+          followUps: ["追问"],
+        },
+        modelKey: "deepseek-chat",
+        durationMs: 1200,
+        status: "ok",
+        createdAt: new Date("2026-11-17T00:00:00Z"),
+      },
+    ]);
+    prismaMock.searchAnswerLog.count.mockResolvedValue(1);
+    const out = await listAnswerLogsAdmin({ page: 1, q: "MCP", status: "ok" });
+    expect(out.total).toBe(1);
+    expect(out.items[0]).toMatchObject({ id: "9", question: "MCP 是什么", status: "ok" });
+    expect(prismaMock.searchAnswerLog.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { question: { contains: "MCP" }, status: "ok" },
+      orderBy: { createdAt: "desc" },
+    });
+  });
+
+  it("displayVisitor:'guest'/空 →「游客」;uuid 取前 8 位", () => {
+    expect(displayVisitor(null)).toBe("游客");
+    expect(displayVisitor("guest")).toBe("游客");
+    expect(displayVisitor("11111111-2222-3333-4444-555555555555")).toBe("11111111");
   });
 });

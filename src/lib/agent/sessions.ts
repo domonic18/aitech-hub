@@ -69,11 +69,15 @@ export async function touchSessionAfterRun(sessionId: string, tokens: number): P
  * 游客 run 收尾:落/续匿名会话行,供后台会话管理查看标题与内容留档(30 天
  * 日清,与成员同口径)。归属仍以 Redis 归属键判定,本行只作审计档案;建行
  * 失败只告警不反噬已完成的 run。
+ * visitorId(2026-11-17 站长裁定):新行落 ah_av uuid(推翻此前「恒 'guest'
+ * 不存访客标识」);存量 'guest' 行随本线程下次 run 升级为 uuid(同 title
+ * 回填模式)。前台游客流按 Redis 归属键工作、不读本列,不受影响。
  */
 export async function touchGuestSessionAfterRun(
   threadId: string,
   message: string | null,
   tokens: number,
+  visitorId?: string,
 ): Promise<void> {
   try {
     const now = new Date();
@@ -81,7 +85,7 @@ export async function touchGuestSessionAfterRun(
       where: { id: threadId },
       create: {
         id: threadId,
-        visitorId: GUEST_SESSION_OWNER,
+        visitorId: visitorId ?? GUEST_SESSION_OWNER,
         title: message === null ? null : deriveTitle(message),
         lastMessageAt: now,
         tokensTotal: Math.max(0, tokens),
@@ -93,6 +97,13 @@ export async function touchGuestSessionAfterRun(
       await prisma.searchAgentSession.updateMany({
         where: { id: threadId, title: null },
         data: { title: deriveTitle(message) },
+      });
+    }
+    // 存量 'guest' 行升级为 uuid(同 title 回填模式;仅本线程)
+    if (visitorId !== undefined && visitorId !== GUEST_SESSION_OWNER) {
+      await prisma.searchAgentSession.updateMany({
+        where: { id: threadId, visitorId: GUEST_SESSION_OWNER },
+        data: { visitorId },
       });
     }
   } catch (e) {

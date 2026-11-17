@@ -218,6 +218,32 @@ describe("游客匿名会话行留档(M58 批⑤ 后续)", () => {
     });
   });
 
+  it("批A(2026-11-17):传 visitorId 新行落 uuid;存量 'guest' 行同线程升级", async () => {
+    prismaMock.searchAgentSession.upsert.mockResolvedValue({});
+    prismaMock.searchAgentSession.updateMany.mockResolvedValue({ count: 1 });
+    await touchGuestSessionAfterRun("g_t9", "问句", 10, "11111111-2222-3333-4444-555555555555");
+    expect(prismaMock.searchAgentSession.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          visitorId: "11111111-2222-3333-4444-555555555555",
+        }),
+      }),
+    );
+    // 存量 'guest' 行升级(仅本线程)
+    expect(prismaMock.searchAgentSession.updateMany).toHaveBeenCalledWith({
+      where: { id: "g_t9", visitorId: "guest" },
+      data: { visitorId: "11111111-2222-3333-4444-555555555555" },
+    });
+  });
+
+  it("批A:不传 visitorId 回落 'guest'(兼容旧调用)", async () => {
+    prismaMock.searchAgentSession.upsert.mockResolvedValue({});
+    await touchGuestSessionAfterRun("g_t1", "问句", 3);
+    expect(prismaMock.searchAgentSession.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ visitorId: "guest" }) }),
+    );
+  });
+
   it("resume(无新消息):只 touch,不写标题(建行标题为 null)", async () => {
     prismaMock.searchAgentSession.upsert.mockResolvedValue({});
     await touchGuestSessionAfterRun("g_t1", null, 5);

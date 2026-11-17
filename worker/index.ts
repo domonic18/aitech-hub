@@ -30,6 +30,7 @@ import {
   schedulePayReconcile,
   scheduleStatsFlush,
   scheduleUsageLogPurge,
+  scheduleAnswerLogPurge,
   scheduleVisitLogPurge,
   scheduleWechatMpPurge,
 } from "./schedules";
@@ -119,6 +120,7 @@ async function main(): Promise<void> {
   await scheduleVisitLogPurge();
   await scheduleWechatMpPurge();
   await scheduleUsageLogPurge();
+  await scheduleAnswerLogPurge();
   await scheduleAgentSessionPurge();
   await scheduleJobRunPurge();
   await scheduleDbBackup();

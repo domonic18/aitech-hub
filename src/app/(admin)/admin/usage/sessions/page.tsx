@@ -13,9 +13,14 @@ import { adminListHref, parseListSegment, parsePage } from "@/lib/admin/list";
 import {
   AGENT_SESSION_KINDS,
   AGENT_SESSIONS_PAGE_SIZE,
+  ANSWER_LOGS_PAGE_SIZE,
+  ANSWER_LOG_STATUSES,
+  displayVisitor,
   listAgentSessionsAdmin,
+  listAnswerLogsAdmin,
   type AgentSessionKindFilter,
   type AgentSessionKind,
+  type AnswerLogStatusFilter,
 } from "@/lib/agent/admin-sessions";
 
 export const dynamic = "force-dynamic";
@@ -24,10 +29,17 @@ const SEG_LABELS: Record<AgentSessionKindFilter, string> = {
   all: "全部",
   member: "成员会话",
   guest: "游客会话",
+  answer: "答案卡",
+};
+
+const ANSWER_STATUS_LABELS: Record<string, string> = {
+  ok: "正常",
+  degraded: "降级",
+  failed: "失败",
 };
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; page?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; page?: string; q?: string; st?: string }>;
 }
 
 function listHref(kind: AgentSessionKindFilter, page: number, q?: string): string {
@@ -88,16 +100,33 @@ export default async function AdminAgentSessionsPage({
   const page = parsePage(sp.page);
   const q = sp.q?.trim() || undefined;
 
-  const { items, total, counts } = await listAgentSessionsAdmin({ page, kind, q });
-  const totalPages = Math.max(1, Math.ceil(total / AGENT_SESSIONS_PAGE_SIZE));
+  const answerStatus: AnswerLogStatusFilter = ANSWER_LOG_STATUSES.includes(
+    sp.st as AnswerLogStatusFilter,
+  )
+    ? (sp.st as AnswerLogStatusFilter)
+    : "all";
+  // 答案卡段(批B)走独立读侧;段徽章计数需要 answer 总数,非该段时只查 count
+  const isAnswer = kind === "answer";
+  const answerList = isAnswer ? await listAnswerLogsAdmin({ page, q, status: answerStatus }) : null;
+  const sessionList = isAnswer ? null : await listAgentSessionsAdmin({ page, kind, q });
+  const counts = {
+    ...(sessionList?.counts ?? { all: 0, member: 0, guest: 0 }),
+    answer: answerList?.total ?? 0,
+  };
+  const total = isAnswer ? answerList!.total : sessionList!.total;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(total / (isAnswer ? ANSWER_LOGS_PAGE_SIZE : AGENT_SESSIONS_PAGE_SIZE)),
+  );
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-semibold">会话管理</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          站内搜索 Agent 会话审计:成员与游客会话均留档(游客行匿名、不关联访客标识);归属键 2
-          小时未活动后不可继续追问,内容与行留存 30 天后自动清退。
+          站内搜索 Agent 会话审计:成员与游客会话均留档(2026-11-17 起游客行存访客标识 uuid 前 8
+          位区分);归属键 2 小时未活动后不可继续追问,内容与行留存 30 天后自动清退; 答案卡问答留档 90
+          天。
         </p>
       </div>
 
@@ -135,78 +164,199 @@ export default async function AdminAgentSessionsPage({
         </form>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-line bg-panel">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
-              <th className="px-4 py-2.5 font-medium">会话</th>
-              <th className="px-3 py-2.5 font-medium">类型</th>
-              <th className="px-3 py-2.5 font-medium">提问</th>
-              <th className="px-3 py-2.5 font-medium">Tokens</th>
-              <th className="px-3 py-2.5 font-medium">最近活动</th>
-              <th className="px-3 py-2.5 font-medium">状态</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((s) => (
-              <tr
-                key={s.threadId}
-                className="border-b border-line last:border-b-0 hover:bg-panel-2"
+      {isAnswer ? (
+        <div className="overflow-x-auto rounded-md border border-line bg-panel">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-2">
+            <span className="text-xs text-text-3">状态</span>
+            {ANSWER_LOG_STATUSES.map((st) => (
+              <a
+                key={st}
+                href={`/admin/usage/sessions/?status=answer${st === "all" ? "" : `&st=${st}`}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+                className={`rounded-full border px-2.5 py-1 text-[11.5px] ${
+                  st === answerStatus
+                    ? "border-accent bg-accent text-white"
+                    : "border-line bg-panel text-text-2 hover:bg-panel-2"
+                }`}
               >
-                <td className="max-w-[280px] px-4 py-2.5">
-                  <div className="truncate font-medium text-text-1">
-                    {s.title ?? (s.kind === "guest" ? "游客会话" : "未命名会话")}
-                  </div>
-                  <div
-                    className="mt-0.5 truncate font-mono text-[11px] text-text-3"
-                    title={`${s.threadId} · ${s.owner}`}
-                  >
-                    {s.threadId} · {s.kind === "member" ? s.owner : "游客"}
-                  </div>
-                </td>
-                <td className="px-3 py-2.5">
-                  <KindBadge kind={s.kind} />
-                </td>
-                <td className="px-3 py-2.5 font-mono text-xs text-text-2">{s.runs}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-text-2">{s.tokensTotal}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-text-2">
-                  {formatCnDateTime(s.lastAt)}
-                </td>
-                <td className="px-3 py-2.5">
-                  <LiveBadge kind={s.kind} live={s.live} />
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <AgentSessionDetailDialog
-                    threadId={s.threadId}
-                    label={s.title ?? (s.kind === "guest" ? "游客会话" : s.threadId)}
-                  />
-                </td>
-              </tr>
+                {st === "all" ? "全部" : (ANSWER_STATUS_LABELS[st] ?? st)}
+              </a>
             ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
-                  没有符合条件的会话
-                </td>
+            <span className="ml-auto font-mono text-[11px] text-text-3">
+              留档 90 天滚动 · 04:41 日清
+            </span>
+          </div>
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
+                <th className="px-4 py-2.5 font-medium">问题</th>
+                <th className="px-3 py-2.5 font-medium">状态</th>
+                <th className="px-3 py-2.5 font-medium">耗时</th>
+                <th className="px-3 py-2.5 font-medium">模型</th>
+                <th className="px-3 py-2.5 font-medium">访客</th>
+                <th className="px-4 py-2.5 font-medium">时间 / 答案</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {answerList?.items.map((a) => (
+                <tr key={a.id} className="border-b border-line last:border-b-0 hover:bg-panel-2">
+                  <td className="max-w-[320px] px-4 py-2.5">
+                    <div className="truncate font-medium text-text-1" title={a.question}>
+                      {a.question}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span
+                      className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] ${
+                        a.status === "ok"
+                          ? "bg-green/12 text-green"
+                          : a.status === "degraded"
+                            ? "bg-amber/12 text-amber"
+                            : "bg-red/10 text-red"
+                      }`}
+                    >
+                      {ANSWER_STATUS_LABELS[a.status] ?? a.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
+                    {(a.durationMs / 1000).toFixed(1)}s
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-3">{a.modelKey}</td>
+                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-3">
+                    {displayVisitor(a.visitorId)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="font-mono text-[11px] text-text-3">
+                      {formatCnDateTime(a.createdAt)}
+                    </div>
+                    <details className="mt-1">
+                      <summary className="cursor-pointer select-none text-[11.5px] text-accent hover:text-accent-hover">
+                        查看答案{a.cites?.items?.length ? ` · 引用 ${a.cites.items.length} 篇` : ""}
+                      </summary>
+                      <div className="mt-1.5 max-w-[520px] rounded-sm border border-line bg-panel-2/40 px-3 py-2">
+                        <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-text-1">
+                          {a.answer ?? "(未生成答案)"}
+                        </p>
+                        {a.cites?.items && a.cites.items.length > 0 && (
+                          <ul className="mt-2 flex flex-col gap-1 text-[11px]">
+                            {a.cites.items.map((c) => (
+                              <li key={c.n} className="truncate">
+                                <span className="font-mono text-text-3">[{c.n}] </span>
+                                <a
+                                  href={c.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue hover:text-blue/80"
+                                >
+                                  {c.title} ↗
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {a.cites?.followUps && a.cites.followUps.length > 0 && (
+                          <p className="mt-1.5 text-[11px] text-text-3">
+                            追问:{a.cites.followUps.join(" / ")}
+                          </p>
+                        )}
+                      </div>
+                    </details>
+                  </td>
+                </tr>
+              ))}
+              {answerList?.items.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-xs text-text-3">
+                    暂无答案卡留档(用户在搜索页触发 AI 答案卡后此处可见,90 天滚动)
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <AdminPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            hrefFor={(p) =>
+              `/admin/usage/sessions/?status=answer${answerStatus === "all" ? "" : `&st=${answerStatus}`}${q ? `&q=${encodeURIComponent(q)}` : ""}${p > 1 ? `&page=${p}` : ""}`
+            }
+            unit="条"
+          />
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-md border border-line bg-panel">
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="border-b border-line bg-panel-2 text-xs text-text-2">
+                <th className="px-4 py-2.5 font-medium">会话</th>
+                <th className="px-3 py-2.5 font-medium">类型</th>
+                <th className="px-3 py-2.5 font-medium">提问</th>
+                <th className="px-3 py-2.5 font-medium">Tokens</th>
+                <th className="px-3 py-2.5 font-medium">最近活动</th>
+                <th className="px-3 py-2.5 font-medium">状态</th>
+                <th className="px-4 py-2.5 text-right font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessionList!.items.map((s) => (
+                <tr
+                  key={s.threadId}
+                  className="border-b border-line last:border-b-0 hover:bg-panel-2"
+                >
+                  <td className="max-w-[280px] px-4 py-2.5">
+                    <div className="truncate font-medium text-text-1">
+                      {s.title ?? (s.kind === "guest" ? "游客会话" : "未命名会话")}
+                    </div>
+                    <div
+                      className="mt-0.5 truncate font-mono text-[11px] text-text-3"
+                      title={`${s.threadId} · ${s.owner}`}
+                    >
+                      {s.threadId} · {s.owner}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <KindBadge kind={s.kind} />
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">{s.runs}</td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">{s.tokensTotal}</td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-text-2">
+                    {formatCnDateTime(s.lastAt)}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <LiveBadge kind={s.kind} live={s.live} />
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <AgentSessionDetailDialog
+                      threadId={s.threadId}
+                      label={s.title ?? (s.kind === "guest" ? "游客会话" : s.threadId)}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {sessionList!.items.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-xs text-text-3">
+                    没有符合条件的会话
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
 
-        <AdminPagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          hrefFor={(p) => listHref(kind, p, q)}
-          unit="个"
-        />
-      </div>
+          <AdminPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            hrefFor={(p) => listHref(kind, p, q)}
+            unit="个"
+          />
+        </div>
+      )}
 
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:成员会话保留 30 天(每日 04:33 日清);游客会话归属键 2 小时未活动过期, checkpoint
-        由日清删除,此后仅剩台账统计(ai_usage_log 按 session_id 聚合)。 API:GET
-        /api/agent-sessions?page=&amp;kind=&amp;q= · GET /api/agent-sessions/[threadId]。
+        由日清删除,此后仅剩台账统计(ai_usage_log 按 session_id 聚合)。答案卡问答留档 90 天(每日
+        04:41 日清)。API:GET /api/agent-sessions?page=&amp;kind=&amp;q= · GET
+        /api/agent-sessions/[threadId]。
       </p>
     </div>
   );

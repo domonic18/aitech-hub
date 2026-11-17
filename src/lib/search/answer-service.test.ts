@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
   loadCitationBodies: vi.fn(),
   readAnswerCache: vi.fn(),
   writeAnswerCache: vi.fn(),
+  recordAnswerLog: vi.fn(),
 }));
 
 vi.mock("@/lib/ai/resolver", () => ({
@@ -38,6 +39,7 @@ vi.mock("./answer-cache", () => ({
   readAnswerCache: hoisted.readAnswerCache,
   writeAnswerCache: hoisted.writeAnswerCache,
 }));
+vi.mock("./answer-log", () => ({ recordAnswerLog: hoisted.recordAnswerLog }));
 
 import { createAnswerStream } from "./answer-service";
 import type { CachedAnswer } from "./answer-cache";
@@ -75,6 +77,7 @@ beforeEach(() => {
   hoisted.loadCitationBodies.mockResolvedValue(new Map());
   hoisted.readAnswerCache.mockResolvedValue(null);
   hoisted.writeAnswerCache.mockResolvedValue(undefined);
+  hoisted.recordAnswerLog.mockResolvedValue("77");
   hoisted.searchAll.mockResolvedValue({ total: 0, groups: EMPTY_GROUPS });
   hoisted.chatStream.mockResolvedValue({ text: "", usage: { tokensIn: 0, tokensOut: 0 } });
 });
@@ -123,6 +126,8 @@ describe("createAnswerStream 降级与守门", () => {
     );
     expect(hoisted.chatStream).not.toHaveBeenCalled();
     expect(hoisted.writeAnswerCache).not.toHaveBeenCalled();
+    // 批A:缓存命中不留档(24h 内同问已留)
+    expect(hoisted.recordAnswerLog).not.toHaveBeenCalled();
   });
 });
 
@@ -192,6 +197,40 @@ describe("createAnswerStream 生成管线", () => {
       expect.objectContaining({ role: "search", status: "ok", tokensIn: 11, tokensOut: 22 }),
     );
     expect(hoisted.writeAnswerCache).toHaveBeenCalledTimes(1);
+    // 批A 留档:ok 落全文+追问;id 回链台账 sessionId
+    expect(hoisted.recordAnswerLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: "MCP",
+        answer: "答案[1]",
+        followUps: ["追问一", "追问二", "追问三"],
+        status: "ok",
+        modelKey: "deepseek-chat",
+      }),
+    );
+    expect(hoisted.recordAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "77" }),
+    );
+  });
+
+  it("留档带访客标识:visitorId 透传(批A)", async () => {
+    await collect(await createAnswerStream("MCP", "11111111-2222-3333-4444-555555555555"));
+    expect(hoisted.recordAnswerLog).toHaveBeenCalledWith(
+      expect.objectContaining({ visitorId: "11111111-2222-3333-4444-555555555555" }),
+    );
+  });
+
+  it("留档写失败不反噬流:done 帧照发,台账照落(sessionId 缺省)", async () => {
+    hoisted.recordAnswerLog.mockResolvedValue(null);
+    hoisted.chatStream.mockImplementation(async (_i: unknown, onDelta: (t: string) => void) => {
+      onDelta("答案[1]");
+      onDelta(`\n###FOLLOW###\n- 追问一\n- 追问二\n- 追问三`);
+      return { text: "ok", usage: { tokensIn: 1, tokensOut: 2 } };
+    });
+    const events = await collect(await createAnswerStream("MCP"));
+    expect(events.map((e) => e.type)).toEqual(["meta", "delta", "delta", "done"]);
+    expect(hoisted.recordAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "ok", sessionId: undefined }),
+    );
   });
 
   it("output_config 从台账 extraParams 透传(2026-10 模型切换:K3 effort 不默认 max)", async () => {
@@ -224,6 +263,10 @@ describe("createAnswerStream 生成管线", () => {
     expect(hoisted.recordAiUsage).toHaveBeenCalledWith(
       expect.objectContaining({ status: "degraded" }),
     );
+    // 批A 留档:半截落可见前缀
+    expect(hoisted.recordAnswerLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "degraded", answer: "半截答案" }),
+    );
     expect(hoisted.writeAnswerCache).not.toHaveBeenCalled();
   });
 
@@ -236,6 +279,10 @@ describe("createAnswerStream 生成管线", () => {
     ]);
     expect(hoisted.recordAiUsage).toHaveBeenCalledWith(
       expect.objectContaining({ status: "failed" }),
+    );
+    // 批A 留档:零增量落问题 + null 答案
+    expect(hoisted.recordAnswerLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", answer: null, question: "MCP" }),
     );
   });
 
