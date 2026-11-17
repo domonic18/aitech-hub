@@ -23,6 +23,7 @@ import {
 } from "@/components/admin/settings-controls";
 import {
   AGENT_LIMIT_KINDS,
+  DEFAULT_AGENT_LIMITS,
   TOKENS_MAX,
   TOKENS_MIN,
   TOOL_CALLS_MAX,
@@ -41,11 +42,11 @@ import {
 } from "@/lib/constants";
 import type { ApiEnvelope } from "@/lib/http/response";
 
-/** 三档额度展示名与默认值(默认值仅作 hint 文案) */
+/** 三档额度展示名与默认值(默认值仅作 hint 文案;真值取 constants 单一出口) */
 const AGENT_KIND_META: Record<AgentLimitKind, { label: string; def: AgentLimitsConfig }> = {
-  guest: { label: "游客", def: { toolCalls: 12, tokens: 50_000 } },
-  user: { label: "登录用户", def: { toolCalls: 12, tokens: 50_000 } },
-  admin: { label: "管理员", def: { toolCalls: 120, tokens: 600_000 } },
+  guest: { label: "游客", def: DEFAULT_AGENT_LIMITS.guest },
+  user: { label: "登录用户", def: DEFAULT_AGENT_LIMITS.user },
+  admin: { label: "管理员", def: DEFAULT_AGENT_LIMITS.admin },
 };
 
 /** 输入框字符串态(提交时 Number 化,服务端 Zod 把关) */

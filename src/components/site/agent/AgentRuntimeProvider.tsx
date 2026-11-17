@@ -23,6 +23,8 @@ interface AgentRuntimeProviderProps {
   onTodos: (todos: AgentTodo[]) => void;
   /** 自有端点失败人话提示(Drawer 横幅) */
   onError: (message: string) => void;
+  /** run 被腰斩(护栏撞线/死端/异常):计划条把未完成项标「已中断」 */
+  onInterrupted: (reason: string) => void;
   /** 会话过期(K2.6 游客清退)自愈:复位新会话 + 横幅 */
   onSessionExpired: () => void;
   /** run 起止上报(宿主运行中暂缓受控 threadId 回写,防运行中切换 abort) */
@@ -37,6 +39,7 @@ export default function AgentRuntimeProvider({
   onThreadIdChange,
   onTodos,
   onError,
+  onInterrupted,
   onSessionExpired,
   onRunActiveChange,
   getContext,
@@ -46,11 +49,12 @@ export default function AgentRuntimeProvider({
       createAgentRuntimeAdapter({
         onTodos,
         onError,
+        onInterrupted,
         onSessionExpired,
         onRunActiveChange,
         ...(getContext ? { getContext } : {}),
       }),
-    [onTodos, onError, onSessionExpired, onRunActiveChange, getContext],
+    [onTodos, onError, onInterrupted, onSessionExpired, onRunActiveChange, getContext],
   );
 
   const runtime = useLangGraphRuntime({

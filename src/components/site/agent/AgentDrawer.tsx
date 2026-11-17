@@ -43,6 +43,8 @@ export default function AgentDrawer(): React.ReactElement {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<PendingAsk | null>(null);
   const [todos, setTodos] = useState<AgentTodo[]>([]);
+  /** 本轮是否被腰斩(护栏撞线/死端/异常):计划条据此把未完成项标「已中断」 */
+  const [interrupted, setInterrupted] = useState(false);
   const [sessions, setSessions] = useState<AgentSessionItem[]>([]);
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>("idle");
   const [banner, setBanner] = useState<string | null>(null);
@@ -140,7 +142,10 @@ export default function AgentDrawer(): React.ReactElement {
   /** run 收尾对账:追平运行期间暂缓的受控 thread id(SDK 已收敛,回写即 no-op) */
   const onRunActiveChange = useCallback((active: boolean) => {
     runActiveRef.current = active;
-    if (active) return;
+    if (active) {
+      setInterrupted(false); // 新一轮开始:清掉上一轮的中断标记
+      return;
+    }
     if (reportedThreadIdRef.current !== threadIdRef.current) {
       setThreadId(reportedThreadIdRef.current);
     }
@@ -208,6 +213,8 @@ export default function AgentDrawer(): React.ReactElement {
 
   const onTodos = useCallback((next: AgentTodo[]): void => setTodos(next), []);
   const onError = useCallback((message: string): void => setBanner(message), []);
+  /** run 被腰斩:置中断标记(计划条把未完成项标「已中断」);原因由末条消息直显 */
+  const onInterrupted = useCallback((): void => setInterrupted(true), []);
   const onPendingConsumed = useCallback((): void => setPending(null), []);
   /** K2.6 游客过期自愈:复位新会话 + 横幅指引重发 */
   const onSessionExpired = useCallback((): void => {
@@ -292,13 +299,14 @@ export default function AgentDrawer(): React.ReactElement {
             </div>
           )}
           <div className="flex min-w-0 flex-1 flex-col">
-            <TodoListBar todos={todos} />
+            <TodoListBar todos={todos} interrupted={interrupted} />
             <div className="min-h-0 flex-1">
               <AgentRuntimeProvider
                 threadId={threadId}
                 onThreadIdChange={onThreadIdChange}
                 onTodos={onTodos}
                 onError={onError}
+                onInterrupted={onInterrupted}
                 onRunActiveChange={onRunActiveChange}
                 onSessionExpired={onSessionExpired}
               >

@@ -43,3 +43,47 @@ export function extractTodosFromValues(raw: unknown): AgentTodo[] {
         (t as { status?: unknown }).status === "completed"),
   );
 }
+
+// ---------- 计划条呈现态(2026-11-17 中断可见性)----------
+
+/** 计划条的一项(呈现态:叠加「本轮被腰斩且未完成」标记) */
+export interface AgentTodoView {
+  content: string;
+  status: AgentTodo["status"];
+  /** 本轮被腰斩且该项未完成 → 计划条标「⊘ 已中断」 */
+  interrupted: boolean;
+}
+
+/** 计划条标记符 */
+export const TODO_MARKERS: Record<AgentTodo["status"], string> = {
+  completed: "✓",
+  in_progress: "◐",
+  pending: "○",
+};
+
+/** 中断标记(未完成项在 run 被腰斩时的呈现) */
+export const TODO_MARKER_INTERRUPTED = "⊘";
+
+/** todos → 呈现态(interrupted=true 时未完成项打上中断标记) */
+export function toTodoViews(todos: AgentTodo[], interrupted: boolean): AgentTodoView[] {
+  return todos.map((t) => ({
+    content: t.content,
+    status: t.status,
+    interrupted: interrupted && t.status !== "completed",
+  }));
+}
+
+/** 呈现态 → 标记符 */
+export function todoMarker(view: AgentTodoView): string {
+  return view.interrupted ? TODO_MARKER_INTERRUPTED : TODO_MARKERS[view.status];
+}
+
+/**
+ * 中断汇总文案(如「本次运行中断,1 项已完成 / 2 项未完成」);
+ * 非中断态返回 null(不渲染汇总行)。
+ */
+export function todoSummary(todos: AgentTodo[], interrupted: boolean): string | null {
+  if (!interrupted || todos.length === 0) return null;
+  const done = todos.filter((t) => t.status === "completed").length;
+  return `本次运行中断,${done} 项已完成 / ${todos.length - done} 项未完成`;
+}

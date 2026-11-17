@@ -18,6 +18,7 @@ import type {
 } from "@assistant-ui/react-langgraph";
 
 import { AGENT_RUN_INACTIVE_EVENT, type AgentRunInactiveDetail } from "@/lib/agent/agent-host";
+import { extractStreamErrorText } from "@/lib/agent/error-text";
 import { updatesHasInterrupt } from "@/lib/agent/hitl";
 import { createSseEventReader } from "@/lib/agent/sse";
 import { extractTodos, extractTodosFromValues, type AgentTodo } from "@/lib/agent/todos";
@@ -88,6 +89,8 @@ export interface AgentRuntimeAdapterOptions {
   onTodos?: (todos: AgentTodo[]) => void;
   /** 建线程等自有端点失败(如日配额超限)上抛人话提示(Drawer 横幅) */
   onError?: (message: string) => void;
+  /** run 被腰斩(护栏撞线/死端/异常)上抛:计划条据此把未完成项标「已中断」 */
+  onInterrupted?: (reason: string) => void;
   /** 会话已过期/不存在(K2.6 游客 2h 清退)→ Drawer 复位新会话自愈 */
   onSessionExpired?: () => void;
   /** run 起止上报(stream 生成器进出;宿主运行中暂缓受控 threadId 回写,
@@ -225,11 +228,28 @@ export function createAgentRuntimeAdapter(
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         const frames = createSseEventReader();
+        // 本轮是否已产出 AI 消息:error 帧挂在**末条 AI 消息**上(SDK 语义),
+        // 一条都没产出时无处可挂 → 原因改走 Drawer 横幅,否则会被静默吞掉
+        let sawAssistantMessage = false;
         try {
           for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
             for (const frame of frames.push(decoder.decode(value, { stream: true }))) {
+              if (frame.event === "messages") {
+                const chunk = Array.isArray(frame.data) ? frame.data[0] : frame.data;
+                if (chunk && (chunk as { type?: unknown }).type === "ai")
+                  sawAssistantMessage = true;
+              }
+              // error 帧 = 本轮被腰斩(护栏撞线/死端/异常):先截出精确原因上抛,
+              // 让计划条把未完成项标「已中断」,再原样透传给 SDK 挂末条消息
+              if (frame.event === "error") {
+                const reason = extractStreamErrorText({ error: frame.data });
+                if (reason) {
+                  options.onInterrupted?.(reason);
+                  if (!sawAssistantMessage) options.onError?.(reason);
+                }
+              }
               yield frame;
             }
           }
