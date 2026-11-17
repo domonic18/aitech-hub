@@ -1,8 +1,9 @@
 /**
- * 电报流治理表行(批C 从 page 抽出):视频行 = 封面缩略(时长角标)+ 标题摘要 +
- * 互动/解读态注记;文字行 = 标题摘要。徽章与行内操作复用既有件,纯展示。
- * 2026-10-05 反馈:标题下灰字改显 AI 解读(aiSummary;未解读/无解读回退原始
- * summary,解读态由 AiBadge 表达),与用户「这行应是解读内容」的预期一致。
+ * 电报流治理表行(批C 从 page 抽出;2026-11-17 站长反馈排版重构):
+ * **全行统一左侧媒体轨道**(56px 封面位 + 16px 间距)——视频行放封面(时长
+ * 角标),文字行留空轨道;标题/摘要左缘全表对齐,行高一致,封面与文字
+ * 恒有间距。标题下灰字显 AI 解读(aiSummary;未解读/无解读回退原始
+ * summary,解读态由 AiBadge 表达)。
  */
 import TelegramRowOps from "@/components/admin/telegram/TelegramRowOps";
 import { RowCheckbox } from "@/components/admin/batch/SelectionCheckbox";
@@ -12,6 +13,52 @@ import { compactCount, formatDuration, platformLabel } from "@/lib/telegram/feed
 import type { TelegramAdminList } from "@/lib/telegram/telegram-admin";
 
 type Item = TelegramAdminList["items"][number];
+
+/** 左侧媒体轨道:视频行 = 封面缩略(时长角标);文字行 = 等尺寸空位(对齐用) */
+function MediaRail({
+  isVideo,
+  coverUrl,
+  title,
+  url,
+  duration,
+}: {
+  isVideo: boolean;
+  coverUrl: string | null;
+  title: string | null;
+  url: string;
+  duration: string | null;
+}): React.ReactElement | null {
+  if (!isVideo) return <div aria-hidden className="h-[74px] w-[56px] flex-none" />;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener nofollow"
+      aria-label={`打开原视频:${title ?? ""}`}
+      className="relative h-[74px] w-[56px] flex-none overflow-hidden rounded-sm bg-panel-2"
+    >
+      {coverUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域
+        <img
+          src={coverUrl}
+          alt={title ?? "视频封面"}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center font-mono text-[10px] text-text-3">
+          ▶
+        </div>
+      )}
+      {duration && (
+        <span className="absolute bottom-0.5 right-0.5 rounded-xs bg-black/70 px-1 font-mono text-[10px] leading-4 text-white">
+          {duration}
+        </span>
+      )}
+    </a>
+  );
+}
 
 export default function TelegramItemRow({
   item: t,
@@ -37,67 +84,32 @@ export default function TelegramItemRow({
         </td>
       )}
       <td className="max-w-[380px] px-4 py-2.5">
-        {isVideo ? (
-          <div className="flex gap-3">
-            <a
-              href={t.url}
-              target="_blank"
-              rel="noopener nofollow"
-              aria-label={`打开原视频:${t.title ?? ""}`}
-              className="relative h-[74px] w-[56px] flex-none overflow-hidden rounded-sm bg-panel-2"
-            >
-              {t.videoCoverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- 平台图床外链,不走 next/image 优化域
-                <img
-                  src={t.videoCoverUrl}
-                  alt={t.title ?? "视频封面"}
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center font-mono text-[10px] text-text-3">
-                  ▶
-                </div>
-              )}
-              {duration && (
-                <span className="absolute bottom-0.5 right-0.5 rounded-xs bg-black/70 px-1 font-mono text-[10px] leading-4 text-white">
-                  {duration}
-                </span>
-              )}
-            </a>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium text-text-1">{t.title ?? "(无标题)"}</div>
-              {(t.aiSummary || t.summary) && (
-                <div
-                  className="mt-0.5 truncate text-[11px] text-text-3"
-                  title={t.aiSummary || t.summary}
-                >
-                  {t.aiSummary || t.summary}
-                </div>
-              )}
-              <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
-                {like && <span>赞 {like}</span>}
-                {comment && <span>评 {comment}</span>}
-                <AiBadge aiStatus={t.aiStatus} lastAiError={t.lastAiError} />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <>
+        <div className="flex gap-4">
+          <MediaRail
+            isVideo={isVideo}
+            coverUrl={t.videoCoverUrl}
+            title={t.title}
+            url={t.url}
+            duration={duration}
+          />
+          <div className="min-w-0 flex-1">
             <div className="truncate font-medium text-text-1">{t.title ?? "(无标题)"}</div>
-            <div
-              className="mt-0.5 truncate text-[11px] text-text-3"
-              title={t.aiSummary || t.summary}
-            >
-              {t.aiSummary || t.summary}
-            </div>
+            {(t.aiSummary || t.summary) && (
+              <div
+                className="mt-0.5 truncate text-[11px] text-text-3"
+                title={t.aiSummary || t.summary}
+              >
+                {t.aiSummary || t.summary}
+              </div>
+            )}
             {/* 批⑥:文字行也显解读态(摘要按钮的完成/失败可见,与视频行同口径) */}
             <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-text-3">
+              {like && <span>赞 {like}</span>}
+              {comment && <span>评 {comment}</span>}
               <AiBadge aiStatus={t.aiStatus} lastAiError={t.lastAiError} />
             </div>
-          </>
-        )}
+          </div>
+        </div>
       </td>
       <td className="px-3 py-2.5">
         <MediaBadge mediaType={t.mediaType} />
