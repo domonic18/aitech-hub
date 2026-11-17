@@ -1312,7 +1312,9 @@ model PublishMediaCache {
 /// visitor 为匿名 cookie 身份(ah_av uuid);30 天未活跃由 worker 日清连
 /// checkpoint 一起删。tokens_total 为 50k 护栏累计口径(usage_metadata 聚合)。
 model SearchAgentSession {
-  id            String   @id @db.VarChar(36)
+  // id = 会话 id:成员 = uuid(36);游客 = "g_"+uuid(38,kind 标记前缀)——列宽须容得下
+  // 最长形态,否则游客行 upsert 因超长失败(2026-11-17 修,登记见 standard/03 §7.4)
+  id            String   @id @db.VarChar(40)
   visitorId     String   @map("visitor_id") @db.VarChar(36)
   title         String?  @db.VarChar(40) // 首条用户消息前 20 字(run 收尾派生)
   tokensTotal   Int      @default(0) @map("tokens_total")
@@ -1371,7 +1373,7 @@ model UserTokenLedger {
   delta        Int // 正=入账 负=扣减
   balanceAfter Int      @map("balance_after")
   reason       String   @db.VarChar(16) // grant | consume | reset | adjust(应用层枚举)
-  sessionId    String?  @map("session_id") @db.VarChar(36) // consume 溯源:agent 线程 id(FK SetNull——worker 每日硬删会话)
+  sessionId    String?  @map("session_id") @db.VarChar(40) // consume 溯源:agent 线程 id(FK SetNull——worker 每日硬删会话);列宽须与 search_agent_session.id 一致(Prisma relation 要求两侧 native type 相同)
   note         String?  @db.VarChar(200) // adjust 说明等
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
