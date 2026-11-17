@@ -50,6 +50,13 @@
 | 项 | 定稿值 | 说明 |
 |----|--------|------|
 | 答案卡日配额 | `search` 角色 **100 次/日**(`ai_task_binding.daily_max`) | 超限**自动降级纯检索结果页**,前台不报错 |
+
+**答案卡问答留档(2026-11-17 站长裁定,批A/B)**:三态收尾落 `search_answer_log`
+(ok/degraded=答案全文+引用,failed=问题+null;缓存命中与无 LLM 早退不落;写失败只
+告警不反噬流),90 天滚动清理;visitor_id 存 ah_av uuid(同日裁定:游客会话行也
+落 uuid,推翻 2026-10-30「不存访客标识」);新行 id 回链 `ai_usage_log.session_id`
+(补上答案卡从未传 sessionId 的缺口)。后台查看面在 AI 用量·会话页「答案卡」段
+(`/admin/usage/sessions?status=answer`,零 JS `<details>` 展开答案与引用)。
 | Drawer 会话日配额 | **20 次/日** | 独立计数,超限入口置灰 + 提示 |
 | 单会话上限 | **≤12 步 / ≤50k tokens**(默认;后台「站点设置」可调) | agent 主动收束并提示,防多步失控 |
 | 单会话上限(admin 档) | **≤80 步 / ≤400k tokens / recursion 200**(默认;2026-10-17 验收反馈) | 专题文章生产是多步自主编排,细粒度工具链 + HITL resume + 每轮重灌全量历史,30/150k/60(M27 批⑤首档)实测中途打满;recursionLimit 须随步数同步放大(≈2×步数留裕量),护栏防失控兜底而非计费 |

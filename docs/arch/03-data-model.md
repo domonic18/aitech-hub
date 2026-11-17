@@ -339,7 +339,7 @@ CREATE TABLE legacy_url_map (
 
 **搜索 Drawer 会话表已落地(2026-10-07 K2.5 批①迁移 `20261006190159_search_agent_session`,交互见 [arch/04 §3](04-ai-agent.md))**:
 
-- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(成员会话=归属键:匿名 cookie `ah_av` 或 `admin:<sub>`,归属校验锚——非本人 404 不泄露存在性;**M58 批⑤ 后续起游客会话也落行,`visitor_id` 写字面量 `guest`**,不存任何访客标识);`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
+- `search_agent_session`(会话索引行):`id varchar(36) PK`(uuid = LangGraph thread_id,建会话即定);`visitor_id varchar(36)`(成员会话=归属键:匿名 cookie `ah_av` 或 `admin:<sub>`,归属校验锚——非本人 404 不泄露存在性;;`title? varchar(40)`(首条用户消息前 20 码点,run 收尾回填仅空行);`tokens_total int 默认 0`(会话累计 ≤50k 护栏口径);`created_at/last_message_at`(touch 于每次 run 收尾);索引 `(visitor_id, last_message_at DESC)` 列表 + `last_message_at` 30 天日清扫描。**消息轨迹不在本表**——存 LangGraph checkpoint 表框架(`setup()` 自管,不进 Prisma migrations,§1 边界);删除 = 行+checkpoint 同删(用户 DELETE 路由 / worker 日清 `purge-agent-session` 双入口,checkpoint 删失败不反噬)
 - `ai_usage_log.session_id`(K2.6 迁移 `20261007045121_ai_usage_log_session_id` 增列):`varchar(40)?` 会话/线程锚 + `idx_ai_usage_log_session`——Agent 台账行记 threadId(后台会话管理聚合口径,游客线程 `g_<uuid>` 也落此锚),他类调用缺省。游客线程 thread_id=`g_<uuid>`,归属 Redis `search:agent:gthread:{id}`(2h 滑动 TTL,不入库;**M58 批⑤ 后续起同 id 落匿名会话行**,行与内容按 30 天日清,归属键只决定能否继续追问);无留档行的历史线程 checkpoint 仍按「键已消失」日清扫;后台游客统计 = 本表按 session_id 聚合 ∪ 留档行(标题/tokens 以行为准)
 
 **账号邮箱通道与支付域已落地(2026-10-08 M21 批⓪/批①迁移 `20261008221317_m21_batch0_email_auth` + `20261008143451_m21_batch0_email_config` + `20261008145247_m21_payment_schema`,方案定稿 M21 付费阅读提案 v1.6,批⑦ 落 arch/09)**:
@@ -522,3 +522,17 @@ CREATE TABLE legacy_url_map (
 - 订正一律走**一次性 TS 脚本**放 `scripts/oneoff/`(pg Pool + SQL,可评审可重放);**禁止直连生产 psql 手改**,禁止在应用运行时热修数据
 - 脚本结构:先打印影响行预览(默认 dry-run,显式传参才执行)→ 单事务执行 → 打印结果;**破坏性订正(批量 UPDATE/DELETE)执行前先 `pg_dump -Fc -t <表>`** 落 `workspace/backups/`
 - 订正不改变 schema 语义——涉及表/列/约束的变更走 §1 迁移,不得以订正绕过;订正脚本应用完成后从仓库删除,git 历史存档溯源
+
+**答案卡问答留档表已落地(2026-11-17,迁移 `20261117052108_search_answer_log`)**:
+
+- `search_answer_log`(检索会话族,与 `search_agent_session` 同前缀):搜索 AI 答案卡是
+  单轮问答无线程语义,此前只有 `ai_usage_log` 计量、内容仅 Redis 缓存 1 天——站长裁定
+  留档补全「用户在问什么」的反馈闭环。列:`visitor_id? varchar(36)`(ah_av uuid,fresh
+  游客无 cookie 为 null)/`question varchar(120)`/`answer text?`(ok/degraded=全文防御
+  截 20000;failed=null)/`cites jsonb`(`{items: AnswerCite[], followUps}`)/
+  `model_key`/`duration_ms`/`status`(ok|degraded|failed)/`ai_usage_session_id?`
+  (回链台账,recordAiUsage sessionId 锚)/`created_at`;索引 `created_at`。
+  写入在 `src/lib/search/answer-service.ts` 三态收尾(缓存命中/无 LLM 早退不落,
+  **写失败只告警不反噬 SSE 流**);90 天滚动清理(worker `purge-answer-log`,04:41
+  错峰 cron);量级被配额钉死(答案卡站级 100 次/日,顶格 ≈73MB/年)。
+  后台读侧在 `src/lib/agent/admin-sessions.ts`(会话页「答案卡」段)。
