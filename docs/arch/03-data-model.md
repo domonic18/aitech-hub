@@ -489,6 +489,20 @@ CREATE TABLE legacy_url_map (
   **认不出的厂商不动**(`provider_id` 留 null)并在报告里点名——猜错厂商比不归一更糟
 - 上下文长度不落字典表:各家截断不同(同一模型在官方与聚合平台给的上下文不一样),
   按行给在 `model_pricing.context_window`,筛选时解析
+- **行级计价单位**(M74 批G,迁移 `20261116230844_m74_pricing_price_unit`):
+  `model_pricing.price_unit`(per_1m_tokens|per_1k_tokens|per_image|per_second|
+  per_minute,默认 per_1m_tokens)。此前单位只在档位表,主行两价被隐式当成
+  百万 token 价——按张/按秒价(文生图/文生视频)混进 token 比价就是污染。
+  非 token 行:生成价(单价格)落 `output_price`,`input_price` 为 null
+  (百炼按张双价形态例外:`input_price`=按张输入价);**排序/比价/散点必须
+  按单位分口径**(前台批G 落地)。采集侧三源已按表级单位闸识别
+  (volcengine 表头单位、siliconflow 行 id 分区+单位标签、bailian 表头/首行
+  元/张·元/秒),单位不明的表整表跳过——宁可少收不可错收
+- **模态判定**(M74 批G):`src/lib/pricing/modality.ts` 模型名关键词保守推断
+  (seedream→image、seedance/t2v→video、bge→embedding…,认不出返回 null 不猜);
+  优先级 源显式标注(siliconflow 行 id 分区 / bailian 按张表) > 关键词 > 字典现值
+  > text;`getOrCreateModel` 对既有字典行只做 **text→非text 单向升级**(绝不降级,
+  避免与人工订正打架),存量行下轮日采自愈,无需订正脚本
 
 ## 3. Prisma 模型约定
 

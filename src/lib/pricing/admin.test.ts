@@ -156,9 +156,11 @@ describe("list 过滤", () => {
     expect(modelFindMany).toHaveBeenCalledWith({
       where: { status: "enabled", region: "cn" },
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-      // M74 批C:带厂商字典关联(后台展示归一后的厂商名);批C2:带档位(人工订正入口)
+      // M74 批C:带厂商字典关联(后台展示归一后的厂商名);批C2:带档位(人工订正入口);
+      // 批G:带模型字典模态(终审时识别文生图/视频行)
       include: {
         provider: { select: { name: true } },
+        model: { select: { modality: true } },
         tiers: { orderBy: { tierLabel: "asc" } },
       },
     });
@@ -168,6 +170,7 @@ describe("list 过滤", () => {
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
       include: {
         provider: { select: { name: true } },
+        model: { select: { modality: true } },
         tiers: { orderBy: { tierLabel: "asc" } },
       },
     });

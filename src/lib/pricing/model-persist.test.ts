@@ -13,6 +13,7 @@ const providerFindUnique = vi.fn();
 const providerCreate = vi.fn();
 const modelFindFirst = vi.fn();
 const modelCreate = vi.fn();
+const modelUpdate = vi.fn();
 const tierDeleteMany = vi.fn();
 const tierCreateMany = vi.fn();
 
@@ -37,6 +38,7 @@ vi.mock("@/lib/db", () => ({
     modelPricingModel: {
       findFirst: (...a: unknown[]) => modelFindFirst(...a),
       create: (...a: unknown[]) => modelCreate(...a),
+      update: (...a: unknown[]) => modelUpdate(...a),
     },
   },
   isP2002: (e: unknown): boolean =>
@@ -61,7 +63,12 @@ const DEEPSEEK_HTML = `<p>下表所列模型价格以"百万 tokens"为单位。
 beforeEach(() => {
   vi.clearAllMocks();
   providerFindUnique.mockResolvedValue({ id: BigInt(100), key: "deepseek", name: "x" });
-  modelFindFirst.mockResolvedValue({ id: BigInt(200), modelKey: "m", matchKey: "m" });
+  modelFindFirst.mockResolvedValue({
+    id: BigInt(200),
+    modelKey: "m",
+    matchKey: "m",
+    modality: "text",
+  });
   tierCreateMany.mockResolvedValue({ count: 6 });
   update.mockResolvedValue({ id: BigInt(7) });
   create.mockResolvedValue({ id: BigInt(2) });
@@ -157,6 +164,34 @@ describe("persistModelRows 落库规则", () => {
     expect(arg.data.providerId).toBe(BigInt(100));
     expect(arg.data.modelId).toBe(BigInt(200));
     expect(arg.data.isFree).toBe(false); // DeepSeek 有价,非完全免费
+  });
+
+  it("批G:行级计价单位随行写入,缺省 per_1m_tokens;刷新同样覆盖", async () => {
+    findMany.mockResolvedValue([
+      {
+        id: BigInt(7),
+        vendor: "DeepSeek 深度求索",
+        modelKey: "deepseek-flash",
+        status: "pending",
+        isPinned: false,
+      },
+    ]);
+    await persistModelRows(rows);
+    const createdArg = create.mock.calls[0]![0] as { data: { priceUnit: string } };
+    expect(createdArg.data.priceUnit).toBe("per_1m_tokens"); // 未显式给的行缺省 token
+    const updatedArg = update.mock.calls[0]![0] as { data: { priceUnit: string } };
+    expect(updatedArg.data.priceUnit).toBe("per_1m_tokens");
+
+    const imageRows = rows.map((r) => ({
+      ...r,
+      modelKey: "doubao-seedream-4-0",
+      priceUnit: "per_image",
+      inputPrice: null,
+    }));
+    findMany.mockResolvedValue([]);
+    await persistModelRows(imageRows);
+    const arg2 = create.mock.calls.at(-1)![0] as { data: { priceUnit: string } };
+    expect(arg2.data.priceUnit).toBe("per_image");
   });
 
   it("M74:档位随行写入(整行替换)", async () => {
