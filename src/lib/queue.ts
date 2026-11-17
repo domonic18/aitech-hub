@@ -109,6 +109,7 @@ export {
   DISCOVERY_BILI_CRON,
   DISCOVERY_HOTWORDS_CRON,
   EMBED_RECONCILE_CRON,
+  ANSWER_LOG_PURGE_CRON,
   INSIGHT_DAILY_CRON,
   INSIGHT_EMBED_CRON,
   INSIGHT_FETCH_CRON,
@@ -160,6 +161,7 @@ export const DISTRIBUTE_JOB_PIN_WECHAT = "pin-wechat-sync";
 export const STATS_JOB_FLUSH = "flush";
 export const STATS_JOB_PURGE = "purge-visit-log";
 export const STATS_JOB_USAGE_PURGE = "purge-usage-log";
+export const STATS_JOB_ANSWER_PURGE = "purge-answer-log";
 export const STATS_JOB_AGENT_PURGE = "purge-agent-session";
 export const STATS_JOB_RUN_PURGE = "purge-job-run";
 
