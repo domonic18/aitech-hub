@@ -1614,6 +1614,8 @@ model JobRun {
 /// M74 牌价策展域归一层:provider_id/model_id 指向两张字典表(厂商归一 +
 /// 跨厂商模型归一,比价的前提);is_free=完全免费(与 free_tier「有免费额度」
 /// 语义分离);阶梯/缓存/峰谷/模态计价落 model_pricing_tier 档位表。
+/// 批G:price_unit 标记行级计价单位——非 token 行(per_image/per_second)的
+/// outputPrice 是「生成价」、inputPrice 为 null;排序/比价/散点必须按单位分口径。
 model ModelPricing {
   id            BigInt   @id @default(autoincrement())
   vendor        String   @db.VarChar(40) // 厂商(如 DeepSeek)
@@ -1633,6 +1635,7 @@ model ModelPricing {
   providerId    BigInt?  @map("provider_id") // 厂商字典(M74);null=未归一(过渡期)
   modelId       BigInt?  @map("model_id") // 模型字典(M74);跨厂商同一模型归一到它
   isFree        Boolean  @default(false) @map("is_free") // 完全免费(所有档位价均为 0);free_tier 非空≠完全免费
+  priceUnit     String   @default("per_1m_tokens") @map("price_unit") @db.VarChar(20) // 行级计价单位(批G):per_1m_tokens | per_1k_tokens | per_image | per_second | per_minute;非 token 行生成价放 outputPrice(单价格),百炼按张双价时 inputPrice=按张输入价
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

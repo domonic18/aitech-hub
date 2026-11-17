@@ -252,6 +252,8 @@ M63 已有每日汇率(`site_config`)可复用。
 | **D** | 比价矩阵与可视化 | B + C | 比价视图 + 散点 + 排序 | `feature/m74-pricing-compare` |
 | **E** | 词元所聚合报价 | A + B(词元所源) + §6 第 3 条 | 二级供应方建模 + 聚合视图 | `feature/m74-pricing-aggregator` |
 | **F** | 价格变更史(可选) | A | `model_pricing_change` + 降价视图 | `feature/m74-pricing-history` |
+| **G1** | 按用途归类·数据面(站长反馈 2026-11-17) | A/B | `price_unit` 列 + 模态判定 + 三源按张/按秒正确采集 + 后台模态/单位列 | `feature/m74-pricing-modality` |
+| **G2** | 按用途归类·前台 | G1 | 用途页签(默认文本)+ 单位感知筛选/排序/比价/散点 + 单价条形图 | `feature/m74-pricing-cat-views` |
 
 **每批通用收尾(§5.7)**与**每批文档同步清单(§9)**同样适用。
 A → B → D 是主链;C 可与 B 并行;E 独立;F 可随时插。
@@ -493,6 +495,43 @@ changed_at / source)+ 落库时对比现值写变更行 + 前台「降价了」�
 
 ---
 
+### 5.8 批 G · 按用途归类与按张/按秒计价(站长反馈 2026-11-17)
+
+**背景**:`doubao-seedream-4-0` 等图片生成模型与文本模型混排,无法按用途对比。
+根因:模态列(`model_pricing_model.modality`)与前台模态筛选一直存在,但采集链路
+自 `ModelPrefillRow` 起无模态信息、`getOrCreateModel` 缺省全落 text;单位只在档位表,
+主行两价被隐式当 token 价——volcengine/siliconflow 把按张/按秒价误收成百万 token 价,
+bailian 整表排除图片/视频表。
+
+**批 G1(数据面)拆解**:
+
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| G1-1 | `model_pricing.price_unit` 列(迁移 `20261116230844`)+ 非 token 行落形约定(生成价→outputPrice,百炼按张双价时 inputPrice=按张输入价) | `prisma/schema.prisma` + `model-persist.ts` | ✅ |
+| G1-2 | 模态判定:`inferModality` 保守关键词表(长词优先)+ `resolveModality`(源显式 > 关键词 > 现值 > text;**仅 text→非text 单向升级**) | `src/lib/pricing/modality.ts` | ✅ |
+| G1-3 | `getOrCreateModel` 升级更新 + `ModelPrefillRow` 增 `modality?`/`priceUnit?` + persist 写单位 | `model-registry.ts` / `crawlers.ts` / `model-persist.ts` | ✅ |
+| G1-4 | volcengine 表级单位闸(表头 元/张、元/秒;认不出整表跳过;跨单位表保 token 系) | `model-sources/volcengine.ts` | ✅ |
+| G1-5 | siliconflow:行 id 分区(`pricing-row-image|audio|video-`)→ 显式模态;单价格行(计费项+单位标签+一个价,免费=0);文本行标签继承式分组 + **输入长度阶梯**(`输入 [0, 128k)` 落档位边界,行价取最小阶梯档;页面 2026-11-17 起新形态,fixture 已重抓) | `model-sources/siliconflow.ts` | ✅ |
+| G1-6 | bailian:解除按张/按秒表整表排除(表级单位识别表头+首行);**rowspan 感知对齐闸**(续行继承模型/范围/免费额度;列溢出的多级表头表仍排除);模型 id 支持斜杠前缀(kling/…);音乐按秒表不标显式模态(关键词 music→audio) | `model-sources/bailian.ts` | ✅ |
+| G1-7 | 后台模态/单位列(终审时识别文生图/视频行) | `admin.ts` / `ModelsBoard.tsx` | ✅ |
+
+**自愈路径**:已误收的 volc/siliconflow 行由下轮日采整行刷新矫正(非 pinned);
+bailian 新纳入行落 pending 待站长终审;字典模态随采集刷新升级——**不需要订正脚本**。
+
+**批 G2(前台)拆解**(已落,2026-11-17):
+| # | 任务 | 文件 | 状态 |
+|---|---|---|---|
+| G2-1 | PublicModelRow.priceUnit / cat 映射(catToModalities,文本=text+text+vision、向量·重排=embedding+rerank)/ 代表价 representativePrice / 单位后缀 | `public.ts` + `read.ts` | ✅ |
+| G2-2 | query.ts cat 参数(默认 text,cat=all 才显式编码;旧 mod 映射后丢弃) | `query.ts` | ✅ |
+| G2-3 | 比价分区 币种×单位 + cheaper/排序走代表价;countComparable 同口径 | `compare.ts` | ✅ |
+| G2-4 | 散点仅收 per_1m_tokens 行 | `scatter.ts` | ✅ |
+| G2-5 | 单价横向条形图(每条=一个模型最便宜一家,币种×单位分块,线性归一,每块 ≤24 条) | `bars.ts` + `UnitPriceBars.tsx` | ✅ |
+| G2-6 | 用途页签 UI(默认文本)+ 价格口径标签随组切换 + 非文本组隐藏上下文档 + 价格格单位后缀 + 生成价列说明 | `ModelSection.tsx` / `ModelFilters.tsx` / `CompareMatrix.tsx` / `PricingExplorer.tsx` | ✅ |
+
+**SSR 红线落实**:cat 走纯客户端筛选(不引 useSearchParams/Suspense);且**列表视图
+渲染全量行、被筛掉的行用 `hidden` 属性藏住**——默认页签「文本」时首屏 HTML 仍含
+未筛选全量(已用 next build + next start 实测验证,含文生图/视频行)。
+
 ## 6. 待裁定项(需站长拍板,影响 schema 与范围)
 
 > 第 4/5/7 条已按「建议」执行(批 A 落地,2026-11-15):厂商与模型各建字典表、
@@ -586,6 +625,30 @@ worker 启动后按各源周期跑(模型面**日级**、套餐面周级)→ 新
 **⑤ 校验**
 `/pricing/` 列表(六维筛选 + 免费角标 + 源页面外链)→ 切「比价」视图
 (同模型跨提供商并排 + 最低价标记 + 对数轴散点)→ `/admin/pricing` 源健康度卡。
+
+**查生产库现状**(在生产机):
+```bash
+docker compose --env-file .env -f docker-compose.prod.yml exec -T postgres \
+  psql -U aitech -d aitech_hub -c "select status, count(*) from model_pricing group by status;"
+```
+
+**批G 后追加(2026-11-17)**:
+- **⑥ 等下轮日采自愈**:volcengine/siliconflow 已误收的按张/按秒行(此前被当
+  token 价)由下轮日采整行刷新矫正(`price_unit` + 价格归位);生产库抽查:
+  `select model_key, price_unit, input_price, output_price from model_pricing where price_unit <> 'per_1m_tokens';`
+- **⑦ bailian 新行终审**:百炼按张/按秒表首次入库(qwen-image / wan / kling /
+  vidu / pixverse / happyhorse…),全部落 pending——去 `/admin/pricing` 批量通过;
+  抽查 seedream / Kolors / Qwen-Image / seedance / bge 的模态角标与单位标注是否正确。
+
+> **注意**:前台只显示 `enabled` 行。采集落的是 `pending`,**不批量终审前台就看不到模型区**
+> (页面会只剩 Coding Plan 套餐区——这在 2026-11-16 首次发布后就是那个状态)。
+>
+> 另:「已发布」页 SSR 必须输出**未筛选的全量**(2026-11-16 修过一次——
+> `useSearchParams` 把整块交互组件包进 `<Suspense fallback={null}>`,
+> 静态预渲染时 fallback 吞掉全部内容,爬虫看到的是空页;改成客户端
+> `window.location` + `history.replaceState` 驱动筛选态)。改动这块时
+> **必须用生产构建(`next build` + `next start`)验证 SSR HTML**——
+> dev 是动态渲染,看不出这个问题。
 
 ## 11. 引用
 

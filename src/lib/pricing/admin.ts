@@ -190,8 +190,10 @@ function serializeModelRow(row: {
   status: string;
   isPinned: boolean;
   isFree: boolean;
+  priceUnit: string;
   sortOrder: number;
   provider?: { name: string } | null;
+  model?: { modality: string } | null;
   tiers?: Array<{
     tierLabel: string;
     inputPrice: Prisma.Decimal | null;
@@ -223,6 +225,8 @@ function serializeModelRow(row: {
     status: row.status,
     isPinned: row.isPinned,
     isFree: row.isFree,
+    priceUnit: row.priceUnit,
+    modality: row.model?.modality ?? null,
     sortOrder: row.sortOrder,
     tiers: (row.tiers ?? []).map((t) => ({
       tierLabel: t.tierLabel,
@@ -316,6 +320,7 @@ export async function listModelPricing(
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
     include: {
       provider: { select: { name: true } },
+      model: { select: { modality: true } },
       tiers: { orderBy: { tierLabel: "asc" } },
     },
   });

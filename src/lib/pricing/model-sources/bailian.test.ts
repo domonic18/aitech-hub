@@ -66,3 +66,50 @@ describe("parseBailianModels", () => {
     expect(() => parseBailianModels("<div></div>", URL, NOW)).toThrow(/页面可能改版/);
   });
 });
+
+describe("parseBailianModels · 批G 按张/按秒表(2026-11-17 增补样本)", () => {
+  it("按张双价表(qwen-image):两价均按张落行,分辨率落档位,显式模态 image", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const pro = rows.find((r) => r.modelKey === "qwen-image-3.0-pro")!;
+    expect(pro.priceUnit).toBe("per_image");
+    expect(pro.modality).toBe("image");
+    expect(pro.inputPrice).toBe(0.02); // 图生图参考图按张输入价
+    expect(pro.outputPrice).toBe(0.25);
+    const t1k = pro.tiers!.find((t) => t.tierLabel.includes("1k"))!;
+    expect(t1k.outputPrice).toBe(0.25);
+    expect(t1k.unit).toBe("per_image");
+    expect(pro.freeTier).toContain("10张");
+  });
+
+  it("rowspan 续行(分辨率阶梯)继承模型与免费额度;kling 斜杠 id 完整", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const kling = rows.find((r) => r.modelKey === "kling/kling-v3-image-generation")!;
+    expect(kling.priceUnit).toBe("per_image");
+    expect(kling.outputPrice).toBe(0.2);
+    expect(kling.tiers!.length).toBeGreaterThanOrEqual(2); // 1K + 2K 分辨率各一档
+  });
+
+  it("按秒视频表:输入和输出同价落生成价,表头带「视频」→显式模态 video", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const edit = rows.find((r) => r.modelKey === "happyhorse-1.0-video-edit")!;
+    expect(edit.priceUnit).toBe("per_second");
+    expect(edit.modality).toBe("video");
+    expect(edit.inputPrice).toBeNull();
+    expect(edit.outputPrice).toBe(0.9);
+    const t2v = rows.find((r) => r.modelKey === "happyhorse-1.1-t2v")!;
+    expect(t2v.outputPrice).toBe(0.45); // 行价=全球 480P 档
+  });
+
+  it("音乐按秒表(表头无「视频」)不标显式模态——留给关键词推断成 audio", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const music = rows.find((r) => r.modelKey === "fun-music-preview")!;
+    expect(music.priceUnit).toBe("per_second");
+    expect(music.modality).toBeUndefined();
+  });
+
+  it("token 表照旧 per_1m_tokens(单位闸不放跑老口径)", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const max = rows.find((r) => r.modelKey === "qwen3.8-max")!;
+    expect(max.priceUnit).toBe("per_1m_tokens");
+  });
+});

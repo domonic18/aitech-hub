@@ -11,6 +11,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ModelPricingRow } from "@/lib/pricing/admin";
+import { TIER_UNIT_LABELS, type TierUnit } from "@/lib/pricing/constants";
+import { MODALITY_LABELS, type Modality } from "@/lib/pricing/modality";
 
 import { TierEditor } from "./TierEditor";
 import type { ApiEnvelope } from "@/lib/http/response";
@@ -271,6 +273,17 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                     <div className="font-mono text-xs text-text-1">
                       {r.modelKey}
                       {r.currency === "USD" && <span className="ml-1 text-text-3">($)</span>}
+                      {(r.modality ?? "text") !== "text" && (
+                        <span className="ml-1.5 rounded border border-blue/40 bg-blue/10 px-1 py-0.5 align-middle text-[10px] leading-none text-blue">
+                          {MODALITY_LABELS[(r.modality ?? "text") as Exclude<Modality, "text">] ??
+                            r.modality}
+                        </span>
+                      )}
+                      {r.priceUnit !== "per_1m_tokens" && (
+                        <span className="ml-1 align-middle text-[10px] text-amber">
+                          {TIER_UNIT_LABELS[r.priceUnit as TierUnit] ?? r.priceUnit}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-text-3">
                       {r.vendor} · {r.region === "cn" ? "国内" : "国际"}

@@ -16,6 +16,10 @@
  * 三个维度(场景 × 输入长度阶梯 × 时段)都落档位;行价取
  * **「在线推理（常规）」场景 + 最小输入长度档**(常态价:请求越短越便宜,
  * 第一档是绝大多数请求落点;与「时段优惠取最高」的保守基准不是一回事)。
+ *
+ * 批G 单位闸:单位写在表头格内(「元/M token」「元/张」「元/秒」),表级识别——
+ * token 表照旧双价;按张/按秒表收单价格(生成价落 outputPrice、行级 priceUnit);
+ * **认不出单位的表整表跳过**(单位不明的价混进 token 比价就是污染)。
  */
 import * as cheerio from "cheerio";
 
@@ -65,6 +69,7 @@ function priceOf(text: string): number | null {
  * 「输入长度 [0, 32]」→ 标签 "[0, 32]K",边界 0 – 32768
  * 「输入长度 (32, 128]」→ 标签 "(32, 128]K",边界 32768 – 131072
  * 「空闲时段」/「高峰时段」→ 时段标签,无 token 边界
+ * 「2048×2048」(图片分辨率档)→ 原文标签,无 token 边界
  */
 function condOf(text: string): { label: string; min: number | null; max: number | null } {
   const t = text.trim();
@@ -76,6 +81,27 @@ function condOf(text: string): { label: string; min: number | null; max: number 
   }
   if (t === "" || t === "-") return { label: "默认", min: null, max: null };
   return { label: t, min: null, max: null };
+}
+
+/**
+ * 表级单位识别(批G):单位写在表头格里(「元/M token」「元/张」「元/秒」)。
+ * token 表按列位收两价;按张/按秒表收单价格(生成价落 outputPrice)。
+ * **认不出任何单位线索 → null,整表跳过**——单位不明的价格混进 token 比价
+ * 就是污染(宁可少收不可错收,同 bailian 行列对齐闸口径)。
+ */
+function unitOfTable(headers: string[]): string | null {
+  const compact = headers.join("").replace(/\s+/g, "");
+  if (compact.includes("元/张")) return "per_image";
+  if (compact.includes("元/秒")) return "per_second";
+  if (compact.includes("元/分钟")) return "per_minute";
+  if (compact.includes("元/Mtoken")) return "per_1m_tokens";
+  if (compact.includes("元/Ktoken")) return "per_1k_tokens";
+  return null;
+}
+
+/** token 系单位(双价语义);其余为单价格(生成价)语义 */
+function isTokenUnit(unit: string): boolean {
+  return unit === "per_1m_tokens" || unit === "per_1k_tokens";
 }
 
 /**
@@ -94,6 +120,7 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
   const $ = cheerio.load(html);
   const records: Array<{
     scene: string;
+    unit: string;
     modelId: string;
     cond: string;
     input: number | null;
@@ -120,6 +147,8 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
         .get();
       const roles = headers.map(colRoleOf);
       if (!roles.includes("model") || !roles.includes("output")) return;
+      const unit = unitOfTable(headers);
+      if (unit === null) return; // 单位不明:整表跳过(宁可少收不可错收)
 
       let currentModel = "";
       rows.slice(1).each((_, r) => {
@@ -130,6 +159,7 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
         if (cells.length === 0) return;
         const rec = {
           scene,
+          unit,
           modelId: "",
           cond: "",
           input: null as number | null,
@@ -168,7 +198,8 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
 
   if (records.length === 0) throw new Error("volcengine 价格表未匹配(页面可能改版)");
 
-  // 按模型归一:一行一模型,场景 × 阶梯 × 时段 各落一档
+  // 按模型归一:一行一模型,场景 × 阶梯 × 时段 各落一档;
+  // 同一模型若跨单位表出现(罕见),保 token 系记录,不混单位落档
   const byModel = new Map<string, typeof records>();
   for (const rec of records) {
     const list = byModel.get(rec.modelId);
@@ -177,7 +208,19 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
   }
 
   const out: ModelPrefillRow[] = [];
-  for (const [modelId, rows] of byModel) {
+  for (const [modelId, allRows] of byModel) {
+    const units = new Set(allRows.map((r) => r.unit));
+    let rows = allRows;
+    if (units.size > 1) {
+      const keep = units.has("per_1m_tokens")
+        ? "per_1m_tokens"
+        : units.has("per_1k_tokens")
+          ? "per_1k_tokens"
+          : allRows[0]!.unit;
+      rows = allRows.filter((r) => r.unit === keep);
+    }
+    const unit = rows[0]!.unit;
+
     const tiers: ModelTierPrefill[] = [];
     for (const rec of rows) {
       const cond = condOf(rec.cond);
@@ -189,7 +232,7 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
         cachePrice: rec.cache,
         minTokens: cond.min,
         maxTokens: cond.max,
-        unit: "per_1m_tokens",
+        unit,
       };
       const dup = tiers.find((t) => t.tierLabel === tier.tierLabel);
       if (dup !== undefined) {
@@ -219,18 +262,44 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
       return bm < am ? b : a;
     });
 
+    if (isTokenUnit(unit)) {
+      out.push({
+        vendor: "火山引擎方舟",
+        modelKey: modelId,
+        currency: "CNY",
+        inputPrice: base.input,
+        outputPrice: base.output,
+        contextWindow: null,
+        note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId} · ${base.scene === "" ? "常规" : base.scene}`,
+        dataAsOf: now,
+        sourceUrl,
+        region: "cn",
+        providerKey: "volcengine-ark",
+        priceUnit: unit,
+        tiers,
+      });
+      continue;
+    }
+
+    // 按张/按秒单价格:行价取最低生成价档(入口价);输入价不适用置 null
+    const priced = rows.filter((r) => r.output !== null);
+    const cheapest =
+      priced.length > 0
+        ? priced.reduce((a, b) => ((b.output ?? Infinity) < (a.output ?? Infinity) ? b : a))
+        : rows[0]!;
     out.push({
       vendor: "火山引擎方舟",
       modelKey: modelId,
       currency: "CNY",
-      inputPrice: base.input,
-      outputPrice: base.output,
+      inputPrice: null,
+      outputPrice: cheapest.output,
       contextWindow: null,
-      note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId} · ${base.scene === "" ? "常规" : base.scene}`,
+      note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId} · 单价计价`,
       dataAsOf: now,
       sourceUrl,
       region: "cn",
       providerKey: "volcengine-ark",
+      priceUnit: unit,
       tiers,
     });
   }

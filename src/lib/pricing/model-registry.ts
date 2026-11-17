@@ -16,6 +16,7 @@ import {
   normalizeMatchKey,
   normalizeModelKey,
 } from "./normalize";
+import { resolveModality } from "./modality";
 import { PROVIDER_SEEDS, type ProviderSeed } from "./provider-registry";
 
 /** 厂商字典行(只取用得到的字段) */
@@ -83,13 +84,18 @@ export interface ModelDictInput {
   displayName?: string | null;
   /** 产品线;缺省按 model_key 推导 */
   family?: string | null;
-  /** 模态(text / text+vision / image / …);缺省 text */
+  /** 模态源显式标注(批G);实际落值经 resolveModality 归并(显式 > 关键词 > 现值 > text) */
   modality?: string | null;
 }
 
 /**
  * 模型 get-or-create:按 model_key 或 match_key 任一命中即复用既有行
  * (同一模型的快照版本共享一条字典行),否则新建。
+ *
+ * 模态(批G):入参 modality 是**源显式标注**;实际落值经 resolveModality 归并
+ * (显式 > 关键词推断 > 字典现值 > text)。既有行**只做 text→非text 单向升级**
+ * ——绝不降级、不改判,避免与人工订正打架;升级发生在采集刷新路径上,
+ * 存量行下轮日采自愈,无需订正脚本。
  */
 export async function getOrCreateModel(input: ModelDictInput): Promise<ModelRef> {
   const modelKey = normalizeModelKey(input.rawKey);
@@ -100,10 +106,6 @@ export async function getOrCreateModel(input: ModelDictInput): Promise<ModelRef>
       ? (input.displayName as string).trim()
       : displayNameFromModelKey(input.rawKey) || modelKey;
   const family = input.family ?? deriveFamily(modelKey);
-  const modality =
-    input.modality?.trim() !== undefined && input.modality?.trim() !== ""
-      ? (input.modality as string).trim()
-      : "text";
 
   const select = {
     id: true,
@@ -118,8 +120,19 @@ export async function getOrCreateModel(input: ModelDictInput): Promise<ModelRef>
     where: { OR: [{ modelKey }, { matchKey }] },
     select,
   });
-  if (existing !== null) return existing;
+  if (existing !== null) {
+    const next = resolveModality(input.modality, input.rawKey, existing.modality);
+    if (next !== existing.modality) {
+      return prisma.modelPricingModel.update({
+        where: { id: existing.id },
+        data: { modality: next },
+        select,
+      });
+    }
+    return existing;
+  }
 
+  const modality = resolveModality(input.modality, input.rawKey, null);
   try {
     return await prisma.modelPricingModel.create({
       data: { modelKey, matchKey, displayName, family, modality },

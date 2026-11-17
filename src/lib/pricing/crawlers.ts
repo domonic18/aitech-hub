@@ -36,6 +36,10 @@ export interface ModelPrefillRow {
   providerKey?: string;
   /** 免费额度口径原文(M74 批B 起采集侧采;与 is_free「完全免费」是两种语义) */
   freeTier?: string | null;
+  /** 模态显式标注(批G;源页面分区名等);缺省由 modality.ts 关键词推断 */
+  modality?: string | null;
+  /** 行级计价单位(批G);缺省 per_1m_tokens。非 token 行:生成价放 outputPrice,inputPrice=null */
+  priceUnit?: string;
 }
 
 /** 默认官方页(种子初始值;运行期 URL 归 pricing_source 表后台可调) */

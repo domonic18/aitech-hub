@@ -115,8 +115,14 @@ export default function PricingExplorer({ data }: { data: PublicPricing }): Reac
               onBandChange={(b) => updateModelQuery({ band: b })}
               freeOnly={modelQuery.freeOnly}
               onToggleFree={() => updateModelQuery({ freeOnly: !modelQuery.freeOnly })}
-              modality={modelQuery.modality}
-              onModalityChange={(v) => updateModelQuery({ modality: v })}
+              cat={modelQuery.cat}
+              onCatChange={(c) =>
+                // 非文本组无上下文概念,切组时复位上下文档(否则空筛)
+                updateModelQuery({
+                  cat: c,
+                  ...(c === "text" || c === "all" ? {} : { contextBand: "all" }),
+                })
+              }
               contextBand={modelQuery.contextBand}
               onContextBandChange={(v) => updateModelQuery({ contextBand: v })}
               sourceKind={modelQuery.sourceKind}

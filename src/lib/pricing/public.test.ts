@@ -83,6 +83,7 @@ describe("sortPublicModels", () => {
     providerKind: null,
     modelDictKey: null,
     modality: null,
+    priceUnit: "per_1m_tokens",
     tiers: [],
   });
   it("混合组排序:国内¥→国际$→其余按键字典序;同组内保持入参原序", () => {
@@ -248,6 +249,7 @@ describe("buildPricingJsonLd", () => {
             providerKind: "official",
             modelDictKey: "deepseek-flash",
             modality: "text",
+            priceUnit: "per_1m_tokens",
             tiers: [],
           },
         ],
@@ -307,6 +309,7 @@ describe("M74 批C:模型行筛选与排序", () => {
     providerKind: null,
     modelDictKey: null,
     modality: null,
+    priceUnit: "per_1m_tokens",
     tiers: [],
     ...over,
   });
@@ -314,7 +317,7 @@ describe("M74 批C:模型行筛选与排序", () => {
     vendors: [] as string[],
     band: "all" as PriceBandId,
     freeOnly: false,
-    modality: "",
+    cat: "text" as const,
     contextBand: "all" as const,
     sourceKind: "",
   };
@@ -328,17 +331,19 @@ describe("M74 批C:模型行筛选与排序", () => {
     expect(out.map((r) => r.modelKey)).toEqual(["free-one"]);
   });
 
-  it("模态 / 来源类型 / 上下文 三维可组合", () => {
+  it("用途分组 / 来源类型 / 上下文 三维可组合(批G:cat 按模态集合过滤,未标注按 text)", () => {
     const rows = [
       row({ modelKey: "a", modality: "text", providerKind: "official", contextWindow: "1M" }),
       row({ modelKey: "b", modality: "image", providerKind: "aggregator", contextWindow: "32K" }),
+      row({ modelKey: "c", modality: null, providerKind: "official", contextWindow: null }),
     ];
-    expect(filterModelRows(rows, { ...base, modality: "image" }).map((r) => r.modelKey)).toEqual([
-      "b",
-    ]);
+    expect(filterModelRows(rows, { ...base, cat: "image" }).map((r) => r.modelKey)).toEqual(["b"]);
+    // 文本组 = text + text+vision + 未标注;默认 cat=text
+    expect(filterModelRows(rows, base).map((r) => r.modelKey)).toEqual(["a", "c"]);
+    expect(filterModelRows(rows, { ...base, cat: "all" })).toHaveLength(3);
     expect(
       filterModelRows(rows, { ...base, sourceKind: "official" }).map((r) => r.modelKey),
-    ).toEqual(["a"]);
+    ).toEqual(["a", "c"]);
     expect(filterModelRows(rows, { ...base, contextBand: "ge1m" }).map((r) => r.modelKey)).toEqual([
       "a",
     ]);

@@ -1,10 +1,15 @@
 "use client";
 
 /**
- * 模型牌价面板(验收问题一:厂商 × 输入价区间筛选;M74 批C:免费标识 + 多维筛选
- * + 排序):按 国内/国际 分组(组头币种口径+计数徽章,USD 原币直出 D4);移动端表格
- * 降维卡片(P2 口径,纯 CSS)。筛选在客户端做,全量行仍随 SSR 进 HTML(SEO 生命线不破)。
+ * 模型牌价面板(M74 批C/D;批G 用途页签):顶部「用途页签」(文本/文生图/
+ * 文生视频/音频/向量·重排/全部,默认文本,URL cat 参数可分享)。
  *
+ * **SSR 红线(2026-11-16 空壳事故)**:列表视图渲染**全量行**,被筛掉的行用
+ * `hidden` 属性藏住——首屏 HTML 永远含未筛选全量(SEO 生命线),页仍 ISR 静态;
+ * 比价/散点是交互视图,只装配可见行。
+ *
+ * 批G 单位感知:非 token 行(按张/按秒)的 outputPrice 是「生成价」,价格格带
+ * 中文后缀;排序/区间按代表价(token=输入价、非 token=生成价)。
  * 免费有两个语义,展示上必须分开:
  * - **完全免费**(is_free):调用不花钱 → 行级绿色「免费」角标
  * - **有免费额度**(free_tier):如「每日 200 万 tokens 免费」→ 橙色额度原文(不叫免费)
@@ -12,9 +17,12 @@
 import {
   filterModelRows,
   formatPrice,
-  sortPublicModels,
+  isTokenPriced,
+  MODEL_CAT_OPTIONS,
   sortModelRows,
+  sortPublicModels,
   vendorOptions,
+  type ModelCatId,
   type ContextBandId,
   type ModelSortId,
   type PriceBandId,
@@ -28,6 +36,7 @@ import { FilterBar } from "./FilterBar";
 import { ModelFilters } from "./ModelFilters";
 import { OfficialLink, groupKey, groupTitle } from "./shared";
 import { PriceScatter } from "./PriceScatter";
+import { UnitPriceBars } from "./UnitPriceBars";
 
 /** 完全免费角标 */
 function FreeBadge(): React.ReactElement {
@@ -38,7 +47,18 @@ function FreeBadge(): React.ReactElement {
   );
 }
 
-function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
+/** 行可见键(与 React key 同构) */
+function rowKey(r: PublicModelRow): string {
+  return `${r.vendor}|${r.modelKey}`;
+}
+
+function ModelTable({
+  rows,
+  visibleKeys,
+}: {
+  rows: PublicModelRow[];
+  visibleKeys: Set<string>;
+}): React.ReactElement {
   return (
     <div className="hidden sm:block">
       <table className="w-full text-left text-[13px]">
@@ -46,7 +66,7 @@ function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
           <tr className="border-b border-line text-[11px] font-normal text-text-3">
             <th className="px-4 py-2.5 font-normal">模型 / 厂商</th>
             <th className="px-3 py-2.5 font-normal">输入价</th>
-            <th className="px-3 py-2.5 font-normal">输出价</th>
+            <th className="px-3 py-2.5 font-normal">输出价{genPriceNote(rows)}</th>
             <th className="px-3 py-2.5 font-normal">免费额度</th>
             <th className="px-3 py-2.5 font-normal">上下文</th>
             <th className="px-3 py-2.5 font-normal">数据截至</th>
@@ -55,7 +75,11 @@ function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={`${r.vendor}|${r.modelKey}`} className="border-b border-line/50 last:border-0">
+            <tr
+              key={rowKey(r)}
+              hidden={!visibleKeys.has(rowKey(r))}
+              className="border-b border-line/50 last:border-0"
+            >
               <td className="px-4 py-3.5">
                 <div className="font-mono text-[13px] font-semibold text-text-1">
                   {r.modelKey}
@@ -69,10 +93,16 @@ function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
                 </div>
               </td>
               <td className="px-3 py-3.5 font-mono text-text-1">
-                {formatPrice(r.inputPrice, r.currency)}
+                {isTokenPriced(r) ? (
+                  formatPrice(r.inputPrice, r.currency)
+                ) : r.inputPrice === null ? (
+                  <span className="text-text-3">—</span>
+                ) : (
+                  formatPrice(r.inputPrice, r.currency, r.priceUnit)
+                )}
               </td>
               <td className="px-3 py-3.5 font-mono text-text-1">
-                {formatPrice(r.outputPrice, r.currency)}
+                {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
               </td>
               <td className="px-3 py-3.5 text-[12px]">
                 {r.freeTier === null ? (
@@ -98,12 +128,26 @@ function ModelTable({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
   );
 }
 
-function ModelCards({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
+/** 组内含非 token 行时,输出价列头补「(生成价·单位)」说明 */
+function genPriceNote(rows: PublicModelRow[]): string {
+  const hasNonToken = rows.some((r) => !isTokenPriced(r));
+  if (!hasNonToken) return "";
+  return "(非 token 行=生成价)";
+}
+
+function ModelCards({
+  rows,
+  visibleKeys,
+}: {
+  rows: PublicModelRow[];
+  visibleKeys: Set<string>;
+}): React.ReactElement {
   return (
     <div className="flex flex-col gap-3 p-3 sm:hidden">
       {rows.map((r) => (
         <div
-          key={`${r.vendor}|${r.modelKey}`}
+          key={rowKey(r)}
+          hidden={!visibleKeys.has(rowKey(r))}
           className="rounded-lg border border-line/70 px-4 py-3"
         >
           <div className="flex items-baseline justify-between gap-2">
@@ -118,13 +162,17 @@ function ModelCards({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
             {r.providerKind === "aggregator" && <span className="ml-1 text-amber">聚合挂牌</span>}
           </div>
           <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
+            {isTokenPriced(r) && (
+              <span>
+                <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
+                {formatPrice(r.inputPrice, r.currency)}
+              </span>
+            )}
             <span>
-              <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
-              {formatPrice(r.inputPrice, r.currency)}
-            </span>
-            <span>
-              <span className="mr-1 text-[10.5px] font-normal text-text-3">输出</span>
-              {formatPrice(r.outputPrice, r.currency)}
+              <span className="mr-1 text-[10.5px] font-normal text-text-3">
+                {isTokenPriced(r) ? "输出" : "生成价"}
+              </span>
+              {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
             </span>
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
@@ -138,6 +186,14 @@ function ModelCards({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
   );
 }
 
+/** 用途分组口径说明(价格标签) */
+function catPriceLabel(cat: ModelCatId): string {
+  if (cat === "text" || cat === "all") return "输入价 · 每百万 tokens(原币)";
+  if (cat === "image") return "生成价 · 元/张(原币)";
+  if (cat === "video") return "生成价 · 元/秒(原币)";
+  return "代表价(原币)";
+}
+
 export interface ModelSectionProps {
   models: PublicModelRow[];
   selectedVendors: string[];
@@ -146,8 +202,9 @@ export interface ModelSectionProps {
   onBandChange: (b: PriceBandId) => void;
   freeOnly: boolean;
   onToggleFree: () => void;
-  modality: string;
-  onModalityChange: (v: string) => void;
+  /** 用途分组(批G;切换时上下文档对非文本组自动复位) */
+  cat: ModelCatId;
+  onCatChange: (v: ModelCatId) => void;
   contextBand: ContextBandId;
   onContextBandChange: (v: ContextBandId) => void;
   sourceKind: string;
@@ -167,8 +224,8 @@ export function ModelSection({
   onBandChange,
   freeOnly,
   onToggleFree,
-  modality,
-  onModalityChange,
+  cat,
+  onCatChange,
   contextBand,
   onContextBandChange,
   sourceKind,
@@ -178,46 +235,67 @@ export function ModelSection({
   view,
   onViewChange,
 }: ModelSectionProps): React.ReactElement {
-  const rows = sortModelRows(
+  const visible = sortModelRows(
     filterModelRows(sortPublicModels(models), {
       vendors: selectedVendors,
       band,
       freeOnly,
-      modality,
+      cat,
       contextBand,
       sourceKind,
     }),
     sort,
   );
-  const groups = [...new Set(rows.map(groupKey))];
+  const visibleKeys = new Set(visible.map(rowKey));
+  // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
+  const allRows = sortModelRows(sortPublicModels(models), sort);
   const freeCount = models.filter((m) => m.isFree).length;
+  const tokenCat = cat === "text" || cat === "all";
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
-      {/* 视图切换(M74 批D):列表 / 比价 */}
-      <div className="flex items-center gap-2 border-b border-line bg-panel-2/30 px-4 py-2">
-        {(
-          [
-            { id: "list" as const, label: "列表" },
-            { id: "compare" as const, label: "比价" },
-          ] satisfies Array<{ id: PricingViewId; label: string }>
-        ).map((v) => (
+      {/* 用途页签(批G)+ 视图切换(M74 批D) */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2/30 px-4 py-2">
+        <span className="mr-1 text-[11px] text-text-3">用途</span>
+        {MODEL_CAT_OPTIONS.map((c) => (
           <button
-            key={v.id}
+            key={c.id}
             type="button"
-            aria-pressed={view === v.id}
-            onClick={() => onViewChange(v.id)}
+            aria-pressed={cat === c.id}
+            onClick={() => onCatChange(c.id)}
             className={`rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none ${
-              view === v.id
+              cat === c.id
                 ? "border-accent bg-accent text-white"
                 : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
             }`}
           >
-            {v.label}
+            {c.label}
           </button>
         ))}
+        <div className="ml-auto flex items-center gap-2">
+          {(
+            [
+              { id: "list" as const, label: "列表" },
+              { id: "compare" as const, label: "比价" },
+            ] satisfies Array<{ id: PricingViewId; label: string }>
+          ).map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              aria-pressed={view === v.id}
+              onClick={() => onViewChange(v.id)}
+              className={`rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none ${
+                view === v.id
+                  ? "border-accent bg-accent text-white"
+                  : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
         {view === "compare" && (
-          <span className="ml-2 text-[11px] text-text-3">
-            {countComparableModels(rows)} 个模型有 ≥2 家报价可并排比
+          <span className="w-full text-[11px] text-text-3">
+            {countComparableModels(visible)} 个模型有 ≥2 家报价可并排比
           </span>
         )}
       </div>
@@ -227,14 +305,13 @@ export function ModelSection({
         onVendorsChange={onVendorsChange}
         band={band}
         onBandChange={onBandChange}
-        priceLabel="输入价 · 每百万 tokens(原币)"
+        priceLabel={catPriceLabel(cat)}
         total={models.length}
-        shown={rows.length}
+        shown={visible.length}
         freeOnly={{ on: freeOnly, onToggle: onToggleFree, freeCount }}
         extra={
           <ModelFilters
-            modality={modality}
-            onModalityChange={onModalityChange}
+            cat={cat}
             contextBand={contextBand}
             onContextBandChange={onContextBandChange}
             sourceKind={sourceKind}
@@ -249,44 +326,68 @@ export function ModelSection({
           <div className="border-b border-line px-4 py-3">
             <h2 className="text-[13px] font-semibold text-text-1">同模型跨提供商比价</h2>
             <p className="mt-1 text-[11.5px] text-text-3">
-              按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家;
-              原币直出不折算,故按币种分区、只在区内比价。
+              按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家; 原币直出不折算、token
+              与按张/按秒量纲不同,各归各区、只在区内比价。
             </p>
           </div>
-          <CompareMatrix groups={buildCompareGroups(rows)} />
+          <CompareMatrix groups={buildCompareGroups(visible)} />
           <div className="border-t border-line">
             <div className="border-b border-line px-4 py-3">
               <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
               <p className="mt-1 text-[11.5px] text-text-3">
-                每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度。
+                每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度 (仅
+                token 计价模型;按张/按秒模型看下方条形图)。
               </p>
             </div>
-            <PriceScatter rows={rows} />
+            <PriceScatter rows={visible} />
+          </div>
+          <div className="border-t border-line">
+            <div className="border-b border-line px-4 py-3">
+              <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
+              <p className="mt-1 text-[11.5px] text-text-3">
+                每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
+              </p>
+            </div>
+            <UnitPriceBars rows={visible} />
           </div>
         </>
       ) : (
-        groups.map((key) => {
-          const groupRows = rows.filter((m) => groupKey(m) === key);
-          return (
-            <div key={key} className="border-b border-line last:border-b-0">
-              <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
-                <h2 className="text-[13px] font-semibold text-text-1">
-                  {groupTitle(key, groupRows)}
-                </h2>
-                <span className="ml-auto font-mono text-[11px] text-blue">{groupRows.length}</span>
-              </div>
-              <ModelTable rows={groupRows} />
-              <ModelCards rows={groupRows} />
+        allRowGroups(allRows, visibleKeys).map(({ key, rows, count }) => (
+          <div key={key} className="border-b border-line last:border-b-0">
+            <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
+              <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
+              <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>
             </div>
-          );
-        })
+            <ModelTable rows={rows} visibleKeys={visibleKeys} />
+            <ModelCards rows={rows} visibleKeys={visibleKeys} />
+          </div>
+        ))
       )}
-      {rows.length > 0 && (
+      {visible.length > 0 && (
         <p className="border-t border-line px-4 py-3 text-[11.5px] text-text-3">
-          共 {rows.length} 个模型 · v1 覆盖 {new Set(rows.map((m) => m.vendor)).size} 家官方厂牌 ·
-          完整列表随官方调价滚动更新
+          共 {visible.length} 个模型 · v1 覆盖 {new Set(visible.map((m) => m.vendor)).size}{" "}
+          家官方厂牌 · 完整列表随官方调价滚动更新
+        </p>
+      )}
+      {!tokenCat && visible.length === 0 && (
+        <p className="border-t border-line px-4 py-6 text-center text-[12px] text-text-3">
+          该用途分组暂无已上架数据(新源采集后经人工终审上架)
         </p>
       )}
     </div>
   );
+}
+
+/** 列表分组:全量行分组 + 组内可见计数(0 可见的组整组不渲染) */
+function allRowGroups(
+  allRows: PublicModelRow[],
+  visibleKeys: Set<string>,
+): Array<{ key: string; rows: PublicModelRow[]; count: number }> {
+  const keys = [...new Set(allRows.map(groupKey))];
+  return keys
+    .map((key) => {
+      const rows = allRows.filter((m) => groupKey(m) === key);
+      return { key, rows, count: rows.filter((m) => visibleKeys.has(rowKey(m))).length };
+    })
+    .filter((g) => g.count > 0);
 }
