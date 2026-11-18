@@ -7,6 +7,7 @@
  */
 import {
   QUEUE_COVER_GEN,
+  QUEUE_CRAWLER,
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
   QUEUE_DISTRIBUTE,
@@ -53,4 +54,7 @@ export const QUEUE_WORKER_OPTS: Record<string, QueueWorkerOpts> = {
   // 公众号单条问答:一次检索 + 一次 LLM(秒级);并发 1 与站内 summarize 角色
   // 争同一配额,串行防打爆绑定模型,锁 120s 覆盖模型慢响应
   [QUEUE_WECHAT_MP]: { concurrency: 1, lockDuration: 120_000 },
+  // 牌价渲染型源(M74 批B4 词元所三段式 ~70 页渲染 + 1.2s 礼貌间隔 ≈ 9-10min):
+  // 锁放宽到 900s 兜底 stalled 判定(BullMQ 自动续期,这里只放大兜底窗口)
+  [QUEUE_CRAWLER]: { lockDuration: 900_000 },
 };

@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * 模型牌价面板(M74 批C/D;批G 用途页签):顶部「用途页签」(文本/文生图/
- * 文生视频/音频/向量·重排/全部,默认文本,URL cat 参数可分享)。
+ * 模型牌价面板(M74 批C/D;批G 用途页签;2026-11-18 布局改版):
+ * lg+ 屏 = 左侧常驻筛选栏(FilterSidebar)+ 右侧内容;< lg 移动端仍走顶部
+ * FilterBar —— 两种形态共用同一份筛选状态。视图三态:列表 | 比价 | 图表
+ * (图表 = 输入×输出散点 + 生成价条形图;生成价块仅在有非 token 行时渲染)。
  *
  * **SSR 红线(2026-11-16 空壳事故)**:列表视图渲染**全量行**,被筛掉的行用
  * `hidden` 属性藏住——首屏 HTML 永远含未筛选全量(SEO 生命线),页仍 ISR 静态;
@@ -33,6 +35,7 @@ import type { PricingViewId } from "@/lib/pricing/query";
 
 import { CompareMatrix } from "./CompareMatrix";
 import { FilterBar } from "./FilterBar";
+import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
 import { OfficialLink, groupKey, groupTitle } from "./shared";
 import { PriceScatter } from "./PriceScatter";
@@ -251,6 +254,20 @@ export function ModelSection({
   const allRows = sortModelRows(sortPublicModels(models), sort);
   const freeCount = models.filter((m) => m.isFree).length;
   const tokenCat = cat === "text" || cat === "all";
+  // 厂商选项按当前用途组收边(facet,2026-11-18 反馈:文本页签里勾「词元所·
+  // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
+  // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
+  const vendorFacet = vendorOptions(
+    filterModelRows(sortPublicModels(models), {
+      vendors: [],
+      band: "all",
+      freeOnly: false,
+      cat,
+      contextBand: "all",
+      sourceKind: "",
+    }),
+    (r) => r.vendor,
+  );
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       {/* 用途页签(批G)+ 视图切换(M74 批D) */}
@@ -276,6 +293,7 @@ export function ModelSection({
             [
               { id: "list" as const, label: "列表" },
               { id: "compare" as const, label: "比价" },
+              { id: "charts" as const, label: "图表" },
             ] satisfies Array<{ id: PricingViewId; label: string }>
           ).map((v) => (
             <button
@@ -299,70 +317,127 @@ export function ModelSection({
           </span>
         )}
       </div>
-      <FilterBar
-        vendors={vendorOptions(models, (r) => r.vendor)}
-        selectedVendors={selectedVendors}
-        onVendorsChange={onVendorsChange}
-        band={band}
-        onBandChange={onBandChange}
-        priceLabel={catPriceLabel(cat)}
-        total={models.length}
-        shown={visible.length}
-        freeOnly={{ on: freeOnly, onToggle: onToggleFree, freeCount }}
-        extra={
-          <ModelFilters
+      {/* lg+:左侧常驻筛选栏(2026-11-18 反馈问题一);<lg:顶部 FilterBar,同一份状态 */}
+      <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
+        <div className="hidden lg:block">
+          <FilterSidebar
             cat={cat}
+            onCatChange={onCatChange}
+            vendors={vendorFacet}
+            selectedVendors={selectedVendors}
+            onVendorsChange={onVendorsChange}
+            band={band}
+            onBandChange={onBandChange}
             contextBand={contextBand}
             onContextBandChange={onContextBandChange}
             sourceKind={sourceKind}
             onSourceKindChange={onSourceKindChange}
+            freeOnly={freeOnly}
+            onToggleFree={onToggleFree}
+            freeCount={freeCount}
             sort={sort}
             onSortChange={onSortChange}
+            priceLabel={catPriceLabel(cat)}
+            total={models.length}
+            shown={visible.length}
           />
-        }
-      />
-      {view === "compare" ? (
-        <>
-          <div className="border-b border-line px-4 py-3">
-            <h2 className="text-[13px] font-semibold text-text-1">同模型跨提供商比价</h2>
-            <p className="mt-1 text-[11.5px] text-text-3">
-              按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家; 原币直出不折算、token
-              与按张/按秒量纲不同,各归各区、只在区内比价。
-            </p>
+        </div>
+        <div className="min-w-0">
+          <div className="lg:hidden">
+            <FilterBar
+              vendors={vendorFacet}
+              selectedVendors={selectedVendors}
+              onVendorsChange={onVendorsChange}
+              band={band}
+              onBandChange={onBandChange}
+              priceLabel={catPriceLabel(cat)}
+              total={models.length}
+              shown={visible.length}
+              freeOnly={{ on: freeOnly, onToggle: onToggleFree, freeCount }}
+              extra={
+                <ModelFilters
+                  cat={cat}
+                  contextBand={contextBand}
+                  onContextBandChange={onContextBandChange}
+                  sourceKind={sourceKind}
+                  onSourceKindChange={onSourceKindChange}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                />
+              }
+            />
           </div>
-          <CompareMatrix groups={buildCompareGroups(visible)} />
-          <div className="border-t border-line">
-            <div className="border-b border-line px-4 py-3">
-              <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
-              <p className="mt-1 text-[11.5px] text-text-3">
-                每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度 (仅
-                token 计价模型;按张/按秒模型看下方条形图)。
-              </p>
-            </div>
-            <PriceScatter rows={visible} />
-          </div>
-          <div className="border-t border-line">
-            <div className="border-b border-line px-4 py-3">
-              <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
-              <p className="mt-1 text-[11.5px] text-text-3">
-                每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
-              </p>
-            </div>
-            <UnitPriceBars rows={visible} />
-          </div>
-        </>
-      ) : (
-        allRowGroups(allRows, visibleKeys).map(({ key, rows, count }) => (
-          <div key={key} className="border-b border-line last:border-b-0">
-            <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
-              <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
-              <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>
-            </div>
-            <ModelTable rows={rows} visibleKeys={visibleKeys} />
-            <ModelCards rows={rows} visibleKeys={visibleKeys} />
-          </div>
-        ))
-      )}
+          {view === "charts" ? (
+            <>
+              <div className="border-t border-line">
+                <div className="border-b border-line px-4 py-3">
+                  <h2 className="text-[13px] font-semibold text-text-1">输入价 × 输出价</h2>
+                  <p className="mt-1 text-[11.5px] text-text-3">
+                    每个点 = 一个模型最便宜的一家;左下 = 输入输出都便宜。对数刻度(仅 token
+                    计价模型;按张/按秒模型看下方条形图)。
+                  </p>
+                </div>
+                <PriceScatter rows={visible} />
+              </div>
+              {/* 仅当前筛选含非 token 行(按张/按秒)时渲染:文本页签没有此类行,整块
+                  不出现(2026-11-18 反馈:孤零零一条「videoretalk」很怪——那是模态
+                  误判进文本组的视频模型,关键词修后由日采自愈归组) */}
+              {visible.some((r) => !isTokenPriced(r)) && (
+                <div className="border-t border-line">
+                  <div className="border-b border-line px-4 py-3">
+                    <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
+                    <p className="mt-1 text-[11.5px] text-text-3">
+                      每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
+                    </p>
+                  </div>
+                  <UnitPriceBars rows={visible} />
+                </div>
+              )}
+            </>
+          ) : view === "compare" ? (
+            <>
+              <div className="border-b border-line px-4 py-3">
+                <h2 className="text-[13px] font-semibold text-text-1">同模型跨提供商比价</h2>
+                <p className="mt-1 text-[11.5px] text-text-3">
+                  按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家;
+                  原币直出不折算、token 与按张/按秒量纲不同,各归各区、只在区内比价。
+                </p>
+              </div>
+              <CompareMatrix groups={buildCompareGroups(visible)} />
+              <div className="border-t border-line">
+                <div className="border-b border-line px-4 py-3">
+                  <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
+                  <p className="mt-1 text-[11.5px] text-text-3">
+                    每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度 (仅
+                    token 计价模型;按张/按秒模型看下方条形图)。
+                  </p>
+                </div>
+                <PriceScatter rows={visible} />
+              </div>
+              <div className="border-t border-line">
+                <div className="border-b border-line px-4 py-3">
+                  <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
+                  <p className="mt-1 text-[11.5px] text-text-3">
+                    每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
+                  </p>
+                </div>
+                <UnitPriceBars rows={visible} />
+              </div>
+            </>
+          ) : (
+            allRowGroups(allRows, visibleKeys).map(({ key, rows, count }) => (
+              <div key={key} className="border-b border-line last:border-b-0">
+                <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
+                  <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
+                  <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>
+                </div>
+                <ModelTable rows={rows} visibleKeys={visibleKeys} />
+                <ModelCards rows={rows} visibleKeys={visibleKeys} />
+              </div>
+            ))
+          )}
+        </div>
+      </div>
       {visible.length > 0 && (
         <p className="border-t border-line px-4 py-3 text-[11.5px] text-text-3">
           共 {visible.length} 个模型 · v1 覆盖 {new Set(visible.map((m) => m.vendor)).size}{" "}

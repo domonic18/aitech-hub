@@ -66,7 +66,10 @@ export async function listPublicPricing(): Promise<PublicPricing> {
           sourceUrl: r.sourceUrl,
           region: r.region,
           providerKey: r.provider?.key ?? null,
-          providerName: r.provider?.name ?? r.vendor,
+          // 聚合源(M74 批B4)行显示用 vendor(如「词元所·博川科技」)而非平台字典名
+          // —— 同模型 21 家供应方若同名(百度词元所)比价无法区分;官方源两者一致
+          providerName:
+            r.provider?.sourceKind === "aggregator" ? r.vendor : (r.provider?.name ?? r.vendor),
           providerKind: r.provider?.sourceKind ?? null,
           modelDictKey: r.model?.modelKey ?? null,
           modality: r.model?.modality ?? null,

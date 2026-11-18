@@ -4,7 +4,14 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildUnitPriceBars, UNIT_BARS_MAX_ROWS } from "./bars";
+import {
+  buildUnitPriceBars,
+  UNIT_BARS_MAX_ROWS,
+  unitBarsCanvasWidth,
+  UNIT_BARS_LABEL_W,
+  UNIT_BARS_MAX_W,
+  UNIT_BARS_PRICE_W,
+} from "./bars";
 import type { PublicModelRow } from "./public";
 
 function row(over: Partial<PublicModelRow>): PublicModelRow {
@@ -87,5 +94,20 @@ describe("buildUnitPriceBars", () => {
     const bars = buildUnitPriceBars(rows)[0]!.bars;
     expect(bars).toHaveLength(UNIT_BARS_MAX_ROWS);
     expect(bars.at(-1)!.displayName).toBe(`m-${UNIT_BARS_MAX_ROWS - 1}`);
+  });
+});
+
+describe("画布尺寸(2026-11-18 修:条顶出画布/价格标签不可见/SVG 被放大)", () => {
+  it("画布宽 = 标签区 + 最大条长 + 价格标注区(不是最大行数)", () => {
+    expect(unitBarsCanvasWidth()).toBe(UNIT_BARS_LABEL_W + UNIT_BARS_MAX_W + UNIT_BARS_PRICE_W);
+    expect(unitBarsCanvasWidth()).toBeGreaterThan(UNIT_BARS_MAX_W);
+  });
+
+  it("最长条 + 其右侧价格文本整条落在画布内", () => {
+    const w = unitBarsCanvasWidth();
+    const barRight = UNIT_BARS_LABEL_W + UNIT_BARS_MAX_W; // 条右沿
+    const priceTextX = barRight + 8; // 价格文本起点(渲染处 barX + width + 8)
+    expect(barRight).toBeLessThan(w);
+    expect(priceTextX + 60).toBeLessThanOrEqual(w); // 价格文本宽约 60
   });
 });

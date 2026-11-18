@@ -13,7 +13,7 @@
 import type { ContextBandId, ModelCatId, ModelSortId, PriceBandId } from "./public";
 
 /** 模型区视图:列表(逐行列价)| 比价(同模型跨提供商并排 + 散点/条形图) */
-export type PricingViewId = "list" | "compare";
+export type PricingViewId = "list" | "compare" | "charts";
 
 /** 筛选态 */
 export interface PricingQueryState {
@@ -56,7 +56,7 @@ const CONTEXT_BANDS: ReadonlySet<string> = new Set([
   "unknown",
 ]);
 const SORTS: ReadonlySet<string> = new Set(["default", "input", "output", "name"]);
-const VIEWS: ReadonlySet<string> = new Set(["list", "compare"]);
+const VIEWS: ReadonlySet<string> = new Set(["list", "compare", "charts"]);
 const CATS: ReadonlySet<string> = new Set(["text", "image", "video", "audio", "vector", "all"]);
 
 /** 旧 mod 参数(模态值)→ 用途分组;认不出回落默认 */

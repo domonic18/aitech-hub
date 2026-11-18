@@ -18,6 +18,21 @@ import { isTokenPriced, representativePrice, unitLabel, type PublicModelRow } fr
 export const UNIT_BARS_MAX_W = 640;
 export const UNIT_BARS_ROW_H = 26;
 export const UNIT_BARS_MAX_ROWS = 24;
+/** 左侧模型名区宽(名右对齐到 labelLeft-8) */
+export const UNIT_BARS_LABEL_W = 210;
+/** 右侧价格标注区宽(价格文本画在条右 +8,宽约 60) */
+export const UNIT_BARS_PRICE_W = 88;
+
+/**
+ * 画布宽度:标签区 + **最大条长** + 价格标注区。
+ *
+ * 2026-11-18 修:此前误用 UNIT_BARS_MAX_ROWS(最大行数=24)当条长基数,画布只有
+ * 210+24+88=322,而条长按 UNIT_BARS_MAX_W=640 归一 → 最贵的几条条子顶出画布、
+ * 价格标签画在画布外(看不见价),且 SVG 被容器放大近 2 倍(字巨大)。
+ */
+export function unitBarsCanvasWidth(): number {
+  return UNIT_BARS_LABEL_W + UNIT_BARS_MAX_W + UNIT_BARS_PRICE_W;
+}
 
 /** 一条(一个模型 × 其最便宜的一家) */
 export interface UnitBar {

@@ -8,7 +8,13 @@
  * 量纲不同各自成块,原币直出不折算);条长按组内最大价线性归一。
  * 完全免费(0 价)条长无从比较 → 不入图,在图下说明数量。
  */
-import { buildUnitPriceBars, UNIT_BARS_MAX_ROWS, UNIT_BARS_ROW_H } from "@/lib/pricing/bars";
+import {
+  buildUnitPriceBars,
+  UNIT_BARS_LABEL_W,
+  UNIT_BARS_MAX_ROWS,
+  UNIT_BARS_ROW_H,
+  unitBarsCanvasWidth,
+} from "@/lib/pricing/bars";
 import { formatPrice, type PublicModelRow } from "@/lib/pricing/public";
 
 export function UnitPriceBars({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
@@ -21,15 +27,15 @@ export function UnitPriceBars({ rows }: { rows: PublicModelRow[] }): React.React
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
       {groups.map((g) => {
-        const labelLeft = 210;
-        const priceRight = 88;
+        const labelLeft = UNIT_BARS_LABEL_W;
         const height = g.bars.length * UNIT_BARS_ROW_H + 18;
-        const width = labelLeft + UNIT_BARS_MAX_ROWS + priceRight;
+        // 画布宽 = 标签区 + 最大条长 + 价格标注区(条与价格文本都落在画布内)
+        const width = unitBarsCanvasWidth();
         return (
           <div key={`${g.currency}|${g.priceUnit}`}>
             <p className="mb-1.5 text-[11.5px] text-text-3">
-              生成价({g.currency === "USD" ? "$" : "¥"}
-              {g.unitSuffix},取每模型最便宜的一家;条长线性归一)
+              {g.currency === "USD" ? "$" : "¥"}
+              {g.unitSuffix} · {g.bars.length} 个模型
             </p>
             <div className="overflow-x-auto">
               <svg

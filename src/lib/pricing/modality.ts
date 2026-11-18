@@ -37,7 +37,7 @@ const KEYWORDS: ReadonlyArray<{ modality: Exclude<Modality, "text">; re: RegExp 
   // 文生视频(强特征名,先于 image/video 弱词)
   {
     modality: "video",
-    re: /seedance|cogvideo|video-|hunyuan-video|minimax-video|kling|vidu|pixverse|happyhorse|-?t2v|-?i2v|-?r2v|-?kf2v|2video|wan2\.\d+-(?:t2v|i2v|v2v)|wanx?-video|sora|ve-3\b/,
+    re: /seedance|cogvideo|video-|hunyuan-video|minimax-video|kling|vidu|pixverse|happyhorse|videoretalk|-?t2v|-?i2v|-?r2v|-?kf2v|2video|wan2\.\d+-(?:t2v|i2v|v2v)|wanx?-video|sora|ve-3\b/,
   },
   // 文生图(强特征名)
   {
@@ -47,7 +47,7 @@ const KEYWORDS: ReadonlyArray<{ modality: Exclude<Modality, "text">; re: RegExp 
   // 音频(TTS/ASR/语音/音乐生成)
   {
     modality: "audio",
-    re: /cosyvoice|sensevoice|fishspeech|fun-asr|paraformer|\btts\b|whisper|qwen-?audio|step-asr|music/,
+    re: /cosyvoice|sensevoice|fishspeech|fun-asr|paraformer|\btts\b|whisper|qwen-?audio|qwen\d*-asr|step-asr|music/,
   },
   // 向量/重排
   { modality: "embedding", re: /embedding|(^|\/)(bge|gte)-/ },
