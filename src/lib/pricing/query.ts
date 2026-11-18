@@ -17,6 +17,11 @@ import type { ContextBandId, FreeScopeId, ModelCatId, ModelSortId, PriceBandId }
 /** 模型区视图:列表(逐行列价)| 比价(同模型跨提供商并排 + 散点/条形图) */
 export type PricingViewId = "list" | "compare" | "charts";
 
+/** 页内大页签(2026-11-18 反馈:按量模型与 Coding Plan 挤一页不利查看):
+ * model=模型调用(按量)| plan=Coding Plan(订阅)。两块内容都 SSR 全量进
+ * HTML(SEO 红线),非活动页签整块 `hidden` 藏住——与列表视图藏行的技巧同源 */
+export type PricingPanelId = "model" | "plan";
+
 /** 筛选态 */
 export interface PricingQueryState {
   /** 厂商多选(空 = 全部) */
@@ -35,6 +40,8 @@ export interface PricingQueryState {
   sort: ModelSortId;
   /** 模型区视图 */
   view: PricingViewId;
+  /** 页内大页签(默认 model) */
+  panel: PricingPanelId;
 }
 
 export const DEFAULT_PRICING_QUERY: PricingQueryState = {
@@ -46,6 +53,7 @@ export const DEFAULT_PRICING_QUERY: PricingQueryState = {
   sourceKind: "",
   sort: "default",
   view: "list",
+  panel: "model",
 };
 
 const BANDS: ReadonlySet<string> = new Set(["all", "lt10", "10-50", "50-100", "100-300", "gte300"]);
@@ -92,6 +100,7 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
     vendors: [...new Set(vendors)],
     band: (BANDS.has(band) ? band : "all") as PriceBandId,
     freeScope: freeScopeOf(params.get("free")),
+    panel: params.get("panel") === "plan" ? "plan" : "model",
     cat: (CATS.has(cat)
       ? cat
       : legacyMod !== ""
@@ -115,6 +124,7 @@ export function encodePricingQuery(state: PricingQueryState): string {
   if (state.sourceKind !== "") params.set("src", state.sourceKind);
   if (state.sort !== DEFAULT_PRICING_QUERY.sort) params.set("sort", state.sort);
   if (state.view !== DEFAULT_PRICING_QUERY.view) params.set("view", state.view);
+  if (state.panel !== DEFAULT_PRICING_QUERY.panel) params.set("panel", state.panel);
   return params.toString();
 }
 
@@ -133,6 +143,7 @@ export function samePricingQuery(a: PricingQueryState, b: PricingQueryState): bo
     a.sourceKind === b.sourceKind &&
     a.sort === b.sort &&
     a.view === b.view &&
+    a.panel === b.panel &&
     a.vendors.length === b.vendors.length &&
     a.vendors.every((v, i) => v === b.vendors[i])
   );
