@@ -4,7 +4,7 @@
  * 模型牌价面板(M74 批C/D;批G 用途页签;2026-11-18 布局改版):
  * lg+ 屏 = 左侧常驻筛选栏(FilterSidebar)+ 右侧内容;< lg 移动端仍走顶部
  * FilterBar —— 两种形态共用同一份筛选状态。视图三态:列表 | 比价 | 图表
- * (图表 = 能力×价格 + 输入×输出散点 + 生成价条形图,2026-11-18 反馈问题四)。
+ * (图表 = 输入×输出散点 + 生成价条形图;生成价块仅在有非 token 行时渲染)。
  *
  * **SSR 红线(2026-11-16 空壳事故)**:列表视图渲染**全量行**,被筛掉的行用
  * `hidden` 属性藏住——首屏 HTML 永远含未筛选全量(SEO 生命线),页仍 ISR 静态;
@@ -34,7 +34,6 @@ import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare
 import type { PricingViewId } from "@/lib/pricing/query";
 
 import { CompareMatrix } from "./CompareMatrix";
-import { ContextPriceScatter } from "./ContextPriceScatter";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
@@ -370,14 +369,6 @@ export function ModelSection({
           </div>
           {view === "charts" ? (
             <>
-              <div className="border-b border-line px-4 py-3">
-                <h2 className="text-[13px] font-semibold text-text-1">能力 × 价格</h2>
-                <p className="mt-1 text-[11.5px] text-text-3">
-                  横轴 = 上下文长度(能力的直接代理:越靠右越强),纵轴 = 输入价(越靠上越贵)。 每个点 =
-                  一个模型**最便宜的一家**;对数双轴,仅 token 计价模型。 左上角 = 便宜又强的甜点区。
-                </p>
-              </div>
-              <ContextPriceScatter rows={visible} />
               <div className="border-t border-line">
                 <div className="border-b border-line px-4 py-3">
                   <h2 className="text-[13px] font-semibold text-text-1">输入价 × 输出价</h2>
@@ -388,15 +379,20 @@ export function ModelSection({
                 </div>
                 <PriceScatter rows={visible} />
               </div>
-              <div className="border-t border-line">
-                <div className="border-b border-line px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
-                  <p className="mt-1 text-[11.5px] text-text-3">
-                    每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
-                  </p>
+              {/* 仅当前筛选含非 token 行(按张/按秒)时渲染:文本页签没有此类行,整块
+                  不出现(2026-11-18 反馈:孤零零一条「videoretalk」很怪——那是模态
+                  误判进文本组的视频模型,关键词修后由日采自愈归组) */}
+              {visible.some((r) => !isTokenPriced(r)) && (
+                <div className="border-t border-line">
+                  <div className="border-b border-line px-4 py-3">
+                    <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
+                    <p className="mt-1 text-[11.5px] text-text-3">
+                      每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
+                    </p>
+                  </div>
+                  <UnitPriceBars rows={visible} />
                 </div>
-                <UnitPriceBars rows={visible} />
-              </div>
+              )}
             </>
           ) : view === "compare" ? (
             <>
