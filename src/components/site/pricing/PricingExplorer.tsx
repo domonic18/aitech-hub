@@ -10,6 +10,7 @@
  * ——URL 只驱动客户端筛选,页仍是 ISR 静态(SEO 生命线)。
  */
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/site/PageHeader";
@@ -32,7 +33,14 @@ import { planKey } from "./shared";
 /** 对比上限:超过 4 列并排在小屏失去可读性 */
 const COMPARE_LIMIT = 4;
 
-export default function PricingExplorer({ data }: { data: PublicPricing }): React.ReactElement {
+export default function PricingExplorer({
+  data,
+  changeCount = 0,
+}: {
+  data: PublicPricing;
+  /** 近 90 天降价记录条数(服务端查好传入,只做入口链接的文案) */
+  changeCount?: number;
+}): React.ReactElement {
   const pathname = usePathname();
 
   /**
@@ -113,8 +121,8 @@ export default function PricingExplorer({ data }: { data: PublicPricing }): Reac
               onVendorsChange={(v) => updateModelQuery({ vendors: v })}
               band={modelQuery.band}
               onBandChange={(b) => updateModelQuery({ band: b })}
-              freeOnly={modelQuery.freeOnly}
-              onToggleFree={() => updateModelQuery({ freeOnly: !modelQuery.freeOnly })}
+              freeScope={modelQuery.freeScope}
+              onFreeScopeChange={(v) => updateModelQuery({ freeScope: v })}
               cat={modelQuery.cat}
               onCatChange={(c) =>
                 // 非文本组无上下文概念,切组时复位上下文档(否则空筛)
@@ -147,6 +155,20 @@ export default function PricingExplorer({ data }: { data: PublicPricing }): Reac
               compareLimit={COMPARE_LIMIT}
             />
           )}
+          {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}
+          <p className="mt-3 text-[11.5px] text-text-3">
+            {changeCount > 0 ? (
+              <>
+                近 90 天有 <span className="font-mono text-text-1">{changeCount}</span> 条降价记录
+                ·{" "}
+              </>
+            ) : (
+              <>降价史自 M74 上线后开始累计 · </>
+            )}
+            <Link href="/pricing/changes/" className="text-blue hover:text-blue/80">
+              查看降价记录
+            </Link>
+          </p>
           {/* 托盘浮层让出底部空间,避免遮住末行/页脚 */}
           {compareKeys.length > 0 && <div className="h-20" aria-hidden />}
         </>

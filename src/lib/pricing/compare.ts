@@ -60,7 +60,13 @@ export interface CompareGroup {
   models: CompareModel[];
   /** 本区出现的提供商(按首次出现序) */
   providerKeys: string[];
+  /** 超过每区上限被截断的模型数(批D8;组内已按代表价升序,截掉的是更贵的) */
+  truncated: number;
 }
+
+/** 每区(币种×单位)展示的模型上限(批D8):聚合源铺开后组内模型无界,
+ *  矩阵 DOM 与档位 <details> 会拖垮首屏;超限按价升序保留,并明示截断 */
+export const COMPARE_MAX_MODELS_PER_GROUP = 50;
 
 /** 行 → 单元格(取该行在指定提供商下的报价) */
 function cellOf(row: PublicModelRow): CompareCell {
@@ -148,6 +154,7 @@ export function buildCompareGroups(rows: PublicModelRow[]): CompareGroup[] {
           priceUnit,
           models: [model],
           providerKeys: partCells.map((c) => c.providerKey),
+          truncated: 0,
         });
       } else {
         group.models.push(model);
@@ -173,6 +180,11 @@ export function buildCompareGroups(rows: PublicModelRow[]): CompareGroup[] {
       if (pa !== pb) return pa - pb;
       return a.key.localeCompare(b.key);
     });
+    // 批D8 截断:排序后切前 N(组内已按代表价升序,截掉的是更贵的)
+    if (g.models.length > COMPARE_MAX_MODELS_PER_GROUP) {
+      g.truncated = g.models.length - COMPARE_MAX_MODELS_PER_GROUP;
+      g.models = g.models.slice(0, COMPARE_MAX_MODELS_PER_GROUP);
+    }
   }
   return out;
 }

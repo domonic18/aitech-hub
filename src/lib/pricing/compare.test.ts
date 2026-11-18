@@ -186,3 +186,41 @@ describe("buildPriceScatter", () => {
     expect(geo.skipped).toBe(1);
   });
 });
+
+describe("批D8:点数上限截断", () => {
+  it("散点超过 300 点按输入价升序保留最便宜的,truncated 记截断数", () => {
+    const rows = Array.from({ length: 320 }, (_, i) =>
+      row({ modelDictKey: `m${i}`, providerKey: "a", inputPrice: 1 + i, outputPrice: 2 + i }),
+    );
+    const geo = buildPriceScatter(rows);
+    expect(geo.points).toHaveLength(300);
+    expect(geo.truncated).toBe(20);
+    // 保留的是最便宜的前 300 个(输入价 1..300)
+    const inputs = geo.points.map((p) => p.input).sort((a, b) => a - b);
+    expect(inputs[0]).toBe(1);
+    expect(inputs.at(-1)).toBe(300);
+  });
+
+  it("散点未超上限时 truncated=0(现网 300 行量级无感)", () => {
+    const rows = Array.from({ length: 50 }, (_, i) =>
+      row({ modelDictKey: `m${i}`, providerKey: "a", inputPrice: 1 + i, outputPrice: 2 + i }),
+    );
+    const geo = buildPriceScatter(rows);
+    expect(geo.truncated).toBe(0);
+    expect(geo.points).toHaveLength(50);
+  });
+
+  it("比价每币种×单位区最多 50 个模型,截掉的是更贵的", () => {
+    const rows = Array.from({ length: 55 }, (_, i) => [
+      row({ modelDictKey: `m${i}`, providerKey: "a", inputPrice: 1 + i }),
+      row({ modelDictKey: `m${i}`, providerKey: "b", inputPrice: 2 + i }),
+    ]).flat();
+    const groups = buildCompareGroups(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.models).toHaveLength(50);
+    expect(groups[0]!.truncated).toBe(5);
+    // 保留的是代表价升序的前 50(m0..m49)
+    expect(groups[0]!.models[0]!.key).toBe("m0");
+    expect(groups[0]!.models.at(-1)!.key).toBe("m49");
+  });
+});

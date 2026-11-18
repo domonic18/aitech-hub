@@ -1,8 +1,9 @@
 /**
  * /pricing/ 公开读侧单测(M55 批D,prisma mock 无真库):仅 enabled 行可见
  * (停用/待审不可见)/ 45 天过期判定(空表不出提醒,边界刚好 45 天不出)/
- * 价格格(USD 原币直出,null=未公布)/ JSON-LD 清单构造(双价+截稿溯源)/
+ * 价格格(USD 原币直出,null=未公布)/
  * 分组排序(P2-15:国内¥→国际$→混合组,同组内稳定)。
+ * JSON-LD 构造单测随构造器迁至 jsonld.test.ts(批D7)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +20,6 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import {
-  buildPricingJsonLd,
   filterModelRows,
   filterPricingRows,
   formatPrice,
@@ -226,50 +226,6 @@ describe("展示侧筛选(验收问题一)", () => {
   });
 });
 
-describe("buildPricingJsonLd", () => {
-  it("ItemList+Product 携双价与截稿溯源;空表 numberOfItems=0", () => {
-    const ld = buildPricingJsonLd(
-      {
-        models: [
-          {
-            vendor: "DeepSeek 深度求索",
-            modelKey: "deepseek-flash",
-            currency: "CNY",
-            inputPrice: 2,
-            outputPrice: 8,
-            freeTier: null,
-            isFree: false,
-            contextWindow: "1M",
-            note: null,
-            dataAsOf: "2026-10-28",
-            sourceUrl: "https://x",
-            region: "cn",
-            providerKey: "deepseek",
-            providerName: "DeepSeek 深度求索",
-            providerKind: "official",
-            modelDictKey: "deepseek-flash",
-            modality: "text",
-            priceUnit: "per_1m_tokens",
-            tiers: [],
-          },
-        ],
-        plans: [],
-        modelsAsOf: "2026-10-28",
-        plansAsOf: null,
-      },
-      "https://17aitech.com/pricing/",
-    );
-    expect(ld).toMatchObject({ "@type": "ItemList", numberOfItems: 1 });
-    const item = (ld.itemListElement as Array<{ item: Record<string, string> }>)[0]!.item;
-    expect(item.name).toBe("DeepSeek 深度求索 deepseek-flash");
-    expect(item.description).toContain("输入 ¥ 2 / 输出 ¥ 8");
-    expect(item.description).toContain("数据截至 2026-10-28");
-    expect(
-      buildPricingJsonLd({ models: [], plans: [], modelsAsOf: null, plansAsOf: null }, "u"),
-    ).toMatchObject({ numberOfItems: 0, itemListElement: [] });
-  });
-});
-
 describe("M74 批C:上下文长度解析与分档", () => {
   it("K/M 记法 → token 数;认不出 → null", () => {
     expect(parseContextTokens("128K")).toBe(131072);
@@ -316,19 +272,39 @@ describe("M74 批C:模型行筛选与排序", () => {
   const base = {
     vendors: [] as string[],
     band: "all" as PriceBandId,
-    freeOnly: false,
+    freeScope: "all" as const,
     cat: "text" as const,
     contextBand: "all" as const,
     sourceKind: "",
   };
 
-  it("只看免费只认完全免费标记(有免费额度不等于免费)", () => {
+  it("免费口径四态:完全免费 / 有免费额度 / 任一免费 分得开(2026-11-18 反馈)", () => {
     const rows = [
-      row({ modelKey: "free-one", isFree: true }),
+      row({ modelKey: "free-one", isFree: true, freeTier: null }),
       row({ modelKey: "quota", isFree: false, freeTier: "每日 200 万 tokens 免费" }),
+      row({ modelKey: "paid", isFree: false, freeTier: null }),
     ];
-    const out = filterModelRows(rows, { ...base, freeOnly: true });
-    expect(out.map((r) => r.modelKey)).toEqual(["free-one"]);
+    // 完全免费:调用不花钱
+    expect(filterModelRows(rows, { ...base, freeScope: "full" }).map((r) => r.modelKey)).toEqual([
+      "free-one",
+    ]);
+    // 有免费额度:有额度但要按量付费
+    expect(filterModelRows(rows, { ...base, freeScope: "quota" }).map((r) => r.modelKey)).toEqual([
+      "quota",
+    ]);
+    // 任一免费:两者并集
+    expect(filterModelRows(rows, { ...base, freeScope: "any" }).map((r) => r.modelKey)).toEqual([
+      "free-one",
+      "quota",
+    ]);
+    // 全部:不过滤
+    expect(filterModelRows(rows, { ...base, freeScope: "all" })).toHaveLength(3);
+  });
+
+  it("免费额度原文为空串视同无额度(不算「有免费额度」)", () => {
+    const rows = [row({ modelKey: "blank", isFree: false, freeTier: "   " })];
+    expect(filterModelRows(rows, { ...base, freeScope: "quota" })).toHaveLength(0);
+    expect(filterModelRows(rows, { ...base, freeScope: "any" })).toHaveLength(0);
   });
 
   it("用途分组 / 来源类型 / 上下文 三维可组合(批G:cat 按模态集合过滤,未标注按 text)", () => {

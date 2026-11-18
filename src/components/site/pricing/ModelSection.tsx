@@ -16,6 +16,8 @@
  * - **完全免费**(is_free):调用不花钱 → 行级绿色「免费」角标
  * - **有免费额度**(free_tier):如「每日 200 万 tokens 免费」→ 橙色额度原文(不叫免费)
  */
+import { useMemo } from "react";
+
 import {
   filterModelRows,
   formatPrice,
@@ -24,13 +26,15 @@ import {
   sortModelRows,
   sortPublicModels,
   vendorOptions,
-  type ModelCatId,
   type ContextBandId,
+  type FreeScopeId,
+  type ModelCatId,
   type ModelSortId,
   type PriceBandId,
   type PublicModelRow,
 } from "@/lib/pricing/public";
 import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
+import { modelAnchorId } from "@/lib/pricing/jsonld";
 import type { PricingViewId } from "@/lib/pricing/query";
 
 import { CompareMatrix } from "./CompareMatrix";
@@ -80,6 +84,7 @@ function ModelTable({
           {rows.map((r) => (
             <tr
               key={rowKey(r)}
+              id={modelAnchorId(r.vendor, r.modelKey)}
               hidden={!visibleKeys.has(rowKey(r))}
               className="border-b border-line/50 last:border-0"
             >
@@ -203,8 +208,9 @@ export interface ModelSectionProps {
   onVendorsChange: (v: string[]) => void;
   band: PriceBandId;
   onBandChange: (b: PriceBandId) => void;
-  freeOnly: boolean;
-  onToggleFree: () => void;
+  /** 免费口径(单选四态:全部/完全免费/有免费额度/任一免费) */
+  freeScope: FreeScopeId;
+  onFreeScopeChange: (v: FreeScopeId) => void;
   /** 用途分组(批G;切换时上下文档对非文本组自动复位) */
   cat: ModelCatId;
   onCatChange: (v: ModelCatId) => void;
@@ -225,8 +231,8 @@ export function ModelSection({
   onVendorsChange,
   band,
   onBandChange,
-  freeOnly,
-  onToggleFree,
+  freeScope,
+  onFreeScopeChange,
   cat,
   onCatChange,
   contextBand,
@@ -238,35 +244,66 @@ export function ModelSection({
   view,
   onViewChange,
 }: ModelSectionProps): React.ReactElement {
-  const visible = sortModelRows(
-    filterModelRows(sortPublicModels(models), {
-      vendors: selectedVendors,
-      band,
-      freeOnly,
-      cat,
-      contextBand,
-      sourceKind,
-    }),
-    sort,
+  // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
+  // 两遍筛选 + 两遍排序 + 厂商分面;聚合源铺开后行数百级,这是主交互卡顿源
+  const sortedModels = useMemo(() => sortPublicModels(models), [models]);
+  const visible = useMemo(
+    () =>
+      sortModelRows(
+        filterModelRows(sortedModels, {
+          vendors: selectedVendors,
+          band,
+          freeScope,
+          cat,
+          contextBand,
+          sourceKind,
+        }),
+        sort,
+      ),
+    [sortedModels, selectedVendors, band, freeScope, cat, contextBand, sourceKind, sort],
   );
-  const visibleKeys = new Set(visible.map(rowKey));
+  const visibleKeys = useMemo(() => new Set(visible.map(rowKey)), [visible]);
   // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
-  const allRows = sortModelRows(sortPublicModels(models), sort);
-  const freeCount = models.filter((m) => m.isFree).length;
+  const allRows = useMemo(() => sortModelRows(sortedModels, sort), [sortedModels, sort]);
+  // 当前用途组的行(厂商分面同口径:只按用途组一维收边,不受其余筛选影响)
+  const catRows = useMemo(
+    () =>
+      filterModelRows(sortedModels, {
+        vendors: [],
+        band: "all",
+        freeScope: "all",
+        cat,
+        contextBand: "all",
+        sourceKind: "",
+      }),
+    [sortedModels, cat],
+  );
+  // 各免费口径的行数(筛选器带计数:让用户先看到「有多少行」再选)。
+  // **按当前用途组收边**(与厂商分面同口径)——否则「完全免费 1」点下去在
+  // 「文本」页签是 0 行(那 1 行是图片模型),计数与结果对不上,像数据丢了
+  const freeCounts = useMemo(() => {
+    const counts: Record<FreeScopeId, number> = { all: 0, full: 0, quota: 0, any: 0 };
+    for (const m of catRows) {
+      counts.all += 1;
+      if (m.isFree) counts.full += 1;
+      if (m.freeTier !== null && m.freeTier.trim() !== "") counts.quota += 1;
+      if (m.isFree || (m.freeTier !== null && m.freeTier.trim() !== "")) counts.any += 1;
+    }
+    return counts;
+  }, [catRows]);
   const tokenCat = cat === "text" || cat === "all";
   // 厂商选项按当前用途组收边(facet,2026-11-18 反馈:文本页签里勾「词元所·
   // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
   // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
-  const vendorFacet = vendorOptions(
-    filterModelRows(sortPublicModels(models), {
-      vendors: [],
-      band: "all",
-      freeOnly: false,
-      cat,
-      contextBand: "all",
-      sourceKind: "",
-    }),
-    (r) => r.vendor,
+  const vendorFacet = useMemo(() => vendorOptions(catRows, (r) => r.vendor), [catRows]);
+  const rowGroups = useMemo(() => allRowGroups(allRows, visibleKeys), [allRows, visibleKeys]);
+  const compareGroups = useMemo(
+    () => (view === "compare" ? buildCompareGroups(visible) : []),
+    [view, visible],
+  );
+  const comparableCount = useMemo(
+    () => (view === "compare" ? countComparableModels(visible) : 0),
+    [view, visible],
   );
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
@@ -313,7 +350,7 @@ export function ModelSection({
         </div>
         {view === "compare" && (
           <span className="w-full text-[11px] text-text-3">
-            {countComparableModels(visible)} 个模型有 ≥2 家报价可并排比
+            {comparableCount} 个模型有 ≥2 家报价可并排比
           </span>
         )}
       </div>
@@ -332,9 +369,9 @@ export function ModelSection({
             onContextBandChange={onContextBandChange}
             sourceKind={sourceKind}
             onSourceKindChange={onSourceKindChange}
-            freeOnly={freeOnly}
-            onToggleFree={onToggleFree}
-            freeCount={freeCount}
+            freeScope={freeScope}
+            onFreeScopeChange={onFreeScopeChange}
+            freeCounts={freeCounts}
             sort={sort}
             onSortChange={onSortChange}
             priceLabel={catPriceLabel(cat)}
@@ -353,7 +390,7 @@ export function ModelSection({
               priceLabel={catPriceLabel(cat)}
               total={models.length}
               shown={visible.length}
-              freeOnly={{ on: freeOnly, onToggle: onToggleFree, freeCount }}
+              freeScope={{ value: freeScope, onChange: onFreeScopeChange, counts: freeCounts }}
               extra={
                 <ModelFilters
                   cat={cat}
@@ -403,7 +440,7 @@ export function ModelSection({
                   原币直出不折算、token 与按张/按秒量纲不同,各归各区、只在区内比价。
                 </p>
               </div>
-              <CompareMatrix groups={buildCompareGroups(visible)} />
+              <CompareMatrix groups={compareGroups} />
               <div className="border-t border-line">
                 <div className="border-b border-line px-4 py-3">
                   <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
@@ -425,8 +462,12 @@ export function ModelSection({
               </div>
             </>
           ) : (
-            allRowGroups(allRows, visibleKeys).map(({ key, rows, count }) => (
-              <div key={key} className="border-b border-line last:border-b-0">
+            rowGroups.map(({ key, rows, count }) => (
+              <div
+                key={key}
+                // 批D8:全量行必须进 DOM(SEO 红线),但视口外的分组可跳过布局绘制
+                className="border-b border-line last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_600px]"
+              >
                 <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
                   <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
                   <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>

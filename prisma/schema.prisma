@@ -1665,6 +1665,7 @@ model ModelPricing {
   provider ModelPricingProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   model    ModelPricingModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
   tiers    ModelPricingTier[]
+  changes  ModelPricingChange[]
 
   @@unique([vendor, modelKey], map: "uq_model_pricing_vendor_model")
   @@index([status, region, sortOrder], map: "idx_model_pricing_page")
@@ -1745,6 +1746,40 @@ model ModelPricingTier {
   @@unique([modelPricingId, tierLabel], map: "uq_model_pricing_tier_pricing_label")
   @@index([modelPricingId], map: "idx_model_pricing_tier_pricing")
   @@map("model_pricing_tier")
+}
+
+/// 牌价变更史(M74 批F):采集落库时对比库中现值,变了就留一行。
+/// 只记**采集侧**(官方牌价页日采);后台人工改价本轮不写变更行。
+/// 粒度=一次变价一行(append-only)——覆盖式(同日只留一条)表达不了
+/// 「一周内降了两次」,而降价史的价值恰在连续事件;膨胀靠「模型数 × 调价次数」
+/// 自然收敛(百行级模型年均千行内)。
+/// 口径列(币种/计价单位)必须记:跨币种、跨单位的价格不可比,
+/// 变了就不是降价而是口径变更(change_kind 记 currency_changed / unit_changed)。
+model ModelPricingChange {
+  id             BigInt   @id @default(autoincrement())
+  modelPricingId BigInt   @map("model_pricing_id")
+  vendor         String   @db.VarChar(40) // 冗余展示列(变更当时的厂商/供应方)
+  modelKey       String   @map("model_key") @db.VarChar(60)
+  oldInputPrice  Decimal? @map("old_input_price") @db.Decimal(12, 4)
+  oldOutputPrice Decimal? @map("old_output_price") @db.Decimal(12, 4)
+  newInputPrice  Decimal? @map("new_input_price") @db.Decimal(12, 4)
+  newOutputPrice Decimal? @map("new_output_price") @db.Decimal(12, 4)
+  oldCurrency    String?  @map("old_currency") @db.VarChar(8)
+  newCurrency    String?  @map("new_currency") @db.VarChar(8)
+  oldPriceUnit   String?  @map("old_price_unit") @db.VarChar(20)
+  newPriceUnit   String?  @map("new_price_unit") @db.VarChar(20)
+  changeKind     String   @map("change_kind") @db.VarChar(20) // drop | rise | unit_changed | currency_changed
+  sourceKey      String?  @map("source_key") @db.VarChar(40) // 采集源规范键(SOURCE_DEFS.key);不靠 sourceUrl(渠道 URL 会被后台改)
+  sourceUrl      String?  @map("source_url") @db.VarChar(300)
+  changedAt      DateTime @map("changed_at") @db.Timestamptz(6) // 变更时刻(= 采集时刻)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  pricing ModelPricing @relation(fields: [modelPricingId], references: [id], onDelete: Cascade)
+
+  @@unique([modelPricingId, changedAt], map: "uq_model_pricing_change_pricing_time")
+  @@index([modelPricingId], map: "idx_model_pricing_change_pricing")
+  @@index([changedAt(sort: Desc)], map: "idx_model_pricing_change_time")
+  @@map("model_pricing_change")
 }
 
 /// Coding Plan 订阅套餐(M55):额度口径各家不一,按官方原文呈现不强行归一;
