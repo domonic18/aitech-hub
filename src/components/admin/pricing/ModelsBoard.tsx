@@ -6,6 +6,10 @@
  * 行内高频操作(状态终审/改价/删)+ 来源列(官方页↗,验收问题三);
  * 低频新建收进抽屉表单(字段三段:归属/价格/溯源),不再常驻占首屏。
  * 三规则不变:新建落 pending;刷新不动终审行;currency 随价格走。
+ *
+ * 2026-11-18 反馈两改:①勾选 + 批量发布/批量停用(bulk API 本就支持任意
+ * 状态,此前只接了「批量通过待审」一条);②行内操作后 refreshKeepScroll
+ * 保持滚动位置(此前 refresh 换骨架会跳顶)。
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,6 +22,8 @@ import { TierEditor } from "./TierEditor";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+
+import { refreshKeepScroll } from "./refresh";
 
 type Msg = { tone: "ok" | "err"; text: string } | null;
 type StatusFilter = "all" | "pending" | "enabled" | "disabled";
@@ -74,6 +80,8 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tierRowId, setTierRowId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState({ inputPrice: "", outputPrice: "" });
+  /** 勾选行 id 集(批量发布/停用的对象;筛选变化不清空,跨页签可累计) */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const counts = useMemo(
     () => ({
@@ -123,8 +131,27 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
     setMsg(null);
     const r = await action();
     setMsg({ tone: r.ok ? "ok" : "err", text: r.message });
-    if (r.ok) router.refresh();
+    // 反馈问题三:refresh 会触发 loading 骨架换页跳顶,归位保持滚动
+    if (r.ok) refreshKeepScroll(router);
     setBusy(false);
+  }
+
+  /** 批量状态变更(反馈问题二):发布/停用所选;停用前台即下架,须确认 */
+  function bulkStatus(status: "enabled" | "disabled"): void {
+    const ids = filtered.filter((r) => selected.has(r.id)).map((r) => r.id);
+    if (ids.length === 0 || busy) return;
+    if (status === "disabled" && !window.confirm(`停用所选 ${ids.length} 行?前台将立即下架`)) {
+      return;
+    }
+    void run(async () => {
+      const env = await send("/api/pricing/models/bulk", "POST", { ids, status });
+      const count = (env?.data as { count?: number } | null)?.count ?? 0;
+      if (env?.code === 0) {
+        setSelected(new Set());
+        return { ok: true, message: `${status === "enabled" ? "已发布" : "已停用"} ${count} 行` };
+      }
+      return { ok: false, message: env?.message ?? "批量操作失败" };
+    });
   }
 
   function submitNew(): void {
@@ -220,7 +247,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
               });
               const count = (env?.data as { count?: number } | null)?.count ?? 0;
               if (env?.code === 0) {
-                router.refresh();
+                refreshKeepScroll(router);
                 return { ok: true, message: `已上架 ${count} 行` };
               }
               return { ok: false, message: env?.message ?? "批量通过失败" };
@@ -229,6 +256,23 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
           className="rounded-sm border border-line px-3 py-1 text-xs text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-40"
         >
           批量通过 {pendingIds.length} 行
+        </button>
+        {/* 反馈问题二:任意行的批量发布/停用(勾选对象,非仅待审) */}
+        <button
+          type="button"
+          disabled={busy || selected.size === 0}
+          onClick={() => bulkStatus("enabled")}
+          className="rounded-sm border border-green/40 bg-green/8 px-3 py-1 text-xs text-green hover:bg-green/15 disabled:opacity-40"
+        >
+          发布所选 {selected.size}
+        </button>
+        <button
+          type="button"
+          disabled={busy || selected.size === 0}
+          onClick={() => bulkStatus("disabled")}
+          className="rounded-sm border border-line px-3 py-1 text-xs text-text-3 hover:border-red/50 hover:text-red disabled:opacity-40"
+        >
+          停用所选 {selected.size}
         </button>
         <button
           type="button"
@@ -249,6 +293,21 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
         <table className="w-full min-w-[900px] text-left text-[13px]">
           <thead>
             <tr className="border-b border-line bg-panel-2 text-[11px] text-text-3">
+              <th className="w-9 px-2 py-2">
+                <input
+                  type="checkbox"
+                  aria-label="全选当前筛选行"
+                  className="accent-accent"
+                  checked={filtered.length > 0 && filtered.every((r) => selected.has(r.id))}
+                  onChange={(e) =>
+                    setSelected(
+                      e.target.checked
+                        ? new Set([...selected, ...filtered.map((r) => r.id)])
+                        : new Set([...selected].filter((id) => !filtered.some((r) => r.id === id))),
+                    )
+                  }
+                />
+              </th>
               <th className="px-4 py-2 font-medium">模型 / 厂商</th>
               <th className="px-2 py-2 font-medium">输入价</th>
               <th className="px-2 py-2 font-medium">输出价</th>
@@ -269,6 +328,22 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                   key={r.id}
                   className={`border-b border-line/60 last:border-0 ${r.status === "pending" ? "opacity-70" : ""}`}
                 >
+                  <td className="px-2 py-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`选择 ${r.modelKey}`}
+                      className="accent-accent"
+                      checked={selected.has(r.id)}
+                      onChange={(e) =>
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(r.id);
+                          else next.delete(r.id);
+                          return next;
+                        })
+                      }
+                    />
+                  </td>
                   <td className="px-4 py-2">
                     <div className="font-mono text-xs text-text-1">
                       {r.modelKey}
@@ -344,7 +419,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                             isFree: !r.isFree,
                           });
                           if (env?.code === 0) {
-                            router.refresh();
+                            refreshKeepScroll(router);
                             return {
                               ok: true,
                               message: r.isFree ? "已取消完全免费" : "已标记完全免费",
@@ -507,13 +582,13 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                 .filter((r) => r.id === tierRowId)
                 .map((r) => (
                   <tr key={`tiers-${r.id}`} className="border-b border-line/60 last:border-b-0">
-                    <td colSpan={9} className="px-4 py-3">
+                    <td colSpan={10} className="px-4 py-3">
                       <TierEditor
                         rowId={r.id}
                         tiers={r.tiers ?? []}
                         onDone={() => {
                           setTierRowId(null);
-                          router.refresh();
+                          refreshKeepScroll(router);
                         }}
                       />
                     </td>
@@ -521,7 +596,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                 ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-xs text-text-3">
+                <td colSpan={10} className="px-4 py-8 text-center text-xs text-text-3">
                   {rows.length === 0
                     ? "暂无牌价行:点右上「新建牌价」或爬取初稿"
                     : "无匹配行(调整筛选或搜索词)"}
