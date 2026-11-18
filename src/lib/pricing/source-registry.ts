@@ -33,6 +33,7 @@ import {
   PRICING_TOMBSTONE_STALE_MS,
 } from "./model-persist";
 import { BAILIAN_MODEL_PRICING_URL, parseBailianModels } from "./model-sources/bailian";
+import { CYSUO_MARKET_URL, fetchCiyuansuo } from "./model-sources/baidu-ciyuansuo";
 import { parseSiliconflow, SILICONFLOW_PRICING_URL } from "./model-sources/siliconflow";
 import {
   fetchVolcengineArk,
@@ -196,6 +197,19 @@ export const SOURCE_DEFS: SourceDef[] = [
     sortOrder: 6,
     run: async (url, { now, sink }) =>
       parseVolcengineArk(await fetchVolcengineArk(url, sink), url, now),
+  },
+  {
+    // 聚合平台挂牌价(M74 批B4):每供应方一行(vendor=词元所·<供应方>),
+    // providerKey=baidu-ciyuansuo(sourceKind=aggregator,前台「聚合挂牌」标注与
+    // 来源类型筛选即用它);详情见 model-sources/baidu-ciyuansuo.ts 头注(合规口径)
+    key: "baidu-ciyuansuo",
+    target: "model",
+    kind: "rendered",
+    label: "百度词元所 聚合报价",
+    vendor: "百度词元所",
+    defaultUrl: CYSUO_MARKET_URL,
+    sortOrder: 7,
+    run: async (url, { now, sink }) => fetchCiyuansuo(url, sink, now),
   },
   {
     key: "kimi-membership",
