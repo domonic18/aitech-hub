@@ -255,6 +255,20 @@ export function ModelSection({
   const allRows = sortModelRows(sortPublicModels(models), sort);
   const freeCount = models.filter((m) => m.isFree).length;
   const tokenCat = cat === "text" || cat === "all";
+  // 厂商选项按当前用途组收边(facet,2026-11-18 反馈:文本页签里勾「词元所·
+  // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
+  // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
+  const vendorFacet = vendorOptions(
+    filterModelRows(sortPublicModels(models), {
+      vendors: [],
+      band: "all",
+      freeOnly: false,
+      cat,
+      contextBand: "all",
+      sourceKind: "",
+    }),
+    (r) => r.vendor,
+  );
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       {/* 用途页签(批G)+ 视图切换(M74 批D) */}
@@ -310,7 +324,7 @@ export function ModelSection({
           <FilterSidebar
             cat={cat}
             onCatChange={onCatChange}
-            vendors={vendorOptions(models, (r) => r.vendor)}
+            vendors={vendorFacet}
             selectedVendors={selectedVendors}
             onVendorsChange={onVendorsChange}
             band={band}
@@ -332,7 +346,7 @@ export function ModelSection({
         <div className="min-w-0">
           <div className="lg:hidden">
             <FilterBar
-              vendors={vendorOptions(models, (r) => r.vendor)}
+              vendors={vendorFacet}
               selectedVendors={selectedVendors}
               onVendorsChange={onVendorsChange}
               band={band}
