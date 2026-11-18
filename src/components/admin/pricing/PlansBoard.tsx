@@ -14,6 +14,8 @@ import type { ApiEnvelope } from "@/lib/http/response";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
+import { refreshKeepScroll } from "./refresh";
+
 type Msg = { tone: "ok" | "err"; text: string } | null;
 type StatusFilter = "all" | "pending" | "enabled" | "disabled";
 
@@ -106,7 +108,7 @@ export default function PlansBoard({ rows }: { rows: CodingPlanRow[] }): React.R
     setMsg(null);
     const r = await action();
     setMsg({ tone: r.ok ? "ok" : "err", text: r.message });
-    if (r.ok) router.refresh();
+    if (r.ok) refreshKeepScroll(router);
     setBusy(false);
   }
 

@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildCompareGroups, compareKeyOf, countComparableModels } from "./compare";
-import { buildPriceScatter } from "./scatter";
+import { buildContextPriceScatter, buildPriceScatter } from "./scatter";
+import { parseContextTokens } from "./public";
 import type { PublicModelRow } from "./public";
 
 function row(over: Partial<PublicModelRow>): PublicModelRow {
@@ -184,5 +185,50 @@ describe("buildPriceScatter", () => {
     const geo = buildPriceScatter([row({ inputPrice: 0, outputPrice: 0 })]);
     expect(geo.points).toHaveLength(0);
     expect(geo.skipped).toBe(1);
+  });
+});
+
+describe("buildContextPriceScatter(能力 × 价格,2026-11-18)", () => {
+  it("有上下文 + 正价的模型入图;x/y 落在绘图区内;每模型取最便宜一家", () => {
+    const rows = [
+      row({ modelDictKey: "m1", providerKey: "a", contextWindow: "1M", inputPrice: 1 }),
+      row({ modelDictKey: "m1", providerKey: "b", contextWindow: "1M", inputPrice: 3 }),
+      row({ modelDictKey: "m2", providerKey: "a", contextWindow: "128K", inputPrice: 10 }),
+    ];
+    const geo = buildContextPriceScatter(rows, parseContextTokens);
+    expect(geo.points).toHaveLength(2);
+    for (const p of geo.points) {
+      expect(p.x).toBeGreaterThanOrEqual(geo.plot.left);
+      expect(p.x).toBeLessThanOrEqual(geo.plot.right);
+      expect(p.y).toBeGreaterThanOrEqual(geo.plot.top);
+      expect(p.y).toBeLessThanOrEqual(geo.plot.bottom);
+    }
+    // m1 取最便宜的一家(provider a)
+    expect(geo.points.find((p) => p.modelKey === "m1")!.providerKey).toBe("a");
+    // 能力轴:1M 在 128K 右侧
+    const m1 = geo.points.find((p) => p.modelKey === "m1")!;
+    const m2 = geo.points.find((p) => p.modelKey === "m2")!;
+    expect(m1.x).toBeGreaterThan(m2.x);
+    expect(m1.contextTokens).toBe(1024 * 1024);
+  });
+
+  it("缺上下文 / 0 价 / 非 token 计价行不入图,计入 skipped", () => {
+    const rows = [
+      row({ modelDictKey: "noctx", inputPrice: 5, contextWindow: null }),
+      row({ modelDictKey: "free", inputPrice: 0, contextWindow: "128K" }),
+      row({
+        modelDictKey: "persec",
+        inputPrice: null,
+        outputPrice: 0.5,
+        contextWindow: "128K",
+        priceUnit: "per_second",
+      }),
+      row({ modelDictKey: "ok", inputPrice: 2, contextWindow: "256K" }),
+    ];
+    const geo = buildContextPriceScatter(rows, parseContextTokens);
+    expect(geo.points.map((p) => p.modelKey)).toEqual(["ok"]);
+    // skipped 只计 token 行内(缺上下文 noctx + 0 价 free);
+    // per_second 行在进散点前就按单位闸排除(非本图域,与 buildPriceScatter 同口径)
+    expect(geo.skipped).toBe(2);
   });
 });

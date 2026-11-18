@@ -80,6 +80,8 @@ function cheapestPerModel(rows: PublicModelRow[]): Array<{
   input: number | null;
   output: number | null;
   currency: string;
+  /** 胜出行自身的上下文标注(能力 × 价格散点用) */
+  contextWindow: string | null;
 }> {
   const best = new Map<string, ReturnType<typeof cheapestPerModel>[number]>();
   for (const row of rows) {
@@ -93,6 +95,7 @@ function cheapestPerModel(rows: PublicModelRow[]): Array<{
       input: row.inputPrice,
       output: row.outputPrice,
       currency: row.currency,
+      contextWindow: row.contextWindow,
     };
     if (cur === undefined) {
       best.set(key, cand);
@@ -196,4 +199,118 @@ export function buildPriceScatter(rows: PublicModelRow[]): PriceScatterGeometry 
 /** 比价矩阵的分组装配(薄封装,便于组件只依赖一个入口) */
 export function buildCompareModelGroups(rows: PublicModelRow[]) {
   return buildCompareGroups(rows);
+}
+
+// ---------- 上下文 × 价格 散点(能力 × 价格,2026-11-18 站长反馈)----------
+
+/**
+ * 上下文 × 输入价 散点几何:**能力(上下文长度)× 价格水平** —— 站长反馈
+ * 「缺可视化,方便用户看到模型的能力以及价格水平」。能力代理取上下文 token 数
+ * (牌价域自有字段;真·能力分在榜单域,跨域取数另立项)。
+ *
+ * 口径同 buildPriceScatter:每模型一点(最便宜一家)、对数双轴、0 价/缺上下文
+ * 不入图计入 skipped、仅 token 计价行(非 token 行无「输入价」语义)。
+ */
+export const CONTEXT_SCATTER_W = 960;
+export const CONTEXT_SCATTER_H = 420;
+export const CONTEXT_SCATTER_PLOT = { left: 64, top: 24, right: 896, bottom: 368 } as const;
+
+export interface ContextPricePoint {
+  id: string;
+  modelKey: string;
+  displayName: string;
+  providerKey: string;
+  providerName: string;
+  /** 上下文 token 数(x 轴) */
+  contextTokens: number;
+  /** 最便宜一家的输入价(y 轴) */
+  input: number;
+  currency: string;
+  x: number;
+  y: number;
+}
+
+export interface ContextScatterGeometry {
+  width: number;
+  height: number;
+  plot: { left: number; top: number; right: number; bottom: number };
+  points: ContextPricePoint[];
+  xTicks: PriceAxisTick[];
+  yTicks: PriceAxisTick[];
+  skipped: number;
+  currencies: string[];
+}
+
+function contextTickLabel(v: number): string {
+  if (v >= 1024 * 1024) return `${v / (1024 * 1024)}M`;
+  if (v >= 1024) return `${Math.round(v / 1024)}K`;
+  return String(v);
+}
+
+const CONTEXT_TICKS = [4 * 1024, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 1024 * 1024];
+
+export function buildContextPriceScatter(
+  rows: PublicModelRow[],
+  parseContext: (cw: string | null) => number | null,
+): ContextScatterGeometry {
+  const plot = CONTEXT_SCATTER_PLOT;
+  const tokenRows = rows.filter((r) => isTokenPriced(r) && r.priceUnit === "per_1m_tokens");
+  const cheapest = cheapestPerModel(tokenRows);
+  const usable = cheapest
+    .map((c) => {
+      const tokens = parseContext(c.contextWindow);
+      return tokens === null || c.input === null || c.input <= 0
+        ? null
+        : { ...c, contextTokens: tokens };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  const skipped = cheapest.length - usable.length;
+  const currencies = [...new Set(usable.map((c) => c.currency))];
+  const empty = {
+    width: CONTEXT_SCATTER_W,
+    height: CONTEXT_SCATTER_H,
+    plot,
+    points: [],
+    xTicks: [],
+    yTicks: [],
+    skipped,
+    currencies,
+  } satisfies ContextScatterGeometry;
+  if (usable.length === 0) return empty;
+
+  const xs = usable.map((c) => c.contextTokens);
+  const ys = usable.map((c) => c.input as number);
+  const pad = (lo: number, hi: number): [number, number] =>
+    lo === hi ? [lo / 2, hi * 2] : [lo / 10 ** 0.15, hi * 10 ** 0.15];
+  const [xMin, xMax] = pad(Math.min(...xs), Math.max(...xs));
+  const [yMin, yMax] = pad(Math.min(...ys), Math.max(...ys));
+  const xScale = makeLogScale(xMin, xMax, plot.left, plot.right);
+  const yScale = makeLogScale(yMin, yMax, plot.bottom, plot.top);
+
+  const points: ContextPricePoint[] = usable.map((c) => ({
+    id: `${c.modelKey}|${c.providerKey}`,
+    modelKey: c.modelKey,
+    displayName: c.displayName,
+    providerKey: c.providerKey,
+    providerName: c.providerName,
+    contextTokens: c.contextTokens,
+    input: c.input as number,
+    currency: c.currency,
+    x: xScale(c.contextTokens),
+    y: yScale(c.input as number),
+  }));
+
+  const yTicksIn = TICK_LADDER.filter((v) => v >= yMin && v <= yMax);
+  return {
+    ...empty,
+    points,
+    xTicks: CONTEXT_TICKS.filter((v) => v >= xMin && v <= xMax).map((v) => ({
+      v,
+      pos: xScale(v),
+      label: contextTickLabel(v),
+    })),
+    yTicks: yTicksIn.map((v) => ({ v, pos: yScale(v), label: tickLabel(v) })),
+    skipped: cheapest.length - usable.length,
+  };
 }
