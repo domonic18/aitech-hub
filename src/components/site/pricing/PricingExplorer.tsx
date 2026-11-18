@@ -6,6 +6,10 @@
  * 量纲不同不共用区间)。客户端渲染≠SEO 退化:全量行由 RSC 传参,首屏 HTML 仍
  * SSR 全量(ISR 600s)。
  *
+ * 页内大页签(2026-11-18):「模型调用(按量)| Coding Plan(订阅)」两个一级
+ * 页签分开两类计费形态(URL 参数 panel,默认 model);非活动页签整块 hidden
+ * 藏住——内容仍在 HTML 里,SEO 红线不破;套餐对比托盘跟随套餐页签。
+ *
  * 筛选态同步到 URL(query 参数):可分享/可收藏/可后退,且**不改页面渲染方式**
  * ——URL 只驱动客户端筛选,页仍是 ISR 静态(SEO 生命线)。
  */
@@ -97,12 +101,18 @@ export default function PricingExplorer({
   };
 
   const empty = data.models.length === 0 && data.plans.length === 0;
+  // 页内大页签(2026-11-18 反馈:按量模型与 Coding Plan 挤一页不利查看):
+  // 两块内容都 SSR 全量进 HTML(SEO 红线),非活动页签整块 hidden 藏住——
+  // 与列表视图藏行同源技巧;套餐对比托盘跟随套餐页签
+  const showTabs = data.models.length > 0 && data.plans.length > 0;
+  const panel = modelQuery.panel;
+  const trayVisible = compareKeys.length > 0 && (!showTabs || panel === "plan");
 
   return (
     <PageHeader
       eyebrow="TOOL HOOK · 工具钩子 01"
       title="AI 模型价格速查"
-      description="主流大模型官方牌价一觉:输入 / 输出价、免费额度与上下文窗口,Coding Plan 套餐额度与权益。可按厂商、价格区间、模态、上下文与来源类型筛选,只看免费模型,勾选套餐横向比价。价格以各厂商官方页面为准。"
+      description="主流大模型官方牌价一觉:模型按量调用输入 / 输出价、免费额度与上下文窗口,Coding Plan 订阅套餐额度与权益。可按厂商、价格区间、模态、上下文与来源类型筛选,只看免费模型,勾选套餐横向比价。价格以各厂商官方页面为准。"
     >
       <div className="mt-5">
         <StatusBanner data={data} />
@@ -114,76 +124,113 @@ export default function PricingExplorer({
         </p>
       ) : (
         <>
+          {showTabs && (
+            <div className="mt-4 flex flex-wrap items-center gap-2" aria-label="计费方式">
+              {[
+                { id: "model" as const, label: "模型调用", sub: "按量计费", n: data.models.length },
+                {
+                  id: "plan" as const,
+                  label: "Coding Plan",
+                  sub: "订阅套餐",
+                  n: data.plans.length,
+                },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={panel === t.id}
+                  onClick={() => updateModelQuery({ panel: t.id })}
+                  className={`rounded-full border px-3.5 py-1.5 text-[13px] leading-none transition-colors cursor-pointer select-none ${
+                    panel === t.id
+                      ? "border-accent bg-accent text-white"
+                      : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
+                  }`}
+                >
+                  {t.label}
+                  <span className={panel === t.id ? "ml-1.5 opacity-80" : "ml-1.5 text-text-3"}>
+                    {t.sub} · {t.n}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {data.models.length > 0 && (
-            <ModelSection
-              models={data.models}
-              selectedVendors={modelQuery.vendors}
-              onVendorsChange={(v) => updateModelQuery({ vendors: v })}
-              band={modelQuery.band}
-              onBandChange={(b) => updateModelQuery({ band: b })}
-              freeScope={modelQuery.freeScope}
-              onFreeScopeChange={(v) => updateModelQuery({ freeScope: v })}
-              cat={modelQuery.cat}
-              onCatChange={(c) =>
-                // 非文本组无上下文概念,切组时复位上下文档(否则空筛)
-                updateModelQuery({
-                  cat: c,
-                  ...(c === "text" || c === "all" ? {} : { contextBand: "all" }),
-                })
-              }
-              contextBand={modelQuery.contextBand}
-              onContextBandChange={(v) => updateModelQuery({ contextBand: v })}
-              sourceKind={modelQuery.sourceKind}
-              onSourceKindChange={(v) => updateModelQuery({ sourceKind: v })}
-              sort={modelQuery.sort}
-              onSortChange={(v) => updateModelQuery({ sort: v })}
-              view={modelQuery.view}
-              onViewChange={(v) => updateModelQuery({ view: v })}
-            />
+            <div hidden={showTabs && panel !== "model"}>
+              <ModelSection
+                models={data.models}
+                selectedVendors={modelQuery.vendors}
+                onVendorsChange={(v) => updateModelQuery({ vendors: v })}
+                band={modelQuery.band}
+                onBandChange={(b) => updateModelQuery({ band: b })}
+                freeScope={modelQuery.freeScope}
+                onFreeScopeChange={(v) => updateModelQuery({ freeScope: v })}
+                cat={modelQuery.cat}
+                onCatChange={(c) =>
+                  // 非文本组无上下文概念,切组时复位上下文档(否则空筛)
+                  updateModelQuery({
+                    cat: c,
+                    ...(c === "text" || c === "all" ? {} : { contextBand: "all" }),
+                  })
+                }
+                contextBand={modelQuery.contextBand}
+                onContextBandChange={(v) => updateModelQuery({ contextBand: v })}
+                sourceKind={modelQuery.sourceKind}
+                onSourceKindChange={(v) => updateModelQuery({ sourceKind: v })}
+                sort={modelQuery.sort}
+                onSortChange={(v) => updateModelQuery({ sort: v })}
+                view={modelQuery.view}
+                onViewChange={(v) => updateModelQuery({ view: v })}
+              />
+              {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}
+              <p className="mt-3 text-[11.5px] text-text-3">
+                {changeCount > 0 ? (
+                  <>
+                    近 90 天有 <span className="font-mono text-text-1">{changeCount}</span> 条降价
+                    记录 ·{" "}
+                  </>
+                ) : (
+                  <>降价史自 M74 上线后开始累计 · </>
+                )}
+                <Link href="/pricing/changes/" className="text-blue hover:text-blue/80">
+                  查看降价记录
+                </Link>
+              </p>
+            </div>
           )}
           {data.plans.length > 0 && (
-            <PlanSection
-              plans={data.plans}
-              selectedVendors={planVendors}
-              onVendorsChange={setPlanVendors}
-              band={planBand}
-              onBandChange={setPlanBand}
-              sortByPrice={sortByPrice}
-              onToggleSort={() => setSortByPrice((v) => !v)}
-              compareKeys={compareKeys}
-              onToggleCompare={toggleCompare}
-              compareLimit={COMPARE_LIMIT}
-            />
+            <div hidden={showTabs && panel !== "plan"}>
+              <PlanSection
+                plans={data.plans}
+                selectedVendors={planVendors}
+                onVendorsChange={setPlanVendors}
+                band={planBand}
+                onBandChange={setPlanBand}
+                sortByPrice={sortByPrice}
+                onToggleSort={() => setSortByPrice((v) => !v)}
+                compareKeys={compareKeys}
+                onToggleCompare={toggleCompare}
+                compareLimit={COMPARE_LIMIT}
+              />
+              {/* 托盘浮层让出底部空间,避免遮住末行/页脚 */}
+              {trayVisible && <div className="h-20" aria-hidden />}
+            </div>
           )}
-          {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}
-          <p className="mt-3 text-[11.5px] text-text-3">
-            {changeCount > 0 ? (
-              <>
-                近 90 天有 <span className="font-mono text-text-1">{changeCount}</span> 条降价记录
-                ·{" "}
-              </>
-            ) : (
-              <>降价史自 M74 上线后开始累计 · </>
-            )}
-            <Link href="/pricing/changes/" className="text-blue hover:text-blue/80">
-              查看降价记录
-            </Link>
-          </p>
-          {/* 托盘浮层让出底部空间,避免遮住末行/页脚 */}
-          {compareKeys.length > 0 && <div className="h-20" aria-hidden />}
         </>
       )}
 
-      <CompareTray
-        plans={selectedPlans}
-        onRemove={(key) => setCompareKeys((prev) => prev.filter((k) => k !== key))}
-        onClear={() => {
-          setCompareKeys([]);
-          setCompareOpen(false);
-        }}
-        onOpen={() => setCompareOpen(true)}
-        limit={COMPARE_LIMIT}
-      />
+      {trayVisible && (
+        <CompareTray
+          plans={selectedPlans}
+          onRemove={(key) => setCompareKeys((prev) => prev.filter((k) => k !== key))}
+          onClear={() => {
+            setCompareKeys([]);
+            setCompareOpen(false);
+          }}
+          onOpen={() => setCompareOpen(true)}
+          limit={COMPARE_LIMIT}
+        />
+      )}
       {compareOpen && selectedPlans.length >= 2 && (
         <CompareDialog plans={selectedPlans} onClose={() => setCompareOpen(false)} />
       )}
