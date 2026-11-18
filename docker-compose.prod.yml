@@ -194,8 +194,10 @@ services:
       # fetch 只能拿到导航壳)故入白名单。
       # M74 批B3:www.volcengine.com(火山引擎方舟牌价文档)——静态 HTML 1.8MB 里
       # 0 处价格(表是客户端渲染),必须走渲染通道。
+      # M74 批B4:cysuo.com(百度词元所聚合报价)——三段式渲染采集(目录→供应方
+      # 页→模型详情页);robots 只禁 /kog API 路径,页面 URL 均在允许面。
       # www.minimax.io 为旧默认(海外版),渠道 URL 切 .cn 后下一轮删
-      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn,www.minimax.cn,www.minimax.io,platform.xiaomimimo.com,help.aliyun.com,www.volcengine.com
+      RENDER_ALLOWED_HOSTS: bigmodel.cn,www.kimi.com,api-docs.deepseek.com,platform.moonshot.cn,www.minimax.cn,www.minimax.io,platform.xiaomimimo.com,help.aliyun.com,www.volcengine.com,cysuo.com
     tmpfs:
       - /tmp/card-renderer # chromium/字体缓存写 tmpfs,避免容器层写放大
     volumes:
