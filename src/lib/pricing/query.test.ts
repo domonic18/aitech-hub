@@ -72,6 +72,14 @@ describe("encodePricingQuery", () => {
     expect(encodePricingQuery({ ...DEFAULT_PRICING_QUERY, view: "compare" })).toBe("view=compare");
   });
 
+  it("页内大页签 panel:默认 model;plan 可分享直达,非法值回落 model", () => {
+    expect(decodePricingQuery("").panel).toBe("model");
+    expect(decodePricingQuery("panel=plan").panel).toBe("plan");
+    expect(decodePricingQuery("panel=xxx").panel).toBe("model");
+    expect(encodePricingQuery({ ...DEFAULT_PRICING_QUERY, panel: "plan" })).toBe("panel=plan");
+    expect(encodePricingQuery(DEFAULT_PRICING_QUERY)).toBe(""); // 默认不产参数
+  });
+
   it("往返一致", () => {
     const state = {
       vendors: ["硅基流动 SiliconFlow"],
@@ -82,6 +90,7 @@ describe("encodePricingQuery", () => {
       sourceKind: "aggregator",
       sort: "output" as const,
       view: "compare" as const,
+      panel: "plan" as const,
     };
     expect(decodePricingQuery(encodePricingQuery(state))).toEqual(state);
   });
