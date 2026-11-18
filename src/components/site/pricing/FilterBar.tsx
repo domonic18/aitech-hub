@@ -6,7 +6,12 @@
  * 区间(共用会把 ¥2/百万 tokens 与 ¥49/月 放进同一档,是谎话)。
  * 「全部」= 清空厂商选择;计数徽章显示「当前可见 / 全部」,无结果给重置出口。
  */
-import { PRICE_BANDS, type PriceBandId } from "@/lib/pricing/public";
+import {
+  FREE_SCOPE_OPTIONS,
+  PRICE_BANDS,
+  type FreeScopeId,
+  type PriceBandId,
+} from "@/lib/pricing/public";
 
 import { CHIP_BASE, CHIP_OFF, CHIP_ON } from "./shared";
 
@@ -26,8 +31,12 @@ export interface FilterBarProps {
   shown: number;
   /** 可选的「按价格排序」开关(套餐面板:让同价位相邻,便于比价) */
   sortByPrice?: { on: boolean; onToggle: () => void };
-  /** 可选的「只看免费」开关(M74 批C;模型面) */
-  freeOnly?: { on: boolean; onToggle: () => void; freeCount: number };
+  /** 可选的免费口径单选组(模型面;单选四态,各档带行数) */
+  freeScope?: {
+    value: FreeScopeId;
+    onChange: (v: FreeScopeId) => void;
+    counts: Record<FreeScopeId, number>;
+  };
   /** 可选的扩展筛选区(更多筛选:模态/上下文/来源/排序) */
   extra?: React.ReactNode;
 }
@@ -42,11 +51,11 @@ export function FilterBar({
   total,
   shown,
   sortByPrice,
-  freeOnly,
+  freeScope,
   extra,
 }: FilterBarProps): React.ReactElement {
   const allVendors = selectedVendors.length === 0;
-  const active = band !== "all" || !allVendors || freeOnly?.on === true;
+  const active = band !== "all" || !allVendors || (freeScope?.value ?? "all") !== "all";
   const reset = (): void => {
     onVendorsChange([]);
     onBandChange("all");
@@ -99,22 +108,33 @@ export function FilterBar({
         ))}
       </div>
 
+      {freeScope !== undefined && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="w-8 shrink-0 text-text-3">免费</span>
+          {FREE_SCOPE_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={freeScope.value === o.id}
+              className={`${chipBase} ${freeScope.value === o.id ? chipOn : chipOff}`}
+              onClick={() => freeScope.onChange(o.id)}
+            >
+              {o.label}
+              {o.id === "all" ? null : (
+                <span className="ml-1 font-mono text-[10px] opacity-80">
+                  {freeScope.counts[o.id]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {extra !== undefined && extra}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-text-3">
         <span>
           显示 <span className="font-mono text-text-2">{shown}</span> / {total}
         </span>
-        {freeOnly !== undefined && (
-          <button
-            type="button"
-            aria-pressed={freeOnly.on}
-            className={`${chipBase} ${freeOnly.on ? chipOn : chipOff}`}
-            onClick={freeOnly.onToggle}
-          >
-            只看免费
-            <span className="ml-1 font-mono text-[10px] opacity-80">{freeOnly.freeCount}</span>
-          </button>
-        )}
         {sortByPrice !== undefined && (
           <label className="flex cursor-pointer items-center gap-1 select-none">
             <input

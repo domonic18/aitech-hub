@@ -19,15 +19,23 @@ describe("decodePricingQuery", () => {
 
   it("逐项解析(批G:cat 取代 mod,默认 text)", () => {
     const q = decodePricingQuery(
-      "v=阿里云百炼,腾讯云&b=lt10&free=1&cat=image&ctx=ge1m&src=official&sort=input",
+      "v=阿里云百炼,腾讯云&b=lt10&free=quota&cat=image&ctx=ge1m&src=official&sort=input",
     );
     expect(q.vendors).toEqual(["阿里云百炼", "腾讯云"]);
     expect(q.band).toBe("lt10");
-    expect(q.freeOnly).toBe(true);
+    expect(q.freeScope).toBe("quota");
     expect(q.cat).toBe("image");
     expect(q.contextBand).toBe("ge1m");
     expect(q.sourceKind).toBe("official");
     expect(q.sort).toBe("input");
+  });
+
+  it("免费口径四态可解析;旧值 free=1 按「完全免费」承接(老链接不失效)", () => {
+    expect(decodePricingQuery("free=full").freeScope).toBe("full");
+    expect(decodePricingQuery("free=quota").freeScope).toBe("quota");
+    expect(decodePricingQuery("free=any").freeScope).toBe("any");
+    expect(decodePricingQuery("free=1").freeScope).toBe("full");
+    expect(decodePricingQuery("free=all").freeScope).toBe("all");
   });
 
   it("旧 mod 参数映射到 cat 后丢弃(批C 外链兼容)", () => {
@@ -43,7 +51,7 @@ describe("decodePricingQuery", () => {
     expect(q.band).toBe("all");
     expect(q.contextBand).toBe("all");
     expect(q.sort).toBe("default");
-    expect(q.freeOnly).toBe(false);
+    expect(q.freeScope).toBe("all");
   });
 
   it("厂商去重去空", () => {
@@ -68,7 +76,7 @@ describe("encodePricingQuery", () => {
     const state = {
       vendors: ["硅基流动 SiliconFlow"],
       band: "lt10" as const,
-      freeOnly: true,
+      freeScope: "quota" as const,
       cat: "image" as const,
       contextBand: "ge128k" as const,
       sourceKind: "aggregator",

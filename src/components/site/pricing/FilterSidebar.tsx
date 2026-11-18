@@ -11,16 +11,22 @@
  * 厂商清单由 ModelSection **按当前用途组收边**(facet):视频-only 厂商不出
  * 现在「文本」页签(2026-11-18 反馈:勾了零结果像数据丢了)。切换页签后
  * 已勾但不在当前清单的厂商以「已勾(当前用途组无模型)」段显形,可取消。
+ *
+ * 免费口径(2026-11-18 反馈:想筛「免费额度里有明确额度的」却没得筛):
+ * 单选四态——全部 / 完全免费 / 有免费额度 / 任一免费(并集),各档带行数;
+ * 老的「只看免费」开关只认完全免费,而有额度的行占多数(测试库 1 : 72)。
  */
 import { useMemo, useState } from "react";
 
 import {
   CONTEXT_BANDS,
+  FREE_SCOPE_OPTIONS,
   MODEL_CAT_OPTIONS,
   MODEL_SORT_OPTIONS,
   PRICE_BANDS,
   SOURCE_KIND_OPTIONS,
   type ContextBandId,
+  type FreeScopeId,
   type ModelCatId,
   type ModelSortId,
   type PriceBandId,
@@ -79,9 +85,11 @@ export interface FilterSidebarProps {
   onContextBandChange: (v: ContextBandId) => void;
   sourceKind: string;
   onSourceKindChange: (v: string) => void;
-  freeOnly: boolean;
-  onToggleFree: () => void;
-  freeCount: number;
+  /** 免费口径(单选四态;两种免费语义分开,组合另设一档) */
+  freeScope: FreeScopeId;
+  onFreeScopeChange: (v: FreeScopeId) => void;
+  /** 各口径的行数(展示用:让用户先看到「有多少行」再选) */
+  freeCounts: Record<FreeScopeId, number>;
   sort: ModelSortId;
   onSortChange: (v: ModelSortId) => void;
   /** 区间口径说明(随用途组切换) */
@@ -102,9 +110,9 @@ export function FilterSidebar({
   onContextBandChange,
   sourceKind,
   onSourceKindChange,
-  freeOnly,
-  onToggleFree,
-  freeCount,
+  freeScope,
+  onFreeScopeChange,
+  freeCounts,
   sort,
   onSortChange,
   priceLabel,
@@ -123,7 +131,7 @@ export function FilterSidebar({
   const active =
     selectedVendors.length > 0 ||
     band !== "all" ||
-    freeOnly ||
+    freeScope !== "all" ||
     (showContext && contextBand !== "all") ||
     sourceKind !== "";
 
@@ -145,7 +153,7 @@ export function FilterSidebar({
               onBandChange("all");
               onContextBandChange("all");
               onSourceKindChange("");
-              if (freeOnly) onToggleFree();
+              if (freeScope !== "all") onFreeScopeChange("all");
             }}
             className="cursor-pointer text-[11px] text-accent hover:text-accent-hover"
           >
@@ -245,19 +253,20 @@ export function FilterSidebar({
       </Group>
 
       <Group title="优惠与排序">
-        <button
-          type="button"
-          aria-pressed={freeOnly}
-          onClick={onToggleFree}
-          className={`mb-2 rounded-full border px-2 py-[3px] text-[11px] leading-none transition-colors cursor-pointer select-none ${
-            freeOnly
-              ? "border-green/60 bg-green/10 text-green-hi"
-              : "border-line bg-panel text-text-2 hover:border-line-hover"
-          }`}
-        >
-          只看免费 <span className="ml-0.5 font-mono text-[10px] opacity-80">{freeCount}</span>
-        </button>
-        <RadioChips options={MODEL_SORT_OPTIONS} value={sort} onChange={onSortChange} />
+        {/* 免费口径单选四态(2026-11-18 反馈:「筛选免费额度中有明确额度的」
+            没有好办法——老开关只认完全免费,而「有免费额度」的行占多数):
+            完全免费(is_free)/ 有免费额度(free_tier 原文非空)/ 任一免费(并集) */}
+        <RadioChips
+          options={FREE_SCOPE_OPTIONS.map((o) => ({
+            id: o.id,
+            label: o.id === "all" ? o.label : `${o.label} ${freeCounts[o.id]}`,
+          }))}
+          value={freeScope}
+          onChange={onFreeScopeChange}
+        />
+        <div className="mt-2.5">
+          <RadioChips options={MODEL_SORT_OPTIONS} value={sort} onChange={onSortChange} />
+        </div>
       </Group>
 
       {shown === 0 && (

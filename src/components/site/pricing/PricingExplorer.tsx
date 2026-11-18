@@ -121,8 +121,8 @@ export default function PricingExplorer({
               onVendorsChange={(v) => updateModelQuery({ vendors: v })}
               band={modelQuery.band}
               onBandChange={(b) => updateModelQuery({ band: b })}
-              freeOnly={modelQuery.freeOnly}
-              onToggleFree={() => updateModelQuery({ freeOnly: !modelQuery.freeOnly })}
+              freeScope={modelQuery.freeScope}
+              onFreeScopeChange={(v) => updateModelQuery({ freeScope: v })}
               cat={modelQuery.cat}
               onCatChange={(c) =>
                 // 非文本组无上下文概念,切组时复位上下文档(否则空筛)

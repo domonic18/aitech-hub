@@ -175,7 +175,8 @@ export const MODEL_SORT_OPTIONS: ReadonlyArray<{ id: ModelSortId; label: string 
 export interface ModelFilterOptions {
   vendors: string[];
   band: PriceBandId;
-  freeOnly: boolean;
+  /** 免费口径(单选四态;两种免费语义分开,组合另设一档) */
+  freeScope: FreeScopeId;
   /** 用途分组(批G;all = 不过滤模态) */
   cat: ModelCatId;
   contextBand: ContextBandId;
@@ -183,10 +184,47 @@ export interface ModelFilterOptions {
 }
 
 /**
- * 模型行筛选(厂商 × 价格区间 × 免费 × 用途分组 × 上下文 × 来源类型)。
+ * 免费口径(单选四态):站内有两种**不同**的免费语义,混成一个开关就筛不出来
+ * 「有免费额度但要按量付费」的那批行(测试库:完全免费 1 行 vs 有额度 72 行)。
+ * - `all` 全部(不过滤)
+ * - `full` 完全免费(`is_free`:调用不花钱,行级绿角标)
+ * - `quota` 有免费额度(`free_tier` 原文非空:如「每日 200 万 tokens 免费」,
+ *   调用要付费但有额度)
+ * - `any` 任一免费(两者并集——「能白用的模型都在这」)
+ */
+export type FreeScopeId = "all" | "full" | "quota" | "any";
+
+export const FREE_SCOPE_OPTIONS: ReadonlyArray<{ id: FreeScopeId; label: string }> = [
+  { id: "all", label: "全部" },
+  { id: "full", label: "完全免费" },
+  { id: "quota", label: "有免费额度" },
+  { id: "any", label: "任一免费" },
+];
+
+/** 免费口径命中判定(纯函数,单测锚) */
+export function matchesFreeScope(
+  row: Pick<PublicModelRow, "isFree" | "freeTier">,
+  scope: FreeScopeId,
+): boolean {
+  const hasQuota = row.freeTier !== null && row.freeTier.trim() !== "";
+  switch (scope) {
+    case "full":
+      return row.isFree;
+    case "quota":
+      return hasQuota;
+    case "any":
+      return row.isFree || hasQuota;
+    default:
+      return true;
+  }
+}
+
+/**
+ * 模型行筛选(厂商 × 价格区间 × 免费口径 × 用途分组 × 上下文 × 来源类型)。
  * 价格区间按**代表价**(token 行输入价 / 非行生成价)判——排序同口径;
- * null 价不进具体价格区间档(不臆测);免费只看 is_free 标记(完全免费),
- * 「有免费额度」是另一回事(free_tier 原文),不在此过滤。
+ * null 价不进具体价格区间档(不臆测);免费口径按 `matchesFreeScope` 判
+ * (「有免费额度」与「完全免费」是两种语义,分开);
+ * 「有免费额度」原文非空才算有额度(空串视同无)。
  */
 export function filterModelRows(
   rows: PublicModelRow[],
@@ -196,7 +234,7 @@ export function filterModelRows(
   return rows.filter((r) => {
     if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
     if (!inPriceBand(representativePrice(r), opts.band)) return false;
-    if (opts.freeOnly && !r.isFree) return false;
+    if (!matchesFreeScope(r, opts.freeScope)) return false;
     if (catMods !== null && !catMods.includes(effectiveModality(r))) return false;
     if (!inContextBand(parseContextTokens(r.contextWindow), opts.contextBand)) return false;
     if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;

@@ -272,19 +272,39 @@ describe("M74 批C:模型行筛选与排序", () => {
   const base = {
     vendors: [] as string[],
     band: "all" as PriceBandId,
-    freeOnly: false,
+    freeScope: "all" as const,
     cat: "text" as const,
     contextBand: "all" as const,
     sourceKind: "",
   };
 
-  it("只看免费只认完全免费标记(有免费额度不等于免费)", () => {
+  it("免费口径四态:完全免费 / 有免费额度 / 任一免费 分得开(2026-11-18 反馈)", () => {
     const rows = [
-      row({ modelKey: "free-one", isFree: true }),
+      row({ modelKey: "free-one", isFree: true, freeTier: null }),
       row({ modelKey: "quota", isFree: false, freeTier: "每日 200 万 tokens 免费" }),
+      row({ modelKey: "paid", isFree: false, freeTier: null }),
     ];
-    const out = filterModelRows(rows, { ...base, freeOnly: true });
-    expect(out.map((r) => r.modelKey)).toEqual(["free-one"]);
+    // 完全免费:调用不花钱
+    expect(filterModelRows(rows, { ...base, freeScope: "full" }).map((r) => r.modelKey)).toEqual([
+      "free-one",
+    ]);
+    // 有免费额度:有额度但要按量付费
+    expect(filterModelRows(rows, { ...base, freeScope: "quota" }).map((r) => r.modelKey)).toEqual([
+      "quota",
+    ]);
+    // 任一免费:两者并集
+    expect(filterModelRows(rows, { ...base, freeScope: "any" }).map((r) => r.modelKey)).toEqual([
+      "free-one",
+      "quota",
+    ]);
+    // 全部:不过滤
+    expect(filterModelRows(rows, { ...base, freeScope: "all" })).toHaveLength(3);
+  });
+
+  it("免费额度原文为空串视同无额度(不算「有免费额度」)", () => {
+    const rows = [row({ modelKey: "blank", isFree: false, freeTier: "   " })];
+    expect(filterModelRows(rows, { ...base, freeScope: "quota" })).toHaveLength(0);
+    expect(filterModelRows(rows, { ...base, freeScope: "any" })).toHaveLength(0);
   });
 
   it("用途分组 / 来源类型 / 上下文 三维可组合(批G:cat 按模态集合过滤,未标注按 text)", () => {
