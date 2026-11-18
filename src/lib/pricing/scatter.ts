@@ -18,6 +18,9 @@ import { buildCompareGroups } from "./compare";
 export const PRICE_SCATTER_W = 960;
 export const PRICE_SCATTER_H = 420;
 export const PRICE_SCATTER_PLOT = { left: 64, top: 24, right: 896, bottom: 368 } as const;
+/** 入图点数上限(批D8):每点约 6 个 SVG 元素,聚合源铺开后点数无界会拖垮
+ *  首屏交互;超限按输入价升序保留最便宜的(这页的诉求就是找便宜的) */
+export const PRICE_SCATTER_MAX_POINTS = 300;
 
 /** 散点上的一个报价(一个模型 × 其最便宜的一家) */
 export interface PricePoint {
@@ -49,6 +52,8 @@ export interface PriceScatterGeometry {
   yTicks: PriceAxisTick[];
   /** 未入图的报价数(0 价/缺价,取不了对数) */
   skipped: number;
+  /** 超过点数上限被截断的模型数(批D8;按输入价升序保留最便宜的) */
+  truncated: number;
   /** 数据里出现的币种(多币种不可跨轴比) */
   currencies: string[];
 }
@@ -135,9 +140,13 @@ export function buildPriceScatter(rows: PublicModelRow[]): PriceScatterGeometry 
     (c) => c.input !== null && c.input > 0 && c.output !== null && c.output > 0,
   );
   const skipped = cheapest.length - usable.length;
-  const currencies = [...new Set(usable.map((c) => c.currency))];
+  // 批D8 截断:按输入价升序保留最便宜的前 N 个(散点语义=「找便宜的」)
+  const ranked = [...usable].sort((a, b) => (a.input as number) - (b.input as number));
+  const truncated = Math.max(0, ranked.length - PRICE_SCATTER_MAX_POINTS);
+  const kept = truncated > 0 ? ranked.slice(0, PRICE_SCATTER_MAX_POINTS) : ranked;
+  const currencies = [...new Set(kept.map((c) => c.currency))];
 
-  if (usable.length === 0) {
+  if (kept.length === 0) {
     return {
       width: PRICE_SCATTER_W,
       height: PRICE_SCATTER_H,
@@ -146,12 +155,13 @@ export function buildPriceScatter(rows: PublicModelRow[]): PriceScatterGeometry 
       xTicks: [],
       yTicks: [],
       skipped,
+      truncated,
       currencies,
     };
   }
 
-  const xs = usable.map((c) => c.input as number);
-  const ys = usable.map((c) => c.output as number);
+  const xs = kept.map((c) => c.input as number);
+  const ys = kept.map((c) => c.output as number);
   const xLo = Math.min(...xs);
   const xHi = Math.max(...xs);
   const yLo = Math.min(...ys);
@@ -165,7 +175,7 @@ export function buildPriceScatter(rows: PublicModelRow[]): PriceScatterGeometry 
   const xScale = makeLogScale(xMin, xMax, plot.left, plot.right);
   const yScale = makeLogScale(yMin, yMax, plot.bottom, plot.top);
 
-  const points: PricePoint[] = usable.map((c) => ({
+  const points: PricePoint[] = kept.map((c) => ({
     id: `${c.modelKey}|${c.providerKey}`,
     modelKey: c.modelKey,
     displayName: c.displayName,
@@ -189,6 +199,7 @@ export function buildPriceScatter(rows: PublicModelRow[]): PriceScatterGeometry 
     xTicks: ticksIn(xMin, xMax).map((v) => ({ v, pos: xScale(v), label: tickLabel(v) })),
     yTicks: ticksIn(yMin, yMax).map((v) => ({ v, pos: yScale(v), label: tickLabel(v) })),
     skipped,
+    truncated,
     currencies,
   };
 }

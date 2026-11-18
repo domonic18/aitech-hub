@@ -15,6 +15,8 @@
 import { prisma } from "@/lib/db";
 
 import { persistCuratedRows, markCuratedSourceStale } from "./curated-persist";
+import { buildChangeRowData } from "./change-log";
+import type { PriceSnapshot } from "./change";
 import { isFreePrices, isFreeTiers, type PriceSet } from "./rules";
 import { getOrCreateModel, getOrCreateProvider } from "./model-registry";
 import { PROVIDER_SEEDS, providerKeyForVendor } from "./provider-registry";
@@ -98,20 +100,51 @@ async function writeTiers(modelPricingId: bigint, row: ModelPrefillRow): Promise
 /**
  * 模型行落库(建 pending / 可刷新行刷新 / 人工定稿行不动;currency 随价格走;
  * M74 起附带归一 id、免费标识与档位)。
+ *
+ * **批F 变更留痕**:刷新行时对比库中现值,变了就在同一事务里多写一行
+ * `model_pricing_change`。取旧价靠 `listExisting` 的 select(顺带把旧价收进
+ * 闭包),不动通用编排 `curated-persist.ts` 的接口(套餐面共用,改了会波及)。
  */
-export async function persistModelRows(rows: ModelPrefillRow[]): Promise<{
+export async function persistModelRows(
+  rows: ModelPrefillRow[],
+  opts?: { sourceKey?: string; now?: Date },
+): Promise<{
   created: number;
   refreshed: number;
   untouched: number;
   failed: number;
 }> {
+  // 旧价快照:键必须精确到 vendor|modelKey——listExisting 的 where 是
+  // vendor×modelKey 笛卡尔积,只按 vendor 取会张冠李戴
+  const oldByKey = new Map<string, PriceSnapshot>();
+  const sourceKey = opts?.sourceKey ?? null;
+  const changedAt = opts?.now ?? new Date();
+
   return persistCuratedRows(rows, {
     keyOf: (r) => ({ vendor: r.vendor, key: r.modelKey }),
     listExisting: async (vendors, keys) => {
       const existing = await prisma.modelPricing.findMany({
         where: { vendor: { in: vendors }, modelKey: { in: keys } },
-        select: { id: true, vendor: true, modelKey: true, status: true, isPinned: true },
+        select: {
+          id: true,
+          vendor: true,
+          modelKey: true,
+          status: true,
+          isPinned: true,
+          currency: true,
+          inputPrice: true,
+          outputPrice: true,
+          priceUnit: true,
+        },
       });
+      for (const r of existing) {
+        oldByKey.set(`${r.vendor}|${r.modelKey}`, {
+          currency: r.currency,
+          priceUnit: r.priceUnit,
+          inputPrice: r.inputPrice === null ? null : Number(r.inputPrice),
+          outputPrice: r.outputPrice === null ? null : Number(r.outputPrice),
+        });
+      }
       return existing.map((r) => ({
         id: r.id,
         vendor: r.vendor,
@@ -150,25 +183,53 @@ export async function persistModelRows(rows: ModelPrefillRow[]): Promise<{
     update: async (id: bigint, r) => {
       const providerId = await resolveProviderId(r);
       const modelId = await resolveModelId(r);
-      const updated = await prisma.modelPricing.update({
-        where: { id },
-        data: {
-          // currency 必须随价格走:行若由 USD 通道先建,官方 CNY 价刷新时
-          // 币种同步矫正,杜绝「¥ 数字配 $ 符号」的跨通道脏态
-          currency: r.currency,
-          inputPrice: r.inputPrice,
-          outputPrice: r.outputPrice,
-          contextWindow: r.contextWindow,
-          note: r.note,
-          freeTier: r.freeTier ?? null,
-          dataAsOf: r.dataAsOf,
-          sourceUrl: r.sourceUrl,
-          providerId,
-          modelId,
-          isFree: isFreeModelRow(r),
-          priceUnit: r.priceUnit ?? "per_1m_tokens",
-        },
-        select: { id: true },
+      const newSnap: PriceSnapshot = {
+        currency: r.currency,
+        priceUnit: r.priceUnit ?? "per_1m_tokens",
+        inputPrice: r.inputPrice,
+        outputPrice: r.outputPrice,
+      };
+      const oldSnap = oldByKey.get(`${r.vendor}|${r.modelKey}`);
+      // 批F:变了就多写一行变更史(与改价同一事务,避免「价改了史没写」)
+      const changeRow =
+        oldSnap === undefined
+          ? null
+          : buildChangeRowData({
+              modelPricingId: id,
+              vendor: r.vendor,
+              modelKey: r.modelKey,
+              oldSnap,
+              newSnap,
+              sourceKey,
+              sourceUrl: r.sourceUrl,
+              changedAt,
+            });
+      // 改价与写变更史同一事务:价改了史没写,或史写了价没改,都是脏态
+      const updated = await prisma.$transaction(async (tx) => {
+        const u = await tx.modelPricing.update({
+          where: { id },
+          data: {
+            // currency 必须随价格走:行若由 USD 通道先建,官方 CNY 价刷新时
+            // 币种同步矫正,杜绝「¥ 数字配 $ 符号」的跨通道脏态
+            currency: r.currency,
+            inputPrice: r.inputPrice,
+            outputPrice: r.outputPrice,
+            contextWindow: r.contextWindow,
+            note: r.note,
+            freeTier: r.freeTier ?? null,
+            dataAsOf: r.dataAsOf,
+            sourceUrl: r.sourceUrl,
+            providerId,
+            modelId,
+            isFree: isFreeModelRow(r),
+            priceUnit: r.priceUnit ?? "per_1m_tokens",
+          },
+          select: { id: true },
+        });
+        if (changeRow !== null) {
+          await tx.modelPricingChange.create({ data: changeRow, select: { id: true } });
+        }
+        return u;
       });
       await writeTiers(id, r);
       return updated;

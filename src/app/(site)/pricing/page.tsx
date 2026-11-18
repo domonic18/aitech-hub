@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 
 import PricingExplorer from "@/components/site/pricing/PricingExplorer";
 import { absoluteUrl } from "@/lib/seo/site";
-import { buildPricingJsonLd } from "@/lib/pricing/public";
+import { buildCompareGroups } from "@/lib/pricing/compare";
+import { listPublicPriceChanges } from "@/lib/pricing/changes-read";
+import { buildPricingJsonLd, type PricingCompareEntry } from "@/lib/pricing/jsonld";
 import { listPublicPricing } from "@/lib/pricing/read";
 
 /**
@@ -25,8 +27,24 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function PricingPage(): Promise<React.ReactElement> {
-  const data = await listPublicPricing();
-  const jsonLd = buildPricingJsonLd(data, absoluteUrl(PAGE_PATH));
+  const [data, changes] = await Promise.all([listPublicPricing(), listPublicPriceChanges()]);
+  // 比价摘要在服务端装配(比价视图是纯客户端,爬虫看不到;把「谁最便宜」
+  // 作为条目属性进机器可读层——批D7)。cheapestProvider 取显示名。
+  const compareEntries: PricingCompareEntry[] = buildCompareGroups(data.models).flatMap((g) =>
+    g.models.map((m) => {
+      const cheapest = m.cells.find((c) => c.providerKey === m.cheapestProviderKey) ?? null;
+      return {
+        key: m.key,
+        displayName: m.displayName,
+        providerCount: m.providerCount,
+        cheapestProvider: cheapest?.providerName ?? null,
+        cheapestPrice:
+          cheapest === null ? null : (cheapest.inputPrice ?? cheapest.outputPrice ?? null),
+        currency: g.currency,
+      };
+    }),
+  );
+  const jsonLd = buildPricingJsonLd(data, absoluteUrl(PAGE_PATH), { compare: compareEntries });
   return (
     <>
       <script
@@ -35,7 +53,7 @@ export default async function PricingPage(): Promise<React.ReactElement> {
       />
       {/* 不包 Suspense:包了会让静态预渲染时整块内容退化成 fallback(SSR 变空壳),
           页必须输出**未筛选的全量**(SEO 生命线);筛选态由客户端按 URL 覆盖 */}
-      <PricingExplorer data={data} />
+      <PricingExplorer data={data} changeCount={changes.total} />
     </>
   );
 }

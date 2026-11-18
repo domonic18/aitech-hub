@@ -1,7 +1,7 @@
 /**
  * 模型面落库单测(M74 批B,prisma mock 无真库):落库三规则(建 pending / 可刷新
  * 行刷新 / 人工定稿行不动)+ 归一关联(厂商/模型 get-or-create)+ 免费标识 +
- * 档位写入 + 下线墓碑。
+ * 档位写入 + 下线墓碑 + 批F 变更留痕(价变写 model_pricing_change)。
  * 解析规则在 crawlers.test / model-sources/*.test;编排在 source-registry.test。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const findMany = vi.fn();
 const create = vi.fn();
 const update = vi.fn();
+const changeCreate = vi.fn();
 const providerFindUnique = vi.fn();
 const providerCreate = vi.fn();
 const modelFindFirst = vi.fn();
@@ -21,6 +22,12 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> =>
       fn({
+        modelPricing: {
+          update: (...a: unknown[]) => update(...a),
+        },
+        modelPricingChange: {
+          create: (...a: unknown[]) => changeCreate(...a),
+        },
         modelPricingTier: {
           deleteMany: (...a: unknown[]) => tierDeleteMany(...a),
           createMany: (...a: unknown[]) => tierCreateMany(...a),
@@ -45,7 +52,7 @@ vi.mock("@/lib/db", () => ({
     typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002",
 }));
 
-import { parseDeepseek } from "./crawlers";
+import { parseDeepseek, type ModelPrefillRow } from "./crawlers";
 import {
   isFreeModelRow,
   markMissingModelsStale,
@@ -72,6 +79,7 @@ beforeEach(() => {
   tierCreateMany.mockResolvedValue({ count: 6 });
   update.mockResolvedValue({ id: BigInt(7) });
   create.mockResolvedValue({ id: BigInt(2) });
+  changeCreate.mockResolvedValue({ id: BigInt(1) });
 });
 
 const rows = parseDeepseek(DEEPSEEK_HTML, DS_URL, NOW);
@@ -85,6 +93,10 @@ describe("persistModelRows 落库规则", () => {
         modelKey: "deepseek-flash",
         status: "pending",
         isPinned: false,
+        currency: "CNY",
+        inputPrice: 3,
+        outputPrice: 12,
+        priceUnit: "per_1m_tokens",
       },
       {
         id: BigInt(8),
@@ -92,6 +104,10 @@ describe("persistModelRows 落库规则", () => {
         modelKey: "deepseek-v4-pro",
         status: "enabled",
         isPinned: true,
+        currency: "CNY",
+        inputPrice: 4,
+        outputPrice: 16,
+        priceUnit: "per_1m_tokens",
       },
     ]);
     const t = await persistModelRows(rows);
@@ -280,5 +296,100 @@ describe("markMissingModelsStale 墓碑", () => {
     const upd = update.mock.calls[0]![0] as { data: { status: string; note: string } };
     expect(upd.data.status).toBe("disabled");
     expect(upd.data.note).toContain("源已下线");
+  });
+});
+
+describe("批F:采集刷新写变更史(model_pricing_change)", () => {
+  const prefill = (over: Partial<ModelPrefillRow>): ModelPrefillRow => ({
+    vendor: "测试厂商",
+    modelKey: "m1",
+    currency: "CNY",
+    inputPrice: 2,
+    outputPrice: 8,
+    contextWindow: null,
+    note: "",
+    dataAsOf: NOW,
+    sourceUrl: DS_URL,
+    region: "cn",
+    ...over,
+  });
+  const existingRow = (over: Record<string, unknown>) => ({
+    id: BigInt(7),
+    vendor: "测试厂商",
+    modelKey: "m1",
+    status: "enabled",
+    isPinned: false,
+    currency: "CNY",
+    inputPrice: 3,
+    outputPrice: 12,
+    priceUnit: "per_1m_tokens",
+    ...over,
+  });
+
+  it("价变 → 与改价同事务写一行变更(old/new/降价判定/源键)", async () => {
+    findMany.mockResolvedValue([existingRow({})]);
+    await persistModelRows([prefill({})], { sourceKey: "deepseek", now: NOW });
+    expect(changeCreate).toHaveBeenCalledTimes(1);
+    const data = (changeCreate.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({
+      modelPricingId: BigInt(7),
+      changeKind: "drop",
+      oldInputPrice: 3,
+      oldOutputPrice: 12,
+      newInputPrice: 2,
+      newOutputPrice: 8,
+      sourceKey: "deepseek",
+      changedAt: NOW,
+    });
+  });
+
+  it("价没变 → 只刷新不写变更行", async () => {
+    findMany.mockResolvedValue([existingRow({ inputPrice: 2, outputPrice: 8 })]);
+    await persistModelRows([prefill({})], { sourceKey: "deepseek", now: NOW });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(changeCreate).not.toHaveBeenCalled();
+  });
+
+  it("人工定稿行不刷新也不写变更;新建行无旧价不写变更", async () => {
+    findMany.mockResolvedValue([existingRow({ isPinned: true, inputPrice: 9 })]);
+    await persistModelRows([prefill({})], { sourceKey: "deepseek", now: NOW });
+    expect(update).not.toHaveBeenCalled();
+    expect(changeCreate).not.toHaveBeenCalled();
+
+    findMany.mockResolvedValue([]);
+    await persistModelRows([prefill({})], { sourceKey: "deepseek", now: NOW });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(changeCreate).not.toHaveBeenCalled();
+  });
+
+  it("币种变 → currency_changed(跨币种不可比,永不计入降价)", async () => {
+    findMany.mockResolvedValue([existingRow({ currency: "CNY" })]);
+    await persistModelRows([prefill({ currency: "USD", inputPrice: 1 })], {
+      sourceKey: "deepseek",
+      now: NOW,
+    });
+    const data = (changeCreate.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+    expect(data.changeKind).toBe("currency_changed");
+  });
+
+  it("旧价快照按 vendor|modelKey 精确匹配:同 modelKey 不同厂商不串价", async () => {
+    findMany.mockResolvedValue([
+      existingRow({ id: BigInt(7), vendor: "厂商甲", inputPrice: 3, outputPrice: 12 }),
+      existingRow({ id: BigInt(8), vendor: "厂商乙", inputPrice: 30, outputPrice: 120 }),
+    ]);
+    await persistModelRows(
+      [
+        prefill({ vendor: "厂商甲", inputPrice: 2, outputPrice: 8 }),
+        prefill({ vendor: "厂商乙", inputPrice: 20, outputPrice: 80 }),
+      ],
+      { sourceKey: "deepseek", now: NOW },
+    );
+    expect(changeCreate).toHaveBeenCalledTimes(2);
+    const first = (changeCreate.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+    const second = (changeCreate.mock.calls[1]![0] as { data: Record<string, unknown> }).data;
+    expect(first.oldInputPrice).toBe(3);
+    expect(first.modelPricingId).toBe(BigInt(7));
+    expect(second.oldInputPrice).toBe(30);
+    expect(second.modelPricingId).toBe(BigInt(8));
   });
 });

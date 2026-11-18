@@ -1,7 +1,7 @@
 /**
  * /pricing/ 公开读侧(M55 批D):仅 enabled 行(停用/待审不可见),ISR SSR
  * 全量进 HTML(SEO 生命线);45 天过期提醒(D5)按表取 max(dataAsOf) 判——
- * 数据按源整批核对,不做行级混合龄;JSON-LD 清单同源构造(中立目录:
+ * 数据按源整批核对,不做行级混合龄;JSON-LD 清单构造在 `./jsonld`(中立目录:
  * ItemList+Product 携双价描述,不用 Offer——本站不卖 API,冒充卖方有作弊信号)。
  */
 import { DAY_MS } from "@/lib/datetime";
@@ -317,47 +317,5 @@ export function filterPricingRows<T>(
   );
 }
 
-/** 价格口径文案(批G):token 行沿用「每百万 tokens」;非 token 行按单位(元/张等) */
-function priceUnitDesc(unit: string): string {
-  if (unit === "per_image") return "元/张";
-  if (unit === "per_second") return "元/秒";
-  if (unit === "per_minute") return "元/分钟";
-  return "每百万 tokens";
-}
-
-/** JSON-LD 清单(纯函数,单测锚):ItemList+Product 携双价描述;无价格页退化为
- * 空清单(页骨架仍 SSR,SEO 面不空)。截稿日期入 description 溯源。 */
-export function buildPricingJsonLd(data: PublicPricing, pageUrl: string): Record<string, unknown> {
-  return {
-    "@context": "https://schema.org",
-    "@type": "ItemList",
-    name: "AI 模型牌价速查",
-    url: pageUrl,
-    numberOfItems: data.models.length + data.plans.length,
-    itemListElement: [
-      ...data.models.map((m, i) => ({
-        "@type": "ListItem",
-        position: i + 1,
-        item: {
-          "@type": "Product",
-          name: `${m.vendor} ${m.modelKey}`,
-          description: `输入 ${formatPrice(m.inputPrice, m.currency)} / 输出 ${formatPrice(
-            m.outputPrice,
-            m.currency,
-          )}(${priceUnitDesc(m.priceUnit)},${m.currency} 原币),数据截至 ${m.dataAsOf}`,
-          url: pageUrl,
-        },
-      })),
-      ...data.plans.map((p, i) => ({
-        "@type": "ListItem",
-        position: data.models.length + i + 1,
-        item: {
-          "@type": "Product",
-          name: `${p.vendor} ${p.planName}`,
-          description: `月费 ${formatPrice(p.monthlyFee, p.currency)},额度:${p.quotaDesc},数据截至 ${p.dataAsOf}`,
-          url: pageUrl,
-        },
-      })),
-    ],
-  };
-}
+/** JSON-LD 清单构造已迁至 `./jsonld`(批D7:补 brand/identifier/比价摘要,
+ *  避免本文件继续膨胀;公开面仍只有一处出口) */

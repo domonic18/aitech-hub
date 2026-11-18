@@ -9,6 +9,8 @@
  * 每个点 = 一个模型**最便宜的一家**报价(「这个模型最便宜能多少钱」);
  * 颜色按提供商区分;完全免费(0 价)取不了对数坐标 → 不入图,在图下说明数量。
  */
+import { useMemo } from "react";
+
 import { buildPriceScatter } from "@/lib/pricing/scatter";
 import type { PublicModelRow } from "@/lib/pricing/public";
 
@@ -25,7 +27,7 @@ const PROVIDER_COLORS = [
 ];
 
 export function PriceScatter({ rows }: { rows: PublicModelRow[] }): React.ReactElement {
-  const geo = buildPriceScatter(rows);
+  const geo = useMemo(() => buildPriceScatter(rows), [rows]);
 
   if (geo.points.length === 0) {
     return (
@@ -170,6 +172,11 @@ export function PriceScatter({ rows }: { rows: PublicModelRow[] }): React.ReactE
         ))}
         {geo.skipped > 0 && (
           <span className="text-amber">{geo.skipped} 个模型为 0 价(完全免费),未入图</span>
+        )}
+        {geo.truncated > 0 && (
+          <span className="text-amber">
+            共 {geo.points.length + geo.truncated} 个模型,图中展示最便宜的前 {geo.points.length} 个
+          </span>
         )}
         {geo.currencies.length > 1 && (
           <span className="text-amber">图中含多币种,跨币种点不可直接比大小</span>
