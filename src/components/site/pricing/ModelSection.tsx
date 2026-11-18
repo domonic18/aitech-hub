@@ -265,36 +265,37 @@ export function ModelSection({
   const visibleKeys = useMemo(() => new Set(visible.map(rowKey)), [visible]);
   // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
   const allRows = useMemo(() => sortModelRows(sortedModels, sort), [sortedModels, sort]);
-  // 各免费口径的行数(筛选器带计数:让用户先看到「有多少行」再选)
+  // 当前用途组的行(厂商分面同口径:只按用途组一维收边,不受其余筛选影响)
+  const catRows = useMemo(
+    () =>
+      filterModelRows(sortedModels, {
+        vendors: [],
+        band: "all",
+        freeScope: "all",
+        cat,
+        contextBand: "all",
+        sourceKind: "",
+      }),
+    [sortedModels, cat],
+  );
+  // 各免费口径的行数(筛选器带计数:让用户先看到「有多少行」再选)。
+  // **按当前用途组收边**(与厂商分面同口径)——否则「完全免费 1」点下去在
+  // 「文本」页签是 0 行(那 1 行是图片模型),计数与结果对不上,像数据丢了
   const freeCounts = useMemo(() => {
     const counts: Record<FreeScopeId, number> = { all: 0, full: 0, quota: 0, any: 0 };
-    for (const m of models) {
+    for (const m of catRows) {
       counts.all += 1;
       if (m.isFree) counts.full += 1;
       if (m.freeTier !== null && m.freeTier.trim() !== "") counts.quota += 1;
       if (m.isFree || (m.freeTier !== null && m.freeTier.trim() !== "")) counts.any += 1;
     }
     return counts;
-  }, [models]);
+  }, [catRows]);
   const tokenCat = cat === "text" || cat === "all";
   // 厂商选项按当前用途组收边(facet,2026-11-18 反馈:文本页签里勾「词元所·
   // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
   // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
-  const vendorFacet = useMemo(
-    () =>
-      vendorOptions(
-        filterModelRows(sortedModels, {
-          vendors: [],
-          band: "all",
-          freeScope: "all",
-          cat,
-          contextBand: "all",
-          sourceKind: "",
-        }),
-        (r) => r.vendor,
-      ),
-    [sortedModels, cat],
-  );
+  const vendorFacet = useMemo(() => vendorOptions(catRows, (r) => r.vendor), [catRows]);
   const rowGroups = useMemo(() => allRowGroups(allRows, visibleKeys), [allRows, visibleKeys]);
   const compareGroups = useMemo(
     () => (view === "compare" ? buildCompareGroups(visible) : []),
