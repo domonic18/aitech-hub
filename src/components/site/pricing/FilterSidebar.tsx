@@ -7,6 +7,10 @@
  * 同一份筛选状态(PricingExplorer 单源)。
  *
  * 纪律不变:纯客户端筛选,SSR 首屏仍渲染全量行(hidden 藏),SEO 红线不破。
+ *
+ * 厂商清单由 ModelSection **按当前用途组收边**(facet):视频-only 厂商不出
+ * 现在「文本」页签(2026-11-18 反馈:勾了零结果像数据丢了)。切换页签后
+ * 已勾但不在当前清单的厂商以「已勾(当前用途组无模型)」段显形,可取消。
  */
 import { useMemo, useState } from "react";
 
@@ -112,6 +116,8 @@ export function FilterSidebar({
     const q = vendorQuery.trim().toLowerCase();
     return q === "" ? vendors : vendors.filter((v) => v.toLowerCase().includes(q));
   }, [vendors, vendorQuery]);
+  // 已勾但不在当前用途组清单里的厂商(切页签的残留):显形可取消,不静默消失
+  const staleSelected = selectedVendors.filter((v) => !vendors.includes(v));
 
   const showContext = cat === "text" || cat === "all";
   const active =
@@ -195,6 +201,27 @@ export function FilterSidebar({
           {shownVendors.length === 0 && (
             <p className="text-[11px] text-text-3">无匹配厂商,换个词</p>
           )}
+          {staleSelected.length > 0 && (
+            <div className="mt-2 border-t border-line/60 pt-2">
+              <p className="mb-1.5 text-[10.5px] text-amber">
+                已勾选,但当前用途组无模型(切换「用途」可见)
+              </p>
+              {staleSelected.map((v) => (
+                <label
+                  key={v}
+                  className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-[11.5px] leading-snug"
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked
+                    onChange={() => onVendorsChange(selectedVendors.filter((s) => s !== v))}
+                  />
+                  <span className="text-text-2">{v}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       </Group>
 
@@ -234,7 +261,9 @@ export function FilterSidebar({
       </Group>
 
       {shown === 0 && (
-        <p className="px-3.5 py-3 text-[11px] text-amber">当前筛选无匹配,试试放宽条件</p>
+        <p className="px-3.5 py-3 text-[11px] text-amber">
+          当前筛选无匹配 —— 试试切换「用途」分组或放宽条件
+        </p>
       )}
     </aside>
   );

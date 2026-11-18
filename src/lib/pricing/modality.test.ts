@@ -18,6 +18,8 @@ describe("inferModality", () => {
     expect(inferModality("Wan-AI/Wan2.2-I2V-A14B")).toBe("video");
     expect(inferModality("hunyuan-video")).toBe("video");
     expect(inferModality("cogvideox-3")).toBe("video");
+    // 百炼按秒模型(2026-11-18 反馈:误判 text 落进文本页签,孤行混进生成价条形图)
+    expect(inferModality("videoretalk")).toBe("video");
   });
 
   it("弱后缀图文:video/image 关键词都排过后才轮到 -vl", () => {
@@ -33,6 +35,8 @@ describe("inferModality", () => {
     expect(inferModality("Qwen3-Reranker-8B")).toBe("rerank");
     expect(inferModality("FunAudioLLM/CosyVoice2-0.5B")).toBe("audio");
     expect(inferModality("tts-1-hd")).toBe("audio");
+    // 百炼按秒 ASR(2026-11-18:同 videoretalk 误判 text 混进文本页签)
+    expect(inferModality("qwen3-asr-flash")).toBe("audio");
   });
 
   it("纯文本模型认不出 → null(不猜)", () => {
