@@ -304,7 +304,7 @@ export async function runPricingSourceCrawl(
     const rows = await def.run(source.url, { now, sink: (draft) => capture.capture(draft) });
     const modelRows = rows.filter((r): r is ModelPrefillRow => "modelKey" in r);
     const planRows = rows.filter((r): r is PlanPrefillRow => "planName" in r);
-    const modelTally = await persistModelRows(modelRows);
+    const modelTally = await persistModelRows(modelRows, { sourceKey: def.key, now });
     const planTally = await persistPlanRows(planRows);
     // 墓碑(M74 批B):模型面采集成功且本次有行 → 本源多轮未出现的行停用
     // (源失败/解析空不跑,否则整源会被误杀;失败路径另有「待复核」打标)

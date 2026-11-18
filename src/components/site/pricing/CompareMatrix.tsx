@@ -11,6 +11,7 @@
  * 区内才比;某模型跨币种报价则不标「最低」并注明。
  */
 import type { CompareCell, CompareGroup } from "@/lib/pricing/compare";
+import { COMPARE_MAX_MODELS_PER_GROUP } from "@/lib/pricing/compare";
 import { MODALITY_LABELS } from "@/lib/pricing/modality";
 import { formatPrice, UNIT_SUFFIXES } from "@/lib/pricing/public";
 
@@ -162,6 +163,12 @@ export function CompareMatrix({ groups }: CompareMatrixProps): React.ReactElemen
           {group.models.map((model) => (
             <ModelCompareRow key={model.key} model={model} />
           ))}
+          {group.truncated > 0 && (
+            <p className="px-4 py-2.5 text-[11px] text-text-3">
+              本区还有 {group.truncated} 个更贵的模型未展示(每区最多 {COMPARE_MAX_MODELS_PER_GROUP}{" "}
+              个),缩小筛选可见全量。
+            </p>
+          )}
         </div>
       ))}
     </div>

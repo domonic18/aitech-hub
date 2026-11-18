@@ -503,6 +503,20 @@ CREATE TABLE legacy_url_map (
   优先级 源显式标注(siliconflow 行 id 分区 / bailian 按张表) > 关键词 > 字典现值
   > text;`getOrCreateModel` 对既有字典行只做 **text→非text 单向升级**(绝不降级,
   避免与人工订正打架),存量行下轮日采自愈,无需订正脚本
+- **变更史**(M74 批F,迁移 `20261118162500_m74_pricing_change`):
+  `model_pricing_change` 表,采集刷新行时对比库中现值、变了就在**同一事务**里多写一行
+  (append-only,每次变价一行;`(model_pricing_id, changed_at)` 唯一键防同刻重写)。
+  记 old/new 的输入输出价与**币种、计价单位**两口径列——跨币种/跨单位不可比,
+  `change_kind` 记 `currency_changed`/`unit_changed`,**永不计入降价**;同币种同单位
+  按代表价(token=输入价、非 token=生成价)判 `drop`/`rise`。价没变、价未公布(null)、
+  新建行、人工定稿行都不写。**只记采集侧**:后台人工改价不留痕(口径边界,前台
+  降价视图 `/pricing/changes/` 注明「采集口径」)。判定纯函数在
+  `src/lib/pricing/change.ts`(零库依赖),写库组装在 `change-log.ts`,钩子在
+  `model-persist.ts#persistModelRows`(旧价经 `listExisting` 的 select 收进闭包,
+  不动通用编排 `curated-persist.ts` 的接口);`source_key` 记注册表规范键
+  (`SOURCE_DEFS.key`,稳定;不靠 source_url——渠道 URL 会被后台改)。
+  FK `onDelete: Cascade`(牌价行删除历史随之消亡);公开读侧
+  `changes-read.ts#listPublicPriceChanges` 只外露 enabled 行、近 90 天、上限 100 条
 
 ## 3. Prisma 模型约定
 

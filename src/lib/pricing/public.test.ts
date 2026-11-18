@@ -1,8 +1,9 @@
 /**
  * /pricing/ 公开读侧单测(M55 批D,prisma mock 无真库):仅 enabled 行可见
  * (停用/待审不可见)/ 45 天过期判定(空表不出提醒,边界刚好 45 天不出)/
- * 价格格(USD 原币直出,null=未公布)/ JSON-LD 清单构造(双价+截稿溯源)/
+ * 价格格(USD 原币直出,null=未公布)/
  * 分组排序(P2-15:国内¥→国际$→混合组,同组内稳定)。
+ * JSON-LD 构造单测随构造器迁至 jsonld.test.ts(批D7)。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +20,6 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import {
-  buildPricingJsonLd,
   filterModelRows,
   filterPricingRows,
   formatPrice,
@@ -223,50 +223,6 @@ describe("展示侧筛选(验收问题一)", () => {
       "阿里云百炼",
     );
     expect(filterPricingRows(rows, opts(["阿里云百炼"], "all"))).toHaveLength(1);
-  });
-});
-
-describe("buildPricingJsonLd", () => {
-  it("ItemList+Product 携双价与截稿溯源;空表 numberOfItems=0", () => {
-    const ld = buildPricingJsonLd(
-      {
-        models: [
-          {
-            vendor: "DeepSeek 深度求索",
-            modelKey: "deepseek-flash",
-            currency: "CNY",
-            inputPrice: 2,
-            outputPrice: 8,
-            freeTier: null,
-            isFree: false,
-            contextWindow: "1M",
-            note: null,
-            dataAsOf: "2026-10-28",
-            sourceUrl: "https://x",
-            region: "cn",
-            providerKey: "deepseek",
-            providerName: "DeepSeek 深度求索",
-            providerKind: "official",
-            modelDictKey: "deepseek-flash",
-            modality: "text",
-            priceUnit: "per_1m_tokens",
-            tiers: [],
-          },
-        ],
-        plans: [],
-        modelsAsOf: "2026-10-28",
-        plansAsOf: null,
-      },
-      "https://17aitech.com/pricing/",
-    );
-    expect(ld).toMatchObject({ "@type": "ItemList", numberOfItems: 1 });
-    const item = (ld.itemListElement as Array<{ item: Record<string, string> }>)[0]!.item;
-    expect(item.name).toBe("DeepSeek 深度求索 deepseek-flash");
-    expect(item.description).toContain("输入 ¥ 2 / 输出 ¥ 8");
-    expect(item.description).toContain("数据截至 2026-10-28");
-    expect(
-      buildPricingJsonLd({ models: [], plans: [], modelsAsOf: null, plansAsOf: null }, "u"),
-    ).toMatchObject({ numberOfItems: 0, itemListElement: [] });
   });
 });
 
