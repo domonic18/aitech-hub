@@ -26,8 +26,9 @@ import {
   sortModelRows,
   sortPublicModels,
   vendorOptions,
-  type ModelCatId,
   type ContextBandId,
+  type FreeScopeId,
+  type ModelCatId,
   type ModelSortId,
   type PriceBandId,
   type PublicModelRow,
@@ -207,8 +208,9 @@ export interface ModelSectionProps {
   onVendorsChange: (v: string[]) => void;
   band: PriceBandId;
   onBandChange: (b: PriceBandId) => void;
-  freeOnly: boolean;
-  onToggleFree: () => void;
+  /** 免费口径(单选四态:全部/完全免费/有免费额度/任一免费) */
+  freeScope: FreeScopeId;
+  onFreeScopeChange: (v: FreeScopeId) => void;
   /** 用途分组(批G;切换时上下文档对非文本组自动复位) */
   cat: ModelCatId;
   onCatChange: (v: ModelCatId) => void;
@@ -229,8 +231,8 @@ export function ModelSection({
   onVendorsChange,
   band,
   onBandChange,
-  freeOnly,
-  onToggleFree,
+  freeScope,
+  onFreeScopeChange,
   cat,
   onCatChange,
   contextBand,
@@ -251,19 +253,29 @@ export function ModelSection({
         filterModelRows(sortedModels, {
           vendors: selectedVendors,
           band,
-          freeOnly,
+          freeScope,
           cat,
           contextBand,
           sourceKind,
         }),
         sort,
       ),
-    [sortedModels, selectedVendors, band, freeOnly, cat, contextBand, sourceKind, sort],
+    [sortedModels, selectedVendors, band, freeScope, cat, contextBand, sourceKind, sort],
   );
   const visibleKeys = useMemo(() => new Set(visible.map(rowKey)), [visible]);
   // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
   const allRows = useMemo(() => sortModelRows(sortedModels, sort), [sortedModels, sort]);
-  const freeCount = useMemo(() => models.reduce((n, m) => (m.isFree ? n + 1 : n), 0), [models]);
+  // 各免费口径的行数(筛选器带计数:让用户先看到「有多少行」再选)
+  const freeCounts = useMemo(() => {
+    const counts: Record<FreeScopeId, number> = { all: 0, full: 0, quota: 0, any: 0 };
+    for (const m of models) {
+      counts.all += 1;
+      if (m.isFree) counts.full += 1;
+      if (m.freeTier !== null && m.freeTier.trim() !== "") counts.quota += 1;
+      if (m.isFree || (m.freeTier !== null && m.freeTier.trim() !== "")) counts.any += 1;
+    }
+    return counts;
+  }, [models]);
   const tokenCat = cat === "text" || cat === "all";
   // 厂商选项按当前用途组收边(facet,2026-11-18 反馈:文本页签里勾「词元所·
   // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
@@ -274,7 +286,7 @@ export function ModelSection({
         filterModelRows(sortedModels, {
           vendors: [],
           band: "all",
-          freeOnly: false,
+          freeScope: "all",
           cat,
           contextBand: "all",
           sourceKind: "",
@@ -356,9 +368,9 @@ export function ModelSection({
             onContextBandChange={onContextBandChange}
             sourceKind={sourceKind}
             onSourceKindChange={onSourceKindChange}
-            freeOnly={freeOnly}
-            onToggleFree={onToggleFree}
-            freeCount={freeCount}
+            freeScope={freeScope}
+            onFreeScopeChange={onFreeScopeChange}
+            freeCounts={freeCounts}
             sort={sort}
             onSortChange={onSortChange}
             priceLabel={catPriceLabel(cat)}
@@ -377,7 +389,7 @@ export function ModelSection({
               priceLabel={catPriceLabel(cat)}
               total={models.length}
               shown={visible.length}
-              freeOnly={{ on: freeOnly, onToggle: onToggleFree, freeCount }}
+              freeScope={{ value: freeScope, onChange: onFreeScopeChange, counts: freeCounts }}
               extra={
                 <ModelFilters
                   cat={cat}
