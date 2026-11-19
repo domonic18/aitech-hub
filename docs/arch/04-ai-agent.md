@@ -291,6 +291,17 @@
 | `update_pin` | 改贴图(标题/轻文字/阅读原文/裁剪档);已同步或已发布禁止直编 | `src/lib/mcp/tools.pins.ts` → `pins/repo.ts#updatePin` |
 | `list_drafts` | 列站内草稿(只看草稿态稿件:slug / 标题 / 分类 / 创作方式 / 更新时间) | `src/lib/mcp/tools.content.ts` → `content/posts-admin.ts#listPostsAdmin` |
 
+**M75 运维面(2026-11-19,25 → 29 只)**:给站长本地的**运营助手 agent** 用——巡查采集健康度(价格采集 / 文章渠道 / 视频博主 / 队列与 AI 管线),并由 agent 侧自己发飞书周报(站内不开放代发消息工具)。沿用既有分工(能力在 service 层,MCP 直调 service;HTTP 路由的「PAT 拒」不动)。
+
+| 工具 | 职责 | 落点 |
+| --- | --- | --- |
+| `get_health_snapshot` | 四域健康度总览 + 结构化问题清单 `problems[]`(critical=源已挂/数据已脏,warning=降级/积压),每条带证据与建议 | `src/lib/mcp/tools.ops.ts` → `pricing/health.ts#listPricingSourceHealth` · `telegram/channels-admin.ts#listChannelsAdmin` · `telegram/bloggers-admin.ts#listBloggersAdmin` · `telegram/spider-queries.ts` 队列快照 |
+| `get_health_failures` | 窗口内失败明细与错误原文(采集快照解析失败 / 后台任务失败 / 队列失败任务 / 博主抓取失败) | 同上 + `crawl_snapshot` / `job_run` 只读查询 |
+| `trigger_recovery` | 手动重采(**仅入队**):渠道(含牌价源)/ 视频博主 / 博主回补 / GitHub 仓库;同目标 5 分钟冷却 | `telegram/channels-admin.ts#triggerChannelCrawl` · `bloggers-admin.ts#triggerBloggerCrawl` · `github/repos-admin.ts#triggerRepoSync` |
+| `review_model_pricing` | 牌价上架/下架(批量):上架须 `confirm=true` + reason + 逐条给 ids;带「待复核」标或源不健康的行被闸门拒;下架为止损不受这两道闸 | `src/lib/pricing/admin.ts#bulkReviewModelPricing` + 闸门 `src/lib/collect/health-report.ts#decidePricingReview` |
+
+**运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;建议给巡查 agent **单独签一枚 PAT**(可独立吊销、审计可分辨)。
+
 **写作指南供给通道(线下化后的唯一真相源)**:指南正文落仓库 `skills/writing/*.md`(每份带 frontmatter 元数据 + `INDEX.md` 索引),**线上运行期只读这份副本**——`src/lib/skills/writing-skills.ts` 运行时读盘(`listWritingSkills` / `readWritingSkill`),key 严校 `/^[a-z0-9-]+$/` 且解析后二次确认仍在目录内,路径穿越一律取不到。镜像需带上该目录(`docker/app/Dockerfile` COPY `skills/` + `.dockerignore` 对 `**/*.md` 的否定例外)。这样「改写作指南」不再需要调站、调试、发版,线下写作助手改仓库文件即生效,线上与线下读同一份。
 
 **两道落稿闸**:① `upsert_article` 传 `cardUrls`(信息卡清单,非空才校)时校验「每张卡都已嵌入正文」,漏嵌直接拒稿——渲了卡却漏嵌,卡片在站内退化成普通配图;闸的实现 `src/lib/content/card-embeds.ts#checkCardEmbeds` 与站内 agent 通道共用一份(原在 `agent/topic-draft-tool.ts`,为跨域复用移到内容域)。② `POST /api/posts/bundles` 批量整包上传(「一批 md + 一池图」,单批 ≤20 篇):multipart 重复字段 `mds` + 共享 `files`,图片按**文件名**匹配,逐篇回报成败(一篇失败不拖累其余),用于线下助手一周多篇不必逐篇往返。

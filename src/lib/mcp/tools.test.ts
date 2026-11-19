@@ -22,7 +22,7 @@ function textOf(result: { content: Array<{ type: string }> }): string {
 import type { McpToolDef } from "./registry";
 import { allTools, createMcpServer } from "./tools";
 
-/** 期望的工具面(25 只):加工具/删工具都要改这里,改动即需复核 */
+/** 期望的工具面(29 只):加工具/删工具都要改这里,改动即需复核 */
 const EXPECTED_TOOLS = [
   // 只读面
   "list_hot_topics",
@@ -52,6 +52,11 @@ const EXPECTED_TOOLS = [
   "sync_pin_to_wechat",
   "get_pin",
   "list_pins",
+  // 运维面(M75):只读巡查 2 只 + 受限动作 2 只
+  "get_health_snapshot",
+  "get_health_failures",
+  "trigger_recovery",
+  "review_model_pricing",
 ] as const;
 
 /** 不得出现的工具:退役的、用户明确不开放的 */
@@ -61,6 +66,11 @@ const FORBIDDEN_TOOLS = [
   "unpublish",
   "generate_pin_images",
   "sync_article_batch_to_wechat",
+  // 运维面刻意最小:不开放删除/停用源/重跑任务等不可逆动作
+  "delete_channel",
+  "disable_source",
+  "delete_pricing_model",
+  "rerun_job",
 ] as const;
 
 function tool(name: string): McpToolDef {
@@ -75,7 +85,7 @@ function schemaOf(name: string) {
 }
 
 describe("MCP 工具表完整性", () => {
-  it("工具名单与期望一致(25 只)", () => {
+  it("工具名单与期望一致(29 只)", () => {
     expect(
       allTools()
         .map((t) => t.name)
@@ -214,5 +224,51 @@ describe("MCP server 装配", () => {
     expect(rejected).toBe(true);
     await client.close();
     await server.close();
+  });
+});
+
+describe("M75 运维面入参 schema 边界", () => {
+  it("get_health_snapshot: domains 只收四域、problemLimit ≤50", () => {
+    const s = schemaOf("get_health_snapshot");
+    expect(s.safeParse({}).success).toBe(true);
+    expect(s.safeParse({ domains: ["pricing", "queue"] }).success).toBe(true);
+    expect(s.safeParse({ domains: ["unknown"] }).success).toBe(false);
+    expect(s.safeParse({ problemLimit: 50 }).success).toBe(true);
+    expect(s.safeParse({ problemLimit: 51 }).success).toBe(false);
+    expect(s.safeParse({ problemLimit: 0 }).success).toBe(false);
+  });
+
+  it("get_health_failures: sinceHours ≤168、limit ≤50", () => {
+    const s = schemaOf("get_health_failures");
+    expect(s.safeParse({}).success).toBe(true);
+    expect(s.safeParse({ sinceHours: 168 }).success).toBe(true);
+    expect(s.safeParse({ sinceHours: 169 }).success).toBe(false);
+    expect(s.safeParse({ limit: 50 }).success).toBe(true);
+    expect(s.safeParse({ limit: 51 }).success).toBe(false);
+  });
+
+  it("trigger_recovery: target 只收四种可重采目标、id 必须正整数", () => {
+    const s = schemaOf("trigger_recovery");
+    expect(s.safeParse({ target: "channel", id: 3 }).success).toBe(true);
+    expect(s.safeParse({ target: "blogger", id: 3 }).success).toBe(true);
+    expect(s.safeParse({ target: "delete_channel", id: 3 }).success).toBe(false);
+    expect(s.safeParse({ target: "channel", id: 0 }).success).toBe(false);
+    expect(s.safeParse({ target: "channel" }).success).toBe(false);
+  });
+
+  it("review_model_pricing: ids 必填且 ≤50、status 只收 enabled/disabled", () => {
+    const s = schemaOf("review_model_pricing");
+    expect(s.safeParse({ ids: ["12"], status: "enabled", confirm: true }).success).toBe(true);
+    expect(s.safeParse({ ids: [], status: "enabled", confirm: true }).success).toBe(false);
+    expect(s.safeParse({ ids: ["x"], status: "enabled", confirm: true }).success).toBe(false);
+    expect(s.safeParse({ ids: ["12"], status: "pending", confirm: true }).success).toBe(false);
+    // 51 条超上限(agent 面比后台 UI 的 500 更严)
+    expect(
+      s.safeParse({
+        ids: Array.from({ length: 51 }, (_, i) => String(i + 1)),
+        status: "enabled",
+        confirm: true,
+      }).success,
+    ).toBe(false);
   });
 });
