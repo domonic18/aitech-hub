@@ -19,6 +19,8 @@ import type { AdminActor } from "@/lib/http/mutation-guard";
 import { registerTools, type McpToolDef } from "./registry";
 import { contentTools } from "./tools.content";
 import { feedTools } from "./tools.feed";
+import { opsActionTools } from "./tools.ops.actions";
+import { opsReadTools } from "./tools.ops";
 import { pinTools } from "./tools.pins";
 
 /**
@@ -70,6 +72,14 @@ const SERVER_INSTRUCTIONS = [
   "5. get_distribute_job(jobId, token) 轮询到 completed。",
   "文章 → 公众号草稿:sync_article_to_wechat(postId) → get_distribute_job 轮询;",
   "推的是草稿箱不是发布,发布由站长在后台人工点;render_wechat_preview(postId) 可预览所见即所得。",
+  "运营巡查面(M75,给运维助手 agent;周报在 agent 侧发,站内不管发消息):",
+  "get_health_snapshot —— 采集健康度总览(牌价源/文章渠道/视频博主/队列与 AI 管线四域)+",
+  "结构化问题清单 problems[](critical=源已挂或数据已脏,warning=降级或积压),每条带证据与建议;",
+  "get_health_failures —— 一段时间内的失败明细与错误原文(写周报时列具体源与错因)。",
+  "受限动作:trigger_recovery(手动重采:渠道/牌价源、视频博主、博主回补、GitHub 仓库;",
+  "同一目标 5 分钟冷却,仅入队不阻塞);review_model_pricing(牌价上架/下架:ids 逐条给;",
+  "上架须 confirm=true 且带 reason;带「待复核」标或源不健康的行会被闸门拒;下架为止损不做这两道闸)。",
+  "动作面刻意最小:不提供删除、停用源、重跑任务等不可逆操作。",
 ].join("\n");
 
 export function createMcpServer(actor: AdminActor): McpServer {
@@ -84,7 +94,7 @@ export function createMcpServer(actor: AdminActor): McpServer {
   return server;
 }
 
-/** 全量工具表(装配口径:只读面 → 文章面 → 贴图面) */
+/** 全量工具表(装配口径:只读面 → 文章面 → 贴图面 → 运维面) */
 export function allTools(): McpToolDef[] {
-  return [...feedTools, ...contentTools, ...pinTools];
+  return [...feedTools, ...contentTools, ...pinTools, ...opsReadTools, ...opsActionTools];
 }
