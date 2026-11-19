@@ -19,7 +19,8 @@ import type { AdminActor } from "@/lib/http/mutation-guard";
 import { registerTools, type McpToolDef } from "./registry";
 import { contentTools } from "./tools.content";
 import { feedTools } from "./tools.feed";
-import { opsTools } from "./tools.ops";
+import { opsActionTools } from "./tools.ops.actions";
+import { opsReadTools } from "./tools.ops";
 import { pinTools } from "./tools.pins";
 
 /**
@@ -95,5 +96,5 @@ export function createMcpServer(actor: AdminActor): McpServer {
 
 /** 全量工具表(装配口径:只读面 → 文章面 → 贴图面 → 运维面) */
 export function allTools(): McpToolDef[] {
-  return [...feedTools, ...contentTools, ...pinTools, ...opsTools];
+  return [...feedTools, ...contentTools, ...pinTools, ...opsReadTools, ...opsActionTools];
 }

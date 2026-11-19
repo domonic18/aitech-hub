@@ -295,10 +295,10 @@
 
 | 工具 | 职责 | 落点 |
 | --- | --- | --- |
-| `get_health_snapshot` | 四域健康度总览 + 结构化问题清单 `problems[]`(critical=源已挂/数据已脏,warning=降级/积压),每条带证据与建议 | `src/lib/mcp/tools.ops.ts` → `pricing/health.ts#listPricingSourceHealth` · `telegram/channels-admin.ts#listChannelsAdmin` · `telegram/bloggers-admin.ts#listBloggersAdmin` · `telegram/spider-queries.ts` 队列快照 |
+| `get_health_snapshot` | 四域健康度总览 + 结构化问题清单 `problems[]`(critical=源已挂/数据已脏,warning=降级/积压),每条带证据与建议 | `src/lib/mcp/tools.ops.ts`(取数 `ops-readers.ts`)→ `pricing/health.ts#listPricingSourceHealth` · `telegram/channels-admin.ts#listChannelsAdmin` · `telegram/bloggers-admin.ts#listBloggersAdmin` · `telegram/spider-queries.ts` 队列快照 |
 | `get_health_failures` | 窗口内失败明细与错误原文(采集快照解析失败 / 后台任务失败 / 队列失败任务 / 博主抓取失败) | 同上 + `crawl_snapshot` / `job_run` 只读查询 |
 | `trigger_recovery` | 手动重采(**仅入队**):渠道(含牌价源)/ 视频博主 / 博主回补 / GitHub 仓库;同目标 5 分钟冷却 | `telegram/channels-admin.ts#triggerChannelCrawl` · `bloggers-admin.ts#triggerBloggerCrawl` · `github/repos-admin.ts#triggerRepoSync` |
-| `review_model_pricing` | 牌价上架/下架(批量):上架须 `confirm=true` + reason + 逐条给 ids;带「待复核」标或源不健康的行被闸门拒;下架为止损不受这两道闸 | `src/lib/pricing/admin.ts#bulkReviewModelPricing` + 闸门 `src/lib/collect/health-report.ts#decidePricingReview` |
+| `review_model_pricing` | 牌价上架/下架(批量):上架须 `confirm=true` + reason + 逐条给 ids;带「待复核」标或源不健康的行被闸门拒;下架为止损不受这两道闸 | `src/lib/pricing/admin.ts#bulkReviewModelPricing` + 闸门 `src/lib/pricing/review-gate.ts#decidePricingReview` |
 
 **运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;建议给巡查 agent **单独签一枚 PAT**(可独立吊销、审计可分辨)。
 
