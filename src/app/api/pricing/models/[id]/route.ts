@@ -7,12 +7,8 @@ import { type NextRequest } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
-import {
-  deleteModelPricing,
-  modelPricingUpdateSchema,
-  updateModelPricing,
-  formatZodIssues,
-} from "@/lib/pricing/admin";
+import { formatZodIssues, modelPricingUpdateSchema } from "@/lib/pricing/admin-schema";
+import { deleteModelPricing, updateModelPricing } from "@/lib/pricing/admin-model";
 
 export const dynamic = "force-dynamic";
 

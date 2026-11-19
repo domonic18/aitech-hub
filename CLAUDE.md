@@ -13,7 +13,7 @@
   站内检索+LLM ≤4.2s / 超时「继续」回捞,无站内命中不生成;飞书站务通知凭据只入库、不入 env/代码);
   外部 agent 能力面(2026-11 M72,MCP 25 只:只读 9 + 文章面 9 + 贴图面 7;2026-11-19 M75 增至 29 只,
   增**运维面 4 只**:get_health_snapshot / get_health_failures / trigger_recovery /
-  review_model_pricing)——站内 agent 只读六件
+  review_model_pricing;M76 增至 30 只,增 offline_pricing_source)——站内 agent 只读六件
   (创作职责整体外移线下 Claude Code;创作中心/专题台账/写作技能后台三块已下线)——三条红线:
   **文生图不上线**(图由本地 agent 生成后经 /api/media/ 上传,再走 create_pin)、**PAT 不碰创作域**
   (create_pin 不带 topicId,外部产出停在贴图 + 公众号草稿箱)、**不开批量同步**(单篇工具已覆盖);
@@ -21,6 +21,9 @@
   不开放删除/停用源/重跑任务等不可逆动作;牌价**上架**须 confirm+reason+逐条给 ids,
   带「待复核」标或源不健康的行被闸门拒(**下架为止损,不受这两道闸**);巡查 agent 建议单独签一枚
   PAT(可独立吊销);周报由 agent 侧发飞书,站内不开放代发消息工具;
+  M76 增一条:**牌价按源批量下架**(offline_pricing_source)只下架不上架,该不该下架由 agent 侧判断
+  (MCP 只执行,源完全健康时拒);**人工定稿行两条下架路径都不动**;源↔行按 vendor + 产出面解析
+  (同厂商的模型源与套餐源不串);
   154 篇原创文章及其引用图片全量迁移;3314 篇爬虫资讯弃用(301 承接)
 
 ## 2. 项目结构

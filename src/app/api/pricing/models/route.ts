@@ -8,12 +8,11 @@ import { type NextRequest } from "next/server";
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import {
-  createModelPricing,
-  listModelPricing,
+  formatZodIssues,
   modelPricingCreateSchema,
   type PricingStatus,
-  formatZodIssues,
-} from "@/lib/pricing/admin";
+} from "@/lib/pricing/admin-schema";
+import { createModelPricing, listModelPricing } from "@/lib/pricing/admin-model";
 
 export const dynamic = "force-dynamic";
 

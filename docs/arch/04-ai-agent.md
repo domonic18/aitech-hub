@@ -298,9 +298,10 @@
 | `get_health_snapshot` | 四域健康度总览 + 结构化问题清单 `problems[]`(critical=源已挂/数据已脏,warning=降级/积压),每条带证据与建议 | `src/lib/mcp/tools.ops.ts`(取数 `ops-readers.ts`)→ `pricing/health.ts#listPricingSourceHealth` · `telegram/channels-admin.ts#listChannelsAdmin` · `telegram/bloggers-admin.ts#listBloggersAdmin` · `telegram/spider-queries.ts` 队列快照 |
 | `get_health_failures` | 窗口内失败明细与错误原文(采集快照解析失败 / 后台任务失败 / 队列失败任务 / 博主抓取失败) | 同上 + `crawl_snapshot` / `job_run` 只读查询 |
 | `trigger_recovery` | 手动重采(**仅入队**):渠道(含牌价源)/ 视频博主 / 博主回补 / GitHub 仓库;同目标 5 分钟冷却 | `telegram/channels-admin.ts#triggerChannelCrawl` · `bloggers-admin.ts#triggerBloggerCrawl` · `github/repos-admin.ts#triggerRepoSync` |
-| `review_model_pricing` | 牌价上架/下架(批量):上架须 `confirm=true` + reason + 逐条给 ids;带「待复核」标或源不健康的行被闸门拒;下架为止损不受这两道闸 | `src/lib/pricing/admin.ts#bulkReviewModelPricing` + 闸门 `src/lib/pricing/review-gate.ts#decidePricingReview` |
+| `review_model_pricing` | 牌价上架/下架(批量):上架须 `confirm=true` + reason + 逐条给 ids;带「待复核」标或源不健康的行被闸门拒;下架为止损不受这两道闸 | `src/lib/pricing/admin-model.ts#bulkReviewModelPricing` + 闸门 `src/lib/pricing/review-gate.ts#decidePricingReview` |
+| `offline_pricing_source` | 牌价按源批量下架(M76,止损):按 sourceKey 把该源名下已上架的行置 disabled;人工定稿行与待终审行不动;**只下架不上架**,该不该下架由 agent 侧判断(MCP 只执行) | `src/lib/pricing/offline-source.ts#offlinePricingSource` + `src/lib/pricing/health.ts#listPricingSourceHealth` |
 
-**运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;建议给巡查 agent **单独签一枚 PAT**(可独立吊销、审计可分辨)。
+**运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;建议给巡查 agent **单独签一枚 PAT**(可独立吊销、审计可分辨);牌价上架与下架的口径统一——源↔行按 **vendor + 产出面**解析(同厂商的模型源与套餐源不串),**人工定稿行两条下架路径都不动**。
 
 **写作指南供给通道(线下化后的唯一真相源)**:指南正文落仓库 `skills/writing/*.md`(每份带 frontmatter 元数据 + `INDEX.md` 索引),**线上运行期只读这份副本**——`src/lib/skills/writing-skills.ts` 运行时读盘(`listWritingSkills` / `readWritingSkill`),key 严校 `/^[a-z0-9-]+$/` 且解析后二次确认仍在目录内,路径穿越一律取不到。镜像需带上该目录(`docker/app/Dockerfile` COPY `skills/` + `.dockerignore` 对 `**/*.md` 的否定例外)。这样「改写作指南」不再需要调站、调试、发版,线下写作助手改仓库文件即生效,线上与线下读同一份。
 

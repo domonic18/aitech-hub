@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 
-import type { ModelPricingRow } from "@/lib/pricing/admin";
+import type { ModelPricingRow } from "@/lib/pricing/admin-model";
 import { TIER_UNITS } from "@/lib/pricing/constants";
 
 /** 编辑中的一档 */

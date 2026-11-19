@@ -8,9 +8,10 @@
  */
 import { z } from "zod";
 
-import { bulkReviewModelPricing, offlinePricingSource } from "@/lib/pricing/admin";
+import { bulkReviewModelPricing } from "@/lib/pricing/admin-model";
 import { listPricingSourceHealth } from "@/lib/pricing/health";
 import { decidePricingReview } from "@/lib/pricing/review-gate";
+import { offlinePricingSource } from "@/lib/pricing/offline-source";
 import { prisma } from "@/lib/db";
 import { isOverLimit, recordHit } from "@/lib/auth/rate-limit";
 import { triggerChannelCrawl } from "@/lib/telegram/channels-admin";
@@ -26,6 +27,9 @@ const RECOVERY_COOLDOWN_SECONDS = 300;
 
 /** 牌价终审单次上限(agent 面比后台 UI 更严:后台 500) */
 const REVIEW_MAX_IDS = 50;
+
+/** 跳过行回显上限(其余只给计数——回执全量会撑爆 agent 上下文) */
+const SKIPPED_ECHO_MAX = 20;
 
 /** 重采目标类型 */
 const RECOVERY_TARGETS = ["channel", "blogger", "blogger_backfill", "github_repo"] as const;
@@ -110,15 +114,23 @@ export const opsActionTools: McpToolDef[] = [
         }
         const rows = await prisma.modelPricing.findMany({
           where: { id: { in: args.ids.map((id) => BigInt(id)) } },
-          select: { id: true, vendor: true, modelKey: true, status: true, note: true },
+          select: {
+            id: true,
+            vendor: true,
+            modelKey: true,
+            status: true,
+            note: true,
+            isPinned: true,
+          },
         });
         const found = new Map(rows.map((r) => [r.id.toString(), r]));
         const missing = args.ids.filter((id) => !found.has(id));
 
-        // 源健康口径:与牌价源健康读侧同源(vendor ↔ 源)
+        // 源健康口径:与牌价源健康读侧同源(**vendor + 产出面** ↔ 源)——
+        // 同厂商的模型源与套餐源分开,否则会拿兄弟源的健康状态当自己的
         const sourceByVendor = new Map(
           (await listPricingSourceHealth()).map((s) => [
-            s.vendor,
+            `${s.vendor}|${s.target}`,
             { status: s.status, consecutiveFails: s.consecutiveFails },
           ]),
         );
@@ -129,9 +141,11 @@ export const opsActionTools: McpToolDef[] = [
             modelKey: r.modelKey,
             status: r.status,
             note: r.note,
+            isPinned: r.isPinned,
+            target: "model" as const,
           })),
           args.status,
-          (vendor) => sourceByVendor.get(vendor),
+          (vendor, target) => sourceByVendor.get(`${vendor}|${target}`),
         );
         const applyIds = decisions.filter((d) => d.action === "apply").map((d) => d.id);
         const changed =
@@ -173,7 +187,9 @@ export const opsActionTools: McpToolDef[] = [
     "把某个牌价采集源因抓取失败而陈旧的**已上架**数据下架(止损):按 sourceKey 定位源," +
       "圈定该源名下的行(口径同健康读侧:vendor + 产出面,模型表与套餐表都覆盖)," +
       "把 status=enabled 的置 disabled。人工定稿行(is_pinned)与待终审行不动;已下架的跳过(幂等)。" +
-      "必须 confirm=true 并写 reason(记审计)。**只下架不上架**——重新上架走逐条 review_model_pricing。",
+      "必须 confirm=true 并写 reason(记审计)。**只下架不上架**——重新上架走逐条 review_model_pricing。" +
+      "本工具只负责执行下架,**该不该下架由调用方判断**:回执带源的状态、连败次数与最近采集错误原文," +
+      "请先用 get_health_snapshot 核对再下架(源完全健康时本工具会拒)。",
     {
       sourceKey: z
         .string()
@@ -201,7 +217,7 @@ export const opsActionTools: McpToolDef[] = [
             hint: "sourceKey 取自 get_health_snapshot 的 pricing 段 key",
           });
         }
-        // 只给「抓不到价的源」兜底:健康的源下架 = 把好价打成错价
+        // 最小闸:完全健康的源拒(把好价打成错价);其余该不该下架由调用方判断
         if (src.status === "healthy" && src.consecutiveFails === 0) {
           return fail(new Error(`牌价源 ${src.label} 当前健康(status=healthy,连败 0),不应下架`), {
             code: "source_healthy",
@@ -217,6 +233,7 @@ export const opsActionTools: McpToolDef[] = [
           vendor: src.vendor,
           target: src.target,
           changed: result.changed.length,
+          applied: result.applied,
           skipped: result.skipped.length,
           reason: args.reason,
         });
@@ -226,10 +243,17 @@ export const opsActionTools: McpToolDef[] = [
           sourceLabel: src.label,
           vendor: src.vendor,
           target: src.target,
+          // 源的事实(判断依据在调用方侧):状态/连败/最近采集错误原文
           sourceStatus: src.status,
           consecutiveFails: src.consecutiveFails,
+          lastCaptureError: src.lastCapture?.error ?? null,
+          rows: src.rows,
+          // 匹配口径:vendor 逐字相等 + 产出面(与健康读侧同源)
+          matchRule: "vendor 逐字相等 + 产出面(model/plan)",
           changed: result.changed,
-          skipped: result.skipped,
+          applied: result.applied,
+          skippedTotal: result.skipped.length,
+          skipped: result.skipped.slice(0, SKIPPED_ECHO_MAX),
           reason: args.reason,
         });
       } catch (e) {

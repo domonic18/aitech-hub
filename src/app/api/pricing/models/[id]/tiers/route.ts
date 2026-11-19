@@ -10,11 +10,8 @@ import { type NextRequest } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
-import {
-  formatZodIssues,
-  modelPricingTiersUpdateSchema,
-  updateModelPricingTiers,
-} from "@/lib/pricing/admin";
+import { formatZodIssues, modelPricingTiersUpdateSchema } from "@/lib/pricing/admin-schema";
+import { updateModelPricingTiers } from "@/lib/pricing/admin-model";
 
 export const dynamic = "force-dynamic";
 

@@ -11,7 +11,8 @@ import Link from "next/link";
 import PricingConsole from "@/components/admin/pricing/PricingConsole";
 import { SourceHealth } from "@/components/admin/pricing/SourceHealth";
 import { requireAdminPage } from "@/lib/auth/guard";
-import { listCodingPlans, listModelPricing } from "@/lib/pricing/admin";
+import { listModelPricing } from "@/lib/pricing/admin-model";
+import { listCodingPlans } from "@/lib/pricing/admin-plan";
 import { listPricingSourceHealth } from "@/lib/pricing/health";
 
 export const dynamic = "force-dynamic";

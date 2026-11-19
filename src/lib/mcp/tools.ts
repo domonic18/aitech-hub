@@ -84,6 +84,8 @@ const SERVER_INSTRUCTIONS = [
   "(口径同健康读侧:vendor + 产出面,模型表与套餐表都覆盖),把 enabled 的置 disabled;",
   "人工定稿行(is_pinned)与待终审行不动,已下架的跳过(幂等);须 confirm=true 且带 reason;",
   "源健康时会被拒(source_healthy)——只下架,不上架(重新上架走逐条 review_model_pricing)。",
+  "该不该下架由你判断:本工具只负责执行,先看 get_health_snapshot 的源状态与连败次数",
+  "(回执也带 lastCaptureError 与 rows 分布)。",
   "动作面刻意最小:不提供删除、停用源、重跑任务等不可逆操作。",
 ].join("\n");
 
