@@ -154,7 +154,7 @@ aitech-hub/
 | 约束/索引 | `uq_*` / `idx_*` 必须带 `map`;PK/FK 保留 Prisma 默认名(细则见 standard/03 §4) | `uq_content_post_slug` |
 | 审计字段 | 业务表统一 `createdAt`/`updatedAt`(timestamptz,aware UTC);明细表可只 `createdAt` | |
 | API JSON | camelCase 一致(单体内部无 query 参数历史包袱,统一 camelCase) | `postId`、`pageSize` |
-| 域治理台读侧 | `<域>.admin.ts`(list/CRUD/Zod 契约单点) | `lib/pricing/admin.ts`、`lib/insight/admin.ts` |
+| 域治理台读侧 | `<域>.admin.ts`(list/CRUD/Zod 契约单点) | `lib/pricing/admin-schema.ts`+`admin-model.ts`+`admin-plan.ts`、`lib/insight/admin.ts` |
 
 ## 4. CLAUDE.md 体系(单根文档)
 

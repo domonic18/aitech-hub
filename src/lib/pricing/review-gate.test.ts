@@ -53,4 +53,33 @@ describe("decidePricingReview(牌价终审闸门)", () => {
     );
     expect(d[0]?.action).toBe("apply");
   });
+
+  it("下架:人工定稿行 skip(定稿是人工确认过的价,不动)", () => {
+    const d = decidePricingReview([row({ status: "enabled", isPinned: true })], "disabled", () => ({
+      status: "error",
+      consecutiveFails: 9,
+    }));
+    expect(d[0]?.action).toBe("skip");
+    expect(d[0]?.reason).toContain("人工定稿");
+  });
+
+  it("上架:源按 vendor + 产出面查(同厂商的模型源与套餐源不串)", () => {
+    const seen: string[] = [];
+    const d = decidePricingReview(
+      [row({ vendor: "腾讯云", target: "model" })],
+      "enabled",
+      (vendor, target) => {
+        seen.push(`${vendor}|${target}`);
+        return healthy;
+      },
+    );
+    expect(seen).toEqual(["腾讯云|model"]);
+    expect(d[0]?.action).toBe("apply");
+    // 缺产出面的行按模型表查(与读侧默认一致)
+    decidePricingReview([row({ vendor: "腾讯云" })], "enabled", (vendor, target) => {
+      seen.push(`${vendor}|${target}`);
+      return healthy;
+    });
+    expect(seen).toEqual(["腾讯云|model", "腾讯云|model"]);
+  });
 });

@@ -22,7 +22,7 @@ function textOf(result: { content: Array<{ type: string }> }): string {
 import type { McpToolDef } from "./registry";
 import { allTools, createMcpServer } from "./tools";
 
-/** 期望的工具面(29 只):加工具/删工具都要改这里,改动即需复核 */
+/** 期望的工具面(30 只):加工具/删工具都要改这里,改动即需复核 */
 const EXPECTED_TOOLS = [
   // 只读面
   "list_hot_topics",
@@ -52,11 +52,12 @@ const EXPECTED_TOOLS = [
   "sync_pin_to_wechat",
   "get_pin",
   "list_pins",
-  // 运维面(M75):只读巡查 2 只 + 受限动作 2 只
+  // 运维面(M75):只读巡查 2 只 + 受限动作 2 只;M76 补「按源批量下架」1 只
   "get_health_snapshot",
   "get_health_failures",
   "trigger_recovery",
   "review_model_pricing",
+  "offline_pricing_source",
 ] as const;
 
 /** 不得出现的工具:退役的、用户明确不开放的 */
@@ -85,7 +86,7 @@ function schemaOf(name: string) {
 }
 
 describe("MCP 工具表完整性", () => {
-  it("工具名单与期望一致(29 只)", () => {
+  it("工具名单与期望一致(30 只)", () => {
     expect(
       allTools()
         .map((t) => t.name)
@@ -270,5 +271,19 @@ describe("M75 运维面入参 schema 边界", () => {
         confirm: true,
       }).success,
     ).toBe(false);
+  });
+
+  it("offline_pricing_source: sourceKey/reason 必填、confirm 必传", () => {
+    const s = schemaOf("offline_pricing_source");
+    expect(
+      s.safeParse({ sourceKey: "tencent-tokenplan", confirm: true, reason: "采集解析失败" })
+        .success,
+    ).toBe(true);
+    expect(s.safeParse({ sourceKey: "", confirm: true, reason: "x" }).success).toBe(false);
+    expect(s.safeParse({ sourceKey: "tencent-tokenplan", confirm: true }).success).toBe(false);
+    expect(s.safeParse({ sourceKey: "tencent-tokenplan", confirm: true, reason: "" }).success).toBe(
+      false,
+    );
+    expect(s.safeParse({ sourceKey: "tencent-tokenplan", reason: "x" }).success).toBe(false);
   });
 });

@@ -9,7 +9,8 @@
  */
 import { useState } from "react";
 
-import type { CodingPlanRow, ModelPricingRow } from "@/lib/pricing/admin";
+import type { ModelPricingRow } from "@/lib/pricing/admin-model";
+import type { CodingPlanRow } from "@/lib/pricing/admin-plan";
 
 import ModelsBoard from "./ModelsBoard";
 import PlansBoard from "./PlansBoard";

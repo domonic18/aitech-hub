@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import type { CodingPlanRow } from "@/lib/pricing/admin";
+import type { CodingPlanRow } from "@/lib/pricing/admin-plan";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";

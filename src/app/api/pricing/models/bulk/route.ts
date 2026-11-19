@@ -8,7 +8,8 @@ import { type NextRequest } from "next/server";
 
 import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
-import { bulkReviewModelPricing, formatZodIssues, PRICING_STATUSES } from "@/lib/pricing/admin";
+import { formatZodIssues, PRICING_STATUSES } from "@/lib/pricing/admin-schema";
+import { bulkReviewModelPricing } from "@/lib/pricing/admin-model";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";

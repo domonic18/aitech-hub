@@ -8,11 +8,10 @@ import { requireSessionActor } from "@/lib/http/session-guard";
 import { apiEnvelope } from "@/lib/http/response";
 import {
   codingPlanCreateSchema,
-  createCodingPlan,
-  listCodingPlans,
-  type PricingStatus,
   formatZodIssues,
-} from "@/lib/pricing/admin";
+  type PricingStatus,
+} from "@/lib/pricing/admin-schema";
+import { createCodingPlan, listCodingPlans } from "@/lib/pricing/admin-plan";
 
 export const dynamic = "force-dynamic";
 

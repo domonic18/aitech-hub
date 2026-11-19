@@ -79,6 +79,13 @@ const SERVER_INSTRUCTIONS = [
   "受限动作:trigger_recovery(手动重采:渠道/牌价源、视频博主、博主回补、GitHub 仓库;",
   "同一目标 5 分钟冷却,仅入队不阻塞);review_model_pricing(牌价上架/下架:ids 逐条给;",
   "上架须 confirm=true 且带 reason;带「待复核」标或源不健康的行会被闸门拒;下架为止损不做这两道闸)。",
+  "offline_pricing_source —— 牌价源抓取失败时把该源**已上架**的数据下架(止损):",
+  "按 sourceKey 定位源(取自 get_health_snapshot 的 pricing 段),圈定该源名下的行",
+  "(口径同健康读侧:vendor + 产出面,模型表与套餐表都覆盖),把 enabled 的置 disabled;",
+  "人工定稿行(is_pinned)与待终审行不动,已下架的跳过(幂等);须 confirm=true 且带 reason;",
+  "源健康时会被拒(source_healthy)——只下架,不上架(重新上架走逐条 review_model_pricing)。",
+  "该不该下架由你判断:本工具只负责执行,先看 get_health_snapshot 的源状态与连败次数",
+  "(回执也带 lastCaptureError 与 rows 分布)。",
   "动作面刻意最小:不提供删除、停用源、重跑任务等不可逆操作。",
 ].join("\n");
 
