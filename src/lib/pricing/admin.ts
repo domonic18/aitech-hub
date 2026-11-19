@@ -384,6 +384,113 @@ export async function bulkReviewModelPricing(
   return result.count;
 }
 
+/** 一次下架动作涉及的行的记述 */
+export interface PricingOfflineEntry {
+  table: "model" | "plan";
+  id: string;
+  name: string;
+  status: string;
+  pinned: boolean;
+  reason: string;
+}
+
+/** 按源下架的结果:改了哪些、没改哪些(带原因) */
+export interface PricingOfflineResult {
+  changed: PricingOfflineEntry[];
+  skipped: PricingOfflineEntry[];
+}
+
+/**
+ * 按源批量下架(M76:采集源抓取失败时止损)。
+ *
+ * 行↔源口径与健康读侧同源:**vendor + 产出面**(model 表 / 套餐 表)——
+ * vendor 是采集器写死的稳定标识(渠道 URL 会被后台改,按 URL 连会错位),
+ * 产出面把同 vendor 下的兄弟源分开(腾讯云=Token Plan 套餐 + 混元模型牌价)。
+ *
+ * 只下架**已上架**的行:待终审(pending)还没对外,不动;人工定稿(is_pinned)是
+ * 人工确认过的价,源挂不等于价错,不动;已下架的行跳过(幂等)。
+ */
+export async function offlinePricingSource(
+  vendor: string,
+  target: "model" | "plan",
+): Promise<PricingOfflineResult> {
+  const changed: PricingOfflineEntry[] = [];
+  const skipped: PricingOfflineEntry[] = [];
+
+  if (target === "model") {
+    const rows = await prisma.modelPricing.findMany({
+      where: { vendor },
+      select: { id: true, modelKey: true, status: true, isPinned: true },
+    });
+    const ids: bigint[] = [];
+    for (const r of rows) {
+      const entry: PricingOfflineEntry = {
+        table: "model",
+        id: r.id.toString(),
+        name: r.modelKey,
+        status: r.status,
+        pinned: r.isPinned,
+        reason: "",
+      };
+      if (r.status === "enabled" && !r.isPinned) {
+        ids.push(r.id);
+        entry.reason = "已上架且采集源抓取失败,止损下架";
+        changed.push(entry);
+      } else {
+        entry.reason = r.isPinned
+          ? "人工定稿行,采集不覆盖,不下架"
+          : r.status === "pending"
+            ? "待终审,未上架"
+            : "已下架";
+        skipped.push(entry);
+      }
+    }
+    if (ids.length > 0) {
+      await prisma.modelPricing.updateMany({
+        where: { id: { in: ids }, status: "enabled" },
+        data: { status: "disabled" },
+      });
+    }
+  } else {
+    const rows = await prisma.codingPlan.findMany({
+      where: { vendor },
+      select: { id: true, planName: true, status: true, isPinned: true },
+    });
+    const ids: bigint[] = [];
+    for (const r of rows) {
+      const entry: PricingOfflineEntry = {
+        table: "plan",
+        id: r.id.toString(),
+        name: r.planName,
+        status: r.status,
+        pinned: r.isPinned,
+        reason: "",
+      };
+      if (r.status === "enabled" && !r.isPinned) {
+        ids.push(r.id);
+        entry.reason = "已上架且采集源抓取失败,止损下架";
+        changed.push(entry);
+      } else {
+        entry.reason = r.isPinned
+          ? "人工定稿行,采集不覆盖,不下架"
+          : r.status === "pending"
+            ? "待终审,未上架"
+            : "已下架";
+        skipped.push(entry);
+      }
+    }
+    if (ids.length > 0) {
+      await prisma.codingPlan.updateMany({
+        where: { id: { in: ids }, status: "enabled" },
+        data: { status: "disabled" },
+      });
+    }
+  }
+
+  if (changed.length > 0) revalidatePublicPricing();
+  return { changed, skipped };
+}
+
 /**
  * 档位订正(M74 批C2):阶梯/缓存/峰谷价的人工订正入口。
  * 整行档位替换(与采集侧 replaceTiers 同口径:档位集按源整批刷新,不增量合并)。

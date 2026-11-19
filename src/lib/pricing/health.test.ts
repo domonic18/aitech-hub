@@ -1,17 +1,23 @@
 /**
- * 牌价采集源健康度单测(M74 批C2):源与行的对应按 vendor(不靠 URL——
- * 渠道 URL 会被后台改)、状态分布汇总、每源最近一次快照。
+ * 牌价采集源健康度单测(M74 批C2;M76 补产出面):源与行的对应按 vendor + 产出面
+ * (不靠 URL——渠道 URL 会被后台改),状态分布汇总、每源最近一次快照。
+ *
+ * M76 回归点:同一 vendor 下有多个源(腾讯云=Token Plan 套餐 + 混元模型牌价),
+ * 套餐源必须看套餐表、模型源看模型表——否则套餐源会把同厂商的模型行数
+ * 误报成自己的产出。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sourceFindMany = vi.fn();
-const groupBy = vi.fn();
+const modelGroupBy = vi.fn();
+const planGroupBy = vi.fn();
 const snapshotFindMany = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     crawlSource: { findMany: (...a: unknown[]) => sourceFindMany(...a) },
-    modelPricing: { groupBy: (...a: unknown[]) => groupBy(...a) },
+    modelPricing: { groupBy: (...a: unknown[]) => modelGroupBy(...a) },
+    codingPlan: { groupBy: (...a: unknown[]) => planGroupBy(...a) },
     crawlSnapshot: { findMany: (...a: unknown[]) => snapshotFindMany(...a) },
   },
 }));
@@ -45,10 +51,37 @@ beforeEach(() => {
       nextRunAt: null,
       remark: null,
     },
+    {
+      id: 3,
+      name: "pricing:tencent-tokenplan",
+      url: "https://cloud.tencent.com/product/hunyuan/tokenplan",
+      enabled: true,
+      crawlIntervalMin: 10080,
+      status: "degraded",
+      consecutiveFails: 1,
+      lastRunAt: new Date("2026-11-18T11:42:00Z"),
+      nextRunAt: null,
+      remark: null,
+    },
+    {
+      id: 4,
+      name: "pricing:tencent-hunyuan",
+      url: "https://cloud.tencent.com/product/hunyuan/pricing",
+      enabled: true,
+      crawlIntervalMin: 1440,
+      status: "healthy",
+      consecutiveFails: 0,
+      lastRunAt: new Date("2026-11-19T00:00:00Z"),
+      nextRunAt: null,
+      remark: null,
+    },
   ]);
-  groupBy.mockImplementation(async (args: { where?: { note?: { contains?: string } } }) => {
-    // 待复核查询(note 含【待复核)与状态分组查询分开返回
-    if (args.where?.note?.contains !== undefined) {
+  // 状态分组查询与待复核查询(note 含【待复核)分开返回
+  const isRecheck = (args: { where?: { note?: { contains?: string } } }): boolean =>
+    args.where?.note?.contains !== undefined;
+
+  modelGroupBy.mockImplementation(async (args: { where?: { note?: { contains?: string } } }) => {
+    if (isRecheck(args)) {
       return [{ vendor: "硅基流动 SiliconFlow", _count: { _all: 4 } }];
     }
     return [
@@ -56,6 +89,16 @@ beforeEach(() => {
       { vendor: "DeepSeek 深度求索", status: "pending", _count: { _all: 2 } },
       { vendor: "硅基流动 SiliconFlow", status: "pending", _count: { _all: 4 } },
       { vendor: "硅基流动 SiliconFlow", status: "disabled", _count: { _all: 1 } },
+      { vendor: "腾讯云", status: "enabled", _count: { _all: 10 } },
+    ];
+  });
+  planGroupBy.mockImplementation(async (args: { where?: { note?: { contains?: string } } }) => {
+    if (isRecheck(args)) {
+      return [{ vendor: "腾讯云", _count: { _all: 8 } }];
+    }
+    return [
+      { vendor: "腾讯云", status: "enabled", _count: { _all: 5 } },
+      { vendor: "腾讯云", status: "pending", _count: { _all: 3 } },
     ];
   });
   snapshotFindMany.mockResolvedValue([
@@ -72,7 +115,7 @@ beforeEach(() => {
 describe("listPricingSourceHealth", () => {
   it("按 vendor 把行归到源(不靠 URL——渠道 URL 会被后台改)", async () => {
     const rows = await listPricingSourceHealth();
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(4);
     const deepseek = rows.find((r) => r.key === "deepseek")!;
     expect(deepseek.vendor).toBe("DeepSeek 深度求索");
     expect(deepseek.rows.enabled).toBe(3);
@@ -86,6 +129,25 @@ describe("listPricingSourceHealth", () => {
     expect(sf.rows.recheck).toBe(4);
     expect(sf.rows.pending).toBe(4);
     expect(sf.rows.disabled).toBe(1);
+  });
+
+  it("同 vendor 的兄弟源不串行:套餐源看套餐表,模型源看模型表", async () => {
+    const rows = await listPricingSourceHealth();
+    const plan = rows.find((r) => r.key === "tencent-tokenplan")!;
+    const model = rows.find((r) => r.key === "tencent-hunyuan")!;
+    expect(plan.vendor).toBe("腾讯云");
+    expect(model.vendor).toBe("腾讯云");
+    expect(plan.target).toBe("plan");
+    expect(model.target).toBe("model");
+    // 套餐源只认套餐表的 8 行(5 上架 + 3 待终审),待复核 8 行也在套餐表
+    expect(plan.rows.total).toBe(8);
+    expect(plan.rows.enabled).toBe(5);
+    expect(plan.rows.pending).toBe(3);
+    expect(plan.rows.recheck).toBe(8);
+    // 模型源只认模型表的 10 行,不混套餐的 8 行
+    expect(model.rows.total).toBe(10);
+    expect(model.rows.enabled).toBe(10);
+    expect(model.rows.pending).toBe(0);
   });
 
   it("最近一次采集快照:每源取最新一条 + 错误原文", async () => {

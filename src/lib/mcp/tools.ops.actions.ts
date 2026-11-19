@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 
-import { bulkReviewModelPricing } from "@/lib/pricing/admin";
+import { bulkReviewModelPricing, offlinePricingSource } from "@/lib/pricing/admin";
 import { listPricingSourceHealth } from "@/lib/pricing/health";
 import { decidePricingReview } from "@/lib/pricing/review-gate";
 import { prisma } from "@/lib/db";
@@ -161,6 +161,76 @@ export const opsActionTools: McpToolDef[] = [
           skipped,
           rejected,
           missing,
+        });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  ),
+
+  defineTool(
+    "offline_pricing_source",
+    "把某个牌价采集源因抓取失败而陈旧的**已上架**数据下架(止损):按 sourceKey 定位源," +
+      "圈定该源名下的行(口径同健康读侧:vendor + 产出面,模型表与套餐表都覆盖)," +
+      "把 status=enabled 的置 disabled。人工定稿行(is_pinned)与待终审行不动;已下架的跳过(幂等)。" +
+      "必须 confirm=true 并写 reason(记审计)。**只下架不上架**——重新上架走逐条 review_model_pricing。",
+    {
+      sourceKey: z
+        .string()
+        .trim()
+        .min(1)
+        .max(60)
+        .describe("牌价源 key(如 tencent-tokenplan),取自 get_health_snapshot 的 pricing 段"),
+      confirm: z.boolean().describe("必须显式传 true(防误触)"),
+      reason: z.string().min(1).max(200).describe("下架原因(记审计):写清源失败与时间"),
+    },
+    async (args, actor) => {
+      try {
+        if (args.confirm !== true) {
+          return fail(new Error("下架属对外可见动作,必须显式传 confirm=true"), {
+            code: "confirm_required",
+            retryable: false,
+            hint: "确认无误后带 confirm=true 重试",
+          });
+        }
+        const src = (await listPricingSourceHealth()).find((s) => s.key === args.sourceKey);
+        if (src === undefined) {
+          return fail(new Error(`找不到牌价源 pricing:${args.sourceKey}`), {
+            code: "not_found",
+            retryable: false,
+            hint: "sourceKey 取自 get_health_snapshot 的 pricing 段 key",
+          });
+        }
+        // 只给「抓不到价的源」兜底:健康的源下架 = 把好价打成错价
+        if (src.status === "healthy" && src.consecutiveFails === 0) {
+          return fail(new Error(`牌价源 ${src.label} 当前健康(status=healthy,连败 0),不应下架`), {
+            code: "source_healthy",
+            retryable: false,
+            hint: "确认要下架请先用 get_health_snapshot 看该源的真实状态",
+          });
+        }
+        const result = await offlinePricingSource(src.vendor, src.target);
+        logger.info({
+          event: "mcp.offline_pricing_source",
+          actor,
+          sourceKey: args.sourceKey,
+          vendor: src.vendor,
+          target: src.target,
+          changed: result.changed.length,
+          skipped: result.skipped.length,
+          reason: args.reason,
+        });
+        return json({
+          ok: true,
+          sourceKey: src.key,
+          sourceLabel: src.label,
+          vendor: src.vendor,
+          target: src.target,
+          sourceStatus: src.status,
+          consecutiveFails: src.consecutiveFails,
+          changed: result.changed,
+          skipped: result.skipped,
+          reason: args.reason,
         });
       } catch (e) {
         return fail(e);

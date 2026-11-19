@@ -95,6 +95,8 @@ export const opsReadTools: McpToolDef[] = [
                     key: p.key,
                     label: p.label,
                     vendor: p.vendor,
+                    target: p.target,
+                    url: p.url,
                     enabled: p.enabled,
                     intervalMin: p.intervalMin,
                     status: p.status,
