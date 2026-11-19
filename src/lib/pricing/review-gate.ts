@@ -4,7 +4,8 @@
  * 为什么要闸门:采集落 pending、只有 enabled 进前台公开页(/pricing/,错价=信任
  * 损失);「待复核」= 该源上次采集失败时旧行被打标,价已陈旧。
  * 为什么下架宽:enabled→disabled 是止损,错下架(少一行)与错上架(公开错价)
- * 代价不对称。
+ * 代价不对称——但**人工定稿行(is_pinned)例外**:定稿是人工确认过的价,采集
+ * 失败不等于价错,两条下架路径(逐条下架 / 按源下架)都不动它。
  *
  * 判定在 MCP 工具层调用(见 lib/mcp/tools.ops.actions.ts);阈值与健康判定同源
  * (collect/health-report.ts),口径不各写一份。
@@ -23,6 +24,10 @@ export interface PricingReviewRow {
   /** pending | enabled | disabled */
   status: string;
   note: string | null;
+  /** 人工定稿行(采集不覆盖):下架时不动 */
+  isPinned?: boolean;
+  /** 行所属产出面:model=模型牌价表 / plan=套餐表(同 vendor 下的兄弟源靠它分开) */
+  target?: "model" | "plan";
 }
 
 export interface PricingReviewSource {
@@ -41,23 +46,29 @@ export interface PricingReviewDecision {
 const RECHECK_MARK = "【待复核";
 
 /**
- * 牌价行终审判定:上架严(带待复核标/源在坏 → 拒),下架宽(止损优先)。
+ * 牌价行终审判定:上架严(带待复核标/源在坏 → 拒),下架宽(止损优先,人工定稿行除外)。
  *
- * 为什么上架严:采集落 pending、只有 enabled 进前台公开页(/pricing/,错价=信任
+ * 上架严的理由:采集落 pending、只有 enabled 进前台公开页(/pricing/,错价=信任
  * 损失);「待复核」= 该源上次采集失败时旧行被打标,价已陈旧。
- * 为什么下架宽:enabled→disabled 是止损,错下架(少一行)与错上架(公开错价)
+ * 下架宽的理由:enabled→disabled 是止损,错下架(少一行)与错上架(公开错价)
  * 代价不对称。
+ *
+ * 源↔行的解析与健康读侧同源:**vendor + 产出面**(同厂商的模型源与套餐源分开,
+ * 否则会拿兄弟源的健康状态当自己的)。
  */
 export function decidePricingReview(
   rows: PricingReviewRow[],
   target: "enabled" | "disabled",
-  sourceOf: (vendor: string) => PricingReviewSource | undefined,
+  sourceOf: (vendor: string, target: "model" | "plan") => PricingReviewSource | undefined,
 ): PricingReviewDecision[] {
   return rows.map((row) => {
     if (row.status === target) {
       return { id: row.id, action: "skip" as const, reason: `已是 ${target} 状态` };
     }
     if (target === "disabled") {
+      if (row.isPinned === true) {
+        return { id: row.id, action: "skip" as const, reason: "人工定稿行,不下架" };
+      }
       return { id: row.id, action: "apply" as const };
     }
     // 上架:两道闸
@@ -68,7 +79,7 @@ export function decidePricingReview(
         reason: "行带「待复核」标(源上次采集失败,价已陈旧),先重采再上架",
       };
     }
-    const source = sourceOf(row.vendor);
+    const source = sourceOf(row.vendor, row.target ?? "model");
     if (source === undefined) {
       return {
         id: row.id,

@@ -14,7 +14,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import type { ModelPricingRow } from "@/lib/pricing/admin";
+import type { ModelPricingRow } from "@/lib/pricing/admin-model";
 import { TIER_UNIT_LABELS, type TierUnit } from "@/lib/pricing/constants";
 import { MODALITY_LABELS, type Modality } from "@/lib/pricing/modality";
 
@@ -140,7 +140,10 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
   function bulkStatus(status: "enabled" | "disabled"): void {
     const ids = filtered.filter((r) => selected.has(r.id)).map((r) => r.id);
     if (ids.length === 0 || busy) return;
-    if (status === "disabled" && !window.confirm(`停用所选 ${ids.length} 行?前台将立即下架`)) {
+    if (
+      status === "disabled" &&
+      !window.confirm(`停用所选 ${ids.length} 行?前台将立即下架(人工定稿行不动)`)
+    ) {
       return;
     }
     void run(async () => {
