@@ -26,7 +26,9 @@
  */
 import * as cheerio from "cheerio";
 
-import type { ModelPrefillRow, ModelTierPrefill } from "../crawlers";
+import type { ModelPrefillRow } from "../crawlers";
+
+import { bailianRowsToPrefill, type BailianRow } from "./bailian-rows";
 
 /** 官方计费页(种子初始值;运行期 URL 归 crawl_source 后台可调) */
 export const BAILIAN_MODEL_PRICING_URL = "https://help.aliyun.com/zh/model-studio/billing";
@@ -89,22 +91,6 @@ function priceOf(text: string): number | null {
   return m === null ? null : Number(m[1]);
 }
 
-/** 「0<Token≤1M」→ {min, max}(token 数);不可解析 → null */
-function tokenRangeOf(text: string): { min: number | null; max: number | null } {
-  const toNum = (s: string): number | null => {
-    const m = /^([\d.]+)([KkMm])?$/.exec(s.trim());
-    if (m === null) return null;
-    const v = Number(m[1]);
-    const unit = (m[2] ?? "").toLowerCase();
-    if (unit === "k") return v * 1024;
-    if (unit === "m") return v * 1024 * 1024;
-    return v;
-  };
-  const m = /([\d.]+[KkMm]?)\s*<\s*Token\s*≤\s*([\d.]+[KkMm]?)/.exec(text);
-  if (m === null) return { min: null, max: null };
-  return { min: toNum(m[1] ?? ""), max: toNum(m[2] ?? "") };
-}
-
 /** 模型 id:格内首段(官方附注在后面;id 可含厂商前缀斜杠,如 kling/kling-v3) */
 function modelIdOf(cellText: string): string {
   const m = /^([A-Za-z0-9][A-Za-z0-9._/-]*)/.exec(cellText.trim());
@@ -127,31 +113,6 @@ export function bailianContentOf(html: string): string {
   } catch (e) {
     throw new Error(`bailuan ICE 载荷解析失败: ${e instanceof Error ? e.message : String(e)}`);
   }
-}
-
-/** 单行表记录 */
-interface BailianRow {
-  modelId: string;
-  note: string;
-  scope: string | null;
-  mode: string | null;
-  tokenRange: string | null;
-  /** 档位维度原文(分辨率/视频类型/参考类型;与 tokenRange 互斥出现) */
-  cond: string | null;
-  input: number | null;
-  cache: number | null;
-  output: number | null;
-  free: string | null;
-  /** 行级计价单位(批G;随表) */
-  unit: string;
-}
-
-/** 档位标签:部署范围 · 模式 · 档位维度(Token 区间或分辨率/类型;缺省项不拼) */
-function tierLabelOf(row: BailianRow): string {
-  const parts = [row.scope, row.mode, row.tokenRange ?? row.cond].filter(
-    (v) => v !== null && v !== "",
-  );
-  return parts.length === 0 ? "默认" : parts.join("·");
 }
 
 /** 百炼计费页解析(纯函数,fixture 单测锚) */
@@ -264,7 +225,9 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
             rec.tokenRange = text === "" ? null : text;
             break;
           case "cond":
-            rec.cond = text === "" ? null : text;
+            // 多个 cond 列(如「输出视频类型」+「输出视频分辨率」)→ 逐段拼上,
+            // 否则后一列会盖掉前一列(档位标签丢掉「有声视频」这一维)
+            if (text !== "") rec.cond = rec.cond === null ? text : `${rec.cond}·${text}`;
             break;
           case "input":
             rec.input = priceOf(text);
@@ -305,93 +268,12 @@ export function parseBailianModels(html: string, sourceUrl: string, now: Date): 
 
   if (records.length === 0) throw new Error("bailuan 价格表未匹配(页面可能改版)");
 
-  // 按模型归一:一行一模型,维度组合落档位
+  // 按模型归一:一行一模型,维度组合落档位,定行价基准
   const byModel = new Map<string, BailianRow[]>();
   for (const rec of records) {
     const list = byModel.get(rec.modelId);
     if (list === undefined) byModel.set(rec.modelId, [rec]);
     else list.push(rec);
   }
-
-  const out: ModelPrefillRow[] = [];
-  for (const [modelId, allRows] of byModel) {
-    // 同一模型若跨单位表出现(罕见),保 token 系记录,不混单位落档
-    const units = new Set(allRows.map((r) => r.unit));
-    let rows = allRows;
-    if (units.size > 1) {
-      const keep = units.has("per_1m_tokens")
-        ? "per_1m_tokens"
-        : units.has("per_1k_tokens")
-          ? "per_1k_tokens"
-          : allRows[0]!.unit;
-      rows = allRows.filter((r) => r.unit === keep);
-    }
-    const unit = rows[0]!.unit;
-
-    const tiers: ModelTierPrefill[] = [];
-    for (const rec of rows) {
-      const range = tokenRangeOf(rec.tokenRange ?? "");
-      const label = tierLabelOf(rec);
-      const tier: ModelTierPrefill = {
-        tierLabel: label,
-        inputPrice: rec.input,
-        outputPrice: rec.output,
-        cachePrice: rec.cache,
-        minTokens: range.min,
-        maxTokens: range.max,
-        unit,
-      };
-      // 档位唯一键是 (牌价行, 标签):同名同价是同一事实(两张表重复列)→ 去重;
-      // 同名不同价 → 加序号区分(否则落库撞唯一键)
-      const dup = tiers.find((t) => t.tierLabel === tier.tierLabel);
-      if (dup !== undefined) {
-        if (
-          dup.inputPrice === tier.inputPrice &&
-          dup.outputPrice === tier.outputPrice &&
-          dup.cachePrice === tier.cachePrice
-        ) {
-          continue;
-        }
-        let n = 2;
-        while (tiers.some((t) => t.tierLabel === `${label}·${n}`)) n += 1;
-        tier.tierLabel = `${label}·${n}`;
-      }
-      tiers.push(tier);
-    }
-    // 「无部署范围」档位与「全球」档同价时去重:百炼有些表不带部署范围列,
-    // 与带列的「全球」行是同一事实的两种表式(不做此去重会重复展示同一价)
-    const globalTier = tiers.find((t) => t.tierLabel.startsWith("全球·"));
-    if (globalTier !== undefined) {
-      const same = (t: ModelTierPrefill): boolean =>
-        t.inputPrice === globalTier.inputPrice &&
-        t.outputPrice === globalTier.outputPrice &&
-        t.cachePrice === globalTier.cachePrice;
-      const kept = tiers.filter((t) => t.tierLabel.startsWith("全球·") || !same(t));
-      tiers.length = 0;
-      tiers.push(...kept);
-    }
-    // 行价取「全球」档(国内用户口径);没有全球档则取第一条有价的
-    const base =
-      rows.find((r) => r.scope === "全球") ??
-      rows.find((r) => r.input !== null || r.output !== null) ??
-      rows[0]!;
-    out.push({
-      vendor: "阿里云百炼",
-      modelKey: modelId,
-      currency: "CNY",
-      inputPrice: base.input,
-      outputPrice: base.output,
-      contextWindow: null,
-      note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${base.note}`,
-      dataAsOf: now,
-      sourceUrl,
-      region: "cn",
-      providerKey: "aliyun-bailian",
-      freeTier: rows.find((r) => r.free !== null)?.free ?? null,
-      modality: tableModalityByModel.get(modelId),
-      priceUnit: unit,
-      tiers,
-    });
-  }
-  return out;
+  return bailianRowsToPrefill(byModel, tableModalityByModel, now, sourceUrl);
 }

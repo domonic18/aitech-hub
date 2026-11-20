@@ -44,6 +44,7 @@ import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
 import { OfficialLink, groupKey, groupTitle } from "./shared";
 import { PriceScatter } from "./PriceScatter";
+import { basisResolution, ResolutionLadder } from "./ResolutionLadder";
 import { UnitPriceBars } from "./UnitPriceBars";
 
 /** 完全免费角标 */
@@ -82,23 +83,37 @@ function ModelTable({
   visibleKeys: Set<string>;
 }): React.ReactElement {
   return (
-    <div className="hidden sm:block">
-      <table className="w-full text-left text-[13px]">
+    <div className="hidden overflow-x-auto sm:block">
+      {/* table-fixed + 显式列宽:免费额度原文可很长(「共100万tokens…资源包有效期1年…」),
+          auto 布局会把它算成整列 max-content 宽度 → 挤得其余列表头折行(2026-11-20 反馈)。
+          固定布局后各列宽由 colgroup 决定,长文在额度列内换行,不再外溢 */}
+      <table className="w-full min-w-[860px] table-fixed text-left text-[13px]">
+        <colgroup>
+          <col className="w-[30%]" />
+          <col className="w-[9%]" />
+          <col className="w-[9%]" />
+          <col className="w-[24%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[12%]" />
+        </colgroup>
         <thead>
           <tr className="border-b border-line text-[11px] font-normal text-text-3">
-            <th className="px-4 py-2.5 font-normal">模型 / 厂商</th>
-            <th className="px-3 py-2.5 font-normal">输入价</th>
-            <th className="px-3 py-2.5 font-normal">输出价</th>
-            <th className="px-3 py-2.5 font-normal">免费额度</th>
-            <th className="px-3 py-2.5 font-normal">上下文</th>
-            <th className="px-3 py-2.5 font-normal">数据截至</th>
-            <th className="px-4 py-2.5 text-right font-normal">来源</th>
+            <th className="px-4 py-2.5 font-normal whitespace-nowrap">模型 / 厂商</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">输入价</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">输出价</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">免费额度</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">上下文</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">数据截至</th>
+            <th className="px-4 py-2.5 text-right font-normal whitespace-nowrap">来源</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td colSpan={7} className="px-4 py-1.5 text-[10.5px] text-text-3">
-              价格单位:token 模型 = 元/百万 tokens;按张/按秒模型 = 生成价(单位见行内后缀)
+              价格单位:token 模型 = 元/百万 tokens;按张/按秒模型 = 生成价(单位见行内后缀)。
+              图片/视频按分辨率分档,行价对应最低分辨率档(行内已注明),其余分辨率价见模型名
+              下的折叠档位。
             </td>
           </tr>
           {rows.map((r) => (
@@ -109,7 +124,7 @@ function ModelTable({
               className="border-b border-line/50 last:border-0"
             >
               <td className="px-4 py-3.5">
-                <div className="font-mono text-[13px] font-semibold text-text-1">
+                <div className="font-mono text-[13px] font-semibold break-words text-text-1">
                   {r.modelKey}
                   {r.isFree && <FreeBadge />}
                   <ProtocolBadge protocols={r.protocols} />
@@ -120,8 +135,9 @@ function ModelTable({
                     <span className="ml-1 text-amber">聚合挂牌</span>
                   )}
                 </div>
+                <ResolutionLadder row={r} />
               </td>
-              <td className="px-3 py-3.5 font-mono text-text-1">
+              <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
                 {isTokenPriced(r) ? (
                   formatPrice(r.inputPrice, r.currency)
                 ) : r.inputPrice === null ? (
@@ -131,19 +147,29 @@ function ModelTable({
                 )}
               </td>
               <td className="px-3 py-3.5 font-mono text-text-1">
-                {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
+                <span className="whitespace-nowrap">
+                  {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
+                </span>
+                {basisResolution(r) !== null && (
+                  <span className="mt-0.5 block text-[10.5px] font-normal text-text-3">
+                    {basisResolution(r)} 分辨率
+                  </span>
+                )}
               </td>
               <td className="px-3 py-3.5 text-[12px]">
                 {r.freeTier === null ? (
                   <span className="text-text-3">—</span>
                 ) : (
-                  <span className="text-amber">{r.freeTier}</span>
+                  // 额度原文可能很长(资源包有效期等),列内换行显示,不再撑宽整表
+                  <span className="block break-words text-amber" title={r.freeTier}>
+                    {r.freeTier}
+                  </span>
                 )}
               </td>
-              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3">
+              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
                 {r.contextWindow ?? "—"}
               </td>
-              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3">
+              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
                 {r.dataAsOf.slice(5)}
               </td>
               <td className="px-4 py-3.5 text-right">
@@ -200,10 +226,12 @@ function ModelCards({
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
             {isTokenPriced(r) && <span>元/百万 tokens</span>}
+            {basisResolution(r) !== null && <span>分辨率 {basisResolution(r)}</span>}
             {r.freeTier !== null && <span className="text-amber">免费额度:{r.freeTier}</span>}
             {r.contextWindow !== null && <span>上下文 {r.contextWindow}</span>}
             <span>截至 {r.dataAsOf}</span>
           </div>
+          <ResolutionLadder row={r} />
         </div>
       ))}
     </div>

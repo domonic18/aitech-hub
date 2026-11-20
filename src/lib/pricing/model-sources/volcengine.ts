@@ -1,31 +1,32 @@
 /**
  * 火山引擎方舟(Volcengine Ark)按量模型牌价(M74 批B3):渲染通道取数 + DOM 解析。
  *
- * 实探结论(2026-11-15):`/docs/ark/model-pricing` 静态 HTML 里 0 处价格(表是
- * 客户端渲染),**必须走 card-renderer**(headless)取数。
+ * 实探(2026-11-15):`/docs/ark/model-pricing` 静态 HTML 里 0 处价格(表是客户端
+ * 渲染),**必须走 card-renderer**(headless)取数。
  *
- * 渲染后的 DOM 结构:
- * - 章节标题是带 `data-leaf="true"` 的行内文本节点(「大语言模型」「在线推理（常规）」
- *   「在线推理（低延迟）」「在线推理（低优）」「批量推理」),按文档序夹在表格之间
- * - 每张表 = 表头行 + 数据行;表头行的单位写在格子里(「输入(非音频)元/M token」),
- *   **价格格只有数字**(如 6.00),没有「元」后缀
- * - 同一模型多行 = **输入长度阶梯**(如 doubao-seed-2.0-pro 分 [0,32] / (32,128] /
- *   (128,256] 三档),阶梯行的模型名格为空 → 继承上一行的模型
- * - 条件列还可能是**时段**(空闲时段 / 高峰时段)——峰谷定价是另一个维度
+ * 渲染后 DOM:章节标题是 `data-leaf="true"` 的行内文本节点(「在线推理（常规）」等),
+ * 夹在表格之间;每张表 = 表头行 + 数据行,单位写在表头格内(「元/M token」「元/张」),
+ * 价格格只有数字。同一模型多行 = 输入长度阶梯(阶梯行模型格为空 → 继承上一行);
+ * 条件列还可能是时段(空闲/高峰)——峰谷定价是另一个维度。
  *
- * 三个维度(场景 × 输入长度阶梯 × 时段)都落档位;行价取
- * **「在线推理（常规）」场景 + 最小输入长度档**(常态价:请求越短越便宜,
- * 第一档是绝大多数请求落点;与「时段优惠取最高」的保守基准不是一回事)。
+ * 三个维度(场景 × 输入长度阶梯 × 时段)都落档位;行价取**「在线推理（常规）」+ 最小
+ * 输入长度档**(常态价:请求越短越便宜,第一档是绝大多数请求落点)。
  *
- * 批G 单位闸:单位写在表头格内(「元/M token」「元/张」「元/秒」),表级识别——
- * token 表照旧双价;按张/按秒表收单价格(生成价落 outputPrice、行级 priceUnit);
- * **认不出单位的表整表跳过**(单位不明的价混进 token 比价就是污染)。
+ * 批G 单位闸:单位表级识别——token 表双价;按张/按秒表收单价格(生成价落 outputPrice、
+ * 行级 priceUnit);**认不出单位的表整表跳过**(单位不明的价混进 token 比价就是污染)。
+ *
+ * M77 图片表(按张计价):价格格按**输出总像素 P** 与生图场景分档(实探 2026-11-20,
+ * 如 seedream-5-5「P ≤ 2.61M：0.13」),格内各段以零宽字符 U+200B 分隔 → 走
+ * ark-image-price.parsePriceEntries 拆档;行价取标准场景的最低像素档,档位名带分辨率/
+ * 场景标签(不套 token 表的推理场景前缀,那是错标)。
  */
 import * as cheerio from "cheerio";
 
 import type { SnapshotSink } from "../../collect/snapshot-capture";
 import { snapshotHtml } from "../render-fetch";
-import type { ModelPrefillRow, ModelTierPrefill } from "../crawlers";
+import { pushPrefillTier, type ModelPrefillRow, type ModelTierPrefill } from "../crawlers";
+
+import { parsePriceEntries, pickBaseEntry } from "./ark-image-price";
 
 /** 官方牌价文档(种子初始值;运行期 URL 归 crawl_source 后台可调) */
 export const VOLCENGINE_ARK_PRICING_URL = "https://www.volcengine.com/docs/ark/model-pricing";
@@ -51,7 +52,10 @@ function colRoleOf(header: string): ColRole {
   if (h.includes("模型名称")) return "model";
   if (h.includes("条件")) return "cond";
   if (h.includes("缓存命中(非音频)") || h.includes("缓存命中（非音频）")) return "cache";
-  if (h.includes("输入(非音频)") || h.includes("输入（非音频）")) return "input";
+  // 图片表列头是「输入图单价（元/张）」「输出图单价（元/张）」(M77 实探),
+  // 与 token 表的「输入(非音频)」不是同一条,两种都要认
+  if (h.includes("输入图单价") || h.includes("输入(非音频)") || h.includes("输入（非音频）"))
+    return "input";
   if (h.includes("输出")) return "output";
   return null;
 }
@@ -65,11 +69,9 @@ function priceOf(text: string): number | null {
 }
 
 /**
- * 条件格 → 档位标签 + token 边界。
- * 「输入长度 [0, 32]」→ 标签 "[0, 32]K",边界 0 – 32768
- * 「输入长度 (32, 128]」→ 标签 "(32, 128]K",边界 32768 – 131072
- * 「空闲时段」/「高峰时段」→ 时段标签,无 token 边界
- * 「2048×2048」(图片分辨率档)→ 原文标签,无 token 边界
+ * 条件格 → 档位标签 + token 边界:「输入长度 [0, 32]」→ 标签 "[0, 32]K"、边界
+ * 0 – 32768;「(32, 128]」→ "(32, 128]K"、32768 – 131072;时段/分辨率等其余情形
+ * → 原文标签,无 token 边界。
  */
 function condOf(text: string): { label: string; min: number | null; max: number | null } {
   const t = text.trim();
@@ -84,10 +86,9 @@ function condOf(text: string): { label: string; min: number | null; max: number 
 }
 
 /**
- * 表级单位识别(批G):单位写在表头格里(「元/M token」「元/张」「元/秒」)。
- * token 表按列位收两价;按张/按秒表收单价格(生成价落 outputPrice)。
- * **认不出任何单位线索 → null,整表跳过**——单位不明的价格混进 token 比价
- * 就是污染(宁可少收不可错收,同 bailian 行列对齐闸口径)。
+ * 表级单位识别(批G):单位写在表头格里(「元/M token」「元/张」「元/秒」)。token 表按
+ * 列位收两价;按张/按秒表收单价格(生成价落 outputPrice)。**认不出任何单位线索 →
+ * null,整表跳过**(单位不明的价格混进 token 比价就是污染)。
  */
 function unitOfTable(headers: string[]): string | null {
   const compact = headers.join("").replace(/\s+/g, "");
@@ -126,6 +127,9 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
     input: number | null;
     output: number | null;
     cache: number | null;
+    /** 原始价格格文本(非 token 表按像素/场景分档,要从原文拆) */
+    inputText: string;
+    outputText: string;
   }> = [];
 
   let scene = "";
@@ -165,6 +169,8 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
           input: null as number | null,
           output: null as number | null,
           cache: null as number | null,
+          inputText: "",
+          outputText: "",
         };
         cells.forEach((text, i) => {
           switch (roles[i]) {
@@ -179,9 +185,11 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
               rec.cond = text.replace(/\u200b/g, "").trim();
               break;
             case "input":
+              rec.inputText = text;
               rec.input = priceOf(text);
               break;
             case "output":
+              rec.outputText = text;
               rec.output = priceOf(text);
               break;
             case "cache":
@@ -222,32 +230,60 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
     const unit = rows[0]!.unit;
 
     const tiers: ModelTierPrefill[] = [];
-    for (const rec of rows) {
-      const cond = condOf(rec.cond);
-      const label = rec.scene === "" ? cond.label : `${rec.scene}·${cond.label}`;
-      const tier: ModelTierPrefill = {
-        tierLabel: label,
-        inputPrice: rec.input,
-        outputPrice: rec.output,
-        cachePrice: rec.cache,
-        minTokens: cond.min,
-        maxTokens: cond.max,
-        unit,
-      };
-      const dup = tiers.find((t) => t.tierLabel === tier.tierLabel);
-      if (dup !== undefined) {
-        if (
-          dup.inputPrice === tier.inputPrice &&
-          dup.outputPrice === tier.outputPrice &&
-          dup.cachePrice === tier.cachePrice
-        ) {
+    /** 非 token 行的生成价档(场景分组 + 档名 + 价):行价基准取自它 */
+    const pricedEntries: Array<{ group: string | null; label: string; price: number }> = [];
+    if (isTokenUnit(unit)) {
+      for (const rec of rows) {
+        const cond = condOf(rec.cond);
+        const label = rec.scene === "" ? cond.label : `${rec.scene}·${cond.label}`;
+        pushPrefillTier(tiers, {
+          tierLabel: label,
+          inputPrice: rec.input,
+          outputPrice: rec.output,
+          cachePrice: rec.cache,
+          minTokens: cond.min,
+          maxTokens: cond.max,
+          unit,
+        });
+      }
+    } else {
+      // 非 token 表(按张/按秒):价格按档落,档名 = 条件列(分辨率) × 价格格内
+      // 像素/场景档。档位名不带推理场景前缀——「在线推理(常规)/批量推理」是
+      // token 表的推理场景,套到图片表上是错标(实探:曾被标成「批量推理·默认」)。
+      for (const rec of rows) {
+        const condLabel = rec.cond === "" ? null : rec.cond;
+        const entries = parsePriceEntries(rec.outputText);
+        if (entries.length === 0) {
+          // 整格纯价但拆不出档(带单位后缀等)→ 用 priceOf 的结果兜底一档
+          if (rec.output !== null) {
+            pushPrefillTier(tiers, {
+              tierLabel: condLabel ?? "默认",
+              inputPrice: null,
+              outputPrice: rec.output,
+              cachePrice: null,
+              minTokens: null,
+              maxTokens: null,
+              unit,
+            });
+          }
           continue;
         }
-        let n = 2;
-        while (tiers.some((t) => t.tierLabel === `${label}·${n}`)) n += 1;
-        tier.tierLabel = `${label}·${n}`;
+        for (const e of entries) {
+          const parts = [condLabel, e.group, e.label].filter(
+            (v): v is string => v !== null && v !== "",
+          );
+          pushPrefillTier(tiers, {
+            tierLabel: parts.length === 0 ? "默认" : parts.join("·"),
+            inputPrice: null,
+            outputPrice: e.price,
+            cachePrice: null,
+            minTokens: null,
+            maxTokens: null,
+            unit,
+          });
+          pricedEntries.push({ group: e.group, label: parts.join("·"), price: e.price });
+        }
       }
-      tiers.push(tier);
     }
 
     // 行价 = 基准场景(在线推理常规)+ 最小输入长度档;无基准场景则取最小 minTokens 的档
@@ -281,20 +317,25 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
       continue;
     }
 
-    // 按张/按秒单价格:行价取最低生成价档(入口价);输入价不适用置 null
-    const priced = rows.filter((r) => r.output !== null);
-    const cheapest =
-      priced.length > 0
-        ? priced.reduce((a, b) => ((b.output ?? Infinity) < (a.output ?? Infinity) ? b : a))
-        : rows[0]!;
+    // 按张/按秒行:行价取**基准档**——有场景分组时取首个分组(标准用法)的
+    // 最低档,无分组时取全局最低档(低分辨率=入口价);各档完整落档位表。
+    const inputEntries = rows.flatMap((r) => parsePriceEntries(r.inputText));
+    const baseIn = pickBaseEntry(inputEntries);
+    const firstGroup = pricedEntries.find((e) => e.group !== null)?.group ?? null;
+    const pricePool =
+      firstGroup === null ? pricedEntries : pricedEntries.filter((e) => e.group === firstGroup);
+    const baseOut =
+      pricePool.length > 0 ? pricePool.reduce((a, b) => (b.price < a.price ? b : a)) : null;
+    if (baseOut === null) continue; // 无价不臆测(跳过该模型,不是中止整批)
+    const basis = baseOut.label;
     out.push({
       vendor: "火山引擎方舟",
       modelKey: modelId,
       currency: "CNY",
-      inputPrice: null,
-      outputPrice: cheapest.output,
+      inputPrice: baseIn?.price ?? null,
+      outputPrice: baseOut.price,
       contextWindow: null,
-      note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId} · 单价计价`,
+      note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId}${basis === "默认" ? " · 单价计价" : ` · ${basis}`}`,
       dataAsOf: now,
       sourceUrl,
       region: "cn",

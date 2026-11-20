@@ -8,6 +8,8 @@ const modelFindMany = vi.fn();
 const modelCreate = vi.fn();
 const modelFindUnique = vi.fn();
 const modelUpdateMany = vi.fn();
+const modelCount = vi.fn();
+const modelDeleteMany = vi.fn();
 const replaceTiers = vi.fn();
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -23,11 +25,14 @@ vi.mock("@/lib/db", () => ({
       create: (...a: unknown[]) => modelCreate(...a),
       findUnique: (...a: unknown[]) => modelFindUnique(...a),
       updateMany: (...a: unknown[]) => modelUpdateMany(...a),
+      count: (...a: unknown[]) => modelCount(...a),
+      deleteMany: (...a: unknown[]) => modelDeleteMany(...a),
     },
   },
 }));
 
 import {
+  bulkDeleteModelPricing,
   createModelPricing,
   isInvertedPricing,
   listModelPricing,
@@ -219,5 +224,32 @@ describe("M74 批C2:档位订正", () => {
     expect(modelPricingTiersUpdateSchema.safeParse({ tiers: [{ tierLabel: "t" }] }).success).toBe(
       true,
     );
+  });
+});
+
+describe("M77:批量删除", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modelCount.mockResolvedValue(0);
+    modelDeleteMany.mockResolvedValue({ count: 0 });
+  });
+
+  it("人工定稿行跳过(不删),其余删除;回报删/跳计数", async () => {
+    modelCount.mockResolvedValue(1);
+    modelDeleteMany.mockResolvedValue({ count: 2 });
+    const r = await bulkDeleteModelPricing(["1", "2", "3"]);
+    expect(r).toEqual({ deleted: 2, skippedPinned: 1 });
+    expect(modelDeleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [BigInt(1), BigInt(2), BigInt(3)] }, isPinned: false },
+    });
+    expect(modelCount).toHaveBeenCalledWith({
+      where: { id: { in: [BigInt(1), BigInt(2), BigInt(3)] }, isPinned: true },
+    });
+  });
+
+  it("非法 id 剔除;全非法则不触库", async () => {
+    const r = await bulkDeleteModelPricing(["x", "y"]);
+    expect(r).toEqual({ deleted: 0, skippedPinned: 0 });
+    expect(modelDeleteMany).not.toHaveBeenCalled();
   });
 });
