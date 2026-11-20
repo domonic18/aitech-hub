@@ -8,6 +8,7 @@ import {
   contextTokensFromTiers,
   formatContextTokens,
   inContextBand,
+  normalizeModelKey,
   parseContextTokens,
 } from "./context";
 
@@ -57,6 +58,18 @@ describe("parseContextTokens / inContextBand(上下文解析与分档)", () => {
     expect(parseContextTokens("200000")).toBe(200000);
     expect(parseContextTokens(null)).toBeNull();
     expect(parseContextTokens("—")).toBeNull();
+  });
+
+  it("千分位写法(「1,048,576 tokens」)也认", () => {
+    expect(parseContextTokens("1,048,576")).toBe(1048576);
+    expect(parseContextTokens("262,144")).toBe(262144);
+  });
+
+  it("模型名归一:点/空格→连字符、去非字母数字、大写归小", () => {
+    expect(normalizeModelKey("doubao-seed-2.1-pro")).toBe("doubao-seed-2-1-pro");
+    expect(normalizeModelKey("Hunyuan-a13b")).toBe("hunyuan-a13b");
+    expect(normalizeModelKey("deepseek-v4-pro 正式版")).toBe("deepseek-v4-pro");
+    expect(normalizeModelKey("腾讯元器")).toBe("");
   });
 
   it("分档:未知档只收未标注;下界档按 token 数", () => {

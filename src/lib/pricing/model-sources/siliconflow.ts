@@ -16,6 +16,7 @@
  */
 import * as cheerio from "cheerio";
 
+import { formatContextTokens } from "../context";
 import type { ModelPrefillRow, ModelTierPrefill } from "../crawlers";
 
 /** 官方价格页(种子初始值;运行期 URL 归 crawl_source 后台可调) */
@@ -63,9 +64,45 @@ function isPriceRow(cls: string): boolean {
   return cls.includes("min-h-[48px]") && cls.includes("grid");
 }
 
+/**
+ * 上下文长度出处:牌价表没有上下文档位,但**同一页的模型元数据**逐模型给了
+ * (`contextLen`,token 数,如 deepseek-ai/DeepSeek-V4-Flash → 1048576)。
+ * 载荷是 devalue 风格(引号转义 + `$xx` 引用),按实探事实配对:`contextLen`
+ * 与 `targetModelName` 逐条严格交替(172/172),故按出现顺序配对即可。
+ */
+export function siliconflowContextMap(html: string): Map<string, number> {
+  const raw = html.replace(/\\"/g, '"');
+  const map = new Map<string, number>();
+  const re = /"contextLen":(\d+)|"targetModelName":"([^"]+)"/g;
+  let pending: number | null = null;
+  for (const m of raw.matchAll(re)) {
+    if (m[1] !== undefined) {
+      pending = Number(m[1]);
+      continue;
+    }
+    const name = m[2];
+    if (name === undefined) continue;
+    if (pending !== null && pending > 0) map.set(name, pending);
+    pending = null;
+  }
+  return map;
+}
+
+/** 行模型名 → 上下文 token 数(「Pro/」是同一模型的付费通道,去掉再试一次) */
+function contextTokensOf(modelId: string, map: Map<string, number>): number | null {
+  const direct = map.get(modelId);
+  if (direct !== undefined) return direct;
+  if (modelId.startsWith("Pro/")) {
+    const alt = map.get(modelId.slice("Pro/".length));
+    if (alt !== undefined) return alt;
+  }
+  return null;
+}
+
 /** 硅基流动价格页解析(纯函数,fixture 单测锚) */
 export function parseSiliconflow(html: string, sourceUrl: string, now: Date): ModelPrefillRow[] {
   const $ = cheerio.load(html);
+  const contexts = siliconflowContextMap(html);
   const rows = $("div").filter((_, el) => isPriceRow(el.attribs.class ?? ""));
   const out: ModelPrefillRow[] = [];
 
@@ -98,7 +135,7 @@ export function parseSiliconflow(html: string, sourceUrl: string, now: Date): Mo
           currency: "CNY",
           inputPrice: null,
           outputPrice: price,
-          contextWindow: null,
+          contextWindow: formatContextTokens(contextTokensOf(modelId, contexts)),
           note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId} · 单价计价(${unitLabelText})`,
           dataAsOf: now,
           sourceUrl,
@@ -192,7 +229,7 @@ export function parseSiliconflow(html: string, sourceUrl: string, now: Date): Mo
       currency: "CNY",
       inputPrice: inputs.length === 0 ? null : Math.max(...inputs),
       outputPrice: outputs.length === 0 ? null : Math.max(...outputs),
-      contextWindow: null,
+      contextWindow: formatContextTokens(contextTokensOf(modelId, contexts)),
       note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${modelId};时段价:${tierLabels.join(" / ")}`,
       dataAsOf: now,
       sourceUrl,

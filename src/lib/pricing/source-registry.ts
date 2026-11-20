@@ -35,12 +35,18 @@ import {
 import { BAILIAN_MODEL_PRICING_URL, parseBailianModels } from "./model-sources/bailian";
 import { CYSUO_MARKET_URL, fetchCiyuansuo } from "./model-sources/baidu-ciyuansuo";
 import { parseSiliconflow, SILICONFLOW_PRICING_URL } from "./model-sources/siliconflow";
+import { applyArkContexts, fetchArkContextMap } from "./model-sources/ark-context";
 import {
   fetchVolcengineArk,
   parseVolcengineArk,
   VOLCENGINE_ARK_PRICING_URL,
 } from "./model-sources/volcengine";
-import { parseTencentHunyuan, TENCENT_HUNYUAN_URL } from "./model-sources/tencent";
+import {
+  applyTencentContexts,
+  fetchTencentContextMap,
+  parseTencentHunyuan,
+  TENCENT_HUNYUAN_URL,
+} from "./model-sources/tencent";
 import {
   BAILIAN_TOKEN_URL,
   fetchBailianPage,
@@ -164,7 +170,9 @@ export const SOURCE_DEFS: SourceDef[] = [
         sink,
       );
       if (!r.ok) throw new Error(r.error ?? "tencent hunyuan 源失败");
-      return r.rows;
+      // 上下文出处是伴生页(产品概述):刊例价表不带上下文档位。
+      // 伴生页失败不连坐主源(价照落,上下文留空显示「—」),日志在伴生页侧记。
+      return applyTencentContexts(r.rows, await fetchTencentContextMap(sink));
     },
   },
   {
@@ -195,8 +203,12 @@ export const SOURCE_DEFS: SourceDef[] = [
     vendor: "火山引擎方舟",
     defaultUrl: VOLCENGINE_ARK_PRICING_URL,
     sortOrder: 6,
-    run: async (url, { now, sink }) =>
-      parseVolcengineArk(await fetchVolcengineArk(url, sink), url, now),
+    run: async (url, { now, sink }) => {
+      const rows = parseVolcengineArk(await fetchVolcengineArk(url, sink), url, now);
+      // 上下文出处是伴生页(模型列表):牌价表只给价与输入长度阶梯。
+      // 伴生页失败不连坐主源(价照落,上下文留空显示「—」),日志在伴生页侧记。
+      return applyArkContexts(rows, await fetchArkContextMap(sink));
+    },
   },
   {
     // 聚合平台挂牌价(M74 批B4):每供应方一行(vendor=词元所·<供应方>),

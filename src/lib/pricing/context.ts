@@ -10,10 +10,10 @@
  * 都不带上下文)就留 null——页面显示「—」,不臆测一个数填上去。
  */
 
-/** 上下文长度解析:"128K"→131072 / "1M"→1048576 / "200000"→200000;认不出 null */
+/** 上下文长度解析:"128K"→131072 / "1M"→1048576 / "1,048,576"→1048576 / "200000"→200000 */
 export function parseContextTokens(raw: string | null): number | null {
   if (raw === null) return null;
-  const t = raw.trim().toUpperCase();
+  const t = raw.trim().toUpperCase().replace(/,/g, "");
   if (t === "") return null;
   const m = /^([\d.]+)\s*([KM])?$/.exec(t);
   if (m === null) return null;
@@ -23,6 +23,21 @@ export function parseContextTokens(raw: string | null): number | null {
   if (unit === "K") return v * 1024;
   if (unit === "M") return v * 1024 * 1024;
   return v;
+}
+
+/**
+ * 模型名归一(上下文匹配用):小写、点/空格→连字符、去非字母数字字符。
+ * 源页模型 id 与牌价行模型名形态不一(「doubao-seed-2.1-pro」vs
+ * 「doubao-seed-2-1-pro-260915」、「Hunyuan-a13b」vs「hunyuan-a13b」),
+ * 归一后可比。
+ */
+export function normalizeModelKey(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[.\s]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 /** 上下文区间档(筛选用):按「至少多少」分档,未知单列 */
