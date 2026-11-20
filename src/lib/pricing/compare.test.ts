@@ -28,6 +28,7 @@ function row(over: Partial<PublicModelRow>): PublicModelRow {
     modelDictKey: null,
     modality: null,
     priceUnit: "per_1m_tokens",
+    protocols: [],
     tiers: [],
     ...over,
   };

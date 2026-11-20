@@ -11,8 +11,11 @@
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
+import { contextTokensFromTiers, formatContextTokens } from "./context";
 import type { PublicModelRow, PublicPlanRow, PublicPricing, PublicTierRow } from "./public";
+import { resolveApiProtocols } from "./protocols";
 import { readTiers } from "./tiers";
+import { normalizedUnit, tokenUnitFactor } from "./units";
 
 /** 行级 dataAsOf 展示口径按北京日界取 YYYY-MM-DD(与 formatCnDate 对齐) */
 function cnAsOfDay(d: Date): string {
@@ -42,25 +45,35 @@ export async function listPublicPricing(): Promise<PublicPricing> {
       const tierMap = await readTiers(models.map((m) => m.id));
 
       const modelRows: PublicModelRow[] = models.map((r) => {
-        const tiers: PublicTierRow[] = (tierMap.get(r.id.toString()) ?? []).map((t) => ({
-          tierLabel: t.tierLabel,
-          inputPrice: t.inputPrice,
-          outputPrice: t.outputPrice,
-          cachePrice: t.cachePrice,
-          minTokens: t.minTokens,
-          maxTokens: t.maxTokens,
-          unit: t.unit,
-          currency: t.currency,
-        }));
+        // 计价单位归一:token 系一律「元/百万 tokens」(存量 per_1k 行按 ×1000 换算,
+        // 回填前的过渡——列头/比价区/JSON-LD 都只写每百万 tokens,口径不能两套)
+        const factor = tokenUnitFactor(r.priceUnit);
+        const unit = normalizedUnit(r.priceUnit);
+        const tiers: PublicTierRow[] = (tierMap.get(r.id.toString()) ?? []).map((t) => {
+          // 档位按**自己的**单位换算(档位与行同源,但不假定必然一致)
+          const tierFactor = tokenUnitFactor(t.unit);
+          return {
+            tierLabel: t.tierLabel,
+            inputPrice: t.inputPrice === null ? null : t.inputPrice * tierFactor,
+            outputPrice: t.outputPrice === null ? null : t.outputPrice * tierFactor,
+            cachePrice: t.cachePrice === null ? null : t.cachePrice * tierFactor,
+            minTokens: t.minTokens,
+            maxTokens: t.maxTokens,
+            unit: normalizedUnit(t.unit),
+            currency: t.currency,
+          };
+        });
+        // 上下文长度:源没给时按档位的输入长度阶梯推导(阶梯上界=上下文封顶)
+        const derivedContext = formatContextTokens(contextTokensFromTiers(tiers));
         return {
           vendor: r.vendor,
           modelKey: r.modelKey,
           currency: r.currency,
-          inputPrice: r.inputPrice === null ? null : Number(r.inputPrice),
-          outputPrice: r.outputPrice === null ? null : Number(r.outputPrice),
+          inputPrice: r.inputPrice === null ? null : Number(r.inputPrice) * factor,
+          outputPrice: r.outputPrice === null ? null : Number(r.outputPrice) * factor,
           freeTier: r.freeTier,
           isFree: r.isFree,
-          contextWindow: r.contextWindow,
+          contextWindow: r.contextWindow ?? derivedContext,
           note: r.note,
           dataAsOf: cnAsOfDay(r.dataAsOf),
           sourceUrl: r.sourceUrl,
@@ -73,7 +86,8 @@ export async function listPublicPricing(): Promise<PublicPricing> {
           providerKind: r.provider?.sourceKind ?? null,
           modelDictKey: r.model?.modelKey ?? null,
           modality: r.model?.modality ?? null,
-          priceUnit: r.priceUnit,
+          priceUnit: unit,
+          protocols: resolveApiProtocols(r.provider?.key ?? null, r.modelKey),
           tiers,
         };
       });

@@ -18,6 +18,7 @@ import {
   type PublicModelRow,
   type PublicTierRow,
 } from "./public";
+import type { ApiProtocol } from "./protocols";
 
 /** 一个模型在某提供商的报价 */
 export interface CompareCell {
@@ -31,6 +32,8 @@ export interface CompareCell {
   sourceUrl: string;
   dataAsOf: string;
   isFree: boolean;
+  /** 该报价可用的 API 协议(策展规则;空 = 未标注) */
+  protocols: ApiProtocol[];
   tiers: PublicTierRow[];
 }
 
@@ -81,6 +84,7 @@ function cellOf(row: PublicModelRow): CompareCell {
     sourceUrl: row.sourceUrl,
     dataAsOf: row.dataAsOf,
     isFree: row.isFree,
+    protocols: row.protocols,
     tiers: row.tiers,
   };
 }

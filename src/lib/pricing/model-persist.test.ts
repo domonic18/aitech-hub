@@ -219,6 +219,61 @@ describe("persistModelRows 落库规则", () => {
     expect(data).toHaveLength(6); // 缓存命中×谷/峰 + 输入×谷/峰 + 输出×谷/峰
     expect(data[0]).toMatchObject({ tierLabel: "缓存命中·空闲", cachePrice: 0.02 });
   });
+
+  it("token 系单位统一到「元/百万 tokens」(源按元/K 报价的 ×1000)", async () => {
+    findMany.mockResolvedValue([]);
+    const perK = rows.map((r) => ({
+      ...r,
+      modelKey: "volc-model",
+      priceUnit: "per_1k_tokens",
+      inputPrice: 0.8,
+      outputPrice: 2.4,
+      tiers: r.tiers?.map((t) => ({ ...t, unit: "per_1k_tokens" })),
+    }));
+    await persistModelRows(perK);
+    const created = create.mock.calls.at(-1)![0] as {
+      data: { priceUnit: string; inputPrice: number; outputPrice: number };
+    };
+    expect(created.data.priceUnit).toBe("per_1m_tokens");
+    expect(created.data.inputPrice).toBe(800);
+    expect(created.data.outputPrice).toBe(2400);
+    const tierData = (
+      tierCreateMany.mock.calls.at(-1)![0] as { data: Array<Record<string, unknown>> }
+    ).data;
+    expect(tierData[0]).toMatchObject({ unit: "per_1m_tokens" });
+  });
+
+  it("上下文长度:源没给时按档位阶梯推导", async () => {
+    findMany.mockResolvedValue([]);
+    const laddered = rows.map((r) => ({
+      ...r,
+      modelKey: "ladder-model",
+      contextWindow: null,
+      tiers: [
+        {
+          tierLabel: "常规·[0, 32]K",
+          inputPrice: 1,
+          outputPrice: 2,
+          cachePrice: null,
+          minTokens: 0,
+          maxTokens: 32768,
+          unit: "per_1m_tokens",
+        },
+        {
+          tierLabel: "常规·(128, 256]K",
+          inputPrice: 2,
+          outputPrice: 4,
+          cachePrice: null,
+          minTokens: 131072,
+          maxTokens: 262144,
+          unit: "per_1m_tokens",
+        },
+      ],
+    }));
+    await persistModelRows(laddered);
+    const created = create.mock.calls.at(-1)![0] as { data: { contextWindow: string | null } };
+    expect(created.data.contextWindow).toBe("256K");
+  });
 });
 
 describe("isFreeModelRow", () => {

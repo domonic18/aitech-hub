@@ -6,6 +6,7 @@
  * note 打「待复核」标,整 job 上抛 job_run 记 failed 连败可见,不静默腐烂。
  */
 import type { SnapshotSink } from "../collect/snapshot-capture";
+import { formatContextTokens, parseContextTokens } from "./context";
 
 /** 价格档位(阶梯/缓存/峰谷/模态);null = 该档不适用(如缓存档无输出价) */
 export interface ModelTierPrefill {
@@ -175,6 +176,35 @@ export function parseDeepseek(html: string, sourceUrl: string, now: Date): Model
   }));
 }
 
+/**
+ * Kimi 牌价页的上下文出处:正文按**系列**给(「K3 系列模型均支持 1,048,576
+ * tokens 上下文窗口」)——牌价表本身没有上下文档位,这段正文是唯一出处。
+ * 形如「K2 系列模型均支持 262,144 tokens 上下文窗口」→ 系列名 → token 数。
+ */
+function moonshotSeriesContexts(html: string): Map<string, number> {
+  const map = new Map<string, number>();
+  const re = /([A-Za-z][A-Za-z0-9.]*)\s*系列模型均支持\s*([\d,]+)\s*tokens?\s*上下文窗口/g;
+  for (const m of html.matchAll(re)) {
+    const tokens = parseContextTokens(m[2] ?? "");
+    const series = (m[1] ?? "").toLowerCase();
+    if (tokens === null || series === "") continue;
+    map.set(series, tokens);
+  }
+  return map;
+}
+
+/** 行模型名 → 所属系列的上下文(取最长系列名匹配:更具体的系列优先) */
+function moonshotContextOf(modelKey: string, series: Map<string, number>): number | null {
+  const key = modelKey.toLowerCase();
+  let best: { len: number; tokens: number } | null = null;
+  for (const [name, tokens] of series) {
+    const re = new RegExp(`(?:^|[^a-z0-9])${name.replace(/\./g, "\\.")}(?![0-9])`);
+    if (!re.test(key)) continue;
+    if (best === null || name.length > best.len) best = { len: name.length, tokens };
+  }
+  return best?.tokens ?? null;
+}
+
 /** Kimi SSR 序列化行解析(纯函数,fixture 单测锚):
  * `model`}),`¥13.00 / MTok`,`¥68.00 / MTok`,… → 模型+输入/输出 */
 export function parseMoonshot(html: string, sourceUrl: string, now: Date): ModelPrefillRow[] {
@@ -183,6 +213,7 @@ export function parseMoonshot(html: string, sourceUrl: string, now: Date): Model
     "`([a-z0-9][a-z0-9.-]+)`\\}\\),`¥([0-9.]+) / MTok`,`¥([0-9.]+) / MTok`",
     "g",
   );
+  const series = moonshotSeriesContexts(html);
   const rows: ModelPrefillRow[] = [];
   for (const m of html.matchAll(re)) {
     rows.push({
@@ -191,7 +222,7 @@ export function parseMoonshot(html: string, sourceUrl: string, now: Date): Model
       currency: "CNY" as const,
       inputPrice: Number(m[2]),
       outputPrice: Number(m[3]),
-      contextWindow: null,
+      contextWindow: formatContextTokens(moonshotContextOf(m[1] ?? "", series)),
       note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] 官方牌价页直读(缓存档见来源页)`,
       dataAsOf: now,
       sourceUrl,

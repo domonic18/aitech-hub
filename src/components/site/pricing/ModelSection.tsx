@@ -18,6 +18,7 @@
  */
 import { useMemo } from "react";
 
+import { type ContextBandId } from "@/lib/pricing/context";
 import {
   filterModelRows,
   formatPrice,
@@ -26,7 +27,6 @@ import {
   sortModelRows,
   sortPublicModels,
   vendorOptions,
-  type ContextBandId,
   type FreeScopeId,
   type ModelCatId,
   type ModelSortId,
@@ -35,6 +35,7 @@ import {
 } from "@/lib/pricing/public";
 import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
 import { modelAnchorId } from "@/lib/pricing/jsonld";
+import { protocolsLabel } from "@/lib/pricing/protocols";
 import type { PricingViewId } from "@/lib/pricing/query";
 
 import { CompareMatrix } from "./CompareMatrix";
@@ -50,6 +51,20 @@ function FreeBadge(): React.ReactElement {
   return (
     <span className="ml-1.5 rounded border border-green/40 bg-green/10 px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-green-hi">
       免费
+    </span>
+  );
+}
+
+/** 支持的 API 协议角标(未标注的行走空,不留空位) */
+function ProtocolBadge({
+  protocols,
+}: {
+  protocols: PublicModelRow["protocols"];
+}): React.ReactElement | null {
+  if (protocols.length === 0) return null;
+  return (
+    <span className="ml-1.5 rounded border border-line px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-text-3">
+      {protocolsLabel(protocols)}
     </span>
   );
 }
@@ -73,7 +88,7 @@ function ModelTable({
           <tr className="border-b border-line text-[11px] font-normal text-text-3">
             <th className="px-4 py-2.5 font-normal">模型 / 厂商</th>
             <th className="px-3 py-2.5 font-normal">输入价</th>
-            <th className="px-3 py-2.5 font-normal">输出价{genPriceNote(rows)}</th>
+            <th className="px-3 py-2.5 font-normal">输出价</th>
             <th className="px-3 py-2.5 font-normal">免费额度</th>
             <th className="px-3 py-2.5 font-normal">上下文</th>
             <th className="px-3 py-2.5 font-normal">数据截至</th>
@@ -81,6 +96,11 @@ function ModelTable({
           </tr>
         </thead>
         <tbody>
+          <tr>
+            <td colSpan={7} className="px-4 py-1.5 text-[10.5px] text-text-3">
+              价格单位:token 模型 = 元/百万 tokens;按张/按秒模型 = 生成价(单位见行内后缀)
+            </td>
+          </tr>
           {rows.map((r) => (
             <tr
               key={rowKey(r)}
@@ -92,6 +112,7 @@ function ModelTable({
                 <div className="font-mono text-[13px] font-semibold text-text-1">
                   {r.modelKey}
                   {r.isFree && <FreeBadge />}
+                  <ProtocolBadge protocols={r.protocols} />
                 </div>
                 <div className="mt-0.5 text-[11px] text-text-3">
                   {r.providerName ?? r.vendor}
@@ -136,13 +157,6 @@ function ModelTable({
   );
 }
 
-/** 组内含非 token 行时,输出价列头补「(生成价·单位)」说明 */
-function genPriceNote(rows: PublicModelRow[]): string {
-  const hasNonToken = rows.some((r) => !isTokenPriced(r));
-  if (!hasNonToken) return "";
-  return "(非 token 行=生成价)";
-}
-
 function ModelCards({
   rows,
   visibleKeys,
@@ -162,6 +176,7 @@ function ModelCards({
             <span className="font-mono text-[13px] font-semibold text-text-1">
               {r.modelKey}
               {r.isFree && <FreeBadge />}
+              <ProtocolBadge protocols={r.protocols} />
             </span>
             <OfficialLink url={r.sourceUrl} />
           </div>
@@ -184,6 +199,7 @@ function ModelCards({
             </span>
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
+            {isTokenPriced(r) && <span>元/百万 tokens</span>}
             {r.freeTier !== null && <span className="text-amber">免费额度:{r.freeTier}</span>}
             {r.contextWindow !== null && <span>上下文 {r.contextWindow}</span>}
             <span>截至 {r.dataAsOf}</span>

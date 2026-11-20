@@ -13,6 +13,7 @@
 import type { CompareCell, CompareGroup } from "@/lib/pricing/compare";
 import { COMPARE_MAX_MODELS_PER_GROUP } from "@/lib/pricing/compare";
 import { MODALITY_LABELS } from "@/lib/pricing/modality";
+import { protocolsLabel } from "@/lib/pricing/protocols";
 import { formatPrice, UNIT_SUFFIXES } from "@/lib/pricing/public";
 
 /** 价格格(原币直出;非 token 单位带中文后缀) */
@@ -88,6 +89,7 @@ function Cell({
         >
           官方↗
         </a>
+        {cell.protocols.length > 0 && <span>{protocolsLabel(cell.protocols)}</span>}
         <span>截至 {cell.dataAsOf}</span>
       </div>
       {cell.tiers.length > 0 && (
@@ -154,7 +156,9 @@ export function CompareMatrix({ groups }: CompareMatrixProps): React.ReactElemen
               {group.currency === "USD" ? "美元 $" : "人民币 ¥"} ·{" "}
               {group.priceUnit === "per_1m_tokens"
                 ? "每百万 tokens"
-                : (UNIT_SUFFIXES[group.priceUnit] ?? group.priceUnit)}
+                : group.priceUnit === "per_1k_tokens"
+                  ? "每千 tokens"
+                  : (UNIT_SUFFIXES[group.priceUnit] ?? group.priceUnit)}
             </h3>
             <span className="ml-auto font-mono text-[11px] text-blue">
               {group.models.length} 个模型

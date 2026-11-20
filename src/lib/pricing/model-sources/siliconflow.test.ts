@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseSiliconflow } from "./siliconflow";
+import { parseSiliconflow, siliconflowContextMap } from "./siliconflow";
 
 const NOW = new Date("2026-11-15T00:00:00Z");
 const URL = "https://siliconflow.cn/pricing";
@@ -113,5 +113,17 @@ describe("parseSiliconflow · 批G 单价格行与阶梯行(2026-11-17 复勘形
     expect(peak.cachePrice).toBe(0.04);
     const off = flash.tiers!.find((t) => t.tierLabel === "2点～8点")!;
     expect(off.cachePrice).toBe(0.02);
+  });
+});
+
+describe("siliconflowContextMap(上下文出处:页面模型元数据)", () => {
+  /** 页面 SSR 载荷片段(实探:contextLen 与 targetModelName 逐条交替) */
+  const PAYLOAD = `<script>self.__next_f.push([1,"{\\"desc\\":\\"x\\",\\"contextLen\\":1048576,\\"price\\":\\"1\\",\\"targetModelName\\":\\"deepseek-ai/DeepSeek-V4-Pro\\"},{\\"contextLen\\":0,\\"targetModelName\\":\\"Tongyi-MAI/Z-Image-Turbo\\"},{\\"contextLen\\":8192,\\"targetModelName\\":\\"BAAI/bge-m3\\"}"])</script>`;
+
+  it("模型 id → contextLen(token 数);0 值(图像模型)不入表", () => {
+    const map = siliconflowContextMap(PAYLOAD);
+    expect(map.get("deepseek-ai/DeepSeek-V4-Pro")).toBe(1048576);
+    expect(map.get("BAAI/bge-m3")).toBe(8192);
+    expect(map.has("Tongyi-MAI/Z-Image-Turbo")).toBe(false);
   });
 });

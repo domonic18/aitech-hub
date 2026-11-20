@@ -76,6 +76,22 @@ describe("parseMoonshot", () => {
   it("结构改版(零命中)抛错", () => {
     expect(() => parseMoonshot("<p>无表格</p>", MS_URL, NOW)).toThrow("moonshot 行结构未匹配");
   });
+
+  it("上下文按系列取(正文「K3 系列模型均支持 1,048,576 tokens 上下文窗口」)", () => {
+    const html = `<span data-as="p">K3 系列模型均支持 1,048,576 tokens 上下文窗口。</span>
+<span data-as="p">K2 系列模型均支持 262,144 tokens 上下文窗口。</span>
+${MOONSHOT_HTML}`;
+    const rows = parseMoonshot(html, MS_URL, NOW);
+    expect(rows[0]!.contextWindow).toBe("1M");
+    // K2 系列的模型不落 K3 → 落 K2 的 256K
+    const k2 = parseMoonshot(html.replace(/kimi-k3\.1-pro/g, "kimi-k2.6"), MS_URL, NOW);
+    expect(k2[0]!.contextWindow).toBe("256K");
+  });
+
+  it("页面没写上下文 → 留 null(页面显示「—」,不臆测)", () => {
+    const rows = parseMoonshot(MOONSHOT_HTML, MS_URL, NOW);
+    expect(rows[0]!.contextWindow).toBeNull();
+  });
 });
 
 describe("crawlModelSource", () => {

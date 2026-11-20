@@ -8,7 +8,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseTencentHunyuan } from "./tencent";
+import {
+  applyTencentContexts,
+  matchTencentContext,
+  parseTencentHunyuan,
+  parseTencentModelContexts,
+} from "./tencent";
 
 const NOW = new Date("2026-11-15T00:00:00Z");
 const URL = "https://cloud.tencent.com/document/product/1729/97731";
@@ -47,5 +52,28 @@ describe("parseTencentHunyuan", () => {
 
   it("页面改版(无价格表)时抛错,不静默返回空", () => {
     expect(() => parseTencentHunyuan("<div></div>", URL, NOW)).toThrow(/页面可能改版/);
+  });
+});
+
+describe("混元产品概述页 → 上下文(伴生页)", () => {
+  function readOverviewFixture(): string {
+    return readFileSync(
+      join(__dirname, "..", "__fixtures__", "tencent-hunyuan-overview.html"),
+      "utf8",
+    );
+  }
+
+  it("模型名 → 最大输入(文档名带日期后缀时前缀兜底)", () => {
+    const map = parseTencentModelContexts(readOverviewFixture());
+    expect(matchTencentContext("Hunyuan-a13b", map)).toBe("224K");
+    expect(matchTencentContext("Hunyuan-t1-vision", map)).toBe("28K");
+    expect(matchTencentContext("不存在的模型", map)).toBeNull();
+  });
+
+  it("给牌价行补上下文", () => {
+    const rows = parseTencentHunyuan(readFixture(), URL, NOW);
+    const patched = applyTencentContexts(rows, parseTencentModelContexts(readOverviewFixture()));
+    const a13b = patched.find((r) => r.modelKey === "Hunyuan-a13b");
+    expect(a13b?.contextWindow).toBe("224K");
   });
 });

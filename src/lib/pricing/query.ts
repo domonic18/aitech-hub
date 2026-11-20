@@ -12,7 +12,8 @@
  * 免费口径(2026-11-18):`free` 取 all|full|quota|any;旧值 `free=1`(只认
  * 完全免费的老开关)按 `full` 承接,老链接不失效。
  */
-import type { ContextBandId, FreeScopeId, ModelCatId, ModelSortId, PriceBandId } from "./public";
+import type { ContextBandId } from "./context";
+import type { FreeScopeId, ModelCatId, ModelSortId, PriceBandId } from "./public";
 
 /** 模型区视图:列表(逐行列价)| 比价(同模型跨提供商并排 + 散点/条形图) */
 export type PricingViewId = "list" | "compare" | "charts";
