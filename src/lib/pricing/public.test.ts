@@ -23,10 +23,8 @@ import {
   filterModelRows,
   filterPricingRows,
   formatPrice,
-  inContextBand,
   inPriceBand,
   isPricingStale,
-  parseContextTokens,
   PRICE_BANDS,
   PRICING_STALE_DAYS,
   sortModelRows,
@@ -84,6 +82,7 @@ describe("sortPublicModels", () => {
     modelDictKey: null,
     modality: null,
     priceUnit: "per_1m_tokens",
+    protocols: [],
     tiers: [],
   });
   it("混合组排序:国内¥→国际$→其余按键字典序;同组内保持入参原序", () => {
@@ -226,26 +225,6 @@ describe("展示侧筛选(验收问题一)", () => {
   });
 });
 
-describe("M74 批C:上下文长度解析与分档", () => {
-  it("K/M 记法 → token 数;认不出 → null", () => {
-    expect(parseContextTokens("128K")).toBe(131072);
-    expect(parseContextTokens("1M")).toBe(1048576);
-    expect(parseContextTokens("200000")).toBe(200000);
-    expect(parseContextTokens(null)).toBeNull();
-    expect(parseContextTokens("—")).toBeNull();
-  });
-
-  it("分档:未知档只收未标注;下界档按 token 数", () => {
-    expect(inContextBand(null, "unknown")).toBe(true);
-    expect(inContextBand(131072, "unknown")).toBe(false);
-    expect(inContextBand(1048576, "ge1m")).toBe(true);
-    expect(inContextBand(131072, "ge1m")).toBe(false);
-    expect(inContextBand(65536, "lt128k")).toBe(true);
-    expect(inContextBand(null, "lt128k")).toBe(false);
-    expect(inContextBand(null, "all")).toBe(true);
-  });
-});
-
 describe("M74 批C:模型行筛选与排序", () => {
   const row = (over: Partial<PublicModelRow>): PublicModelRow => ({
     vendor: "V",
@@ -266,6 +245,7 @@ describe("M74 批C:模型行筛选与排序", () => {
     modelDictKey: null,
     modality: null,
     priceUnit: "per_1m_tokens",
+    protocols: [],
     tiers: [],
     ...over,
   });

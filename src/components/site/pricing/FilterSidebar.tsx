@@ -18,14 +18,13 @@
  */
 import { useMemo, useState } from "react";
 
+import { CONTEXT_BANDS, type ContextBandId } from "@/lib/pricing/context";
 import {
-  CONTEXT_BANDS,
   FREE_SCOPE_OPTIONS,
   MODEL_CAT_OPTIONS,
   MODEL_SORT_OPTIONS,
   PRICE_BANDS,
   SOURCE_KIND_OPTIONS,
-  type ContextBandId,
   type FreeScopeId,
   type ModelCatId,
   type ModelSortId,
