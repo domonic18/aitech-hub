@@ -107,6 +107,29 @@ describe("parseBailianModels · 批G 按张/按秒表(2026-11-17 增补样本)",
     expect(music.modality).toBeUndefined();
   });
 
+  it("M77:图片行价取最低分辨率档,note 注明对应分辨率", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const pro = rows.find((r) => r.modelKey === "qwen-image-3.0-pro")!;
+    // 1k 档是入口价(2k 更贵)
+    expect(pro.outputPrice).toBe(0.25);
+    expect(pro.note).toContain("1k");
+    expect(pro.note).toContain("分辨率");
+    // kling:1K/2K 同价,行价取最低分辨率那一档
+    const kling = rows.find((r) => r.modelKey === "kling/kling-v3-image-generation")!;
+    expect(kling.outputPrice).toBe(0.2);
+    expect(kling.note).toContain("1K");
+  });
+
+  it("M77:视频行价取最低分辨率档(480P),note 注明分辨率", () => {
+    const rows = parseBailianModels(readFixture(), URL, NOW);
+    const t2v = rows.find((r) => r.modelKey === "happyhorse-1.1-t2v")!;
+    expect(t2v.outputPrice).toBe(0.45);
+    expect(t2v.note).toContain("480P");
+    // 无分辨率维度的行(音乐按秒表)不硬塞分辨率
+    const music = rows.find((r) => r.modelKey === "fun-music-preview")!;
+    expect(music.note).not.toContain("分辨率");
+  });
+
   it("token 表照旧 per_1m_tokens(单位闸不放跑老口径)", () => {
     const rows = parseBailianModels(readFixture(), URL, NOW);
     const max = rows.find((r) => r.modelKey === "qwen3.8-max")!;
