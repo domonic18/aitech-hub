@@ -8,11 +8,10 @@
  * 厂商、价格区间与「只看免费」三个最常用维度。上下文档对非文本用途组
  * (文生图/视频等)无意义,组内隐藏。
  */
+import { CONTEXT_BANDS, type ContextBandId } from "@/lib/pricing/context";
 import {
-  CONTEXT_BANDS,
   MODEL_SORT_OPTIONS,
   SOURCE_KIND_OPTIONS,
-  type ContextBandId,
   type ModelCatId,
   type ModelSortId,
 } from "@/lib/pricing/public";

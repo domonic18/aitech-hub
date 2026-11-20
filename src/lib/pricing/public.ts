@@ -6,6 +6,9 @@
  */
 import { DAY_MS } from "@/lib/datetime";
 
+import { inContextBand, parseContextTokens, type ContextBandId } from "./context";
+import type { ApiProtocol } from "./protocols";
+
 /** ⚠️ 本模块必须保持**零库依赖**(无 db / prerender-safe / env):客户端组件
  *  (PricingExplorer 一族)直接引这里的纯函数与类型,读库那半边住 `./read.ts`。
  *  两者曾同居,导致 env 校验被打进 /pricing/ 的 client chunk、浏览器白屏
@@ -46,6 +49,8 @@ export interface PublicModelRow {
   /** 行级计价单位(批G):per_1m_tokens | per_image | per_second | …;
    *  非 token 行 outputPrice=生成价、inputPrice 多为 null */
   priceUnit: string;
+  /** 支持的 API 协议(策展规则;空数组=未标注,不是「不支持」) */
+  protocols: ApiProtocol[];
   /** 价格档位(阶梯/缓存/峰谷/模态计价);无档位则空数组 */
   tiers: PublicTierRow[];
 }
@@ -114,43 +119,6 @@ export const UNIT_SUFFIXES: Record<string, string> = {
   per_second: "/秒",
   per_minute: "/分钟",
 };
-
-/** 上下文长度解析:"128K"→131072 / "1M"→1048576 / "200000"→200000;认不出 null */
-export function parseContextTokens(raw: string | null): number | null {
-  if (raw === null) return null;
-  const t = raw.trim().toUpperCase();
-  if (t === "") return null;
-  const m = /^([\d.]+)\s*([KM])?$/.exec(t);
-  if (m === null) return null;
-  const v = Number(m[1]);
-  if (Number.isNaN(v)) return null;
-  const unit = m[2] ?? "";
-  if (unit === "K") return v * 1024;
-  if (unit === "M") return v * 1024 * 1024;
-  return v;
-}
-
-/** 上下文区间档(筛选用):按「至少多少」分档,未知单列 */
-export const CONTEXT_BANDS = [
-  { id: "all", label: "全部", min: null },
-  { id: "ge1m", label: "≥ 1M", min: 1024 * 1024 },
-  { id: "ge256k", label: "≥ 256K", min: 256 * 1024 },
-  { id: "ge128k", label: "≥ 128K", min: 128 * 1024 },
-  { id: "lt128k", label: "< 128K", min: null },
-  { id: "unknown", label: "未标注", min: null },
-] as const;
-
-export type ContextBandId = (typeof CONTEXT_BANDS)[number]["id"];
-
-/** 上下文档命中判定(未知档只收未标注的行;其它档按 token 数下界) */
-export function inContextBand(tokens: number | null, id: ContextBandId): boolean {
-  if (id === "all") return true;
-  if (id === "unknown") return tokens === null;
-  if (id === "lt128k") return tokens !== null && tokens < 128 * 1024;
-  const band = CONTEXT_BANDS.find((b) => b.id === id);
-  if (band === undefined || band.min === null) return true;
-  return tokens !== null && tokens >= band.min;
-}
 
 /** 来源类型筛选项(厂商字典的 source_kind;空 = 未标注) */
 export const SOURCE_KIND_OPTIONS = [

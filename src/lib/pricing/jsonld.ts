@@ -15,6 +15,7 @@
  *   第一个被解析,所以不另开 ld+json)。
  */
 import { formatPrice, type PublicPricing } from "./public";
+import { protocolsLabel } from "./protocols";
 
 /** 模态 → 用途标签(JSON-LD category 用) */
 export function modalityLabel(modality: string | null): string {
@@ -122,6 +123,13 @@ export function buildPricingJsonLd(
         ];
         if (m.contextWindow !== null) {
           props.push({ "@type": "PropertyValue", name: "上下文窗口", value: m.contextWindow });
+        }
+        if (m.protocols.length > 0) {
+          props.push({
+            "@type": "PropertyValue",
+            name: "支持协议",
+            value: protocolsLabel(m.protocols),
+          });
         }
         if (cmp !== undefined) {
           props.push({

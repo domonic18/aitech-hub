@@ -28,6 +28,7 @@ function model(over: Partial<PublicModelRow>): PublicModelRow {
     modelDictKey: "deepseek-flash",
     modality: "text",
     priceUnit: "per_1m_tokens",
+    protocols: [],
     tiers: [],
     ...over,
   };

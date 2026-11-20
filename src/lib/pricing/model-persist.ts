@@ -17,10 +17,12 @@ import { prisma } from "@/lib/db";
 import { persistCuratedRows, markCuratedSourceStale } from "./curated-persist";
 import { buildChangeRowData } from "./change-log";
 import type { PriceSnapshot } from "./change";
+import { contextTokensFromTiers, formatContextTokens } from "./context";
 import { isFreePrices, isFreeTiers, type PriceSet } from "./rules";
 import { getOrCreateModel, getOrCreateProvider } from "./model-registry";
 import { PROVIDER_SEEDS, providerKeyForVendor } from "./provider-registry";
 import { replaceTiers } from "./tiers";
+import { normalizedUnit, tokenUnitFactor } from "./units";
 import type { ModelPrefillRow, ModelTierPrefill } from "./crawlers";
 
 /** 档位价 → 判定形状 */
@@ -29,6 +31,39 @@ function tierPriceSet(tier: ModelTierPrefill): PriceSet {
     inputPrice: tier.inputPrice,
     outputPrice: tier.outputPrice,
     cachePrice: tier.cachePrice,
+  };
+}
+
+/**
+ * 行级归一(落库前唯一出口):token 系单位统一到「元/百万 tokens」(源按
+ * 元/K token 报价的 ×1000),上下文长度在源没给时按档位的输入长度阶梯推导。
+ * 档位按**自己的**单位换算(不假定档位与行同单位)。
+ */
+function normalizePrefill(row: ModelPrefillRow): {
+  unit: string;
+  inputPrice: number | null;
+  outputPrice: number | null;
+  contextWindow: string | null;
+  tiers: ModelTierPrefill[];
+} {
+  const rawUnit = row.priceUnit ?? "per_1m_tokens";
+  const factor = tokenUnitFactor(rawUnit);
+  const tiers = (row.tiers ?? []).map((t) => {
+    const tierFactor = tokenUnitFactor(t.unit);
+    return {
+      ...t,
+      unit: normalizedUnit(t.unit),
+      inputPrice: t.inputPrice === null ? null : t.inputPrice * tierFactor,
+      outputPrice: t.outputPrice === null ? null : t.outputPrice * tierFactor,
+      cachePrice: t.cachePrice === null ? null : t.cachePrice * tierFactor,
+    };
+  });
+  return {
+    unit: normalizedUnit(rawUnit),
+    inputPrice: row.inputPrice === null ? null : row.inputPrice * factor,
+    outputPrice: row.outputPrice === null ? null : row.outputPrice * factor,
+    contextWindow: row.contextWindow ?? formatContextTokens(contextTokensFromTiers(tiers)) ?? null,
+    tiers,
   };
 }
 
@@ -77,12 +112,16 @@ async function resolveModelId(row: ModelPrefillRow): Promise<bigint | null> {
   }
 }
 
-/** 档位写入(行内无档位则不写档位行) */
-async function writeTiers(modelPricingId: bigint, row: ModelPrefillRow): Promise<void> {
-  if (row.tiers === undefined || row.tiers.length === 0) return;
+/** 档位写入(档位已归一:token 系一律「元/百万 tokens」) */
+async function writeTiers(
+  modelPricingId: bigint,
+  tiers: ModelTierPrefill[],
+  row: ModelPrefillRow,
+): Promise<void> {
+  if (tiers.length === 0) return;
   await replaceTiers(
     modelPricingId,
-    row.tiers.map((t) => ({
+    tiers.map((t) => ({
       tierLabel: t.tierLabel,
       inputPrice: t.inputPrice,
       outputPrice: t.outputPrice,
@@ -156,14 +195,15 @@ export async function persistModelRows(
     create: async (r) => {
       const providerId = await resolveProviderId(r);
       const modelId = await resolveModelId(r);
+      const norm = normalizePrefill(r);
       const created = await prisma.modelPricing.create({
         data: {
           vendor: r.vendor,
           modelKey: r.modelKey,
           currency: r.currency,
-          inputPrice: r.inputPrice,
-          outputPrice: r.outputPrice,
-          contextWindow: r.contextWindow,
+          inputPrice: norm.inputPrice,
+          outputPrice: norm.outputPrice,
+          contextWindow: norm.contextWindow,
           note: r.note,
           freeTier: r.freeTier ?? null,
           dataAsOf: r.dataAsOf,
@@ -173,21 +213,22 @@ export async function persistModelRows(
           providerId,
           modelId,
           isFree: isFreeModelRow(r),
-          priceUnit: r.priceUnit ?? "per_1m_tokens",
+          priceUnit: norm.unit,
         },
         select: { id: true },
       });
-      await writeTiers(created.id, r);
+      await writeTiers(created.id, norm.tiers, r);
       return created;
     },
     update: async (id: bigint, r) => {
       const providerId = await resolveProviderId(r);
       const modelId = await resolveModelId(r);
+      const norm = normalizePrefill(r);
       const newSnap: PriceSnapshot = {
         currency: r.currency,
-        priceUnit: r.priceUnit ?? "per_1m_tokens",
-        inputPrice: r.inputPrice,
-        outputPrice: r.outputPrice,
+        priceUnit: norm.unit,
+        inputPrice: norm.inputPrice,
+        outputPrice: norm.outputPrice,
       };
       const oldSnap = oldByKey.get(`${r.vendor}|${r.modelKey}`);
       // 批F:变了就多写一行变更史(与改价同一事务,避免「价改了史没写」)
@@ -212,9 +253,9 @@ export async function persistModelRows(
             // currency 必须随价格走:行若由 USD 通道先建,官方 CNY 价刷新时
             // 币种同步矫正,杜绝「¥ 数字配 $ 符号」的跨通道脏态
             currency: r.currency,
-            inputPrice: r.inputPrice,
-            outputPrice: r.outputPrice,
-            contextWindow: r.contextWindow,
+            inputPrice: norm.inputPrice,
+            outputPrice: norm.outputPrice,
+            contextWindow: norm.contextWindow,
             note: r.note,
             freeTier: r.freeTier ?? null,
             dataAsOf: r.dataAsOf,
@@ -222,7 +263,7 @@ export async function persistModelRows(
             providerId,
             modelId,
             isFree: isFreeModelRow(r),
-            priceUnit: r.priceUnit ?? "per_1m_tokens",
+            priceUnit: norm.unit,
           },
           select: { id: true },
         });
@@ -231,7 +272,7 @@ export async function persistModelRows(
         }
         return u;
       });
-      await writeTiers(id, r);
+      await writeTiers(id, norm.tiers, r);
       return updated;
     },
   });

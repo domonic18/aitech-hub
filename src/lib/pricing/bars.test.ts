@@ -34,6 +34,7 @@ function row(over: Partial<PublicModelRow>): PublicModelRow {
     modelDictKey: null,
     modality: "image",
     priceUnit: "per_image",
+    protocols: [],
     tiers: [],
     ...over,
   };
