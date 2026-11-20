@@ -135,3 +135,51 @@ describe("parseVolcengineArk · 批G 单位闸", () => {
     expect(rows[0]!.tiers!.every((t) => t.unit === "per_1m_tokens")).toBe(true);
   });
 });
+
+/** M77:图片表按像素/场景分档(实探 2026-11-20 的方舟图片表裁剪) */
+describe("parseVolcengineArk 图片表(按张 · 像素分档)", () => {
+  const rows = parseVolcengineArk(
+    readFileSync(join(__dirname, "..", "__fixtures__", "volcengine-ark-image.html"), "utf8"),
+    URL,
+    NOW,
+  );
+
+  it("像素档各落一档;行价取最低像素档(入口价)", () => {
+    const r = rows.find((x) => x.modelKey === "doubao-seedream-5-5")!;
+    expect(r.priceUnit).toBe("per_image");
+    expect(r.outputPrice).toBe(0.13);
+    expect(r.inputPrice).toBe(0.05);
+    expect(r.tiers!.map((t) => t.tierLabel)).toEqual(["P ≤ 2.61M", "2.61M < P ≤ 4.63M"]);
+    expect(r.tiers!.map((t) => t.outputPrice)).toEqual([0.13, 0.23]);
+    // 像素口径落 note:价必须带着「对应哪个分辨率」出来
+    expect(r.note).toContain("P ≤ 2.61M");
+  });
+
+  it("场景分组 × 像素档:行价取首个分组的低像素档;输入取「第 2 张起」常态价", () => {
+    const r = rows.find((x) => x.modelKey.includes("seedream-5-0-pro"))!;
+    expect(r.outputPrice).toBe(0.3);
+    expect(r.inputPrice).toBe(0.02);
+    expect(r.tiers!.map((t) => t.tierLabel)).toEqual([
+      "单图生成场景·P ≤ 2.61M",
+      "单图生成场景·P > 2.61M",
+      "图层拆分场景·P ≤ 2.61M",
+      "图层拆分场景·P > 2.61M",
+    ]);
+  });
+
+  it("整格一个价:行价与档位同价;免费输入价落 0", () => {
+    const r = rows.find((x) => x.modelKey === "doubao-seedream-5-0-flash")!;
+    expect(r.outputPrice).toBe(0.12);
+    expect(r.inputPrice).toBe(0);
+    expect(r.tiers!.map((t) => t.tierLabel)).toEqual(["默认"]);
+  });
+
+  it("档位名不带推理场景前缀(图片表不该标「批量推理」)", () => {
+    for (const r of rows) {
+      for (const t of r.tiers ?? []) {
+        expect(t.tierLabel).not.toContain("批量推理");
+        expect(t.tierLabel).not.toContain("在线推理");
+      }
+    }
+  });
+});

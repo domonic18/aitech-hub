@@ -20,6 +20,27 @@ export interface ModelTierPrefill {
   unit: string;
 }
 
+/**
+ * 落一档(纯函数,各源共用):同名同价=同一事实(两张表重复列)→ 去重;
+ * 同名不同价 → 加序号(档位唯一键是 行+名,同名会撞库)。
+ */
+export function pushPrefillTier(tiers: ModelTierPrefill[], tier: ModelTierPrefill): void {
+  const dup = tiers.find((t) => t.tierLabel === tier.tierLabel);
+  if (dup !== undefined) {
+    if (
+      dup.inputPrice === tier.inputPrice &&
+      dup.outputPrice === tier.outputPrice &&
+      dup.cachePrice === tier.cachePrice
+    ) {
+      return;
+    }
+    let n = 2;
+    while (tiers.some((t) => t.tierLabel === `${tier.tierLabel}\u00b7${n}`)) n += 1;
+    tier.tierLabel = `${tier.tierLabel}\u00b7${n}`;
+  }
+  tiers.push(tier);
+}
+
 export interface ModelPrefillRow {
   vendor: string;
   modelKey: string;

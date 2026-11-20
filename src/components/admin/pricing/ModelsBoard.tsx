@@ -10,6 +10,11 @@
  * 2026-11-18 反馈两改:①勾选 + 批量发布/批量停用(bulk API 本就支持任意
  * 状态,此前只接了「批量通过待审」一条);②行内操作后 refreshKeepScroll
  * 保持滚动位置(此前 refresh 换骨架会跳顶)。
+ *
+ * 2026-11-20 反馈(M77)再改:①批量动作补全为**上架 / 下架 / 删除**三档
+ * (此前缺批量删除,过期采集行只能逐行删);②批量对象统一为「全部已勾选行」
+ * (勾选跨筛选累计,此前只发当前筛选可见的部分,按钮数字与实际动作对不上);
+ * ③措辞统一到全站口径「上架/下架」(原「发布/停用」)。
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -30,15 +35,15 @@ type StatusFilter = "all" | "pending" | "enabled" | "disabled";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待审",
-  enabled: "已发布",
-  disabled: "停用",
+  enabled: "已上架",
+  disabled: "已下架",
 };
 
 const FILTERS: ReadonlyArray<{ key: StatusFilter; label: string }> = [
   { key: "all", label: "全部" },
   { key: "pending", label: "待审" },
-  { key: "enabled", label: "已发布" },
-  { key: "disabled", label: "停用" },
+  { key: "enabled", label: "已上架" },
+  { key: "disabled", label: "已下架" },
 ];
 
 const EMPTY_FORM = {
@@ -136,13 +141,15 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
     setBusy(false);
   }
 
-  /** 批量状态变更(反馈问题二):发布/停用所选;停用前台即下架,须确认 */
+  /** 批量状态变更(M77 反馈):上架/下架所选;下架前台即下架,须确认。
+   *  对象 = **全部已勾选行**(勾选跨筛选累计,不能只发当前筛选可见的那部分,
+   *  否则按钮上的数字与实际动作对不上)。 */
   function bulkStatus(status: "enabled" | "disabled"): void {
-    const ids = filtered.filter((r) => selected.has(r.id)).map((r) => r.id);
+    const ids = [...selected];
     if (ids.length === 0 || busy) return;
     if (
       status === "disabled" &&
-      !window.confirm(`停用所选 ${ids.length} 行?前台将立即下架(人工定稿行不动)`)
+      !window.confirm(`下架所选 ${ids.length} 行?前台将立即下架(人工定稿行不动)`)
     ) {
       return;
     }
@@ -151,9 +158,35 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
       const count = (env?.data as { count?: number } | null)?.count ?? 0;
       if (env?.code === 0) {
         setSelected(new Set());
-        return { ok: true, message: `${status === "enabled" ? "已发布" : "已停用"} ${count} 行` };
+        return { ok: true, message: `${status === "enabled" ? "已上架" : "已下架"} ${count} 行` };
       }
       return { ok: false, message: env?.message ?? "批量操作失败" };
+    });
+  }
+
+  /** 批量删除(M77 反馈:清理过期采集行)。不可逆,须确认。 */
+  function bulkDelete(): void {
+    const ids = [...selected];
+    if (ids.length === 0 || busy) return;
+    const pinned = rows.filter((r) => selected.has(r.id) && r.isPinned).length;
+    const ok = window.confirm(
+      `删除所选 ${ids.length} 行?不可逆(档位与变更史一并删除)。` +
+        `人工定稿行会跳过${pinned > 0 ? `(${pinned} 行)` : ""}。` +
+        `注意:源若仍在采集,被删的行下一轮会以「待审」重新落库。`,
+    );
+    if (!ok) return;
+    void run(async () => {
+      const env = await send("/api/pricing/models/bulk", "DELETE", { ids });
+      const data = env?.data as { count?: number; skippedPinned?: number } | null;
+      if (env?.code === 0) {
+        setSelected(new Set());
+        const skipped = data?.skippedPinned ?? 0;
+        return {
+          ok: true,
+          message: `已删除 ${data?.count ?? 0} 行${skipped > 0 ? `;跳过人工定稿 ${skipped} 行` : ""}`,
+        };
+      }
+      return { ok: false, message: env?.message ?? "批量删除失败" };
     });
   }
 
@@ -238,7 +271,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
           placeholder="搜索厂商 / 模型 / 备注"
           className="w-48 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent"
         />
-        {/* 批量终审(M74 批C):采集落 pending,批量「通过」才能上架 */}
+        {/* 批量终审(M74 批C):采集落 pending,批量上架才能进前台 */}
         <button
           type="button"
           disabled={busy || pendingIds.length === 0}
@@ -253,30 +286,50 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                 refreshKeepScroll(router);
                 return { ok: true, message: `已上架 ${count} 行` };
               }
-              return { ok: false, message: env?.message ?? "批量通过失败" };
+              return { ok: false, message: env?.message ?? "批量上架失败" };
             })
           }
           className="rounded-sm border border-line px-3 py-1 text-xs text-text-2 hover:border-line-hover hover:text-text-1 disabled:opacity-40"
         >
-          批量通过 {pendingIds.length} 行
+          批量上架(待审){pendingIds.length > 0 ? ` ${pendingIds.length}` : ""}
         </button>
-        {/* 反馈问题二:任意行的批量发布/停用(勾选对象,非仅待审) */}
+        {/* M77 反馈:勾选对象的上架/下架/删除(此前只有「批量通过待审」一条) */}
         <button
           type="button"
           disabled={busy || selected.size === 0}
           onClick={() => bulkStatus("enabled")}
+          title="把所选行上架(前台可见)"
           className="rounded-sm border border-green/40 bg-green/8 px-3 py-1 text-xs text-green hover:bg-green/15 disabled:opacity-40"
         >
-          发布所选 {selected.size}
+          上架所选 {selected.size}
         </button>
         <button
           type="button"
           disabled={busy || selected.size === 0}
           onClick={() => bulkStatus("disabled")}
+          title="把所选行下架(前台立即不可见;人工定稿行不动)"
           className="rounded-sm border border-line px-3 py-1 text-xs text-text-3 hover:border-red/50 hover:text-red disabled:opacity-40"
         >
-          停用所选 {selected.size}
+          下架所选 {selected.size}
         </button>
+        <button
+          type="button"
+          disabled={busy || selected.size === 0}
+          onClick={bulkDelete}
+          title="删除所选行(不可逆;人工定稿行跳过)"
+          className="rounded-sm border border-line px-3 py-1 text-xs text-text-3 hover:border-red/50 hover:text-red disabled:opacity-40"
+        >
+          删除所选 {selected.size}
+        </button>
+        {selected.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="rounded-sm border border-line px-2 py-1 text-[11px] text-text-3 hover:text-text-1"
+          >
+            清空选择({selected.size})
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setDialogOpen(true)}

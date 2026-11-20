@@ -223,3 +223,33 @@ export async function deleteModelPricing(id: bigint): Promise<void> {
   await prisma.modelPricing.delete({ where: { id } });
   revalidatePublicPricing();
 }
+
+/**
+ * 批量删除(M77 反馈:后台要能一次清掉过期采集行)。返回实际删除数与跳过数。
+ *
+ * ⚠️ 人工定稿行(is_pinned)**不删**:定稿是人工确认过的价,批量动作不该把它
+ * 带走(与批量下架/按源下架同一口径);跳过的行由调用方回报给运营。
+ * 删除是**不可逆**的:档位与变更史随行级联消失;采集侧下一轮若源仍在,
+ * 该行会以 pending 重新落库——过期源应先停用/下架,再谈删除。
+ */
+export async function bulkDeleteModelPricing(
+  ids: string[],
+): Promise<{ deleted: number; skippedPinned: number }> {
+  const parsed = ids.map((id) => {
+    try {
+      return BigInt(id);
+    } catch {
+      return null;
+    }
+  });
+  const valid = parsed.filter((v): v is bigint => v !== null);
+  if (valid.length === 0) return { deleted: 0, skippedPinned: 0 };
+  const pinned = await prisma.modelPricing.count({
+    where: { id: { in: valid }, isPinned: true },
+  });
+  const result = await prisma.modelPricing.deleteMany({
+    where: { id: { in: valid }, isPinned: false },
+  });
+  revalidatePublicPricing();
+  return { deleted: result.count, skippedPinned: pinned };
+}
