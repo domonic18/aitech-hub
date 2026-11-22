@@ -739,6 +739,20 @@ describe("parseTencentTokenPlan", () => {
     expect(() => parseTencentTokenPlan(txPage(cards), TX_URL, NOW)).toThrow("计价单位异常");
   });
 
+  it("活动页把同一批卡嵌两遍(实探 2026-11-22)→ 去重后照常入库 8 档", () => {
+    // 比价区 + 购买区各嵌一份卡片 → 原始卡片数 16,去重后仍是各 4 档
+    const rows = parseTencentTokenPlan(txPage([...TX_CARDS, ...TX_CARDS]), TX_URL, NOW);
+    expect(rows).toHaveLength(8);
+    expect(rows.map((r) => r.monthlyFee)).toEqual([28, 78, 238, 468, 39, 99, 299, 599]);
+  });
+
+  it("同系列同档位但价格不同 → 不去重,档数校验抛错(歧义暴露,不静默挑一个)", () => {
+    const dup = txCard("Hy 个人版–体验套餐（Lite）", "99.00", ["每订阅月 560 积分"]);
+    expect(() => parseTencentTokenPlan(txPage([...TX_CARDS, dup]), TX_URL, NOW)).toThrow(
+      "tencent tokenplan 套餐结构未匹配(Hy 5/通用 4)",
+    );
+  });
+
   it("系列缺档 / __NEXT_DATA__ 丢失(前端改版)抛错,不静默错配", () => {
     const three = TX_HY_TIERS.slice(0, 3).map((t) => txTierCard(true, t));
     const full = TX_COMMON_TIERS.map((t) => txTierCard(false, t));
