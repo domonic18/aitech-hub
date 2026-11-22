@@ -712,6 +712,25 @@ function collectTencentCards(node: unknown, out: TencentCard[]): void {
   for (const value of Object.values(rec)) collectTencentCards(value, out);
 }
 
+/**
+ * 同一张卡去重(实探 2026-11-22):活动页把同一批卡嵌了两遍(比价区 + 购买区),
+ * 不去重会让档数校验数出「Hy 8/通用 8」而误判为改版。
+ *
+ * 去重键含**价格**:同系列同档位但价格不同的卡不是同一事实,保留两张 →
+ * 档数校验会报「Hy 5/通用 4」把歧义暴露出来(不静默挑一个)。
+ */
+function dedupeTencentCards(cards: TencentCard[]): TencentCard[] {
+  const seen = new Set<string>();
+  const out: TencentCard[] = [];
+  for (const c of cards) {
+    const key = [c.series, c.tierName, c.tier, c.fee ?? "", c.original ?? ""].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
 /** Token Plan 活动页解析(纯函数,fixture 单测锚):
  * 只收个人版双系列各 4 档(企业版/用量包不入库);月费=日常价,活动价与原文
  * 注记进 billingNote;额度口径=「每订阅月 N 积分」;适合人群取「适合/适用于」
@@ -729,8 +748,9 @@ export function parseTencentTokenPlan(
   } catch {
     throw new Error("tencent tokenplan __NEXT_DATA__ 不可解析(页面改版)");
   }
-  const cards: TencentCard[] = [];
-  collectTencentCards(data, cards);
+  const collected: TencentCard[] = [];
+  collectTencentCards(data, collected);
+  const cards = dedupeTencentCards(collected);
   const hy = cards.filter((c) => c.series === "Hy Token Plan");
   const common = cards.filter((c) => c.series === "通用 Token Plan");
   if (hy.length !== 4 || common.length !== 4) {
