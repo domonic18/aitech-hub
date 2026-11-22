@@ -53,7 +53,10 @@ export const LEADERBOARD_DEFS: LeaderboardDef[] = [
     board: "智能指数",
     entityType: "model",
     defaultUrl: "https://artificialanalysis.ai/leaderboards/models",
-    viaProxy: false,
+    // 走系统出口代理(2026-11-22 实探):生产云主机直连该站 connect 超时
+    // (UND_ERR_CONNECT_TIMEOUT),本机/测试环境直连可达——同一份代码两种网络
+    // 环境,故统一走代理;未配置代理时 fetchViaEgress 自动回落直连。
+    viaProxy: true,
     parse: parseArtificialAnalysis,
     maxItems: 60,
   },
