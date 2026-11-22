@@ -98,6 +98,35 @@ describe("parseArtificialAnalysis", () => {
     });
   });
 
+  it("2026-11-14 载荷改版:slug 下沉到 release.slug(顶层无 slug 也要入榜)", () => {
+    // 实探(11-21 快照):模型对象不再有顶层 slug,改为 release.slug
+    const newShape = JSON.stringify([
+      {
+        id: "0121d27b",
+        release: { slug: "jt-35b-flash", name: "JT-35B-Flash" },
+        name: "JT-35B-Flash",
+        modelCreatorName: "China Mobile",
+        intelligenceIndex: 30.81,
+        deprecated: false,
+      },
+      {
+        id: "abc",
+        release: { slug: "no-score", name: "No Score" },
+        name: "No Score",
+        intelligenceIndex: null,
+      },
+    ]);
+    const html = flight(`21:["$","div",null,{"initialModels":${newShape}}]`);
+    const items = parseArtificialAnalysis(html);
+    expect(items.map((i) => i.entityKey)).toEqual(["jt-35b-flash"]);
+    expect(items[0]).toMatchObject({
+      entityName: "JT-35B-Flash",
+      vendor: "China Mobile",
+      score: 30.81,
+      url: "https://artificialanalysis.ai/models/jt-35b-flash",
+    });
+  });
+
   it("无载荷/载荷损坏 → 空数组(契约漂移不静默出假数据)", () => {
     expect(parseArtificialAnalysis("<html><body>普通页面</body></html>")).toEqual([]);
     expect(parseArtificialAnalysis(flight("7:{"))).toEqual([]);

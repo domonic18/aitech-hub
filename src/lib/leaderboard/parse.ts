@@ -93,8 +93,11 @@ function sliceJsonArray(text: string, key: string): string | null {
 
 /** AA 榜单载荷的行字段(仅取用部分,多余字段忽略) */
 interface AaModel {
-  slug: string;
-  name: string;
+  /** 旧载荷:模型 slug 在顶层(2026-11-13 前) */
+  slug?: string | null;
+  /** 新载荷(2026-11-14 起):slug 下沉到 release,顶层不再有 */
+  release?: { slug?: string | null; name?: string | null } | null;
+  name?: string | null;
   modelCreatorName?: string | null;
   intelligenceIndex?: number | null;
   deprecated?: boolean;
@@ -109,6 +112,26 @@ interface AaModel {
 /** null/缺失统一折成 undefined(落库白名单只认已定义值) */
 function opt<T>(v: T | null | undefined): T | undefined {
   return v === null || v === undefined ? undefined : v;
+}
+
+/**
+ * 模型 slug(载荷改版后下沉到 release):旧载荷取顶层 slug,新载荷取 release.slug。
+ * 取不到返回 ""(该行不入榜——宁缺勿错)。
+ */
+function aaSlug(m: AaModel): string {
+  const rel = m.release;
+  if (rel !== null && rel !== undefined && typeof rel.slug === "string" && rel.slug !== "") {
+    return rel.slug;
+  }
+  return typeof m.slug === "string" ? m.slug : "";
+}
+
+/** 模型名(新载荷的 release.name 兜底) */
+function aaName(m: AaModel): string {
+  if (typeof m.name === "string" && m.name !== "") return m.name;
+  const rel = m.release;
+  if (rel !== null && rel !== undefined && typeof rel.name === "string") return rel.name;
+  return "";
 }
 
 /** Artificial Analysis 智能指数榜:载荷里的 initialModels 按 intelligenceIndex
@@ -126,9 +149,8 @@ export function parseArtificialAnalysis(html: string): LeaderboardItem[] {
   const rows = (models as AaModel[])
     .filter(
       (m) =>
-        typeof m.slug === "string" &&
-        m.slug !== "" &&
-        typeof m.name === "string" &&
+        aaSlug(m) !== "" &&
+        aaName(m) !== "" &&
         typeof m.intelligenceIndex === "number" &&
         Number.isFinite(m.intelligenceIndex) &&
         m.deprecated !== true,
@@ -137,13 +159,13 @@ export function parseArtificialAnalysis(html: string): LeaderboardItem[] {
     .sort((a, b) => b.score - a.score);
   return normalizeLeaderboardItems(
     rows.map(({ m, score }) => ({
-      entityKey: m.slug,
-      entityName: m.name,
+      entityKey: aaSlug(m),
+      entityName: aaName(m),
       entityType: "model" as const,
       vendor: typeof m.modelCreatorName === "string" ? m.modelCreatorName : null,
       score,
       scoreUnit: "AAII",
-      url: `https://artificialanalysis.ai/models/${m.slug}`,
+      url: `https://artificialanalysis.ai/models/${aaSlug(m)}`,
       extra: {
         price1mInputTokens: opt(m.price1mInputTokens),
         price1mOutputTokens: opt(m.price1mOutputTokens),
