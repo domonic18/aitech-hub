@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { LEADERBOARD_DEFS } from "./registry";
 import {
   normalizeLeaderboardItems,
   parseArxivFeed,
@@ -131,6 +132,19 @@ describe("parseArtificialAnalysis", () => {
     expect(parseArtificialAnalysis("<html><body>普通页面</body></html>")).toEqual([]);
     expect(parseArtificialAnalysis(flight("7:{"))).toEqual([]);
     expect(parseArtificialAnalysis(flight('7:{"initialModels":{}}'))).toEqual([]);
+  });
+});
+
+describe("榜单源注册表:出口代理标记", () => {
+  it("Artificial Analysis 走代理(生产云主机直连 connect 超时);HuggingFace 同样走代理", () => {
+    // 2026-11-22 实探:生产云主机直连 artificialanalysis.ai UND_ERR_CONNECT_TIMEOUT,
+    // 经系统出口代理 HTTP 200 正常返回;未配置代理时 fetchViaEgress 回落直连
+    const byKey = new Map(LEADERBOARD_DEFS.map((d) => [d.key, d]));
+    expect(byKey.get("artificial-analysis")?.viaProxy).toBe(true);
+    expect(byKey.get("huggingface")?.viaProxy).toBe(true);
+    // 直连可达的源不挂代理(避免给可达源平白加一跳)
+    expect(byKey.get("arxiv-cs-ai")?.viaProxy).toBe(false);
+    expect(byKey.get("github")?.viaProxy).toBe(false);
   });
 });
 
