@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { bulkReviewModelPricing } from "@/lib/pricing/admin-model";
 import { listPricingSourceHealth } from "@/lib/pricing/health";
+import { buildPricingSourceResolver } from "@/lib/pricing/source-resolve";
 import { decidePricingReview } from "@/lib/pricing/review-gate";
 import { offlinePricingSource } from "@/lib/pricing/offline-source";
 import { prisma } from "@/lib/db";
@@ -121,19 +122,16 @@ export const opsActionTools: McpToolDef[] = [
             status: true,
             note: true,
             isPinned: true,
+            provider: { select: { key: true } },
           },
         });
         const found = new Map(rows.map((r) => [r.id.toString(), r]));
         const missing = args.ids.filter((id) => !found.has(id));
 
-        // 源健康口径:与牌价源健康读侧同源(**vendor + 产出面** ↔ 源)——
-        // 同厂商的模型源与套餐源分开,否则会拿兄弟源的健康状态当自己的
-        const sourceByVendor = new Map(
-          (await listPricingSourceHealth()).map((s) => [
-            `${s.vendor}|${s.target}`,
-            { status: s.status, consecutiveFails: s.consecutiveFails },
-          ]),
-        );
+        // 源健康口径:与牌价源健康读侧同源,走 source-resolve(providerKey +
+        // 产出面优先,vendor 兜底)——聚合行(词元所·XXX)靠 providerKey 连上源,
+        // 同厂商的模型源与套餐源分开
+        const resolveSource = buildPricingSourceResolver(await listPricingSourceHealth());
         const decisions = decidePricingReview(
           rows.map((r) => ({
             id: r.id.toString(),
@@ -143,9 +141,15 @@ export const opsActionTools: McpToolDef[] = [
             note: r.note,
             isPinned: r.isPinned,
             target: "model" as const,
+            providerKey: r.provider?.key ?? null,
           })),
           args.status,
-          (vendor, target) => sourceByVendor.get(`${vendor}|${target}`),
+          (row) => {
+            const src = resolveSource(row);
+            return src === undefined
+              ? undefined
+              : { status: src.status, consecutiveFails: src.consecutiveFails };
+          },
         );
         const applyIds = decisions.filter((d) => d.action === "apply").map((d) => d.id);
         const changed =
@@ -185,7 +189,7 @@ export const opsActionTools: McpToolDef[] = [
   defineTool(
     "offline_pricing_source",
     "把某个牌价采集源因抓取失败而陈旧的**已上架**数据下架(止损):按 sourceKey 定位源," +
-      "圈定该源名下的行(口径同健康读侧:vendor + 产出面,模型表与套餐表都覆盖)," +
+      "圈定该源名下的行(口径同健康读侧:providerKey + 产出面优先、vendor 兜底)," +
       "把 status=enabled 的置 disabled。人工定稿行(is_pinned)与待终审行不动;已下架的跳过(幂等)。" +
       "必须 confirm=true 并写 reason(记审计)。**只下架不上架**——重新上架走逐条 review_model_pricing。" +
       "本工具只负责执行下架,**该不该下架由调用方判断**:回执带源的状态、连败次数与最近采集错误原文," +
@@ -225,7 +229,11 @@ export const opsActionTools: McpToolDef[] = [
             hint: "确认要下架请先用 get_health_snapshot 看该源的真实状态",
           });
         }
-        const result = await offlinePricingSource(src.vendor, src.target);
+        const result = await offlinePricingSource({
+          vendor: src.vendor,
+          target: src.target,
+          providerKey: src.providerKey,
+        });
         logger.info({
           event: "mcp.offline_pricing_source",
           actor,

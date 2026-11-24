@@ -1,23 +1,25 @@
 /**
- * 牌价采集源健康度单测(M74 批C2;M76 补产出面):源与行的对应按 vendor + 产出面
- * (不靠 URL——渠道 URL 会被后台改),状态分布汇总、每源最近一次快照。
+ * 牌价采集源健康度单测(M74 批C2;M76 补产出面;M79 改 source-resolve 口径):
+ * 源与行的对应按 providerKey + 产出面优先、vendor 兜底,状态分布汇总、每源最近快照。
  *
  * M76 回归点:同一 vendor 下有多个源(腾讯云=Token Plan 套餐 + 混元模型牌价),
  * 套餐源必须看套餐表、模型源看模型表——否则套餐源会把同厂商的模型行数
  * 误报成自己的产出。
+ * M79 回归点:聚合源(词元所)一行多 vendor(词元所·XXX),按 providerKey 归源,
+ * 否则其产出全部漏算。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sourceFindMany = vi.fn();
-const modelGroupBy = vi.fn();
-const planGroupBy = vi.fn();
+const modelFindMany = vi.fn();
+const planFindMany = vi.fn();
 const snapshotFindMany = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     crawlSource: { findMany: (...a: unknown[]) => sourceFindMany(...a) },
-    modelPricing: { groupBy: (...a: unknown[]) => modelGroupBy(...a) },
-    codingPlan: { groupBy: (...a: unknown[]) => planGroupBy(...a) },
+    modelPricing: { findMany: (...a: unknown[]) => modelFindMany(...a) },
+    codingPlan: { findMany: (...a: unknown[]) => planFindMany(...a) },
     crawlSnapshot: { findMany: (...a: unknown[]) => snapshotFindMany(...a) },
   },
 }));
@@ -75,32 +77,69 @@ beforeEach(() => {
       nextRunAt: null,
       remark: null,
     },
+    {
+      id: 5,
+      name: "pricing:baidu-ciyuansuo",
+      url: "https://www.ciyuansuo.com/market",
+      enabled: true,
+      crawlIntervalMin: 1440,
+      status: "healthy",
+      consecutiveFails: 0,
+      lastRunAt: new Date("2026-11-19T00:00:00Z"),
+      nextRunAt: null,
+      remark: null,
+    },
   ]);
-  // 状态分组查询与待复核查询(note 含【待复核)分开返回
-  const isRecheck = (args: { where?: { note?: { contains?: string } } }): boolean =>
-    args.where?.note?.contains !== undefined;
-
-  modelGroupBy.mockImplementation(async (args: { where?: { note?: { contains?: string } } }) => {
-    if (isRecheck(args)) {
-      return [{ vendor: "硅基流动 SiliconFlow", _count: { _all: 4 } }];
-    }
-    return [
-      { vendor: "DeepSeek 深度求索", status: "enabled", _count: { _all: 3 } },
-      { vendor: "DeepSeek 深度求索", status: "pending", _count: { _all: 2 } },
-      { vendor: "硅基流动 SiliconFlow", status: "pending", _count: { _all: 4 } },
-      { vendor: "硅基流动 SiliconFlow", status: "disabled", _count: { _all: 1 } },
-      { vendor: "腾讯云", status: "enabled", _count: { _all: 10 } },
-    ];
-  });
-  planGroupBy.mockImplementation(async (args: { where?: { note?: { contains?: string } } }) => {
-    if (isRecheck(args)) {
-      return [{ vendor: "腾讯云", _count: { _all: 8 } }];
-    }
-    return [
-      { vendor: "腾讯云", status: "enabled", _count: { _all: 5 } },
-      { vendor: "腾讯云", status: "pending", _count: { _all: 3 } },
-    ];
-  });
+  const rep = <T>(n: number, row: T): T[] => Array.from({ length: n }, () => ({ ...row }));
+  modelFindMany.mockResolvedValue([
+    ...rep(3, {
+      vendor: "DeepSeek 深度求索",
+      status: "enabled",
+      note: null,
+      provider: { key: "deepseek" },
+    }),
+    ...rep(2, {
+      vendor: "DeepSeek 深度求索",
+      status: "pending",
+      note: null,
+      provider: { key: "deepseek" },
+    }),
+    ...rep(4, {
+      vendor: "硅基流动 SiliconFlow",
+      status: "pending",
+      note: "【待复核 2026-11-18】x",
+      provider: { key: "siliconflow" },
+    }),
+    ...rep(1, {
+      vendor: "硅基流动 SiliconFlow",
+      status: "disabled",
+      note: null,
+      provider: { key: "siliconflow" },
+    }),
+    ...rep(10, {
+      vendor: "腾讯云",
+      status: "enabled",
+      note: null,
+      provider: { key: "tencent-cloud" },
+    }),
+    // 聚合源(词元所)一行多 vendor,靠 providerKey 归源(M79 回归锚)
+    ...rep(2, {
+      vendor: "词元所·可灵 AI",
+      status: "pending",
+      note: null,
+      provider: { key: "baidu-ciyuansuo" },
+    }),
+    ...rep(3, {
+      vendor: "词元所·智谱",
+      status: "enabled",
+      note: null,
+      provider: { key: "baidu-ciyuansuo" },
+    }),
+  ]);
+  planFindMany.mockResolvedValue([
+    ...rep(5, { vendor: "腾讯云", status: "enabled", note: "【待复核 2026-11-18】y" }),
+    ...rep(3, { vendor: "腾讯云", status: "pending", note: "【待复核 2026-11-18】z" }),
+  ]);
   snapshotFindMany.mockResolvedValue([
     {
       sourceId: 2,
@@ -113,9 +152,9 @@ beforeEach(() => {
 });
 
 describe("listPricingSourceHealth", () => {
-  it("按 vendor 把行归到源(不靠 URL——渠道 URL 会被后台改)", async () => {
+  it("按 providerKey/vendor 把行归到源(不靠 URL——渠道 URL 会被后台改)", async () => {
     const rows = await listPricingSourceHealth();
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     const deepseek = rows.find((r) => r.key === "deepseek")!;
     expect(deepseek.vendor).toBe("DeepSeek 深度求索");
     expect(deepseek.rows.enabled).toBe(3);
@@ -148,6 +187,15 @@ describe("listPricingSourceHealth", () => {
     expect(model.rows.total).toBe(10);
     expect(model.rows.enabled).toBe(10);
     expect(model.rows.pending).toBe(0);
+  });
+
+  it("M79 聚合源:一行多 vendor(词元所·XXX)按 providerKey 归源,不再漏算", async () => {
+    const rows = await listPricingSourceHealth();
+    const cys = rows.find((r) => r.key === "baidu-ciyuansuo")!;
+    expect(cys.providerKey).toBe("baidu-ciyuansuo");
+    expect(cys.rows.total).toBe(5);
+    expect(cys.rows.pending).toBe(2);
+    expect(cys.rows.enabled).toBe(3);
   });
 
   it("最近一次采集快照:每源取最新一条 + 错误原文", async () => {
