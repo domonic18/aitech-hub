@@ -14,6 +14,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { listPricingSourceHealth } from "@/lib/pricing/health";
+import { buildPricingSourceResolver } from "@/lib/pricing/source-resolve";
 
 import { fail, json } from "./json";
 import { cachedBlock } from "./ops-readers";
@@ -71,14 +72,13 @@ export const opsPricingTools: McpToolDef[] = [
               note: true,
               isPinned: true,
               dataAsOf: true,
+              provider: { select: { key: true } },
             },
           }),
           cachedBlock("pricing", listPricingSourceHealth),
         ]);
-        // 源\u2194行解析同 review 工具:vendor + model 产出面(套餐源不串)
-        const sourceByVendor = new Map(
-          sources.filter((s) => s.target === "model").map((s) => [s.vendor, s]),
-        );
+        // 源↔行解析同 review 工具:providerKey + 产出面优先,vendor 兜底(聚合行靠 providerKey 连上源)
+        const resolveSource = buildPricingSourceResolver(sources);
         logger.info({
           event: "mcp.list_model_pricing",
           actor,
@@ -94,7 +94,12 @@ export const opsPricingTools: McpToolDef[] = [
           limit: args.limit,
           count: rows.length,
           rows: rows.map((r) => {
-            const src = sourceByVendor.get(r.vendor) ?? null;
+            const src =
+              resolveSource({
+                vendor: r.vendor,
+                target: "model",
+                providerKey: r.provider?.key ?? null,
+              }) ?? null;
             return {
               id: r.id.toString(),
               vendor: r.vendor,

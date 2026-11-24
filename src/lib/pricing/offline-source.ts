@@ -1,11 +1,11 @@
 /**
  * 牌价按源批量下架(M76):采集源抓取失败时,把该源名下**已上架**的行撤下前台。
  *
- * 行↔源口径与健康读侧(pricing/health.ts)同源:**vendor + 产出面**
- * (model 表 / 套餐 表)——
- * - vendor 是采集器写死的标识(渠道 URL 会被后台改,按 URL 连会错位);
- * - 产出面把同 vendor 下的兄弟源分开(腾讯云=Token Plan 套餐 + 混元模型牌价);
- * - vendor 按**逐字相等**匹配(健康读侧同样口径),故源↔行是唯一的对应关系。
+ * 行↔源口径与健康读侧(pricing/health.ts)同源,走 **source-resolve**:
+ * providerKey + 产出面优先,vendor 精确匹配兜底——
+ * - providerKey 是 M74 归一层的稳定键,聚合源(词元所)一行多 vendor 也连得上;
+ * - 产出面把同 providerKey 下的兄弟源分开(腾讯云=Token Plan 套餐 + 混元模型牌价);
+ * - 套餐表无 provider 列,plan 面仍按 vendor 逐字相等匹配。
  *
  * 只下架**已上架**的行:待终审(pending)还没对外,不动;人工定稿(is_pinned)是
  * 人工确认过的价,源挂不等于价错,不动(与逐条下架 bulkReviewModelPricing 同一
@@ -69,17 +69,34 @@ async function collectTargets<T extends { id: bigint; status: string; isPinned: 
   return { changed, skipped, ids };
 }
 
+/** 按源下架的圈行范围(由调用方从源注册表/健康读侧解析) */
+export interface PricingOfflineScope {
+  vendor: string;
+  target: "model" | "plan";
+  /** 厂商归一键:模型表按 provider 连行(聚合源一行多 vendor 的主键);空串走 vendor */
+  providerKey: string;
+}
+
 /**
- * 按源批量下架(止损):圈定该 vendor + 产出面下已上架的行,置 disabled。
+ * 按源批量下架(止损):圈定该源名下已上架的行,置 disabled。
  * 幂等:已下架的行跳过,重复调用不再改库。
  */
 export async function offlinePricingSource(
-  vendor: string,
-  target: "model" | "plan",
+  scope: PricingOfflineScope,
 ): Promise<PricingOfflineResult> {
-  if (target === "model") {
+  if (scope.target === "model") {
+    // 模型表:providerKey 命中归一行;未归一(provider_id 空)的行按 vendor 兜底
+    const where =
+      scope.providerKey !== ""
+        ? {
+            OR: [
+              { provider: { key: scope.providerKey } },
+              { providerId: null, vendor: scope.vendor },
+            ],
+          }
+        : { vendor: scope.vendor };
     const rows = await prisma.modelPricing.findMany({
-      where: { vendor },
+      where,
       select: { id: true, modelKey: true, status: true, isPinned: true },
     });
     const { changed, skipped, ids } = await collectTargets(rows, "model", (r) => r.modelKey);
@@ -98,7 +115,7 @@ export async function offlinePricingSource(
   }
 
   const rows = await prisma.codingPlan.findMany({
-    where: { vendor },
+    where: { vendor: scope.vendor },
     select: { id: true, planName: true, status: true, isPinned: true },
   });
   const { changed, skipped, ids } = await collectTargets(rows, "plan", (r) => r.planName);
