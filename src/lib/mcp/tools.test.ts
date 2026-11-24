@@ -52,9 +52,11 @@ const EXPECTED_TOOLS = [
   "sync_pin_to_wechat",
   "get_pin",
   "list_pins",
-  // 运维面(M75):只读巡查 2 只 + 受限动作 2 只;M76 补「按源批量下架」1 只
+  // 运维面(M75):只读巡查 2 只 + 受限动作 2 只;M76 补「按源批量下架」1 只;
+  // M79 补「牌价行巡查」只读 1 只(给运营助手圈待审行的眼睛)
   "get_health_snapshot",
   "get_health_failures",
+  "list_model_pricing",
   "trigger_recovery",
   "review_model_pricing",
   "offline_pricing_source",
@@ -271,6 +273,20 @@ describe("M75 运维面入参 schema 边界", () => {
         confirm: true,
       }).success,
     ).toBe(false);
+  });
+
+  it("list_model_pricing: status 枚举、limit/offset 有界、缺省 pending", () => {
+    const s = schemaOf("list_model_pricing");
+    expect(s.safeParse({}).success).toBe(true);
+    expect(s.safeParse({}).data).toMatchObject({ status: "pending", limit: 50, offset: 0 });
+    expect(s.safeParse({ status: "all", vendor: "百炼", limit: 100, offset: 50 }).success).toBe(
+      true,
+    );
+    expect(s.safeParse({ status: "archived" }).success).toBe(false);
+    expect(s.safeParse({ limit: 101 }).success).toBe(false);
+    expect(s.safeParse({ limit: 0 }).success).toBe(false);
+    expect(s.safeParse({ offset: -1 }).success).toBe(false);
+    expect(s.safeParse({ vendor: "x".repeat(41) }).success).toBe(false);
   });
 
   it("offline_pricing_source: sourceKey/reason 必填、confirm 必传", () => {
