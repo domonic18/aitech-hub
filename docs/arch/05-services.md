@@ -128,7 +128,7 @@ Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 
   - `POST /xhs/publish {pin_id|pinId,title,content,images:[{name,dataB64}]}` → `{ok,note_url|null}`;图片字节下发(worker 经 mediaStorage.get 读桶 base64 过内网,gateway 落临时文件供 set_input_files 后即清,保持零密钥),`decode_publish_images` 契约解码(dataB64 主读/data 别名兼容,**空字节即刻 400**——2026-10-27 字段名错位实弹:0 字节文件被平台静默忽略,上传假通过);错误包络:`400` XhsStateError 人话(登录态)/`500` detail=步骤人话+现场目录,worker 解析落 lastError
   - `POST /xhs/cookies {cookie_header}`:F12 串解析→裸 context 验证登录(首配 storage_state 未存自举,7d1c863)→落盘 storage_state;`GET /xhs/state`:登录态+页面结构地标(creator_tab 计数,平台改版早发现)
   - 发布流程=PUBLISH_STEPS 权威序(开页→切「上传图文」tab→上传→填标题正文(回读校验重填)→发布(closed shadow root 按宿主断言+绝对坐标点击)→确认成功信号(无响应周期补击));重试 3 次指数退避 30s→60s→120s(worker 侧),终态 failed 界面「重新发布」复位重入队
-  - 韧性纪律:选择器/节奏一律 settings.py 集中(实证注释随常量,纯代码常量不入 env);失败现场=截图+DOM+URL+录屏 `debug/<ts>_<步>/` 滚动留 5 份(成功删视频);登录态唯一入口=分发中心渠道卡 Cookie 弹窗。适配 Runbook 与完整设计见 docs/plan/xhs-auto-publish-design.md §6.2/§8
+  - 韧性纪律:选择器/节奏一律 settings.py 集中(实证注释随常量,纯代码常量不入 env);失败现场=截图+DOM+URL+录屏 `debug/<ts>_<步>/` 滚动留 5 份(成功删视频);登录态唯一入口=分发中心渠道卡 Cookie 弹窗。适配 Runbook 与完整设计见线下开发计划(过程性方案文档,不入库)
 - **B 站适配面(M24,`app/adapters/bilibili/`)**:wbi 纯算法签名(MIXIN_KEY_ENC_TAB 重排 + md5;nav 匿名接口取 img/sub key,12h 缓存 + 陈旧兜底,无 a_bogus 故 Playwright signer 子系统不参与);curl_cffi 同款 Chrome 指纹 transport;jar 池与抖音共用 `adapters/common/jar_pool.py`(平台独立实例)。**B 站错误主流形态是 HTTP 200 + body code≠0**(异于抖音):-352/-412/-116 → RiskControl(冷却 jar);-404/-400 → AccountInvalid;未知码 → StructureDrift;**code=0 但 data 带 v_voucher(无 durl)→ 同 RiskControl**(软风控挑战不走非零码,2026-10-11 实测;durl 并存时放行不误伤);HTTP 412/403 → RiskControl 即冷却不重试(风控墙确定性,重试加速拉黑);429/5xx/空 200 body → 重试预算 (1,2,5)s 不冷却。**观测事件**:网关侧留痕适配层错误 `social_bilibili_adapter_error`、软风控门 `social_bilibili_voucher_gate`、playurl 结果 `social_bilibili_playurl`(只记事件形态,直链值禁落日志)。**环境信誉门禁(2026-10-09 真机实测)**:`arc/search` 对 headless/数据中心上下文整段 -352(同请求 headed 浏览器过、headless 被拦,HTML 挑战页),与请求形状无关(wbi 参数/cookie/dm_img_* 复刻均无效)——登录态 jar 是生产答案(与抖音 ttwid-only 空响应同类运营缺口),游客 buvid3 仅够 nav/view/playurl
 - 部署:compose 服务 `douyin-gateway`(prod 内网无 ports、tmpfs 指纹目录、mem_limit 1g、healthcheck urllib 探 /health、warm_slots=1 适配 2C4G);本地 `127.0.0.1:8010` 便于冒烟;发布段见 standard/02-cicd-deployment。env:`DOUYIN_GATEWAY_URL`(default `http://127.0.0.1:8010`)
 
@@ -139,7 +139,7 @@ Python 3.11 + FastAPI **独立镜像独立容器**,平移自实战项目(签名 
 
 ### 4.5 优质内容发现队列(`discovery`,2026-10-12 M25 新增)
 
-- **纪律**:`concurrency: 1` + `lockDuration 900s`(B站风控全局串行,双窗全词约 5-10 分钟)+ `attempts=1`(B站退避在 processor 内实现,队列层不自动重试防风控风暴);管道详设与风控纪律见 arch/02 §3.3,方案锚 docs/plan/discovery-plan.md
+- **纪律**:`concurrency: 1` + `lockDuration 900s`(B站风控全局串行,双窗全词约 5-10 分钟)+ `attempts=1`(B站退避在 processor 内实现,队列层不自动重试防风控风暴);管道详设与风控纪律见 arch/02 §3.3;方案见线下开发计划(过程性方案文档,不入库)
 - **两 repeatable job**(upsertJobScheduler,Asia/Shanghai):`discovery-hotwords` 日频 `37 5 * * *`(错峰 03:23 backup / 03:41 audit / 04:52 usage purge)+ `discovery-bili` 周一 `13 6 * * 1`;每轮 active 词上限 20(`DISCOVERY_MAX_WORDS_PER_ROUND`,LRU 顺延)
 - **手动触发**:`POST /api/discovery/trigger {job:"hotwords"|"bili"}` 入同名一次性 job(jobId `manual-` 前缀 + 时间戳,removeOnComplete/Fail 200);真触发不入 e2e(worker 在场即真出网)
 - 编排:`src/lib/discovery/`(suggest 源插件化/l0.ts/discover.ts/hotwords.ts/keywords·candidates 仓储);状态常量单源 `src/lib/discovery/status.ts`(客户端安全,治理台组件共用)
@@ -159,7 +159,7 @@ Node 20 + Playwright chromium **独立镜像独立容器**(node:20-slim + fonts-
 
 ### 4.7 配图工坊队列(`illustration-studio`,2026-10-22 M40 批 B 新增)
 
-generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端点 `layer_decomposition` 拆层(1 干净底板 + N 透明 PNG 图层,各带 normalized 0-999 bbox)→ 编辑器 `/admin/illustration/[id]` 显隐组合导出与三条交互编辑回路(改字必选/消除笔/自由重绘,统一 bbox+指令 → 交互编辑 → 新整图,预览态确认制落版本链)。入口两路(2026-10-22 验收反馈补后台固定入口;IA v2 起「创作·配图工坊」,2026-10-23 创作域对齐批):侧栏「创作·配图工坊」→ 列表页 `/admin/illustration`(根版本倒序网格,server component 直查零新 API;?q= 对 name/mediaPath 双列模糊搜索)+ agent 回执链接直达编辑器。spike 实证契约与产物锚 docs/plan/development-plan.md M40 行(探针 workspace/tmp/spike-illustration-studio/)。**F13/F14 UI 对齐(2026-10-23)**:列表页两行结构(pageHead+toolbar)+3 列信息卡(链尾最新版本图 + 派生名称 + 「vN · MM-DD · N 层」,点卡进链尾编辑器);编辑器头部名称+来源 chip、版本链 v 序号 chips+「＋ 新版本」引导定位编辑面板、右栏三卡与画布 hint/尺寸 label 贴板(Ardot 739246438907714)。
+generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端点 `layer_decomposition` 拆层(1 干净底板 + N 透明 PNG 图层,各带 normalized 0-999 bbox)→ 编辑器 `/admin/illustration/[id]` 显隐组合导出与三条交互编辑回路(改字必选/消除笔/自由重绘,统一 bbox+指令 → 交互编辑 → 新整图,预览态确认制落版本链)。入口两路(2026-10-22 验收反馈补后台固定入口;IA v2 起「创作·配图工坊」,2026-10-23 创作域对齐批):侧栏「创作·配图工坊」→ 列表页 `/admin/illustration`(根版本倒序网格,server component 直查零新 API;?q= 对 name/mediaPath 双列模糊搜索)+ agent 回执链接直达编辑器。spike 实证契约与产物见线下开发计划 M40 行(过程性方案文档,不入库)(探针 workspace/tmp/spike-illustration-studio/)。**F13/F14 UI 对齐(2026-10-23)**:列表页两行结构(pageHead+toolbar)+3 列信息卡(链尾最新版本图 + 派生名称 + 「vN · MM-DD · N 层」,点卡进链尾编辑器);编辑器头部名称+来源 chip、版本链 v 序号 chips+「＋ 新版本」引导定位编辑面板、右栏三卡与画布 hint/尺寸 label 贴板(Ardot 739246438907714)。
 
 - **纪律**:`concurrency: 1` + `lockDuration 600s`(spike 实测拆层 ~75s,慢调用)+ `attempts=1`(生图计费不自动重试,同 cover 口径);jobId `illu-decompose-<groupId>` 锚自增组 ID 天然唯一(冒号禁用同 §4.1);手动触发 `POST /api/illustration/studio/[id]/decompose`,同版本已有 processing 组 409 人话拒(防重复计费双拆)
 - **拆层契约**(执行核心 `src/lib/ai/illustration-decompose.ts`,不走 generateImages——响应行携带图层元数据,单模块自带请求与行解析):POST `{baseUrl}/images/generations` body `{model, image(data URL ≤6MB), layer_decomposition: true, size: "2K", response_format: "url"}`,prompt 不传=自动拆层;超时专用 180s 档(不走模型 60s 常规档);官方 URL 24h 过期前逐层下载转存站内媒体;底板缺失/全层转存失败判组失败(failed+人话 error),单层失败跳过不废整组;计费=每调用 1 行 usage(拆层单价待用户核实后设置补录——M40 五决策)
@@ -187,7 +187,7 @@ generate_illustration 出图后的**手动拆层精修通道**:Seedream 同端�
 
 ### 4.10 公众号私信入站队列(`wechat-mp`,2026-11-01 M66 新增)
 
-被动回复 **5 秒硬约束**下的双段式生成链路:Route Handler 只做验签/幂等/轮询,生成在 worker(方案见 [plan/wechat-mp-bot-plan](../plan/wechat-mp-bot-plan.md))。
+被动回复 **5 秒硬约束**下的双段式生成链路:Route Handler 只做验签/幂等/轮询,生成在 worker(方案见线下开发计划(过程性方案文档,不入库))。
 
 - **`wechat-mp.answer`**:入站文本 → `searchAll(q)` → `chatJson`(`{canAnswer,answer,citeIds}`,summarize 角色)→ 引用越界丢弃 → ≤1800 字节截断 → 写 Redis `channel:wxmp:reply:<msgId>`(TTL 30min)+ 落 `channel_wechat_mp_message`。jobId `wxmp-<messageId>`(落库消息 id 纯数字;**BullMQ 自定义 jobId 禁冒号**,入站 `dedupeKey` 形如 `msg:<MsgId>` 不可直接拼接,否则 `add` 抛错、L1 链路整条降级成错误话术)。**检索 0 命中或 `canAnswer=false` 不调模型**,直接落固定话术;系统错误(队列/模型/检索)另用 `texts.error` 话术,不与「没找到」混用
 - **`wechat-mp.purge`**:每日 04:24(`upsertJobScheduler`),清 180 天前 `channel_wechat_mp_message`(口径同 `stats` 明细清理,用户/线索行保留)
