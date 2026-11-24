@@ -39,7 +39,7 @@
 - `workspace/` 宿主机持久化数据(pg/redis 数据、迁移媒体、ssl 证书、backups),gitignore 不入库;
   测试环境(CI deploy-staging)与本目录同处一个仓库工作副本,靠独立 compose project
   (`aitech-hub-staging`)+ 独立 env 文件(`.env.staging`)+ 独立数据目录(`workspace-staging/`)与开发态隔离
-- 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)plan/development-plan.md(状态真相源)
+- 文档:requirement/(需求基准)arch/(终态方案)standard/(稳定规范)research/(调研评估);**过程性文档(迭代计划/评审稿/一次性梳理)不入库**——plan/ 目录已 gitignore(历史在 git 归档),迭代状态留本地工作文档
 
 | 主题                          | 文档                             |
 | ----------------------------- | -------------------------------- |

@@ -422,7 +422,7 @@ CREATE TABLE legacy_url_map (
   - 刻意不加 FK 的多态/聚合引用与类型例外登记在 standard/03 §7
 - M64(榜单口径与实体层打通)迁移 `20261031160000_m64_leaderboard_entity`,`insight_leaderboard_snapshot` 增 `entity_id? bigint`(FK → `insight_entity`,`ON DELETE SET NULL`)+ 索引 `idx_insight_leaderboard_snapshot_entity`:仅 Artificial Analysis / Hugging Face 两源在采集写入时解析挂接(`src/lib/insight/entities/leaderboard.ts` 为唯一出口,只读、未命中留 null 不阻塞采集),`entity_key` 原样保留;实体归并时同事务把快照改指目标实体。存量回填 `scripts/oneoff/leaderboard-entity-backfill/run.ts`(默认 dry-run,幂等)
 
-**渠道入站会话域六表(2026-11-01 M66 立项,方案见 [plan/wechat-mp-bot-plan](../plan/wechat-mp-bot-plan.md);新前缀 `channel_` 已登记 [standard/03 §2](../standard/03-db-naming.md))**:
+**渠道入站会话域六表(2026-11-01 M66 立项,方案见线下开发计划(过程性方案文档,不入库);新前缀 `channel_` 已登记 [standard/03 §2](../standard/03-db-naming.md))**:
 
 - `channel_wechat_mp_config`(公众号入站单例 `id=1`,get-or-create):`token varchar(32)`、`encoding_aes_key_enc? varchar(200)` + `encoding_aes_key_mask? varchar(20)`(secret-box 密文 + 脱敏冗余)、`enabled`、`greeting_text`/`fallback_text`/`handoff_text`、`handoff_keywords text[]`、`daily_answer_limit int 默认 200` + `last_test` 四件套;**`appid`/`appsecret` 不复制**——一律经 `publish_wechat_config` 单源读取(同号同凭据)
 - `channel_wechat_mp_user`(公众号侧用户,openid 锚):`openid varchar(64)` 唯一、`unionid?`、`user_id?` FK→`user_account`(`ON DELETE SET NULL`,一次性绑定码建立)、`nickname?`/`avatar_url?`、`is_subscribed`/`subscribed_at`/`unsubscribed_at?`、`last_message_at?`、`message_count`、`is_manual_pending`;索引 `(user_id)`(FK 必配)、`(last_message_at DESC)`
