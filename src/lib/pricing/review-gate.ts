@@ -26,8 +26,10 @@ export interface PricingReviewRow {
   note: string | null;
   /** 人工定稿行(采集不覆盖):下架时不动 */
   isPinned?: boolean;
-  /** 行所属产出面:model=模型牌价表 / plan=套餐表(同 vendor 下的兄弟源靠它分开) */
+  /** 行所属产出面:model=模型牌价表 / plan=套餐表(兄弟源靠它分开) */
   target?: "model" | "plan";
+  /** 行的厂商归一键(provider 字典;聚合行的源解析靠它,见 source-resolve.ts) */
+  providerKey?: string | null;
 }
 
 export interface PricingReviewSource {
@@ -53,13 +55,16 @@ const RECHECK_MARK = "【待复核";
  * 下架宽的理由:enabled→disabled 是止损,错下架(少一行)与错上架(公开错价)
  * 代价不对称。
  *
- * 源↔行的解析与健康读侧同源:**vendor + 产出面**(同厂商的模型源与套餐源分开,
- * 否则会拿兄弟源的健康状态当自己的)。
+ * 源↔行的解析与健康读侧同源:走 source-resolve(providerKey + 产出面优先,
+ * vendor 兜底——聚合行的 vendor 对不上源,靠 providerKey 才连得上;兄弟源靠
+ * 产出面分开,否则会拿兄弟源的健康状态当自己的)。
  */
 export function decidePricingReview(
   rows: PricingReviewRow[],
   target: "enabled" | "disabled",
-  sourceOf: (vendor: string, target: "model" | "plan") => PricingReviewSource | undefined,
+  sourceOf: (
+    row: Pick<PricingReviewRow, "vendor" | "target" | "providerKey">,
+  ) => PricingReviewSource | undefined,
 ): PricingReviewDecision[] {
   return rows.map((row) => {
     if (row.status === target) {
@@ -79,7 +84,11 @@ export function decidePricingReview(
         reason: "行带「待复核」标(源上次采集失败,价已陈旧),先重采再上架",
       };
     }
-    const source = sourceOf(row.vendor, row.target ?? "model");
+    const source = sourceOf({
+      vendor: row.vendor,
+      target: row.target,
+      providerKey: row.providerKey,
+    });
     if (source === undefined) {
       return {
         id: row.id,

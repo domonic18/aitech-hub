@@ -85,6 +85,12 @@ export interface SourceDef {
   kind: "static" | "rendered";
   label: string;
   vendor: string;
+  /**
+   * 厂商归一键(与行侧 provider 字典 / 采集器落行的 providerKey 同一空间):
+   * 源↔行解析的**主键**——聚合源(词元所)一源产多 vendor 行,按 vendor 连不上,
+   * 按 providerKey 连才齐(health 计数 / 终审闸门 / 按源下架共用,见 source-resolve.ts)。
+   */
+  providerKey: string;
   defaultUrl: string;
   sortOrder: number;
   /** 取数+解析(URL 由 DB 行传入,后台可调零发版);抛错=源失败 */
@@ -98,6 +104,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "static",
     label: "DeepSeek 模型牌价",
     vendor: "DeepSeek 深度求索",
+    providerKey: "deepseek",
     defaultUrl: DEEPSEEK_PRICING_URL,
     sortOrder: 1,
     run: async (url, { now, sink }) => {
@@ -119,6 +126,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "static",
     label: "Kimi 模型牌价",
     vendor: "月之暗面 Moonshot",
+    providerKey: "moonshot",
     defaultUrl: MOONSHOT_PRICING_URL,
     sortOrder: 2,
     run: async (url, { now, sink }) => {
@@ -139,6 +147,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "static",
     label: "硅基流动 模型牌价",
     vendor: "硅基流动 SiliconFlow",
+    providerKey: "siliconflow",
     defaultUrl: SILICONFLOW_PRICING_URL,
     sortOrder: 3,
     run: async (url, { now, sink }) => {
@@ -159,6 +168,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "static",
     label: "腾讯云混元 模型牌价",
     vendor: "腾讯云",
+    providerKey: "tencent-cloud",
     defaultUrl: TENCENT_HUNYUAN_URL,
     sortOrder: 4,
     run: async (url, { now, sink }) => {
@@ -181,6 +191,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "static",
     label: "阿里云百炼 模型牌价",
     vendor: "阿里云百炼",
+    providerKey: "aliyun-bailian",
     defaultUrl: BAILIAN_MODEL_PRICING_URL,
     sortOrder: 5,
     run: async (url, { now, sink }) => {
@@ -201,6 +212,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "火山引擎方舟 模型牌价",
     vendor: "火山引擎方舟",
+    providerKey: "volcengine-ark",
     defaultUrl: VOLCENGINE_ARK_PRICING_URL,
     sortOrder: 6,
     run: async (url, { now, sink }) => {
@@ -219,6 +231,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "百度词元所 聚合报价",
     vendor: "百度词元所",
+    providerKey: "baidu-ciyuansuo",
     defaultUrl: CYSUO_MARKET_URL,
     sortOrder: 7,
     run: async (url, { now, sink }) => fetchCiyuansuo(url, sink, now),
@@ -229,6 +242,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "Kimi 会员套餐",
     vendor: "月之暗面 Kimi",
+    providerKey: "moonshot",
     defaultUrl: KIMI_MEMBER_URL,
     sortOrder: 3,
     run: async (url, { now, sink }) => parseKimiCoding(await fetchKimiMember(url, sink), url, now),
@@ -239,6 +253,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "MiniMax M Plan 套餐",
     vendor: "MiniMax 稀宇科技",
+    providerKey: "minimax",
     defaultUrl: MINIMAX_MPLAN_URL,
     sortOrder: 5,
     run: async (url, { now, sink }) =>
@@ -250,6 +265,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "static",
     label: "腾讯云 Token Plan 套餐",
     vendor: "腾讯云",
+    providerKey: "tencent-cloud",
     defaultUrl: TENCENT_TOKENPLAN_URL,
     sortOrder: 7,
     run: async (url, { now, sink }) =>
@@ -261,6 +277,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "小米 MiMo Token Plan",
     vendor: "小米 MiMo",
+    providerKey: "xiaomi-mimo",
     defaultUrl: XIAOMI_TOKEN_URL,
     sortOrder: 6,
     run: async (url, { now, sink }) =>
@@ -272,6 +289,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "阿里云百炼 Token Plan",
     vendor: "阿里云百炼",
+    providerKey: "aliyun-bailian",
     defaultUrl: BAILIAN_TOKEN_URL,
     sortOrder: 9,
     run: async (url, { now, sink }) =>
@@ -283,6 +301,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     kind: "rendered",
     label: "GLM Coding 套餐",
     vendor: "智谱 AI · BigModel",
+    providerKey: "zhipu-bigmodel",
     defaultUrl: GLM_CODING_URL,
     sortOrder: 8,
     run: async (url, { now, sink }) => parseGlmCoding(await fetchGlmCoding(url, sink), url, now),

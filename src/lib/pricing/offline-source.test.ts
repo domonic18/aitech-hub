@@ -25,6 +25,12 @@ vi.mock("@/lib/db", () => ({
 
 import { offlinePricingSource } from "./offline-source";
 
+/** 聚合源圈行断言:模型表查询的 where 应按 provider.key 连行 + vendor 兜底 */
+function assertAggregatorScope(): void {
+  const arg = modelFindMany.mock.calls[0]![0] as { where?: { OR?: unknown[] } };
+  expect(Array.isArray(arg.where?.OR)).toBe(true);
+}
+
 describe("offlinePricingSource(M76 按源批量下架)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -39,7 +45,11 @@ describe("offlinePricingSource(M76 按源批量下架)", () => {
       { id: BigInt(3), modelKey: "hunyuan-c", status: "disabled", isPinned: false },
       { id: BigInt(4), modelKey: "hunyuan-d", status: "enabled", isPinned: true },
     ]);
-    const r = await offlinePricingSource("腾讯云", "model");
+    const r = await offlinePricingSource({
+      vendor: "腾讯云",
+      target: "model",
+      providerKey: "tencent-cloud",
+    });
     expect(r.changed.map((c) => c.id)).toEqual(["1"]);
     expect(r.skipped.map((s) => s.reason)).toEqual([
       "待终审,未上架",
@@ -58,7 +68,11 @@ describe("offlinePricingSource(M76 按源批量下架)", () => {
     planFindMany.mockResolvedValue([
       { id: BigInt(7), planName: "Token Plan · Hy", status: "enabled", isPinned: false },
     ]);
-    const r = await offlinePricingSource("腾讯云", "plan");
+    const r = await offlinePricingSource({
+      vendor: "腾讯云",
+      target: "plan",
+      providerKey: "tencent-cloud",
+    });
     expect(r.changed).toHaveLength(1);
     expect(r.changed[0]).toMatchObject({ table: "plan", id: "7", name: "Token Plan · Hy" });
     expect(planUpdateMany).toHaveBeenCalledWith({
@@ -69,11 +83,31 @@ describe("offlinePricingSource(M76 按源批量下架)", () => {
     expect(modelUpdateMany).not.toHaveBeenCalled();
   });
 
+  it("M79 聚合源:模型表按 providerKey 圈行(OR 兜底未归一的 vendor 行)", async () => {
+    modelFindMany.mockResolvedValue([
+      { id: BigInt(1), modelKey: "kling-v3", status: "enabled", isPinned: false },
+      { id: BigInt(2), modelKey: "glm-5.3", status: "enabled", isPinned: false },
+    ]);
+    modelUpdateMany.mockResolvedValue({ count: 2 });
+    const r = await offlinePricingSource({
+      vendor: "百度词元所",
+      target: "model",
+      providerKey: "baidu-ciyuansuo",
+    });
+    assertAggregatorScope();
+    expect(r.applied).toBe(2);
+    expect(r.changed.map((c) => c.name)).toEqual(["kling-v3", "glm-5.3"]);
+  });
+
   it("没有可下架的行时不写库(幂等)", async () => {
     modelFindMany.mockResolvedValue([
       { id: BigInt(3), modelKey: "hunyuan-c", status: "disabled", isPinned: false },
     ]);
-    const r = await offlinePricingSource("腾讯云", "model");
+    const r = await offlinePricingSource({
+      vendor: "腾讯云",
+      target: "model",
+      providerKey: "tencent-cloud",
+    });
     expect(r.changed).toHaveLength(0);
     expect(r.skipped).toHaveLength(1);
     expect(modelUpdateMany).not.toHaveBeenCalled();

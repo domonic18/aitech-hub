@@ -302,7 +302,7 @@
 | `offline_pricing_source` | 牌价按源批量下架(M76,止损):按 sourceKey 把该源名下已上架的行置 disabled;人工定稿行与待终审行不动;**只下架不上架**,该不该下架由 agent 侧判断(MCP 只执行) | `src/lib/pricing/offline-source.ts#offlinePricingSource` + `src/lib/pricing/health.ts#listPricingSourceHealth` |
 | `list_model_pricing` | 牌价行巡查只读(M79):按状态/厂商筛模型牌价行(缺省 pending 待审队列),带【待复核】标、人工定稿标、数据截至日与**对应源健康**(vendor + model 产出面,同 review 工具口径)——运营助手自助「巡查 → 圈行 → review_model_pricing 分批上架」的眼睛;入参有界(limit ≤100),健康读侧走 45s 缓存 | `src/lib/mcp/tools.ops.pricing.ts`(直查 `model_pricing` 只读)+ `listPricingSourceHealth` |
 
-**运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;建议给巡查 agent **单独签一枚 PAT**(可独立吊销、审计可分辨);牌价上架与下架的口径统一——源↔行按 **vendor + 产出面**解析(同厂商的模型源与套餐源不串),**人工定稿行两条下架路径都不动**。
+**运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;牌价上架与下架的口径统一——源↔行统一走 **`src/lib/pricing/source-resolve.ts`**(M79:providerKey + 产出面优先,vendor 精确匹配兜底;聚合源一行多 vendor 靠 providerKey 连上源,新数据源在 source-registry 声明 providerKey 即自动对齐),同厂商的模型源与套餐源靠产出面分开;**人工定稿行两条下架路径都不动**。
 
 **写作指南供给通道(线下化后的唯一真相源)**:指南正文落仓库 `skills/writing/*.md`(每份带 frontmatter 元数据 + `INDEX.md` 索引),**线上运行期只读这份副本**——`src/lib/skills/writing-skills.ts` 运行时读盘(`listWritingSkills` / `readWritingSkill`),key 严校 `/^[a-z0-9-]+$/` 且解析后二次确认仍在目录内,路径穿越一律取不到。镜像需带上该目录(`docker/app/Dockerfile` COPY `skills/` + `.dockerignore` 对 `**/*.md` 的否定例外)。这样「改写作指南」不再需要调站、调试、发版,线下写作助手改仓库文件即生效,线上与线下读同一份。
 

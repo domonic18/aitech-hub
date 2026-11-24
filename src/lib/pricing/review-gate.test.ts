@@ -15,6 +15,8 @@ const row = (over: Partial<Parameters<typeof decidePricingReview>[0][number]> = 
   note: null,
   ...over,
 });
+/** sourceOf 的行形态透传断言用 */
+const rowOf = (r: { vendor: string; target?: "model" | "plan"; providerKey?: string | null }) => r;
 const healthy = { status: "healthy", consecutiveFails: 0 };
 
 describe("decidePricingReview(牌价终审闸门)", () => {
@@ -63,23 +65,44 @@ describe("decidePricingReview(牌价终审闸门)", () => {
     expect(d[0]?.reason).toContain("人工定稿");
   });
 
-  it("上架:源按 vendor + 产出面查(同厂商的模型源与套餐源不串)", () => {
+  it("上架:源按行的 vendor/target/providerKey 查(同厂商的模型源与套餐源不串)", () => {
     const seen: string[] = [];
     const d = decidePricingReview(
-      [row({ vendor: "腾讯云", target: "model" })],
+      [row({ vendor: "腾讯云", target: "model", providerKey: "tencent-cloud" })],
       "enabled",
-      (vendor, target) => {
-        seen.push(`${vendor}|${target}`);
+      (r) => {
+        seen.push(`${r.vendor}|${r.target ?? "model"}|${r.providerKey ?? ""}`);
         return healthy;
       },
     );
-    expect(seen).toEqual(["腾讯云|model"]);
+    expect(seen).toEqual(["腾讯云|model|tencent-cloud"]);
     expect(d[0]?.action).toBe("apply");
-    // 缺产出面的行按模型表查(与读侧默认一致)
-    decidePricingReview([row({ vendor: "腾讯云" })], "enabled", (vendor, target) => {
-      seen.push(`${vendor}|${target}`);
+    // 缺产出面的行按模型表、缺归一键的行透传 null(与读侧默认一致)
+    decidePricingReview([row({ vendor: "腾讯云" })], "enabled", (r) => {
+      seen.push(`${r.vendor}|${r.target ?? "model"}|${r.providerKey ?? ""}`);
       return healthy;
     });
-    expect(seen).toEqual(["腾讯云|model", "腾讯云|model"]);
+    expect(seen).toEqual(["腾讯云|model|tencent-cloud", "腾讯云|model|"]);
+  });
+
+  it("M79 聚合行:vendor 对不上源,闸门把整行(含 providerKey)交给解析方", () => {
+    const seen: string[] = [];
+    const d = decidePricingReview(
+      [row({ vendor: "词元所·可灵 AI", providerKey: "baidu-ciyuansuo" })],
+      "enabled",
+      (r) => {
+        seen.push(rowOf(r).vendor);
+        return r.providerKey === "baidu-ciyuansuo" ? healthy : undefined;
+      },
+    );
+    expect(seen).toEqual(["词元所·可灵 AI"]);
+    expect(d[0]?.action).toBe("apply");
+    // 同一行解析不到源 → 拒(fail-closed 口径不变)
+    const rej = decidePricingReview(
+      [row({ vendor: "词元所·某新供应方", providerKey: null })],
+      "enabled",
+      () => undefined,
+    );
+    expect(rej[0]?.action).toBe("reject");
   });
 });

@@ -6,15 +6,16 @@
  * 最近一次采集结果」摆到策展台面上。
  *
  * 口径:
- * - 源与行的对应靠 **vendor + 产出面**(采集器写死的稳定标识 + model/plan 表),
- *   不靠 URL——渠道 URL 会被后台改(历史默认 URL 迁移过),按 URL 连会错位
- * - 同一 vendor 下可能有多个源(腾讯云 = Token Plan 套餐 + 混元模型牌价),
- *   故产出面要分:model 源看模型表、plan 源看套餐表。只按 vendor 会把兄弟源
- *   的行算成自己的(套餐源曾把同厂商的模型行数误报成自己的产出)
+ * - 源与行的对应走 **source-resolve.ts**(M79 系统修):providerKey + 产出面优先,
+ *   vendor 精确匹配兜底——聚合源(词元所)一行多 vendor,按 vendor 连不上自己的源,
+ *   此前其 pending/recheck 产出全部漏算。不靠 URL(渠道 URL 会被后台改,按 URL 连会错位)
+ * - 同一 providerKey 下可能有兄弟源(腾讯云 = Token Plan 套餐 + 混元模型牌价),
+ *   故产出面要分:model 源看模型表、plan 源看套餐表
  * - 「待复核」= note 带【待复核】标(采集失败时整源打标),与 pending(待终审)是两回事
  */
 import { prisma } from "@/lib/db";
 
+import { buildPricingSourceResolver, type ResolvableSource } from "./source-resolve";
 import { SOURCE_DEFS } from "./source-registry";
 
 /** 一个源的产出状态分布 */
@@ -44,8 +45,10 @@ export interface PricingSourceHealth {
   key: string;
   /** 渠道标签(注册表) */
   label: string;
-  /** 厂商(行侧 vendor 口径,行与源靠它对应) */
+  /** 厂商(展示口径;源↔行解析主键是 providerKey,见 source-resolve.ts) */
   vendor: string;
+  /** 厂商归一键(与行侧 provider 字典同一空间) */
+  providerKey: string;
   /** 产出面:model=模型牌价表 / plan=套餐表(同 vendor 下靠它区分兄弟源) */
   target: "model" | "plan";
   url: string;
@@ -74,15 +77,24 @@ function addStatusCount(c: SourceRowCounts, status: string, n: number): void {
   else if (status === "disabled") c.disabled += n;
 }
 
-/** 按 vendor 汇总某张表的行状态分布 */
-function countsByVendor(
-  rows: Array<{ vendor: string; status: string; _count: { _all: number } }>,
+/**
+ * 行集 → 各源的状态分布(经 source-resolve 解析归桶)。
+ * 连不上任何源的行不计(与旧 vendor 口径对未匹配行的处理一致)。
+ */
+function countsBySource(
+  defs: readonly ResolvableSource[],
+  rows: Array<{ vendor: string; status: string; note: string | null; providerKey: string | null }>,
+  target: "model" | "plan",
 ): Map<string, SourceRowCounts> {
+  const resolve = buildPricingSourceResolver(defs);
   const map = new Map<string, SourceRowCounts>();
   for (const r of rows) {
-    const c = map.get(r.vendor) ?? emptyCounts();
-    addStatusCount(c, r.status, r._count._all);
-    map.set(r.vendor, c);
+    const src = resolve({ vendor: r.vendor, target, providerKey: r.providerKey });
+    if (src === undefined) continue;
+    const c = map.get(src.key) ?? emptyCounts();
+    addStatusCount(c, r.status, 1);
+    if (r.note !== null && r.note.includes("【待复核")) c.recheck += 1;
+    map.set(src.key, c);
   }
   return map;
 }
@@ -94,38 +106,47 @@ export async function listPricingSourceHealth(): Promise<PricingSourceHealth[]> 
   });
   if (sources.length === 0) return [];
 
-  // 行状态分布(模型表与套餐表分开按 vendor 汇总;源按产出面取对应那张表)
-  const [modelByStatus, planByStatus, modelRecheck, planRecheck] = await Promise.all([
-    prisma.modelPricing.groupBy({
-      by: ["vendor", "status"],
-      _count: { _all: true },
+  // 行状态分布(带 provider 归一键整表拉回,经解析器归桶;两表各几百行,量级安全)
+  const [modelRows, planRows] = await Promise.all([
+    prisma.modelPricing.findMany({
+      select: {
+        vendor: true,
+        status: true,
+        note: true,
+        provider: { select: { key: true } },
+      },
     }),
-    prisma.codingPlan.groupBy({
-      by: ["vendor", "status"],
-      _count: { _all: true },
-    }),
-    prisma.modelPricing.groupBy({
-      by: ["vendor"],
-      where: { note: { contains: "【待复核" } },
-      _count: { _all: true },
-    }),
-    prisma.codingPlan.groupBy({
-      by: ["vendor"],
-      where: { note: { contains: "【待复核" } },
-      _count: { _all: true },
+    prisma.codingPlan.findMany({
+      select: { vendor: true, status: true, note: true },
     }),
   ]);
 
-  const modelCounts = countsByVendor(modelByStatus);
-  const planCounts = countsByVendor(planByStatus);
-  for (const r of modelRecheck) {
-    const c = modelCounts.get(r.vendor);
-    if (c !== undefined) c.recheck = r._count._all;
-  }
-  for (const r of planRecheck) {
-    const c = planCounts.get(r.vendor);
-    if (c !== undefined) c.recheck = r._count._all;
-  }
+  const defLikes: ResolvableSource[] = SOURCE_DEFS.map((d) => ({
+    key: d.key,
+    vendor: d.vendor,
+    target: d.target,
+    providerKey: d.providerKey,
+  }));
+  const modelCounts = countsBySource(
+    defLikes,
+    modelRows.map((r) => ({
+      vendor: r.vendor,
+      status: r.status,
+      note: r.note,
+      providerKey: r.provider?.key ?? null,
+    })),
+    "model",
+  );
+  const planCounts = countsBySource(
+    defLikes,
+    planRows.map((r) => ({
+      vendor: r.vendor,
+      status: r.status,
+      note: r.note,
+      providerKey: null,
+    })),
+    "plan",
+  );
 
   // 每个源最近一次采集快照
   const snapshots = await prisma.crawlSnapshot.findMany({
@@ -143,13 +164,15 @@ export async function listPricingSourceHealth(): Promise<PricingSourceHealth[]> 
     const key = s.name.startsWith("pricing:") ? s.name.slice("pricing:".length) : s.name;
     const def = SOURCE_DEFS.find((d) => d.key === key);
     const vendor = def?.vendor ?? key;
-    // 未注册的源(后台手加)没有产出面定义,按 model 兜底(vendor 同为 key 兜底)
+    // 未注册的源(后台手加)没有产出面定义,按 model 兜底(vendor 同为 key 兜底,
+    // providerKey 置空 → 行解析只走 vendor 档)
     const target = def?.target ?? "model";
     const snap = lastBySource.get(s.id);
     return {
       key,
       label: def?.label ?? s.remark ?? s.name,
       vendor,
+      providerKey: def?.providerKey ?? "",
       target,
       url: s.url,
       enabled: s.enabled,
@@ -158,7 +181,7 @@ export async function listPricingSourceHealth(): Promise<PricingSourceHealth[]> 
       consecutiveFails: s.consecutiveFails,
       lastRunAt: s.lastRunAt,
       nextRunAt: s.nextRunAt,
-      rows: (target === "plan" ? planCounts.get(vendor) : modelCounts.get(vendor)) ?? emptyCounts(),
+      rows: (target === "plan" ? planCounts.get(key) : modelCounts.get(key)) ?? emptyCounts(),
       lastCapture:
         snap === undefined
           ? null
