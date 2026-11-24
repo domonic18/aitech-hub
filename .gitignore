@@ -75,3 +75,6 @@ __pycache__/
 !src/components/admin/data/**
 !src/app/(admin)/admin/data/
 !src/app/(admin)/admin/data/**
+
+# 过程性文档不入库(2026-11-24 站长口径):迭代计划等留在本地工作目录
+docs/plan/

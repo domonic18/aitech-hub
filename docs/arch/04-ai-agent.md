@@ -291,7 +291,7 @@
 | `update_pin` | 改贴图(标题/轻文字/阅读原文/裁剪档);已同步或已发布禁止直编 | `src/lib/mcp/tools.pins.ts` → `pins/repo.ts#updatePin` |
 | `list_drafts` | 列站内草稿(只看草稿态稿件:slug / 标题 / 分类 / 创作方式 / 更新时间) | `src/lib/mcp/tools.content.ts` → `content/posts-admin.ts#listPostsAdmin` |
 
-**M75 运维面(2026-11-19,25 → 29 只)**:给站长本地的**运营助手 agent** 用——巡查采集健康度(价格采集 / 文章渠道 / 视频博主 / 队列与 AI 管线),并由 agent 侧自己发飞书周报(站内不开放代发消息工具)。沿用既有分工(能力在 service 层,MCP 直调 service;HTTP 路由的「PAT 拒」不动)。
+**M75 运维面(2026-11-19,25 → 29 只;M76 30 只;M79 31 只)**:给站长本地的**运营助手 agent** 用——巡查采集健康度(价格采集 / 文章渠道 / 视频博主 / 队列与 AI 管线),并由 agent 侧自己发飞书周报(站内不开放代发消息工具)。沿用既有分工(能力在 service 层,MCP 直调 service;HTTP 路由的「PAT 拒」不动)。
 
 | 工具 | 职责 | 落点 |
 | --- | --- | --- |
@@ -300,6 +300,7 @@
 | `trigger_recovery` | 手动重采(**仅入队**):渠道(含牌价源)/ 视频博主 / 博主回补 / GitHub 仓库;同目标 5 分钟冷却 | `telegram/channels-admin.ts#triggerChannelCrawl` · `bloggers-admin.ts#triggerBloggerCrawl` · `github/repos-admin.ts#triggerRepoSync` |
 | `review_model_pricing` | 牌价上架/下架(批量):上架须 `confirm=true` + reason + 逐条给 ids;带「待复核」标或源不健康的行被闸门拒;下架为止损不受这两道闸 | `src/lib/pricing/admin-model.ts#bulkReviewModelPricing` + 闸门 `src/lib/pricing/review-gate.ts#decidePricingReview` |
 | `offline_pricing_source` | 牌价按源批量下架(M76,止损):按 sourceKey 把该源名下已上架的行置 disabled;人工定稿行与待终审行不动;**只下架不上架**,该不该下架由 agent 侧判断(MCP 只执行) | `src/lib/pricing/offline-source.ts#offlinePricingSource` + `src/lib/pricing/health.ts#listPricingSourceHealth` |
+| `list_model_pricing` | 牌价行巡查只读(M79):按状态/厂商筛模型牌价行(缺省 pending 待审队列),带【待复核】标、人工定稿标、数据截至日与**对应源健康**(vendor + model 产出面,同 review 工具口径)——运营助手自助「巡查 → 圈行 → review_model_pricing 分批上架」的眼睛;入参有界(limit ≤100),健康读侧走 45s 缓存 | `src/lib/mcp/tools.ops.pricing.ts`(直查 `model_pricing` 只读)+ `listPricingSourceHealth` |
 
 **运维面红线**:动作面刻意最小(不开放删除/停用源/重跑任务等不可逆动作);判定阈值集中在 `health-report.ts` 纯函数(与后台板面同源口径);只读工具入参有界 + 快照 45s 进程内缓存;MCP 端点无配额,只读暂不单独限频(admin 权限 + 有界入参 + 缓存),上线后按审计日志再定;建议给巡查 agent **单独签一枚 PAT**(可独立吊销、审计可分辨);牌价上架与下架的口径统一——源↔行按 **vendor + 产出面**解析(同厂商的模型源与套餐源不串),**人工定稿行两条下架路径都不动**。
 

@@ -20,6 +20,7 @@ import { registerTools, type McpToolDef } from "./registry";
 import { contentTools } from "./tools.content";
 import { feedTools } from "./tools.feed";
 import { opsActionTools } from "./tools.ops.actions";
+import { opsPricingTools } from "./tools.ops.pricing";
 import { opsReadTools } from "./tools.ops";
 import { pinTools } from "./tools.pins";
 
@@ -73,6 +74,9 @@ const SERVER_INSTRUCTIONS = [
   "文章 → 公众号草稿:sync_article_to_wechat(postId) → get_distribute_job 轮询;",
   "推的是草稿箱不是发布,发布由站长在后台人工点;render_wechat_preview(postId) 可预览所见即所得。",
   "运营巡查面(M75,给运维助手 agent;周报在 agent 侧发,站内不管发消息):",
+  "list_model_pricing —— 模型牌价行清单(按状态/厂商筛,缺省 pending 待审队列):",
+  "返回行 id、价格、状态、是否带【待复核】标、是否人工定稿、对应采集源健康;",
+  "巡查牌位与圈定待审行都用它——上架前先看 hasRecheckMark 与 sourceHealth。",
   "get_health_snapshot —— 采集健康度总览(牌价源/文章渠道/视频博主/队列与 AI 管线四域)+",
   "结构化问题清单 problems[](critical=源已挂或数据已脏,warning=降级或积压),每条带证据与建议;",
   "get_health_failures —— 一段时间内的失败明细与错误原文(写周报时列具体源与错因)。",
@@ -103,5 +107,12 @@ export function createMcpServer(actor: AdminActor): McpServer {
 
 /** 全量工具表(装配口径:只读面 → 文章面 → 贴图面 → 运维面) */
 export function allTools(): McpToolDef[] {
-  return [...feedTools, ...contentTools, ...pinTools, ...opsReadTools, ...opsActionTools];
+  return [
+    ...feedTools,
+    ...contentTools,
+    ...pinTools,
+    ...opsReadTools,
+    ...opsPricingTools,
+    ...opsActionTools,
+  ];
 }
