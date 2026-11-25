@@ -3,7 +3,9 @@
  * 能力)。读侧 getOnlinePresence 直读 Redis ZSET(5 分钟滑窗),无 flush 延迟;
  * 每人一行:登录用户显示用户名/邮箱,未登录显示 IP(2026-10-14 用户定调),
  * 并列最后活跃页面与相对时间(页面为 RSC,随 admin 页每次请求刷新)。
+ * 2026-11-25:未登录 IP 下加归属地短标签(内存查表,查不到不标)。
  */
+import { ipRegionLabel } from "@/lib/stats/ip-region";
 import type { OnlinePresence } from "@/lib/stats/online";
 
 function relTime(ms: number): string {
@@ -39,32 +41,43 @@ export default function OnlinePanel({
               </tr>
             </thead>
             <tbody>
-              {presence.visitors.slice(0, 20).map((v) => (
-                <tr
-                  key={`${v.kind}:${v.label}:${v.path}`}
-                  className="border-b border-line/60 last:border-b-0"
-                >
-                  <td className="max-w-0 px-3 py-2">
-                    <div className="truncate" title={v.kind === "user" ? v.label : `IP ${v.label}`}>
-                      {v.kind === "user" ? (
-                        <span className="text-text-1">{v.label}</span>
-                      ) : (
-                        <span className="font-mono text-[12px] text-text-2">
-                          {v.label || "匿名"}
-                        </span>
+              {presence.visitors.slice(0, 20).map((v) => {
+                const region = v.kind === "guest" ? ipRegionLabel(v.label) : null;
+                return (
+                  <tr
+                    key={`${v.kind}:${v.label}:${v.path}`}
+                    className="border-b border-line/60 last:border-b-0"
+                  >
+                    <td className="max-w-0 px-3 py-2">
+                      <div
+                        className="truncate"
+                        title={v.kind === "user" ? v.label : `IP ${v.label}`}
+                      >
+                        {v.kind === "user" ? (
+                          <span className="text-text-1">{v.label}</span>
+                        ) : (
+                          <span className="font-mono text-[12px] text-text-2">
+                            {v.label || "匿名"}
+                          </span>
+                        )}
+                      </div>
+                      {region && (
+                        <div className="truncate text-[11px] leading-tight text-text-3">
+                          {region}
+                        </div>
                       )}
-                    </div>
-                  </td>
-                  <td className="max-w-0 px-3 py-2">
-                    <div className="truncate font-mono text-[12px] text-text-1" title={v.path}>
-                      {v.path}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-[12px] text-text-3">
-                    {relTime(v.lastActiveMs)}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="max-w-0 px-3 py-2">
+                      <div className="truncate font-mono text-[12px] text-text-1" title={v.path}>
+                        {v.path}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-[12px] text-text-3">
+                      {relTime(v.lastActiveMs)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
