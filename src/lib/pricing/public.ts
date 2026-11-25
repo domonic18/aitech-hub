@@ -8,6 +8,7 @@ import { DAY_MS } from "@/lib/datetime";
 
 import { inContextBand, parseContextTokens, type ContextBandId } from "./context";
 import type { ApiProtocol } from "./protocols";
+import type { TierParamsWithSource } from "./params";
 
 /** ⚠️ 本模块必须保持**零库依赖**(无 db / prerender-safe / env):客户端组件
  *  (PricingExplorer 一族)直接引这里的纯函数与类型,读库那半边住 `./read.ts`。
@@ -44,6 +45,13 @@ export interface PublicModelRow {
   providerKind: string | null;
   /** 模型字典键(M74 跨厂商归一);未归一为 null */
   modelDictKey: string | null;
+  /** 能力归一键(P1,`base::task`):同型号跨渠道(官方/聚合)比价聚合优先用它;
+   *  未算出/冲突待裁为 null,回落 modelDictKey */
+  modelGroupKey: string | null;
+  /** 模型字典展示名(P1 透出;null 回落 modelDictKey) */
+  modelDisplayName: string | null;
+  /** 模型产品线(字典表 family;null=未推导) */
+  modelFamily: string | null;
   /** 模型模态(字典表);未归一为 null */
   modality: string | null;
   /** 行级计价单位(批G):per_1m_tokens | per_image | per_second | …;
@@ -65,6 +73,8 @@ export interface PublicTierRow {
   maxTokens: number | null;
   unit: string;
   currency: string;
+  /** 档位参数(P3);null=未解析/无需解析 */
+  params: TierParamsWithSource | null;
 }
 
 // ---------- M74 批C:筛选维度与排序(纯函数,单测锚) ----------

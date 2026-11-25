@@ -21,8 +21,10 @@ import { contextTokensFromTiers, formatContextTokens } from "./context";
 import { isFreePrices, isFreeTiers, type PriceSet } from "./rules";
 import { getOrCreateModel, getOrCreateProvider } from "./model-registry";
 import { PROVIDER_SEEDS, providerKeyForVendor } from "./provider-registry";
+import { parseTierParams } from "./params";
+import { resolutionOf } from "./resolution";
 import { replaceTiers } from "./tiers";
-import { normalizedUnit, tokenUnitFactor } from "./units";
+import { isTokenUnit, normalizedUnit, tokenUnitFactor } from "./units";
 import type { ModelPrefillRow, ModelTierPrefill } from "./crawlers";
 
 /** 档位价 → 判定形状 */
@@ -102,17 +104,24 @@ async function resolveProviderId(row: ModelPrefillRow): Promise<bigint | null> {
 }
 
 /** 模型归一:原始模型键 → 模型字典 id;归一后为空 → null(整行跳过)。
- *  行内源显式模态标注随之传入——getOrCreateModel 内部归并并做 text→非text 升级 */
+ *  行内源显式模态标注与 providerKey 随之传入——getOrCreateModel 内部归并模态
+ *  (text→非text 升级)并按源作用域别名算 group_key(P1) */
 async function resolveModelId(row: ModelPrefillRow): Promise<bigint | null> {
   try {
-    const model = await getOrCreateModel({ rawKey: row.modelKey, modality: row.modality });
+    const model = await getOrCreateModel({
+      rawKey: row.modelKey,
+      modality: row.modality,
+      providerKey: resolveProviderKey(row),
+    });
     return model.id;
   } catch {
     return null; // 模型键归一后为空:不落脏行
   }
 }
 
-/** 档位写入(档位已归一:token 系一律「元/百万 tokens」) */
+/** 档位写入(档位已归一:token 系一律「元/百万 tokens」)。
+ *  P3:模态计价档(按张/秒/分钟)解析标签写 params(分辨率/音频/时长/帧率),
+ *  token 系档位不解析(阶梯区间已有 min/max 列承载) */
 async function writeTiers(
   modelPricingId: bigint,
   tiers: ModelTierPrefill[],
@@ -130,6 +139,7 @@ async function writeTiers(
       maxTokens: t.maxTokens,
       unit: t.unit,
       currency: row.currency,
+      params: isTokenUnit(t.unit) ? null : parseTierParams(t.tierLabel, resolutionOf(t.tierLabel)),
       dataAsOf: row.dataAsOf,
       sourceUrl: row.sourceUrl,
     })),

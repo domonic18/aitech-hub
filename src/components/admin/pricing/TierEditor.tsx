@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import type { ModelPricingRow } from "@/lib/pricing/admin-model";
 import { TIER_UNITS } from "@/lib/pricing/constants";
+import type { TierParams } from "@/lib/pricing/params";
 
 /** 编辑中的一档 */
 interface Draft {
@@ -25,6 +26,17 @@ interface Draft {
 }
 
 type RowTier = NonNullable<ModelPricingRow["tiers"]>[number];
+
+function paramsTag(p: TierParams | null): string {
+  if (p === null) return "";
+  const parts: string[] = [];
+  if (p.resolution) parts.push(p.resolution);
+  if (p.hasAudio === true) parts.push("有声");
+  if (p.hasAudio === false) parts.push("无声");
+  if (p.durationSec !== null) parts.push(`${p.durationSec}s`);
+  if (p.fps !== null) parts.push(`${p.fps}fps`);
+  return parts.join(" · ");
+}
 
 function toDraft(t: RowTier): Draft {
   return {
@@ -189,6 +201,11 @@ export function TierEditor({
             >
               删
             </button>
+            {paramsTag(tiers[i]?.params) !== "" && (
+              <div className="w-full text-[10px] text-text-3">
+                参数: {paramsTag(tiers[i]?.params)}
+              </div>
+            )}
           </div>
         ))}
         {drafts.length === 0 && <p className="text-[11px] text-text-3">无档位(该行只有基准价)</p>}

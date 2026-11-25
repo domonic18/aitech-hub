@@ -25,6 +25,7 @@ import * as cheerio from "cheerio";
 import type { SnapshotSink } from "../../collect/snapshot-capture";
 import { snapshotHtml } from "../render-fetch";
 import { pushPrefillTier, type ModelPrefillRow, type ModelTierPrefill } from "../crawlers";
+import { unitOfTableLike } from "../collect/units";
 
 import { parsePriceEntries, pickBaseEntry } from "./ark-image-price";
 
@@ -85,19 +86,9 @@ function condOf(text: string): { label: string; min: number | null; max: number 
   return { label: t, min: null, max: null };
 }
 
-/**
- * 表级单位识别(批G):单位写在表头格里(「元/M token」「元/张」「元/秒」)。token 表按
- * 列位收两价;按张/按秒表收单价格(生成价落 outputPrice)。**认不出任何单位线索 →
- * null,整表跳过**(单位不明的价格混进 token 比价就是污染)。
- */
+/** 表级单位识别(collect 单位闸):表头格识别,认不出 → null 整表跳过 */
 function unitOfTable(headers: string[]): string | null {
-  const compact = headers.join("").replace(/\s+/g, "");
-  if (compact.includes("元/张")) return "per_image";
-  if (compact.includes("元/秒")) return "per_second";
-  if (compact.includes("元/分钟")) return "per_minute";
-  if (compact.includes("元/Mtoken")) return "per_1m_tokens";
-  if (compact.includes("元/Ktoken")) return "per_1k_tokens";
-  return null;
+  return unitOfTableLike(headers, []);
 }
 
 /** token 系单位(双价语义);其余为单价格(生成价)语义 */
