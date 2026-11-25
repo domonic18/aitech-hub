@@ -21,8 +21,10 @@ import { contextTokensFromTiers, formatContextTokens } from "./context";
 import { isFreePrices, isFreeTiers, type PriceSet } from "./rules";
 import { getOrCreateModel, getOrCreateProvider } from "./model-registry";
 import { PROVIDER_SEEDS, providerKeyForVendor } from "./provider-registry";
+import { parseTierParams } from "./params";
+import { resolutionOf } from "./resolution";
 import { replaceTiers } from "./tiers";
-import { normalizedUnit, tokenUnitFactor } from "./units";
+import { isTokenUnit, normalizedUnit, tokenUnitFactor } from "./units";
 import type { ModelPrefillRow, ModelTierPrefill } from "./crawlers";
 
 /** 档位价 → 判定形状 */
@@ -117,7 +119,9 @@ async function resolveModelId(row: ModelPrefillRow): Promise<bigint | null> {
   }
 }
 
-/** 档位写入(档位已归一:token 系一律「元/百万 tokens」) */
+/** 档位写入(档位已归一:token 系一律「元/百万 tokens」)。
+ *  P3:模态计价档(按张/秒/分钟)解析标签写 params(分辨率/音频/时长/帧率),
+ *  token 系档位不解析(阶梯区间已有 min/max 列承载) */
 async function writeTiers(
   modelPricingId: bigint,
   tiers: ModelTierPrefill[],
@@ -135,6 +139,7 @@ async function writeTiers(
       maxTokens: t.maxTokens,
       unit: t.unit,
       currency: row.currency,
+      params: isTokenUnit(t.unit) ? null : parseTierParams(t.tierLabel, resolutionOf(t.tierLabel)),
       dataAsOf: row.dataAsOf,
       sourceUrl: row.sourceUrl,
     })),

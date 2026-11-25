@@ -45,6 +45,16 @@ export function resolutionRank(label: string | null): number | null {
 }
 
 /**
+ * 档位上生效的分辨率:DB 显式参数优先,空则按标签兜底解析。
+ */
+export function tierResolution(tier: {
+  tierLabel: string;
+  params?: { resolution?: string | null } | null;
+}): string | null {
+  return tier.params?.resolution ?? resolutionOf(tier.tierLabel);
+}
+
+/**
  * 行价对应的分辨率:价格与行价相等的档位里,取**分辨率最低**的那档。
  *
  * 为什么不取「第一档」:档位在库里的排序是档位名(「2k」排在「全球·1k」前),
@@ -52,18 +62,22 @@ export function resolutionRank(label: string | null): number | null {
  */
 export function rowResolution(row: {
   outputPrice: number | null;
-  tiers: ReadonlyArray<{ tierLabel: string; outputPrice: number | null }>;
+  tiers: ReadonlyArray<{
+    tierLabel: string;
+    outputPrice: number | null;
+    params?: { resolution?: string | null } | null;
+  }>;
 }): string | null {
   if (row.outputPrice === null) return null;
   const same = row.tiers.filter((t) => t.outputPrice !== null && t.outputPrice === row.outputPrice);
-  const withRes = same.filter((t) => resolutionOf(t.tierLabel) !== null);
+  const withRes = same.filter((t) => tierResolution(t) !== null);
   if (withRes.length === 0) return null;
   const best = withRes.reduce((a, b) => {
-    const ar = resolutionRank(a.tierLabel);
-    const br = resolutionRank(b.tierLabel);
+    const ar = resolutionRank(tierResolution(a));
+    const br = resolutionRank(tierResolution(b));
     if (ar === null) return b;
     if (br === null) return a;
     return br < ar ? b : a;
   });
-  return resolutionOf(best.tierLabel);
+  return tierResolution(best);
 }

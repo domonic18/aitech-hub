@@ -8,6 +8,7 @@ import { DAY_MS } from "@/lib/datetime";
 
 import { inContextBand, parseContextTokens, type ContextBandId } from "./context";
 import type { ApiProtocol } from "./protocols";
+import type { TierParamsWithSource } from "./params";
 
 /** ⚠️ 本模块必须保持**零库依赖**(无 db / prerender-safe / env):客户端组件
  *  (PricingExplorer 一族)直接引这里的纯函数与类型,读库那半边住 `./read.ts`。
@@ -72,6 +73,8 @@ export interface PublicTierRow {
   maxTokens: number | null;
   unit: string;
   currency: string;
+  /** 档位参数(P3);null=未解析/无需解析 */
+  params: TierParamsWithSource | null;
 }
 
 // ---------- M74 批C:筛选维度与排序(纯函数,单测锚) ----------

@@ -8,7 +8,10 @@
  * 粒度 = **一条牌价行内的某个档位**:同一模型不同提供商的档位结构不同
  * (有的分上下文档、有的分时段),所以档位挂在行上,不在模型上。
  */
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+
+import type { TierParams } from "./params";
 
 /** 档位入参 */
 export interface TierInput {
@@ -25,6 +28,8 @@ export interface TierInput {
   unit?: string | null;
   /** 币种(CNY | USD,随价格走) */
   currency: string;
+  /** 档位参数(P3):模态计价档(按张/秒/分钟)由落库路径解析标签写入 */
+  params?: TierParams | null;
   /** 数据截稿 */
   dataAsOf: Date;
   /** 溯源页 */
@@ -43,6 +48,7 @@ export interface TierRow {
   maxTokens: number | null;
   unit: string;
   currency: string;
+  params: TierParams | null;
   dataAsOf: Date;
   sourceUrl: string;
   note: string | null;
@@ -69,6 +75,10 @@ export async function replaceTiers(modelPricingId: bigint, tiers: TierInput[]): 
         maxTokens: t.maxTokens ?? null,
         unit: t.unit ?? UNIT_DEFAULT,
         currency: t.currency,
+        params:
+          t.params === null || t.params === undefined
+            ? Prisma.DbNull
+            : (t.params as unknown as Prisma.InputJsonValue),
         dataAsOf: t.dataAsOf,
         sourceUrl: t.sourceUrl,
         note: t.note ?? null,
@@ -99,6 +109,7 @@ export async function readTiers(modelPricingIds: bigint[]): Promise<Map<string, 
       maxTokens: r.maxTokens,
       unit: r.unit,
       currency: r.currency,
+      params: (r.params as TierParams | null) ?? null,
       dataAsOf: r.dataAsOf,
       sourceUrl: r.sourceUrl,
       note: r.note,

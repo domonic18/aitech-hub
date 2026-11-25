@@ -14,7 +14,9 @@ import { prerenderSafe } from "@/lib/prerender-safe";
 import { groupOf } from "./canon";
 import { contextTokensFromTiers, formatContextTokens } from "./context";
 import type { PublicModelRow, PublicPlanRow, PublicPricing, PublicTierRow } from "./public";
+import { tierParamsWithFallback } from "./params";
 import { resolveApiProtocols } from "./protocols";
+import { resolutionOf } from "./resolution";
 import { readTiers } from "./tiers";
 import { normalizedUnit, tokenUnitFactor } from "./units";
 
@@ -73,6 +75,7 @@ export async function listPublicPricing(): Promise<PublicPricing> {
             maxTokens: t.maxTokens,
             unit: normalizedUnit(t.unit),
             currency: t.currency,
+            params: tierParamsWithFallback(t.params, t.tierLabel, resolutionOf(t.tierLabel)),
           };
         });
         // 上下文长度:源没给时按档位的输入长度阶梯推导(阶梯上界=上下文封顶)
