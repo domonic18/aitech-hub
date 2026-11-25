@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { bufferKey, parseBufferKey } from "./keys";
 
 describe("bufferKey / parseBufferKey 互逆", () => {
-  it.each(["visit", "ref", "client", "post", "geo"] as const)("%s 类往返一致", (kind) => {
+  it.each(["visit", "ref", "client", "post", "geo", "region"] as const)("%s 类往返一致", (kind) => {
     const key = bufferKey(kind, "2026-11-01");
     expect(key).toBe(`stats:buf:${kind}:2026-11-01`);
     expect(parseBufferKey(key)).toEqual({ kind, day: "2026-11-01" });

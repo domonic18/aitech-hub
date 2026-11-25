@@ -1,7 +1,7 @@
 /**
  * 统计缓冲落库(worker 每 60s 调用,批C 从 service 平移):
  * 读取 Redis 日缓冲键(stats:buf:*),RENAME 私有键后落聚合表
- * (stats_visit/referrer/page/client/post_view_daily/geo_daily + views_count 累加)。
+ * (stats_visit/referrer/page/client/region/post_view_daily/geo_daily + views_count 累加)。
  * 键形契约只在 keys.ts 里定义:本文件经 parseBufferKey 反解,写侧经 bufferKey 构造,
  * 两侧不再各持一份下标。(复杂聚合 SQL 集中本文件,$executeRaw 仅 service 层内合法,
  * arch/05-services §2。)
@@ -110,6 +110,9 @@ async function applyBufferKey(key: string, fields: Record<string, string>): Prom
     case "geo":
       await upsertGeo(buf.day, fields);
       return 0;
+    case "region":
+      await upsertRegion(buf.day, fields);
+      return 0;
   }
 }
 
@@ -211,6 +214,35 @@ async function upsertGeo(day: string, fields: Record<string, string>): Promise<v
       VALUES (${day}::date, ${r.surface}, ${r.botName.slice(0, 50)}, ${r.postId.slice(0, 20)}, ${r.pv})
       ON CONFLICT (stat_date, surface, bot_name, post_id)
       DO UPDATE SET pv = stats_geo_daily.pv + EXCLUDED.pv`,
+    ),
+  );
+}
+
+/**
+ * 访客地区分布(2026-11-25 方案① 一期):缓冲字段 `country|province|pv|uv`
+ * (国内省级、境外 province 空串),与 ref 同口径增量落 stats_region_daily;
+ * 未解析到地区的 PV 不入本表(站点总口径不受影响)。
+ */
+async function upsertRegion(day: string, fields: Record<string, string>): Promise<void> {
+  const rows = Object.entries(fields)
+    .map(([k, v]) => {
+      const [country, province, metric] = k.split("|");
+      return {
+        country,
+        province,
+        pv: metric === "pv" ? num(v) : 0,
+        uv: metric === "uv" ? num(v) : 0,
+      };
+    })
+    .filter((r) => r.pv > 0 || r.uv > 0);
+  if (rows.length === 0) return;
+  await prisma.$transaction(
+    rows.map(
+      (r) => prisma.$executeRaw`
+      INSERT INTO stats_region_daily (stat_date, country, province, pv, uv)
+      VALUES (${day}::date, ${r.country.slice(0, 64)}, ${r.province.slice(0, 64)}, ${r.pv}, ${r.uv})
+      ON CONFLICT (stat_date, country, province)
+      DO UPDATE SET pv = stats_region_daily.pv + EXCLUDED.pv, uv = stats_region_daily.uv + EXCLUDED.uv`,
     ),
   );
 }

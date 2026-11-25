@@ -23,10 +23,18 @@ export const FLUSHING_TTL_SECONDS = 300;
 
 const BUF_PREFIX = "stats:buf:";
 
-export type BufferKind = "visit" | "ref" | "page" | "client" | "post" | "geo";
+export type BufferKind = "visit" | "ref" | "page" | "client" | "post" | "geo" | "region";
 export type PageMetric = "pv" | "uv";
 
-const BUFFER_KINDS: readonly BufferKind[] = ["visit", "ref", "page", "client", "post", "geo"];
+const BUFFER_KINDS: readonly BufferKind[] = [
+  "visit",
+  "ref",
+  "page",
+  "client",
+  "post",
+  "geo",
+  "region",
+];
 const PAGE_METRICS: readonly PageMetric[] = ["pv", "uv"];
 
 /**
@@ -44,7 +52,7 @@ export function bufferKey(kind: BufferKind, day: string, metric?: PageMetric): s
 export const BUFFER_SCAN_MATCH = `${BUF_PREFIX}*`;
 
 export type BufferDescriptor =
-  | { kind: "visit" | "ref" | "client" | "post" | "geo"; day: string }
+  | { kind: "visit" | "ref" | "client" | "post" | "geo" | "region"; day: string }
   | { kind: "page"; day: string; metric: PageMetric };
 
 /**

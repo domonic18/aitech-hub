@@ -91,6 +91,43 @@ describe("regionLabel(拼接口径)", () => {
   });
 });
 
+describe("regionPartsOf(聚合口径)", () => {
+  it("国内取省(市级不入聚合)", async () => {
+    const { regionPartsOf } = await import("./ip-region");
+    expect(
+      regionPartsOf({
+        country: { name: "中国" },
+        subdivisions: [{ name: "广东省" }],
+        city: { name: "深圳市" },
+      }),
+    ).toEqual({ country: "中国", province: "广东省" });
+  });
+
+  it("国内缺省 → province null(入表「中国」未细化行)", async () => {
+    const { regionPartsOf } = await import("./ip-region");
+    expect(regionPartsOf({ country: { name: "中国" } })).toEqual({
+      country: "中国",
+      province: null,
+    });
+  });
+
+  it("境外折叠国家级:subdivision 不进聚合", async () => {
+    const { regionPartsOf } = await import("./ip-region");
+    expect(
+      regionPartsOf({
+        country: { name: "United States" },
+        subdivisions: [{ name: "California" }],
+      }),
+    ).toEqual({ country: "United States", province: null });
+  });
+
+  it("内网 Reserved / 未命中 → null", async () => {
+    const { regionPartsOf } = await import("./ip-region");
+    expect(regionPartsOf({})).toBeNull();
+    expect(regionPartsOf(null)).toBeNull();
+  });
+});
+
 describe("ipRegionLabel(降级面)", () => {
   it("命中 → 标签;ip 原样透传(含 ::ffff:,归一由库选项负责)", async () => {
     const lookup = vi.fn().mockReturnValue({
@@ -128,6 +165,22 @@ describe("ipRegionLabel(降级面)", () => {
     ipRegionLabel("1.2.3.4");
     ipRegionLabel("5.6.7.8");
     expect(IP2Region).toHaveBeenCalledTimes(1);
+  });
+
+  it("ipRegionParts 与 ipRegionLabel 同一降级面(聚合口径出口)", async () => {
+    const lookup = vi.fn().mockReturnValue({
+      country: { name: "中国" },
+      subdivisions: [{ name: "广东省" }],
+      city: { name: "深圳市" },
+    });
+    mockLookup(lookup);
+    const { ipRegionParts } = await loadModule();
+    expect(ipRegionParts("120.24.78.68")).toEqual({ country: "中国", province: "广东省" });
+    expect(ipRegionParts("")).toBeNull();
+    lookup.mockImplementation(() => {
+      throw new Error("INVALID_IP");
+    });
+    expect(ipRegionParts("abc")).toBeNull();
   });
 
   it("构造失败 → null 且 warn 一次,进程内不再重试", async () => {
