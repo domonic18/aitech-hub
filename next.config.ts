@@ -77,6 +77,10 @@ const nextConfig: NextConfig = {
       // trailingSlash 规范化先于 redirects 执行,canonical 形态 /feed/ 必须显式列出
       { source: "/feed", destination: "/feed.xml", statusCode: 301 },
       { source: "/feed/", destination: "/feed.xml", statusCode: 301 },
+      // 旧 WP 首页形态承接(/?p=<wpId> 由 middleware → /legacy 路由查库 301):
+      // /index.php 纯静态归一,301 与 /feed 同口径;双斜杠形态都列防双跳
+      { source: "/index.php", destination: "/", statusCode: 301 },
+      { source: "/index.php/", destination: "/", statusCode: 301 },
       // 侧栏精简批①(2026-10-14):配置类页并入 /admin/settings 壳、渠道并入
       // /admin/spider 壳,旧路径书签 308 承接(两种斜杠形态都列,防双跳)
       { source: "/admin/email", destination: "/admin/settings/email/", statusCode: 308 },

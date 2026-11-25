@@ -9,10 +9,18 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { LEGACY_CACHE_TTL_SECONDS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis";
-import { buildLegacyPath, decideLegacy, type LegacyHit, type LegacyLookup } from "./legacy-decide";
+import {
+  buildLegacyPath,
+  decideLegacy,
+  decideWpPost,
+  wpQueryTarget,
+  type LegacyHit,
+  type LegacyLookup,
+  type WpPostLookup,
+} from "./legacy-decide";
 
-export { buildLegacyPath, decideLegacy } from "./legacy-decide";
-export type { LegacyHit, LegacyLookup } from "./legacy-decide";
+export { buildLegacyPath, decideLegacy, decideWpPost, wpQueryTarget } from "./legacy-decide";
+export type { LegacyHit, LegacyLookup, WpPostLookup } from "./legacy-decide";
 
 /** 完整旧路径(以 / 包裹)查映射;Redis 值 "-" 记负缓存 */
 export async function lookupLegacyPath(oldPath: string): Promise<LegacyLookup> {
@@ -46,4 +54,24 @@ export async function legacyRedirectOrNotFound(segments: string[]): Promise<neve
     permanentRedirect((lookup as LegacyHit).targetUrl as string);
   }
   notFound();
+}
+
+/** 旧 WP query 形态 /?p=<wpId> 反查文章(content_post.wp_post_id 唯一);同表缓存+负缓存防穿透 */
+export async function lookupWpPost(wpId: bigint): Promise<WpPostLookup> {
+  const key = `legacy:wp:${wpId}`;
+  const cached = await redis.get(key).catch(() => null);
+  if (cached !== null) {
+    return cached === "-" ? "miss" : (JSON.parse(cached) as WpPostLookup);
+  }
+  const row = await prisma.post.findUnique({
+    where: { wpPostId: wpId },
+    select: { id: true, slug: true, status: true },
+  });
+  const value: WpPostLookup = row
+    ? { id: row.id.toString(), slug: row.slug, status: row.status }
+    : "miss";
+  await redis
+    .set(key, value === "miss" ? "-" : JSON.stringify(value), "EX", LEGACY_CACHE_TTL_SECONDS)
+    .catch(() => undefined);
+  return value;
 }
