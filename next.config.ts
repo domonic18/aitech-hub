@@ -5,6 +5,18 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   /** Docker 单镜像部署(standard/02-cicd-deployment §3) */
   output: "standalone",
+  // ip2region 经 __filename/import.meta.url 解析内置 XDB,打进 webpack chunk
+  // 会丢数据文件路径;外部化保持运行时从 node_modules 加载(编译产物为
+  // ESM 动态 import,standalone 走 dist/esm)。文件追踪对 URL 构造引用不
+  // 保证覆盖:显式带上 v4 数据文件(统计页 IP 归属地),显式排除 v6 库
+  // (families 只配 v4,37MB 永不读取,给镜像/推送瘦身)
+  serverExternalPackages: ["ip2region"],
+  outputFileTracingIncludes: {
+    "/admin": ["./node_modules/ip2region/data/ip2region_v4.xdb"],
+  },
+  outputFileTracingExcludes: {
+    "/admin": ["./node_modules/ip2region/data/ip2region_v6.xdb"],
+  },
   async redirects() {
     return [
       // IA v5 板定(2026-10-23):数据中心收敛为采集执行域(源管理/计划/运行),

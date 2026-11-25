@@ -4,10 +4,12 @@
  * 访客身份列不出(哈希仅排查用),来源 direct 折叠为「直达」。
  * 窄屏降级(2026-10-05):定宽列合计 576px,375px 下「页面」挤压列归零
  * (同热门页面表)——手机只留 时间/页面 两列,IP/来源/环境 sm 起恢复。
+ * 2026-11-25:IP 列下加归属地短标签(内存查表,内网/查不到不标)。
  */
 import Link from "next/link";
 
 import { formatCnDateTime } from "@/lib/datetime";
+import { ipRegionLabel } from "@/lib/stats/ip-region";
 import type { RecentVisitRow } from "@/lib/stats/queries-log";
 
 export default function RecentVisitsTable({
@@ -36,31 +38,42 @@ export default function RecentVisitsTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-line/60 last:border-b-0 hover:bg-panel-2">
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-text-3">
-                    {formatCnDateTime(r.createdAt)}
-                  </td>
-                  <td className="max-w-[11rem] px-3 py-2 sm:max-w-0">
-                    <Link
-                      href={r.path}
-                      className="block truncate text-text-1 hover:text-accent-hover"
-                      title={r.path}
-                    >
-                      {r.path}
-                    </Link>
-                  </td>
-                  <td className="hidden px-3 py-2 font-mono text-xs text-text-2 sm:table-cell">
-                    {r.ip}
-                  </td>
-                  <td className="hidden px-3 py-2 text-xs text-text-2 sm:table-cell">
-                    {r.sourceClass === "direct" ? "直达" : r.sourceName}
-                  </td>
-                  <td className="hidden px-3 py-2 text-xs text-text-3 sm:table-cell">
-                    {r.browser} · {r.os} · {r.deviceType}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const region = ipRegionLabel(r.ip);
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-b border-line/60 last:border-b-0 hover:bg-panel-2"
+                  >
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-text-3">
+                      {formatCnDateTime(r.createdAt)}
+                    </td>
+                    <td className="max-w-[11rem] px-3 py-2 sm:max-w-0">
+                      <Link
+                        href={r.path}
+                        className="block truncate text-text-1 hover:text-accent-hover"
+                        title={r.path}
+                      >
+                        {r.path}
+                      </Link>
+                    </td>
+                    <td className="hidden px-3 py-2 font-mono text-xs text-text-2 sm:table-cell">
+                      {r.ip}
+                      {region && (
+                        <span className="block text-[11px] leading-tight text-text-3">
+                          {region}
+                        </span>
+                      )}
+                    </td>
+                    <td className="hidden px-3 py-2 text-xs text-text-2 sm:table-cell">
+                      {r.sourceClass === "direct" ? "直达" : r.sourceName}
+                    </td>
+                    <td className="hidden px-3 py-2 text-xs text-text-3 sm:table-cell">
+                      {r.browser} · {r.os} · {r.deviceType}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
