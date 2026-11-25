@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/site/PageHeader";
 import type { PriceBandId, PublicPricing } from "@/lib/pricing/public";
+import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 import {
   decodePricingQuery,
   DEFAULT_PRICING_QUERY,
@@ -40,10 +41,13 @@ const COMPARE_LIMIT = 4;
 export default function PricingExplorer({
   data,
   changeCount = 0,
+  leaderboardMap = new Map(),
 }: {
   data: PublicPricing;
   /** 近 90 天降价记录条数(服务端查好传入,只做入口链接的文案) */
   changeCount?: number;
+  /** 模型外部榜单角标(P5) */
+  leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
   const pathname = usePathname();
 
@@ -181,6 +185,9 @@ export default function PricingExplorer({
                 onSortChange={(v) => updateModelQuery({ sort: v })}
                 view={modelQuery.view}
                 onViewChange={(v) => updateModelQuery({ view: v })}
+                scenario={modelQuery.scenario}
+                onScenarioChange={(v) => updateModelQuery({ scenario: v })}
+                leaderboardMap={leaderboardMap}
               />
               {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}
               <p className="mt-3 text-[11.5px] text-text-3">

@@ -13,6 +13,7 @@
  * 完全免费的老开关)按 `full` 承接,老链接不失效。
  */
 import type { ContextBandId } from "./context";
+import { normalizeScenarioId, type PricingScenarioId } from "./scenario";
 import type { FreeScopeId, ModelCatId, ModelSortId, PriceBandId } from "./public";
 
 /** 模型区视图:列表(逐行列价)| 比价(同模型跨提供商并排 + 散点/条形图) */
@@ -43,6 +44,8 @@ export interface PricingQueryState {
   view: PricingViewId;
   /** 页内大页签(默认 model) */
   panel: PricingPanelId;
+  /** 场景价(P4);off=默认单价 */
+  scenario: PricingScenarioId;
 }
 
 export const DEFAULT_PRICING_QUERY: PricingQueryState = {
@@ -55,6 +58,7 @@ export const DEFAULT_PRICING_QUERY: PricingQueryState = {
   sort: "default",
   view: "list",
   panel: "model",
+  scenario: "off",
 };
 
 const BANDS: ReadonlySet<string> = new Set(["all", "lt10", "10-50", "50-100", "100-300", "gte300"]);
@@ -111,6 +115,7 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
     sourceKind: params.get("src") ?? "",
     sort: (SORTS.has(sort) ? sort : "default") as ModelSortId,
     view: (VIEWS.has(view) ? view : "list") as PricingViewId,
+    scenario: normalizeScenarioId(params.get("scn")),
   };
 }
 
@@ -126,6 +131,7 @@ export function encodePricingQuery(state: PricingQueryState): string {
   if (state.sort !== DEFAULT_PRICING_QUERY.sort) params.set("sort", state.sort);
   if (state.view !== DEFAULT_PRICING_QUERY.view) params.set("view", state.view);
   if (state.panel !== DEFAULT_PRICING_QUERY.panel) params.set("panel", state.panel);
+  if (state.scenario !== DEFAULT_PRICING_QUERY.scenario) params.set("scn", state.scenario);
   return params.toString();
 }
 
@@ -145,6 +151,7 @@ export function samePricingQuery(a: PricingQueryState, b: PricingQueryState): bo
     a.sort === b.sort &&
     a.view === b.view &&
     a.panel === b.panel &&
+    a.scenario === b.scenario &&
     a.vendors.length === b.vendors.length &&
     a.vendors.every((v, i) => v === b.vendors[i])
   );

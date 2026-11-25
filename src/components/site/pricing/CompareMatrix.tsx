@@ -15,6 +15,7 @@ import { COMPARE_MAX_MODELS_PER_GROUP } from "@/lib/pricing/compare";
 import { MODALITY_LABELS } from "@/lib/pricing/modality";
 import { protocolsLabel } from "@/lib/pricing/protocols";
 import { formatPrice, UNIT_SUFFIXES } from "@/lib/pricing/public";
+import { formatScenarioCost, scenarioCost, type PricingScenarioId } from "@/lib/pricing/scenario";
 
 /** 价格格(原币直出;非 token 单位带中文后缀) */
 function priceText(v: number | null, currency: string, unit: string): string {
@@ -51,10 +52,13 @@ function TierList({ cell }: { cell: CompareCell }): React.ReactElement {
 function Cell({
   cell,
   isCheapest,
+  scenario,
 }: {
   cell: CompareCell;
   isCheapest: boolean;
+  scenario: PricingScenarioId;
 }): React.ReactElement {
+  const showScenario = scenario !== "off";
   return (
     <div
       className={`min-w-[168px] flex-1 rounded-md border px-3 py-2 ${
@@ -80,6 +84,11 @@ function Cell({
       <div className="font-mono text-[12px] text-text-1">
         输出 {priceText(cell.outputPrice, cell.currency, cell.priceUnit)}
       </div>
+      {showScenario && (
+        <div className="mt-1 font-mono text-[12px] text-accent">
+          场景 {formatScenarioCost(scenarioCost(cell, scenario), cell.currency, scenario)}
+        </div>
+      )}
       <div className="mt-1 flex items-center gap-2 text-[10.5px] text-text-3">
         <a
           href={cell.sourceUrl}
@@ -107,7 +116,13 @@ function Cell({
 }
 
 /** 一个模型的比价行 */
-function ModelCompareRow({ model }: { model: CompareGroup["models"][number] }): React.ReactElement {
+function ModelCompareRow({
+  model,
+  scenario,
+}: {
+  model: CompareGroup["models"][number];
+  scenario: PricingScenarioId;
+}): React.ReactElement {
   return (
     <div className="border-b border-line/60 px-4 py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -125,6 +140,7 @@ function ModelCompareRow({ model }: { model: CompareGroup["models"][number] }): 
             key={cell.providerKey}
             cell={cell}
             isCheapest={cell.providerKey === model.cheapestProviderKey}
+            scenario={scenario}
           />
         ))}
       </div>
@@ -134,9 +150,10 @@ function ModelCompareRow({ model }: { model: CompareGroup["models"][number] }): 
 
 export interface CompareMatrixProps {
   groups: CompareGroup[];
+  scenario: PricingScenarioId;
 }
 
-export function CompareMatrix({ groups }: CompareMatrixProps): React.ReactElement {
+export function CompareMatrix({ groups, scenario }: CompareMatrixProps): React.ReactElement {
   if (groups.length === 0) {
     return (
       <p className="px-4 py-6 text-center text-[12px] text-text-3">
@@ -165,7 +182,7 @@ export function CompareMatrix({ groups }: CompareMatrixProps): React.ReactElemen
             </span>
           </div>
           {group.models.map((model) => (
-            <ModelCompareRow key={model.key} model={model} />
+            <ModelCompareRow key={model.key} model={model} scenario={scenario} />
           ))}
           {group.truncated > 0 && (
             <p className="px-4 py-2.5 text-[11px] text-text-3">

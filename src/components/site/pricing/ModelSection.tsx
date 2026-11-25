@@ -37,6 +37,13 @@ import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare
 import { modelAnchorId } from "@/lib/pricing/jsonld";
 import { protocolsLabel } from "@/lib/pricing/protocols";
 import type { PricingViewId } from "@/lib/pricing/query";
+import {
+  formatScenarioCost,
+  scenarioCost,
+  scenarioOptions,
+  type PricingScenarioId,
+} from "@/lib/pricing/scenario";
+import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 
 import { CompareMatrix } from "./CompareMatrix";
 import { FilterBar } from "./FilterBar";
@@ -78,10 +85,15 @@ function rowKey(r: PublicModelRow): string {
 function ModelTable({
   rows,
   visibleKeys,
+  scenario,
+  leaderboardMap,
 }: {
   rows: PublicModelRow[];
   visibleKeys: Set<string>;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
+  const showScenario = scenario !== "off";
   return (
     <div className="hidden overflow-x-auto sm:block">
       {/* table-fixed + 显式列宽:免费额度原文可很长(「共100万tokens…资源包有效期1年…」),
@@ -89,19 +101,21 @@ function ModelTable({
           固定布局后各列宽由 colgroup 决定,长文在额度列内换行,不再外溢 */}
       <table className="w-full min-w-[860px] table-fixed text-left text-[13px]">
         <colgroup>
-          <col className="w-[30%]" />
-          <col className="w-[9%]" />
-          <col className="w-[9%]" />
-          <col className="w-[24%]" />
+          <col className="w-[28%]" />
           <col className="w-[8%]" />
           <col className="w-[8%]" />
-          <col className="w-[12%]" />
+          {showScenario && <col className="w-[10%]" />}
+          <col className="w-[22%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[10%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-line text-[11px] font-normal text-text-3">
             <th className="px-4 py-2.5 font-normal whitespace-nowrap">模型 / 厂商</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">输入价</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">输出价</th>
+            {showScenario && <th className="px-3 py-2.5 font-normal whitespace-nowrap">场景价</th>}
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">免费额度</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">上下文</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">数据截至</th>
@@ -110,7 +124,7 @@ function ModelTable({
         </thead>
         <tbody>
           <tr>
-            <td colSpan={7} className="px-4 py-1.5 text-[10.5px] text-text-3">
+            <td colSpan={showScenario ? 8 : 7} className="px-4 py-1.5 text-[10.5px] text-text-3">
               价格单位:token 模型 = 元/百万 tokens;按张/按秒模型 = 生成价(单位见行内后缀)。
               图片/视频按分辨率分档,行价对应最低分辨率档(行内已注明),其余分辨率价见模型名
               下的折叠档位。
@@ -128,6 +142,7 @@ function ModelTable({
                   {r.modelKey}
                   {r.isFree && <FreeBadge />}
                   <ProtocolBadge protocols={r.protocols} />
+                  <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
                 </div>
                 <div className="mt-0.5 text-[11px] text-text-3">
                   {r.providerName ?? r.vendor}
@@ -156,6 +171,11 @@ function ModelTable({
                   </span>
                 )}
               </td>
+              {showScenario && (
+                <td className="px-3 py-3.5 font-mono text-[12px] text-text-1 whitespace-nowrap">
+                  {formatScenarioCost(scenarioCost(r, scenario), r.currency, scenario)}
+                </td>
+              )}
               <td className="px-3 py-3.5 text-[12px]">
                 {r.freeTier === null ? (
                   <span className="text-text-3">—</span>
@@ -186,10 +206,15 @@ function ModelTable({
 function ModelCards({
   rows,
   visibleKeys,
+  scenario,
+  leaderboardMap,
 }: {
   rows: PublicModelRow[];
   visibleKeys: Set<string>;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
+  const showScenario = scenario !== "off";
   return (
     <div className="flex flex-col gap-3 p-3 sm:hidden">
       {rows.map((r) => (
@@ -203,6 +228,7 @@ function ModelCards({
               {r.modelKey}
               {r.isFree && <FreeBadge />}
               <ProtocolBadge protocols={r.protocols} />
+              <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
             </span>
             <OfficialLink url={r.sourceUrl} />
           </div>
@@ -223,6 +249,12 @@ function ModelCards({
               </span>
               {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
             </span>
+            {showScenario && (
+              <span>
+                <span className="mr-1 text-[10.5px] font-normal text-text-3">场景价</span>
+                {formatScenarioCost(scenarioCost(r, scenario), r.currency, scenario)}
+              </span>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
             {isTokenPriced(r) && <span>元/百万 tokens</span>}
@@ -238,7 +270,35 @@ function ModelCards({
   );
 }
 
-/** 用途分组口径说明(价格标签) */
+/** 外部榜单名次角标(P5) */
+function LeaderboardBadges({
+  badges,
+}: {
+  badges: LeaderboardBadge[] | undefined;
+}): React.ReactElement | null {
+  if (badges === undefined || badges.length === 0) return null;
+  return (
+    <span className="ml-1.5 inline-flex flex-wrap items-center gap-1 align-middle">
+      {badges.map((b) => (
+        <a
+          key={b.source}
+          href={b.url ?? "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`${b.source} ${b.board}: 第 ${b.rank} 名`}
+          className="rounded border border-line px-1 py-0.5 text-[10px] leading-none text-text-3 hover:text-text-1"
+        >
+          {b.source === "artificial-analysis" ? "AA" : "HF"} #{b.rank}
+          {b.delta !== null && (
+            <span className={b.delta > 0 ? "text-green" : b.delta < 0 ? "text-red" : "text-text-3"}>
+              {b.delta > 0 ? "↑" : b.delta < 0 ? "↓" : "—"}
+            </span>
+          )}
+        </a>
+      ))}
+    </span>
+  );
+}
 function catPriceLabel(cat: ModelCatId): string {
   if (cat === "text" || cat === "all") return "输入价 · 每百万 tokens(原币)";
   if (cat === "image") return "生成价 · 元/张(原币)";
@@ -267,6 +327,11 @@ export interface ModelSectionProps {
   /** 模型区视图:列表 | 比价(M74 批D) */
   view: PricingViewId;
   onViewChange: (v: PricingViewId) => void;
+  /** 场景价(P4) */
+  scenario: PricingScenarioId;
+  onScenarioChange: (v: PricingScenarioId) => void;
+  /** 外部榜单角标(P5) */
+  leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }
 
 export function ModelSection({
@@ -287,6 +352,9 @@ export function ModelSection({
   onSortChange,
   view,
   onViewChange,
+  scenario,
+  onScenarioChange,
+  leaderboardMap = new Map(),
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
   // 两遍筛选 + 两遍排序 + 厂商分面;聚合源铺开后行数百级,这是主交互卡顿源
@@ -398,6 +466,25 @@ export function ModelSection({
           </span>
         )}
       </div>
+      {/* 场景价选择器(P4):与用途页签同处顶层,默认 off 保持现有表格不变 */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2/30 px-4 py-2">
+        <span className="mr-1 text-[11px] text-text-3">场景</span>
+        {scenarioOptions().map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-pressed={scenario === s.id}
+            onClick={() => onScenarioChange(s.id)}
+            className={`rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none ${
+              scenario === s.id
+                ? "border-accent bg-accent text-white"
+                : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
       {/* lg+:左侧常驻筛选栏(2026-11-18 反馈问题一);<lg:顶部 FilterBar,同一份状态 */}
       <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
         <div className="hidden lg:block">
@@ -484,7 +571,7 @@ export function ModelSection({
                   原币直出不折算、token 与按张/按秒量纲不同,各归各区、只在区内比价。
                 </p>
               </div>
-              <CompareMatrix groups={compareGroups} />
+              <CompareMatrix groups={compareGroups} scenario={scenario} />
               <div className="border-t border-line">
                 <div className="border-b border-line px-4 py-3">
                   <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
@@ -516,8 +603,18 @@ export function ModelSection({
                   <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
                   <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>
                 </div>
-                <ModelTable rows={rows} visibleKeys={visibleKeys} />
-                <ModelCards rows={rows} visibleKeys={visibleKeys} />
+                <ModelTable
+                  rows={rows}
+                  visibleKeys={visibleKeys}
+                  scenario={scenario}
+                  leaderboardMap={leaderboardMap}
+                />
+                <ModelCards
+                  rows={rows}
+                  visibleKeys={visibleKeys}
+                  scenario={scenario}
+                  leaderboardMap={leaderboardMap}
+                />
               </div>
             ))
           )}
