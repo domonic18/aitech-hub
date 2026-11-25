@@ -46,12 +46,22 @@ describe("decodePricingQuery", () => {
     expect(decodePricingQuery("cat=video&mod=image").cat).toBe("video");
   });
 
+  it("场景价 scn 编解码(P4)", () => {
+    expect(decodePricingQuery("").scenario).toBe("off");
+    expect(decodePricingQuery("scn=text-1M-tokens").scenario).toBe("text-1M-tokens");
+    expect(decodePricingQuery("scn=bad").scenario).toBe("off");
+    expect(encodePricingQuery({ ...DEFAULT_PRICING_QUERY, scenario: "image-100-images-1K" })).toBe(
+      "scn=image-100-images-1K",
+    );
+  });
+
   it("非法值一律回落默认(URL 是用户可手改的,不能崩)", () => {
-    const q = decodePricingQuery("b=not-a-band&ctx=xx&sort=zzz&free=yes");
+    const q = decodePricingQuery("b=not-a-band&ctx=xx&sort=zzz&free=yes&scn=bad");
     expect(q.band).toBe("all");
     expect(q.contextBand).toBe("all");
     expect(q.sort).toBe("default");
     expect(q.freeScope).toBe("all");
+    expect(q.scenario).toBe("off");
   });
 
   it("厂商去重去空", () => {
@@ -91,6 +101,7 @@ describe("encodePricingQuery", () => {
       sort: "output" as const,
       view: "compare" as const,
       panel: "plan" as const,
+      scenario: "text-1M-tokens" as const,
     };
     expect(decodePricingQuery(encodePricingQuery(state))).toEqual(state);
   });
