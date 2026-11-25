@@ -1,5 +1,5 @@
 /**
- * middleware(arch/05-services §3.2/§6,四职合一):
+ * middleware(arch/05-services §3.2/§6,五职合一):
  * 1) /admin 预检:Cookie 存在性 + exp 本地解读(decodeJwt 不验签、不查 Redis、不依赖
  *    AUTH_SECRET)——防伪不靠 middleware,完整校验在 guard.ts;
  * 2) request id:全路由生成并回写 X-Request-Id(响应头),排障对账用;
@@ -8,12 +8,15 @@
  *    geo.ts 分类)时,waitUntil 内部端点异步记 PV——爬虫不发 beacon,这是唯一
  *    逐请求捕获点;失败静默(统计尽力而为,不影响主链路);
  * 4) 当前路径注入请求头 x-pathname(P2-23):server component 取不到自身路径,
- *    requireAdminPage 深链回跳以此为准。
+ *    requireAdminPage 深链回跳以此为准;
+ * 5) 旧 WP query 形态 /?p=<wpId> 承接:合法数字 → rewrite 进 /legacy/wp-p/<id>/
+ *    (查库 301 文章页,见 lib/content/legacy.ts;首页 ISR 不受影响)。
  */
 import { decodeJwt } from "jose";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { ACCESS_COOKIE_NAME, ADMIN_LOGIN_PATH, ADMIN_PATH_PREFIX } from "@/lib/auth/constants";
+import { wpQueryTarget } from "@/lib/content/legacy-decide";
 import { classifyBotUa } from "@/lib/stats/bots";
 import { classifyGeoSurface } from "@/lib/stats/geo";
 
@@ -87,6 +90,23 @@ export async function middleware(req: NextRequest, event: NextFetchEvent): Promi
       fireStatsBot(ua, JSON.stringify({ path: bare }), req.url, event);
     } else if (bot && !BOT_PATH_SKIP_RE.test(bare)) {
       fireStatsBot(ua, "{}", req.url, event); // 已命名爬虫抓 HTML 页面(2026-10-07 方案B口径)
+    }
+  }
+
+  // 旧 WP query 形态 /?p=<wpId>:rewrite 进 legacy 兜底路由(地址栏不变,由其查库
+  // 301 文章页/410)。放在爬虫入账之后——301 不算页面渲染,但 UA 侧抓取观测照记。
+  // 纯函数判形,不查库;非数字 p(爬虫 fuzz)放行渲染首页,与现状一致。
+  // 首页 ISR 不受影响:只有带合法 p 的请求才 rewrite,其余直通静态页。
+  // GET/HEAD 都拦:爬虫常用 HEAD 探测旧链,承接语义应一致。
+  if ((req.method === "GET" || req.method === "HEAD") && bare === "/") {
+    const wpTarget = wpQueryTarget(req.nextUrl.searchParams.get("p"));
+    if (wpTarget) {
+      const url = req.nextUrl.clone();
+      url.pathname = wpTarget;
+      url.search = "";
+      const rewriteRes = NextResponse.rewrite(url);
+      rewriteRes.headers.set("X-Request-Id", requestId);
+      return rewriteRes;
     }
   }
 
