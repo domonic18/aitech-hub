@@ -36,7 +36,7 @@ export function PriceChangeList({
   if (items.length === 0) {
     return (
       <p className="border-t border-line px-4 py-8 text-center text-[12.5px] text-text-3">
-        暂无降价记录 —— 变更史自 M74 上线后开始累计(采集口径:官方牌价页日采)。
+        暂无降价记录 —— 降价记录自牌价监测上线后开始累计。
       </p>
     );
   }

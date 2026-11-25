@@ -225,11 +225,9 @@ export default async function MineCandidates({
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:L0 为元数据预筛(名称/标题黑名单与教学信号),reject 结论仅供参考,终审以人工为准;
-        批准博主候选即自动登记进「博主」视图(幂等;失败会附行内提示,回退待定后重批可重试)。 生效词在
-        洞察中心 · 发现 · 种子词库 维护,参与每日热词联想与每周 B站双窗搜索 (LRU 轮转,20 词/轮)。
-        API:GET /api/discovery/candidates · PUT /api/discovery/candidates/[id] · POST
-        /api/discovery/trigger。
+        L0 为元数据预筛(名称/标题黑名单与教学信号),reject 结论仅供参考,终审以人工为准;
+        批准博主候选即自动登记进「博主」视图(失败会附行内提示,回退待定后重批可重试)。 生效词在
+        洞察中心 · 发现 · 种子词库 维护,参与每日热词联想与每周 B站双窗搜索。
       </p>
     </div>
   );

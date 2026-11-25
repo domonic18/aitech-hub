@@ -8,7 +8,6 @@ import Link from "next/link";
 import MediaActions from "@/components/admin/media/MediaActions";
 import MediaDupeList from "@/components/admin/media/MediaDupeList";
 import MediaGrid from "@/components/admin/media/MediaGrid";
-import { MEDIA_AUDIT_CRON } from "@/lib/queue";
 import {
   type MediaKind,
   type MediaRefFilter,
@@ -213,12 +212,6 @@ export default async function AdminMediaPage({
 
       {/* 重复检测分组视图(原型:网格下方独立分区;同 sha1 ≥2 条即整卡呈现,无重复不占位) */}
       {dupes.length > 0 && <MediaDupeList groups={dupes} />}
-
-      <div className="font-mono text-[11px] text-text-3">
-        POST /api/media · GET/DELETE /api/media/[id] · POST /api/media/import|batch-delete|audit ·
-        POST /api/media/[id]/restore · DELETE /api/media/[id]/purge · POST /api/media/dupes/merge ·
-        audit cron {MEDIA_AUDIT_CRON}
-      </div>
     </div>
   );
 }

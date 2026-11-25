@@ -94,8 +94,7 @@ export default function GeoPanel({ panel }: { panel: GeoPanelData }): React.Reac
           </p>
         )}
         <p className="mt-1 border-t border-dashed border-line pt-3 text-[11px] leading-relaxed text-text-3">
-          GEO 面(llms.txt / llms-full / 文章 .md)由 middleware 对任何 UA 入账,未识别 UA 记
-          unknown-agent;.md 抓取不计入真人阅读数(views_count 口径不变)。
+          GEO 面对任何 UA 的抓取都入账，未识别 UA 记为 unknown-agent；.md 抓取不计入真人阅读数。
         </p>
       </div>
     </div>

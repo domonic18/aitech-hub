@@ -72,8 +72,8 @@ export default function SourcePanel({ panel }: { panel: ReferrerPanel }): React.
           );
         })}
         <p className="mt-1 border-t border-dashed border-line pt-3 text-[11px] leading-relaxed text-text-3">
-          AI 助手类目是 GEO 核心观测指标(requirement §3.5);仅入口页记录来源, 站内跳转按直接访问计;UV
-          为 IP+UA 匿名哈希去重。
+          AI 助手来源是 GEO 核心观测指标。仅入口页记录来源，站内跳转按直接访问计；UV 按 IP+UA
+          匿名哈希去重。
         </p>
       </div>
     </div>

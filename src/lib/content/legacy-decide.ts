@@ -41,3 +41,22 @@ export function decideWpPost(lookup: WpPostLookup): "redirect" | "gone" {
 export function wpQueryTarget(p: string | null): string | null {
   return p !== null && isBigIntId(p) ? `/legacy/wp-p/${p}/` : null;
 }
+
+/** 归一产物长度上限(对齐 content_tag.slug 列宽;超长 fuzz 不产 301,放行渲染首页) */
+const TAG_SLUG_MAX = 255;
+
+/**
+ * 旧 WP query 形态 /?tag=<名> → /tag/<归一 slug>/ 的承接目标。
+ * 与 ?p= 不同必须真跳转(redirect 301)而非 rewrite:tag 页是 ISR 页,rewrite
+ * 会直接渲染 200 且地址栏不变,canonical 永不传达;301 让浏览器/爬虫拿到
+ * canonical 路径。值经 normalizeSlug 归一到 DB slug 形态(percent-encoded
+ * 小写十六进制,decode/encode 幂等);null/空/超长 → null 放行。
+ */
+export function tagRedirectTarget(tag: string | null): string | null {
+  if (tag === null) return null;
+  const trimmed = tag.trim();
+  if (trimmed === "") return null;
+  const slug = normalizeSlug(trimmed);
+  if (slug === "" || slug.length > TAG_SLUG_MAX) return null;
+  return `/tag/${slug}/`;
+}

@@ -122,9 +122,7 @@ export default async function AdminTelegramPage({
       />
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:屏蔽词与启发式只影响新条目准入;隐藏/归档为人工终审动作,恢复即回前台。 命中规则计入
-        filter_hit 不回溯。API:PUT /api/telegram/[id] · GET/POST /api/blocklist · PUT/DELETE
-        /api/blocklist/[id]。
+        屏蔽词与启发式规则只影响新条目准入,已入条目不回溯;隐藏/归档为人工终审动作,恢复即回前台。
       </p>
     </div>
   );

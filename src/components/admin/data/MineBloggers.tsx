@@ -222,15 +222,11 @@ export default async function MineBloggers(): Promise<React.ReactElement> {
       </p>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:调度器每分钟扫描到期博主逐个入队(失败隔离在单博主 job);轮询间隔 ≥
-        {SOCIAL_CRAWL_INTERVAL_MIN}min(平台礼貌红线);首采回填近 7 天至多 10
-        条防刷屏;手动「回填」向前深扫 30 天(至多 3 页)补采,地板推进不回退;
-        网关不可达顺延本轮不计失败, 上游风控(如 jar 全灭)计入连续失败。删除为两步武装:启用中
-        409,停用后可物理删,已入库视频不受影响。 ASR 7d 为近 7 天转写条数/时长(按平台+昵称
-        冗余名匹配),↓N 为缺转写降级数。 API:GET/POST /api/bloggers · PUT/DELETE /api/bloggers/[id] ·
-        PUT /api/bloggers/[id]/status · POST /api/bloggers/[id]/crawl · POST
-        /api/bloggers/[id]/backfill · GET/POST/DELETE /api/bloggers/cookies · GET/PUT
-        /api/admin/proxy/config · POST /api/admin/proxy/test。
+        调度器每分钟扫描到期博主逐个采集,单个博主失败不影响其他博主;轮询间隔 ≥
+        {SOCIAL_CRAWL_INTERVAL_MIN}min(平台礼貌红线);首采只回填近 7 天至多 10
+        条防刷屏,手动「回填」向前补采 30 天且回填进度只推进不回退; 网关不可达顺延本轮不计失败,
+        上游风控(如 jar 全灭)计入连续失败。删除为两步:启用中
+        不可删,停用后可物理删,已入库视频不受影响。 ASR 7d 为近 7 天转写条数/时长,↓N 为缺转写降级数。
       </p>
     </div>
   );

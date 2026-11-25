@@ -70,9 +70,9 @@ export default function OnlinePanel({
         )}
       </div>
       <p className="border-t border-dashed border-line px-5 py-3 text-[11px] leading-relaxed text-text-3">
-        口径:beacon 心跳的 5 分钟滑动窗口(最后活跃 5 分钟内视为在线;去爬虫/管理员);登录用户
-        显示用户名/邮箱,未登录显示 IP(仅内存键 5 分钟滑窗,不入库);每人归并到最后活跃页面; 实时读
-        Redis,无 flush 延迟。
+        最近 5
+        分钟内有访问活动的访客视为在线（已剔除爬虫与管理员）；登录用户显示用户名/邮箱，未登录显示
+        IP；同一访客归并到最后活跃页面，实时刷新。
       </p>
     </div>
   );

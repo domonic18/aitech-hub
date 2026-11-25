@@ -26,8 +26,7 @@ export default async function AdminWechatMpKeywordsPage(): Promise<React.ReactEl
       <KeywordManager initial={rows} />
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:同关键词唯一;挂文章只对已发布文章生效(草稿不会出现在公众号回复里)。 API:GET/POST
-        /api/wechat-mp/keywords · PUT/DELETE /api/wechat-mp/keywords/[id]。
+        同关键词唯一;挂文章只对已发布文章生效,草稿不会出现在公众号回复里。
       </p>
     </div>
   );

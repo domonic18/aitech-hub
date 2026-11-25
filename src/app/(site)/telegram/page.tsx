@@ -160,7 +160,7 @@ export default async function TelegramPage({
             <div className="px-4 pb-3.5 pt-3 text-xs leading-relaxed text-text-2">
               <p>
                 多渠道巡检采集的 AI 资讯流:规则清洗 + 屏蔽词过滤 + 同源去重后按时间滚动;
-                摘要为一期规则截断,点击直达原文。
+                摘要经规则截断,点击直达原文。
               </p>
               <p className="mt-2 text-text-3">
                 本页不参与搜索引擎索引;站内文章见

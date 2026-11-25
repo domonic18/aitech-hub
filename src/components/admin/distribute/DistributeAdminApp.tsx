@@ -66,7 +66,8 @@ export default function DistributeAdminApp({
       <div>
         <h2 className="text-base font-semibold">分发中心</h2>
         <p className="mt-0.5 text-xs text-text-3">
-          可在文章列表 / 编辑器 / 贴图台直接发起同步(一期:微信公众号,纯 API 推草稿不上线发表)。
+          可在文章列表 / 编辑器 /
+          贴图台直接发起同步;当前支持微信公众号,同步仅推送到草稿箱,不自动发表。
         </p>
       </div>
 

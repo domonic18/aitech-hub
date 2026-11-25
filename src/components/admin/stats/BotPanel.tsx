@@ -82,8 +82,8 @@ export default function BotPanel({
           })
         )}
         <p className="mt-1 border-t border-dashed border-line pt-3 text-[11px] leading-relaxed text-text-3">
-          爬虫抓取由 middleware 按 UA 名单识别(AI 训练/检索 + 搜索引擎),不计入真人 PV/UV 与流量来源;
-          未识别 UA 不入账。
+          按 UA 名单识别爬虫（AI 训练/检索与搜索引擎）；抓取不计入真人 PV/UV 与流量来源，未识别 UA
+          不入账。
         </p>
       </div>
     </div>

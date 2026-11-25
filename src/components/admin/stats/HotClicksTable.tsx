@@ -112,8 +112,8 @@ export default function HotClicksTable({
         </div>
       )}
       <p className="border-t border-dashed border-line px-5 py-3 text-[11px] leading-relaxed text-text-3">
-        口径:首页/电报流条目锚点点击(beacon;去爬虫/管理员);同一电报条目首页带与电报流页
-        点击合并计数;行级直插准实时,明细保留 180 天。
+        统计首页与电报流条目的点击（已剔除爬虫与管理员）；同一电报条目在首页与电报流的点击合并计数；明细保留
+        180 天。
       </p>
     </div>
   );
