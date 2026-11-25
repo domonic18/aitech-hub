@@ -1,6 +1,7 @@
 /**
  * 统计缓冲落库单测(M48 批G 补盲;prisma/redis 必 mock):RENAME 私有键生命周期、
- * 六类键分发(visit 全零剪除/post 负计数剪除/geo 非法面剔除)、失败合并回数据键不计数。
+ * 七类键分发(visit 全零剪除/post 负计数剪除/geo 非法面剔除/region 零计数剪除)、
+ * 失败合并回数据键不计数。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -108,7 +109,7 @@ describe("flushStatsBuffer 生命周期", () => {
   });
 });
 
-describe("applyBufferKey 六类分发", () => {
+describe("applyBufferKey 七类分发", () => {
   it("visit:全零不落库(正数才 UPSERT)", async () => {
     keysOf("stats:buf:visit:2026-10-25");
     redisMock.hgetall.mockResolvedValue({ pv: "0", uv: "0" });
@@ -147,6 +148,23 @@ describe("applyBufferKey 六类分发", () => {
     });
     await flushStatsBuffer();
     expect(executeRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("region:country|province 落参数,境外空串省,零计数剪除", async () => {
+    keysOf("stats:buf:region:2026-10-25");
+    redisMock.hgetall.mockResolvedValue({
+      "中国|广东省|pv": "5",
+      "中国|广东省|uv": "3",
+      "United States||pv": "2",
+      "Australia||uv": "0", // 零计数 → 剪
+    });
+    await flushStatsBuffer();
+    // 三行 UPSERT(中国一行 pv+uv 各算一条字段行、境外两行)
+    expect(executeRaw).toHaveBeenCalledTimes(3);
+    const rows = executeRaw.mock.calls.map((c) => c.slice(1, 6));
+    expect(rows).toContainEqual(["2026-10-25", "中国", "广东省", 5, 0]);
+    expect(rows).toContainEqual(["2026-10-25", "中国", "广东省", 0, 3]);
+    expect(rows).toContainEqual(["2026-10-25", "United States", "", 2, 0]);
   });
 
   it("page:pv / uv 分键各写自己那一列(键形由 keys.ts 解析)", async () => {

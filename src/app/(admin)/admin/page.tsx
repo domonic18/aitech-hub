@@ -16,6 +16,7 @@ import HotSearchTermsTable from "@/components/admin/stats/HotSearchTermsTable";
 import KpiCards from "@/components/admin/stats/KpiCards";
 import OnlinePanel from "@/components/admin/stats/OnlinePanel";
 import RecentVisitsTable from "@/components/admin/stats/RecentVisitsTable";
+import RegionPanel from "@/components/admin/stats/RegionPanel";
 import SourcePanel from "@/components/admin/stats/SourcePanel";
 import TrendChart from "@/components/admin/stats/TrendChart";
 import { getClickDomains, getHotClicks } from "@/lib/stats/clicks";
@@ -26,6 +27,7 @@ import {
   getClientPanel,
   getHotPages,
   getReferrerPanel,
+  getRegionPanel,
   getVisitOverview,
   getVisitSeries,
   type HotRange,
@@ -59,6 +61,7 @@ export default async function AdminStatsPage({
     series,
     referrers,
     clients,
+    region,
     bots,
     geo,
     hotPages,
@@ -72,6 +75,7 @@ export default async function AdminStatsPage({
     getVisitSeries(trend),
     getReferrerPanel(7),
     getClientPanel(7),
+    getRegionPanel(7),
     getBotPanel(7),
     getGeoPanel(7),
     getHotPages(hot),
@@ -91,6 +95,8 @@ export default async function AdminStatsPage({
         <SourcePanel panel={referrers} />
         <EnvPanel panel={clients} />
       </div>
+      {/* 访客地区分布(2026-11-25 方案① 一期):ingest 侧 ip2region 解析聚合 */}
+      <RegionPanel panel={region} />
       {/* 爬虫流量(2026-10-07 方案B):人机区分的「机」侧;与真人四分类同表分账 */}
       <BotPanel panel={bots} humanPv={overview.last7.pv} />
       {/* GEO 机器面(2026-10-09 方案A):llms/.md 机器消费观测,stats_geo_daily */}

@@ -12,8 +12,6 @@ import { redis } from "@/lib/redis";
 import {
   buildLegacyPath,
   decideLegacy,
-  decideWpPost,
-  wpQueryTarget,
   type LegacyHit,
   type LegacyLookup,
   type WpPostLookup,

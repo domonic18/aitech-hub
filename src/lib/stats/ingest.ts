@@ -2,7 +2,8 @@
  * 站点统计接收入口(requirement §3.5;arch/05-services §1 分层;2026-11-01 批D
  * 自 service.ts 拆出——本文件只管「收」,落库在 flush.ts,明细保留在 purge.ts):
  *  - ingestView:beacon 接收入口。去 bot/去管理员 → Redis 日缓冲
- *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5);
+ *    (PV 直接缓冲;UV 按 IP+UA 哈希日去重;文章 PV 另设 1h 去重窗,arch/05-services §5;
+ *    地区分布缓冲走 ip2region 内存解析,方案① 一期,尽力而为);
  *    另同步落一行访问明细 stats_visit_log(全量 IP 短留存 7 天,M10 批⑥);
  *    /search 页带 q 时行级直插 stats_search_log(搜索词排行,180 天,2026-10-06);
  *    在线用户 presence 心跳(5 分钟滑窗 Redis ZSET,M28 批②,online.ts)。
@@ -22,6 +23,7 @@ import { logWarn } from "@/lib/logger";
 import { redis } from "@/lib/redis";
 import { parsePostSegment } from "@/lib/content/post-path";
 import { ingestInsightSignal } from "@/lib/insight/ingest";
+import { ipRegionParts } from "./ip-region";
 import { geoPostIdOf, type GeoSurface } from "./geo";
 import {
   BUFFER_TTL_SECONDS,
@@ -94,6 +96,11 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
   const bufPagePv = bufferKey("page", day, "pv");
   const bufPageUv = bufferKey("page", day, "uv");
   const bufClient = bufferKey("client", day);
+  // 地区分布(方案① 一期):内存查表国内省级/境外国家级;解析不到(内网/
+  // 未命中/库缺失)不写该缓冲,站点 PV/UV 主口径不受影响(尽力而为)
+  const region = ipRegionParts(input.ip);
+  const bufRegion = region ? bufferKey("region", day) : null;
+  const regionField = region ? `${region.country}|${region.province ?? ""}` : "";
 
   const pipe = redis.pipeline();
   pipe.hincrby(bufVisit, "pv", 1);
@@ -103,9 +110,14 @@ export async function ingestView(input: IngestInput): Promise<IngestResult> {
   pipe.hincrby(bufPagePv, path, 1);
   if (isPageUvNew) pipe.hincrby(bufPageUv, path, 1);
   pipe.hincrby(bufClient, `${client.browser}|${client.os}|${client.deviceType}`, 1);
+  if (bufRegion) {
+    pipe.hincrby(bufRegion, `${regionField}|pv`, 1);
+    if (isUvNew) pipe.hincrby(bufRegion, `${regionField}|uv`, 1);
+  }
   for (const k of [bufVisit, bufRef, bufPagePv, bufPageUv, bufClient]) {
     pipe.expire(k, BUFFER_TTL_SECONDS);
   }
+  if (bufRegion) pipe.expire(bufRegion, BUFFER_TTL_SECONDS);
   await pipe.exec();
 
   // 访问明细行(M10 批⑥):不 await 不阻断 beacon,失败仅告警(明细缺失可接受,
