@@ -41,6 +41,7 @@ async function main(): Promise<void> {
     .map((m) => ({
       modelKey: m.modelKey,
       modelDictKey: m.modelDictKey,
+      modelGroupKey: m.modelGroupKey,
       vendor: m.vendor,
       providerKey: m.providerKey,
       modality: m.modality,
@@ -48,11 +49,15 @@ async function main(): Promise<void> {
       unit: m.priceUnit,
       input: m.inputPrice,
       output: m.outputPrice,
-      tiers: m.tiers.map((t) => t.tierLabel),
+      tiers: m.tiers.map((t) => ({
+        label: t.tierLabel,
+        unit: t.unit,
+        params: t.params,
+      })),
     }))
     .sort((a, b) =>
-      `${a.modelDictKey ?? ""}|${a.vendor}|${a.modelKey}`.localeCompare(
-        `${b.modelDictKey ?? ""}|${b.vendor}|${b.modelKey}`,
+      `${a.modelGroupKey ?? a.modelDictKey ?? ""}|${a.vendor}|${a.modelKey}`.localeCompare(
+        `${b.modelGroupKey ?? b.modelDictKey ?? ""}|${b.vendor}|${b.modelKey}`,
       ),
     );
 
