@@ -106,9 +106,8 @@ export default async function AdminCommentsPage({
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:「WP」徽标 = 旧站迁移评论(作者名取 WP 原名留档);隐藏即时收敛(前台 client fetch 不经
-        ISR);删除连带直接回复与两点赞表行。API:PUT/DELETE /api/post-comments/[id];批量删除 POST
-        /api/post-comments/batch-delete。
+        「WP」徽标 = 旧站迁移评论(作者名取 WP
+        原名留档);隐藏即时对前台生效;删除为物理删除,连带其直接回复与点赞。
       </p>
     </div>
   );

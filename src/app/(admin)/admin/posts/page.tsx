@@ -215,12 +215,6 @@ export default async function AdminPostsPage({
           unit="篇"
         />
       </PostsTable>
-
-      <div className="font-mono text-[11px] text-text-3">
-        GET /api/posts?status=&amp;page=(M5-c) · POST /api/posts · PUT /api/posts/[id] · POST
-        /api/posts/bundle(M71 .md 整包) · POST /api/posts/[id]/publish|unpublish · DELETE 软删 ·
-        POST /api/posts/seo-suggest-batch(M16)
-      </div>
     </div>
   );
 }

@@ -120,7 +120,7 @@ export default async function AdminPatsPage(): Promise<React.ReactElement> {
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:库中仅存 sha256 哈希,明文仅在创建弹窗展示一次;吊销幂等,已吊销不可恢复,需重新签发。
+        说明:令牌仅存哈希,明文只在创建弹窗展示一次;吊销幂等,已吊销不可恢复,需重新签发。
         令牌校验要求持有人为 admin 且账号 active,禁用账号即失效全部令牌。
       </p>
     </div>

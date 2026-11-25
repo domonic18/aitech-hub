@@ -178,7 +178,7 @@ export default async function AdminInsightPage({
       <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <PanelCard
           title="机会分趋势"
-          hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级(M52)"
+          hint="按机会分排序 · 点击行进簇详情 · 徽章=近 7 天 vs 前 7 天增长分级"
         >
           <RadarTable clusters={hotClusters} trends={trendMap} pendingClusters={pending} />
         </PanelCard>

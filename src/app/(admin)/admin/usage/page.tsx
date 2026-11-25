@@ -204,7 +204,7 @@ export default async function AdminUsagePage({
             {o.rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-3.5 py-8 text-center text-xs text-text-3">
-                  窗口内暂无 AI 调用(台账逐次落 ai_usage_log;90 天保留期)
+                  窗口内暂无 AI 调用(明细保留 90 天)
                 </td>
               </tr>
             ) : (
@@ -253,8 +253,8 @@ export default async function AdminUsagePage({
           </tbody>
         </table>
         <div className="border-t border-line px-4 py-3 font-mono text-xs text-text-3">
-          保留期 90 天(worker 每日 04:52 清理,或右上角手动清理);费用= tokens×牌价(¥/1M)+ 生图按张 +
-          ASR 按音频时长,failed 行不计费。
+          明细保留 90 天(每日自动清理,或右上角手动清理);费用按 tokens×牌价估算,生图按张、 ASR
+          按音频时长计费,失败调用不计费。
         </div>
       </div>
     </div>

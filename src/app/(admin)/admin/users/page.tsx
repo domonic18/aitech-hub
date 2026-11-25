@@ -116,9 +116,7 @@ export default async function AdminUsersPage({
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:禁用即吊销该用户全部 PAT(持有客户端立即 401);会话侧无 user→jti 索引不强制登出
-        (三期补)。API:GET /api/users?page=&amp;status= · PUT /api/users/[id]/status
-        (不能变更当前登录账号)。
+        禁用账号将立即吊销该用户的全部访问令牌(持有方立即失效);已签发的登录会话不强制登出;当前登录账号不可变更状态。
       </p>
     </div>
   );

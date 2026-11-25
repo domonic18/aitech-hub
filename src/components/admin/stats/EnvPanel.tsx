@@ -69,7 +69,7 @@ export default function EnvPanel({ panel }: { panel: ClientPanel }): React.React
           colorOf={(n) => DEVICE_COLOR[n] ?? "var(--text-3)"}
         />
         <p className="border-t border-dashed border-line pt-3 text-[11px] leading-relaxed text-text-3">
-          按 PV 口径(client 表一期未存 UV);bot 流量与管理员访问已在采集侧剔除。
+          按 PV 统计；爬虫与管理员访问已在采集侧剔除。
         </p>
       </div>
     </div>

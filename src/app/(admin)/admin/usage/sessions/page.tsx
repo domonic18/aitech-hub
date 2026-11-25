@@ -353,10 +353,8 @@ export default async function AdminAgentSessionsPage({
       )}
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:成员会话保留 30 天(每日 04:33 日清);游客会话归属键 2 小时未活动过期, checkpoint
-        由日清删除,此后仅剩台账统计(ai_usage_log 按 session_id 聚合)。答案卡问答留档 90 天(每日
-        04:41 日清)。API:GET /api/agent-sessions?page=&amp;kind=&amp;q= · GET
-        /api/agent-sessions/[threadId]。
+        成员会话保留 30 天,游客会话 2 小时无活动后过期(过期后仅留存统计数据);答案卡问答留档 90
+        天。均每日自动清理。
       </p>
     </div>
   );

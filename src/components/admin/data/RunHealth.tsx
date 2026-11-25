@@ -258,7 +258,7 @@ export default async function RunHealth(): Promise<React.ReactElement> {
             .slice(0, 5)
             .map((h) => `${jobRunLabel(h.jobKey)}(${fmtTime(h.startedAt)} 起)`)
             .join("、")}
-          {hung.length > 5 && " 等"}——查 worker 日志定位,进程崩溃残留会在日清批(04:47)代标失败。
+          {hung.length > 5 && " 等"}——查 worker 日志定位;进程崩溃残留由每日巡检自动标记失败。
         </div>
       )}
 
@@ -268,7 +268,7 @@ export default async function RunHealth(): Promise<React.ReactElement> {
           label="整体健康分"
           sub="阈值 80 · 红 −15 琥珀 −5"
           tone={score >= 80 ? "text-green" : "text-amber-hi"}
-          title="口径:100 − 故障行×15 − 降级行×5,下限 0;渠道行与任务行同权,暂停行不计"
+          title="健康分 = 100 − 故障行×15 − 降级行×5,下限 0;渠道行与任务行同权,暂停行不计"
         />
         <Metric
           value={String(red)}

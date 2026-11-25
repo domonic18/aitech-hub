@@ -36,7 +36,7 @@ export default async function AdminDataRunPage({
   const HINTS: Record<(typeof TABS)[number][0], string> = {
     overview: "跑了什么、跑得怎样:实时看当前采集与队列,源的启停回「源管理」,排程看「计划」。",
     jobs: "job_run 全量执行流水 · 触发方式 cron / manual · 运行中每 3 秒自动刷新",
-    health: "统一口径:连败 ≥2 红 · 24h 成功率 <80% 琥珀 · 7 日无成功 · 静默超时",
+    health: "判定:连败 ≥2 红 · 24h 成功率 <80% 琥珀 · 7 日无成功 · 静默超时",
   };
   return (
     <div className="flex flex-col gap-4">

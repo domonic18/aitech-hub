@@ -206,8 +206,7 @@ export default function ModelTable({
         </tbody>
       </table>
       <div className="border-t border-line px-4 py-2.5 font-mono text-[11px] text-text-3">
-        GET/POST /api/models · PUT/DELETE /api/models/[id] · PUT /api/models/[id]/status · POST
-        /api/models/[id]/test — Key 经 AES-256-GCM 加密落库,仅回显掩码;编辑留空表示不修改
+        Key 加密保存,仅回显掩码;编辑留空表示不修改
       </div>
     </div>
   );

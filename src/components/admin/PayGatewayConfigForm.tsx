@@ -323,8 +323,7 @@ export default function PayGatewayConfigForm({
         </button>
       </SettingsActions>
       <p className="font-mono text-[11px] text-text-3">
-        GET/PUT /api/pay-config — 模式与凭据存 pay_gateway_config 表(admin-only;secret 不回传;env
-        无支付变量)。
+        模式与凭据加密保存(admin-only);secret 不回传,界面仅显示脱敏视图。
       </p>
     </div>
   );

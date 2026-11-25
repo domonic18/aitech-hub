@@ -220,14 +220,11 @@ export default async function MineGithub(): Promise<React.ReactElement> {
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:github-tick 每 5 分钟扫描到期仓库逐个入队(失败隔离在单仓 job);每轮拉 meta / README /
-        commits×30 / releases×10,动态按 (repo,kind,external_id) 去重并裁剪至最新 50 条;meta 条件写与
-        README sha 跳写保证无变化轮次不 bump updatedAt(不空转 sitemap)。
-        网络故障/限频顺延不计连败,上游 4xx 计连败 ≥3 → error。slug 由仓库名派生此后冻结;
-        删除为两步武装:调度启用中 409,停用后可物理删,动态与文章关联随级联清除。 默认同步间隔{" "}
-        {GITHUB_SYNC_INTERVAL_MIN}min。 API:GET/POST /api/github/repos · PUT/DELETE
-        /api/github/repos/[id] · PUT /api/github/repos/[id]/status · POST
-        /api/github/repos/[id]/sync · GET/PUT /api/github/repos/[id]/posts。
+        调度器每 5 分钟扫描到期仓库逐个同步,单仓失败不影响其他仓库;每轮拉取仓库信息、README
+        与最近动态并去重,只保留最新 50 条,无变化不更新时间戳。 网络故障/限频顺延不计连败,上游 4xx
+        连败 ≥3 判故障。slug 由仓库名派生此后冻结;
+        删除为两步:调度启用中不可删,停用后可物理删,动态与文章关联随级联清除。 默认同步间隔{" "}
+        {GITHUB_SYNC_INTERVAL_MIN}min。
       </p>
     </div>
   );

@@ -220,7 +220,7 @@ export default function WechatConfigDialog({
         <div className="flex flex-col gap-2">
           <PillToggle
             checked={enableTocMeta}
-            label="文首阅读时间 + 目录卡(M51)"
+            label="文首阅读时间 + 目录卡"
             onChange={(v) => setEnableTocMeta(v)}
           />
           <PillToggle checked={enabled} label="启用公众号渠道" onChange={(v) => setEnabled(v)} />
