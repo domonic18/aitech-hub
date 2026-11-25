@@ -9,14 +9,15 @@
  *    逐请求捕获点;失败静默(统计尽力而为,不影响主链路);
  * 4) 当前路径注入请求头 x-pathname(P2-23):server component 取不到自身路径,
  *    requireAdminPage 深链回跳以此为准;
- * 5) 旧 WP query 形态 /?p=<wpId> 承接:合法数字 → rewrite 进 /legacy/wp-p/<id>/
- *    (查库 301 文章页,见 lib/content/legacy.ts;首页 ISR 不受影响)。
+ * 5) 旧 WP query 形态承接:/?p=<wpId> rewrite 进 /legacy/wp-p/<id>/(查库 301
+ *    文章页);/?tag=<名> 301 到 /tag/<归一 slug>/(真跳转传达 canonical);
+ *    首页 ISR 不受影响,详见 lib/content/legacy-decide.ts。
  */
 import { decodeJwt } from "jose";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { ACCESS_COOKIE_NAME, ADMIN_LOGIN_PATH, ADMIN_PATH_PREFIX } from "@/lib/auth/constants";
-import { wpQueryTarget } from "@/lib/content/legacy-decide";
+import { tagRedirectTarget, wpQueryTarget } from "@/lib/content/legacy-decide";
 import { classifyBotUa } from "@/lib/stats/bots";
 import { classifyGeoSurface } from "@/lib/stats/geo";
 
@@ -107,6 +108,23 @@ export async function middleware(req: NextRequest, event: NextFetchEvent): Promi
       const rewriteRes = NextResponse.rewrite(url);
       rewriteRes.headers.set("X-Request-Id", requestId);
       return rewriteRes;
+    }
+  }
+
+  // 旧 WP query 形态 /?tag=<名>:301 到 /tag/<归一 slug>/。必须是真跳转(不能
+  // rewrite):tag 页是 ISR 页,rewrite 直接渲染 200 且地址栏不动,canonical
+  // 永不传达;301 让浏览器/爬虫拿到 canonical。归一/判值在纯函数内(零 IO);
+  // p 与 tag 同带时 p 优先(文章更具体,上一分支已 rewrite 返回);tag 页自身
+  // 未命中新站 tag 时走 resolveTaxonomy 的 legacy_url_map 兜底(404/301)。
+  if ((req.method === "GET" || req.method === "HEAD") && bare === "/") {
+    const tagTarget = tagRedirectTarget(req.nextUrl.searchParams.get("tag"));
+    if (tagTarget) {
+      const url = req.nextUrl.clone();
+      url.pathname = tagTarget;
+      url.search = "";
+      const tagRes = NextResponse.redirect(url, 301);
+      tagRes.headers.set("X-Request-Id", requestId);
+      return tagRes;
     }
   }
 
