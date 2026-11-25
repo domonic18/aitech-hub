@@ -208,8 +208,7 @@ export default function BindingCards({
         ))}
       </div>
       <p className="mt-3 font-mono text-[11px] text-text-3">
-        GET/PUT /api/model-bindings — 下拉仅列「启用且用途匹配」的模型;主力停用后解析层自动回落备用
-        (额度降级切换归 M9 消费方)。
+        下拉仅列「启用且用途匹配」的模型;主力停用后解析层自动回落备用。
       </p>
     </div>
   );

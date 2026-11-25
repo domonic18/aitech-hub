@@ -122,8 +122,8 @@ export default function ChannelLedgerTable({ rows }: { rows: ChannelLedgerRow[] 
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:手动触发 = 入队即返回,进度见 运行 · 实时采集;运行中重复触发自动去重;试拉 =
-        单次试跑不入库,仅验连通与解析。备注可在「编辑」里维护。
+        手动触发 = 入队即返回,进度见 运行 · 实时采集;运行中重复触发自动去重;「试拉」
+        为单次试跑不入库,仅验连通与解析。备注可在「编辑」里维护。
       </p>
       <p className="font-mono text-[11px] text-text-3">
         共 {rows.length} 个渠道 · 已启用 {enabledCount}

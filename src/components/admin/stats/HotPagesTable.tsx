@@ -122,8 +122,7 @@ export default function HotPagesTable({
         )}
       </div>
       <p className="border-t border-dashed border-line px-5 py-3 text-[11px] leading-relaxed text-text-3">
-        平均阅读时长未采集,一期不做该列;文章 PV 与前台阅读计数同源 (views_count 累加自
-        stats_post_view_daily);llms.txt 与 *.md 直出不计 PV。
+        暂不统计平均阅读时长；文章 PV 与前台阅读计数同源；llms.txt 与 .md 直出不计入 PV。
       </p>
     </div>
   );

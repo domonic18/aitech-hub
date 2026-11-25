@@ -190,7 +190,7 @@ export default function PricingExplorer({
                     记录 ·{" "}
                   </>
                 ) : (
-                  <>降价史自 M74 上线后开始累计 · </>
+                  <>降价记录自牌价监测上线后开始累计 · </>
                 )}
                 <Link href="/pricing/changes/" className="text-blue hover:text-blue/80">
                   查看降价记录

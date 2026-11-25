@@ -146,8 +146,7 @@ export default function CategoriesAdminApp({ items }: { items: CategoryAdminRow[
         </tbody>
       </table>
       <div className="border-t border-line px-4 py-2.5 font-mono text-[11px] text-text-3">
-        GET/POST /api/categories · PUT/DELETE /api/categories/[id] — slug 建后不可改(公开
-        /category/&lt;slug&gt;/
+        slug 建后不可改(公开 /category/&lt;slug&gt;/
         锚定);原创分类进首页「博主文章」,非原创进「推荐视频」;有未删除文章引用的分类不可删;至少保留一个分类
       </div>
     </div>

@@ -19,7 +19,7 @@ export default function RecentVisitsTable({
     <div className="rounded-md border border-line bg-panel">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pt-4">
         <h3 className="text-sm font-semibold">最近访问</h3>
-        <span className="ml-auto text-[11px] text-text-3">近 7 天明细 · 到期由 worker 日清</span>
+        <span className="ml-auto text-[11px] text-text-3">近 7 天明细 · 每日自动清理</span>
       </div>
       <div className="overflow-x-auto p-2">
         {rows.length === 0 ? (

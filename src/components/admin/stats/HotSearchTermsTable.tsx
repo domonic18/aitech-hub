@@ -86,8 +86,7 @@ export default function HotSearchTermsTable({
         )}
       </div>
       <p className="border-t border-dashed border-line px-5 py-3 text-[11px] leading-relaxed text-text-3">
-        口径:/search 页 counted PV 携带的查询词(去爬虫/管理员;用户输入原文,截 100 字);
-        同词重复搜索各计一次;行级直插准实时,明细保留 180 天。
+        统计站内搜索提交的查询词（已剔除爬虫与管理员），同词重复搜索各计一次；明细保留 180 天。
       </p>
     </div>
   );

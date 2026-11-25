@@ -149,7 +149,7 @@ export default function BlocklistManager({
             {words.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-xs text-text-3">
-                  词表为空;一期另有代码级启发式(广告导流/标题党/乱码)兜底
+                  词表为空;内置启发式规则(广告导流/标题党/乱码)仍在兜底
                 </td>
               </tr>
             )}

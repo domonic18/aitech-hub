@@ -215,9 +215,7 @@ export default async function AdminFeedbackPage({
       </div>
 
       <p className="text-[11px] leading-relaxed text-text-3">
-        说明:处理备注随状态一起保存(空备注=清空);来源 uid=登录用户,游客按 ah_av 截短展示,
-        完整归属经会话 id 在「会话管理」溯源。API:GET /api/feedback?page=&amp;status= · PUT
-        /api/feedback/[id]。
+        处理备注随状态一起保存,保存空备注即清空;反馈来源为登录用户,游客仅显示匿名标识,完整归属可在「会话管理」溯源。
       </p>
     </div>
   );

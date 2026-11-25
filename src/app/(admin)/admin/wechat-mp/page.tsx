@@ -208,7 +208,7 @@ export default async function AdminWechatMpPage({
 
       <p className="text-[11px] leading-relaxed text-text-3">
         说明:公众号后台「服务器配置」指向 <code className="font-mono">/api/wechat/mp</code>,
-        加密方式与 Token/AESKey 在「接入配置」页维护;API:GET /api/wechat-mp/sessions。
+        加密方式与 Token/AESKey 在「接入配置」页维护。
       </p>
     </div>
   );
