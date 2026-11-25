@@ -74,6 +74,7 @@ beforeEach(() => {
     id: BigInt(200),
     modelKey: "m",
     matchKey: "m",
+    groupKey: "m::text",
     modality: "text",
   });
   tierCreateMany.mockResolvedValue({ count: 6 });

@@ -26,6 +26,9 @@ function row(over: Partial<PublicModelRow>): PublicModelRow {
     providerName: null,
     providerKind: null,
     modelDictKey: null,
+    modelGroupKey: null,
+    modelDisplayName: null,
+    modelFamily: null,
     modality: null,
     priceUnit: "per_1m_tokens",
     protocols: [],
@@ -149,6 +152,44 @@ describe("buildCompareGroups", () => {
   it("归一键优先用模型字典键(跨厂商同一模型聚一起)", () => {
     expect(compareKeyOf(row({ modelKey: "org/Model", modelDictKey: "model" }))).toBe("model");
     expect(compareKeyOf(row({ modelKey: "org/Model" }))).toBe("org/Model");
+  });
+
+  it("能力归一键(P1)最优先:同型号跨渠道(官方/聚合异写)聚一起", () => {
+    expect(
+      compareKeyOf(
+        row({ modelKey: "kling-v3", modelDictKey: "kling-v3", modelGroupKey: "kling-v3::t2v" }),
+      ),
+    ).toBe("kling-v3::t2v");
+    // group_key 未算出/冲突待裁 → 回落字典键
+    expect(compareKeyOf(row({ modelKey: "kling-v3", modelDictKey: "kling-v3" }))).toBe("kling-v3");
+  });
+
+  it("P1 端到端:词元所裸键与百炼能力后缀行经 group_key 聚成一组", () => {
+    const rows = [
+      row({
+        modelKey: "kling-v3",
+        modelDictKey: "kling-v3",
+        modelGroupKey: "kling-v3::t2v",
+        providerKey: "baidu-ciyuansuo",
+        priceUnit: "per_second",
+        inputPrice: null,
+        outputPrice: 0.6,
+      }),
+      row({
+        modelKey: "kling/kling-v3-video-generation",
+        modelDictKey: "kling-v3-video-generation",
+        modelGroupKey: "kling-v3::t2v",
+        providerKey: "aliyun-bailian",
+        priceUnit: "per_second",
+        inputPrice: null,
+        outputPrice: 1.0,
+      }),
+    ];
+    const groups = buildCompareGroups(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.models).toHaveLength(1);
+    expect(groups[0]!.models[0]!.cells).toHaveLength(2);
+    expect(groups[0]!.models[0]!.cheapestProviderKey).toBe("baidu-ciyuansuo");
   });
 });
 

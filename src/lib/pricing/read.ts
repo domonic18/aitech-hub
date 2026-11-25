@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
 
+import { groupOf } from "./canon";
 import { contextTokensFromTiers, formatContextTokens } from "./context";
 import type { PublicModelRow, PublicPlanRow, PublicPricing, PublicTierRow } from "./public";
 import { resolveApiProtocols } from "./protocols";
@@ -20,6 +21,17 @@ import { normalizedUnit, tokenUnitFactor } from "./units";
 /** 行级 dataAsOf 展示口径按北京日界取 YYYY-MM-DD(与 formatCnDate 对齐) */
 function cnAsOfDay(d: Date): string {
   return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+}
+
+/** 字典 group_key 为 null 时的读侧 canon 兜底(空串 → null 不落字段) */
+function computeGroupKey(r: {
+  modelKey: string;
+  model: { modelKey: string; modality: string } | null;
+}): string | null {
+  const dict = r.model;
+  if (dict === null) return null;
+  const group = groupOf(dict.modelKey, dict.modality).groupKey;
+  return group === "" ? null : group;
 }
 
 export async function listPublicPricing(): Promise<PublicPricing> {
@@ -85,6 +97,12 @@ export async function listPublicPricing(): Promise<PublicPricing> {
             r.provider?.sourceKind === "aggregator" ? r.vendor : (r.provider?.name ?? r.vendor),
           providerKind: r.provider?.sourceKind ?? null,
           modelDictKey: r.model?.modelKey ?? null,
+          // 能力归一键(P1):字典值优先(采集复用锚 + 人工覆盖位);字典未算(null)
+          // 时按同一 canon 纯函数现算兜底——归一立即生效,不等下轮采集重指 model_id。
+          // 人工分离两行 = 给其中一行显式独立的组键,而非留 null
+          modelGroupKey: r.model?.groupKey ?? computeGroupKey(r),
+          modelDisplayName: r.model?.displayName ?? null,
+          modelFamily: r.model?.family ?? null,
           modality: r.model?.modality ?? null,
           priceUnit: unit,
           protocols: resolveApiProtocols(r.provider?.key ?? null, r.modelKey),

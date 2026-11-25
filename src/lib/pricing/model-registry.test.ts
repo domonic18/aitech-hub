@@ -96,6 +96,7 @@ describe("getOrCreateModel", () => {
       id: BigInt(5),
       modelKey: "gpt-4o",
       matchKey: "gpt-4o",
+      groupKey: "gpt-4o::text",
       displayName: "gpt-4o",
       family: null,
       modality: "text",
@@ -134,9 +135,55 @@ describe("getOrCreateModel", () => {
     expect(created2.modality).toBe("text");
   });
 
+  it("P1:group_key 命中既有行则复用(跨源异写归一条,不新建)", async () => {
+    modelFindFirst.mockResolvedValue({
+      id: BigInt(31),
+      modelKey: "kling-v3",
+      matchKey: "kling-v3",
+      groupKey: "kling-v3::t2v",
+      displayName: "kling-v3",
+      family: null,
+      modality: "video",
+    });
+    const r = await getOrCreateModel({
+      rawKey: "kling/kling-v3-video-generation",
+      modality: "video",
+    });
+    expect(r.id).toBe(BigInt(31));
+    expect(modelCreate).not.toHaveBeenCalled();
+    expect(modelUpdate).not.toHaveBeenCalled();
+  });
+
+  it("P1:既有行 group_key 为空 → 按 canon 自愈补上(只补缺不覆盖)", async () => {
+    modelFindFirst.mockResolvedValue({
+      id: BigInt(32),
+      modelKey: "kling-v3",
+      matchKey: "kling-v3",
+      groupKey: null,
+      displayName: "kling-v3",
+      family: null,
+      modality: "video",
+    });
+    modelUpdate.mockResolvedValue({
+      id: BigInt(32),
+      modelKey: "kling-v3",
+      matchKey: "kling-v3",
+      groupKey: "kling-v3::t2v",
+      displayName: "kling-v3",
+      family: null,
+      modality: "video",
+    });
+    const r = await getOrCreateModel({ rawKey: "kling-v3", modality: "video" });
+    expect(modelUpdate).toHaveBeenCalledTimes(1);
+    const data = (modelUpdate.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+    expect(data.groupKey).toBe("kling-v3::t2v");
+    expect(r.groupKey).toBe("kling-v3::t2v");
+  });
+
   it("批G:既有行 text→非text 单向升级;非 text 不降级不改判", async () => {
     modelFindFirst.mockResolvedValue({
       id: BigInt(21),
+      groupKey: null,
       modelKey: "doubao-seedream-4-0",
       matchKey: "doubao-seedream-4-0",
       displayName: "doubao-seedream-4-0",
@@ -160,6 +207,7 @@ describe("getOrCreateModel", () => {
     // 现值非 text:显式标注与关键词都不改判
     modelFindFirst.mockResolvedValue({
       id: BigInt(22),
+      groupKey: "doubao-seedream-4-0::t2i",
       modelKey: "doubao-seedream-4-0",
       matchKey: "doubao-seedream-4-0",
       displayName: "doubao-seedream-4-0",

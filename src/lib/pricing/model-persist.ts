@@ -102,10 +102,15 @@ async function resolveProviderId(row: ModelPrefillRow): Promise<bigint | null> {
 }
 
 /** 模型归一:原始模型键 → 模型字典 id;归一后为空 → null(整行跳过)。
- *  行内源显式模态标注随之传入——getOrCreateModel 内部归并并做 text→非text 升级 */
+ *  行内源显式模态标注与 providerKey 随之传入——getOrCreateModel 内部归并模态
+ *  (text→非text 升级)并按源作用域别名算 group_key(P1) */
 async function resolveModelId(row: ModelPrefillRow): Promise<bigint | null> {
   try {
-    const model = await getOrCreateModel({ rawKey: row.modelKey, modality: row.modality });
+    const model = await getOrCreateModel({
+      rawKey: row.modelKey,
+      modality: row.modality,
+      providerKey: resolveProviderKey(row),
+    });
     return model.id;
   } catch {
     return null; // 模型键归一后为空:不落脏行

@@ -44,6 +44,13 @@ export interface PublicModelRow {
   providerKind: string | null;
   /** 模型字典键(M74 跨厂商归一);未归一为 null */
   modelDictKey: string | null;
+  /** 能力归一键(P1,`base::task`):同型号跨渠道(官方/聚合)比价聚合优先用它;
+   *  未算出/冲突待裁为 null,回落 modelDictKey */
+  modelGroupKey: string | null;
+  /** 模型字典展示名(P1 透出;null 回落 modelDictKey) */
+  modelDisplayName: string | null;
+  /** 模型产品线(字典表 family;null=未推导) */
+  modelFamily: string | null;
   /** 模型模态(字典表);未归一为 null */
   modality: string | null;
   /** 行级计价单位(批G):per_1m_tokens | per_image | per_second | …;

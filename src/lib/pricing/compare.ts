@@ -89,9 +89,10 @@ function cellOf(row: PublicModelRow): CompareCell {
   };
 }
 
-/** 归一键:优先模型字典键(跨厂商同一模型聚一起),未归一则回退原始模型键 */
+/** 归一键:能力归一键(P1,同型号跨渠道含官方/聚合异写)优先,其次模型字典键,
+ *  未归一则回退原始模型键 */
 export function compareKeyOf(row: PublicModelRow): string {
-  return row.modelDictKey ?? row.modelKey;
+  return row.modelGroupKey ?? row.modelDictKey ?? row.modelKey;
 }
 
 /** 区键:币种 × 单位(跨币种或跨单位都不可比) */
@@ -126,7 +127,7 @@ export function buildCompareGroups(rows: PublicModelRow[]): CompareGroup[] {
   }
 
   const groups = new Map<string, CompareGroup>();
-  for (const [key, list] of byModel) {
+  for (const [, list] of byModel) {
     const cells = list.map(cellOf);
     // 同一提供商多行(同模型的档位行/快照)取代表价最低的一条为代表
     const byProvider = new Map<string, CompareCell>();
@@ -144,13 +145,25 @@ export function buildCompareGroups(rows: PublicModelRow[]): CompareGroup[] {
       if (bucket === undefined) byPartition.set(cellPartitionKey(cell), [cell]);
       else bucket.push(cell);
     }
-    const displayName = list[0]?.modelDictKey ?? list[0]?.modelKey ?? key;
+    // 聚合桶键(可能带 ::task 能力后缀)只用于归拢;对外的模型键取代表行的
+    // 字典键——展示与锚点稳定,不暴露归一键形态
+    const stableKey = list[0]?.modelDictKey ?? list[0]?.modelKey ?? "";
+    const displayName = list[0]?.modelDisplayName ?? stableKey;
     const modality = list[0]?.modality ?? null;
+    const family = list[0]?.modelFamily ?? null;
     for (const [partition, partCells] of byPartition) {
       // 「≥2 家报价」的闸落在**分区桶内**:CNY 一家 + USD 一家 = 谁也不可比价
       if (partCells.length < 2) continue;
       const [currency, priceUnit] = partition.split("|") as [string, string];
-      const model = buildModel(key, displayName, modality, partCells, currency, priceUnit);
+      const model = buildModel(
+        stableKey,
+        displayName,
+        modality,
+        family,
+        partCells,
+        currency,
+        priceUnit,
+      );
       const group = groups.get(partition);
       if (group === undefined) {
         groups.set(partition, {
@@ -198,6 +211,7 @@ function buildModel(
   key: string,
   displayName: string,
   modality: string | null,
+  family: string | null,
   unique: CompareCell[],
   currency: string,
   priceUnit: string,
@@ -234,7 +248,7 @@ function buildModel(
   return {
     key,
     displayName,
-    family: null,
+    family,
     modality,
     currency,
     priceUnit,
