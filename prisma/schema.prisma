@@ -466,6 +466,21 @@ model StatsClientDaily {
   @@map("stats_client_daily")
 }
 
+/// 访客地区分布(2026-11-25 方案① 一期):ingest 侧 ip2region 解析 → Redis 日缓冲
+/// → worker flush,与 ref/client 同构。国内按省、境外按国家聚合(province 空串=
+/// 境外或未细化);市级只做展示标注(方案②)不入聚合。7 天行级存量回填见
+/// scripts/oneoff/region-backfill
+model StatsRegionDaily {
+  statDate DateTime @map("stat_date") @db.Date
+  country  String   @db.VarChar(64) // xdb country_name;国内固定 '中国'
+  province String   @db.VarChar(64) // 国内省级(广东省);境外/未细化空串
+  pv       BigInt   @default(0)
+  uv       BigInt   @default(0)
+
+  @@id([statDate, country, province])
+  @@map("stats_region_daily")
+}
+
 /// 近期访问明细(M10 批⑥,页面行级):全量 IP 短留存(7 天,worker 日清过期行);
 /// 访客身份仍是哈希(visitor_hash),明文 IP 仅作短留存排查用
 model StatsVisitLog {

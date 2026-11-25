@@ -283,6 +283,18 @@ CREATE TABLE stats_client_daily (
     PRIMARY KEY (stat_date, browser, os, device_type)
 );
 
+-- 访客地区分布(2026-11-25 方案① 一期):ingest 侧 ip2region 内存查表(方案② 的库)
+-- 国内按省、境外按国家聚合;province 空串=境外或国内未细化;明文 IP 只进 visit_log
+-- (7 天短留存),地区行不含 IP 维度;上线前 7 天存量由 oneoff region-backfill 回填
+CREATE TABLE stats_region_daily (
+    stat_date DATE NOT NULL,
+    country   VARCHAR(64) NOT NULL,   -- xdb country_name;国内固定 '中国'
+    province  VARCHAR(64) NOT NULL,   -- 国内省级(广东省);境外/未细化空串
+    pv        BIGINT NOT NULL DEFAULT 0,
+    uv        BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (stat_date, country, province)
+);
+
 -- 旧 URL 301 映射(迁移脚本灌入;web legacy 路由 + Redis 缓存消费)
 CREATE TABLE legacy_url_map (
     old_path    VARCHAR(500) PRIMARY KEY,

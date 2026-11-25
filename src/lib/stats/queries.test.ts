@@ -8,6 +8,7 @@ const prismaMock = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   statsReferrerDaily: { groupBy: vi.fn() },
   statsClientDaily: { groupBy: vi.fn() },
+  statsRegionDaily: { groupBy: vi.fn() },
   statsPageDaily: { groupBy: vi.fn() },
   post: { findMany: vi.fn() },
   telegram: { count: vi.fn() },
@@ -19,6 +20,7 @@ import {
   getClientPanel,
   getHotPages,
   getReferrerPanel,
+  getRegionPanel,
   getVisitOverview,
   getVisitSeries,
 } from "./queries";
@@ -82,6 +84,27 @@ describe("getVisitSeries / 面板", () => {
       pv: 9,
       uv: 4,
     });
+  });
+
+  it("region 面板:label 取省(空串落国家)、境内/境外合计、行截断不影响合计", async () => {
+    prismaMock.statsRegionDaily.groupBy.mockResolvedValue([
+      { country: "中国", province: "山东省", _sum: { pv: BigInt(5), uv: BigInt(4) } },
+      { country: "中国", province: "", _sum: { pv: BigInt(2), uv: BigInt(1) } },
+      { country: "United States", province: "", _sum: { pv: BigInt(3), uv: BigInt(3) } },
+    ]);
+    const panel = await getRegionPanel(7, 2);
+    expect(panel).toEqual({
+      totalPv: 10,
+      domesticPv: 7,
+      overseasPv: 3,
+      // 「中国」未细化行与境外国家同列展示
+      rows: [
+        { label: "山东省", pv: 5, uv: 4 },
+        { label: "中国", pv: 2, uv: 1 },
+      ],
+    });
+    // 截断在行展示层,合计覆盖全窗口(groupBy 不带 take)
+    expect(prismaMock.statsRegionDaily.groupBy.mock.calls[0]?.[0]).not.toHaveProperty("take");
   });
 
   it("client 面板:browser/device 两路 groupBy", async () => {

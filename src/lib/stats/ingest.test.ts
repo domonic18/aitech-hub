@@ -1,7 +1,8 @@
 /**
- * 统计接收入口单测(M48 批G 补盲;redis/prisma 必 mock):beacon 三闸(bot/管理员/
- * UV 去重)、缓冲键形与 uv 条件写入、文章 PV 1h 去重与发布态负缓存、搜索词链路、
- * 爬虫/GEO 键形、purge 分批。
+ * 统计接收入口单测(M48 批G 补盲;redis/prisma/ip-region 必 mock):beacon 三闸
+ * (bot/管理员/UV 去重)、缓冲键形与 uv 条件写入、地区分布缓冲(方案①:解析
+ * 到 pv+uv 双写、解析不到整键不写)、文章 PV 1h 去重与发布态负缓存、搜索词
+ * 链路、爬虫/GEO 键形、purge 分批。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,9 @@ const redisMock = vi.hoisted(() => {
   };
 });
 vi.mock("@/lib/redis", () => ({ redis: redisMock }));
+
+const ipRegionMock = vi.hoisted(() => ({ ipRegionParts: vi.fn() }));
+vi.mock("./ip-region", () => ipRegionMock);
 
 const prismaMock = vi.hoisted(() => ({
   statsVisitLog: { create: vi.fn() },
@@ -79,6 +83,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   redisMock.set.mockResolvedValue("OK");
   redisMock.get.mockResolvedValue(null);
+  ipRegionMock.ipRegionParts.mockReturnValue({ country: "中国", province: "广东省" });
   prismaMock.statsVisitLog.create.mockResolvedValue({
     id: BigInt(1),
     createdAt: new Date("2026-10-25T00:00:00Z"),
@@ -120,7 +125,36 @@ describe("ingestView 三闸与缓冲键形", () => {
       String(c[0]).startsWith("stats:buf:ref:"),
     );
     expect(refCalls.map((c) => c[1])).toEqual(["search|google|pv", "search|google|uv"]);
+    // 六类缓冲键都有兜底 TTL(含地区)
+    expect(redisMock.pipe.expire).toHaveBeenCalledTimes(6);
+  });
+
+  it("地区分布(方案①):解析到 → country|province 双写;解析不到 → 整键不写不挂 TTL", async () => {
+    await ingestView(baseInput());
+    const regionCalls = redisMock.pipe.hincrby.mock.calls.filter((c) =>
+      String(c[0]).startsWith("stats:buf:region:"),
+    );
+    expect(regionCalls.map((c) => c[1])).toEqual(["中国|广东省|pv", "中国|广东省|uv"]);
+
+    ipRegionMock.ipRegionParts.mockReturnValue(null);
+    vi.clearAllMocks();
+    redisMock.set.mockResolvedValue("OK");
+    redisMock.get.mockResolvedValue(null);
+    await ingestView(baseInput());
+    expect(
+      redisMock.pipe.hincrby.mock.calls.some((c) => String(c[0]).startsWith("stats:buf:region:")),
+    ).toBe(false);
+    // 主口径五类缓冲照写,不受地区解析失败影响(尽力而为)
     expect(redisMock.pipe.expire).toHaveBeenCalledTimes(5);
+  });
+
+  it("境外访客:province 折叠空串入字段", async () => {
+    ipRegionMock.ipRegionParts.mockReturnValue({ country: "United States", province: null });
+    await ingestView(baseInput());
+    const regionCalls = redisMock.pipe.hincrby.mock.calls.filter((c) =>
+      String(c[0]).startsWith("stats:buf:region:"),
+    );
+    expect(regionCalls.map((c) => c[1])).toEqual(["United States||pv", "United States||uv"]);
   });
 
   it("回访(UV NX=null):只写 pv,不写 uv", async () => {

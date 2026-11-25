@@ -56,6 +56,20 @@ export interface ClientPanel {
   devices: NamePv[];
 }
 
+export interface RegionRow {
+  /** 展示标签:国内省级(广东省),境外国家名(United States) */
+  label: string;
+  pv: number;
+  uv: number;
+}
+
+export interface RegionPanelData {
+  totalPv: number;
+  domesticPv: number;
+  overseasPv: number;
+  rows: RegionRow[];
+}
+
 export type HotRange = "today" | "7d" | "30d" | "all";
 
 export interface HotPageRow {
@@ -158,6 +172,36 @@ export async function getClientPanel(days: 7 | 30 | 90): Promise<ClientPanel> {
   return {
     browsers: browsers.map((r) => ({ name: r.browser, pv: Number(r._sum.pv ?? 0) })),
     devices: devices.map((r) => ({ name: r.deviceType, pv: Number(r._sum.pv ?? 0) })),
+  };
+}
+
+/**
+ * 访客地区分布(方案① 一期):近 N 日聚合行 → 国内省级/境外国家级混排
+ * (pv 降序);「中国」未细化行(聚合时省份缺失)与境外国家同列展示。
+ * 方案① 上线日起累计,上线前的历史由 oneoff 回填最多 7 天。
+ */
+export async function getRegionPanel(days: 7 | 30 | 90, limit = 10): Promise<RegionPanelData> {
+  // 不在 groupBy take 截断:境内/境外合计须覆盖全窗口(地区基数几十,全量很小),
+  // 行展示再截断
+  const rows = await prisma.statsRegionDaily.groupBy({
+    by: ["country", "province"],
+    where: { statDate: { gte: dayDate(dayStr(days - 1)), lte: dayDate(dayStr(0)) } },
+    _sum: { pv: true, uv: true },
+    orderBy: { _sum: { pv: "desc" } },
+  });
+  let domesticPv = 0;
+  let overseasPv = 0;
+  const mapped = rows.map((r) => {
+    const pv = Number(r._sum.pv ?? 0);
+    if (r.country === "中国") domesticPv += pv;
+    else overseasPv += pv;
+    return { label: r.province || r.country, pv, uv: Number(r._sum.uv ?? 0) };
+  });
+  return {
+    totalPv: domesticPv + overseasPv,
+    domesticPv,
+    overseasPv,
+    rows: mapped.slice(0, limit),
   };
 }
 
