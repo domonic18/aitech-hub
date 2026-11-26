@@ -18,7 +18,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/site/PageHeader";
-import type { PriceBandId, PublicPricing } from "@/lib/pricing/public";
+import type { PriceBandId, PublicPricing, TierParamFilter } from "@/lib/pricing/public";
 import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 import {
   decodePricingQuery,
@@ -30,10 +30,38 @@ import {
 
 import { CompareDialog } from "./CompareDialog";
 import { CompareTray } from "./CompareTray";
+import { ModelCompareDialog } from "./ModelCompareDialog";
+import { ModelCompareTray, modelCompareKey } from "./ModelCompareTray";
 import { ModelSection } from "./ModelSection";
 import { PlanSection } from "./PlanSection";
 import { StatusBanner } from "./StatusBanner";
 import { planKey } from "./shared";
+
+/** pf URL 串 → TierParamFilter(如 "res:1080p,au:1,dur:5") */
+function tierParamFilterOf(pf: string): TierParamFilter {
+  const out: TierParamFilter = {};
+  for (const kv of pf.split(",")) {
+    const [k, v] = kv.split(":");
+    if (k === "res" && v) out.resolution = v;
+    else if (k === "au" && v === "1") out.hasAudio = true;
+    else if (k === "au" && v === "0") out.hasAudio = false;
+    else if (k === "dur" && v) {
+      const d = Number(v);
+      if (Number.isFinite(d)) out.durationGte = d;
+    }
+  }
+  return out;
+}
+
+/** TierParamFilter → pf URL 串 */
+function encodeTierParamFilter(f: TierParamFilter): string {
+  const parts: string[] = [];
+  if (f.resolution !== undefined) parts.push(`res:${f.resolution}`);
+  if (f.hasAudio === true) parts.push("au:1");
+  if (f.hasAudio === false) parts.push("au:0");
+  if (f.durationGte !== undefined) parts.push(`dur:${f.durationGte}`);
+  return parts.join(",");
+}
 
 /** 对比上限:超过 4 列并排在小屏失去可读性 */
 const COMPARE_LIMIT = 4;
@@ -64,6 +92,8 @@ export default function PricingExplorer({
   const [sortByPrice, setSortByPrice] = useState(false);
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [modelCompareKeys, setModelCompareKeys] = useState<string[]>([]);
+  const [modelCompareOpen, setModelCompareOpen] = useState(false);
 
   // 挂载后从 URL 取初始筛选(SSR 已输出未筛选全量,这里只是覆盖成 URL 指定的状态)
   useEffect(() => {
@@ -103,6 +133,19 @@ export default function PricingExplorer({
       return [...prev, key];
     });
   };
+
+  const toggleModelCompare = (key: string): void => {
+    setModelCompareKeys((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      if (prev.length >= 4) return prev;
+      return [...prev, key];
+    });
+  };
+
+  const selectedCompareModels = useMemo(
+    () => data.models.filter((m) => modelCompareKeys.includes(modelCompareKey(m))),
+    [data.models, modelCompareKeys],
+  );
 
   const empty = data.models.length === 0 && data.plans.length === 0;
   // 页内大页签(2026-11-18 反馈:按量模型与 Coding Plan 挤一页不利查看):
@@ -187,6 +230,21 @@ export default function PricingExplorer({
                 onViewChange={(v) => updateModelQuery({ view: v })}
                 scenario={modelQuery.scenario}
                 onScenarioChange={(v) => updateModelQuery({ scenario: v })}
+                q={modelQuery.q}
+                onQChange={(v) => updateModelQuery({ q: v })}
+                pmin={modelQuery.pmin}
+                pmax={modelQuery.pmax}
+                onPriceRangeChange={(min, max) =>
+                  updateModelQuery({
+                    pmin: min,
+                    pmax: max,
+                    ...(min !== null || max !== null ? { band: "all" as const } : {}),
+                  })
+                }
+                tierParamFilter={tierParamFilterOf(modelQuery.pf)}
+                onTierParamFilterChange={(v) => updateModelQuery({ pf: encodeTierParamFilter(v) })}
+                modelCompareKeys={modelCompareKeys}
+                onToggleModelCompare={toggleModelCompare}
                 leaderboardMap={leaderboardMap}
               />
               {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}
@@ -240,6 +298,27 @@ export default function PricingExplorer({
       )}
       {compareOpen && selectedPlans.length >= 2 && (
         <CompareDialog plans={selectedPlans} onClose={() => setCompareOpen(false)} />
+      )}
+      {modelCompareKeys.length > 0 && (!showTabs || panel === "model") && (
+        <ModelCompareTray
+          models={selectedCompareModels}
+          onRemove={(key) => setModelCompareKeys((prev) => prev.filter((k) => k !== key))}
+          onClear={() => {
+            setModelCompareKeys([]);
+            setModelCompareOpen(false);
+          }}
+          onOpen={() => setModelCompareOpen(true)}
+          limit={4}
+        />
+      )}
+      {modelCompareOpen && selectedCompareModels.length >= 2 && (
+        <ModelCompareDialog
+          models={selectedCompareModels}
+          onClose={() => setModelCompareOpen(false)}
+        />
+      )}
+      {modelCompareKeys.length > 0 && (!showTabs || panel === "model") && (
+        <div className="h-20" aria-hidden />
       )}
     </PageHeader>
   );
