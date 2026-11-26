@@ -675,6 +675,14 @@ export function ModelSection({
   const toggleGroup = (g: ModelGroupDef): void => {
     setGroupOverrides((prev) => ({ ...prev, [g.key]: !g.expanded }));
   };
+  // 全部展开/收起:当前可见的型号组一键翻转(行业主流交互——列表工具条上的
+  // 单键 toggle,标签随态切换)。翻转写进 override,筛选变化仍会按 filterSig 复位。
+  const listGroups = useMemo(() => regionGroups.flatMap((rg) => rg.modelGroups), [regionGroups]);
+  const allExpanded = listGroups.length > 0 && listGroups.every((mg) => mg.expanded);
+  const toggleExpandAll = (): void => {
+    const next = !allExpanded;
+    setGroupOverrides(Object.fromEntries(listGroups.map((mg) => [mg.key, next])));
+  };
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       {/* 用途页签(批G)+ 视图切换(M74 批D) */}
@@ -892,43 +900,60 @@ export function ModelSection({
               )}
             </div>
           ) : (
-            regionGroups.map(({ key, modelGroups, visibleCount }) => (
-              <div
-                key={key}
-                // 批D8:全量行必须进 DOM(SEO 红线),但视口外的分组可跳过布局绘制
-                className="border-b border-line last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_600px]"
-              >
-                <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">
-                    {groupTitle(
-                      key,
-                      modelGroups.flatMap((g) => g.rows),
-                    )}
-                  </h2>
-                  <span className="ml-auto font-mono text-[11px] text-blue">{visibleCount}</span>
+            <>
+              {listGroups.length > 0 && (
+                <div className="flex items-center justify-between border-b border-line bg-panel-2/30 px-4 py-2">
+                  <span className="text-[11px] text-text-3">
+                    共 <span className="font-mono text-text-1">{listGroups.length}</span> 个型号组
+                  </span>
+                  <button
+                    type="button"
+                    aria-pressed={allExpanded}
+                    onClick={toggleExpandAll}
+                    className="cursor-pointer rounded-full border border-line bg-panel px-2.5 py-1 text-[11px] leading-none text-text-2 transition-colors select-none hover:border-line-hover hover:text-text-1"
+                  >
+                    {allExpanded ? "全部收起" : "全部展开"}
+                  </button>
                 </div>
-                <ModelTable
-                  modelGroups={modelGroups}
-                  visibleKeys={visibleKeys}
-                  onToggleGroup={toggleGroup}
-                  scenario={scenario}
-                  leaderboardMap={leaderboardMap}
-                  modelCompareKeys={modelCompareKeys}
-                  onToggleModelCompare={onToggleModelCompare}
-                  modelCompareLimit={modelCompareLimit}
-                />
-                <ModelCards
-                  modelGroups={modelGroups}
-                  visibleKeys={visibleKeys}
-                  onToggleGroup={toggleGroup}
-                  scenario={scenario}
-                  leaderboardMap={leaderboardMap}
-                  modelCompareKeys={modelCompareKeys}
-                  onToggleModelCompare={onToggleModelCompare}
-                  modelCompareLimit={modelCompareLimit}
-                />
-              </div>
-            ))
+              )}
+              {regionGroups.map(({ key, modelGroups, visibleCount }) => (
+                <div
+                  key={key}
+                  // 批D8:全量行必须进 DOM(SEO 红线),但视口外的分组可跳过布局绘制
+                  className="border-b border-line last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_600px]"
+                >
+                  <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
+                    <h2 className="text-[13px] font-semibold text-text-1">
+                      {groupTitle(
+                        key,
+                        modelGroups.flatMap((g) => g.rows),
+                      )}
+                    </h2>
+                    <span className="ml-auto font-mono text-[11px] text-blue">{visibleCount}</span>
+                  </div>
+                  <ModelTable
+                    modelGroups={modelGroups}
+                    visibleKeys={visibleKeys}
+                    onToggleGroup={toggleGroup}
+                    scenario={scenario}
+                    leaderboardMap={leaderboardMap}
+                    modelCompareKeys={modelCompareKeys}
+                    onToggleModelCompare={onToggleModelCompare}
+                    modelCompareLimit={modelCompareLimit}
+                  />
+                  <ModelCards
+                    modelGroups={modelGroups}
+                    visibleKeys={visibleKeys}
+                    onToggleGroup={toggleGroup}
+                    scenario={scenario}
+                    leaderboardMap={leaderboardMap}
+                    modelCompareKeys={modelCompareKeys}
+                    onToggleModelCompare={onToggleModelCompare}
+                    modelCompareLimit={modelCompareLimit}
+                  />
+                </div>
+              ))}
+            </>
           )}
         </div>
       </div>
