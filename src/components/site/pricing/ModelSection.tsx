@@ -52,7 +52,6 @@ import { SearchBox } from "./SearchBox";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
-import { ModelComparePanel } from "./ModelComparePanel";
 import { OfficialLink, groupKey, groupTitle, ProtocolBadges } from "./shared";
 import { PriceScatter } from "./PriceScatter";
 import { basisResolution, ResolutionLadder } from "./ResolutionLadder";
@@ -64,6 +63,35 @@ function FreeBadge(): React.ReactElement {
     <span className="ml-1.5 rounded border border-green/40 bg-green/10 px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-green-hi">
       免费
     </span>
+  );
+}
+
+/** 对比勾选框:满额时未选中行禁用,与 Coding Plan CompareCheck 同构 */
+function CompareCheck({
+  checked,
+  disabled,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onToggle: () => void;
+}): React.ReactElement {
+  return (
+    <label
+      className="-m-2 flex cursor-pointer items-center p-2"
+      title={disabled ? "对比最多 4 个,先移除已选项" : "加入对比"}
+    >
+      <input
+        type="checkbox"
+        className="h-4 w-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
+        checked={checked}
+        disabled={disabled}
+        onChange={onToggle}
+        aria-label={`把 ${label} 加入对比`}
+      />
+    </label>
   );
 }
 
@@ -88,6 +116,9 @@ function ModelTable({
   visibleKeys,
   expandedGroups,
   onToggleGroup,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
   scenario,
   leaderboardMap,
 }: {
@@ -95,6 +126,9 @@ function ModelTable({
   visibleKeys: Set<string>;
   expandedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
@@ -107,7 +141,8 @@ function ModelTable({
           固定布局后各列宽由 colgroup 决定,长文在额度列内换行,不再外溢 */}
       <table className="w-full min-w-[860px] table-fixed text-left text-[13px]">
         <colgroup>
-          <col className="w-[28%]" />
+          <col className="w-14" />
+          <col className="w-[26%]" />
           <col className="w-[8%]" />
           <col className="w-[8%]" />
           {showScenario && <col className="w-[10%]" />}
@@ -118,7 +153,8 @@ function ModelTable({
         </colgroup>
         <thead>
           <tr className="border-b border-line text-[11px] font-normal text-text-3">
-            <th className="px-4 py-2.5 font-normal whitespace-nowrap">模型 / 厂商</th>
+            <th className="px-4 py-2.5 font-normal whitespace-nowrap">比价</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">模型 / 厂商</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">输入价</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">输出价</th>
             {showScenario && <th className="px-3 py-2.5 font-normal whitespace-nowrap">场景价</th>}
@@ -166,6 +202,9 @@ function ModelTable({
                   showScenario={showScenario}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
+                  modelCompareLimit={modelCompareLimit}
                 />
               ))}
             </Fragment>
@@ -182,20 +221,37 @@ function ModelTableRow({
   showScenario,
   scenario,
   leaderboardMap,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
 }: {
   row: PublicModelRow;
   hidden: boolean;
   showScenario: boolean;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
 }): React.ReactElement {
+  const key = rowKey(row);
+  const checked = modelCompareKeys.includes(key);
+  const full = modelCompareKeys.length >= modelCompareLimit;
   return (
     <tr
       id={modelAnchorId(row.vendor, row.modelKey)}
       hidden={hidden}
       className="border-b border-line/50 last:border-0"
     >
-      <td className="px-4 py-3.5">
+      <td className="px-4 py-3.5 align-top">
+        <CompareCheck
+          checked={checked}
+          disabled={full && !checked}
+          label={row.modelKey}
+          onToggle={() => onToggleModelCompare(key)}
+        />
+      </td>
+      <td className="px-3 py-3.5">
         <div className="font-mono text-[13px] font-semibold break-words text-text-1">
           {row.modelKey}
           {row.isFree && <FreeBadge />}
@@ -260,6 +316,9 @@ function ModelCards({
   visibleKeys,
   expandedGroups,
   onToggleGroup,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
   scenario,
   leaderboardMap,
 }: {
@@ -267,6 +326,9 @@ function ModelCards({
   visibleKeys: Set<string>;
   expandedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
@@ -299,6 +361,9 @@ function ModelCards({
                 showScenario={showScenario}
                 scenario={scenario}
                 leaderboardMap={leaderboardMap}
+                modelCompareKeys={modelCompareKeys}
+                onToggleModelCompare={onToggleModelCompare}
+                modelCompareLimit={modelCompareLimit}
               />
             ))}
           </Fragment>
@@ -314,21 +379,38 @@ function ModelCard({
   showScenario,
   scenario,
   leaderboardMap,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
 }: {
   row: PublicModelRow;
   hidden: boolean;
   showScenario: boolean;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
 }): React.ReactElement {
+  const key = rowKey(row);
+  const checked = modelCompareKeys.includes(key);
+  const full = modelCompareKeys.length >= modelCompareLimit;
   return (
     <div hidden={hidden} className="rounded-lg border border-line/70 px-4 py-3">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[13px] font-semibold text-text-1">
           {row.modelKey}
           {row.isFree && <FreeBadge />}
         </span>
-        <OfficialLink url={row.sourceUrl} />
+        <div className="flex shrink-0 items-center gap-2">
+          <OfficialLink url={row.sourceUrl} />
+          <CompareCheck
+            checked={checked}
+            disabled={full && !checked}
+            label={row.modelKey}
+            onToggle={() => onToggleModelCompare(key)}
+          />
+        </div>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
         <span>{row.providerName ?? row.vendor}</span>
@@ -443,6 +525,10 @@ export interface ModelSectionProps {
   onTierParamFilterChange: (v: TierParamFilter) => void;
   /** 外部榜单角标(P5) */
   leaderboardMap?: Map<string, LeaderboardBadge[]>;
+  /** 模型对比选集(勾选列表行,与 Coding Plan 同构) */
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
 }
 
 export function ModelSection({
@@ -475,6 +561,9 @@ export function ModelSection({
   tierParamFilter,
   onTierParamFilterChange,
   leaderboardMap = new Map(),
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
   // 两遍筛选 + 两遍排序 + 厂商分面;聚合源铺开后行数百级,这是主交互卡顿源
@@ -764,7 +853,15 @@ export function ModelSection({
               )}
             </>
           ) : view === "compare" ? (
-            <ModelComparePanel models={sortedModels} />
+            <div className="border-t border-line px-4 py-10 text-center text-[13px] text-text-3">
+              {modelCompareKeys.length === 0 ? (
+                <p>请在「列表」中勾选至少 2 个模型，再进入比价视图。</p>
+              ) : modelCompareKeys.length === 1 ? (
+                <p>已选 1 个模型，还需再选 1 个才能对比。</p>
+              ) : (
+                <p>已选 {modelCompareKeys.length} 个模型，点击托盘「开始对比」或直接打开弹窗。</p>
+              )}
+            </div>
           ) : (
             regionGroups.map(({ key, modelGroups, visibleCount }) => (
               <div
@@ -788,6 +885,9 @@ export function ModelSection({
                   onToggleGroup={toggleGroup}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
+                  modelCompareLimit={modelCompareLimit}
                 />
                 <ModelCards
                   modelGroups={modelGroups}
@@ -796,6 +896,9 @@ export function ModelSection({
                   onToggleGroup={toggleGroup}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
+                  modelCompareLimit={modelCompareLimit}
                 />
               </div>
             ))
