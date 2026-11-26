@@ -7,8 +7,9 @@
  */
 import { AI_MODEL_PURPOSES, AI_PROVIDER_PRESETS, aiRoleLabel } from "@/lib/ai/constants";
 import type { AiModelRow } from "@/lib/ai/models-admin";
-import { field } from "@/components/admin/form-fields";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 import { useModelForm } from "./useModelForm";
 
@@ -41,13 +42,13 @@ export default function ModelDialog({
         <DialogShell width="2xl" scroll title={f.editing ? "编辑模型" : "新增模型"}>
           <label className="mt-3 block text-xs text-text-3">
             名称 *
-            <input
+            <Input
               ref={f.nameRef}
               value={f.name}
               onChange={(e) => f.setName(e.target.value)}
               maxLength={100}
               placeholder="如:解读主力 / Agent 搜索"
-              className={`mt-1 ${field}`}
+              className="mt-1"
             />
           </label>
 
@@ -73,7 +74,7 @@ export default function ModelDialog({
           </div>
 
           <label className="mt-3 flex items-center gap-2 text-xs text-text-2">
-            <input
+            <Input
               type="checkbox"
               checked={f.supportsVision}
               onChange={(e) => f.setSupportsVision(e.target.checked)}
@@ -88,7 +89,7 @@ export default function ModelDialog({
               <select
                 value={f.providerChoice}
                 onChange={(e) => f.setProviderChoice(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1 w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-sm text-text-1 outline-none focus:border-accent"
               >
                 {AI_PROVIDER_PRESETS.map((p) => (
                   <option key={p} value={p}>
@@ -101,12 +102,12 @@ export default function ModelDialog({
             {f.providerChoice === OTHER && (
               <label className="text-xs text-text-3">
                 供应商名称 *
-                <input
+                <Input
                   value={f.providerText}
                   onChange={(e) => f.setProviderText(e.target.value)}
                   maxLength={20}
                   placeholder="如 OpenRouter"
-                  className={`mt-1 ${field}`}
+                  className="mt-1"
                 />
               </label>
             )}
@@ -115,7 +116,7 @@ export default function ModelDialog({
               <select
                 value={f.protocol}
                 onChange={(e) => f.setProtocol(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1 w-full rounded-sm border border-line bg-panel-2 px-2.5 py-2 text-sm text-text-1 outline-none focus:border-accent"
               >
                 <option value="openai">OpenAI 兼容</option>
                 <option value="anthropic">Anthropic</option>
@@ -125,22 +126,22 @@ export default function ModelDialog({
             </label>
             <label className="text-xs text-text-3">
               模型 ID *
-              <input
+              <Input
                 value={f.modelId}
                 onChange={(e) => f.setModelId(e.target.value)}
                 maxLength={100}
                 placeholder="如 deepseek-chat"
-                className={`mt-1 font-mono ${field}`}
+                className="mt-1 font-mono"
               />
             </label>
             <label className="sm:col-span-2 text-xs text-text-3">
               Base URL
-              <input
+              <Input
                 value={f.baseUrl}
                 onChange={(e) => f.setBaseUrl(e.target.value)}
                 maxLength={500}
                 placeholder="https://api.deepseek.com(可粘完整端点,自动剥尾缀)"
-                className={`mt-1 font-mono ${field}`}
+                className="mt-1 font-mono"
               />
             </label>
             <label className="sm:col-span-2 text-xs text-text-3">
@@ -148,14 +149,14 @@ export default function ModelDialog({
               {f.editing && (
                 <span className="text-amber">(留空 = 保留 {model?.apiKeyMask ?? "现有密钥"})</span>
               )}
-              <input
+              <Input
                 type="password"
                 value={f.apiKey}
                 onChange={(e) => f.setApiKey(e.target.value)}
                 maxLength={400}
                 placeholder="••••••••"
                 autoComplete="new-password"
-                className={`mt-1 font-mono ${field}`}
+                className="mt-1 font-mono"
               />
               <span className="mt-1 block text-[11px] text-amber">
                 保存后 AES-256-GCM 加密落库,界面仅回显掩码。
@@ -163,67 +164,67 @@ export default function ModelDialog({
             </label>
             <label className="text-xs text-text-3">
               最大并发(1-64)
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={64}
                 value={f.concurrency}
                 onChange={(e) => f.setConcurrency(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1"
               />
             </label>
             <label className="text-xs text-text-3">
               超时(秒,5-600)
-              <input
+              <Input
                 type="number"
                 min={5}
                 max={600}
                 value={f.timeoutSec}
                 onChange={(e) => f.setTimeoutSec(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1"
               />
             </label>
             <label className="text-xs text-text-3">
               输入牌价(¥/1M tokens)
-              <input
+              <Input
                 type="number"
                 min={0}
                 step="0.01"
                 value={f.priceIn}
                 onChange={(e) => f.setPriceIn(e.target.value)}
                 placeholder="如 2.00(选填,用量页折算费用)"
-                className={`mt-1 ${field}`}
+                className="mt-1"
               />
             </label>
             <label className="text-xs text-text-3">
               输出牌价(¥/1M tokens)
-              <input
+              <Input
                 type="number"
                 min={0}
                 step="0.01"
                 value={f.priceOut}
                 onChange={(e) => f.setPriceOut(e.target.value)}
                 placeholder="如 8.00(选填)"
-                className={`mt-1 ${field}`}
+                className="mt-1"
               />
             </label>
             {f.purposes.includes("cover") && (
               <label className="text-xs text-text-3">
                 生图牌价(¥/张)
-                <input
+                <Input
                   type="number"
                   min={0}
                   step="0.01"
                   value={f.pricePerImage}
                   onChange={(e) => f.setPricePerImage(e.target.value)}
                   placeholder="如 0.30(封面生图模型必读)"
-                  className={`mt-1 ${field}`}
+                  className="mt-1"
                 />
               </label>
             )}
             <label className="sm:col-span-2 text-xs text-text-3">
               扩展参数(JSON,选填)
-              <textarea
+              <Textarea
                 value={f.extraText}
                 onChange={(e) => f.setExtraText(e.target.value)}
                 rows={3}
@@ -231,7 +232,7 @@ export default function ModelDialog({
                 placeholder={
                   '如 {"watermark_enabled": false}(智谱生图去水印,需平台侧签署去水印免责)'
                 }
-                className={`mt-1 font-mono ${field}`}
+                className="mt-1 font-mono"
               />
               <span className="mt-1 block text-[11px] text-amber">
                 浅合并进该模型的请求体;model/prompt/n/size/response_format 为保留键不可覆盖;保留键置
