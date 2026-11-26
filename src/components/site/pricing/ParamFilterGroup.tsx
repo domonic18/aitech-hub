@@ -22,7 +22,7 @@ function resolutionOptions(rows: PublicModelRow[]): string[] {
 }
 
 const chip = (on: boolean): string =>
-  `cursor-pointer rounded-full border px-2 py-[3px] text-[11px] leading-none transition-colors select-none ${
+  `max-w-full break-words cursor-pointer rounded-full border px-2 py-[3px] text-[11px] leading-snug transition-colors select-none text-left ${
     on
       ? "border-accent bg-accent text-white"
       : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"

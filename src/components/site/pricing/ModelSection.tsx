@@ -748,19 +748,23 @@ export function ModelSection({
       {/* lg+:左侧常驻筛选栏(2026-11-18 反馈问题一);<lg:顶部 FilterBar,同一份状态 */}
       <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
         <div className="hidden lg:block">
-          <div className="border-b border-line px-3.5 py-3">
+          <div className="border-b border-line px-4 py-3">
             <SearchBox value={q} onChange={onQChange} />
           </div>
-          <div className="border-b border-line px-3.5 py-3">
+          <div className="border-b border-line px-4 py-3">
             <div className="mb-1 text-[10.5px] text-text-3">自定义价格</div>
             <PriceRangeInput pmin={pmin} pmax={pmax} onApply={onPriceRangeChange} />
           </div>
-          <ParamFilterGroup
-            cat={cat}
-            rows={catRows}
-            filter={tierParamFilter}
-            onChange={onTierParamFilterChange}
-          />
+          {(cat === "video" || cat === "image") && (
+            <div className="border-b border-line px-4 py-3">
+              <ParamFilterGroup
+                cat={cat}
+                rows={catRows}
+                filter={tierParamFilter}
+                onChange={onTierParamFilterChange}
+              />
+            </div>
+          )}
           <FilterSidebar
             cat={cat}
             onCatChange={onCatChange}
