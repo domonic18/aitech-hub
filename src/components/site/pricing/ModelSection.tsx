@@ -16,7 +16,7 @@
  * - **完全免费**(is_free):调用不花钱 → 行级绿色「免费」角标
  * - **有免费额度**(free_tier):如「每日 200 万 tokens 免费」→ 橙色额度原文(不叫免费)
  */
-import { useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { type ContextBandId } from "@/lib/pricing/context";
 import {
@@ -72,18 +72,34 @@ function rowKey(r: PublicModelRow): string {
   return `${r.vendor}|${r.modelKey}`;
 }
 
+/** 型号组键(能力归一键):跨厂商同型号、同型号多版本快照归一组 */
+function modelGroupKey(r: PublicModelRow): string {
+  return r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`;
+}
+
+/** 型号组展示名 */
+function modelGroupName(rows: PublicModelRow[]): string {
+  const r = rows[0];
+  return r.modelDisplayName ?? r.modelDictKey ?? r.modelKey;
+}
+
 function ModelTable({
-  rows,
+  modelGroups,
   visibleKeys,
+  expandedGroups,
+  onToggleGroup,
   scenario,
   leaderboardMap,
 }: {
-  rows: PublicModelRow[];
+  modelGroups: ModelGroupDef[];
   visibleKeys: Set<string>;
+  expandedGroups: Set<string>;
+  onToggleGroup: (key: string) => void;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
   const showScenario = scenario !== "off";
+  const colSpan = showScenario ? 8 : 7;
   return (
     <div className="hidden overflow-x-auto sm:block">
       {/* table-fixed + 显式列宽:免费额度原文可很长(「共100万tokens…资源包有效期1年…」),
@@ -114,76 +130,50 @@ function ModelTable({
         </thead>
         <tbody>
           <tr>
-            <td colSpan={showScenario ? 8 : 7} className="px-4 py-1.5 text-[10.5px] text-text-3">
+            <td colSpan={colSpan} className="px-4 py-1.5 text-[10.5px] text-text-3">
               价格单位:token 模型 = 元/百万 tokens;按张/按秒模型 = 生成价(单位见行内后缀)。
               图片/视频按分辨率分档,行价对应最低分辨率档(行内已注明),其余分辨率价见模型名
               下的折叠档位。
             </td>
           </tr>
-          {rows.map((r) => (
-            <tr
-              key={rowKey(r)}
-              id={modelAnchorId(r.vendor, r.modelKey)}
-              hidden={!visibleKeys.has(rowKey(r))}
-              className="border-b border-line/50 last:border-0"
-            >
-              <td className="px-4 py-3.5">
-                <div className="font-mono text-[13px] font-semibold break-words text-text-1">
-                  {r.modelKey}
-                  {r.isFree && <FreeBadge />}
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
-                  <span>{r.providerName ?? r.vendor}</span>
-                  {r.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
-                  <ProtocolBadges protocols={r.protocols} />
-                  <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
-                </div>
-                <ResolutionLadder row={r} />
-              </td>
-              <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
-                {isTokenPriced(r) ? (
-                  formatPrice(r.inputPrice, r.currency)
-                ) : r.inputPrice === null ? (
-                  <span className="text-text-3">—</span>
-                ) : (
-                  formatPrice(r.inputPrice, r.currency, r.priceUnit)
-                )}
-              </td>
-              <td className="px-3 py-3.5 font-mono text-text-1">
-                <span className="whitespace-nowrap">
-                  {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
-                </span>
-                {basisResolution(r) !== null && (
-                  <span className="mt-0.5 block text-[10.5px] font-normal text-text-3">
-                    {basisResolution(r)} 分辨率
-                  </span>
-                )}
-              </td>
-              {showScenario && (
-                <td className="px-3 py-3.5 font-mono text-[12px] text-text-1 whitespace-nowrap">
-                  {formatScenarioCost(scenarioCost(r, scenario), r.currency, scenario)}
-                </td>
+          {modelGroups.map((mg) => (
+            <Fragment key={mg.key}>
+              {mg.multi && (
+                <tr className="border-b border-line bg-panel-2/30">
+                  <td colSpan={colSpan} className="px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => onToggleGroup(mg.key)}
+                      className="flex w-full cursor-pointer items-center justify-between text-left text-[13px] font-semibold text-text-1"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="text-[10px] text-text-3">
+                          {expandedGroups.has(mg.key) ? "▾" : "▸"}
+                        </span>
+                        {mg.displayName}
+                        <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
+                          {mg.rows.length} 个版本
+                        </span>
+                      </span>
+                      <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
+                    </button>
+                  </td>
+                </tr>
               )}
-              <td className="px-3 py-3.5 text-[12px]">
-                {r.freeTier === null ? (
-                  <span className="text-text-3">—</span>
-                ) : (
-                  // 额度原文可能很长(资源包有效期等),列内换行显示,不再撑宽整表
-                  <span className="block break-words text-amber" title={r.freeTier}>
-                    {r.freeTier}
-                  </span>
-                )}
-              </td>
-              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
-                {r.contextWindow ?? "—"}
-              </td>
-              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
-                {r.dataAsOf.slice(5)}
-              </td>
-              <td className="px-4 py-3.5 text-right">
-                <OfficialLink url={r.sourceUrl} />
-              </td>
-            </tr>
+              {mg.rows.map((r) => {
+                const expanded = !mg.multi || expandedGroups.has(mg.key);
+                return (
+                  <ModelTableRow
+                    key={rowKey(r)}
+                    row={r}
+                    hidden={!visibleKeys.has(rowKey(r)) || !expanded}
+                    showScenario={showScenario}
+                    scenario={scenario}
+                    leaderboardMap={leaderboardMap}
+                  />
+                );
+              })}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -191,69 +181,198 @@ function ModelTable({
   );
 }
 
-function ModelCards({
-  rows,
-  visibleKeys,
+function ModelTableRow({
+  row,
+  hidden,
+  showScenario,
   scenario,
   leaderboardMap,
 }: {
-  rows: PublicModelRow[];
+  row: PublicModelRow;
+  hidden: boolean;
+  showScenario: boolean;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
+}): React.ReactElement {
+  return (
+    <tr
+      id={modelAnchorId(row.vendor, row.modelKey)}
+      hidden={hidden}
+      className="border-b border-line/50 last:border-0"
+    >
+      <td className="px-4 py-3.5">
+        <div className="font-mono text-[13px] font-semibold break-words text-text-1">
+          {row.modelKey}
+          {row.isFree && <FreeBadge />}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
+          <span>{row.providerName ?? row.vendor}</span>
+          {row.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
+          <ProtocolBadges protocols={row.protocols} />
+          <LeaderboardBadges badges={leaderboardMap.get(row.modelDictKey ?? row.modelKey)} />
+        </div>
+        <ResolutionLadder row={row} />
+      </td>
+      <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
+        {isTokenPriced(row) ? (
+          formatPrice(row.inputPrice, row.currency)
+        ) : row.inputPrice === null ? (
+          <span className="text-text-3">—</span>
+        ) : (
+          formatPrice(row.inputPrice, row.currency, row.priceUnit)
+        )}
+      </td>
+      <td className="px-3 py-3.5 font-mono text-text-1">
+        <span className="whitespace-nowrap">
+          {formatPrice(row.outputPrice, row.currency, row.priceUnit)}
+        </span>
+        {basisResolution(row) !== null && (
+          <span className="mt-0.5 block text-[10.5px] font-normal text-text-3">
+            {basisResolution(row)} 分辨率
+          </span>
+        )}
+      </td>
+      {showScenario && (
+        <td className="px-3 py-3.5 font-mono text-[12px] text-text-1 whitespace-nowrap">
+          {formatScenarioCost(scenarioCost(row, scenario), row.currency, scenario)}
+        </td>
+      )}
+      <td className="px-3 py-3.5 text-[12px]">
+        {row.freeTier === null ? (
+          <span className="text-text-3">—</span>
+        ) : (
+          // 额度原文可能很长(资源包有效期等),列内换行显示,不再撑宽整表
+          <span className="block break-words text-amber" title={row.freeTier}>
+            {row.freeTier}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
+        {row.contextWindow ?? "—"}
+      </td>
+      <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
+        {row.dataAsOf.slice(5)}
+      </td>
+      <td className="px-4 py-3.5 text-right">
+        <OfficialLink url={row.sourceUrl} />
+      </td>
+    </tr>
+  );
+}
+
+function ModelCards({
+  modelGroups,
+  visibleKeys,
+  expandedGroups,
+  onToggleGroup,
+  scenario,
+  leaderboardMap,
+}: {
+  modelGroups: ModelGroupDef[];
   visibleKeys: Set<string>;
+  expandedGroups: Set<string>;
+  onToggleGroup: (key: string) => void;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
   const showScenario = scenario !== "off";
   return (
     <div className="flex flex-col gap-3 p-3 sm:hidden">
-      {rows.map((r) => (
-        <div
-          key={rowKey(r)}
-          hidden={!visibleKeys.has(rowKey(r))}
-          className="rounded-lg border border-line/70 px-4 py-3"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="font-mono text-[13px] font-semibold text-text-1">
-              {r.modelKey}
-              {r.isFree && <FreeBadge />}
-            </span>
-            <OfficialLink url={r.sourceUrl} />
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
-            <span>{r.providerName ?? r.vendor}</span>
-            {r.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
-            <ProtocolBadges protocols={r.protocols} />
-            <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
-          </div>
-          <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
-            {isTokenPriced(r) && (
-              <span>
-                <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
-                {formatPrice(r.inputPrice, r.currency)}
-              </span>
+      {modelGroups.map((mg) => {
+        const expanded = !mg.multi || expandedGroups.has(mg.key);
+        return (
+          <Fragment key={mg.key}>
+            {mg.multi && (
+              <button
+                type="button"
+                onClick={() => onToggleGroup(mg.key)}
+                className="flex cursor-pointer items-center justify-between rounded-lg border border-line/70 bg-panel-2/30 px-4 py-2 text-left"
+              >
+                <span className="flex items-center gap-2 text-[13px] font-semibold text-text-1">
+                  <span className="text-[10px] text-text-3">
+                    {expandedGroups.has(mg.key) ? "▾" : "▸"}
+                  </span>
+                  {mg.displayName}
+                  <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
+                    {mg.rows.length} 个版本
+                  </span>
+                </span>
+                <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
+              </button>
             )}
-            <span>
-              <span className="mr-1 text-[10.5px] font-normal text-text-3">
-                {isTokenPriced(r) ? "输出" : "生成价"}
-              </span>
-              {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
-            </span>
-            {showScenario && (
-              <span>
-                <span className="mr-1 text-[10.5px] font-normal text-text-3">场景价</span>
-                {formatScenarioCost(scenarioCost(r, scenario), r.currency, scenario)}
-              </span>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
-            {isTokenPriced(r) && <span>元/百万 tokens</span>}
-            {basisResolution(r) !== null && <span>分辨率 {basisResolution(r)}</span>}
-            {r.freeTier !== null && <span className="text-amber">免费额度:{r.freeTier}</span>}
-            {r.contextWindow !== null && <span>上下文 {r.contextWindow}</span>}
-            <span>截至 {r.dataAsOf}</span>
-          </div>
-          <ResolutionLadder row={r} />
-        </div>
-      ))}
+            {mg.rows.map((r) => (
+              <ModelCard
+                key={rowKey(r)}
+                row={r}
+                hidden={!visibleKeys.has(rowKey(r)) || !expanded}
+                showScenario={showScenario}
+                scenario={scenario}
+                leaderboardMap={leaderboardMap}
+              />
+            ))}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function ModelCard({
+  row,
+  hidden,
+  showScenario,
+  scenario,
+  leaderboardMap,
+}: {
+  row: PublicModelRow;
+  hidden: boolean;
+  showScenario: boolean;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
+}): React.ReactElement {
+  return (
+    <div hidden={hidden} className="rounded-lg border border-line/70 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-[13px] font-semibold text-text-1">
+          {row.modelKey}
+          {row.isFree && <FreeBadge />}
+        </span>
+        <OfficialLink url={row.sourceUrl} />
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
+        <span>{row.providerName ?? row.vendor}</span>
+        {row.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
+        <ProtocolBadges protocols={row.protocols} />
+        <LeaderboardBadges badges={leaderboardMap.get(row.modelDictKey ?? row.modelKey)} />
+      </div>
+      <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
+        {isTokenPriced(row) && (
+          <span>
+            <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
+            {formatPrice(row.inputPrice, row.currency)}
+          </span>
+        )}
+        <span>
+          <span className="mr-1 text-[10.5px] font-normal text-text-3">
+            {isTokenPriced(row) ? "输出" : "生成价"}
+          </span>
+          {formatPrice(row.outputPrice, row.currency, row.priceUnit)}
+        </span>
+        {showScenario && (
+          <span>
+            <span className="mr-1 text-[10.5px] font-normal text-text-3">场景价</span>
+            {formatScenarioCost(scenarioCost(row, scenario), row.currency, scenario)}
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
+        {isTokenPriced(row) && <span>元/百万 tokens</span>}
+        {basisResolution(row) !== null && <span>分辨率 {basisResolution(row)}</span>}
+        {row.freeTier !== null && <span className="text-amber">免费额度:{row.freeTier}</span>}
+        {row.contextWindow !== null && <span>上下文 {row.contextWindow}</span>}
+        <span>截至 {row.dataAsOf}</span>
+      </div>
+      <ResolutionLadder row={row} />
     </div>
   );
 }
@@ -438,7 +557,19 @@ export function ModelSection({
   // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
   // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
   const vendorFacet = useMemo(() => vendorOptions(catRows, (r) => r.vendor), [catRows]);
-  const rowGroups = useMemo(() => allRowGroups(allRows, visibleKeys), [allRows, visibleKeys]);
+  const regionGroups = useMemo(
+    () => buildRegionGroups(allRows, visibleKeys),
+    [allRows, visibleKeys],
+  );
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (groupKey: string): void => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       {/* 用途页签(批G)+ 视图切换(M74 批D) */}
@@ -644,25 +775,34 @@ export function ModelSection({
           ) : view === "compare" ? (
             <ModelComparePanel models={sortedModels} />
           ) : (
-            rowGroups.map(({ key, rows, count }) => (
+            regionGroups.map(({ key, modelGroups, visibleCount }) => (
               <div
                 key={key}
                 // 批D8:全量行必须进 DOM(SEO 红线),但视口外的分组可跳过布局绘制
                 className="border-b border-line last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_600px]"
               >
                 <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
-                  <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>
+                  <h2 className="text-[13px] font-semibold text-text-1">
+                    {groupTitle(
+                      key,
+                      modelGroups.flatMap((g) => g.rows),
+                    )}
+                  </h2>
+                  <span className="ml-auto font-mono text-[11px] text-blue">{visibleCount}</span>
                 </div>
                 <ModelTable
-                  rows={rows}
+                  modelGroups={modelGroups}
                   visibleKeys={visibleKeys}
+                  expandedGroups={expandedGroups}
+                  onToggleGroup={toggleGroup}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
                 />
                 <ModelCards
-                  rows={rows}
+                  modelGroups={modelGroups}
                   visibleKeys={visibleKeys}
+                  expandedGroups={expandedGroups}
+                  onToggleGroup={toggleGroup}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
                 />
@@ -686,16 +826,51 @@ export function ModelSection({
   );
 }
 
-/** 列表分组:全量行分组 + 组内可见计数(0 可见的组整组不渲染) */
-function allRowGroups(
-  allRows: PublicModelRow[],
-  visibleKeys: Set<string>,
-): Array<{ key: string; rows: PublicModelRow[]; count: number }> {
-  const keys = [...new Set(allRows.map(groupKey))];
-  return keys
-    .map((key) => {
-      const rows = allRows.filter((m) => groupKey(m) === key);
-      return { key, rows, count: rows.filter((m) => visibleKeys.has(rowKey(m))).length };
+/** 型号组定义 */
+interface ModelGroupDef {
+  key: string;
+  displayName: string;
+  rows: PublicModelRow[];
+  visibleCount: number;
+  multi: boolean;
+}
+
+/** 外层 region|currency 组定义(内层含型号组) */
+interface RegionGroupDef {
+  key: string;
+  title: string;
+  visibleCount: number;
+  modelGroups: ModelGroupDef[];
+}
+
+/** 列表分组:外层 region|currency → 内层型号组(能力归一 key)
+ *  单版本组直接平铺,多版本组显示可展开/收起的组头。
+ */
+function buildRegionGroups(allRows: PublicModelRow[], visibleKeys: Set<string>): RegionGroupDef[] {
+  const regionKeys = [...new Set(allRows.map(groupKey))];
+  return regionKeys
+    .map((regionKey) => {
+      const regionRows = allRows.filter((m) => groupKey(m) === regionKey);
+      const groupMap = new Map<string, PublicModelRow[]>();
+      for (const r of regionRows) {
+        const gk = modelGroupKey(r);
+        if (!groupMap.has(gk)) groupMap.set(gk, []);
+        groupMap.get(gk)!.push(r);
+      }
+      const modelGroups: ModelGroupDef[] = [...groupMap.entries()].map(([key, rows]) => ({
+        key,
+        displayName: modelGroupName(rows),
+        rows,
+        visibleCount: rows.filter((m) => visibleKeys.has(rowKey(m))).length,
+        multi: rows.length > 1,
+      }));
+      const visibleCount = modelGroups.reduce((sum, g) => sum + g.visibleCount, 0);
+      return {
+        key: regionKey,
+        title: groupTitle(regionKey, regionRows),
+        visibleCount,
+        modelGroups,
+      };
     })
-    .filter((g) => g.count > 0);
+    .filter((g) => g.visibleCount > 0);
 }

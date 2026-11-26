@@ -78,7 +78,7 @@ export function ModelComparePanel({ models }: { models: PublicModelRow[] }): Rea
               <span className="font-mono text-[10.5px] text-text-3">
                 {formatPrice(representativePrice(m), m.currency)}
               </span>
-              {m.modelDisplayName ?? m.modelKey}
+              {m.modelKey}
               <button
                 type="button"
                 aria-label={`移除:${m.modelKey}`}
@@ -122,7 +122,7 @@ export function ModelComparePanel({ models }: { models: PublicModelRow[] }): Rea
                 <span className="font-mono text-[10px] text-text-3">
                   {formatPrice(representativePrice(m), m.currency)}
                 </span>{" "}
-                {m.modelDisplayName ?? m.modelKey}
+                {m.modelKey}
               </button>
             ))}
           </div>
