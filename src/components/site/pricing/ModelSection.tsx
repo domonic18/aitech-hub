@@ -16,7 +16,7 @@
  * - **完全免费**(is_free):调用不花钱 → 行级绿色「免费」角标
  * - **有免费额度**(free_tier):如「每日 200 万 tokens 免费」→ 橙色额度原文(不叫免费)
  */
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { type ContextBandId } from "@/lib/pricing/context";
 import {
@@ -114,7 +114,6 @@ function modelGroupName(rows: PublicModelRow[]): string {
 function ModelTable({
   modelGroups,
   visibleKeys,
-  expandedGroups,
   onToggleGroup,
   modelCompareKeys,
   onToggleModelCompare,
@@ -124,8 +123,7 @@ function ModelTable({
 }: {
   modelGroups: ModelGroupDef[];
   visibleKeys: Set<string>;
-  expandedGroups: Set<string>;
-  onToggleGroup: (key: string) => void;
+  onToggleGroup: (g: ModelGroupDef) => void;
   modelCompareKeys: string[];
   onToggleModelCompare: (key: string) => void;
   modelCompareLimit: number;
@@ -178,13 +176,11 @@ function ModelTable({
                 <td colSpan={colSpan} className="px-4 py-2">
                   <button
                     type="button"
-                    onClick={() => onToggleGroup(mg.key)}
+                    onClick={() => onToggleGroup(mg)}
                     className="flex w-full cursor-pointer items-center justify-between text-left text-[13px] font-semibold text-text-1"
                   >
                     <span className="flex items-center gap-2">
-                      <span className="text-[10px] text-text-3">
-                        {expandedGroups.has(mg.key) ? "▾" : "▸"}
-                      </span>
+                      <span className="text-[10px] text-text-3">{mg.expanded ? "▾" : "▸"}</span>
                       {mg.displayName}
                       <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
                         {mg.rows.length} 个版本
@@ -198,7 +194,7 @@ function ModelTable({
                 <ModelTableRow
                   key={rowKey(r)}
                   row={r}
-                  hidden={!visibleKeys.has(rowKey(r)) || !expandedGroups.has(mg.key)}
+                  hidden={!visibleKeys.has(rowKey(r)) || !mg.expanded}
                   showScenario={showScenario}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
@@ -314,7 +310,6 @@ function ModelTableRow({
 function ModelCards({
   modelGroups,
   visibleKeys,
-  expandedGroups,
   onToggleGroup,
   modelCompareKeys,
   onToggleModelCompare,
@@ -324,8 +319,7 @@ function ModelCards({
 }: {
   modelGroups: ModelGroupDef[];
   visibleKeys: Set<string>;
-  expandedGroups: Set<string>;
-  onToggleGroup: (key: string) => void;
+  onToggleGroup: (g: ModelGroupDef) => void;
   modelCompareKeys: string[];
   onToggleModelCompare: (key: string) => void;
   modelCompareLimit: number;
@@ -336,16 +330,15 @@ function ModelCards({
   return (
     <div className="flex flex-col gap-3 p-3 sm:hidden">
       {modelGroups.map((mg) => {
-        const expanded = expandedGroups.has(mg.key);
         return (
           <Fragment key={mg.key}>
             <button
               type="button"
-              onClick={() => onToggleGroup(mg.key)}
+              onClick={() => onToggleGroup(mg)}
               className="flex cursor-pointer items-center justify-between rounded-lg border border-line/70 bg-panel-2/30 px-4 py-2 text-left"
             >
               <span className="flex items-center gap-2 text-[13px] font-semibold text-text-1">
-                <span className="text-[10px] text-text-3">{expanded ? "▾" : "▸"}</span>
+                <span className="text-[10px] text-text-3">{mg.expanded ? "▾" : "▸"}</span>
                 {mg.displayName}
                 <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
                   {mg.rows.length} 个版本
@@ -357,7 +350,7 @@ function ModelCards({
               <ModelCard
                 key={rowKey(r)}
                 row={r}
-                hidden={!visibleKeys.has(rowKey(r)) || !expanded}
+                hidden={!visibleKeys.has(rowKey(r)) || !mg.expanded}
                 showScenario={showScenario}
                 scenario={scenario}
                 leaderboardMap={leaderboardMap}
@@ -637,18 +630,50 @@ export function ModelSection({
   // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
   // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
   const vendorFacet = useMemo(() => vendorOptions(catRows, (r) => r.vendor), [catRows]);
-  const regionGroups = useMemo(
-    () => buildRegionGroups(allRows, visibleKeys),
-    [allRows, visibleKeys],
+  // 组展开规则(2026-11-26 反馈:筛选词元所后列表「没有数据」——实为所有组默认
+  // 收起,筛选后只剩组头):默认 = 单版本组展开、多版本组收起;任一收窄筛选
+  // 激活时全部展开(让命中行直接可见);手动展开/收起只记显式覆盖,筛选条件
+  // 变化即失效(避免「先收起、再筛选」残留成空态错觉)
+  const filterActive =
+    selectedVendors.length > 0 ||
+    q.trim() !== "" ||
+    pmin !== null ||
+    pmax !== null ||
+    band !== "all" ||
+    freeScope !== "all" ||
+    protocols.length > 0 ||
+    sourceKind !== "" ||
+    contextBand !== "all" ||
+    tierParamFilter.resolution !== undefined ||
+    tierParamFilter.hasAudio !== undefined ||
+    tierParamFilter.durationGte !== undefined;
+  const [groupOverrides, setGroupOverrides] = useState<Record<string, boolean>>({});
+  const filterSig = JSON.stringify([
+    selectedVendors,
+    q,
+    pmin,
+    pmax,
+    band,
+    freeScope,
+    protocols,
+    sourceKind,
+    contextBand,
+    tierParamFilter,
+  ]);
+  useEffect(() => {
+    setGroupOverrides({});
+  }, [filterSig]);
+  const isGroupExpanded = useCallback(
+    (g: { key: string; rows: PublicModelRow[] }): boolean =>
+      g.key in groupOverrides ? groupOverrides[g.key] : g.rows.length === 1 || filterActive,
+    [groupOverrides, filterActive],
   );
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const toggleGroup = (groupKey: string): void => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) next.delete(groupKey);
-      else next.add(groupKey);
-      return next;
-    });
+  const regionGroups = useMemo(
+    () => buildRegionGroups(allRows, visibleKeys, isGroupExpanded),
+    [allRows, visibleKeys, isGroupExpanded],
+  );
+  const toggleGroup = (g: ModelGroupDef): void => {
+    setGroupOverrides((prev) => ({ ...prev, [g.key]: !g.expanded }));
   };
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
@@ -885,7 +910,6 @@ export function ModelSection({
                 <ModelTable
                   modelGroups={modelGroups}
                   visibleKeys={visibleKeys}
-                  expandedGroups={expandedGroups}
                   onToggleGroup={toggleGroup}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
@@ -896,7 +920,6 @@ export function ModelSection({
                 <ModelCards
                   modelGroups={modelGroups}
                   visibleKeys={visibleKeys}
-                  expandedGroups={expandedGroups}
                   onToggleGroup={toggleGroup}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
@@ -931,6 +954,8 @@ interface ModelGroupDef {
   rows: PublicModelRow[];
   visibleCount: number;
   multi: boolean;
+  /** 渲染期算好的展开态(默认规则 + 手动覆盖) */
+  expanded: boolean;
 }
 
 /** 外层 region|currency 组定义(内层含型号组) */
@@ -942,9 +967,14 @@ interface RegionGroupDef {
 }
 
 /** 列表分组:外层 region|currency → 内层型号组(能力归一 key)
- *  单版本组直接平铺,多版本组显示可展开/收起的组头。
+ *  统一组头可展开/收起;展开态由 isExpanded 决定(单版本默认展开、
+ *  多版本默认收起、筛选激活时全展开,手动覆盖优先)。
  */
-function buildRegionGroups(allRows: PublicModelRow[], visibleKeys: Set<string>): RegionGroupDef[] {
+function buildRegionGroups(
+  allRows: PublicModelRow[],
+  visibleKeys: Set<string>,
+  isExpanded: (g: { key: string; rows: PublicModelRow[] }) => boolean,
+): RegionGroupDef[] {
   const regionKeys = [...new Set(allRows.map(groupKey))];
   return regionKeys
     .map((regionKey) => {
@@ -962,6 +992,7 @@ function buildRegionGroups(allRows: PublicModelRow[], visibleKeys: Set<string>):
           rows,
           visibleCount: rows.filter((m) => visibleKeys.has(rowKey(m))).length,
           multi: rows.length > 1,
+          expanded: isExpanded({ key, rows }),
         }))
         .filter((g) => g.visibleCount > 0);
       const visibleCount = modelGroups.reduce((sum, g) => sum + g.visibleCount, 0);
