@@ -12,6 +12,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
+import DialogShell from "./DialogShell";
 import ImportRefsList, { type RefState } from "@/components/admin/ImportRefsList";
 import ImportSourceButtons from "@/components/admin/ImportSourceButtons";
 import {
@@ -212,133 +213,126 @@ export default function ImportPostsModal({ onClose }: { onClose: () => void }): 
   const matchedCount = refs.filter((r) => !r.external).length;
 
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[80vh] w-full max-w-[560px] overflow-y-auto rounded-md border border-line bg-panel p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">一键发文(md 导入)</h3>
-          <button
-            type="button"
-            aria-label="关闭"
-            className="cursor-pointer text-text-3 hover:text-text-1"
-            onClick={onClose}
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-close" />
-            </svg>
-          </button>
-        </div>
+    <DialogShell width="lg" scroll title="一键发文(md 导入)" zClass="z-30" onClose={onClose}>
+      <div className="flex items-center justify-between">
+        <span className="sr-only">导入</span>
+        <span />
+        <button
+          type="button"
+          aria-label="关闭"
+          className="cursor-pointer text-text-3 hover:text-text-1"
+          onClick={onClose}
+        >
+          <svg className="ic" aria-hidden="true">
+            <use href="#i-close" />
+          </svg>
+        </button>
+      </div>
 
-        <p className="mt-2 text-xs text-text-3">
-          推荐用「选择文件夹(自动配图)」一次选中文章目录:系统自动读取其中的 md
-          并收集全部图片(含子目录,按文件名匹配)。也可分别选择 md
-          与图片;外链图自动转存入媒体库;上传与转存 sha1 去重。完成后进入编辑器,失败项保留原链。
-        </p>
+      <p className="mt-2 text-xs text-text-3">
+        推荐用「选择文件夹(自动配图)」一次选中文章目录:系统自动读取其中的 md
+        并收集全部图片(含子目录,按文件名匹配)。也可分别选择 md
+        与图片;外链图自动转存入媒体库;上传与转存 sha1 去重。完成后进入编辑器,失败项保留原链。
+      </p>
 
-        <input
-          ref={mdRef}
-          type="file"
-          accept=".md,.markdown"
-          hidden
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) pickMd(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        <input
-          ref={imgRef}
-          type="file"
-          accept={IMAGE_ACCEPT}
-          multiple
-          hidden
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) addImages(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        {/* 目录选择(webkitdirectory):onChange 的 FileList 含目录内全部文件
+      <input
+        ref={mdRef}
+        type="file"
+        accept=".md,.markdown"
+        hidden
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) pickMd(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={imgRef}
+        type="file"
+        accept={IMAGE_ACCEPT}
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) addImages(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      {/* 目录选择(webkitdirectory):onChange 的 FileList 含目录内全部文件
             (webkitRelativePath 带相对路径,匹配仍走 basename)。TS 未收录该
             非标准属性,以对象展开透传 DOM attribute。 */}
-        <input
-          ref={dirRef}
-          type="file"
-          hidden
-          multiple
-          {...{ webkitdirectory: "", directory: "" }}
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) addDirectory(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        {/* 逐引用补选:显式为该引用选定的文件即时上传,不要求文件名匹配 */}
-        <input
-          ref={pickRefRef}
-          type="file"
-          accept={IMAGE_ACCEPT}
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            const src = pickTarget;
-            e.target.value = "";
-            setPickTarget(null);
-            if (!file || !src) return;
-            setFiles((prev) => (prev.some((f) => f.name === file.name) ? prev : [...prev, file]));
-            void uploadRefNow(src, file);
-          }}
-        />
+      <input
+        ref={dirRef}
+        type="file"
+        hidden
+        multiple
+        {...{ webkitdirectory: "", directory: "" }}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) addDirectory(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      {/* 逐引用补选:显式为该引用选定的文件即时上传,不要求文件名匹配 */}
+      <input
+        ref={pickRefRef}
+        type="file"
+        accept={IMAGE_ACCEPT}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const src = pickTarget;
+          e.target.value = "";
+          setPickTarget(null);
+          if (!file || !src) return;
+          setFiles((prev) => (prev.some((f) => f.name === file.name) ? prev : [...prev, file]));
+          void uploadRefNow(src, file);
+        }}
+      />
 
-        <ImportSourceButtons
-          hasMd={!!mdName}
-          running={running}
-          error={error}
-          onPickMd={() => mdRef.current?.click()}
-          onPickDir={() => dirRef.current?.click()}
-          onPickImages={() => imgRef.current?.click()}
-        />
+      <ImportSourceButtons
+        hasMd={!!mdName}
+        running={running}
+        error={error}
+        onPickMd={() => mdRef.current?.click()}
+        onPickDir={() => dirRef.current?.click()}
+        onPickImages={() => imgRef.current?.click()}
+      />
 
-        {mdName && (
-          <>
-            <div className="mt-3 rounded-sm border border-line bg-panel-2 px-3 py-2 text-xs">
-              <b className="text-text-1">{mdName}</b>
-              <span className="ml-2 text-text-3">
-                图片引用 {refs.length} 处(本地图 {matchedCount} / 外链 {refs.length - matchedCount})
-                · 已选图片 {files.length} 张
-              </span>
-            </div>
-            {refs.length > 0 && (
-              <ImportRefsList
-                refs={refs}
-                states={states}
-                byName={byName}
-                running={running}
-                onRetryLocal={(src, file) => void uploadRefNow(src, file)}
-                onPick={(src) => {
-                  setPickTarget(src);
-                  pickRefRef.current?.click();
-                }}
-                onRetryExternal={(src) => void transferOne(src)}
-              />
-            )}
-          </>
-        )}
+      {mdName && (
+        <>
+          <div className="mt-3 rounded-sm border border-line bg-panel-2 px-3 py-2 text-xs">
+            <b className="text-text-1">{mdName}</b>
+            <span className="ml-2 text-text-3">
+              图片引用 {refs.length} 处(本地图 {matchedCount} / 外链 {refs.length - matchedCount}) ·
+              已选图片 {files.length} 张
+            </span>
+          </div>
+          {refs.length > 0 && (
+            <ImportRefsList
+              refs={refs}
+              states={states}
+              byName={byName}
+              running={running}
+              onRetryLocal={(src, file) => void uploadRefNow(src, file)}
+              onPick={(src) => {
+                setPickTarget(src);
+                pickRefRef.current?.click();
+              }}
+              onRetryExternal={(src) => void transferOne(src)}
+            />
+          )}
+        </>
+      )}
 
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            disabled={running || !mdName}
-            onClick={() => void run()}
-            className="cursor-pointer rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {running ? "导入中…" : "开始导入"}
-          </button>
-          {doneMsg && <span className="text-xs text-accent">{doneMsg}</span>}
-        </div>
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={running || !mdName}
+          onClick={() => void run()}
+          className="cursor-pointer rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {running ? "导入中…" : "开始导入"}
+        </button>
+        {doneMsg && <span className="text-xs text-accent">{doneMsg}</span>}
       </div>
-    </div>
+    </DialogShell>
   );
 }
