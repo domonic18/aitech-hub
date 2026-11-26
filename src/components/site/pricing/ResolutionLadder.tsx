@@ -7,12 +7,13 @@
  * token 行没有分辨率维度 → 一律不渲染(不占位)。
  */
 import { isTokenPriced, type PublicModelRow } from "@/lib/pricing/public";
-import { resolutionOf, rowResolution } from "@/lib/pricing/resolution";
+import { rowResolution, tierResolution } from "@/lib/pricing/resolution";
 
-/** 一档分辨率价(标签 + 价) */
+/** 一档分辨率价(标签 + 价 + 是否推断) */
 interface ResolutionPrice {
   label: string;
   price: number;
+  inferred: boolean;
 }
 
 /** 分辨率档位阶梯(按张/按秒行) */
@@ -20,10 +21,10 @@ function ladderOf(row: PublicModelRow): ResolutionPrice[] {
   if (isTokenPriced(row)) return [];
   const out: ResolutionPrice[] = [];
   for (const t of row.tiers) {
-    if (resolutionOf(t.tierLabel) === null) continue;
+    if (tierResolution(t) === null) continue;
     const price = t.outputPrice ?? t.inputPrice;
     if (price === null) continue;
-    out.push({ label: t.tierLabel, price });
+    out.push({ label: t.tierLabel, price, inferred: t.params?.source === "inferred" });
   }
   return out;
 }
@@ -45,6 +46,7 @@ export function ResolutionLadder({ row }: { row: PublicModelRow }): React.ReactE
         {ladder.map((t) => (
           <li key={t.label} className="font-mono">
             <span className="text-text-2">{t.label}</span> {t.price}
+            {t.inferred && <span className="ml-1 text-amber-500">推断</span>}
           </li>
         ))}
       </ul>

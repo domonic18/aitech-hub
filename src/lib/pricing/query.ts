@@ -13,7 +13,9 @@
  * 完全免费的老开关)按 `full` 承接,老链接不失效。
  */
 import type { ContextBandId } from "./context";
+import { normalizeScenarioId, type PricingScenarioId } from "./scenario";
 import type { FreeScopeId, ModelCatId, ModelSortId, PriceBandId } from "./public";
+import type { ApiProtocol } from "./protocols";
 
 /** 模型区视图:列表(逐行列价)| 比价(同模型跨提供商并排 + 散点/条形图) */
 export type PricingViewId = "list" | "compare" | "charts";
@@ -43,6 +45,18 @@ export interface PricingQueryState {
   view: PricingViewId;
   /** 页内大页签(默认 model) */
   panel: PricingPanelId;
+  /** 场景价(P4);off=默认单价 */
+  scenario: PricingScenarioId;
+  /** 关键词搜索(空 = 不过滤;匹配 modelDisplayName/modelFamily/modelKey/vendor) */
+  q: string;
+  /** 自定义价格下界(null = 不限) */
+  pmin: number | null;
+  /** 自定义价格上界(null = 不限) */
+  pmax: number | null;
+  /** 参数筛选(空 = 不过滤;格式 res:1080p,au:1,dur:10) */
+  pf: string;
+  /** 协议多选(空 = 全部;格式 proto=openai,anthropic) */
+  protocols: ApiProtocol[];
 }
 
 export const DEFAULT_PRICING_QUERY: PricingQueryState = {
@@ -55,6 +69,12 @@ export const DEFAULT_PRICING_QUERY: PricingQueryState = {
   sort: "default",
   view: "list",
   panel: "model",
+  scenario: "off",
+  q: "",
+  pmin: null,
+  pmax: null,
+  pf: "",
+  protocols: [],
 };
 
 const BANDS: ReadonlySet<string> = new Set(["all", "lt10", "10-50", "50-100", "100-300", "gte300"]);
@@ -70,6 +90,7 @@ const SORTS: ReadonlySet<string> = new Set(["default", "input", "output", "name"
 const VIEWS: ReadonlySet<string> = new Set(["list", "compare", "charts"]);
 const CATS: ReadonlySet<string> = new Set(["text", "image", "video", "audio", "vector", "all"]);
 const FREE_SCOPES: ReadonlySet<string> = new Set(["all", "full", "quota", "any"]);
+const PROTOCOLS: ReadonlySet<string> = new Set(["openai", "anthropic"]);
 
 /** 免费口径参数值 → 口径;旧值 `free=1`(只认完全免费的老开关)按 full 承接 */
 function freeScopeOf(raw: string | null): FreeScopeId {
@@ -91,6 +112,10 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
     .split(",")
     .map((v) => v.trim())
     .filter((v) => v !== "");
+  const protocols = (params.get("proto") ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => PROTOCOLS.has(p)) as ApiProtocol[];
   const band = params.get("b") ?? "";
   const contextBand = params.get("ctx") ?? "";
   const sort = params.get("sort") ?? "";
@@ -99,6 +124,7 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
   const legacyMod = params.get("mod") ?? "";
   return {
     vendors: [...new Set(vendors)],
+    protocols: [...new Set(protocols)],
     band: (BANDS.has(band) ? band : "all") as PriceBandId,
     freeScope: freeScopeOf(params.get("free")),
     panel: params.get("panel") === "plan" ? "plan" : "model",
@@ -111,13 +137,27 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
     sourceKind: params.get("src") ?? "",
     sort: (SORTS.has(sort) ? sort : "default") as ModelSortId,
     view: (VIEWS.has(view) ? view : "list") as PricingViewId,
+    scenario: normalizeScenarioId(params.get("scn")),
+    q: (params.get("q") ?? "").slice(0, 64),
+    pmin: parsePriceRange(params.get("pmin")),
+    pmax: parsePriceRange(params.get("pmax")),
+    pf: (params.get("pf") ?? "").slice(0, 120),
   };
+}
+
+/** 价格区间参数(0–99999,非法回退 null) */
+function parsePriceRange(raw: string | null): number | null {
+  if (raw === null) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 99999) return null;
+  return Math.floor(n);
 }
 
 /** 筛选态 → 查询串(全默认时返回空串——URL 保持干净) */
 export function encodePricingQuery(state: PricingQueryState): string {
   const params = new URLSearchParams();
   if (state.vendors.length > 0) params.set("v", state.vendors.join(","));
+  if (state.protocols.length > 0) params.set("proto", state.protocols.join(","));
   if (state.band !== DEFAULT_PRICING_QUERY.band) params.set("b", state.band);
   if (state.freeScope !== "all") params.set("free", state.freeScope);
   if (state.cat !== DEFAULT_PRICING_QUERY.cat) params.set("cat", state.cat);
@@ -126,6 +166,11 @@ export function encodePricingQuery(state: PricingQueryState): string {
   if (state.sort !== DEFAULT_PRICING_QUERY.sort) params.set("sort", state.sort);
   if (state.view !== DEFAULT_PRICING_QUERY.view) params.set("view", state.view);
   if (state.panel !== DEFAULT_PRICING_QUERY.panel) params.set("panel", state.panel);
+  if (state.scenario !== DEFAULT_PRICING_QUERY.scenario) params.set("scn", state.scenario);
+  if (state.q !== "") params.set("q", state.q);
+  if (state.pmin !== null) params.set("pmin", String(state.pmin));
+  if (state.pmax !== null) params.set("pmax", String(state.pmax));
+  if (state.pf !== "") params.set("pf", state.pf);
   return params.toString();
 }
 
@@ -145,7 +190,14 @@ export function samePricingQuery(a: PricingQueryState, b: PricingQueryState): bo
     a.sort === b.sort &&
     a.view === b.view &&
     a.panel === b.panel &&
+    a.scenario === b.scenario &&
+    a.q === b.q &&
+    a.pmin === b.pmin &&
+    a.pmax === b.pmax &&
+    a.pf === b.pf &&
     a.vendors.length === b.vendors.length &&
-    a.vendors.every((v, i) => v === b.vendors[i])
+    a.vendors.every((v, i) => v === b.vendors[i]) &&
+    a.protocols.length === b.protocols.length &&
+    a.protocols.every((p, i) => p === b.protocols[i])
   );
 }

@@ -1,15 +1,20 @@
 "use client";
 
 /**
- * admin 弹窗外壳(批D 收敛:七处「全屏遮罩 + 圆角面板」同构,防样式漂移):
+ * admin 弹窗外壳(批D 收敛 → 2026-11-26 换 Radix Dialog 底座):
  * 遮罩固定;面板宽度四档;长表单开 scroll(限高滚动),短内容不设 max-h。
  * 底部按钮排配 DialogActions。
- * portal 到 body:弹窗常从表格行内打开,不 portal 会继承单元格样式
- * (text-align 等穿过 position:fixed;操作列 text-right 曾把弹窗内
- * 无显式对齐的文本全部带成右对齐——同步预览首当其冲)。
+ *
+ * Radix 能力(此前手写版没有的):
+ * - 真焦点陷阱(Tab 键出不去弹窗)
+ * - Esc / 遮罩点击关闭(需传 onClose;不传则与旧行为一致)
+ * - 完整 ARIA(role=dialog / aria-modal)
+ *
+ * 接口不变:调用方条件渲染即开关;onClose 是可选增强。
  */
-import { useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { type ReactNode } from "react";
+
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const WIDTH_CLASS = {
   md: "max-w-md",
@@ -25,31 +30,36 @@ export default function DialogShell({
   children,
   /** 遮罩 z 档;默认 z-50,压不住更高层(如 Vditor 全屏 z-90)的调用方自行提档 */
   zClass = "z-50",
+  /** Esc / 遮罩点击回调(不传则这两条路径不关闭,由调用方控制) */
+  onClose,
 }: {
   width?: keyof typeof WIDTH_CLASS;
   /** 长表单限高滚动(默认关:短内容面板不设 max-h,避免无谓滚动) */
   scroll?: boolean;
-  /** 面板标题 h3;无标题弹窗(如 PAT 创建结果)不传 */
+  /** 面板标题;无标题弹窗(如 PAT 创建结果)不传 */
   title?: ReactNode;
   children: ReactNode;
   zClass?: string;
+  onClose?: () => void;
 }) {
-  // SSR 无 document;弹窗均由交互打开,挂载后才渲染即可
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
-  return createPortal(
-    <div className={`fixed inset-0 ${zClass} flex items-center justify-center bg-black/40 p-4`}>
-      <div
-        className={`w-full ${WIDTH_CLASS[width]} rounded-md border border-line bg-panel p-5 shadow-xl ${
-          scroll ? "max-h-[90vh] overflow-y-auto" : ""
-        }`}
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose?.();
+      }}
+    >
+      <DialogContent
+        className={`w-full ${WIDTH_CLASS[width]}`}
+        overlayClassName={zClass}
+        scroll={scroll}
       >
-        {title !== undefined && <h3 className="text-sm font-semibold">{title}</h3>}
+        {title !== undefined && (
+          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+        )}
         {children}
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }
 

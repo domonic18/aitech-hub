@@ -33,6 +33,7 @@ import { logWarn } from "@/lib/logger";
 import type { SnapshotSink } from "../../collect/snapshot-capture";
 import { snapshotHtml } from "../render-fetch";
 import type { ModelPrefillRow } from "../crawlers";
+import { unitForModality } from "../collect/units";
 
 /** 渠道注册 URL(model-market 落地页):行级 sourceUrl 锚 + 墓碑/待复核按源匹配口径 */
 export const CYSUO_MARKET_URL = "https://cysuo.com/model-market";
@@ -224,11 +225,9 @@ export function parseCiyuansuoModelDetail(html: string): CiyuansuoDetail {
   return { meta, quotes };
 }
 
-/** 模态 → 行级计价单位(40/40 实测);认不出的模态 → null(整模型跳过,单位闸) */
+/** 模态 → 行级计价单位(collect 单一出处);认不出的模态 → null(整模型跳过,单位闸) */
 export function ciyuansuoUnitForModality(modality: string): string | null {
-  if (modality === "文本") return "per_1m_tokens";
-  if (modality === "视频") return "per_second";
-  return null; // 音频/图片单位口径未实证:跳过待后续裁定(宁可少收不可错收)
+  return unitForModality(modality);
 }
 
 /**

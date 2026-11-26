@@ -14,7 +14,8 @@ import { useCallback, useState } from "react";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 import MediaPicker from "@/components/admin/cover/MediaPicker";
 import CopyWechatButton from "@/components/admin/distribute/CopyWechatButton";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   WECHAT_CONTENT_MAX_CHARS,
   WECHAT_DIGEST_MAX,
@@ -156,12 +157,12 @@ export default function SyncWechatDialog({
             <span className={titleLen > WECHAT_TITLE_MAX ? "text-red" : "text-text-3"}>
               {titleLen}/{WECHAT_TITLE_MAX}
             </span>
-            <input
+            <Input
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={200}
-              className={`mt-1 ${field}`}
+              className="mt-1 "
             />
           </label>
           <label className="text-xs text-text-3">
@@ -169,13 +170,13 @@ export default function SyncWechatDialog({
             <span className={digestLen > WECHAT_DIGEST_MAX ? "text-red" : "text-text-3"}>
               {digestLen}/{WECHAT_DIGEST_MAX}
             </span>
-            <textarea
+            <Textarea
               value={digest}
               onChange={(e) => setDigest(e.target.value)}
               rows={3}
               maxLength={300}
               placeholder="留空回退文章摘要;公众号图文列表展示用"
-              className={`mt-1 ${field}`}
+              className="mt-1 "
             />
           </label>
           <div className="text-xs text-text-3">

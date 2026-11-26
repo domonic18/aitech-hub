@@ -16,6 +16,7 @@
  */
 import { formatPrice, type PublicPricing } from "./public";
 import { protocolsLabel } from "./protocols";
+import type { LeaderboardBadge } from "./leaderboard-ref";
 
 /** 模态 → 用途标签(JSON-LD category 用) */
 export function modalityLabel(modality: string | null): string {
@@ -99,9 +100,13 @@ function priceProperty(
 export function buildPricingJsonLd(
   data: PublicPricing,
   pageUrl: string,
-  opts?: { compare?: PricingCompareEntry[] },
+  opts?: {
+    compare?: PricingCompareEntry[];
+    leaderboard?: Map<string, LeaderboardBadge[]>;
+  },
 ): Record<string, unknown> {
   const compareMap = new Map((opts?.compare ?? []).map((c) => [c.key, c]));
+  const leaderboardMap = opts?.leaderboard ?? new Map<string, LeaderboardBadge[]>();
   return {
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -142,6 +147,16 @@ export function buildPricingJsonLd(
               "@type": "PropertyValue",
               name: "最低价提供商",
               value: `${cmp.cheapestProvider}(${formatPrice(cmp.cheapestPrice, cmp.currency)})`,
+            });
+          }
+        }
+        const badges = leaderboardMap.get(key);
+        if (badges !== undefined && badges.length > 0) {
+          for (const b of badges) {
+            props.push({
+              "@type": "PropertyValue",
+              name: `${b.source} 榜单排名`,
+              value: `第 ${b.rank} 名`,
             });
           }
         }

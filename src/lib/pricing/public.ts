@@ -8,6 +8,7 @@ import { DAY_MS } from "@/lib/datetime";
 
 import { inContextBand, parseContextTokens, type ContextBandId } from "./context";
 import type { ApiProtocol } from "./protocols";
+import type { TierParamsWithSource } from "./params";
 
 /** ⚠️ 本模块必须保持**零库依赖**(无 db / prerender-safe / env):客户端组件
  *  (PricingExplorer 一族)直接引这里的纯函数与类型,读库那半边住 `./read.ts`。
@@ -44,6 +45,13 @@ export interface PublicModelRow {
   providerKind: string | null;
   /** 模型字典键(M74 跨厂商归一);未归一为 null */
   modelDictKey: string | null;
+  /** 能力归一键(P1,`base::task`):同型号跨渠道(官方/聚合)比价聚合优先用它;
+   *  未算出/冲突待裁为 null,回落 modelDictKey */
+  modelGroupKey: string | null;
+  /** 模型字典展示名(P1 透出;null 回落 modelDictKey) */
+  modelDisplayName: string | null;
+  /** 模型产品线(字典表 family;null=未推导) */
+  modelFamily: string | null;
   /** 模型模态(字典表);未归一为 null */
   modality: string | null;
   /** 行级计价单位(批G):per_1m_tokens | per_image | per_second | …;
@@ -65,6 +73,8 @@ export interface PublicTierRow {
   maxTokens: number | null;
   unit: string;
   currency: string;
+  /** 档位参数(P3);null=未解析/无需解析 */
+  params: TierParamsWithSource | null;
 }
 
 // ---------- M74 批C:筛选维度与排序(纯函数,单测锚) ----------
@@ -149,6 +159,8 @@ export interface ModelFilterOptions {
   cat: ModelCatId;
   contextBand: ContextBandId;
   sourceKind: string;
+  /** 协议多选(空 = 全部;行至少命中一个选中协议即通过) */
+  protocols: ApiProtocol[];
 }
 
 /**
@@ -188,26 +200,90 @@ export function matchesFreeScope(
 }
 
 /**
- * 模型行筛选(厂商 × 价格区间 × 免费口径 × 用途分组 × 上下文 × 来源类型)。
+ * 模型行筛选(厂商 × 价格区间 × 免费口径 × 用途分组 × 上下文 × 来源类型 × 协议)。
  * 价格区间按**代表价**(token 行输入价 / 非行生成价)判——排序同口径;
  * null 价不进具体价格区间档(不臆测);免费口径按 `matchesFreeScope` 判
  * (「有免费额度」与「完全免费」是两种语义,分开);
- * 「有免费额度」原文非空才算有额度(空串视同无)。
+ * 「有免费额度」原文非空才算有额度(空串视同无);
+ * 协议多选时行至少命中一个选中协议(与 vendors 多选语义一致)。
  */
 export function filterModelRows(
   rows: PublicModelRow[],
-  opts: ModelFilterOptions,
+  opts: ModelFilterOptions & {
+    q?: string;
+    pmin?: number | null;
+    pmax?: number | null;
+    tierParams?: TierParamFilter | null;
+  },
 ): PublicModelRow[] {
   const catMods = catToModalities(opts.cat);
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const protocolSet = new Set(opts.protocols);
   return rows.filter((r) => {
+    if (q !== "" && !matchesQuery(r, q)) return false;
     if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
     if (!inPriceBand(representativePrice(r), opts.band)) return false;
+    if (!inPriceRange(representativePrice(r), opts.pmin ?? null, opts.pmax ?? null)) return false;
     if (!matchesFreeScope(r, opts.freeScope)) return false;
     if (catMods !== null && !catMods.includes(effectiveModality(r))) return false;
     if (!inContextBand(parseContextTokens(r.contextWindow), opts.contextBand)) return false;
     if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;
+    if (opts.tierParams != null && !matchesTierParams(r.tiers, opts.tierParams)) return false;
+    if (protocolSet.size > 0 && !r.protocols.some((p) => protocolSet.has(p))) return false;
     return true;
   });
+}
+
+/** 自定义价格区间(null = 不限该端);null 价不进任何有限区间(不臆测) */
+function inPriceRange(price: number | null, min: number | null, max: number | null): boolean {
+  if (min === null && max === null) return true;
+  if (price === null) return false;
+  if (min !== null && price < min) return false;
+  if (max !== null && price >= max) return false;
+  return true;
+}
+
+/** 参数筛选条件(UX P2;null 字段 = 不过滤该维度) */
+export interface TierParamFilter {
+  /** 分辨率精确匹配(如 "1080P") */
+  resolution?: string;
+  /** 音频:true=有声 / false=无声 */
+  hasAudio?: boolean;
+  /** 时长下界(秒;如 5 = ≥5s) */
+  durationGte?: number;
+}
+
+/** 行的档位参数命中:任一档命中即通过(纯函数,单测锚) */
+export function matchesTierParams(
+  tiers: ReadonlyArray<{
+    params: {
+      resolution: string | null;
+      hasAudio: boolean | null;
+      durationSec: number | null;
+      fps: number | null;
+    } | null;
+  }>,
+  filter: TierParamFilter,
+): boolean {
+  return tiers.some((t) => {
+    if (t.params === null) return false;
+    if (filter.resolution !== undefined && t.params.resolution !== filter.resolution) return false;
+    if (filter.hasAudio !== undefined && t.params.hasAudio !== filter.hasAudio) return false;
+    if (filter.durationGte !== undefined && t.params.durationSec === null) return false;
+    if (filter.durationGte !== undefined && (t.params.durationSec ?? 0) < filter.durationGte)
+      return false;
+    return true;
+  });
+}
+
+/** 关键词命中:模型名/展示名/产品线/厂商,小写子串(纯函数,单测锚) */
+function matchesQuery(r: PublicModelRow, q: string): boolean {
+  return (
+    r.modelKey.toLowerCase().includes(q) ||
+    (r.modelDisplayName?.toLowerCase().includes(q) ?? false) ||
+    (r.modelFamily?.toLowerCase().includes(q) ?? false) ||
+    r.vendor.toLowerCase().includes(q)
+  );
 }
 
 /**

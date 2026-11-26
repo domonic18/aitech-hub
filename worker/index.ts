@@ -89,6 +89,13 @@ async function main(): Promise<void> {
         error: e instanceof Error ? e.message : String(e),
       }),
     );
+    // 能力归一键存量回填(牌价改造 P1):同种子口径幂等补缺,冲突 warn 不并
+    const { backfillModelGroupKeys } = await import("../src/lib/pricing/group-key-backfill");
+    await backfillModelGroupKeys().catch((e: unknown) =>
+      logError("pricing.group_key_backfill_failed", {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
     const { getQueue } = await import("../src/lib/queue");
     const pq = getQueue("pricing");
     await pq.removeJobScheduler("crawl-official").catch(() => undefined);

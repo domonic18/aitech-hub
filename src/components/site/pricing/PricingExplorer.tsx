@@ -18,7 +18,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/site/PageHeader";
-import type { PriceBandId, PublicPricing } from "@/lib/pricing/public";
+import type { PriceBandId, PublicPricing, TierParamFilter } from "@/lib/pricing/public";
+import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 import {
   decodePricingQuery,
   DEFAULT_PRICING_QUERY,
@@ -29,10 +30,38 @@ import {
 
 import { CompareDialog } from "./CompareDialog";
 import { CompareTray } from "./CompareTray";
+import { ModelCompareDialog } from "./ModelCompareDialog";
+import { ModelCompareTray } from "./ModelCompareTray";
 import { ModelSection } from "./ModelSection";
 import { PlanSection } from "./PlanSection";
 import { StatusBanner } from "./StatusBanner";
 import { planKey } from "./shared";
+
+/** pf URL 串 → TierParamFilter(如 "res:1080p,au:1,dur:5") */
+function tierParamFilterOf(pf: string): TierParamFilter {
+  const out: TierParamFilter = {};
+  for (const kv of pf.split(",")) {
+    const [k, v] = kv.split(":");
+    if (k === "res" && v) out.resolution = v;
+    else if (k === "au" && v === "1") out.hasAudio = true;
+    else if (k === "au" && v === "0") out.hasAudio = false;
+    else if (k === "dur" && v) {
+      const d = Number(v);
+      if (Number.isFinite(d)) out.durationGte = d;
+    }
+  }
+  return out;
+}
+
+/** TierParamFilter → pf URL 串 */
+function encodeTierParamFilter(f: TierParamFilter): string {
+  const parts: string[] = [];
+  if (f.resolution !== undefined) parts.push(`res:${f.resolution}`);
+  if (f.hasAudio === true) parts.push("au:1");
+  if (f.hasAudio === false) parts.push("au:0");
+  if (f.durationGte !== undefined) parts.push(`dur:${f.durationGte}`);
+  return parts.join(",");
+}
 
 /** 对比上限:超过 4 列并排在小屏失去可读性 */
 const COMPARE_LIMIT = 4;
@@ -40,10 +69,13 @@ const COMPARE_LIMIT = 4;
 export default function PricingExplorer({
   data,
   changeCount = 0,
+  leaderboardMap = new Map(),
 }: {
   data: PublicPricing;
   /** 近 90 天降价记录条数(服务端查好传入,只做入口链接的文案) */
   changeCount?: number;
+  /** 模型外部榜单角标(P5) */
+  leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
   const pathname = usePathname();
 
@@ -58,6 +90,8 @@ export default function PricingExplorer({
   const [planVendors, setPlanVendors] = useState<string[]>([]);
   const [planBand, setPlanBand] = useState<PriceBandId>("all");
   const [sortByPrice, setSortByPrice] = useState(false);
+  const [modelCompareKeys, setModelCompareKeys] = useState<string[]>([]);
+  const [modelCompareOpen, setModelCompareOpen] = useState(false);
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
 
@@ -87,10 +121,22 @@ export default function PricingExplorer({
   }, []);
 
   // 选集按 data.plans 原序解析:筛选变化不影响已选(跨筛选也能凑齐对比)
+  const selectedModels = useMemo(
+    () => data.models.filter((m) => modelCompareKeys.includes(`${m.vendor}|${m.modelKey}`)),
+    [data.models, modelCompareKeys],
+  );
   const selectedPlans = useMemo(
     () => data.plans.filter((p) => compareKeys.includes(planKey(p))),
     [data.plans, compareKeys],
   );
+
+  const toggleModelCompare = (key: string): void => {
+    setModelCompareKeys((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      if (prev.length >= COMPARE_LIMIT) return prev;
+      return [...prev, key];
+    });
+  };
 
   const toggleCompare = (key: string): void => {
     setCompareKeys((prev) => {
@@ -100,12 +146,20 @@ export default function PricingExplorer({
     });
   };
 
+  // 在「比价」视图下,若已选足模型则自动打开对比弹窗;关闭弹窗时回到列表视图
+  useEffect(() => {
+    if (modelQuery.view === "compare" && selectedModels.length >= 2) {
+      setModelCompareOpen(true);
+    }
+  }, [modelQuery.view, selectedModels.length]);
+
   const empty = data.models.length === 0 && data.plans.length === 0;
   // 页内大页签(2026-11-18 反馈:按量模型与 Coding Plan 挤一页不利查看):
   // 两块内容都 SSR 全量进 HTML(SEO 红线),非活动页签整块 hidden 藏住——
   // 与列表视图藏行同源技巧;套餐对比托盘跟随套餐页签
   const showTabs = data.models.length > 0 && data.plans.length > 0;
   const panel = modelQuery.panel;
+  const modelTrayVisible = modelCompareKeys.length > 0 && (!showTabs || panel === "model");
   const trayVisible = compareKeys.length > 0 && (!showTabs || panel === "plan");
 
   return (
@@ -177,10 +231,31 @@ export default function PricingExplorer({
                 onContextBandChange={(v) => updateModelQuery({ contextBand: v })}
                 sourceKind={modelQuery.sourceKind}
                 onSourceKindChange={(v) => updateModelQuery({ sourceKind: v })}
+                protocols={modelQuery.protocols}
+                onProtocolsChange={(v) => updateModelQuery({ protocols: v })}
                 sort={modelQuery.sort}
                 onSortChange={(v) => updateModelQuery({ sort: v })}
                 view={modelQuery.view}
                 onViewChange={(v) => updateModelQuery({ view: v })}
+                scenario={modelQuery.scenario}
+                onScenarioChange={(v) => updateModelQuery({ scenario: v })}
+                q={modelQuery.q}
+                onQChange={(v) => updateModelQuery({ q: v })}
+                pmin={modelQuery.pmin}
+                pmax={modelQuery.pmax}
+                onPriceRangeChange={(min, max) =>
+                  updateModelQuery({
+                    pmin: min,
+                    pmax: max,
+                    ...(min !== null || max !== null ? { band: "all" as const } : {}),
+                  })
+                }
+                tierParamFilter={tierParamFilterOf(modelQuery.pf)}
+                onTierParamFilterChange={(v) => updateModelQuery({ pf: encodeTierParamFilter(v) })}
+                leaderboardMap={leaderboardMap}
+                modelCompareKeys={modelCompareKeys}
+                onToggleModelCompare={toggleModelCompare}
+                modelCompareLimit={COMPARE_LIMIT}
               />
               {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}
               <p className="mt-3 text-[11.5px] text-text-3">
@@ -219,6 +294,29 @@ export default function PricingExplorer({
         </>
       )}
 
+      {modelTrayVisible && (
+        <ModelCompareTray
+          models={selectedModels}
+          onRemove={(key) => setModelCompareKeys((prev) => prev.filter((k) => k !== key))}
+          onClear={() => {
+            setModelCompareKeys([]);
+            setModelCompareOpen(false);
+          }}
+          onOpen={() => setModelCompareOpen(true)}
+          limit={COMPARE_LIMIT}
+        />
+      )}
+      {modelCompareOpen && selectedModels.length >= 2 && (
+        <ModelCompareDialog
+          models={selectedModels}
+          onClose={() => {
+            setModelCompareOpen(false);
+            if (modelQuery.view === "compare") {
+              updateModelQuery({ view: "list" });
+            }
+          }}
+        />
+      )}
       {trayVisible && (
         <CompareTray
           plans={selectedPlans}

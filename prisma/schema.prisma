@@ -1720,7 +1720,8 @@ model ModelPricingProvider {
 model ModelPricingModel {
   id          BigInt   @id @default(autoincrement())
   modelKey    String   @map("model_key") @db.VarChar(120) // 规范键(qwen3-235b-a22b)
-  matchKey    String   @map("match_key") @db.VarChar(120) // 归一锚(去重锚)
+  matchKey    String   @map("match_key") @db.VarChar(120) // 归一锚(去重锚;快照版本合并)
+  groupKey    String?  @map("group_key") @db.VarChar(140) // 能力归一键 base::task(P1);同型号跨渠道聚合锚,null=未算/冲突待裁
   displayName String   @map("display_name") @db.VarChar(120)
   family      String?  @db.VarChar(60) // 产品线(qwen3 / deepseek-v3 / doubao-seed)
   modality    String   @default("text") @db.VarChar(30) // text | text+vision | image | audio | video | embedding | rerank
@@ -1732,6 +1733,7 @@ model ModelPricingModel {
 
   @@unique([modelKey], map: "uq_model_pricing_model_key")
   @@unique([matchKey], map: "uq_model_pricing_model_match_key")
+  @@unique([groupKey], map: "uq_model_pricing_model_group_key")
   @@index([family], map: "idx_model_pricing_model_family")
   @@map("model_pricing_model")
 }
@@ -1743,6 +1745,7 @@ model ModelPricingTier {
   id             BigInt   @id @default(autoincrement())
   modelPricingId BigInt   @map("model_pricing_id")
   tierLabel      String   @map("tier_label") @db.VarChar(60) // 档位名(默认 / 缓存命中 / ≤32k / 峰段)
+  params         Json?    // 档位参数(P3):{resolution,hasAudio,durationSec,fps};null=存量未解析,读侧按标签兜底
   inputPrice     Decimal? @map("input_price") @db.Decimal(12, 4) // 每百万 tokens;null=该档不适用
   outputPrice    Decimal? @map("output_price") @db.Decimal(12, 4)
   cachePrice     Decimal? @map("cache_price") @db.Decimal(12, 4) // 缓存命中价

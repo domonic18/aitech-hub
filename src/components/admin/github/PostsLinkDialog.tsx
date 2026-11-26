@@ -8,7 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
@@ -98,11 +98,11 @@ export default function PostsLinkDialog({
           <p className="mt-2 text-[11px] text-text-3">
             勾选该仓库的配套教程(仅已发布文章可关联),保存整体替换;空选解除全部关联。
           </p>
-          <input
+          <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="按标题过滤…"
-            className={`mt-2 ${field}`}
+            className="mt-2 "
           />
           <div className="mt-2 max-h-72 space-y-px overflow-y-auto">
             {loading && <p className="py-6 text-center text-xs text-text-3">加载中…</p>}
@@ -114,7 +114,7 @@ export default function PostsLinkDialog({
                 key={o.id}
                 className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-panel-2"
               >
-                <input
+                <Input
                   type="checkbox"
                   checked={checked.has(o.id)}
                   onChange={(e) => {

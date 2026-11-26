@@ -16,7 +16,7 @@
  * - **完全免费**(is_free):调用不花钱 → 行级绿色「免费」角标
  * - **有免费额度**(free_tier):如「每日 200 万 tokens 免费」→ 橙色额度原文(不叫免费)
  */
-import { useMemo } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { type ContextBandId } from "@/lib/pricing/context";
 import {
@@ -32,17 +32,27 @@ import {
   type ModelSortId,
   type PriceBandId,
   type PublicModelRow,
+  type TierParamFilter,
 } from "@/lib/pricing/public";
-import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
 import { modelAnchorId } from "@/lib/pricing/jsonld";
-import { protocolsLabel } from "@/lib/pricing/protocols";
+import type { ApiProtocol } from "@/lib/pricing/protocols";
 import type { PricingViewId } from "@/lib/pricing/query";
+import {
+  formatScenarioCost,
+  scenarioCost,
+  scenarioOptions,
+  type PricingScenarioId,
+} from "@/lib/pricing/scenario";
+import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 
-import { CompareMatrix } from "./CompareMatrix";
+import { ActiveFilterChips } from "./ActiveFilterChips";
+import { ParamFilterGroup } from "./ParamFilterGroup";
+import { PriceRangeInput } from "./PriceRangeInput";
+import { SearchBox } from "./SearchBox";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
-import { OfficialLink, groupKey, groupTitle } from "./shared";
+import { OfficialLink, groupKey, groupTitle, ProtocolBadges } from "./shared";
 import { PriceScatter } from "./PriceScatter";
 import { basisResolution, ResolutionLadder } from "./ResolutionLadder";
 import { UnitPriceBars } from "./UnitPriceBars";
@@ -56,17 +66,32 @@ function FreeBadge(): React.ReactElement {
   );
 }
 
-/** 支持的 API 协议角标(未标注的行走空,不留空位) */
-function ProtocolBadge({
-  protocols,
+/** 对比勾选框:满额时未选中行禁用,与 Coding Plan CompareCheck 同构 */
+function CompareCheck({
+  checked,
+  disabled,
+  label,
+  onToggle,
 }: {
-  protocols: PublicModelRow["protocols"];
-}): React.ReactElement | null {
-  if (protocols.length === 0) return null;
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onToggle: () => void;
+}): React.ReactElement {
   return (
-    <span className="ml-1.5 rounded border border-line px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-text-3">
-      {protocolsLabel(protocols)}
-    </span>
+    <label
+      className="-m-2 flex cursor-pointer items-center p-2"
+      title={disabled ? "对比最多 4 个,先移除已选项" : "加入对比"}
+    >
+      <input
+        type="checkbox"
+        className="h-4 w-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
+        checked={checked}
+        disabled={disabled}
+        onChange={onToggle}
+        aria-label={`把 ${label} 加入对比`}
+      />
+    </label>
   );
 }
 
@@ -75,13 +100,38 @@ function rowKey(r: PublicModelRow): string {
   return `${r.vendor}|${r.modelKey}`;
 }
 
+/** 型号组键(能力归一键):跨厂商同型号、同型号多版本快照归一组 */
+function modelGroupKey(r: PublicModelRow): string {
+  return r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`;
+}
+
+/** 型号组展示名 */
+function modelGroupName(rows: PublicModelRow[]): string {
+  const r = rows[0];
+  return r.modelDisplayName ?? r.modelDictKey ?? r.modelKey;
+}
+
 function ModelTable({
-  rows,
+  modelGroups,
   visibleKeys,
+  onToggleGroup,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
+  scenario,
+  leaderboardMap,
 }: {
-  rows: PublicModelRow[];
+  modelGroups: ModelGroupDef[];
   visibleKeys: Set<string>;
+  onToggleGroup: (g: ModelGroupDef) => void;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
 }): React.ReactElement {
+  const showScenario = scenario !== "off";
+  const colSpan = showScenario ? 8 : 7;
   return (
     <div className="hidden overflow-x-auto sm:block">
       {/* table-fixed + 显式列宽:免费额度原文可很长(「共100万tokens…资源包有效期1年…」),
@@ -89,19 +139,23 @@ function ModelTable({
           固定布局后各列宽由 colgroup 决定,长文在额度列内换行,不再外溢 */}
       <table className="w-full min-w-[860px] table-fixed text-left text-[13px]">
         <colgroup>
-          <col className="w-[30%]" />
-          <col className="w-[9%]" />
-          <col className="w-[9%]" />
-          <col className="w-[24%]" />
+          <col className="w-14" />
+          <col className="w-[26%]" />
           <col className="w-[8%]" />
           <col className="w-[8%]" />
-          <col className="w-[12%]" />
+          {showScenario && <col className="w-[10%]" />}
+          <col className="w-[22%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[10%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-line text-[11px] font-normal text-text-3">
-            <th className="px-4 py-2.5 font-normal whitespace-nowrap">模型 / 厂商</th>
+            <th className="px-4 py-2.5 font-normal whitespace-nowrap">比价</th>
+            <th className="px-3 py-2.5 font-normal whitespace-nowrap">模型 / 厂商</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">输入价</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">输出价</th>
+            {showScenario && <th className="px-3 py-2.5 font-normal whitespace-nowrap">场景价</th>}
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">免费额度</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">上下文</th>
             <th className="px-3 py-2.5 font-normal whitespace-nowrap">数据截至</th>
@@ -110,72 +164,46 @@ function ModelTable({
         </thead>
         <tbody>
           <tr>
-            <td colSpan={7} className="px-4 py-1.5 text-[10.5px] text-text-3">
+            <td colSpan={colSpan} className="px-4 py-1.5 text-[10.5px] text-text-3">
               价格单位:token 模型 = 元/百万 tokens;按张/按秒模型 = 生成价(单位见行内后缀)。
               图片/视频按分辨率分档,行价对应最低分辨率档(行内已注明),其余分辨率价见模型名
               下的折叠档位。
             </td>
           </tr>
-          {rows.map((r) => (
-            <tr
-              key={rowKey(r)}
-              id={modelAnchorId(r.vendor, r.modelKey)}
-              hidden={!visibleKeys.has(rowKey(r))}
-              className="border-b border-line/50 last:border-0"
-            >
-              <td className="px-4 py-3.5">
-                <div className="font-mono text-[13px] font-semibold break-words text-text-1">
-                  {r.modelKey}
-                  {r.isFree && <FreeBadge />}
-                  <ProtocolBadge protocols={r.protocols} />
-                </div>
-                <div className="mt-0.5 text-[11px] text-text-3">
-                  {r.providerName ?? r.vendor}
-                  {r.providerKind === "aggregator" && (
-                    <span className="ml-1 text-amber">聚合挂牌</span>
-                  )}
-                </div>
-                <ResolutionLadder row={r} />
-              </td>
-              <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
-                {isTokenPriced(r) ? (
-                  formatPrice(r.inputPrice, r.currency)
-                ) : r.inputPrice === null ? (
-                  <span className="text-text-3">—</span>
-                ) : (
-                  formatPrice(r.inputPrice, r.currency, r.priceUnit)
-                )}
-              </td>
-              <td className="px-3 py-3.5 font-mono text-text-1">
-                <span className="whitespace-nowrap">
-                  {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
-                </span>
-                {basisResolution(r) !== null && (
-                  <span className="mt-0.5 block text-[10.5px] font-normal text-text-3">
-                    {basisResolution(r)} 分辨率
-                  </span>
-                )}
-              </td>
-              <td className="px-3 py-3.5 text-[12px]">
-                {r.freeTier === null ? (
-                  <span className="text-text-3">—</span>
-                ) : (
-                  // 额度原文可能很长(资源包有效期等),列内换行显示,不再撑宽整表
-                  <span className="block break-words text-amber" title={r.freeTier}>
-                    {r.freeTier}
-                  </span>
-                )}
-              </td>
-              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
-                {r.contextWindow ?? "—"}
-              </td>
-              <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
-                {r.dataAsOf.slice(5)}
-              </td>
-              <td className="px-4 py-3.5 text-right">
-                <OfficialLink url={r.sourceUrl} />
-              </td>
-            </tr>
+          {modelGroups.map((mg) => (
+            <Fragment key={mg.key}>
+              <tr className="border-b border-line bg-panel-2/30">
+                <td colSpan={colSpan} className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => onToggleGroup(mg)}
+                    className="flex w-full cursor-pointer items-center justify-between text-left text-[13px] font-semibold text-text-1"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-[10px] text-text-3">{mg.expanded ? "▾" : "▸"}</span>
+                      {mg.displayName}
+                      <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
+                        {mg.rows.length} 个版本
+                      </span>
+                    </span>
+                    <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
+                  </button>
+                </td>
+              </tr>
+              {mg.rows.map((r) => (
+                <ModelTableRow
+                  key={rowKey(r)}
+                  row={r}
+                  hidden={!visibleKeys.has(rowKey(r)) || !mg.expanded}
+                  showScenario={showScenario}
+                  scenario={scenario}
+                  leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
+                  modelCompareLimit={modelCompareLimit}
+                />
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -183,62 +211,267 @@ function ModelTable({
   );
 }
 
-function ModelCards({
-  rows,
-  visibleKeys,
+function ModelTableRow({
+  row,
+  hidden,
+  showScenario,
+  scenario,
+  leaderboardMap,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
 }: {
-  rows: PublicModelRow[];
-  visibleKeys: Set<string>;
+  row: PublicModelRow;
+  hidden: boolean;
+  showScenario: boolean;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
 }): React.ReactElement {
+  const key = rowKey(row);
+  const checked = modelCompareKeys.includes(key);
+  const full = modelCompareKeys.length >= modelCompareLimit;
+  return (
+    <tr
+      id={modelAnchorId(row.vendor, row.modelKey)}
+      hidden={hidden}
+      className="border-b border-line/50 last:border-0"
+    >
+      <td className="px-4 py-3.5 align-top">
+        <CompareCheck
+          checked={checked}
+          disabled={full && !checked}
+          label={row.modelKey}
+          onToggle={() => onToggleModelCompare(key)}
+        />
+      </td>
+      <td className="px-3 py-3.5">
+        <div className="font-mono text-[13px] font-semibold break-words text-text-1">
+          {row.modelKey}
+          {row.isFree && <FreeBadge />}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
+          <span>{row.providerName ?? row.vendor}</span>
+          {row.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
+          <ProtocolBadges protocols={row.protocols} />
+          <LeaderboardBadges badges={leaderboardMap.get(row.modelDictKey ?? row.modelKey)} />
+        </div>
+        <ResolutionLadder row={row} />
+      </td>
+      <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
+        {isTokenPriced(row) ? (
+          formatPrice(row.inputPrice, row.currency)
+        ) : row.inputPrice === null ? (
+          <span className="text-text-3">—</span>
+        ) : (
+          formatPrice(row.inputPrice, row.currency, row.priceUnit)
+        )}
+      </td>
+      <td className="px-3 py-3.5 font-mono text-text-1">
+        <span className="whitespace-nowrap">
+          {formatPrice(row.outputPrice, row.currency, row.priceUnit)}
+        </span>
+        {basisResolution(row) !== null && (
+          <span className="mt-0.5 block text-[10.5px] font-normal text-text-3">
+            {basisResolution(row)} 分辨率
+          </span>
+        )}
+      </td>
+      {showScenario && (
+        <td className="px-3 py-3.5 font-mono text-[12px] text-text-1 whitespace-nowrap">
+          {formatScenarioCost(scenarioCost(row, scenario), row.currency, scenario)}
+        </td>
+      )}
+      <td className="px-3 py-3.5 text-[12px]">
+        {row.freeTier === null ? (
+          <span className="text-text-3">—</span>
+        ) : (
+          // 额度原文可能很长(资源包有效期等),列内换行显示,不再撑宽整表
+          <span className="block break-words text-amber" title={row.freeTier}>
+            {row.freeTier}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
+        {row.contextWindow ?? "—"}
+      </td>
+      <td className="px-3 py-3.5 font-mono text-[12px] text-text-3 whitespace-nowrap">
+        {row.dataAsOf.slice(5)}
+      </td>
+      <td className="px-4 py-3.5 text-right">
+        <OfficialLink url={row.sourceUrl} />
+      </td>
+    </tr>
+  );
+}
+
+function ModelCards({
+  modelGroups,
+  visibleKeys,
+  onToggleGroup,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
+  scenario,
+  leaderboardMap,
+}: {
+  modelGroups: ModelGroupDef[];
+  visibleKeys: Set<string>;
+  onToggleGroup: (g: ModelGroupDef) => void;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
+}): React.ReactElement {
+  const showScenario = scenario !== "off";
   return (
     <div className="flex flex-col gap-3 p-3 sm:hidden">
-      {rows.map((r) => (
-        <div
-          key={rowKey(r)}
-          hidden={!visibleKeys.has(rowKey(r))}
-          className="rounded-lg border border-line/70 px-4 py-3"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="font-mono text-[13px] font-semibold text-text-1">
-              {r.modelKey}
-              {r.isFree && <FreeBadge />}
-              <ProtocolBadge protocols={r.protocols} />
-            </span>
-            <OfficialLink url={r.sourceUrl} />
-          </div>
-          <div className="mt-0.5 text-[11px] text-text-3">
-            {r.providerName ?? r.vendor}
-            {r.providerKind === "aggregator" && <span className="ml-1 text-amber">聚合挂牌</span>}
-          </div>
-          <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
-            {isTokenPriced(r) && (
-              <span>
-                <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
-                {formatPrice(r.inputPrice, r.currency)}
+      {modelGroups.map((mg) => {
+        return (
+          <Fragment key={mg.key}>
+            <button
+              type="button"
+              onClick={() => onToggleGroup(mg)}
+              className="flex cursor-pointer items-center justify-between rounded-lg border border-line/70 bg-panel-2/30 px-4 py-2 text-left"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-text-1">
+                <span className="text-[10px] text-text-3">{mg.expanded ? "▾" : "▸"}</span>
+                {mg.displayName}
+                <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
+                  {mg.rows.length} 个版本
+                </span>
               </span>
-            )}
-            <span>
-              <span className="mr-1 text-[10.5px] font-normal text-text-3">
-                {isTokenPriced(r) ? "输出" : "生成价"}
-              </span>
-              {formatPrice(r.outputPrice, r.currency, r.priceUnit)}
-            </span>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
-            {isTokenPriced(r) && <span>元/百万 tokens</span>}
-            {basisResolution(r) !== null && <span>分辨率 {basisResolution(r)}</span>}
-            {r.freeTier !== null && <span className="text-amber">免费额度:{r.freeTier}</span>}
-            {r.contextWindow !== null && <span>上下文 {r.contextWindow}</span>}
-            <span>截至 {r.dataAsOf}</span>
-          </div>
-          <ResolutionLadder row={r} />
-        </div>
-      ))}
+              <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
+            </button>
+            {mg.rows.map((r) => (
+              <ModelCard
+                key={rowKey(r)}
+                row={r}
+                hidden={!visibleKeys.has(rowKey(r)) || !mg.expanded}
+                showScenario={showScenario}
+                scenario={scenario}
+                leaderboardMap={leaderboardMap}
+                modelCompareKeys={modelCompareKeys}
+                onToggleModelCompare={onToggleModelCompare}
+                modelCompareLimit={modelCompareLimit}
+              />
+            ))}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
 
-/** 用途分组口径说明(价格标签) */
+function ModelCard({
+  row,
+  hidden,
+  showScenario,
+  scenario,
+  leaderboardMap,
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
+}: {
+  row: PublicModelRow;
+  hidden: boolean;
+  showScenario: boolean;
+  scenario: PricingScenarioId;
+  leaderboardMap: Map<string, LeaderboardBadge[]>;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
+}): React.ReactElement {
+  const key = rowKey(row);
+  const checked = modelCompareKeys.includes(key);
+  const full = modelCompareKeys.length >= modelCompareLimit;
+  return (
+    <div hidden={hidden} className="rounded-lg border border-line/70 px-4 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-mono text-[13px] font-semibold text-text-1">
+          {row.modelKey}
+          {row.isFree && <FreeBadge />}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <OfficialLink url={row.sourceUrl} />
+          <CompareCheck
+            checked={checked}
+            disabled={full && !checked}
+            label={row.modelKey}
+            onToggle={() => onToggleModelCompare(key)}
+          />
+        </div>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
+        <span>{row.providerName ?? row.vendor}</span>
+        {row.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
+        <ProtocolBadges protocols={row.protocols} />
+        <LeaderboardBadges badges={leaderboardMap.get(row.modelDictKey ?? row.modelKey)} />
+      </div>
+      <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
+        {isTokenPriced(row) && (
+          <span>
+            <span className="mr-1 text-[10.5px] font-normal text-text-3">输入</span>
+            {formatPrice(row.inputPrice, row.currency)}
+          </span>
+        )}
+        <span>
+          <span className="mr-1 text-[10.5px] font-normal text-text-3">
+            {isTokenPriced(row) ? "输出" : "生成价"}
+          </span>
+          {formatPrice(row.outputPrice, row.currency, row.priceUnit)}
+        </span>
+        {showScenario && (
+          <span>
+            <span className="mr-1 text-[10.5px] font-normal text-text-3">场景价</span>
+            {formatScenarioCost(scenarioCost(row, scenario), row.currency, scenario)}
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
+        {isTokenPriced(row) && <span>元/百万 tokens</span>}
+        {basisResolution(row) !== null && <span>分辨率 {basisResolution(row)}</span>}
+        {row.freeTier !== null && <span className="text-amber">免费额度:{row.freeTier}</span>}
+        {row.contextWindow !== null && <span>上下文 {row.contextWindow}</span>}
+        <span>截至 {row.dataAsOf}</span>
+      </div>
+      <ResolutionLadder row={row} />
+    </div>
+  );
+}
+
+/** 外部榜单名次角标(P5;meta 行内 chip) */
+function LeaderboardBadges({
+  badges,
+}: {
+  badges: LeaderboardBadge[] | undefined;
+}): React.ReactElement | null {
+  if (badges === undefined || badges.length === 0) return null;
+  return (
+    <>
+      {badges.map((b) => (
+        <a
+          key={b.source}
+          href={b.url ?? "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`${b.source} ${b.board}: 第 ${b.rank} 名`}
+          className="whitespace-nowrap rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-[10px] leading-none text-text-2 hover:border-line-hover hover:text-text-1"
+        >
+          {b.source === "artificial-analysis" ? "AA" : "HF"} #{b.rank}
+          {b.delta !== null && (
+            <span className={b.delta > 0 ? "text-green" : b.delta < 0 ? "text-red" : "text-text-3"}>
+              {b.delta > 0 ? "↑" : b.delta < 0 ? "↓" : "—"}
+            </span>
+          )}
+        </a>
+      ))}
+    </>
+  );
+}
 function catPriceLabel(cat: ModelCatId): string {
   if (cat === "text" || cat === "all") return "输入价 · 每百万 tokens(原币)";
   if (cat === "image") return "生成价 · 元/张(原币)";
@@ -262,11 +495,33 @@ export interface ModelSectionProps {
   onContextBandChange: (v: ContextBandId) => void;
   sourceKind: string;
   onSourceKindChange: (v: string) => void;
+  /** 协议多选(空 = 全部) */
+  protocols: ApiProtocol[];
+  onProtocolsChange: (v: ApiProtocol[]) => void;
   sort: ModelSortId;
   onSortChange: (v: ModelSortId) => void;
   /** 模型区视图:列表 | 比价(M74 批D) */
   view: PricingViewId;
   onViewChange: (v: PricingViewId) => void;
+  /** 场景价(P4) */
+  scenario: PricingScenarioId;
+  onScenarioChange: (v: PricingScenarioId) => void;
+  /** 关键词搜索(UX P1) */
+  q: string;
+  onQChange: (v: string) => void;
+  /** 自定义价格区间(UX P2) */
+  pmin: number | null;
+  pmax: number | null;
+  onPriceRangeChange: (min: number | null, max: number | null) => void;
+  /** 参数筛选(UX P2) */
+  tierParamFilter: TierParamFilter;
+  onTierParamFilterChange: (v: TierParamFilter) => void;
+  /** 外部榜单角标(P5) */
+  leaderboardMap?: Map<string, LeaderboardBadge[]>;
+  /** 模型对比选集(勾选列表行,与 Coding Plan 同构) */
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
+  modelCompareLimit: number;
 }
 
 export function ModelSection({
@@ -283,10 +538,25 @@ export function ModelSection({
   onContextBandChange,
   sourceKind,
   onSourceKindChange,
+  protocols,
+  onProtocolsChange,
   sort,
   onSortChange,
   view,
   onViewChange,
+  scenario,
+  onScenarioChange,
+  q,
+  onQChange,
+  pmin,
+  pmax,
+  onPriceRangeChange,
+  tierParamFilter,
+  onTierParamFilterChange,
+  leaderboardMap = new Map(),
+  modelCompareKeys,
+  onToggleModelCompare,
+  modelCompareLimit,
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
   // 两遍筛选 + 两遍排序 + 厂商分面;聚合源铺开后行数百级,这是主交互卡顿源
@@ -301,10 +571,29 @@ export function ModelSection({
           cat,
           contextBand,
           sourceKind,
+          q,
+          pmin,
+          pmax,
+          tierParams: tierParamFilter,
+          protocols,
         }),
         sort,
       ),
-    [sortedModels, selectedVendors, band, freeScope, cat, contextBand, sourceKind, sort],
+    [
+      sortedModels,
+      selectedVendors,
+      band,
+      freeScope,
+      cat,
+      contextBand,
+      sourceKind,
+      q,
+      pmin,
+      pmax,
+      tierParamFilter,
+      protocols,
+      sort,
+    ],
   );
   const visibleKeys = useMemo(() => new Set(visible.map(rowKey)), [visible]);
   // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
@@ -319,6 +608,7 @@ export function ModelSection({
         cat,
         contextBand: "all",
         sourceKind: "",
+        protocols: [],
       }),
     [sortedModels, cat],
   );
@@ -340,15 +630,51 @@ export function ModelSection({
   // 爱诗科技」零结果——它是视频-only 厂商,清单却按全量行生成,勾了必空筛,
   // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
   const vendorFacet = useMemo(() => vendorOptions(catRows, (r) => r.vendor), [catRows]);
-  const rowGroups = useMemo(() => allRowGroups(allRows, visibleKeys), [allRows, visibleKeys]);
-  const compareGroups = useMemo(
-    () => (view === "compare" ? buildCompareGroups(visible) : []),
-    [view, visible],
+  // 组展开规则(2026-11-26 反馈:筛选词元所后列表「没有数据」——实为所有组默认
+  // 收起,筛选后只剩组头):默认 = 单版本组展开、多版本组收起;任一收窄筛选
+  // 激活时全部展开(让命中行直接可见);手动展开/收起只记显式覆盖,筛选条件
+  // 变化即失效(避免「先收起、再筛选」残留成空态错觉)
+  const filterActive =
+    selectedVendors.length > 0 ||
+    q.trim() !== "" ||
+    pmin !== null ||
+    pmax !== null ||
+    band !== "all" ||
+    freeScope !== "all" ||
+    protocols.length > 0 ||
+    sourceKind !== "" ||
+    contextBand !== "all" ||
+    tierParamFilter.resolution !== undefined ||
+    tierParamFilter.hasAudio !== undefined ||
+    tierParamFilter.durationGte !== undefined;
+  const [groupOverrides, setGroupOverrides] = useState<Record<string, boolean>>({});
+  const filterSig = JSON.stringify([
+    selectedVendors,
+    q,
+    pmin,
+    pmax,
+    band,
+    freeScope,
+    protocols,
+    sourceKind,
+    contextBand,
+    tierParamFilter,
+  ]);
+  useEffect(() => {
+    setGroupOverrides({});
+  }, [filterSig]);
+  const isGroupExpanded = useCallback(
+    (g: { key: string; rows: PublicModelRow[] }): boolean =>
+      g.key in groupOverrides ? groupOverrides[g.key] : g.rows.length === 1 || filterActive,
+    [groupOverrides, filterActive],
   );
-  const comparableCount = useMemo(
-    () => (view === "compare" ? countComparableModels(visible) : 0),
-    [view, visible],
+  const regionGroups = useMemo(
+    () => buildRegionGroups(allRows, visibleKeys, isGroupExpanded),
+    [allRows, visibleKeys, isGroupExpanded],
   );
+  const toggleGroup = (g: ModelGroupDef): void => {
+    setGroupOverrides((prev) => ({ ...prev, [g.key]: !g.expanded }));
+  };
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       {/* 用途页签(批G)+ 视图切换(M74 批D) */}
@@ -392,15 +718,78 @@ export function ModelSection({
             </button>
           ))}
         </div>
-        {view === "compare" && (
-          <span className="w-full text-[11px] text-text-3">
-            {comparableCount} 个模型有 ≥2 家报价可并排比
-          </span>
-        )}
       </div>
+      {/* 场景价选择器(P4):与用途页签同处顶层,默认 off 保持现有表格不变 */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2/30 px-4 py-2">
+        <span className="mr-1 text-[11px] text-text-3">场景</span>
+        {scenarioOptions().map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-pressed={scenario === s.id}
+            onClick={() => onScenarioChange(s.id)}
+            className={`rounded-full border px-2.5 py-1 text-[11.5px] leading-none transition-colors cursor-pointer select-none ${
+              scenario === s.id
+                ? "border-accent bg-accent text-white"
+                : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <ActiveFilterChips
+        state={{
+          vendors: selectedVendors,
+          band,
+          freeScope,
+          cat,
+          contextBand,
+          sourceKind,
+          q,
+          protocols,
+        }}
+        onPatch={(patch) => {
+          if (patch.vendors !== undefined) onVendorsChange(patch.vendors);
+          if (patch.band !== undefined) onBandChange(patch.band);
+          if (patch.freeScope !== undefined) onFreeScopeChange(patch.freeScope);
+          if (patch.cat !== undefined) onCatChange(patch.cat);
+          if (patch.contextBand !== undefined) onContextBandChange(patch.contextBand);
+          if (patch.sourceKind !== undefined) onSourceKindChange(patch.sourceKind);
+          if (patch.q !== undefined) onQChange(patch.q);
+          if (patch.protocols !== undefined) onProtocolsChange(patch.protocols);
+        }}
+        onReset={() => {
+          onVendorsChange([]);
+          onBandChange("all");
+          onFreeScopeChange("all");
+          onCatChange("text");
+          onContextBandChange("all");
+          onSourceKindChange("");
+          onQChange("");
+          onProtocolsChange([]);
+        }}
+      />
       {/* lg+:左侧常驻筛选栏(2026-11-18 反馈问题一);<lg:顶部 FilterBar,同一份状态 */}
       <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
         <div className="hidden lg:block">
+          <div className="border-b border-line px-4 py-3">
+            <SearchBox value={q} onChange={onQChange} />
+          </div>
+          <div className="border-b border-line px-4 py-3">
+            <div className="mb-1 text-[10.5px] text-text-3">自定义价格</div>
+            <PriceRangeInput pmin={pmin} pmax={pmax} onApply={onPriceRangeChange} />
+          </div>
+          {(cat === "video" || cat === "image") && (
+            <div className="border-b border-line px-4 py-3">
+              <ParamFilterGroup
+                cat={cat}
+                rows={catRows}
+                filter={tierParamFilter}
+                onChange={onTierParamFilterChange}
+              />
+            </div>
+          )}
           <FilterSidebar
             cat={cat}
             onCatChange={onCatChange}
@@ -413,6 +802,8 @@ export function ModelSection({
             onContextBandChange={onContextBandChange}
             sourceKind={sourceKind}
             onSourceKindChange={onSourceKindChange}
+            protocols={protocols}
+            onProtocolsChange={onProtocolsChange}
             freeScope={freeScope}
             onFreeScopeChange={onFreeScopeChange}
             freeCounts={freeCounts}
@@ -424,6 +815,19 @@ export function ModelSection({
           />
         </div>
         <div className="min-w-0">
+          <div className="lg:hidden border-b border-line px-4 py-2.5">
+            <SearchBox value={q} onChange={onQChange} />
+          </div>
+          {(cat === "video" || cat === "image") && (
+            <div className="lg:hidden border-b border-line px-4 py-2.5">
+              <ParamFilterGroup
+                cat={cat}
+                rows={catRows}
+                filter={tierParamFilter}
+                onChange={onTierParamFilterChange}
+              />
+            </div>
+          )}
           <div className="lg:hidden">
             <FilterBar
               vendors={vendorFacet}
@@ -435,6 +839,8 @@ export function ModelSection({
               total={models.length}
               shown={visible.length}
               freeScope={{ value: freeScope, onChange: onFreeScopeChange, counts: freeCounts }}
+              protocols={protocols}
+              onProtocolsChange={onProtocolsChange}
               extra={
                 <ModelFilters
                   cat={cat}
@@ -476,48 +882,51 @@ export function ModelSection({
               )}
             </>
           ) : view === "compare" ? (
-            <>
-              <div className="border-b border-line px-4 py-3">
-                <h2 className="text-[13px] font-semibold text-text-1">同模型跨提供商比价</h2>
-                <p className="mt-1 text-[11.5px] text-text-3">
-                  按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家;
-                  原币直出不折算、token 与按张/按秒量纲不同,各归各区、只在区内比价。
-                </p>
-              </div>
-              <CompareMatrix groups={compareGroups} />
-              <div className="border-t border-line">
-                <div className="border-b border-line px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
-                  <p className="mt-1 text-[11.5px] text-text-3">
-                    每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度 (仅
-                    token 计价模型;按张/按秒模型看下方条形图)。
-                  </p>
-                </div>
-                <PriceScatter rows={visible} />
-              </div>
-              <div className="border-t border-line">
-                <div className="border-b border-line px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
-                  <p className="mt-1 text-[11.5px] text-text-3">
-                    每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
-                  </p>
-                </div>
-                <UnitPriceBars rows={visible} />
-              </div>
-            </>
+            <div className="border-t border-line px-4 py-10 text-center text-[13px] text-text-3">
+              {modelCompareKeys.length === 0 ? (
+                <p>请在「列表」中勾选至少 2 个模型，再进入比价视图。</p>
+              ) : modelCompareKeys.length === 1 ? (
+                <p>已选 1 个模型，还需再选 1 个才能对比。</p>
+              ) : (
+                <p>已选 {modelCompareKeys.length} 个模型，点击托盘「开始对比」或直接打开弹窗。</p>
+              )}
+            </div>
           ) : (
-            rowGroups.map(({ key, rows, count }) => (
+            regionGroups.map(({ key, modelGroups, visibleCount }) => (
               <div
                 key={key}
                 // 批D8:全量行必须进 DOM(SEO 红线),但视口外的分组可跳过布局绘制
                 className="border-b border-line last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_600px]"
               >
                 <div className="flex items-center gap-2 border-b border-line bg-panel-2/50 px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">{groupTitle(key, rows)}</h2>
-                  <span className="ml-auto font-mono text-[11px] text-blue">{count}</span>
+                  <h2 className="text-[13px] font-semibold text-text-1">
+                    {groupTitle(
+                      key,
+                      modelGroups.flatMap((g) => g.rows),
+                    )}
+                  </h2>
+                  <span className="ml-auto font-mono text-[11px] text-blue">{visibleCount}</span>
                 </div>
-                <ModelTable rows={rows} visibleKeys={visibleKeys} />
-                <ModelCards rows={rows} visibleKeys={visibleKeys} />
+                <ModelTable
+                  modelGroups={modelGroups}
+                  visibleKeys={visibleKeys}
+                  onToggleGroup={toggleGroup}
+                  scenario={scenario}
+                  leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
+                  modelCompareLimit={modelCompareLimit}
+                />
+                <ModelCards
+                  modelGroups={modelGroups}
+                  visibleKeys={visibleKeys}
+                  onToggleGroup={toggleGroup}
+                  scenario={scenario}
+                  leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
+                  modelCompareLimit={modelCompareLimit}
+                />
               </div>
             ))
           )}
@@ -538,16 +947,61 @@ export function ModelSection({
   );
 }
 
-/** 列表分组:全量行分组 + 组内可见计数(0 可见的组整组不渲染) */
-function allRowGroups(
+/** 型号组定义 */
+interface ModelGroupDef {
+  key: string;
+  displayName: string;
+  rows: PublicModelRow[];
+  visibleCount: number;
+  multi: boolean;
+  /** 渲染期算好的展开态(默认规则 + 手动覆盖) */
+  expanded: boolean;
+}
+
+/** 外层 region|currency 组定义(内层含型号组) */
+interface RegionGroupDef {
+  key: string;
+  title: string;
+  visibleCount: number;
+  modelGroups: ModelGroupDef[];
+}
+
+/** 列表分组:外层 region|currency → 内层型号组(能力归一 key)
+ *  统一组头可展开/收起;展开态由 isExpanded 决定(单版本默认展开、
+ *  多版本默认收起、筛选激活时全展开,手动覆盖优先)。
+ */
+function buildRegionGroups(
   allRows: PublicModelRow[],
   visibleKeys: Set<string>,
-): Array<{ key: string; rows: PublicModelRow[]; count: number }> {
-  const keys = [...new Set(allRows.map(groupKey))];
-  return keys
-    .map((key) => {
-      const rows = allRows.filter((m) => groupKey(m) === key);
-      return { key, rows, count: rows.filter((m) => visibleKeys.has(rowKey(m))).length };
+  isExpanded: (g: { key: string; rows: PublicModelRow[] }) => boolean,
+): RegionGroupDef[] {
+  const regionKeys = [...new Set(allRows.map(groupKey))];
+  return regionKeys
+    .map((regionKey) => {
+      const regionRows = allRows.filter((m) => groupKey(m) === regionKey);
+      const groupMap = new Map<string, PublicModelRow[]>();
+      for (const r of regionRows) {
+        const gk = modelGroupKey(r);
+        if (!groupMap.has(gk)) groupMap.set(gk, []);
+        groupMap.get(gk)!.push(r);
+      }
+      const modelGroups: ModelGroupDef[] = [...groupMap.entries()]
+        .map(([key, rows]) => ({
+          key,
+          displayName: modelGroupName(rows),
+          rows,
+          visibleCount: rows.filter((m) => visibleKeys.has(rowKey(m))).length,
+          multi: rows.length > 1,
+          expanded: isExpanded({ key, rows }),
+        }))
+        .filter((g) => g.visibleCount > 0);
+      const visibleCount = modelGroups.reduce((sum, g) => sum + g.visibleCount, 0);
+      return {
+        key: regionKey,
+        title: groupTitle(regionKey, regionRows),
+        visibleCount,
+        modelGroups,
+      };
     })
-    .filter((g) => g.count > 0);
+    .filter((g) => g.visibleCount > 0);
 }

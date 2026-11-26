@@ -16,7 +16,11 @@ import type {
   ModelPricingUpdateInput,
   PricingStatus,
 } from "./admin-schema";
+import { parseTierParams } from "./params";
+import type { TierParams } from "./params";
+import { resolutionOf } from "./resolution";
 import { replaceTiers } from "./tiers";
+import { isTokenUnit } from "./units";
 
 /** 行出参(Decimal→number,BigInt→string;admin 台账与公开页共用形状基座) */
 export function serializeModelRow(row: {
@@ -48,6 +52,7 @@ export function serializeModelRow(row: {
     maxTokens: number | null;
     unit: string;
     currency: string;
+    params: Prisma.JsonValue | null;
     dataAsOf: Date;
     sourceUrl: string;
     note: string | null;
@@ -82,6 +87,7 @@ export function serializeModelRow(row: {
       maxTokens: t.maxTokens,
       unit: t.unit,
       currency: t.currency,
+      params: (t.params as TierParams | null) ?? null,
       dataAsOf: t.dataAsOf,
       sourceUrl: t.sourceUrl,
       note: t.note,
@@ -211,6 +217,7 @@ export async function updateModelPricingTiers(
       maxTokens: t.maxTokens ?? null,
       unit: t.unit,
       currency: row.currency,
+      params: isTokenUnit(t.unit) ? null : parseTierParams(t.tierLabel, resolutionOf(t.tierLabel)),
       dataAsOf: new Date(),
       sourceUrl: row.sourceUrl,
     })),

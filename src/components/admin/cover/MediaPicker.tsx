@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import DialogShell from "../DialogShell";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 export interface PickItem {
@@ -64,100 +65,93 @@ export default function MediaPicker({
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[80vh] w-full max-w-[720px] flex-col overflow-hidden rounded-md border border-line bg-panel p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">从媒体库选图</h3>
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              value={q}
-              placeholder="按文件名搜索…"
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void load(1, q.trim());
-              }}
-              className="w-40 rounded-sm border border-line bg-panel-2 px-2.5 py-1.5 text-xs text-text-1 outline-none placeholder:text-text-3 focus:border-accent"
+    <DialogShell width="2xl" scroll title="从媒体库选图" zClass="z-40" onClose={onClose}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="sr-only">搜索</span>
+        <span />
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            value={q}
+            placeholder="按文件名搜索…"
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void load(1, q.trim());
+            }}
+            className="w-40 rounded-sm border border-line bg-panel-2 px-2.5 py-1.5 text-xs text-text-1 outline-none placeholder:text-text-3 focus:border-accent"
+          />
+          <button
+            type="button"
+            onClick={() => void load(1, q.trim())}
+            className="cursor-pointer rounded-sm border border-line px-2.5 py-1.5 text-xs text-text-2 hover:bg-panel-2"
+          >
+            搜索
+          </button>
+          <button
+            type="button"
+            aria-label="关闭"
+            className="cursor-pointer text-text-3 hover:text-text-1"
+            onClick={onClose}
+          >
+            <svg className="ic" aria-hidden="true">
+              <use href="#i-close" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid flex-1 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+        {data?.items.map((it) => (
+          <button
+            key={it.path}
+            type="button"
+            title={`${it.filename}${it.width !== null ? ` · ${it.width}×${it.height}` : ""}`}
+            onClick={() => onPick(it)}
+            className="group cursor-pointer overflow-hidden rounded-sm border border-line hover:border-accent"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部选图,src 为站内路径 */}
+            <img
+              src={it.thumbPath ?? it.path}
+              alt={it.filename}
+              loading="lazy"
+              className="h-20 w-full object-cover transition-transform group-hover:scale-105"
             />
-            <button
-              type="button"
-              onClick={() => void load(1, q.trim())}
-              className="cursor-pointer rounded-sm border border-line px-2.5 py-1.5 text-xs text-text-2 hover:bg-panel-2"
-            >
-              搜索
-            </button>
-            <button
-              type="button"
-              aria-label="关闭"
-              className="cursor-pointer text-text-3 hover:text-text-1"
-              onClick={onClose}
-            >
-              <svg className="ic" aria-hidden="true">
-                <use href="#i-close" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-3 grid flex-1 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
-          {data?.items.map((it) => (
-            <button
-              key={it.path}
-              type="button"
-              title={`${it.filename}${it.width !== null ? ` · ${it.width}×${it.height}` : ""}`}
-              onClick={() => onPick(it)}
-              className="group cursor-pointer overflow-hidden rounded-sm border border-line hover:border-accent"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- 管理端内部选图,src 为站内路径 */}
-              <img
-                src={it.thumbPath ?? it.path}
-                alt={it.filename}
-                loading="lazy"
-                className="h-20 w-full object-cover transition-transform group-hover:scale-105"
-              />
-            </button>
-          ))}
-          {data && data.items.length === 0 && (
-            <div className="col-span-full py-10 text-center text-xs text-text-3">
-              没有匹配的图片{q ? `(搜索「${q}」)` : ",先在媒体库上传"}
-            </div>
-          )}
-        </div>
-
-        {error && <div className="mt-2 text-xs text-red">{error}</div>}
-        {data && (
-          <div className="mt-3 flex items-center justify-between text-[11px] text-text-3">
-            <span className="font-mono">
-              共 {data.total} 张 · 第 {data.page} /{" "}
-              {Math.max(1, Math.ceil(data.total / data.pageSize))} 页
-            </span>
-            <span className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={data.page <= 1}
-                onClick={() => void load(data.page - 1, q.trim())}
-                className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                上一页
-              </button>
-              <button
-                type="button"
-                disabled={data.page >= Math.ceil(data.total / data.pageSize)}
-                onClick={() => void load(data.page + 1, q.trim())}
-                className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                下一页
-              </button>
-            </span>
+          </button>
+        ))}
+        {data && data.items.length === 0 && (
+          <div className="col-span-full py-10 text-center text-xs text-text-3">
+            没有匹配的图片{q ? `(搜索「${q}」)` : ",先在媒体库上传"}
           </div>
         )}
       </div>
-    </div>
+
+      {error && <div className="mt-2 text-xs text-red">{error}</div>}
+      {data && (
+        <div className="mt-3 flex items-center justify-between text-[11px] text-text-3">
+          <span className="font-mono">
+            共 {data.total} 张 · 第 {data.page} /{" "}
+            {Math.max(1, Math.ceil(data.total / data.pageSize))} 页
+          </span>
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={data.page <= 1}
+              onClick={() => void load(data.page - 1, q.trim())}
+              className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              disabled={data.page >= Math.ceil(data.total / data.pageSize)}
+              onClick={() => void load(data.page + 1, q.trim())}
+              className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              下一页
+            </button>
+          </span>
+        </div>
+      )}
+    </DialogShell>
   );
 }

@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
 import { type ApiEnvelope } from "@/lib/http/response";
 
 interface PickerItem {
@@ -75,7 +75,7 @@ export default function MediaInsertDialog({
   return (
     <DialogShell width="2xl" scroll title="从媒体库插入图片" zClass="z-[100]">
       <div className="mt-3 flex gap-2">
-        <input
+        <Input
           value={qDraft}
           onChange={(e) => setQDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -83,7 +83,7 @@ export default function MediaInsertDialog({
           }}
           placeholder="按文件名搜索…"
           maxLength={100}
-          className={`${field} h-auto py-1.5 text-xs`}
+          className="h-auto py-1.5 text-xs"
         />
         <button type="button" onClick={search} className={GHOST_BTN}>
           搜索

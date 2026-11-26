@@ -16,6 +16,7 @@ import {
   normalizeMatchKey,
   normalizeModelKey,
 } from "./normalize";
+import { groupOf } from "./canon";
 import { resolveModality } from "./modality";
 import { PROVIDER_SEEDS, type ProviderSeed } from "./provider-registry";
 
@@ -33,6 +34,7 @@ export interface ModelRef {
   id: bigint;
   modelKey: string;
   matchKey: string;
+  groupKey: string | null;
   displayName: string;
   family: string | null;
   modality: string;
@@ -86,16 +88,23 @@ export interface ModelDictInput {
   family?: string | null;
   /** 模态源显式标注(批G);实际落值经 resolveModality 归并(显式 > 关键词 > 现值 > text) */
   modality?: string | null;
+  /** 源 providerKey(聚合源作用域别名表用,canon.ts;缺省不套别名) */
+  providerKey?: string | null;
 }
 
 /**
- * 模型 get-or-create:按 model_key 或 match_key 任一命中即复用既有行
- * (同一模型的快照版本共享一条字典行),否则新建。
+ * 模型 get-or-create:按 model_key / match_key / group_key 任一命中即复用
+ * 既有行——快照版本(match_key)与跨源能力异写(group_key,如词元所 kling-v3
+ * ↔ 百炼 kling-v3-video-generation)都归到同一条字典行,否则新建。
  *
  * 模态(批G):入参 modality 是**源显式标注**;实际落值经 resolveModality 归并
  * (显式 > 关键词推断 > 字典现值 > text)。既有行**只做 text→非text 单向升级**
  * ——绝不降级、不改判,避免与人工订正打架;升级发生在采集刷新路径上,
  * 存量行下轮日采自愈,无需订正脚本。
+ *
+ * group_key(P1):既有行为空时按 canon 重算补上(同模态升级的自愈口径);
+ * 已有值不覆盖(人工裁定优先)。重算撞唯一键(他行已持有该组)时跳过不并,
+ * 留给 backfill 报告人工裁定——运行时静默并错比留空代价大。
  */
 export async function getOrCreateModel(input: ModelDictInput): Promise<ModelRef> {
   const modelKey = normalizeModelKey(input.rawKey);
@@ -111,37 +120,67 @@ export async function getOrCreateModel(input: ModelDictInput): Promise<ModelRef>
     id: true,
     modelKey: true,
     matchKey: true,
+    groupKey: true,
     displayName: true,
     family: true,
     modality: true,
   } as const;
 
+  // 模态预判(显式 > 关键词 > text)供归一键计算;命中既有行后再按现值归并升级
+  const preliminaryModality = resolveModality(input.modality, input.rawKey, null);
+  const groupKey = groupOf(input.rawKey, preliminaryModality, input.providerKey).groupKey;
+  const or: Array<Record<string, string>> = [{ modelKey }, { matchKey }];
+  if (groupKey !== "") or.push({ groupKey });
+
   const existing = await prisma.modelPricingModel.findFirst({
-    where: { OR: [{ modelKey }, { matchKey }] },
+    where: { OR: or },
     select,
   });
   if (existing !== null) {
     const next = resolveModality(input.modality, input.rawKey, existing.modality);
-    if (next !== existing.modality) {
-      return prisma.modelPricingModel.update({
-        where: { id: existing.id },
-        data: { modality: next },
-        select,
-      });
+    const nextGroupKey = existing.groupKey ?? groupKey;
+    if (next !== existing.modality || nextGroupKey !== existing.groupKey) {
+      try {
+        return await prisma.modelPricingModel.update({
+          where: { id: existing.id },
+          data: {
+            modality: next,
+            ...(nextGroupKey !== existing.groupKey ? { groupKey: nextGroupKey } : {}),
+          },
+          select,
+        });
+      } catch (e) {
+        // 撞 group_key 唯一键:他行已持有该组(冲突),保留原值待 backfill 报告
+        if (!isP2002(e)) throw e;
+        if (next !== existing.modality) {
+          return prisma.modelPricingModel.update({
+            where: { id: existing.id },
+            data: { modality: next },
+            select,
+          });
+        }
+      }
     }
     return existing;
   }
 
-  const modality = resolveModality(input.modality, input.rawKey, null);
+  const modality = preliminaryModality;
   try {
     return await prisma.modelPricingModel.create({
-      data: { modelKey, matchKey, displayName, family, modality },
+      data: {
+        modelKey,
+        matchKey,
+        ...(groupKey === "" ? {} : { groupKey }),
+        displayName,
+        family,
+        modality,
+      },
       select,
     });
   } catch (e) {
     if (!isP2002(e)) throw e;
     const again = await prisma.modelPricingModel.findFirst({
-      where: { OR: [{ modelKey }, { matchKey }] },
+      where: { OR: or },
       select,
     });
     if (again === null) throw e;

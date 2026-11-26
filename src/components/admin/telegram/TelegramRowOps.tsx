@@ -10,7 +10,8 @@
  */
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 import {
@@ -182,21 +183,21 @@ export default function TelegramRowOps({
         <DialogShell width="lg" title={`修正条目(#${id})`}>
           <label className="mt-3 block text-xs text-text-3">
             标题(≤500)
-            <input
+            <Input
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               maxLength={500}
-              className={`mt-1 ${field}`}
+              className="mt-1 "
             />
           </label>
           <label className="mt-3 block text-xs text-text-3">
             摘要(≤1000)
-            <textarea
+            <Textarea
               value={editSummary}
               onChange={(e) => setEditSummary(e.target.value)}
               rows={4}
               maxLength={1000}
-              className={`mt-1 ${field}`}
+              className="mt-1 "
             />
           </label>
           {busy && <p className="mt-2 font-mono text-xs text-text-3">保存中…</p>}

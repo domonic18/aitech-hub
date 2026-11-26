@@ -27,54 +27,25 @@
 import * as cheerio from "cheerio";
 
 import type { ModelPrefillRow } from "../crawlers";
+import { BAILIAN_COLUMN_RULES, roleByKeywords, type ColumnRole } from "../collect/columns";
+import { unitOfTableLike } from "../collect/units";
 
 import { bailianRowsToPrefill, type BailianRow } from "./bailian-rows";
 
 /** 官方计费页(种子初始值;运行期 URL 归 crawl_source 后台可调) */
 export const BAILIAN_MODEL_PRICING_URL = "https://help.aliyun.com/zh/model-studio/billing";
 
-/** 列语义槽位(cond=分辨率/视频类型等档位维度;combined=输入和输出同价) */
-type ColRole =
-  | "model"
-  | "scope"
-  | "mode"
-  | "tokenRange"
-  | "cond"
-  | "combined"
-  | "input"
-  | "cache"
-  | "output"
-  | "free"
-  | null;
+/** 列语义槽位(collect 通用 ColumnRole;cond=分辨率/视频类型等档位维度) */
+type ColRole = ColumnRole | null;
 
-/** 表头 → 列语义(按关键词;顺序即列序;combined 须在输入/输出前判) */
+/** 表头 → 列语义(collect 通用框架 + 百炼关键词方言;combined 须在输入/输出前判) */
 function colRoleOf(header: string): ColRole {
-  const h = header.replace(/\s+/g, "");
-  if (h.includes("模型ID")) return "model";
-  if (h.includes("服务部署范围")) return "scope";
-  if (h === "模式" || h.startsWith("模式")) return "mode";
-  if (h.includes("Token数") || h.includes("Token范围")) return "tokenRange";
-  if (h.includes("免费额度")) return "free";
-  if (h.includes("分辨率")) return "cond";
-  if (h.includes("视频类型") || h.includes("参考类型")) return "cond";
-  if (h.includes("输入和输出")) return "combined";
-  if (h.includes("缓存命中")) return "cache";
-  if (h.includes("输入单价")) return "input";
-  if (h.includes("输出单价")) return "output";
-  return null;
+  return roleByKeywords(header, BAILIAN_COLUMN_RULES);
 }
 
-/** 表级单位(批G):表头(元/张、(每秒)等)或首行数据格(0.02元/张)里识别;
- *  认不出 → null,整表跳过(单位不明的价不落库) */
+/** 表级单位(批G):表头/首行数据格识别,认不出 → null 整表跳过(collect 单位闸) */
 function unitOfTable(headers: string[], firstRowCells: string[]): string | null {
-  const headCompact = headers.join("").replace(/\s+/g, "");
-  if (headCompact.includes("元/张") || headCompact.includes("每张")) return "per_image";
-  if (headCompact.includes("元/秒") || headCompact.includes("每秒")) return "per_second";
-  const cellCompact = firstRowCells.join("").replace(/\s+/g, "");
-  if (cellCompact.includes("元/张")) return "per_image";
-  if (cellCompact.includes("元/秒")) return "per_second";
-  if (headCompact.includes("每百万Token")) return "per_1m_tokens";
-  return null;
+  return unitOfTableLike(headers, firstRowCells);
 }
 
 /** 行级计价单位 → 表的显式模态(每秒表只有表头带「视频」才标 video——

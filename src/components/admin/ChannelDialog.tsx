@@ -15,7 +15,8 @@ import {
   CRAWL_SOURCE_TYPE_VENDOR,
   CRAWL_SOURCE_TYPES_IMPLEMENTED,
 } from "@/lib/collect/constants";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
@@ -164,21 +165,17 @@ export default function ChannelDialog({
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="col-span-1 text-xs text-text-3">
               名称 *
-              <input
+              <Input
                 ref={nameRef}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={100}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               类型
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className={`mt-1 ${field}`}
-              >
+              <select value={type} onChange={(e) => setType(e.target.value)} className="mt-1 ">
                 {typeChoices.map((t) => (
                   <option key={t} value={t} disabled={REGISTRY_TYPES.includes(t)}>
                     {TYPE_LABELS[t] ?? t}
@@ -188,79 +185,79 @@ export default function ChannelDialog({
             </label>
             <label className="sm:col-span-2 text-xs text-text-3">
               端点(feed/API 地址;勿携带凭证参数) *
-              <input
+              <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com/feed"
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               平台标识(可选)
-              <input
+              <Input
                 value={platform ?? ""}
                 onChange={(e) => setPlatform(e.target.value)}
                 maxLength={20}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               凭证(token/apiKey;留空{editing ? "沿用" : "不设"})
-              <input
+              <Input
                 type="password"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder={channel?.credentialMask || "无凭证"}
                 disabled={clearToken}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               采集间隔(分钟,5-1440)
-              <input
+              <Input
                 type="number"
                 min={5}
                 max={1440}
                 value={interval}
                 onChange={(e) => setIntervalMin(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               每日请求上限(留空=不限)
-              <input
+              <Input
                 type="number"
                 min={1}
                 value={dailyMax}
                 onChange={(e) => setDailyMax(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="sm:col-span-2 text-xs text-text-3">
               备注
-              <input
+              <Input
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
                 maxLength={200}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="sm:col-span-2 text-xs text-text-3">
               扩展配置(JSON 对象;留空=不改,凭证仍走上一栏)
-              <textarea
+              <Textarea
                 value={configJson}
                 onChange={(e) => setConfigJson(e.target.value)}
                 rows={4}
                 spellCheck={false}
                 placeholder={'{"repos": ["owner/repo"]}'}
-                className={`mt-1 font-mono ${field}`}
+                className="mt-1 font-mono "
               />
             </label>
           </div>
           <div className="mt-3 flex items-center gap-4 text-xs">
             {/* 启用开关新建/编辑都渲染(2026-10-06 验收反馈问题3,原型「保存后立即启用并首采」) */}
             <label className="flex items-center gap-1.5 text-text-2">
-              <input
+              <Input
                 type="checkbox"
                 checked={enabled}
                 onChange={(e) => setEnabled(e.target.checked)}
@@ -269,7 +266,7 @@ export default function ChannelDialog({
             </label>
             {editing && channel.credentialMask !== "" && (
               <label className="flex items-center gap-1.5 text-text-2">
-                <input
+                <Input
                   type="checkbox"
                   checked={clearToken}
                   onChange={(e) => setClearToken(e.target.checked)}

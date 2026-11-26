@@ -18,6 +18,7 @@ import * as cheerio from "cheerio";
 
 import { formatContextTokens } from "../context";
 import type { ModelPrefillRow, ModelTierPrefill } from "../crawlers";
+import { unitOfLabelText } from "../collect/units";
 
 /** 官方价格页(种子初始值;运行期 URL 归 crawl_source 后台可调) */
 export const SILICONFLOW_PRICING_URL = "https://siliconflow.cn/pricing";
@@ -29,11 +30,6 @@ interface PriceCell {
 }
 
 /** 单价格行的单位标签 → 档位单位(认不出的不收) */
-const SINGLE_UNIT_LABELS: ReadonlyArray<{ re: RegExp; unit: string }> = [
-  { re: /每\s*图\s*片|每\s*张|元\s*\/\s*张/, unit: "per_image" },
-  { re: /每\s*秒|元\s*\/\s*秒/, unit: "per_second" },
-  { re: /每\s*分\s*钟|元\s*\/\s*分钟/, unit: "per_minute" },
-];
 
 /**
  * 输入长度阶梯标签 → token 边界：「输入 [0, 128k)」→ 0–131072、
@@ -121,14 +117,14 @@ export function parseSiliconflow(html: string, sourceUrl: string, now: Date): Mo
         .slice(1)
         .text()
         .replace(/\u00a0/g, " ");
-      const unitLabel = SINGLE_UNIT_LABELS.find(({ re }) => re.test(restText));
+      const unitLabelUnit = unitOfLabelText(restText);
       // 无行 id 的行也按单位标签嗅探(改版兜底):认不出单价格单位 → 走文本行路径
-      if (unitLabel !== undefined) {
+      if (unitLabelUnit !== null) {
         const priceMatch = /[¥￥]\s*([\d.]+)/.exec(restText);
         const free = !priceMatch && /免费/.test(restText);
         const price = priceMatch !== null ? Number(priceMatch[1]) : free ? 0 : null;
         if (price === null) return; // 无价不臆测
-        const unitLabelText = /每[^\s,，;；]{1,4}/.exec(restText)?.[0] ?? unitLabel.unit;
+        const unitLabelText = /每[^\s,，;；]{1,4}/.exec(restText)?.[0] ?? unitLabelUnit;
         out.push({
           vendor: "硅基流动 SiliconFlow",
           modelKey: modelId,
@@ -142,7 +138,7 @@ export function parseSiliconflow(html: string, sourceUrl: string, now: Date): Mo
           region: "cn",
           providerKey: "siliconflow",
           modality: idKind === undefined ? undefined : ROW_KIND_MODALITY[idKind],
-          priceUnit: unitLabel.unit,
+          priceUnit: unitLabelUnit,
           tiers: [
             {
               tierLabel: unitLabelText,
@@ -151,7 +147,7 @@ export function parseSiliconflow(html: string, sourceUrl: string, now: Date): Mo
               cachePrice: null,
               minTokens: null,
               maxTokens: null,
-              unit: unitLabel.unit,
+              unit: unitLabelUnit,
             },
           ],
         });

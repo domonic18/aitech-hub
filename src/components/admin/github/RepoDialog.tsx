@@ -8,7 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
 import type { ApiEnvelope } from "@/lib/http/response";
 import { GITHUB_SYNC_INTERVAL_MIN } from "@/lib/github/constants";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
@@ -103,46 +103,46 @@ export default function RepoDialog({
             {!editing && (
               <label className="sm:col-span-2 text-xs text-text-3">
                 仓库 owner/name *
-                <input
+                <Input
                   ref={inputRef}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="如 domonic18/aitech-hub"
-                  className={`mt-1 ${field}`}
+                  className="mt-1 "
                 />
               </label>
             )}
             <label className="col-span-1 text-xs text-text-3">
               同步间隔(分钟,10..1440)
-              <input
+              <Input
                 type="number"
                 min={10}
                 max={1440}
                 value={interval}
                 onChange={(e) => setIntervalMin(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             {editing && (
               <label className="col-span-1 text-xs text-text-3">
                 前台排序(小者靠前)
-                <input
+                <Input
                   type="number"
                   min={0}
                   max={9999}
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
-                  className={`mt-1 ${field}`}
+                  className="mt-1 "
                 />
               </label>
             )}
             <label className={`text-xs text-text-3 ${editing ? "sm:col-span-2" : ""}`}>
               备注
-              <input
+              <Input
                 value={remark ?? ""}
                 onChange={(e) => setRemark(e.target.value)}
                 maxLength={200}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
           </div>

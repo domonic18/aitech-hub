@@ -28,6 +28,37 @@ export const PROTOCOL_LABELS: Record<ApiProtocol, string> = {
   anthropic: "Anthropic 兼容",
 };
 
+/** 协议 chip 短标签(列表行内用;完整标签见 PROTOCOL_LABELS) */
+export const PROTOCOL_CHIP_LABELS: Record<ApiProtocol, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+};
+
+/** 协议筛选项(与 URL/筛选器共用) */
+export const PROTOCOL_OPTIONS: ReadonlyArray<{ id: ApiProtocol; label: string }> = [
+  { id: "openai", label: "OpenAI 兼容" },
+  { id: "anthropic", label: "Anthropic 兼容" },
+];
+
+/** 协议视觉样式(复用现有 Tailwind token,保持设计系统一致) */
+export const PROTOCOL_COLORS: Record<
+  ApiProtocol,
+  { border: string; bg: string; text: string; hoverBorder: string }
+> = {
+  openai: {
+    border: "border-green/40",
+    bg: "bg-green/10",
+    text: "text-green-hi",
+    hoverBorder: "hover:border-green/70",
+  },
+  anthropic: {
+    border: "border-amber/40",
+    bg: "bg-amber/10",
+    text: "text-amber-hi",
+    hoverBorder: "hover:border-amber/70",
+  },
+};
+
 interface ProtocolRule {
   /** 该平台所有模型都支持的协议 */
   base: ApiProtocol[];

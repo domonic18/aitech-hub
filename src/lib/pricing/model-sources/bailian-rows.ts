@@ -10,7 +10,8 @@
  * 行价对应的分辨率写进 note(「… · 1k 分辨率」):文生图/文生视频的价格随分辨率
  * 分档,只挂一个价必须能追溯它对应哪个分辨率。
  */
-import type { ModelPrefillRow, ModelTierPrefill } from "../crawlers";
+import { pushPrefillTier, type ModelPrefillRow, type ModelTierPrefill } from "../crawlers";
+import { pickResolutionBase, pickTokenBase } from "../collect/base-price";
 import { resolutionRank } from "../resolution";
 import { isTokenUnit } from "../units";
 
@@ -55,34 +56,14 @@ function tierLabelOf(row: BailianRow): string {
   return parts.length === 0 ? "默认" : parts.join("·");
 }
 
-/** token 表行价基准:「全球」档优先(国内用户口径),否则第一条有价的 */
+/** token 表行价基准:「全球」档优先(国内用户口径),否则第一条有价的(collect 策略) */
 function tokenBase(rows: BailianRow[]): BailianRow {
-  return (
-    rows.find((r) => r.scope === "全球") ??
-    rows.find((r) => r.input !== null || r.output !== null) ??
-    rows[0]!
-  );
+  return pickTokenBase(rows);
 }
 
-/**
- * 按张/按秒表行价基准:**最低分辨率档**(入口价)。
- * 部署范围有「全球」列时只在全球行里挑(与 token 表同口径);同价多档取最低分辨率。
- */
+/** 按张/按秒表行价基准:最低分辨率档(入口价;collect 策略) */
 function resolutionBase(rows: BailianRow[]): BailianRow {
-  const priced = rows.filter((r) => r.input !== null || r.output !== null);
-  const globalRows = priced.filter((r) => r.scope === "全球" || r.scope === null);
-  const pool = globalRows.length > 0 ? globalRows : priced;
-  const withRes = pool.filter((r) => resolutionRank(r.cond) !== null);
-  if (withRes.length === 0) return pool[0] ?? rows[0]!;
-  return withRes.reduce((a, b) => {
-    const am = resolutionRank(a.cond)!;
-    const bm = resolutionRank(b.cond)!;
-    if (am !== bm) return bm < am ? b : a;
-    // 同分辨率多行(如「全球」与无范围两张表式):取价低的那条
-    const ap = a.output ?? a.input ?? Number.POSITIVE_INFINITY;
-    const bp = b.output ?? b.input ?? Number.POSITIVE_INFINITY;
-    return bp < ap ? b : a;
-  });
+  return pickResolutionBase(rows);
 }
 
 /**
@@ -113,32 +94,15 @@ export function bailianRowsToPrefill(
     const tiers: ModelTierPrefill[] = [];
     for (const rec of rows) {
       const range = tokenRangeOf(rec.tokenRange ?? "");
-      const label = tierLabelOf(rec);
-      const tier: ModelTierPrefill = {
-        tierLabel: label,
+      pushPrefillTier(tiers, {
+        tierLabel: tierLabelOf(rec),
         inputPrice: rec.input,
         outputPrice: rec.output,
         cachePrice: rec.cache,
         minTokens: range.min,
         maxTokens: range.max,
         unit,
-      };
-      // 档位唯一键是 (牌价行, 标签):同名同价是同一事实(两张表重复列)→ 去重;
-      // 同名不同价 → 加序号区分(否则落库撞唯一键)
-      const dup = tiers.find((t) => t.tierLabel === tier.tierLabel);
-      if (dup !== undefined) {
-        if (
-          dup.inputPrice === tier.inputPrice &&
-          dup.outputPrice === tier.outputPrice &&
-          dup.cachePrice === tier.cachePrice
-        ) {
-          continue;
-        }
-        let n = 2;
-        while (tiers.some((t) => t.tierLabel === `${label}·${n}`)) n += 1;
-        tier.tierLabel = `${label}·${n}`;
-      }
-      tiers.push(tier);
+      });
     }
     // 「无部署范围」档位与「全球」档同价时去重:百炼有些表不带部署范围列,
     // 与带列的「全球」行是同一事实的两种表式(不做此去重会重复展示同一价)
