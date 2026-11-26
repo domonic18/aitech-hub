@@ -4,7 +4,7 @@
  *
  * 扩展点:新能力 = MODEL_COMPARE_ROWS 数组加一项 {label, render}。
  */
-import { formatPrice, type PublicModelRow } from "./public";
+import { formatPrice, representativePrice, type PublicModelRow } from "./public";
 import { protocolsLabel } from "./protocols";
 import { rowResolution } from "./resolution";
 
@@ -28,6 +28,22 @@ export const MODEL_COMPARE_ROWS: ReadonlyArray<CompareRowDef> = [
         : r.providerKind === "aggregator"
           ? "聚合平台价"
           : "—",
+  },
+  {
+    label: "代表价",
+    render: (r) => {
+      const price = representativePrice(r);
+      if (price === null) return "未公布";
+      const suffix =
+        r.priceUnit === "per_image"
+          ? "/张"
+          : r.priceUnit === "per_second"
+            ? "/秒"
+            : r.priceUnit === "per_minute"
+              ? "/分钟"
+              : "/百万 tokens";
+      return `${r.currency === "USD" ? "$" : "¥"} ${price}${suffix}`;
+    },
   },
   { label: "输入价", render: (r) => formatPrice(r.inputPrice, r.currency) },
   {
@@ -65,3 +81,6 @@ export function buildCompareMatrix(
     cells: rows.map((r) => def.render(r)),
   }));
 }
+
+/** 协议行标签(弹窗内特殊渲染 badge 用) */
+export const PROTOCOL_ROW_LABEL = "协议";

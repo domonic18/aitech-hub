@@ -63,7 +63,6 @@ export function ProtocolBadge({ protocol }: { protocol: ApiProtocol }): React.Re
   const colors = PROTOCOL_COLORS[protocol];
   return (
     <span
-      key={protocol}
       title={PROTOCOL_LABELS[protocol]}
       className={`whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-[10px] leading-none transition-colors ${colors.border} ${colors.bg} ${colors.text} ${colors.hoverBorder}`}
     >
