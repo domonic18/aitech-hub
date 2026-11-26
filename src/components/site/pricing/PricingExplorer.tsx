@@ -224,6 +224,8 @@ export default function PricingExplorer({
                 onContextBandChange={(v) => updateModelQuery({ contextBand: v })}
                 sourceKind={modelQuery.sourceKind}
                 onSourceKindChange={(v) => updateModelQuery({ sourceKind: v })}
+                protocols={modelQuery.protocols}
+                onProtocolsChange={(v) => updateModelQuery({ protocols: v })}
                 sort={modelQuery.sort}
                 onSortChange={(v) => updateModelQuery({ sort: v })}
                 view={modelQuery.view}

@@ -3,7 +3,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { protocolsLabel, resolveApiProtocols } from "./protocols";
+import {
+  PROTOCOL_COLORS,
+  PROTOCOL_OPTIONS,
+  protocolsLabel,
+  resolveApiProtocols,
+} from "./protocols";
 
 describe("protocols(支持的 API 协议)", () => {
   it("百炼/火山/腾讯:OpenAI 兼容 + Anthropic 兼容", () => {
@@ -32,6 +37,16 @@ describe("protocols(支持的 API 协议)", () => {
     expect(resolveApiProtocols("baidu-ciyuansuo", "gpt-4o")).toEqual([]);
     expect(resolveApiProtocols(null, "gpt-4o")).toEqual([]);
     expect(resolveApiProtocols("unknown-vendor", "gpt-4o")).toEqual([]);
+  });
+
+  it("筛选项与视觉映射覆盖全部协议", () => {
+    expect(PROTOCOL_OPTIONS.map((o) => o.id)).toEqual(["openai", "anthropic"]);
+    for (const o of PROTOCOL_OPTIONS) {
+      expect(PROTOCOL_COLORS[o.id]).toBeDefined();
+      expect(PROTOCOL_COLORS[o.id].border).toContain("border-");
+      expect(PROTOCOL_COLORS[o.id].bg).toContain("bg-");
+      expect(PROTOCOL_COLORS[o.id].text).toContain("text-");
+    }
   });
 
   it("展示文案", () => {

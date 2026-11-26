@@ -30,6 +30,7 @@ import {
   type ModelSortId,
   type PriceBandId,
 } from "@/lib/pricing/public";
+import { PROTOCOL_OPTIONS, type ApiProtocol } from "@/lib/pricing/protocols";
 
 /** 侧栏分组标题 */
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
@@ -84,6 +85,9 @@ export interface FilterSidebarProps {
   onContextBandChange: (v: ContextBandId) => void;
   sourceKind: string;
   onSourceKindChange: (v: string) => void;
+  /** 协议多选(空 = 全部) */
+  protocols: ApiProtocol[];
+  onProtocolsChange: (v: ApiProtocol[]) => void;
   /** 免费口径(单选四态;两种免费语义分开,组合另设一档) */
   freeScope: FreeScopeId;
   onFreeScopeChange: (v: FreeScopeId) => void;
@@ -109,6 +113,8 @@ export function FilterSidebar({
   onContextBandChange,
   sourceKind,
   onSourceKindChange,
+  protocols,
+  onProtocolsChange,
   freeScope,
   onFreeScopeChange,
   freeCounts,
@@ -131,6 +137,7 @@ export function FilterSidebar({
     selectedVendors.length > 0 ||
     band !== "all" ||
     freeScope !== "all" ||
+    protocols.length > 0 ||
     (showContext && contextBand !== "all") ||
     sourceKind !== "";
 
@@ -152,6 +159,7 @@ export function FilterSidebar({
               onBandChange("all");
               onContextBandChange("all");
               onSourceKindChange("");
+              onProtocolsChange([]);
               if (freeScope !== "all") onFreeScopeChange("all");
             }}
             className="cursor-pointer text-[11px] text-accent hover:text-accent-hover"
@@ -249,6 +257,32 @@ export function FilterSidebar({
           value={sourceKind}
           onChange={onSourceKindChange}
         />
+      </Group>
+
+      <Group title="协议">
+        <div className="flex flex-col gap-1.5">
+          {PROTOCOL_OPTIONS.map((o) => {
+            const on = protocols.includes(o.id);
+            return (
+              <label
+                key={o.id}
+                className="flex cursor-pointer items-center gap-1.5 text-[11.5px] leading-snug"
+              >
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={on}
+                  onChange={() =>
+                    onProtocolsChange(
+                      on ? protocols.filter((p) => p !== o.id) : [...protocols, o.id],
+                    )
+                  }
+                />
+                <span className={on ? "text-text-1" : "text-text-2"}>{o.label}</span>
+              </label>
+            );
+          })}
+        </div>
       </Group>
 
       <Group title="优惠与排序">

@@ -12,6 +12,7 @@ import {
   type FreeScopeId,
   type PriceBandId,
 } from "@/lib/pricing/public";
+import { PROTOCOL_OPTIONS, type ApiProtocol } from "@/lib/pricing/protocols";
 
 import { CHIP_BASE, CHIP_OFF, CHIP_ON } from "./shared";
 
@@ -37,6 +38,9 @@ export interface FilterBarProps {
     onChange: (v: FreeScopeId) => void;
     counts: Record<FreeScopeId, number>;
   };
+  /** 可选的协议多选 chip 组(模型面) */
+  protocols?: ApiProtocol[];
+  onProtocolsChange?: (v: ApiProtocol[]) => void;
   /** 可选的扩展筛选区(更多筛选:模态/上下文/来源/排序) */
   extra?: React.ReactNode;
 }
@@ -52,13 +56,17 @@ export function FilterBar({
   shown,
   sortByPrice,
   freeScope,
+  protocols = [],
+  onProtocolsChange,
   extra,
 }: FilterBarProps): React.ReactElement {
   const allVendors = selectedVendors.length === 0;
-  const active = band !== "all" || !allVendors || (freeScope?.value ?? "all") !== "all";
+  const active =
+    band !== "all" || !allVendors || (freeScope?.value ?? "all") !== "all" || protocols.length > 0;
   const reset = (): void => {
     onVendorsChange([]);
     onBandChange("all");
+    onProtocolsChange?.([]);
   };
   return (
     <div className="flex flex-col gap-2 border-b border-line bg-panel-2/30 px-4 py-3 text-[11.5px]">
@@ -127,6 +135,28 @@ export function FilterBar({
               )}
             </button>
           ))}
+        </div>
+      )}
+
+      {onProtocolsChange !== undefined && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="w-8 shrink-0 text-text-3">协议</span>
+          {PROTOCOL_OPTIONS.map((o) => {
+            const on = protocols.includes(o.id);
+            return (
+              <button
+                key={o.id}
+                type="button"
+                aria-pressed={on}
+                className={`${chipBase} ${on ? chipOn : chipOff}`}
+                onClick={() =>
+                  onProtocolsChange(on ? protocols.filter((p) => p !== o.id) : [...protocols, o.id])
+                }
+              >
+                {o.label}
+              </button>
+            );
+          })}
         </div>
       )}
 

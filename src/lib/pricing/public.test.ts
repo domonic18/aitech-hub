@@ -33,6 +33,7 @@ import {
   type PriceBandId,
   type PublicModelRow,
 } from "./public";
+import type { ApiProtocol } from "./protocols";
 import { listPublicPricing } from "./read";
 
 beforeEach(() => {
@@ -262,6 +263,7 @@ describe("M74 批C:模型行筛选与排序", () => {
     cat: "text" as const,
     contextBand: "all" as const,
     sourceKind: "",
+    protocols: [] as ApiProtocol[],
   };
 
   it("免费口径四态:完全免费 / 有免费额度 / 任一免费 分得开(2026-11-18 反馈)", () => {
@@ -309,6 +311,24 @@ describe("M74 批C:模型行筛选与排序", () => {
     expect(filterModelRows(rows, { ...base, contextBand: "ge1m" }).map((r) => r.modelKey)).toEqual([
       "a",
     ]);
+  });
+
+  it("协议多选:行至少命中一个选中协议(空 = 全部)", () => {
+    const rows = [
+      row({ modelKey: "none", protocols: [] }),
+      row({ modelKey: "openai-only", protocols: ["openai"] }),
+      row({ modelKey: "both", protocols: ["openai", "anthropic"] }),
+    ];
+    expect(
+      filterModelRows(rows, { ...base, protocols: ["openai"] }).map((r) => r.modelKey),
+    ).toEqual(["openai-only", "both"]);
+    expect(
+      filterModelRows(rows, { ...base, protocols: ["anthropic"] }).map((r) => r.modelKey),
+    ).toEqual(["both"]);
+    expect(
+      filterModelRows(rows, { ...base, protocols: ["openai", "anthropic"] }).map((r) => r.modelKey),
+    ).toEqual(["openai-only", "both"]);
+    expect(filterModelRows(rows, base)).toHaveLength(3);
   });
 
   it("排序:null 价恒排最后(未公布价不是最便宜)", () => {

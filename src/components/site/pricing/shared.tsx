@@ -3,6 +3,12 @@
  * 日期解析。纯展示、无状态——可被 client 组件直接引用(不进服务端 API)。
  */
 import type { PublicModelRow } from "@/lib/pricing/public";
+import {
+  PROTOCOL_CHIP_LABELS,
+  PROTOCOL_COLORS,
+  PROTOCOL_LABELS,
+  type ApiProtocol,
+} from "@/lib/pricing/protocols";
 
 export const REGION_TITLES: Record<string, string> = { cn: "国内厂商", intl: "国际厂商" };
 export const CURRENCY_UNITS: Record<string, string> = {
@@ -49,5 +55,35 @@ export function OfficialLink({ url }: { url: string }): React.ReactElement {
     >
       官方
     </a>
+  );
+}
+
+/** 协议 badge(OpenAI/Anthropic 兼容):带品牌色区分,悬停显示完整标签 */
+export function ProtocolBadge({ protocol }: { protocol: ApiProtocol }): React.ReactElement {
+  const colors = PROTOCOL_COLORS[protocol];
+  return (
+    <span
+      key={protocol}
+      title={PROTOCOL_LABELS[protocol]}
+      className={`whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-[10px] leading-none transition-colors ${colors.border} ${colors.bg} ${colors.text} ${colors.hoverBorder}`}
+    >
+      {PROTOCOL_CHIP_LABELS[protocol]}
+    </span>
+  );
+}
+
+/** 协议 badge 组(未标注的行走空,不留空位) */
+export function ProtocolBadges({
+  protocols,
+}: {
+  protocols: readonly ApiProtocol[];
+}): React.ReactElement | null {
+  if (protocols.length === 0) return null;
+  return (
+    <>
+      {protocols.map((p) => (
+        <ProtocolBadge key={p} protocol={p} />
+      ))}
+    </>
   );
 }
