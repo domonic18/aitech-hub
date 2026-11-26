@@ -7,11 +7,12 @@
  */
 import type { PricingQueryState } from "@/lib/pricing/query";
 import { FREE_SCOPE_OPTIONS, MODEL_CAT_OPTIONS, PRICE_BANDS } from "@/lib/pricing/public";
+import { PROTOCOL_CHIP_LABELS } from "@/lib/pricing/protocols";
 
 /** 筛选相关的字段子集(view/panel/scenario 是视图模式,不算筛选 chips) */
 type FilterState = Pick<
   PricingQueryState,
-  "vendors" | "band" | "freeScope" | "cat" | "contextBand" | "sourceKind" | "q"
+  "vendors" | "band" | "freeScope" | "cat" | "contextBand" | "sourceKind" | "q" | "protocols"
 >;
 
 interface Chip {
@@ -66,6 +67,13 @@ export function deriveFilterChips(state: FilterState): Chip[] {
       key: "src",
       label: state.sourceKind === "official" ? "官方一手价" : "聚合平台价",
       remove: { sourceKind: "" },
+    });
+  }
+  for (const p of state.protocols) {
+    chips.push({
+      key: `proto:${p}`,
+      label: PROTOCOL_CHIP_LABELS[p],
+      remove: { protocols: state.protocols.filter((x) => x !== p) },
     });
   }
   return chips;

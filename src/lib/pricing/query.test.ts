@@ -11,6 +11,7 @@ import {
   isDefaultPricingQuery,
   samePricingQuery,
 } from "./query";
+import type { ApiProtocol } from "./protocols";
 
 describe("decodePricingQuery", () => {
   it("空串 → 默认态", () => {
@@ -19,7 +20,7 @@ describe("decodePricingQuery", () => {
 
   it("逐项解析(批G:cat 取代 mod,默认 text)", () => {
     const q = decodePricingQuery(
-      "v=阿里云百炼,腾讯云&b=lt10&free=quota&cat=image&ctx=ge1m&src=official&sort=input",
+      "v=阿里云百炼,腾讯云&b=lt10&free=quota&cat=image&ctx=ge1m&src=official&sort=input&proto=openai,anthropic",
     );
     expect(q.vendors).toEqual(["阿里云百炼", "腾讯云"]);
     expect(q.band).toBe("lt10");
@@ -28,6 +29,7 @@ describe("decodePricingQuery", () => {
     expect(q.contextBand).toBe("ge1m");
     expect(q.sourceKind).toBe("official");
     expect(q.sort).toBe("input");
+    expect(q.protocols).toEqual(["openai", "anthropic"]);
   });
 
   it("免费口径四态可解析;旧值 free=1 按「完全免费」承接(老链接不失效)", () => {
@@ -56,12 +58,22 @@ describe("decodePricingQuery", () => {
   });
 
   it("非法值一律回落默认(URL 是用户可手改的,不能崩)", () => {
-    const q = decodePricingQuery("b=not-a-band&ctx=xx&sort=zzz&free=yes&scn=bad");
+    const q = decodePricingQuery("b=not-a-band&ctx=xx&sort=zzz&free=yes&scn=bad&proto=bad");
     expect(q.band).toBe("all");
     expect(q.contextBand).toBe("all");
     expect(q.sort).toBe("default");
     expect(q.freeScope).toBe("all");
     expect(q.scenario).toBe("off");
+    expect(q.protocols).toEqual([]);
+  });
+
+  it("协议参数 proto 编解码", () => {
+    expect(decodePricingQuery("proto=openai,anthropic").protocols).toEqual(["openai", "anthropic"]);
+    expect(decodePricingQuery("proto=openai").protocols).toEqual(["openai"]);
+    expect(decodePricingQuery("proto=bad,openai").protocols).toEqual(["openai"]);
+    expect(encodePricingQuery({ ...DEFAULT_PRICING_QUERY, protocols: ["openai"] })).toBe(
+      "proto=openai",
+    );
   });
 
   it("厂商去重去空", () => {
@@ -106,6 +118,7 @@ describe("encodePricingQuery", () => {
       pmin: null,
       pmax: null,
       pf: "",
+      protocols: ["openai", "anthropic"] as ApiProtocol[],
     };
     expect(decodePricingQuery(encodePricingQuery(state))).toEqual(state);
   });

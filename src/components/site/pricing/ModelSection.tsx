@@ -36,7 +36,7 @@ import {
 } from "@/lib/pricing/public";
 import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
 import { modelAnchorId } from "@/lib/pricing/jsonld";
-import { PROTOCOL_CHIP_LABELS, PROTOCOL_LABELS, type ApiProtocol } from "@/lib/pricing/protocols";
+import type { ApiProtocol } from "@/lib/pricing/protocols";
 import type { PricingViewId } from "@/lib/pricing/query";
 import {
   formatScenarioCost,
@@ -54,7 +54,7 @@ import { SearchBox } from "./SearchBox";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
-import { OfficialLink, groupKey, groupTitle } from "./shared";
+import { OfficialLink, groupKey, groupTitle, ProtocolBadges } from "./shared";
 import { PriceScatter } from "./PriceScatter";
 import { basisResolution, ResolutionLadder } from "./ResolutionLadder";
 import { UnitPriceBars } from "./UnitPriceBars";
@@ -65,28 +65,6 @@ function FreeBadge(): React.ReactElement {
     <span className="ml-1.5 rounded border border-green/40 bg-green/10 px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-green-hi">
       免费
     </span>
-  );
-}
-
-/** 协议 chip(逐协议独立,meta 行内排列;未标注的行走空,不留空位) */
-function ProtocolBadges({
-  protocols,
-}: {
-  protocols: readonly ApiProtocol[];
-}): React.ReactElement | null {
-  if (protocols.length === 0) return null;
-  return (
-    <>
-      {protocols.map((p) => (
-        <span
-          key={p}
-          title={PROTOCOL_LABELS[p]}
-          className="whitespace-nowrap rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-[10px] leading-none text-text-2"
-        >
-          {PROTOCOL_CHIP_LABELS[p]}
-        </span>
-      ))}
-    </>
   );
 }
 
@@ -381,6 +359,9 @@ export interface ModelSectionProps {
   onContextBandChange: (v: ContextBandId) => void;
   sourceKind: string;
   onSourceKindChange: (v: string) => void;
+  /** 协议多选(空 = 全部) */
+  protocols: ApiProtocol[];
+  onProtocolsChange: (v: ApiProtocol[]) => void;
   sort: ModelSortId;
   onSortChange: (v: ModelSortId) => void;
   /** 模型区视图:列表 | 比价(M74 批D) */
@@ -420,6 +401,8 @@ export function ModelSection({
   onContextBandChange,
   sourceKind,
   onSourceKindChange,
+  protocols,
+  onProtocolsChange,
   sort,
   onSortChange,
   view,
@@ -454,6 +437,7 @@ export function ModelSection({
           pmin,
           pmax,
           tierParams: tierParamFilter,
+          protocols,
         }),
         sort,
       ),
@@ -469,6 +453,7 @@ export function ModelSection({
       pmin,
       pmax,
       tierParamFilter,
+      protocols,
       sort,
     ],
   );
@@ -485,6 +470,7 @@ export function ModelSection({
         cat,
         contextBand: "all",
         sourceKind: "",
+        protocols: [],
       }),
     [sortedModels, cat],
   );
@@ -592,6 +578,7 @@ export function ModelSection({
           contextBand,
           sourceKind,
           q,
+          protocols,
         }}
         onPatch={(patch) => {
           if (patch.vendors !== undefined) onVendorsChange(patch.vendors);
@@ -601,6 +588,7 @@ export function ModelSection({
           if (patch.contextBand !== undefined) onContextBandChange(patch.contextBand);
           if (patch.sourceKind !== undefined) onSourceKindChange(patch.sourceKind);
           if (patch.q !== undefined) onQChange(patch.q);
+          if (patch.protocols !== undefined) onProtocolsChange(patch.protocols);
         }}
         onReset={() => {
           onVendorsChange([]);
@@ -610,6 +598,7 @@ export function ModelSection({
           onContextBandChange("all");
           onSourceKindChange("");
           onQChange("");
+          onProtocolsChange([]);
         }}
       />
       {/* lg+:左侧常驻筛选栏(2026-11-18 反馈问题一);<lg:顶部 FilterBar,同一份状态 */}
@@ -640,6 +629,8 @@ export function ModelSection({
             onContextBandChange={onContextBandChange}
             sourceKind={sourceKind}
             onSourceKindChange={onSourceKindChange}
+            protocols={protocols}
+            onProtocolsChange={onProtocolsChange}
             freeScope={freeScope}
             onFreeScopeChange={onFreeScopeChange}
             freeCounts={freeCounts}
@@ -675,6 +666,8 @@ export function ModelSection({
               total={models.length}
               shown={visible.length}
               freeScope={{ value: freeScope, onChange: onFreeScopeChange, counts: freeCounts }}
+              protocols={protocols}
+              onProtocolsChange={onProtocolsChange}
               extra={
                 <ModelFilters
                   cat={cat}

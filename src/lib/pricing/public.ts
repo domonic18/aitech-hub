@@ -159,6 +159,8 @@ export interface ModelFilterOptions {
   cat: ModelCatId;
   contextBand: ContextBandId;
   sourceKind: string;
+  /** 协议多选(空 = 全部;行至少命中一个选中协议即通过) */
+  protocols: ApiProtocol[];
 }
 
 /**
@@ -198,11 +200,12 @@ export function matchesFreeScope(
 }
 
 /**
- * 模型行筛选(厂商 × 价格区间 × 免费口径 × 用途分组 × 上下文 × 来源类型)。
+ * 模型行筛选(厂商 × 价格区间 × 免费口径 × 用途分组 × 上下文 × 来源类型 × 协议)。
  * 价格区间按**代表价**(token 行输入价 / 非行生成价)判——排序同口径;
  * null 价不进具体价格区间档(不臆测);免费口径按 `matchesFreeScope` 判
  * (「有免费额度」与「完全免费」是两种语义,分开);
- * 「有免费额度」原文非空才算有额度(空串视同无)。
+ * 「有免费额度」原文非空才算有额度(空串视同无);
+ * 协议多选时行至少命中一个选中协议(与 vendors 多选语义一致)。
  */
 export function filterModelRows(
   rows: PublicModelRow[],
@@ -215,6 +218,7 @@ export function filterModelRows(
 ): PublicModelRow[] {
   const catMods = catToModalities(opts.cat);
   const q = (opts.q ?? "").trim().toLowerCase();
+  const protocolSet = new Set(opts.protocols);
   return rows.filter((r) => {
     if (q !== "" && !matchesQuery(r, q)) return false;
     if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
@@ -225,6 +229,7 @@ export function filterModelRows(
     if (!inContextBand(parseContextTokens(r.contextWindow), opts.contextBand)) return false;
     if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;
     if (opts.tierParams != null && !matchesTierParams(r.tiers, opts.tierParams)) return false;
+    if (protocolSet.size > 0 && !r.protocols.some((p) => protocolSet.has(p))) return false;
     return true;
   });
 }
