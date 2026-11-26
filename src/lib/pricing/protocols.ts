@@ -28,6 +28,12 @@ export const PROTOCOL_LABELS: Record<ApiProtocol, string> = {
   anthropic: "Anthropic 兼容",
 };
 
+/** 协议 chip 短标签(列表行内用;完整标签见 PROTOCOL_LABELS) */
+export const PROTOCOL_CHIP_LABELS: Record<ApiProtocol, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+};
+
 interface ProtocolRule {
   /** 该平台所有模型都支持的协议 */
   base: ApiProtocol[];
