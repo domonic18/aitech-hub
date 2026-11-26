@@ -35,7 +35,7 @@ import { PROTOCOL_OPTIONS, type ApiProtocol } from "@/lib/pricing/protocols";
 /** 侧栏分组标题 */
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-t border-line/60 px-3.5 py-3 first:border-t-0">
+    <div className="border-t border-line/60 px-4 py-3 first:border-t-0">
       <div className="mb-2 text-[11px] font-medium text-text-2">{title}</div>
       {children}
     </div>
@@ -60,7 +60,7 @@ function RadioChips<T extends string>({
           type="button"
           aria-pressed={value === o.id}
           onClick={() => onChange(o.id)}
-          className={`rounded-full border px-2 py-[3px] text-[11px] leading-none transition-colors cursor-pointer select-none ${
+          className={`max-w-full break-words rounded-full border px-2 py-[3px] text-[11px] leading-snug transition-colors cursor-pointer select-none text-left ${
             value === o.id
               ? "border-accent bg-accent text-white"
               : "border-line bg-panel text-text-2 hover:border-line-hover hover:text-text-1"
@@ -147,7 +147,7 @@ export function FilterSidebar({
       className="flex flex-col divide-y divide-line/60 border-b border-line lg:border-b-0 lg:border-r"
     >
       {/* 头:计数 + 重置 */}
-      <div className="flex items-center justify-between px-3.5 py-3">
+      <div className="flex items-center justify-between px-4 py-3">
         <span className="text-[11px] text-text-3">
           显示 <span className="font-mono text-text-1">{shown}</span> / {total}
         </span>
@@ -209,7 +209,9 @@ export function FilterSidebar({
                     )
                   }
                 />
-                <span className={on ? "text-text-1" : "text-text-2"}>{v}</span>
+                <span className={`min-w-0 break-words ${on ? "text-text-1" : "text-text-2"}`}>
+                  {v}
+                </span>
               </label>
             );
           })}
@@ -218,7 +220,7 @@ export function FilterSidebar({
           )}
           {staleSelected.length > 0 && (
             <div className="mt-2 border-t border-line/60 pt-2">
-              <p className="mb-1.5 text-[10.5px] text-amber">
+              <p className="mb-1.5 break-words text-[10.5px] text-amber">
                 已勾选,但当前用途组无模型(切换「用途」可见)
               </p>
               {staleSelected.map((v) => (
@@ -232,7 +234,7 @@ export function FilterSidebar({
                     checked
                     onChange={() => onVendorsChange(selectedVendors.filter((s) => s !== v))}
                   />
-                  <span className="text-text-2">{v}</span>
+                  <span className="min-w-0 break-words text-text-2">{v}</span>
                 </label>
               ))}
             </div>
@@ -241,7 +243,7 @@ export function FilterSidebar({
       </Group>
 
       <Group title="价格">
-        <p className="mb-1.5 text-[10.5px] text-text-3">{priceLabel}</p>
+        <p className="mb-1.5 break-words text-[10.5px] text-text-3">{priceLabel}</p>
         <RadioChips options={PRICE_BANDS} value={band} onChange={onBandChange} />
       </Group>
 
@@ -278,7 +280,9 @@ export function FilterSidebar({
                     )
                   }
                 />
-                <span className={on ? "text-text-1" : "text-text-2"}>{o.label}</span>
+                <span className={`min-w-0 break-words ${on ? "text-text-1" : "text-text-2"}`}>
+                  {o.label}
+                </span>
               </label>
             );
           })}
@@ -303,7 +307,7 @@ export function FilterSidebar({
       </Group>
 
       {shown === 0 && (
-        <p className="px-3.5 py-3 text-[11px] text-amber">
+        <p className="px-4 py-3 text-[11px] text-amber">
           当前筛选无匹配 —— 试试切换「用途」分组或放宽条件
         </p>
       )}
