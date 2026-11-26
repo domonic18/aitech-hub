@@ -253,7 +253,9 @@ export interface TierParamFilter {
   durationGte?: number;
 }
 
-/** 行的档位参数命中:任一档命中即通过(纯函数,单测锚) */
+/** 行的档位参数命中:任一档命中即通过(纯函数,单测锚)。
+ *  空筛选(三个维度都未设)= 不筛:直接放行。否则 token 文本行的档位
+ *  params 全为 null,会被空对象 `{}` 误判成「无命中」整批清空。 */
 export function matchesTierParams(
   tiers: ReadonlyArray<{
     params: {
@@ -265,6 +267,11 @@ export function matchesTierParams(
   }>,
   filter: TierParamFilter,
 ): boolean {
+  const active =
+    filter.resolution !== undefined ||
+    filter.hasAudio !== undefined ||
+    filter.durationGte !== undefined;
+  if (!active) return true;
   return tiers.some((t) => {
     if (t.params === null) return false;
     if (filter.resolution !== undefined && t.params.resolution !== filter.resolution) return false;
