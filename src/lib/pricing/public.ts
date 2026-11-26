@@ -206,10 +206,12 @@ export function matchesFreeScope(
  */
 export function filterModelRows(
   rows: PublicModelRow[],
-  opts: ModelFilterOptions,
+  opts: ModelFilterOptions & { q?: string },
 ): PublicModelRow[] {
   const catMods = catToModalities(opts.cat);
+  const q = (opts.q ?? "").trim().toLowerCase();
   return rows.filter((r) => {
+    if (q !== "" && !matchesQuery(r, q)) return false;
     if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
     if (!inPriceBand(representativePrice(r), opts.band)) return false;
     if (!matchesFreeScope(r, opts.freeScope)) return false;
@@ -218,6 +220,16 @@ export function filterModelRows(
     if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;
     return true;
   });
+}
+
+/** 关键词命中:模型名/展示名/产品线/厂商,小写子串(纯函数,单测锚) */
+function matchesQuery(r: PublicModelRow, q: string): boolean {
+  return (
+    r.modelKey.toLowerCase().includes(q) ||
+    (r.modelDisplayName?.toLowerCase().includes(q) ?? false) ||
+    (r.modelFamily?.toLowerCase().includes(q) ?? false) ||
+    r.vendor.toLowerCase().includes(q)
+  );
 }
 
 /**

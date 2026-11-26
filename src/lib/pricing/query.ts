@@ -46,6 +46,8 @@ export interface PricingQueryState {
   panel: PricingPanelId;
   /** 场景价(P4);off=默认单价 */
   scenario: PricingScenarioId;
+  /** 关键词搜索(空 = 不过滤;匹配 modelDisplayName/modelFamily/modelKey/vendor) */
+  q: string;
 }
 
 export const DEFAULT_PRICING_QUERY: PricingQueryState = {
@@ -59,6 +61,7 @@ export const DEFAULT_PRICING_QUERY: PricingQueryState = {
   view: "list",
   panel: "model",
   scenario: "off",
+  q: "",
 };
 
 const BANDS: ReadonlySet<string> = new Set(["all", "lt10", "10-50", "50-100", "100-300", "gte300"]);
@@ -116,6 +119,7 @@ export function decodePricingQuery(input: URLSearchParams | string): PricingQuer
     sort: (SORTS.has(sort) ? sort : "default") as ModelSortId,
     view: (VIEWS.has(view) ? view : "list") as PricingViewId,
     scenario: normalizeScenarioId(params.get("scn")),
+    q: (params.get("q") ?? "").slice(0, 64),
   };
 }
 
@@ -132,6 +136,7 @@ export function encodePricingQuery(state: PricingQueryState): string {
   if (state.view !== DEFAULT_PRICING_QUERY.view) params.set("view", state.view);
   if (state.panel !== DEFAULT_PRICING_QUERY.panel) params.set("panel", state.panel);
   if (state.scenario !== DEFAULT_PRICING_QUERY.scenario) params.set("scn", state.scenario);
+  if (state.q !== "") params.set("q", state.q);
   return params.toString();
 }
 
@@ -152,6 +157,7 @@ export function samePricingQuery(a: PricingQueryState, b: PricingQueryState): bo
     a.view === b.view &&
     a.panel === b.panel &&
     a.scenario === b.scenario &&
+    a.q === b.q &&
     a.vendors.length === b.vendors.length &&
     a.vendors.every((v, i) => v === b.vendors[i])
   );

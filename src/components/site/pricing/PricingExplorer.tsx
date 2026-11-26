@@ -187,6 +187,8 @@ export default function PricingExplorer({
                 onViewChange={(v) => updateModelQuery({ view: v })}
                 scenario={modelQuery.scenario}
                 onScenarioChange={(v) => updateModelQuery({ scenario: v })}
+                q={modelQuery.q}
+                onQChange={(v) => updateModelQuery({ q: v })}
                 leaderboardMap={leaderboardMap}
               />
               {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}

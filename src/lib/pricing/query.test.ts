@@ -102,6 +102,7 @@ describe("encodePricingQuery", () => {
       view: "compare" as const,
       panel: "plan" as const,
       scenario: "text-1M-tokens" as const,
+      q: "",
     };
     expect(decodePricingQuery(encodePricingQuery(state))).toEqual(state);
   });

@@ -46,6 +46,8 @@ import {
 import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 
 import { CompareMatrix } from "./CompareMatrix";
+import { ActiveFilterChips } from "./ActiveFilterChips";
+import { SearchBox } from "./SearchBox";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
@@ -336,6 +338,9 @@ export interface ModelSectionProps {
   /** 场景价(P4) */
   scenario: PricingScenarioId;
   onScenarioChange: (v: PricingScenarioId) => void;
+  /** 关键词搜索(UX P1) */
+  q: string;
+  onQChange: (v: string) => void;
   /** 外部榜单角标(P5) */
   leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }
@@ -360,6 +365,8 @@ export function ModelSection({
   onViewChange,
   scenario,
   onScenarioChange,
+  q,
+  onQChange,
   leaderboardMap = new Map(),
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
@@ -375,10 +382,11 @@ export function ModelSection({
           cat,
           contextBand,
           sourceKind,
+          q,
         }),
         sort,
       ),
-    [sortedModels, selectedVendors, band, freeScope, cat, contextBand, sourceKind, sort],
+    [sortedModels, selectedVendors, band, freeScope, cat, contextBand, sourceKind, q, sort],
   );
   const visibleKeys = useMemo(() => new Set(visible.map(rowKey)), [visible]);
   // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
@@ -491,9 +499,41 @@ export function ModelSection({
           </button>
         ))}
       </div>
+      <ActiveFilterChips
+        state={{
+          vendors: selectedVendors,
+          band,
+          freeScope,
+          cat,
+          contextBand,
+          sourceKind,
+          q,
+        }}
+        onPatch={(patch) => {
+          if (patch.vendors !== undefined) onVendorsChange(patch.vendors);
+          if (patch.band !== undefined) onBandChange(patch.band);
+          if (patch.freeScope !== undefined) onFreeScopeChange(patch.freeScope);
+          if (patch.cat !== undefined) onCatChange(patch.cat);
+          if (patch.contextBand !== undefined) onContextBandChange(patch.contextBand);
+          if (patch.sourceKind !== undefined) onSourceKindChange(patch.sourceKind);
+          if (patch.q !== undefined) onQChange(patch.q);
+        }}
+        onReset={() => {
+          onVendorsChange([]);
+          onBandChange("all");
+          onFreeScopeChange("all");
+          onCatChange("text");
+          onContextBandChange("all");
+          onSourceKindChange("");
+          onQChange("");
+        }}
+      />
       {/* lg+:左侧常驻筛选栏(2026-11-18 反馈问题一);<lg:顶部 FilterBar,同一份状态 */}
       <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
         <div className="hidden lg:block">
+          <div className="border-b border-line px-3.5 py-3">
+            <SearchBox value={q} onChange={onQChange} />
+          </div>
           <FilterSidebar
             cat={cat}
             onCatChange={onCatChange}
@@ -517,6 +557,9 @@ export function ModelSection({
           />
         </div>
         <div className="min-w-0">
+          <div className="lg:hidden border-b border-line px-4 py-2.5">
+            <SearchBox value={q} onChange={onQChange} />
+          </div>
           <div className="lg:hidden">
             <FilterBar
               vendors={vendorFacet}
