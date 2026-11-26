@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Area } from "react-easy-crop";
 
+import DialogShell from "./DialogShell";
 import CropStage from "./cover/CropStage";
 import CoverExportQueue, { type QueueState } from "./cover/CoverExportQueue";
 import CoverSourcePicker from "./cover/CoverSourcePicker";
@@ -197,130 +198,131 @@ export default function CoverDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+    <DialogShell
+      width="2xl"
+      scroll
+      title={
+        <>
+          设置封面
+          <span className="ml-2 font-mono text-[11px] font-normal text-text-3">
+            一次裁剪 · 多尺寸导出
+          </span>
+        </>
+      }
+      zClass="z-30"
+      onClose={onClose}
     >
-      <div
-        className="max-h-[86vh] w-full max-w-[880px] overflow-y-auto rounded-md border border-line bg-panel p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">
-            设置封面
-            <span className="ml-2 font-mono text-[11px] font-normal text-text-3">
-              一次裁剪 · 多尺寸导出
-            </span>
-          </h3>
-          <button
-            type="button"
-            aria-label="关闭"
-            className="cursor-pointer text-text-3 hover:text-text-1"
-            onClick={onClose}
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-close" />
-            </svg>
-          </button>
-        </div>
+      <div className="flex items-center justify-between">
+        <span className="sr-only">封面设置</span>
+        <span />
+        <button
+          type="button"
+          aria-label="关闭"
+          className="cursor-pointer text-text-3 hover:text-text-1"
+          onClick={onClose}
+        >
+          <svg className="ic" aria-hidden="true">
+            <use href="#i-close" />
+          </svg>
+        </button>
+      </div>
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) pickLocal(f);
-            e.target.value = "";
-          }}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) pickLocal(f);
+          e.target.value = "";
+        }}
+      />
+
+      {!source ? (
+        <CoverSourcePicker
+          onLocal={() => fileRef.current?.click()}
+          onMedia={() => setPickerOpen(true)}
         />
+      ) : (
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_300px]">
+          {/* 左:裁剪器 */}
+          <div className="rounded-md border border-line bg-panel p-3">
+            <div className="mb-2 flex items-center justify-between text-[11px] text-text-3">
+              <span>
+                源图:{source.label}
+                {source.bmp && (
+                  <span className="ml-1 font-mono">
+                    {source.bmp.width}×{source.bmp.height}
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => fileRef.current?.click()}
+                  className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
+                >
+                  本地上传
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPickerOpen(true)}
+                  className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
+                >
+                  媒体库
+                </button>
+              </span>
+            </div>
+            <CropStage
+              url={source.url}
+              aspect={aspectOf(activeTemplate)}
+              crop={crop}
+              zoom={zoom}
+              rotation={rotation}
+              areaPx={areaPx}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onRotationChange={setRotation}
+              onCropComplete={setAreaPx}
+            />
+          </div>
 
-        {!source ? (
-          <CoverSourcePicker
-            onLocal={() => fileRef.current?.click()}
-            onMedia={() => setPickerOpen(true)}
-          />
-        ) : (
-          <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_300px]">
-            {/* 左:裁剪器 */}
+          {/* 右:模板 + 导出队列 */}
+          <div className="flex flex-col gap-4">
             <div className="rounded-md border border-line bg-panel p-3">
-              <div className="mb-2 flex items-center justify-between text-[11px] text-text-3">
-                <span>
-                  源图:{source.label}
-                  {source.bmp && (
-                    <span className="ml-1 font-mono">
-                      {source.bmp.width}×{source.bmp.height}
-                    </span>
-                  )}
-                </span>
-                <span className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => fileRef.current?.click()}
-                    className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
-                  >
-                    本地上传
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setPickerOpen(true)}
-                    className="cursor-pointer rounded-sm border border-line px-2 py-1 text-text-2 hover:bg-panel-2 disabled:opacity-50"
-                  >
-                    媒体库
-                  </button>
-                </span>
-              </div>
-              <CropStage
-                url={source.url}
-                aspect={aspectOf(activeTemplate)}
-                crop={crop}
-                zoom={zoom}
-                rotation={rotation}
-                areaPx={areaPx}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
-                onRotationChange={setRotation}
-                onCropComplete={setAreaPx}
+              <CoverTemplateGrid
+                sourceUrl={source.url}
+                activeKey={activeKey}
+                onActivate={setActiveKey}
+                checked={checked}
+                onToggleCheck={toggleCheck}
+                busy={busy}
               />
             </div>
 
-            {/* 右:模板 + 导出队列 */}
-            <div className="flex flex-col gap-4">
-              <div className="rounded-md border border-line bg-panel p-3">
-                <CoverTemplateGrid
-                  sourceUrl={source.url}
-                  activeKey={activeKey}
-                  onActivate={setActiveKey}
-                  checked={checked}
-                  onToggleCheck={toggleCheck}
-                  busy={busy}
-                />
-              </div>
-
-              <div className="rounded-md border border-line bg-panel p-3">
-                <CoverExportQueue
-                  checked={checked}
-                  queue={queue}
-                  busy={busy}
-                  canGenerate={!!areaPx}
-                  onGenerate={() => void generate()}
-                />
-              </div>
+            <div className="rounded-md border border-line bg-panel p-3">
+              <CoverExportQueue
+                checked={checked}
+                queue={queue}
+                busy={busy}
+                canGenerate={!!areaPx}
+                onGenerate={() => void generate()}
+              />
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {error && <div className="mt-3 text-xs text-red">{error}</div>}
-        {note && <div className="mt-3 text-xs text-accent">{note}</div>}
-        <p className="mt-4 font-mono text-[10px] leading-relaxed text-text-3">
-          canvas 裁剪 → 各尺寸按 cover 变体 POST /api/media 入库(sharp 出 webp 缩略图)→ OG
-          变体回填文章封面; 导出即入媒体库,无需重复上传。
-        </p>
-      </div>
+      {error && <div className="mt-3 text-xs text-red">{error}</div>}
+      {note && <div className="mt-3 text-xs text-accent">{note}</div>}
+      <p className="mt-4 font-mono text-[10px] leading-relaxed text-text-3">
+        canvas 裁剪 → 各尺寸按 cover 变体 POST /api/media 入库(sharp 出 webp 缩略图)→ OG
+        变体回填文章封面; 导出即入媒体库,无需重复上传。
+      </p>
       {pickerOpen && <MediaPicker onPick={pickFromMedia} onClose={() => setPickerOpen(false)} />}
-    </div>
+    </DialogShell>
   );
 }

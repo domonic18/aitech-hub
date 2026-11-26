@@ -35,7 +35,7 @@ import {
 } from "@/lib/pricing/public";
 import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
 import { modelAnchorId } from "@/lib/pricing/jsonld";
-import { protocolsLabel } from "@/lib/pricing/protocols";
+import { PROTOCOL_CHIP_LABELS, PROTOCOL_LABELS, type ApiProtocol } from "@/lib/pricing/protocols";
 import type { PricingViewId } from "@/lib/pricing/query";
 import {
   formatScenarioCost,
@@ -63,17 +63,25 @@ function FreeBadge(): React.ReactElement {
   );
 }
 
-/** 支持的 API 协议角标(未标注的行走空,不留空位) */
-function ProtocolBadge({
+/** 协议 chip(逐协议独立,meta 行内排列;未标注的行走空,不留空位) */
+function ProtocolBadges({
   protocols,
 }: {
-  protocols: PublicModelRow["protocols"];
+  protocols: readonly ApiProtocol[];
 }): React.ReactElement | null {
   if (protocols.length === 0) return null;
   return (
-    <span className="ml-1.5 rounded border border-line px-1.5 py-0.5 align-middle text-[10.5px] leading-none text-text-3">
-      {protocolsLabel(protocols)}
-    </span>
+    <>
+      {protocols.map((p) => (
+        <span
+          key={p}
+          title={PROTOCOL_LABELS[p]}
+          className="whitespace-nowrap rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-[10px] leading-none text-text-2"
+        >
+          {PROTOCOL_CHIP_LABELS[p]}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -141,14 +149,12 @@ function ModelTable({
                 <div className="font-mono text-[13px] font-semibold break-words text-text-1">
                   {r.modelKey}
                   {r.isFree && <FreeBadge />}
-                  <ProtocolBadge protocols={r.protocols} />
-                  <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
                 </div>
-                <div className="mt-0.5 text-[11px] text-text-3">
-                  {r.providerName ?? r.vendor}
-                  {r.providerKind === "aggregator" && (
-                    <span className="ml-1 text-amber">聚合挂牌</span>
-                  )}
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
+                  <span>{r.providerName ?? r.vendor}</span>
+                  {r.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
+                  <ProtocolBadges protocols={r.protocols} />
+                  <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
                 </div>
                 <ResolutionLadder row={r} />
               </td>
@@ -227,14 +233,14 @@ function ModelCards({
             <span className="font-mono text-[13px] font-semibold text-text-1">
               {r.modelKey}
               {r.isFree && <FreeBadge />}
-              <ProtocolBadge protocols={r.protocols} />
-              <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
             </span>
             <OfficialLink url={r.sourceUrl} />
           </div>
-          <div className="mt-0.5 text-[11px] text-text-3">
-            {r.providerName ?? r.vendor}
-            {r.providerKind === "aggregator" && <span className="ml-1 text-amber">聚合挂牌</span>}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-3">
+            <span>{r.providerName ?? r.vendor}</span>
+            {r.providerKind === "aggregator" && <span className="text-amber">聚合</span>}
+            <ProtocolBadges protocols={r.protocols} />
+            <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
           </div>
           <div className="mt-2 flex gap-5 font-mono text-[13px] text-text-1">
             {isTokenPriced(r) && (
@@ -270,7 +276,7 @@ function ModelCards({
   );
 }
 
-/** 外部榜单名次角标(P5) */
+/** 外部榜单名次角标(P5;meta 行内 chip) */
 function LeaderboardBadges({
   badges,
 }: {
@@ -278,7 +284,7 @@ function LeaderboardBadges({
 }): React.ReactElement | null {
   if (badges === undefined || badges.length === 0) return null;
   return (
-    <span className="ml-1.5 inline-flex flex-wrap items-center gap-1 align-middle">
+    <>
       {badges.map((b) => (
         <a
           key={b.source}
@@ -286,7 +292,7 @@ function LeaderboardBadges({
           target="_blank"
           rel="noopener noreferrer"
           title={`${b.source} ${b.board}: 第 ${b.rank} 名`}
-          className="rounded border border-line px-1 py-0.5 text-[10px] leading-none text-text-3 hover:text-text-1"
+          className="whitespace-nowrap rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-[10px] leading-none text-text-2 hover:border-line-hover hover:text-text-1"
         >
           {b.source === "artificial-analysis" ? "AA" : "HF"} #{b.rank}
           {b.delta !== null && (
@@ -296,7 +302,7 @@ function LeaderboardBadges({
           )}
         </a>
       ))}
-    </span>
+    </>
   );
 }
 function catPriceLabel(cat: ModelCatId): string {

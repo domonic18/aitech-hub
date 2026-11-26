@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "tailwindcss-animate";
 
 /*
  * 设计 token(唯一真相源:docs/prototypes/common.css;DESIGN-SPEC v1.0,2026-09-30 M4 落地)
@@ -127,6 +128,25 @@
   --radius-lg: var(--r-lg);
   --shadow-lg: var(--shadow-lg);
   --shadow-sm: var(--shadow-sm);
+
+  /* shadcn/ui 桥接层(不改现有 token,只加语义别名;admin 组件用) */
+  --color-background: var(--bg);
+  --color-foreground: var(--text-1);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text-1);
+  --color-popover: var(--panel-2);
+  --color-popover-foreground: var(--text-1);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--accent-dim);
+  --color-secondary-foreground: var(--text-1);
+  --color-muted: var(--panel-2);
+  --color-muted-foreground: var(--text-3);
+  --color-accent-foreground: var(--text-1);
+  --color-destructive: var(--red);
+  --color-destructive-foreground: #ffffff;
+  --color-ring: var(--accent-hi);
+  --color-input: var(--border);
 }
 
 body {

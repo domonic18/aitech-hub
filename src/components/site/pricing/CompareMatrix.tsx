@@ -13,7 +13,7 @@
 import type { CompareCell, CompareGroup } from "@/lib/pricing/compare";
 import { COMPARE_MAX_MODELS_PER_GROUP } from "@/lib/pricing/compare";
 import { MODALITY_LABELS } from "@/lib/pricing/modality";
-import { protocolsLabel } from "@/lib/pricing/protocols";
+import { PROTOCOL_CHIP_LABELS, PROTOCOL_LABELS } from "@/lib/pricing/protocols";
 import { formatPrice, UNIT_SUFFIXES } from "@/lib/pricing/public";
 import { formatScenarioCost, scenarioCost, type PricingScenarioId } from "@/lib/pricing/scenario";
 
@@ -98,7 +98,15 @@ function Cell({
         >
           官方↗
         </a>
-        {cell.protocols.length > 0 && <span>{protocolsLabel(cell.protocols)}</span>}
+        {cell.protocols.map((p) => (
+          <span
+            key={p}
+            title={PROTOCOL_LABELS[p]}
+            className="whitespace-nowrap rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-[10px] leading-none text-text-2"
+          >
+            {PROTOCOL_CHIP_LABELS[p]}
+          </span>
+        ))}
         <span>截至 {cell.dataAsOf}</span>
       </div>
       {cell.tiers.length > 0 && (
