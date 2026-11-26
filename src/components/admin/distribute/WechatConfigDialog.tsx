@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import type { WechatConfigView } from "@/lib/distribute/wechat-config-admin";
 import { WECHAT_THEMES } from "@/lib/distribute/wechat-themes";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
@@ -157,44 +157,40 @@ export default function WechatConfigDialog({
       <div className="mt-3 flex flex-col gap-3">
         <label className={Lb}>
           AppID *
-          <input
+          <Input
             autoFocus
             value={appid}
             onChange={(e) => setAppid(e.target.value)}
             maxLength={50}
             placeholder="wx 开头的公众号 AppID"
-            className={`mt-1 font-mono ${field}`}
+            className="mt-1 font-mono "
           />
         </label>
         <label className={Lb}>
           AppSecret(写入后加密,不再回显)
-          <input
+          <Input
             type="password"
             value={appSecret}
             onChange={(e) => setAppSecret(e.target.value)}
             maxLength={400}
             placeholder={config.appSecretMask ? `留空 = 保留 ${config.appSecretMask}` : "••••••••"}
             autoComplete="new-password"
-            className={`mt-1 font-mono ${field}`}
+            className="mt-1 font-mono "
           />
         </label>
         <label className={Lb}>
           作者署名
-          <input
+          <Input
             value={author}
             onChange={(e) => setAuthor(e.target.value)}
             maxLength={64}
             placeholder="缺省「一起AI」"
-            className={`mt-1 ${field}`}
+            className="mt-1 "
           />
         </label>
         <label className={Lb}>
           内容主题(排版配色)
-          <select
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            className={`mt-1 ${field}`}
-          >
+          <select value={theme} onChange={(e) => setTheme(e.target.value)} className="mt-1 ">
             {WECHAT_THEMES.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.label}
@@ -208,7 +204,7 @@ export default function WechatConfigDialog({
           <select
             value={paraStyle}
             onChange={(e) => setParaStyle(e.target.value)}
-            className={`mt-1 ${field}`}
+            className="mt-1 "
           >
             <option value="default">默认(不缩进不对齐)</option>
             <option value="indent">首行缩进两字</option>
