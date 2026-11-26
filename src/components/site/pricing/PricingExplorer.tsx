@@ -18,7 +18,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/site/PageHeader";
-import type { PriceBandId, PublicPricing } from "@/lib/pricing/public";
+import type { PriceBandId, PublicPricing, TierParamFilter } from "@/lib/pricing/public";
 import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 import {
   decodePricingQuery,
@@ -34,6 +34,32 @@ import { ModelSection } from "./ModelSection";
 import { PlanSection } from "./PlanSection";
 import { StatusBanner } from "./StatusBanner";
 import { planKey } from "./shared";
+
+/** pf URL 串 → TierParamFilter(如 "res:1080p,au:1,dur:5") */
+function tierParamFilterOf(pf: string): TierParamFilter {
+  const out: TierParamFilter = {};
+  for (const kv of pf.split(",")) {
+    const [k, v] = kv.split(":");
+    if (k === "res" && v) out.resolution = v;
+    else if (k === "au" && v === "1") out.hasAudio = true;
+    else if (k === "au" && v === "0") out.hasAudio = false;
+    else if (k === "dur" && v) {
+      const d = Number(v);
+      if (Number.isFinite(d)) out.durationGte = d;
+    }
+  }
+  return out;
+}
+
+/** TierParamFilter → pf URL 串 */
+function encodeTierParamFilter(f: TierParamFilter): string {
+  const parts: string[] = [];
+  if (f.resolution !== undefined) parts.push(`res:${f.resolution}`);
+  if (f.hasAudio === true) parts.push("au:1");
+  if (f.hasAudio === false) parts.push("au:0");
+  if (f.durationGte !== undefined) parts.push(`dur:${f.durationGte}`);
+  return parts.join(",");
+}
 
 /** 对比上限:超过 4 列并排在小屏失去可读性 */
 const COMPARE_LIMIT = 4;
@@ -189,6 +215,17 @@ export default function PricingExplorer({
                 onScenarioChange={(v) => updateModelQuery({ scenario: v })}
                 q={modelQuery.q}
                 onQChange={(v) => updateModelQuery({ q: v })}
+                pmin={modelQuery.pmin}
+                pmax={modelQuery.pmax}
+                onPriceRangeChange={(min, max) =>
+                  updateModelQuery({
+                    pmin: min,
+                    pmax: max,
+                    ...(min !== null || max !== null ? { band: "all" as const } : {}),
+                  })
+                }
+                tierParamFilter={tierParamFilterOf(modelQuery.pf)}
+                onTierParamFilterChange={(v) => updateModelQuery({ pf: encodeTierParamFilter(v) })}
                 leaderboardMap={leaderboardMap}
               />
               {/* 降价史入口(M74 批F):独立路由,SSR 直出(爬虫可抓),不改本页首屏结构 */}

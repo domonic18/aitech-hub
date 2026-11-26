@@ -32,6 +32,7 @@ import {
   type ModelSortId,
   type PriceBandId,
   type PublicModelRow,
+  type TierParamFilter,
 } from "@/lib/pricing/public";
 import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
 import { modelAnchorId } from "@/lib/pricing/jsonld";
@@ -47,6 +48,8 @@ import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 
 import { CompareMatrix } from "./CompareMatrix";
 import { ActiveFilterChips } from "./ActiveFilterChips";
+import { ParamFilterGroup } from "./ParamFilterGroup";
+import { PriceRangeInput } from "./PriceRangeInput";
 import { SearchBox } from "./SearchBox";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
@@ -341,6 +344,13 @@ export interface ModelSectionProps {
   /** 关键词搜索(UX P1) */
   q: string;
   onQChange: (v: string) => void;
+  /** 自定义价格区间(UX P2) */
+  pmin: number | null;
+  pmax: number | null;
+  onPriceRangeChange: (min: number | null, max: number | null) => void;
+  /** 参数筛选(UX P2) */
+  tierParamFilter: TierParamFilter;
+  onTierParamFilterChange: (v: TierParamFilter) => void;
   /** 外部榜单角标(P5) */
   leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }
@@ -367,6 +377,11 @@ export function ModelSection({
   onScenarioChange,
   q,
   onQChange,
+  pmin,
+  pmax,
+  onPriceRangeChange,
+  tierParamFilter,
+  onTierParamFilterChange,
   leaderboardMap = new Map(),
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
@@ -383,10 +398,26 @@ export function ModelSection({
           contextBand,
           sourceKind,
           q,
+          pmin,
+          pmax,
+          tierParams: tierParamFilter,
         }),
         sort,
       ),
-    [sortedModels, selectedVendors, band, freeScope, cat, contextBand, sourceKind, q, sort],
+    [
+      sortedModels,
+      selectedVendors,
+      band,
+      freeScope,
+      cat,
+      contextBand,
+      sourceKind,
+      q,
+      pmin,
+      pmax,
+      tierParamFilter,
+      sort,
+    ],
   );
   const visibleKeys = useMemo(() => new Set(visible.map(rowKey)), [visible]);
   // 全量行仍渲染(筛掉的 hidden 藏住):首屏 HTML 含未筛选全量(SEO 红线)
@@ -534,6 +565,16 @@ export function ModelSection({
           <div className="border-b border-line px-3.5 py-3">
             <SearchBox value={q} onChange={onQChange} />
           </div>
+          <div className="border-b border-line px-3.5 py-3">
+            <div className="mb-1 text-[10.5px] text-text-3">自定义价格</div>
+            <PriceRangeInput pmin={pmin} pmax={pmax} onApply={onPriceRangeChange} />
+          </div>
+          <ParamFilterGroup
+            cat={cat}
+            rows={catRows}
+            filter={tierParamFilter}
+            onChange={onTierParamFilterChange}
+          />
           <FilterSidebar
             cat={cat}
             onCatChange={onCatChange}
@@ -560,6 +601,16 @@ export function ModelSection({
           <div className="lg:hidden border-b border-line px-4 py-2.5">
             <SearchBox value={q} onChange={onQChange} />
           </div>
+          {(cat === "video" || cat === "image") && (
+            <div className="lg:hidden border-b border-line px-4 py-2.5">
+              <ParamFilterGroup
+                cat={cat}
+                rows={catRows}
+                filter={tierParamFilter}
+                onChange={onTierParamFilterChange}
+              />
+            </div>
+          )}
           <div className="lg:hidden">
             <FilterBar
               vendors={vendorFacet}

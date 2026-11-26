@@ -206,7 +206,12 @@ export function matchesFreeScope(
  */
 export function filterModelRows(
   rows: PublicModelRow[],
-  opts: ModelFilterOptions & { q?: string },
+  opts: ModelFilterOptions & {
+    q?: string;
+    pmin?: number | null;
+    pmax?: number | null;
+    tierParams?: TierParamFilter | null;
+  },
 ): PublicModelRow[] {
   const catMods = catToModalities(opts.cat);
   const q = (opts.q ?? "").trim().toLowerCase();
@@ -214,10 +219,54 @@ export function filterModelRows(
     if (q !== "" && !matchesQuery(r, q)) return false;
     if (opts.vendors.length > 0 && !opts.vendors.includes(r.vendor)) return false;
     if (!inPriceBand(representativePrice(r), opts.band)) return false;
+    if (!inPriceRange(representativePrice(r), opts.pmin ?? null, opts.pmax ?? null)) return false;
     if (!matchesFreeScope(r, opts.freeScope)) return false;
     if (catMods !== null && !catMods.includes(effectiveModality(r))) return false;
     if (!inContextBand(parseContextTokens(r.contextWindow), opts.contextBand)) return false;
     if (opts.sourceKind !== "" && (r.providerKind ?? "") !== opts.sourceKind) return false;
+    if (opts.tierParams != null && !matchesTierParams(r.tiers, opts.tierParams)) return false;
+    return true;
+  });
+}
+
+/** 自定义价格区间(null = 不限该端);null 价不进任何有限区间(不臆测) */
+function inPriceRange(price: number | null, min: number | null, max: number | null): boolean {
+  if (min === null && max === null) return true;
+  if (price === null) return false;
+  if (min !== null && price < min) return false;
+  if (max !== null && price >= max) return false;
+  return true;
+}
+
+/** 参数筛选条件(UX P2;null 字段 = 不过滤该维度) */
+export interface TierParamFilter {
+  /** 分辨率精确匹配(如 "1080P") */
+  resolution?: string;
+  /** 音频:true=有声 / false=无声 */
+  hasAudio?: boolean;
+  /** 时长下界(秒;如 5 = ≥5s) */
+  durationGte?: number;
+}
+
+/** 行的档位参数命中:任一档命中即通过(纯函数,单测锚) */
+export function matchesTierParams(
+  tiers: ReadonlyArray<{
+    params: {
+      resolution: string | null;
+      hasAudio: boolean | null;
+      durationSec: number | null;
+      fps: number | null;
+    } | null;
+  }>,
+  filter: TierParamFilter,
+): boolean {
+  return tiers.some((t) => {
+    if (t.params === null) return false;
+    if (filter.resolution !== undefined && t.params.resolution !== filter.resolution) return false;
+    if (filter.hasAudio !== undefined && t.params.hasAudio !== filter.hasAudio) return false;
+    if (filter.durationGte !== undefined && t.params.durationSec === null) return false;
+    if (filter.durationGte !== undefined && (t.params.durationSec ?? 0) < filter.durationGte)
+      return false;
     return true;
   });
 }
