@@ -25,6 +25,7 @@ import {
   formatPrice,
   inPriceBand,
   isPricingStale,
+  matchesTierParams,
   PRICE_BANDS,
   PRICING_STALE_DAYS,
   sortModelRows,
@@ -353,5 +354,20 @@ describe("M74 批C:模型行筛选与排序", () => {
   it("同价按模型名定序(结果稳定)", () => {
     const rows = [row({ modelKey: "b", inputPrice: 1 }), row({ modelKey: "a", inputPrice: 1 })];
     expect(sortModelRows(rows, "input").map((r) => r.modelKey)).toEqual(["a", "b"]);
+  });
+
+  it("参数筛选:空筛选(三维都未设)放行所有档位(2026-11-26 反馈:token 文本行 params 全 null 被清空)", () => {
+    const tokenTier = { params: null as null };
+    const imageTier = {
+      params: { resolution: "1080P", hasAudio: null, durationSec: null, fps: null },
+    };
+    // 空筛选必须命中(哪怕该行所有档位 params 都是 null)
+    expect(matchesTierParams([tokenTier], {})).toBe(true);
+    expect(matchesTierParams([imageTier], {})).toBe(true);
+    expect(matchesTierParams([], {})).toBe(true);
+    // 有真实筛选时才按档位判定
+    expect(matchesTierParams([imageTier], { resolution: "1080P" })).toBe(true);
+    expect(matchesTierParams([imageTier], { resolution: "4K" })).toBe(false);
+    expect(matchesTierParams([tokenTier], { resolution: "1080P" })).toBe(false);
   });
 });
