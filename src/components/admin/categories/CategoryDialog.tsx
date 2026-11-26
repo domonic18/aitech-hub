@@ -10,7 +10,8 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { CategoryAdminRow } from "@/lib/content/categories-admin";
 import type { ApiEnvelope } from "@/lib/http/response";
 
@@ -92,38 +93,38 @@ export default function CategoryDialog({
               {editing && (
                 <span className="text-amber">(建后不可改,公开 URL /category/slug/ 锚定)</span>
               )}
-              <input
+              <Input
                 ref={slugRef}
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 disabled={editing}
                 maxLength={100}
                 placeholder="如 ai-agents(小写字母/数字/连字符)"
-                className={`${field} mt-1 ${editing ? "opacity-60" : ""}`}
+                className={`mt-1 ${editing ? "opacity-60" : ""}`}
               />
             </label>
             <label className="text-xs text-text-3">
               名称 *
-              <input
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={100}
                 placeholder="如 AI 智能体"
-                className={`${field} mt-1`}
+                className="mt-1"
               />
             </label>
             <label className="text-xs text-text-3">
               描述(选填,导航悬浮提示)
-              <textarea
+              <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 maxLength={500}
                 rows={2}
-                className={`${field} mt-1`}
+                className="mt-1"
               />
             </label>
             <label className="flex items-center gap-2 text-xs text-text-3">
-              <input
+              <Input
                 type="checkbox"
                 checked={isOriginal}
                 onChange={(e) => setIsOriginal(e.target.checked)}
@@ -133,13 +134,13 @@ export default function CategoryDialog({
             </label>
             <label className="text-xs text-text-3">
               排序(小的在前,决定下拉与导航次序)
-              <input
+              <Input
                 type="number"
                 min={0}
                 max={9999}
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value)}
-                className={`${field} mt-1`}
+                className="mt-1"
               />
             </label>
           </div>

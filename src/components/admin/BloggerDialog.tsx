@@ -14,7 +14,7 @@ import {
   VIDEO_PLATFORM_BILIBILI,
   VIDEO_PLATFORM_DOUYIN,
 } from "@/lib/telegram/constants";
-import { field } from "@/components/admin/form-fields";
+import { Input } from "@/components/ui/input";
 import type { ApiEnvelope } from "@/lib/http/response";
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
 
@@ -160,54 +160,54 @@ export default function BloggerDialog({
                 </div>
                 <label className="sm:col-span-2 text-xs text-text-3">
                   {PLATFORM_INPUT_META[platform]?.label ?? "主页链接或身份标识"} *
-                  <input
+                  <Input
                     ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder={PLATFORM_INPUT_META[platform]?.placeholder ?? ""}
-                    className={`mt-1 ${field}`}
+                    className="mt-1 "
                   />
                 </label>
               </>
             )}
             <label className="col-span-1 text-xs text-text-3">
               昵称 {editing ? "*" : "(可选,手填兜底)"}
-              <input
+              <Input
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 maxLength={100}
                 placeholder={editing ? "" : "网关不可达时必填"}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               分类
-              <input
+              <Input
                 value={category ?? ""}
                 onChange={(e) => setCategory(e.target.value)}
                 maxLength={50}
                 placeholder="如 AI 工具/大模型"
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               采集间隔(分钟,≥120)
-              <input
+              <Input
                 type="number"
                 min={SOCIAL_CRAWL_INTERVAL_MIN}
                 max={1440}
                 value={interval}
                 onChange={(e) => setIntervalMin(e.target.value)}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
             <label className="col-span-1 text-xs text-text-3">
               备注
-              <input
+              <Input
                 value={remark ?? ""}
                 onChange={(e) => setRemark(e.target.value)}
                 maxLength={200}
-                className={`mt-1 ${field}`}
+                className="mt-1 "
               />
             </label>
           </div>

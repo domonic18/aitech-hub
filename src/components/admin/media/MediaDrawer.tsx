@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { type MediaDetailData, formatBytes, MEDIA_LIMITS } from "@/lib/media/media-schema";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 import MediaViewer from "./MediaViewer";
 
@@ -86,23 +87,16 @@ export default function MediaDrawer({
   const preview = m ? (m.thumbPath ?? m.path) : null;
 
   return (
-    <div className="fixed inset-0 z-30 flex justify-end bg-black/40" onClick={onClose}>
-      <aside
-        className="h-full w-full overflow-y-auto border-l border-line bg-panel p-5 sm:w-[420px]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent className="w-full overflow-y-auto p-5 sm:w-[420px]">
+        <SheetTitle className="sr-only">媒体详情</SheetTitle>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">媒体详情</h3>
-          <button
-            type="button"
-            aria-label="关闭"
-            className="cursor-pointer text-text-3 hover:text-text-1"
-            onClick={onClose}
-          >
-            <svg className="ic" aria-hidden="true">
-              <use href="#i-close" />
-            </svg>
-          </button>
         </div>
 
         {error && <p className="mt-4 text-xs text-red">{error}</p>}
@@ -183,8 +177,10 @@ export default function MediaDrawer({
             </div>
           </>
         )}
-      </aside>
-      {viewer && <MediaViewer src={viewer.src} alt={viewer.alt} onClose={() => setViewer(null)} />}
-    </div>
+        {viewer && (
+          <MediaViewer src={viewer.src} alt={viewer.alt} onClose={() => setViewer(null)} />
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

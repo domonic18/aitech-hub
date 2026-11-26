@@ -27,6 +27,8 @@ import { TierEditor } from "./TierEditor";
 import type { ApiEnvelope } from "@/lib/http/response";
 
 import DialogShell, { DialogActions } from "@/components/admin/DialogShell";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 import { refreshKeepScroll } from "./refresh";
 
@@ -58,10 +60,6 @@ const EMPTY_FORM = {
   dataAsOf: "",
   sourceUrl: "",
 };
-
-const input =
-  "w-full rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-xs outline-none focus:border-accent";
-const label = "mb-1 block text-[11px] text-text-3";
 
 function SectionTitle({ children }: { children: React.ReactNode }): React.ReactElement {
   return <div className="col-span-full mt-1 text-[11px] font-semibold text-text-2">{children}</div>;
@@ -265,11 +263,11 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
             </button>
           ))}
         </div>
-        <input
+        <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜索厂商 / 模型 / 备注"
-          className="w-48 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent"
+          className="w-48"
         />
         {/* 批量终审(M74 批C):采集落 pending,批量上架才能进前台 */}
         <button
@@ -350,7 +348,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
           <thead>
             <tr className="border-b border-line bg-panel-2 text-[11px] text-text-3">
               <th className="w-9 px-2 py-2">
-                <input
+                <Input
                   type="checkbox"
                   aria-label="全选当前筛选行"
                   className="accent-accent"
@@ -385,7 +383,7 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                   className={`border-b border-line/60 last:border-0 ${r.status === "pending" ? "opacity-70" : ""}`}
                 >
                   <td className="px-2 py-2">
-                    <input
+                    <Input
                       type="checkbox"
                       aria-label={`选择 ${r.modelKey}`}
                       className="accent-accent"
@@ -432,10 +430,10 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                   </td>
                   <td className="px-2 py-2 font-mono text-xs">
                     {editing ? (
-                      <input
+                      <Input
                         value={editPrice.inputPrice}
                         onChange={(e) => setEditPrice({ ...editPrice, inputPrice: e.target.value })}
-                        className="w-16 rounded-sm border border-accent bg-panel-2 px-1 py-0.5 font-mono text-xs outline-none"
+                        className="w-16 border-accent px-1 py-0.5 font-mono"
                       />
                     ) : r.inputPrice === null ? (
                       "—"
@@ -445,12 +443,12 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
                   </td>
                   <td className="px-2 py-2 font-mono text-xs">
                     {editing ? (
-                      <input
+                      <Input
                         value={editPrice.outputPrice}
                         onChange={(e) =>
                           setEditPrice({ ...editPrice, outputPrice: e.target.value })
                         }
-                        className="w-16 rounded-sm border border-accent bg-panel-2 px-1 py-0.5 font-mono text-xs outline-none"
+                        className="w-16 border-accent px-1 py-0.5 font-mono"
                       />
                     ) : r.outputPrice === null ? (
                       "—"
@@ -669,29 +667,29 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
           <div className="grid grid-cols-2 gap-3">
             <SectionTitle>归属</SectionTitle>
             <div>
-              <span className={label}>厂商 *</span>
-              <input
+              <Label className="mb-1">厂商 *</Label>
+              <Input
                 value={form.vendor}
                 onChange={(e) => setForm({ ...form, vendor: e.target.value })}
                 placeholder="如 DeepSeek 深度求索"
-                className={input}
+                className="h-8 w-full"
               />
             </div>
             <div>
-              <span className={label}>模型标识 *</span>
-              <input
+              <Label className="mb-1">模型标识 *</Label>
+              <Input
                 value={form.modelKey}
                 onChange={(e) => setForm({ ...form, modelKey: e.target.value })}
                 placeholder="如 deepseek-v3.2"
-                className={input}
+                className="h-8 w-full"
               />
             </div>
             <div>
-              <span className={label}>币种</span>
+              <Label className="mb-1">币种</Label>
               <select
                 value={form.currency}
                 onChange={(e) => setForm({ ...form, currency: e.target.value })}
-                className={input}
+                className="h-8 w-full"
                 aria-label="币种"
               >
                 <option value="CNY">¥ CNY</option>
@@ -699,11 +697,11 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
               </select>
             </div>
             <div>
-              <span className={label}>分组</span>
+              <Label className="mb-1">分组</Label>
               <select
                 value={form.region}
                 onChange={(e) => setForm({ ...form, region: e.target.value })}
-                className={input}
+                className="h-8 w-full"
                 aria-label="分组"
               >
                 <option value="cn">国内</option>
@@ -712,66 +710,66 @@ export default function ModelsBoard({ rows }: { rows: ModelPricingRow[] }): Reac
             </div>
             <SectionTitle>价格(货币 / 百万 tokens)</SectionTitle>
             <div>
-              <span className={label}>输入价</span>
-              <input
+              <Label className="mb-1">输入价</Label>
+              <Input
                 value={form.inputPrice}
                 onChange={(e) => setForm({ ...form, inputPrice: e.target.value })}
                 placeholder="空=未公布"
-                className={input}
+                className="h-8 w-full"
                 inputMode="decimal"
               />
             </div>
             <div>
-              <span className={label}>输出价</span>
-              <input
+              <Label className="mb-1">输出价</Label>
+              <Input
                 value={form.outputPrice}
                 onChange={(e) => setForm({ ...form, outputPrice: e.target.value })}
                 placeholder="空=未公布"
-                className={input}
+                className="h-8 w-full"
                 inputMode="decimal"
               />
             </div>
             <div>
-              <span className={label}>免费额度</span>
-              <input
+              <Label className="mb-1">免费额度</Label>
+              <Input
                 value={form.freeTier}
                 onChange={(e) => setForm({ ...form, freeTier: e.target.value })}
                 placeholder="空=—"
-                className={input}
+                className="h-8 w-full"
               />
             </div>
             <div>
-              <span className={label}>上下文</span>
-              <input
+              <Label className="mb-1">上下文</Label>
+              <Input
                 value={form.contextWindow}
                 onChange={(e) => setForm({ ...form, contextWindow: e.target.value })}
                 placeholder="如 128K"
-                className={input}
+                className="h-8 w-full"
               />
             </div>
             <SectionTitle>溯源</SectionTitle>
             <div>
-              <span className={label}>数据截至 *</span>
-              <input
+              <Label className="mb-1">数据截至 *</Label>
+              <Input
                 type="date"
                 value={form.dataAsOf}
                 onChange={(e) => setForm({ ...form, dataAsOf: e.target.value })}
-                className={input}
+                className="h-8 w-full"
               />
             </div>
             <div className="col-span-2">
-              <span className={label}>来源链接 *(官方牌价页)</span>
-              <input
+              <Label className="mb-1">来源链接 *(官方牌价页)</Label>
+              <Input
                 value={form.sourceUrl}
                 onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
                 placeholder="https://…"
-                className={input}
+                className="h-8 w-full"
               />
             </div>
           </div>
           <DialogActions>
             <label className="mr-auto flex items-center gap-1 text-[11px] text-text-3">
-              <input
+              <Input
                 type="checkbox"
                 checked={form.confirmInverted}
                 onChange={(e) => setForm({ ...form, confirmInverted: e.target.checked })}

@@ -14,6 +14,8 @@ import type { ModelPricingRow } from "@/lib/pricing/admin-model";
 import { TIER_UNITS } from "@/lib/pricing/constants";
 import type { TierParams } from "@/lib/pricing/params";
 
+import { Input } from "@/components/ui/input";
+
 /** 编辑中的一档 */
 interface Draft {
   tierLabel: string;
@@ -104,9 +106,8 @@ export function TierEditor({
     }
   }
 
-  const input =
-    "w-16 rounded-sm border border-line bg-panel-2 px-1 py-0.5 font-mono text-xs outline-none focus:border-accent";
-  const label = "w-10 shrink-0 text-[10.5px] text-text-3";
+  const tierInput = "w-16 px-1 py-0.5 font-mono";
+  const tierLabel = "w-10 shrink-0 text-[10.5px] text-text-3";
 
   return (
     <div className="mt-2 rounded-md border border-line bg-panel-2/40 p-2">
@@ -141,46 +142,46 @@ export function TierEditor({
       <div className="mt-2 flex flex-col gap-1.5">
         {drafts.map((d, i) => (
           <div key={i} className="flex flex-wrap items-center gap-1.5">
-            <input
+            <Input
               value={d.tierLabel}
               onChange={(e) => patch(i, { tierLabel: e.target.value })}
               placeholder="档位名"
-              className="w-40 rounded-sm border border-line bg-panel-2 px-1 py-0.5 text-xs outline-none focus:border-accent"
+              className="w-40"
             />
-            <span className={label}>输入</span>
-            <input
+            <span className={tierLabel}>输入</span>
+            <Input
               value={d.inputPrice}
               onChange={(e) => patch(i, { inputPrice: e.target.value })}
               placeholder="—"
-              className={input}
+              className={tierInput}
             />
-            <span className={label}>输出</span>
-            <input
+            <span className={tierLabel}>输出</span>
+            <Input
               value={d.outputPrice}
               onChange={(e) => patch(i, { outputPrice: e.target.value })}
               placeholder="—"
-              className={input}
+              className={tierInput}
             />
-            <span className={label}>缓存</span>
-            <input
+            <span className={tierLabel}>缓存</span>
+            <Input
               value={d.cachePrice}
               onChange={(e) => patch(i, { cachePrice: e.target.value })}
               placeholder="—"
-              className={input}
+              className={tierInput}
             />
-            <span className={label}>tokens</span>
-            <input
+            <span className={tierLabel}>tokens</span>
+            <Input
               value={d.minTokens}
               onChange={(e) => patch(i, { minTokens: e.target.value })}
               placeholder="下界"
-              className={input}
+              className={tierInput}
             />
-            <span className={label}>–</span>
-            <input
+            <span className={tierLabel}>–</span>
+            <Input
               value={d.maxTokens}
               onChange={(e) => patch(i, { maxTokens: e.target.value })}
               placeholder="上界"
-              className={input}
+              className={tierInput}
             />
             <select
               value={d.unit}

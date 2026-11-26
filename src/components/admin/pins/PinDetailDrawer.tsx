@@ -13,6 +13,7 @@ import type { PinDetailDto, PinImageDto } from "@/lib/pins/dto";
 import type { PinStatus } from "@/lib/pins/constants";
 import { formatCnDateTime } from "@/lib/datetime";
 import { PUBLISH_STATUS_LABELS } from "@/lib/distribute/channels";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 import { callPinApi } from "./api";
 import { PIN_BADGE_CLS, PIN_BADGE_LABEL } from "./status";
@@ -95,9 +96,14 @@ export default function PinDetailDrawer({
   const wechat = detail?.channels.find((c) => c.channel === "wechat");
 
   return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} aria-hidden="true" />
-      <aside className="absolute bottom-0 right-0 top-0 flex w-[460px] max-w-[92vw] flex-col border-l border-line bg-panel shadow-2xl">
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent className="flex w-[460px] max-w-[92vw] flex-col">
+        <SheetTitle className="sr-only">贴图详情</SheetTitle>
         <div className="flex items-center gap-2.5 border-b border-line px-5 py-4">
           <h3 className="text-[15px] font-semibold">贴图详情</h3>
           {status && (
@@ -107,16 +113,6 @@ export default function PinDetailDrawer({
               {PIN_BADGE_LABEL[status] ?? detail?.status}
             </span>
           )}
-          <button
-            type="button"
-            aria-label="关闭"
-            onClick={onClose}
-            className="ml-auto cursor-pointer text-text-3 hover:text-text-1"
-          >
-            <svg className="ic" style={{ width: 16, height: 16 }} aria-hidden="true">
-              <use href="#i-close" />
-            </svg>
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -241,7 +237,7 @@ export default function PinDetailDrawer({
             继续组装
           </Link>
         </div>
-      </aside>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
