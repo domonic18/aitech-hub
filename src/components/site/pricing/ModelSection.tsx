@@ -138,41 +138,36 @@ function ModelTable({
           </tr>
           {modelGroups.map((mg) => (
             <Fragment key={mg.key}>
-              {mg.multi && (
-                <tr className="border-b border-line bg-panel-2/30">
-                  <td colSpan={colSpan} className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => onToggleGroup(mg.key)}
-                      className="flex w-full cursor-pointer items-center justify-between text-left text-[13px] font-semibold text-text-1"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="text-[10px] text-text-3">
-                          {expandedGroups.has(mg.key) ? "▾" : "▸"}
-                        </span>
-                        {mg.displayName}
-                        <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
-                          {mg.rows.length} 个版本
-                        </span>
+              <tr className="border-b border-line bg-panel-2/30">
+                <td colSpan={colSpan} className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => onToggleGroup(mg.key)}
+                    className="flex w-full cursor-pointer items-center justify-between text-left text-[13px] font-semibold text-text-1"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-[10px] text-text-3">
+                        {expandedGroups.has(mg.key) ? "▾" : "▸"}
                       </span>
-                      <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
-                    </button>
-                  </td>
-                </tr>
-              )}
-              {mg.rows.map((r) => {
-                const expanded = !mg.multi || expandedGroups.has(mg.key);
-                return (
-                  <ModelTableRow
-                    key={rowKey(r)}
-                    row={r}
-                    hidden={!visibleKeys.has(rowKey(r)) || !expanded}
-                    showScenario={showScenario}
-                    scenario={scenario}
-                    leaderboardMap={leaderboardMap}
-                  />
-                );
-              })}
+                      {mg.displayName}
+                      <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
+                        {mg.rows.length} 个版本
+                      </span>
+                    </span>
+                    <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
+                  </button>
+                </td>
+              </tr>
+              {mg.rows.map((r) => (
+                <ModelTableRow
+                  key={rowKey(r)}
+                  row={r}
+                  hidden={!visibleKeys.has(rowKey(r)) || !expandedGroups.has(mg.key)}
+                  showScenario={showScenario}
+                  scenario={scenario}
+                  leaderboardMap={leaderboardMap}
+                />
+              ))}
             </Fragment>
           ))}
         </tbody>
@@ -279,27 +274,23 @@ function ModelCards({
   return (
     <div className="flex flex-col gap-3 p-3 sm:hidden">
       {modelGroups.map((mg) => {
-        const expanded = !mg.multi || expandedGroups.has(mg.key);
+        const expanded = expandedGroups.has(mg.key);
         return (
           <Fragment key={mg.key}>
-            {mg.multi && (
-              <button
-                type="button"
-                onClick={() => onToggleGroup(mg.key)}
-                className="flex cursor-pointer items-center justify-between rounded-lg border border-line/70 bg-panel-2/30 px-4 py-2 text-left"
-              >
-                <span className="flex items-center gap-2 text-[13px] font-semibold text-text-1">
-                  <span className="text-[10px] text-text-3">
-                    {expandedGroups.has(mg.key) ? "▾" : "▸"}
-                  </span>
-                  {mg.displayName}
-                  <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
-                    {mg.rows.length} 个版本
-                  </span>
+            <button
+              type="button"
+              onClick={() => onToggleGroup(mg.key)}
+              className="flex cursor-pointer items-center justify-between rounded-lg border border-line/70 bg-panel-2/30 px-4 py-2 text-left"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-text-1">
+                <span className="text-[10px] text-text-3">{expanded ? "▾" : "▸"}</span>
+                {mg.displayName}
+                <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[10px] font-normal text-text-3">
+                  {mg.rows.length} 个版本
                 </span>
-                <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
-              </button>
-            )}
+              </span>
+              <span className="font-mono text-[11px] text-blue">{mg.visibleCount}</span>
+            </button>
             {mg.rows.map((r) => (
               <ModelCard
                 key={rowKey(r)}
@@ -857,13 +848,15 @@ function buildRegionGroups(allRows: PublicModelRow[], visibleKeys: Set<string>):
         if (!groupMap.has(gk)) groupMap.set(gk, []);
         groupMap.get(gk)!.push(r);
       }
-      const modelGroups: ModelGroupDef[] = [...groupMap.entries()].map(([key, rows]) => ({
-        key,
-        displayName: modelGroupName(rows),
-        rows,
-        visibleCount: rows.filter((m) => visibleKeys.has(rowKey(m))).length,
-        multi: rows.length > 1,
-      }));
+      const modelGroups: ModelGroupDef[] = [...groupMap.entries()]
+        .map(([key, rows]) => ({
+          key,
+          displayName: modelGroupName(rows),
+          rows,
+          visibleCount: rows.filter((m) => visibleKeys.has(rowKey(m))).length,
+          multi: rows.length > 1,
+        }))
+        .filter((g) => g.visibleCount > 0);
       const visibleCount = modelGroups.reduce((sum, g) => sum + g.visibleCount, 0);
       return {
         key: regionKey,
