@@ -34,7 +34,6 @@ import {
   type PublicModelRow,
   type TierParamFilter,
 } from "@/lib/pricing/public";
-import { buildCompareGroups, countComparableModels } from "@/lib/pricing/compare";
 import { modelAnchorId } from "@/lib/pricing/jsonld";
 import type { ApiProtocol } from "@/lib/pricing/protocols";
 import type { PricingViewId } from "@/lib/pricing/query";
@@ -46,7 +45,6 @@ import {
 } from "@/lib/pricing/scenario";
 import type { LeaderboardBadge } from "@/lib/pricing/leaderboard-ref";
 
-import { CompareMatrix } from "./CompareMatrix";
 import { ActiveFilterChips } from "./ActiveFilterChips";
 import { ParamFilterGroup } from "./ParamFilterGroup";
 import { PriceRangeInput } from "./PriceRangeInput";
@@ -54,6 +52,7 @@ import { SearchBox } from "./SearchBox";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { ModelFilters } from "./ModelFilters";
+import { ModelComparePanel } from "./ModelComparePanel";
 import { OfficialLink, groupKey, groupTitle, ProtocolBadges } from "./shared";
 import { PriceScatter } from "./PriceScatter";
 import { basisResolution, ResolutionLadder } from "./ResolutionLadder";
@@ -78,15 +77,11 @@ function ModelTable({
   visibleKeys,
   scenario,
   leaderboardMap,
-  modelCompareKeys,
-  onToggleModelCompare,
 }: {
   rows: PublicModelRow[];
   visibleKeys: Set<string>;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
-  modelCompareKeys: string[];
-  onToggleModelCompare: (key: string) => void;
 }): React.ReactElement {
   const showScenario = scenario !== "off";
   return (
@@ -143,26 +138,6 @@ function ModelTable({
                   <ProtocolBadges protocols={r.protocols} />
                   <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
                 </div>
-                <label className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] text-text-3 hover:text-text-1">
-                  <input
-                    type="checkbox"
-                    className="accent-accent"
-                    checked={modelCompareKeys.includes(
-                      r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
-                    )}
-                    disabled={
-                      !modelCompareKeys.includes(
-                        r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
-                      ) && modelCompareKeys.length >= 4
-                    }
-                    onChange={() =>
-                      onToggleModelCompare(
-                        r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
-                      )
-                    }
-                  />
-                  对比
-                </label>
                 <ResolutionLadder row={r} />
               </td>
               <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
@@ -221,15 +196,11 @@ function ModelCards({
   visibleKeys,
   scenario,
   leaderboardMap,
-  modelCompareKeys,
-  onToggleModelCompare,
 }: {
   rows: PublicModelRow[];
   visibleKeys: Set<string>;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
-  modelCompareKeys: string[];
-  onToggleModelCompare: (key: string) => void;
 }): React.ReactElement {
   const showScenario = scenario !== "off";
   return (
@@ -274,26 +245,6 @@ function ModelCards({
             )}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
-            <label className="inline-flex cursor-pointer items-center gap-1">
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={modelCompareKeys.includes(
-                  r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
-                )}
-                disabled={
-                  !modelCompareKeys.includes(
-                    r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
-                  ) && modelCompareKeys.length >= 4
-                }
-                onChange={() =>
-                  onToggleModelCompare(
-                    r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
-                  )
-                }
-              />
-              对比
-            </label>
             {isTokenPriced(r) && <span>元/百万 tokens</span>}
             {basisResolution(r) !== null && <span>分辨率 {basisResolution(r)}</span>}
             {r.freeTier !== null && <span className="text-amber">免费额度:{r.freeTier}</span>}
@@ -380,9 +331,6 @@ export interface ModelSectionProps {
   /** 参数筛选(UX P2) */
   tierParamFilter: TierParamFilter;
   onTierParamFilterChange: (v: TierParamFilter) => void;
-  /** 模型对比(UX P3) */
-  modelCompareKeys: string[];
-  onToggleModelCompare: (key: string) => void;
   /** 外部榜单角标(P5) */
   leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }
@@ -416,8 +364,6 @@ export function ModelSection({
   onPriceRangeChange,
   tierParamFilter,
   onTierParamFilterChange,
-  modelCompareKeys,
-  onToggleModelCompare,
   leaderboardMap = new Map(),
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
@@ -493,14 +439,6 @@ export function ModelSection({
   // 用户以为数据丢了)。仅按用途组一维收边,不受其余筛选影响(清单稳定)
   const vendorFacet = useMemo(() => vendorOptions(catRows, (r) => r.vendor), [catRows]);
   const rowGroups = useMemo(() => allRowGroups(allRows, visibleKeys), [allRows, visibleKeys]);
-  const compareGroups = useMemo(
-    () => (view === "compare" ? buildCompareGroups(visible) : []),
-    [view, visible],
-  );
-  const comparableCount = useMemo(
-    () => (view === "compare" ? countComparableModels(visible) : 0),
-    [view, visible],
-  );
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
       {/* 用途页签(批G)+ 视图切换(M74 批D) */}
@@ -544,11 +482,6 @@ export function ModelSection({
             </button>
           ))}
         </div>
-        {view === "compare" && (
-          <span className="w-full text-[11px] text-text-3">
-            {comparableCount} 个模型有 ≥2 家报价可并排比
-          </span>
-        )}
       </div>
       {/* 场景价选择器(P4):与用途页签同处顶层,默认 off 保持现有表格不变 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2/30 px-4 py-2">
@@ -709,35 +642,7 @@ export function ModelSection({
               )}
             </>
           ) : view === "compare" ? (
-            <>
-              <div className="border-b border-line px-4 py-3">
-                <h2 className="text-[13px] font-semibold text-text-1">同模型跨提供商比价</h2>
-                <p className="mt-1 text-[11.5px] text-text-3">
-                  按模型归一后并排各家报价,组内按价格升序,「最低」标最低价的一家;
-                  原币直出不折算、token 与按张/按秒量纲不同,各归各区、只在区内比价。
-                </p>
-              </div>
-              <CompareMatrix groups={compareGroups} scenario={scenario} />
-              <div className="border-t border-line">
-                <div className="border-b border-line px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">价格分布</h2>
-                  <p className="mt-1 text-[11.5px] text-text-3">
-                    每个点 = 一个模型**最便宜的一家**报价;左下 = 输入输出都便宜。坐标为对数刻度 (仅
-                    token 计价模型;按张/按秒模型看下方条形图)。
-                  </p>
-                </div>
-                <PriceScatter rows={visible} />
-              </div>
-              <div className="border-t border-line">
-                <div className="border-b border-line px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-text-1">生成价对比(按张/按秒)</h2>
-                  <p className="mt-1 text-[11.5px] text-text-3">
-                    每条 = 一个模型最便宜一家的生成价;按 币种 × 单位 分块,条长线性归一。
-                  </p>
-                </div>
-                <UnitPriceBars rows={visible} />
-              </div>
-            </>
+            <ModelComparePanel models={sortedModels} />
           ) : (
             rowGroups.map(({ key, rows, count }) => (
               <div
@@ -754,16 +659,12 @@ export function ModelSection({
                   visibleKeys={visibleKeys}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
-                  modelCompareKeys={modelCompareKeys}
-                  onToggleModelCompare={onToggleModelCompare}
                 />
                 <ModelCards
                   rows={rows}
                   visibleKeys={visibleKeys}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
-                  modelCompareKeys={modelCompareKeys}
-                  onToggleModelCompare={onToggleModelCompare}
                 />
               </div>
             ))
