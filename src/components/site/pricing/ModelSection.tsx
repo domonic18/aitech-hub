@@ -100,11 +100,15 @@ function ModelTable({
   visibleKeys,
   scenario,
   leaderboardMap,
+  modelCompareKeys,
+  onToggleModelCompare,
 }: {
   rows: PublicModelRow[];
   visibleKeys: Set<string>;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
 }): React.ReactElement {
   const showScenario = scenario !== "off";
   return (
@@ -161,6 +165,26 @@ function ModelTable({
                   <ProtocolBadges protocols={r.protocols} />
                   <LeaderboardBadges badges={leaderboardMap.get(r.modelDictKey ?? r.modelKey)} />
                 </div>
+                <label className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] text-text-3 hover:text-text-1">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={modelCompareKeys.includes(
+                      r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
+                    )}
+                    disabled={
+                      !modelCompareKeys.includes(
+                        r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
+                      ) && modelCompareKeys.length >= 4
+                    }
+                    onChange={() =>
+                      onToggleModelCompare(
+                        r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
+                      )
+                    }
+                  />
+                  对比
+                </label>
                 <ResolutionLadder row={r} />
               </td>
               <td className="px-3 py-3.5 font-mono text-text-1 whitespace-nowrap">
@@ -219,11 +243,15 @@ function ModelCards({
   visibleKeys,
   scenario,
   leaderboardMap,
+  modelCompareKeys,
+  onToggleModelCompare,
 }: {
   rows: PublicModelRow[];
   visibleKeys: Set<string>;
   scenario: PricingScenarioId;
   leaderboardMap: Map<string, LeaderboardBadge[]>;
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
 }): React.ReactElement {
   const showScenario = scenario !== "off";
   return (
@@ -268,6 +296,26 @@ function ModelCards({
             )}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-3">
+            <label className="inline-flex cursor-pointer items-center gap-1">
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={modelCompareKeys.includes(
+                  r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
+                )}
+                disabled={
+                  !modelCompareKeys.includes(
+                    r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
+                  ) && modelCompareKeys.length >= 4
+                }
+                onChange={() =>
+                  onToggleModelCompare(
+                    r.modelGroupKey ?? r.modelDictKey ?? `${r.vendor}|${r.modelKey}`,
+                  )
+                }
+              />
+              对比
+            </label>
             {isTokenPriced(r) && <span>元/百万 tokens</span>}
             {basisResolution(r) !== null && <span>分辨率 {basisResolution(r)}</span>}
             {r.freeTier !== null && <span className="text-amber">免费额度:{r.freeTier}</span>}
@@ -351,6 +399,9 @@ export interface ModelSectionProps {
   /** 参数筛选(UX P2) */
   tierParamFilter: TierParamFilter;
   onTierParamFilterChange: (v: TierParamFilter) => void;
+  /** 模型对比(UX P3) */
+  modelCompareKeys: string[];
+  onToggleModelCompare: (key: string) => void;
   /** 外部榜单角标(P5) */
   leaderboardMap?: Map<string, LeaderboardBadge[]>;
 }
@@ -382,6 +433,8 @@ export function ModelSection({
   onPriceRangeChange,
   tierParamFilter,
   onTierParamFilterChange,
+  modelCompareKeys,
+  onToggleModelCompare,
   leaderboardMap = new Map(),
 }: ModelSectionProps): React.ReactElement {
   // 批D8:筛选/排序/分面全部 memo 化——此前每次渲染(任意 chip 点击)都重算
@@ -708,12 +761,16 @@ export function ModelSection({
                   visibleKeys={visibleKeys}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
                 />
                 <ModelCards
                   rows={rows}
                   visibleKeys={visibleKeys}
                   scenario={scenario}
                   leaderboardMap={leaderboardMap}
+                  modelCompareKeys={modelCompareKeys}
+                  onToggleModelCompare={onToggleModelCompare}
                 />
               </div>
             ))
