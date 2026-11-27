@@ -261,7 +261,7 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     key: "ai-index-eci",
     jobRunKey: "ai-index/eci-fetch",
     label: "AI 能力水位采集",
-    desc: "Epoch 公开 ECI 数据包日采(内容有变才写库,坏数据闸门拒收)",
+    desc: "Epoch 公开 ECI 分数日采(内容有变才写库,坏数据闸门拒收)",
     cron: AI_INDEX_ECI_CRON,
     category: "insight",
   },
