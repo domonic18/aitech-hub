@@ -7,10 +7,15 @@
  *    未绑定/失败时回落规则打分
  * 3) 带符号贡献(signedImpact):impact × 方向 × 置信度 × 相关性权重
  */
-import { decideQuestions, type JevQuestion } from "@/lib/ai/decisions-client";
+import {
+  decideQuestions,
+  type JevQuestion,
+  type JevScoreQuestion,
+} from "@/lib/ai/decisions-client";
 import { resolveInsightModel } from "@/lib/insight/model";
 import { AI_PURPOSE_INSIGHT_JUDGE } from "@/lib/ai/constants";
 import type { ResolvedAiModel } from "@/lib/ai/resolver";
+import { logInfo, logWarn } from "@/lib/logger";
 
 export interface NewsItem {
   id: string;
@@ -292,6 +297,42 @@ export function ruleBasedScore(item: NewsItem): {
   };
 }
 
+/**
+ * 影响力档位(低→高)
+ *
+ * Jev 的 score 型问答按**数组序**给档位编号 0..n-1,应答的 score 是档位下标
+ * (概率加权位置,级间可落),不是百分制分数——要落到 0-100 得自己插值。
+ * 口径:整数下标取该档中值,小数下标在相邻档中值间线性插值。
+ */
+export const IMPACT_BANDS = [
+  { low: 0, high: 20, text: "普通行业动态、融资、人事、政策讨论,对能力边界几乎无直接影响" },
+  { low: 21, high: 40, text: "产品更新、小模型发布、应用层改进,有一定影响但非突破" },
+  { low: 41, high: 60, text: "重要模型发布、新能力亮相、benchmark 显著提升" },
+  { low: 61, high: 80, text: "重大范式转变,如推理模型、长上下文、多模态重大进展" },
+  { low: 81, high: 100, text: "里程碑式突破,可能重新定义能力边界或通向 AGI 的关键节点" },
+] as const;
+
+/** 档位下标(0..n-1,可为小数)→ 0-100 分 */
+export function impactFromBandIndex(index: number): number {
+  const maxIdx = IMPACT_BANDS.length - 1;
+  const idx = Math.min(Math.max(index, 0), maxIdx);
+  const lo = Math.floor(idx);
+  const hi = Math.min(lo + 1, maxIdx);
+  const frac = idx - lo;
+  const midLo = (IMPACT_BANDS[lo].low + IMPACT_BANDS[lo].high) / 2;
+  const midHi = (IMPACT_BANDS[hi].low + IMPACT_BANDS[hi].high) / 2;
+  return Math.round(midLo + frac * (midHi - midLo));
+}
+
+/** score 型问答:criteria 是档位数组(传字典会被判 422) */
+export function impactQuestion(): JevScoreQuestion {
+  return {
+    type: "score",
+    instructions: "这条 AI 资讯对 AI 整体能力边界的推进影响有多大?",
+    criteria: IMPACT_BANDS.map((b) => `${b.low}-${b.high} ${b.text}`),
+  };
+}
+
 async function jevScore(
   item: NewsItem,
   model: ResolvedAiModel | null,
@@ -305,17 +346,7 @@ async function jevScore(
   if (model === null || model.protocol !== "systemone") return null;
 
   const questions: Record<string, JevQuestion> = {
-    impact: {
-      type: "score",
-      instructions: "这条 AI 资讯对 AI 整体能力边界的推进影响有多大?",
-      criteria: {
-        "0-20": "普通行业动态、融资、人事、政策讨论,对能力边界几乎无直接影响",
-        "21-40": "产品更新、小模型发布、应用层改进,有一定影响但非突破",
-        "41-60": "重要模型发布、新能力亮相、benchmark 显著提升",
-        "61-80": "重大范式转变,如推理模型、长上下文、多模态重大进展",
-        "81-100": "里程碑式突破,可能重新定义能力边界或通向 AGI 的关键节点",
-      },
-    } as unknown as JevQuestion,
+    impact: impactQuestion(),
     dimension: {
       type: "choice",
       instructions: "该资讯主要属于哪个维度?",
@@ -371,7 +402,7 @@ async function jevScore(
     const direction = res.answers.direction?.choice;
 
     return {
-      score: Math.round(impact.score),
+      score: impactFromBandIndex(impact.score),
       dimension: res.answers.dimension?.choice ?? "general",
       confidence: impact.confidence ?? 0.7,
       relevance: relevance === "core" || relevance === "adjacent" ? relevance : ruleRelevance(item),
@@ -380,7 +411,12 @@ async function jevScore(
           ? direction
           : ruleDirection(item),
     };
-  } catch {
+  } catch (e) {
+    // 静默回落规则打分会让「判分接口整个挂了」这件事隐形(2026-11-27 生产踩过:
+    // score 型 criteria 传字典 → 每条 422 → 全量规则兜底,jev=0 却没人知道)。
+    logWarn("ai_index.jev_score_failed", {
+      error: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
 }
@@ -445,6 +481,8 @@ export async function scoreNewsItems(items: NewsItem[]): Promise<ScoredNewsItem[
     }
   });
   await Promise.all(workers);
+  const jev = out.filter((s) => s.scorer === "jev").length;
+  logInfo("ai_index.score_batch", { items: items.length, jev, rule: items.length - jev });
   return out;
 }
 
