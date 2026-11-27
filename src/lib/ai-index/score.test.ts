@@ -7,6 +7,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   directionSign,
+  impactFromBandIndex,
+  impactQuestion,
+  IMPACT_BANDS,
   relevanceWeight,
   ruleBasedScore,
   ruleDirection,
@@ -127,6 +130,39 @@ describe("方向与带符号贡献", () => {
     expect(s.relevance).toBe("core");
     expect(s.direction).toBe("positive");
     expect(s.score).toBeGreaterThan(30);
+  });
+});
+
+describe("Jev 档位换算", () => {
+  it("整数档位下标取该档中值", () => {
+    expect(impactFromBandIndex(0)).toBe(10);
+    expect(impactFromBandIndex(2)).toBe(51);
+    expect(impactFromBandIndex(4)).toBe(91);
+  });
+
+  it("小数档位下标在相邻档中值间插值", () => {
+    expect(impactFromBandIndex(0.5)).toBe(20);
+    expect(impactFromBandIndex(3.5)).toBe(81);
+  });
+
+  it("越界下标收敛到首末档", () => {
+    expect(impactFromBandIndex(-1)).toBe(10);
+    expect(impactFromBandIndex(99)).toBe(91);
+  });
+
+  it("档位定义非空且区间递增不重叠", () => {
+    expect(IMPACT_BANDS.length).toBeGreaterThan(1);
+    for (let i = 1; i < IMPACT_BANDS.length; i += 1) {
+      expect(IMPACT_BANDS[i].low).toBeGreaterThan(IMPACT_BANDS[i - 1].high);
+    }
+  });
+
+  it("score 型问答的 criteria 是档位数组(传字典服务端判 422)", () => {
+    const q = impactQuestion();
+    expect(q.type).toBe("score");
+    expect(Array.isArray(q.criteria)).toBe(true);
+    expect(q.criteria).toHaveLength(IMPACT_BANDS.length);
+    expect(q.criteria[0]).toContain("0-20");
   });
 });
 

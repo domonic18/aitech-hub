@@ -10,7 +10,9 @@
  *   resp = { model: 实际版本, answers: {名: 判别联合}, usage: {input_tokens,
  *           output_tokens, cost?}, id? }
  *   —— choice 应答 {choice, probabilities, confidence};noul 应答 {noul: p(yes)}
- *      无 confidence(数字本身即信念)
+ *      无 confidence(数字本身即信念);score 应答 {score: 档位下标, legend}
+ *   —— criteria 形状随 type 变:choice=字典(option→指引),noul=字典(true/false),
+ *      score=档位数组(按序编号)
  * 同一 wire 通吃 TypeSafe 直连 / OpenRouter / Codiv(openjev)——openjev 的
  * Codiv 端点不实现 OpenRouter 的 /alpha/decisions(2026-10-28 用户实收 400),
  * /v1/systemone 才是跨厂商可移植面。
@@ -36,7 +38,19 @@ export interface JevNoulQuestion {
   instructions: string;
 }
 
-export type JevQuestion = JevChoiceQuestion | JevNoulQuestion;
+/**
+ * 打分型:criteria 是**档位数组**(按档位从低到高),服务端按数组序编号 0..n-1。
+ * 传字典会被判 422(choice 才是字典)——2026-11-27 生产实测。
+ * 应答的 score 是**档位下标**(概率加权位置,级间可落),不是百分制分数,
+ * 要换算成数值得自己按档位区间插值。
+ */
+export interface JevScoreQuestion {
+  type: "score";
+  criteria: string[];
+  instructions: string;
+}
+
+export type JevQuestion = JevChoiceQuestion | JevNoulQuestion | JevScoreQuestion;
 
 /** 判别联合应答(choice/score 带 confidence;noul 无——数字本身即信念) */
 export interface JevAnswer {

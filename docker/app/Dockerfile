@@ -116,10 +116,13 @@ COPY --from=builder --chown=next:nodejs /app/public ./public
 COPY --from=builder --chown=next:nodejs /app/dist ./dist
 COPY --from=builder --chown=next:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=next:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=next:nodejs /app/tsconfig.json ./tsconfig.json
 # 写作指南(M72 B1):MCP list_skills/get_skill 运行时读取(.dockerignore 已为其
 # 开口子 —— 全局 **/*.md 会把它们排除)
 COPY --from=builder --chown=next:nodejs /app/skills ./skills
 COPY --from=builder --chown=next:nodejs /app/src ./src
+# tsconfig.json:ops 脚本(如 npm run ai-index:run)在容器里用 tsx 直跑,
+# 靠它的 paths 解析 `@/` 别名——缺了会报 "Cannot find module '@/lib/db'"
 # worker 依赖与 @prisma/client 生成物必须取 builder(node_modules 含
 # prisma generate 产物;取 deps 层会覆盖 standalone 内 traced 生成物,
 # 运行时报 "client did not initialize")

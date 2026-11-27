@@ -11,6 +11,8 @@
 export const ECI_CSV_URL = "https://epoch.ai/data/eci_scores.csv";
 /** 上游许可(展示与种子文件元数据同用) */
 export const ECI_LICENSE = "CC BY 4.0";
+/** 上游许可全文地址(前台「数据来源」可点) */
+export const ECI_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
 /** 请求 UA(标明身份,便于上游联系) */
 export const ECI_USER_AGENT = "aitech-hub-ai-index/1.0 (+https://17aitech.com)";
 /** 拉取超时 */
@@ -39,8 +41,9 @@ export const ECI_CONSECUTIVE_FAILS = 3;
 
 /** 参与打分的时间窗(天) */
 export const AI_INDEX_SCORE_LOOKBACK_DAYS = 30;
-/** 单轮取电报条数上限 */
-export const AI_INDEX_SCORE_MAX_ITEMS = 500;
+/** 单轮取电报条数上限:得覆盖 30 天窗口的全量条目(约 80-100 条/天),
+ * 否则窗口外的旧条目永远进不了打分队列,曲线只有最近几天 */
+export const AI_INDEX_SCORE_MAX_ITEMS = 5000;
 /** 单轮打分条数上限:worker 发版 30s 优雅停机会把长任务 SIGKILL,任务必须短;
  * 剩下的条目下一轮继续(台账幂等,kill 无副作用) */
 export const AI_INDEX_SCORE_BATCH_LIMIT = 120;
