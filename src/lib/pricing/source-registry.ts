@@ -48,6 +48,15 @@ import {
   TENCENT_HUNYUAN_URL,
 } from "./model-sources/tencent";
 import {
+  fetchKlingCreditRates,
+  fetchKlingPricing,
+  KLING_IMAGE_PRICING_URL,
+  KLING_VIDEO_PRICING_URL,
+} from "./model-sources/kling-shared";
+import { parseKlingVideoPricing } from "./model-sources/kling";
+import { parseKlingImagePricing } from "./model-sources/kling-image";
+import { fetchViduPricing, parseViduPricing, VIDU_PRICING_URL } from "./model-sources/vidu";
+import {
   BAILIAN_TOKEN_URL,
   fetchBailianPage,
   fetchGlmCoding,
@@ -235,6 +244,51 @@ export const SOURCE_DEFS: SourceDef[] = [
     defaultUrl: CYSUO_MARKET_URL,
     sortOrder: 7,
     run: async (url, { now, sink }) => fetchCiyuansuo(url, sink, now),
+  },
+  {
+    // 可灵视频牌价(M81):官方 API 定价文档站(SPA,静态 HTML 是空壳)走渲染通道;
+    // 页面按积分报价,积分单价取伴生页官方口径(1 元/积分,取不到回落常量)
+    key: "kling-video",
+    target: "model",
+    kind: "rendered",
+    label: "快手可灵 视频牌价",
+    vendor: "快手可灵",
+    providerKey: "kuaishou-kling",
+    defaultUrl: KLING_VIDEO_PRICING_URL,
+    sortOrder: 8,
+    run: async (url, { now, sink }) => {
+      const rates = await fetchKlingCreditRates(sink);
+      return parseKlingVideoPricing(await fetchKlingPricing(url, sink), url, now, rates.video);
+    },
+  },
+  {
+    // 可灵图片牌价(M81):与视频同一套口径,积分单价不同(图片 0.025 元/积分)
+    key: "kling-image",
+    target: "model",
+    kind: "rendered",
+    label: "快手可灵 图片牌价",
+    vendor: "快手可灵",
+    providerKey: "kuaishou-kling",
+    defaultUrl: KLING_IMAGE_PRICING_URL,
+    sortOrder: 9,
+    run: async (url, { now, sink }) => {
+      const rates = await fetchKlingCreditRates(sink);
+      return parseKlingImagePricing(await fetchKlingPricing(url, sink), url, now, rates.image);
+    },
+  },
+  {
+    // 生数 Vidu 牌价(M81):官方定价文档站(RSC 分片表,静态 HTML 对不上)走渲染通道;
+    // 价按积分给,按页面自述的积分单价(1 积分 = 0.03125 元)折算
+    key: "vidu",
+    target: "model",
+    kind: "rendered",
+    label: "生数科技 Vidu 牌价",
+    vendor: "生数科技 Vidu",
+    providerKey: "shengshu-vidu",
+    defaultUrl: VIDU_PRICING_URL,
+    sortOrder: 10,
+    run: async (url, { now, sink }) =>
+      parseViduPricing(await fetchViduPricing(url, sink), url, now),
   },
   {
     key: "kimi-membership",
