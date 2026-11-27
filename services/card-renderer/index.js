@@ -133,6 +133,35 @@ function endRequest(rendered) {
 }
 
 /**
+ * 快照串行锁:整页渲染是内存大头(长表牌价页 + 视口撑到 15000px 的整页截图),
+ * 两个重页并发会撑爆 4G 宿主上 768MB 的渲染配额 → tab 崩(整源采集失败,
+ * 2026-11-27 实测可灵视频页与 Vidu 页并发时连崩两次)。/snapshot 串行,
+ * /render(卡片,视口 1440×600、内存小)不受影响,仍走 MAX_CONCURRENT 信号量。
+ */
+let snapshotChain = Promise.resolve();
+async function withSnapshotLock(fn) {
+  const prev = snapshotChain;
+  let release;
+  snapshotChain = new Promise((resolve) => {
+    release = resolve;
+  });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+/** tab/浏览器崩了(内存打爆时 Chromium 报 Target/Page crashed)→ 标记浏览器待弃置:
+ *  借 endRequest 的回收路径(等在途请求跑完再换新进程),崩过的实例不继续用。 */
+function markBrowserCrashy(error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (!/Target crashed|Page crashed|browser has been closed/i.test(msg)) return;
+  browserRuns = MAX_RUNS_PER_BROWSER;
+}
+
+/**
  * 渲染单卡:独立 context(视口/拦截互不串扰),用毕即关。
  * @returns {Promise<{png: Buffer, width: number, height: number}>}
  */
@@ -230,22 +259,35 @@ async function snapshotPage({ url, timeoutMs, settleMs, clickText, screenshot })
     // 上限 15000px:超长页只保首屏 15000px,避免 PNG/base64 撑爆内存与传输。
     const png = screenshot
       ? await (async () => {
-          const height = await page.evaluate(() => {
-            window.scrollTo(0, 0);
-            let max = document.documentElement.scrollHeight;
-            for (const el of document.querySelectorAll("*")) {
-              el.scrollTop = 0;
-              if (el.scrollHeight > max) max = el.scrollHeight;
+          try {
+            const height = await page.evaluate(() => {
+              window.scrollTo(0, 0);
+              let max = document.documentElement.scrollHeight;
+              for (const el of document.querySelectorAll("*")) {
+                el.scrollTop = 0;
+                if (el.scrollHeight > max) max = el.scrollHeight;
+              }
+              return max;
+            });
+            if (height > 900) {
+              await page.setViewportSize({ width: 1440, height: Math.min(height, 15000) });
+              await page.waitForTimeout(400); // 撑高后触发一次视口内懒加载
             }
-            return max;
-          });
-          if (height > 900) {
-            await page.setViewportSize({ width: 1440, height: Math.min(height, 15000) });
-            await page.waitForTimeout(400); // 撑高后触发一次视口内懒加载
+            return (
+              await page.screenshot({ fullPage: true, type: "png", timeout: timeoutMs })
+            ).toString("base64");
+          } catch (e) {
+            // 截图是回溯档案的辅助产物,HTML 原文已在上面取到:截图失败不连坐取数
+            markBrowserCrashy(e);
+            console.log(
+              JSON.stringify({
+                event: "renderer.screenshot_failed",
+                url,
+                error: e instanceof Error ? e.message : String(e),
+              }),
+            );
+            return undefined;
           }
-          return (
-            await page.screenshot({ fullPage: true, type: "png", timeout: timeoutMs })
-          ).toString("base64");
         })()
       : undefined;
     return {
@@ -299,13 +341,10 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (req.method === "POST" && req.url === "/snapshot") {
-    if (!tryAcquire()) {
-      sendJson(res, 429, { error: `渲染忙(并发上限 ${MAX_CONCURRENT}),请稍后重试` });
-      return;
-    }
     void (async () => {
       // 校验通过才计浏览器轮次;但无论哪一步失败,槽位都必须在 finally 归还
       let rendered = false;
+      let acquired = false;
       try {
         const raw = await readJsonBody(req);
         const parsed = parseSnapshotBody(raw, RENDER_ALLOWED_HOSTS);
@@ -313,14 +352,25 @@ const server = http.createServer((req, res) => {
           sendJson(res, parsed.status, { error: parsed.error });
           return;
         }
-        rendered = true;
-        const out = await snapshotPage(parsed.value);
+        // 串行锁在信号量**之外**:排队的快照不占全局槽位,否则并发上限被排队的
+        // 快照占满,卡片渲染(/render)会被 429 拒
+        const out = await withSnapshotLock(async () => {
+          if (!tryAcquire()) {
+            throw Object.assign(new Error(`渲染忙(并发上限 ${MAX_CONCURRENT}),请稍后重试`), {
+              statusCode: 429,
+            });
+          }
+          acquired = true;
+          rendered = true;
+          return await snapshotPage(parsed.value);
+        });
         sendJson(res, 200, out);
       } catch (e) {
+        markBrowserCrashy(e);
         const status = e.statusCode ?? (e.name === "TimeoutError" ? 504 : 500);
         sendJson(res, status, { error: e.message || "快照失败" });
       } finally {
-        endRequest(rendered);
+        if (acquired) endRequest(rendered);
       }
     })();
     return;
