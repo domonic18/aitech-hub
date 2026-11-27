@@ -7,7 +7,7 @@
  */
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
-import { ECI_STALE_DAYS } from "./constants";
+import { AI_INDEX_CARD_DAYS, AI_INDEX_SERIES_DEFAULT_DAYS, ECI_STALE_DAYS } from "./constants";
 
 export interface AiIndexDailyRow {
   date: string; // YYYY-MM-DD
@@ -42,8 +42,10 @@ function toRow(r: {
   };
 }
 
-/** 最近 N 天的指数序列(默认 90 天) */
-export async function listAiIndexDaily(days = 90): Promise<AiIndexDailyRow[]> {
+/** 最近 N 天的指数序列 */
+export async function listAiIndexDaily(
+  days = AI_INDEX_SERIES_DEFAULT_DAYS,
+): Promise<AiIndexDailyRow[]> {
   const since = new Date();
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);
@@ -57,13 +59,13 @@ export async function listAiIndexDaily(days = 90): Promise<AiIndexDailyRow[]> {
   });
 }
 
-/** 首页卡片:最近 30 天 + 最新一条 */
+/** 首页卡片:最近若干天 + 最新一条 */
 export async function getAiIndexCardData(): Promise<{
   recent: AiIndexDailyRow[];
   latest: AiIndexDailyRow | null;
 }> {
   const since = new Date();
-  since.setDate(since.getDate() - 30);
+  since.setDate(since.getDate() - AI_INDEX_CARD_DAYS);
   since.setHours(0, 0, 0, 0);
 
   return prerenderSafe("ai_index.card", { recent: [], latest: null }, async () => {

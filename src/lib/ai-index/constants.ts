@@ -51,5 +51,10 @@ export const AI_INDEX_RECOMPUTE_DAYS = 30;
 /** 智能指数 = 能力基线 + 冲击加成(上限 +PULSE_BONUS 分) */
 export const AI_INDEX_PULSE_BONUS = 5;
 
+/** 看板曲线默认取的天数 */
+export const AI_INDEX_SERIES_DEFAULT_DAYS = 90;
+/** 首页卡片取的天数 */
+export const AI_INDEX_CARD_DAYS = 30;
+
 /** 冷启动种子文件(仓库快照,表空时播种一次) */
 export const AI_INDEX_SEED_FILE_PATH = "src/lib/ai-index/epoch-data.ts";
