@@ -20,6 +20,7 @@
  * 错误信封双形状兼容(ai-invest 探针③):OpenRouter {"error":{message,code}};
  * 直连 {"detail":{error_type,message}} / 422 detail 为校验列表。
  */
+import { DECISION_API_RATE_LIMIT_PER_MIN } from "./constants";
 import { authHeaders } from "./probe-shared";
 
 export interface JevChoiceQuestion {
@@ -109,6 +110,24 @@ function errorMessage(status: number, text: string): string {
   return text.slice(0, 300);
 }
 
+/**
+ * 限速闸:决策端点 60 请求/分钟/key(429 会让整批判分退化成规则兜底)。
+ * 按**最小间隔**发请求,而不是只压并发——突发照样撞线。
+ * 同一 key 可能被别的用途(探针/洞察打标)共用,留了余量并对 429 再重试一次。
+ */
+const MIN_INTERVAL_MS = Math.ceil(60_000 / DECISION_API_RATE_LIMIT_PER_MIN) + 60;
+let nextSlotAt = 0;
+
+/** 限速闸的可调项(单测里把间隔与重试等待调 0 免等待;生产别改) */
+export const decisionRateLimit = { minIntervalMs: MIN_INTERVAL_MS, retryWaitMs: 3_000 };
+
+async function acquireSlot(): Promise<void> {
+  const now = Date.now();
+  const slot = Math.max(now, nextSlotAt);
+  nextSlotAt = slot + decisionRateLimit.minIntervalMs;
+  if (slot > now) await new Promise((resolve) => setTimeout(resolve, slot - now));
+}
+
 /** 决策请求;异常面(网络/超时/HTTP)以 JevError 上抛由调用方降级 */
 export async function decideQuestions(input: {
   baseUrl: string;
@@ -119,24 +138,32 @@ export async function decideQuestions(input: {
   questions: Record<string, JevQuestion>;
   timeoutMs?: number;
 }): Promise<DecideResult> {
-  const res = await fetch(`${input.baseUrl}/v1/systemone`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...authHeaders(input.apiKey),
-    },
-    body: JSON.stringify({
-      model: input.model,
-      state: input.state,
-      questions: Object.fromEntries(
-        Object.entries(input.questions).map(([key, q]) => [
-          key,
-          { type: q.type, instructions: q.instructions, criteria: q.criteria },
-        ]),
-      ),
-    }),
-    signal: AbortSignal.timeout(input.timeoutMs ?? 30_000),
+  const payload = JSON.stringify({
+    model: input.model,
+    state: input.state,
+    questions: Object.fromEntries(
+      Object.entries(input.questions).map(([key, q]) => [
+        key,
+        { type: q.type, instructions: q.instructions, criteria: q.criteria },
+      ]),
+    ),
   });
+  const headers = { "content-type": "application/json", ...authHeaders(input.apiKey) };
+
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await acquireSlot();
+    res = await fetch(`${input.baseUrl}/v1/systemone`, {
+      method: "POST",
+      headers,
+      body: payload,
+      signal: AbortSignal.timeout(input.timeoutMs ?? 30_000),
+    });
+    // 429 是限速不是故障:等一拍再试一次,别让调用方整条降级
+    if (res.status !== 429 || attempt === 1) break;
+    await new Promise((resolve) => setTimeout(resolve, decisionRateLimit.retryWaitMs));
+  }
+  if (res === null) throw new JevError("决策请求未发出", 0);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new JevError(`${errorMessage(res.status, text)}(HTTP ${res.status})`, res.status);
