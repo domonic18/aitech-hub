@@ -127,6 +127,13 @@ export const ASR_PROTOCOLS = [
   ASR_PROTOCOL_OTHER,
 ] as const;
 
+/**
+ * System One 决策端点(System One / jev / openjev)限速:60 请求/分钟/key。
+ * 2026-11-27 生产实测:批量判分并发打过去 → 大片 429 → 整批静默退化成规则兜底。
+ * 限速要在**请求节流**上做(最小间隔),不是靠并发数——并发再低,突发也会撞线。
+ */
+export const DECISION_API_RATE_LIMIT_PER_MIN = 60;
+
 /** 供应商预设(下拉;末位「其他」放开自由串) */
 export const AI_PROVIDER_PRESETS = [
   "DeepSeek",

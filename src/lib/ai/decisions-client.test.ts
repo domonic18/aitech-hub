@@ -4,9 +4,14 @@
  * choice/score/noul 判别联合 + usage 三件)、异常面(HTTP 非 2xx 双信封/
  * 响应缺字段 → JevError)。fetch 全 mock,零真网。
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { decideQuestions } from "./decisions-client";
+import { decideQuestions, decisionRateLimit } from "./decisions-client";
+
+beforeEach(() => {
+  // 单测里不限速(免每条请求都等一拍)
+  decisionRateLimit.minIntervalMs = 0;
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -141,5 +146,58 @@ describe("decideQuestions wire(systemone)", () => {
       }),
     );
     await expect(decideQuestions(BASE_INPUT)).rejects.toThrow("connect ECONNREFUSED");
+  });
+});
+
+describe("限速与 429 重试", () => {
+  it("按最小间隔节流:两次请求的发起时间差 ≥ 间隔", async () => {
+    decisionRateLimit.minIntervalMs = 120;
+    const at: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        at.push(Date.now());
+        return okResponse();
+      }),
+    );
+    await decideQuestions(BASE_INPUT);
+    await decideQuestions(BASE_INPUT);
+    expect(at).toHaveLength(2);
+    expect(at[1] - at[0]).toBeGreaterThanOrEqual(100);
+  });
+
+  it("429 视为限速:等一拍重试一次,成功即返回(不整条降级)", async () => {
+    decisionRateLimit.retryWaitMs = 0;
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            ok: false,
+            status: 429,
+            text: async () => '{"error":{"message":"Rate limit exceeded"}}',
+          } as unknown as Response;
+        }
+        return okResponse();
+      }),
+    );
+    const r = await decideQuestions(BASE_INPUT);
+    expect(r.model).toBe("typesafe/jev-1.14");
+    expect(calls).toBe(2);
+  });
+
+  it("连续 429 → 抛 JevError(调用方降级)", async () => {
+    decisionRateLimit.retryWaitMs = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 429,
+        text: async () => '{"error":{"message":"Rate limit exceeded"}}',
+      })),
+    );
+    await expect(decideQuestions(BASE_INPUT)).rejects.toThrow("429");
   });
 });
