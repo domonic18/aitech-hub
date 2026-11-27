@@ -38,6 +38,8 @@ export const JOB_RUN_LABELS: Record<string, string> = {
   "crawler/ai-backfill": "解读·AI 补扫",
   "crawler/crawl": "采集·渠道抓取",
   "crawler/leaderboard-fx-refresh": "榜单·汇率采集",
+  "ai-index/eci-fetch": "指数·能力水位采集",
+  "ai-index/daily-aggregate": "指数·每日聚合",
 };
 
 export function jobRunLabel(key: string): string {

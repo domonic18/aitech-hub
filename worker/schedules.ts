@@ -6,6 +6,10 @@
  */
 import {
   AGENT_SESSION_PURGE_CRON,
+  AI_INDEX_AGG_CRON,
+  AI_INDEX_ECI_CRON,
+  AI_INDEX_JOB_DAILY_AGGREGATE,
+  AI_INDEX_JOB_ECI_FETCH,
   COVER_JOB_TEMP_SWEEP,
   COVER_TEMP_SWEEP_CRON,
   CRAWL_JOB_AI_BACKFILL,
@@ -37,6 +41,7 @@ import {
   PAY_DAILY_AUDIT_CRON,
   PAY_JOB_DAILY_AUDIT,
   PAY_JOB_SWEEP,
+  QUEUE_AI_INDEX,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_DB_BACKUP,
@@ -389,6 +394,35 @@ export async function scheduleGithubTick(): Promise<void> {
       name: GITHUB_JOB_TICK,
       data: {},
       opts: schedulerOpts(50),
+    },
+  );
+}
+
+/** AI 智能指数调度:ECI 能力水位日采 05:07 + 每日指数聚合 05:17。
+ * ECI 拉取失败重试 3 次(指数退避),仍失败则本轮记 failed 并保留旧数据;
+ * 聚合只跑 2 次——它幂等(评分台账),重试意义不大且会烧模型配额 */
+export async function scheduleAiIndex(): Promise<void> {
+  const queue = getQueue(QUEUE_AI_INDEX);
+  await queue.upsertJobScheduler(
+    "ai-index-eci-fetch",
+    { pattern: AI_INDEX_ECI_CRON, tz: SITE_TZ },
+    {
+      name: AI_INDEX_JOB_ECI_FETCH,
+      data: {},
+      opts: {
+        ...schedulerOpts(7),
+        attempts: 3,
+        backoff: { type: "exponential", delay: 60_000 },
+      },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "ai-index-daily-aggregate",
+    { pattern: AI_INDEX_AGG_CRON, tz: SITE_TZ },
+    {
+      name: AI_INDEX_JOB_DAILY_AGGREGATE,
+      data: {},
+      opts: { ...schedulerOpts(7), attempts: 2 },
     },
   );
 }

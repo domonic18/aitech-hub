@@ -18,6 +18,7 @@ import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
 import { getAsrOverview, getVideoObservation } from "@/lib/telegram/spider-queries";
 import { logger } from "@/lib/logger";
 import {
+  aiindexProblems,
   channelProblems,
   pricingProblems,
   queueProblems,
@@ -31,6 +32,7 @@ import { defineTool, type McpToolDef } from "./registry";
 import {
   cachedBlock,
   HEALTH_DOMAINS,
+  loadAiIndexHealth,
   loadBloggers,
   loadChannels,
   loadQueues,
@@ -42,7 +44,8 @@ import { listPricingSourceHealth } from "@/lib/pricing/health";
 export const opsReadTools: McpToolDef[] = [
   defineTool(
     "get_health_snapshot",
-    "取采集健康度总览:价格采集源 / 文章(渠道)采集 / 视频博主 / 队列与 AI 管线 四域," +
+    "取采集健康度总览:价格采集源 / 文章(渠道)采集 / 视频博主 / 队列与 AI 管线 / " +
+      "AI 智能指数能力水位 五域," +
       "并给出结构化问题清单 problems[]（critical=源已挂或数据已脏, warning=降级或积压)," +
       "每条带证据与建议,可直接写进周报。domains 可只取关心的域;默认全取。",
     {
@@ -50,7 +53,9 @@ export const opsReadTools: McpToolDef[] = [
         .array(z.enum(HEALTH_DOMAINS))
         .max(HEALTH_DOMAINS.length)
         .optional()
-        .describe("只取这些域(缺省全取):pricing 牌价 / telegram 渠道 / video 视频 / queue 队列"),
+        .describe(
+          "只取这些域(缺省全取):pricing 牌价 / telegram 渠道 / video 视频 / queue 队列 / aiindex 指数能力层",
+        ),
       includeProblems: z.boolean().default(true).describe("是否带 problems[] 问题清单"),
       problemLimit: z.number().int().min(1).max(50).default(20).describe("问题清单条数上限"),
     },
@@ -58,7 +63,7 @@ export const opsReadTools: McpToolDef[] = [
       try {
         const want = (d: (typeof HEALTH_DOMAINS)[number]): boolean =>
           args.domains === undefined || args.domains.includes(d);
-        const [pricing, channels, bloggers, queues, videoObs, asr] = await Promise.all([
+        const [pricing, channels, bloggers, queues, videoObs, asr, aiIndex] = await Promise.all([
           want("pricing")
             ? cachedBlock("pricing", async () => listPricingSourceHealth())
             : Promise.resolve(null),
@@ -67,6 +72,7 @@ export const opsReadTools: McpToolDef[] = [
           want("queue") ? cachedBlock("queue", loadQueues) : Promise.resolve(null),
           want("video") ? getVideoObservation() : Promise.resolve(null),
           want("queue") ? getAsrOverview() : Promise.resolve(null),
+          want("aiindex") ? cachedBlock("aiindex", loadAiIndexHealth) : Promise.resolve(null),
         ]);
 
         const problems: HealthProblem[] = [];
@@ -74,6 +80,7 @@ export const opsReadTools: McpToolDef[] = [
         if (channels !== null) problems.push(...channelProblems(channels));
         if (bloggers !== null) problems.push(...videoProblems(bloggers));
         if (queues !== null) problems.push(...queueProblems(queues));
+        if (aiIndex !== null) problems.push(...aiindexProblems(aiIndex));
         const trimmed =
           args.includeProblems === false
             ? { items: [], truncated: 0 }
@@ -109,6 +116,7 @@ export const opsReadTools: McpToolDef[] = [
             telegram: channels,
             video: bloggers === null ? null : { bloggers, observation: videoObs },
             queue: queues === null ? null : { queues, asr },
+            aiindex: aiIndex,
           },
           problems: trimmed.items,
           problemCount: problems.length,
@@ -188,9 +196,26 @@ export const opsReadTools: McpToolDef[] = [
         }
         if (args.domain === undefined || args.domain === "queue") {
           for (const r of runs) {
+            // ai-index 队列归 aiindex 域,不在 queue 域重复计
+            if (r.queue === "ai-index") continue;
             if (!hit(`${r.queue}/${r.jobName}`)) continue;
             failures.push({
               domain: "queue",
+              kind: "job_run",
+              sourceId: "",
+              sourceName: `${r.queue}/${r.jobName}`,
+              error: (r.error ?? "").slice(0, 500),
+              at: r.startedAt.toISOString(),
+              status: "failed",
+            });
+          }
+        }
+        if (args.domain === undefined || args.domain === "aiindex") {
+          for (const r of runs) {
+            if (r.queue !== "ai-index") continue;
+            if (!hit(`${r.queue}/${r.jobName}`)) continue;
+            failures.push({
+              domain: "aiindex",
               kind: "job_run",
               sourceId: "",
               sourceName: `${r.queue}/${r.jobName}`,

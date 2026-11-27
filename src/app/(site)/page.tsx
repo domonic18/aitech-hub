@@ -1,3 +1,5 @@
+import { AiIndexCard } from "@/components/site/ai-index/AiIndexCard";
+import { getAiIndexCardData, getEciSyncStatus } from "@/lib/ai-index/read";
 import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
@@ -48,6 +50,9 @@ export default async function HomePage(): Promise<React.ReactElement> {
     resolveHomeSearchTerms(cfg.homeSearchTerms),
   ]);
 
+  // AI 智能指数首页卡片数据(由 ai_index_daily 表驱动)
+  const [aiIndexCard, eciSync] = await Promise.all([getAiIndexCardData(), getEciSyncStatus()]);
+
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
       <SiteSprite />
@@ -65,8 +70,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
           initialNow={Date.now()}
         />
 
-        {/* 右栏:开源项目(M11 白名单 rail)+ 博主文章/推荐视频(原创标记分流)+ GEO */}
+        {/* 右栏:AI 智能指数卡 + 开源项目 + 博主文章/推荐视频 + GEO */}
         <aside className="flex min-w-0 flex-col gap-4">
+          {/* 无指数数据(首次落库前 / 构建期无库降级)时整卡不渲染,不占版面也不出空壳 */}
+          {(aiIndexCard.latest !== null || aiIndexCard.recent.length > 0) && (
+            <AiIndexCard recent={aiIndexCard.recent} latest={aiIndexCard.latest} sync={eciSync} />
+          )}
           {repos.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
               <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">

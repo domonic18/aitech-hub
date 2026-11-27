@@ -74,6 +74,14 @@ export const INSIGHT_FETCH_CRON = "43 * * * *";
  * ingest 即时入队为主,本 cron 只补入队丢失与超时 pending 降级) */
 export const INSIGHT_TRANSLATE_CRON = "5,15,25,35,45,55 * * * *";
 
+/** AI 能力水位 ECI 日采 05:07(上游 Epoch 数据包每日重打包,内容有变才写库;
+ *  05 点段只有热词 05:37,避开) */
+export const AI_INDEX_ECI_CRON = "7 5 * * *";
+
+/** AI 智能指数每日聚合 05:17(评分台账 → 冲击分 → 智能指数;跟在 ECI 日采之后,
+ *  当天能力基线用刚落库的那份) */
+export const AI_INDEX_AGG_CRON = "17 5 * * *";
+
 /** 任务域(颜色为设计令牌原值,globals.css 同源;色点/日历 chip 共用) */
 export type ScheduleCategory = "insight" | "discovery" | "process" | "ops";
 
@@ -248,6 +256,22 @@ export const SCHEDULE_REGISTRY: CronScheduleDef[] = [
     desc: "补翻在池非中文信号 + 超时 pending 降级",
     cron: INSIGHT_TRANSLATE_CRON,
     category: "insight",
+  },
+  {
+    key: "ai-index-eci",
+    jobRunKey: "ai-index/eci-fetch",
+    label: "AI 能力水位采集",
+    desc: "Epoch 公开 ECI 分数日采(内容有变才写库,坏数据闸门拒收)",
+    cron: AI_INDEX_ECI_CRON,
+    category: "insight",
+  },
+  {
+    key: "ai-index-aggregate",
+    jobRunKey: "ai-index/daily-aggregate",
+    label: "AI 智能指数聚合",
+    desc: "新闻打分台账 → 冲击分 → 智能指数日表(近 30 天重算)",
+    cron: AI_INDEX_AGG_CRON,
+    category: "process",
   },
 ];
 
