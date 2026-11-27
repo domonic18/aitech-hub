@@ -11,6 +11,8 @@
 export const ECI_CSV_URL = "https://epoch.ai/data/eci_scores.csv";
 /** 上游许可(展示与种子文件元数据同用) */
 export const ECI_LICENSE = "CC BY 4.0";
+/** 上游许可全文地址(前台「数据来源」可点) */
+export const ECI_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
 /** 请求 UA(标明身份,便于上游联系) */
 export const ECI_USER_AGENT = "aitech-hub-ai-index/1.0 (+https://17aitech.com)";
 /** 拉取超时 */

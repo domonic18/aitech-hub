@@ -25,6 +25,9 @@ interface LineChartProps {
 }
 
 const MARGIN = { top: 24, right: 24, bottom: 48, left: 72 };
+/** tooltip 尺寸(与下面渲染的 rect 一致) */
+const TIP_W = 92;
+const TIP_H = 44;
 const AXIS_FILL = "var(--text-3)";
 const GRID_STROKE = "var(--border)";
 const LINE_COLOR = "var(--accent, #2563eb)";
@@ -224,6 +227,21 @@ export function LineChart({
     setHover((e.clientX - rect.left) * scaleX);
   }
 
+  /**
+   * tooltip 落位:默认在点的右上,越界时翻到另一侧,再夹回绘图区内。
+   * (根 <svg> 默认 overflow hidden,越出 viewBox 的部分会被裁掉。)
+   */
+  const tipPos = useMemo(() => {
+    if (!nearestPoint || nearestPoint.y === null) return null;
+    let x = nearestPoint.x + 12;
+    if (x + TIP_W > plot.right) x = nearestPoint.x - 12 - TIP_W;
+    x = Math.max(plot.left, Math.min(x, plot.right - TIP_W));
+    let y = nearestPoint.y - 36;
+    if (y < plot.top) y = nearestPoint.y + 12;
+    y = Math.max(plot.top, Math.min(y, plot.bottom - TIP_H));
+    return { x, y };
+  }, [nearestPoint, plot.left, plot.right, plot.top, plot.bottom]);
+
   return (
     <div className="w-full overflow-x-auto">
       <svg
@@ -342,7 +360,15 @@ export function LineChart({
                 strokeWidth={2}
               />
               {p.raw.label && (
-                <text x={p.x} y={p.y - 12} textAnchor="middle" fontSize={10} fill="var(--text-2)">
+                <text
+                  x={p.x > plot.right - 40 ? p.x + 4 : p.x < plot.left + 40 ? p.x - 4 : p.x}
+                  y={p.y - 12 < 10 ? p.y + 16 : p.y - 12}
+                  textAnchor={
+                    p.x > plot.right - 40 ? "end" : p.x < plot.left + 40 ? "start" : "middle"
+                  }
+                  fontSize={10}
+                  fill="var(--text-2)"
+                >
                   {p.raw.label}
                 </text>
               )}
@@ -398,7 +424,7 @@ export function LineChart({
           </text>
         )}
         {/* Hover crosshair and tooltip */}
-        {nearestPoint && nearestPoint.y !== null && (
+        {nearestPoint && nearestPoint.y !== null && tipPos && (
           <g>
             <line
               x1={nearestPoint.x}
@@ -417,22 +443,22 @@ export function LineChart({
               stroke="var(--panel)"
               strokeWidth={2.5}
             />
-            <g transform={`translate(${nearestPoint.x + 12}, ${nearestPoint.y - 36})`}>
+            <g transform={`translate(${tipPos.x} ${tipPos.y})`}>
               <rect
                 x={0}
                 y={0}
-                width={92}
-                height={44}
+                width={TIP_W}
+                height={TIP_H}
                 rx={6}
                 fill="var(--panel-2)"
                 stroke="var(--border)"
                 strokeWidth={1}
               />
-              <text x={46} y={18} textAnchor="middle" fontSize={10} fill="var(--text-2)">
+              <text x={TIP_W / 2} y={18} textAnchor="middle" fontSize={10} fill="var(--text-2)">
                 {xFormatter(nearestPoint.raw.x)}
               </text>
               <text
-                x={46}
+                x={TIP_W / 2}
                 y={34}
                 textAnchor="middle"
                 fontSize={12}
