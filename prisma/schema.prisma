@@ -1973,3 +1973,21 @@ model ChannelFeishuAlertConfig {
 
   @@map("channel_feishu_alert_config")
 }
+
+/// AI 智能指数日表:每日聚合能力基线与新闻冲击分,支撑首页卡片与 /ai-index 看板
+model AiIndexDaily {
+  id                BigInt   @id @default(autoincrement())
+  date              DateTime @unique(map: "uq_ai_index_daily_date") @db.Date
+  capability        Float? // 当日能力基线(Epoch ECI 归一化 0–100)
+  velocity          Float // 当日冲击分(净冲击在滚动窗口内的百分位 0–100)
+  acceleration      Float // 冲击分日环比变化(百分位差)
+  intelligenceIndex Float    @map("intelligence_index") // AI 智能指数(能力基线 + 冲击加成)
+  eventCount        Int      @map("event_count") // 当日参与打分的 AI 相关事件数
+  topEvents         Json?    @map("top_events") // 当日 Top N 事件[{title,url,score,signed,dimension,direction,relevance}]
+  dimensions        Json? // 维度分布 {model:N, benchmark:N, ...}
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([date], map: "idx_ai_index_daily_date")
+  @@map("ai_index_daily")
+}

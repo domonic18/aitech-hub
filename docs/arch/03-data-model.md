@@ -530,6 +530,12 @@ CREATE TABLE legacy_url_map (
   FK `onDelete: Cascade`(牌价行删除历史随之消亡);公开读侧
   `changes-read.ts#listPublicPriceChanges` 只外露 enabled 行、近 90 天、上限 100 条
 
+**AI 智能指数日表已落地(2026-11-27 迁移 `add_ai_index_daily` + `add_intelligence_index`,支撑 `/ai-index/` 看板与首页卡片)**:
+
+- `ai_index_daily`(日粒度一行):`date` 唯一(`uq_ai_index_daily_date`);`capability` = 当日能力基线(Epoch Capabilities Index 归一化 0–100);`velocity` = 当日冲击分(净冲击在滚动 180 天窗口内的经验分布百分位 0–100);`acceleration` = 冲击分日环比差(百分位差);`intelligence_index` = AI 智能指数(能力基线 + 冲击加成,加成上限 5 分,`AI_INDEX_PULSE_BONUS`);`event_count` = 当日入池的 AI 相关事件数;`top_events` jsonb = 当日 Top5 事件`[{title,url,score,signed,dimension,direction,relevance}]`;`dimensions` jsonb = 维度分布
+- 口径:新闻侧先过**相关性闸**(只留 AI 相关条目,非 AI 资讯不打分不落库),再按 impact×方向(正 +1/负 −1)×置信度×相关性权重(core 1 / adjacent 0.5)算带符号贡献——**负向事件拉低当日净冲击**,不做只加不减;能力侧取 Epoch ECI 能力前沿(每刷新一次历史最高分的模型记一条)
+- 数据源:Epoch `benchmark_data.zip`(CC BY 4.0)→ `epoch_capabilities_index/eci_scores.csv`(258 个模型,含 90% 可信区间);快照生成 `scripts/ops/ai-index/fetch-epoch-data.ts`(npm run ai-index:fetch,产物 `src/lib/ai-index/epoch-data.ts` 入库免构建期依赖外网),日终聚合 `scripts/ops/ai-index/daily-update.ts`(npm run ai-index:update);**当前为手工脚本,未接 worker 调度**
+
 ## 3. Prisma 模型约定
 
 > 命名细则(表前缀、列名、约束/索引模板、`onDelete` 裁定、反例与新表 checklist)见
