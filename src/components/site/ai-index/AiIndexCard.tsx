@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { ECI_CSV_URL } from "@/lib/ai-index/constants";
 import type { AiIndexDailyRow, EciSyncStatus } from "@/lib/ai-index/read";
 import { parseTopEvents } from "@/lib/ai-index/top-events";
 
@@ -68,7 +69,16 @@ export function AiIndexCard({ recent, latest, sync }: AiIndexCardProps): React.R
           </p>
         )}
         <p className="mt-2 text-xs leading-relaxed text-text-3">
-          能力水位取自 Epoch AI 公开 ECI 数据,冲击脉冲来自电报流中真正与 AI 相关的事件。
+          能力水位取自{" "}
+          <a
+            href={ECI_CSV_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline decoration-dotted underline-offset-2 hover:text-accent-hover"
+          >
+            Epoch AI 公开 ECI 数据
+          </a>
+          ,冲击脉冲来自电报流中真正与 AI 相关的事件。
         </p>
         {sync !== null && sync.modelCount > 0 && (
           <p className="mt-1 text-[11px] leading-relaxed text-text-3">

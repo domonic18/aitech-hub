@@ -80,7 +80,9 @@ function toNewsItem(r: {
 }
 
 /** 取电报流里还没打分的条目 */
-async function fetchUnscoredItems(): Promise<{ items: NewsItem[]; pending: number }> {
+async function fetchUnscoredItems(
+  batchLimit: number,
+): Promise<{ items: NewsItem[]; pending: number }> {
   const since = new Date(`${daysAgoIso(AI_INDEX_SCORE_LOOKBACK_DAYS)}T00:00:00Z`);
   const rows = await prisma.telegram.findMany({
     where: { status: "visible", publishedAt: { gte: since } },
@@ -105,7 +107,7 @@ async function fetchUnscoredItems(): Promise<{ items: NewsItem[]; pending: numbe
   const done = new Set(scored.map((s) => s.telegramId.toString()));
 
   const pending = items.filter((i) => !done.has(i.id));
-  return { items: pending.slice(0, AI_INDEX_SCORE_BATCH_LIMIT), pending: pending.length };
+  return { items: pending.slice(0, batchLimit), pending: pending.length };
 }
 
 /** 读评分台账并转回聚合用的打分条目 */
@@ -145,9 +147,17 @@ async function readCache(): Promise<ScoredNewsItem[]> {
   }));
 }
 
-/** 跑一轮每日聚合(打分 → 聚合 → 写日表) */
-export async function aggregateAiIndex(): Promise<AggregateResult> {
-  const { items, pending } = await fetchUnscoredItems();
+/**
+ * 跑一轮每日聚合(打分 → 聚合 → 写日表)
+ *
+ * @param batchLimit 单轮打分条数上限:worker 定时用默认常量(短任务,发版 SIGKILL 安全);
+ *   手动补跑可传大值,一次把积压打完(台账幂等,分多轮跑结果一致)
+ */
+export async function aggregateAiIndex(options?: {
+  batchLimit?: number;
+}): Promise<AggregateResult> {
+  const batchLimit = options?.batchLimit ?? AI_INDEX_SCORE_BATCH_LIMIT;
+  const { items, pending } = await fetchUnscoredItems(batchLimit);
 
   let scoredCount = 0;
   if (items.length > 0) {

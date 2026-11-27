@@ -9,6 +9,7 @@
  *   npm run ai-index:run         两步都跑(能力层日采 → 每日聚合)
  *   npm run ai-index:run eci     只跑能力层日采
  *   npm run ai-index:run daily   只跑每日聚合
+ *   npm run ai-index:run daily 600  每日聚合,单轮打分 600 条(手动补跑积压时用)
  */
 import { loadEnvConfig } from "@next/env";
 
@@ -29,7 +30,10 @@ async function main(): Promise<void> {
 
   if (mode === "all" || mode === "daily") {
     const { aggregateAiIndex } = await import("../../../src/lib/ai-index/aggregate");
-    const r = await aggregateAiIndex();
+    const batchLimit = Number.parseInt(process.argv[3] ?? "", 10);
+    const r = await aggregateAiIndex(
+      Number.isFinite(batchLimit) && batchLimit > 0 ? { batchLimit } : undefined,
+    );
     console.log("每日聚合:", JSON.stringify(r));
   }
 
