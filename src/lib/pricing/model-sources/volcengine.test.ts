@@ -136,6 +136,60 @@ describe("parseVolcengineArk · 批G 单位闸", () => {
   });
 });
 
+/** M80:视频表(按片价 + 官方折合价)——2026-11-27 实探裁剪 */
+describe("parseVolcengineArk 视频表(折合价 · 分辨率档)", () => {
+  const rows = parseVolcengineArk(
+    readFileSync(join(__dirname, "..", "__fixtures__", "volcengine-ark-video.html"), "utf8"),
+    URL,
+    NOW,
+  );
+
+  it("行价取最低分辨率的折合价(元/秒),与百炼/百度按秒价同口径", () => {
+    const r = rows.find((x) => x.modelKey === "seedance-2-5")!;
+    expect(r.priceUnit).toBe("per_second");
+    expect(r.outputPrice).toBe(0.67);
+    expect(r.inputPrice).toBeNull();
+    expect(r.modality).toBe("video");
+    expect(r.providerKey).toBe("volcengine-ark");
+  });
+
+  it("各分辨率折合价落档位(档名=分辨率)", () => {
+    const r = rows.find((x) => x.modelKey === "seedance-2-5")!;
+    expect(r.tiers!.map((t) => [t.tierLabel, t.outputPrice, t.unit])).toEqual([
+      ["480p", 0.67, "per_second"],
+      ["720p", 1.51, "per_second"],
+      ["1080p", 3.74, "per_second"],
+      ["4K", 6.03, "per_second"],
+    ]);
+  });
+
+  it("「不支持」的分辨率不落档(不臆测)", () => {
+    const r = rows.find((x) => x.modelKey === "seedance-2-0-mini")!;
+    expect(r.outputPrice).toBe(0.23);
+    expect(r.tiers!.map((t) => t.tierLabel)).toEqual(["480p", "720p"]);
+  });
+
+  it("按片价(元/个)只进 note,不进行价", () => {
+    const r = rows.find((x) => x.modelKey === "seedance-2-5")!;
+    expect(r.note).toContain("0.67 元/秒");
+    expect(r.note).toContain("按片 3.36 元/个");
+  });
+
+  it("模型名归一(product 名 → 字典键);同型号变体不合并", () => {
+    expect(rows.map((r) => r.modelKey).sort()).toEqual([
+      "seedance-2-0",
+      "seedance-2-0-fast",
+      "seedance-2-0-mini",
+      "seedance-2-5",
+      "seedance-2-5-flash",
+    ]);
+  });
+
+  it("视频表不混入 token 行(单位闸:视频表只有价格口径列)", () => {
+    expect(rows.every((r) => r.priceUnit === "per_second")).toBe(true);
+  });
+});
+
 /** M77:图片表按像素/场景分档(实探 2026-11-20 的方舟图片表裁剪) */
 describe("parseVolcengineArk 图片表(按张 · 像素分档)", () => {
   const rows = parseVolcengineArk(
