@@ -543,6 +543,7 @@ CREATE TABLE legacy_url_map (
 - `ai_index_event_score`(事件评分台账,每条电报一行):`telegram_id` 唯一(`uq_ai_index_event_score_telegram_id`);`impact_score`/`confidence`/`dimension`/`relevance`/`direction`/`scorer`;`summary`/`source_name` 必留(规则兜底打分用 summary、可信源加成用 source_name,缺了重放结果会漂);**不建 FK**——电报明细有清理周期,评分台账独立留存
 - 更新链路:`ai-index` 队列每日 05:07 `eci-fetch` 拉上游 → 校验闸门 → 指纹比对 → 全量 upsert 模型表 + 落台账;05:17 `daily-aggregate` 打分新电报 → 读台账 → 合成日表(重算最近 30 天,更早不回填)
 - 事件打分:优先 Jev(`insight_judge` 绑定的 systemone 模型)四问(impact/dimension/relevance/direction),未绑定或调用失败回落规则打分,`scorer` 字段留痕。**wire 纪律(2026-11-27 生产踩坑)**:Jev 的 `score` 型问答 `criteria` 必须是**档位数组**(传字典被判 422),应答 `score` 是**档位下标**(0..n-1 的概率加权位置)而非百分制,落到 0–100 要自己按档位区间插值(`src/lib/ai-index/score.ts#impactFromBandIndex`);判分失败会打 `ai_index.jev_score_failed` 警告——「整批静默退化成规则兜底」不能没人看见
+- **上游限速**:决策端点 60 请求/分钟/key(429 实测),客户端按最小间隔节流(`DECISION_API_RATE_LIMIT_PER_MIN`,`src/lib/ai/decisions-client.ts`)+ 429 退避重试一次。不节流的话批量判分会大面积 429 → 静默退化成规则兜底,指数口径就废了
 - 打分窗口:取电报流近 30 天可见条目,上限 `AI_INDEX_SCORE_MAX_ITEMS` 须**覆盖整个窗口**(取少了,窗口外的旧条目永远进不了打分队列,曲线只剩最近几天);worker 每轮只打 `AI_INDEX_SCORE_BATCH_LIMIT` 条(短任务,发版 SIGKILL 安全),积压靠次轮继续(台账幂等),手动补跑可调大批量(`npm run ai-index:run daily 600`)
 - **校验闸门**(纯函数 `src/lib/ai-index/epoch-source.ts#validateEciDataset`,任一不过 → 拒收并保留旧数据):表头必需列齐全 / 行数 ∈[50, 5000] / `eci ∈ [0, 1000]` / `ci_low ≤ eci ≤ ci_high` / 日期 ∈[2020-01-01, 今天+1] / 相对上次:模型数跌幅 >20% 拒 / 前沿 ECI 跌幅 >10% 拒。**只拒跌不拒涨**——上游真出大突破不该被误拒
 - 「有没有变」用**解析后模型行的规范化哈希**(不用原文字节,换行/空白/行序差异不算变更)
