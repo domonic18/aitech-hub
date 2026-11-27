@@ -8,7 +8,7 @@
  * - 每次拉取写**一行**台账(ai_index_eci_sync):ok / no_change / rejected / failed;
  * - rejected(校验闸门拒收)与 failed(下载或解析失败)都不动模型表,旧数据继续服务;
  * - 内容指纹取**解析后模型行的规范化哈希**(epoch-source#hashEciModels)——
- *   上游每天重打包 zip,zip 级哈希会天天判「变了」;换行/空白/行序差异也不算变更。
+ *   换行/空白/行序差异不算变更,只有模型数据真变了才判「变了」。
  */
 import { prisma } from "@/lib/db";
 import { logError, logInfo, logWarn } from "@/lib/logger";

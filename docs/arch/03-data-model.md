@@ -543,8 +543,9 @@ CREATE TABLE legacy_url_map (
 - `ai_index_event_score`(事件评分台账,每条电报一行):`telegram_id` 唯一(`uq_ai_index_event_score_telegram_id`);`impact_score`/`confidence`/`dimension`/`relevance`/`direction`/`scorer`;`summary`/`source_name` 必留(规则兜底打分用 summary、可信源加成用 source_name,缺了重放结果会漂);**不建 FK**——电报明细有清理周期,评分台账独立留存
 - 更新链路:`ai-index` 队列每日 05:07 `eci-fetch` 拉上游 → 校验闸门 → 指纹比对 → 全量 upsert 模型表 + 落台账;05:17 `daily-aggregate` 打分新电报 → 读台账 → 合成日表(重算最近 30 天,更早不回填)
 - **校验闸门**(纯函数 `src/lib/ai-index/epoch-source.ts#validateEciDataset`,任一不过 → 拒收并保留旧数据):表头必需列齐全 / 行数 ∈[50, 5000] / `eci ∈ [0, 1000]` / `ci_low ≤ eci ≤ ci_high` / 日期 ∈[2020-01-01, 今天+1] / 相对上次:模型数跌幅 >20% 拒 / 前沿 ECI 跌幅 >10% 拒。**只拒跌不拒涨**——上游真出大突破不该被误拒
-- 「有没有变」用**解析后模型行的规范化哈希**(不用原文字节,换行/空白差异不算变更;也不用 zip 哈希,上游每天重打包会天天判「变了」)
+- 「有没有变」用**解析后模型行的规范化哈希**(不用原文字节,换行/空白/行序差异不算变更)
 - 冷启动:worker boot 时 `ai_index_eci_model` 为空 → 用仓库快照 `src/lib/ai-index/epoch-data.ts`(`npm run ai-index:fetch` 刷新)播种一次,之后由日采接管
+- 域内常量(上游入口、闸门阈值、聚合口径、滞后判定)统一在 `src/lib/ai-index/constants.ts`,别在各处硬编码
 - 可观测:MCP 健康域 `aiindex`(连败≥3 → critical,滞后>7 天/拒收/无数据 → warning)+ 前台 `/ai-index/` 顶部滞后标记
 
 ## 3. Prisma 模型约定

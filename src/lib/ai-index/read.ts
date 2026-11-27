@@ -7,6 +7,7 @@
  */
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
+import { ECI_STALE_DAYS } from "./constants";
 
 export interface AiIndexDailyRow {
   date: string; // YYYY-MM-DD
@@ -98,9 +99,6 @@ export async function getAiIndexDimensionCounts(): Promise<Record<string, number
     {} as Record<string, number>,
   );
 }
-
-/** ECI 同步超过这个天数没成功,前台标「滞后」 */
-export const ECI_STALE_DAYS = 7;
 
 export interface EciSyncStatus {
   /** 最近一次成功写入(ok)的同步时刻 */

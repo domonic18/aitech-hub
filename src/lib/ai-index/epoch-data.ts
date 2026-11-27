@@ -4,9 +4,9 @@
  * 线上真相源是数据库表 ai_index_eci_model(worker 每日同步);本文件只在
  * worker boot 冷启动播种时用一次(表空才播种),之后由日采接管。
  *
- * 数据来源:https://epoch.ai/data/eci_scores.csv(本次取数路径:csv)
+ * 数据来源:https://epoch.ai/data/eci_scores.csv
  * 许可:CC BY 4.0(Epoch AI)
- * 生成时间:2026-11-27T01:50:01.541Z
+ * 生成时间:2026-11-27T02:10:45.022Z
  */
 export interface EpochEciModel {
   model: string;
@@ -23,9 +23,8 @@ export interface EpochEciModel {
 
 export const epochEciMeta = {
   source: "https://epoch.ai/data/eci_scores.csv",
-  file: "csv",
   license: "CC BY 4.0",
-  generatedAt: "2026-11-27T01:50:01.541Z",
+  generatedAt: "2026-11-27T02:10:45.022Z",
   modelCount: 258,
   frontierCount: 23,
 } as const;

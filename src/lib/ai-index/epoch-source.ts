@@ -1,50 +1,32 @@
 /**
  * AI 智能指数·能力层上游取数(Epoch AI Capabilities Index)
  *
- * 数据来源:https://epoch.ai/data/eci_scores.csv(CC BY 4.0)
- *   Epoch 官方预计算的 ECI 分数(含 90% 可信区间)。
+ * 数据来源:Epoch 官方单发的 ECI 分数 CSV(约 31KB,含 90% 可信区间)。
+ *   官方另发的整包 benchmark_data.zip(2.3MB)实测被限速到约 4KB/s,故不取整包。
  *
- * 取数有两条路:
- *   ① 主路 eci_scores.csv —— 官方单独发布的 CSV(约 31KB,与整包里那份同内容)。
- *      2026-11-27 实测:整包 benchmark_data.zip 走 Cloudflare 被限速到约 4KB/s
- *      (2.3MB 要十分钟),单发 CSV 稳定 3s 内 → 日采只走这条。
- *   ② 备路 benchmark_data.zip —— 同一份 CSV 的整包下载版,只在主路取不到时兜底。
- *
- * 上游每日重打包,但 CSV 内容只在有新模型/新基准结果时才变——所以「有没有变」
- * 用**解析后的模型行规范化哈希**判定(不用原文字节,避免换行/空白差异造成假变更;
- * 也不用 zip 哈希,Epoch 每天重打包会天天判「变了」)。
+ * CSV 内容只在有新模型/新基准结果时才变——所以「有没有变」用**解析后的模型行
+ * 规范化哈希**判定(不用原文字节,换行/空白/行序差异不算变更)。
  *
  * 本模块只做「取数 + 解析 + 校验闸门」,不写库(写侧在 src/lib/ai-index/sync.ts)。
+ * 阈值与上游入口见 ./constants。
  */
 import { createHash } from "node:crypto";
 
-import { logger } from "@/lib/logger";
 import { fetchViaEgress } from "@/lib/net/egress-fetch";
 
-import { readZipEntry } from "./zip-read";
-
-export const ECI_CSV_URL = "https://epoch.ai/data/eci_scores.csv";
-export const ECI_ZIP_URL = "https://epoch.ai/data/benchmark_data.zip";
-export const ECI_CSV_MEMBER = "epoch_capabilities_index/eci_scores.csv";
-/** 上游包体积上限(防御异常大响应;实测约 2.3MB) */
-const ZIP_MAX_BYTES = 50 * 1024 * 1024;
-/** CSV 体积上限(防御异常大响应 / zip bomb) */
-const CSV_MAX_BYTES = 8 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 120_000;
-/** 备路(整包)限速严重,给宽一点的窗口 */
-const ZIP_FETCH_TIMEOUT_MS = 300_000;
-const USER_AGENT = "aitech-hub-ai-index/1.0 (+https://17aitech.com)";
-
-/** 闸门阈值 */
-const MAX_ROWS = 5000;
-const MIN_ROWS = 50;
-const ECI_MIN = 0;
-const ECI_MAX = 1000;
-const EARLIEST_DATE = "2020-01-01";
-/** 相对上一份数据:模型数跌幅超此比例判上游异常 */
-const MODEL_COUNT_DROP_RATIO = 0.8;
-/** 相对上一份数据:前沿 ECI 跌幅超此比例判上游异常(只拒跌不拒涨) */
-const FRONTIER_DROP_RATIO = 0.9;
+import {
+  ECI_CSV_MAX_BYTES,
+  ECI_CSV_URL,
+  ECI_EARLIEST_DATE,
+  ECI_FETCH_TIMEOUT_MS,
+  ECI_FRONTIER_DROP_RATIO,
+  ECI_MAX_ROWS,
+  ECI_MIN_ROWS,
+  ECI_MODEL_COUNT_DROP_RATIO,
+  ECI_SCORE_MAX,
+  ECI_SCORE_MIN,
+  ECI_USER_AGENT,
+} from "./constants";
 
 const REQUIRED_HEADERS = [
   "model",
@@ -82,8 +64,6 @@ export interface EpochDataset {
   models: EciModel[];
   contentHash: string;
   httpStatus: number;
-  /** 实际命中的上游路径(csv / zip) */
-  source: "csv" | "zip";
 }
 
 export interface EciValidationInput {
@@ -226,28 +206,28 @@ export function validateEciDataset(
   now: Date = new Date(),
 ): EciValidation {
   if (models.length === 0) return { ok: false, reason: "CSV 未解析出任何模型行" };
-  if (models.length > MAX_ROWS) {
-    return { ok: false, reason: `模型行数 ${models.length} 超上限 ${MAX_ROWS}` };
+  if (models.length > ECI_MAX_ROWS) {
+    return { ok: false, reason: `模型行数 ${models.length} 超上限 ${ECI_MAX_ROWS}` };
   }
-  if (models.length < MIN_ROWS) {
-    return { ok: false, reason: `模型行数 ${models.length} 低于下限 ${MIN_ROWS}` };
+  if (models.length < ECI_MIN_ROWS) {
+    return { ok: false, reason: `模型行数 ${models.length} 低于下限 ${ECI_MIN_ROWS}` };
   }
 
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   for (const m of models) {
-    if (m.eci < ECI_MIN || m.eci > ECI_MAX) {
+    if (m.eci < ECI_SCORE_MIN || m.eci > ECI_SCORE_MAX) {
       return { ok: false, reason: `模型 ${m.model} 的 eci ${m.eci} 越界` };
     }
     if (m.ciLow > m.eci || m.ciHigh < m.eci) {
       return { ok: false, reason: `模型 ${m.model} 的可信区间不含分值` };
     }
-    if (m.date < EARLIEST_DATE || m.date > tomorrow) {
+    if (m.date < ECI_EARLIEST_DATE || m.date > tomorrow) {
       return { ok: false, reason: `模型 ${m.model} 的日期 ${m.date} 越界` };
     }
   }
 
   if (prev !== null) {
-    if (models.length < prev.modelCount * MODEL_COUNT_DROP_RATIO) {
+    if (models.length < prev.modelCount * ECI_MODEL_COUNT_DROP_RATIO) {
       return {
         ok: false,
         reason: `模型数 ${models.length} 较上次 ${prev.modelCount} 跌幅过大,判上游异常`,
@@ -255,7 +235,7 @@ export function validateEciDataset(
     }
     const frontier = computeEciFrontier(models);
     const frontierEci = frontier.length > 0 ? frontier[frontier.length - 1].eci : 0;
-    if (frontierEci < prev.frontierEci * FRONTIER_DROP_RATIO) {
+    if (frontierEci < prev.frontierEci * ECI_FRONTIER_DROP_RATIO) {
       return {
         ok: false,
         reason: `前沿 ECI ${frontierEci} 较上次 ${prev.frontierEci} 跌幅过大,判上游异常`,
@@ -309,51 +289,15 @@ async function readCapped(res: Response, maxBytes: number): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-/** 主路:直接取官方单发的 CSV */
-async function fetchCsvDirect(): Promise<{ csv: string; httpStatus: number }> {
-  const res = await fetchViaEgress(ECI_CSV_URL, {
-    headers: { "user-agent": USER_AGENT, accept: "text/csv" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`上游返回 HTTP ${res.status}`);
-  const buf = await readCapped(res, CSV_MAX_BYTES);
-  return { csv: buf.toString("utf-8"), httpStatus: res.status };
-}
-
-/** 备路:整包下载后解出同一份 CSV */
-async function fetchCsvFromZip(): Promise<{ csv: string; httpStatus: number }> {
-  const res = await fetchViaEgress(ECI_ZIP_URL, {
-    headers: { "user-agent": USER_AGENT, accept: "application/zip" },
-    signal: AbortSignal.timeout(ZIP_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`上游返回 HTTP ${res.status}`);
-  const zipBuf = await readCapped(res, ZIP_MAX_BYTES);
-  const csvBuf = readZipEntry(zipBuf, ECI_CSV_MEMBER, { maxOutputBytes: CSV_MAX_BYTES });
-  return { csv: csvBuf.toString("utf-8"), httpStatus: res.status };
-}
-
-/** 下载上游 CSV 并解出模型行(不写库);主路失败自动退备路 */
+/** 下载上游 CSV 并解出模型行(不写库) */
 export async function fetchEpochDataset(): Promise<EpochDataset> {
-  let csv: string;
-  let httpStatus: number;
-  let source: "csv" | "zip";
-  try {
-    const r = await fetchCsvDirect();
-    csv = r.csv;
-    httpStatus = r.httpStatus;
-    source = "csv";
-  } catch (e) {
-    logger.warn({
-      event: "ai_index.eci_csv_fetch_failed",
-      url: ECI_CSV_URL,
-      error: e instanceof Error ? e.message : String(e),
-    });
-    const r = await fetchCsvFromZip();
-    csv = r.csv;
-    httpStatus = r.httpStatus;
-    source = "zip";
-  }
+  const res = await fetchViaEgress(ECI_CSV_URL, {
+    headers: { "user-agent": ECI_USER_AGENT, accept: "text/csv" },
+    signal: AbortSignal.timeout(ECI_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`上游返回 HTTP ${res.status}`);
 
+  const csv = (await readCapped(res, ECI_CSV_MAX_BYTES)).toString("utf-8");
   const models = parseEciCsv(csv);
   if (models === null) throw new Error("上游 CSV 表头缺必需列");
 
@@ -361,7 +305,6 @@ export async function fetchEpochDataset(): Promise<EpochDataset> {
     csv,
     models,
     contentHash: hashEciModels(models),
-    httpStatus,
-    source,
+    httpStatus: res.status,
   };
 }

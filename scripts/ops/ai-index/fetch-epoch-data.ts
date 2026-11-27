@@ -12,27 +12,25 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { loadEnvConfig } from "@next/env";
+
+import {
+  AI_INDEX_SEED_FILE_PATH,
+  ECI_CSV_URL,
+  ECI_LICENSE,
+} from "../../../src/lib/ai-index/constants";
 import type { EciModel } from "../../../src/lib/ai-index/epoch-source";
 
 loadEnvConfig(process.cwd());
 
-const OUTPUT_PATH = "src/lib/ai-index/epoch-data.ts";
-
-function generateTsFile(
-  models: EciModel[],
-  frontierCount: number,
-  generatedAt: string,
-  source: string,
-  via: string,
-): string {
+function generateTsFile(models: EciModel[], frontierCount: number, generatedAt: string): string {
   return `/**
  * AI 智能指数:Epoch AI Capabilities Index (ECI) 冷启动底稿
  * 本文件由 scripts/ops/ai-index/fetch-epoch-data.ts 自动生成(npm run ai-index:fetch)。
  * 线上真相源是数据库表 ai_index_eci_model(worker 每日同步);本文件只在
  * worker boot 冷启动播种时用一次(表空才播种),之后由日采接管。
  *
- * 数据来源:${source}(本次取数路径:${via})
- * 许可:CC BY 4.0(Epoch AI)
+ * 数据来源:${ECI_CSV_URL}
+ * 许可:${ECI_LICENSE}(Epoch AI)
  * 生成时间:${generatedAt}
  */
 export interface EpochEciModel {
@@ -49,9 +47,8 @@ export interface EpochEciModel {
 }
 
 export const epochEciMeta = {
-  source: "${source}",
-  file: "${via}",
-  license: "CC BY 4.0",
+  source: "${ECI_CSV_URL}",
+  license: "${ECI_LICENSE}",
   generatedAt: ${JSON.stringify(generatedAt)},
   modelCount: ${models.length},
   frontierCount: ${frontierCount},
@@ -63,7 +60,7 @@ export const epochEciModels: EpochEciModel[] = ${JSON.stringify(models, null, 2)
 
 async function main(): Promise<void> {
   // epoch-source 依赖 env(出口代理配置),须等 loadEnvConfig 落好再动态 import
-  const { ECI_CSV_URL, computeEciFrontier, fetchEpochDataset, validateEciDataset } =
+  const { computeEciFrontier, fetchEpochDataset, validateEciDataset } =
     await import("../../../src/lib/ai-index/epoch-source");
 
   console.log(`Fetching ${ECI_CSV_URL}...`);
@@ -77,13 +74,10 @@ async function main(): Promise<void> {
 
   const frontier = computeEciFrontier(ds.models);
   const generatedAt = new Date().toISOString();
-  mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
-  writeFileSync(
-    OUTPUT_PATH,
-    generateTsFile(ds.models, frontier.length, generatedAt, ECI_CSV_URL, ds.source),
-  );
+  mkdirSync(dirname(AI_INDEX_SEED_FILE_PATH), { recursive: true });
+  writeFileSync(AI_INDEX_SEED_FILE_PATH, generateTsFile(ds.models, frontier.length, generatedAt));
   console.log(
-    `Wrote ${OUTPUT_PATH} (${ds.models.length} models, ${frontier.length} frontier records)`,
+    `Wrote ${AI_INDEX_SEED_FILE_PATH} (${ds.models.length} models, ${frontier.length} frontier records)`,
   );
 }
 

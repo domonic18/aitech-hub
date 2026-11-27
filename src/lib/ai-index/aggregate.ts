@@ -15,6 +15,14 @@ import { logInfo } from "@/lib/logger";
 
 import { capabilityBaseForDays } from "./capability";
 import {
+  AI_INDEX_PULSE_BONUS,
+  AI_INDEX_RECOMPUTE_DAYS,
+  AI_INDEX_SCORE_BATCH_LIMIT,
+  AI_INDEX_SCORE_LOOKBACK_DAYS,
+  AI_INDEX_SCORE_MAX_ITEMS,
+  AI_INDEX_SERIES_READ_DAYS,
+} from "./constants";
+import {
   scoreNewsItems,
   signedImpact,
   type NewsItem,
@@ -23,20 +31,6 @@ import {
   type ScoredNewsItem,
 } from "./score";
 import { buildImpactSeries, computeAcceleration } from "./velocity";
-
-/** 参与打分的时间窗(天) */
-const SCORE_LOOKBACK_DAYS = 30;
-/** 单轮取电报条数上限 */
-const SCORE_MAX_ITEMS = 500;
-/** 单轮打分条数上限:worker 发版 30s 优雅停机会把长任务 SIGKILL,任务必须短;
- * 剩下的条目下一轮继续(台账幂等,kill 无副作用) */
-const SCORE_BATCH_LIMIT = 120;
-/** 读评分台账的窗口(天):冲击分是滚动 180 天百分位,窗口内的历史要够 */
-const SERIES_READ_DAYS = 180;
-/** 每轮重算 ai_index_daily 的天数(更早不回头) */
-const RECOMPUTE_DAYS = 30;
-/** 智能指数 = 能力基线 + 冲击加成(上限 +PULSE_BONUS 分) */
-const PULSE_BONUS = 5;
 
 export interface AggregateResult {
   scored: number; // 本轮新打分条数
@@ -87,7 +81,7 @@ function toNewsItem(r: {
 
 /** 取电报流里还没打分的条目 */
 async function fetchUnscoredItems(): Promise<{ items: NewsItem[]; pending: number }> {
-  const since = new Date(`${daysAgoIso(SCORE_LOOKBACK_DAYS)}T00:00:00Z`);
+  const since = new Date(`${daysAgoIso(AI_INDEX_SCORE_LOOKBACK_DAYS)}T00:00:00Z`);
   const rows = await prisma.telegram.findMany({
     where: { status: "visible", publishedAt: { gte: since } },
     select: {
@@ -100,7 +94,7 @@ async function fetchUnscoredItems(): Promise<{ items: NewsItem[]; pending: numbe
       source: { select: { name: true } },
     },
     orderBy: { publishedAt: "desc" },
-    take: SCORE_MAX_ITEMS,
+    take: AI_INDEX_SCORE_MAX_ITEMS,
   });
   const items = rows.map(toNewsItem);
 
@@ -111,12 +105,12 @@ async function fetchUnscoredItems(): Promise<{ items: NewsItem[]; pending: numbe
   const done = new Set(scored.map((s) => s.telegramId.toString()));
 
   const pending = items.filter((i) => !done.has(i.id));
-  return { items: pending.slice(0, SCORE_BATCH_LIMIT), pending: pending.length };
+  return { items: pending.slice(0, AI_INDEX_SCORE_BATCH_LIMIT), pending: pending.length };
 }
 
 /** 读评分台账并转回聚合用的打分条目 */
 async function readCache(): Promise<ScoredNewsItem[]> {
-  const since = new Date(`${daysAgoIso(SERIES_READ_DAYS)}T00:00:00Z`);
+  const since = new Date(`${daysAgoIso(AI_INDEX_SERIES_READ_DAYS)}T00:00:00Z`);
   const rows = await prisma.aiIndexEventScore.findMany({
     where: { publishedAt: { gte: since } },
     select: {
@@ -194,7 +188,7 @@ export async function aggregateAiIndex(): Promise<AggregateResult> {
   const series = buildImpactSeries(relevant);
   const acceleration = computeAcceleration(series);
 
-  const recomputeFrom = daysAgoIso(RECOMPUTE_DAYS - 1);
+  const recomputeFrom = daysAgoIso(AI_INDEX_RECOMPUTE_DAYS - 1);
   const targets = series.filter((p) => p.date >= recomputeFrom);
 
   const bases = await capabilityBaseForDays(targets.map((p) => p.date));
@@ -232,7 +226,9 @@ export async function aggregateAiIndex(): Promise<AggregateResult> {
     const capability = bases.get(point.date) ?? null;
     const impactIndex = point.impactIndex ?? 0;
     const intelligenceIndex =
-      capability === null ? 0 : Number((capability + PULSE_BONUS * (impactIndex / 100)).toFixed(2));
+      capability === null
+        ? 0
+        : Number((capability + AI_INDEX_PULSE_BONUS * (impactIndex / 100)).toFixed(2));
 
     await prisma.aiIndexDaily.upsert({
       where: { date: dayStart },
