@@ -11,6 +11,8 @@
  * listPricingSourceHealth 同源),阈值集中在 HEALTH_THRESHOLDS 一处。
  */
 
+import { ECI_CONSECUTIVE_FAILS, ECI_STALE_DAYS } from "@/lib/ai-index/constants";
+
 /** 巡查域(与工具入参 domains 同名) */
 export type HealthDomain = "pricing" | "telegram" | "video" | "queue" | "aiindex";
 
@@ -44,9 +46,9 @@ export const HEALTH_THRESHOLDS = {
   /** AI 日配额使用率超此比例提示逼近上限(warning) */
   dailyQuotaRatio: 0.9,
   /** AI 能力水位(ECI)超过此天数没成功同步,提示上游同步滞后(warning) */
-  aiIndexStaleDays: 7,
+  aiIndexStaleDays: ECI_STALE_DAYS,
   /** AI 能力水位连续拉取失败达此次数判上游链路已挂(critical) */
-  aiIndexConsecutiveFails: 3,
+  aiIndexConsecutiveFails: ECI_CONSECUTIVE_FAILS,
 } as const;
 
 // ── 各域输入形状(只取判定需要的字段,避免工具层把整行塞进来) ──────────
