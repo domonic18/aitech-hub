@@ -29,6 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/topics/", // 专题聚合(A1):参考工具入口页
     "/pricing/", // M55 批D:牌价速查(双表 SSR 静态页)
     "/pricing/changes/", // M74 批F:降价史(独立路由,爬虫可抓)
+    "/ai-index/", // AI 智能指数看板(Epoch ECI 能力层 + 新闻冲击分)
     "/archive/",
     "/about/",
     "/agreement/",
