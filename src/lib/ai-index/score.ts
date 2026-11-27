@@ -10,6 +10,7 @@
 import { decideQuestions, type JevQuestion } from "@/lib/ai/decisions-client";
 import { resolveInsightModel } from "@/lib/insight/model";
 import { AI_PURPOSE_INSIGHT_JUDGE } from "@/lib/ai/constants";
+import type { ResolvedAiModel } from "@/lib/ai/resolver";
 
 export interface NewsItem {
   id: string;
@@ -291,14 +292,16 @@ export function ruleBasedScore(item: NewsItem): {
   };
 }
 
-async function jevScore(item: NewsItem): Promise<{
+async function jevScore(
+  item: NewsItem,
+  model: ResolvedAiModel | null,
+): Promise<{
   score: number;
   dimension: string;
   confidence: number;
   relevance: NewsRelevance;
   direction: NewsDirection;
 } | null> {
-  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT_JUDGE);
   if (model === null || model.protocol !== "systemone") return null;
 
   const questions: Record<string, JevQuestion> = {
@@ -383,7 +386,16 @@ async function jevScore(item: NewsItem): Promise<{
 }
 
 export async function scoreNewsItem(item: NewsItem): Promise<ScoredNewsItem> {
-  const jev = await jevScore(item);
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT_JUDGE);
+  return scoreNewsItemWith(item, model);
+}
+
+/** 用已解析好的模型打分(批量场景:模型只解析一次,避免每条一次查询) */
+export async function scoreNewsItemWith(
+  item: NewsItem,
+  model: ResolvedAiModel | null,
+): Promise<ScoredNewsItem> {
+  const jev = await jevScore(item, model);
   if (jev) {
     return {
       ...item,
@@ -407,8 +419,33 @@ export async function scoreNewsItem(item: NewsItem): Promise<ScoredNewsItem> {
   };
 }
 
+/** 并发上限兜底:绑定上的并发值可能是 0/负数/超大,收敛到可用区间 */
+function poolSize(model: ResolvedAiModel | null): number {
+  const raw = model?.concurrency ?? 1;
+  if (!Number.isFinite(raw)) return 1;
+  return Math.min(10, Math.max(1, Math.floor(raw)));
+}
+
+/**
+ * 批量打分:模型只解析一次,并发按绑定模型的 concurrency 收敛。
+ * (旧实现是无界 Promise.all——300 条就是 300 个并发模型调用。)
+ */
 export async function scoreNewsItems(items: NewsItem[]): Promise<ScoredNewsItem[]> {
-  return Promise.all(items.map(scoreNewsItem));
+  if (items.length === 0) return [];
+  const model = await resolveInsightModel(AI_PURPOSE_INSIGHT_JUDGE);
+  const limit = poolSize(model);
+  const out: ScoredNewsItem[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      out[index] = await scoreNewsItemWith(items[index], model);
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
 
 /** 相关性闸:只有 core/adjacent 进入指数池,other 直接丢弃 */

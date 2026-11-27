@@ -8,6 +8,8 @@ import type { Processor } from "bullmq";
 import {
   COVER_JOB_TEMP_SWEEP,
   DISTRIBUTE_JOB_XHS_STATE_PROBE,
+  AI_INDEX_JOB_DAILY_AGGREGATE,
+  AI_INDEX_JOB_ECI_FETCH,
   CRAWL_JOB_AI_BACKFILL,
   CRAWL_JOB_TICK,
   CRAWL_JOB_VIDEO,
@@ -40,6 +42,7 @@ import {
   QUEUE_ILLUSTRATION_STUDIO,
   QUEUE_INTERPRETER,
   QUEUE_MEDIA_AUDIT,
+  QUEUE_AI_INDEX,
   QUEUE_MEDIA_PROCESS,
   QUEUE_MEDIA_TRANSFER,
   QUEUE_PAY_RECONCILE,
@@ -116,6 +119,8 @@ import { dailyAuditOrders, sweepExpiredOrders } from "../src/lib/pay/reconcile";
 import { runWechatMpAnswer, type WechatMpAnswerJobData } from "../src/lib/channel/wechat-mp/answer";
 import { WECHAT_MP_JOB_ANSWER, WECHAT_MP_JOB_PURGE } from "../src/lib/channel/wechat-mp/constants";
 import { purgeWechatMpMessages } from "../src/lib/channel/wechat-mp/purge";
+import { aggregateAiIndex } from "../src/lib/ai-index/aggregate";
+import { syncEciFromUpstream } from "../src/lib/ai-index/sync";
 
 export const PROCESSORS: Record<string, Processor> = {
   [QUEUE_MEDIA_PROCESS]: (job) => processMediaJob(job),
@@ -443,5 +448,18 @@ export const PROCESSORS: Record<string, Processor> = {
       return purgeWechatMpMessages();
     }
     throw new Error(`未知 wechat-mp job:${job.name}`);
+  },
+  // AI 智能指数:能力层 ECI 日采(上游包 → 校验闸门 → 落库)+ 每日指数聚合
+  // (新消息打分 → 台账 → 冲击分 → 智能指数日表)
+  [QUEUE_AI_INDEX]: async (job) => {
+    if (job.name === AI_INDEX_JOB_ECI_FETCH) {
+      const r = await syncEciFromUpstream();
+      return r;
+    }
+    if (job.name === AI_INDEX_JOB_DAILY_AGGREGATE) {
+      const r = await aggregateAiIndex();
+      return r;
+    }
+    throw new Error(`未知 ai-index job:${job.name}`);
   },
 };

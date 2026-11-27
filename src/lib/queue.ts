@@ -74,6 +74,9 @@ export const QUEUE_WECHAT_MP = "wechat-mp";
  * 官方 URL 24h 过期前 worker 转存站内媒体;拆层 ~75s 不占请求(请求内禁秒级任务)。
  * 并发 1:拆层是单绑定模型重调用,串行防打爆速率 */
 export const QUEUE_ILLUSTRATION_STUDIO = "illustration-studio";
+/** AI 智能指数:能力层 ECI 日采 + 每日指数聚合。单开队列——ECI 拉取是外部
+ * 单请求、每日聚合要串行调模型,都不该和渠道采集(crawler)抢并发 */
+export const QUEUE_AI_INDEX = "ai-index";
 
 export const QUEUE_NAMES = [
   QUEUE_MEDIA_PROCESS,
@@ -95,6 +98,7 @@ export const QUEUE_NAMES = [
   QUEUE_INSIGHT,
   QUEUE_ILLUSTRATION_STUDIO,
   QUEUE_WECHAT_MP,
+  QUEUE_AI_INDEX,
   QUEUE_DISTRIBUTE_XHS,
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -104,6 +108,8 @@ export type QueueName = (typeof QUEUE_NAMES)[number];
 // re-export 保 worker/scripts 原引用路径不变。
 export {
   AGENT_SESSION_PURGE_CRON,
+  AI_INDEX_AGG_CRON,
+  AI_INDEX_ECI_CRON,
   COVER_TEMP_SWEEP_CRON,
   DB_BACKUP_CRON,
   DISCOVERY_BILI_CRON,
@@ -201,6 +207,12 @@ export const INSIGHT_JOB_TRANSLATE = "translate";
 export const INSIGHT_JOB_EXTRACT_EVENT = "extract-event";
 /** 高频小批打标(M60 批C):每 30 分钟一轮,带 data.clusterId 时只打该簇(手动补标) */
 export const INSIGHT_JOB_LABEL = "label";
+
+/** ai-index 队列 job name 契约:eci-fetch=上游 ECI 包日采(能力层真相源);
+ *  daily-aggregate=每日指数聚合(打分台账 → 冲击分 → 智能指数)。
+ *  改名需与 worker 同批 */
+export const AI_INDEX_JOB_ECI_FETCH = "eci-fetch";
+export const AI_INDEX_JOB_DAILY_AGGREGATE = "daily-aggregate";
 
 /** illustration-studio 队列 job name 契约(M40 批 B;decompose 为缺省路径——
  * 拆层运行首次触发与改字后手动重拆同一入口,jobId 锚 groupId 天然唯一)。

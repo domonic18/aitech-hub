@@ -7,6 +7,7 @@
  */
 import { prisma } from "@/lib/db";
 import { prerenderSafe } from "@/lib/prerender-safe";
+import { AI_INDEX_CARD_DAYS, AI_INDEX_SERIES_DEFAULT_DAYS, ECI_STALE_DAYS } from "./constants";
 
 export interface AiIndexDailyRow {
   date: string; // YYYY-MM-DD
@@ -41,8 +42,10 @@ function toRow(r: {
   };
 }
 
-/** 最近 N 天的指数序列(默认 90 天) */
-export async function listAiIndexDaily(days = 90): Promise<AiIndexDailyRow[]> {
+/** 最近 N 天的指数序列 */
+export async function listAiIndexDaily(
+  days = AI_INDEX_SERIES_DEFAULT_DAYS,
+): Promise<AiIndexDailyRow[]> {
   const since = new Date();
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);
@@ -56,13 +59,13 @@ export async function listAiIndexDaily(days = 90): Promise<AiIndexDailyRow[]> {
   });
 }
 
-/** 首页卡片:最近 30 天 + 最新一条 */
+/** 首页卡片:最近若干天 + 最新一条 */
 export async function getAiIndexCardData(): Promise<{
   recent: AiIndexDailyRow[];
   latest: AiIndexDailyRow | null;
 }> {
   const since = new Date();
-  since.setDate(since.getDate() - 30);
+  since.setDate(since.getDate() - AI_INDEX_CARD_DAYS);
   since.setHours(0, 0, 0, 0);
 
   return prerenderSafe("ai_index.card", { recent: [], latest: null }, async () => {
@@ -97,4 +100,71 @@ export async function getAiIndexDimensionCounts(): Promise<Record<string, number
     },
     {} as Record<string, number>,
   );
+}
+
+export interface EciSyncStatus {
+  /** 最近一次成功写入(ok)的同步时刻 */
+  lastOkAt: Date | null;
+  /** 最近一次拉取(含 rejected/failed)的时刻 */
+  lastAttemptAt: Date | null;
+  /** 最近一次拉取的状态 */
+  lastStatus: string | null;
+  /** 最近一次拉取的错误/拒收原因 */
+  lastError: string | null;
+  /** 库里最新模型的 ECI 日期 */
+  latestModelDate: string | null;
+  /** 库里的模型行数 */
+  modelCount: number;
+  /** 距上次成功同步的天数 */
+  staleDays: number | null;
+  /** 是否已滞后(超阈值未成功同步) */
+  stale: boolean;
+}
+
+const EMPTY_SYNC_STATUS: EciSyncStatus = {
+  lastOkAt: null,
+  lastAttemptAt: null,
+  lastStatus: null,
+  lastError: null,
+  latestModelDate: null,
+  modelCount: 0,
+  staleDays: null,
+  stale: false,
+};
+
+/** 能力层同步状态(前台新鲜度提示 + MCP 健康域共用) */
+export async function getEciSyncStatus(): Promise<EciSyncStatus> {
+  return prerenderSafe("ai_index.sync_status", EMPTY_SYNC_STATUS, async () => {
+    const [lastOk, lastAttempt, modelCount, latest] = await Promise.all([
+      prisma.aiIndexEciSync.findFirst({
+        where: { status: "ok" },
+        orderBy: { fetchedAt: "desc" },
+        select: { fetchedAt: true },
+      }),
+      prisma.aiIndexEciSync.findFirst({
+        orderBy: { fetchedAt: "desc" },
+        select: { fetchedAt: true, status: true, error: true },
+      }),
+      prisma.aiIndexEciModel.count(),
+      prisma.aiIndexEciModel.findFirst({
+        orderBy: { eciDate: "desc" },
+        select: { eciDate: true },
+      }),
+    ]);
+
+    const staleDays =
+      lastOk === null
+        ? null
+        : Math.floor((Date.now() - lastOk.fetchedAt.getTime()) / (24 * 60 * 60 * 1000));
+    return {
+      lastOkAt: lastOk?.fetchedAt ?? null,
+      lastAttemptAt: lastAttempt?.fetchedAt ?? null,
+      lastStatus: lastAttempt?.status ?? null,
+      lastError: lastAttempt?.error ?? null,
+      latestModelDate: latest?.eciDate.toISOString().slice(0, 10) ?? null,
+      modelCount,
+      staleDays,
+      stale: staleDays === null ? modelCount === 0 : staleDays > ECI_STALE_DAYS,
+    };
+  });
 }

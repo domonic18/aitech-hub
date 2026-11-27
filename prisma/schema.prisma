@@ -1991,3 +1991,70 @@ model AiIndexDaily {
   @@index([date], map: "idx_ai_index_daily_date")
   @@map("ai_index_daily")
 }
+
+/// AI 能力水位:Epoch AI Capabilities Index(ECI)逐模型分数,worker 每日拉上游包写入。
+/// 上游 zip 内 epoch_capabilities_index/eci_scores.csv(CC BY 4.0);模型集合是
+/// 「跑过基准的模型」全集(约 258 条),ECI 分数随新基准结果上修,故 eci 可被上游改写。
+/// 冷启动:表空时由 worker boot 用仓库快照 src/lib/ai-index/epoch-data.ts 播种一次。
+model AiIndexEciModel {
+  id                BigInt   @id @default(autoincrement())
+  model             String   @unique(map: "uq_ai_index_eci_model_model") @db.VarChar(200) // 上游 model 标识(唯一键)
+  displayName       String   @map("display_name") @db.VarChar(200) // 上游展示名
+  eci               Float // 能力指数分值(越大越强)
+  ciLow             Float    @map("ci_low") // 90% 可信区间下界
+  ciHigh            Float    @map("ci_high") // 90% 可信区间上界
+  eciDate           DateTime @map("eci_date") @db.Date // 模型发布日(前沿轨迹的时间轴)
+  organization      String   @db.VarChar(120) // 所属机构
+  country           String?  @db.VarChar(60) // 机构所在国家
+  accessibility     String?  @db.VarChar(40) // 上游口径的开放性标签
+  accessibilityGroup String? @map("accessibility_group") @db.VarChar(60)
+  sourceHash        String?  @map("source_hash") @db.Char(64) // 写入本行的上游 CSV 指纹(sha256)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([eciDate], map: "idx_ai_index_eci_model_eci_date")
+  @@map("ai_index_eci_model")
+}
+
+/// AI 能力水位同步台账:每次上游拉取一行,含内容指纹与闸门结论(可观测/可回溯)。
+/// status=ok(内容变化且已写入)/no_change(指纹未变,零写入)/rejected(校验闸门拒收,保留旧数据)/
+/// failed(下载或解析失败)。frontier_eci 记当批前沿值,changed_models 记实际变更行数。
+model AiIndexEciSync {
+  id            BigInt   @id @default(autoincrement())
+  fetchedAt     DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+  status        String   @db.VarChar(16) // ok/no_change/rejected/failed
+  httpStatus    Int?     @map("http_status")
+  contentHash   String?  @map("content_hash") @db.Char(64) // 解出的 CSV 原文 sha256(非 zip 哈希)
+  modelCount    Int?     @map("model_count") // 本批模型行数
+  frontierEci   Float?   @map("frontier_eci") // 本批能力前沿值
+  changedModels Int?     @map("changed_models") // 实际写入/变更的模型数
+  durationMs    Int?     @map("duration_ms")
+  error         String?  @db.Text // 失败或拒收原因原文
+
+  @@index([fetchedAt(sort: Desc)], map: "idx_ai_index_eci_sync_recent")
+  @@map("ai_index_eci_sync")
+}
+
+/// AI 智能指数·事件评分台账:每条电报流消息一行打分结果。
+/// 存在意义:LLM 打分只对「新消息」做一次,每日聚合读本表重算指数,避免每天重复调模型。
+/// summary/source_name 必须留:规则兜底打分读 summary,可信源加成读 sourceName,
+/// 缺了缓存重放结果会与首次打分漂移。不建 FK:telegram 明细有清理周期,台账独立留存。
+model AiIndexEventScore {
+  id           BigInt   @id @default(autoincrement())
+  telegramId   BigInt   @unique(map: "uq_ai_index_event_score_telegram_id") @map("telegram_id") // telegram.id
+  publishedAt  DateTime @map("published_at") @db.Timestamptz(6) // 发布时刻(UTC 日界分桶)
+  title        String   @db.VarChar(300)
+  summary      String   @db.Text // 打分输入正文(aiSummary ?? summary)
+  sourceName   String?  @map("source_name") @db.VarChar(120) // 渠道名(可信源加成用)
+  url          String?  @db.VarChar(500)
+  impactScore  Float    @map("impact_score") // 影响力分(0–100)
+  confidence   Float // 置信度(0–1)
+  dimension    String   @db.VarChar(20) // model/benchmark/agent/multimodal/business/policy/other
+  relevance    String   @db.VarChar(12) // core/adjacent/other(相关性闸)
+  direction    String   @db.VarChar(12) // positive/negative/neutral
+  scorer       String   @db.VarChar(10) // jev(模型)/rule(规则兜底)
+  scoredAt     DateTime @default(now()) @map("scored_at") @db.Timestamptz(6)
+
+  @@index([publishedAt], map: "idx_ai_index_event_score_published_at")
+  @@map("ai_index_event_score")
+}

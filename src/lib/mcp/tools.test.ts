@@ -231,10 +231,11 @@ describe("MCP server 装配", () => {
 });
 
 describe("M75 运维面入参 schema 边界", () => {
-  it("get_health_snapshot: domains 只收四域、problemLimit ≤50", () => {
+  it("get_health_snapshot: domains 只收五域、problemLimit ≤50", () => {
     const s = schemaOf("get_health_snapshot");
     expect(s.safeParse({}).success).toBe(true);
     expect(s.safeParse({ domains: ["pricing", "queue"] }).success).toBe(true);
+    expect(s.safeParse({ domains: ["aiindex"] }).success).toBe(true);
     expect(s.safeParse({ domains: ["unknown"] }).success).toBe(false);
     expect(s.safeParse({ problemLimit: 50 }).success).toBe(true);
     expect(s.safeParse({ problemLimit: 51 }).success).toBe(false);

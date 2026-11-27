@@ -10,16 +10,18 @@
 import { listPricingSourceHealth } from "@/lib/pricing/health";
 import { listChannelsAdmin } from "@/lib/telegram/channels-admin";
 import { listBloggersAdmin } from "@/lib/telegram/bloggers-admin";
+import { prisma } from "@/lib/db";
+import { getEciSyncStatus } from "@/lib/ai-index/read";
 import {
   getCrawlerQueueSnapshot,
   getGithubQueueSnapshot,
   getInterpreterQueueSnapshot,
   getSummarizerQueueSnapshot,
 } from "@/lib/telegram/spider-queries";
-import type { PricingHealthInput } from "@/lib/collect/health-report";
+import type { AiIndexHealthInput, PricingHealthInput } from "@/lib/collect/health-report";
 
 /** 巡查域(与工具入参同值) */
-export const HEALTH_DOMAINS = ["pricing", "telegram", "video", "queue"] as const;
+export const HEALTH_DOMAINS = ["pricing", "telegram", "video", "queue", "aiindex"] as const;
 
 /** 快照缓存 TTL(进程内):吸收 agent 高频轮询,别把库打穿 */
 const SNAPSHOT_TTL_MS = 45_000;
@@ -168,4 +170,36 @@ export async function loadBloggers(): Promise<
     lastError: b.lastError,
     lastRunAt: b.lastRunAt,
   }));
+}
+
+/**
+ * AI 智能指数能力层 → 判定输入。
+ * 连败数从同步台账尾部数(连续非 ok 的行数),不额外维护计数器。
+ */
+export async function loadAiIndexHealth(): Promise<AiIndexHealthInput[]> {
+  const [status, recent] = await Promise.all([
+    getEciSyncStatus(),
+    prisma.aiIndexEciSync.findMany({
+      orderBy: { fetchedAt: "desc" },
+      take: 10,
+      select: { status: true },
+    }),
+  ]);
+  let consecutiveFails = 0;
+  for (const row of recent) {
+    if (row.status === "ok" || row.status === "no_change") break;
+    consecutiveFails += 1;
+  }
+  return [
+    {
+      modelCount: status.modelCount,
+      latestModelDate: status.latestModelDate,
+      lastOkAt: status.lastOkAt,
+      lastAttemptAt: status.lastAttemptAt,
+      lastStatus: status.lastStatus,
+      lastError: status.lastError,
+      consecutiveFails,
+      staleDays: status.staleDays,
+    },
+  ];
 }

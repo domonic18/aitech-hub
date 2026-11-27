@@ -1,5 +1,5 @@
 import { AiIndexCard } from "@/components/site/ai-index/AiIndexCard";
-import { getAiIndexCardData } from "@/lib/ai-index/read";
+import { getAiIndexCardData, getEciSyncStatus } from "@/lib/ai-index/read";
 import Link from "next/link";
 
 import { countPublishedPosts, listLatestPosts } from "@/lib/content/posts";
@@ -51,7 +51,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
   ]);
 
   // AI 智能指数首页卡片数据(由 ai_index_daily 表驱动)
-  const aiIndexCard = await getAiIndexCardData();
+  const [aiIndexCard, eciSync] = await Promise.all([getAiIndexCardData(), getEciSyncStatus()]);
 
   return (
     <div className="mx-auto w-full max-w-[var(--site-max-w)]">
@@ -74,7 +74,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
         <aside className="flex min-w-0 flex-col gap-4">
           {/* 无指数数据(首次落库前 / 构建期无库降级)时整卡不渲染,不占版面也不出空壳 */}
           {(aiIndexCard.latest !== null || aiIndexCard.recent.length > 0) && (
-            <AiIndexCard recent={aiIndexCard.recent} latest={aiIndexCard.latest} />
+            <AiIndexCard recent={aiIndexCard.recent} latest={aiIndexCard.latest} sync={eciSync} />
           )}
           {repos.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
