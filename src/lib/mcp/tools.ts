@@ -77,7 +77,7 @@ const SERVER_INSTRUCTIONS = [
   "list_model_pricing —— 模型牌价行清单(按状态/厂商筛,缺省 pending 待审队列):",
   "返回行 id、价格、状态、是否带【待复核】标、是否人工定稿、对应采集源健康;",
   "巡查牌位与圈定待审行都用它——上架前先看 hasRecheckMark 与 sourceHealth。",
-  "get_health_snapshot —— 采集健康度总览(牌价源/文章渠道/视频博主/队列与 AI 管线四域)+",
+  "get_health_snapshot —— 采集健康度总览(牌价源/文章渠道/视频博主/队列与 AI 管线/AI 指数能力层五域)+",
   "结构化问题清单 problems[](critical=源已挂或数据已脏,warning=降级或积压),每条带证据与建议;",
   "get_health_failures —— 一段时间内的失败明细与错误原文(写周报时列具体源与错因)。",
   "受限动作:trigger_recovery(手动重采:渠道/牌价源、视频博主、博主回补、GitHub 仓库;",

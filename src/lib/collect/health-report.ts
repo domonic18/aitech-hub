@@ -12,7 +12,7 @@
  */
 
 /** 巡查域(与工具入参 domains 同名) */
-export type HealthDomain = "pricing" | "telegram" | "video" | "queue";
+export type HealthDomain = "pricing" | "telegram" | "video" | "queue" | "aiindex";
 
 /** 严重度:critical=源已挂/数据已脏(需尽快处理);warning=降级/积压(可排期) */
 export type HealthSeverity = "critical" | "warning";
@@ -43,6 +43,10 @@ export const HEALTH_THRESHOLDS = {
   oldestWaitingMs: 30 * 60 * 1000,
   /** AI 日配额使用率超此比例提示逼近上限(warning) */
   dailyQuotaRatio: 0.9,
+  /** AI 能力水位(ECI)超过此天数没成功同步,提示上游同步滞后(warning) */
+  aiIndexStaleDays: 7,
+  /** AI 能力水位连续拉取失败达此次数判上游链路已挂(critical) */
+  aiIndexConsecutiveFails: 3,
 } as const;
 
 // ── 各域输入形状(只取判定需要的字段,避免工具层把整行塞进来) ──────────
@@ -107,6 +111,80 @@ export interface QueueHealthInput {
 }
 
 // ── 各域判定 ──────────────────────────────────────────────────────────
+
+/** AI 智能指数(能力水位 ECI 同步)判定输入 */
+export interface AiIndexHealthInput {
+  /** 库里已有的 ECI 模型行数 */
+  modelCount: number;
+  /** 最新模型的 ECI 日期 */
+  latestModelDate: string | null;
+  /** 最近一次成功写入(ok)的同步时刻 */
+  lastOkAt: Date | null;
+  /** 最近一次拉取(含 rejected/failed)的时刻 */
+  lastAttemptAt: Date | null;
+  /** 最近一次拉取状态 */
+  lastStatus: string | null;
+  /** 最近一次拉取错误/拒收原因 */
+  lastError: string | null;
+  /** 连续非 ok 的拉取次数 */
+  consecutiveFails: number;
+  /** 距上次成功同步的天数 */
+  staleDays: number | null;
+}
+
+/** AI 智能指数:能力水位同步滞后/连续失败/闸门拒收 */
+export function aiindexProblems(rows: AiIndexHealthInput[]): HealthProblem[] {
+  const out: HealthProblem[] = [];
+  for (const r of rows) {
+    const target = "AI 能力水位(Epoch ECI)";
+    if (r.consecutiveFails >= HEALTH_THRESHOLDS.aiIndexConsecutiveFails) {
+      out.push({
+        domain: "aiindex",
+        kind: "eci_sync_failed",
+        severity: "critical",
+        target,
+        summary: `ECI 同步连续失败 ${r.consecutiveFails} 次,能力基线已停止更新`,
+        evidence: r.lastError ?? undefined,
+        suggest: "查上游包是否改版/断链;看 ai_index_eci_sync 台账的最近错误原文",
+      });
+      continue;
+    }
+    if (r.lastStatus === "rejected") {
+      out.push({
+        domain: "aiindex",
+        kind: "eci_rejected",
+        severity: "warning",
+        target,
+        summary: "ECI 上游数据未通过校验闸门,已保留旧数据继续服务",
+        evidence: r.lastError ?? undefined,
+        suggest: "多为上游数据异常(行数/分数越界);核对 ai_index_eci_sync 台账",
+      });
+    }
+    if (r.staleDays !== null && r.staleDays > HEALTH_THRESHOLDS.aiIndexStaleDays) {
+      out.push({
+        domain: "aiindex",
+        kind: "eci_stale",
+        severity: "warning",
+        target,
+        summary: `ECI 同步已滞后 ${r.staleDays} 天,能力基线可能不是最新刻度`,
+        evidence: `lastOk=${r.lastOkAt?.toISOString().slice(0, 10) ?? "无"}`,
+        suggest: "看 ECI 同步 job 的失败原因;上游可达后下轮自动恢复",
+      });
+    }
+    if (r.modelCount === 0) {
+      out.push({
+        domain: "aiindex",
+        kind: "eci_empty",
+        severity: "warning",
+        target,
+        summary: "ECI 能力层还没有任何模型数据,指数里的能力基线为空",
+        evidence: `lastStatus=${r.lastStatus ?? "无拉取记录"}`,
+        suggest: "确认 worker 的 ai-index 队列在跑,并执行一次 eci-fetch",
+      });
+    }
+  }
+  return out;
+}
 
 /** 牌价源:连败/状态错误/整源待复核/最近快照失败/待终审积压 */
 export function pricingProblems(rows: PricingHealthInput[]): HealthProblem[] {

@@ -1,11 +1,12 @@
 /**
- * AI 智能指数:Epoch AI Capabilities Index (ECI) 公开数据
+ * AI 智能指数:Epoch AI Capabilities Index (ECI) 冷启动底稿
  * 本文件由 scripts/ops/ai-index/fetch-epoch-data.ts 自动生成(npm run ai-index:fetch)。
- * Epoch 数据包更新后重新生成并提交,快照入库以免构建期依赖外网。
+ * 线上真相源是数据库表 ai_index_eci_model(worker 每日同步);本文件只在
+ * worker boot 冷启动播种时用一次(表空才播种),之后由日采接管。
  *
- * 数据来源:https://epoch.ai/data/benchmark_data.zip → epoch_capabilities_index/eci_scores.csv
+ * 数据来源:https://epoch.ai/data/eci_scores.csv(本次取数路径:csv)
  * 许可:CC BY 4.0(Epoch AI)
- * 生成时间:2026-11-27T00:44:22.569Z
+ * 生成时间:2026-11-27T01:50:01.541Z
  */
 export interface EpochEciModel {
   model: string;
@@ -20,32 +21,13 @@ export interface EpochEciModel {
   accessibilityGroup: string;
 }
 
-/** 每刷新一次历史最高 ECI 的模型(能力前沿轨迹) */
-export interface EpochEciRecord {
-  date: string;
-  eci: number;
-  model: string;
-  organization: string;
-}
-
-export interface EpochEciYearly {
-  year: number;
-  modelCount: number;
-  frontierEci: number;
-  frontierModel: string;
-  top3AvgEci: number;
-  medianEci: number;
-  meanEci: number;
-  openWeightsFrontierEci: number | null;
-  organizationCount: number;
-}
-
 export const epochEciMeta = {
-  source: "https://epoch.ai/data/benchmark_data.zip",
-  file: "epoch_capabilities_index/eci_scores.csv",
+  source: "https://epoch.ai/data/eci_scores.csv",
+  file: "csv",
   license: "CC BY 4.0",
-  generatedAt: "2026-11-27T00:44:22.569Z",
+  generatedAt: "2026-11-27T01:50:01.541Z",
   modelCount: 258,
+  frontierCount: 23,
 } as const;
 
 export const epochEciModels: EpochEciModel[] = [
@@ -140,7 +122,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 60.8,
     ciHigh: 88.61,
     date: "2023-04-12",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -164,7 +146,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 37.89,
     ciHigh: 74.36,
     date: "2023-05-04",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -188,7 +170,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 98.42,
     ciHigh: 130.45,
     date: "2023-05-17",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -200,7 +182,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 84.63,
     ciHigh: 109.73,
     date: "2023-05-17",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -212,7 +194,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 80.67,
     ciHigh: 105.69,
     date: "2023-05-17",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -236,7 +218,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 46.03,
     ciHigh: 79.52,
     date: "2023-06-07",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -284,7 +266,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 58.37,
     ciHigh: 86.79,
     date: "2023-06-24",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -308,7 +290,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 72.54,
     ciHigh: 94.82,
     date: "2023-07-05",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -440,7 +422,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 89.1,
     ciHigh: 107.47,
     date: "2023-09-18",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -548,7 +530,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 40.23,
     ciHigh: 75.72,
     date: "2023-11-30",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -716,7 +698,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 91.31,
     ciHigh: 111.83,
     date: "2024-03-01",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -752,7 +734,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 57.5,
     ciHigh: 88.58,
     date: "2024-04-15",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -908,7 +890,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 88.84,
     ciHigh: 108.43,
     date: "2024-06-13",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -1076,7 +1058,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 105.15,
     ciHigh: 122.27,
     date: "2024-09-18",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -1100,7 +1082,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 82.92,
     ciHigh: 109.11,
     date: "2024-09-18",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -1124,7 +1106,7 @@ export const epochEciModels: EpochEciModel[] = [
     ciLow: 48.35,
     ciHigh: 83.88,
     date: "2024-09-18",
-    organization: "",
+    organization: "unknown",
     country: "",
     accessibility: "Unknown",
     accessibilityGroup: "Other",
@@ -3144,193 +3126,5 @@ export const epochEciModels: EpochEciModel[] = [
     country: "United States of America",
     accessibility: "API access",
     accessibilityGroup: "Closed weights",
-  },
-];
-
-export const epochEciRecords: EpochEciRecord[] = [
-  {
-    date: "2023-02-24",
-    eci: 101.51,
-    model: "LLaMA-65B",
-    organization: "Meta AI",
-  },
-  {
-    date: "2023-03-14",
-    eci: 121.61,
-    model: "GPT-4 (Mar 2023)",
-    organization: "OpenAI",
-  },
-  {
-    date: "2024-01-25",
-    eci: 124.77,
-    model: "GPT-4 Turbo (Nov 2023)",
-    organization: "OpenAI",
-  },
-  {
-    date: "2024-02-29",
-    eci: 125.59,
-    model: "Claude 3 Opus",
-    organization: "Anthropic",
-  },
-  {
-    date: "2024-04-09",
-    eci: 125.82,
-    model: "GPT-4 Turbo (Apr 2024)",
-    organization: "OpenAI",
-  },
-  {
-    date: "2024-05-13",
-    eci: 128.13,
-    model: "GPT-4o (May 2024)",
-    organization: "OpenAI",
-  },
-  {
-    date: "2024-06-20",
-    eci: 130,
-    model: "Claude 3.5 Sonnet",
-    organization: "Anthropic",
-  },
-  {
-    date: "2024-09-12",
-    eci: 135.27,
-    model: "o1-mini",
-    organization: "OpenAI",
-  },
-  {
-    date: "2024-12-17",
-    eci: 141.16,
-    model: "o1",
-    organization: "OpenAI",
-  },
-  {
-    date: "2025-03-31",
-    eci: 143.98,
-    model: "Gemini 2.5 Pro (Mar 2025)",
-    organization: "Google DeepMind",
-  },
-  {
-    date: "2025-04-16",
-    eci: 147.02,
-    model: "o3",
-    organization: "OpenAI",
-  },
-  {
-    date: "2025-06-10",
-    eci: 147.47,
-    model: "o3-pro",
-    organization: "OpenAI",
-  },
-  {
-    date: "2025-08-07",
-    eci: 150,
-    model: "GPT-5",
-    organization: "OpenAI",
-  },
-  {
-    date: "2025-10-07",
-    eci: 151.3,
-    model: "GPT-5 Pro",
-    organization: "OpenAI",
-  },
-  {
-    date: "2025-11-18",
-    eci: 153.04,
-    model: "Gemini 3 Pro",
-    organization: "Google DeepMind",
-  },
-  {
-    date: "2025-12-11",
-    eci: 157.35,
-    model: "GPT-5.2 Pro",
-    organization: "OpenAI",
-  },
-  {
-    date: "2026-03-05",
-    eci: 160.31,
-    model: "GPT-5.4 Pro",
-    organization: "OpenAI",
-  },
-  {
-    date: "2026-04-23",
-    eci: 162.78,
-    model: "GPT-5.5 Pro",
-    organization: "OpenAI",
-  },
-  {
-    date: "2026-06-09",
-    eci: 164.18,
-    model: "Claude Fable 5",
-    organization: "Anthropic",
-  },
-  {
-    date: "2026-07-24",
-    eci: 164.72,
-    model: "Claude Opus 5",
-    organization: "Anthropic",
-  },
-  {
-    date: "2026-09-01",
-    eci: 167.06,
-    model: "Claude Fable 5.1",
-    organization: "Anthropic",
-  },
-  {
-    date: "2026-09-03",
-    eci: 169.21,
-    model: "GPT-6 Astra",
-    organization: "OpenAI",
-  },
-  {
-    date: "2026-11-09",
-    eci: 173.4,
-    model: "Claude Fable 5.2",
-    organization: "Anthropic",
-  },
-];
-
-export const epochEciYearly: EpochEciYearly[] = [
-  {
-    year: 2023,
-    modelCount: 44,
-    frontierEci: 121.61,
-    frontierModel: "GPT-4 (Mar 2023)",
-    top3AvgEci: 119.56,
-    medianEci: 92.8,
-    meanEci: 89.78,
-    openWeightsFrontierEci: 113.19,
-    organizationCount: 16,
-  },
-  {
-    year: 2024,
-    modelCount: 59,
-    frontierEci: 141.16,
-    frontierModel: "o1",
-    top3AvgEci: 136.67,
-    medianEci: 119.97,
-    meanEci: 114.52,
-    openWeightsFrontierEci: 131.69,
-    organizationCount: 15,
-  },
-  {
-    year: 2025,
-    modelCount: 66,
-    frontierEci: 157.35,
-    frontierModel: "GPT-5.2 Pro",
-    top3AvgEci: 154.97,
-    medianEci: 140.76,
-    meanEci: 140.82,
-    openWeightsFrontierEci: 146.26,
-    organizationCount: 11,
-  },
-  {
-    year: 2026,
-    modelCount: 89,
-    frontierEci: 173.4,
-    frontierModel: "Claude Fable 5.2",
-    top3AvgEci: 171.97,
-    medianEci: 155.24,
-    meanEci: 155.2,
-    openWeightsFrontierEci: 161.2,
-    organizationCount: 15,
   },
 ];

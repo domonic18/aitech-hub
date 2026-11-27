@@ -98,3 +98,73 @@ export async function getAiIndexDimensionCounts(): Promise<Record<string, number
     {} as Record<string, number>,
   );
 }
+
+/** ECI 同步超过这个天数没成功,前台标「滞后」 */
+export const ECI_STALE_DAYS = 7;
+
+export interface EciSyncStatus {
+  /** 最近一次成功写入(ok)的同步时刻 */
+  lastOkAt: Date | null;
+  /** 最近一次拉取(含 rejected/failed)的时刻 */
+  lastAttemptAt: Date | null;
+  /** 最近一次拉取的状态 */
+  lastStatus: string | null;
+  /** 最近一次拉取的错误/拒收原因 */
+  lastError: string | null;
+  /** 库里最新模型的 ECI 日期 */
+  latestModelDate: string | null;
+  /** 库里的模型行数 */
+  modelCount: number;
+  /** 距上次成功同步的天数 */
+  staleDays: number | null;
+  /** 是否已滞后(超阈值未成功同步) */
+  stale: boolean;
+}
+
+const EMPTY_SYNC_STATUS: EciSyncStatus = {
+  lastOkAt: null,
+  lastAttemptAt: null,
+  lastStatus: null,
+  lastError: null,
+  latestModelDate: null,
+  modelCount: 0,
+  staleDays: null,
+  stale: false,
+};
+
+/** 能力层同步状态(前台新鲜度提示 + MCP 健康域共用) */
+export async function getEciSyncStatus(): Promise<EciSyncStatus> {
+  return prerenderSafe("ai_index.sync_status", EMPTY_SYNC_STATUS, async () => {
+    const [lastOk, lastAttempt, modelCount, latest] = await Promise.all([
+      prisma.aiIndexEciSync.findFirst({
+        where: { status: "ok" },
+        orderBy: { fetchedAt: "desc" },
+        select: { fetchedAt: true },
+      }),
+      prisma.aiIndexEciSync.findFirst({
+        orderBy: { fetchedAt: "desc" },
+        select: { fetchedAt: true, status: true, error: true },
+      }),
+      prisma.aiIndexEciModel.count(),
+      prisma.aiIndexEciModel.findFirst({
+        orderBy: { eciDate: "desc" },
+        select: { eciDate: true },
+      }),
+    ]);
+
+    const staleDays =
+      lastOk === null
+        ? null
+        : Math.floor((Date.now() - lastOk.fetchedAt.getTime()) / (24 * 60 * 60 * 1000));
+    return {
+      lastOkAt: lastOk?.fetchedAt ?? null,
+      lastAttemptAt: lastAttempt?.fetchedAt ?? null,
+      lastStatus: lastAttempt?.status ?? null,
+      lastError: lastAttempt?.error ?? null,
+      latestModelDate: latest?.eciDate.toISOString().slice(0, 10) ?? null,
+      modelCount,
+      staleDays,
+      stale: staleDays === null ? modelCount === 0 : staleDays > ECI_STALE_DAYS,
+    };
+  });
+}

@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 
-import type { AiIndexDailyRow } from "@/lib/ai-index/read";
+import type { AiIndexDailyRow, EciSyncStatus } from "@/lib/ai-index/read";
 import { parseTopEvents } from "@/lib/ai-index/top-events";
 
 interface AiIndexCardProps {
   recent: AiIndexDailyRow[];
   latest: AiIndexDailyRow | null;
+  /** 能力层同步状态(前台新鲜度提示);构建期无库时为 null */
+  sync: EciSyncStatus | null;
 }
 
-export function AiIndexCard({ recent, latest }: AiIndexCardProps): React.ReactElement {
+export function AiIndexCard({ recent, latest, sync }: AiIndexCardProps): React.ReactElement {
   const indexData = recent.map((r) => ({ x: new Date(r.date).getTime(), y: r.intelligenceIndex }));
   const hasData = indexData.length > 0;
 
@@ -68,6 +70,14 @@ export function AiIndexCard({ recent, latest }: AiIndexCardProps): React.ReactEl
         <p className="mt-2 text-xs leading-relaxed text-text-3">
           能力水位取自 Epoch AI 公开 ECI 数据,冲击脉冲来自电报流中真正与 AI 相关的事件。
         </p>
+        {sync !== null && sync.modelCount > 0 && (
+          <p className="mt-1 text-[11px] leading-relaxed text-text-3">
+            能力水位数据截至 {sync.latestModelDate ?? "未知"}
+            {sync.stale && (
+              <span className="text-amber"> · 同步滞后 {sync.staleDays ?? "—"} 天</span>
+            )}
+          </p>
+        )}
         <div className="mt-3 border-t border-line/60 pt-2.5 text-center">
           <Link href="/ai-index/" className="text-[13px] text-text-2 hover:text-accent-hover">
             查看完整指数 →

@@ -12,6 +12,8 @@ import type { Job, Processor } from "bullmq";
 import { createJobRun, finishJobRun } from "../src/lib/jobs/runlog";
 import { logError } from "../src/lib/logger";
 import {
+  AI_INDEX_JOB_DAILY_AGGREGATE,
+  AI_INDEX_JOB_ECI_FETCH,
   COVER_JOB_TEMP_SWEEP,
   CRAWL_JOB_AI_BACKFILL,
   CRAWL_JOB_SOURCE,
@@ -26,6 +28,7 @@ import {
   PAY_JOB_DAILY_AUDIT,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
+  QUEUE_AI_INDEX,
   QUEUE_DB_BACKUP,
   QUEUE_DISCOVERY,
   QUEUE_INSIGHT,
@@ -64,6 +67,9 @@ const JOB_RUN_LOGGED: ReadonlySet<string> = new Set([
   `${QUEUE_CRAWLER}/${LEADERBOARD_JOB_FX_REFRESH}`,
   // 公众号明细清理(M66;日 1 行,清理失败要在计划页可见)
   `${QUEUE_WECHAT_MP}/${WECHAT_MP_JOB_PURGE}`,
+  // AI 智能指数(M79+):日 2 行,失败要在计划页可见(上游包坏/闸门拒收都在这)
+  `${QUEUE_AI_INDEX}/${AI_INDEX_JOB_ECI_FETCH}`,
+  `${QUEUE_AI_INDEX}/${AI_INDEX_JOB_DAILY_AGGREGATE}`,
 ]);
 
 /** 手动触发判别:各触发入口 jobId 统一带 -manual-(insight/discovery 触发路由、

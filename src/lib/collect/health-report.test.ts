@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  aiindexProblems,
   channelProblems,
   HEALTH_THRESHOLDS,
   pricingProblems,
@@ -12,6 +13,7 @@ import {
   sortProblems,
   trimProblems,
   videoProblems,
+  type AiIndexHealthInput,
   type PricingHealthInput,
 } from "./health-report";
 
@@ -187,5 +189,53 @@ describe("sortProblems / trimProblems", () => {
     const trimmed = trimProblems(problems, 1);
     expect(trimmed.items).toHaveLength(1);
     expect(trimmed.truncated).toBe(1);
+  });
+});
+
+describe("aiindexProblems", () => {
+  const row = (over: Partial<AiIndexHealthInput>): AiIndexHealthInput => ({
+    modelCount: 258,
+    latestModelDate: "2026-11-17",
+    lastOkAt: new Date("2026-11-27T00:00:00Z"),
+    lastAttemptAt: new Date("2026-11-27T00:00:00Z"),
+    lastStatus: "ok",
+    lastError: null,
+    consecutiveFails: 0,
+    staleDays: 0,
+    ...over,
+  });
+
+  it("一切正常时无问题", () => {
+    expect(aiindexProblems([row({})])).toEqual([]);
+  });
+
+  it("连续失败达阈值判 critical", () => {
+    const problems = aiindexProblems([
+      row({
+        consecutiveFails: HEALTH_THRESHOLDS.aiIndexConsecutiveFails,
+        lastStatus: "failed",
+        lastError: "上游 HTTP 503",
+      }),
+    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.severity).toBe("critical");
+    expect(problems[0]?.evidence).toContain("503");
+  });
+
+  it("闸门拒收判 warning(旧数据仍在服务)", () => {
+    const problems = aiindexProblems([
+      row({ lastStatus: "rejected", lastError: "模型数跌幅过大", consecutiveFails: 1 }),
+    ]);
+    expect(problems.some((p) => p.kind === "eci_rejected" && p.severity === "warning")).toBe(true);
+  });
+
+  it("同步滞后超阈值判 warning", () => {
+    const problems = aiindexProblems([row({ staleDays: HEALTH_THRESHOLDS.aiIndexStaleDays + 1 })]);
+    expect(problems.some((p) => p.kind === "eci_stale")).toBe(true);
+  });
+
+  it("能力层无数据判 warning", () => {
+    const problems = aiindexProblems([row({ modelCount: 0, staleDays: null })]);
+    expect(problems.some((p) => p.kind === "eci_empty")).toBe(true);
   });
 });

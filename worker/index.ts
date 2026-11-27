@@ -16,6 +16,7 @@ import { withJobRunLog } from "./job-run";
 import {
   scheduleAgentSessionPurge,
   scheduleAiBackfillTick,
+  scheduleAiIndex,
   scheduleCoverTempSweep,
   scheduleCrawlerTick,
   scheduleDbBackup,
@@ -149,6 +150,18 @@ async function main(): Promise<void> {
   await scheduleAiBackfillTick();
   await scheduleDiscovery();
   await scheduleInsight();
+  await scheduleAiIndex();
+
+  // AI 智能指数能力层冷启动:表空时用仓库快照播种一次(此后由日采接管)。
+  // 失败不拦 boot——能力基线缺失只让指数为 0,看板显示空态
+  {
+    const { seedEciFromSnapshot } = await import("../src/lib/ai-index/sync");
+    await seedEciFromSnapshot().catch((e: unknown) =>
+      logError("ai_index.eci_seed_failed", {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+  }
 
   // checkpoint 表框架双保险(web 侧 getAgentGraph 懒加载为主;失败不拦 boot,
   // 首个 agent 任务内部 ensure 重试)

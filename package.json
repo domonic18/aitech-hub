@@ -26,7 +26,7 @@
     "insight:entity-backfill": "tsx scripts/ops/insight-entity-backfill.ts",
     "pricing:snapshot": "tsx scripts/ops/pricing-snapshot.ts",
     "ai-index:fetch": "tsx scripts/ops/ai-index/fetch-epoch-data.ts",
-    "ai-index:update": "tsx scripts/ops/ai-index/daily-update.ts"
+    "ai-index:run": "tsx scripts/ops/ai-index/trigger.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -6,6 +6,7 @@
  * 浏览器包的禁入面;worker 运行态配置与 processors/schedules 同居 worker/。
  */
 import {
+  QUEUE_AI_INDEX,
   QUEUE_COVER_GEN,
   QUEUE_CRAWLER,
   QUEUE_DB_BACKUP,
@@ -57,4 +58,7 @@ export const QUEUE_WORKER_OPTS: Record<string, QueueWorkerOpts> = {
   // 牌价渲染型源(M74 批B4 词元所三段式 ~70 页渲染 + 1.2s 礼貌间隔 ≈ 9-10min):
   // 锁放宽到 900s 兜底 stalled 判定(BullMQ 自动续期,这里只放大兜底窗口)
   [QUEUE_CRAWLER]: { lockDuration: 900_000 },
+  // AI 智能指数:ECI 拉取秒级、每日聚合要串行调模型(并发 1),
+  // 锁 600s 覆盖单轮打分批次(发版 SIGKILL 时靠台账幂等续跑)
+  [QUEUE_AI_INDEX]: { concurrency: 1, lockDuration: 600_000 },
 };
