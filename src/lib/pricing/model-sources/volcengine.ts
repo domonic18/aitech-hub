@@ -19,6 +19,13 @@
  * 如 seedream-5-5「P ≤ 2.61M：0.13」),格内各段以零宽字符 U+200B 分隔 → 走
  * ark-image-price.parsePriceEntries 拆档;行价取标准场景的最低像素档,档位名带分辨率/
  * 场景标签(不套 token 表的推理场景前缀,那是错标)。
+ *
+ * M80 视频表(按片计价 + 官方折合价):表头「模型 | 价格口径 | 480p | 720p | 1080p | 4K」,
+ * 每个模型两行——「视频单价（元/个）」(按片价,随视频时长变动)与「折合价格（元/秒）」
+ * (官方自己给的每秒口径)。**行价取折合价**:它与百炼/百度的按秒价同口径,可直接比价、
+ * 可算场景成本;按片价只作档位附注(不进行价——同型号不同时长价不同,一个数说不清)。
+ * 另有一张「视频价格范围（元/个）」表(如 480p 3.63～14.12),那是同一每秒价按时长展开
+ * 的区间(3.63/0.672 ≈ 5.4s、14.12/0.672 = 21s),不另立口径,不采。
  */
 import * as cheerio from "cheerio";
 
@@ -26,6 +33,8 @@ import type { SnapshotSink } from "../../collect/snapshot-capture";
 import { snapshotHtml } from "../render-fetch";
 import { pushPrefillTier, type ModelPrefillRow, type ModelTierPrefill } from "../crawlers";
 import { unitOfTableLike } from "../collect/units";
+import { normalizeModelKey } from "../normalize";
+import { resolutionRank } from "../resolution";
 
 import { parsePriceEntries, pickBaseEntry } from "./ark-image-price";
 
@@ -94,6 +103,119 @@ function unitOfTable(headers: string[]): string | null {
 /** token 系单位(双价语义);其余为单价格(生成价)语义 */
 function isTokenUnit(unit: string): boolean {
   return unit === "per_1m_tokens" || unit === "per_1k_tokens";
+}
+
+/** 视频价口径表:每模型的折合价(元/秒)与按片价(元/个),按分辨率 */
+interface ArkVideoPrice {
+  /** 分辨率 → 折合价(元/秒) */
+  perSecond: Map<string, number>;
+  /** 分辨率 → 按片价(元/个) */
+  perItem: Map<string, number>;
+}
+
+/**
+ * 「价格口径」表 → 模型名 → 折合价/按片价(2026-11-27 实探)。
+ * 表头「模型 | 价格口径 | 480p | 720p | 1080p | 4K」,每个模型两组数据行:
+ * 「视频单价（元/个）」与「折合价格（元/秒）」;模型格为空即继承上一行。
+ * 页面上同一张表渲染两遍(一份只有表头)——空表自然不产行,不用去重。
+ */
+function parseVideoPriceTables($: cheerio.CheerioAPI): Map<string, ArkVideoPrice> {
+  const out = new Map<string, ArkVideoPrice>();
+  $("table").each((_, el) => {
+    const rows = $(el).find("tr");
+    if (rows.length < 2) return;
+    const headers = $(rows[0])
+      .children()
+      .map((_, c) => $(c).text().trim())
+      .get();
+    const modelIdx = headers.findIndex((h) => h.replace(/[​\s]/g, "") === "模型");
+    const kindIdx = headers.findIndex((h) => h.includes("价格口径"));
+    if (modelIdx < 0 || kindIdx < 0) return;
+    const resolutions: Array<{ idx: number; res: string }> = [];
+    headers.forEach((h, i) => {
+      if (i <= kindIdx) return;
+      const res = h.replace(/[​\s]/g, "");
+      if (/^\d+[pP]$/.test(res) || /^\d+[kK]$/.test(res)) resolutions.push({ idx: i, res });
+    });
+    if (resolutions.length === 0) return;
+    let current = "";
+    rows.slice(1).each((_, r) => {
+      const cells = $(r)
+        .children()
+        .map((_, c) => $(c).text().trim())
+        .get();
+      if (cells.length === 0) return;
+      const name = (cells[modelIdx] ?? "").replace(/​/g, "").trim();
+      if (name !== "") current = name;
+      if (current === "") return;
+      const kind = (cells[kindIdx] ?? "").replace(/[​\s]/g, "");
+      const isPerSecond = kind.includes("折合") && kind.includes("元/秒");
+      const isPerItem = kind.includes("视频单价") && kind.includes("元/个");
+      if (!isPerSecond && !isPerItem) return;
+      const rec = out.get(current) ?? { perSecond: new Map(), perItem: new Map() };
+      for (const { idx, res } of resolutions) {
+        const price = priceOf(cells[idx] ?? "");
+        if (price === null) continue; // 「不支持」/空 → 该分辨率无价,不臆测
+        if (isPerSecond) rec.perSecond.set(res, price);
+        else rec.perItem.set(res, price);
+      }
+      out.set(current, rec);
+    });
+  });
+  return out;
+}
+
+/**
+ * 视频口径表 → 牌价行:行价取**最低分辨率的折合价**(入口价口径,同 M77 图片行),
+ * 各分辨率折合价落档位(前台分辨率阶梯直接可读);按片价只进 note(随时长变动,
+ * 不进行价)。模态显式标 video——产品名「Seedance 2.5」按关键词也能推断,但源
+ * 自己说是视频,显式标注优先。
+ */
+function videoPrefillRows(
+  videos: Map<string, ArkVideoPrice>,
+  sourceUrl: string,
+  now: Date,
+): ModelPrefillRow[] {
+  const out: ModelPrefillRow[] = [];
+  for (const [name, rec] of videos) {
+    if (rec.perSecond.size === 0) continue;
+    const sorted = [...rec.perSecond.entries()].sort(
+      (a, b) =>
+        (resolutionRank(a[0]) ?? Number.MAX_SAFE_INTEGER) -
+        (resolutionRank(b[0]) ?? Number.MAX_SAFE_INTEGER),
+    );
+    const [baseRes, basePrice] = sorted[0]!;
+    const tiers: ModelTierPrefill[] = [];
+    for (const [res, price] of sorted) {
+      pushPrefillTier(tiers, {
+        tierLabel: res,
+        inputPrice: null,
+        outputPrice: price,
+        cachePrice: null,
+        minTokens: null,
+        maxTokens: null,
+        unit: "per_second",
+      });
+    }
+    const item = rec.perItem.get(baseRes);
+    out.push({
+      vendor: "火山引擎方舟",
+      modelKey: normalizeModelKey(name),
+      currency: "CNY",
+      inputPrice: null,
+      outputPrice: basePrice,
+      contextWindow: null,
+      note: `[官方页爬虫 ${now.toISOString().slice(0, 10)}] ${name} · ${baseRes} 折合 ${basePrice} 元/秒${item === undefined ? "" : `(按片 ${item} 元/个)`}`,
+      dataAsOf: now,
+      sourceUrl,
+      region: "cn",
+      providerKey: "volcengine-ark",
+      priceUnit: "per_second",
+      modality: "video",
+      tiers,
+    });
+  }
+  return out;
 }
 
 /**
@@ -195,7 +317,9 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
       });
     });
 
-  if (records.length === 0) throw new Error("volcengine 价格表未匹配(页面可能改版)");
+  const videos = parseVideoPriceTables($);
+  if (records.length === 0 && videos.size === 0)
+    throw new Error("volcengine 价格表未匹配(页面可能改版)");
 
   // 按模型归一:一行一模型,场景 × 阶梯 × 时段 各落一档;
   // 同一模型若跨单位表出现(罕见),保 token 系记录,不混单位落档
@@ -335,5 +459,6 @@ export function parseVolcengineArk(html: string, sourceUrl: string, now: Date): 
       tiers,
     });
   }
+  out.push(...videoPrefillRows(videos, sourceUrl, now));
   return out;
 }
