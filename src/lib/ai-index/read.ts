@@ -1,8 +1,12 @@
 /**
  * AI 智能指数:数据库读侧
  * 从 ai_index_daily 读取每日指数,供首页卡片与 /ai-index 看板使用。
+ *
+ * 构建期无 DB(CI/镜像构建),取数经 prerenderSafe 降级为空数据(arch/07-frontend §1);
+ * 运行时错误照常上抛,不静默返空。
  */
 import { prisma } from "@/lib/db";
+import { prerenderSafe } from "@/lib/prerender-safe";
 
 export interface AiIndexDailyRow {
   date: string; // YYYY-MM-DD
@@ -43,11 +47,13 @@ export async function listAiIndexDaily(days = 90): Promise<AiIndexDailyRow[]> {
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);
 
-  const rows = await prisma.aiIndexDaily.findMany({
-    where: { date: { gte: since } },
-    orderBy: { date: "asc" },
+  return prerenderSafe("ai_index.list", [], async () => {
+    const rows = await prisma.aiIndexDaily.findMany({
+      where: { date: { gte: since } },
+      orderBy: { date: "asc" },
+    });
+    return rows.map(toRow);
   });
-  return rows.map(toRow);
 }
 
 /** 首页卡片:最近 30 天 + 最新一条 */
@@ -59,18 +65,20 @@ export async function getAiIndexCardData(): Promise<{
   since.setDate(since.getDate() - 30);
   since.setHours(0, 0, 0, 0);
 
-  const [recent, latest] = await Promise.all([
-    prisma.aiIndexDaily.findMany({
-      where: { date: { gte: since } },
-      orderBy: { date: "asc" },
-    }),
-    prisma.aiIndexDaily.findFirst({ orderBy: { date: "desc" } }),
-  ]);
+  return prerenderSafe("ai_index.card", { recent: [], latest: null }, async () => {
+    const [recent, latest] = await Promise.all([
+      prisma.aiIndexDaily.findMany({
+        where: { date: { gte: since } },
+        orderBy: { date: "asc" },
+      }),
+      prisma.aiIndexDaily.findFirst({ orderBy: { date: "desc" } }),
+    ]);
 
-  return {
-    recent: recent.map(toRow),
-    latest: latest ? toRow(latest) : null,
-  };
+    return {
+      recent: recent.map(toRow),
+      latest: latest ? toRow(latest) : null,
+    };
+  });
 }
 
 /** 聚合维度分布(按全部有数据日期) */

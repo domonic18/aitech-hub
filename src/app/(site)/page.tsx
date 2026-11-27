@@ -72,7 +72,10 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
         {/* 右栏:AI 智能指数卡 + 开源项目 + 博主文章/推荐视频 + GEO */}
         <aside className="flex min-w-0 flex-col gap-4">
-          <AiIndexCard recent={aiIndexCard.recent} latest={aiIndexCard.latest} />
+          {/* 无指数数据(首次落库前 / 构建期无库降级)时整卡不渲染,不占版面也不出空壳 */}
+          {(aiIndexCard.latest !== null || aiIndexCard.recent.length > 0) && (
+            <AiIndexCard recent={aiIndexCard.recent} latest={aiIndexCard.latest} />
+          )}
           {repos.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
               <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5 text-[13.5px] font-bold">
