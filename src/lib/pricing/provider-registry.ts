@@ -110,6 +110,22 @@ export const PROVIDER_SEEDS: readonly ProviderSeed[] = [
     homepageUrl: "https://platform.xiaomimimo.com/token-plan",
     displayOrder: 100,
   },
+  {
+    key: "kuaishou-kling",
+    name: "快手可灵",
+    region: "cn",
+    sourceKind: "official",
+    homepageUrl: "https://klingai.com/dev/pricing",
+    displayOrder: 110,
+  },
+  {
+    key: "shengshu-vidu",
+    name: "生数科技 Vidu",
+    region: "cn",
+    sourceKind: "official",
+    homepageUrl: "https://platform.vidu.cn/docs/overview/pricing",
+    displayOrder: 120,
+  },
 ] as const;
 
 /**
@@ -127,6 +143,8 @@ export const VENDOR_KEY_ALIASES: Readonly<Record<string, string>> = {
   "MiniMax 稀宇科技": "minimax",
   "智谱 AI · BigModel": "zhipu-bigmodel",
   "硅基流动 SiliconFlow": "siliconflow",
+  快手可灵: "kuaishou-kling",
+  "生数科技 Vidu": "shengshu-vidu",
 };
 
 /** 松散比较用:去空白与标点、小写(「智谱 AI · BigModel」→ 「智谱aibigmodel」) */
